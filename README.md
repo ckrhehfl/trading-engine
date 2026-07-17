@@ -8,5 +8,3 @@ rules, and architecture.
 Merge policy: `.github/CODEOWNERS` gates high-risk paths (Java trading
 plane, schemas, configs, CI, governance files) behind manual owner review;
 everything else auto-merges once CI/CodeRabbit checks pass.
-
-<!-- CodeRabbit install verification test, will be reverted -->
