@@ -76,6 +76,9 @@ keeps recurring.
 - Never add live exchange write-access in CI.
 - Never commit raw trading logs containing secrets or account identifiers.
 - Never run untrusted install scripts (`curl | sh`, `wget | bash`).
+- The repo is public (chosen for free GitHub Actions minutes). Treat GitHub
+  push-protection/secret-scanning failures as blocking, not advisory — a
+  leak here is immediate and irreversible, not just a private mistake.
 
 ## Risk Parameters (defaults — changing these needs explicit human approval)
 
@@ -148,11 +151,13 @@ need appears that GSD's model doesn't cover.
 | Layer | Choice | Status |
 |---|---|---|
 | CLI foundation | ripgrep, gh, uv | as needed |
-| Guardrails (hooks) | `dwarvesf/claude-guardrails` (Lite) + a project-specific hook blocking live-flag activation and exchange live-order endpoints | add when `.env`/credentials first appear |
+| Guardrails (hooks) | `dwarvesf/claude-guardrails` (Lite, global `~/.claude/settings.json`) | active now — brought forward from "when `.env` appears" because the repo is public |
+| Guardrails (project-specific) | hook blocking live-flag activation and exchange live-order endpoints | not built yet — add before real exchange credentials appear |
 | Methodology | GSD (`.planning/` artifacts) + TDD rule above | active now |
 | MCP | Context7, GitHub MCP | add when useful, not urgent |
-| CI/CD | `claude-code-action` | add once PR volume justifies automation |
-| Code review | CodeRabbit Pro (see below) | active now |
+| CI/CD | `claude-code-action` | not wired to repo events yet — public-repo triggers are a separate, deliberately deferred decision (prompt-injection surface); PRs currently opened via authenticated `gh` sessions |
+| Merge governance | `.github/CODEOWNERS` + branch protection on `main` (see Branch and Merge) | active now |
+| Code review | CodeRabbit Pro (see below) | config in place (`.coderabbit.yaml`); GitHub App install pending |
 | Multi-agent orchestration | Anthropic Agent Teams (official) | standby, off by default |
 
 ## Code Review Gate
@@ -174,6 +179,32 @@ without reading it.
 - Self-review and verify before opening a PR.
 - CodeRabbit review must complete (not pending) before merge.
 
+### Auto-merge Policy
+
+`.github/CODEOWNERS` is the source of truth for which paths require a
+human decision before merging — enforced server-side by branch protection
+on `main` (require PR, require review from Code Owners, 0 required
+approvals otherwise, admins not exempted from the PR requirement). This
+narrows the human's role in day-to-day development to three things:
+overall direction, approving high-risk changes, and deciding on anything
+that costs money (new paid tools/services, subscription changes).
+
+- **Not CODEOWNERS-matched** (Python research/backtest code, docs, tests,
+  most of the repo by volume): CI + CodeRabbit passing is sufficient —
+  merges without any human review, via GitHub's native auto-merge.
+- **CODEOWNERS-matched** (`java/`, `schemas/`, `configs/`, `.github/`,
+  `CLAUDE.md`, `.coderabbit.yaml`): auto-merge cannot fire without
+  @ckrhehfl's review, full stop — this is the same boundary as the
+  Non-negotiable Rules' human-approval list, expressed as a merge gate
+  instead of a convention.
+- GitHub disallows self-approval of one's own PR. While PRs are opened
+  under @ckrhehfl's own `gh` session (current state — no bot/app identity
+  merging code yet), a CODEOWNERS-gated PR's "approval" is @ckrhehfl
+  manually merging as repo admin after reading it, not a formal Approve
+  review. That manual act is still the required deliberate human step —
+  it just can't be a self-review click. This changes if PR authorship
+  ever moves to a bot/app identity distinct from @ckrhehfl.
+
 ## Implementation Priority
 
 1. Shared schemas (exchange/asset-class-agnostic where practical)
@@ -193,8 +224,9 @@ without reading it.
 ## Why this is more than a bare CLAUDE.md, but still not the old system
 
 Guardrails, GSD, and CodeRabbit are here because concrete requirements
-justify each one *now*: guardrails because real secrets will exist soon,
-GSD because this project is genuinely multi-month and will span multiple
+justify each one *now*: guardrails because the repo is public and real
+secrets will exist soon, GSD because this project is genuinely
+multi-month and will span multiple
 exchanges (context rot is a real risk here, not a hypothetical one),
 CodeRabbit because it's already paid for and reviewing every PR is cheap.
 Still deliberately excluded: a second full methodology framework running
