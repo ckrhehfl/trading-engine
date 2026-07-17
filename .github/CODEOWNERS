@@ -1,0 +1,30 @@
+# CODEOWNERS — risk-tier merge gate
+#
+# Paths listed here require @ckrhehfl's review before merge (enforced by
+# branch protection's "Require review from Code Owners" on main). This is
+# the structural boundary between auto-mergeable and human-approval-required
+# changes — see CLAUDE.md "Branch and Merge / Auto-merge Policy".
+#
+# Anything NOT matched below has no required reviewer: CI + CodeRabbit
+# passing is sufficient for auto-merge. Keep this file's boundaries in sync
+# with .coderabbit.yaml's path_instructions — same risk classification,
+# two different enforcement mechanisms (advisory review vs. hard merge gate).
+
+# Java Trading Plane: OMS / Risk Gateway / Execution / ExchangeAdapter /
+# Reconciliation / Kill Switch — all execution and risk-affecting code.
+/java/               @ckrhehfl
+
+# Shared Python/Java contract schemas — breaking changes ripple into the
+# Java trading plane.
+/schemas/             @ckrhehfl
+
+# Runtime config: leverage, risk/loss limits, live-trading flags.
+/configs/             @ckrhehfl
+
+# CI/CD workflows — modifying these is equivalent to code execution with
+# repo secrets; a classic supply-chain attack surface.
+/.github/             @ckrhehfl
+
+# Governance/policy files themselves.
+/CLAUDE.md            @ckrhehfl
+/.coderabbit.yaml     @ckrhehfl
