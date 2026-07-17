@@ -157,7 +157,7 @@ need appears that GSD's model doesn't cover.
 | MCP | Context7, GitHub MCP | add when useful, not urgent |
 | CI/CD | `claude-code-action` | not wired to repo events yet — public-repo triggers are a separate, deliberately deferred decision (prompt-injection surface); PRs currently opened via authenticated `gh` sessions |
 | Merge governance | `.github/CODEOWNERS` + branch protection on `main` (see Branch and Merge) | active now |
-| Code review | CodeRabbit Pro (see below) | config in place (`.coderabbit.yaml`); GitHub App install pending |
+| Code review | CodeRabbit Pro (see below) | active now — GitHub App installed, verified posting reviews, its `CodeRabbit` commit status is a required check on `main` |
 | Multi-agent orchestration | Anthropic Agent Teams (official) | standby, off by default |
 
 ## Code Review Gate
@@ -192,7 +192,9 @@ tools/services, subscription changes).
 - **Not CODEOWNERS-matched** (Python research/backtest code, docs, tests,
   most of the repo by volume): CI + CodeRabbit passing is sufficient —
   merges without any human review, via GitHub's native auto-merge. Verified
-  working (`README.md` PR merged automatically, zero manual action).
+  working end-to-end, including with the `CodeRabbit` commit status as a
+  required branch-protection check (`README.md` / cleanup PRs merged with
+  zero manual action once CodeRabbit's review posted success).
 - **CODEOWNERS-matched** (`java/`, `schemas/`, `configs/`, `.github/`,
   `CLAUDE.md`, `.coderabbit.yaml`): **verified NOT to be a hard server-side
   gate right now.** GitHub's "Require review from Code Owners" does not
