@@ -1,14 +1,20 @@
 # CODEOWNERS — risk-tier merge gate
 #
-# Paths listed here require @ckrhehfl's review before merge (enforced by
-# branch protection's "Require review from Code Owners" on main). This is
-# the structural boundary between auto-mergeable and human-approval-required
-# changes — see CLAUDE.md "Branch and Merge / Auto-merge Policy".
+# Paths listed here are meant to require @ckrhehfl's review before merge,
+# via branch protection's "Require review from Code Owners" on main. In
+# practice, verified empirically: GitHub does not enforce this when the PR
+# author is also the sole code owner (self-approval is blocked, but the
+# review requirement is simply not raised at all rather than blocking) —
+# it does not hold up as a hard server-side gate for a solo-author repo
+# until PRs are opened by an identity distinct from @ckrhehfl (bot/app).
+# Until then this file plus this comment is the documented boundary that
+# @ckrhehfl / any agent operating this repo must treat as a manual-review
+# requirement even though GitHub won't enforce it technically. See CLAUDE.md
+# "Branch and Merge / Auto-merge Policy" for the full explanation.
 #
 # Anything NOT matched below has no required reviewer: CI + CodeRabbit
 # passing is sufficient for auto-merge. Keep this file's boundaries in sync
-# with .coderabbit.yaml's path_instructions — same risk classification,
-# two different enforcement mechanisms (advisory review vs. hard merge gate).
+# with .coderabbit.yaml's path_instructions — same risk classification.
 
 # Java Trading Plane: OMS / Risk Gateway / Execution / ExchangeAdapter /
 # Reconciliation / Kill Switch — all execution and risk-affecting code.
@@ -28,4 +34,3 @@
 # Governance/policy files themselves.
 /CLAUDE.md            @ckrhehfl
 /.coderabbit.yaml     @ckrhehfl
-# test comment for enforce_admins verification

@@ -181,29 +181,36 @@ without reading it.
 
 ### Auto-merge Policy
 
-`.github/CODEOWNERS` is the source of truth for which paths require a
-human decision before merging — enforced server-side by branch protection
+`.github/CODEOWNERS` is the intended source of truth for which paths
+require a human decision before merging. It is backed by branch protection
 on `main` (require PR, require review from Code Owners, 0 required
-approvals otherwise, admins not exempted from the PR requirement). This
-narrows the human's role in day-to-day development to three things:
-overall direction, approving high-risk changes, and deciding on anything
-that costs money (new paid tools/services, subscription changes).
+approvals otherwise, `enforce_admins` on). This narrows the human's role
+in day-to-day development to three things: overall direction, approving
+high-risk changes, and deciding on anything that costs money (new paid
+tools/services, subscription changes).
 
 - **Not CODEOWNERS-matched** (Python research/backtest code, docs, tests,
   most of the repo by volume): CI + CodeRabbit passing is sufficient —
-  merges without any human review, via GitHub's native auto-merge.
+  merges without any human review, via GitHub's native auto-merge. Verified
+  working (`README.md` PR merged automatically, zero manual action).
 - **CODEOWNERS-matched** (`java/`, `schemas/`, `configs/`, `.github/`,
-  `CLAUDE.md`, `.coderabbit.yaml`): auto-merge cannot fire without
-  @ckrhehfl's review, full stop — this is the same boundary as the
-  Non-negotiable Rules' human-approval list, expressed as a merge gate
-  instead of a convention.
-- GitHub disallows self-approval of one's own PR. While PRs are opened
-  under @ckrhehfl's own `gh` session (current state — no bot/app identity
-  merging code yet), a CODEOWNERS-gated PR's "approval" is @ckrhehfl
-  manually merging as repo admin after reading it, not a formal Approve
-  review. That manual act is still the required deliberate human step —
-  it just can't be a self-review click. This changes if PR authorship
-  ever moves to a bot/app identity distinct from @ckrhehfl.
+  `CLAUDE.md`, `.coderabbit.yaml`): **verified NOT to be a hard server-side
+  gate right now.** GitHub's "Require review from Code Owners" does not
+  block merging when the PR author is also the sole code owner — tested
+  empirically with both `enforce_admins: false` and `true`; both merged
+  instantly with no review, no queued/waiting state. Self-approval is
+  blocked, but GitHub simply doesn't raise the requirement at all rather
+  than blocking, since there is no one else who could satisfy it. This is
+  a solo-author-repo limitation of GitHub CODEOWNERS, not a config mistake.
+- **Until PR authorship moves to a bot/app identity distinct from
+  @ckrhehfl** (out of scope for now — see Tooling Stack), the CODEOWNERS
+  boundary is enforced procedurally, not technically: whoever/whatever is
+  operating this repo (including an LLM agent) must treat a CODEOWNERS-
+  matched PR as requiring @ckrhehfl's explicit go-ahead before merging,
+  and must not rely on GitHub to block it. Branch protection stays on
+  regardless — it still stops a future bot/app identity or a second
+  collaborator from merging those paths unreviewed, which is real
+  protection, just not against the current sole operator.
 
 ## Implementation Priority
 
