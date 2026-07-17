@@ -28,3 +28,4 @@
 # Governance/policy files themselves.
 /CLAUDE.md            @ckrhehfl
 /.coderabbit.yaml     @ckrhehfl
+# test comment for enforce_admins verification
