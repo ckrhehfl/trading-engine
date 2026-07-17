@@ -1,0 +1,103 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+#
+# CodeRabbit review config — personal-trading-engine
+# Source of truth for review criteria is CLAUDE.md at the repo root.
+
+language: "ko-KR"
+
+tone_instructions: >-
+  이 저장소는 실거래가 가능한 트레이딩 시스템이다. CLAUDE.md의 리스크·보안
+  정책을 최우선 기준으로 한국어로 리뷰하라. 명확성보다 안전을 우선하고, 위험한
+  변경은 단호하게 지적하라.
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: true
+  review_status: true
+  commit_status: true
+  fail_commit_status: true
+  poem: false
+  collapse_walkthrough: false
+  sequence_diagrams: false
+
+  auto_review:
+    enabled: true
+    drafts: false
+    auto_incremental_review: true
+
+  path_instructions:
+    - path: "**"
+      instructions: >-
+        CLAUDE.md를 최우선 기준으로 검토한다. 다음은 이 PR에서 절대 허용되지 않으며
+        발견 시 반드시 지적한다: (1) Python이 거래소에 직접 live order를 보내는 경로,
+        (2) Java Trading Plane / Java Risk Gateway를 우회하는 live order 경로,
+        (3) API key·secret·token·password·private key 하드코딩 또는 .env / secrets/ /
+        credentials/ 접근, (4) live trading 활성화(LIVE_TRADING_ENABLED=true,
+        live_trading=true 등), (5) leverage limit 상향, (6) risk limit 또는 loss
+        limit 완화, (7) market order guard 약화, (8) kill switch 약화·우회.
+        모든 live order 경로는 Java Trading Plane과 Java Risk Gateway를 통과해야 한다.
+    - path: "python/**"
+      instructions: >-
+        Python Research Plane 코드다. 다음을 중점 검토한다: lookahead bias(미래 데이터
+        참조), data leakage, same-candle execution(같은 봉 종가로 같은 봉 체결),
+        수수료/슬리피지 누락, 재현 불가능한 비결정성(고정 seed 여부, 시간 의존),
+        그리고 Python이 거래소에 직접 주문을 보내는 live order path가 새로 생기는지.
+        Python은 backtest/research/ML만 담당하며 live order를 직접 보내면 안 된다.
+    - path: "java/**"
+      instructions: >-
+        Java Trading Plane 코드다. 다음을 중점 검토한다: OMS state transition의
+        정확성, 중복 주문(duplicate order) 방지, idempotency(client order id),
+        partial fill 처리, cancel/replace, retry 시 중복 주문 위험, position
+        reconciliation, kill switch 동작, 그리고 Risk Gateway가 모든 주문 경로에서
+        강제되는지. Risk Gateway를 우회하는 경로는 허용하지 않는다. 새 거래소/자산군을
+        추가하는 변경은 `ExchangeAdapter` 인터페이스 구현으로만 이뤄져야 하며, OMS/Risk/
+        Execution 코어를 수정한다면 그 이유를 반드시 확인한다.
+    - path: "schemas/**"
+      instructions: >-
+        Python/Java가 공유하는 계약 스키마다. 다음을 검토한다: Python(pydantic)과
+        Java(Jackson) 간 호환성, breaking change 여부, 버전 관리와 변경 문서화,
+        거래소/자산군에 특정 필드가 불필요하게 하드코딩되지 않았는지.
+    - path: "configs/**"
+      instructions: >-
+        설정 파일이다. 다음을 발견하면 반드시 지적한다: live trading flag 활성화,
+        leverage 상향, risk/loss limit 완화, production/live deployment 활성화,
+        실제 credential 또는 API key 참조. 이 값들의 변경은 human approval 대상이다.
+
+  pre_merge_checks:
+    custom_checks:
+      - name: "No live trading enablement"
+        mode: "error"
+        instructions: >-
+          다음 중 하나라도 diff에 추가되면 FAIL: LIVE_TRADING_ENABLED 를 true 로
+          설정, live_trading: true / live_trading=true, live/production deployment
+          를 활성화하는 설정, live trading을 켜는 코드 경로. 위 변경이 전혀 없으면 PASS.
+      - name: "No secrets or credential access"
+        mode: "error"
+        instructions: >-
+          다음 중 하나라도 발견되면 FAIL: 하드코딩된 API key·secret·token·password·
+          private key, .env / .env.* 파일 내용 추가 또는 커밋, secrets/ 또는
+          credentials/ 경로의 실제 자격증명 파일 추가, 실제 거래소 credential 추가.
+          .env.example 의 빈 placeholder 값은 허용(PASS). 위 위반이 없으면 PASS.
+      - name: "No risk or leverage relaxation"
+        mode: "error"
+        instructions: >-
+          CLAUDE.md의 "Risk Parameters" 절에 정의된 현재 leverage/loss limit/notional
+          한도를 source of truth로 삼는다. 다음 중 하나라도 발견되면 FAIL: 해당 절의
+          canary/stable leverage 상한 초과, daily/weekly/monthly loss limit 또는 hard
+          stop 완화, 1회 주문 최대 notional 한도 상향, market order guard 완화, kill
+          switch 발동 조건 약화 또는 우회. 위 위반이 없으면 PASS. 있으면 human approval
+          필요 항목으로 지적하고 FAIL.
+      - name: "Python cannot place live orders"
+        mode: "error"
+        instructions: >-
+          python/** 에서 거래소에 직접 실주문을 보내는 경로가 새로 생기면 FAIL.
+          구체적으로 거래소 주문 API를 Python에서 직접 호출하거나, Java Risk Gateway를
+          거치지 않고 live order를 전송하는 코드가 추가되면 FAIL. Python이
+          backtest/paper/research/manifest 생성만 하면 PASS.
+      - name: "New venue/asset changes go through ExchangeAdapter"
+        mode: "warning"
+        instructions: >-
+          새 거래소나 자산군을 추가하는 변경이 `ExchangeAdapter` 인터페이스의 새 구현체
+          형태가 아니라 OMS/Risk/Execution 코어 클래스를 직접 수정하는 형태라면 WARNING.
+          정당한 이유(인터페이스 자체의 설계 결함 등)가 PR 설명에 명시되어 있으면 무시
+          가능. 그렇지 않으면 이유를 물어라.

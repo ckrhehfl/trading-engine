@@ -6,29 +6,46 @@ Personal, institution-style BTC/USDT futures trading system. The system may
 eventually place real trades. Treat all execution, risk, leverage, position
 mode, exchange API, deployment, and key-management changes as high-risk.
 
-## Current Scope
+## Current Scope (MVP)
 
-- Exchange: BingX
+- Exchange: BingX (first implementation, not a hardcoded assumption)
 - Product: BTC/USDT USDT-M Perpetual Futures
 - Direction: long and short
 - Order types: limit and guarded market
 - Timeframes: 15m base, 5m extension, 1h regime filter
 - Single-user, VPS-oriented, not a SaaS
 
-Non-goals for now: HFT, co-location, multi-user SaaS, fully unattended live
-trading, multi-exchange live trading, Kubernetes, Kafka/Aeron/Chronicle Queue.
+## Long-term Design Targets (shape the architecture now, not built now)
+
+- Multi-exchange / multi-symbol / equities expansion **without refactoring**
+  OMS, Risk Gateway, or Execution — achieved by keeping `ExchangeAdapter` an
+  interface from the start. BingX is the first adapter, not a baked-in
+  assumption.
+- Target latency ~100-200ms round trip on a single non-colocated VPS. This
+  is not HFT — achievable with the Java trading plane + WebSocket market
+  data, no exotic messaging infra needed.
+- Eventually fully unattended 24/7 operation. Requires real process
+  supervision (restart recovery, health checks) first — not there yet.
+- Eventually automatic parameter re-learning. Requires a scheduled
+  retraining pipeline with validation gates before any auto-promotion — not
+  there yet. Any live-affecting promotion still requires human approval
+  (see LLM Usage Policy).
+
+Non-goals regardless of the above: HFT/co-location/tick-level strategies,
+multi-user SaaS, Kubernetes, Kafka/Aeron/Chronicle Queue.
 
 ## Architecture
 
 ```text
 Python Research Plane
 - data research, deterministic backtesting, strategy experiments
-- feature engineering, ML training/evaluation
+- feature engineering, ML training/evaluation, scheduled retraining (later)
 - report generation, deployment candidate generation
 - must not place live orders directly
 
 Java Trading Plane
-- OMS, Risk Gateway, Execution Service, BingX Adapter
+- OMS, Risk Gateway, Execution Service
+- ExchangeAdapter interface (BingX is the first implementation)
 - position reconciliation, kill switch, paper/live runtime
 - all live orders must pass through the Java Risk Gateway
 ```
@@ -38,9 +55,14 @@ Adapter / Reconciliation / Kill Switch only. No Spring/Kafka/K8s/Aeron.
 Start with Java 21 + Gradle + JUnit + Jackson + SLF4J only. Strategy
 research, backtesting, ML, and reporting stay in Python.
 
-Reassess this split if: solo-dev burden becomes excessive, a Python
-prototype proves sufficient on its own, or Python/Java schema drift keeps
-recurring.
+A new venue or asset class means writing a new `ExchangeAdapter`
+implementation, not modifying OMS/Risk/Execution. Shared schemas
+(order-intent, risk-decision, etc.) should stay exchange- and
+asset-class-agnostic where practical.
+
+Reassess the Python/Java split if: solo-dev burden becomes excessive, a
+Python prototype proves sufficient on its own, or Python/Java schema drift
+keeps recurring.
 
 ## Non-negotiable Rules
 
@@ -77,7 +99,7 @@ operation + IP-restricted API key + no withdrawal permission + manually
 approved live flag + leverage hard max 2x + market-order guard enabled +
 kill switch verified.
 
-## BingX API Facts (verified by direct observation, re-verify before relying on them)
+## Exchange API Facts — BingX (first adapter, verify before relying on them)
 
 - Symbol: `BTC-USDT`
 - Recent trades: `GET /openApi/swap/v2/quote/trades`
@@ -97,31 +119,90 @@ summarization, risk review, documentation.
 
 Not allowed: acting as the live trading decision maker. LLM-suggested
 signals, risk changes, or order logic must go through backtest/paper
-verification and human approval like any other change.
+verification and human approval like any other change. This includes
+future auto-retraining: a model retraining automatically is fine, that
+model being auto-promoted to paper/live without human approval is not.
 
-## Development Workflow
+## Development Methodology
 
-1. Read this file and the relevant code before changing anything.
-2. Plan before non-trivial or cross-cutting changes.
-3. Ask for explicit approval before high-risk changes (live trading,
-   credentials, risk limits, leverage, kill switch).
-4. Make small, scoped changes; add or update tests.
-5. Run verification commands before claiming a task is done.
-6. Report: files changed, tests added/run, results, remaining risks, and
-   whether human approval is needed.
+Use the GSD phase loop for anything beyond a trivial change: **Discuss →
+Plan → Execute → Verify → Ship**. `Discuss` resolves ambiguity before any
+code is written — for R3-risk components (OMS, Risk Gateway, Execution)
+this step must not be skipped. `Execute` uses fresh-context subagents per
+task so a multi-month, multi-exchange project doesn't degrade into the
+context rot that broke the previous attempt at this project. `Verify` must
+include actual test runs, not a claim that tests would pass.
+
+TDD discipline (red-green-refactor: failing test → minimum code to pass →
+refactor) is required for OMS, Risk Gateway, and Execution code — not
+optional. This rule is adopted directly, without installing a separate
+framework for it.
+
+Anthropic's official Agent Teams feature is available but not enabled by
+default — GSD's own subagent-per-task orchestration already covers this
+project's parallel-execution needs. Turn Agent Teams on only if a concrete
+need appears that GSD's model doesn't cover.
+
+## Tooling Stack
+
+| Layer | Choice | Status |
+|---|---|---|
+| CLI foundation | ripgrep, gh, uv | as needed |
+| Guardrails (hooks) | `dwarvesf/claude-guardrails` (Lite) + a project-specific hook blocking live-flag activation and exchange live-order endpoints | add when `.env`/credentials first appear |
+| Methodology | GSD (`.planning/` artifacts) + TDD rule above | active now |
+| MCP | Context7, GitHub MCP | add when useful, not urgent |
+| CI/CD | `claude-code-action` | add once PR volume justifies automation |
+| Code review | CodeRabbit Pro (see below) | active now |
+| Multi-agent orchestration | Anthropic Agent Teams (official) | standby, off by default |
+
+## Code Review Gate
+
+CodeRabbit Pro reviews every PR — see `.coderabbit.yaml` for the actual
+rules (no live-trading enablement, no secrets, no risk/leverage relaxation,
+Python cannot place live orders, Risk Gateway cannot be bypassed).
+
+CodeRabbit Pro's Autofix is fine to accept for lint, formatting, docs, and
+low-risk Python research code. For Java OMS / Risk Gateway / Execution,
+anything touching credentials, or anything live-trading-related: review and
+apply the fix manually. Do not accept an automated fix on high-risk code
+without reading it.
 
 ## Branch and Merge
 
 - Never commit or push directly to `main`.
 - Changes go through a branch and a PR.
 - Self-review and verify before opening a PR.
+- CodeRabbit review must complete (not pending) before merge.
 
-## Deliberately not carried over from the previous attempt
+## Implementation Priority
 
-A prior version of this project accumulated 15 cross-referenced docs, a
-5-level risk-classification system, a 16-step PR lifecycle, 5 read-only
-reviewer subagents + 5 wrapper skills + a policy hook, and a dual
-CodeRabbit/CI merge gate — before a single continuously-running paper
-trading loop existed. That process outpaced the working system and became
-the bottleneck itself. Add any of this back only when a concrete, recurring
-problem justifies it — not preemptively.
+1. Shared schemas (exchange/asset-class-agnostic where practical)
+2. Java OMS state machine skeleton
+3. Java Risk Gateway skeleton
+4. Python deterministic backtest skeleton
+5. Schema compatibility tests
+6. Paper broker
+7. `ExchangeAdapter` skeleton (BingX as first implementation)
+8. Paper trading loop + 24/7 runtime supervision (restart recovery, health
+   checks) — promoted priority, needed for the unattended-operation target
+9. Auto-retraining pipeline (scheduled retrain, validation, promotion gate)
+   — promoted priority, needed for the auto-learning target; promotion to
+   paper/live still requires human approval
+10. Canary live preparation
+
+## Why this is more than a bare CLAUDE.md, but still not the old system
+
+Guardrails, GSD, and CodeRabbit are here because concrete requirements
+justify each one *now*: guardrails because real secrets will exist soon,
+GSD because this project is genuinely multi-month and will span multiple
+exchanges (context rot is a real risk here, not a hypothetical one),
+CodeRabbit because it's already paid for and reviewing every PR is cheap.
+Still deliberately excluded: a second full methodology framework running
+alongside GSD, a multi-agent reviewer fleet, a multi-document
+cross-referenced spec system, and Agent Teams until GSD's built-in
+orchestration proves insufficient. A prior attempt at this project
+accumulated 15 cross-referenced docs, a 5-level risk-classification system,
+a 16-step PR lifecycle, and 5 reviewer subagents before a single
+continuously-running paper trading loop existed — that process outpaced
+the working system and became the bottleneck itself. Add anything beyond
+this file only when a concrete, recurring problem justifies it.
