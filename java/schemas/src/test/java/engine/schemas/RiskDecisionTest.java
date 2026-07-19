@@ -66,13 +66,14 @@ class RiskDecisionTest {
                 () -> new RiskDecision(UUID.randomUUID(), decision, null, null, null, Instant.now()));
     }
 
-    @Test
-    void whitespaceOnlyReasonIsRejected() {
+    @ParameterizedTest
+    @EnumSource(
+            value = Decision.class,
+            names = {"REJECTED", "MODIFIED"})
+    void whitespaceOnlyReasonIsRejected(Decision decision) {
         assertThrows(
                 IllegalArgumentException.class,
-                () ->
-                        new RiskDecision(
-                                UUID.randomUUID(), Decision.REJECTED, "   ", null, null, Instant.now()));
+                () -> new RiskDecision(UUID.randomUUID(), decision, "   ", null, null, Instant.now()));
     }
 
     @Test
@@ -113,7 +114,9 @@ class RiskDecisionTest {
                         Instant.now());
 
         assertEquals(Decision.MODIFIED, decision.decision());
+        assertEquals("reduced size due to daily loss buffer", decision.reason());
         assertEquals(new BigDecimal("0.3"), decision.approvedQuantity());
+        assertEquals(new BigDecimal("1.5"), decision.approvedLeverage());
     }
 
     @Test
