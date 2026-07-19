@@ -177,6 +177,23 @@ class RiskGatewayTest {
     }
 
     @Test
+    void zeroOrNegativeReferencePriceIsRejectedNotApproved() throws Exception {
+        RiskGateway gateway = new RiskGateway(RiskLimits.canary());
+        OrderIntent intent = guardedMarketIntent(new BigDecimal("1000000")); // huge quantity
+        AccountState account = healthyAccount(new BigDecimal("100000"));
+
+        // A non-positive price must never let notional = quantity * price
+        // clear the check by being <= 0 — that would approve an
+        // arbitrarily large quantity regardless of maxOrderNotionalPercent.
+        for (BigDecimal badPrice : new BigDecimal[] {BigDecimal.ZERO, new BigDecimal("-60000")}) {
+            RiskDecision decision = gateway.evaluate(intent, badPrice, account);
+            assertEquals(Decision.REJECTED, decision.decision());
+            assertNull(decision.approvedQuantity());
+            assertRoundTrips(decision);
+        }
+    }
+
+    @Test
     void limitOrderUsesOwnLimitPriceIgnoringDifferentReferencePrice() throws Exception {
         RiskGateway gateway = new RiskGateway(RiskLimits.canary());
         // limitPrice 60000 -> notional 0.03 * 60000 = 1800, within 2000 maxNotional

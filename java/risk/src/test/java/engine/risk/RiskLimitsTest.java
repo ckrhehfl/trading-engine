@@ -42,6 +42,38 @@ class RiskLimitsTest {
     }
 
     @Test
+    void maxLeverageAboveThePolicyCeilingIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("5"), // above ABSOLUTE_MAX_LEVERAGE (3x)
+                                new BigDecimal("0.02"),
+                                new BigDecimal("-0.005"),
+                                new BigDecimal("-0.015"),
+                                new BigDecimal("-0.03"),
+                                new BigDecimal("-0.04"),
+                                null));
+    }
+
+    @Test
+    void maxLeverageAtExactlyThePolicyCeilingIsAccepted() {
+        RiskLimits limits =
+                new RiskLimits(
+                        new BigDecimal("2"),
+                        RiskLimits.ABSOLUTE_MAX_LEVERAGE,
+                        new BigDecimal("0.05"),
+                        new BigDecimal("-0.01"),
+                        new BigDecimal("-0.03"),
+                        new BigDecimal("-0.06"),
+                        new BigDecimal("-0.08"),
+                        new BigDecimal("-0.10"));
+
+        assertEquals(RiskLimits.ABSOLUTE_MAX_LEVERAGE, limits.maxLeverage());
+    }
+
+    @Test
     void zeroOrNegativeBaseLeverageIsRejected() {
         assertThrows(
                 IllegalArgumentException.class,

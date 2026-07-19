@@ -13,6 +13,13 @@ import java.util.Objects;
  * (e.g. {@code -0.005} for "-0.5%"); a breach is {@code accountPnlPercent
  * <= limitPercent}. {@code emergencyStopLossPercent} is nullable — the
  * canary tier has no emergency stop.
+ *
+ * <p>{@link #ABSOLUTE_MAX_LEVERAGE} is a hard ceiling equal to CLAUDE.md's
+ * most permissive currently-documented tier (stable's 3x) — not a lower
+ * value. It exists so the public constructor can't be used to construct a
+ * tier exceeding what's currently approved (e.g. by future config-loading
+ * code); raising it requires editing this file, which is itself a
+ * CODEOWNERS-gated, human-reviewed change.
  */
 public record RiskLimits(
         BigDecimal baseLeverage,
@@ -23,6 +30,9 @@ public record RiskLimits(
         BigDecimal monthlyLossLimitPercent,
         BigDecimal hardStopLossPercent,
         BigDecimal emergencyStopLossPercent) {
+
+    /** CLAUDE.md's stable tier max leverage (3x) — see class Javadoc. */
+    public static final BigDecimal ABSOLUTE_MAX_LEVERAGE = new BigDecimal("3");
 
     public RiskLimits {
         Objects.requireNonNull(baseLeverage, "baseLeverage is required");
@@ -38,6 +48,11 @@ public record RiskLimits(
         }
         if (maxLeverage.compareTo(baseLeverage) < 0) {
             throw new IllegalArgumentException("maxLeverage must be >= baseLeverage");
+        }
+        if (maxLeverage.compareTo(ABSOLUTE_MAX_LEVERAGE) > 0) {
+            throw new IllegalArgumentException(
+                    "maxLeverage must not exceed the policy ceiling of " + ABSOLUTE_MAX_LEVERAGE
+                            + "x (CLAUDE.md's stable tier) without a CLAUDE.md + code change");
         }
         if (maxOrderNotionalPercent.signum() <= 0 || maxOrderNotionalPercent.compareTo(BigDecimal.ONE) > 0) {
             throw new IllegalArgumentException("maxOrderNotionalPercent must be in (0, 1]");

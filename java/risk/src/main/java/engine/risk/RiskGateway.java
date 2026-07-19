@@ -48,6 +48,15 @@ public final class RiskGateway {
         }
 
         BigDecimal price = intent.limitPrice() != null ? intent.limitPrice() : referencePrice;
+        if (price.signum() <= 0) {
+            // OrderIntent.limitPrice() is already positive-validated by the
+            // schema when present; a non-positive price can only reach here
+            // via referencePrice (e.g. a bad market-data tick during an
+            // outage). A non-positive price makes notional <= 0, which would
+            // trivially clear any positive maxNotional and approve the full
+            // requested quantity regardless of size — reject outright instead.
+            return reject(intent, "cannot evaluate order: effective price " + price + " is not positive");
+        }
         BigDecimal notional = intent.quantity().multiply(price);
         BigDecimal maxNotional = limits.maxOrderNotionalPercent().multiply(account.equity());
 
