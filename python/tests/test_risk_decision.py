@@ -1,5 +1,5 @@
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import UUID, uuid4
 
@@ -112,6 +112,17 @@ def test_missing_required_field_is_rejected():
 
     with pytest.raises(ValidationError):
         RiskDecision(**kwargs)
+
+
+def test_non_utc_offset_is_normalized_to_utc():
+    kst = timezone(timedelta(hours=9))
+    kwargs = _approved_kwargs()
+    kwargs["decided_at"] = datetime(2026, 7, 19, 13, 0, 0, tzinfo=kst)
+
+    decision = RiskDecision(**kwargs)
+
+    assert decision.decided_at == datetime(2026, 7, 19, 4, 0, 0, tzinfo=timezone.utc)
+    assert "T04:00:00Z" in decision.model_dump_json()
 
 
 def test_known_values_produce_exact_json_fixture():

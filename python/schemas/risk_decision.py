@@ -2,9 +2,9 @@ from enum import StrEnum
 from typing import Optional
 from uuid import UUID
 
-from pydantic import AwareDatetime, BaseModel, model_validator
+from pydantic import AwareDatetime, BaseModel, field_validator, model_validator
 
-from schemas._types import PositiveDecimalString
+from schemas._types import PositiveDecimalString, normalize_to_utc
 
 SCHEMA_VERSION = "1.0"
 
@@ -23,6 +23,11 @@ class RiskDecision(BaseModel):
     approved_leverage: Optional[PositiveDecimalString] = None
     decided_at: AwareDatetime
     schema_version: str = SCHEMA_VERSION
+
+    @field_validator("decided_at")
+    @classmethod
+    def _normalize_decided_at(cls, value: "AwareDatetime") -> "AwareDatetime":
+        return normalize_to_utc(value)
 
     @model_validator(mode="after")
     def _check_reason_required(self) -> "RiskDecision":

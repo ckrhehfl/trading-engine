@@ -102,6 +102,21 @@ class RiskDecisionTest {
     }
 
     @Test
+    void modifiedWithReasonAndApprovedFieldsIsValid() {
+        RiskDecision decision =
+                new RiskDecision(
+                        UUID.randomUUID(),
+                        Decision.MODIFIED,
+                        "reduced size due to daily loss buffer",
+                        new BigDecimal("0.3"),
+                        new BigDecimal("1.5"),
+                        Instant.now());
+
+        assertEquals(Decision.MODIFIED, decision.decision());
+        assertEquals(new BigDecimal("0.3"), decision.approvedQuantity());
+    }
+
+    @Test
     void rejectedWithApprovedFieldsSetIsRejected() {
         assertThrows(
                 IllegalArgumentException.class,

@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Annotated
 
@@ -17,3 +18,14 @@ PositiveDecimalString = Annotated[
     _as_json_string,
     Field(gt=0, allow_inf_nan=False),
 ]
+
+
+def normalize_to_utc(value: datetime) -> datetime:
+    """Collapse any timezone-aware datetime to UTC.
+
+    `AwareDatetime` alone accepts any offset (e.g. +09:00); the wire
+    contract in schemas/README.md is UTC specifically, and Java's `Instant`
+    has no non-UTC representation to begin with — normalize here so both
+    sides agree on the same instant's textual form.
+    """
+    return value.astimezone(timezone.utc)
