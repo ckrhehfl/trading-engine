@@ -137,6 +137,20 @@ class OrderTest {
     }
 
     @Test
+    void cumulativeOverfillAcrossValidPartialFillsIsRejected() {
+        Order order = newOrder(); // approvedQuantity = 0.5
+        order.submit();
+        order.acknowledge("EX-1");
+
+        order.fill(new BigDecimal("0.3"));
+        assertEquals(OrderState.PARTIALLY_FILLED, order.state());
+
+        assertThrows(IllegalArgumentException.class, () -> order.fill(new BigDecimal("0.3")));
+        // rejected fill must not have mutated state
+        assertEquals(new BigDecimal("0.3"), order.filledQuantity());
+    }
+
+    @Test
     void zeroOrNegativeFillQuantityIsRejected() {
         Order order = newOrder();
         order.submit();
@@ -169,15 +183,22 @@ class OrderTest {
     }
 
     @Test
-    void partialFillCanRaceACancelRequestAndStayOpen() {
+    void partialFillCanRaceACancelRequestAndCancelStillConfirms() {
         Order order = newOrder();
         order.submit();
         order.acknowledge("EX-1");
         order.requestCancel();
 
         order.fill(new BigDecimal("0.2"));
+        // Stays CANCEL_PENDING rather than moving to PARTIALLY_FILLED —
+        // otherwise confirmCancel() below would have nowhere legal to
+        // land and the order would be stuck open forever.
+        assertEquals(OrderState.CANCEL_PENDING, order.state());
 
-        assertEquals(OrderState.PARTIALLY_FILLED, order.state());
+        order.confirmCancel();
+
+        assertEquals(OrderState.CANCELLED, order.state());
+        assertEquals(new BigDecimal("0.2"), order.filledQuantity());
     }
 
     @Test

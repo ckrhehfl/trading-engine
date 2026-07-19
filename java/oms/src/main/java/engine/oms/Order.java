@@ -116,6 +116,25 @@ public final class Order {
         return approvedLeverage;
     }
 
+    /**
+     * True if the given intent/decision pair describes exactly the order
+     * this instance was created from — used by {@link OrderStore} to
+     * reject a retry that reuses the same client order id but carries
+     * different or conflicting order details (including a decision that
+     * is no longer APPROVED/MODIFIED), rather than silently returning the
+     * original order as if the retry were identical.
+     */
+    boolean matches(OrderIntent intent, RiskDecision decision) {
+        return clientOrderId.equals(intent.intentId())
+                && symbol.equals(intent.symbol())
+                && side == intent.side()
+                && orderType == intent.orderType()
+                && Objects.equals(limitPrice, intent.limitPrice())
+                && clientOrderId.equals(decision.intentId())
+                && Objects.equals(approvedQuantity, decision.approvedQuantity())
+                && Objects.equals(approvedLeverage, decision.approvedLeverage());
+    }
+
     public synchronized OrderState state() {
         return state;
     }
@@ -176,7 +195,16 @@ public final class Order {
                             + " + " + quantity + " > approvedQuantity=" + approvedQuantity);
         }
         filledQuantity = newFilled;
-        transitionTo(newFilled.compareTo(approvedQuantity) == 0 ? OrderState.FILLED : OrderState.PARTIALLY_FILLED);
+        if (newFilled.compareTo(approvedQuantity) == 0) {
+            transitionTo(OrderState.FILLED);
+        } else if (state != OrderState.CANCEL_PENDING) {
+            transitionTo(OrderState.PARTIALLY_FILLED);
+        }
+        // else: partial fill while a cancel is in flight — stay in
+        // CANCEL_PENDING so confirmCancel() still has a legal path;
+        // moving to PARTIALLY_FILLED here would strand the order, since
+        // the exchange's eventual cancel confirmation would have nowhere
+        // valid to land.
     }
 
     private void requireState(OrderState required) {

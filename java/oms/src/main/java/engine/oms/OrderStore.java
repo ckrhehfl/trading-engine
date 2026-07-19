@@ -19,10 +19,24 @@ public final class OrderStore {
      * Returns the existing Order for this client order id if one was
      * already created, otherwise creates exactly one — concurrent calls
      * with the same id race safely and never produce two Orders.
+     *
+     * <p>A retry that reuses a client order id must describe the same
+     * order; if it doesn't (including a decision that is no longer
+     * APPROVED/MODIFIED), that's a conflicting request, not an idempotent
+     * replay, and is rejected rather than silently returning the original
+     * order as if nothing were wrong.
      */
     public Order createOrder(OrderIntent intent, RiskDecision decision) {
-        return orders.computeIfAbsent(
-                intent.intentId(), id -> Order.fromApprovedDecision(intent, decision));
+        Order order =
+                orders.computeIfAbsent(
+                        intent.intentId(), id -> Order.fromApprovedDecision(intent, decision));
+        if (!order.matches(intent, decision)) {
+            throw new IllegalStateException(
+                    "conflicting retry for client order id "
+                            + intent.intentId()
+                            + ": request does not match the already-created order");
+        }
+        return order;
     }
 
     public Optional<Order> findByClientOrderId(UUID clientOrderId) {

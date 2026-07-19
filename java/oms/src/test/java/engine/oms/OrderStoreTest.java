@@ -2,6 +2,7 @@ package engine.oms;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import engine.schemas.Decision;
@@ -11,15 +12,14 @@ import engine.schemas.RiskDecision;
 import engine.schemas.Side;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class OrderStoreTest {
@@ -65,6 +65,35 @@ class OrderStoreTest {
     }
 
     @Test
+    void retryWithDifferentApprovedQuantityIsRejectedAsConflicting() {
+        OrderStore store = new OrderStore();
+        UUID id = UUID.randomUUID();
+        OrderIntent intent = limitIntent(id);
+        store.createOrder(intent, approved(id));
+
+        RiskDecision differentQuantity =
+                new RiskDecision(id, Decision.APPROVED, null, new BigDecimal("0.9"), new BigDecimal("2"), Instant.now());
+
+        assertThrows(IllegalStateException.class, () -> store.createOrder(intent, differentQuantity));
+    }
+
+    @Test
+    void retryWithNowRejectedDecisionIsRejectedAsConflicting() {
+        OrderStore store = new OrderStore();
+        UUID id = UUID.randomUUID();
+        OrderIntent intent = limitIntent(id);
+        store.createOrder(intent, approved(id));
+
+        RiskDecision nowRejected =
+                new RiskDecision(id, Decision.REJECTED, "reassessed as too risky", null, null, Instant.now());
+
+        // computeIfAbsent never re-invokes fromApprovedDecision for an
+        // existing key, so this must be caught by the conflict check, not
+        // by Order.fromApprovedDecision's own REJECTED guard.
+        assertThrows(IllegalStateException.class, () -> store.createOrder(intent, nowRejected));
+    }
+
+    @Test
     void findByClientOrderIdReturnsCreatedOrder() {
         OrderStore store = new OrderStore();
         UUID id = UUID.randomUUID();
@@ -80,7 +109,8 @@ class OrderStoreTest {
     }
 
     @Test
-    void concurrentCreateOrderWithSameIdProducesExactlyOneOrder() throws InterruptedException {
+    void concurrentCreateOrderWithSameIdProducesExactlyOneOrderForEveryCaller()
+            throws InterruptedException {
         OrderStore store = new OrderStore();
         UUID id = UUID.randomUUID();
         OrderIntent intent = limitIntent(id);
@@ -88,29 +118,35 @@ class OrderStoreTest {
 
         int threadCount = 16;
         ExecutorService pool = Executors.newFixedThreadPool(threadCount);
-        CountDownLatch ready = new CountDownLatch(threadCount);
-        CountDownLatch start = new CountDownLatch(1);
-        List<Order> results = new CopyOnWriteArrayList<>();
-
+        List<Callable<Order>> tasks = new ArrayList<>();
         for (int i = 0; i < threadCount; i++) {
-            pool.submit(
-                    () -> {
-                        ready.countDown();
-                        try {
-                            start.await();
-                        } catch (InterruptedException e) {
-                            Thread.currentThread().interrupt();
-                        }
-                        results.add(store.createOrder(intent, decision));
-                    });
+            tasks.add(() -> store.createOrder(intent, decision));
         }
 
-        ready.await();
-        start.countDown();
+        List<Future<Order>> futures = pool.invokeAll(tasks);
         pool.shutdown();
         assertTrue(pool.awaitTermination(5, TimeUnit.SECONDS));
 
-        Set<Order> distinct = results.stream().collect(Collectors.toSet());
-        assertEquals(1, distinct.size());
+        List<Order> results = new ArrayList<>();
+        for (Future<Order> future : futures) {
+            // .get() rethrows if any task threw — a swallowed exception
+            // would otherwise let this test pass with fewer than
+            // threadCount successful calls.
+            results.add(getOrThrowUnchecked(future));
+        }
+
+        assertEquals(threadCount, results.size());
+        Order first = results.get(0);
+        for (Order result : results) {
+            assertSame(first, result);
+        }
+    }
+
+    private static Order getOrThrowUnchecked(Future<Order> future) {
+        try {
+            return future.get();
+        } catch (Exception e) {
+            throw new AssertionError("createOrder task failed", e);
+        }
     }
 }
