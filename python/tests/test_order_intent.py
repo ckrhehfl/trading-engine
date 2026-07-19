@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from pydantic import ValidationError
@@ -78,3 +78,59 @@ def test_missing_required_field_is_rejected():
 
     with pytest.raises(ValidationError):
         OrderIntent(**kwargs)
+
+
+@pytest.mark.parametrize("bad_quantity", [Decimal("0"), Decimal("-0.5")])
+def test_zero_or_negative_quantity_is_rejected(bad_quantity):
+    kwargs = _limit_order_kwargs()
+    kwargs["quantity"] = bad_quantity
+
+    with pytest.raises(ValidationError):
+        OrderIntent(**kwargs)
+
+
+@pytest.mark.parametrize("bad_price", [Decimal("0"), Decimal("-1")])
+def test_zero_or_negative_limit_price_is_rejected(bad_price):
+    kwargs = _limit_order_kwargs()
+    kwargs["limit_price"] = bad_price
+
+    with pytest.raises(ValidationError):
+        OrderIntent(**kwargs)
+
+
+@pytest.mark.parametrize("bad_value", [Decimal("NaN"), Decimal("Infinity"), Decimal("-Infinity")])
+def test_non_finite_quantity_is_rejected(bad_value):
+    kwargs = _limit_order_kwargs()
+    kwargs["quantity"] = bad_value
+
+    with pytest.raises(ValidationError):
+        OrderIntent(**kwargs)
+
+
+def test_naive_datetime_is_rejected():
+    kwargs = _limit_order_kwargs()
+    kwargs["created_at"] = datetime(2026, 7, 19, 4, 0, 0)  # no tzinfo
+
+    with pytest.raises(ValidationError):
+        OrderIntent(**kwargs)
+
+
+def test_known_values_produce_exact_json_fixture():
+    fixed_id = UUID("11111111-1111-1111-1111-111111111111")
+    order = OrderIntent(
+        intent_id=fixed_id,
+        symbol="BTC-USDT",
+        side=Side.LONG,
+        order_type=OrderType.LIMIT,
+        quantity=Decimal("0.5"),
+        limit_price=Decimal("65000.12345678"),
+        signal_timeframe="15m",
+        created_at=datetime(2026, 7, 19, 4, 0, 0, tzinfo=timezone.utc),
+    )
+
+    assert order.model_dump_json() == (
+        '{"intent_id":"11111111-1111-1111-1111-111111111111","symbol":"BTC-USDT",'
+        '"side":"LONG","order_type":"LIMIT","quantity":"0.5",'
+        '"limit_price":"65000.12345678","signal_timeframe":"15m",'
+        '"created_at":"2026-07-19T04:00:00Z","schema_version":"1.0"}'
+    )

@@ -24,6 +24,8 @@ public record RiskDecision(
         Objects.requireNonNull(intentId, "intentId is required");
         Objects.requireNonNull(decision, "decision is required");
         Objects.requireNonNull(decidedAt, "decidedAt is required");
+        Decimals.requirePositive(approvedQuantity, "approvedQuantity");
+        Decimals.requirePositive(approvedLeverage, "approvedLeverage");
         if (schemaVersion == null) {
             schemaVersion = SCHEMA_VERSION;
         }
@@ -31,6 +33,17 @@ public record RiskDecision(
                 && (reason == null || reason.isBlank())) {
             throw new IllegalArgumentException(
                     "reason is required when decision is REJECTED or MODIFIED");
+        }
+        boolean hasBothApprovedFields = approvedQuantity != null && approvedLeverage != null;
+        boolean hasNeitherApprovedField = approvedQuantity == null && approvedLeverage == null;
+        if ((decision == Decision.APPROVED || decision == Decision.MODIFIED) && !hasBothApprovedFields) {
+            throw new IllegalArgumentException(
+                    "approvedQuantity and approvedLeverage are required when decision is APPROVED or"
+                            + " MODIFIED");
+        }
+        if (decision == Decision.REJECTED && !hasNeitherApprovedField) {
+            throw new IllegalArgumentException(
+                    "approvedQuantity and approvedLeverage must be null when decision is REJECTED");
         }
     }
 

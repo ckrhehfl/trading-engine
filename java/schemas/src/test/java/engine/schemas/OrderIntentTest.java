@@ -13,6 +13,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 
 class OrderIntentTest {
 
@@ -127,5 +129,60 @@ class OrderIntentTest {
 
         assertThrows(
                 MismatchedInputException.class, () -> mapper.readValue(jsonMissingField, OrderIntent.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-0.5"})
+    void zeroOrNegativeQuantityIsRejected(String badQuantity) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new OrderIntent(
+                                UUID.randomUUID(),
+                                "BTC-USDT",
+                                Side.LONG,
+                                OrderType.LIMIT,
+                                new BigDecimal(badQuantity),
+                                new BigDecimal("65000"),
+                                "15m",
+                                Instant.now()));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"0", "-1"})
+    void zeroOrNegativeLimitPriceIsRejected(String badPrice) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new OrderIntent(
+                                UUID.randomUUID(),
+                                "BTC-USDT",
+                                Side.LONG,
+                                OrderType.LIMIT,
+                                new BigDecimal("0.5"),
+                                new BigDecimal(badPrice),
+                                "15m",
+                                Instant.now()));
+    }
+
+    @Test
+    void knownValuesProduceExactJsonFixture() throws JsonProcessingException {
+        OrderIntent order =
+                new OrderIntent(
+                        UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                        "BTC-USDT",
+                        Side.LONG,
+                        OrderType.LIMIT,
+                        new BigDecimal("0.5"),
+                        new BigDecimal("65000.12345678"),
+                        "15m",
+                        Instant.parse("2026-07-19T04:00:00Z"));
+
+        assertEquals(
+                "{\"intent_id\":\"11111111-1111-1111-1111-111111111111\",\"symbol\":\"BTC-USDT\","
+                        + "\"side\":\"LONG\",\"order_type\":\"LIMIT\",\"quantity\":\"0.5\","
+                        + "\"limit_price\":\"65000.12345678\",\"signal_timeframe\":\"15m\","
+                        + "\"created_at\":\"2026-07-19T04:00:00Z\",\"schema_version\":\"1.0\"}",
+                mapper.writeValueAsString(order));
     }
 }

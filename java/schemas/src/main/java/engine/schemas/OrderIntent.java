@@ -29,6 +29,8 @@ public record OrderIntent(
         Objects.requireNonNull(orderType, "orderType is required");
         Objects.requireNonNull(quantity, "quantity is required");
         Objects.requireNonNull(createdAt, "createdAt is required");
+        Decimals.requirePositive(quantity, "quantity");
+        Decimals.requirePositive(limitPrice, "limitPrice");
         if (schemaVersion == null) {
             schemaVersion = SCHEMA_VERSION;
         }

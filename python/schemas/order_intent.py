@@ -1,11 +1,10 @@
-from datetime import datetime
 from enum import StrEnum
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, model_validator
+from pydantic import AwareDatetime, BaseModel, model_validator
 
-from schemas._types import DecimalString
+from schemas._types import PositiveDecimalString
 
 SCHEMA_VERSION = "1.0"
 
@@ -25,10 +24,10 @@ class OrderIntent(BaseModel):
     symbol: str
     side: Side
     order_type: OrderType
-    quantity: DecimalString
-    limit_price: Optional[DecimalString] = None
+    quantity: PositiveDecimalString
+    limit_price: Optional[PositiveDecimalString] = None
     signal_timeframe: Optional[str] = None
-    created_at: datetime
+    created_at: AwareDatetime
     schema_version: str = SCHEMA_VERSION
 
     @model_validator(mode="after")

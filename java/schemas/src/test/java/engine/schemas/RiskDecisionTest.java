@@ -12,6 +12,8 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 
 class RiskDecisionTest {
 
@@ -54,13 +56,23 @@ class RiskDecisionTest {
         assertEquals("1.0", decision.schemaVersion());
     }
 
+    @ParameterizedTest
+    @EnumSource(
+            value = Decision.class,
+            names = {"REJECTED", "MODIFIED"})
+    void rejectedOrModifiedRequiresReason(Decision decision) {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new RiskDecision(UUID.randomUUID(), decision, null, null, null, Instant.now()));
+    }
+
     @Test
-    void rejectedRequiresReason() {
+    void whitespaceOnlyReasonIsRejected() {
         assertThrows(
                 IllegalArgumentException.class,
                 () ->
                         new RiskDecision(
-                                UUID.randomUUID(), Decision.REJECTED, null, null, null, Instant.now()));
+                                UUID.randomUUID(), Decision.REJECTED, "   ", null, null, Instant.now()));
     }
 
     @Test
@@ -75,5 +87,49 @@ class RiskDecisionTest {
                         Instant.now());
 
         assertNull(decision.approvedQuantity());
+    }
+
+    @ParameterizedTest
+    @EnumSource(
+            value = Decision.class,
+            names = {"APPROVED", "MODIFIED"})
+    void approvedOrModifiedRequiresApprovedFields(Decision decision) {
+        String reason = decision == Decision.MODIFIED ? "ok" : null;
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new RiskDecision(UUID.randomUUID(), decision, reason, null, null, Instant.now()));
+    }
+
+    @Test
+    void rejectedWithApprovedFieldsSetIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskDecision(
+                                UUID.randomUUID(),
+                                Decision.REJECTED,
+                                "daily loss limit exceeded",
+                                new BigDecimal("0.5"),
+                                new BigDecimal("2"),
+                                Instant.now()));
+    }
+
+    @Test
+    void knownValuesProduceExactJsonFixture() throws JsonProcessingException {
+        RiskDecision decision =
+                new RiskDecision(
+                        UUID.fromString("11111111-1111-1111-1111-111111111111"),
+                        Decision.APPROVED,
+                        null,
+                        new BigDecimal("0.5"),
+                        new BigDecimal("2"),
+                        Instant.parse("2026-07-19T04:00:00Z"));
+
+        assertEquals(
+                "{\"intent_id\":\"11111111-1111-1111-1111-111111111111\",\"decision\":\"APPROVED\","
+                        + "\"reason\":null,\"approved_quantity\":\"0.5\",\"approved_leverage\":\"2\","
+                        + "\"decided_at\":\"2026-07-19T04:00:00Z\",\"schema_version\":\"1.0\"}",
+                mapper.writeValueAsString(decision));
     }
 }
