@@ -39,6 +39,7 @@ public final class Order {
     private final Side side;
     private final OrderType orderType;
     private final BigDecimal limitPrice;
+    private final BigDecimal requestedQuantity;
     private final BigDecimal approvedQuantity;
     private final BigDecimal approvedLeverage;
 
@@ -54,6 +55,7 @@ public final class Order {
             Side side,
             OrderType orderType,
             BigDecimal limitPrice,
+            BigDecimal requestedQuantity,
             BigDecimal approvedQuantity,
             BigDecimal approvedLeverage) {
         this.clientOrderId = clientOrderId;
@@ -61,6 +63,7 @@ public final class Order {
         this.side = side;
         this.orderType = orderType;
         this.limitPrice = limitPrice;
+        this.requestedQuantity = requestedQuantity;
         this.approvedQuantity = approvedQuantity;
         this.approvedLeverage = approvedLeverage;
         transitionTo(OrderState.NEW);
@@ -84,6 +87,7 @@ public final class Order {
                 intent.side(),
                 intent.orderType(),
                 intent.limitPrice(),
+                intent.quantity(),
                 decision.approvedQuantity(),
                 decision.approvedLeverage());
     }
@@ -108,6 +112,10 @@ public final class Order {
         return limitPrice;
     }
 
+    public BigDecimal requestedQuantity() {
+        return requestedQuantity;
+    }
+
     public BigDecimal approvedQuantity() {
         return approvedQuantity;
     }
@@ -130,6 +138,7 @@ public final class Order {
                 && side == intent.side()
                 && orderType == intent.orderType()
                 && Objects.equals(limitPrice, intent.limitPrice())
+                && Objects.equals(requestedQuantity, intent.quantity())
                 && clientOrderId.equals(decision.intentId())
                 && Objects.equals(approvedQuantity, decision.approvedQuantity())
                 && Objects.equals(approvedLeverage, decision.approvedLeverage());

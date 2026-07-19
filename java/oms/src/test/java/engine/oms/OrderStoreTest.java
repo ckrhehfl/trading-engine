@@ -78,6 +78,32 @@ class OrderStoreTest {
     }
 
     @Test
+    void retryWithDifferentRequestedQuantityIsRejectedEvenIfApprovedQuantityCoincidentallyMatches() {
+        OrderStore store = new OrderStore();
+        UUID id = UUID.randomUUID();
+        OrderIntent original = limitIntent(id); // requests 0.5
+        store.createOrder(original, approved(id)); // Risk Gateway approves 0.5
+
+        OrderIntent differentRequest =
+                new OrderIntent(
+                        id,
+                        "BTC-USDT",
+                        Side.LONG,
+                        OrderType.LIMIT,
+                        new BigDecimal("0.9"), // requested 0.9 this time
+                        new BigDecimal("65000"),
+                        "15m",
+                        Instant.now());
+        // Risk Gateway happens to approve the same 0.5 again — the
+        // approved-quantity fingerprint alone would miss this conflict.
+        RiskDecision sameApprovedQuantity = approved(id);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> store.createOrder(differentRequest, sameApprovedQuantity));
+    }
+
+    @Test
     void retryWithNowRejectedDecisionIsRejectedAsConflicting() {
         OrderStore store = new OrderStore();
         UUID id = UUID.randomUUID();
