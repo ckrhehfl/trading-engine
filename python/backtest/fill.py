@@ -47,9 +47,23 @@ def simulate_fill(
         else:  # SHORT
             fill_price = raw_price * (Decimal("1") - slippage_factor)
     else:  # LIMIT
-        if not (next_bar.low <= intent.limit_price <= next_bar.high):
-            return None
-        fill_price = intent.limit_price
+        limit_price = intent.limit_price
+        if intent.side == Side.LONG:
+            if next_bar.high < limit_price:
+                # Bar gapped entirely below the limit — favorable, fills
+                # at the open (the limit price itself was never traded).
+                fill_price = next_bar.open
+            elif next_bar.low <= limit_price:
+                fill_price = limit_price
+            else:
+                return None  # entire bar above the limit — never reached
+        else:  # SHORT
+            if next_bar.low > limit_price:
+                fill_price = next_bar.open
+            elif next_bar.high >= limit_price:
+                fill_price = limit_price
+            else:
+                return None
 
     notional = intent.quantity * fill_price
     fee = notional * fee_bps / _BPS_DIVISOR

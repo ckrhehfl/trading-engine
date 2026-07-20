@@ -108,6 +108,57 @@ def test_limit_order_does_not_fill_when_next_bar_never_touches_it():
     assert fill is None
 
 
+def test_long_limit_fills_at_open_when_bar_gaps_entirely_below_limit():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        _kline(1, "96.5", "97", "96", "96.8"),  # entire bar below limit=98 — favorable gap
+    ]
+    intent = _limit_intent(Side.LONG, "1", "98", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert fill is not None
+    assert fill.fill_price == Decimal("96.5")  # the bar's open, not the unreached limit
+
+
+def test_short_limit_fills_at_open_when_bar_gaps_entirely_above_limit():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        _kline(1, "103.5", "104", "103", "103.8"),  # entire bar above limit=102 — favorable gap
+    ]
+    intent = _limit_intent(Side.SHORT, "1", "102", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert fill is not None
+    assert fill.fill_price == Decimal("103.5")
+
+
+def test_short_limit_fills_at_limit_price_when_next_bar_touches_it():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        _kline(1, "101", "103", "100", "101.5"),  # high=103, touches limit=102
+    ]
+    intent = _limit_intent(Side.SHORT, "1", "102", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert fill is not None
+    assert fill.fill_price == Decimal("102")
+
+
+def test_short_limit_does_not_fill_when_next_bar_never_touches_it():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        _kline(1, "99", "100", "98", "99.5"),  # high=100, never reaches limit=102
+    ]
+    intent = _limit_intent(Side.SHORT, "1", "102", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert fill is None
+
+
 def test_fee_and_notional_are_computed_from_fill_price():
     klines = [
         _kline(0, "100", "101", "99", "100.5"),
