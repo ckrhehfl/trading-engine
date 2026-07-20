@@ -90,7 +90,7 @@ class RiskLimitsTest {
     }
 
     @Test
-    void lossLimitsMoreLenientThanPolicyFloorAreRejected() {
+    void dailyLossLimitMoreLenientThanPolicyFloorIsRejected() {
         // dailyLossLimitPercent below (more negative than) the -0.01 floor
         assertThrows(
                 IllegalArgumentException.class,
@@ -103,6 +103,54 @@ class RiskLimitsTest {
                                 new BigDecimal("-0.03"),
                                 new BigDecimal("-0.06"),
                                 new BigDecimal("-0.08"),
+                                new BigDecimal("-0.10")));
+    }
+
+    @Test
+    void weeklyLossLimitMoreLenientThanPolicyFloorIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("3"),
+                                new BigDecimal("0.05"),
+                                new BigDecimal("-0.01"),
+                                new BigDecimal("-0.04"), // more lenient than -0.03 floor
+                                new BigDecimal("-0.06"),
+                                new BigDecimal("-0.08"),
+                                new BigDecimal("-0.10")));
+    }
+
+    @Test
+    void monthlyLossLimitMoreLenientThanPolicyFloorIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("3"),
+                                new BigDecimal("0.05"),
+                                new BigDecimal("-0.01"),
+                                new BigDecimal("-0.03"),
+                                new BigDecimal("-0.07"), // more lenient than -0.06 floor
+                                new BigDecimal("-0.08"),
+                                new BigDecimal("-0.10")));
+    }
+
+    @Test
+    void hardStopMoreLenientThanPolicyFloorIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("3"),
+                                new BigDecimal("0.05"),
+                                new BigDecimal("-0.01"),
+                                new BigDecimal("-0.03"),
+                                new BigDecimal("-0.06"),
+                                new BigDecimal("-0.09"), // more lenient than -0.08 floor
                                 new BigDecimal("-0.10")));
     }
 
