@@ -152,9 +152,15 @@ No strategy exists in this project yet — these are principles for when
 one is built, written now because retrofitting research rigor onto a
 strategy already believed "validated" isn't realistic once research is
 underway. This is not itself an Implementation Priority item; it's a
-standing constraint that applies whenever strategy work happens (likely
-woven through Priorities #6–#8, none of which name it explicitly — that
-absence is exactly why this is written down rather than left implicit).
+standing constraint on strategy *research and validation* specifically —
+it does not block building or testing the surrounding infrastructure
+(paper broker, `ExchangeAdapter`, supervision loop skeletons in
+Priorities #6–#8 can and should be built and tested with dummy/mock
+signals independently of a validated strategy). What it does gate is
+paper-trading *eligibility, operation, and promotion* for any strategy
+run through that infrastructure — none of #6–#8 name that gate
+explicitly, which is exactly why it's written down here rather than left
+implicit.
 
 Non-negotiable once strategy research begins:
 
@@ -274,9 +280,11 @@ tools/services, subscription changes).
    paper/live still requires human approval
 10. Canary live preparation
 
-None of the above names "build a strategy" explicitly, but #6–#8 can't
-happen without one — see Strategy Research Methodology for the
-non-negotiable principles that apply whenever that work starts.
+None of the above names "build a strategy" explicitly, but running any
+of #6–#8's infrastructure with a real trading strategy — not just testing
+it with dummy/mock signals — can't happen without one. See Strategy
+Research Methodology for the non-negotiable principles that gate that,
+without blocking the infrastructure work itself.
 
 ## Why this is more than a bare CLAUDE.md, but still not the old system
 
