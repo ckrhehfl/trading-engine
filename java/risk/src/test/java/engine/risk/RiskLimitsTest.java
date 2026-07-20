@@ -74,6 +74,55 @@ class RiskLimitsTest {
     }
 
     @Test
+    void notionalPercentAbovePolicyCeilingIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("3"),
+                                new BigDecimal("0.10"), // above ABSOLUTE_MAX_NOTIONAL_PERCENT (0.05)
+                                new BigDecimal("-0.01"),
+                                new BigDecimal("-0.03"),
+                                new BigDecimal("-0.06"),
+                                new BigDecimal("-0.08"),
+                                new BigDecimal("-0.10")));
+    }
+
+    @Test
+    void lossLimitsMoreLenientThanPolicyFloorAreRejected() {
+        // dailyLossLimitPercent below (more negative than) the -0.01 floor
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("3"),
+                                new BigDecimal("0.05"),
+                                new BigDecimal("-0.02"), // more lenient than -0.01 floor
+                                new BigDecimal("-0.03"),
+                                new BigDecimal("-0.06"),
+                                new BigDecimal("-0.08"),
+                                new BigDecimal("-0.10")));
+    }
+
+    @Test
+    void emergencyStopMoreLenientThanPolicyFloorIsRejected() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () ->
+                        new RiskLimits(
+                                new BigDecimal("2"),
+                                new BigDecimal("3"),
+                                new BigDecimal("0.05"),
+                                new BigDecimal("-0.01"),
+                                new BigDecimal("-0.03"),
+                                new BigDecimal("-0.06"),
+                                new BigDecimal("-0.08"),
+                                new BigDecimal("-0.20"))); // more lenient than -0.10 floor
+    }
+
+    @Test
     void zeroOrNegativeBaseLeverageIsRejected() {
         assertThrows(
                 IllegalArgumentException.class,

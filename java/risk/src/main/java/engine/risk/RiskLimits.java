@@ -14,12 +14,16 @@ import java.util.Objects;
  * <= limitPercent}. {@code emergencyStopLossPercent} is nullable — the
  * canary tier has no emergency stop.
  *
- * <p>{@link #ABSOLUTE_MAX_LEVERAGE} is a hard ceiling equal to CLAUDE.md's
- * most permissive currently-documented tier (stable's 3x) — not a lower
- * value. It exists so the public constructor can't be used to construct a
- * tier exceeding what's currently approved (e.g. by future config-loading
- * code); raising it requires editing this file, which is itself a
- * CODEOWNERS-gated, human-reviewed change.
+ * <p>The {@code ABSOLUTE_*} constants are hard ceilings/floors equal to
+ * CLAUDE.md's most permissive currently-documented tier (stable) — not
+ * tighter values. They exist so the public constructor can't be used to
+ * construct a tier exceeding what's currently approved (e.g. by future
+ * config-loading code), regardless of caller; raising any of them
+ * requires editing this file, which is itself a CODEOWNERS-gated,
+ * human-reviewed change. Confirmed with @ckrhehfl: CLAUDE.md's separate
+ * "Live Entry Criteria: leverage hard max 2x" describes the gate for the
+ * *initial* paper-to-live transition (which happens under the canary
+ * tier, itself capped at 2x) — not a ceiling stable() must also respect.
  */
 public record RiskLimits(
         BigDecimal baseLeverage,
@@ -31,8 +35,13 @@ public record RiskLimits(
         BigDecimal hardStopLossPercent,
         BigDecimal emergencyStopLossPercent) {
 
-    /** CLAUDE.md's stable tier max leverage (3x) — see class Javadoc. */
     public static final BigDecimal ABSOLUTE_MAX_LEVERAGE = new BigDecimal("3");
+    public static final BigDecimal ABSOLUTE_MAX_NOTIONAL_PERCENT = new BigDecimal("0.05");
+    public static final BigDecimal ABSOLUTE_MIN_DAILY_LOSS_LIMIT_PERCENT = new BigDecimal("-0.01");
+    public static final BigDecimal ABSOLUTE_MIN_WEEKLY_LOSS_LIMIT_PERCENT = new BigDecimal("-0.03");
+    public static final BigDecimal ABSOLUTE_MIN_MONTHLY_LOSS_LIMIT_PERCENT = new BigDecimal("-0.06");
+    public static final BigDecimal ABSOLUTE_MIN_HARD_STOP_LOSS_PERCENT = new BigDecimal("-0.08");
+    public static final BigDecimal ABSOLUTE_MIN_EMERGENCY_STOP_LOSS_PERCENT = new BigDecimal("-0.10");
 
     public RiskLimits {
         Objects.requireNonNull(baseLeverage, "baseLeverage is required");
@@ -57,6 +66,11 @@ public record RiskLimits(
         if (maxOrderNotionalPercent.signum() <= 0 || maxOrderNotionalPercent.compareTo(BigDecimal.ONE) > 0) {
             throw new IllegalArgumentException("maxOrderNotionalPercent must be in (0, 1]");
         }
+        if (maxOrderNotionalPercent.compareTo(ABSOLUTE_MAX_NOTIONAL_PERCENT) > 0) {
+            throw new IllegalArgumentException(
+                    "maxOrderNotionalPercent must not exceed the policy ceiling of "
+                            + ABSOLUTE_MAX_NOTIONAL_PERCENT + " (CLAUDE.md's stable tier)");
+        }
         if (dailyLossLimitPercent.compareTo(weeklyLossLimitPercent) < 0) {
             throw new IllegalArgumentException("dailyLossLimitPercent must be >= weeklyLossLimitPercent");
         }
@@ -69,6 +83,32 @@ public record RiskLimits(
         if (emergencyStopLossPercent != null
                 && hardStopLossPercent.compareTo(emergencyStopLossPercent) < 0) {
             throw new IllegalArgumentException("hardStopLossPercent must be >= emergencyStopLossPercent");
+        }
+        if (dailyLossLimitPercent.compareTo(ABSOLUTE_MIN_DAILY_LOSS_LIMIT_PERCENT) < 0) {
+            throw new IllegalArgumentException(
+                    "dailyLossLimitPercent must not be more lenient than the policy floor of "
+                            + ABSOLUTE_MIN_DAILY_LOSS_LIMIT_PERCENT + " (CLAUDE.md's stable tier)");
+        }
+        if (weeklyLossLimitPercent.compareTo(ABSOLUTE_MIN_WEEKLY_LOSS_LIMIT_PERCENT) < 0) {
+            throw new IllegalArgumentException(
+                    "weeklyLossLimitPercent must not be more lenient than the policy floor of "
+                            + ABSOLUTE_MIN_WEEKLY_LOSS_LIMIT_PERCENT + " (CLAUDE.md's stable tier)");
+        }
+        if (monthlyLossLimitPercent.compareTo(ABSOLUTE_MIN_MONTHLY_LOSS_LIMIT_PERCENT) < 0) {
+            throw new IllegalArgumentException(
+                    "monthlyLossLimitPercent must not be more lenient than the policy floor of "
+                            + ABSOLUTE_MIN_MONTHLY_LOSS_LIMIT_PERCENT + " (CLAUDE.md's stable tier)");
+        }
+        if (hardStopLossPercent.compareTo(ABSOLUTE_MIN_HARD_STOP_LOSS_PERCENT) < 0) {
+            throw new IllegalArgumentException(
+                    "hardStopLossPercent must not be more lenient than the policy floor of "
+                            + ABSOLUTE_MIN_HARD_STOP_LOSS_PERCENT + " (CLAUDE.md's stable tier)");
+        }
+        if (emergencyStopLossPercent != null
+                && emergencyStopLossPercent.compareTo(ABSOLUTE_MIN_EMERGENCY_STOP_LOSS_PERCENT) < 0) {
+            throw new IllegalArgumentException(
+                    "emergencyStopLossPercent must not be more lenient than the policy floor of "
+                            + ABSOLUTE_MIN_EMERGENCY_STOP_LOSS_PERCENT + " (CLAUDE.md's stable tier)");
         }
     }
 
