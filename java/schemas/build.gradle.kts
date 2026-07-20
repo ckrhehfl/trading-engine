@@ -20,4 +20,11 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // Shared golden fixtures live at <repo>/schemas/fixtures; this
+    // Gradle root project's directory is <repo>/java, so its parent is
+    // <repo> — see schemas/fixtures/ and SchemaCompatTest.
+    systemProperty(
+        "schemaFixturesDir",
+        rootProject.projectDir.parentFile.resolve("schemas/fixtures").absolutePath,
+    )
 }

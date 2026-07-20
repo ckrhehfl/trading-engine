@@ -1,0 +1,1 @@
+{"intent_id":"c3c3c3c3-3333-4333-8333-333333333333","decision":"MODIFIED","reason":"requested notional exceeds max order notional; quantity clamped from 0.5 to 0.1","approved_quantity":"0.1","approved_leverage":"1","decided_at":"2026-07-20T06:00:00Z","schema_version":"1.0"}
