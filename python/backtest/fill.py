@@ -37,16 +37,19 @@ def simulate_fill(
 
     if intent.order_type == OrderType.GUARDED_MARKET:
         raw_price = next_bar.open
+        # Slippage only applies here: a market order doesn't control its
+        # execution price. A LIMIT order's whole point is a price
+        # guarantee — it fills at the limit price or not at all, never
+        # worse, so slippage must not be layered on top of it below.
+        slippage_factor = slippage_bps / _BPS_DIVISOR
+        if intent.side == Side.LONG:
+            fill_price = raw_price * (Decimal("1") + slippage_factor)
+        else:  # SHORT
+            fill_price = raw_price * (Decimal("1") - slippage_factor)
     else:  # LIMIT
         if not (next_bar.low <= intent.limit_price <= next_bar.high):
             return None
-        raw_price = intent.limit_price
-
-    slippage_factor = slippage_bps / _BPS_DIVISOR
-    if intent.side == Side.LONG:
-        fill_price = raw_price * (Decimal("1") + slippage_factor)
-    else:  # SHORT
-        fill_price = raw_price * (Decimal("1") - slippage_factor)
+        fill_price = intent.limit_price
 
     notional = intent.quantity * fill_price
     fee = notional * fee_bps / _BPS_DIVISOR

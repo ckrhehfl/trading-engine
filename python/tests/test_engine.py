@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from backtest.engine import run_backtest
 from backtest.kline import Kline
@@ -92,7 +92,9 @@ def test_same_inputs_produce_identical_results_every_run():
         if i % 3 != 0:
             return None
         return OrderIntent(
-            intent_id=uuid4(),
+            # Deterministic, not uuid4() — a random id would make the two
+            # runs genuinely different and mask a real determinism bug.
+            intent_id=UUID(int=i + 1),
             symbol="BTC-USDT",
             side=Side.LONG if i % 2 == 0 else Side.SHORT,
             order_type=OrderType.GUARDED_MARKET,
@@ -105,7 +107,5 @@ def test_same_inputs_produce_identical_results_every_run():
     result_a = run_backtest(klines, buy_every_third_bar, fee_bps=Decimal("5"), slippage_bps=Decimal("2"))
     result_b = run_backtest(klines, buy_every_third_bar, fee_bps=Decimal("5"), slippage_bps=Decimal("2"))
 
-    fills_a = [(f.fill_time, f.fill_price, f.fee, f.notional) for f in result_a.fills]
-    fills_b = [(f.fill_time, f.fill_price, f.fee, f.notional) for f in result_b.fills]
-    assert fills_a == fills_b
-    assert len(fills_a) > 0  # sanity check the scenario actually produced fills
+    assert result_a.fills == result_b.fills
+    assert len(result_a.fills) > 0  # sanity check the scenario actually produced fills

@@ -82,6 +82,20 @@ def test_limit_order_fills_at_limit_price_when_next_bar_touches_it():
     assert fill.fill_price == Decimal("98")
 
 
+def test_limit_order_fill_price_ignores_slippage_never_worse_than_limit():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        _kline(1, "102", "103", "97", "102.5"),  # low=97, touches limit=98
+    ]
+    intent = _limit_intent(Side.LONG, "1", "98", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("50"))
+
+    # A LIMIT order fills at the limit price or not at all — never worse,
+    # regardless of the configured slippage.
+    assert fill.fill_price == Decimal("98")
+
+
 def test_limit_order_does_not_fill_when_next_bar_never_touches_it():
     klines = [
         _kline(0, "100", "101", "99", "100.5"),
