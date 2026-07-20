@@ -49,16 +49,19 @@ def simulate_fill(
     else:  # LIMIT
         limit_price = intent.limit_price
         if intent.side == Side.LONG:
-            if next_bar.high < limit_price:
-                # Bar gapped entirely below the limit — favorable, fills
-                # at the open (the limit price itself was never traded).
+            if next_bar.open <= limit_price:
+                # Bar opened at or below the limit — favorable from the
+                # first tradeable price of the bar, fills at the open
+                # (checked before the range, since the bar's high may
+                # cross back above the limit later without changing that
+                # the order would already have filled at the open).
                 fill_price = next_bar.open
             elif next_bar.low <= limit_price:
                 fill_price = limit_price
             else:
                 return None  # entire bar above the limit — never reached
         else:  # SHORT
-            if next_bar.low > limit_price:
+            if next_bar.open >= limit_price:
                 fill_price = next_bar.open
             elif next_bar.high >= limit_price:
                 fill_price = limit_price

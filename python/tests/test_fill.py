@@ -134,6 +134,36 @@ def test_short_limit_fills_at_open_when_bar_gaps_entirely_above_limit():
     assert fill.fill_price == Decimal("103.5")
 
 
+def test_long_limit_fills_at_open_even_when_bar_later_crosses_back_above_limit():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        # opens favorable (96 <= limit 98) but high(100) later crosses back
+        # above the limit — must still fill at the open, not at 98
+        _kline(1, "96", "100", "95", "99"),
+    ]
+    intent = _limit_intent(Side.LONG, "1", "98", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert fill is not None
+    assert fill.fill_price == Decimal("96")
+
+
+def test_short_limit_fills_at_open_even_when_bar_later_crosses_back_below_limit():
+    klines = [
+        _kline(0, "100", "101", "99", "100.5"),
+        # opens favorable (104 >= limit 102) but low(100) later crosses back
+        # below the limit — must still fill at the open, not at 102
+        _kline(1, "104", "105", "100", "101"),
+    ]
+    intent = _limit_intent(Side.SHORT, "1", "102", klines[0].open_time)
+
+    fill = simulate_fill(intent, klines, signal_bar_index=0, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert fill is not None
+    assert fill.fill_price == Decimal("104")
+
+
 def test_short_limit_fills_at_limit_price_when_next_bar_touches_it():
     klines = [
         _kline(0, "100", "101", "99", "100.5"),
