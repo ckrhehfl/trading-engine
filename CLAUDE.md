@@ -146,6 +146,56 @@ default — GSD's own subagent-per-task orchestration already covers this
 project's parallel-execution needs. Turn Agent Teams on only if a concrete
 need appears that GSD's model doesn't cover.
 
+## Strategy Research Methodology
+
+No strategy exists in this project yet — these are principles for when
+one is built, written now because retrofitting research rigor onto a
+strategy already believed "validated" isn't realistic once research is
+underway. This is not itself an Implementation Priority item; it's a
+standing constraint on strategy *research and validation* specifically —
+it does not block building or testing the surrounding infrastructure
+(paper broker, `ExchangeAdapter`, supervision loop skeletons in
+Priorities #6–#8 can and should be built and tested with dummy/mock
+signals independently of a validated strategy). What it does gate is
+paper-trading *eligibility, operation, and promotion* for any strategy
+run through that infrastructure — none of #6–#8 name that gate
+explicitly, which is exactly why it's written down here rather than left
+implicit.
+
+Non-negotiable once strategy research begins:
+
+- No strategy is eligible for paper trading without walk-forward
+  validation (rolling train/validate windows), not a single train/test
+  split — a single split can't distinguish a real edge from a result
+  that happened to fit one historical window.
+- Every backtest run against a given strategy/parameter set must be
+  logged (parameters, results, timestamp). The number of variations
+  tried is part of judging whether a result is genuine edge or data
+  snooping; an untracked count makes that judgment impossible after the
+  fact.
+- A holdout data split must exist and stay untouched until a strategy is
+  otherwise ready for paper trading — not used for iterative tuning.
+  Touching it converts it from a validation check into just more
+  training data.
+- Look-ahead-bias protection already structural in `python/backtest/`
+  (a strategy is only ever shown bars up to and including the current
+  one) extends to feature engineering: no feature may be computed using
+  statistics — mean, std, min/max, or similar — derived from data
+  outside what would actually have been available at that point in
+  time.
+- Survivorship bias doesn't apply to the current single-symbol
+  (BTC-USDT) scope — there's no universe-selection step for it to enter
+  through. Revisit before any multi-symbol expansion: the market-data
+  pipeline built for that must retain delisted/inactive symbols, not
+  only currently-active ones, or backtests across that universe will be
+  biased upward by construction.
+
+Deliberately not specified yet — design these once real strategy research
+starts, not before: experiment-tracking tooling/format, walk-forward
+window sizing, holdout-split mechanics. Specifying implementation
+mechanics ahead of a first real strategy attempt risks the same
+premature-process trap named in "Why this is more than a bare CLAUDE.md."
+
 ## Tooling Stack
 
 | Layer | Choice | Status |
@@ -229,6 +279,12 @@ tools/services, subscription changes).
    — promoted priority, needed for the auto-learning target; promotion to
    paper/live still requires human approval
 10. Canary live preparation
+
+None of the above names "build a strategy" explicitly, but running any
+of #6–#8's infrastructure with a real trading strategy — not just testing
+it with dummy/mock signals — can't happen without one. See Strategy
+Research Methodology for the non-negotiable principles that gate that,
+without blocking the infrastructure work itself.
 
 ## Why this is more than a bare CLAUDE.md, but still not the old system
 
