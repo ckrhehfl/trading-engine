@@ -14,6 +14,7 @@ import engine.schemas.RiskDecision;
 import engine.schemas.Side;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -174,5 +175,93 @@ class PaperBrokerTest {
         broker.submit(order, new BigDecimal("1000")); // fills immediately
 
         assertThrows(IllegalStateException.class, () -> broker.cancel(order));
+    }
+
+    @Test
+    void constructorRejectsNegativeFeeBps() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PaperBroker(new BigDecimal("-1"), new BigDecimal("0")));
+    }
+
+    @Test
+    void constructorRejectsNegativeSlippageBps() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new PaperBroker(new BigDecimal("0"), new BigDecimal("-1")));
+    }
+
+    @Test
+    void submitRejectsZeroOrNegativePrice() {
+        PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
+        Order order = guardedMarketOrder(Side.LONG, "1");
+
+        assertThrows(IllegalArgumentException.class, () -> broker.submit(order, BigDecimal.ZERO));
+        // Order must not have been mutated by the rejected call.
+        assertEquals(OrderState.NEW, order.state());
+    }
+
+    @Test
+    void onPriceUpdateRejectsZeroOrNegativePrice() {
+        PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> broker.onPriceUpdate("BTC-USDT", new BigDecimal("-1")));
+    }
+
+    @Test
+    void submitRejectsASecondDistinctOrderInstanceSharingAClientOrderId() {
+        // Simulates a caller bypassing engine.oms.OrderStore and
+        // constructing two separate Order objects for the same client
+        // order id — OrderStore normally prevents this, but PaperBroker
+        // must not silently double-execute if it happens anyway.
+        PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
+        UUID id = UUID.randomUUID();
+        OrderIntent intent = new OrderIntent(
+                id, "BTC-USDT", Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1"), null, null, Instant.now());
+        RiskDecision decision = new RiskDecision(
+                id, Decision.APPROVED, null, new BigDecimal("1"), new BigDecimal("2"), Instant.now());
+        Order first = Order.fromApprovedDecision(intent, decision);
+        Order second = Order.fromApprovedDecision(intent, decision);
+
+        broker.submit(first, new BigDecimal("1000"));
+
+        assertThrows(IllegalStateException.class, () -> broker.submit(second, new BigDecimal("1000")));
+    }
+
+    @Test
+    void concurrentPriceUpdatesForTheSamePendingOrderFillItExactlyOnce() throws InterruptedException {
+        PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
+        Order order = limitOrder(Side.LONG, "1", "100");
+        broker.submit(order, new BigDecimal("101")); // stays pending
+
+        int threadCount = 20;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(threadCount);
+        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+        List<java.util.concurrent.Future<List<Fill>>> futures = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+            futures.add(pool.submit(() -> {
+                ready.countDown();
+                go.await();
+                return broker.onPriceUpdate("BTC-USDT", new BigDecimal("99")); // marketable
+            }));
+        }
+        ready.await();
+        go.countDown();
+
+        int totalFills = 0;
+        for (java.util.concurrent.Future<List<Fill>> future : futures) {
+            try {
+                totalFills += future.get().size();
+            } catch (java.util.concurrent.ExecutionException e) {
+                throw new AssertionError("onPriceUpdate must not throw under concurrent access", e);
+            }
+        }
+        pool.shutdown();
+
+        assertEquals(1, totalFills);
+        assertEquals(OrderState.FILLED, order.state());
     }
 }

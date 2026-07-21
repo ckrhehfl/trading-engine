@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
@@ -37,10 +38,27 @@ public final class PaperBroker {
     private final BigDecimal feeBps;
     private final BigDecimal slippageBps;
     private final Map<UUID, Order> pendingOrders = new ConcurrentHashMap<>();
+    // Every clientOrderId ever submitted, including already-filled/cancelled
+    // ones — deliberately not just pendingOrders' keys. clientOrderId
+    // idempotency is primarily OrderStore's job (engine.oms): it guarantees
+    // at most one Order instance per id, and that instance's own state guard
+    // (Order.submit() requires NEW) already rejects a second submit() of the
+    // *same* instance. This set is defense-in-depth against a caller that
+    // bypasses OrderStore and constructs a second, distinct Order instance
+    // sharing an id that's already been submitted here.
+    private final Set<UUID> seenClientOrderIds = ConcurrentHashMap.newKeySet();
 
     public PaperBroker(BigDecimal feeBps, BigDecimal slippageBps) {
-        this.feeBps = Objects.requireNonNull(feeBps, "feeBps is required");
-        this.slippageBps = Objects.requireNonNull(slippageBps, "slippageBps is required");
+        Objects.requireNonNull(feeBps, "feeBps is required");
+        Objects.requireNonNull(slippageBps, "slippageBps is required");
+        if (feeBps.signum() < 0) {
+            throw new IllegalArgumentException("feeBps must not be negative, was " + feeBps);
+        }
+        if (slippageBps.signum() < 0) {
+            throw new IllegalArgumentException("slippageBps must not be negative, was " + slippageBps);
+        }
+        this.feeBps = feeBps;
+        this.slippageBps = slippageBps;
     }
 
     public Map<UUID, Order> pendingOrders() {
@@ -50,6 +68,13 @@ public final class PaperBroker {
     public Optional<Fill> submit(Order order, BigDecimal currentPrice) {
         Objects.requireNonNull(order, "order is required");
         Objects.requireNonNull(currentPrice, "currentPrice is required");
+        requirePositivePrice(currentPrice);
+        if (!seenClientOrderIds.add(order.clientOrderId())) {
+            throw new IllegalStateException(
+                    "duplicate submit for client order id " + order.clientOrderId()
+                            + " — an Order must be submitted to a PaperBroker at most once;"
+                            + " retries must reuse the same Order instance (see engine.oms.OrderStore)");
+        }
 
         order.submit();
         order.acknowledge("PAPER-" + UUID.randomUUID());
@@ -64,15 +89,24 @@ public final class PaperBroker {
     public List<Fill> onPriceUpdate(String symbol, BigDecimal price) {
         Objects.requireNonNull(symbol, "symbol is required");
         Objects.requireNonNull(price, "price is required");
+        requirePositivePrice(price);
 
         List<Fill> fills = new ArrayList<>();
-        for (Order order : new ArrayList<>(pendingOrders.values())) {
-            if (!order.symbol().equals(symbol)) {
-                continue;
-            }
-            tryFill(order, price).ifPresent(fill -> {
-                fills.add(fill);
-                pendingOrders.remove(order.clientOrderId());
+        for (UUID id : new ArrayList<>(pendingOrders.keySet())) {
+            // computeIfPresent makes the check-fill-remove sequence atomic
+            // per order id: concurrent onPriceUpdate/cancel calls racing on
+            // the same pending order can no longer interleave, since
+            // ConcurrentHashMap serializes invocations for a given key.
+            pendingOrders.computeIfPresent(id, (orderId, order) -> {
+                if (!order.symbol().equals(symbol)) {
+                    return order;
+                }
+                Optional<Fill> fill = tryFill(order, price);
+                if (fill.isEmpty()) {
+                    return order;
+                }
+                fills.add(fill.get());
+                return null; // remove from pending
             });
         }
         return fills;
@@ -80,9 +114,15 @@ public final class PaperBroker {
 
     public void cancel(Order order) {
         Objects.requireNonNull(order, "order is required");
+        pendingOrders.computeIfPresent(order.clientOrderId(), (id, pending) -> null);
         order.requestCancel();
         order.confirmCancel();
-        pendingOrders.remove(order.clientOrderId());
+    }
+
+    private void requirePositivePrice(BigDecimal price) {
+        if (price.signum() <= 0) {
+            throw new IllegalArgumentException("price must be positive, was " + price);
+        }
     }
 
     /**
