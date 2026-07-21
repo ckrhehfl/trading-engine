@@ -238,30 +238,35 @@ class PaperBrokerTest {
 
         int threadCount = 20;
         java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
-        java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(threadCount);
-        java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
-        List<java.util.concurrent.Future<List<Fill>>> futures = new ArrayList<>();
-        for (int i = 0; i < threadCount; i++) {
-            futures.add(pool.submit(() -> {
-                ready.countDown();
-                go.await();
-                return broker.onPriceUpdate("BTC-USDT", new BigDecimal("99")); // marketable
-            }));
-        }
-        ready.await();
-        go.countDown();
-
-        int totalFills = 0;
-        for (java.util.concurrent.Future<List<Fill>> future : futures) {
-            try {
-                totalFills += future.get().size();
-            } catch (java.util.concurrent.ExecutionException e) {
-                throw new AssertionError("onPriceUpdate must not throw under concurrent access", e);
+        try {
+            java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(threadCount);
+            java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+            List<java.util.concurrent.Future<List<Fill>>> futures = new ArrayList<>();
+            for (int i = 0; i < threadCount; i++) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    return broker.onPriceUpdate("BTC-USDT", new BigDecimal("99")); // marketable
+                }));
             }
-        }
-        pool.shutdown();
+            assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS), "threads never reached start line");
+            go.countDown();
 
-        assertEquals(1, totalFills);
-        assertEquals(OrderState.FILLED, order.state());
+            int totalFills = 0;
+            for (java.util.concurrent.Future<List<Fill>> future : futures) {
+                try {
+                    totalFills += future.get(5, java.util.concurrent.TimeUnit.SECONDS).size();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    throw new AssertionError("onPriceUpdate must not throw under concurrent access", e);
+                } catch (java.util.concurrent.TimeoutException e) {
+                    throw new AssertionError("onPriceUpdate call did not complete in time", e);
+                }
+            }
+
+            assertEquals(1, totalFills);
+            assertEquals(OrderState.FILLED, order.state());
+        } finally {
+            pool.shutdownNow();
+        }
     }
 }
