@@ -73,12 +73,25 @@ keeps recurring.
   human approval.
 - Never bypass the Java Risk Gateway.
 - Never let Python place live orders directly.
+- Never connect an MCP server, skill, or plugin capable of placing
+  exchange orders to any AI coding session operating on this repo — it's
+  the same Risk Gateway bypass as direct order placement, just through a
+  different door. Read-only/market-data tools are fine.
 - Never add live exchange write-access in CI.
 - Never commit raw trading logs containing secrets or account identifiers.
 - Never run untrusted install scripts (`curl | sh`, `wget | bash`).
-- The repo is public (chosen for free GitHub Actions minutes). Treat GitHub
-  push-protection/secret-scanning failures as blocking, not advisory — a
-  leak here is immediate and irreversible, not just a private mistake.
+- The repo is public (chosen for free GitHub Actions minutes). GitHub
+  push-protection/secret-scanning is configured (`enabled` per the repo
+  API), but **empirically did not fire** across four independent tests
+  (2026-07: two AWS-key-shaped strings, a valid PKCS#8 RSA key, a valid
+  legacy PKCS#1 RSA key). No alert was ever created. Do not treat
+  GitHub's server-side scanning as a working safety net until this is
+  re-verified — the actual first line of defense right now is the local
+  `dwarvesf/claude-guardrails` hook, which blocks known secret patterns
+  before a commit/push tool call runs at all. A separate, account-level
+  "push protection for users" GitHub setting may explain this and is
+  worth @ckrhehfl checking manually in personal GitHub security settings
+  — not checkable via API.
 
 ## Risk Parameters (defaults — changing these needs explicit human approval)
 
@@ -101,6 +114,13 @@ Paper trading passed + paper score 80+ + all hard gates passed + VPS
 operation + IP-restricted API key + no withdrawal permission + manually
 approved live flag + leverage hard max 2x + market-order guard enabled +
 kill switch verified.
+
+This 2x is the initial paper→live entry gate, which runs under the
+canary tier — itself already capped at 2x per Risk Parameters. It is not
+a ceiling the later-stage stable tier (documented max 3x) must also
+respect; those are two different points in the system's lifecycle, not a
+contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
+(see its Javadoc).
 
 ## Exchange API Facts — BingX (first adapter, verify before relying on them)
 
@@ -224,6 +244,19 @@ premature-process trap named in "Why this is more than a bare CLAUDE.md."
 | Code review | CodeRabbit Pro (see below) | active now — GitHub App installed, verified posting reviews, its `CodeRabbit` commit status is a required check on `main` |
 | Multi-agent orchestration | Anthropic Agent Teams (official) | standby, off by default |
 
+## Future Tooling Watchlist
+
+Candidates identified but deliberately not adopted yet — written down so
+they don't depend on conversational memory to resurface at the right
+time (see "Why this is more than a bare CLAUDE.md").
+
+| Candidate | Revisit when | Why not now |
+|---|---|---|
+| BingX-specific MCP/skills (e.g. BingX-API org's own skill library) | Start of Priority #7 (`ExchangeAdapter`) | No exchange-integration code exists yet to benefit from it; reference/coding-assistance use only — never order-execution-capable, per Non-negotiable Rules |
+| Monitoring/alerting (health checks, kill-switch alerts) | Priority #8 (24/7 unattended operation) | Nothing runs unattended yet to monitor |
+| RAG / conversational log search | After Priority #8 generates real operational history | No logs/reports exist yet to search |
+| Secrets manager beyond `.env` | Reassess at Priority #7 if VPS + `.env` + guardrails prove insufficient | Minimal single-VPS deployment likely doesn't need it |
+
 ## Code Review Gate
 
 CodeRabbit Pro reviews every PR — see `.coderabbit.yaml` for the actual
@@ -288,7 +321,14 @@ tools/services, subscription changes).
 6. Paper broker
 7. `ExchangeAdapter` skeleton (BingX as first implementation)
 8. Paper trading loop + 24/7 runtime supervision (restart recovery, health
-   checks) — promoted priority, needed for the unattended-operation target
+   checks) — promoted priority, needed for the unattended-operation target.
+   Must also verify at this stage that the only real code path from
+   `OrderIntent` to `Order` goes through `RiskGateway.evaluate()`:
+   `Order.fromApprovedDecision()` today only checks that the
+   `RiskDecision` handed to it says APPROVED/MODIFIED, not that it was
+   actually produced by a real `evaluate()` call — nothing wires these
+   together yet, so this can't be tested until this priority builds that
+   wiring.
 9. Auto-retraining pipeline (scheduled retrain, validation, promotion gate)
    — promoted priority, needed for the auto-learning target; promotion to
    paper/live still requires human approval
