@@ -35,8 +35,14 @@ jobs:
       - name: Check for hardcoded BingX production hostname
         run: |
           set -uo pipefail
+          # grep exits 1 on "no matches", which is the expected clean case here
+          # -- disable -e (GitHub Actions runs `run:` blocks as `bash -e`) around
+          # this one command so that exit status doesn't abort the script before
+          # the status is even checked below.
+          set +e
           MATCHES=$(grep -rniF --include='*.java' --include='*.py' 'open-api.bingx.com' java/ python/)
           GREP_STATUS=$?
+          set -e
           if [ "$GREP_STATUS" -eq 0 ]; then
             echo "$MATCHES"
             echo "::error::Hardcoded BingX production hostname (open-api.bingx.com) found in Java/Python source. The base URL must come from the BINGX_BASE_URL environment variable at deploy time, defaulting to the VST demo host (open-api-vst.bingx.com) in code -- see CLAUDE.md Non-negotiable Rules."
