@@ -154,6 +154,29 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
 - `limit` is not a reliable count guarantee — requests over 1000 are
   silently capped; verify actual returned count in code
 
+### Verified — authenticated, VST key (2026-07-24, @ckrhehfl's demo-trading
+API key against `open-api-vst.bingx.com`)
+
+- Response envelope is `{"code": 0, "msg": "", "data": ...}` (sometimes
+  with a top-level `timestamp` too) — confirmed on balance, positions,
+  and position-mode calls.
+- **Balance** (`GET /openApi/swap/v3/user/balance`): `data` is an
+  **array** of per-asset objects, not a single object as assumed pre-
+  verification — `[{"userId", "asset", "balance", "equity",
+  "unrealizedProfit", "realizedProfit", "availableMargin", "usedMargin",
+  "frozenMargin", "shortUid"}]`. `BalanceSnapshot` parsing must index
+  into the array (one element per asset — just `VST` for a demo
+  account) rather than treat `data` as the balance object directly.
+- **Positions** (`GET /openApi/swap/v2/user/positions`): `data` is also
+  an array (empty `[]` with no open positions) — consistent envelope
+  pattern with balance, not a one-off.
+- **Position mode default on a fresh key resolved**: `dualSidePosition`
+  came back `"true"` (**hedge mode**) without ever having been set —
+  this was flagged as undocumented pre-verification; hedge mode is
+  confirmed as the default, not one-way. OMS should still set it
+  explicitly on startup rather than rely on this (a default can change),
+  but "undocumented" is no longer the reason to do so.
+
 ### Documented, not yet empirically verified (2026-07-24 research pass —
 read from BingX's official docs site, not tested against a live key yet;
 treat with less confidence than the section above until someone actually
@@ -164,9 +187,12 @@ calls these with real credentials)
   same signing scheme, real order-matching behavior against simulated
   funds). VST's existence matters a lot for how #7 gets built: it means
   the write-side (order placement) can be built and tested for real
-  without live-money risk, not just designed against docs. **Unverified:
-  whether a production API key also authenticates against the VST host,
-  or whether VST needs its own key** — confirm before assuming either.
+  without live-money risk, not just designed against docs. Confirmed
+  2026-07-24: an API key created through the normal API Management flow
+  (no separate "demo account" step) authenticates against the VST host
+  successfully. Still unverified: whether that same key *also*
+  authenticates against the production host — not worth testing on
+  purpose given the project isn't going live.
 - Auth: `X-BX-APIKEY` header + `HMAC-SHA256` signature over all request
   params (incl. `timestamp`) sorted alphabetically and joined as
   `key=value&...`, hex-encoded uppercase, appended as `&signature=...`.
@@ -177,11 +203,10 @@ calls these with real credentials)
   validates without executing. Cancel: `DELETE /openApi/swap/v2/trade/order`.
 - Position mode (`GET`/`POST /openApi/swap/v1/positionSide/dual`) is
   **account-wide** (not per-symbol) and can't change while any position
-  or open order exists. **Default mode on a fresh key is undocumented —
-  OMS must set it explicitly on startup, never assume.** One-way mode =
-  one net position per symbol; hedge mode = simultaneous LONG + SHORT.
-  Leverage (`POST .../trade/leverage`) takes `side=BOTH` in one-way mode,
-  `LONG`/`SHORT` in hedge mode.
+  or open order exists. One-way mode = one net position per symbol;
+  hedge mode = simultaneous LONG + SHORT. Default-on-a-fresh-key is now
+  verified (see above) — hedge mode. Leverage (`POST .../trade/leverage`)
+  takes `side=BOTH` in one-way mode, `LONG`/`SHORT` in hedge mode.
 - Endpoint versions are mixed within the same API family on purpose, not
   a one-off: balance is `v3` (`GET /openApi/swap/v3/user/balance`),
   positions/order/leverage are `v2`, position-mode is `v1`. Matches the
