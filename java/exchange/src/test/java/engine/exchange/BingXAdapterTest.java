@@ -78,7 +78,11 @@ class BingXAdapterTest {
     }
 
     @Test
-    void submitOrderRejectsOnExchangeLevelErrorCodeAndCapturesReason() {
+    void submitOrderTransitionsToRejectedOnExchangeLevelErrorCode() {
+        // Order.reject(reason) only logs the reason -- Order has no
+        // accessor exposing it, so this test verifies the state
+        // transition only. Its previous name ("...AndCapturesReason")
+        // overclaimed what's actually checked here.
         server.respondWith(200, "{\"code\":80001,\"msg\":\"insufficient margin\",\"data\":{}}");
         Order order = guardedMarketOrder(Side.LONG, "1");
 

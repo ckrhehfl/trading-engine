@@ -180,7 +180,7 @@ things had to be decided rather than looked up:
 
 ## CodeRabbit review findings
 
-Eight findings across two review passes on the PR. Three doc fixes
+Eleven findings across three review passes on the PR. Three doc fixes
 applied (test-count accuracy in this file, a `#7` sequence in prose that
 could render/link unexpectedly in Markdown — reworded rather than
 special-cased, and this section itself). Two real code fixes applied to
@@ -205,6 +205,30 @@ would have made it pass. Fixed by giving that test a valid, non-empty
 balance array so `code` is the only thing missing, plus an assertion
 that the exception message actually names the missing field.
 
+**Security finding on the third pass: real BingX account identifiers
+(`userId`, `shortUid`) had been committed in a test fixture** — copied
+verbatim from a live VST balance response shared during review without
+recognizing those two specific fields as account identifiers rather
+than balance data. Not an exploitable credential (can't authenticate or
+place orders with a bare userId/shortUid), but a clear violation of
+CLAUDE.md's "never commit ... account identifiers" rule regardless.
+Remediated by redacting to synthetic placeholders and squashing the
+three affected commits into one clean commit via `git reset --soft` +
+recommit, then `git push --force-with-lease` to overwrite this
+not-yet-merged branch's history before merge — confirmed `main` was
+never affected (this branch hadn't merged yet) and the current PR diff
+no longer contains the real values.
+
+One test-naming fix: `submitOrderRejectsOnExchangeLevelErrorCodeAndCapturesReason`
+claimed to verify reason capture but only asserted the state transition
+— `Order.reject(reason)` only logs the reason, it has no accessor
+exposing it, so nothing in the test actually checked the reason was
+preserved anywhere. Renamed to
+`submitOrderTransitionsToRejectedOnExchangeLevelErrorCode` to match what
+it actually verifies, rather than adding a reason-storage field to
+`Order` (a different, already-merged OMS-plane module) to make the old
+name true — out of scope for this module's PR.
+
 Three findings declined, with reasoning left as PR review replies
 rather than silently skipped:
 
@@ -222,24 +246,30 @@ rather than silently skipped:
   confirmed) — formalizing it as a queryable exception field is a
   reasonable idea for whenever #8 actually builds a retry policy, not a
   gap in this PR.
-- A suggestion that `BingXAdapterTest` bypasses the Risk Gateway boundary
-  because its `guardedMarketOrder()` helper hand-constructs a
-  `RiskDecision` rather than obtaining one from a real
-  `RiskGateway.evaluate()` call. Declined: the test already only ever
-  obtains an `Order` via `Order.fromApprovedDecision` (the one path that
-  exists, proven by
-  `orderHasNoPublicConstructorOtherThanFromApprovedDecisionFactory`) —
-  it isn't hand-building an `Order`, which is what the "OMS-mediated
-  flows only" rule actually governs. An integrated
-  `OrderIntent → RiskGateway.evaluate() → Order` pipeline doesn't exist
-  anywhere in this codebase yet to test against — CLAUDE.md's own
-  Implementation Priority #8 entry says so explicitly ("nothing wires
+- A suggestion (raised twice, more insistently the second time) that
+  `BingXAdapterTest` bypasses the Risk Gateway boundary because its
+  `guardedMarketOrder()` helper hand-constructs a `RiskDecision` rather
+  than obtaining one from a real `RiskGateway.evaluate()` call, and that
+  a reflection check on `Order`'s constructor count doesn't prove
+  non-forgeable risk provenance. Not applying a code change in this PR,
+  but this is a real, already-named, currently-open gap, not a dismissed
+  non-issue — CLAUDE.md's own Implementation Priority #8 entry already
+  names it explicitly: "`Order.fromApprovedDecision()` today only checks
+  that the `RiskDecision` handed to it says APPROVED/MODIFIED, not that
+  it was actually produced by a real `evaluate()` call — nothing wires
   these together yet, so this can't be tested until this priority builds
-  that wiring"), and building that wiring is named as #8's job, not
-  #7's. This is also the exact same idiom `PaperBrokerTest` already
-  uses and had already been merged and reviewed under (Priority #6) —
-  applying a stricter bar here than the codebase's own established
-  precedent would be inconsistent, not more correct.
+  that wiring." Closing it requires an integrated
+  `OrderIntent → RiskGateway.evaluate() → Order` pipeline that doesn't
+  exist anywhere in this codebase yet — that pipeline is #8's
+  deliverable, not #7's, and this test already only ever obtains an
+  `Order` via `Order.fromApprovedDecision` (the one path that exists,
+  proven by `orderHasNoPublicConstructorOtherThanFromApprovedDecisionFactory`)
+  — the same idiom `PaperBrokerTest` already established and was merged
+  under (Priority #6). Building a stricter provenance check here, ahead
+  of the pipeline it would need to check against, isn't possible to do
+  correctly — it would just be a different, equally-fabricated
+  assumption dressed up as a real check. Tracked as an open item for
+  Priority #8, not closed here.
 
 ## Deliberately out of scope / deferred
 
