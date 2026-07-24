@@ -136,6 +136,20 @@ task so a multi-month, multi-exchange project doesn't degrade into the
 context rot that broke the previous attempt at this project. `Verify` must
 include actual test runs, not a claim that tests would pass.
 
+State assumptions and ask rather than silently pick between valid
+interpretations — `Discuss` makes this mandatory for R3-risk work; treat
+it as the default for everything else too, since a future session has
+only this file, not this session's judgment, to go on.
+
+Touch only what the task requires — no drive-by reformatting or adjacent
+refactors. This matters most in CODEOWNERS-matched paths (`java/`,
+`schemas/`, `configs/`, `.github/`), where an unrelated change makes an
+already high-stakes diff harder to review — and just as much on
+low-risk paths, which auto-merge on CI + CodeRabbit alone, meaning a
+scope-creep change may never get a second look from anyone. Clean up
+only the dead code your own change orphaned; flag pre-existing dead
+code instead of removing it unasked.
+
 TDD discipline (red-green-refactor: failing test → minimum code to pass →
 refactor) is required for OMS, Risk Gateway, and Execution code — not
 optional. This rule is adopted directly, without installing a separate
