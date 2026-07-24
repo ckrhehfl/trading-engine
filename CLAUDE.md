@@ -105,9 +105,12 @@ keeps recurring.
   fires regardless of whether the commit is made by an AI coding session
   or manually (unlike the `dwarvesf/claude-guardrails` hook, which only
   fires on tool calls inside an AI coding session). One-time setup per
-  clone: `git config core.hooksPath .githooks`. GitHub push protection
-  still stands as a second layer for Provider-pattern secrets (exchange
-  API keys, when they arrive in Priority #7).
+  clone: `git config core.hooksPath .githooks`. Since that setup step is
+  easy to forget on a fresh clone (or skippable via `--no-verify`), a
+  `.github/workflows/gitleaks.yml` CI job backstops it — scans every push
+  and PR regardless of local configuration. GitHub push protection still
+  stands as a further layer for Provider-pattern secrets (exchange API
+  keys, when they arrive in Priority #7).
 
 ## Risk Parameters (defaults — changing these needs explicit human approval)
 
