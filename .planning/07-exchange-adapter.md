@@ -1,6 +1,6 @@
 # Implementation Priority #7, Task B: `ExchangeAdapter` / `BingXAdapter`
 
-**PR**: (this PR)
+**PR**: #21
 
 ## What was built
 
