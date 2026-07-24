@@ -1,0 +1,55 @@
+name: bingx-hostname-guard
+
+# Backstop for the Claude Code PreToolUse hook in .claude/settings.json:
+# that hook only fires inside an AI coding session, so a human editing a
+# file by hand, or a merge/rebase introducing the string some other way,
+# would not trigger it. This workflow scans every push and PR regardless
+# of how the change was made — same gap-and-backstop pattern already used
+# for .githooks/pre-commit / gitleaks.yml (see that file's header comment).
+#
+# What this guards: the BingX PRODUCTION host (open-api.bingx.com, no
+# "-vst") must never be hardcoded in Java or Python source. The upcoming
+# BingXAdapter reads its base URL from the BINGX_BASE_URL environment
+# variable at runtime, defaulting to the VST demo host
+# (open-api-vst.bingx.com) in code — there is deliberately no in-source
+# "live mode" flag; going live is purely a deploy-time env-var decision.
+# See CLAUDE.md's Non-negotiable Rules and "Exchange API Facts" section.
+#
+# A plain grep on ubuntu-latest is used instead of a third-party action:
+# this is a single literal-string search, not worth pulling in another
+# pinned supply-chain dependency for.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  bingx-hostname-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check for hardcoded BingX production hostname
+        run: |
+          set -uo pipefail
+          # grep exits 1 on "no matches", which is the expected clean case here
+          # -- disable -e (GitHub Actions runs `run:` blocks as `bash -e`) around
+          # this one command so that exit status doesn't abort the script before
+          # the status is even checked below.
+          set +e
+          MATCHES=$(grep -rniF --include='*.java' --include='*.py' 'open-api.bingx.com' java/ python/)
+          GREP_STATUS=$?
+          set -e
+          if [ "$GREP_STATUS" -eq 0 ]; then
+            echo "$MATCHES"
+            echo "::error::Hardcoded BingX production hostname (open-api.bingx.com) found in Java/Python source. The base URL must come from the BINGX_BASE_URL environment variable at deploy time, defaulting to the VST demo host (open-api-vst.bingx.com) in code -- see CLAUDE.md Non-negotiable Rules."
+            exit 1
+          elif [ "$GREP_STATUS" -eq 1 ]; then
+            echo "OK: no hardcoded BingX production hostname in java/ or python/."
+          else
+            echo "::error::grep exited with status $GREP_STATUS while scanning java/ and python/ -- treating as a scan failure rather than silently reporting OK."
+            exit 1
+          fi
