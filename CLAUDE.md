@@ -143,6 +143,8 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
 
 ## Exchange API Facts — BingX (first adapter, verify before relying on them)
 
+### Verified (called the live public API directly and observed the response)
+
 - Symbol: `BTC-USDT`
 - Recent trades: `GET /openApi/swap/v2/quote/trades`
 - 15m klines: `GET /openApi/swap/v3/quote/klines`, interval token `15m`
@@ -151,8 +153,59 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
   span 1000 candles per request
 - `limit` is not a reliable count guarantee — requests over 1000 are
   silently capped; verify actual returned count in code
-- Only public, unauthenticated read endpoints have been verified. Private /
-  account / order endpoints are unverified.
+
+### Documented, not yet empirically verified (2026-07-24 research pass —
+read from BingX's official docs site, not tested against a live key yet;
+treat with less confidence than the section above until someone actually
+calls these with real credentials)
+
+- Base URLs: `https://open-api.bingx.com` (production) vs
+  `https://open-api-vst.bingx.com` (**VST demo trading** — virtual USDT,
+  same signing scheme, real order-matching behavior against simulated
+  funds). VST's existence matters a lot for how #7 gets built: it means
+  the write-side (order placement) can be built and tested for real
+  without live-money risk, not just designed against docs. **Unverified:
+  whether a production API key also authenticates against the VST host,
+  or whether VST needs its own key** — confirm before assuming either.
+- Auth: `X-BX-APIKEY` header + `HMAC-SHA256` signature over all request
+  params (incl. `timestamp`) sorted alphabetically and joined as
+  `key=value&...`, hex-encoded uppercase, appended as `&signature=...`.
+  Requests must be within 5s of server time
+  (`GET /openApi/swap/v2/server/time` for clock sync).
+- Order placement: `POST /openApi/swap/v2/trade/order` (all types via a
+  `type` field: MARKET/LIMIT/etc.); a `POST .../order/test` variant
+  validates without executing. Cancel: `DELETE /openApi/swap/v2/trade/order`.
+- Position mode (`GET`/`POST /openApi/swap/v1/positionSide/dual`) is
+  **account-wide** (not per-symbol) and can't change while any position
+  or open order exists. **Default mode on a fresh key is undocumented —
+  OMS must set it explicitly on startup, never assume.** One-way mode =
+  one net position per symbol; hedge mode = simultaneous LONG + SHORT.
+  Leverage (`POST .../trade/leverage`) takes `side=BOTH` in one-way mode,
+  `LONG`/`SHORT` in hedge mode.
+- Endpoint versions are mixed within the same API family on purpose, not
+  a one-off: balance is `v3` (`GET /openApi/swap/v3/user/balance`),
+  positions/order/leverage are `v2`, position-mode is `v1`. Matches the
+  same pattern already noted above for klines (v3) vs trades (v2).
+- Private WebSocket (order/position push) shares the public market-data
+  WS host with a `?listenKey=...` query param; the key comes from
+  `POST /openApi/user/auth/userDataStream` (1hr TTL, refresh via `PUT`).
+  Relevant to the long-term ~100-200ms latency target.
+- Rate limits are per-account (UID), not shared across endpoints: order
+  place/cancel 10/s, order query 30/s, positions 10/s, balance 5/s,
+  leverage 5/s. IP-based limits on these were reportedly removed
+  2025-12-16 per a changelog entry, but the docs UI still shows legacy
+  numbers — don't trust either without testing.
+- Known internal doc inconsistencies to test rather than trust blindly:
+  order status casing differs between REST (`CANCELLED`) and WebSocket
+  (`CANCELED`) samples; listen-key generation's code sample omits the
+  signature params its own metadata says are required; WS connection
+  limit is stated as both 60/IP and 240/IP in different parts of the
+  same docs bundle.
+
+Only public, unauthenticated read endpoints have been called against the
+live API so far. Everything under "Documented, not yet empirically
+verified" needs a real API key (VST is fine) before Priority #7 code
+that depends on it is trusted.
 
 ## LLM Usage Policy
 
