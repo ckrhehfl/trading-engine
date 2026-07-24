@@ -319,7 +319,14 @@ tools/services, subscription changes).
 4. Python deterministic backtest skeleton
 5. Schema compatibility tests
 6. Paper broker
-7. `ExchangeAdapter` skeleton (BingX as first implementation)
+7. `ExchangeAdapter` skeleton (BingX as first implementation) — this is
+   where a real order-placement-capable path first exists in the
+   codebase, so from this priority on: `ExchangeAdapter` may only ever be
+   invoked from OMS-mediated flows, never called directly with a
+   hand-built order, including for testing or demos. The full
+   provenance check (below, #8) can't be *written* until #8's wiring
+   exists, but the discipline of never opening a direct-call shortcut
+   starts here.
 8. Paper trading loop + 24/7 runtime supervision (restart recovery, health
    checks) — promoted priority, needed for the unattended-operation target.
    Must also verify at this stage that the only real code path from

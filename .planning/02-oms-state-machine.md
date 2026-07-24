@@ -5,8 +5,14 @@
 `engine.oms.Order` — 9-state lifecycle (`NEW` through terminal
 `FILLED`/`CANCELLED`/`REJECTED`/`EXPIRED`). The only constructor is
 `Order.fromApprovedDecision(OrderIntent, RiskDecision)`, which requires
-`decision.decision()` to be `APPROVED`/`MODIFIED` — structurally
-impossible to construct an `Order` that skipped risk assessment.
+`decision.decision()` to be `APPROVED`/`MODIFIED`. That's narrower than
+it sounds: it only checks the `RiskDecision`'s status flag, not that the
+decision actually came from a real `RiskGateway.evaluate()` call — a
+hand-built `RiskDecision` claiming APPROVED works today, since nothing
+wires OMS to a real Risk Gateway call yet. Structurally impossible to
+construct an `Order` from a REJECTED or missing decision; not yet
+structurally impossible to construct one that skipped real risk
+assessment entirely. See CLAUDE.md's Implementation Priority #8 note.
 `OrderStore` provides idempotent creation keyed by client order id via
 `ConcurrentHashMap#computeIfAbsent`, rejecting conflicting retries.
 

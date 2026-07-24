@@ -2,7 +2,10 @@
 
 Durable record of GSD `Discuss`/`Plan` output — see CLAUDE.md's
 "Development Methodology". One file per Implementation Priority (or other
-non-trivial change), added in the same PR as the work it plans.
+non-trivial change), added in the same PR as the work it plans — that's
+the rule for every *new* plan from `07` onward. `00`–`06` are the one
+deliberate exception: retrospective backfill, added after the fact
+because no real-time version of them was ever committed. See below.
 
 Why this exists: earlier work in this project (governance setup and
 Implementation Priorities #1–#6) used Claude Code's own session-local plan
