@@ -327,18 +327,25 @@ tools/services, subscription changes).
   stays on regardless — it still stops a future bot/app identity or a
   second collaborator from merging those paths unreviewed, which is real
   protection, just not against the current sole operator.
-- As of 2026-07-24, @ckrhehfl has explicitly delegated day-to-day merge
-  judgment for CODEOWNERS-matched PRs too: once required checks (CI +
-  CodeRabbit) are genuinely green — not pending, not rate-limited — an
-  LLM agent operating this repo may merge without asking first. This
-  narrows the "three things reserved for the human" above further in
-  practice, but doesn't change them: still stop and ask before merging
-  when (a) CodeRabbit is rate-limited/unusable rather than passing, (b)
-  the change has cost/subscription implications, or (c) the task
+- As of 2026-07-24, @ckrhehfl has delegated day-to-day merge judgment for
+  most CODEOWNERS-matched PRs too: once required checks (CI + CodeRabbit)
+  are genuinely green — not pending, not rate-limited — an LLM agent
+  operating this repo may merge without asking first, for CODEOWNERS
+  paths whose content is *not* itself high-risk (e.g. `.github/`
+  workflow/tooling changes like `gitleaks.yml`, `schemas/` additions,
+  non-risk `configs/`, most CLAUDE.md documentation edits).
+  This delegation explicitly does **not** extend to "approving high-risk
+  changes" (still one of the three things reserved for the human, per
+  above) — still stop and ask before merging when the PR touches: Java
+  OMS/Risk Gateway/Execution logic, live-trading/leverage/risk-limit/kill-
+  switch behavior, credentials or `.env`/secrets handling, or paper/live
+  promotion of a model/risk/order-logic change — regardless of checks
+  passing, matching the Non-negotiable Rules above (e.g. "never weaken
+  risk limits... without explicit human approval"). Also still stop and
+  ask when (a) CodeRabbit is rate-limited/unusable rather than passing,
+  (b) the change has cost/subscription implications, or (c) the task
   requires @ckrhehfl to do something only they can do (a GitHub UI
-  setting, an account credential, entering a password). Anything else —
-  including ordinary CODEOWNERS-matched work — proceeds autonomously
-  once checks pass.
+  setting, an account credential, entering a password).
 
 ## Implementation Priority
 
