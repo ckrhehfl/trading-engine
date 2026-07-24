@@ -35,10 +35,15 @@ jobs:
       - name: Check for hardcoded BingX production hostname
         run: |
           set -uo pipefail
-          MATCHES=$(grep -rniF --include='*.java' --include='*.py' 'open-api.bingx.com' java/ python/ || true)
-          if [ -n "$MATCHES" ]; then
+          MATCHES=$(grep -rniF --include='*.java' --include='*.py' 'open-api.bingx.com' java/ python/)
+          GREP_STATUS=$?
+          if [ "$GREP_STATUS" -eq 0 ]; then
             echo "$MATCHES"
             echo "::error::Hardcoded BingX production hostname (open-api.bingx.com) found in Java/Python source. The base URL must come from the BINGX_BASE_URL environment variable at deploy time, defaulting to the VST demo host (open-api-vst.bingx.com) in code -- see CLAUDE.md Non-negotiable Rules."
             exit 1
+          elif [ "$GREP_STATUS" -eq 1 ]; then
+            echo "OK: no hardcoded BingX production hostname in java/ or python/."
+          else
+            echo "::error::grep exited with status $GREP_STATUS while scanning java/ and python/ -- treating as a scan failure rather than silently reporting OK."
+            exit 1
           fi
-          echo "OK: no hardcoded BingX production hostname in java/ or python/."
