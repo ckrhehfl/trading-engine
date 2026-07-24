@@ -73,12 +73,44 @@ keeps recurring.
   human approval.
 - Never bypass the Java Risk Gateway.
 - Never let Python place live orders directly.
+- Never connect an MCP server, skill, or plugin capable of placing
+  exchange orders to any AI coding session operating on this repo — it's
+  the same Risk Gateway bypass as direct order placement, just through a
+  different door. Read-only/market-data tools are fine.
 - Never add live exchange write-access in CI.
 - Never commit raw trading logs containing secrets or account identifiers.
 - Never run untrusted install scripts (`curl | sh`, `wget | bash`).
-- The repo is public (chosen for free GitHub Actions minutes). Treat GitHub
-  push-protection/secret-scanning failures as blocking, not advisory — a
-  leak here is immediate and irreversible, not just a private mistake.
+- The repo is public (chosen for free GitHub Actions minutes). GitHub
+  push-protection/secret-scanning is `enabled` at both repo and account
+  level (verified 2026-07), but **only covers "Provider patterns"**
+  (AWS/Stripe/GitHub-style tokens with a fixed, recognizable format) on
+  the free tier. "Generic patterns" (RSA/SSH private keys, generic
+  API keys, connection strings) are a separate GitHub feature
+  (`secret_scanning_non_provider_patterns`) gated behind the paid
+  "GitHub Secret Protection" product ($19/mo/active committer) or an
+  Organization/Enterprise security configuration — neither applies to a
+  personal-account public repo, and it is not something the REST API can
+  enable for one (confirmed: `PATCH .../security_and_analysis` returns
+  200 but silently no-ops; the repo Settings UI has no such toggle for a
+  personal account either). This is why four independent 2026-07 tests
+  with real RSA private keys (PKCS#8 and legacy PKCS#1) were never
+  blocked or alerted on — not a misconfiguration, a tier limit. Two
+  AWS-key-shaped test strings also went undetected, most likely because
+  synthetic test values didn't match AWS's exact key format, not because
+  Provider-pattern coverage is broken.
+  Given that gap, generic secrets (the private-key/credential case this
+  project actually cares about) are caught locally instead: the
+  `.githooks/pre-commit` hook runs `gitleaks` against every staged commit
+  and blocks on a match, fails closed if `gitleaks` isn't installed, and
+  fires regardless of whether the commit is made by an AI coding session
+  or manually (unlike the `dwarvesf/claude-guardrails` hook, which only
+  fires on tool calls inside an AI coding session). One-time setup per
+  clone: `git config core.hooksPath .githooks`. Since that setup step is
+  easy to forget on a fresh clone (or skippable via `--no-verify`), a
+  `.github/workflows/gitleaks.yml` CI job backstops it — scans every push
+  and PR regardless of local configuration. GitHub push protection still
+  stands as a further layer for Provider-pattern secrets (exchange API
+  keys, when they arrive in Priority #7).
 
 ## Risk Parameters (defaults — changing these needs explicit human approval)
 
@@ -101,6 +133,13 @@ Paper trading passed + paper score 80+ + all hard gates passed + VPS
 operation + IP-restricted API key + no withdrawal permission + manually
 approved live flag + leverage hard max 2x + market-order guard enabled +
 kill switch verified.
+
+This 2x is the initial paper→live entry gate, which runs under the
+canary tier — itself already capped at 2x per Risk Parameters. It is not
+a ceiling the later-stage stable tier (documented max 3x) must also
+respect; those are two different points in the system's lifecycle, not a
+contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
+(see its Javadoc).
 
 ## Exchange API Facts — BingX (first adapter, verify before relying on them)
 
@@ -217,12 +256,26 @@ premature-process trap named in "Why this is more than a bare CLAUDE.md."
 | CLI foundation | ripgrep, gh, uv | as needed |
 | Guardrails (hooks) | `dwarvesf/claude-guardrails` (Lite, global `~/.claude/settings.json`) | active now — brought forward from "when `.env` appears" because the repo is public |
 | Guardrails (project-specific) | hook blocking live-flag activation and exchange live-order endpoints | not built yet — add before real exchange credentials appear |
+| Secret scanning (local) | `gitleaks` via `.githooks/pre-commit` (`git config core.hooksPath .githooks`) | active now — covers generic secrets (private keys, etc.) that GitHub push protection's free tier doesn't (see "repo is public" note above) |
 | Methodology | GSD (`.planning/` artifacts) + TDD rule above | active now |
 | MCP | Context7, GitHub MCP | add when useful, not urgent |
 | CI/CD | `claude-code-action` | not wired to repo events yet — public-repo triggers are a separate, deliberately deferred decision (prompt-injection surface); PRs currently opened via authenticated `gh` sessions |
 | Merge governance | `.github/CODEOWNERS` + branch protection on `main` (see Branch and Merge) | active now |
 | Code review | CodeRabbit Pro (see below) | active now — GitHub App installed, verified posting reviews, its `CodeRabbit` commit status is a required check on `main` |
 | Multi-agent orchestration | Anthropic Agent Teams (official) | standby, off by default |
+
+## Future Tooling Watchlist
+
+Candidates identified but deliberately not adopted yet — written down so
+they don't depend on conversational memory to resurface at the right
+time (see "Why this is more than a bare CLAUDE.md").
+
+| Candidate | Revisit when | Why not now |
+|---|---|---|
+| BingX-specific MCP/skills (e.g. BingX-API org's own skill library) | Start of Priority #7 (`ExchangeAdapter`) | No exchange-integration code exists yet to benefit from it; reference/coding-assistance use only — never order-execution-capable, per Non-negotiable Rules |
+| Monitoring/alerting (health checks, kill-switch alerts) | Priority #8 (24/7 unattended operation) | Nothing runs unattended yet to monitor |
+| RAG / conversational log search | After Priority #8 generates real operational history | No logs/reports exist yet to search |
+| Secrets manager beyond `.env` | Reassess at Priority #7 if VPS + `.env` + guardrails prove insufficient | Minimal single-VPS deployment likely doesn't need it |
 
 ## Code Review Gate
 
@@ -286,9 +339,23 @@ tools/services, subscription changes).
 4. Python deterministic backtest skeleton
 5. Schema compatibility tests
 6. Paper broker
-7. `ExchangeAdapter` skeleton (BingX as first implementation)
+7. `ExchangeAdapter` skeleton (BingX as first implementation) — this is
+   where a real order-placement-capable path first exists in the
+   codebase, so from this priority on: `ExchangeAdapter` may only ever be
+   invoked from OMS-mediated flows, never called directly with a
+   hand-built order, including for testing or demos. The full
+   provenance check (below, #8) can't be *written* until #8's wiring
+   exists, but the discipline of never opening a direct-call shortcut
+   starts here.
 8. Paper trading loop + 24/7 runtime supervision (restart recovery, health
-   checks) — promoted priority, needed for the unattended-operation target
+   checks) — promoted priority, needed for the unattended-operation target.
+   Must also verify at this stage that the only real code path from
+   `OrderIntent` to `Order` goes through `RiskGateway.evaluate()`:
+   `Order.fromApprovedDecision()` today only checks that the
+   `RiskDecision` handed to it says APPROVED/MODIFIED, not that it was
+   actually produced by a real `evaluate()` call — nothing wires these
+   together yet, so this can't be tested until this priority builds that
+   wiring.
 9. Auto-retraining pipeline (scheduled retrain, validation, promotion gate)
    — promoted priority, needed for the auto-learning target; promotion to
    paper/live still requires human approval

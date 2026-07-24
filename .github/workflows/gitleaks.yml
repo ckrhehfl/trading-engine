@@ -1,0 +1,26 @@
+name: gitleaks
+
+# Backstop for .githooks/pre-commit: that hook only fires once someone has
+# run `git config core.hooksPath .githooks` locally, so a fresh clone (or a
+# commit made with --no-verify) isn't caught by it. This workflow scans
+# every push and PR regardless of local setup — see CLAUDE.md's "repo is
+# public" note for why GitHub's own push protection doesn't cover this
+# (generic-pattern secrets like private keys are a paid-tier feature).
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
