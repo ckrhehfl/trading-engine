@@ -81,7 +81,7 @@ public final class BingXAdapter implements ExchangeAdapter {
         // safe to make. This is what OrderState.SUBMITTED exists for.
         JsonNode root = request("POST", ORDER_PATH, params);
 
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "submitOrder");
         if (code != 0) {
             // Unlike the HTTP-failure case above, a 200 response with a
             // non-zero BingX `code` is a definitive answer from the
@@ -110,7 +110,7 @@ public final class BingXAdapter implements ExchangeAdapter {
 
         JsonNode root = request("DELETE", ORDER_PATH, params);
 
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "cancelOrder");
         if (code != 0) {
             // Unlike submitOrder's reject(), Order has no "cancel failed,
             // revert to previous state" transition -- CANCEL_PENDING is the
@@ -134,7 +134,7 @@ public final class BingXAdapter implements ExchangeAdapter {
         // Pure read: order is never touched below, regardless of outcome.
         JsonNode root = request("GET", ORDER_PATH, params);
 
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "queryOrder");
         if (code != 0) {
             throw new ExchangeException(
                     "BingX queryOrder failed for order " + order.clientOrderId() + ": " + errorSummary(root, code));
@@ -150,7 +150,7 @@ public final class BingXAdapter implements ExchangeAdapter {
     @Override
     public List<PositionSnapshot> getPositions() {
         JsonNode root = request("GET", POSITIONS_PATH, new LinkedHashMap<>());
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "getPositions");
         if (code != 0) {
             throw new ExchangeException("BingX getPositions failed: " + errorSummary(root, code));
         }
@@ -171,18 +171,39 @@ public final class BingXAdapter implements ExchangeAdapter {
     @Override
     public BalanceSnapshot getBalance() {
         JsonNode root = request("GET", BALANCE_PATH, new LinkedHashMap<>());
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "getBalance");
         if (code != 0) {
             throw new ExchangeException("BingX getBalance failed: " + errorSummary(root, code));
         }
-        JsonNode data = root.path("data");
-        JsonNode balanceNode = data.has("balance") ? data.get("balance") : data;
+        JsonNode balanceNode = selectBalanceNode(root.path("data"));
         return new BalanceSnapshot(
                 parseBigDecimal(balanceNode, "balance"),
                 parseBigDecimal(balanceNode, "equity"),
                 parseBigDecimal(balanceNode, "availableMargin"),
                 parseBigDecimal(balanceNode, "usedMargin"),
                 parseBigDecimal(balanceNode, "unrealizedProfit"));
+    }
+
+    /**
+     * BingX's v3 balance response wraps {@code data} as an array of
+     * per-asset balance objects, confirmed against a real VST call (see
+     * .planning/07-exchange-adapter.md) — not the single nested-object
+     * shape originally assumed here (that assumption was wrong and shipped
+     * a real bug, since fixed). This system only ever cares about the
+     * account's one margin asset (VST in demo, USDT in production), so
+     * index 0 is taken directly rather than matched against a hardcoded
+     * asset name/constant — a constant here would reintroduce the same
+     * kind of implicit live/demo fork {@link BingXAdapter} is deliberately
+     * built without (see this class's "no live/paper flag" design note).
+     * Revisit if a genuinely multi-asset margin account ever needs
+     * supporting; not something to guess a "right" selection rule for
+     * without real evidence of that shape.
+     */
+    private static JsonNode selectBalanceNode(JsonNode data) {
+        if (!data.isArray() || data.isEmpty()) {
+            throw new ExchangeException("BingX getBalance: expected a non-empty array under data, got: " + data);
+        }
+        return data.get(0);
     }
 
     @Override
@@ -198,7 +219,7 @@ public final class BingXAdapter implements ExchangeAdapter {
         params.put("leverage", String.valueOf(leverage));
 
         JsonNode root = request("POST", LEVERAGE_PATH, params);
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "setLeverage");
         if (code != 0) {
             throw new ExchangeException("BingX setLeverage failed for " + symbol + ": " + errorSummary(root, code));
         }
@@ -211,7 +232,7 @@ public final class BingXAdapter implements ExchangeAdapter {
         params.put("dualSidePosition", mode == PositionMode.HEDGE ? "true" : "false");
 
         JsonNode root = request("POST", POSITION_MODE_PATH, params);
-        int code = root.path("code").asInt();
+        int code = requireCode(root, "setPositionMode");
         if (code != 0) {
             throw new ExchangeException("BingX setPositionMode failed: " + errorSummary(root, code));
         }
@@ -311,7 +332,26 @@ public final class BingXAdapter implements ExchangeAdapter {
         if (value == null || value.isNull()) {
             return null;
         }
-        return new BigDecimal(value.asText());
+        try {
+            return new BigDecimal(value.asText());
+        } catch (NumberFormatException e) {
+            throw new ExchangeException(
+                    "BingX response field '" + field + "' is not a valid decimal: '" + value.asText() + "'", e);
+        }
+    }
+
+    /**
+     * Extracts the response envelope's {@code code} field, throwing if it's
+     * absent entirely. {@code JsonNode#path("code").asInt()} silently
+     * returns {@code 0} for a missing field, which would otherwise be
+     * misread as "success" for a response that doesn't even have the shape
+     * this adapter expects, rather than surfacing as the error it is.
+     */
+    private static int requireCode(JsonNode root, String context) {
+        if (!root.has("code")) {
+            throw new ExchangeException("BingX response for " + context + " is missing the 'code' field: " + root);
+        }
+        return root.path("code").asInt();
     }
 
     private static String rejectionReason(JsonNode root, int code) {

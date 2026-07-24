@@ -219,17 +219,79 @@ class BingXAdapterTest {
 
     @Test
     void getBalanceParsesResponseAndHitsV3Endpoint() {
+        // Response shape (array of per-asset balance objects, not a nested
+        // "balance" object) confirmed against a live VST call -- see
+        // .planning/07-exchange-adapter.md; catching this here is exactly
+        // what caught the original bug. userId/shortUid below are synthetic
+        // placeholders, not real account identifiers -- unused by parsing,
+        // included only to match the field set the real response has.
         server.respondWith(
                 200,
-                "{\"code\":0,\"msg\":\"\",\"data\":{\"balance\":{\"balance\":\"1000\",\"equity\":\"1050\","
-                        + "\"availableMargin\":\"900\",\"usedMargin\":\"150\",\"unrealizedProfit\":\"50\"}}}");
+                "{\"code\":0,\"msg\":\"\",\"data\":[{\"userId\":\"000000000000000000\",\"asset\":\"VST\","
+                        + "\"balance\":\"1000\",\"equity\":\"1050\",\"unrealizedProfit\":\"50\","
+                        + "\"realizedProfit\":\"0\",\"availableMargin\":\"900\",\"usedMargin\":\"150\","
+                        + "\"frozenMargin\":\"0\",\"shortUid\":\"00000000\"}]}");
 
         BalanceSnapshot balance = adapter.getBalance();
 
         assertEquals(0, new BigDecimal("1000").compareTo(balance.balance()));
         assertEquals(0, new BigDecimal("1050").compareTo(balance.equity()));
         assertEquals(0, new BigDecimal("900").compareTo(balance.availableMargin()));
+        assertEquals(0, new BigDecimal("150").compareTo(balance.usedMargin()));
+        assertEquals(0, new BigDecimal("50").compareTo(balance.unrealizedProfit()));
         assertEquals("/openApi/swap/v3/user/balance", server.lastPath());
+    }
+
+    @Test
+    void getBalanceTakesFirstEntryWhenMultipleAssetsPresent() {
+        server.respondWith(
+                200,
+                "{\"code\":0,\"msg\":\"\",\"data\":["
+                        + "{\"asset\":\"VST\",\"balance\":\"1000\",\"equity\":\"1000\","
+                        + "\"availableMargin\":\"1000\",\"usedMargin\":\"0\",\"unrealizedProfit\":\"0\"},"
+                        + "{\"asset\":\"OTHER\",\"balance\":\"9999\",\"equity\":\"9999\","
+                        + "\"availableMargin\":\"9999\",\"usedMargin\":\"0\",\"unrealizedProfit\":\"0\"}"
+                        + "]}");
+
+        BalanceSnapshot balance = adapter.getBalance();
+
+        assertEquals(0, new BigDecimal("1000").compareTo(balance.balance()));
+    }
+
+    @Test
+    void getBalanceThrowsExchangeExceptionOnEmptyDataArray() {
+        server.respondWith(200, "{\"code\":0,\"msg\":\"\",\"data\":[]}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getBalance());
+    }
+
+    @Test
+    void getBalanceThrowsExchangeExceptionWhenCodeFieldIsMissingEntirely() {
+        // JsonNode#path("code").asInt() silently returns 0 for a missing
+        // field -- without an explicit has("code") check, this malformed
+        // response would be misread as a successful, empty balance rather
+        // than surfaced as the shape mismatch it actually is. `data` here
+        // is deliberately a valid, non-empty balance array -- otherwise
+        // this test can't tell requireCode's check apart from
+        // selectBalanceNode's separate "empty array" check.
+        server.respondWith(
+                200,
+                "{\"msg\":\"\",\"data\":[{\"asset\":\"VST\",\"balance\":\"1000\",\"equity\":\"1000\","
+                        + "\"availableMargin\":\"1000\",\"usedMargin\":\"0\",\"unrealizedProfit\":\"0\"}]}");
+
+        ExchangeException exception = assertThrows(ExchangeException.class, () -> adapter.getBalance());
+        assertTrue(exception.getMessage().contains("code"), "exception message should mention the missing field");
+    }
+
+    @Test
+    void getPositionsThrowsExchangeExceptionOnNonNumericDecimalField() {
+        server.respondWith(
+                200,
+                "{\"code\":0,\"msg\":\"\",\"data\":[{\"symbol\":\"BTC-USDT\",\"positionSide\":\"LONG\","
+                        + "\"positionAmt\":\"not-a-number\",\"avgPrice\":\"64000\",\"leverage\":\"2\","
+                        + "\"unrealizedProfit\":\"10.5\",\"liquidationPrice\":\"40000\"}]}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
     }
 
     @Test
