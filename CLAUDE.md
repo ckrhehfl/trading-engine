@@ -81,17 +81,33 @@ keeps recurring.
 - Never commit raw trading logs containing secrets or account identifiers.
 - Never run untrusted install scripts (`curl | sh`, `wget | bash`).
 - The repo is public (chosen for free GitHub Actions minutes). GitHub
-  push-protection/secret-scanning is configured (`enabled` per the repo
-  API), but **empirically did not fire** across four independent tests
-  (2026-07: two AWS-key-shaped strings, a valid PKCS#8 RSA key, a valid
-  legacy PKCS#1 RSA key). No alert was ever created. Do not treat
-  GitHub's server-side scanning as a working safety net until this is
-  re-verified — the actual first line of defense right now is the local
-  `dwarvesf/claude-guardrails` hook, which blocks known secret patterns
-  before a commit/push tool call runs at all. A separate, account-level
-  "push protection for users" GitHub setting may explain this and is
-  worth @ckrhehfl checking manually in personal GitHub security settings
-  — not checkable via API.
+  push-protection/secret-scanning is `enabled` at both repo and account
+  level (verified 2026-07), but **only covers "Provider patterns"**
+  (AWS/Stripe/GitHub-style tokens with a fixed, recognizable format) on
+  the free tier. "Generic patterns" (RSA/SSH private keys, generic
+  API keys, connection strings) are a separate GitHub feature
+  (`secret_scanning_non_provider_patterns`) gated behind the paid
+  "GitHub Secret Protection" product ($19/mo/active committer) or an
+  Organization/Enterprise security configuration — neither applies to a
+  personal-account public repo, and it is not something the REST API can
+  enable for one (confirmed: `PATCH .../security_and_analysis` returns
+  200 but silently no-ops; the repo Settings UI has no such toggle for a
+  personal account either). This is why four independent 2026-07 tests
+  with real RSA private keys (PKCS#8 and legacy PKCS#1) were never
+  blocked or alerted on — not a misconfiguration, a tier limit. Two
+  AWS-key-shaped test strings also went undetected, most likely because
+  synthetic test values didn't match AWS's exact key format, not because
+  Provider-pattern coverage is broken.
+  Given that gap, generic secrets (the private-key/credential case this
+  project actually cares about) are caught locally instead: the
+  `.githooks/pre-commit` hook runs `gitleaks` against every staged commit
+  and blocks on a match, fails closed if `gitleaks` isn't installed, and
+  fires regardless of whether the commit is made by an AI coding session
+  or manually (unlike the `dwarvesf/claude-guardrails` hook, which only
+  fires on tool calls inside an AI coding session). One-time setup per
+  clone: `git config core.hooksPath .githooks`. GitHub push protection
+  still stands as a second layer for Provider-pattern secrets (exchange
+  API keys, when they arrive in Priority #7).
 
 ## Risk Parameters (defaults — changing these needs explicit human approval)
 
@@ -237,6 +253,7 @@ premature-process trap named in "Why this is more than a bare CLAUDE.md."
 | CLI foundation | ripgrep, gh, uv | as needed |
 | Guardrails (hooks) | `dwarvesf/claude-guardrails` (Lite, global `~/.claude/settings.json`) | active now — brought forward from "when `.env` appears" because the repo is public |
 | Guardrails (project-specific) | hook blocking live-flag activation and exchange live-order endpoints | not built yet — add before real exchange credentials appear |
+| Secret scanning (local) | `gitleaks` via `.githooks/pre-commit` (`git config core.hooksPath .githooks`) | active now — covers generic secrets (private keys, etc.) that GitHub push protection's free tier doesn't (see "repo is public" note above) |
 | Methodology | GSD (`.planning/` artifacts) + TDD rule above | active now |
 | MCP | Context7, GitHub MCP | add when useful, not urgent |
 | CI/CD | `claude-code-action` | not wired to repo events yet — public-repo triggers are a separate, deliberately deferred decision (prompt-injection surface); PRs currently opened via authenticated `gh` sessions |

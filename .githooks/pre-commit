@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Blocks commits containing secrets gitleaks recognizes (private keys, generic
+# API keys/passwords, high-entropy strings) that GitHub's free-tier push
+# protection does not catch — see CLAUDE.md's "repo is public" note. Runs
+# locally so it fires on every commit from this machine, regardless of
+# whether the commit is made through an AI coding session or manually.
+#
+# One-time setup per clone: git config core.hooksPath .githooks
+
+set -euo pipefail
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+    echo "pre-commit: gitleaks not installed — refusing to commit." >&2
+    echo "Install: sudo apt install gitleaks (see CLAUDE.md Tooling Stack)." >&2
+    exit 1
+fi
+
+gitleaks protect --staged --redact -v
