@@ -323,13 +323,22 @@ tools/services, subscription changes).
   a solo-author-repo limitation of GitHub CODEOWNERS, not a config mistake.
 - **Until PR authorship moves to a bot/app identity distinct from
   @ckrhehfl** (out of scope for now — see Tooling Stack), the CODEOWNERS
-  boundary is enforced procedurally, not technically: whoever/whatever is
-  operating this repo (including an LLM agent) must treat a CODEOWNERS-
-  matched PR as requiring @ckrhehfl's explicit go-ahead before merging,
-  and must not rely on GitHub to block it. Branch protection stays on
-  regardless — it still stops a future bot/app identity or a second
-  collaborator from merging those paths unreviewed, which is real
+  boundary is enforced procedurally, not technically. Branch protection
+  stays on regardless — it still stops a future bot/app identity or a
+  second collaborator from merging those paths unreviewed, which is real
   protection, just not against the current sole operator.
+- As of 2026-07-24, @ckrhehfl has explicitly delegated day-to-day merge
+  judgment for CODEOWNERS-matched PRs too: once required checks (CI +
+  CodeRabbit) are genuinely green — not pending, not rate-limited — an
+  LLM agent operating this repo may merge without asking first. This
+  narrows the "three things reserved for the human" above further in
+  practice, but doesn't change them: still stop and ask before merging
+  when (a) CodeRabbit is rate-limited/unusable rather than passing, (b)
+  the change has cost/subscription implications, or (c) the task
+  requires @ckrhehfl to do something only they can do (a GitHub UI
+  setting, an account credential, entering a password). Anything else —
+  including ordinary CODEOWNERS-matched work — proceeds autonomously
+  once checks pass.
 
 ## Implementation Priority
 
