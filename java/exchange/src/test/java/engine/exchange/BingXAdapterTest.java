@@ -314,6 +314,23 @@ class BingXAdapterTest {
     }
 
     @Test
+    void getBalanceThrowsExchangeExceptionOnEmptyResponseBodyWithoutNpe() {
+        // A 2xx response with an empty body could plausibly make
+        // ObjectMapper#readTree(...) return a Java null, which
+        // requireCode's root.has("code") would then NullPointerException
+        // on rather than throw the module's own ExchangeException.
+        // Verified directly against this project's actual jackson-databind
+        // version (2.18.9): readTree("") returns a non-null MissingNode,
+        // not Java null -- has("code") on it safely returns false, so this
+        // already routes through the normal "missing code field" path.
+        // This test proves that end-to-end through the real request path,
+        // not just the standalone Jackson behavior check.
+        server.respondWith(200, "");
+
+        assertThrows(ExchangeException.class, () -> adapter.getBalance());
+    }
+
+    @Test
     void getPositionsThrowsExchangeExceptionOnNonNumericDecimalField() {
         server.respondWith(
                 200,

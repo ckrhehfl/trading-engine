@@ -57,12 +57,12 @@ Tests were written first and confirmed to fail (a compile error, the normal
   `Order` used elsewhere in this test suite is built the same way
   `PaperBrokerTest` builds one.
 
-27 new tests in `java/exchange` (7 `BingXSignerTest`, 20 `BingXAdapterTest`
-— including four added during CodeRabbit review: a response missing the
+28 new tests in `java/exchange` (7 `BingXSignerTest`, 21 `BingXAdapterTest`
+— including five added during CodeRabbit review: a response missing the
 `code` field entirely, `code` present as a non-integer type — string and
-JSON `null` cases — and a non-numeric value in a decimal field). Full
-suite (`./gradlew clean test`) is 132 tests across all five modules, all
-green.
+JSON `null` cases — a non-numeric value in a decimal field, and an
+empty response body). Full suite (`./gradlew clean test`) is 133 tests
+across all five modules, all green.
 
 ## What's verified vs. documented-only
 
@@ -181,7 +181,7 @@ things had to be decided rather than looked up:
 
 ## CodeRabbit review findings
 
-Thirteen findings across four review passes on the PR. Three doc fixes
+Sixteen findings across five review passes on the PR. Three doc fixes
 applied (test-count accuracy in this file, a `#7` sequence in prose that
 could render/link unexpectedly in Markdown — reworded rather than
 special-cased, and this section itself). Three real code fixes applied
@@ -206,6 +206,21 @@ to `BingXAdapter.java`:
   separate test covers `parseBigDecimal`'s `NumberFormatException`
   wrapping (a non-numeric value in an unrelated decimal field, not
   `code`).
+
+Fifth review pass raised a plausible-sounding but empirically wrong
+claim: that `requireCode`'s `root.has("code")` could `NullPointerException`
+if a 2xx response with an empty body made `ObjectMapper#readTree(...)`
+return Java `null`. Checked directly against this project's actual
+jackson-databind version (2.18.9, matching `java/exchange/build.gradle.kts`)
+rather than assuming either way: `readTree("")` returns a non-null
+`MissingNode`, not `null` — `has("code")` on it safely returns `false`,
+routing through the existing "missing `code` field" path with no crash.
+No code change applied (there's nothing to fix — the suggested null-check
+would be dead code for a case that can't occur), but added
+`getBalanceThrowsExchangeExceptionOnEmptyResponseBodyWithoutNpe`,
+which proves this end-to-end through the real request path (a live
+`HttpServer` returning an empty 200 body) rather than resting on the
+standalone Jackson check alone.
 
 One test-isolation fix on the second review pass: the "missing `code`
 field" test above originally paired that with an empty `data` array,
@@ -256,8 +271,9 @@ rather than silently skipped:
   confirmed) — formalizing it as a queryable exception field is a
   reasonable idea for whenever #8 actually builds a retry policy, not a
   gap in this PR.
-- A suggestion raised on three separate review passes (escalating to
-  "Critical" severity by the third), that `BingXAdapterTest` bypasses
+- A suggestion raised on four separate review passes (reaching "Critical"
+  severity by the third, repeated unchanged on the fourth), that
+  `BingXAdapterTest` bypasses
   the Risk Gateway boundary because its `guardedMarketOrder()` helper
   hand-constructs a `RiskDecision` rather than obtaining one from a real
   `RiskGateway.evaluate()` call, and that a reflection check on
