@@ -467,11 +467,26 @@ tools/services, subscription changes).
    `RiskDecision` handed to it says APPROVED/MODIFIED, not that it was
    actually produced by a real `evaluate()` call — nothing wires these
    together yet, so this can't be tested until this priority builds that
-   wiring.
+   wiring. **Half closed 2026-07-25**: `engine.runtime.OrderPipeline` is
+   now the one real `OrderIntent → RiskGateway.evaluate() → Order` path
+   (`java/runtime`) — but `OrderStore.createOrder(intent, decision)`
+   itself is still public, so code bypassing `OrderPipeline` entirely
+   with a hand-built `RiskDecision` remains *possible*, just not done by
+   anything in the codebase today. Closing that (visibility restriction
+   doesn't trivially work — `OrderPipeline` already needs cross-package
+   access to `OrderStore`; likely needs either moving `OrderPipeline`
+   into `engine.oms` or a capability/token scheme touching the shared
+   `RiskDecision` schema) is deliberately deferred — see #10.
 9. Auto-retraining pipeline (scheduled retrain, validation, promotion gate)
    — promoted priority, needed for the auto-learning target; promotion to
    paper/live still requires human approval
-10. Canary live preparation
+10. Canary live preparation. Before any live wiring: close the
+    `OrderStore.createOrder` bypass noted in #8 — a genuine hardening gap,
+    not urgent while no live order path exists, but non-negotiable before
+    one does (CLAUDE.md's own "never bypass the Java Risk Gateway" rule is
+    about live orders specifically). Needs its own Discuss pass, not a
+    rushed fix under review pressure — by this point Task B's `TradingLoop`
+    exists as a second real caller to design the restriction against.
 
 None of the above names "build a strategy" explicitly, but running any
 of #6–#8's infrastructure with a real trading strategy — not just testing
