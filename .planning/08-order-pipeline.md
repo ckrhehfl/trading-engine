@@ -54,14 +54,22 @@ overload exists that would let a caller substitute its own `RiskDecision`.
 
 Tests were written first (`OrderPipelineTest`) and confirmed to fail to
 *compile* — the normal red state for a statically-typed language, since
-neither `OrderPipeline` nor the test's `RecordingRiskGateway` test double
-could exist yet (the latter needs `RiskGateway` to be non-final, see
-below) — before any production code was written. Minimum code was then
-added to make all six tests pass; no refactor pass beyond that was needed
-given the class's small size (see "Judgment calls" for the one thing that
-did need touching outside `java/runtime`).
+`OrderPipeline` didn't exist yet — before any production code was written.
+Minimum code was then added to make all tests pass; no refactor pass
+beyond that was needed given the class's small size.
 
-Six tests in `OrderPipelineTest`:
+**One round-trip during review changed the provenance test's design** (see
+"CodeRabbit review findings" below): the first version made `RiskGateway`
+non-final so a test-only subclass could capture the literal `RiskDecision`
+object `evaluate()` returns. CodeRabbit correctly flagged that as
+reopening the exact bypass this task exists to close — a `RiskGateway`
+subclass overriding `evaluate()` to always approve, handed to
+`OrderPipeline`, would look legitimate. `RiskGateway` was reverted to
+`final` (byte-for-byte back to its Priority #3 form) and the provenance
+test rebuilt using two techniques that need no change to `:risk` at all —
+see "The provenance tests" below.
+
+Seven tests in `OrderPipelineTest`:
 
 - `approvedIntentCreatesOrderRegisteredInStoreInNewState` — APPROVED path,
   confirms registration via `OrderStore.findByClientOrderId`, state `NEW`.
@@ -87,102 +95,131 @@ Six tests in `OrderPipelineTest`:
   call. Confirms `OrderStore`'s existing conflict detection
   (`IllegalStateException`) still fires through `OrderPipeline`, and that
   the original `Order` is left untouched in the store.
-- `submitIntentPassesTheLiteralRiskDecisionEvaluateReturnedIntoTheOrderNotAReconstruction`
-  — the provenance test, see below.
+- `approvedIntentQuantityAndBaseLeverageFlowThroughByReferenceNotByValueCopy`
+  and `orderPipelineSourceNeverFabricatesARiskDecisionAndPassesTheSingleEvaluateResultDirectlyToOrderStore`
+  — the two-part provenance test, see below.
 
-### The provenance test
+### The provenance tests
 
-**What it asserts, verbatim from the test:**
+`RiskGateway` and `OrderStore` both stay exactly as they were before this
+module existed: `final`, unmocked (no mocking framework exists in this
+codebase), unsubclassable. That constraint (see "CodeRabbit review
+findings" for why it's non-negotiable) means a runtime capture of the
+*exact* `RiskDecision` object `evaluate()` produces inside `submitIntent`
+isn't achievable — so provenance is proven two different ways instead,
+each covering what the other can't:
+
+**Part 1 (dynamic), `approvedIntentQuantityAndBaseLeverageFlowThroughByReferenceNotByValueCopy`:**
 
 ```java
-RiskDecision recorded = gateway.lastDecision;
+BigDecimal quantity = new BigDecimal("0.01");
+OrderIntent intent = limitIntent(quantity, new BigDecimal("60000"));
 ...
-Order order = result.get();
-assertSame(recorded.approvedQuantity(), order.approvedQuantity());
-assertSame(recorded.approvedLeverage(), order.approvedLeverage());
+assertSame(quantity, order.approvedQuantity());
+assertSame(limits.baseLeverage(), order.approvedLeverage());
 ```
 
-`gateway` is a `RecordingRiskGateway` — a small test-only subclass of
-`RiskGateway` that overrides `evaluate()` to delegate to the real
-`super.evaluate()` and capture the exact `RiskDecision` object it returns,
-before handing that same object back unchanged. The scenario is
-deliberately a MODIFIED case (requested quantity 0.1, clamped to
-0.03333333): `RiskGateway.evaluate()` computes the clamped quantity via a
-fresh `BigDecimal#divide()` call on *every* invocation — never cached,
-never reused — so it is never reference-equal to anything `OrderPipeline`
-could have obtained from elsewhere (`intent.quantity()`, a value it
-recomputed itself, or any other source). The only way `order.approvedQuantity()`
-can be `==` (not just `.equals()`) to `recorded.approvedQuantity()` is if
-`OrderPipeline` genuinely passed the literal `RiskDecision` instance
-`evaluate()` returned all the way through to `Order.fromApprovedDecision`,
-unmodified. Same reasoning for `approvedLeverage()` (`RiskLimits.baseLeverage()`,
-a fixed field reused across calls — weaker signal on its own, included as
-a second, corroborating check rather than the primary one).
+`RiskGateway.evaluate()`'s APPROVED branch returns `intent.quantity()`
+completely unchanged (verified by reading `RiskGateway.java` directly, not
+assumed) — so the *only* way `order.approvedQuantity()` is the same
+object (`==`, not `.equals()`) as the `BigDecimal` this test constructed
+is if that reference flowed, untouched, through `evaluate()` →
+`RiskDecision` → `Order.fromApprovedDecision`. `approvedLeverage()` gets
+the same treatment against `limits.baseLeverage()`, a fixed field on the
+`RiskLimits` instance the test constructed, reused unchanged by every
+`evaluate()` call against it. This catches real regressions: reimplementing
+the clamp/approval logic locally in `OrderPipeline`, or substituting the
+wrong source value (e.g. `intent.quantity()` where `decision.approvedQuantity()`
+was meant) — either produces a `BigDecimal` that's a different object
+(and, in the wrong-source case for a MODIFIED scenario, a different value
+too), and `assertSame` catches it even when a value-only test wouldn't.
 
-This test is designed to fail if a future refactor reimplements the clamp
-locally in `OrderPipeline` instead of delegating to `RiskGateway`, or
-accidentally substitutes `intent.quantity()` for `decision.approvedQuantity()`
-(exactly the class of bug this whole task exists to prevent) — either
-would produce a `BigDecimal` that's value-different (for the wrong-source
-case) or a distinct object even when value-equal (for a locally
-reimplemented clamp), and `assertSame` would catch it.
+**Part 2 (structural), `orderPipelineSourceNeverFabricatesARiskDecisionAndPassesTheSingleEvaluateResultDirectlyToOrderStore`:**
+reads `OrderPipeline.java`'s own source at test time and asserts: it never
+contains `new RiskDecision(`; it calls `riskGateway.evaluate(` exactly
+once; it calls `orderStore.createOrder(` exactly once; and the local
+variable assigned from `evaluate()`'s return value is the literal
+identifier passed into `createOrder(intent, ...)` — not reassigned, not
+rebuilt in between.
 
-**One thing it deliberately cannot catch, disclosed rather than silently
-assumed away:** a hypothetical future refactor that reconstructs a brand
-new `RiskDecision` using `decision.approvedQuantity()`/`decision.approvedLeverage()`
-*getters* (i.e. `new RiskDecision(decision.intentId(), decision.decision(),
-decision.reason(), decision.approvedQuantity(), decision.approvedLeverage(),
-Instant.now())`) rather than passing the original object through. Because
-Java doesn't defensively copy `BigDecimal` on read, that reconstruction
-would still carry the identical `BigDecimal` object references, so
-`assertSame` would still pass. This is a genuine, provable limit —
-`Order` only ever stores `approvedQuantity`/`approvedLeverage` by
-reference (see `Order`'s private constructor and `fromApprovedDecision`),
-and those are the only two `RiskDecision` fields it retains, so no
-observation of `Order`'s public state can distinguish "passed the literal
-object through" from "faithfully reconstructed an equivalent one" — the
-two are behaviorally identical from every angle `Order` exposes. Judged
-acceptable: a refactor that faithfully preserves every field including by
-reference isn't a behavioral regression in any way this system can
-observe or that matters to correctness; the regressions that *do* matter
-(wrong source value, reimplemented logic, stale/cached decision) are all
-real bugs this test does catch.
+**Why two tests, and why part 2 exists at all:** part 1's dynamic check
+has one provable blind spot — a hypothetical future refactor that
+reconstructs a *new* `RiskDecision` purely from
+`decision.approvedQuantity()`/`decision.approvedLeverage()` *getters*
+(`new RiskDecision(decision.intentId(), decision.decision(), decision.reason(),
+decision.approvedQuantity(), decision.approvedLeverage(), Instant.now())`)
+rather than passing the original object through. Java doesn't defensively
+copy `BigDecimal` on read, so that reconstruction would still carry the
+identical object references and pass every `assertSame` in part 1 — no
+observation of `Order`'s public state (it only ever stores
+`approvedQuantity`/`approvedLeverage` by reference, the only two
+`RiskDecision` fields it retains at all) can distinguish "passed the
+literal object through" from "faithfully reconstructed an equivalent
+one." Part 2 closes exactly that gap, directly, by checking the code
+shape instead of runtime behavior — a `new RiskDecision(` call anywhere
+in `OrderPipeline.java`, or a reassignment between `evaluate()` and
+`createOrder()`, fails it regardless of whether the reconstructed values
+happen to be correct.
 
-## Judgment call: `RiskGateway` is no longer `final`
+## Judgment call resolved during review: `RiskGateway` stays `final`
 
-`RiskGateway` was `public final class RiskGateway` before this PR. Writing
-the provenance test above requires intercepting the literal object
-`evaluate()` returns, and there is no way to do that from outside
-`engine.risk` without either (a) a mocking framework (none exists in this
-codebase — nothing beyond JUnit 5 + slf4j is a project dependency anywhere
-in `java/`) or (b) subclassing. `OrderStore` (`:oms`) is also `final` and
-was left untouched — it isn't the class whose return value needs
-capturing here, so there was no equivalent need to touch it.
+The first version of this PR made `RiskGateway` non-final so a test-only
+subclass (`RecordingRiskGateway`) could capture the literal `RiskDecision`
+object `evaluate()` returns. CodeRabbit's first-pass review (see below)
+correctly rejected this: making `RiskGateway` subclassable means *any*
+caller — not just the test — can hand `OrderPipeline` a `RiskGateway`
+subclass whose overridden `evaluate()` always approves, and `OrderPipeline`
+has no way to tell the difference from the real thing. That's the exact
+provenance bypass this task exists to close, reopened one level up. The
+counter-argument originally written here — "a malicious caller could
+already bypass `RiskGateway` by hand-building a `RiskDecision` and calling
+`OrderStore.createOrder` directly, so subclassing doesn't add a new hole"
+— is true as far as it goes, but misses that `OrderPipeline`'s entire
+value proposition is being the thing *other, honest* code can trust
+without re-verifying; making `RiskGateway` overridable weakens that trust
+even where no bypass was previously reachable through `OrderPipeline`
+itself. `RiskGateway` is reverted to `final`, byte-for-byte back to its
+Priority #3 form, and the provenance test rebuilt as the two-part test
+above.
 
-Removing `final` is a structural-only change: nothing about risk
-evaluation logic changed, `evaluate()`'s body is untouched, and no
-production subclass of `RiskGateway` exists anywhere in this codebase —
-only `OrderPipelineTest`'s package-private `RecordingRiskGateway`, which
-delegates to `super.evaluate()` for the real logic and only adds
-capture-and-return-unchanged behavior around it. This doesn't reopen the
-provenance gap this task exists to close: a malicious caller who wants an
-`Order` without going through real risk evaluation was never blocked by
-`RiskGateway`'s finality in the first place — they could already
-hand-construct a `RiskDecision` directly and call
-`Order.fromApprovedDecision` (or `OrderStore.createOrder`) themselves,
-bypassing `RiskGateway` entirely, exactly the pre-existing gap this PR is
-about. `RiskGateway`'s finality was never a real security boundary for
-that threat; `OrderPipeline`'s own code shape (the "only ever calls
-`fromApprovedDecision` with the object two lines above" discipline) is
-what actually closes it.
+## CodeRabbit review findings
 
-Flagged here explicitly per CLAUDE.md's "state assumptions and ask rather
-than silently pick between valid interpretations" — this is a cross-module
-touch (`java/risk`, not just the new `java/runtime` module this task was
-otherwise scoped to), made because the task's own suggested testing
-technique ("make a test double / subclass of `RiskGateway`") requires it
-and there was no less invasive way to achieve genuine (not merely
-value-based) provenance testing.
+One Critical finding on the first review pass (Korean original in the PR
+review comment; summarized here): removing `final` from `RiskGateway`
+lets a subclass override `evaluate()` to always approve, and `OrderPipeline`
+can't tell that apart from the real thing; separately, `OrderStore.createOrder(intent,
+decision)` staying public means code can still call it directly with a
+hand-built `RiskDecision`, bypassing `OrderPipeline` entirely.
+
+**Fixed:** the `RiskGateway`-finality half — reverted, see "Judgment call
+resolved during review" above. This was unambiguously correct and fully
+within this task's scope to fix (it was this PR's own regression, not a
+pre-existing condition).
+
+**Not fixed in this PR, flagged instead:** the `OrderStore.createOrder`
+half. Making that call structurally impossible to reach with a hand-built
+`RiskDecision` — e.g. restricting its visibility to a designated "trusted"
+package, or adding some capability/token scheme to `RiskDecision` that
+only `RiskGateway` can mint and `Order.fromApprovedDecision` verifies — is
+a real, correctly-identified gap, but it's a larger redesign of already-
+shipped, already-reviewed OMS/Risk public API (`OrderStore` and `Order`
+date to Priority #2 and #3, both merged and built on by #6 and #7 since).
+This is precisely the same finding CodeRabbit raised five times during
+Priority #7's review of `BingXAdapterTest` (see `.planning/07-exchange-adapter.md`'s
+"CodeRabbit review findings" → declined items), resolved there by explicit
+deferral to Priority #8 with @ckrhehfl's direct sign-off on that exact
+tradeoff (2026-07-24). The same resolution applies here: `OrderPipeline`
+existing at all, and being the only sanctioned path in this new module, is
+the "the honest path is real and exercised" half of the fix Priority #8's
+own CLAUDE.md wording calls for; making the dishonest path structurally
+unreachable — not just unused — is a bigger, cross-module architectural
+decision this task's scope (a new, additive module, explicitly *not*
+touching `java/execution`/`java/exchange`, and per the task brief not
+meant to redesign `:oms`/`:risk`'s existing public surface) doesn't cover,
+and CLAUDE.md's Auto-merge Policy reserves changes to OMS/Risk Gateway
+logic for explicit human sign-off regardless. Tracked here as an open item
+for whoever picks up Task B or a future hardening pass, not silently
+dropped.
 
 ## What's deliberately out of scope / deferred
 
