@@ -353,14 +353,16 @@ retention depth for this contract is unverified — the backfill CLI
 back from now until it hits an empty response) rather than assuming a
 number.
 
-**Lookahead-safety performance fix** (`python/backtest/kline_window.py`):
-`engine.py`'s `klines[:i+1]` is a full copy every bar (O(n²) over a full
-run) — replaced with a `KlineWindow(klines, length)` view class (O(1)
-construction, bounds-checked access) that preserves the exact same
-structural guarantee (a strategy cannot index or iterate past the
-current bar) without copying. `Strategy`'s signature widens from
-`Callable[[list[Kline]], ...]` to `Callable[[Sequence[Kline]], ...]` —
-behaviorally identical for every existing caller.
+**Lookahead-safety performance fix** (planned — `python/backtest/kline_window.py`
+does not exist yet, this is design, not current state):
+`engine.py`'s `klines[:i+1]` is a full copy every bar today (O(n²) over
+a full run) — to be replaced with a `KlineWindow(klines, length)` view
+class (O(1) construction, bounds-checked access) that will preserve the
+exact same structural guarantee (a strategy cannot index or iterate
+past the current bar) without copying. `Strategy`'s signature will
+widen from `Callable[[list[Kline]], ...]` to
+`Callable[[Sequence[Kline]], ...]` — behaviorally identical for every
+existing caller.
 
 **Portfolio/metrics layer** (new `python/metrics/`, not inside
 `python/backtest/` — `backtest/` stays scoped to fill simulation only,
@@ -436,21 +438,32 @@ via a lock file held for the scan+append duration) since nothing in
 this project's actual usage pattern exercises that race; add it if that
 assumption ever stops holding. A genuinely legitimate re-run (e.g. a
 metrics-bug fix discovered after the first holdout run) requires a
-separately-named, explicit override (`force_reclaim=True`) that itself
-gets its own loud log entry — friction on the rare path, not silent
-tolerance either way.
+separately-named override — not a bare boolean: `force_reclaim_reason:
+str`, mandatory and non-blank, carrying a human-written justification
+for why this specific `strategy_id` needs a second holdout access. This
+is a solo-dev tool with no multi-user approval workflow to gate on, so
+the actual control is that the override forces a human to type a real
+reason (not flip a flag) and that reason is what gets logged — friction
+and an audit trail on the rare path, not silent tolerance or a
+rubber-stamp toggle.
 
 **Experiment-tracking format**: one append-only file,
 `runs/experiments.jsonl` (already anticipated — `.gitignore` has had
 `logs/`/`runs/` entries since before this design existed). One
 `record_type: "backtest_run"` entry per `run_walk_forward` call —
 written automatically as that function's last action, not a separate
-manual step — capturing `strategy_id`/`strategy_version` (id = family,
-version = logic changes; params capture parameter changes separately),
-full params, per-fold and aggregate metrics, data range, `code_version`
-(git HEAD sha, captured automatically), and `is_holdout_run`.
-`record_type: "holdout_access"` entries interleave in the same file for
-the audit trail described above.
+manual step — capturing `run_id`, `strategy_id`/`strategy_version` (id =
+family, version = logic changes; params capture parameter changes
+separately), full params, per-fold and aggregate metrics, data range,
+`code_version` (git HEAD sha, captured automatically), and
+`is_holdout_run`. These are formal schema fields, not a Task-D-only
+convention, so any aggregator/audit tool can query them consistently
+regardless of which task produced a given entry: `parent_run_id`
+(null for a standalone run; set to the grid-search's own `run_id` for
+each candidate backtest it spawns — see Task D below),
+`candidate_index`, and `total_candidates` (both null unless
+`parent_run_id` is set). `record_type: "holdout_access"` entries
+interleave in the same file for the audit trail described above.
 
 Durability and its real limits, stated plainly rather than overclaimed:
 each `log_run`/holdout-access write is one `write()` call of a single
@@ -506,16 +519,14 @@ walkforward + holdout + experiment log; depends on B, benefits from A's
 real depth number) → Task D (MA-crossover placeholder `TrainableStrategy`
 whose `fit()` picks the best of a small grid via train-only
 backtesting — **each candidate's train-only backtest is itself logged
-as its own `backtest_run` entry**, not only the final winner's
-validate-fold result, so the grid search doesn't quietly become exactly
-the untracked-variation-count problem the logging rule exists to
-prevent. Each candidate's entry carries `parent_run_id` (pointing at the
-overall grid-search run), plus `candidate_index`/`total_candidates`, so
-the full attempted-variation count is directly queryable from the log
-rather than merely inferable. Then a real end-to-end run against real
-BingX data producing real `runs/experiments.jsonl` entries; depends on
-A+B+C — validates the pipeline, deliberately makes no edge claim, same
-spirit as `DummySignalSource`).
+as its own `backtest_run` entry** (using the `parent_run_id`/
+`candidate_index`/`total_candidates` schema fields defined above), not
+only the final winner's validate-fold result, so the grid search
+doesn't quietly become exactly the untracked-variation-count problem
+the logging rule exists to prevent. Then a real end-to-end run against
+real BingX data producing real `runs/experiments.jsonl` entries;
+depends on A+B+C — validates the pipeline, deliberately makes no edge
+claim, same spirit as `DummySignalSource`).
 
 ## Tooling Stack
 
