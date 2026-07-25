@@ -76,6 +76,7 @@ public final class TradingLoop {
 
     private BigDecimal equity = INITIAL_EQUITY;
     private boolean lastLoggedTripState = false;
+    private boolean equityDepletedLogged = false;
 
     private volatile Instant lastTickAt;
     private volatile Throwable lastError;
@@ -120,13 +121,28 @@ public final class TradingLoop {
             applyFills(paperBroker.onPriceUpdate(symbol, price));
 
             if (!tripped) {
-                Optional<OrderIntent> signal = signalSource.nextSignal();
-                if (signal.isPresent()) {
-                    OrderIntent intent = signal.get();
-                    Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
-                    if (order.isPresent()) {
-                        Optional<Fill> fill = paperBroker.submit(order.get(), price);
-                        fill.ifPresent(f -> applyFills(List.of(f)));
+                // Equity only ever moves down here (see class Javadoc), and
+                // AccountState itself rejects a non-positive equity outright
+                // -- without this guard, a depleted account would hit that
+                // rejection inside buildAccountState() below on every future
+                // signal-firing tick, forever, routed through the
+                // catch-all as an unrecoverable-looking "tick failed" error
+                // rather than the expected, self-explanatory condition it
+                // actually is. This is a defined skip, not a failure, so it
+                // does not touch lastError.
+                if (equity.signum() <= 0) {
+                    if (!equityDepletedLogged) {
+                        log.warn("equity depleted ({}); skipping signal submission until process restart", equity);
+                        equityDepletedLogged = true;
+                    }
+                } else {
+                    Optional<OrderIntent> signal = signalSource.nextSignal();
+                    if (signal.isPresent()) {
+                        OrderIntent intent = signal.get();
+                        Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
+                        if (order.isPresent()) {
+                            submitToBroker(order.get(), price);
+                        }
                     }
                 }
             }
@@ -151,6 +167,41 @@ public final class TradingLoop {
 
     public synchronized BigDecimal currentEquity() {
         return equity;
+    }
+
+    /**
+     * {@link OrderPipeline#submitIntent} already registered {@code order}
+     * in {@code OrderStore} by the time this is called -- that registration
+     * happens atomically with {@link RiskGateway#evaluate}, deliberately
+     * (see {@code OrderPipeline}'s own Javadoc on why it's the one path
+     * that ever calls {@code Order.fromApprovedDecision}), so it cannot be
+     * deferred until after a successful broker submission without
+     * reopening exactly the provenance gap {@code OrderPipeline} exists to
+     * close. If {@link PaperBroker#submit} throws here, {@code order} is
+     * left registered in {@code OrderStore} but never reaches
+     * {@code PaperBroker.pendingOrders()} -- an orphan that will never
+     * receive a fill. A structural fix (rollback, or a deferred-persistence
+     * redesign of {@code OrderPipeline}/{@code OrderStore}'s public
+     * contract) is out of scope for this class -- see
+     * .planning/08b-trading-loop.md's "Judgment calls" section for why,
+     * and CLAUDE.md's Priority #8/#10 entries for the closely related,
+     * already-tracked {@code OrderStore.createOrder} visibility gap. This
+     * at least makes the orphan diagnosable via logs instead of silent;
+     * the exception is rethrown so it still surfaces through {@code tick()}'s
+     * own catch-all / {@link #lastError()}.
+     */
+    private void submitToBroker(Order order, BigDecimal price) {
+        try {
+            Optional<Fill> fill = paperBroker.submit(order, price);
+            fill.ifPresent(f -> applyFills(List.of(f)));
+        } catch (RuntimeException e) {
+            log.error(
+                    "order {} was registered in OrderStore but PaperBroker.submit failed -- "
+                            + "it is now orphaned and will never receive a fill: {}",
+                    order.clientOrderId(),
+                    e.toString());
+            throw e;
+        }
     }
 
     private synchronized void applyFills(List<Fill> fills) {

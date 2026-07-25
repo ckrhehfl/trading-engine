@@ -16,6 +16,7 @@ import engine.schemas.OrderIntent;
 import engine.schemas.OrderType;
 import engine.schemas.Side;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.UUID;
@@ -169,6 +170,44 @@ class TradingLoopTest {
 
             assertTrue(broker.pendingOrders().isEmpty());
             assertEquals(OrderState.FILLED, pendingOrder.state());
+        }
+    }
+
+    @Test
+    void tickSkipsSignalSubmissionWhenEquityIsDepletedInsteadOfRoutingItThroughLastError() throws Exception {
+        // RiskGateway's own per-order notional clamp (a fraction of
+        // *current* equity, recomputed every tick) makes actually driving
+        // equity to zero through the real order flow converge
+        // asymptotically rather than ever really reach zero within a fast
+        // test -- so this directly forces the private equity field instead,
+        // to exercise the guard on its own terms. See
+        // .planning/08b-trading-loop.md for why this edge case is real but
+        // hard to reach through legitimate use.
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource = new DummySignalSource(
+                SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.001"), null, 1); // fires every tick
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            Field equityField = TradingLoop.class.getDeclaredField("equity");
+            equityField.setAccessible(true);
+            equityField.set(loop, BigDecimal.ZERO);
+
+            loop.tick();
+
+            // Without the guard, this tick would have called
+            // buildAccountState() -> new AccountState(...), which rejects a
+            // non-positive equity with IllegalArgumentException -- caught by
+            // tick()'s own catch-all and recorded as lastError. The guard
+            // means this is instead a defined, non-error skip.
+            assertTrue(broker.pendingOrders().isEmpty(), "no order should be submitted while equity is depleted");
+            assertNull(loop.lastError());
+            assertEquals(0, BigDecimal.ZERO.compareTo(loop.currentEquity()));
         }
     }
 }

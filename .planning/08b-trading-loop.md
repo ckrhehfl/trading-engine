@@ -17,9 +17,10 @@ Four new classes, all in the existing `java/runtime` module (package
 `implementation(project(":execution"))` (for `PaperBroker`) and
 `implementation(project(":exchange"))` (for `ExchangeException` only —
 not `BingXAdapter`/`BingXSigner`) and
-`implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")`
-(for parsing the price-poll response, same version used elsewhere in this
-repo).
+`implementation("com.fasterxml.jackson.core:jackson-databind:2.18.9")`
+(for parsing the price-poll response — 2.18.9, not the 2.18.2 used
+elsewhere in this repo; see "CodeRabbit review findings" below for why
+this module specifically was bumped past a CVE fixed in 2.18.9).
 
 - **`DummySignalSource`** — test/demo scaffolding, explicitly not a
   strategy (see "Why `DummySignalSource` is not strategy research"
@@ -229,8 +230,10 @@ beyond that initial compile-fail state.
     while a price update in the same tripped state still fills the order
     that was already pending from before the trip.
 
-Full suite (`./gradlew clean test`): **163 tests**, up from 140 before
-this task, all green.
+Full suite (`./gradlew clean test`): **164 tests**, up from 140 before
+this task, all green (23 from the initial TDD pass, plus one more —
+`tickSkipsSignalSubmissionWhenEquityIsDepletedInsteadOfRoutingItThroughLastError`
+— added during CodeRabbit review, see below).
 
 ## Judgment calls resolved without asking
 
@@ -267,16 +270,118 @@ this task, all green.
   (before the reconciling price arrives), while price is still held at a
   level unmarketable for that shape — a spurious second order would be
   countable there even though it can't be distinguished later.
-- **Equity floor**: nothing here explicitly guards `equity` from being
-  driven to zero or below by cumulative fees (which would make
-  `AccountState`'s own positive-equity validation throw
-  `IllegalArgumentException` on the next `buildAccountState()` call).
-  Left unhandled deliberately — `tick()`'s catch-all already turns that
-  into a normal `lastError`-recorded failure rather than a crash, and
-  adding an explicit floor/breaker for an extreme case that the loop
-  already degrades gracefully under didn't seem worth the added surface
-  for this task. Worth reconsidering once real fee/leverage magnitudes
-  are exercised for longer than a unit test's few ticks.
+- **Equity floor**: the initial version left `equity` unguarded against
+  being driven to zero or below by cumulative fees. CodeRabbit review
+  flagged this (see "CodeRabbit review findings" below) and it was fixed
+  in this PR — see that section for what changed and why.
+
+## CodeRabbit review findings
+
+Three actionable findings on the first review pass (one round-trip; a
+rate-limit wait of ~18 minutes was hit and handled per CLAUDE.md's
+rate-limit procedure — queried `@coderabbitai rate limit` for the exact
+ETA rather than blind-retrying, waited it out, retried once).
+
+**Fixed, both in this PR:**
+
+- **jackson-databind 2.18.2 is in the CVE-2026-54515 range** (case-
+  insensitive deserialization can restore properties `@JsonIgnoreProperties`
+  should have excluded — fixed in 2.18.9). Verified two things before
+  deciding how to respond, rather than accepting or dismissing on the
+  finding's text alone: (1) a repo-wide grep for the actual vulnerable
+  pattern (`ACCEPT_CASE_INSENSITIVE_PROPERTIES` combined with
+  `@JsonIgnoreProperties`) returns zero hits anywhere in this codebase —
+  the vulnerability's specific trigger condition isn't exercised today;
+  (2) `BingXPriceFeed` itself only ever calls `readTree()` (untyped tree
+  walking), never `readValue()` (typed POJO deserialization) — the one
+  place `readValue()` *is* used is `schemas`/`risk` test code, parsing
+  this project's own trusted fixtures, not untrusted network input.
+  Bumped anyway, in `java/runtime/build.gradle.kts` only: this module is
+  the one place in the repo parsing untrusted external (BingX) JSON over
+  the network, so patching costs nothing even though the specific
+  exploit path isn't reachable. Deliberately **not** bumped in
+  `schemas`/`risk`/`exchange` (`java/exchange` in particular was
+  explicitly out of bounds for this task) — those three still declare
+  `2.18.2`, so this is a scoped fix, not a repo-wide one; confirmed via
+  `./gradlew :runtime:dependencies` and `./gradlew :exchange:dependencies`
+  that Gradle's normal highest-version-wins conflict resolution upgrades
+  `:runtime`'s own classpath to `2.18.9` (`2.18.2 -> 2.18.9` in the
+  dependency tree) without touching `:exchange`'s independently-resolved
+  classpath at all (`:exchange` still resolves `2.18.2` on its own, as
+  before). A repo-wide version bump (all four `build.gradle.kts` files,
+  ideally via a shared version — a Gradle version catalog or platform BOM
+  import — rather than four independent literals) is a reasonable
+  follow-up, just a separate, dedicated PR rather than folded into this
+  task's diff.
+- **No floor on `equity`.** Confirmed by tracing the actual failure mode:
+  `AccountState`'s constructor rejects non-positive equity with
+  `IllegalArgumentException`; without a guard, a depleted account would
+  hit that on every future signal-firing `tick()`, forever, indistinguishable
+  in the logs from a real, transient failure (both just show up as
+  `lastError` via the catch-all) rather than the expected, permanent-until-
+  restart condition it actually is. Fixed by skipping signal submission
+  (not price-update reconciliation — that still runs) whenever
+  `equity.signum() <= 0`, logging once (not every tick, matching the
+  kill-switch trip-state log's existing pattern) rather than on every
+  subsequent tick. Regression test
+  (`tickSkipsSignalSubmissionWhenEquityIsDepletedInsteadOfRoutingItThroughLastError`)
+  had to force the private `equity` field directly via reflection rather
+  than reach the condition through the real order flow — traced through
+  why first, rather than assumed: `RiskGateway`'s own per-order notional
+  clamp is a fraction of *current* equity, recomputed every tick, so
+  repeated legitimate fills shrink equity asymptotically toward zero
+  without a finite number of ticks ever actually reaching it (or below).
+
+**Declined in this PR, with reasoning, tracked as an open item:**
+
+- **`OrderStore` orphan on a `PaperBroker.submit` failure.** The finding:
+  `orderPipeline.submitIntent()` already registers the `Order` in
+  `OrderStore` (that registration happens atomically with
+  `RiskGateway.evaluate()` — the entire point of `OrderPipeline`, see
+  `.planning/08-order-pipeline.md`) before `paperBroker.submit()` is ever
+  called; if the broker call throws, the `Order` is left registered in
+  `OrderStore` but never reaches `PaperBroker.pendingOrders()`, so it will
+  never receive a fill. This is a real gap, confirmed by tracing the
+  actual code paths (not just accepted on description) — but the two
+  structural fixes CodeRabbit's own suggestion names (roll back the
+  stored order, or defer persistence until broker submission succeeds)
+  both require changing `OrderStore`'s or `OrderPipeline`'s public
+  contract: `OrderStore` has no removal/rollback method today, and
+  deferring persistence would mean splitting `OrderPipeline`'s
+  evaluate-and-register step apart — the exact atomicity Task A built
+  specifically to close the provenance gap named repeatedly in Priority
+  #7's review. Redesigning that now, under review pressure on an
+  unrelated PR, is exactly what CLAUDE.md's Development Methodology
+  warns against for R3-risk components (OMS/Risk Gateway/Execution):
+  `Discuss` "must not be skipped," and the Auto-merge Policy reserves
+  Java OMS/Risk Gateway/Execution logic changes for explicit human
+  sign-off regardless of checks passing. This mirrors the exact
+  resolution already used for the closely related (not identical)
+  `OrderStore.createOrder` visibility gap tracked in
+  `.planning/08-order-pipeline.md` and CLAUDE.md's Priority #8/#10
+  entries — deferred there with @ckrhehfl's direct sign-off, not silently
+  dropped.
+
+  What *was* done, in scope, in this PR: `TradingLoop.submitToBroker`
+  (new private helper, extracted from `tick()`'s body) catches a
+  `PaperBroker.submit` failure, logs the orphaned order's `clientOrderId`
+  explicitly so the condition is diagnosable from logs instead of silent,
+  and rethrows so it still surfaces through `tick()`'s existing
+  `lastError` path — no behavior change to `OrderStore`/`OrderPipeline`,
+  just better diagnostics for an already-existing gap.
+
+  Current blast radius, traced rather than assumed: `PaperBroker.submit`
+  only throws for a non-positive price (`TradingLoop` always passes the
+  same price it just used successfully for `onPriceUpdate()` moments
+  earlier, so this needs `BingXPriceFeed` to return a non-positive
+  decimal — a separate, prior data-quality concern, not something this
+  code path introduces) or a duplicate `clientOrderId` (`DummySignalSource`
+  mints a fresh random UUID per firing, so this is unreachable through
+  this task's actual signal source). Real, but not reachable through
+  today's normal operation — worth tracking for whenever a future,
+  non-dummy signal source or `OrderStore`/`OrderPipeline` hardening pass
+  revisits this area, not urgent enough to block this PR on a redesign of
+  already-reviewed R3-risk code.
 
 ## Deliberately out of scope
 
