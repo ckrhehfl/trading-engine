@@ -204,12 +204,18 @@ class TradingLoopTest {
         broker.submit(seedOrder, new BigDecimal("60000")); // not marketable -> stays pending
         assertEquals(1, broker.pendingOrders().size());
 
+        // LIMIT at a price deliberately unmarketable at this test's price
+        // (50000, below) -- not GUARDED_MARKET, which would fill
+        // immediately and vanish from pendingOrders() just like a
+        // correctly-skipped signal would, making the pendingOrders()
+        // assertion below ambiguous about which case actually happened.
+        // Same technique as the kill-switch test above.
         DummySignalSource signalSource = new DummySignalSource(
-                SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.001"), null, 1); // fires every tick
+                SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("40000"), 1); // fires every tick
         KillSwitch killSwitch = new KillSwitch();
 
         try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
-            server.respondWithPrice("50000"); // now marketable for the seeded order
+            server.respondWithPrice("50000"); // marketable for the seeded order (limit 50000), not for the signal's (limit 40000)
             BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
             TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
 
