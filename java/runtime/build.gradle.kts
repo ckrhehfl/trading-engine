@@ -12,6 +12,13 @@ dependencies {
     implementation(project(":oms"))
     implementation(project(":risk"))
     implementation(project(":schemas"))
+    implementation(project(":execution"))
+    // Only for engine.exchange.ExchangeException, the shared error type for
+    // anything exchange-communication-related -- not BingXAdapter/BingXSigner
+    // (those are for authenticated write endpoints; BingXPriceFeed only ever
+    // calls a public, unauthenticated one). See BingXPriceFeed's Javadoc.
+    implementation(project(":exchange"))
+    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.2")
     implementation("org.slf4j:slf4j-api:2.0.16")
 
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
