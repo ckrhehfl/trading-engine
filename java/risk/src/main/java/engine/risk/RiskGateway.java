@@ -25,8 +25,22 @@ import org.slf4j.LoggerFactory;
  * (reject the order) is the same either way, and a true kill switch —
  * halting an already-running process, not just blocking new orders — is
  * explicitly out of scope for this component.
+ *
+ * <p><b>Not {@code final}, deliberately, as of Implementation Priority
+ * #8 (Task A, {@code engine.runtime.OrderPipeline}):</b> this class and
+ * {@code engine.oms.OrderStore} are the only two classes on the path
+ * from {@code evaluate()} to {@code Order.fromApprovedDecision}, and
+ * both are otherwise unmockable — there is no mocking framework in this
+ * codebase and {@code OrderStore} is intentionally still {@code final}.
+ * Leaving this one non-final is what lets {@code OrderPipelineTest}'s
+ * provenance test capture the literal {@link RiskDecision} instance
+ * {@link #evaluate} returns (via a test-only subclass that delegates to
+ * the real logic) and prove {@code OrderPipeline} passes that exact
+ * object through rather than reconstructing an equivalent one. This is
+ * a structural change only — nothing about risk evaluation itself
+ * changes, and no other subclass exists anywhere in this codebase.
  */
-public final class RiskGateway {
+public class RiskGateway {
 
     private static final Logger log = LoggerFactory.getLogger(RiskGateway.class);
     private static final int QUANTITY_SCALE = 8;
