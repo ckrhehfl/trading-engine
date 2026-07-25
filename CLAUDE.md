@@ -253,6 +253,11 @@ task so a multi-month, multi-exchange project doesn't degrade into the
 context rot that broke the previous attempt at this project. `Verify` must
 include actual test runs, not a claim that tests would pass.
 
+A detailed design for work that hasn't started yet lives directly in
+this file (in full, not summarized) until that work actually begins —
+see `.planning/README.md`'s "Where does a design belong" for why, and
+when it's safe to trim back down to a summary + pointer.
+
 State assumptions and ask rather than silently pick between valid
 interpretations — `Discuss` makes this mandatory for R3-risk work; treat
 it as the default for everything else too, since a future session has
@@ -539,30 +544,18 @@ tools/services, subscription changes).
       is R3-risk architecture), not a rushed fix under review pressure.
     - **2026-07-25**: `OrderStore.createOrder` was investigated for a
       scoped, interim hardening in the meantime, ahead of this priority —
-      a `java.lang.StackWalker`-based caller check (reject any caller that
-      isn't `engine.runtime.OrderPipeline`) was implemented as a real,
-      working prototype and run against the full test suite, rather than
-      only reasoned about on paper. Concrete finding: it broke 7 of
-      `OrderStoreTest`'s own 8 existing tests, because they call
-      `createOrder` directly from the test itself — the same established,
-      deliberate pattern already used for `Order.fromApprovedDecision` in
-      `OrderTest`/`PaperBrokerTest`/`BingXAdapterTest` — and a
-      caller-identity check cannot structurally distinguish that
-      established pattern from the exact bypass it's meant to reject: the
-      new test proving the check works, and the old tests proving
-      `OrderStore`'s own idempotency/conflict logic works, are, from the
-      check's point of view, identical calls. Every other interim
-      mechanism considered (a package-scoped allowlist, advisory/log-only,
-      a decision-timestamp staleness check, an in-process nonce registry,
-      JPMS module boundaries) was rejected too, each for a documented
-      reason. Conclusion: no honest interim code hardening exists within
-      these constraints that wouldn't either break this established test
-      pattern or amount to the kind of false-confidence theater this
-      investigation was explicitly permitted to reject rather than ship —
-      so none was shipped. `OrderStore.createOrder` and its tests remain
-      byte-for-byte unchanged. This is not the complete fix described
-      above and was never intended to be — see
-      `.planning/09-order-store-hardening.md` for the full reasoning.
+      a `java.lang.StackWalker`-based caller check was built as a real
+      prototype and tested, not just reasoned about on paper. Rejected:
+      it broke 7 of `OrderStoreTest`'s own 8 existing tests, because a
+      caller-identity check can't structurally distinguish this
+      codebase's established, deliberate pattern of unit-testing OMS
+      primitives via direct calls from the exact bypass the check is
+      meant to reject. Every other interim mechanism considered failed
+      for the same structural reason or amounted to false-confidence
+      theater. No interim hardening shipped; `OrderStore.createOrder`
+      remains byte-for-byte unchanged — this is not the complete fix
+      above and was never intended to be. Full investigation, including
+      every rejected alternative and why: `.planning/09-order-store-hardening.md`.
 
 None of the above names "build a strategy" explicitly, but running any
 of #6–#8's infrastructure with a real trading strategy — not just testing
