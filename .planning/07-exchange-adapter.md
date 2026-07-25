@@ -57,10 +57,11 @@ Tests were written first and confirmed to fail (a compile error, the normal
   `Order` used elsewhere in this test suite is built the same way
   `PaperBrokerTest` builds one.
 
-25 new tests in `java/exchange` (7 `BingXSignerTest`, 18 `BingXAdapterTest`
-— including two added during CodeRabbit review: a response missing the
-`code` field entirely, and a non-numeric value in a decimal field). Full
-suite (`./gradlew clean test`) is 130 tests across all five modules, all
+27 new tests in `java/exchange` (7 `BingXSignerTest`, 20 `BingXAdapterTest`
+— including four added during CodeRabbit review: a response missing the
+`code` field entirely, `code` present as a non-integer type — string and
+JSON `null` cases — and a non-numeric value in a decimal field). Full
+suite (`./gradlew clean test`) is 132 tests across all five modules, all
 green.
 
 ## What's verified vs. documented-only
@@ -180,11 +181,11 @@ things had to be decided rather than looked up:
 
 ## CodeRabbit review findings
 
-Eleven findings across three review passes on the PR. Three doc fixes
+Thirteen findings across four review passes on the PR. Three doc fixes
 applied (test-count accuracy in this file, a `#7` sequence in prose that
 could render/link unexpectedly in Markdown — reworded rather than
-special-cased, and this section itself). Two real code fixes applied to
-`BingXAdapter.java`:
+special-cased, and this section itself). Three real code fixes applied
+to `BingXAdapter.java`:
 
 - `parseBigDecimal` now catches `NumberFormatException` and wraps it in
   `ExchangeException` with the field name and raw value, instead of
@@ -194,8 +195,15 @@ special-cased, and this section itself). Two real code fixes applied to
   entirely, instead of `JsonNode#path("code").asInt()`'s default
   behavior of silently returning `0` for a missing field — which would
   have misread a malformed/unexpected response shape as success. Applied
-  uniformly across all seven methods that check `code`. Two new tests
-  cover this (missing `code` field, non-numeric decimal field).
+  uniformly across all seven methods that check `code`.
+- Fourth review pass: `requireCode` checked presence but not type —
+  `JsonNode#asInt()` also silently returns `0` for a JSON `null`, an
+  object/array, or (after a failed parse attempt) a non-numeric string,
+  not just a missing field. `requireCode` now also requires
+  `codeNode.isInt()`, rejecting all of those the same way it already
+  rejected an absent field. Four tests cover the `code`-validation path
+  in total (missing entirely, non-numeric decimal in an unrelated field,
+  string type, JSON `null`).
 
 One test-isolation fix on the second review pass: the "missing `code`
 field" test above originally paired that with an empty `data` array,
@@ -246,19 +254,20 @@ rather than silently skipped:
   confirmed) — formalizing it as a queryable exception field is a
   reasonable idea for whenever #8 actually builds a retry policy, not a
   gap in this PR.
-- A suggestion (raised twice, more insistently the second time) that
-  `BingXAdapterTest` bypasses the Risk Gateway boundary because its
-  `guardedMarketOrder()` helper hand-constructs a `RiskDecision` rather
-  than obtaining one from a real `RiskGateway.evaluate()` call, and that
-  a reflection check on `Order`'s constructor count doesn't prove
-  non-forgeable risk provenance. Not applying a code change in this PR,
-  but this is a real, already-named, currently-open gap, not a dismissed
-  non-issue — CLAUDE.md's own Implementation Priority #8 entry already
-  names it explicitly: "`Order.fromApprovedDecision()` today only checks
-  that the `RiskDecision` handed to it says APPROVED/MODIFIED, not that
-  it was actually produced by a real `evaluate()` call — nothing wires
-  these together yet, so this can't be tested until this priority builds
-  that wiring." Closing it requires an integrated
+- A suggestion raised on three separate review passes (escalating to
+  "Critical" severity by the third), that `BingXAdapterTest` bypasses
+  the Risk Gateway boundary because its `guardedMarketOrder()` helper
+  hand-constructs a `RiskDecision` rather than obtaining one from a real
+  `RiskGateway.evaluate()` call, and that a reflection check on
+  `Order`'s constructor count doesn't prove non-forgeable risk
+  provenance. Not applying a code change in this PR, but this is a
+  real, already-named, currently-open gap, not a dismissed non-issue —
+  CLAUDE.md's own Implementation Priority #8 entry already names it
+  explicitly: "`Order.fromApprovedDecision()` today only checks that
+  the `RiskDecision` handed to it says APPROVED/MODIFIED, not that it
+  was actually produced by a real `evaluate()` call — nothing wires
+  these together yet, so this can't be tested until this priority
+  builds that wiring." Closing it requires an integrated
   `OrderIntent → RiskGateway.evaluate() → Order` pipeline that doesn't
   exist anywhere in this codebase yet — that pipeline is #8's
   deliverable, not #7's, and this test already only ever obtains an
@@ -268,8 +277,12 @@ rather than silently skipped:
   under (Priority #6). Building a stricter provenance check here, ahead
   of the pipeline it would need to check against, isn't possible to do
   correctly — it would just be a different, equally-fabricated
-  assumption dressed up as a real check. Tracked as an open item for
-  Priority #8, not closed here.
+  assumption dressed up as a real check. The third pass's suggested
+  fallback — "block production/live wiring until the pipeline exists"
+  — is already true by construction: no caller of `BingXAdapter` exists
+  anywhere in this codebase (see "no live/paper flag" design note
+  above), so there is no live wiring here to block. Tracked as an open
+  item for Priority #8, not closed here.
 
 ## Deliberately out of scope / deferred
 

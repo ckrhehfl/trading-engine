@@ -288,6 +288,32 @@ class BingXAdapterTest {
     }
 
     @Test
+    void getBalanceThrowsExchangeExceptionWhenCodeFieldIsAStringNotAnInteger() {
+        // JsonNode#asInt() on a TextNode attempts to parse the text as a
+        // number, itself falling back to 0 (misreadable as success) if it
+        // can't -- requireCode must reject the wrong type outright rather
+        // than rely on that fallback.
+        server.respondWith(
+                200,
+                "{\"code\":\"not-a-number\",\"msg\":\"\",\"data\":[{\"asset\":\"VST\",\"balance\":\"1000\","
+                        + "\"equity\":\"1000\",\"availableMargin\":\"1000\",\"usedMargin\":\"0\","
+                        + "\"unrealizedProfit\":\"0\"}]}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getBalance());
+    }
+
+    @Test
+    void getBalanceThrowsExchangeExceptionWhenCodeFieldIsJsonNull() {
+        server.respondWith(
+                200,
+                "{\"code\":null,\"msg\":\"\",\"data\":[{\"asset\":\"VST\",\"balance\":\"1000\","
+                        + "\"equity\":\"1000\",\"availableMargin\":\"1000\",\"usedMargin\":\"0\","
+                        + "\"unrealizedProfit\":\"0\"}]}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getBalance());
+    }
+
+    @Test
     void getPositionsThrowsExchangeExceptionOnNonNumericDecimalField() {
         server.respondWith(
                 200,

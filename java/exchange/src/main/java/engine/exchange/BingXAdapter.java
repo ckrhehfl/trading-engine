@@ -341,17 +341,25 @@ public final class BingXAdapter implements ExchangeAdapter {
     }
 
     /**
-     * Extracts the response envelope's {@code code} field, throwing if it's
-     * absent entirely. {@code JsonNode#path("code").asInt()} silently
-     * returns {@code 0} for a missing field, which would otherwise be
-     * misread as "success" for a response that doesn't even have the shape
-     * this adapter expects, rather than surfacing as the error it is.
+     * Extracts the response envelope's {@code code} field, throwing unless
+     * it's present as an actual JSON integer. {@code JsonNode#asInt()}
+     * silently returns {@code 0} not just for a missing field but also for
+     * a JSON {@code null}, an object, or an array -- and for a JSON string
+     * it attempts to parse the text, itself falling back to {@code 0} on
+     * anything unparseable. Any of these would otherwise be misread as
+     * "success" for a response that doesn't have the shape this adapter
+     * expects, rather than surfacing as the error it is.
      */
     private static int requireCode(JsonNode root, String context) {
         if (!root.has("code")) {
             throw new ExchangeException("BingX response for " + context + " is missing the 'code' field: " + root);
         }
-        return root.path("code").asInt();
+        JsonNode codeNode = root.get("code");
+        if (!codeNode.isInt()) {
+            throw new ExchangeException(
+                    "BingX response for " + context + " has a non-integer 'code' field: " + codeNode);
+        }
+        return codeNode.asInt();
     }
 
     private static String rejectionReason(JsonNode root, int code) {
