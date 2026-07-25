@@ -376,6 +376,22 @@ fill-level. **Known gap, not solved by this design**: perpetual
 funding-rate P&L is not modeled anywhere in this pipeline — flagged so
 it isn't silently forgotten, not addressed now.
 
+Degenerate-input handling, fixed here so it doesn't vary by
+implementation: a fold with zero closed trades reports `sharpe_ratio:
+null`, `win_rate: null`, `profit_factor: null` (not zero — a flat,
+trade-less fold is "no evidence," not "bad evidence") and fails the
+eligibility bar's per-fold-positive-Sharpe requirement by definition;
+zero-variance per-bar returns (Sharpe's denominator) likewise yield
+`sharpe_ratio: null`, never a division-by-zero crash or an inflated
+value; a fold with only winning trades and zero losing trades yields
+`profit_factor: null` (already specified above), not `inf`. Any
+position still open at a fold's final bar is force-closed at that bar's
+close price for P&L/trade-count/return purposes — marks it realized so
+partial-period exposure isn't silently dropped from the metrics, at the
+cost of not reflecting what would actually happen if the position ran
+past the fold boundary (an accepted simplification for fold-scoring
+purposes, not a live-accounting rule).
+
 **Walk-forward harness** (`python/research/walkforward.py`): rolling
 (fixed-size sliding, not expanding) train/validate folds, non-overlapping
 by default (step = validate length). A `TrainableStrategy.fit(train_klines,
@@ -396,11 +412,16 @@ own config file (not a buried constant — changes are visible in `git
 log -p` on one small file). Two differently-named loaders:
 `load_research_klines()` (default path, silently clamps to before the
 cutoff, logs when it does) vs. `load_holdout_klines(...,
-i_understand_this_is_holdout_data=True)` (loud, explicit, and — the
-actual enforcement mechanism — every call is itself logged as its own
-`holdout_access` record in the experiment log; more than one access for
-a given `strategy_id` is a visible red flag, not silently allowed or
-silently blocked).
+i_understand_this_is_holdout_data=True)` (loud, explicit). This second
+loader **enforces** single access per `strategy_id`, not just logs it:
+the first call atomically claims that `strategy_id` in a small
+persisted claim table (alongside the `holdout_access` JSONL record
+described below, not instead of it), and any subsequent call for the
+same `strategy_id` raises immediately rather than silently succeeding.
+A genuinely legitimate re-run (e.g. a metrics-bug fix discovered after
+the first holdout run) requires a separately-named, explicit override
+(`force_reclaim=True`) that itself gets its own loud log entry —
+friction on the rare path, not silent tolerance either way.
 
 **Experiment-tracking format**: one append-only file,
 `runs/experiments.jsonl` (already anticipated — `.gitignore` has had
@@ -413,6 +434,22 @@ full params, per-fold and aggregate metrics, data range, `code_version`
 (git HEAD sha, captured automatically), and `is_holdout_run`.
 `record_type: "holdout_access"` entries interleave in the same file for
 the audit trail described above.
+
+Durability: each `log_run`/holdout-access write is one `write()` call
+of a single complete JSON object plus `\n`, well under the OS's
+atomic-append size limit at this record size — a write is never
+half-formed on disk even under concurrent appenders. Concurrent-write
+*ordering* is otherwise uncoordinated (no cross-process locking) —
+an accepted simplification for a solo-dev, largely-sequential-research
+workload, not something this design solves generally. A write
+interrupted mid-line (crash/kill) leaves at most one truncated trailing
+line; any reader of this file (including the holdout single-access
+claim check above) must skip a final line that fails to parse as JSON
+rather than fail loudly — the record it would have described never
+completed and has no other side effects to reconcile. `runs/` is
+gitignored by design (raw research iteration, not a reviewed artifact)
+and is not currently backed up anywhere — an accepted gap, not solved
+here; revisit if losing local `runs/` history ever actually happens.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
@@ -435,10 +472,14 @@ independent of A, can run in parallel) → Task C (`python/research/` —
 walkforward + holdout + experiment log; depends on B, benefits from A's
 real depth number) → Task D (MA-crossover placeholder `TrainableStrategy`
 whose `fit()` picks the best of a small grid via train-only
-backtesting, then a real end-to-end run against real BingX data
-producing a real `runs/experiments.jsonl` entry; depends on A+B+C —
-validates the pipeline, deliberately makes no edge claim, same spirit
-as `DummySignalSource`).
+backtesting — **each candidate's train-only backtest is itself logged
+as its own `backtest_run` entry**, not only the final winner's
+validate-fold result, so the grid search doesn't quietly become exactly
+the untracked-variation-count problem the logging rule exists to
+prevent — then a real end-to-end run against real BingX data producing
+real `runs/experiments.jsonl` entries; depends on A+B+C — validates the
+pipeline, deliberately makes no edge claim, same spirit as
+`DummySignalSource`).
 
 ## Tooling Stack
 
