@@ -436,10 +436,12 @@ tools/services, subscription changes).
   promotion of a model/risk/order-logic change — regardless of checks
   passing, matching the Non-negotiable Rules above (e.g. "never weaken
   risk limits... without explicit human approval"). Also still stop and
-  ask when (a) CodeRabbit is rate-limited/unusable rather than passing,
-  (b) the change has cost/subscription implications, or (c) the task
-  requires @ckrhehfl to do something only they can do (a GitHub UI
-  setting, an account credential, entering a password).
+  ask when (a) CodeRabbit is rate-limited/unusable rather than passing
+  (see "Rate limits" under Code Review Gate below for the check-before-
+  retry procedure — don't just retry blindly), (b) the change has cost/
+  subscription implications, or (c) the task requires @ckrhehfl to do
+  something only they can do (a GitHub UI setting, an account
+  credential, entering a password).
 
 ## Implementation Priority
 
