@@ -1,0 +1,218 @@
+package engine.runtime;
+
+import engine.execution.Fill;
+import engine.execution.PaperBroker;
+import engine.oms.Order;
+import engine.risk.AccountState;
+import engine.risk.RiskGateway;
+import engine.schemas.OrderIntent;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.Instant;
+import java.util.List;
+import java.util.Objects;
+import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * The actual running loop that drives {@link OrderPipeline} against
+ * {@link PaperBroker} on a REST-polled price feed ({@link BingXPriceFeed}),
+ * using {@link DummySignalSource} as its (explicitly not real) signal
+ * source -- see that class's Javadoc, and CLAUDE.md's "Strategy Research
+ * Methodology" section, for why. Paper-only: no {@code BingXAdapter}/live
+ * wiring exists in this class or anywhere it's called from -- see
+ * .planning/08b-trading-loop.md's "Deliberately out of scope" section.
+ *
+ * <p>{@link #tick()} is the entire unit of work, meant to be invoked
+ * repeatedly by an external scheduler (a
+ * {@code java.util.concurrent.ScheduledExecutorService}, for instance --
+ * deliberately not wired up inside this class itself, so the core logic
+ * stays directly, deterministically callable from tests without waiting on
+ * a real scheduler). Every exception raised anywhere inside a single
+ * {@code tick()} call is caught inside {@code tick()} itself and recorded
+ * in {@link #lastError()} rather than propagated -- a single bad tick (a
+ * flaky price-feed response, for instance) must never kill whatever is
+ * calling {@code tick()} on a schedule. This -- not OS-level process
+ * supervision, which is out of scope here (see the planning doc) -- is
+ * what "24/7 supervision" means at this stage.
+ *
+ * <p><b>Reconciliation on construction</b>: this class does not assume any
+ * prior state. It reads {@link PaperBroker#pendingOrders()} fresh every
+ * {@code tick()} (via the unconditional {@code onPriceUpdate} call below)
+ * rather than caching anything from before it was constructed -- correct
+ * for a paper loop, since {@code PaperBroker}/{@code OrderStore} are both
+ * in-memory and non-durable already, so "start clean" is the only state
+ * there is. A live loop swapped in later would instead need a real
+ * reconciliation step here (querying
+ * {@code ExchangeAdapter.getPositions()}/{@code getBalance()} as ground
+ * truth) -- not built, but this class's shape (no persisted/cached state
+ * of its own beyond what it reads from {@code PaperBroker} each tick)
+ * doesn't make that swap-in awkward.
+ *
+ * <p><b>Equity tracking</b> is intentionally minimal, not a PnL engine: it
+ * starts at a fixed value and is only ever adjusted downward by the fee on
+ * each {@link Fill}, whether from a fresh submission or a price-driven
+ * reconciliation. There is no unrealized-PnL, mark-to-market, or
+ * multi-day PnL bucketing here -- {@link AccountState}'s daily/weekly/
+ * monthly figures are all derived from the same single running total,
+ * which is a real simplification (compare {@link RiskGateway}'s own
+ * equivalent Javadoc note on monthly/hard-stop/emergency-stop), not a bug.
+ * It exists purely so {@link RiskGateway#evaluate} has a real, moving
+ * number to evaluate against instead of a hardcoded constant every tick.
+ */
+public final class TradingLoop {
+
+    private static final Logger log = LoggerFactory.getLogger(TradingLoop.class);
+    private static final BigDecimal INITIAL_EQUITY = new BigDecimal("100000");
+    private static final int PNL_PERCENT_SCALE = 8;
+
+    private final OrderPipeline orderPipeline;
+    private final PaperBroker paperBroker;
+    private final DummySignalSource signalSource;
+    private final BingXPriceFeed priceFeed;
+    private final KillSwitch killSwitch;
+    private final String symbol;
+
+    private BigDecimal equity = INITIAL_EQUITY;
+    private boolean lastLoggedTripState = false;
+    private boolean equityDepletedLogged = false;
+
+    private volatile Instant lastTickAt;
+    private volatile Throwable lastError;
+
+    public TradingLoop(
+            OrderPipeline orderPipeline,
+            PaperBroker paperBroker,
+            DummySignalSource signalSource,
+            BingXPriceFeed priceFeed,
+            KillSwitch killSwitch,
+            String symbol) {
+        this.orderPipeline = Objects.requireNonNull(orderPipeline, "orderPipeline is required");
+        this.paperBroker = Objects.requireNonNull(paperBroker, "paperBroker is required");
+        this.signalSource = Objects.requireNonNull(signalSource, "signalSource is required");
+        this.priceFeed = Objects.requireNonNull(priceFeed, "priceFeed is required");
+        this.killSwitch = Objects.requireNonNull(killSwitch, "killSwitch is required");
+        this.symbol = Objects.requireNonNull(symbol, "symbol is required");
+    }
+
+    /**
+     * One tick of the loop: (1) check/log the kill switch's state, (2)
+     * fetch the latest price and reconcile any pending orders against it
+     * regardless of whether a new signal fires this tick, (3) if the
+     * switch isn't tripped, ask for a new signal and submit it through
+     * {@link OrderPipeline}/{@link PaperBroker} if one is produced. Never
+     * throws -- see class Javadoc.
+     */
+    public synchronized void tick() {
+        try {
+            boolean tripped = killSwitch.isTripped();
+            if (tripped != lastLoggedTripState) {
+                log.info(
+                        "kill switch {}: {}",
+                        tripped ? "TRIPPED" : "RESET",
+                        tripped
+                                ? "new signal generation suspended; existing pending orders still reconcile"
+                                : "new signal generation resumed");
+                lastLoggedTripState = tripped;
+            }
+
+            BigDecimal price = priceFeed.latestPrice(symbol);
+            applyFills(paperBroker.onPriceUpdate(symbol, price));
+
+            if (!tripped) {
+                // Equity only ever moves down here (see class Javadoc), and
+                // AccountState itself rejects a non-positive equity outright
+                // -- without this guard, a depleted account would hit that
+                // rejection inside buildAccountState() below on every future
+                // signal-firing tick, forever, routed through the
+                // catch-all as an unrecoverable-looking "tick failed" error
+                // rather than the expected, self-explanatory condition it
+                // actually is. This is a defined skip, not a failure, so it
+                // does not touch lastError.
+                if (equity.signum() <= 0) {
+                    if (!equityDepletedLogged) {
+                        log.warn("equity depleted ({}); skipping signal submission until process restart", equity);
+                        equityDepletedLogged = true;
+                    }
+                } else {
+                    Optional<OrderIntent> signal = signalSource.nextSignal();
+                    if (signal.isPresent()) {
+                        OrderIntent intent = signal.get();
+                        Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
+                        if (order.isPresent()) {
+                            submitToBroker(order.get(), price);
+                        }
+                    }
+                }
+            }
+            lastError = null;
+        } catch (Exception e) {
+            log.warn("tick failed, will retry next scheduled tick", e);
+            lastError = e;
+        } finally {
+            lastTickAt = Instant.now();
+        }
+    }
+
+    /** Health-check surface for this priority -- see class Javadoc. */
+    public Instant lastTickAt() {
+        return lastTickAt;
+    }
+
+    /** Health-check surface for this priority -- see class Javadoc. Null if the last tick succeeded. */
+    public Throwable lastError() {
+        return lastError;
+    }
+
+    public synchronized BigDecimal currentEquity() {
+        return equity;
+    }
+
+    /**
+     * {@link OrderPipeline#submitIntent} already registered {@code order}
+     * in {@code OrderStore} by the time this is called -- that registration
+     * happens atomically with {@link RiskGateway#evaluate}, deliberately
+     * (see {@code OrderPipeline}'s own Javadoc on why it's the one path
+     * that ever calls {@code Order.fromApprovedDecision}), so it cannot be
+     * deferred until after a successful broker submission without
+     * reopening exactly the provenance gap {@code OrderPipeline} exists to
+     * close. If {@link PaperBroker#submit} throws here, {@code order} is
+     * left registered in {@code OrderStore} but never reaches
+     * {@code PaperBroker.pendingOrders()} -- an orphan that will never
+     * receive a fill. A structural fix (rollback, or a deferred-persistence
+     * redesign of {@code OrderPipeline}/{@code OrderStore}'s public
+     * contract) is out of scope for this class -- see
+     * .planning/08b-trading-loop.md's "Judgment calls" section for why,
+     * and CLAUDE.md's Priority #8/#10 entries for the closely related,
+     * already-tracked {@code OrderStore.createOrder} visibility gap. This
+     * at least makes the orphan diagnosable via logs instead of silent;
+     * the exception is rethrown so it still surfaces through {@code tick()}'s
+     * own catch-all / {@link #lastError()}.
+     */
+    private void submitToBroker(Order order, BigDecimal price) {
+        try {
+            Optional<Fill> fill = paperBroker.submit(order, price);
+            fill.ifPresent(f -> applyFills(List.of(f)));
+        } catch (RuntimeException e) {
+            log.error(
+                    "order {} was registered in OrderStore but PaperBroker.submit failed -- "
+                            + "it is now orphaned and will never receive a fill: {}",
+                    order.clientOrderId(),
+                    e.toString());
+            throw e;
+        }
+    }
+
+    private synchronized void applyFills(List<Fill> fills) {
+        for (Fill fill : fills) {
+            equity = equity.subtract(fill.fee());
+        }
+    }
+
+    private synchronized AccountState buildAccountState() {
+        BigDecimal pnlPercent =
+                equity.subtract(INITIAL_EQUITY).divide(INITIAL_EQUITY, PNL_PERCENT_SCALE, RoundingMode.HALF_UP);
+        return new AccountState(equity, pnlPercent, pnlPercent, pnlPercent);
+    }
+}
