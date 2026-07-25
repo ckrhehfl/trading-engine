@@ -444,7 +444,12 @@ exactly matching the configured interval), zero exceptions
 (`lastError` stayed `null` for the entire run), equity decreasing by
 the expected fee amount on each firing** (`100000` →
 `99999.61549164190` after 6 fills at 10bps fee on ~0.001 BTC notional
-each). Confirms `TradingLoop` genuinely runs continuously under a real
-scheduler against live network data, not just in isolated, synchronous
-test calls — the actual substance of what "24/7 supervision" needs to
-hold up under, beyond what the unit test suite alone can prove.
+each). This confirms `TradingLoop` runs correctly under a real
+scheduler against live network data for the ~3 minutes actually
+observed — it is evidence against one specific failure mode (the loop
+only ever having been exercised via synchronous, isolated `tick()`
+calls in fast unit tests), not a demonstration of 24/7 resilience.
+A 3-minute run says nothing about multi-hour/multi-day behavior —
+sustained memory growth, extended network outages, clock drift, or
+other failure modes that only surface over much longer horizons remain
+unverified and are not claimed to be covered by this result.
