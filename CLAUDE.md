@@ -326,11 +326,119 @@ Non-negotiable once strategy research begins:
   only currently-active ones, or backtests across that universe will be
   biased upward by construction.
 
-Deliberately not specified yet — design these once real strategy research
-starts, not before: experiment-tracking tooling/format, walk-forward
-window sizing, holdout-split mechanics. Specifying implementation
-mechanics ahead of a first real strategy attempt risks the same
-premature-process trap named in "Why this is more than a bare CLAUDE.md."
+### Strategy Research Operational Design (2026-07-25)
+
+Real strategy research is starting, so the mechanics the paragraph above
+deliberately left open now need to be fixed. Written before any of it is
+built — see `.planning/README.md`'s "Where does a design belong" for why
+it lives here in full rather than as a summary; once the corresponding
+`.planning/sr-*.md` files exist, this section should be trimmed to a
+short pointer.
+
+**Data pipeline** (`python/data/`): BingX historical klines (`GET
+/openApi/swap/v3/quote/klines`), paginated (1000-candle cap, half-open
+range aligned to the 900,000ms/15m grid, actual returned count always
+verified rather than trusting `limit`), cached locally in SQLite
+(`python/data/store.py`) keyed on `(symbol, interval, open_time_ms)` —
+`INSERT OR IGNORE` gives resumable/idempotent fetches for free. Decimals
+stored as exact text, not floats (same reasoning as `schemas/_types.py`'s
+`PositiveDecimalString`). Zero new dependencies — stdlib
+`sqlite3`/`urllib`/`json` (with `parse_float=Decimal` to avoid a float
+round-trip at parse time) suffice at this data scale (single symbol, a
+few years of 15m bars is a few MB); numpy/pandas deferred until a real
+(non-placeholder) strategy's feature engineering actually needs
+vectorized ops, not added speculatively now. BingX's actual historical
+retention depth for this contract is unverified — the backfill CLI
+(`python/data/backfill.py`) doubles as the discovery mechanism (walks
+back from now until it hits an empty response) rather than assuming a
+number.
+
+**Lookahead-safety performance fix** (`python/backtest/kline_window.py`):
+`engine.py`'s `klines[:i+1]` is a full copy every bar (O(n²) over a full
+run) — replaced with a `KlineWindow(klines, length)` view class (O(1)
+construction, bounds-checked access) that preserves the exact same
+structural guarantee (a strategy cannot index or iterate past the
+current bar) without copying. `Strategy`'s signature widens from
+`Callable[[list[Kline]], ...]` to `Callable[[Sequence[Kline]], ...]` —
+behaviorally identical for every existing caller.
+
+**Portfolio/metrics layer** (new `python/metrics/`, not inside
+`python/backtest/` — `backtest/` stays scoped to fill simulation only,
+per its own docstring): reconstructs a single-symbol net position from
+`(OrderIntent, Fill)` pairs (`BacktestResult` gains an additive
+`filled_intents: list[OrderIntent]` field, index-aligned with `fills`,
+since `Fill` itself has no `side`), tracks a mark-to-market equity
+curve, and computes total return, Sharpe ratio (simple per-bar returns,
+sample stdev, annualized via `sqrt(96 * 365)` for 15m bars, 0%
+risk-free rate), max drawdown, win rate, trade count, and profit
+factor — trade-level (full 0→nonzero→0 position lifecycles), not
+fill-level. **Known gap, not solved by this design**: perpetual
+funding-rate P&L is not modeled anywhere in this pipeline — flagged so
+it isn't silently forgotten, not addressed now.
+
+**Walk-forward harness** (`python/research/walkforward.py`): rolling
+(fixed-size sliding, not expanding) train/validate folds, non-overlapping
+by default (step = validate length). A `TrainableStrategy.fit(train_klines,
+params) -> Strategy` protocol, evaluated by running the *existing*
+`run_backtest` against `validate_klines` — deliberately not a monolithic
+`fit_and_evaluate`, so every strategy (rule-based now, ML later) is
+scored through the one code path already proven lookahead-safe, rather
+than allowing a strategy-specific evaluation loop to bypass it.
+Provisional default windows (not empirically tuned to this asset yet): 3
+months train (8,640 bars) / 1 month validate (2,880 bars) / step =
+validate. Revisit once the data pipeline's real BingX depth number is
+known — if depth is thin, shrink windows for more folds or accept fewer
+folds and weight the eligibility bar (below) more conservatively.
+
+**Holdout-split mechanics** (`python/research/holdout.py` +
+`configs/research/holdout.json`): a git-tracked cutoff timestamp in its
+own config file (not a buried constant — changes are visible in `git
+log -p` on one small file). Two differently-named loaders:
+`load_research_klines()` (default path, silently clamps to before the
+cutoff, logs when it does) vs. `load_holdout_klines(...,
+i_understand_this_is_holdout_data=True)` (loud, explicit, and — the
+actual enforcement mechanism — every call is itself logged as its own
+`holdout_access` record in the experiment log; more than one access for
+a given `strategy_id` is a visible red flag, not silently allowed or
+silently blocked).
+
+**Experiment-tracking format**: one append-only file,
+`runs/experiments.jsonl` (already anticipated — `.gitignore` has had
+`logs/`/`runs/` entries since before this design existed). One
+`record_type: "backtest_run"` entry per `run_walk_forward` call —
+written automatically as that function's last action, not a separate
+manual step — capturing `strategy_id`/`strategy_version` (id = family,
+version = logic changes; params capture parameter changes separately),
+full params, per-fold and aggregate metrics, data range, `code_version`
+(git HEAD sha, captured automatically), and `is_holdout_run`.
+`record_type: "holdout_access"` entries interleave in the same file for
+the audit trail described above.
+
+**Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
+Risk Parameters: changing these needs explicit human approval; approved
+as part of this design's 2026-07-25 sign-off): positive annualized
+Sharpe in every fold (not just on average); minimum 8-10 folds for the
+result to be considered credible (revisit once real data depth is
+known); max drawdown ceiling 20-25% per-fold and aggregate; minimum 100
+total trades across all folds (flagged tension: may unfairly penalize a
+legitimately low-frequency strategy — apply judgment, don't treat as
+absolute); profit factor floor 1.3-1.5 (cushion for backtest-to-live
+slippage/fee mismodeling and the funding-rate gap above). The holdout
+confirmation run must clear the same bar (single-window version) and
+must be the only holdout access on record for that `strategy_id`.
+
+**Build sequencing** (fresh-context subagent per task, GSD Execute
+pattern): Task A (`python/data/`, independent, run for real against live
+BingX immediately after merging to get the real depth number) → Task B
+(`KlineWindow` + `BacktestResult.filled_intents` + `python/metrics/`,
+independent of A, can run in parallel) → Task C (`python/research/` —
+walkforward + holdout + experiment log; depends on B, benefits from A's
+real depth number) → Task D (MA-crossover placeholder `TrainableStrategy`
+whose `fit()` picks the best of a small grid via train-only
+backtesting, then a real end-to-end run against real BingX data
+producing a real `runs/experiments.jsonl` entry; depends on A+B+C —
+validates the pipeline, deliberately makes no edge claim, same spirit
+as `DummySignalSource`).
 
 ## Tooling Stack
 
