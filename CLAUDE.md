@@ -484,9 +484,85 @@ tools/services, subscription changes).
     `OrderStore.createOrder` bypass noted in #8 — a genuine hardening gap,
     not urgent while no live order path exists, but non-negotiable before
     one does (CLAUDE.md's own "never bypass the Java Risk Gateway" rule is
-    about live orders specifically). Needs its own Discuss pass, not a
-    rushed fix under review pressure — by this point Task B's `TradingLoop`
-    exists as a second real caller to design the restriction against.
+    about live orders specifically).
+    - **Root cause**: `Order.fromApprovedDecision(OrderIntent, RiskDecision)`
+      is what actually constructs an `Order`; `OrderStore.createOrder` just
+      wraps it. Closing the gap means changing `Order.fromApprovedDecision`
+      itself, not just `OrderStore`.
+    - **Design**: introduce `engine.risk.VerifiedRiskDecision` (name
+      negotiable), a final class wrapping a `RiskDecision`, with a
+      package-private constructor — only code inside `engine.risk` (i.e.
+      `RiskGateway`) can construct one. `RiskGateway.evaluate(...)`'s
+      return type changes from `RiskDecision` to `VerifiedRiskDecision`
+      (still wrapping/exposing the same `RiskDecision` via an accessor for
+      read access — fields/validation logic on `RiskDecision` itself, the
+      cross-language wire schema, do not change). `Order.fromApprovedDecision`
+      and `OrderStore.createOrder` are changed to require
+      `VerifiedRiskDecision` instead of raw `RiskDecision`.
+    - **Why this design, not the alternatives**: `RiskGateway` must stay
+      `final` (already litigated and settled — Priority #8 Task A's
+      review; a subclassable `RiskGateway` reopens the exact bypass this
+      closes, via an always-approving override). No JPMS exists in this
+      repo (confirmed — zero `module-info.java` files), so there's no
+      `exports ... to` mechanism finer than Gradle's `project(":...")`
+      dependency graph. Package-private visibility alone doesn't work
+      across the current `engine.oms`/`engine.runtime` module split, and
+      moving `OrderPipeline` into `engine.oms` wouldn't avoid the
+      `:oms`→`:risk` dependency anyway (it would still need `RiskGateway`
+      from `:risk`) — so some form of `:oms` depending on `:risk` is
+      unavoidable for a structural (not procedural) fix. `RiskDecision`
+      itself must not change shape — it's a genuine, tested cross-language
+      wire type (`schemas/fixtures/risk_decision_*.json`, mirrored in
+      `python/schemas/risk_decision.py`, enforced by `SchemaCompatTest`) —
+      so the capability lives in a separate, Java-only wrapper type, never
+      serialized, not the `RiskDecision` record itself.
+    - **Confirmed impact, don't rediscover this**: `:oms`'s
+      `build.gradle.kts` gains `implementation(project(":risk"))` — the
+      module graph's only sibling relationship becomes a dependency,
+      deliberately, for the first time since Priority #2/#3. Every test
+      helper that currently does
+      `Order.fromApprovedDecision(intent, new RiskDecision(...))` with a
+      hand-built `RiskDecision` breaks and needs rework — confirmed
+      present in (at least) `PaperBrokerTest.java` (`:execution`),
+      `BingXAdapterTest.java` (`:exchange`), `OrderPipelineTest.java`
+      (`:runtime`). Each needs either (a) switching to a real
+      `RiskGateway.evaluate()` call to obtain a legitimate
+      `VerifiedRiskDecision` for its fixtures, or (b) a deliberate,
+      clearly-scoped test-only construction path (e.g. a `testFixtures`
+      Gradle source set exposing a factory) — decide which per-module at
+      execution time, don't assume one answer covers all three.
+    - **When**: bundle with Priority #10's live-wiring work specifically —
+      don't do it as an isolated refactor separate from that, since #10
+      touches this exact order-construction path anyway (wiring
+      `BingXAdapter` into whatever supersedes/extends `TradingLoop` for
+      live mode). Needs its own `Discuss` pass at that time per GSD (this
+      is R3-risk architecture), not a rushed fix under review pressure.
+    - **2026-07-25**: `OrderStore.createOrder` was investigated for a
+      scoped, interim hardening in the meantime, ahead of this priority —
+      a `java.lang.StackWalker`-based caller check (reject any caller that
+      isn't `engine.runtime.OrderPipeline`) was implemented as a real,
+      working prototype and run against the full test suite, rather than
+      only reasoned about on paper. Concrete finding: it broke 7 of
+      `OrderStoreTest`'s own 8 existing tests, because they call
+      `createOrder` directly from the test itself — the same established,
+      deliberate pattern already used for `Order.fromApprovedDecision` in
+      `OrderTest`/`PaperBrokerTest`/`BingXAdapterTest` — and a
+      caller-identity check cannot structurally distinguish that
+      established pattern from the exact bypass it's meant to reject: the
+      new test proving the check works, and the old tests proving
+      `OrderStore`'s own idempotency/conflict logic works, are, from the
+      check's point of view, identical calls. Every other interim
+      mechanism considered (a package-scoped allowlist, advisory/log-only,
+      a decision-timestamp staleness check, an in-process nonce registry,
+      JPMS module boundaries) was rejected too, each for a documented
+      reason. Conclusion: no honest interim code hardening exists within
+      these constraints that wouldn't either break this established test
+      pattern or amount to the kind of false-confidence theater this
+      investigation was explicitly permitted to reject rather than ship —
+      so none was shipped. `OrderStore.createOrder` and its tests remain
+      byte-for-byte unchanged. This is not the complete fix described
+      above and was never intended to be — see
+      `.planning/09-order-store-hardening.md` for the full reasoning.
 
 None of the above names "build a strategy" explicitly, but running any
 of #6–#8's infrastructure with a real trading strategy — not just testing
