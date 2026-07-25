@@ -425,3 +425,26 @@ ETA rather than blind-retrying, waited it out, retried once).
   Priority #8/#10 entries — unchanged by this task, still explicitly
   deferred to before Priority #10's live wiring, per @ckrhehfl's prior
   sign-off on that timeline.
+
+## Post-merge verification: real scheduled shakedown run (2026-07-25)
+
+This task's own scope named "no such scheduler is wired up" above and
+this PR's own review discussion had planned a follow-up manual run
+against a real `ScheduledExecutorService` and real BingX data (not just
+`tick()` called directly in fast unit tests) — that run had not actually
+happened until this note. Closed the gap: a throwaway JUnit test
+(`ManualShakedownRun`, deleted immediately after — not part of the
+regular suite) wired `TradingLoop` to a real
+`ScheduledExecutorService.scheduleAtFixedRate` (5s interval) against the
+real `open-api-vst.bingx.com` public trades endpoint, `DummySignalSource`
+firing every 6th tick, and ran for a real 3 wall-clock minutes.
+
+Result: **37 real ticks, 6 real signal firings (ticks 6/12/18/24/30/36,
+exactly matching the configured interval), zero exceptions
+(`lastError` stayed `null` for the entire run), equity decreasing by
+the expected fee amount on each firing** (`100000` →
+`99999.61549164190` after 6 fills at 10bps fee on ~0.001 BTC notional
+each). Confirms `TradingLoop` genuinely runs continuously under a real
+scheduler against live network data, not just in isolated, synchronous
+test calls — the actual substance of what "24/7 supervision" needs to
+hold up under, beyond what the unit test suite alone can prove.
