@@ -271,9 +271,10 @@ rather than silently skipped:
   confirmed) — formalizing it as a queryable exception field is a
   reasonable idea for whenever #8 actually builds a retry policy, not a
   gap in this PR.
-- A suggestion raised on four separate review passes (reaching "Critical"
-  severity by the third, repeated unchanged on the fourth), that
-  `BingXAdapterTest` bypasses
+- A suggestion raised on five separate review passes (reaching "Critical"
+  severity by the third, repeated unchanged on the fourth and fifth —
+  the fifth flagging it Critical on both the test *and* on this file's
+  earlier "declined" framing of it), that `BingXAdapterTest` bypasses
   the Risk Gateway boundary because its `guardedMarketOrder()` helper
   hand-constructs a `RiskDecision` rather than obtaining one from a real
   `RiskGateway.evaluate()` call, and that a reflection check on
@@ -301,6 +302,13 @@ rather than silently skipped:
   anywhere in this codebase (see "no live/paper flag" design note
   above), so there is no live wiring here to block. Tracked as an open
   item for Priority #8, not closed here.
+
+  **2026-07-25: @ckrhehfl explicitly reviewed this exact tradeoff and
+  confirmed proceeding with merge on this reasoning** — this is no
+  longer just an unreviewed automated-agent decision to keep declining
+  the same finding; it's a human-confirmed scope call, per CLAUDE.md's
+  own Auto-merge Policy reserving "approving high-risk changes" for the
+  human. The gap itself is unchanged and still tracked for Priority #8.
 
 ## Deliberately out of scope / deferred
 
