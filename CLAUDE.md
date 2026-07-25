@@ -400,11 +400,16 @@ params) -> Strategy` protocol, evaluated by running the *existing*
 `fit_and_evaluate`, so every strategy (rule-based now, ML later) is
 scored through the one code path already proven lookahead-safe, rather
 than allowing a strategy-specific evaluation loop to bypass it.
-Provisional default windows (not empirically tuned to this asset yet): 3
-months train (8,640 bars) / 1 month validate (2,880 bars) / step =
-validate. Revisit once the data pipeline's real BingX depth number is
-known — if depth is thin, shrink windows for more folds or accept fewer
-folds and weight the eligibility bar (below) more conservatively.
+Provisional default windows (not empirically tuned to this asset yet,
+defined in bars — the canonical unit — with the calendar-month figures
+given only as an approximate description, since 8,640/2,880 bars don't
+correspond to any actual calendar-month boundary): train = 8,640 bars
+(~90 days), validate = 2,880 bars (~30 days), step = validate (2,880
+bars). Fold boundaries are computed purely by bar-count arithmetic
+against the ordered kline sequence, never by calendar-date splitting.
+Revisit once the data pipeline's real BingX depth number is known — if
+depth is thin, shrink windows for more folds or accept fewer folds and
+weight the eligibility bar (below) more conservatively.
 
 **Holdout-split mechanics** (`python/research/holdout.py` +
 `configs/research/holdout.json`): a git-tracked cutoff timestamp in its
@@ -413,15 +418,27 @@ log -p` on one small file). Two differently-named loaders:
 `load_research_klines()` (default path, silently clamps to before the
 cutoff, logs when it does) vs. `load_holdout_klines(...,
 i_understand_this_is_holdout_data=True)` (loud, explicit). This second
-loader **enforces** single access per `strategy_id`, not just logs it:
-the first call atomically claims that `strategy_id` in a small
-persisted claim table (alongside the `holdout_access` JSONL record
-described below, not instead of it), and any subsequent call for the
-same `strategy_id` raises immediately rather than silently succeeding.
-A genuinely legitimate re-run (e.g. a metrics-bug fix discovered after
-the first holdout run) requires a separately-named, explicit override
-(`force_reclaim=True`) that itself gets its own loud log entry —
-friction on the rare path, not silent tolerance either way.
+loader **enforces** single access per `strategy_id`, not just logs it —
+and derives that enforcement directly from `runs/experiments.jsonl`
+itself, not a separate persisted claim table: before proceeding, it
+scans the log for an existing `holdout_access` record for this
+`strategy_id`; if one exists, it raises immediately instead of silently
+succeeding; otherwise it proceeds and appends its own `holdout_access`
+record before returning data. One store, not two, means claim state and
+audit trail can never diverge by construction — there's nothing for a
+second table to get out of sync with. This enforcement's soundness
+depends entirely on the single-writer assumption in the Durability
+paragraph below: under genuine concurrent calls for the same
+`strategy_id` (not realistic for solo, sequential research — the
+scenario this design targets), the scan-then-append isn't atomic and a
+race could let two calls both see "unclaimed." Not mitigated now (e.g.
+via a lock file held for the scan+append duration) since nothing in
+this project's actual usage pattern exercises that race; add it if that
+assumption ever stops holding. A genuinely legitimate re-run (e.g. a
+metrics-bug fix discovered after the first holdout run) requires a
+separately-named, explicit override (`force_reclaim=True`) that itself
+gets its own loud log entry — friction on the rare path, not silent
+tolerance either way.
 
 **Experiment-tracking format**: one append-only file,
 `runs/experiments.jsonl` (already anticipated — `.gitignore` has had
@@ -435,21 +452,29 @@ full params, per-fold and aggregate metrics, data range, `code_version`
 `record_type: "holdout_access"` entries interleave in the same file for
 the audit trail described above.
 
-Durability: each `log_run`/holdout-access write is one `write()` call
-of a single complete JSON object plus `\n`, well under the OS's
-atomic-append size limit at this record size — a write is never
-half-formed on disk even under concurrent appenders. Concurrent-write
-*ordering* is otherwise uncoordinated (no cross-process locking) —
-an accepted simplification for a solo-dev, largely-sequential-research
-workload, not something this design solves generally. A write
-interrupted mid-line (crash/kill) leaves at most one truncated trailing
-line; any reader of this file (including the holdout single-access
-claim check above) must skip a final line that fails to parse as JSON
-rather than fail loudly — the record it would have described never
-completed and has no other side effects to reconcile. `runs/` is
-gitignored by design (raw research iteration, not a reviewed artifact)
-and is not currently backed up anywhere — an accepted gap, not solved
-here; revisit if losing local `runs/` history ever actually happens.
+Durability and its real limits, stated plainly rather than overclaimed:
+each `log_run`/holdout-access write is one `write()` call of a single
+complete JSON object plus `\n`, followed by an explicit `flush()` +
+`os.fsync()` before the call returns — so a call that returns
+successfully (including a holdout claim) is actually durable on disk,
+not just buffered, before its caller proceeds. What this does **not**
+provide: safe interleaving of writes from multiple concurrent
+processes. The actual mitigation for that is a **single-writer
+assumption** (one research process appending to this file at a time),
+not file locking — nothing in this project's real usage pattern needs
+concurrent writers yet. Add real locking (e.g. `flock` on a sentinel
+file held for the write's duration) if that assumption is ever
+violated; don't assume today's single-`write()`-call approach already
+covers concurrent writers, because it doesn't. A write interrupted
+mid-line (crash/kill) leaves at most one truncated trailing line; any
+reader of this file (including the holdout claim-scan above) must skip
+a final line that fails to parse as JSON rather than fail loudly — the
+record it would have described never completed and has no other side
+effects to reconcile. `runs/` is gitignored by design (raw research
+iteration, not a reviewed artifact) and is not currently backed up
+anywhere — an accepted gap, not solved here; revisit with a periodic
+copy to a backed-up location if losing local `runs/` history ever
+actually happens.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
@@ -460,9 +485,17 @@ known); max drawdown ceiling 20-25% per-fold and aggregate; minimum 100
 total trades across all folds (flagged tension: may unfairly penalize a
 legitimately low-frequency strategy — apply judgment, don't treat as
 absolute); profit factor floor 1.3-1.5 (cushion for backtest-to-live
-slippage/fee mismodeling and the funding-rate gap above). The holdout
-confirmation run must clear the same bar (single-window version) and
-must be the only holdout access on record for that `strategy_id`.
+slippage/fee mismodeling and the funding-rate gap above). A fold's
+`profit_factor: null` is interpreted according to why it's null (both
+cases already specified above): if null because the fold had zero
+closed trades, that fold already fails eligibility via the
+Sharpe/trade-count requirements regardless of profit factor; if null
+because every closed trade won (zero losing trades), the profit-factor
+floor is trivially satisfied — there's no evidence of a poor
+risk/reward ratio to reject — and does not itself fail the fold. The
+holdout confirmation run must clear the same bar (single-window
+version) and must be the only holdout access on record for that
+`strategy_id`.
 
 **Build sequencing** (fresh-context subagent per task, GSD Execute
 pattern): Task A (`python/data/`, independent, run for real against live
@@ -476,10 +509,13 @@ backtesting — **each candidate's train-only backtest is itself logged
 as its own `backtest_run` entry**, not only the final winner's
 validate-fold result, so the grid search doesn't quietly become exactly
 the untracked-variation-count problem the logging rule exists to
-prevent — then a real end-to-end run against real BingX data producing
-real `runs/experiments.jsonl` entries; depends on A+B+C — validates the
-pipeline, deliberately makes no edge claim, same spirit as
-`DummySignalSource`).
+prevent. Each candidate's entry carries `parent_run_id` (pointing at the
+overall grid-search run), plus `candidate_index`/`total_candidates`, so
+the full attempted-variation count is directly queryable from the log
+rather than merely inferable. Then a real end-to-end run against real
+BingX data producing real `runs/experiments.jsonl` entries; depends on
+A+B+C — validates the pipeline, deliberately makes no edge claim, same
+spirit as `DummySignalSource`).
 
 ## Tooling Stack
 
