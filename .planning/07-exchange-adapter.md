@@ -201,9 +201,11 @@ to `BingXAdapter.java`:
   object/array, or (after a failed parse attempt) a non-numeric string,
   not just a missing field. `requireCode` now also requires
   `codeNode.isInt()`, rejecting all of those the same way it already
-  rejected an absent field. Four tests cover the `code`-validation path
-  in total (missing entirely, non-numeric decimal in an unrelated field,
-  string type, JSON `null`).
+  rejected an absent field. Three tests cover the `code`-validation path
+  specifically (missing entirely, string type, JSON `null`); a fourth,
+  separate test covers `parseBigDecimal`'s `NumberFormatException`
+  wrapping (a non-numeric value in an unrelated decimal field, not
+  `code`).
 
 One test-isolation fix on the second review pass: the "missing `code`
 field" test above originally paired that with an empty `data` array,
