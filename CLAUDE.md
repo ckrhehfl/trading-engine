@@ -367,6 +367,22 @@ anything touching credentials, or anything live-trading-related: review and
 apply the fix manually. Do not accept an automated fix on high-risk code
 without reading it.
 
+### Rate limits
+
+Not a fixed "N reviews/hour" bucket — confirmed 2026-07-25 via
+`@coderabbitai rate limit` (this query itself doesn't consume a review):
+CodeRabbit uses an adaptive, usage-percentile-based limit ("your recent
+PR review activity is in the 95th percentile or higher... adaptive
+limits apply"), triggered by requesting re-reviews too many times in a
+short window on one PR — exactly what happened after 6 re-review
+requests on a single PR in one session. The response includes an exact
+ETA ("next review available in N minutes"). When blocked: comment
+`@coderabbitai rate limit` to get that ETA instead of guessing or
+polling blindly, wait it out, then retry once. Also reduces the
+underlying cause: batch fixes for multiple review findings into one
+push before requesting re-review, rather than re-requesting after each
+small fix.
+
 ## Branch and Merge
 
 - Never commit or push directly to `main`.
