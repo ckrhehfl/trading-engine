@@ -72,7 +72,7 @@ prototype in place, to see the real effect rather than guess at it.
 
 Result, verbatim from the run:
 
-```
+```text
 OrderStoreTest > duplicateCreateOrderReturnsTheSameOrderInstance() FAILED
     java.lang.SecurityException at OrderStoreTest.java:61
 
@@ -135,7 +135,7 @@ same pattern*, one level up, as `Order.fromApprovedDecision` being called
 directly (not via `OrderStore`, let alone `OrderPipeline`) from `OrderTest`,
 `PaperBrokerTest`, and `BingXAdapterTest` — confirmed by grep:
 
-```
+```text
 java/oms/src/test/java/engine/oms/OrderTest.java:39,69,242,270: Order.fromApprovedDecision(...)
 java/execution/src/test/java/engine/execution/PaperBrokerTest.java:40,56,225,226: Order.fromApprovedDecision(...)
 java/exchange/src/test/java/engine/exchange/BingXAdapterTest.java:66: Order.fromApprovedDecision(...)
@@ -251,3 +251,54 @@ prototype's real failure mode (7 of 8 `OrderStoreTest` tests failing) was
 observed and is quoted verbatim above, then reverted before this branch's
 actual diff (this document plus the corresponding CLAUDE.md update) was
 committed.
+
+## CodeRabbit review findings
+
+One Minor and one Major finding on this PR's first review pass.
+
+**Fixed, in this PR:** both fenced code blocks in this document that lacked
+a language tag (`MD040`, markdownlint) — labeled `text`, matching the
+test-failure log and grep-output content they actually contain.
+
+**Declined, tracked here as an open item for the future Discuss pass —
+not fixed in this PR:** CodeRabbit's Major finding is on the *deferred*
+`VerifiedRiskDecision` design transcribed into CLAUDE.md's Priority #10
+entry (not on anything this PR actually ships — this PR ships no `java/`
+code at all, see "Decision" above). The finding itself is a real, sharp,
+correctly-reasoned point: a package-private constructor doesn't actually
+guarantee "only `RiskGateway` can construct one," because any other class
+placed in the `engine.risk` package — including a package-private test
+fixture living in that same package — could call the same constructor.
+The guarantee as worded is weaker than it sounds. CodeRabbit's suggested
+fix: a `private` constructor plus an unforgeable internal capability/token
+that only `RiskGateway` can issue, rather than relying on package-private
+visibility alone.
+
+Not applied here, for two reasons:
+
+1. This PR's CLAUDE.md edit exists specifically to **transcribe, with
+   high fidelity, a design already decided directly with @ckrhehfl in a
+   prior session** — the explicit brief for that edit was "not summarize
+   it, not compress it, not paraphrase it into something shorter," with a
+   deliberate double-check afterward confirming the given content survived
+   intact. Silently changing that content now, based on an automated
+   reviewer's suggestion and without the human's own sign-off, would
+   defeat the exact precision-preservation goal this PR was scoped for —
+   and would blur the line between "what was actually decided" and "what
+   a reviewer proposed afterward," which is precisely the kind of
+   confusion a future session picking this up needs *not* to have.
+2. CLAUDE.md's own transcribed **"When" bullet for this fix already says**
+   it "needs its own `Discuss` pass at that time per GSD (this is
+   R3-risk architecture), not a rushed fix under review pressure."
+   Resolving a real architecture question about a not-yet-built R3-risk
+   mechanism, under CodeRabbit review pressure, on an unrelated
+   documentation-only PR, is exactly the outcome that sentence exists to
+   prevent.
+
+CodeRabbit's specific critique — package-private alone doesn't prevent
+same-package forgery; use a private constructor plus an unforgeable
+capability/token `RiskGateway` issues instead of relying on visibility —
+is recorded here in full so it's available, not lost, when Priority #10's
+actual Discuss pass happens. It's a genuinely useful input to that future
+discussion, just not something this PR has the standing to resolve
+unilaterally.
