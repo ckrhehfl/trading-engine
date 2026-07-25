@@ -49,7 +49,12 @@ class BingXAdapterTest {
 
     @AfterEach
     void tearDown() {
-        server.close();
+        // JUnit 5 still runs @AfterEach even when @BeforeEach threw before
+        // assigning `server` -- guard so that case surfaces the original
+        // setUp() failure, not a masking NullPointerException here.
+        if (server != null) {
+            server.close();
+        }
     }
 
     private Order guardedMarketOrder(Side side, String quantity) {
@@ -342,7 +347,12 @@ class BingXAdapterTest {
     }
 
     @Test
-    void everyRequestIncludesApiKeyHeaderAndSignatureParam() {
+    void setPositionModeRequestIncludesApiKeyHeaderAndSignatureParam() {
+        // Covers one representative request, not "every" request as the
+        // old name claimed -- every other test in this suite that checks
+        // request shape already covers its own method's endpoint/params,
+        // this one specifically confirms the shared signing/auth plumbing
+        // (request()) attaches the header and signature.
         server.respondWith(200, "{\"code\":0,\"msg\":\"\",\"data\":{}}");
 
         adapter.setPositionMode(PositionMode.ONE_WAY);
