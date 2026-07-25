@@ -174,7 +174,7 @@ class TradingLoopTest {
     }
 
     @Test
-    void tickSkipsSignalSubmissionWhenEquityIsDepletedInsteadOfRoutingItThroughLastError() throws Exception {
+    void tickSkipsSignalSubmissionWhenEquityIsDepletedButStillReconcilesAnExistingPendingOrder() throws Exception {
         // RiskGateway's own per-order notional clamp (a fraction of
         // *current* equity, recomputed every tick) makes actually driving
         // equity to zero through the real order flow converge
@@ -185,12 +185,31 @@ class TradingLoopTest {
         // hard to reach through legitimate use.
         OrderPipeline pipeline = newPipeline();
         PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+
+        // Seeded while equity is still healthy, exactly like the
+        // no-signal-tick test above -- simulates an order that was already
+        // pending before equity happened to run out.
+        OrderIntent seedIntent = new OrderIntent(
+                UUID.randomUUID(),
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("50000"),
+                "15m",
+                Instant.now());
+        AccountState seedAccount =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        Order seedOrder = pipeline.submitIntent(seedIntent, new BigDecimal("60000"), seedAccount).orElseThrow();
+        broker.submit(seedOrder, new BigDecimal("60000")); // not marketable -> stays pending
+        assertEquals(1, broker.pendingOrders().size());
+
         DummySignalSource signalSource = new DummySignalSource(
                 SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.001"), null, 1); // fires every tick
         KillSwitch killSwitch = new KillSwitch();
 
         try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
-            server.respondWithPrice("60000");
+            server.respondWithPrice("50000"); // now marketable for the seeded order
             BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
             TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
 
@@ -204,9 +223,18 @@ class TradingLoopTest {
             // buildAccountState() -> new AccountState(...), which rejects a
             // non-positive equity with IllegalArgumentException -- caught by
             // tick()'s own catch-all and recorded as lastError. The guard
-            // means this is instead a defined, non-error skip.
-            assertTrue(broker.pendingOrders().isEmpty(), "no order should be submitted while equity is depleted");
+            // means the *signal* path is instead a defined, non-error skip
+            // -- but price-update reconciliation (step 2) is unconditional
+            // and must still run regardless, exactly like the kill-switch
+            // case: the seeded pending order still fills.
+            assertTrue(
+                    broker.pendingOrders().isEmpty(),
+                    "no new signal order should be submitted while equity is depleted, and the pre-existing"
+                            + " pending order should have been reconciled away by the price update");
+            assertEquals(OrderState.FILLED, seedOrder.state());
             assertNull(loop.lastError());
+            // Zero fees on this PaperBroker -- filling the seed order
+            // doesn't change equity, so it should still read exactly zero.
             assertEquals(0, BigDecimal.ZERO.compareTo(loop.currentEquity()));
         }
     }

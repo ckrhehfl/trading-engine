@@ -232,7 +232,7 @@ beyond that initial compile-fail state.
 
 Full suite (`./gradlew clean test`): **164 tests**, up from 140 before
 this task, all green (23 from the initial TDD pass, plus one more —
-`tickSkipsSignalSubmissionWhenEquityIsDepletedInsteadOfRoutingItThroughLastError`
+`tickSkipsSignalSubmissionWhenEquityIsDepletedButStillReconcilesAnExistingPendingOrder`
 — added during CodeRabbit review, see below).
 
 ## Judgment calls resolved without asking
@@ -324,7 +324,7 @@ ETA rather than blind-retrying, waited it out, retried once).
   `equity.signum() <= 0`, logging once (not every tick, matching the
   kill-switch trip-state log's existing pattern) rather than on every
   subsequent tick. Regression test
-  (`tickSkipsSignalSubmissionWhenEquityIsDepletedInsteadOfRoutingItThroughLastError`)
+  (`tickSkipsSignalSubmissionWhenEquityIsDepletedButStillReconcilesAnExistingPendingOrder`)
   had to force the private `equity` field directly via reflection rather
   than reach the condition through the real order flow — traced through
   why first, rather than assumed: `RiskGateway`'s own per-order notional
