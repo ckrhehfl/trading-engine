@@ -253,6 +253,11 @@ task so a multi-month, multi-exchange project doesn't degrade into the
 context rot that broke the previous attempt at this project. `Verify` must
 include actual test runs, not a claim that tests would pass.
 
+A detailed design for work that hasn't started yet lives directly in
+this file (in full, not summarized) until that work actually begins —
+see `.planning/README.md`'s "Where does a design belong" for why, and
+when it's safe to trim back down to a summary + pointer.
+
 State assumptions and ask rather than silently pick between valid
 interpretations — `Discuss` makes this mandatory for R3-risk work; treat
 it as the default for everything else too, since a future session has
