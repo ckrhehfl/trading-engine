@@ -326,207 +326,64 @@ Non-negotiable once strategy research begins:
   only currently-active ones, or backtests across that universe will be
   biased upward by construction.
 
-### Strategy Research Operational Design (2026-07-25)
+### Strategy Research Operational Design
 
-Real strategy research is starting, so the mechanics the paragraph above
-deliberately left open now need to be fixed. Written before any of it is
-built — see `.planning/README.md`'s "Where does a design belong" for why
-it lives here in full rather than as a summary; once the corresponding
-`.planning/sr-*.md` files exist, this section should be trimmed to a
-short pointer.
+The mechanics the paragraph above left deliberately open (experiment-
+tracking format, walk-forward window sizing, holdout-split mechanics)
+were designed on 2026-07-25 and built across four sequenced tasks, now
+all merged to `main`: `python/data/` (historical BingX kline pipeline,
+SQLite cache), `python/backtest/kline_window.py` + `python/metrics/`
+(O(1) lookahead-safe iteration, position/equity/Sharpe/drawdown
+reconstruction), `python/research/` (walk-forward harness, holdout
+enforcement, the `runs/experiments.jsonl` experiment log), and
+`python/research/strategies/ma_crossover.py` (a placeholder MA-crossover
+`TrainableStrategy` proving the pipeline end-to-end for real against
+live BingX data — not a validated strategy, see its docstring). Full
+build detail, judgment calls, and any deviation from the original
+design live in `.planning/sr-a-data-pipeline.md`, `sr-b-engine-metrics.md`,
+`sr-c-walkforward-holdout.md`, and `sr-d-placeholder-strategy.md` — this
+section is trimmed to a pointer per `.planning/README.md`'s "Where does
+a design belong" rule now that the work has actually happened.
 
-**Data pipeline** (`python/data/`): BingX historical klines (`GET
-/openApi/swap/v3/quote/klines`), paginated (1000-candle cap, half-open
-range aligned to the 900,000ms/15m grid, actual returned count always
-verified rather than trusting `limit`), cached locally in SQLite
-(`python/data/store.py`) keyed on `(symbol, interval, open_time_ms)` —
-`INSERT OR IGNORE` gives resumable/idempotent fetches for free. Decimals
-stored as exact text, not floats (same reasoning as `schemas/_types.py`'s
-`PositiveDecimalString`). Zero new dependencies — stdlib
-`sqlite3`/`urllib`/`json` (with `parse_float=Decimal` to avoid a float
-round-trip at parse time) suffice at this data scale (single symbol, a
-few years of 15m bars is a few MB); numpy/pandas deferred until a real
-(non-placeholder) strategy's feature engineering actually needs
-vectorized ops, not added speculatively now. BingX's actual historical
-retention depth for this contract is unverified — the backfill CLI
-(`python/data/backfill.py`) doubles as the discovery mechanism (walks
-back from now until it hits an empty response) rather than assuming a
-number.
+Provisional default walk-forward windows (defined in bars, the
+canonical unit, not calendar months): train = 8,640 bars (~90 days),
+validate = 2,880 bars (~30 days), step = validate (2,880 bars) —
+rolling (fixed-size sliding, not expanding), non-overlapping by
+default.
 
-**Lookahead-safety performance fix** (planned — `python/backtest/kline_window.py`
-does not exist yet, this is design, not current state):
-`engine.py`'s `klines[:i+1]` is a full copy every bar today (O(n²) over
-a full run) — to be replaced with a `KlineWindow(klines, length)` view
-class (O(1) construction, bounds-checked access) that will preserve the
-exact same structural guarantee (a strategy cannot index or iterate
-past the current bar) without copying. `Strategy`'s signature will
-widen from `Callable[[list[Kline]], ...]` to
-`Callable[[Sequence[Kline]], ...]` — behaviorally identical for every
-existing caller.
-
-**Portfolio/metrics layer** (new `python/metrics/`, not inside
-`python/backtest/` — `backtest/` stays scoped to fill simulation only,
-per its own docstring): reconstructs a single-symbol net position from
-`(OrderIntent, Fill)` pairs (`BacktestResult` gains an additive
-`filled_intents: list[OrderIntent]` field, index-aligned with `fills`,
-since `Fill` itself has no `side`), tracks a mark-to-market equity
-curve, and computes total return, Sharpe ratio (simple per-bar returns,
-sample stdev, annualized via `sqrt(96 * 365)` for 15m bars, 0%
-risk-free rate), max drawdown, win rate, trade count, and profit
-factor — trade-level (full 0→nonzero→0 position lifecycles), not
-fill-level. **Known gap, not solved by this design**: perpetual
-funding-rate P&L is not modeled anywhere in this pipeline — flagged so
-it isn't silently forgotten, not addressed now.
-
-Degenerate-input handling, fixed here so it doesn't vary by
-implementation: a fold with zero closed trades reports `sharpe_ratio:
-null`, `win_rate: null`, `profit_factor: null` (not zero — a flat,
-trade-less fold is "no evidence," not "bad evidence") and fails the
-eligibility bar's per-fold-positive-Sharpe requirement by definition;
-zero-variance per-bar returns (Sharpe's denominator) likewise yield
-`sharpe_ratio: null`, never a division-by-zero crash or an inflated
-value; a fold with only winning trades and zero losing trades yields
-`profit_factor: null` (already specified above), not `inf`. Any
-position still open at a fold's final bar is force-closed at that bar's
-close price for P&L/trade-count/return purposes — marks it realized so
-partial-period exposure isn't silently dropped from the metrics, at the
-cost of not reflecting what would actually happen if the position ran
-past the fold boundary (an accepted simplification for fold-scoring
-purposes, not a live-accounting rule).
-
-**Walk-forward harness** (`python/research/walkforward.py`): rolling
-(fixed-size sliding, not expanding) train/validate folds, non-overlapping
-by default (step = validate length). A `TrainableStrategy.fit(train_klines,
-params) -> Strategy` protocol, evaluated by running the *existing*
-`run_backtest` against `validate_klines` — deliberately not a monolithic
-`fit_and_evaluate`, so every strategy (rule-based now, ML later) is
-scored through the one code path already proven lookahead-safe, rather
-than allowing a strategy-specific evaluation loop to bypass it.
-Provisional default windows (not empirically tuned to this asset yet,
-defined in bars — the canonical unit — with the calendar-month figures
-given only as an approximate description, since 8,640/2,880 bars don't
-correspond to any actual calendar-month boundary): train = 8,640 bars
-(~90 days), validate = 2,880 bars (~30 days), step = validate (2,880
-bars). Fold boundaries are computed purely by bar-count arithmetic
-against the ordered kline sequence, never by calendar-date splitting.
-Revisit once the data pipeline's real BingX depth number is known — if
-depth is thin, shrink windows for more folds or accept fewer folds and
-weight the eligibility bar (below) more conservatively.
-
-**Holdout-split mechanics** (`python/research/holdout.py` +
-`configs/research/holdout.json`): a git-tracked cutoff timestamp in its
-own config file (not a buried constant — changes are visible in `git
-log -p` on one small file). Two differently-named loaders:
-`load_research_klines()` (default path, silently clamps to before the
-cutoff, logs when it does) vs. `load_holdout_klines(...,
-i_understand_this_is_holdout_data=True)` (loud, explicit). This second
-loader **enforces** single access per `strategy_id`, not just logs it —
-and derives that enforcement directly from `runs/experiments.jsonl`
-itself, not a separate persisted claim table: before proceeding, it
-scans the log for an existing `holdout_access` record for this
-`strategy_id`; if one exists, it raises immediately instead of silently
-succeeding; otherwise it proceeds and appends its own `holdout_access`
-record before returning data. One store, not two, means claim state and
-audit trail can never diverge by construction — there's nothing for a
-second table to get out of sync with. This enforcement's soundness
-depends entirely on the single-writer assumption in the Durability
-paragraph below: under genuine concurrent calls for the same
-`strategy_id` (not realistic for solo, sequential research — the
-scenario this design targets), the scan-then-append isn't atomic and a
-race could let two calls both see "unclaimed." Not mitigated now (e.g.
-via a lock file held for the scan+append duration) since nothing in
-this project's actual usage pattern exercises that race; add it if that
-assumption ever stops holding. A genuinely legitimate re-run (e.g. a
-metrics-bug fix discovered after the first holdout run) requires a
-separately-named override — not a bare boolean: `force_reclaim_reason:
-str`, mandatory and non-blank, carrying a human-written justification
-for why this specific `strategy_id` needs a second holdout access. This
-is a solo-dev tool with no multi-user approval workflow to gate on, so
-the actual control is that the override forces a human to type a real
-reason (not flip a flag) and that reason is what gets logged — friction
-and an audit trail on the rare path, not silent tolerance or a
-rubber-stamp toggle.
-
-**Experiment-tracking format**: one append-only file,
-`runs/experiments.jsonl` (already anticipated — `.gitignore` has had
-`logs/`/`runs/` entries since before this design existed). One
-`record_type: "backtest_run"` entry per `run_walk_forward` call —
-written automatically as that function's last action, not a separate
-manual step — capturing `run_id`, `strategy_id`/`strategy_version` (id =
-family, version = logic changes; params capture parameter changes
-separately), full params, per-fold and aggregate metrics, data range,
-`code_version` (git HEAD sha, captured automatically), and
-`is_holdout_run`. These are formal schema fields, not a Task-D-only
-convention, so any aggregator/audit tool can query them consistently
-regardless of which task produced a given entry: `parent_run_id`
-(null for a standalone run; set to the grid-search's own `run_id` for
-each candidate backtest it spawns — see Task D below),
-`candidate_index`, and `total_candidates` (both null unless
-`parent_run_id` is set). `record_type: "holdout_access"` entries
-interleave in the same file for the audit trail described above.
-
-Durability and its real limits, stated plainly rather than overclaimed:
-each `log_run`/holdout-access write is one `write()` call of a single
-complete JSON object plus `\n`, followed by an explicit `flush()` +
-`os.fsync()` before the call returns — so a call that returns
-successfully (including a holdout claim) is actually durable on disk,
-not just buffered, before its caller proceeds. What this does **not**
-provide: safe interleaving of writes from multiple concurrent
-processes. The actual mitigation for that is a **single-writer
-assumption** (one research process appending to this file at a time),
-not file locking — nothing in this project's real usage pattern needs
-concurrent writers yet. Add real locking (e.g. `flock` on a sentinel
-file held for the write's duration) if that assumption is ever
-violated; don't assume today's single-`write()`-call approach already
-covers concurrent writers, because it doesn't. A write interrupted
-mid-line (crash/kill) leaves at most one truncated trailing line; any
-reader of this file (including the holdout claim-scan above) must skip
-a final line that fails to parse as JSON rather than fail loudly — the
-record it would have described never completed and has no other side
-effects to reconcile. `runs/` is gitignored by design (raw research
-iteration, not a reviewed artifact) and is not currently backed up
-anywhere — an accepted gap, not solved here; revisit with a periodic
-copy to a backed-up location if losing local `runs/` history ever
-actually happens.
+**Live operational constraint, not resolved — kept visible here rather
+than buried in a planning doc**: a real BingX backfill (2026-07-25/26)
+found only ~252 days of actual historical retention for `BTC-USDT`/`15m`
+(24,199 bars). After a 45-day trailing holdout, the remaining research
+data supports only **3** non-overlapping walk-forward folds at the
+windows above — short of the Eligibility Bar's "8-10 folds for
+credibility" floor. The harness itself works correctly regardless of
+fold count; what's unresolved is a human decision (shrink windows for
+more folds, accept fewer folds and weight the bar more conservatively,
+or wait for more BingX history to accumulate) before treating any real
+(non-placeholder) strategy's walk-forward result as credible — this
+does not block building or testing the infrastructure itself, which is
+already done and verified.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
 as part of this design's 2026-07-25 sign-off): positive annualized
 Sharpe in every fold (not just on average); minimum 8-10 folds for the
-result to be considered credible (revisit once real data depth is
-known); max drawdown ceiling 20-25% per-fold and aggregate; minimum 100
-total trades across all folds (flagged tension: may unfairly penalize a
-legitimately low-frequency strategy — apply judgment, don't treat as
-absolute); profit factor floor 1.3-1.5 (cushion for backtest-to-live
-slippage/fee mismodeling and the funding-rate gap above). A fold's
-`profit_factor: null` is interpreted according to why it's null (both
-cases already specified above): if null because the fold had zero
-closed trades, that fold already fails eligibility via the
-Sharpe/trade-count requirements regardless of profit factor; if null
-because every closed trade won (zero losing trades), the profit-factor
-floor is trivially satisfied — there's no evidence of a poor
-risk/reward ratio to reject — and does not itself fail the fold. The
-holdout confirmation run must clear the same bar (single-window
-version) and must be the only holdout access on record for that
-`strategy_id`.
-
-**Build sequencing** (fresh-context subagent per task, GSD Execute
-pattern): Task A (`python/data/`, independent, run for real against live
-BingX immediately after merging to get the real depth number) → Task B
-(`KlineWindow` + `BacktestResult.filled_intents` + `python/metrics/`,
-independent of A, can run in parallel) → Task C (`python/research/` —
-walkforward + holdout + experiment log; depends on B, benefits from A's
-real depth number) → Task D (MA-crossover placeholder `TrainableStrategy`
-whose `fit()` picks the best of a small grid via train-only
-backtesting — **each candidate's train-only backtest is itself logged
-as its own `backtest_run` entry** (using the `parent_run_id`/
-`candidate_index`/`total_candidates` schema fields defined above), not
-only the final winner's validate-fold result, so the grid search
-doesn't quietly become exactly the untracked-variation-count problem
-the logging rule exists to prevent. Then a real end-to-end run against
-real BingX data producing real `runs/experiments.jsonl` entries;
-depends on A+B+C — validates the pipeline, deliberately makes no edge
-claim, same spirit as `DummySignalSource`).
+result to be considered credible (currently unmet — see the live
+constraint above); max drawdown ceiling 20-25% per-fold and aggregate;
+minimum 100 total trades across all folds (flagged tension: may
+unfairly penalize a legitimately low-frequency strategy — apply
+judgment, don't treat as absolute); profit factor floor 1.3-1.5
+(cushion for backtest-to-live slippage/fee mismodeling and the
+funding-rate gap — perpetual funding-rate P&L is not modeled anywhere
+in this pipeline, a known gap not solved by this design). A fold's
+`profit_factor: null` is interpreted according to why it's null: a
+zero-trade fold already fails eligibility via the Sharpe/trade-count
+requirements regardless of profit factor; a fold where every closed
+trade won (zero losing trades) trivially satisfies the floor — there's
+no evidence of a poor risk/reward ratio to reject. The holdout
+confirmation run must clear the same bar (single-window version) and
+must be the only holdout access on record for that `strategy_id`.
 
 ## Tooling Stack
 
