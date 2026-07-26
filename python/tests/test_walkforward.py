@@ -587,6 +587,115 @@ def test_run_walk_forward_rejects_negative_slippage_bps():
         )
 
 
+# ---------------------------------------------------------------------------
+# run_walk_forward -- optional per-fold parameter sensitivity check
+# (`.planning/sr-g-overfitting-safeguards.md`, "Finding 2"). Purely
+# additive: every test above (no `sensitivity_extractor` passed) must keep
+# passing unmodified, which they do since the parameter defaults to `None`.
+# ---------------------------------------------------------------------------
+
+
+class _CandidateGridStrategy:
+    """A minimal `TrainableStrategy` test double following the real
+    strategies' `params["candidates"]` convention (a list of `(value,)`
+    1-tuples here, the simplest shape `perturb_candidate` supports),
+    driven by a caller-supplied `score_fn(candidate) -> bool` deciding
+    whether that candidate trades (and is thus "profitable") or not.
+    Always picks `candidates[0]` as fit()'s own "winner" (the walk-forward
+    integration test below doesn't care which one wins, only that a
+    sensitivity check runs against whatever wins).
+    """
+
+    def __init__(self, profitable_candidates):
+        self._profitable_candidates = profitable_candidates
+
+    def fit(self, train_klines, params, *, parent_run_id=None):
+        candidates = params["candidates"]
+        winner = tuple(candidates[0])
+
+        def _strategy(window):
+            if tuple([winner[0]]) not in self._profitable_candidates:
+                return None
+            if len(window) != 1:
+                return None
+            return OrderIntent(
+                intent_id=uuid4(),
+                symbol="BTC-USDT",
+                side=Side.LONG,
+                order_type=OrderType.GUARDED_MARKET,
+                quantity=Decimal("1"),
+                limit_price=None,
+                signal_timeframe="15m",
+                created_at=window[-1].open_time,
+            )
+
+        _strategy.winning_candidate = winner  # type: ignore[attr-defined]
+        return _strategy
+
+
+def _extract_winning_candidate(bound_strategy):
+    return bound_strategy.winning_candidate
+
+
+def test_run_walk_forward_without_sensitivity_extractor_leaves_parameter_sensitivity_none(tmp_path):
+    klines = _klines(16)
+    strategy = _CandidateGridStrategy(profitable_candidates={(10,)})
+    runs_path = tmp_path / "experiments.jsonl"
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-sensitivity",
+        "v1",
+        {"candidates": [(10,)]},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=runs_path,
+    )
+
+    assert all(fold.parameter_sensitivity is None for fold in result.folds)
+    for fold_dict in [json.loads(line) for line in runs_path.read_text(encoding="utf-8").splitlines()][0][
+        "fold_results"
+    ]:
+        assert "parameter_sensitivity" not in fold_dict
+
+
+def test_run_walk_forward_with_sensitivity_extractor_attaches_a_result_per_fold(tmp_path):
+    klines = _klines(16)
+    all_candidates = {(10,), (9,), (11,), (8,), (13,)}
+    strategy = _CandidateGridStrategy(profitable_candidates=all_candidates)
+    runs_path = tmp_path / "experiments.jsonl"
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-sensitivity",
+        "v1",
+        {"candidates": [(10,)]},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        sensitivity_extractor=_extract_winning_candidate,
+        runs_path=runs_path,
+    )
+
+    assert len(result.folds) == 3
+    for fold in result.folds:
+        assert fold.parameter_sensitivity is not None
+        assert fold.parameter_sensitivity["winning_candidate"] == [10]
+        assert fold.parameter_sensitivity["is_robust"] is True
+
+    logged = [json.loads(line) for line in runs_path.read_text(encoding="utf-8").splitlines()]
+    top_level_record = logged[-1]
+    for fold_dict in top_level_record["fold_results"]:
+        assert fold_dict["parameter_sensitivity"]["is_robust"] is True
+
+
 def test_run_walk_forward_requires_train_validate_step_fee_slippage_to_be_keyword_only():
     # Locks in the CodeRabbit-requested hardening: five adjacent
     # same-typed positional parameters (three bare ints, two Decimals)
