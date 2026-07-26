@@ -253,12 +253,15 @@ matching the documented procedure rather than polling blindly. Five
 actionable findings on that pass, all accepted (all low-risk, non-
 CODEOWNERS-matched Python research code):
 
-- **Doc test-count arithmetic was wrong.** This doc originally claimed
-  "61 new tests" / "218 passed (was 157...)"; the real collected counts
-  were 7+14+15+24=60, not 61, and the actual pre-Task-C baseline was 158,
-  not 157 (`218 - 60 = 158`, confirmed by re-collecting each file).
-  Fixed in the "What was built" section above (now reflects the final
-  counts after the fixes below, not the original wrong ones).
+- **Doc test-count arithmetic was wrong.** This doc's original "What was
+  built" section overstated the new-test count by one and understated
+  the pre-Task-C baseline by one (a sum-of-parts vs. stated-total
+  mismatch, caught by re-collecting each test file individually rather
+  than trusting the originally-typed arithmetic). The "What was built"
+  section above now states the corrected, re-verified figures directly
+  and is the only place in this document that states current test
+  counts as a live claim — this bullet is history, not a second live
+  figure to keep in sync.
 - **`experiment_log._append_record` didn't fsync the containing
   directory on first-ever creation of `runs/experiments.jsonl`.**
   `os.fsync(f.fileno())` only guarantees the file's own bytes are
