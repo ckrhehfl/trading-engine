@@ -696,6 +696,121 @@ def test_run_walk_forward_with_sensitivity_extractor_attaches_a_result_per_fold(
         assert fold_dict["parameter_sensitivity"]["is_robust"] is True
 
 
+def _raising_extractor(bound_strategy):
+    raise RuntimeError("boom: this extractor is broken")
+
+
+def test_run_walk_forward_survives_a_raising_sensitivity_extractor_and_still_logs(tmp_path):
+    # A CodeRabbit-flagged real gap: sensitivity_extractor/
+    # check_parameter_sensitivity are an *optional*, diagnostic-only
+    # add-on -- a bug in either must never abort the whole walk-forward
+    # run or skip its unconditional final log_run() call (run_walk_
+    # forward's own documented invariant: "every call to this function
+    # leaves an audit trail a caller cannot forget to write"). This test
+    # forces the extractor itself to raise.
+    klines = _klines(16)
+    strategy = _CandidateGridStrategy(profitable_candidates={(10,)})
+    runs_path = tmp_path / "experiments.jsonl"
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-sensitivity-broken-extractor",
+        "v1",
+        {"candidates": [(10,)]},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        sensitivity_extractor=_raising_extractor,
+        runs_path=runs_path,
+    )
+
+    assert len(result.folds) == 3
+    for fold in result.folds:
+        assert fold.parameter_sensitivity is not None
+        assert "sensitivity_check_error" in fold.parameter_sensitivity
+        assert "boom" in fold.parameter_sensitivity["sensitivity_check_error"]
+
+    lines = runs_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1  # the final log_run() call still happened, exactly once
+    record = json.loads(lines[0])
+    assert record["strategy_id"] == "strat-sensitivity-broken-extractor"
+    assert len(record["fold_results"]) == 3
+    for fold_dict in record["fold_results"]:
+        assert "sensitivity_check_error" in fold_dict["parameter_sensitivity"]
+
+
+class _FailsOnReEvaluationStrategy:
+    """A `TrainableStrategy` double whose `fit()` alternates
+    succeed/raise: odd-numbered calls (1st, 3rd, 5th, ...) succeed,
+    even-numbered calls (2nd, 4th, 6th, ...) raise. Per fold, `run_walk_
+    forward`'s own direct `fit()` call is always the fold's first
+    (odd-numbered) call and always succeeds; `check_parameter_
+    sensitivity`'s winning-candidate re-evaluation is always the fold's
+    second (even-numbered) call and always raises -- deterministically
+    alternating because `check_parameter_sensitivity` re-raises
+    immediately when the winner itself fails to re-evaluate (see
+    `robustness.check_parameter_sensitivity`'s docstring), before ever
+    reaching a neighbor's `fit()` call. This simulates a failure
+    originating *inside* `check_parameter_sensitivity` itself, not in the
+    extractor callable (which succeeds fine here).
+    """
+
+    def __init__(self):
+        self._fit_call_count = 0
+
+    def fit(self, train_klines, params, *, parent_run_id=None):
+        self._fit_call_count += 1
+        if self._fit_call_count % 2 == 0:
+            raise ValueError("simulated: winning candidate could not be re-evaluated")
+
+        winner = tuple(params["candidates"][0])
+
+        def _strategy(window):
+            return None
+
+        _strategy.winning_candidate = winner  # type: ignore[attr-defined]
+        return _strategy
+
+
+def test_run_walk_forward_survives_check_parameter_sensitivity_raising_and_still_logs(tmp_path):
+    # Same failure-containment contract as the broken-extractor test
+    # above, but forcing the failure inside check_parameter_sensitivity
+    # itself (winning-candidate re-evaluation) rather than in the
+    # extractor callable.
+    klines = _klines(16)
+    strategy = _FailsOnReEvaluationStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-sensitivity-broken-check",
+        "v1",
+        {"candidates": [(10,)]},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        sensitivity_extractor=_extract_winning_candidate,
+        runs_path=runs_path,
+    )
+
+    assert len(result.folds) == 3
+    for fold in result.folds:
+        assert fold.parameter_sensitivity is not None
+        assert "sensitivity_check_error" in fold.parameter_sensitivity
+        assert "could not be re-evaluated" in fold.parameter_sensitivity["sensitivity_check_error"]
+
+    lines = runs_path.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 1
+    record = json.loads(lines[0])
+    assert len(record["fold_results"]) == 3
+
+
 def test_run_walk_forward_requires_train_validate_step_fee_slippage_to_be_keyword_only():
     # Locks in the CodeRabbit-requested hardening: five adjacent
     # same-typed positional parameters (three bare ints, two Decimals)

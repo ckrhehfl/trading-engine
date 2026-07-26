@@ -204,6 +204,22 @@ non-`None`**, so an existing reader of `runs/experiments.jsonl` sees the
 exact same fold-record shape as before this field existed unless it opts
 in.
 
+**Failure containment** (added after a CodeRabbit review finding, see
+below): the `sensitivity_extractor`/`check_parameter_sensitivity` call is
+wrapped in a broad `try/except` inside the fold loop. This whole feature
+is optional and diagnostic-only, so a bug in a caller-supplied extractor,
+or `check_parameter_sensitivity` itself raising (which it explicitly
+does, by design, when the winning candidate can't be re-evaluated — see
+its own docstring), must never abort the fold loop or skip `run_walk_
+forward`'s own documented invariant ("every call to this function leaves
+an audit trail a caller cannot forget to write" — the unconditional final
+`log_run()` call). On failure, that fold's `parameter_sensitivity` is set
+to `{"sensitivity_check_error": str(exc)}` instead — a shape distinctly
+different from a successful result (no `winning_candidate`/`is_robust`/
+`neighbors` keys), so a reader can trivially tell the two apart. The
+fold's own real result (`metrics`, `backtest_result`) is entirely
+unaffected either way.
+
 **A real wiring bug found and fixed by testing against real accumulated
 data, not by design review alone**: the first implementation passed each
 fold's own `run_id` through to `check_parameter_sensitivity` as
@@ -442,12 +458,14 @@ during this task, before being restored.
   described above); defensive fallback handling (missing `total_candidates`,
   inconsistent `total_candidates` within one group); `to_dict()`
   JSON-serializability.
-- **`test_walkforward.py`** (+2 tests, purely additive to the existing
-  file): `sensitivity_extractor` defaults to `None` and leaves
-  `FoldResult.parameter_sensitivity`/the logged record's key both absent
-  (proving the new parameter doesn't change existing behavior at all);
-  passing `sensitivity_extractor` attaches a real per-fold result to both
-  the in-memory `FoldResult` and the logged record.
+- **`test_walkforward.py`** (+2 tests at this point in the process, +2
+  more added later — see "CodeRabbit review findings" below — for +4
+  total, purely additive to the existing file): `sensitivity_extractor`
+  defaults to `None` and leaves `FoldResult.parameter_sensitivity`/the
+  logged record's key both absent (proving the new parameter doesn't
+  change existing behavior at all); passing `sensitivity_extractor`
+  attaches a real per-fold result to both the in-memory `FoldResult` and
+  the logged record.
 
 Full suite: **359 passed** (was 330 immediately before this task's branch
 point, which exactly matches `.planning/sr-f-risk-management-and-1h-
@@ -524,7 +542,9 @@ complete, unfiltered `uv run pytest` suite, not just the new test files.
 
 ## CodeRabbit review findings
 
-One review pass, 3 actionable (all "trivial" severity) findings:
+Two review passes.
+
+### First pass: 3 actionable (all "trivial" severity) findings
 
 - **Missing language identifier on a fenced code block** in this document
   (markdownlint `MD040`) — accepted, added `text`.
@@ -575,6 +595,42 @@ before this review pass (the refactor is behavior-preserving by
 construction, and no new tests were needed for it since the existing
 `test_overfitting_check.py` suite already exercises
 `check_combination_count`'s full external behavior end to end).
+
+### Second pass (`@coderabbitai review`, after replying to the first pass): 1 more finding, this one accepted and fixed with new tests
+
+- **A raised exception from `sensitivity_extractor`/`check_parameter_
+  sensitivity` inside `run_walk_forward`'s fold loop was not caught.**
+  Since that call happens before this function's own unconditional final
+  `experiment_log.log_run()` call, an exception there (e.g. a buggy
+  extractor, or `check_parameter_sensitivity`'s own documented
+  re-evaluation-failure raise) would abort the entire walk-forward run
+  and — critically — skip the audit-trail log entry `run_walk_forward`'s
+  own docstring promises always happens, "including for zero folds." A
+  genuine, real gap in the original design, not previously caught by
+  either the synthetic or real-data testing above (none of which
+  exercised a *failing* sensitivity check, only successful and
+  legitimately-invalid-neighbor cases, which `check_parameter_sensitivity`
+  already handled internally). **Accepted and fixed**, TDD (two new tests
+  written first and confirmed failing with the exact uncaught
+  `ValueError` traceback before the fix, per this project's TDD
+  discipline): the `sensitivity_extractor` call and
+  `check_parameter_sensitivity` call are now wrapped in one broad
+  `try/except Exception` inside the fold loop; on failure, that fold's
+  `parameter_sensitivity` becomes `{"sensitivity_check_error": str(exc)}`
+  (a shape distinctly different from a successful result, so a reader can
+  tell them apart) instead of propagating, and the fold loop — and the
+  final `log_run()` — continue normally. See "Failure containment" above
+  for the full behavior; new tests:
+  `test_run_walk_forward_survives_a_raising_sensitivity_extractor_and_still_logs`
+  (forces the extractor itself to raise) and
+  `test_run_walk_forward_survives_check_parameter_sensitivity_raising_and_still_logs`
+  (forces the failure inside `check_parameter_sensitivity`'s own
+  winning-candidate re-evaluation instead, via a test double whose
+  `fit()` deterministically alternates success/failure across the exactly-
+  2-calls-per-fold shape this scenario produces).
+
+Full suite after this fix: **361 passed** (359 + 2 new tests). Nothing
+regressed.
 
 ## Deliberately out of scope
 
