@@ -33,13 +33,14 @@ overlapping folds at the provisional default window sizes, short of the
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Any, Mapping, Protocol
+from typing import Any, Callable, Mapping, Protocol, Sequence
 from uuid import uuid4
 
 from backtest.engine import BacktestResult, Strategy, run_backtest
 from backtest.kline import Kline
 from metrics.metrics import Metrics, compute_metrics
 from research import experiment_log
+from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_sensitivity
 
 # Mark-to-market starting equity for each fold's independent evaluation.
 # Folds are scored independently (not as one continuous equity curve
@@ -116,6 +117,7 @@ class FoldResult:
     validate_end_index: int
     metrics: Metrics
     backtest_result: BacktestResult
+    parameter_sensitivity: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -188,6 +190,8 @@ def run_walk_forward(
     parent_run_id: str | None = None,
     candidate_index: int | None = None,
     total_candidates: int | None = None,
+    sensitivity_extractor: Callable[[Strategy], Sequence[int]] | None = None,
+    sensitivity_fractions: Sequence[Decimal] = DEFAULT_PERTURBATION_FRACTIONS,
     runs_path: str = experiment_log.DEFAULT_RUNS_PATH,
 ) -> WalkForwardResult:
     """Run one walk-forward validation pass and log it.
@@ -224,6 +228,42 @@ def run_walk_forward(
     `Decimal`s) are exactly the shape a transposed-argument bug hides in,
     and every call site in this codebase already passes them by keyword.
     See `.planning/sr-c-walkforward-holdout.md`.
+
+    `sensitivity_extractor` (default `None` -- purely additive, every
+    existing caller is unaffected) opts a fold into the parameter-
+    sensitivity overfitting check (`research.robustness.
+    check_parameter_sensitivity`, see `.planning/sr-g-overfitting-
+    safeguards.md`, "Finding 2"): a callable that, given the `Strategy`
+    `strategy.fit()` just returned for a fold, extracts the winning
+    candidate tuple that strategy was bound to (e.g. `lambda s: (s.
+    fast_window, s.slow_window)` for `ma_crossover`/`regime_momentum`-
+    shaped strategies, which already expose these as properties). When
+    given, every fold's `FoldResult.parameter_sensitivity` (and the
+    corresponding logged record's `fold_results[i]["parameter_sensitivity"]`)
+    is populated with `check_parameter_sensitivity(...).to_dict()`,
+    evaluated against that same fold's `train_klines` (never
+    `validate_klines`); when omitted, `parameter_sensitivity` stays `None`
+    and is omitted from the logged record entirely, so an existing reader
+    of `runs/experiments.jsonl` sees byte-for-byte the same shape as
+    before this parameter existed. `sensitivity_fractions` is passed
+    straight through to `check_parameter_sensitivity`'s `fractions`
+    parameter (default +-10%/+-25%, per that module's own default).
+
+    **Failure containment**: `sensitivity_extractor` and
+    `check_parameter_sensitivity` are both called inside a broad
+    `try/except` -- this whole feature is an optional, diagnostic-only
+    add-on, so a bug in a caller-supplied extractor, or
+    `check_parameter_sensitivity` itself raising (it explicitly does, by
+    design, when the winning candidate can't be re-evaluated -- see its
+    own docstring), must never abort the fold loop or skip this
+    function's unconditional final `log_run()` call. On failure,
+    `parameter_sensitivity` is set to `{"sensitivity_check_error":
+    str(exc)}` for that fold instead -- a distinctly different shape from
+    a successful `check_parameter_sensitivity(...).to_dict()` result (no
+    `winning_candidate`/`is_robust`/`neighbors` keys), so a reader can
+    trivially tell the two apart. The fold's own real result (`metrics`,
+    `backtest_result`) is entirely unaffected by a sensitivity-check
+    failure either way.
     """
     if fee_bps < 0:
         raise ValueError(f"fee_bps must be non-negative, got {fee_bps}")
@@ -253,6 +293,48 @@ def run_walk_forward(
             starting_equity,
             bars_per_day=bars_per_day,
         )
+
+        parameter_sensitivity: dict | None = None
+        if sensitivity_extractor is not None:
+            # This whole block is an optional, diagnostic-only add-on --
+            # per this function's own docstring ("every call to this
+            # function leaves an audit trail a caller cannot forget to
+            # write"), a bug in the caller-supplied sensitivity_extractor
+            # or inside check_parameter_sensitivity itself (e.g. it
+            # explicitly re-raises when the winning candidate can't be
+            # re-evaluated -- see that function's docstring) must never
+            # abort the fold loop or skip the unconditional log_run()
+            # call below. Caught broadly and recorded on the fold instead
+            # of propagated -- a real gap found by CodeRabbit review, not
+            # anticipated in the original design; see
+            # .planning/sr-g-overfitting-safeguards.md.
+            try:
+                winning_candidate = sensitivity_extractor(bound_strategy)
+                sensitivity_result = check_parameter_sensitivity(
+                    strategy,
+                    params,
+                    winning_candidate,
+                    train_klines,
+                    fee_bps=fee_bps,
+                    slippage_bps=slippage_bps,
+                    starting_equity=starting_equity,
+                    bars_per_day=bars_per_day,
+                    fractions=sensitivity_fractions,
+                    # Deliberately NOT this fold's run_id: check_parameter_
+                    # sensitivity's own docstring explains why passing the
+                    # real grid search's own parent_run_id here would corrupt
+                    # research.overfitting_check's MinBTL-style counting (it
+                    # groups by parent_run_id and expects one consistent
+                    # total_candidates per group -- mixing in a batch of
+                    # single-candidate sensitivity fit() calls under the same
+                    # id breaks that assumption). Leaving this at its default
+                    # (None) makes every sensitivity-driven fit() call log as
+                    # its own standalone record instead.
+                )
+                parameter_sensitivity = sensitivity_result.to_dict()
+            except Exception as exc:  # noqa: BLE001 -- deliberately broad, see comment above
+                parameter_sensitivity = {"sensitivity_check_error": str(exc)}
+
         fold_results.append(
             FoldResult(
                 fold_index=fold.fold_index,
@@ -262,6 +344,7 @@ def run_walk_forward(
                 validate_end_index=fold.validate_end_index,
                 metrics=fold_metrics,
                 backtest_result=backtest_result,
+                parameter_sensitivity=parameter_sensitivity,
             )
         )
 
@@ -332,7 +415,7 @@ def _metrics_summary(metrics: Metrics) -> dict:
 
 
 def _fold_result_to_log_dict(fold_result: FoldResult) -> dict:
-    return {
+    record = {
         "fold_index": fold_result.fold_index,
         "train_start_index": fold_result.train_start_index,
         "train_end_index": fold_result.train_end_index,
@@ -340,6 +423,14 @@ def _fold_result_to_log_dict(fold_result: FoldResult) -> dict:
         "validate_end_index": fold_result.validate_end_index,
         "metrics": _metrics_summary(fold_result.metrics),
     }
+    # Additive -- only present when a caller opted in via
+    # run_walk_forward's sensitivity_extractor parameter, so an existing
+    # reader of runs/experiments.jsonl sees byte-for-byte the same fold
+    # record shape as before this field existed. See run_walk_forward's
+    # docstring and .planning/sr-g-overfitting-safeguards.md ("Finding 2").
+    if fold_result.parameter_sensitivity is not None:
+        record["parameter_sensitivity"] = fold_result.parameter_sensitivity
+    return record
 
 
 def _aggregate_metrics(fold_results: list[FoldResult]) -> dict:
