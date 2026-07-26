@@ -182,7 +182,7 @@ class TestEntrySizingAndLevels:
 
     def test_long_entry_quantity_matches_fixed_fractional_sizing_formula(self):
         strategy = _strategy(fast=2, slow=4, regime_sma_length=2)
-        klines, entry_index = _run_to_first_long_entry(strategy)
+        _run_to_first_long_entry(strategy)
         position = strategy.open_position
         assert position is not None
         stop_distance = position.entry_price - position.stop_price
