@@ -84,6 +84,56 @@ def test_signal_on_last_bar_produces_no_fill():
     assert result.fills == []
 
 
+def test_filled_intents_is_index_aligned_with_fills():
+    klines = _klines(4)
+
+    def buy_on_bars_0_and_2(visible_klines):
+        i = len(visible_klines) - 1
+        if i not in (0, 2):
+            return None
+        return OrderIntent(
+            intent_id=UUID(int=i + 1),
+            symbol="BTC-USDT",
+            side=Side.LONG if i == 0 else Side.SHORT,
+            order_type=OrderType.GUARDED_MARKET,
+            quantity=Decimal("1"),
+            limit_price=None,
+            signal_timeframe="15m",
+            created_at=visible_klines[-1].open_time,
+        )
+
+    result = run_backtest(klines, buy_on_bars_0_and_2, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert len(result.filled_intents) == len(result.fills) == 2
+    assert result.filled_intents[0].side == Side.LONG
+    assert result.filled_intents[0].intent_id == result.fills[0].intent_id
+    assert result.filled_intents[1].side == Side.SHORT
+    assert result.filled_intents[1].intent_id == result.fills[1].intent_id
+
+
+def test_no_fill_means_no_entry_appended_to_filled_intents():
+    klines = _klines(3)
+
+    def buy_on_last_bar_only(visible_klines):
+        if len(visible_klines) != len(klines):
+            return None
+        return OrderIntent(
+            intent_id=uuid4(),
+            symbol="BTC-USDT",
+            side=Side.LONG,
+            order_type=OrderType.GUARDED_MARKET,
+            quantity=Decimal("1"),
+            limit_price=None,
+            signal_timeframe="15m",
+            created_at=visible_klines[-1].open_time,
+        )
+
+    result = run_backtest(klines, buy_on_last_bar_only, fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+
+    assert result.fills == []
+    assert result.filled_intents == []
+
+
 def test_same_inputs_produce_identical_results_every_run():
     klines = _klines(10)
 
