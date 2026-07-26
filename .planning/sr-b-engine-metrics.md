@@ -206,6 +206,103 @@ doesn't change any observable behavior the existing tests check.
   (not `inf`), per the design's explicit carve-out; an all-loser fold's
   `profit_factor` computes as a real (small or zero) number, not `None`.
 
+## CodeRabbit review findings
+
+First review pass hit the rate limit (status `success`/"Review rate
+limited" on the initial commit status). Followed CLAUDE.md's documented
+procedure: commented `@coderabbitai rate limit`, got an exact ETA ("your
+next review will be available in 22 minutes"), waited it out rather than
+guessing or polling tightly, then triggered a fresh review with
+`@coderabbitai review`. The real review came back with **3 actionable
+comments, all in one pass** (`request_changes_workflow: true`, so the PR
+review state was `CHANGES_REQUESTED`), batched and fixed together in one
+push rather than round-tripping per finding.
+
+**Fixed, both cheap and genuinely valid:**
+
+- **`metrics.py::build_equity_curve` could silently drop fills.** The
+  fill-consumption `while` loop assumes every fill's `fill_time` lines up
+  with some kline's `open_time` in the same list (true by construction
+  for anything coming out of `run_backtest` — `fill.py` always sets
+  `fill_time = next_bar.open_time` for a bar in the same `klines` list).
+  If that contract were ever violated (a fill later than the last kline),
+  the loop would finish with `fill_index < n_fills` and just silently
+  never apply the remaining fills — wrong equity/trade-count numbers with
+  no signal anything went wrong. Fixed by asserting `fill_index ==
+  n_fills` after the loop, exactly as suggested. Test written first
+  (`test_a_fill_after_the_last_klines_open_time_raises_instead_of_silently_vanishing`),
+  confirmed it failed (no exception raised — the bug CodeRabbit
+  described, reproduced) before adding the assertion, then confirmed
+  green.
+- **`position.py::reconstruct_trades`'s `zip(filled_intents, fills)`
+  silently truncates on a length mismatch** (also independently flagged
+  by Ruff as `B905`). Fixed with `zip(..., strict=True)`, exactly as
+  suggested — `metrics.py::build_equity_curve` already enforces the same
+  index-alignment contract via direct indexing (`filled_intents[
+  fill_index]`, which raises `IndexError` on mismatch), so this closes an
+  inconsistency between the two, not just a standalone gap. Test written
+  first
+  (`test_reconstruct_trades_raises_on_mismatched_length_inputs_instead_of_silently_truncating`),
+  confirmed failing, then green.
+
+**Declined, with reasoning — the substantive one, given real thought
+rather than blindly accepted or blindly dismissed:**
+
+- **`KlineWindow`'s `_klines` attribute holds a live reference to the
+  *entire* underlying list, not just the visible prefix — so
+  `window._klines[length]` reads a real future bar, bypassing the
+  bounds-checked `Sequence` protocol entirely.** This is a correct,
+  accurate finding, not a false positive: the class's guarantee ("a
+  strategy cannot index or iterate past the current bar") holds for every
+  access path through `__getitem__`/`__iter__`/`len()` — the actual
+  `Sequence[Kline]` interface every `Strategy` is written against — but
+  not against code that deliberately reaches around that interface via
+  the "private" (single-underscore, convention-only) attribute.
+  CodeRabbit's own suggested fixes were a truncated copy per bar or a
+  process-isolation boundary for strategy execution, and it tagged the
+  finding itself "🏗️ Heavy lift" with no concrete diff offered — i.e. it
+  also didn't have a cheap fix in mind.
+
+  Traced why neither suggested fix is actually right for this codebase,
+  rather than picking one under review pressure:
+  - **A truncated copy per bar reintroduces the exact O(n²) cost this
+    entire class exists to eliminate** — the task this PR implements.
+    Doing that would satisfy the review comment while quietly reverting
+    the PR's actual purpose.
+  - **Process-isolating strategy execution** has no precedent anywhere in
+    this codebase (no such boundary exists for any other component
+    either) and is wildly disproportionate to the actual threat model:
+    `Strategy` implementations in this codebase are trusted, first-party,
+    TDD'd research code, not third-party or adversarial plugins. The
+    realistic failure mode this class defends against is an *accidental*
+    lookahead bug in otherwise-normal strategy code (e.g. a strategy
+    naively assuming it has the full list and over-indexing) — which the
+    `Sequence` protocol bound already catches structurally, with a clean
+    `IndexError`.
+  - **Also considered and rejected: renaming `_klines` to `__klines`**
+    (Python name-mangling) to specifically defeat the exact
+    `visible._klines[length]` spelling CodeRabbit used. Rejected because
+    it doesn't actually close anything — `window._KlineWindow__klines`
+    still works, so this only moves the bar from "obvious" to "one grep
+    of this file away." Shipping that would be exactly the kind of
+    false-confidence security theater this project already explicitly
+    rejected once before, for an unrelated component, in
+    `.planning/09-order-store-hardening.md` ("every other interim
+    mechanism considered failed for the same structural reason or
+    amounted to false-confidence theater").
+
+  What *was* done instead, in this PR: the class docstring gained an
+  explicit "Scope of the guarantee" section spelling out exactly what is
+  and isn't covered and why (see `python/backtest/kline_window.py`), and
+  a new test,
+  `test_the_sequence_protocol_is_the_only_bounds_checked_access_path_not_the_backing_reference`,
+  documents the limitation directly — it does not claim the bypass is
+  prevented (it isn't), it demonstrates and comments the accepted gap so
+  a future reader hits documentation instead of rediscovering this from
+  scratch. Replied on the CodeRabbit review thread with this same
+  reasoning, condensed, so the finding is visibly addressed rather than
+  silently dropped.
+
 ## Deliberately out of scope
 
 - **Task A's data pipeline, Task C's walk-forward/holdout harness, Task

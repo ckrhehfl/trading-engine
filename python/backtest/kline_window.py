@@ -27,6 +27,33 @@ class KlineWindow:
     `count`) aren't needed by any current caller, and keeping this class to
     exactly the methods it defines itself keeps the safety-critical surface
     small and easy to audit in full.
+
+    **Scope of the guarantee — read before assuming this is a hard
+    security boundary.** Every access path *through the `Sequence[Kline]`
+    protocol above* — the interface every `Strategy` (`Callable[[Sequence[
+    Kline]], ...]`) is written against — is bounds-checked and cannot
+    observe `klines[length]` or beyond. That is the guarantee this class
+    exists to provide, and it is what makes *accidental* lookahead bugs in
+    otherwise-normal strategy code structurally impossible, not merely a
+    matter of the strategy author remembering to be careful.
+
+    It is **not** a guarantee against a strategy that deliberately reaches
+    around the public interface — e.g. `window._klines[length]` reads the
+    real underlying list directly, since `_klines` holds a live reference
+    to it (that reference is exactly what makes construction O(1) instead
+    of an O(n) copy — the entire reason this class exists; see the
+    replaced `klines[: i + 1]` above). Closing that specific hole would
+    require either copying the visible prefix per bar (reintroducing the
+    O(n^2) cost this class was built to eliminate) or running strategy
+    code in a process-isolated sandbox (no such boundary exists anywhere
+    else in this codebase, and is disproportionate for trusted, first-
+    party research code — the actual threat model here is a strategy
+    author's own bug, not an adversarial plugin author). Renaming `_klines`
+    to use name-mangling (`__klines`) was considered and rejected too: it
+    would only raise the bar from "obvious" to "one grep away," which is
+    not a real boundary either, just a different-looking one. See
+    `.planning/sr-b-engine-metrics.md` for the full reasoning and the
+    CodeRabbit review thread this responds to.
     """
 
     __slots__ = ("_klines", "_length")

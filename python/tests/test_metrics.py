@@ -128,6 +128,22 @@ def test_still_open_position_is_force_closed_at_the_final_bars_close_price():
     assert equity_curve[-1] == STARTING_EQUITY + Decimal("30")
 
 
+def test_a_fill_after_the_last_klines_open_time_raises_instead_of_silently_vanishing():
+    # build_equity_curve's fill-consumption loop assumes every fill's
+    # fill_time lines up with some kline's open_time (backtest/engine.py's
+    # contract: fill_time is always next_bar.open_time for some bar in the
+    # same klines list). If that contract is ever violated — a fill later
+    # than the last kline — the loop would otherwise finish with fills
+    # still unconsumed, silently dropping them from equity/trade metrics
+    # instead of failing where the real bug is.
+    klines = [_kline(0, "100"), _kline(1, "105")]
+    entry_intent = _intent(Side.LONG, "1", klines[0].open_time)
+    late_fill = _fill(entry_intent, "100", "1", klines[-1].open_time + timedelta(minutes=15))
+
+    with pytest.raises(AssertionError):
+        build_equity_curve(klines, [entry_intent], [late_fill], STARTING_EQUITY)
+
+
 def test_flat_equity_curve_when_no_fills_at_all():
     klines = [_kline(0, "100"), _kline(1, "200"), _kline(2, "50")]
 

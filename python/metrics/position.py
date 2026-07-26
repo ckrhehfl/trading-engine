@@ -217,10 +217,15 @@ def reconstruct_trades(filled_intents: list[OrderIntent], fills: list[Fill]) -> 
     kline to close against, which is `metrics.py`'s concern (it owns the
     klines sequence), not this module's. Use `PositionTracker` directly
     (as `metrics.py` does) when that's needed.
+
+    Raises `ValueError` (via `zip(..., strict=True)`) if `filled_intents`
+    and `fills` have different lengths — that's a caller bug against the
+    index-aligned `BacktestResult` contract, and must fail loudly rather
+    than silently reconstruct trades from a truncated, misaligned pairing.
     """
     tracker = PositionTracker()
     trades: list[ClosedTrade] = []
-    for intent, fill in zip(filled_intents, fills):
+    for intent, fill in zip(filled_intents, fills, strict=True):
         closed = tracker.apply(intent, fill)
         if closed is not None:
             trades.append(closed)

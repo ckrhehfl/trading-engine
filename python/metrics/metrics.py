@@ -105,6 +105,13 @@ def build_equity_curve(
         equity = starting_equity + tracker.realized_pnl - tracker.cumulative_fees + unrealized
         equity_curve.append(equity)
 
+    assert fill_index == n_fills, (
+        f"{n_fills - fill_index} fill(s) have fill_time after the last kline's "
+        "open_time — this violates backtest/fill.py's contract that a fill's "
+        "fill_time is always some kline's open_time in the same klines list "
+        "(fills would otherwise silently vanish from equity/trade metrics)."
+    )
+
     if klines and tracker.position_qty != 0:
         final_kline = klines[-1]
         closed = tracker.force_close(final_kline.close, final_kline.open_time)

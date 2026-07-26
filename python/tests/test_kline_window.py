@@ -167,3 +167,32 @@ def test_construction_rejects_negative_length():
 
     with pytest.raises(ValueError):
         KlineWindow(klines, -1)
+
+
+def test_the_sequence_protocol_is_the_only_bounds_checked_access_path_not_the_backing_reference():
+    """Documents a known, accepted limitation — not a passing "the bypass
+    is prevented" claim, because it isn't prevented, and pretending
+    otherwise would be worse than not testing this at all.
+
+    `KlineWindow` is O(1) to construct specifically because it holds a
+    live reference to the full underlying list rather than copying the
+    visible prefix (see the class docstring's "Scope of the guarantee"
+    section). Every access path through the `Sequence[Kline]` protocol
+    (`__getitem__`/`__iter__`/`len()` — exercised by every other test in
+    this file) is bounds-checked against `length`, but the reference
+    itself remains reachable via the `_klines` attribute to anyone who
+    reaches around the public interface deliberately. Raised and declined
+    as a CodeRabbit review finding on the PR that added this class — see
+    `.planning/sr-b-engine-metrics.md` for the full reasoning (a real
+    fix requires either an O(n) copy per bar, which reintroduces the
+    exact cost this class exists to eliminate, or process-isolating
+    strategy execution, disproportionate for this project's trusted,
+    first-party research code).
+    """
+    klines = _klines(10)
+    window = KlineWindow(klines, 3)
+
+    assert window._klines is klines
+    assert window._klines[5] == klines[5]  # bar 5 is not visible through
+    # the Sequence protocol at length=3 (see test_positive_indexing_out_of_range_raises_index_error),
+    # yet is reachable this way — the documented, accepted gap.

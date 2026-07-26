@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
+import pytest
+
 from backtest.fill import Fill
 from metrics.position import ClosedTrade, PositionTracker, reconstruct_trades
 from schemas.order_intent import OrderIntent, OrderType, Side
@@ -211,3 +213,17 @@ def test_force_close_on_a_flat_tracker_is_a_no_op():
 
 def test_reconstruct_trades_with_no_fills_returns_no_trades():
     assert reconstruct_trades([], []) == []
+
+
+def test_reconstruct_trades_raises_on_mismatched_length_inputs_instead_of_silently_truncating():
+    # filled_intents/fills must be index-aligned (same length) per the
+    # BacktestResult contract — a mismatch is a caller bug that must be
+    # loud (ValueError via zip(strict=True)), not silently truncated to
+    # the shorter list's length, which would quietly corrupt trade
+    # reconstruction instead of failing where the real bug is.
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    extra_intent = _intent(Side.SHORT, "1", BASE_TIME + timedelta(minutes=15))
+
+    with pytest.raises(ValueError):
+        reconstruct_trades([entry_intent, extra_intent], [entry_fill])
