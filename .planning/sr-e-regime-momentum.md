@@ -281,8 +281,7 @@ range; confirmed no backfill call was made by this task).
 `mean_total_return≈-0.457%`, `total_trades=16`, `mean_profit_factor≈0.214`,
 `min_profit_factor=0.0`, `folds_with_zero_trades=0`.
 
-### Eligibility bar evaluation (CLAUDE.md's Backtest/Walk-Forward
-Eligibility Bar, excluding the fold-count floor)
+### Eligibility bar evaluation (CLAUDE.md's Backtest/Walk-Forward Eligibility Bar, excluding the fold-count floor)
 
 Per this task's brief: the 8–10 fold credibility floor is already known
 structurally unreachable at the current real BingX depth (only 3 folds
@@ -355,6 +354,65 @@ Task C's own real verification run, is unchanged) — this strategy is
 nowhere near clearing the eligibility bar, so there is nothing
 legitimate to confirm against holdout data yet, per CLAUDE.md's
 non-negotiable "holdout stays untouched" rule.
+
+## CodeRabbit review findings
+
+One review pass, four actionable findings, all accepted (all low-risk,
+non-CODEOWNERS Python research code / docs):
+
+- **A zero-trade candidate could win `fit()`'s selection over a
+  genuinely-losing (but real, evidence-backed) candidate.** A candidate
+  that never fires scores an exactly-`0` total return; on a grid where
+  every *real* candidate is net-losing, `0 > any negative number` would
+  make the never-fired candidate the "winner" — quietly turning a losing
+  fold into a validate-fold run that never trades at all, and reporting
+  that as if it were a legitimate outcome. Fixed: candidates with
+  `num_trades == 0` are now excluded from winner selection (still
+  logged, same as every other candidate) unless literally every
+  candidate in the grid has zero trades, in which case the first-listed
+  candidate is returned as a deterministic fallback rather than raising.
+  Three new tests
+  (`test_fit_never_picks_a_zero_trade_candidate_over_a_genuinely_losing_one`,
+  `test_fit_falls_back_to_the_first_candidate_when_every_candidate_has_zero_trades`,
+  `test_fit_passes_fee_and_slippage_through_to_candidate_scoring` — the
+  last one a separate but related CodeRabbit finding, see below).
+  **Verified this fix changes nothing about the real run's already-
+  reported results above**: the real run's fold 1 winner has a
+  *negative* logged training-window `total_return` (-0.63%), which is
+  only possible if no zero-trade candidate existed among that fold's 5
+  candidates (a zero-trade candidate, scoring exactly `0`, would have
+  beaten it under the old code and been reported as the winner instead —
+  it wasn't). Re-ran the real end-to-end script after the fix to confirm
+  directly rather than rely on that argument alone: byte-for-byte
+  identical output (same `run_id`-independent numbers, same per-fold
+  winning `(fast, slow)` pairs, same metrics) both before and after.
+- **No test verified `fee_bps`/`slippage_bps` actually reach `fit()`'s
+  scoring** — every existing `fit()`/walk-forward test used
+  `fee_bps=slippage_bps=0`, so a regression that silently dropped cost
+  params before they reached `run_backtest` would have gone undetected
+  (a real risk called out by `.coderabbit.yaml`'s own Python review
+  instructions: missing fee/slippage modeling). Added
+  `test_fit_passes_fee_and_slippage_through_to_candidate_scoring`
+  (same candidate scored at zero vs. a large nonzero fee; logged score
+  must be strictly worse with the fee applied).
+- **A test helper's `l` parameter name** (`_kline`'s low-price argument)
+  is Ruff's E741 (ambiguous variable name, error-level) — renamed to
+  `lo`; call sites are all positional, so the rename alone was
+  sufficient.
+- **A split Markdown heading** in this doc (the "Eligibility bar
+  evaluation" section title) rendered incorrectly across two lines —
+  joined onto one line.
+
+Also cleaned up two adjacent Ruff nitpicks in the same review pass
+(missing `**overrides: Any` annotation, unnecessary `dict()` call
+rewritten as a literal) in `test_regime_momentum.py`'s `_trainable`
+helper, since it was already being touched for the fee/slippage test
+above.
+
+All fixes batched into one follow-up push (not one push per finding,
+per CLAUDE.md's rate-limit-avoidance guidance) before requesting
+re-review. Full suite after fixes: **271 passed** (was 268; +3 matching
+the three new tests above exactly).
 
 ## Deliberately out of scope
 

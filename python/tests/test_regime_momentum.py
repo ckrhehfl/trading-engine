@@ -11,6 +11,7 @@ did.
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
 
 import pytest
 
@@ -30,12 +31,12 @@ from schemas.order_intent import OrderType, Side
 BASE_TIME = datetime(2026, 1, 1, 0, 0, tzinfo=timezone.utc)
 
 
-def _kline(open_time: datetime, o: str, h: str, l: str, c: str, v: str = "1") -> Kline:
+def _kline(open_time: datetime, o: str, h: str, lo: str, c: str, v: str = "1") -> Kline:
     return Kline(
         open_time=open_time,
         open=Decimal(o),
         high=Decimal(h),
-        low=Decimal(l),
+        low=Decimal(lo),
         close=Decimal(c),
         volume=Decimal(v),
     )
@@ -490,14 +491,14 @@ def test_full_signal_sequence_matches_independent_reference_over_a_long_zigzag()
 # ---------------------------------------------------------------------------
 
 
-def _trainable(tmp_path, **overrides) -> RegimeMomentumTrainable:
-    kwargs = dict(
-        strategy_id="regime-momentum-test",
-        strategy_version="v1",
-        fee_bps=Decimal("0"),
-        slippage_bps=Decimal("0"),
-        runs_path=tmp_path / "experiments.jsonl",
-    )
+def _trainable(tmp_path, **overrides: Any) -> RegimeMomentumTrainable:
+    kwargs: dict[str, Any] = {
+        "strategy_id": "regime-momentum-test",
+        "strategy_version": "v1",
+        "fee_bps": Decimal("0"),
+        "slippage_bps": Decimal("0"),
+        "runs_path": tmp_path / "experiments.jsonl",
+    }
     kwargs.update(overrides)
     return RegimeMomentumTrainable(**kwargs)
 
@@ -561,6 +562,76 @@ def test_fit_picks_the_best_scoring_candidate_by_total_return(tmp_path):
     assert isinstance(bound, RegimeMomentumStrategy)
     assert bound.fast_window == 3
     assert bound.slow_window == 10
+
+
+def test_fit_never_picks_a_zero_trade_candidate_over_a_genuinely_losing_one(tmp_path):
+    # Same trough shape as the test above, but with fee_bps cranked high
+    # enough (5000 bps -- extreme, deliberately synthetic, just needs to
+    # exceed the one real trade's gross profit) that the one real,
+    # evidence-backed trade (3, 10) fires nets a *negative* total_return.
+    # (3, 200) still never fires at all (slow=200 exceeds the 99-bar
+    # train window) -- its total_return is exactly 0, which is *higher*
+    # than (3, 10)'s negative score. Naive "greatest score wins" would
+    # wrongly pick the candidate that never traded; fit() must still pick
+    # (3, 10), since a candidate with zero trades carries no evidence at
+    # all and must never be preferred over one that actually traded, even
+    # a losing one.
+    decline = list(range(300, 200, -1))
+    rise = list(range(201, 300))
+    closes = [Decimal(v) for v in decline + rise]
+    train_klines = _klines_from_closes(closes)
+    params = {"candidates": [(3, 200), (3, 10)], "quantity": "0.5", "symbol": "BTC-USDT"}
+    trainable = _trainable(tmp_path, regime_sma_length=2, fee_bps=Decimal("5000"), slippage_bps=Decimal("0"))
+
+    bound = trainable.fit(train_klines, params, parent_run_id="p1")
+
+    assert bound.fast_window == 3
+    assert bound.slow_window == 10
+
+
+def test_fit_falls_back_to_the_first_candidate_when_every_candidate_has_zero_trades(tmp_path):
+    # If literally nothing in the grid ever fires (every slow window
+    # exceeds the train window here), there is no evidence to prefer any
+    # one candidate over another -- fit() must still return something
+    # deterministic (the first-listed candidate) rather than raising or
+    # leaving an undefined winner.
+    train_klines = _ramp_klines(20)
+    params = {"candidates": [(3, 200), (5, 250)]}
+    trainable = _trainable(tmp_path)
+
+    bound = trainable.fit(train_klines, params, parent_run_id="p1")
+
+    assert bound.fast_window == 3
+    assert bound.slow_window == 200
+
+
+def test_fit_passes_fee_and_slippage_through_to_candidate_scoring(tmp_path):
+    # Regression coverage for a real cost-modeling risk: if fee_bps/
+    # slippage_bps were ever silently dropped before reaching
+    # run_backtest, every fit() score would be a fee-free (overly
+    # optimistic) approximation -- exactly what this project's Strategy
+    # Research Methodology exists to catch. Same trough scenario as
+    # above (one real bullish trade fires), scored once at zero fee and
+    # once at a large nonzero fee; the logged score must be strictly
+    # lower (worse) with the fee applied.
+    decline = list(range(300, 200, -1))
+    rise = list(range(201, 300))
+    closes = [Decimal(v) for v in decline + rise]
+    train_klines = _klines_from_closes(closes)
+    params = {"candidates": [(3, 10)], "quantity": "0.5", "symbol": "BTC-USDT"}
+
+    def _logged_total_return(fee_bps: Decimal, runs_path) -> Decimal:
+        trainable = _trainable(
+            tmp_path, runs_path=runs_path, regime_sma_length=2, fee_bps=fee_bps, slippage_bps=Decimal("0")
+        )
+        trainable.fit(train_klines, params, parent_run_id="p1")
+        records = [r for r in read_records(runs_path) if r["record_type"] == "backtest_run"]
+        return Decimal(str(records[0]["aggregate_metrics"]["total_return"]))
+
+    zero_fee_return = _logged_total_return(Decimal("0"), tmp_path / "zero_fee.jsonl")
+    high_fee_return = _logged_total_return(Decimal("5000"), tmp_path / "high_fee.jsonl")
+
+    assert high_fee_return < zero_fee_return
 
 
 def test_fit_returns_a_fresh_strategy_instance_not_a_scoring_candidate_reused(tmp_path):

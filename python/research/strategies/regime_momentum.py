@@ -410,6 +410,16 @@ class RegimeMomentumTrainable:
       `ma_crossover.MACrossoverTrainable.fit`.
     - Tie-break: first strictly-greatest score wins (`score > best_score`,
       not `>=`) -- deterministic.
+    - A candidate with zero trades (`Metrics.num_trades == 0`, so
+      `total_return` is exactly `0`) is excluded from winner selection --
+      "no evidence", not "no loss". Left in the running, it would beat
+      every candidate on a purely-losing grid purely for never having
+      traded (`0 >` any negative return), silently turning a losing fold
+      into a validate-fold run that never trades at all. Still logged
+      like every other candidate, just never selected as the winner
+      unless literally every candidate in the grid has zero trades (in
+      which case the first-listed candidate is returned, same
+      deterministic fallback spirit as the tie-break above).
     - Returns a **fresh** `RegimeMomentumStrategy` instance bound to the
       winning `(fast, slow)` pair -- never the instance used to score it,
       which would already carry leftover internal state (rolling 15m
@@ -473,12 +483,30 @@ class RegimeMomentumTrainable:
                 total_candidates=total_candidates,
             )
 
+            if candidate_metrics.num_trades == 0:
+                # A candidate that never fired scores an exactly-0 total
+                # return -- "no evidence", not "no loss". Left in the
+                # running, this would let a never-fired candidate beat
+                # every genuinely-losing candidate on a purely-losing
+                # grid (0 > any negative return) and get selected as the
+                # "winner" purely for having sat out, silently turning a
+                # losing fold into a validate-fold run that never trades
+                # at all. Excluded from best-score tracking entirely;
+                # still logged like every other candidate above.
+                continue
             score = candidate_metrics.total_return
             if best_score is None or score > best_score:
                 best_score = score
                 best_pair = (fast, slow)
 
-        assert best_pair is not None  # candidates is non-empty, checked above
+        if best_pair is None:
+            # Every candidate had zero trades -- there is no evidence to
+            # prefer any one of them over another, so fall back to the
+            # first candidate in the grid (deterministic, same
+            # first-listed-wins spirit as the tie-break above) rather
+            # than raising. candidates is non-empty (checked above), so
+            # this is always well-defined.
+            best_pair = tuple(candidates[0])
         fast, slow = best_pair
         return RegimeMomentumStrategy(
             fast=fast,
