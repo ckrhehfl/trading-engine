@@ -113,34 +113,17 @@ class OverfittingCheckResult:
         }
 
 
-def check_combination_count(
+def _scan_records(
     strategy_id: str,
-    runs_path: str | Path = experiment_log.DEFAULT_RUNS_PATH,
-) -> OverfittingCheckResult:
-    """Scan `runs_path` for every `record_type: "backtest_run"` entry
-    belonging to `strategy_id` and compute the MinBTL-spirit
-    combinations-tried-vs-data-years heuristic described in this module's
-    docstring.
-
-    Counting rule (CLAUDE.md's Strategy Research Operational Design /
-    this task's own brief, followed literally): for each *distinct*
-    `parent_run_id` observed among this `strategy_id`'s records, count
-    `total_candidates` once (not once per child record) -- a walk-forward
-    run's per-fold grid search logs one candidate record per (fold,
-    candidate) pair, all sharing the same `parent_run_id` (the walk-
-    forward run's own `run_id`), so summing `total_candidates` per
-    *record* would overcount the same grid as "tried again" once per fold
-    rather than recognizing it as the same N-candidate search repeated
-    across folds. A `backtest_run` record with `parent_run_id is None`
-    (a standalone run -- e.g. a direct `run_walk_forward` call not itself
-    a candidate of an outer grid search) counts as exactly 1 combination.
-    `record_type: "holdout_access"` entries are ignored entirely (not
-    combinations-tried).
-
-    Returns `risk_level="unknown"` (not `"low"`) when nothing has ever
-    been logged for `strategy_id`, or when a data span can't be computed
-    (e.g. every matching record has an empty `data_range`) -- "no
-    evidence to assess" is a different claim than "assessed as low risk".
+    runs_path: str | Path,
+) -> tuple[dict[str, list[int | None]], int, int | None, int | None]:
+    """First pass over `runs_path`: bucket every matching `backtest_run`
+    record's `total_candidates` by `parent_run_id` (raw, not yet
+    resolved to one count per group -- see `_resolve_parent_groups`),
+    count standalone (`parent_run_id is None`) records, and track the
+    widest `[start_ms, end_ms]` span observed across every matching
+    record's `data_range`. `record_type: "holdout_access"` entries and
+    records for a different `strategy_id` are skipped entirely.
     """
     parent_totals: dict[str, list[int | None]] = {}
     standalone_count = 0
@@ -167,6 +150,20 @@ def check_combination_count(
         if end_ms is not None:
             max_end_ms = end_ms if max_end_ms is None else max(max_end_ms, end_ms)
 
+    return parent_totals, standalone_count, min_start_ms, max_end_ms
+
+
+def _resolve_parent_groups(
+    parent_totals: dict[str, list[int | None]],
+) -> tuple[dict[str, int], list[str]]:
+    """Second pass: reduce each `parent_run_id`'s raw list of observed
+    `total_candidates` values down to one count per group (see
+    `check_combination_count`'s docstring for why one count per group,
+    not one per record), defensively handling the two anomalous cases
+    that can occur (inconsistent values within a group; no value at all)
+    with a conservative fallback plus a human-readable note for each,
+    rather than silently picking one or crashing.
+    """
     notes: list[str] = []
     parent_run_groups: dict[str, int] = {}
     for parent_run_id, totals in parent_totals.items():
@@ -187,6 +184,90 @@ def check_combination_count(
             )
         parent_run_groups[parent_run_id] = chosen
 
+    return parent_run_groups, notes
+
+
+def _compute_risk_level(
+    total_combinations: int,
+    data_span_years: float | None,
+) -> tuple[str, float | None]:
+    """Third pass: the MinBTL-spirit combinations-per-year ratio and its
+    tier (`"low"`/`"moderate"`/`"high"`), or `"unknown"` when no usable
+    data span exists to divide by -- see this module's docstring and
+    `_LOW_RISK_MAX_COMBINATIONS_PER_YEAR`/`_MODERATE_RISK_MAX_COMBINATIONS_PER_YEAR`
+    for the (documented-heuristic, not rigorously-derived) tier boundaries.
+    """
+    if data_span_years is None or data_span_years <= 0:
+        return "unknown", None
+
+    combinations_per_year = total_combinations / data_span_years
+    if combinations_per_year <= _LOW_RISK_MAX_COMBINATIONS_PER_YEAR:
+        risk_level = "low"
+    elif combinations_per_year <= _MODERATE_RISK_MAX_COMBINATIONS_PER_YEAR:
+        risk_level = "moderate"
+    else:
+        risk_level = "high"
+    return risk_level, combinations_per_year
+
+
+def _build_warning(
+    strategy_id: str,
+    total_combinations: int,
+    data_span_years: float | None,
+    combinations_per_year: float | None,
+    risk_level: str,
+) -> str:
+    if risk_level == "unknown":
+        return (
+            f"strategy_id={strategy_id!r}: {total_combinations} combination(s) tried, but no usable "
+            "data-span could be computed from the logged records' data_range fields -- cannot assess "
+            "overfitting risk from this heuristic"
+        )
+    return (
+        f"strategy_id={strategy_id!r}: {total_combinations} independent parameter combination(s) "
+        f"tried across {data_span_years:.2f} year(s) of logged data "
+        f"({combinations_per_year:.1f}/year) -- MinBTL-spirit risk level: {risk_level.upper()}. "
+        "This is a documented approximation, not Bailey et al.'s exact statistical test -- "
+        "see research/overfitting_check.py's module docstring. A warning only, not a block: "
+        "review before treating this strategy_id's best result as a genuine edge, but nothing "
+        "here prevents further work."
+    )
+
+
+def check_combination_count(
+    strategy_id: str,
+    runs_path: str | Path = experiment_log.DEFAULT_RUNS_PATH,
+) -> OverfittingCheckResult:
+    """Scan `runs_path` for every `record_type: "backtest_run"` entry
+    belonging to `strategy_id` and compute the MinBTL-spirit
+    combinations-tried-vs-data-years heuristic described in this module's
+    docstring. Orchestrates three focused passes (`_scan_records`,
+    `_resolve_parent_groups`, `_compute_risk_level`) plus warning-message
+    formatting (`_build_warning`); see each helper's own docstring for
+    what it's responsible for.
+
+    Counting rule (CLAUDE.md's Strategy Research Operational Design /
+    this task's own brief, followed literally): for each *distinct*
+    `parent_run_id` observed among this `strategy_id`'s records, count
+    `total_candidates` once (not once per child record) -- a walk-forward
+    run's per-fold grid search logs one candidate record per (fold,
+    candidate) pair, all sharing the same `parent_run_id` (the walk-
+    forward run's own `run_id`), so summing `total_candidates` per
+    *record* would overcount the same grid as "tried again" once per fold
+    rather than recognizing it as the same N-candidate search repeated
+    across folds. A `backtest_run` record with `parent_run_id is None`
+    (a standalone run -- e.g. a direct `run_walk_forward` call not itself
+    a candidate of an outer grid search) counts as exactly 1 combination.
+    `record_type: "holdout_access"` entries are ignored entirely (not
+    combinations-tried).
+
+    Returns `risk_level="unknown"` (not `"low"`) when nothing has ever
+    been logged for `strategy_id`, or when a data span can't be computed
+    (e.g. every matching record has an empty `data_range`) -- "no
+    evidence to assess" is a different claim than "assessed as low risk".
+    """
+    parent_totals, standalone_count, min_start_ms, max_end_ms = _scan_records(strategy_id, runs_path)
+    parent_run_groups, notes = _resolve_parent_groups(parent_totals)
     total_combinations = sum(parent_run_groups.values()) + standalone_count
 
     if total_combinations == 0:
@@ -208,33 +289,8 @@ def check_combination_count(
     if min_start_ms is not None and max_end_ms is not None and max_end_ms > min_start_ms:
         data_span_years = (max_end_ms - min_start_ms) / _MS_PER_YEAR
 
-    combinations_per_year: float | None = None
-    risk_level = "unknown"
-    if data_span_years is not None and data_span_years > 0:
-        combinations_per_year = total_combinations / data_span_years
-        if combinations_per_year <= _LOW_RISK_MAX_COMBINATIONS_PER_YEAR:
-            risk_level = "low"
-        elif combinations_per_year <= _MODERATE_RISK_MAX_COMBINATIONS_PER_YEAR:
-            risk_level = "moderate"
-        else:
-            risk_level = "high"
-
-    if risk_level == "unknown":
-        warning = (
-            f"strategy_id={strategy_id!r}: {total_combinations} combination(s) tried, but no usable "
-            "data-span could be computed from the logged records' data_range fields -- cannot assess "
-            "overfitting risk from this heuristic"
-        )
-    else:
-        warning = (
-            f"strategy_id={strategy_id!r}: {total_combinations} independent parameter combination(s) "
-            f"tried across {data_span_years:.2f} year(s) of logged data "
-            f"({combinations_per_year:.1f}/year) -- MinBTL-spirit risk level: {risk_level.upper()}. "
-            "This is a documented approximation, not Bailey et al.'s exact statistical test -- "
-            "see research/overfitting_check.py's module docstring. A warning only, not a block: "
-            "review before treating this strategy_id's best result as a genuine edge, but nothing "
-            "here prevents further work."
-        )
+    risk_level, combinations_per_year = _compute_risk_level(total_combinations, data_span_years)
+    warning = _build_warning(strategy_id, total_combinations, data_span_years, combinations_per_year, risk_level)
 
     return OverfittingCheckResult(
         strategy_id=strategy_id,

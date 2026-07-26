@@ -390,7 +390,7 @@ plus 1 final standalone walk-forward record = 43), and
 `check_combination_count("ma-crossover-task-g-sensitivity-demo-v2")`
 reports:
 
-```
+```text
 total_combinations_tried: 33  (5 real grid candidates + 28 standalone sensitivity/final records)
 data_span_years: 0.567
 combinations_per_year: 58.2
@@ -521,6 +521,60 @@ complete, unfiltered `uv run pytest` suite, not just the new test files.
   away.
 - **Full CSCV/PBO deliberately not attempted in any partial form** — see
   Finding 3 above.
+
+## CodeRabbit review findings
+
+One review pass, 3 actionable (all "trivial" severity) findings:
+
+- **Missing language identifier on a fenced code block** in this document
+  (markdownlint `MD040`) — accepted, added `text`.
+- **`check_combination_count` exceeded this project's static-analysis
+  branch/statement-count thresholds** (Ruff `PLR0912`/`PLR0915`: 19
+  branches vs. 12 allowed, 52 statements vs. 50 allowed) — accepted, pure
+  refactor with no behavior change: split into `_scan_records` (first
+  pass: bucket raw `total_candidates` by `parent_run_id`, count
+  standalone records, track the widest data span), `_resolve_parent_groups`
+  (second pass: reduce each group to one count plus any defensive notes),
+  `_compute_risk_level` (third pass: the ratio and its tier), and
+  `_build_warning` (message formatting) — `check_combination_count`
+  itself is now a short orchestrator. `OverfittingCheckResult`'s shape and
+  every existing test (all of which only call the public
+  `check_combination_count` function) are unaffected; full suite re-run
+  after the refactor to confirm.
+- **`_evaluate_candidate` runs the backtest twice per candidate**
+  (`strategy.fit()` already backtests the single candidate internally to
+  select/log it; `_evaluate_candidate` then re-runs `run_backtest`+
+  `compute_metrics` on the returned `Strategy` to get a score back) —
+  **considered and declined, not applied.** CodeRabbit's suggested fix
+  ("reuse the total return and trade count already computed by
+  `strategy.fit`... update the fit result contract") would mean widening
+  `research.walkforward.TrainableStrategy`'s `fit()` return type across
+  all four existing strategies (`ma_crossover.py`, `regime_momentum.py`,
+  `regime_momentum_risk_managed.py`, `hourly_momentum.py`) plus
+  `run_walk_forward`'s own usage of it — a real, cross-cutting change to
+  a shared protocol every existing strategy and test already depends on,
+  to save a genuinely modest amount of compute in a new, opt-in diagnostic
+  tool. This is exactly the kind of change CLAUDE.md's "touch only what
+  the task requires" rule argues against taking on as a drive-by inside a
+  feature-addition task — it would deserve its own `Discuss` pass given
+  how many files it touches, not a reactive fix under review pressure.
+  The design doc's "Judgment calls resolved without asking" section
+  above already named this exact tradeoff deliberately (re-scoring via
+  the real backtest guarantees the winner and every neighbor are scored
+  by the *identical* method, rather than trusting a possibly-divergent
+  internal computation) before CodeRabbit flagged it, so this is a
+  confirmed decision, not an oversight being waved away. Left as a
+  documented, known cost: real wall-clock impact is small at this
+  project's current data scale (the real demo run above, 3 folds × 9
+  evaluations each against ~7,000-8,640-bar train windows, completed in
+  low single-digit seconds) — revisit if a much larger `train_bars` or a
+  much larger perturbation grid ever makes it matter in practice.
+
+Full suite after the accepted fixes: **359 passed**, unchanged from
+before this review pass (the refactor is behavior-preserving by
+construction, and no new tests were needed for it since the existing
+`test_overfitting_check.py` suite already exercises
+`check_combination_count`'s full external behavior end to end).
 
 ## Deliberately out of scope
 
