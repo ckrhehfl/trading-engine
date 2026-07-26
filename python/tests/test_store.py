@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from data.bingx_klines import KlineRow
-from data.store import connect, find_missing_ranges, upsert_klines
+from data.store import connect, fetch_klines, find_missing_ranges, upsert_klines
 
 STEP = 900_000
 BASE = (1_700_000_000_000 // STEP) * STEP
@@ -201,3 +201,63 @@ def test_find_missing_ranges_rejects_misaligned_end_ms(conn):
 def test_find_missing_ranges_rejects_inverted_range(conn):
     with pytest.raises(ValueError):
         find_missing_ranges(conn, "BTC-USDT", "15m", BASE + STEP, BASE)
+
+
+# ---------------------------------------------------------------------------
+# fetch_klines
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_klines_returns_rows_in_range_ordered_ascending(conn):
+    # Inserted out of order -- the read path must sort, not trust
+    # insertion order.
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(2), _row(0), _row(1)])
+
+    rows = fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + 3 * STEP)
+
+    assert [row.open_time_ms for row in rows] == [BASE, BASE + STEP, BASE + 2 * STEP]
+
+
+def test_fetch_klines_excludes_rows_outside_the_half_open_range(conn):
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(i) for i in range(5)])
+
+    rows = fetch_klines(conn, "BTC-USDT", "15m", BASE + STEP, BASE + 3 * STEP)
+
+    assert [row.open_time_ms for row in rows] == [BASE + STEP, BASE + 2 * STEP]  # end excluded
+
+
+def test_fetch_klines_returns_empty_list_when_nothing_stored(conn):
+    assert fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + 5 * STEP) == []
+
+
+def test_fetch_klines_is_scoped_to_symbol_and_interval(conn):
+    upsert_klines(conn, "ETH-USDT", "15m", [_row(0)])  # different symbol
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(0)])
+
+    rows = fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + STEP)
+
+    assert len(rows) == 1
+
+
+def test_fetch_klines_returns_exact_decimal_values_not_float_rounded(conn):
+    precise = Decimal("64175.123456789012345")
+    row = KlineRow(open_time_ms=BASE, open=precise, high=precise, low=precise, close=precise, volume=precise)
+    upsert_klines(conn, "BTC-USDT", "15m", [row])
+
+    rows = fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + STEP)
+
+    assert rows[0].open == precise
+    assert rows[0].high == precise
+    assert rows[0].low == precise
+    assert rows[0].close == precise
+    assert rows[0].volume == precise
+
+
+def test_fetch_klines_rejects_misaligned_range(conn):
+    with pytest.raises(ValueError):
+        fetch_klines(conn, "BTC-USDT", "15m", BASE + 1, BASE + STEP)
+
+
+def test_fetch_klines_rejects_inverted_range(conn):
+    with pytest.raises(ValueError):
+        fetch_klines(conn, "BTC-USDT", "15m", BASE + STEP, BASE)
