@@ -25,10 +25,19 @@ from schemas.order_intent import OrderIntent
 
 # 15m bars: 96 bars/day. 365, not 365.25 — this project's fixed
 # annualization convention (see CLAUDE.md's "Strategy Research Operational
-# Design"), not open to per-implementation judgment.
+# Design"), not open to per-implementation judgment. This remains the
+# *default* `bars_per_day` for both `compute_metrics` and `_sharpe_ratio`
+# below (every 15m caller in this codebase omits the parameter and gets
+# byte-for-byte the same behavior as before Strategy Research Task F) --
+# Task F's native-1h strategy variant (`research/strategies/
+# hourly_momentum.py`, 24 bars/day) is what actually needed this to become
+# a parameter instead of a hardcoded module constant: using the 15m factor
+# for 1h data would inflate the reported Sharpe by exactly sqrt(96/24) =
+# 2x, since the same per-bar return series would be (incorrectly) treated
+# as happening 4x more often per day than it really did. See
+# `.planning/sr-f-risk-management-and-1h-variant.md`.
 _BARS_PER_DAY = 96
 _DAYS_PER_YEAR = 365
-_ANNUALIZATION_FACTOR = math.sqrt(_BARS_PER_DAY * _DAYS_PER_YEAR)
 
 
 @dataclass(frozen=True)
@@ -126,13 +135,21 @@ def compute_metrics(
     filled_intents: list[OrderIntent],
     fills: list[Fill],
     starting_equity: Decimal,
+    bars_per_day: int = _BARS_PER_DAY,
 ) -> Metrics:
     """Builds the equity curve/closed-trade list and reduces them to the
     summary `Metrics` record. See `Metrics`' docstring for the degenerate-
     input contract (`None`, not `0.0`/`inf`/an exception).
+
+    `bars_per_day` (default 96, the pre-existing 15m assumption) is passed
+    straight through to `_sharpe_ratio`'s annualization -- see that
+    function's docstring and this module's `_BARS_PER_DAY` comment for why
+    it exists as a parameter rather than a hardcoded constant.
     """
     if starting_equity <= 0:
         raise ValueError(f"starting_equity must be positive, got {starting_equity}")
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
 
     equity_curve, closed_trades = build_equity_curve(klines, filled_intents, fills, starting_equity)
     final_equity = equity_curve[-1] if equity_curve else starting_equity
@@ -143,7 +160,7 @@ def compute_metrics(
         equity_curve=equity_curve,
         closed_trades=closed_trades,
         total_return=(final_equity / starting_equity) - 1,
-        sharpe_ratio=_sharpe_ratio(equity_curve),
+        sharpe_ratio=_sharpe_ratio(equity_curve, bars_per_day=bars_per_day),
         max_drawdown=_max_drawdown(equity_curve),
         win_rate=_win_rate(closed_trades),
         num_trades=len(closed_trades),
@@ -151,9 +168,15 @@ def compute_metrics(
     )
 
 
-def _sharpe_ratio(equity_curve: list[Decimal]) -> float | None:
+def _sharpe_ratio(equity_curve: list[Decimal], bars_per_day: int = _BARS_PER_DAY) -> float | None:
     """Per-bar simple returns -> `fmean(r) / stdev(r)` (sample stdev,
-    ddof=1) -> annualized via `sqrt(96 * 365)`. Risk-free rate assumed 0.
+    ddof=1) -> annualized via `sqrt(bars_per_day * 365)`. Risk-free rate
+    assumed 0. `bars_per_day` defaults to 96 (15m bars, this project's
+    original and still most common timeframe) -- pass 24 for 1h bars, or
+    whatever else a future timeframe needs. 365, not 365.25, regardless of
+    `bars_per_day` -- this project's fixed annualization convention (see
+    CLAUDE.md's "Strategy Research Operational Design"), not open to
+    per-implementation judgment.
 
     `None` (never a raised `ZeroDivisionError`/`StatisticsError`, never an
     inflated value) when there are fewer than two per-bar returns to take
@@ -161,7 +184,17 @@ def _sharpe_ratio(equity_curve: list[Decimal]) -> float | None:
     return's denominator (0), or when the returns have zero variance —
     all "no evidence of risk-adjusted edge one way or the other", not "an
     edge of exactly zero".
+
+    Raises `ValueError` for a non-positive `bars_per_day` -- fail loud at
+    the entry point rather than either silently zeroing the annualization
+    factor (a `bars_per_day=0` would report Sharpe as `0.0`, a real "no
+    edge" claim, instead of `None`, "no evidence") or letting a negative
+    value surface as an opaque `math.sqrt` `ValueError` deep inside the
+    annualization arithmetic below. Same fail-loud convention as
+    `compute_metrics`'s `starting_equity` check.
     """
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
     if len(equity_curve) < 2:
         return None
 
@@ -186,7 +219,8 @@ def _sharpe_ratio(equity_curve: list[Decimal]) -> float | None:
     if stdev_return == 0:
         return None
 
-    return (mean_return / stdev_return) * _ANNUALIZATION_FACTOR
+    annualization_factor = math.sqrt(bars_per_day * _DAYS_PER_YEAR)
+    return (mean_return / stdev_return) * annualization_factor
 
 
 def _max_drawdown(equity_curve: list[Decimal]) -> Decimal:

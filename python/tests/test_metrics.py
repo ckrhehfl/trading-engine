@@ -168,6 +168,57 @@ def test_sharpe_ratio_matches_manual_calculation_for_a_known_equity_curve():
     assert _sharpe_ratio(equity_curve) == pytest.approx(expected)
 
 
+def test_sharpe_ratio_default_bars_per_day_is_96_unchanged_from_before_the_1h_variant():
+    """Regression guard: Strategy Research Task F added an explicit
+    `bars_per_day` parameter (needed for the native-1h strategy variant --
+    see `.planning/sr-f-risk-management-and-1h-variant.md`) to what was
+    previously a hardcoded `sqrt(96 * 365)` annualization. Every existing
+    15m caller must see byte-for-byte identical behavior when it omits the
+    new parameter.
+    """
+    equity_curve = [Decimal("100"), Decimal("110"), Decimal("105"), Decimal("115")]
+    assert _sharpe_ratio(equity_curve) == _sharpe_ratio(equity_curve, bars_per_day=96)
+
+
+def test_sharpe_ratio_uses_a_smaller_annualization_factor_for_fewer_bars_per_day():
+    """1h bars (24/day) must annualize with `sqrt(24 * 365)`, not the 15m
+    default `sqrt(96 * 365)` -- using the wrong (15m) factor for 1h data
+    would inflate the reported Sharpe by exactly sqrt(96/24) = 2x, since
+    the same per-bar return series would be (incorrectly) treated as
+    happening 4x more often per day than it really did.
+    """
+    equity_curve = [Decimal("100"), Decimal("110"), Decimal("105"), Decimal("115")]
+    returns = [
+        float((equity_curve[1] - equity_curve[0]) / equity_curve[0]),
+        float((equity_curve[2] - equity_curve[1]) / equity_curve[1]),
+        float((equity_curve[3] - equity_curve[2]) / equity_curve[2]),
+    ]
+    expected_1h = (fmean(returns) / stdev(returns)) * math.sqrt(24 * 365)
+
+    result_1h = _sharpe_ratio(equity_curve, bars_per_day=24)
+    assert result_1h == pytest.approx(expected_1h)
+
+    result_15m = _sharpe_ratio(equity_curve, bars_per_day=96)
+    assert result_1h == pytest.approx(result_15m / 2)
+
+
+def test_sharpe_ratio_rejects_non_positive_bars_per_day():
+    """`bars_per_day=0` would silently zero out the annualization factor,
+    reporting Sharpe as `0.0` (a real "no edge" claim) rather than `None`
+    ("no evidence") -- and a negative value would raise an opaque
+    `math.sqrt` `ValueError` deep inside the annualization arithmetic
+    instead of a clear, fail-loud error at the entry point. Same
+    fail-loud convention as `compute_metrics`'s existing
+    `starting_equity`/`research.walkforward.run_walk_forward`'s existing
+    `fee_bps`/`slippage_bps` validation.
+    """
+    equity_curve = [Decimal("100"), Decimal("110"), Decimal("105")]
+    with pytest.raises(ValueError, match="bars_per_day"):
+        _sharpe_ratio(equity_curve, bars_per_day=0)
+    with pytest.raises(ValueError, match="bars_per_day"):
+        _sharpe_ratio(equity_curve, bars_per_day=-1)
+
+
 def test_sharpe_ratio_is_none_when_per_bar_returns_have_zero_variance():
     # Constant 10% return every bar => stdev == 0 => sharpe denominator is
     # zero. Must yield None, never a ZeroDivisionError or an inflated value.
@@ -281,3 +332,37 @@ def test_compute_metrics_with_zero_trades_reports_none_for_evidence_based_fields
     assert metrics.profit_factor is None
     assert metrics.total_return == Decimal("0")
     assert metrics.max_drawdown == Decimal("0")
+
+
+def test_compute_metrics_passes_bars_per_day_through_to_sharpe_ratio():
+    """`compute_metrics`'s `bars_per_day` (default 96, matching the
+    pre-Task-F hardcoded 15m assumption) must reach `_sharpe_ratio`'s own
+    annualization -- see `.planning/sr-f-risk-management-and-1h-
+    variant.md` for why this parameter exists (the native-1h strategy
+    variant would otherwise silently get a 2x-inflated Sharpe using the
+    15m annualization factor).
+    """
+    klines = [_kline(0, "100"), _kline(1, "110"), _kline(2, "105"), _kline(3, "115")]
+    entry_intent = _intent(Side.LONG, "1", klines[0].open_time)
+    entry_fill = _fill(entry_intent, "100", "1", klines[0].open_time)
+    exit_intent = _intent(Side.SHORT, "1", klines[1].open_time)
+    exit_fill = _fill(exit_intent, "110", "1", klines[1].open_time)
+
+    metrics_default = compute_metrics(klines, [entry_intent, exit_intent], [entry_fill, exit_fill], STARTING_EQUITY)
+    metrics_default_explicit = compute_metrics(
+        klines, [entry_intent, exit_intent], [entry_fill, exit_fill], STARTING_EQUITY, bars_per_day=96
+    )
+    metrics_1h = compute_metrics(
+        klines, [entry_intent, exit_intent], [entry_fill, exit_fill], STARTING_EQUITY, bars_per_day=24
+    )
+
+    assert metrics_default.sharpe_ratio == metrics_default_explicit.sharpe_ratio
+    assert metrics_default.sharpe_ratio is not None
+    assert metrics_1h.sharpe_ratio is not None
+    assert metrics_1h.sharpe_ratio == pytest.approx(metrics_default.sharpe_ratio / 2)
+
+
+def test_compute_metrics_rejects_non_positive_bars_per_day():
+    klines = [_kline(0, "100"), _kline(1, "110")]
+    with pytest.raises(ValueError, match="bars_per_day"):
+        compute_metrics(klines, [], [], STARTING_EQUITY, bars_per_day=0)

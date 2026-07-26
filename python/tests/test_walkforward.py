@@ -280,6 +280,52 @@ def test_run_walk_forward_evaluates_via_run_backtest_against_validate_klines(tmp
         assert fold.metrics.closed_trades[0].realized_pnl > 0
 
 
+def test_run_walk_forward_passes_bars_per_day_through_to_fold_sharpe_annualization(tmp_path):
+    """`bars_per_day` (default 96, matching the pre-Task-F 15m-only
+    assumption) must reach each fold's `compute_metrics` call -- added for
+    the native-1h strategy variant (`research/strategies/
+    hourly_momentum.py`), see `.planning/sr-f-risk-management-and-1h-
+    variant.md`. Without this, every 1h walk-forward run would silently
+    report a 2x-inflated Sharpe (the 15m annualization factor applied to
+    1h-frequency returns).
+    """
+    klines = _klines(16)
+
+    result_default = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-bars-per-day",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=tmp_path / "experiments_default.jsonl",
+    )
+    result_1h = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-bars-per-day",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        bars_per_day=24,
+        runs_path=tmp_path / "experiments_1h.jsonl",
+    )
+
+    assert len(result_default.folds) == len(result_1h.folds) == 3
+    for fold_default, fold_1h in zip(result_default.folds, result_1h.folds, strict=True):
+        assert fold_default.metrics.sharpe_ratio is not None
+        assert fold_1h.metrics.sharpe_ratio is not None
+        assert fold_1h.metrics.sharpe_ratio == pytest.approx(fold_default.metrics.sharpe_ratio / 2)
+
+
 def test_run_walk_forward_with_zero_folds_still_logs_exactly_one_record(tmp_path):
     klines = _klines(5)
     strategy = _RecordingStrategy()
