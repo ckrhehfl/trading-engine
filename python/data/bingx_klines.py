@@ -257,5 +257,18 @@ def _get_with_retry(url: str) -> str:
         except urllib.error.URLError as exc:
             last_exc = exc
             continue
+        except OSError as exc:
+            # response.read() can raise a raw socket-level error (e.g. a
+            # connection reset mid-body) that urlopen() never wraps into
+            # URLError -- URLError only covers failures up through
+            # establishing the response, not failures while reading its
+            # body. urllib.error.{URL,HTTP}Error are themselves OSError
+            # subclasses (confirmed via their __mro__), but Python tries
+            # except clauses top-to-bottom, so those two already-handled
+            # cases never fall through to this one -- only a genuine
+            # read-time OSError does. Retried the same as any other
+            # transient network failure.
+            last_exc = exc
+            continue
 
     raise BingXKlinesError(f"exceeded {_MAX_RETRIES} retries fetching {url}: {last_exc}") from last_exc

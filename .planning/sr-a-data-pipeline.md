@@ -237,6 +237,37 @@ example of a design that changed *because* a test written first
 (the silent-capping test) made the wrong design's test un-writable in
 a faithful way — the test came before the fix, not after.
 
+## CodeRabbit review findings
+
+One actionable finding on the first review pass (the pass itself was
+delayed by CodeRabbit's adaptive rate limit — see CLAUDE.md's "Rate
+limits" section; the exact ETA it posted was waited out, then
+`@coderabbitai review` was used to trigger the actual review, matching
+the documented procedure rather than polling blindly).
+
+- **`_get_with_retry` didn't catch a read-time `OSError`.** A
+  connection can be reset (or otherwise fail) *after* `urlopen()`
+  already succeeded in establishing the response — e.g. mid-body-read —
+  which surfaces as a raw `OSError` (`ConnectionResetError` etc.), not
+  `urllib.error.URLError`. `URLError`/`HTTPError` are themselves
+  `OSError` subclasses (confirmed via their `__mro__` before writing
+  the fix, not assumed), so this needed its own `except OSError` clause
+  positioned *after* the two more specific ones — Python tries `except`
+  clauses top-to-bottom, so the already-handled `HTTPError`/`URLError`
+  cases never reach the new clause; only a genuine read-time failure
+  does. Real gap: this function is the one making every one of the
+  ~231 real network requests the live verification run issued, and a
+  single dropped connection mid-read would previously have propagated
+  straight out of `fetch_klines_page` uncaught, aborting the entire
+  backfill instead of retrying like every other transient failure this
+  function already handles. Fixed, plus a new test
+  (`test_fetch_klines_page_retries_on_a_read_time_os_error_then_succeeds`)
+  that makes the first `urlopen()` call return a fake response whose
+  `.read()` raises `ConnectionResetError`, with the second call going
+  through to the real fake server — proving the retry loop issues a
+  genuinely fresh request rather than just not crashing. 110 tests
+  total (was 109), all green.
+
 ## Deliberately out of scope
 
 - **`5m`/`1h` intervals.** `_grid.py`'s `INTERVAL_MS` only has `15m`

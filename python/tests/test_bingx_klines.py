@@ -205,6 +205,48 @@ def test_fetch_klines_page_retries_on_503_then_succeeds(server, monkeypatch):
     assert len(rows) == 1
 
 
+def test_fetch_klines_page_retries_on_a_read_time_os_error_then_succeeds(server, monkeypatch):
+    # A connection can be reset *after* urlopen() already succeeded in
+    # establishing the response -- e.g. mid-body-read -- which surfaces
+    # as a raw OSError (ConnectionResetError is a subclass), not
+    # urllib.error.URLError (that only covers failures up through
+    # getting a response at all). Simulates this by making the first
+    # urlopen() call return a fake response whose .read() raises;
+    # the second call goes through to the real fake server and succeeds,
+    # proving the retry loop's OSError handling actually triggers a
+    # fresh request rather than propagating the read failure.
+    monkeypatch.setattr("data.bingx_klines.time.sleep", lambda _s: None)
+    server.set_kline(BASE, "1", "1", "1", "1", "1")
+
+    import data.bingx_klines as bingx_klines_module
+
+    real_urlopen = bingx_klines_module.urllib.request.urlopen
+    call_count = {"n": 0}
+
+    class _ResetOnRead:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc_info):
+            return False
+
+        def read(self):
+            raise ConnectionResetError("simulated connection reset mid-read")
+
+    def flaky_urlopen(request, timeout=None):
+        call_count["n"] += 1
+        if call_count["n"] == 1:
+            return _ResetOnRead()
+        return real_urlopen(request, timeout=timeout)
+
+    monkeypatch.setattr("data.bingx_klines.urllib.request.urlopen", flaky_urlopen)
+
+    rows = fetch_klines_page(server.base_url, "BTC-USDT", "15m", BASE, BASE + STEP)
+
+    assert len(rows) == 1
+    assert call_count["n"] == 2
+
+
 def test_fetch_klines_page_raises_after_exhausting_retries_on_persistent_429(server, monkeypatch):
     monkeypatch.setattr("data.bingx_klines.time.sleep", lambda _s: None)
     server.force_response(429, "rate limited", times=10)  # more than _MAX_RETRIES
