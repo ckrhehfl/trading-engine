@@ -48,6 +48,16 @@ from research import experiment_log
 # drawdown %, profit factor) that don't depend on its actual magnitude.
 _DEFAULT_STARTING_EQUITY = Decimal("10000")
 
+# Default Sharpe-annualization bars-per-day, matching
+# `metrics.metrics`'s own default -- every 15m caller (every strategy in
+# this project before Strategy Research Task F) omits `bars_per_day` and
+# sees identical behavior to before this parameter existed. See
+# `metrics/metrics.py`'s `_BARS_PER_DAY` comment and `.planning/sr-f-risk-
+# management-and-1h-variant.md` for why this became a parameter (the
+# native-1h strategy variant needs 24, not 96, or its reported Sharpe is
+# silently inflated 2x).
+_DEFAULT_BARS_PER_DAY = 96
+
 
 class TrainableStrategy(Protocol):
     def fit(self, train_klines: list[Kline], params: Mapping[str, Any], *, parent_run_id: str) -> Strategy:
@@ -173,6 +183,7 @@ def run_walk_forward(
     fee_bps: Decimal,
     slippage_bps: Decimal,
     starting_equity: Decimal = _DEFAULT_STARTING_EQUITY,
+    bars_per_day: int = _DEFAULT_BARS_PER_DAY,
     is_holdout_run: bool = False,
     parent_run_id: str | None = None,
     candidate_index: int | None = None,
@@ -236,7 +247,11 @@ def run_walk_forward(
         bound_strategy = strategy.fit(train_klines, params, parent_run_id=run_id)
         backtest_result = run_backtest(validate_klines, bound_strategy, fee_bps, slippage_bps)
         fold_metrics = compute_metrics(
-            validate_klines, backtest_result.filled_intents, backtest_result.fills, starting_equity
+            validate_klines,
+            backtest_result.filled_intents,
+            backtest_result.fills,
+            starting_equity,
+            bars_per_day=bars_per_day,
         )
         fold_results.append(
             FoldResult(

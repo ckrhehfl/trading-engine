@@ -7,14 +7,17 @@ and its `allow_inf_nan=False`) is enforced identically in all three
 places rather than reimplemented three times with a chance of drifting
 apart.
 
-Only `15m` is wired up today (Task A's actual scope), but the mapping is
-a dict, not a single constant, so `5m`/`1h` (both already named in
-CLAUDE.md's Current Scope) are a one-line addition later, not a
-refactor.
+Only `15m` was wired up through Task A (the original scope); `1h` was
+added in Strategy Research Task F (see `.planning/sr-f-risk-management-
+and-1h-variant.md`) to support a native-1h strategy variant needing real
+1h BingX history -- exactly the one-line addition Task A's own docstring
+anticipated, not a refactor. `5m` (also already named in CLAUDE.md's
+Current Scope) remains unwired until something actually needs it.
 """
 
 INTERVAL_MS = {
     "15m": 900_000,
+    "1h": 3_600_000,
 }
 
 

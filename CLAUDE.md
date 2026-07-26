@@ -153,6 +153,30 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
   span 1000 candles per request
 - `limit` is not a reliable count guarantee — requests over 1000 are
   silently capped; verify actual returned count in code
+- **Historical kline retention on the live production endpoint
+  (`open-api.bingx.com`) is granularity-dependent, not a single fixed
+  window** — confirmed 2026-07-26 via direct binary-search probing (all
+  four granularities) plus a real, full `backfill.py` run for `1h`
+  specifically (the one this project's `hourly_momentum` strategy
+  actually depends on, so it got the stronger verification — a complete
+  fetch with an independently-confirmed zero-gap count, not just an
+  earliest-bar probe): `1d` back to ~2021-05-12 (~5 years); `1h` back to
+  **2024-04-27T10:00:00Z exactly** (confirmed by the real backfill: **819.9
+  days / 19,678 hourly bars, zero internal gaps**, as of 2026-07-26 —
+  note this is the true span from that earliest date to "now," roughly
+  **1.8x longer** than an earlier same-day binary-search estimate of "~15
+  months" for `1h`, which undercounted; the earliest-date finding itself
+  was correct and reproduced exactly by the real backfill, only the
+  derived duration was off — see `.planning/sr-f-risk-management-and-1h-
+  variant.md` for the full arithmetic); `15m` back to ~2025-11-16 (~8.3
+  months, matching `.planning/sr-a-data-pipeline.md`'s independent
+  finding); `5m` back to ~2026-05-02 (~3 months, binary-search estimate
+  only, not re-verified via a full backfill). Finer granularity has
+  materially shorter retention — not a fluke specific to `15m`, a real
+  BingX-side pattern across all four. Like the `15m` depth before it,
+  expect these numbers to keep drifting forward on every future run
+  (rolling retention, not a fixed archive) — re-run `backfill.py` rather
+  than trust any of these as permanent.
 
 ### Verified — authenticated, VST key (2026-07-24, @ckrhehfl's demo-trading
 API key against `open-api-vst.bingx.com`)
