@@ -340,8 +340,9 @@ enforcement, the `runs/experiments.jsonl` experiment log), and
 `TrainableStrategy` proving the pipeline end-to-end for real against
 live BingX data — not a validated strategy, see its docstring). Full
 build detail, judgment calls, and any deviation from the original
-design live in `.planning/sr-a-data-pipeline.md`, `sr-b-engine-metrics.md`,
-`sr-c-walkforward-holdout.md`, and `sr-d-placeholder-strategy.md` — this
+design live in `.planning/sr-a-data-pipeline.md`,
+`.planning/sr-b-engine-metrics.md`, `.planning/sr-c-walkforward-holdout.md`,
+and `.planning/sr-d-placeholder-strategy.md` — this
 section is trimmed to a pointer per `.planning/README.md`'s "Where does
 a design belong" rule now that the work has actually happened.
 
