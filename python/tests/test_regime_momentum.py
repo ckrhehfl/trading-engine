@@ -491,7 +491,7 @@ def test_full_signal_sequence_matches_independent_reference_over_a_long_zigzag()
 # ---------------------------------------------------------------------------
 
 
-def _trainable(tmp_path, **overrides: Any) -> RegimeMomentumTrainable:
+def _trainable(tmp_path, **overrides: object) -> RegimeMomentumTrainable:
     kwargs: dict[str, Any] = {
         "strategy_id": "regime-momentum-test",
         "strategy_version": "v1",

@@ -293,7 +293,7 @@ counted as a pass or a fail.
 | Criterion | Requirement | Actual | Result |
 |---|---|---|---|
 | Positive Sharpe, every fold | Sharpe > 0 in all folds | -4.75, -0.66, -1.44 | **FAIL** — every fold negative |
-| Max drawdown ceiling | ≤ 20–25%, per-fold and aggregate | 1.375% worst fold | **PASS** (see plausibility caveat below) |
+| Max drawdown ceiling | ≤ 20–25%, per-fold and aggregate | per-fold: 1.375%, 0.296%, 0.396%; aggregate (`worst_fold_max_drawdown` — this walk-forward harness scores folds independently, per CLAUDE.md's design, so the worst per-fold figure *is* the only "aggregate" drawdown concept this pipeline computes, not a separate, missing calculation): 1.375% | **PASS** (see plausibility caveat below) |
 | Minimum total trades | ≥ 100 across all folds | 16 | **FAIL** — far short |
 | Profit factor floor | 1.3–1.5 | mean 0.214, min 0.0 | **FAIL** — far short |
 
@@ -383,9 +383,13 @@ non-CODEOWNERS Python research code / docs):
   candidates (a zero-trade candidate, scoring exactly `0`, would have
   beaten it under the old code and been reported as the winner instead —
   it wasn't). Re-ran the real end-to-end script after the fix to confirm
-  directly rather than rely on that argument alone: byte-for-byte
-  identical output (same `run_id`-independent numbers, same per-fold
-  winning `(fast, slow)` pairs, same metrics) both before and after.
+  directly rather than rely on that argument alone: every run-ID-
+  independent value (per-fold trade counts, total_return, Sharpe,
+  drawdown, win rate, profit factor, aggregate metrics, and every fold's
+  winning `(fast, slow)` pair) was identical before and after — the only
+  fields that legitimately differed were the fresh `run_id` (a new
+  `uuid4()` each invocation, by design) and each record's `logged_at`
+  timestamp, neither of which was ever part of the reported result.
 - **No test verified `fee_bps`/`slippage_bps` actually reach `fit()`'s
   scoring** — every existing `fit()`/walk-forward test used
   `fee_bps=slippage_bps=0`, so a regression that silently dropped cost
@@ -413,6 +417,36 @@ All fixes batched into one follow-up push (not one push per finding,
 per CLAUDE.md's rate-limit-avoidance guidance) before requesting
 re-review. Full suite after fixes: **271 passed** (was 268; +3 matching
 the three new tests above exactly).
+
+**Second review pass** (after the above push), three more findings, all
+accepted:
+
+- **`**overrides: Any` (the previous pass's own suggested fix for the
+  ANN003 finding) itself trips Ruff's ANN401** (`Any` disallowed in a
+  function-parameter annotation). Changed to `**overrides: object` per
+  CodeRabbit's own suggested diff — the local `kwargs: dict[str, Any]`
+  variable annotation a few lines below is unaffected (ANN401 targets
+  parameter/return annotations, not local variable ones).
+- **"Byte-for-byte identical" (this doc's own wording, describing the
+  post-fix real-run re-verification above) overclaimed**: each run
+  generates a fresh `run_id` (`uuid4()`) and `logged_at` timestamp by
+  design, so the two runs' *raw* output could never be literally
+  byte-for-byte identical. Reworded to state precisely what was actually
+  compared and found identical (every run-ID-independent value) versus
+  what legitimately differs by design (`run_id`, `logged_at`) — the
+  underlying verification claim was accurate, only its phrasing wasn't
+  precise.
+- **The Eligibility-bar table's drawdown row cited only
+  `worst_fold_max_drawdown` (1.375%) as "Actual," against a requirement
+  stated as "per-fold and aggregate."** This walk-forward harness scores
+  folds independently (per CLAUDE.md's design — no continuous
+  cross-fold equity curve is ever computed), so `worst_fold_max_drawdown`
+  *is* this pipeline's only aggregate-drawdown concept, not a missing
+  calculation standing in for one — but the table didn't say that
+  explicitly, reading as if a genuine aggregate figure had simply been
+  left out. Reworded the row to list all three per-fold values plus the
+  aggregate figure with an inline note explaining why they're the same
+  underlying number by design.
 
 ## Deliberately out of scope
 
