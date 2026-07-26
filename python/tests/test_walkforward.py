@@ -445,14 +445,14 @@ def test_run_walk_forward_aggregate_has_the_fields_needed_for_the_eligibility_ba
     assert expected_keys.issubset(result.aggregate.keys())
 
 
-def test_run_walk_forward_rejects_non_positive_fee_or_slippage_config_is_not_required():
+def test_run_walk_forward_propagates_generate_folds_valueerror():
     # Sanity guard: run_walk_forward must not silently swallow a
     # generate_folds ValueError (e.g. an invalid train/validate/step
     # combination) -- it should propagate, not be caught and hidden.
     klines = _klines(12)
     strategy = _RecordingStrategy()
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="train_bars"):
         run_walk_forward(
             klines,
             strategy,
@@ -464,4 +464,66 @@ def test_run_walk_forward_rejects_non_positive_fee_or_slippage_config_is_not_req
             step_bars=2,
             fee_bps=Decimal("0"),
             slippage_bps=Decimal("0"),
+        )
+
+
+def test_run_walk_forward_rejects_negative_fee_bps():
+    klines = _klines(12)
+    strategy = _RecordingStrategy()
+
+    with pytest.raises(ValueError, match="fee_bps"):
+        run_walk_forward(
+            klines,
+            strategy,
+            "strat-1",
+            "v1",
+            {},
+            train_bars=4,
+            validate_bars=2,
+            step_bars=2,
+            fee_bps=Decimal("-1"),
+            slippage_bps=Decimal("0"),
+        )
+
+
+def test_run_walk_forward_rejects_negative_slippage_bps():
+    klines = _klines(12)
+    strategy = _RecordingStrategy()
+
+    with pytest.raises(ValueError, match="slippage_bps"):
+        run_walk_forward(
+            klines,
+            strategy,
+            "strat-1",
+            "v1",
+            {},
+            train_bars=4,
+            validate_bars=2,
+            step_bars=2,
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("-1"),
+        )
+
+
+def test_run_walk_forward_requires_train_validate_step_fee_slippage_to_be_keyword_only():
+    # Locks in the CodeRabbit-requested hardening: five adjacent
+    # same-typed positional parameters (three bare ints, two Decimals)
+    # are exactly the shape a transposed-argument bug hides in, so
+    # calling with them positional must be a TypeError, not silently
+    # accepted.
+    klines = _klines(12)
+    strategy = _RecordingStrategy()
+
+    with pytest.raises(TypeError):
+        run_walk_forward(
+            klines,
+            strategy,
+            "strat-1",
+            "v1",
+            {},
+            4,
+            2,
+            2,
+            Decimal("0"),
+            Decimal("0"),
         )

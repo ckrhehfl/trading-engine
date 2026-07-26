@@ -94,12 +94,37 @@ def _git_head_sha() -> str | None:
 
 def _append_record(record: dict, runs_path: str | Path) -> dict:
     path = Path(runs_path)
+    is_new_file = not path.exists()
     path.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(record, default=_json_default, sort_keys=True) + "\n"
     with open(path, "a", encoding="utf-8") as f:
         f.write(line)
         f.flush()
         os.fsync(f.fileno())
+
+    if is_new_file:
+        # `os.fsync(f.fileno())` above only guarantees the file's own
+        # data made it to disk -- if this call is what created the file,
+        # the directory entry pointing to it is a separate piece of
+        # metadata that a crash could still lose (the well-known POSIX
+        # "fsync doesn't sync the containing directory" gap). This log is
+        # the sole basis for `research.holdout`'s single-access holdout
+        # claim, so a lost directory entry after the very first write
+        # could in theory let a second `holdout_access` write for the
+        # same strategy_id go unnoticed. `os.open`/`os.fsync` on a
+        # directory fd is POSIX-only (this project's deployment target
+        # per CLAUDE.md); best-effort on any platform/filesystem that
+        # doesn't support it, since the file-level durability above
+        # already holds regardless.
+        try:
+            dir_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(dir_fd)
+            finally:
+                os.close(dir_fd)
+        except OSError:
+            pass
+
     return record
 
 

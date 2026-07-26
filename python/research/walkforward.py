@@ -151,12 +151,12 @@ def run_walk_forward(
     strategy_id: str,
     strategy_version: str,
     params: Mapping[str, Any],
+    *,
     train_bars: int,
     validate_bars: int,
     step_bars: int,
     fee_bps: Decimal,
     slippage_bps: Decimal,
-    *,
     starting_equity: Decimal = _DEFAULT_STARTING_EQUITY,
     is_holdout_run: bool = False,
     parent_run_id: str | None = None,
@@ -180,7 +180,20 @@ def run_walk_forward(
     straight through to `log_run`; `parent_run_id`/`candidate_index`/
     `total_candidates` are for Task D's grid search (`None` for a
     standalone run, which is every call this task makes).
+
+    `train_bars`/`validate_bars`/`step_bars`/`fee_bps`/`slippage_bps` are
+    keyword-only, unlike CLAUDE.md's Build-section signature snippet
+    (which lists them positionally) -- a deliberate, zero-cost deviation:
+    five adjacent same-typed parameters (three bare `int`s, then two
+    `Decimal`s) are exactly the shape a transposed-argument bug hides in,
+    and every call site in this codebase already passes them by keyword.
+    See `.planning/sr-c-walkforward-holdout.md`.
     """
+    if fee_bps < 0:
+        raise ValueError(f"fee_bps must be non-negative, got {fee_bps}")
+    if slippage_bps < 0:
+        raise ValueError(f"slippage_bps must be non-negative, got {slippage_bps}")
+
     folds = generate_folds(len(klines), train_bars, validate_bars, step_bars)
 
     fold_results: list[FoldResult] = []

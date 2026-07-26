@@ -65,10 +65,12 @@ addition to Task A's `python/data/store.py` (see "Judgment calls" below).
 - **`python/data/store.py::fetch_klines`** — small, deliberate addition
   (see "Judgment calls").
 
-61 new tests: `test_store.py` (+7, `fetch_klines`), `test_experiment_log.py`
-(14), `test_holdout.py` (15), `test_walkforward.py` (24). Full suite:
-**218 passed** (was 157 after Task B — 218-157=61, matching the new-test
-count above exactly, confirming nothing from Task A/B regressed).
+63 new tests: `test_store.py` (+7, `fetch_klines`), `test_experiment_log.py`
+(14), `test_holdout.py` (15), `test_walkforward.py` (27 — 24 from the
+initial implementation + 3 added responding to CodeRabbit's review, see
+"CodeRabbit review findings" below). Full suite: **221 passed** (was 158
+before this task — 221-158=63, matching the new-test count above exactly,
+confirming nothing from Task A/B regressed).
 
 ## Holdout-cutoff reasoning (the real judgment call this task required)
 
@@ -244,8 +246,64 @@ production code existed to make it awkward to change.
 
 ## CodeRabbit review findings
 
-(Filled in after the PR is opened and reviewed — not yet run as of this
-doc's initial commit.)
+First review pass was delayed by the adaptive rate limit (see CLAUDE.md's
+"Rate limits" section) — `@coderabbitai rate limit` gave an 18-minute
+ETA, which was waited out before `@coderabbitai review` was requested,
+matching the documented procedure rather than polling blindly. Five
+actionable findings on that pass, all accepted (all low-risk, non-
+CODEOWNERS-matched Python research code):
+
+- **Doc test-count arithmetic was wrong.** This doc originally claimed
+  "61 new tests" / "218 passed (was 157...)"; the real collected counts
+  were 7+14+15+24=60, not 61, and the actual pre-Task-C baseline was 158,
+  not 157 (`218 - 60 = 158`, confirmed by re-collecting each file).
+  Fixed in the "What was built" section above (now reflects the final
+  counts after the fixes below, not the original wrong ones).
+- **`experiment_log._append_record` didn't fsync the containing
+  directory on first-ever creation of `runs/experiments.jsonl`.**
+  `os.fsync(f.fileno())` only guarantees the file's own bytes are
+  durable — if that call is what created the file, the directory entry
+  pointing to it is separate metadata a crash could still lose (the
+  well-known POSIX "fsync doesn't sync the directory" gap). Real stakes
+  here: this log is the *only* basis for the holdout single-access
+  claim, so a lost directory entry after the very first write could in
+  theory let a duplicate holdout access go unnoticed. Fixed: on first
+  creation, open the parent directory read-only and `os.fsync` its fd
+  too, best-effort (`except OSError: pass`) since directory-fd fsync is
+  POSIX-only and this durability layer is already a bonus on top of the
+  file-level fsync that always runs regardless.
+- **`run_walk_forward`'s `train_bars`/`validate_bars`/`step_bars`/
+  `fee_bps`/`slippage_bps` were positional**, unlike CLAUDE.md's Build-
+  section signature snippet's literal ordering intent but exactly the
+  shape (three adjacent bare `int`s, then two adjacent `Decimal`s) a
+  transposed-argument bug hides in undetected by any type checker. Made
+  keyword-only (`*` moved before them) — zero-regression, since every
+  call site already used keyword args. New test
+  `test_run_walk_forward_requires_train_validate_step_fee_slippage_to_be_keyword_only`
+  locks this in.
+- **`fee_bps`/`slippage_bps` had no non-negative validation** before
+  being passed to `run_backtest`/`compute_metrics` — `generate_folds`
+  already fails loud on non-positive `train_bars`/`validate_bars`/
+  `step_bars`, but a negative fee/slippage would have silently produced
+  an over-optimistic backtest result, directly undermining CLAUDE.md's
+  Eligibility Bar. Added the same fail-loud `ValueError` pattern; two new
+  tests (`test_run_walk_forward_rejects_negative_fee_bps`/
+  `..._slippage_bps`).
+- **A test's name didn't match what it tested.**
+  `test_run_walk_forward_rejects_non_positive_fee_or_slippage_config_is_not_required`
+  actually only tested that a `generate_folds` `ValueError` (from
+  `train_bars=0`) propagates — it never touched `fee_bps`/`slippage_bps`
+  at all, which could have misled a future reader into believing fee/
+  slippage validation was already covered. Renamed to
+  `test_run_walk_forward_propagates_generate_folds_valueerror` and given
+  a `match="train_bars"` assertion for precision (also resolves a Ruff
+  PT011 nitpick the same review pass surfaced on the same test).
+
+All fixes pushed in one follow-up commit (batched, not one push per
+finding, per CLAUDE.md's rate-limit-avoidance guidance) before
+requesting re-review. Final count after fixes: `test_walkforward.py`
+went from 24 to 27 tests (3 added); full suite 221 (was 218 at the first
+review pass, 221 after).
 
 ## Deliberately out of scope
 
