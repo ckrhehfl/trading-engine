@@ -41,8 +41,9 @@ gating" rule as v1, so a stale crossover state never causes an incorrect
 """
 
 from collections import deque
+from collections.abc import Mapping, Sequence
 from decimal import Decimal
-from typing import Any, Mapping, Sequence
+from typing import Any
 from uuid import uuid4
 
 from backtest.engine import Strategy, run_backtest

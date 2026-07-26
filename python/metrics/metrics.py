@@ -148,6 +148,8 @@ def compute_metrics(
     """
     if starting_equity <= 0:
         raise ValueError(f"starting_equity must be positive, got {starting_equity}")
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
 
     equity_curve, closed_trades = build_equity_curve(klines, filled_intents, fills, starting_equity)
     final_equity = equity_curve[-1] if equity_curve else starting_equity
@@ -182,7 +184,17 @@ def _sharpe_ratio(equity_curve: list[Decimal], bars_per_day: int = _BARS_PER_DAY
     return's denominator (0), or when the returns have zero variance —
     all "no evidence of risk-adjusted edge one way or the other", not "an
     edge of exactly zero".
+
+    Raises `ValueError` for a non-positive `bars_per_day` -- fail loud at
+    the entry point rather than either silently zeroing the annualization
+    factor (a `bars_per_day=0` would report Sharpe as `0.0`, a real "no
+    edge" claim, instead of `None`, "no evidence") or letting a negative
+    value surface as an opaque `math.sqrt` `ValueError` deep inside the
+    annualization arithmetic below. Same fail-loud convention as
+    `compute_metrics`'s `starting_equity` check.
     """
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
     if len(equity_curve) < 2:
         return None
 

@@ -134,6 +134,30 @@ class TestConstruction:
         assert strategy.bars_seen == 0
 
 
+def _run_to_first_long_entry(strategy: RegimeMomentumRiskManagedStrategy) -> tuple[list[Kline], int]:
+    """Module-level (not a test-class method) so both `TestEntrySizingAndLevels`
+    and `TestExitFlattensNotFlips` can share it directly rather than one
+    instantiating the other's test class to reach a "private" helper.
+
+    Reuses the hand-verified regime-gated scenario directly (see
+    `_hand_verified_klines`'s docstring): the genuine, gated-through LONG
+    fire happens at bar index 10.
+    """
+    klines = _hand_verified_klines()
+
+    entry_intent = None
+    entry_index = None
+    for i in range(len(klines)):
+        window = klines[: i + 1]
+        intent = strategy(window)
+        if intent is not None and intent.side == Side.LONG and strategy.open_position is not None:
+            entry_intent = intent
+            entry_index = i
+            break
+    assert entry_intent is not None, "expected a LONG entry to fire in this constructed ramp"
+    return klines, entry_index
+
+
 class TestEntrySizingAndLevels:
     """Hand-verified scenario: a genuine bullish crossover, gated by an
     already-established "up" 1h regime, fires a LONG entry with ATR-based
@@ -141,27 +165,9 @@ class TestEntrySizingAndLevels:
     entry.
     """
 
-    def _run_to_first_long_entry(self, strategy: RegimeMomentumRiskManagedStrategy) -> tuple[list[Kline], int]:
-        # Reuse the hand-verified regime-gated scenario directly (see
-        # `_hand_verified_klines`'s docstring): the genuine, gated-through
-        # LONG fire happens at bar index 10.
-        klines = _hand_verified_klines()
-
-        entry_intent = None
-        entry_index = None
-        for i in range(len(klines)):
-            window = klines[: i + 1]
-            intent = strategy(window)
-            if intent is not None and intent.side == Side.LONG and strategy.open_position is not None:
-                entry_intent = intent
-                entry_index = i
-                break
-        assert entry_intent is not None, "expected a LONG entry to fire in this constructed ramp"
-        return klines, entry_index
-
     def test_long_entry_has_atr_scaled_stop_and_target_below_above_entry(self):
         strategy = _strategy(fast=2, slow=4, regime_sma_length=2)
-        klines, entry_index = self._run_to_first_long_entry(strategy)
+        klines, entry_index = _run_to_first_long_entry(strategy)
         position = strategy.open_position
         assert position is not None
         assert position.side == Side.LONG
@@ -176,7 +182,7 @@ class TestEntrySizingAndLevels:
 
     def test_long_entry_quantity_matches_fixed_fractional_sizing_formula(self):
         strategy = _strategy(fast=2, slow=4, regime_sma_length=2)
-        klines, entry_index = self._run_to_first_long_entry(strategy)
+        klines, entry_index = _run_to_first_long_entry(strategy)
         position = strategy.open_position
         assert position is not None
         stop_distance = position.entry_price - position.stop_price
@@ -185,7 +191,7 @@ class TestEntrySizingAndLevels:
 
     def test_entry_intent_shape(self):
         strategy = _strategy(fast=2, slow=4, regime_sma_length=2)
-        klines, entry_index = self._run_to_first_long_entry(strategy)
+        klines, entry_index = _run_to_first_long_entry(strategy)
         # Re-derive the actual returned intent by replaying (state is
         # already past it, so re-run a fresh strategy identically).
         fresh = _strategy(fast=2, slow=4, regime_sma_length=2)
@@ -208,7 +214,7 @@ class TestExitFlattensNotFlips:
         # is read-only from outside; drive it through real entry logic
         # instead, then feed one bar that unambiguously breaches the
         # stop).
-        klines = TestEntrySizingAndLevels()._run_to_first_long_entry(strategy)[0]
+        klines = _run_to_first_long_entry(strategy)[0]
         # already entered inside the helper above via `strategy` itself
         position_before = strategy.open_position
         assert position_before is not None
@@ -234,7 +240,7 @@ class TestExitFlattensNotFlips:
 
     def test_target_hit_emits_flattening_intent_with_exact_position_quantity(self):
         strategy = _strategy(fast=2, slow=4, regime_sma_length=2)
-        klines = TestEntrySizingAndLevels()._run_to_first_long_entry(strategy)[0]
+        klines = _run_to_first_long_entry(strategy)[0]
         position_before = strategy.open_position
         assert position_before is not None
         quantity_before = position_before.quantity
@@ -259,7 +265,7 @@ class TestExitFlattensNotFlips:
 
     def test_no_new_entry_is_opened_while_a_position_is_already_open(self):
         strategy = _strategy(fast=2, slow=4, regime_sma_length=2)
-        klines = TestEntrySizingAndLevels()._run_to_first_long_entry(strategy)[0]
+        klines = _run_to_first_long_entry(strategy)[0]
         assert strategy.open_position is not None
         # Feed a further bar that would, in isolation, look like a fresh
         # bearish cross -- must not be acted on while a position is open.
@@ -358,7 +364,6 @@ class TestRealWalkForwardIntegration:
             runs_path=str(tmp_path / "experiments.jsonl"),
         )
         # Enough bars for a couple of small folds.
-        rising = _flat_klines(0)
         prices = [Decimal("100") + (Decimal(i) % 20) for i in range(400)]
         klines = [
             Kline(

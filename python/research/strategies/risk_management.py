@@ -187,9 +187,19 @@ def compute_position_size(
     reference_equity: Decimal = DEFAULT_REFERENCE_EQUITY,
     risk_fraction: Decimal = DEFAULT_RISK_FRACTION,
 ) -> Decimal | None:
-    """Fixed-fractional position sizing: quantity such that a stop-loss
-    hit loses exactly `reference_equity * risk_fraction` (before fees/
+    """Fixed-fractional position sizing: quantity such that, *given*
+    `entry_price` and `stop_price` exactly as supplied, a stop-loss hit
+    loses exactly `reference_equity * risk_fraction` (before fees/
     slippage, which this backtest-only formula does not account for).
+
+    That guarantee is only as precise as its two price inputs: a caller
+    (e.g. `regime_momentum_risk_managed.py`/`hourly_momentum.py`) that
+    supplies its own signal-time reference price rather than the actual
+    realized fill price (see those modules' `OpenPosition` docstring) will
+    see the *realized* loss on a real stop-out land somewhat above or
+    below the 1% target, not exactly on it -- this function's own
+    arithmetic is exact, but "exactly 1%" is a claim about its inputs, not
+    a claim about what a caller's eventual real fill will realize.
 
     `reference_equity` is a **fixed constant**, not a live running account
     balance -- deliberately so, per this task's explicit brief:

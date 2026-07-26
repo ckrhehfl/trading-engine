@@ -320,7 +320,7 @@ def test_run_walk_forward_passes_bars_per_day_through_to_fold_sharpe_annualizati
     )
 
     assert len(result_default.folds) == len(result_1h.folds) == 3
-    for fold_default, fold_1h in zip(result_default.folds, result_1h.folds):
+    for fold_default, fold_1h in zip(result_default.folds, result_1h.folds, strict=True):
         assert fold_default.metrics.sharpe_ratio is not None
         assert fold_1h.metrics.sharpe_ratio is not None
         assert fold_1h.metrics.sharpe_ratio == pytest.approx(fold_default.metrics.sharpe_ratio / 2)

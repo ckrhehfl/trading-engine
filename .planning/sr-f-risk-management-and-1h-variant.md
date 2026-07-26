@@ -99,7 +99,17 @@ strategy believes about its own position.
 a stop-loss hit loses exactly `risk_fraction` (1%, not
 searched/tuned — a common conservative starting convention) of a
 **fixed** `reference_equity` ($10,000, matching this project's existing
-`DEFAULT_STARTING_EQUITY` convention). `reference_equity` is a constant,
+`DEFAULT_STARTING_EQUITY` convention), **computed against the strategy's
+own internally-tracked `entry_price`/`stop_price`** — not a guarantee
+about the realized dollar loss once the actual next-bar fill (open plus
+slippage) is known. Because `entry_price` is the signal bar's close
+(see below) rather than that actual fill price, and a stop/target
+trigger is itself checked against a bar's high/low rather than an exact
+intra-bar tick, the *realized* loss on a stop-out can come in somewhat
+above or below the 1% target — this is the same approximation named in
+the "Stop/target levels" section above, restated here because it also
+bounds how literally "exactly 1%" should be read. `reference_equity` is
+a constant,
 deliberately **not** a reconstructed live running account balance:
 doing that would duplicate `metrics/position.py::PositionTracker`'s job
 (which already does this correctly, downstream, from real fills) and
@@ -287,10 +297,10 @@ to ~2025-11-16 (~8.3 months, matching `.planning/sr-a-data-pipeline.md`'s
 independent finding exactly), `5m` back to ~2026-05-02 (~3 months) — from
 a same-day binary-search probe against the live production endpoint. This
 task only independently re-verified `1h` (the one it actually depends
-on), via a real, full `backfill.py` run rather than an earlist-bar-only
+on), via a real, full `backfill.py` run rather than an earliest-bar-only
 probe:
 
-```
+```bash
 uv run python -m data.backfill --symbol BTC-USDT --interval 1h \
   --start 2020-01-01T00:00:00+00:00 --base-url https://open-api.bingx.com \
   --db-path python/data/var/klines.sqlite3
@@ -584,9 +594,89 @@ be meaningfully positive) both happened before the module was considered
 done, per the red-green-refactor discipline CLAUDE.md requires for this
 kind of work.
 
-Full suite: **328 passed** (was 271 before this task — 328-271=57, matching
-new-test count: 20+16+17+3+1=57 exactly). Nothing from prior tasks
-regressed.
+Full suite (before the CodeRabbit review pass below): **328 passed** (was
+271 before this task — 328-271=57, matching new-test count:
+20+16+17+3+1=57 exactly). Nothing from prior tasks regressed.
+
+## CodeRabbit review findings
+
+One review pass, 9 actionable findings, all accepted (all low-risk,
+non-CODEOWNERS-matched Python research code/docs/tests) and batched into
+one follow-up push before requesting re-review, per CLAUDE.md's rate-
+limit-avoidance guidance:
+
+- **`bars_per_day` had no positive-value validation.** `bars_per_day=0`
+  would have silently zeroed the annualization factor (Sharpe reported as
+  `0.0`, a real "no edge" claim, rather than `None`, "no evidence"); a
+  negative value would have surfaced as an opaque `math.sqrt` `ValueError`
+  deep inside the annualization arithmetic instead of a clear error at
+  the entry point. Fixed with the same fail-loud convention as
+  `compute_metrics`'s existing `starting_equity` check, in both
+  `compute_metrics` and `_sharpe_ratio` (`metrics/metrics.py`). Two new
+  tests, written first (TDD):
+  `test_sharpe_ratio_rejects_non_positive_bars_per_day`,
+  `test_compute_metrics_rejects_non_positive_bars_per_day`.
+- **The fixed-fractional sizing design doc (and `compute_position_size`'s
+  own docstring) overclaimed precision.** "A stop-loss hit loses exactly
+  1% of reference_equity" is only exact relative to the strategy's own
+  internally-tracked `entry_price`/`stop_price` — not a guarantee about
+  the realized dollar loss once the actual next-bar fill (open plus
+  slippage) is known, since a real stop-out's realized loss can land
+  somewhat above or below the 1% target depending on how far price moved
+  between signal and fill. Both this document's "Fixed-fractional
+  position sizing" section and `risk_management.py`'s
+  `compute_position_size` docstring were reworded to state this
+  precisely rather than imply an unconditional guarantee. Considered (and
+  rejected, consistent with the reasoning already in "Stop/target
+  levels" above) building an actual pending-entry/fill-confirmation
+  mechanism instead — that would require the strategy to observe its own
+  next-bar fill price, which the `Strategy` protocol's plain
+  `Callable[[Sequence[Kline]], OrderIntent | None]` signature has no
+  channel for, and building one is a materially larger, out-of-scope
+  design change (flagged, not built, same as the identical judgment call
+  already documented above for `entry_price`).
+- **A shell code fence in this document was missing a language
+  identifier** (Markdown lint `MD040`) — added `bash`.
+- **`typing.Mapping`/`typing.Sequence` should be `collections.abc.Mapping`/
+  `collections.abc.Sequence`** (Ruff `UP035`) in both new strategy
+  modules — the codebase already targets Python 3.10+ (uses `X | None`
+  syntax throughout), so this is a safe, mechanical import-source change.
+  Fixed in `regime_momentum_risk_managed.py` and `hourly_momentum.py`
+  only (the two files this PR touches) — not a repo-wide sweep of
+  `ma_crossover.py`/`regime_momentum.py`/`walkforward.py`'s identical
+  pre-existing imports, per CLAUDE.md's "touch only what the task
+  requires" rule.
+- **`test_hourly_momentum.py`'s warmup test didn't test what its name
+  claimed.** `test_no_signal_during_warmup` rebuilt a length-1 window on
+  every iteration (`_flat_klines(0) + [_hourly_kline(i, close)]`) instead
+  of feeding the strategy a genuinely growing, accumulated window
+  (`klines[: i + 1]`, the contract every other test in the file already
+  used) — so it was actually testing "always shown only the first bar,"
+  not "shown 1, then 2, then 3 bars during warmup." Fixed to match the
+  established `klines[: i + 1]` pattern, asserting every intermediate bar
+  too (not just the loop's final value).
+- **Unused unpacked `klines`/`entry_index` variables** in two
+  `test_hourly_momentum.py` tests that only needed `strategy.open_position`
+  afterward (Ruff `RUF059`) — the helper call's return value is now
+  discarded outright in those two, rather than bound to unused names.
+- **A test instantiated a sibling test class to reach its "private"
+  helper method** (`TestEntrySizingAndLevels()._run_to_first_long_entry(...)`
+  from inside `TestExitFlattensNotFlips`) in `test_regime_momentum_risk_managed.py`
+  — real inter-test-class coupling that would break the moment either
+  class gained an `__init__`/fixture. Extracted `_run_to_first_long_entry`
+  to a module-level function both classes call directly.
+- **Dead code**: an unused `rising = _flat_klines(0)` (an empty list,
+  never referenced) in the real walk-forward integration smoke test —
+  removed.
+- **`zip()` without `strict=True`** (Ruff `B905`) in the new
+  `bars_per_day`-annualization walk-forward test — added; the preceding
+  length assertion already made this safe in practice, but explicit
+  `strict=True` matches this codebase's existing convention (see
+  `metrics/position.py::reconstruct_trades`'s identical use) and the
+  lint rule.
+
+Full suite after fixes: **330 passed** (328 + 2, matching the two new
+`bars_per_day`-validation tests exactly). Nothing regressed.
 
 ## Judgment calls resolved without asking
 

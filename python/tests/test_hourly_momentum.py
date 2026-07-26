@@ -82,9 +82,9 @@ class TestEdgeTriggeredCrossover:
     def test_no_signal_during_warmup(self):
         strategy = _strategy(fast=2, slow=4)
         closes = [Decimal(c) for c in [100, 101, 102]]  # only 3 < slow=4
-        for i, close in enumerate(closes):
-            intent = strategy(_flat_klines(0) + [_hourly_kline(i, close)])
-        assert intent is None
+        klines = [_hourly_kline(i, c) for i, c in enumerate(closes)]
+        intents = [strategy(klines[: i + 1]) for i in range(len(klines))]
+        assert all(intent is None for intent in intents)
 
     def test_baseline_regime_establishment_fires_no_signal(self):
         # First bar where fast/slow SMA relationship becomes defined is a
@@ -137,7 +137,7 @@ class TestRiskManagement:
 
     def test_entry_has_atr_scaled_stop_and_target_with_one_to_two_risk_reward(self):
         strategy = _strategy(fast=2, slow=3, atr_period=2)
-        klines, entry_index = self._run_to_first_entry(strategy)
+        self._run_to_first_entry(strategy)
         position = strategy.open_position
         assert position is not None
         entry_price = position.entry_price
@@ -152,7 +152,7 @@ class TestRiskManagement:
 
     def test_entry_quantity_matches_fixed_fractional_sizing_formula(self):
         strategy = _strategy(fast=2, slow=3, atr_period=2)
-        klines, entry_index = self._run_to_first_entry(strategy)
+        self._run_to_first_entry(strategy)
         position = strategy.open_position
         assert position is not None
         stop_distance = abs(position.entry_price - position.stop_price)
@@ -161,7 +161,7 @@ class TestRiskManagement:
 
     def test_stop_hit_emits_flattening_intent_with_exact_quantity(self):
         strategy = _strategy(fast=2, slow=3, atr_period=2)
-        klines, entry_index = self._run_to_first_entry(strategy)
+        klines, _ = self._run_to_first_entry(strategy)
         position_before = strategy.open_position
         assert position_before is not None
         quantity_before = position_before.quantity

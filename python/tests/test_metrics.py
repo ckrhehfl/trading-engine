@@ -202,6 +202,23 @@ def test_sharpe_ratio_uses_a_smaller_annualization_factor_for_fewer_bars_per_day
     assert result_1h == pytest.approx(result_15m / 2)
 
 
+def test_sharpe_ratio_rejects_non_positive_bars_per_day():
+    """`bars_per_day=0` would silently zero out the annualization factor,
+    reporting Sharpe as `0.0` (a real "no edge" claim) rather than `None`
+    ("no evidence") -- and a negative value would raise an opaque
+    `math.sqrt` `ValueError` deep inside the annualization arithmetic
+    instead of a clear, fail-loud error at the entry point. Same
+    fail-loud convention as `compute_metrics`'s existing
+    `starting_equity`/`research.walkforward.run_walk_forward`'s existing
+    `fee_bps`/`slippage_bps` validation.
+    """
+    equity_curve = [Decimal("100"), Decimal("110"), Decimal("105")]
+    with pytest.raises(ValueError, match="bars_per_day"):
+        _sharpe_ratio(equity_curve, bars_per_day=0)
+    with pytest.raises(ValueError, match="bars_per_day"):
+        _sharpe_ratio(equity_curve, bars_per_day=-1)
+
+
 def test_sharpe_ratio_is_none_when_per_bar_returns_have_zero_variance():
     # Constant 10% return every bar => stdev == 0 => sharpe denominator is
     # zero. Must yield None, never a ZeroDivisionError or an inflated value.
@@ -343,3 +360,9 @@ def test_compute_metrics_passes_bars_per_day_through_to_sharpe_ratio():
     assert metrics_default.sharpe_ratio is not None
     assert metrics_1h.sharpe_ratio is not None
     assert metrics_1h.sharpe_ratio == pytest.approx(metrics_default.sharpe_ratio / 2)
+
+
+def test_compute_metrics_rejects_non_positive_bars_per_day():
+    klines = [_kline(0, "100"), _kline(1, "110")]
+    with pytest.raises(ValueError, match="bars_per_day"):
+        compute_metrics(klines, [], [], STARTING_EQUITY, bars_per_day=0)
