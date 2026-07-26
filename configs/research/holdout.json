@@ -1,0 +1,7 @@
+{
+  "symbol": "BTC-USDT",
+  "interval": "15m",
+  "holdout_cutoff_ms": 1781147700000,
+  "set_on": "2026-07-26",
+  "rationale": "Real BingX BTC-USDT/15m retention as of 2026-07-26 is ~252 days (24,191 bars, earliest 2025-11-16T03:45:00Z, latest 2026-07-26T03:15:00Z) -- far thinner than the multi-year depth CLAUDE.md's walk-forward window defaults originally assumed. Cutoff reserves the trailing 45 days (4,320 bars, 2026-06-11T03:15:00Z onward) as holdout: 45 days is simultaneously within the design's '15-25% of available data' framing (45/252 = 17.9%) and its alternative 'fixed ~30-45 day trailing window' framing -- the one value that satisfies both stated options rather than only one. Leaves ~207 days (19,870 bars) of research data, enough for 3 non-overlapping folds at the provisional default walk-forward windows (train=8640, validate=2880, step=2880) -- see .planning/sr-c-walkforward-holdout.md for the full reasoning, including the trade-off against a smaller (e.g. 30-day) holdout that would have preserved one more research fold."
+}

@@ -15,6 +15,7 @@ fetched this" bookkeeping needed anywhere else in the pipeline.
 
 import sqlite3
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
 
@@ -149,3 +150,41 @@ def find_missing_ranges(
         gaps.append((expected, end_ms))
 
     return gaps
+
+
+def fetch_klines(
+    conn: sqlite3.Connection,
+    symbol: str,
+    interval: str,
+    start_ms: int,
+    end_ms: int,
+) -> list[KlineRow]:
+    """Read stored klines in the half-open range `[start_ms, end_ms)`,
+    ordered ascending by `open_time_ms`. This is the read-path counterpart
+    to `upsert_klines`: it returns typed `KlineRow`s with `Decimal` OHLCV
+    fields parsed back from the exact `TEXT` storage, not raw
+    `sqlite3.Row` tuples -- so a caller (e.g. `python/research/holdout.py`,
+    the first real consumer of the cache Task A built) never has to touch
+    SQL or re-derive the `Decimal(str)` parsing rule itself.
+    """
+    step = interval_ms(interval)
+    require_valid_range(start_ms, end_ms, step)
+
+    rows = conn.execute(
+        "SELECT open_time_ms, open, high, low, close, volume FROM klines "
+        "WHERE symbol = ? AND interval = ? AND open_time_ms >= ? AND open_time_ms < ? "
+        "ORDER BY open_time_ms",
+        (symbol, interval, start_ms, end_ms),
+    ).fetchall()
+
+    return [
+        KlineRow(
+            open_time_ms=row[0],
+            open=Decimal(row[1]),
+            high=Decimal(row[2]),
+            low=Decimal(row[3]),
+            close=Decimal(row[4]),
+            volume=Decimal(row[5]),
+        )
+        for row in rows
+    ]
