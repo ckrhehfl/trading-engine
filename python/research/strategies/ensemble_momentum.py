@@ -44,21 +44,32 @@ overfitting risk that heuristic exists to flag.
 
 Each pair's own fast/slow SMA crossover produces a sign (`+1`/`0`/`-1`,
 same `_sign` helper as every other strategy in this package). The 3
-pairs' signs are combined by **majority vote**: sum the 3 signs; a
-strictly positive sum means at least 2 of 3 pairs agree bullish (net
-sign `+1`), strictly negative means at least 2 of 3 agree bearish (net
-sign `-1`), and an exact tie (e.g. one bullish, one bearish, one flat, or
-literally all three disagreeing pairwise) nets to `0` -- no signal.
+pairs' signs are combined by a **net-sign rule** (`sign(sum(pair_signs))`):
+sum the 3 signs; a strictly positive sum nets to `+1`, strictly negative
+nets to `-1`, and an exact-zero sum nets to `0` (no signal). This
+implements majority vote **exactly** whenever every pair is non-flat (2
+bullish + 1 bearish sums to `+1`, i.e. `+1` wins by strict majority, and
+symmetrically for bearish) -- but is a stated simplification of "majority
+vote" in the general case: a *single* non-flat pair against two flat
+ones (e.g. `[+1, 0, 0]`) also nets to `+1`, even though only 1 of 3 pairs
+actually voted a direction, not a genuine 2-of-3 majority. This is a
+deliberate, accepted simplification (not a bug -- see
+`test_ensemble_momentum.py::TestCombinedSign::
+test_one_bullish_two_flat_nets_bullish` for the locked-in behavior),
+chosen because a plain summed-sign rule is simpler to reason about and
+implement than special-casing "how many pairs actually voted," and
+because 3 simultaneously-flat-or-near-flat SMA pairs on real BTC data is
+an edge case, not the common path this rule is optimized for.
 Deliberately simple, not weighted/optimized: this is the combination
 rule this task's own brief explicitly left as an implementation
 judgment call ("by averaging each pair's directional state, or majority
-vote — your call, document reasoning"); majority vote was chosen over a
-weighted average because it requires no additional tunable weight
-parameters (keeping the "few tunable knobs" discipline intact) and is
-directly interpretable ("at least 2 of 3 scales agree"), at the cost of
-discarding *how strongly* each pair agrees (e.g. a barely-positive fast
-SMA counts the same as a strongly-positive one) -- a real, accepted
-simplification, not an oversight.
+vote — your call, document reasoning"); this net-sign/majority-vote rule
+was chosen over a weighted average because it requires no additional
+tunable weight parameters (keeping the "few tunable knobs" discipline
+intact) and is directly interpretable in the common (all-pairs-non-flat)
+case, at the cost of discarding *how strongly* each pair agrees (e.g. a
+barely-positive fast SMA counts the same as a strongly-positive one) --
+a real, accepted simplification, not an oversight.
 
 **All 3 pairs must be simultaneously warmed up (`len(closes) >=
 max(slow for _, slow in lookback_pairs)`) before any combined signal is
@@ -138,11 +149,13 @@ def _sign(value: Decimal) -> int:
 
 
 def _combined_sign(pair_signs: Sequence[int]) -> int:
-    """Majority-vote combination -- see module docstring for the full
-    reasoning. `sum(pair_signs) > 0` means a strict majority of pairs
-    agree bullish (net `+1`); `< 0` means a strict majority agree
-    bearish (net `-1`); exactly `0` (a tie, including "all three
-    disagree") means no signal.
+    """Net-sign combination of the constituent pairs' signs -- see
+    module docstring for the full reasoning, including the precise
+    relationship to "majority vote" (exact whenever no pair is flat; a
+    documented simplification otherwise). `sum(pair_signs) > 0` nets to
+    `+1` (bullish); `< 0` nets to `-1` (bearish); exactly `0` (e.g. a
+    tie, or "all three disagree", or every pair flat) nets to `0` (no
+    signal).
     """
     total = sum(pair_signs)
     if total > 0:
@@ -340,6 +353,11 @@ class EnsembleMomentumStrategy:
         if vol_scalar is None:
             return None
 
+        # No separate hard cap on final_quantity is needed beyond
+        # compute_vol_scalar's own max_scalar clamp -- same bound and
+        # reasoning as single_lookback_momentum.py's identical composition
+        # (regime_weight in [0, 1] by construction, so the worst case is
+        # deterministically base_quantity * max_vol_scalar).
         final_quantity = base_quantity * regime_weight * vol_scalar
         if final_quantity <= 0:
             return None

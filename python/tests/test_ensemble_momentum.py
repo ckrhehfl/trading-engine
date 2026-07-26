@@ -127,40 +127,57 @@ class TestConstruction:
 
 
 class TestEnsembleSignalDiffersFromAnySingleConstituent:
-    def test_combined_signal_can_diverge_from_the_short_pairs_own_sign(self, monkeypatch):
-        """Construct a price path where the short lookback pair alone
-        would read one direction, but the medium+long pairs together
-        outvote it -- proving the ensemble's combined signal is genuinely
-        not just "whatever the shortest/most-reactive pair says", which
-        would make the whole exercise of combining 3 pairs pointless.
+    def test_combined_signal_diverges_from_a_single_constituent_pairs_own_sign_and_actually_fires(
+        self, monkeypatch
+    ):
+        """Construct a price path where the ensemble's combined signal
+        actually fires an entry, and prove that entry's direction is NOT
+        what a single constituent pair, taken alone, would have read at
+        that exact bar -- proving the combination logic is genuinely not
+        reducible to any one pair, with a real, non-vacuous assertion
+        (not "either it fired the expected side, or it never fired at
+        all", which a CodeRabbit review correctly flagged as trivially
+        satisfiable by a scenario that never fires anything).
+
+        short=(2,3), medium=(4,6), long=(8,12): a decline establishes all
+        three pairs bearish, then a rally flips the two *faster* pairs
+        (short, medium) bullish while the *slowest* pair (long, still
+        anchored to the pre-rally decline via its longer trailing window)
+        remains bearish for a few more bars. Majority (short+medium)
+        outvotes the dissenting long pair, and the ensemble fires a real
+        LONG entry at that bar -- verified directly below by independently
+        recomputing the long pair's own sign at that exact bar, not
+        assumed.
         """
         _force_full_conviction(monkeypatch)
-        # short=(2,3), medium=(4,6), long=(8,12): a late, sharp downward
-        # kick moves the short pair's own fast/slow SMA negative while
-        # the medium/long pairs (built on a much longer, still-rising
-        # trailing window) remain positive -- majority (medium+long)
-        # keeps the ensemble bullish despite the short pair itself
-        # flipping.
-        strategy = _strategy(lookback_pairs=((2, 3), (4, 6), (8, 12)), atr_period=3)
-        rising = [Decimal(100 + 2 * i) for i in range(14)]  # steady uptrend, warms all 3 pairs
-        kick_down = [rising[-1] - Decimal(20)]  # a dip large enough to flip only the short pair
-        closes = rising + kick_down
+        lookback_pairs = ((2, 3), (4, 6), (8, 12))
+        strategy = _strategy(lookback_pairs=lookback_pairs, atr_period=3)
+        decline = [Decimal(200 - 3 * i) for i in range(14)]
+        rally = [decline[-1] + Decimal(5 * i) for i in range(1, 10)]
+        closes = decline + rally
         klines = [_hourly_kline(i, c) for i, c in enumerate(closes)]
 
-        # Compute the short pair's OWN sign in isolation at the final bar.
-        last_3 = closes[-3:]
-        short_slow_sma = sum(last_3) / 3
-        short_fast_sma = sum(closes[-2:]) / 2
-        short_sign = 1 if short_fast_sma > short_slow_sma else (-1 if short_fast_sma < short_slow_sma else 0)
-        assert short_sign == -1, "test setup assumption: the short pair alone should read bearish here"
+        fire_index = None
+        entry_intent = None
+        for i in range(len(klines)):
+            intent = strategy(klines[: i + 1])
+            if intent is not None:
+                fire_index = i
+                entry_intent = intent
+                break  # the first-ever fired intent is necessarily an entry (no position existed before)
+        assert entry_intent is not None, "expected the ensemble to fire a real entry in this scenario"
+        assert entry_intent.side == Side.LONG
 
-        intents = [strategy(klines[: i + 1]) for i in range(len(klines))]
-        fired = [i for i in intents if i is not None]
-        # The ensemble's own crossover-sign tracker should still read
-        # bullish (established during the steady uptrend, majority-held
-        # through the final dip) -- i.e. it did NOT fire a fresh bearish
-        # signal just because the short pair flipped.
-        assert all(i.side == Side.LONG for i in fired) or not fired
+        # Independently recompute the LONGEST (dissenting) pair's own
+        # sign at the exact bar the ensemble fired.
+        long_fast, long_slow = lookback_pairs[2]
+        window = closes[: fire_index + 1]
+        long_slow_sma = sum(window[-long_slow:]) / long_slow
+        long_fast_sma = sum(window[-long_fast:]) / long_fast
+        long_pair_sign = 1 if long_fast_sma > long_slow_sma else (-1 if long_fast_sma < long_slow_sma else 0)
+        assert long_pair_sign == -1, (
+            "test setup assumption: the long pair alone should still read bearish at the fire bar"
+        )
 
 
 class TestWarmupRequiresAllPairsSimultaneously:

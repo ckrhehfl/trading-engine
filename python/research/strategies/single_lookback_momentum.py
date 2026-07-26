@@ -319,6 +319,17 @@ class SingleLookbackMomentumStrategy:
         if vol_scalar is None:
             return None
 
+        # No separate hard cap on final_quantity (or the resulting
+        # per-trade risk-if-stopped) is needed beyond compute_vol_scalar's
+        # own max_scalar clamp: regime_weight is always in [0, 1] by
+        # construction (compute_regime_weight's own contract), so the
+        # worst case is exactly base_quantity * 1 * max_vol_scalar --
+        # i.e. the maximum possible risk-if-stopped is deterministically
+        # risk_fraction * max_vol_scalar of reference_equity (1% * 3 =
+        # 3% at these defaults), already bounded by the existing,
+        # documented max_vol_scalar cap in volatility_targeting.py. A
+        # second, independent cap here would be redundant with that
+        # bound, not an additional safety property.
         final_quantity = base_quantity * regime_weight * vol_scalar
         if final_quantity <= 0:
             # Near-zero conviction (choppy/ranging regime) or a vol

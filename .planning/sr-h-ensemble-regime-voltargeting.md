@@ -13,6 +13,29 @@ from that research pass are what this task implements; the task's own
 brief was explicit that the central empirical question (does ensembling
 actually help on our own data) must be tested, not assumed.
 
+**Honest citation-completeness gap, stated plainly rather than papered
+over**: this document's task brief handed this session the research
+pass's *distilled findings* (source names, rough attributions, and
+approximate publication years, as given below), not the original
+research pass's full source list (exact DOIs/URLs/access dates). This
+session did not independently re-run that research or verify each
+citation's exact bibliographic details first-hand, and will not invent
+DOIs/URLs it does not actually have -- fabricated-looking precision would
+be strictly worse than an honest gap. What's stated below is exactly
+what this task was given: Concretum Group and Man AHL (attributed to
+Baz, Granger, Harvey, Le, and Rattray, 2015, widely associated with that
+firm's trend-following research) and QuantPedia (a known quantitative-
+strategy research publisher) as supporting multi-lookback ensembling;
+a 2025 CFM-affiliated study attributed to Valeyre as the counter-finding
+(single 120-day EMA outperforming an ensemble on 70 traditional CTA
+assets); and Robert Carver's volatility-targeting framework, also
+attributed to Concretum's own reported convention (20% annualized vol
+target). A future session with direct access to the original research
+pass's full citation list should replace this paragraph with exact
+references; until then, treat every attribution below as "as reported
+to this task," not as independently verified against the primary
+source.
+
 ## Finding 1: multi-lookback ensembles are NOT unconditionally better than a single well-chosen lookback -- this is the actual, testable question this task exists to answer
 
 Credible sources genuinely split on this. Concretum Group, Man AHL (Baz
@@ -215,13 +238,23 @@ what makes the comparison meaningful.
 scales, roughly matching QuantPedia's BTC-specific "day-scale regime
 shifts" finding cited in Finding 1 above -- **not searched/tuned to this
 asset**. Each pair's own fast/slow SMA crossover produces a sign
-(`+1`/`0`/`-1`); the 3 signs are combined by **majority vote**
-(`sum(signs)`; strictly positive -> `+1`, strictly negative -> `-1`,
-an exact tie -> `0`/no signal). Majority vote was chosen over a
-weighted average because it needs no additional tunable weight
-parameters (keeping "few tunable knobs" intact) and is directly
-interpretable ("at least 2 of 3 scales agree") -- at the deliberate cost
-of discarding *how strongly* each pair agrees. **All 3 pairs must be
+(`+1`/`0`/`-1`); the 3 signs are combined by a **net-sign rule**
+(`sign(sum(signs))`: strictly positive -> `+1`, strictly negative ->
+`-1`, an exact-zero sum -> `0`/no signal). This implements majority vote
+**exactly** whenever every pair is non-flat (2-of-3 agreement determines
+the net sign) -- but is a documented simplification of "majority vote"
+in the general case: a single non-flat pair against two flat ones (e.g.
+`[+1, 0, 0]`) also nets to `+1`, without a genuine 2-of-3 majority behind
+it (see `ensemble_momentum.py`'s own docstring and
+`test_ensemble_momentum.py::TestCombinedSign::
+test_one_bullish_two_flat_nets_bullish` for the exact, locked-in
+behavior -- flagged during CodeRabbit review as a real, valid
+documentation-accuracy gap in an earlier draft of this design, fixed
+here and in the module's own docstrings). This net-sign/majority-vote
+rule was chosen over a weighted average because it needs no additional
+tunable weight parameters (keeping "few tunable knobs" intact) and is
+directly interpretable in the common case -- at the deliberate cost of
+discarding *how strongly* each pair agrees. **All 3 pairs must be
 simultaneously warmed up** (`len(closes) >= max(slow)`) before any
 combined signal is produced at all, rather than combining whichever
 subset happens to be warm -- avoids the ensemble's effective character
@@ -325,9 +358,14 @@ existed.
   `run_walk_forward` integration smoke test.
 
 Full suite: **442 passed** (was 361 immediately before this task's
-branch point -- matching `.planning/sr-g-overfitting-safeguards.md`'s
-own final count exactly, confirming no other work landed on `main`
-between sr-g and this task's branch point). This task adds exactly **81
+branch point, matching `.planning/sr-g-overfitting-safeguards.md`'s own
+final count exactly). **Verified directly, not just inferred from the
+matching count**: `git merge-base feat/strategy-ensemble-regime-voltargeting
+origin/main` equals `0814f0fafdcdfd929f343b1a32c0f80dd31ed952` (sr-g's
+own merge commit), and `origin/main`'s HEAD was still exactly that same
+sha at verification time -- confirming nothing else landed on `main`
+between sr-g and this task's branch point as a checked fact, not an
+inference from a number that happens to match. This task adds exactly **81
 new tests** (13 `test_regime_weighting.py` + 17
 `test_volatility_targeting.py` + 24 `test_single_lookback_momentum.py` +
 27 `test_ensemble_momentum.py` = 81, confirmed via `pytest --collect-only`
@@ -390,7 +428,7 @@ $ cd python && uv run pytest -q
 `test_ensemble_momentum.py`=27 -- 13+17+24+27=81, exactly matching the
 full-suite delta.
 
-## Full honest real-world walk-forward results (2026-07-27, real cached BingX 1h data)
+## Full honest real-world walk-forward results (2026-07-26, real cached BingX 1h data)
 
 Ran via an uncommitted verification script (`python/_task_h_verification.py`,
 same convention as every prior task's own real verification runs --
@@ -490,10 +528,13 @@ calls" below.
 
 ### Direct comparison: did the ensemble actually beat the baseline?
 
-**Yes, on every single metric measured, on this real data, with every
-other variable held constant (same windows, fees, risk management,
-regime weighting, vol targeting).** This is the direct, honest answer
-to the question this task exists to answer:
+**Yes, on every one of this project's actual performance-quality
+metrics (Sharpe, drawdown, return, profit factor), on this real data,
+with every other variable held constant** (same windows, fees, risk
+management, regime weighting, vol targeting) -- **trade count is a
+volume/activity figure, not a quality one, and the two strategies are
+roughly comparable on it, not a "win" for either side.** This is the
+direct, honest answer to the question this task exists to answer:
 
 | metric | baseline (single-lookback) | ensemble (3-lookback majority vote) | which is better |
 |---|---|---|---|
@@ -502,7 +543,7 @@ to the question this task exists to answer:
 | folds with positive Sharpe | 3 of 19 (15.8%) | 8 of 19 (42.1%) | **ensemble**, substantially more consistent |
 | worst-fold max drawdown | 19.53% | 8.93% | **ensemble**, more than 2x safer in its worst fold |
 | mean total return | -3.02% | -1.16% | **ensemble** (less negative) |
-| total trades | 277 | 262 | roughly comparable |
+| total trades (volume, not a quality metric) | 277 | 262 | roughly comparable -- not scored as a "win" either way |
 | mean profit factor | 1.039 | 1.284 | **ensemble**, materially closer to the 1.3-1.5 floor |
 | min profit factor | 0.185 | 0.302 | **ensemble** |
 
@@ -510,7 +551,8 @@ Neither strategy clears CLAUDE.md's Eligibility Bar (see below) -- this
 is not a validated edge for either. But **the ensemble's edge over the
 baseline is real, consistent (not one lucky fold driving the aggregate:
 positive-Sharpe fold count alone is nearly 3x higher), and shows up on
-every axis this project's own metrics layer measures**, on BTC-USDT's
+every performance-quality axis this project's own metrics layer
+measures**, on BTC-USDT's
 own real data, tested honestly rather than assumed from either camp of
 the research literature. This is evidence in favor of the QuantPedia/
 Concretum/Man AHL position (ensembling helps) over the CFM/Valeyre
@@ -543,7 +585,7 @@ so every criterion is evaluated with no caveat for either.
 | Positive Sharpe, every fold | Sharpe > 0 in all folds | 8 of 19 positive; mean -1.347, min -7.615 | **FAIL** |
 | Max drawdown ceiling | <= 20-25%, per-fold and aggregate | worst fold 8.93% (fold 13) | **PASS**, comfortably |
 | Minimum total trades | >= 100 across all folds | 262 | **PASS** |
-| Profit factor floor | 1.3-1.5 | mean 1.284, min 0.302 | **FAIL**, but mean is now inside the floor's own cited range (1.3-1.5) even though the floor's actual bar is "mean AND min both clear it" -- min (0.302) is nowhere close |
+| Profit factor floor | 1.3-1.5 | mean 1.284, min 0.302 | **FAIL** |
 
 **Neither strategy clears the eligibility bar** -- both fail the
 positive-Sharpe-every-fold and profit-factor-floor criteria, same
@@ -608,6 +650,117 @@ performs. Neither tier changes the walk-forward metrics or the
 eligibility-bar verdict above; both are a separate, complementary
 diagnostic about search intensity relative to data depth, exactly as
 `overfitting_check.py`'s own docstring describes.
+
+## CodeRabbit review findings
+
+One review pass, 9 actionable findings.
+
+**7 accepted and fixed**:
+
+- **"Direct comparison" wording overclaimed "every single metric" while
+  the table itself listed total trades as "roughly comparable," not a
+  win for either side.** A real, valid inconsistency. Fixed: reworded to
+  scope the claim to this project's actual performance-quality metrics
+  (Sharpe, drawdown, return, profit factor) and explicitly call out trade
+  count as a volume/activity figure, not a quality one, scored as neither
+  a win nor a loss.
+- **A future-dated section heading (`2026-07-27`) for a run that actually
+  happened during this task's own session.** A real dating error, not a
+  claim about unexecuted work -- fixed to the actual execution date.
+- **"Confirming no other work landed on main" was inferred from a
+  matching test count, not independently verified.** A legitimate
+  precision gap (a matching count is consistent with, but doesn't prove,
+  "nothing else landed"). Fixed by actually checking:
+  `git merge-base feat/strategy-ensemble-regime-voltargeting origin/main`
+  equals sr-g's own merge commit, and `origin/main`'s HEAD was still
+  exactly that sha at verification time -- now a checked fact, not an
+  inference.
+- **No formal citation list (DOIs/URLs/access dates) for the Concretum/
+  Man AHL/QuantPedia/Valeyre research findings.** Real gap, addressed
+  honestly rather than by inventing bibliographic details this session
+  does not actually have -- see the "Honest citation-completeness gap"
+  paragraph added to the Scope Note above, stating plainly what was
+  and wasn't provided to this task and flagging it for a future session
+  with access to the original research pass's full source list.
+- **The ensemble profit-factor-floor table row's explanatory clause
+  ("mean is now inside the floor's own cited range... even though...")
+  muddied a clean FAIL verdict.** Fixed: mean (1.284) is below the
+  floor's own 1.3 low end, so the row is now a plain, unqualified FAIL.
+- **`_combined_sign`'s docstring (and this document's own "Combining 3
+  lookback scales" section) described the rule as "majority vote" without
+  qualification, but `[+1, 0, 0]` (one non-flat pair, two flat) also nets
+  to `+1` -- not a genuine 2-of-3 majority.** A real documentation-vs-
+  implementation mismatch (the *behavior* was already correct and already
+  covered by an existing test, `test_one_bullish_two_flat_nets_bullish`
+  -- only the prose describing it overclaimed). Fixed in
+  `ensemble_momentum.py`'s module docstring, `_combined_sign`'s own
+  docstring, and this document -- now described as a "net-sign rule"
+  that implements majority vote exactly whenever no pair is flat, with
+  the edge case named explicitly rather than glossed over.
+- **`TestEnsembleSignalDiffersFromAnySingleConstituent`'s assertion
+  (`assert all(i.side == Side.LONG for i in fired) or not fired`) was
+  trivially satisfiable by a scenario that never fires anything at all**
+  -- verified directly (not just taking the finding on faith) that the
+  original scenario genuinely never fired any intent, meaning the
+  assertion was vacuously true and proved nothing. A real, valid test-
+  quality gap. Fixed with a newly constructed, independently-verified
+  scenario (`test_combined_signal_diverges_from_a_single_constituent_pairs_own_sign_and_actually_fires`)
+  where the ensemble genuinely fires a LONG entry while the longest
+  constituent pair, recomputed independently at that exact bar, still
+  reads bearish -- a real, non-vacuous demonstration of majority override
+  with a fired signal, found via actual Python execution while searching
+  for a working scenario (not hand-derived arithmetic that could hide
+  the same class of mistake the original version had).
+
+**2 considered and declined, with reasoning recorded here rather than
+silently ignored**:
+
+- **A separate hard cap on `final_quantity` (or the resulting per-trade
+  risk-if-stopped), via a new `max_risk_multiple`-style parameter
+  threaded through `risk_management.py`/`volatility_targeting.py`.**
+  Considered, not built: it would be **mathematically redundant** with
+  the existing `max_vol_scalar` clamp, not a new safety property.
+  `regime_weight` is always in `[0, 1]` by construction
+  (`compute_regime_weight`'s own contract), so
+  `final_quantity = base_quantity * regime_weight * vol_scalar`'s
+  maximum possible value is already exactly `base_quantity *
+  max_vol_scalar` -- i.e. the maximum possible risk-if-stopped is
+  deterministically `risk_fraction * max_vol_scalar` of
+  `reference_equity` (1% * 3 = 3% at these defaults), already bounded by
+  the existing, documented `max_vol_scalar` cap. Introducing a second,
+  differently-named mechanism enforcing the identical bound would add
+  real surface area (a new constructor parameter on both strategies, a
+  new shared function) without adding any new protection -- exactly the
+  kind of change CLAUDE.md's "touch only what the task requires"
+  discipline argues against taking on reactively under review pressure.
+  Documented explicitly instead, directly at the composition site in
+  both `single_lookback_momentum.py` and `ensemble_momentum.py`, so a
+  future reader sees the bound stated and reasoned about rather than
+  needing to rederive it.
+- **Zero/degenerate realized volatility scaling *up* to `max_scalar`
+  rather than down to `min_scalar` or `None`.** Considered, not changed:
+  this is the textbook-correct direction for volatility targeting, not a
+  conservative-vs-aggressive judgment call to soften. The entire premise
+  of the technique (see Finding 2) is that a genuinely calm market should
+  get *more* exposure; capping at a safe multiple (`max_scalar`) is what
+  keeps that premise bounded without inverting it into "when calm, trade
+  smaller," which would defeat the technique's own purpose. The
+  underlying concern raised (stale/duplicated live data producing a
+  false-flat reading) is a live-market-data-quality problem out of scope
+  for a pure, backtest-oriented calculator that trusts its `Kline` inputs
+  the same way every sibling calculator in this codebase already does
+  (`AverageTrueRange`, `AverageDirectionalIndex`) -- and Python never
+  places live orders in the first place (CLAUDE.md's Non-negotiable
+  Rules), so a live equivalent of this concern belongs at the Java Risk
+  Gateway boundary, nowhere near this research-plane code path.
+  `compute_vol_scalar`'s docstring was strengthened to state this
+  reasoning explicitly, preempting the same question for a future
+  reader, rather than leaving the original (already-correct) behavior
+  under-explained.
+
+Full suite after all fixes: **442 passed**, unchanged (the accepted
+fixes are documentation/test-only; the two declined findings involved no
+behavior change to decline).
 
 ## Judgment calls resolved without asking
 

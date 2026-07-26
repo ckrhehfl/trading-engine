@@ -193,6 +193,27 @@ def compute_vol_scalar(
     cap, so a literal zero-vol reading is just the most extreme case of
     that same capping, not a special crash path.
 
+    **Deliberately scales UP (`max_scalar`), never down (`min_scalar`),
+    for a low/zero realized-vol reading -- this is the textbook-correct
+    direction for volatility targeting, not a conservative-vs-aggressive
+    judgment call to reconsider.** The entire premise of volatility
+    targeting (see module docstring) is that a genuinely calm market
+    should get *more* exposure, not less -- capping the resulting scalar
+    at a safe multiple (`max_scalar`, not `min_scalar` or `None`) is what
+    keeps that premise from producing unbounded exposure, without
+    inverting it into "when calm, trade smaller" (which would defeat the
+    entire point of the technique). This module trusts its `Kline` inputs
+    the same way every other incremental calculator in this codebase does
+    (`risk_management.AverageTrueRange`, `regime_weighting.
+    AverageDirectionalIndex`) -- a stale/duplicated live data feed
+    producing a false-flat reading is a live-market-data-quality concern
+    entirely out of scope for a pure, backtest-oriented calculator (and
+    orthogonal to volatility targeting specifically: the same class of
+    concern would affect ATR/ADX identically). Python never places live
+    orders (CLAUDE.md's Non-negotiable Rules) -- any live equivalent of
+    this pipeline would need its own live-data-quality validation ahead
+    of the Java Risk Gateway, nowhere near this research-plane code path.
+
     Raises `ValueError` for a non-positive `target_annualized_vol`, a
     negative `min_scalar`, or `max_scalar < min_scalar` -- each is a
     caller-configuration error with no sensible scalar to compute, fail
