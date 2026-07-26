@@ -50,12 +50,27 @@ _DEFAULT_STARTING_EQUITY = Decimal("10000")
 
 
 class TrainableStrategy(Protocol):
-    def fit(self, train_klines: list[Kline], params: Mapping[str, Any]) -> Strategy:
+    def fit(self, train_klines: list[Kline], params: Mapping[str, Any], *, parent_run_id: str) -> Strategy:
         """Return a bar-by-bar `Strategy` bound to `params`, trained only
         on `train_klines`. Must not read `validate_klines` in any way --
         it isn't passed to `fit()`, structurally the same "can't see
         what it shouldn't" guarantee `KlineWindow` gives `run_backtest`'s
         bar loop.
+
+        `parent_run_id` is this call's own `run_walk_forward` invocation's
+        `run_id` -- generated once, before the fold loop starts, so every
+        fold's `fit()` call receives the same value (see
+        `run_walk_forward`'s docstring). It exists purely so a `fit()`
+        implementation that wants to log its own sub-run detail (e.g. a
+        grid search logging each candidate's own train-only backtest as
+        its own `backtest_run` entry) has a correct `parent_run_id` to
+        attach those records to, via `research.experiment_log.log_run`'s
+        `parent_run_id`/`candidate_index`/`total_candidates` fields --
+        see CLAUDE.md's Strategy Research Operational Design, "Build
+        sequencing" (Task D), and `python/research/strategies/
+        ma_crossover.py` for the concrete example. A `fit()`
+        implementation with nothing of its own to log may simply ignore
+        this parameter.
         """
         ...
 
@@ -166,12 +181,22 @@ def run_walk_forward(
 ) -> WalkForwardResult:
     """Run one walk-forward validation pass and log it.
 
-    For each fold: `strategy.fit(train_klines, params)` binds a
-    `Strategy` seeing only that fold's train window, then
+    For each fold: `strategy.fit(train_klines, params, parent_run_id=...)`
+    binds a `Strategy` seeing only that fold's train window, then
     `backtest.engine.run_backtest` evaluates it against that fold's
     validate window -- the one code path already proven lookahead-safe.
     Each fold's `BacktestResult` is reduced to a `Metrics` record via
     `metrics.metrics.compute_metrics`.
+
+    This run's own `run_id` is generated once, up front -- before the
+    fold loop begins -- specifically so it can be passed to every fold's
+    `strategy.fit()` call as `parent_run_id` (see `TrainableStrategy.fit`'s
+    docstring for why: a `fit()` implementation that wants to log its own
+    sub-run detail, e.g. a grid search's per-candidate backtests, needs a
+    correct parent run id to attach those records to, and the only run id
+    that legitimately identifies *this* `run_walk_forward` call is the one
+    it will itself log under -- so it must exist before any `fit()` call
+    happens, not just at the end when this function logs its own record).
 
     Calls `research.experiment_log.log_run` as its last action,
     unconditionally -- including for zero folds -- so every call leaves
@@ -196,12 +221,19 @@ def run_walk_forward(
 
     folds = generate_folds(len(klines), train_bars, validate_bars, step_bars)
 
+    # Generated here, before the fold loop, not after it -- see this
+    # function's docstring and `TrainableStrategy.fit`'s docstring for why:
+    # every fold's `fit()` call below needs this run's own id as
+    # `parent_run_id`, so it must exist before the first `fit()` call, not
+    # only once the loop has already finished.
+    run_id = str(uuid4())
+
     fold_results: list[FoldResult] = []
     for fold in folds:
         train_klines = klines[fold.train_start_index : fold.train_end_index]
         validate_klines = klines[fold.validate_start_index : fold.validate_end_index]
 
-        bound_strategy = strategy.fit(train_klines, params)
+        bound_strategy = strategy.fit(train_klines, params, parent_run_id=run_id)
         backtest_result = run_backtest(validate_klines, bound_strategy, fee_bps, slippage_bps)
         fold_metrics = compute_metrics(
             validate_klines, backtest_result.filled_intents, backtest_result.fills, starting_equity
@@ -219,7 +251,6 @@ def run_walk_forward(
         )
 
     aggregate = _aggregate_metrics(fold_results)
-    run_id = str(uuid4())
 
     experiment_log.log_run(
         run_id=run_id,

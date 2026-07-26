@@ -35,18 +35,23 @@ def _klines(count: int, start_price: int = 100) -> list[Kline]:
 
 class _RecordingStrategy:
     """A `TrainableStrategy` test double that never trades but records
-    every `train_klines`/`params` it was fit with -- used to prove
-    `run_walk_forward` calls `fit` once per fold with exactly that fold's
-    train window, and never leaks validate data into it.
+    every `train_klines`/`params`/`parent_run_id` it was fit with -- used
+    to prove `run_walk_forward` calls `fit` once per fold with exactly
+    that fold's train window, never leaks validate data into it, and
+    passes its own `run_id` through as `parent_run_id` (see
+    `TrainableStrategy.fit`'s docstring -- this is the interface gap Task
+    D's `parent_run_id` parameter closes).
     """
 
     def __init__(self):
         self.fit_calls: list[list[Kline]] = []
         self.params_seen: list[dict] = []
+        self.parent_run_ids_seen: list[str] = []
 
-    def fit(self, train_klines, params):
+    def fit(self, train_klines, params, *, parent_run_id=None):
         self.fit_calls.append(list(train_klines))
         self.params_seen.append(dict(params))
+        self.parent_run_ids_seen.append(parent_run_id)
 
         def _strategy(visible_klines):
             return None
@@ -59,10 +64,12 @@ class _BuyAndHoldStrategy:
     it's shown (of whatever `Sequence[Kline]` it's called with -- i.e.
     the validate window at evaluation time) and never sells, so
     `run_backtest`'s force-close-at-final-bar rule always yields exactly
-    one closed trade per fold.
+    one closed trade per fold. Ignores `parent_run_id` -- it has nothing
+    of its own to log, which `TrainableStrategy.fit`'s docstring says is
+    a valid thing for an implementation to do.
     """
 
-    def fit(self, train_klines, params):
+    def fit(self, train_klines, params, *, parent_run_id=None):
         def _strategy(visible_klines):
             if len(visible_klines) != 1:
                 return None
@@ -188,6 +195,35 @@ def test_run_walk_forward_fit_is_called_once_per_fold_with_only_that_folds_train
     for fit_train_klines, fold in zip(strategy.fit_calls, result.folds):
         assert fit_train_klines == klines[fold.train_start_index : fold.train_end_index]
     assert all(params == {"x": 1} for params in strategy.params_seen)
+
+
+def test_run_walk_forward_passes_its_own_run_id_to_fit_as_parent_run_id(tmp_path):
+    # The interface gap closed for Task D: fit() has no other way to learn
+    # the run_id its own run_walk_forward call will log under, so it must
+    # be handed the same value every fold call receives, and that value
+    # must match what actually ends up in the logged record (result.run_id).
+    klines = _klines(12)
+    strategy = _RecordingStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-1",
+        "v1",
+        {"x": 1},
+        train_bars=4,
+        validate_bars=2,
+        step_bars=2,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=runs_path,
+    )
+
+    assert len(strategy.parent_run_ids_seen) == 4
+    assert all(parent_run_id == result.run_id for parent_run_id in strategy.parent_run_ids_seen)
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["run_id"] == result.run_id
 
 
 def test_run_walk_forward_fit_never_receives_validate_klines(tmp_path):
