@@ -392,12 +392,35 @@ already done and verified.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
-as part of this design's 2026-07-25 sign-off): positive annualized
-Sharpe in every fold (not just on average); minimum 8-10 folds for the
-result to be considered credible (currently unmet — see the live
-constraint above); max drawdown ceiling 20-25% per-fold and aggregate;
-minimum 100 total trades across all folds (flagged tension: may
-unfairly penalize a legitimately low-frequency strategy — apply
+as part of this design's 2026-07-25 sign-off, **fold-consistency clause
+revised 2026-07-27** — full statistical derivation in
+`.planning/sr-j-fold-diagnosis-and-eligibility-review.md`, summarized
+here): the original "positive annualized Sharpe in every fold" wording
+was found to be statistically stricter than intended — even a
+genuinely strong, real 80%-true-edge strategy clears a literal 19/19
+sweep only ~1.4% of the time, so demanding literal 100% mostly measures
+luck, not edge. Replaced with two required checks:
+1. **Fold consistency**: at least 80-90% of folds show positive
+   annualized Sharpe (not literal 100%).
+2. **Aggregate significance**: the full set of per-fold Sharpe ratios
+   must reject "no real edge" via *both* a binomial sign test (fold
+   win/loss count against p=0.5) *and* a significance check on the mean
+   fold Sharpe against zero (one-sample t-test as the immediately
+   implementable stdlib-only version; the more rigorous Probabilistic
+   Sharpe Ratio upgrade is assessed and deferred, same treatment as
+   CSCV/PBO in the overfitting-safeguards design — not built
+   speculatively). Both required, not either — they catch different
+   failure modes (win-rate-only noise vs. aggregate-risk-adjusted-return
+   noise a fold-percentage alone wouldn't rule out). **Disclosed open
+   cost**: the t-test's exact p-value needs either `scipy` or an
+   accepted approximation — not yet resolved, deferred to when this
+   criterion is actually implemented rather than just defined.
+
+All other criteria are unchanged by this revision: minimum 8-10 folds
+for the result to be considered credible (currently unmet — see the
+live constraint above); max drawdown ceiling 20-25% per-fold and
+aggregate; minimum 100 total trades across all folds (flagged tension:
+may unfairly penalize a legitimately low-frequency strategy — apply
 judgment, don't treat as absolute); profit factor floor 1.3-1.5
 (cushion for backtest-to-live slippage/fee mismodeling and the
 funding-rate gap — perpetual funding-rate P&L is not modeled anywhere
