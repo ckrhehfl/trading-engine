@@ -329,7 +329,20 @@ proposal, not built in this task (research/proposal only, no code).
 **No** -- and this is worth stating plainly, since a criterion revision
 proposed by the same task that diagnoses a strategy just short of the old
 bar invites exactly that suspicion. Two significance checks, computed
-against Configuration C's real 19 fold-level Sharpe values:
+against Configuration C's real 19 fold-level Sharpe values. **The same
+i.i.d. caveat raised above for the binomial framing applies equally to
+the t-test below, and to this section's own conclusion** -- a plain
+one-sample t-test also assumes 19 independent observations; if the fold
+outcomes are really serially correlated (Part 1's borderline-significant
+clustering finding), the true standard error of the mean fold Sharpe is
+understated by the naive `sd / sqrt(19))` formula, meaning the real
+t-statistic's significance is *more* uncertain than the number below
+states at face value, not less. Both numbers below are therefore i.i.d.
+reference results, not a fully dependence-robust confirmation -- a real
+implementation of this proposal should compute both checks (sign test
+and mean-Sharpe significance) via a block permutation or block bootstrap
+over contiguous fold runs rather than the closed-form i.i.d. formulas
+used here for a first-pass, transparent illustration:
 
 - **Binomial sign test** (H0: true per-fold win probability = 0.5, i.e.
   no real edge): observed 11/19 positive. `P(X >= 11 | n=19, p=0.5) =
@@ -357,7 +370,16 @@ evidence, still does not answer affirmatively. It would, however, no
 longer reject Configuration C's *specific* fold-count profile (11/19,
 57.9%) purely for falling short of a mathematically near-unreachable
 literal 100%, while still correctly rejecting it on the grounds that
-actually matter (no evidence yet of a real, non-chance edge).
+actually matter (no evidence yet of a real, non-chance edge). One
+reassurance on the i.i.d. caveat above, specific to this pair of numbers:
+both `t` values (0.0274 for Configuration C, -1.631 for the original)
+sit so far from the ~2.10 significance threshold that understated
+variance under real serial dependence -- which would only *widen*, never
+narrow, the true standard error -- can only push both further from
+significance, not accidentally past it. The "not yet statistically
+distinguishable from zero" conclusion for both is robust to this
+specific caveat, even though the exact numeric `t`/p-values above are
+not.
 
 ### Proposed revision (for human approval -- NOT applied to CLAUDE.md)
 
@@ -376,11 +398,28 @@ just on average)" with **two clauses, both required**:
    figure from the reference table above instead of computing power at
    the actual candidate thresholds):
 
-   | candidate floor | min fold count | power at true `p=0.80` | power at true `p=0.90` | false-positive rate at `p=0.50` (no edge) |
+   | candidate floor | min fold count | power at true `p=0.80` | power at true `p=0.90` | i.i.d. `p=0.50` sign-null reference rate |
    |---|---|---|---|---|
    | >=80% | 16/19 | 45.51% | 88.50% | 0.221% |
    | >=85% | 17/19 | 23.69% | 70.54% | 0.036% |
    | >=90% | 18/19 | 8.29% | 42.03% | 0.004% |
+
+   The rightmost column is deliberately labeled a *sign-null reference
+   rate*, not a "false-positive rate" outright: it is the exact
+   probability of clearing that floor **only** under the idealized
+   assumption of 19 independent folds each with exactly a 50% chance of
+   a positive Sharpe -- not a general claim about how often a no-edge
+   strategy would clear it in practice. A real strategy's actual
+   false-positive behavior can differ from this idealized number for
+   reasons this simple model doesn't capture: skewed per-fold Sharpe
+   distributions, materially different trade counts across folds
+   (a fold with 5 trades and a fold with 20 trades don't carry the same
+   evidentiary weight, but the binomial model treats every fold's
+   positive/negative outcome as one equally-weighted coin flip), and the
+   same serial-dependence concern raised immediately below. Treat this
+   column as a clean, worked reference point for reasoning about the
+   *shape* of the tradeoff, not a literal, calibrated estimate of this
+   strategy's real false-positive rate.
 
    **Read honestly, this table complicates the case for picking the
    *high* end of the 80-90% range**, not just the low end: at 19 folds,
@@ -459,7 +498,10 @@ before it takes effect.
 
 ## CodeRabbit review findings
 
-One review pass, 4 actionable findings. **All 4 accepted and fixed**.
+Two review passes, 6 actionable findings total. **All 6 accepted and
+fixed** -- none declined.
+
+### First pass: 4 findings
 
 - **A real arithmetic/citation error in the fold-consistency power
   calculation.** The original draft justified a `>=16/19` floor by citing
@@ -495,6 +537,35 @@ One review pass, 4 actionable findings. **All 4 accepted and fixed**.
   an inline pointer back to that caveat at the point the figure is
   actually used, rather than only in the table where a reader might miss
   it.
+
+### Second pass (after pushing the first pass's fixes): 2 more findings, both accepted
+
+- **The fold-consistency table's rightmost column, labeled "false-
+  positive rate at p=0.50 (no edge)," overstated what that number
+  actually is.** A real, valid precision gap: it's the exact probability
+  under an *idealized i.i.d. sign-null* model specifically, not a general
+  claim about a real strategy's practical false-positive rate (which
+  skew, uneven per-fold trade counts, and serial dependence could all
+  push away from this clean number). Fixed: renamed the column to
+  "i.i.d. `p=0.50` sign-null reference rate" and added a paragraph
+  immediately below the table stating explicitly what the column is and
+  is not a claim about.
+- **The serial-correlation/i.i.d. caveat, added in the first pass, was
+  scoped only to the binomial fold-consistency numbers -- not extended to
+  the one-sample t-test or to the section concluding "Configuration C
+  doesn't pass either check."** A real, valid consistency gap: a t-test's
+  standard-error formula makes the exact same independence assumption the
+  binomial calculations do. Fixed: extended the caveat to the t-test
+  explicitly (real serial dependence would understate its true standard
+  error, making the reported significance level directionally optimistic
+  the same way the binomial numbers are), and added one further, specific
+  point that *is* robust to this caveat: both real t-values (0.0274 for
+  Configuration C, -1.631 for the original) sit far enough from the
+  ~2.10 significance threshold that a wider true standard error under
+  dependence can only push them further from significance, never
+  accidentally past it -- so the qualitative "not yet statistically
+  distinguishable from zero" conclusion holds regardless of the i.i.d.
+  caveat, even though the exact numeric t/p-values do not.
 
 ## Process notes
 
