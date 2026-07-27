@@ -222,15 +222,18 @@ evaluate the bar" scoping.
   reading gives mean-reversion the numeric complement of what momentum's
   own formula would compute at the identical reading); ATR stop/target/
   sizing; warmup; `MeanReversionTrainable.fit()`.
-- `python/tests/test_momentum_reversion_blend.py` (23 tests): `_blend_
-  signals`' combination arithmetic (10 exact cases, including disagreement
+- `python/tests/test_momentum_reversion_blend.py` (24 tests, the 24th
+  added during CodeRabbit review -- see below): `_blend_signals`'
+  combination arithmetic (10 exact cases, including disagreement
   cancelling at an even split, and each extreme collapsing to exactly one
   sub-signal); construction; warmup requiring both sub-signals
-  simultaneously; **2 tests directly verifying the regime-adaptive
+  simultaneously; **3 tests directly verifying the regime-adaptive
   property** (high ADX reproduces momentum-alone's exact entry
   quantity/direction; low ADX reproduces mean-reversion-alone's exact entry
-  quantity/direction); exit/order shape; `MomentumReversionBlendTrainable.
-  fit()`.
+  quantity/direction; a genuine intermediate ADX with disagreeing
+  sub-signals, added during review, confirming the sizing formula doesn't
+  double-apply the regime weight); exit/order shape;
+  `MomentumReversionBlendTrainable.fit()`.
 - `python/tests/test_eligibility.py` (34 tests): fold consistency
   (including the exact `Decimal` boundary and `None`-handling cases); the
   binomial sign test reproducing 8 of sr-j's own published numbers exactly;
@@ -255,8 +258,9 @@ every kline through to the end of the price path, which let the position
 close via its own target hit before the assertion ran; fixed by breaking
 the loop at first entry, matching every sibling test's own convention.
 
-Full suite: **539 passed** (up from 455 before this task -- 84 new tests,
-zero regressions in any prior task's tests).
+Full suite (final, after CodeRabbit review -- see that section below):
+**540 passed** (up from 455 before this task -- 85 new tests, zero
+regressions in any prior task's tests).
 
 ```text
 $ cd python && uv run pytest -q
@@ -267,8 +271,8 @@ $ cd python && uv run pytest -q
 ........................................................................ [ 66%]
 ........................................................................ [ 80%]
 ........................................................................ [ 93%]
-...................................                                      [100%]
-539 passed in 40.66s
+....................................                                     [100%]
+540 passed in 40.42s
 ```
 
 ---
@@ -294,24 +298,34 @@ Task I's opt-in risk:reward grid search (both stay at the fixed 1:2 ratio,
 (see "Judgment calls" below), so the comparison is apples-to-apples on ADX
 threshold/lookback pairs/costs/windows, but not on that one dimension.
 
-### Mean-reversion alone (`run_id=cdf9ff71-483b-4dbc-ac19-4f795e8b82c0`)
+**Note on run IDs**: both new strategies were re-run once more after the
+edge-trigger correctness fix described in "CodeRabbit review findings"
+below (a real behavior change, not merely a documentation fix); the numbers
+below are from that final re-run, not the pre-fix run. The blend's numbers
+turned out byte-identical to its pre-fix run (the specific fix condition
+never bound for any of its real fired entries on this data); mean-reversion
+alone changed measurably (mean Sharpe -1.859 -> -1.770, folds positive
+5/19 -> 6/19) -- both real, reported honestly, neither changes the
+overall conclusion below.
+
+### Mean-reversion alone (`run_id=2d88a4e9-38b3-433c-8d1b-2bbc71485402`)
 
 | metric | value |
 |---|---|
-| mean Sharpe | **-1.859** |
+| mean Sharpe | **-1.770** |
 | min Sharpe | -7.178 |
-| folds positive | **5/19 (26.3%)** |
-| worst-fold max drawdown | 12.38% |
-| mean total return | -1.99% |
-| total trades | 210 |
-| mean profit factor | **1.031** |
-| min profit factor | 0.033 |
+| folds positive | **6/19 (31.6%)** |
+| worst-fold max drawdown | 11.69% |
+| mean total return | -1.57% |
+| total trades | 212 |
+| mean profit factor | **1.048** |
+| min profit factor | 0.091 |
 
-Per-fold Sharpe: `0.560, -2.925, 1.809, -4.643, 5.163, -2.178, -6.368,
--4.572, -0.982, -7.178, -1.551, -0.921, -4.788, 3.828, -4.973, -4.001,
--1.307, -2.520, 2.227`.
+Per-fold Sharpe: `-3.807, -2.925, 0.189, -4.623, 5.163, -2.714, -5.959,
+-1.002, -1.026, -7.178, 1.195, -0.856, -4.788, 3.828, -5.947, -4.883,
+-1.311, 0.788, 2.227`.
 
-### Momentum/reversion blend (`run_id=7c6e6c22-b6ab-4f96-b6c0-e88daf4fe0ba`)
+### Momentum/reversion blend (`run_id=7da912da-e371-402a-ae4a-3d48064072ca`)
 
 | metric | value |
 |---|---|
@@ -328,7 +342,7 @@ Per-fold Sharpe: `1.397, 0.602, -2.988, -2.333, 0.580, -4.950, -1.148,
 -3.190, -0.360, 1.306, -3.431, 2.857, -4.883, -1.464, 1.550, -4.816, 0.819,
 -4.915, -1.214`.
 
-Trade count (450) is roughly 2x either pure strategy's (210 / 199) -- an
+Trade count (450) is roughly 2x either pure strategy's (212 / 199) -- an
 expected mechanism, not a bug: the blend fires whenever `sign(blended_
 strength)` flips, and since momentum's own crossover sign is nearly always
 nonzero (an SMA-crossover sign is exactly zero only at a measure-zero
@@ -359,7 +373,7 @@ every strategy below, since none gets remotely close to any of them.
 
 | Strategy | Fold consistency (floor 80%) | Sign test (p, one-sided) | Sharpe significance (t, p) | Overall |
 |---|---|---|---|---|
-| Mean-reversion alone | **FAIL** (5/19 = 26.3%) | **FAIL** (p=0.990) | **FAIL** (t=-2.384, p=0.986) | **FAIL** |
+| Mean-reversion alone | **FAIL** (6/19 = 31.6%) | **FAIL** (p=0.968) | **FAIL** (t=-2.236, p=0.981) | **FAIL** |
 | Momentum/reversion blend | **FAIL** (7/19 = 36.8%) | **FAIL** (p=0.916) | **FAIL** (t=-2.408, p=0.987) | **FAIL** |
 | Momentum alone (Config C) | **FAIL** (11/19 = 57.9%) | **FAIL** (p=0.324) | **FAIL** (t=0.027, p=0.489) | **FAIL** |
 
@@ -368,7 +382,7 @@ C) remains, by a wide margin, this project's strongest real result on every
 metric that matters (mean Sharpe, fold-positive percentage, sign-test
 p-value, profit factor, drawdown) -- its sign-test p-value (0.324) is at
 least in a plausible range for a strategy that might clear the bar with a
-few more strong folds; both new strategies' sign-test p-values (0.990 and
+few more strong folds; both new strategies' sign-test p-values (0.968 and
 0.916) are on the *wrong side of the coin flip entirely* -- **worse than
 random**, not merely "not yet significant". This matters for how to read
 the result: Configuration C's failure is "not enough evidence yet, real
@@ -378,8 +392,8 @@ evidence points the wrong way".
 ## Three-way comparison and the honest verdict
 
 **The blend helps relative to mean-reversion alone, on every metric
-measured** (mean Sharpe -1.399 vs -1.859; folds positive 7/19 vs 5/19; mean
-profit factor 1.072 vs 1.031; worst drawdown 7.81% vs 12.38%) -- consistent
+measured** (mean Sharpe -1.399 vs -1.770; folds positive 7/19 vs 6/19; mean
+profit factor 1.072 vs 1.048; worst drawdown 7.81% vs 11.69%) -- consistent
 with the design's intent that mixing in trend-following exposure should
 smooth out mean-reversion's weakest periods.
 
@@ -469,9 +483,15 @@ plainly as the alternative would have been.
 
 ## CodeRabbit review findings
 
-One review pass, 6 actionable findings. **All 6 accepted and fixed** --
-none declined, though two were resolved by documentation rather than a
-behavior change (see reasoning below).
+Two review passes, 9 actionable findings total. **All 9 accepted and
+fixed** -- none declined. The edge-trigger finding below was initially
+(first pass) resolved by documentation only; CodeRabbit's second pass
+correctly pushed back on that as insufficient for a finding that changes
+real backtest results, and it was then actually fixed, with the real
+walk-forward numbers above re-run and updated accordingly (an honest
+correction, not a cosmetic one -- see below).
+
+### First pass: 6 findings
 
 - **DRY violation: the "positive fold" predicate was duplicated verbatim**
   in `evaluate_fold_consistency` and `evaluate_sign_test`
@@ -481,23 +501,15 @@ behavior change (see reasoning below).
   silently drift if one call site were edited without the other. Fixed:
   extracted `_count_positive_folds`, used by both.
 - **Edge-trigger state consumed even when `_open()` rejects the entry**
-  (`mean_reversion.py`, `momentum_reversion_blend.py`): a real, valid
-  observation -- `self._signal_state` updates whenever the raw signal is
-  nonzero, independent of whether the regime/vol-scalar-weighted quantity
-  actually cleared `_open()`'s `> 0` check, so a filtered-out signal is
-  still "consumed" and won't retry once conditions improve without the raw
-  signal changing again. **Not changed behaviorally**: this is the exact
-  same, already-shipped pattern `EnsembleMomentumStrategy`/
-  `SingleLookbackMomentumStrategy` already use (confirmed by re-reading
-  their `__call__` methods) -- changing it only in this task's two new
-  strategies would make their triggering semantics diverge from every
-  sibling strategy's on a point no task has actually revisited, a
-  larger, cross-cutting change than this task's scope. CodeRabbit's own
-  finding offered documentation as an explicit alternative resolution
-  ("...or, if intended, document this case in the module docstring's
-  Edge-triggering section") -- taken here: both modules' docstrings now
-  name this consequence explicitly, with the cross-reference to the
-  established sibling pattern.
+  (`mean_reversion.py`, `momentum_reversion_blend.py`): flagged as a
+  nitpick this pass, with CodeRabbit itself offering documentation as an
+  explicit alternative to a behavior change. **Initially resolved by
+  documentation only** (both modules' docstrings named the consequence
+  explicitly, cross-referencing the identical, already-shipped pattern in
+  `EnsembleMomentumStrategy`/`SingleLookbackMomentumStrategy`) -- on
+  reflection, and per CodeRabbit's own second-pass escalation (below),
+  this was the wrong call for brand-new code under full authorial control;
+  superseded by an actual fix in the second pass.
 - **Blend sizes to full conviction when both signals agree, even at an
   intermediate regime weight** (`momentum_reversion_blend.py`): a real,
   non-obvious property of the convex-combination formula -- e.g. at
@@ -507,9 +519,11 @@ behavior change (see reasoning below).
   genuinely stronger joint evidence, not something to average down), and
   the existing risk-fraction cap is unaffected either way -- but a real,
   disclosed contrast with the module's own "smoother than either pure
-  strategy" framing. Fixed by documenting this explicitly in the module
-  docstring, per CodeRabbit's own suggested resolution (document, don't
-  change the calculation).
+  strategy" framing. Fixed by documenting this explicitly (both in the
+  module docstring and, after the second pass flagged the framing as
+  still reading as contradictory, an added clarifying sentence tying the
+  two claims together explicitly), per CodeRabbit's own suggested
+  resolution (document, don't change the calculation).
 - **Missing intermediate-ADX, disagreeing-signals test coverage**
   (`test_momentum_reversion_blend.py`): a real, valid test gap -- the
   existing regime-adaptive tests only exercised the ADX *extremes*, where
@@ -533,6 +547,60 @@ behavior change (see reasoning below).
   default parameter values equal `regime_weighting`'s
   `DEFAULT_ADX_LOW_THRESHOLD`/`DEFAULT_ADX_HIGH_THRESHOLD` directly (via
   `inspect.signature`), the claim the test's name actually makes.
+
+### Second pass (after pushing the first pass's fixes): 3 more findings
+
+- **The edge-trigger documentation-only resolution was rejected, correctly
+  escalated to "Major | Functional Correctness".** CodeRabbit's exact
+  point: this changes the real fill set and walk-forward performance, so
+  it is a functional defect, not something that becomes acceptable by
+  being written down. Accepted in full -- this was the right call, and the
+  first pass's "accepted and fixed" framing (with an actual behavior
+  change deferred) mischaracterized the resolution. **Real fix applied**:
+  both `MeanReversionStrategy.__call__` and
+  `MomentumReversionBlendStrategy.__call__` now track whether an attempted
+  entry was rejected by a downstream filter
+  (`entry_rejected_by_filters`) and skip the `_signal_state` update only
+  in that specific case -- every other case (already in a position, or no
+  prior state existed yet) keeps the original unconditional update, still
+  required for a sign transition while a position is open to be tracked
+  correctly. `EnsembleMomentumStrategy`/`SingleLookbackMomentumStrategy`
+  were deliberately NOT touched (already-shipped, already-tested,
+  out of this task's scope) -- both modules' docstrings now disclose this
+  as a known, real inconsistency with those two files rather than silently
+  fixing it there too. **Because this is a genuine behavior change, both
+  new strategies' real walk-forward evaluations were re-run** (not just
+  re-tested) -- see "Real walk-forward results" above for the final,
+  post-fix numbers and its explicit "Note on run IDs". The blend's real
+  numbers turned out unaffected (the fix's specific condition never bound
+  for any of its actually-fired entries on this data); mean-reversion
+  alone's numbers changed measurably (mean Sharpe -1.859 -> -1.770, folds
+  positive 5/19 -> 6/19) without changing the overall conclusion (still
+  fails the bar by a wide margin).
+- **The "blend is smoother" framing still read as contradicted by the
+  full-conviction-on-agreement sizing property**, even after the first
+  pass's documentation-only fix. A fair follow-up: the module's opening
+  paragraph state and the later disclosure paragraph weren't explicitly
+  connected. Fixed: added a sentence immediately after the opening
+  "smoother, more robust risk-adjusted returns" claim clarifying it
+  describes the outside research's *return-series* finding motivating this
+  module's existence, not a guarantee about this implementation's own
+  position-size formula, with a forward pointer to the disclosure
+  paragraph.
+- **Ruff ARG005 (unused lambda arguments) on the new intermediate-ADX
+  test's three monkeypatch lambdas.** A real, valid lint finding on the
+  new code added in the first pass's fix. Fixed: underscore-prefixed the
+  three unused parameters (`_self`, `_kline`, `_close`, `_lower`,
+  `_upper`) on those three lambdas specifically -- the file's other,
+  pre-existing lambdas (matching `test_ensemble_momentum.py`'s own
+  established, unprefixed convention) were deliberately left unchanged, to
+  avoid an unrelated drive-by reformatting of code this task didn't touch.
+
+Full suite after all fixes (both passes): **540 passed** (unchanged from
+the first pass's post-fix count -- the second pass's changes were a real
+runtime-behavior fix plus documentation/lint corrections, not new test
+cases; the existing 84 new tests from this task, run against the corrected
+production code, all still pass).
 
 Full suite after all fixes: **540 passed** (up from 539 before the review
 fixes -- the one new intermediate-ADX test is the only test-count change;

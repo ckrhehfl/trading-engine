@@ -268,11 +268,11 @@ class TestRegimeAdaptiveBehavior:
         would be `base * 0.75 * 0.5 * vol_scalar`, not `base * 0.5 *
         vol_scalar` -- this test fails under that regression.
         """
-        monkeypatch.setattr(_ADX_MODULE_PATH, lambda self, kline: Decimal("23.75"))
-        monkeypatch.setattr(_VOL_MODULE_PATH, lambda self, kline: Decimal("0.20"))
+        monkeypatch.setattr(_ADX_MODULE_PATH, lambda _self, _kline: Decimal("23.75"))
+        monkeypatch.setattr(_VOL_MODULE_PATH, lambda _self, _kline: Decimal("0.20"))
         monkeypatch.setattr(
             "research.strategies.momentum_reversion_blend._bollinger_signal",
-            lambda close, lower, upper: -1,
+            lambda _close, _lower, _upper: -1,
         )
         strategy = _strategy()
         klines = _momentum_flip_klines()

@@ -79,7 +79,7 @@ vol_scalar` -- structurally identical composition to
 `EnsembleMomentumStrategy._open`/`SingleLookbackMomentumStrategy._open`,
 just with the regime-weight factor inverted.
 
-## Edge-triggering and its disclosed behavioral consequences
+## Edge-triggering and its disclosed behavioral consequence
 
 Same "fire only when the signal STATE changes" pattern every strategy in
 this package uses (`_crossover_sign` in the momentum strategies;
@@ -88,33 +88,38 @@ overbought reading to differ from the *last established nonzero reading*,
 not merely "outside the bands right now". This avoids constant re-triggering
 every single bar while price remains beyond a band (which, unlike a
 momentum crossover, can persist for many consecutive bars in a real trend)
--- but has two disclosed consequences:
+-- but has one disclosed consequence: if a position is stopped out while
+price is STILL beyond the same band (signal state unchanged), this strategy
+will NOT immediately re-enter -- it waits for the state to flip away and
+back. A more eager "re-enter immediately if still oversold/overbought" rule
+was considered and rejected in favor of reusing this package's one, uniform,
+already-tested edge-triggering convention rather than introducing a second,
+bespoke triggering rule that would need its own separate justification and
+tests.
 
-1. If a position is stopped out while price is STILL beyond the same band
-   (signal state unchanged), this strategy will NOT immediately re-enter --
-   it waits for the state to flip away and back. A more eager "re-enter
-   immediately if still oversold/overbought" rule was considered and
-   rejected in favor of reusing this package's one, uniform, already-tested
-   edge-triggering convention rather than introducing a second, bespoke
-   triggering rule that would need its own separate justification and
-   tests.
-2. `self._signal_state` is updated to `current_signal` whenever
-   `current_signal != 0` **regardless of whether `_open()` actually opened
-   a position** (it returns `None`, and no trade happens, when the regime
-   weight/vol scalar suppresses `final_quantity` to `<= 0`, or during vol
-   warmup). This means a signal that fires the edge-trigger but gets
-   filtered out at the sizing stage is still "consumed" -- a later bar
-   where filters would have allowed the trade, but the raw band-breach
-   reading hasn't changed again, will NOT retry. This is not a new
-   behavior invented by this module: it is the exact same, already-shipped
-   pattern `EnsembleMomentumStrategy`/`SingleLookbackMomentumStrategy` use
-   (`self._crossover_sign` is likewise updated unconditionally whenever
-   `current_sign != 0`, independent of whether `_open()` returned an
-   intent). Kept identical here deliberately, rather than diverging this
-   module's triggering semantics from its siblings' on a point neither
-   this task nor any prior one has revisited -- a cross-cutting change to
-   all four strategies' shared edge-triggering shape would be its own,
-   separately-scoped task.
+**A related, genuine defect was found and fixed during this module's own
+review, not left as a documented consequence**: `self._signal_state` must
+NOT update to `current_signal` when an entry was actually attempted (the
+edge-trigger conditions were met) but `_open()` rejected it purely via a
+downstream filter (the regime weight/vol scalar suppressing
+`final_quantity` to `<= 0`, or vol warmup) -- doing so would silently
+"consume" a signal that never actually traded, permanently missing the
+entry once conditions later become favorable unless the raw band-breach
+reading happens to change again first. This is a real, evidenced
+functional-correctness bug (it changes which trades a backtest actually
+takes, not just a style concern), caught by CodeRabbit review against this
+module -- `__call__` tracks whether an attempted entry was rejected by a
+filter (`entry_rejected_by_filters`) and only skips the state update in
+that specific case; every other case (still in a position, or no prior
+state existed yet) keeps the original unconditional update, which is still
+required for a sign transition while a position is open to be tracked
+correctly. `EnsembleMomentumStrategy`/`SingleLookbackMomentumStrategy`
+share the same underlying pattern (their own `_crossover_sign` trackers)
+and were NOT changed by this task -- already-shipped, already-tested
+strategy files, out of this task's scope per CLAUDE.md's "touch only what
+the task requires" -- but this is a known, disclosed inconsistency between
+this module and those two now, flagged here as a candidate follow-up
+rather than silently fixed there too.
 
 ## Warmup
 
@@ -350,6 +355,7 @@ class MeanReversionStrategy:
             current_signal = _bollinger_signal(current.close, lower, upper)
 
         intent: OrderIntent | None = None
+        entry_rejected_by_filters = False
 
         if self._position is not None:
             trigger = check_exit_trigger(self._position, current)
@@ -366,8 +372,20 @@ class MeanReversionStrategy:
             ):
                 side = Side.LONG if current_signal > 0 else Side.SHORT
                 intent = self._open(current, side, atr, adx, realized_vol)
+                entry_rejected_by_filters = intent is None
 
-        if current_signal != 0:
+        # Do NOT consume the edge-trigger state when an entry was actually
+        # attempted but rejected purely by a downstream filter (regime
+        # weight/vol scalar suppressing final_quantity to <= 0, or vol
+        # warmup) -- see module docstring's "Edge-triggering" section for
+        # why this distinction matters: without it, a signal that fires the
+        # trigger but gets filtered out would be silently lost even once
+        # conditions later become favorable, unless the raw signal itself
+        # changes again first. Every other case (no entry was attempted at
+        # all, e.g. still in a position, or no prior state existed yet)
+        # keeps the original unconditional update -- needed so a sign
+        # transition while a position is open is still tracked correctly.
+        if current_signal != 0 and not entry_rejected_by_filters:
             self._signal_state = current_signal
 
         return intent

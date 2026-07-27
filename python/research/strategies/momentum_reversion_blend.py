@@ -12,7 +12,14 @@ that a naive fixed 50/50 blend of momentum and mean-reversion sometimes
 underperforms either pure strategy alone, while a regime-aware blend
 produced smoother, more robust risk-adjusted returns in multiple independent
 studies -- this module is the first real, regime-adaptive (not naive-fixed)
-attempt at that blend in this project.
+attempt at that blend in this project. **"Smoother" describes that outside
+research's *return-series* finding, not a guarantee about this
+implementation's own position-SIZE formula** -- see "Why this combination
+formula" below's "Disclosed sizing property" paragraph for a real,
+documented case (both sub-signals agreeing at an intermediate regime
+weight) where this blend's own sizing is *not* smoothly interpolated
+between the two pure strategies' sizes, so the two claims are not in
+tension despite sounding like they could be.
 
 ## Why this combination formula, not a naive 50/50 blend
 
@@ -107,26 +114,25 @@ stream compatible with the existing metrics pipeline unmodified.
   real volatility-targeting scalar every strategy in this package uses,
   composed the same way.
 
-## Edge-triggering's disclosed behavioral consequence
+## Edge-triggering
 
 Same "fire only when `sign(blended_strength)` changes" pattern every
 strategy in this package uses (`_signal_state` here, tracking the last
-established nonzero blended sign). `self._signal_state` is updated
-whenever `current_signal != 0` **regardless of whether `_open()` actually
-opened a position** (it returns `None`, and no trade happens, if the
-regime/vol-scalar-weighted `final_quantity` rounds to `<= 0`, or during vol
-warmup) -- a signal that fires the edge-trigger but gets filtered out at
-the sizing stage is still "consumed": a later bar where filters would have
-allowed the trade, but the blended sign hasn't changed again, will NOT
-retry. This is not a new behavior invented by this module: it is the exact
-same, already-shipped pattern `EnsembleMomentumStrategy`/
-`SingleLookbackMomentumStrategy`/`MeanReversionStrategy` all use (their own
-signal-state trackers are likewise updated unconditionally whenever the
-current reading is nonzero, independent of whether `_open()` returned an
-intent). Kept identical here deliberately, rather than diverging this
-module's triggering semantics from every sibling strategy's on a point no
-task has revisited -- a cross-cutting change to all four strategies'
-shared edge-triggering shape would be its own, separately-scoped task.
+established nonzero blended sign). `self._signal_state` only updates when
+either no entry was attempted this bar (still in a position, or no prior
+state existed yet) or an attempted entry actually opened a position --
+**not** when an entry was attempted (the edge-trigger conditions were met)
+but `_open()` rejected it purely via a downstream filter (the
+vol-scalar-weighted `final_quantity` rounding to `<= 0`, or vol warmup).
+Without this distinction, a signal that fires the trigger but gets
+filtered out at the sizing stage would be silently "consumed" -- a later
+bar where filters would have allowed the trade, but the blended sign
+hasn't changed again, would never retry. Same fix, same reasoning, as
+`mean_reversion.MeanReversionStrategy`'s identical correction -- see that
+module's docstring for the full explanation, including the disclosed,
+NOT-fixed inconsistency this creates with `EnsembleMomentumStrategy`/
+`SingleLookbackMomentumStrategy`'s own (unmodified, out of this task's
+scope) signal-state trackers, which still update unconditionally.
 
 ## Warmup
 
@@ -369,6 +375,7 @@ class MomentumReversionBlendStrategy:
             current_signal = _sign(blended_strength)
 
         intent: OrderIntent | None = None
+        entry_rejected_by_filters = False
 
         if self._position is not None:
             trigger = check_exit_trigger(self._position, current)
@@ -385,8 +392,14 @@ class MomentumReversionBlendStrategy:
             ):
                 side = Side.LONG if current_signal > 0 else Side.SHORT
                 intent = self._open(current, side, atr, blended_strength, realized_vol)
+                entry_rejected_by_filters = intent is None
 
-        if current_signal != 0:
+        # See module docstring's "Edge-triggering" section: do NOT consume
+        # the state when an attempted entry was rejected purely by a
+        # downstream filter (vol scalar / warmup) -- only a genuinely
+        # untried or already-open-position bar keeps the unconditional
+        # update.
+        if current_signal != 0 and not entry_rejected_by_filters:
             self._signal_state = current_signal
 
         return intent
