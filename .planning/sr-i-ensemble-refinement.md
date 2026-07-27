@@ -24,7 +24,7 @@ data -- no numbers here are hand-derived or estimated.
 Neither, cleanly. Re-sorting the original ensemble's 19 real per-fold
 Sharpe values (from sr-h's own table):
 
-```
+```text
 -7.61, -5.73, -4.88, -4.17, -4.04, -4.03, -3.88, -3.81, -3.73, -1.23, -1.22,
 0.63, 0.82, 1.41, 1.7, 3.05, 3.47, 3.61, 4.05
 ```
@@ -68,19 +68,41 @@ outcome), the real target-hit rate is `90 / (90 + 165) = 35.3%`. The fixed
 before costs (`1 / (1 + 2)`). The real trade-level win rate sits barely
 above that breakeven line -- a thin margin, not a comfortable one.
 
-**Gross (pre-fee) P&L across all 262 real trades: -$66.00.** Essentially
-zero -- the raw, cost-free signal is statistically indistinguishable from
-flat. **Total real fees paid across all 262 trades: $2,146.30** (`fee_bps=5`
-+ `slippage_bps=2`, applied twice per round trip). `gross P&L - fees =
--$2,212.30`, which matches the dollar loss implied by the aggregate
-`mean_total_return=-1.164%` across 19 folds of $10,000 starting equity
-(`-0.01164 * 19 * 10000 = -$2,212.36`, matching to rounding) almost
-exactly. **Trading costs, not a clearly negative raw signal, account for
-essentially the entire aggregate negative result.** This is the single
-most important finding of this diagnosis: the ensemble's raw directional
-edge is close to a coin flip (which is itself not a strong edge, but it is
-very different from "actively wrong"), and fees are what push it
-decisively negative.
+**Cost breakdown, decomposed by re-running the same 19 folds with
+`fee_bps`/`slippage_bps` independently zeroed out** (this project's fee
+and slippage are two structurally separate costs -- `backtest/fill.py`'s
+`simulate_fill` applies slippage to the *fill price itself* before
+`metrics/position.py` ever computes a trade's `realized_pnl`, while the
+exchange commission (`Fill.fee`) is tracked entirely separately and only
+deducted at the equity-curve level in `metrics/metrics.py` -- so "gross
+trade P&L" and "total fees paid" are not directly additive without care,
+and an earlier draft of this diagnosis conflated the two; corrected here):
+
+| configuration | gross trade P&L (sum of `realized_pnl`, already reflects any modeled slippage) | exchange fees paid (`Fill.fee`, `fee_bps` only) | net (P&L - fees) |
+|---|---|---|---|
+| zero cost (`fee_bps=0`, `slippage_bps=0`) | **+$792.52** | $0.00 | +$792.52 |
+| slippage only (`fee_bps=0`, `slippage_bps=2`) | -$66.00 | $0.00 | -$66.00 |
+| fees only (`fee_bps=5`, `slippage_bps=0`) | +$792.52 | $2,146.30 | -$1,353.78 |
+| **real (`fee_bps=5`, `slippage_bps=2`) -- what Task H actually ran** | -$66.00 | $2,146.30 | **-$2,212.30** |
+
+The real, corrected picture: **the raw directional signal itself has
+genuine, if modest, positive edge** (+$792.52 gross across all 262 real
+trades at zero cost -- consistent with the 35.3% real target-hit rate
+sitting just *above*, not at, the 33.3% breakeven line). **Two separate
+costs erode it, not one**: modeled slippage (2bps each way on every market
+order) alone is large enough to flip that positive edge to a $66.00 loss
+-- an $858.52 swing from a nominally small 2bps rate, because it's applied
+against price levels the strategy's own stop/target logic was sized
+around. Exchange fees (`fee_bps=5`, BingX's real, verified VIP0 taker
+rate -- see below) are a further, larger, and separate -$2,146.30 on top,
+landing at the real net -$2,212.30 (matching the dollar loss implied by
+`mean_total_return=-1.164%` across 19 folds of $10,000 starting equity --
+`-0.01164 * 19 * 10000 = -$2,212.36`, matching to rounding). **Trading
+costs -- slippage and fees together, not a negative raw signal -- account
+for essentially the entire aggregate negative result.** This is the single
+most important finding of this diagnosis, corrected from an earlier draft
+that inaccurately described the combined $2,146.30+slippage effect as one
+undifferentiated "fees" line item.
 
 **Holding periods**: winners held for a mean 19.3 hours; losers for a mean
 11.5 hours -- consistent with the ATR stop/target structure (a winning
@@ -175,10 +197,11 @@ cost-assumption correction.
    outright) on a sample far too small to draw any real conclusion from.
    Not attempted.
 3. **Stop/target risk:reward ratio: worth testing.** The real target-hit
-   rate (35.3%) sits right at the 1:2 ratio's 33.3% breakeven line -- a
-   thin enough margin that a different ratio could plausibly move the
-   needle, and the near-zero gross P&L means costs (not signal quality)
-   are the dominant lever. Tested via an opt-in grid search (below).
+   rate (35.3%) sits just above the 1:2 ratio's 33.3% breakeven line -- a
+   thin enough margin (and a raw, cost-free edge of only +$792.52 across
+   262 trades) that a different ratio could plausibly move the needle, and
+   the cost breakdown above means costs (not signal quality) are the
+   dominant lever. Tested via an opt-in grid search (below).
 4. **ADX threshold recalibration: worth testing.** Real, leakage-free
    empirical evidence that the traditional 20/25 convention doesn't fit
    BTC's actual ADX distribution on this project's own indicator
@@ -212,15 +235,17 @@ task's own brief.
 original, unsearched ratio) so the search can honestly conclude "no
 change" if that's what the data shows.
 
-**9 new tests** added to `python/tests/test_ensemble_momentum.py`
-(`TestFitOptionalRiskRewardGridSearch`), written first and confirmed
-failing before the production code existed: per-candidate logging shape,
-candidate-specific `target_multiplier` in logged params (`stop_multiplier`
-never varies), selection logic (isolated via a monkeypatched
-`compute_metrics` returning canned per-candidate results, proving `fit()`
-picks the highest-`total_return` candidate, not the first or last),
-zero-trade fallback to the first candidate, empty-candidate-list and
-non-positive-`risk_reward_tenths` rejection, and confirming the default
+**10 new tests** added to `python/tests/test_ensemble_momentum.py`
+(`TestFitOptionalRiskRewardGridSearch`; 8 written for this refinement
+originally, 2 more added during CodeRabbit review -- see "CodeRabbit
+review findings" below), written first and confirmed failing before the
+production code existed: per-candidate logging shape, candidate-specific
+`target_multiplier` in logged params (`stop_multiplier` never varies),
+selection logic (isolated via a monkeypatched `compute_metrics` returning
+canned per-candidate results, proving `fit()` picks the highest-
+`total_return` candidate, not the first or last), zero-trade fallback to
+the first candidate, empty-candidate-list/non-positive/non-integer/bool
+`risk_reward_tenths` rejection, and confirming the default
 (no-`"candidates"`-key) path is genuinely untouched. Plus 1 new test
 confirming `target_multiplier`/`stop_multiplier` are now exposed as
 properties (needed for a real `sensitivity_extractor`), and 1 new
@@ -253,9 +278,15 @@ more encouraging finding -- see "Combined" below.)
 
 Added two new named constants to `ensemble_momentum.py`,
 `RECALIBRATED_ADX_LOW_THRESHOLD = Decimal("25")` /
-`RECALIBRATED_ADX_HIGH_THRESHOLD = Decimal("50")`, rounded from the
-leakage-free fold-0-train-window percentiles (p25~=25.72, p75~=50.20)
-computed in Step 1. **Not the constructor default** for either
+`RECALIBRATED_ADX_HIGH_THRESHOLD = Decimal("50")`, derived from the
+leakage-free fold-0-train-window percentiles computed in Step 1
+(p25~=25.72, p75~=50.20) by **rounding down to the nearest integer**
+(`Decimal.to_integral_value(rounding=ROUND_FLOOR)` -- not nearest-integer
+rounding, which would give 26 for 25.72; a floor was chosen so the
+recalibrated low threshold is never set *above* the real empirical p25,
+keeping the "ramp" zone at least as wide as the true interquartile range
+rather than narrower than it): `25.72 -> 25`, `50.20 -> 50`. **Not the
+constructor default** for either
 `EnsembleMomentumStrategy` or `EnsembleMomentumTrainable` --
 `regime_weighting.DEFAULT_ADX_LOW_THRESHOLD`/`DEFAULT_ADX_HIGH_THRESHOLD`
 (20/25) remain the default for both this strategy and
@@ -292,17 +323,20 @@ to-negative alone -- worth checking whether A's mechanism behaves
 differently once B has already cleaned up which trades actually fire.
 
 **Real result (19-fold walk-forward, both refinements together, `run_id=
-e75c91e2-4959-4178-9f01-cf14412c3cfc`)**: **better than B alone on every
-single metric measured** -- mean Sharpe **+0.027** (positive!), 11/19
-folds positive (vs. 9/19 for B alone), worst drawdown 4.23% (identical to
-B alone), mean total return **+0.21%** (positive), mean profit factor
-1.967, min Sharpe -8.442 (better than B alone's -9.992), min profit factor
-0.128 (better than B alone's 0.096), total trades 199 (still comfortably
-above the 100-trade floor). Fold 17 remains the worst fold across every
-variant tested (original -3.727, B -9.992, combined -8.442) -- recalibrating
-ADX makes this specific fold meaningfully worse under every configuration
-that includes it, a consistent, disclosed weak point of the recalibration,
-not something the risk:reward search fixes.
+e75c91e2-4959-4178-9f01-cf14412c3cfc`)**: **better than B alone on 6 of the
+7 quality metrics measured, tied on the 7th (worst drawdown, identical
+4.23% in both) -- never worse on any of them** -- mean Sharpe **+0.027**
+(positive!, vs. B alone's -0.627), 11/19 folds positive (vs. 9/19 for B
+alone), mean total return **+0.21%** (positive, vs. -0.04%), mean profit
+factor 1.967 (vs. 1.907), min Sharpe -8.442 (vs. B alone's -9.992, less
+bad), min profit factor 0.128 (vs. B alone's 0.096, less bad), total
+trades 199 (fewer than B alone's 213, still comfortably above the
+100-trade floor -- trade count is a volume figure, not itself scored as
+better/worse, same convention sr-h used). Fold 17 remains the worst fold
+across every variant tested (original -3.727, B -9.992, combined -8.442)
+-- recalibrating ADX makes this specific fold meaningfully worse under
+every configuration that includes it, a consistent, disclosed weak point
+of the recalibration, not something the risk:reward search fixes.
 
 **This is a real, not-just-noise interaction**: A alone was a wash/mild
 regression; combined with B it improves on every axis relative to B alone
@@ -372,18 +406,26 @@ All four real 19-fold walk-forward runs, identical windows
 | mean profit factor | 1.284 | 1.270 | 1.907 | **1.967** |
 | min profit factor | 0.302 | 0.165 | 0.096 | 0.128 |
 
-**A (risk:reward grid alone) is a genuine negative/neutral result** --
-worse on 4 of 8 rows, essentially flat on 2, better on only 2 (mean/min
-Sharpe, both marginally). Reported honestly; not adopted on its own.
+Scoring each configuration against the original on the 7 rows that are
+genuinely quality metrics (excluding `total trades`, a volume/activity
+figure this project doesn't score as better/worse either way -- same
+convention sr-h used):
 
-**B (ADX recalibration alone) is a genuine, substantial improvement** on
-6 of 8 rows, at the real cost of a worse tail (min Sharpe, min profit
-factor -- both driven by fold 17).
+**A (risk:reward grid alone) is a genuine negative/neutral result vs. the
+original** -- worse on 4 of 7 (folds positive, worst drawdown, mean and
+min profit factor), better on 3 (mean Sharpe, min Sharpe, mean total
+return -- the latter two only marginally). Reported honestly; not adopted
+on its own.
 
-**C (combined) is the strongest result found** -- better than B alone on
-every row, and better than the original on every row except min Sharpe and
-min profit factor (both still worse than the original, both still driven
-by fold 17).
+**B (ADX recalibration alone) is a genuine, substantial improvement vs.
+the original** on 5 of 7, at the real, disclosed cost of a worse tail on
+the remaining 2 (min Sharpe, min profit factor -- both driven by fold 17).
+
+**C (combined) is the strongest result found**: better than B alone on 6
+of 7 (tied on the 7th, worst drawdown -- see above), and better than the
+original on 5 of 7, worse than the original on the same 2 tail metrics B
+alone is worse on (min Sharpe, min profit factor, both still driven by
+fold 17).
 
 ## Eligibility bar evaluation (all four, CLAUDE.md's Backtest/Walk-Forward Eligibility Bar)
 
@@ -413,17 +455,17 @@ identical negative result).
 
 ## TDD
 
-`python/tests/test_ensemble_momentum.py` grew from 28 to 38 tests (+10):
-`TestFitOptionalRiskRewardGridSearch` (8 tests) + 1 new
-`TestConstruction` test (stop/target multiplier properties) + 1 new
-`TestConstruction` test (recalibrated ADX constants) + 1 new
-`TestRealWalkForwardIntegration` case (grid search + sensitivity_extractor
-end to end) = 11 additions, minus the pre-existing 28 unchanged = net +10.
-Every new test was written first and confirmed failing (`AttributeError`/
+`python/tests/test_ensemble_momentum.py` grew from 27 to 40 tests (+13):
+`TestFitOptionalRiskRewardGridSearch` (10 tests, including 2 added during
+CodeRabbit review -- see below) + 1 new `TestConstruction` test
+(stop/target multiplier properties) + 1 new `TestConstruction` test
+(recalibrated ADX constants) + 1 new `TestRealWalkForwardIntegration` case
+(grid search + `sensitivity_extractor` end to end) = 13 additions. Every
+new test was written first and confirmed failing (`AttributeError`/
 `Failed: DID NOT RAISE`) before the corresponding production code in
 `python/research/strategies/ensemble_momentum.py` existed.
 
-Full suite: **453 passed** (was 442 immediately before this task,
+Full suite: **455 passed** (was 442 immediately before this task,
 confirmed by running the complete, unfiltered `uv run pytest` suite both
 before and after -- nothing from any prior task regressed).
 
@@ -434,9 +476,9 @@ $ cd python && uv run pytest -q
 ........................................................................ [ 47%]
 ........................................................................ [ 63%]
 ........................................................................ [ 79%]
-........................................................................ [ 95%]
-.....................                                                    [100%]
-453 passed in 39.53s
+........................................................................ [ 94%]
+.......................                                                  [100%]
+455 passed in 41.50s
 ```
 
 **One real bug caught during this task's own diagnostic tooling, not in
@@ -455,7 +497,61 @@ itself was never wrong, only the ad hoc script trying to introspect it.
 
 ## CodeRabbit review findings
 
-_Filled in after the PR's CodeRabbit review completes._
+One review pass, 5 actionable findings. **All 5 accepted and fixed** --
+none declined.
+
+- **MD040 lint: the Sharpe-value list's fenced code block had no language
+  identifier.** Real, valid lint finding. Fixed: ` ```text `.
+- **Fee/slippage conflation, the most substantive finding.** The original
+  draft described the combined $2,146.30 figure as "fees" while its own
+  calculation implicitly folded in `slippage_bps=2`'s effect, and called
+  the raw signal "near-zero" pre-cost. Investigating this properly (not
+  just rewording around it) uncovered a materially more accurate and more
+  interesting diagnosis: re-running the same 19 folds with `fee_bps`/
+  `slippage_bps` independently zeroed out shows the **raw, zero-cost
+  signal is actually genuinely profitable (+$792.52 across 262 trades)**,
+  not near-breakeven -- `Fill.fee` (the $2,146.30 figure) is purely the
+  exchange-commission component and never touches `ClosedTrade.realized_pnl`
+  at all (`metrics/position.py` tracks it entirely separately, deducted
+  only at the equity-curve level), while modeled slippage acts on the fill
+  price itself and is already embedded in the -$66.00 "gross trade P&L"
+  figure. The corrected finding is meaningfully sharper than the original:
+  two *separate* real costs (slippage first, turning +$792.52 into -$66.00
+  on its own; exchange fees second, a further -$2,146.30) both erode a
+  genuinely positive raw edge, rather than one undifferentiated "fees"
+  line item erasing a coin-flip signal. Fixed with a full corrected
+  cost-decomposition table and rewritten prose in the Step 1 diagnosis.
+- **Ambiguous ADX-threshold rounding rule.** "rounded to 25/50" didn't
+  specify a reproducible rule -- ordinary nearest-integer rounding of
+  `25.72` gives `26`, not `25`. Real, valid precision gap. Fixed: the
+  actual rule used (round down / floor, chosen so the recalibrated low
+  threshold is never set above the true empirical p25) is now stated
+  explicitly.
+- **"Better than B alone on every single metric" overclaimed** -- the
+  table itself shows worst drawdown tied at 4.23% between B and C, not a
+  win for C. A real, valid inconsistency (the same class of overclaim
+  sr-h's own CodeRabbit review caught once before, on the "every single
+  metric" baseline-vs-ensemble comparison). Fixed: reworded to "better on
+  6 of 7 quality metrics, tied on the 7th," with the A-vs-original and
+  B-vs-original comparison counts also independently recomputed and
+  corrected (excluding `total trades`, a volume figure this project
+  doesn't score as better/worse either way, from the quality-metric
+  count) rather than trusting the original hand count.
+- **`risk_reward_tenths` validation only checked `<= 0`, not that the
+  value is a genuine positive int.** A real robustness gap: `Decimal(
+  "15.5")` would silently corrupt the `target_multiplier` arithmetic, and
+  `True`/`False` (bool is an `int` subclass in Python) would silently be
+  treated as `risk_reward_tenths=1`/`0`. Fixed in
+  `EnsembleMomentumTrainable.fit()` with an explicit `isinstance(...,
+  int)` check that excludes `bool`, raising `ValueError` for both cases --
+  plus 2 new TDD tests (`test_fit_rejects_non_integer_risk_reward_tenths`,
+  `test_fit_rejects_bool_risk_reward_tenths`), written first and confirmed
+  failing before the fix.
+
+Full suite after all fixes: **455 passed** (up from 453 before the review
+fixes -- the two new bool/non-integer-rejection tests are the only
+production-code-touching fix in this pass; the rest are documentation
+corrections).
 
 ## Judgment calls resolved without asking
 

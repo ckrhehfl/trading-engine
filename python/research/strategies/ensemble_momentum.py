@@ -214,8 +214,12 @@ DEFAULT_RISK_REWARD_TENTHS_CANDIDATES: tuple[tuple[int, ...], ...] = ((15,), (20
 # two constants (computed leakage-free from fold 0's own train window --
 # the earliest 2,160-bar slice of the research dataset, entirely before
 # every walk-forward fold's validate window -- empirical p25~=25.72,
-# p75~=50.20, rounded to 25/50) widen the ramp to span BTC's own
-# empirical interquartile range instead. Tested for real via a full
+# p75~=50.20, each rounded DOWN to the nearest integer -- 25.72 -> 25,
+# 50.20 -> 50 -- not nearest-integer rounding, which would give 26 for
+# 25.72; flooring keeps the recalibrated low threshold at/below the true
+# empirical p25, so the ramp stays at least as wide as the real
+# interquartile range rather than narrower) widen the ramp to span BTC's
+# own empirical interquartile range instead. Tested for real via a full
 # 19-fold walk-forward re-run (see the planning doc for the full
 # before/after comparison) -- a genuine, evidenced improvement, not a
 # blind convention swap. A caller opts in explicitly, e.g.
@@ -632,6 +636,18 @@ class EnsembleMomentumTrainable:
 
         for index, candidate in enumerate(candidates):
             (risk_reward_tenths,) = candidate
+            # bool is a subclass of int in Python -- excluded explicitly so
+            # True/False can't silently pass as risk_reward_tenths=1/0. A
+            # non-int (e.g. Decimal("15.5"), float) is rejected outright
+            # rather than coerced: it would silently corrupt both the
+            # target_multiplier arithmetic below and the int(ratio * 10)
+            # recovery a real sensitivity_extractor relies on to identify
+            # which candidate actually won (see module docstring).
+            if not isinstance(risk_reward_tenths, int) or isinstance(risk_reward_tenths, bool):
+                raise ValueError(
+                    f"risk_reward_tenths must be a positive int, got {risk_reward_tenths!r} "
+                    f"({type(risk_reward_tenths).__name__})"
+                )
             if risk_reward_tenths <= 0:
                 raise ValueError(f"risk_reward_tenths must be positive, got {risk_reward_tenths}")
             target_multiplier = self._stop_multiplier * Decimal(risk_reward_tenths) / Decimal(10)

@@ -573,6 +573,24 @@ class TestFitOptionalRiskRewardGridSearch:
         with pytest.raises(ValueError, match="risk_reward_tenths"):
             trainable.fit(_flat_klines(50), {"candidates": [(0,)]}, parent_run_id="parent-rr-6")
 
+    def test_fit_rejects_non_integer_risk_reward_tenths(self, tmp_path):
+        """A Decimal risk_reward_tenths would silently corrupt
+        target_multiplier arithmetic and the int(ratio * 10) recovery
+        sensitivity_extractor relies on -- must be rejected, not coerced.
+        """
+        trainable = self._trainable(tmp_path)
+        with pytest.raises(ValueError, match="risk_reward_tenths"):
+            trainable.fit(_flat_klines(50), {"candidates": [(Decimal("15.5"),)]}, parent_run_id="parent-rr-9")
+
+    def test_fit_rejects_bool_risk_reward_tenths(self, tmp_path):
+        """bool is a subclass of int in Python -- True/False would
+        otherwise silently pass the `isinstance(..., int)` check and be
+        (mis)treated as risk_reward_tenths=1/0.
+        """
+        trainable = self._trainable(tmp_path)
+        with pytest.raises(ValueError, match="risk_reward_tenths"):
+            trainable.fit(_flat_klines(50), {"candidates": [(True,)]}, parent_run_id="parent-rr-10")
+
     def test_stop_multiplier_is_never_varied_by_the_search(self, tmp_path):
         trainable = self._trainable(tmp_path, stop_multiplier=Decimal("2.0"))
         result = trainable.fit(_flat_klines(50), {"candidates": [(20,)]}, parent_run_id="parent-rr-7")
