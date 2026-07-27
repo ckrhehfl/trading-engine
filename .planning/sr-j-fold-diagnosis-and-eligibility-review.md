@@ -131,7 +131,7 @@ Three candidate discriminators were tested against the real data. Two do
 
 | candidate discriminator | NEG folds (n=8) | POS folds (n=11) | discriminates? |
 |---|---|---|---|
-| mean (high-low range) / |net move| ("choppiness ratio") | 2.836 | 5.689 | **No** -- and in the *opposite* direction a "choppy negative folds" story would predict (positive folds have the larger relative range, if anything) |
+| mean (high-low range) / abs(net move) ("choppiness ratio") | 2.836 | 5.689 | **No** -- and in the *opposite* direction a "choppy negative folds" story would predict (positive folds have the larger relative range, if anything) |
 | mean ADX (continuous, computed once across the whole dataset, the same series the strategy's own regime filter reads) | 36.69 | 37.81 | **No** -- nearly identical |
 | % of bars inside the recalibrated ADX "ramp" zone (25-50, neither fully suppressed nor full-conviction) | 52.4% | 52.6% | **No** -- essentially identical |
 | **trade-level win rate** (`metrics.position.reconstruct_trades`, real closed trades) | **25.6%** | **45.4%** | **Yes** -- a large, consistent gap |
@@ -287,13 +287,42 @@ sweep **1.44% of the time** in a single real 19-fold sample. Requiring
 100% effectively demands a true per-fold reliability north of ~95% before
 even a coin-flip's chance of passing exists at all (37.7% at p=0.95, and
 climbing further only above that) -- a bar no realistic BTC systematic
-strategy, and no strategy in the credible literature reviewed here
-(Pardo's own WFE guidance treats 50-60% *out-of-sample retention*, not
-95%+ *per-period win consistency*, as "good"), plausibly clears. **The
-literal 100% bar is not measuring "is this a good strategy" so much as
-"did this specific 19-fold sample get lucky enough to look flawless,"**
-which is a materially different (and much rarer, even for a genuinely
-good strategy) event.
+strategy, and (per source #1's grading above -- a practitioner reference
+retrieved via search synthesis, *not* independently verified against
+Pardo's primary text this session) no strategy under Pardo's own WFE
+convention either, which is commonly reported as treating **50-60%**
+*out-of-sample-vs-in-sample performance retention* (a different
+quantity from "% of folds positive," but the same order-of-magnitude
+message: real, credible practitioner bars for OOS consistency sit far
+below 95-100%) as "good," plausibly clears. **The literal 100% bar is
+not measuring "is this a good strategy" so much as "did this specific
+19-fold sample get lucky enough to look flawless,"** which is a
+materially different (and much rarer, even for a genuinely good
+strategy) event.
+
+**A load-bearing statistical caveat on all of the above, not to be
+glossed over**: every binomial calculation in this section assumes each
+fold's positive/negative outcome is an **independent, identically
+distributed (i.i.d.) Bernoulli trial** with a single fixed true
+probability `p`. Part 1's own diagnosis found the opposite is at least
+plausible: the 8 negative folds cluster into 3 contiguous runs (a
+borderline-significant runs-test result, one-sided p~=0.057 -- see
+above), consistent with adjacent folds' outcomes being **serially
+correlated** rather than independent draws (e.g. a multi-month
+market regime bleeding across more than one 30-day fold boundary). If
+real, that dependence would make the true sampling variance of "number
+of positive folds out of 19" *larger* than the simple i.i.d. binomial
+model above assumes -- meaning the exact percentages in the table (and
+the false-positive/power figures below) are a **first-order
+approximation, not an exact result**, and are likely mildly
+*optimistic* about how cleanly a percentage threshold separates real
+edge from chance under this specific strategy's actual (possibly
+regime-correlated) fold-to-fold behavior. A block permutation test or
+block bootstrap (resampling contiguous *runs* of folds rather than
+individual folds, preserving whatever serial dependence is really
+present) would be the statistically correct refinement here -- named as
+a known limitation and a concrete next step for whoever implements this
+proposal, not built in this task (research/proposal only, no code).
 
 ### Applying this project's own real result honestly -- does the proposed bar just let Configuration C pass?
 
@@ -340,14 +369,48 @@ just on average)" with **two clauses, both required**:
    convention CLAUDE.md already uses for its other ranged thresholds --
    drawdown 20-25%, profit factor 1.3-1.5 -- rather than a single point
    value this task would be overstepping to choose unilaterally). At
-   this project's current 19-fold walk-forward, that is 16-18 of 19
-   folds. Chosen from the binomial table above: a true 80% edge already
-   clears an 80% *observed* threshold the overwhelming majority of the
-   time (99.3%, from the `P(>=11/19...)`-style tail sum extended to a
-   16/19 floor -- not tabulated above but the same `math.comb` method),
-   while a no-edge (p=0.5) strategy clears it well under 1% of the time
-   -- a threshold that actually separates real edge from luck, unlike
-   literal 100%.
+   this project's current 19-fold walk-forward, an "at least X%" floor
+   maps to a minimum passing fold count of `ceil(X% * 19)`: 80% -> >=16,
+   85% -> >=17, 90% -> >=18. Computed exactly (`math.comb`, correcting an
+   earlier draft of this section that mistakenly reused the `P(>=11/19)`
+   figure from the reference table above instead of computing power at
+   the actual candidate thresholds):
+
+   | candidate floor | min fold count | power at true `p=0.80` | power at true `p=0.90` | false-positive rate at `p=0.50` (no edge) |
+   |---|---|---|---|---|
+   | >=80% | 16/19 | 45.51% | 88.50% | 0.221% |
+   | >=85% | 17/19 | 23.69% | 70.54% | 0.036% |
+   | >=90% | 18/19 | 8.29% | 42.03% | 0.004% |
+
+   **Read honestly, this table complicates the case for picking the
+   *high* end of the 80-90% range**, not just the low end: at 19 folds,
+   even the loosest candidate floor (>=16/19) only gives a genuinely
+   strong 80%-true-edge strategy a **45.5% chance** of actually clearing
+   it in one real sample -- barely better than a coin flip for detecting
+   a real, strong edge -- and power drops further at the stricter
+   end of the range (8.3% at >=18/19). What every one of these
+   candidate floors *does* deliver, even at the loose end, is a sharply
+   low false-positive rate against a no-edge strategy (0.22% down to
+   0.004%) -- a dramatically better separation than literal 100%
+   provides in the other direction (100% still lets a strong 90%-true-
+   edge strategy through 13.5% of the time -- see the reference table
+   above -- while itself demanding near-impossible ~95%+ reliability).
+   **The practical implication**: at this project's current, still-thin
+   19-fold depth, no single percentage floor in this range is
+   simultaneously high-power *and* low-false-positive -- this is exactly
+   why clause 2 (an aggregate significance check using the full
+   continuous Sharpe values, not just a binarized win/loss count, which
+   carries more statistical information per fold) is proposed as a
+   **required second check**, not an optional add-on. Given the low
+   power even at the loose end, this task's own lean (not a hard
+   recommendation) is toward the **lower** end of the 80-90% range (a
+   >=16/19-style floor) specifically so the percentage clause doesn't
+   become the dominant, power-starved bottleneck -- leaving clause 2 to
+   do the real statistical work of confirming genuine edge. The
+   fold-count credibility floor itself (8-10 minimum, unchanged by this
+   proposal) also directly bears on this: more real folds (as data depth
+   grows) would tighten every number in this table in the proposal's
+   favor, independent of anything this task can do today.
 2. **Aggregate significance**: the full set of per-fold Sharpe ratios
    must reject the null hypothesis of "no real edge" via **both** (a) a
    binomial sign test on the fold win/loss count against `p=0.5` and (b)
@@ -393,6 +456,45 @@ Eligibility Bar itself, that edit requires the human's explicit sign-off
 before it takes effect.
 
 ---
+
+## CodeRabbit review findings
+
+One review pass, 4 actionable findings. **All 4 accepted and fixed**.
+
+- **A real arithmetic/citation error in the fold-consistency power
+  calculation.** The original draft justified a `>=16/19` floor by citing
+  "99.3%... the same `math.comb` method" -- but 99.334% is actually
+  `P(X>=11 | n=19, p=0.80)` from the reference table above (a different
+  `k`), not the power of a `>=16/19` floor, which is genuinely 45.5%
+  (`P(X>=16 | n=19, p=0.80)`). Recomputed properly for `k=16/17/18`
+  against `p=0.80/0.90` and the `p=0.50` false-positive rate -- see the
+  corrected table in "Proposed revision" above. This changed the
+  document's actual recommendation: the low power at every candidate
+  floor (even the loosest, 45.5% at >=16/19) is now stated plainly, and
+  the previously-unstated "which end of 80-90% is better" question is
+  now answered with real numbers (leaning toward the *lower* end, not
+  left unaddressed) -- a substantive correction, not just a wording fix.
+- **A markdown table row broken by an unescaped literal pipe** (`|net
+  move|` parsed as an extra cell boundary). Fixed to `abs(net move)` --
+  same value, valid table syntax.
+- **The binomial framing was presented without flagging its i.i.d.
+  assumption against Part 1's own clustering finding.** A real, valid
+  internal-consistency gap: Part 1 finds the negative folds cluster
+  (even if only borderline-significant), which is in tension with the
+  independent-trials assumption every binomial number in Part 2 relies
+  on. Fixed by adding an explicit caveat paragraph naming the tension,
+  explaining its direction (likely makes the simple binomial numbers
+  mildly optimistic about separation power under real serial
+  dependence), and naming block permutation/block bootstrap as the
+  statistically correct refinement -- flagged as a known limitation for
+  a future implementer, not resolved in this research-only task.
+- **The Pardo "50-60% out-of-sample retention" figure was stated as if
+  independently verified**, inconsistent with its own credibility-table
+  entry (source #1), which already disclosed it was retrieved via search
+  synthesis, not checked against Pardo's primary text. Fixed by adding
+  an inline pointer back to that caveat at the point the figure is
+  actually used, rather than only in the table where a reader might miss
+  it.
 
 ## Process notes
 
