@@ -86,6 +86,60 @@ sign changes, same "last established regime" tracking pattern as every
 other strategy in this package) -- structurally identical to
 `hourly_momentum.HourlyMomentumStrategy`'s crossover-sign tracking, just
 fed by the 3-pair combination instead of a single pair's sign.
+
+## Strategy Research Task I: optional risk:reward grid search
+
+See CLAUDE.md's "Strategy Research Methodology" section and
+`.planning/sr-i-ensemble-refinement.md` for the full diagnosis this
+addition responds to. Summary: Task H's real 19-fold walk-forward run's
+actual target-hit rate (35.3% across all 262 real trades, excluding
+fold-end forced closes) sits right at the ~33.3% breakeven the fixed 1:2
+stop:target ratio (`DEFAULT_STOP_MULTIPLIER=1.5` /
+`DEFAULT_TARGET_MULTIPLIER=3.0`) implies, and gross (pre-fee) trade P&L
+summed across every real trade was close to zero (-$66) versus $2,146 in
+real fees paid -- trading costs, not a clearly negative raw signal, are
+what turned a near-breakeven raw edge negative. That thin, cost-dominated
+margin is the concrete, diagnosis-driven justification for actually
+searching a small risk:reward grid here -- a deliberate, narrow exception
+to this module's own "fixed, not grid-searched" design above (which still
+governs every other constant: lookback pairs, ATR/ADX/vol periods, ADX
+thresholds, vol-target level/bounds, risk fraction).
+
+**Purely additive and opt-in, not a redesign of the default path**:
+`EnsembleMomentumTrainable.fit()` still behaves byte-for-byte as sr-h
+built it (exactly one candidate, `target_multiplier` fixed at construction
+time, `total_candidates=1`) whenever `params` omits the `"candidates"`
+key entirely -- every existing caller, and every one of sr-h's own tests,
+is unaffected. Only when a caller explicitly supplies
+`params["candidates"]` (a non-empty sequence of `(risk_reward_tenths,)`
+1-tuples) does `fit()` grid-search `target_multiplier` across them, per
+fold, on that fold's own `train_klines` only -- the same train-only,
+walk-forward-safe selection `SingleLookbackMomentumTrainable.fit()`
+already uses for its `(fast, slow)` grid, applied to this one new
+dimension instead. `stop_multiplier` is never part of the search --
+only the target side of the ratio varies, holding the ATR-based stop
+distance (and therefore position sizing, which depends only on stop
+distance -- see `risk_management.compute_position_size`) fixed across
+every candidate, so the comparison isolates the risk:reward ratio itself.
+
+**`risk_reward_tenths` encoding**: an integer, `10x` the target:stop
+ratio (e.g. `20` means `target_multiplier = stop_multiplier * 2.0`, the
+original ratio; `30` means `target_multiplier = stop_multiplier * 3.0`),
+rather than a `Decimal` `target_multiplier` directly. This is a deliberate
+compatibility choice: `research.robustness.check_parameter_sensitivity`/
+`perturb_candidate` (Task G's overfitting safeguard) are written for
+integer, window-length-shaped candidates (round-half-up perturbation,
+clamped to `>=1`) and are reused here **unmodified** -- exactly what this
+task's own brief asked for ("using Task G's parameter-sensitivity check on
+whatever wins"). Building a parallel Decimal-aware sensitivity checker
+just for this one new dimension was considered and rejected as needless
+duplication of already-tested, working machinery.
+`DEFAULT_RISK_REWARD_TENTHS_CANDIDATES = ((15,), (20,), (25,), (30,))` --
+4 candidates spanning 1:1.5 to 1:3, deliberately including `20` (today's
+original, unsearched 1:2 ratio) as one of the options, not just wider
+ones, so the search can honestly conclude "no change" if that is what the
+data shows, rather than being structurally biased toward finding
+something different from the status quo.
 """
 
 from collections import deque
@@ -138,6 +192,41 @@ DEFAULT_BARS_PER_DAY = 24
 # Short/medium/long 1h (fast, slow) SMA pairs -- see module docstring for
 # the full reasoning behind these specific scales.
 DEFAULT_LOOKBACK_PAIRS: tuple[tuple[int, int], ...] = ((4, 12), (12, 36), (24, 72))
+
+# Strategy Research Task I's optional risk:reward grid -- see module
+# docstring's "Strategy Research Task I: optional risk:reward grid search"
+# section for the diagnosis that justifies this, the risk_reward_tenths
+# encoding, and why 20 (the original ratio) is deliberately included.
+DEFAULT_RISK_REWARD_TENTHS_CANDIDATES: tuple[tuple[int, ...], ...] = ((15,), (20,), (25,), (30,))
+
+# Strategy Research Task I: BTC-empirical-distribution-recalibrated ADX
+# thresholds -- NOT this module's constructor default (regime_weighting.
+# DEFAULT_ADX_LOW_THRESHOLD/DEFAULT_ADX_HIGH_THRESHOLD, 20/25, the
+# traditional-TA convention, remains the default for both this strategy
+# and single_lookback_momentum.py, unchanged -- every existing test and
+# sr-h's own historical result stays reproducible against unmodified
+# defaults). See .planning/sr-i-ensemble-refinement.md's Step 1
+# diagnosis: on real BTC 1h data, this module's own (deliberately
+# non-Wilder, plain-rolling-mean) ADX computation spends ~74% of bars at
+# or above 25 (already full conviction weight) and only ~11.7% actually
+# inside the 20-25 ramp -- the traditional convention barely functions as
+# a *continuous* discriminator for this asset on this indicator. These
+# two constants (computed leakage-free from fold 0's own train window --
+# the earliest 2,160-bar slice of the research dataset, entirely before
+# every walk-forward fold's validate window -- empirical p25~=25.72,
+# p75~=50.20, each rounded DOWN to the nearest integer -- 25.72 -> 25,
+# 50.20 -> 50 -- not nearest-integer rounding, which would give 26 for
+# 25.72; flooring keeps the recalibrated low threshold at/below the true
+# empirical p25, so the ramp stays at least as wide as the real
+# interquartile range rather than narrower) widen the ramp to span BTC's
+# own empirical interquartile range instead. Tested for real via a full
+# 19-fold walk-forward re-run (see the planning doc for the full
+# before/after comparison) -- a genuine, evidenced improvement, not a
+# blind convention swap. A caller opts in explicitly, e.g.
+# `EnsembleMomentumTrainable(..., adx_low=RECALIBRATED_ADX_LOW_THRESHOLD,
+# adx_high=RECALIBRATED_ADX_HIGH_THRESHOLD)`.
+RECALIBRATED_ADX_LOW_THRESHOLD = Decimal("25")
+RECALIBRATED_ADX_HIGH_THRESHOLD = Decimal("50")
 
 
 def _sign(value: Decimal) -> int:
@@ -251,6 +340,14 @@ class EnsembleMomentumStrategy:
     @property
     def lookback_pairs(self) -> tuple[tuple[int, int], ...]:
         return self._lookback_pairs
+
+    @property
+    def stop_multiplier(self) -> Decimal:
+        return self._stop_multiplier
+
+    @property
+    def target_multiplier(self) -> Decimal:
+        return self._target_multiplier
 
     @property
     def open_position(self) -> OpenPosition | None:
@@ -408,19 +505,20 @@ class EnsembleMomentumTrainable:
     """`TrainableStrategy` (`python/research/walkforward.py`'s `Protocol`)
     implementation wrapping `EnsembleMomentumStrategy`.
 
-    **Unlike every other `Trainable` in this package, `fit()` does not
-    grid-search anything.** The 3 lookback pairs are structurally fixed
-    (`lookback_pairs`, default `DEFAULT_LOOKBACK_PAIRS`, set at
-    `EnsembleMomentumTrainable` construction time) and every risk-
+    **`fit()` grid-searches nothing by default.** The 3 lookback pairs are
+    structurally fixed (`lookback_pairs`, default `DEFAULT_LOOKBACK_PAIRS`,
+    set at `EnsembleMomentumTrainable` construction time) and every risk-
     management/regime/vol-targeting constant is likewise fixed, identical
     to `single_lookback_momentum.SingleLookbackMomentumTrainable`'s
     non-searched constants -- see module docstring for why searching the
     lookback-scale combination was deliberately not attempted (tunable-
     parameter-count discipline, MinBTL-style overfitting risk).
 
-    `fit(train_klines, params, *, parent_run_id)` builds exactly one
-    `EnsembleMomentumStrategy` (from `params["symbol"]`, default
-    `DEFAULT_SYMBOL`, plus this instance's fixed construction-time
+    When `params` omits `"candidates"` entirely (every caller before
+    Strategy Research Task I, and every caller since that doesn't
+    deliberately opt in): `fit(train_klines, params, *, parent_run_id)`
+    builds exactly one `EnsembleMomentumStrategy` (from `params["symbol"]`,
+    default `DEFAULT_SYMBOL`, plus this instance's fixed construction-time
     constants), backtests it against `train_klines` only, and logs that
     single evaluation as its own `record_type: "backtest_run"` entry
     (`candidate_index=0`, `total_candidates=1`) -- for symmetry with
@@ -428,7 +526,24 @@ class EnsembleMomentumTrainable:
     convention, and so `research.overfitting_check.check_combination_count`
     correctly counts this as "1 combination tried" per fold (an honest
     count: nothing was actually searched, so 1 is the correct number, not
-    an undercount). Returns a **fresh** `EnsembleMomentumStrategy`
+    an undercount).
+
+    When `params["candidates"]` **is** given (a non-empty sequence of
+    `(risk_reward_tenths,)` 1-tuples, e.g.
+    `DEFAULT_RISK_REWARD_TENTHS_CANDIDATES`) -- Strategy Research Task I's
+    opt-in addition, see module docstring's "optional risk:reward grid
+    search" section for the diagnosis that motivates this: `fit()`
+    grid-searches `target_multiplier` across those candidates on
+    `train_klines` only, using the same per-candidate scoring (in-sample
+    `total_return`, zero-trade candidates skipped, first-strict-improvement
+    tie-break, fallback to the first candidate if none traded) and logging
+    convention (`candidate_index`/`total_candidates` set to the real grid
+    size) `SingleLookbackMomentumTrainable.fit()` already uses for its own
+    grid. `stop_multiplier` is never varied -- only `target_multiplier`
+    (derived as `stop_multiplier * risk_reward_tenths / 10`) changes
+    per candidate.
+
+    Either way, `fit()` returns a **fresh** `EnsembleMomentumStrategy`
     instance -- never the one used for in-sample scoring, which would
     carry leftover internal state.
     """
@@ -481,34 +596,101 @@ class EnsembleMomentumTrainable:
     def fit(self, train_klines: list[Kline], params: Mapping[str, Any], *, parent_run_id: str) -> Strategy:
         symbol = params.get("symbol", DEFAULT_SYMBOL)
 
-        scoring_strategy = self._build_strategy(symbol=symbol)
-        backtest_result = run_backtest(train_klines, scoring_strategy, self._fee_bps, self._slippage_bps)
-        metrics = compute_metrics(
-            train_klines,
-            backtest_result.filled_intents,
-            backtest_result.fills,
-            self._starting_equity,
-            bars_per_day=self._bars_per_day,
-        )
+        if "candidates" not in params:
+            # Byte-for-byte the original, no-grid-search behavior (Strategy
+            # Research Task H) -- see class/module docstrings for why this
+            # stays the default when a caller doesn't opt in.
+            scoring_strategy = self._build_strategy(symbol=symbol)
+            backtest_result = run_backtest(train_klines, scoring_strategy, self._fee_bps, self._slippage_bps)
+            metrics = compute_metrics(
+                train_klines,
+                backtest_result.filled_intents,
+                backtest_result.fills,
+                self._starting_equity,
+                bars_per_day=self._bars_per_day,
+            )
+            self._log_candidate(
+                symbol=symbol,
+                train_klines=train_klines,
+                metrics=metrics,
+                target_multiplier=self._target_multiplier,
+                parent_run_id=parent_run_id,
+                candidate_index=0,
+                total_candidates=1,
+            )
+            return self._build_strategy(symbol=symbol)
 
-        self._log_candidate(
-            symbol=symbol,
-            train_klines=train_klines,
-            metrics=metrics,
-            parent_run_id=parent_run_id,
-            candidate_index=0,
-            total_candidates=1,
-        )
+        # Strategy Research Task I's opt-in risk:reward grid search -- see
+        # module docstring's "optional risk:reward grid search" section.
+        candidates = list(params["candidates"])
+        if not candidates:
+            raise ValueError(
+                "params['candidates'] must be a non-empty sequence of (risk_reward_tenths,) "
+                "tuples when provided -- omit the 'candidates' key entirely for the original, "
+                "fixed (non-grid-searched) target_multiplier"
+            )
+        total_candidates = len(candidates)
 
-        return self._build_strategy(symbol=symbol)
+        best_score: Decimal | None = None
+        best_risk_reward_tenths: int | None = None
 
-    def _build_strategy(self, *, symbol: str) -> EnsembleMomentumStrategy:
+        for index, candidate in enumerate(candidates):
+            (risk_reward_tenths,) = candidate
+            # bool is a subclass of int in Python -- excluded explicitly so
+            # True/False can't silently pass as risk_reward_tenths=1/0. A
+            # non-int (e.g. Decimal("15.5"), float) is rejected outright
+            # rather than coerced: it would silently corrupt both the
+            # target_multiplier arithmetic below and the int(ratio * 10)
+            # recovery a real sensitivity_extractor relies on to identify
+            # which candidate actually won (see module docstring).
+            if not isinstance(risk_reward_tenths, int) or isinstance(risk_reward_tenths, bool):
+                raise ValueError(
+                    f"risk_reward_tenths must be a positive int, got {risk_reward_tenths!r} "
+                    f"({type(risk_reward_tenths).__name__})"
+                )
+            if risk_reward_tenths <= 0:
+                raise ValueError(f"risk_reward_tenths must be positive, got {risk_reward_tenths}")
+            target_multiplier = self._stop_multiplier * Decimal(risk_reward_tenths) / Decimal(10)
+
+            candidate_strategy = self._build_strategy(symbol=symbol, target_multiplier=target_multiplier)
+            backtest_result = run_backtest(train_klines, candidate_strategy, self._fee_bps, self._slippage_bps)
+            candidate_metrics = compute_metrics(
+                train_klines,
+                backtest_result.filled_intents,
+                backtest_result.fills,
+                self._starting_equity,
+                bars_per_day=self._bars_per_day,
+            )
+
+            self._log_candidate(
+                symbol=symbol,
+                train_klines=train_klines,
+                metrics=candidate_metrics,
+                target_multiplier=target_multiplier,
+                parent_run_id=parent_run_id,
+                candidate_index=index,
+                total_candidates=total_candidates,
+            )
+
+            if candidate_metrics.num_trades == 0:
+                continue
+            score = candidate_metrics.total_return
+            if best_score is None or score > best_score:
+                best_score = score
+                best_risk_reward_tenths = risk_reward_tenths
+
+        if best_risk_reward_tenths is None:
+            best_risk_reward_tenths = candidates[0][0]
+        winning_target_multiplier = self._stop_multiplier * Decimal(best_risk_reward_tenths) / Decimal(10)
+        return self._build_strategy(symbol=symbol, target_multiplier=winning_target_multiplier)
+
+    def _build_strategy(self, *, symbol: str, target_multiplier: Decimal | None = None) -> EnsembleMomentumStrategy:
         return EnsembleMomentumStrategy(
             symbol=symbol,
             lookback_pairs=self._lookback_pairs,
             atr_period=self._atr_period,
             stop_multiplier=self._stop_multiplier,
-            target_multiplier=self._target_multiplier,
+            target_multiplier=target_multiplier if target_multiplier is not None else self._target_multiplier,
             reference_equity=self._reference_equity,
             risk_fraction=self._risk_fraction,
             adx_period=self._adx_period,
@@ -527,6 +709,7 @@ class EnsembleMomentumTrainable:
         symbol: str,
         train_klines: list[Kline],
         metrics: Metrics,
+        target_multiplier: Decimal,
         parent_run_id: str,
         candidate_index: int,
         total_candidates: int,
@@ -541,7 +724,7 @@ class EnsembleMomentumTrainable:
                 "lookback_pairs": [list(pair) for pair in self._lookback_pairs],
                 "atr_period": self._atr_period,
                 "stop_multiplier": str(self._stop_multiplier),
-                "target_multiplier": str(self._target_multiplier),
+                "target_multiplier": str(target_multiplier),
                 "reference_equity": str(self._reference_equity),
                 "risk_fraction": str(self._risk_fraction),
                 "adx_period": self._adx_period,
@@ -570,9 +753,10 @@ class EnsembleMomentumTrainable:
                 "step_bars": 0,
                 "fold_count": 0,
                 "note": (
-                    "in-sample scoring of the single fixed-shape ensemble inside "
-                    "EnsembleMomentumTrainable.fit() -- no grid search, see module docstring "
-                    "-- not itself a walk-forward run"
+                    "in-sample scoring inside EnsembleMomentumTrainable.fit() -- either the "
+                    "single fixed-shape ensemble (no grid search) or one candidate of Strategy "
+                    "Research Task I's opt-in risk:reward grid, see module docstring -- not "
+                    "itself a walk-forward run"
                 ),
             },
             fee_bps=self._fee_bps,

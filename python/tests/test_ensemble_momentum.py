@@ -9,6 +9,13 @@ walk-forward results (this vs. `single_lookback_momentum.py`).
 
 Written first (TDD): this file existed and failed on `ModuleNotFoundError`
 before `research/strategies/ensemble_momentum.py` did.
+
+`TestFitOptionalRiskRewardGridSearch`/the `test_run_walk_forward_with_
+sensitivity_extractor` case in `TestRealWalkForwardIntegration` were added
+for Strategy Research Task I (`.planning/sr-i-ensemble-refinement.md`) --
+see that module's own docstring for why an opt-in risk:reward grid search
+was added on top of sr-h's original (still-default) "fixed, not searched"
+design.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -21,11 +28,19 @@ from backtest.kline import Kline
 from research.experiment_log import read_records
 from research.strategies.ensemble_momentum import (
     DEFAULT_LOOKBACK_PAIRS,
+    RECALIBRATED_ADX_HIGH_THRESHOLD,
+    RECALIBRATED_ADX_LOW_THRESHOLD,
     EnsembleMomentumStrategy,
     EnsembleMomentumTrainable,
     _combined_sign,
 )
-from research.strategies.risk_management import DEFAULT_REFERENCE_EQUITY, DEFAULT_RISK_FRACTION
+from research.strategies.regime_weighting import DEFAULT_ADX_HIGH_THRESHOLD, DEFAULT_ADX_LOW_THRESHOLD
+from research.strategies.risk_management import (
+    DEFAULT_REFERENCE_EQUITY,
+    DEFAULT_RISK_FRACTION,
+    DEFAULT_STOP_MULTIPLIER,
+    DEFAULT_TARGET_MULTIPLIER,
+)
 from research.walkforward import run_walk_forward
 from schemas.order_intent import OrderType, Side
 
@@ -124,6 +139,37 @@ class TestConstruction:
 
     def test_default_lookback_pairs_are_short_medium_long(self):
         assert DEFAULT_LOOKBACK_PAIRS == ((4, 12), (12, 36), (24, 72))
+
+    def test_recalibrated_adx_thresholds_are_not_the_default_and_construct_a_working_strategy(self):
+        """Strategy Research Task I: RECALIBRATED_ADX_LOW_THRESHOLD/
+        RECALIBRATED_ADX_HIGH_THRESHOLD (25/50, BTC-empirical, see module
+        docstring) are an opt-in override, not the constructor default --
+        confirms both that they differ from the still-unchanged default
+        20/25 (regime_weighting's DEFAULT_ADX_LOW_THRESHOLD/HIGH_THRESHOLD)
+        and that they actually construct a working strategy when passed
+        explicitly (no exception, starts flat like any other construction).
+        """
+        assert RECALIBRATED_ADX_LOW_THRESHOLD != DEFAULT_ADX_LOW_THRESHOLD
+        assert RECALIBRATED_ADX_HIGH_THRESHOLD != DEFAULT_ADX_HIGH_THRESHOLD
+        assert RECALIBRATED_ADX_LOW_THRESHOLD == Decimal("25")
+        assert RECALIBRATED_ADX_HIGH_THRESHOLD == Decimal("50")
+
+        recalibrated_strategy = _strategy(
+            adx_low=RECALIBRATED_ADX_LOW_THRESHOLD,
+            adx_high=RECALIBRATED_ADX_HIGH_THRESHOLD,
+        )
+        assert recalibrated_strategy.open_position is None
+        assert recalibrated_strategy.bars_seen == 0
+
+    def test_stop_and_target_multiplier_exposed_as_properties(self):
+        """Strategy Research Task I: these two properties are what a real
+        sensitivity_extractor reads to recover the winning
+        (risk_reward_tenths,) candidate for Task G's robustness check --
+        see TestFitOptionalRiskRewardGridSearch and TestRealWalkForwardIntegration.
+        """
+        strategy = _strategy(stop_multiplier=Decimal("1.5"), target_multiplier=Decimal("4.5"))
+        assert strategy.stop_multiplier == Decimal("1.5")
+        assert strategy.target_multiplier == Decimal("4.5")
 
 
 class TestEnsembleSignalDiffersFromAnySingleConstituent:
@@ -399,6 +445,176 @@ class TestFitNoGridSearch:
         assert result.lookback_pairs == DEFAULT_LOOKBACK_PAIRS
 
 
+class TestFitOptionalRiskRewardGridSearch:
+    """Strategy Research Task I (`.planning/sr-i-ensemble-refinement.md`):
+    `fit()` gained an opt-in grid search over `target_multiplier`
+    (expressed as `risk_reward_tenths` -- see `ensemble_momentum.py`'s
+    module docstring for the encoding and why) when `params["candidates"]`
+    is explicitly provided. Omitting `"candidates"` entirely is exactly
+    `TestFitNoGridSearch` above, unmodified -- this class only covers the
+    new opt-in path.
+    """
+
+    def _trainable(self, tmp_path, **overrides: object) -> EnsembleMomentumTrainable:
+        kwargs: dict[str, Any] = dict(
+            strategy_id="test-ensemble-momentum-rr",
+            strategy_version="v2",
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+            lookback_pairs=((2, 4), (3, 6), (4, 8)),
+            runs_path=str(tmp_path / "experiments.jsonl"),
+        )
+        kwargs.update(overrides)
+        return EnsembleMomentumTrainable(**kwargs)
+
+    def test_fit_logs_one_candidate_record_per_risk_reward_tenths_value(self, tmp_path):
+        trainable = self._trainable(tmp_path)
+        klines = _flat_klines(50)
+        trainable.fit(klines, {"candidates": [(15,), (20,), (25,), (30,)]}, parent_run_id="parent-rr-1")
+        records = list(read_records(str(tmp_path / "experiments.jsonl")))
+        candidate_records = [r for r in records if r.get("parent_run_id") == "parent-rr-1"]
+        assert len(candidate_records) == 4
+        assert {r["candidate_index"] for r in candidate_records} == {0, 1, 2, 3}
+        assert all(r["total_candidates"] == 4 for r in candidate_records)
+
+    def test_fit_logs_the_candidate_specific_target_multiplier_holding_stop_fixed(self, tmp_path):
+        trainable = self._trainable(tmp_path, stop_multiplier=Decimal("1.5"))
+        klines = _flat_klines(50)
+        trainable.fit(klines, {"candidates": [(20,), (30,)]}, parent_run_id="parent-rr-2")
+        records = {
+            r["candidate_index"]: r
+            for r in read_records(str(tmp_path / "experiments.jsonl"))
+            if r.get("parent_run_id") == "parent-rr-2"
+        }
+        # risk_reward_tenths=20 -> target_multiplier = 1.5 * 20/10 = 3.0
+        assert Decimal(records[0]["params"]["target_multiplier"]) == Decimal("3.0")
+        # risk_reward_tenths=30 -> target_multiplier = 1.5 * 30/10 = 4.5
+        assert Decimal(records[1]["params"]["target_multiplier"]) == Decimal("4.5")
+        # stop_multiplier itself never varies across candidates.
+        assert Decimal(records[0]["params"]["stop_multiplier"]) == Decimal("1.5")
+        assert Decimal(records[1]["params"]["stop_multiplier"]) == Decimal("1.5")
+
+    def test_fit_picks_the_higher_scoring_candidate(self, tmp_path, monkeypatch):
+        """Isolates fit()'s own candidate-selection logic (pick the
+        candidate with the highest in-sample total_return, matching
+        SingleLookbackMomentumTrainable.fit()'s identical convention) from
+        the strategy/backtest machinery, by monkeypatching compute_metrics
+        to return canned, controlled Metrics per candidate in call order --
+        the same dependency-isolation approach this test suite already uses
+        for AverageDirectionalIndex.update/RollingRealizedVolatility.update
+        elsewhere in this file, applied to the scoring step instead.
+        """
+        from metrics.metrics import Metrics
+
+        trainable = self._trainable(tmp_path)
+        klines = _flat_klines(50)
+
+        canned_results = [
+            Metrics(
+                starting_equity=Decimal("10000"),
+                final_equity=Decimal("10100"),
+                equity_curve=[],
+                closed_trades=[],
+                total_return=Decimal("0.01"),
+                sharpe_ratio=None,
+                max_drawdown=Decimal("0"),
+                win_rate=None,
+                num_trades=5,
+                profit_factor=None,
+            ),
+            Metrics(
+                starting_equity=Decimal("10000"),
+                final_equity=Decimal("10300"),
+                equity_curve=[],
+                closed_trades=[],
+                total_return=Decimal("0.03"),
+                sharpe_ratio=None,
+                max_drawdown=Decimal("0"),
+                win_rate=None,
+                num_trades=5,
+                profit_factor=None,
+            ),
+            Metrics(
+                starting_equity=Decimal("10000"),
+                final_equity=Decimal("10005"),
+                equity_curve=[],
+                closed_trades=[],
+                total_return=Decimal("0.005"),
+                sharpe_ratio=None,
+                max_drawdown=Decimal("0"),
+                win_rate=None,
+                num_trades=5,
+                profit_factor=None,
+            ),
+        ]
+        calls = iter(canned_results)
+        monkeypatch.setattr("research.strategies.ensemble_momentum.compute_metrics", lambda *a, **k: next(calls))
+
+        # candidates[1] (risk_reward_tenths=20) gets the highest canned
+        # total_return (0.03) -- fit() must pick it, not the first or last.
+        # _trainable() doesn't override stop_multiplier, so it's DEFAULT_STOP_MULTIPLIER.
+        result = trainable.fit(klines, {"candidates": [(15,), (20,), (25,)]}, parent_run_id="parent-rr-3")
+        assert result.target_multiplier == DEFAULT_STOP_MULTIPLIER * Decimal(20) / Decimal(10)
+
+    def test_fit_falls_back_to_first_candidate_when_every_candidate_has_zero_trades(self, tmp_path):
+        trainable = self._trainable(tmp_path)
+        klines = _flat_klines(50)
+        result = trainable.fit(klines, {"candidates": [(20,), (30,)]}, parent_run_id="parent-rr-4")
+        # first candidate: risk_reward_tenths=20 -> target_multiplier = 1.5 * 2.0 = 3.0
+        assert result.target_multiplier == Decimal("3.0")
+
+    def test_fit_rejects_empty_candidate_list(self, tmp_path):
+        trainable = self._trainable(tmp_path)
+        with pytest.raises(ValueError, match="candidates"):
+            trainable.fit(_flat_klines(10), {"candidates": []}, parent_run_id="parent-rr-5")
+
+    def test_fit_rejects_non_positive_risk_reward_tenths(self, tmp_path):
+        trainable = self._trainable(tmp_path)
+        with pytest.raises(ValueError, match="risk_reward_tenths"):
+            trainable.fit(_flat_klines(50), {"candidates": [(0,)]}, parent_run_id="parent-rr-6")
+
+    def test_fit_rejects_non_integer_risk_reward_tenths(self, tmp_path):
+        """A Decimal risk_reward_tenths would silently corrupt
+        target_multiplier arithmetic and the int(ratio * 10) recovery
+        sensitivity_extractor relies on -- must be rejected, not coerced.
+        """
+        trainable = self._trainable(tmp_path)
+        with pytest.raises(ValueError, match="risk_reward_tenths"):
+            trainable.fit(_flat_klines(50), {"candidates": [(Decimal("15.5"),)]}, parent_run_id="parent-rr-9")
+
+    def test_fit_rejects_bool_risk_reward_tenths(self, tmp_path):
+        """bool is a subclass of int in Python -- True/False would
+        otherwise silently pass the `isinstance(..., int)` check and be
+        (mis)treated as risk_reward_tenths=1/0.
+        """
+        trainable = self._trainable(tmp_path)
+        with pytest.raises(ValueError, match="risk_reward_tenths"):
+            trainable.fit(_flat_klines(50), {"candidates": [(True,)]}, parent_run_id="parent-rr-10")
+
+    def test_stop_multiplier_is_never_varied_by_the_search(self, tmp_path):
+        trainable = self._trainable(tmp_path, stop_multiplier=Decimal("2.0"))
+        result = trainable.fit(_flat_klines(50), {"candidates": [(20,)]}, parent_run_id="parent-rr-7")
+        assert result.stop_multiplier == Decimal("2.0")
+        assert result.target_multiplier == Decimal("4.0")  # 2.0 * 20/10
+
+    def test_omitting_candidates_key_entirely_is_unaffected(self, tmp_path):
+        """Belt-and-suspenders duplicate of TestFitNoGridSearch's own
+        coverage, from this class's fixture/naming context -- confirms the
+        opt-in branch and the default branch are genuinely independent
+        code paths, not just independently named tests.
+        """
+        trainable = self._trainable(tmp_path)
+        klines = _flat_klines(50)
+        result = trainable.fit(klines, {}, parent_run_id="parent-rr-8")
+        # _trainable() doesn't override target_multiplier, so it's DEFAULT_TARGET_MULTIPLIER.
+        assert result.target_multiplier == DEFAULT_TARGET_MULTIPLIER
+        records = [
+            r for r in read_records(str(tmp_path / "experiments.jsonl")) if r.get("parent_run_id") == "parent-rr-8"
+        ]
+        assert len(records) == 1
+        assert records[0]["total_candidates"] == 1
+
+
 class TestRealWalkForwardIntegration:
     def test_run_walk_forward_end_to_end_with_a_short_synthetic_series(self, tmp_path):
         trainable = EnsembleMomentumTrainable(
@@ -429,3 +645,49 @@ class TestRealWalkForwardIntegration:
             runs_path=str(tmp_path / "experiments.jsonl"),
         )
         assert result.aggregate["fold_count"] >= 1
+
+    def test_run_walk_forward_with_risk_reward_grid_and_sensitivity_extractor(self, tmp_path):
+        """Strategy Research Task I: the opt-in risk:reward grid search
+        (params["candidates"], a list of (risk_reward_tenths,) tuples) is
+        compatible end to end with run_walk_forward's real fold loop and
+        Task G's sensitivity_extractor -- the exact combination this task's
+        real walk-forward run uses. `EnsembleMomentumStrategy.target_multiplier`/
+        `stop_multiplier` are the properties a real sensitivity_extractor
+        reads to recover the winning (risk_reward_tenths,) candidate.
+        """
+        trainable = EnsembleMomentumTrainable(
+            strategy_id="test-ensemble-momentum-rr-e2e",
+            strategy_version="v2",
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+            lookback_pairs=((4, 12), (8, 24), (16, 48)),
+            atr_period=5,
+            adx_period=5,
+            vol_period=5,
+            runs_path=str(tmp_path / "experiments.jsonl"),
+        )
+        prices = [Decimal(100) + (Decimal(i) % 40) for i in range(700)]
+        klines = [_hourly_kline(i, p) for i, p in enumerate(prices)]
+
+        def extract_risk_reward_tenths(strategy: EnsembleMomentumStrategy) -> tuple[int]:
+            ratio = strategy.target_multiplier / strategy.stop_multiplier
+            return (int(ratio * 10),)
+
+        result = run_walk_forward(
+            klines,
+            trainable,
+            "test-ensemble-momentum-rr-e2e",
+            "v2",
+            {"candidates": [(15,), (20,), (25,), (30,)]},
+            train_bars=300,
+            validate_bars=200,
+            step_bars=200,
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+            bars_per_day=24,
+            sensitivity_extractor=extract_risk_reward_tenths,
+            runs_path=str(tmp_path / "experiments.jsonl"),
+        )
+        assert result.aggregate["fold_count"] >= 1
+        for fold_result in result.folds:
+            assert fold_result.parameter_sensitivity is not None
