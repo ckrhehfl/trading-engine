@@ -385,9 +385,13 @@ default.
 bars) — only 3 non-overlapping folds at the windows above, short of the
 Eligibility Bar's "8-10 folds" floor. This was practically addressed,
 not resolved as a one-time human decision: `sr-f` found `1h` bars have
-~27 months of real BingX history (vs. ~8.3 months at `15m`) and moved
-primary strategy research to `1h` bars, yielding **19** real folds — the
-number behind every result in "Strategy Attempts So Far" below.
+~27 months of real BingX history (vs. ~8.3 months at `15m`, 16,078
+research bars after the holdout cutoff) and moved primary strategy
+research to `1h` bars with its own, smaller windows (`train_bars=2160`,
+`validate_bars=720`, `step_bars=720` — distinct from the `15m`
+defaults above, scaled down for the `1h` timeframe, not the same
+numbers on a different unit), yielding **19** real folds — the number
+behind every result in "Strategy Attempts So Far" below.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
@@ -435,7 +439,7 @@ must be the only holdout access on record for that `strategy_id`.
 
 ### Strategy Attempts So Far (as of 2026-07-28)
 
-Five strategy families have been built and walk-forward validated for
+Six strategy families have been built and walk-forward validated for
 real against live BingX data (Tasks E-L, sequenced after the
 infrastructure above): naive SMA crossover, ATR-risk-managed crossover
 (15m and 1h variants), a multi-lookback ensemble with ADX regime
