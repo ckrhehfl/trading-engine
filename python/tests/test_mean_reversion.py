@@ -289,8 +289,14 @@ class TestInvertedRegimeGating:
         assert position.quantity == expected
 
     def test_default_adx_thresholds_match_regime_weighting_module(self):
-        strategy = _strategy(adx_low=DEFAULT_ADX_LOW_THRESHOLD, adx_high=DEFAULT_ADX_HIGH_THRESHOLD)
-        assert strategy.open_position is None  # just confirms construction succeeds
+        # Asserts the actual constructor DEFAULT (not merely that passing
+        # these values explicitly doesn't raise) equals regime_weighting's
+        # own defaults -- the meaningful claim this test's name makes.
+        import inspect
+
+        signature = inspect.signature(MeanReversionStrategy.__init__)
+        assert signature.parameters["adx_low"].default == DEFAULT_ADX_LOW_THRESHOLD
+        assert signature.parameters["adx_high"].default == DEFAULT_ADX_HIGH_THRESHOLD
 
 
 # ---------------------------------------------------------------------------

@@ -282,7 +282,6 @@ class TestMeanSharpeSignificanceRealFixture:
         # engineered synthetic 19-value sample matching that exact
         # mean/stdev (not the raw per-fold values, which sr-j's own
         # document does not list individually for Configuration C).
-        values = [0.027] * 18 + [0.027]  # placeholder, replaced below
         # Construct 19 values with an exact chosen mean and sample stdev:
         # 18 values at -x and 1 value at +18x + mean_offset is fiddly;
         # simpler: use a symmetric +-spread around the target mean.

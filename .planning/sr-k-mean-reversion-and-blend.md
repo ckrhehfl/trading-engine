@@ -467,6 +467,78 @@ plainly as the alternative would have been.
   deleted, never committed" convention every prior real-data task in this
   project has used (sr-h, sr-i, sr-j).
 
+## CodeRabbit review findings
+
+One review pass, 6 actionable findings. **All 6 accepted and fixed** --
+none declined, though two were resolved by documentation rather than a
+behavior change (see reasoning below).
+
+- **DRY violation: the "positive fold" predicate was duplicated verbatim**
+  in `evaluate_fold_consistency` and `evaluate_sign_test`
+  (`python/research/eligibility.py`). A real, valid risk for a module that
+  is itself a paper-trading approval gate: the two checks sharing one
+  definition of "positive fold" by convention, not by construction, could
+  silently drift if one call site were edited without the other. Fixed:
+  extracted `_count_positive_folds`, used by both.
+- **Edge-trigger state consumed even when `_open()` rejects the entry**
+  (`mean_reversion.py`, `momentum_reversion_blend.py`): a real, valid
+  observation -- `self._signal_state` updates whenever the raw signal is
+  nonzero, independent of whether the regime/vol-scalar-weighted quantity
+  actually cleared `_open()`'s `> 0` check, so a filtered-out signal is
+  still "consumed" and won't retry once conditions improve without the raw
+  signal changing again. **Not changed behaviorally**: this is the exact
+  same, already-shipped pattern `EnsembleMomentumStrategy`/
+  `SingleLookbackMomentumStrategy` already use (confirmed by re-reading
+  their `__call__` methods) -- changing it only in this task's two new
+  strategies would make their triggering semantics diverge from every
+  sibling strategy's on a point no task has actually revisited, a
+  larger, cross-cutting change than this task's scope. CodeRabbit's own
+  finding offered documentation as an explicit alternative resolution
+  ("...or, if intended, document this case in the module docstring's
+  Edge-triggering section") -- taken here: both modules' docstrings now
+  name this consequence explicitly, with the cross-reference to the
+  established sibling pattern.
+- **Blend sizes to full conviction when both signals agree, even at an
+  intermediate regime weight** (`momentum_reversion_blend.py`): a real,
+  non-obvious property of the convex-combination formula -- e.g. at
+  `regime_weight=0.5` with both signals bullish, `blended_strength=1.0`
+  (full size), even though either PURE strategy would size at only 0.5x
+  under the same ADX reading alone. Mathematically correct (agreement is
+  genuinely stronger joint evidence, not something to average down), and
+  the existing risk-fraction cap is unaffected either way -- but a real,
+  disclosed contrast with the module's own "smoother than either pure
+  strategy" framing. Fixed by documenting this explicitly in the module
+  docstring, per CodeRabbit's own suggested resolution (document, don't
+  change the calculation).
+- **Missing intermediate-ADX, disagreeing-signals test coverage**
+  (`test_momentum_reversion_blend.py`): a real, valid test gap -- the
+  existing regime-adaptive tests only exercised the ADX *extremes*, where
+  `abs(blended_strength)` is always exactly 1 regardless of whether the
+  "don't double-apply `compute_regime_weight`" claim actually holds, so
+  neither test could have caught a regression there. Fixed: added
+  `test_intermediate_adx_with_disagreeing_signals_sizes_by_blended_
+  magnitude_only` (ADX=23.75 -> regime_weight=0.75 under default
+  thresholds, reversion forced bearish via monkeypatch, momentum flips
+  bullish on the rally leg) confirming the resulting quantity is exactly
+  `base * 0.5 * vol_scalar` (`blended_strength = 0.75*1 + 0.25*(-1) =
+  0.5`), which would fail under a real double-application regression
+  (`base * 0.75 * 0.5 * vol_scalar`).
+- **Dead placeholder line in `test_eligibility.py`**: a genuinely unused
+  line (`values = [0.027] * 18 + [0.027]  # placeholder, replaced below`,
+  immediately overwritten by the next statement). Removed.
+- **Test name/assertion mismatch in `test_mean_reversion.py`**:
+  `test_default_adx_thresholds_match_regime_weighting_module` only checked
+  that construction didn't raise, never actually asserting the threshold
+  values it names. Fixed to assert `MeanReversionStrategy.__init__`'s own
+  default parameter values equal `regime_weighting`'s
+  `DEFAULT_ADX_LOW_THRESHOLD`/`DEFAULT_ADX_HIGH_THRESHOLD` directly (via
+  `inspect.signature`), the claim the test's name actually makes.
+
+Full suite after all fixes: **540 passed** (up from 539 before the review
+fixes -- the one new intermediate-ADX test is the only test-count change;
+the rest are refactors/documentation/assertion corrections with no new
+test cases).
+
 ## Deliberately out of scope
 
 - **Tuning either new strategy's parameters to try to close the gap to

@@ -70,6 +70,19 @@ DEFAULT_NULL_PROBABILITY = 0.5
 DEFAULT_SIGNIFICANCE_ALPHA = 0.05
 
 
+def _count_positive_folds(fold_sharpe_values: Sequence[float | None]) -> int:
+    """Shared "positive fold" convention for both `evaluate_fold_consistency`
+    and `evaluate_sign_test`: a `None` (zero-trade/zero-variance), zero, or
+    negative Sharpe fold counts as NOT positive -- the same treatment
+    `research.walkforward._aggregate_metrics`'s `all_folds_positive_sharpe`
+    already gives it. Extracted into one helper (rather than duplicated
+    inline in both call sites) so the two Eligibility Bar checks can never
+    silently drift onto different definitions of "positive fold" if one is
+    edited without the other.
+    """
+    return sum(1 for s in fold_sharpe_values if s is not None and s > 0)
+
+
 # ---------------------------------------------------------------------------
 # Fold consistency
 # ---------------------------------------------------------------------------
@@ -115,7 +128,7 @@ def evaluate_fold_consistency(
         raise ValueError(f"min_fraction must be in (0, 1], got {min_fraction}")
 
     num_folds = len(fold_sharpe_values)
-    num_positive = sum(1 for s in fold_sharpe_values if s is not None and s > 0)
+    num_positive = _count_positive_folds(fold_sharpe_values)
 
     if num_folds == 0:
         return FoldConsistencyResult(
@@ -210,7 +223,7 @@ def evaluate_sign_test(
         raise ValueError(f"alpha must be in (0, 1), got {alpha}")
 
     num_folds = len(fold_sharpe_values)
-    num_positive = sum(1 for s in fold_sharpe_values if s is not None and s > 0)
+    num_positive = _count_positive_folds(fold_sharpe_values)
 
     if num_folds == 0:
         return SignTestResult(

@@ -79,7 +79,7 @@ vol_scalar` -- structurally identical composition to
 `EnsembleMomentumStrategy._open`/`SingleLookbackMomentumStrategy._open`,
 just with the regime-weight factor inverted.
 
-## Edge-triggering and its one, disclosed behavioral consequence
+## Edge-triggering and its disclosed behavioral consequences
 
 Same "fire only when the signal STATE changes" pattern every strategy in
 this package uses (`_crossover_sign` in the momentum strategies;
@@ -88,14 +88,33 @@ overbought reading to differ from the *last established nonzero reading*,
 not merely "outside the bands right now". This avoids constant re-triggering
 every single bar while price remains beyond a band (which, unlike a
 momentum crossover, can persist for many consecutive bars in a real trend)
--- but has one disclosed consequence: if a position is stopped out while
-price is STILL beyond the same band (signal state unchanged), this strategy
-will NOT immediately re-enter -- it waits for the state to flip away and
-back. A more eager "re-enter immediately if still oversold/overbought" rule
-was considered and rejected in favor of reusing this package's one, uniform,
-already-tested edge-triggering convention rather than introducing a second,
-bespoke triggering rule that would need its own separate justification and
-tests.
+-- but has two disclosed consequences:
+
+1. If a position is stopped out while price is STILL beyond the same band
+   (signal state unchanged), this strategy will NOT immediately re-enter --
+   it waits for the state to flip away and back. A more eager "re-enter
+   immediately if still oversold/overbought" rule was considered and
+   rejected in favor of reusing this package's one, uniform, already-tested
+   edge-triggering convention rather than introducing a second, bespoke
+   triggering rule that would need its own separate justification and
+   tests.
+2. `self._signal_state` is updated to `current_signal` whenever
+   `current_signal != 0` **regardless of whether `_open()` actually opened
+   a position** (it returns `None`, and no trade happens, when the regime
+   weight/vol scalar suppresses `final_quantity` to `<= 0`, or during vol
+   warmup). This means a signal that fires the edge-trigger but gets
+   filtered out at the sizing stage is still "consumed" -- a later bar
+   where filters would have allowed the trade, but the raw band-breach
+   reading hasn't changed again, will NOT retry. This is not a new
+   behavior invented by this module: it is the exact same, already-shipped
+   pattern `EnsembleMomentumStrategy`/`SingleLookbackMomentumStrategy` use
+   (`self._crossover_sign` is likewise updated unconditionally whenever
+   `current_sign != 0`, independent of whether `_open()` returned an
+   intent). Kept identical here deliberately, rather than diverging this
+   module's triggering semantics from its siblings' on a point neither
+   this task nor any prior one has revisited -- a cross-cutting change to
+   all four strategies' shared edge-triggering shape would be its own,
+   separately-scoped task.
 
 ## Warmup
 

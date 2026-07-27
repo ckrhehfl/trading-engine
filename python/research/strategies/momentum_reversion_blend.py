@@ -47,6 +47,24 @@ second time: the ADX information is already fully incorporated into
 `blended_strength` via the weighted combination itself, so applying
 `compute_regime_weight` again on top would double-count it.
 
+**Disclosed sizing property, not a bug**: when both sub-signals agree
+(`momentum_sign == reversion_sign`, both `+1` or both `-1`),
+`abs(blended_strength) == 1` regardless of `regime_weight` -- e.g. at
+`regime_weight=0.5` with both signals bullish, `blended_strength =
+0.5*1 + 0.5*1 = 1.0`, full conviction, even though the *pure*
+`EnsembleMomentumStrategy`/`MeanReversionStrategy` would each size at only
+0.5x under the identical ADX reading on their own. This is a direct,
+intentional consequence of the convex-combination formula (two genuinely
+agreeing signals are stronger joint evidence than either alone, not
+evidence to be averaged down), not a double-counting error -- but it is a
+real, disclosed contrast with the "regime-adaptive blend is smoother than
+either pure strategy" framing this module's docstring otherwise
+emphasizes: agreement at an intermediate regime weight can size UP to full
+conviction, not just smoothly interpolate between the two pure sizes. The
+existing `risk_fraction`-based position sizing cap is unaffected either
+way (`abs(blended_strength)` never exceeds `1`, the same bound
+`regime_weight` alone is already subject to).
+
 ## Why NOT a position-netting composite of two independent sub-strategies
 
 An alternative design was considered and rejected: instantiate a full
@@ -88,6 +106,27 @@ stream compatible with the existing metrics pipeline unmodified.
   volatility_targeting`: the identical ATR-based stop/target/sizing and
   real volatility-targeting scalar every strategy in this package uses,
   composed the same way.
+
+## Edge-triggering's disclosed behavioral consequence
+
+Same "fire only when `sign(blended_strength)` changes" pattern every
+strategy in this package uses (`_signal_state` here, tracking the last
+established nonzero blended sign). `self._signal_state` is updated
+whenever `current_signal != 0` **regardless of whether `_open()` actually
+opened a position** (it returns `None`, and no trade happens, if the
+regime/vol-scalar-weighted `final_quantity` rounds to `<= 0`, or during vol
+warmup) -- a signal that fires the edge-trigger but gets filtered out at
+the sizing stage is still "consumed": a later bar where filters would have
+allowed the trade, but the blended sign hasn't changed again, will NOT
+retry. This is not a new behavior invented by this module: it is the exact
+same, already-shipped pattern `EnsembleMomentumStrategy`/
+`SingleLookbackMomentumStrategy`/`MeanReversionStrategy` all use (their own
+signal-state trackers are likewise updated unconditionally whenever the
+current reading is nonzero, independent of whether `_open()` returned an
+intent). Kept identical here deliberately, rather than diverging this
+module's triggering semantics from every sibling strategy's on a point no
+task has revisited -- a cross-cutting change to all four strategies'
+shared edge-triggering shape would be its own, separately-scoped task.
 
 ## Warmup
 

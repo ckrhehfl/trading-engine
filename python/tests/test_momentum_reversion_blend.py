@@ -252,6 +252,44 @@ class TestRegimeAdaptiveBehavior:
         vol_scalar = compute_vol_scalar(Decimal("0.20"))
         assert position.quantity == base_quantity * Decimal("1") * vol_scalar
 
+    def test_intermediate_adx_with_disagreeing_signals_sizes_by_blended_magnitude_only(self, monkeypatch):
+        """Both prior tests above only exercise the ADX EXTREMES, where
+        `abs(blended_strength)` always equals 1 regardless of whether the
+        double-application bug (`compute_regime_weight` applied a second
+        time on top of `blended_strength`, which already fully incorporates
+        it) is present or not -- neither would catch a regression there.
+        This test forces a genuine intermediate regime_weight (0.75, at
+        ADX=23.75 under the default 20/25 thresholds) with the two
+        sub-signals DISAGREEING (reversion forced bearish via monkeypatch;
+        momentum flips bullish on the rally leg of `_momentum_flip_klines`),
+        so `blended_strength = 0.75*(+1) + 0.25*(-1) = 0.5` -- a real
+        partial-conviction value neither 0 nor 1. If `compute_regime_weight`
+        were (incorrectly) applied a second time, the resulting quantity
+        would be `base * 0.75 * 0.5 * vol_scalar`, not `base * 0.5 *
+        vol_scalar` -- this test fails under that regression.
+        """
+        monkeypatch.setattr(_ADX_MODULE_PATH, lambda self, kline: Decimal("23.75"))
+        monkeypatch.setattr(_VOL_MODULE_PATH, lambda self, kline: Decimal("0.20"))
+        monkeypatch.setattr(
+            "research.strategies.momentum_reversion_blend._bollinger_signal",
+            lambda close, lower, upper: -1,
+        )
+        strategy = _strategy()
+        klines = _momentum_flip_klines()
+        for i in range(len(klines)):
+            strategy(klines[: i + 1])
+            if strategy.open_position is not None:
+                break
+        position = strategy.open_position
+        assert position is not None, "expected the momentum rally to flip the blended sign positive"
+        assert position.side == Side.LONG
+        stop_distance = abs(position.entry_price - position.stop_price)
+        base_quantity = (DEFAULT_REFERENCE_EQUITY * DEFAULT_RISK_FRACTION) / stop_distance
+        from research.strategies.volatility_targeting import compute_vol_scalar
+
+        vol_scalar = compute_vol_scalar(Decimal("0.20"))
+        assert position.quantity == base_quantity * Decimal("0.5") * vol_scalar
+
 
 # ---------------------------------------------------------------------------
 # Exit / order shape
