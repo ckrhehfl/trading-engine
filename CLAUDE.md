@@ -308,10 +308,14 @@ need appears that GSD's model doesn't cover.
 
 ## Strategy Research Methodology
 
-No strategy exists in this project yet — these are principles for when
-one is built, written now because retrofitting research rigor onto a
-strategy already believed "validated" isn't realistic once research is
-underway. This is not itself an Implementation Priority item; it's a
+Several strategies have now been attempted for real (see "Strategy
+Attempts So Far" below) — none has yet cleared the Eligibility Bar, so
+nothing has been promoted to paper trading. These principles were
+written before real strategy research began, because retrofitting
+research rigor onto a strategy already believed "validated" isn't
+realistic once research is underway — that's still the reasoning for
+having them, even though "no strategy exists yet" is no longer true.
+This is not itself an Implementation Priority item; it's a
 standing constraint on strategy *research and validation* specifically —
 it does not block building or testing the surrounding infrastructure
 (paper broker, `ExchangeAdapter`, supervision loop skeletons in
@@ -376,19 +380,14 @@ validate = 2,880 bars (~30 days), step = validate (2,880 bars) —
 rolling (fixed-size sliding, not expanding), non-overlapping by
 default.
 
-**Live operational constraint, not resolved — kept visible here rather
-than buried in a planning doc**: a real BingX backfill (2026-07-25/26)
-found only ~252 days of actual historical retention for `BTC-USDT`/`15m`
-(24,199 bars). After a 45-day trailing holdout, the remaining research
-data supports only **3** non-overlapping walk-forward folds at the
-windows above — short of the Eligibility Bar's "8-10 folds for
-credibility" floor. The harness itself works correctly regardless of
-fold count; what's unresolved is a human decision (shrink windows for
-more folds, accept fewer folds and weight the bar more conservatively,
-or wait for more BingX history to accumulate) before treating any real
-(non-placeholder) strategy's walk-forward result as credible — this
-does not block building or testing the infrastructure itself, which is
-already done and verified.
+**Walk-forward depth**: a real BingX backfill (2026-07-25/26) found only
+~252 days of actual historical retention for `BTC-USDT`/`15m` (24,199
+bars) — only 3 non-overlapping folds at the windows above, short of the
+Eligibility Bar's "8-10 folds" floor. This was practically addressed,
+not resolved as a one-time human decision: `sr-f` found `1h` bars have
+~27 months of real BingX history (vs. ~8.3 months at `15m`) and moved
+primary strategy research to `1h` bars, yielding **19** real folds — the
+number behind every result in "Strategy Attempts So Far" below.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
@@ -417,8 +416,9 @@ luck, not edge. Replaced with two required checks:
    criterion is actually implemented rather than just defined.
 
 All other criteria are unchanged by this revision: minimum 8-10 folds
-for the result to be considered credible (currently unmet — see the
-live constraint above); max drawdown ceiling 20-25% per-fold and
+for the result to be considered credible (met since `sr-f` moved
+primary research to `1h` bars — see "Walk-forward depth" above); max
+drawdown ceiling 20-25% per-fold and
 aggregate; minimum 100 total trades across all folds (flagged tension:
 may unfairly penalize a legitimately low-frequency strategy — apply
 judgment, don't treat as absolute); profit factor floor 1.3-1.5
@@ -432,6 +432,45 @@ trade won (zero losing trades) trivially satisfies the floor — there's
 no evidence of a poor risk/reward ratio to reject. The holdout
 confirmation run must clear the same bar (single-window version) and
 must be the only holdout access on record for that `strategy_id`.
+
+### Strategy Attempts So Far (as of 2026-07-28)
+
+Five strategy families have been built and walk-forward validated for
+real against live BingX data (Tasks E-L, sequenced after the
+infrastructure above): naive SMA crossover, ATR-risk-managed crossover
+(15m and 1h variants), a multi-lookback ensemble with ADX regime
+weighting and real volatility targeting (later refined with recalibrated
+ADX thresholds and an opt-in risk:reward search), regime-gated
+mean-reversion, a regime-adaptive momentum/mean-reversion blend, and a
+standalone on-balance-volume trend strategy. Full results, judgment
+calls, and honest negative findings for each:
+`.planning/sr-e-regime-momentum.md` through `.planning/sr-l-volume-signal.md`.
+
+**Current best result** ("Configuration C", `sr-i`): the refined
+momentum ensemble — mean annualized Sharpe +0.027 (positive; the only
+attempt so far with a positive mean), 11 of 19 folds positive, mean
+profit factor 1.97, worst drawdown 4.2%. Still short of the Eligibility
+Bar (needs 80-90% of folds positive; this is at 58%). Mean-reversion
+alone, the momentum/reversion blend, and the volume-based strategy all
+performed worse than this on every metric (`sr-k`, `sr-l`) — notably,
+the blend was expected by credible outside research (`sr-g`) to
+outperform momentum alone, and did not, on this project's real data.
+
+**Queued next, not yet started**: a funding-rate-based signal —
+genuinely different from every price/volume signal tried so far,
+credible research supports it, but needs new data ingestion (BingX
+funding-rate history, not yet built) and likely a metrics-layer addition
+(perpetual funding P&L is not modeled anywhere in this pipeline, a known
+gap noted since the Eligibility Bar's profit-factor floor was first
+set). **If that also doesn't clear the bar**, the next-larger option is
+reconsidering this project's deliberate single-symbol (BTC-USDT only)
+scope — a meaningful share of the Sharpe reported by the credible
+institutional research this project benchmarked against (e.g. Concretum
+Group's ensemble trend-following) plausibly comes from cross-symbol
+diversification a single-symbol design can't access. That's a real
+architecture reconsideration (touches the data pipeline's
+survivorship-bias handling, not just a new strategy file) and deserves
+its own `Discuss` pass — not a default fallback to reach for lightly.
 
 ## Tooling Stack
 
