@@ -10,12 +10,14 @@ from decimal import Decimal
 
 import pytest
 
+from data.bingx_funding import FundingRow
 from data.bingx_klines import KlineRow
-from data.store import connect, upsert_klines
+from data.store import connect, upsert_funding_rates, upsert_klines
 from research.experiment_log import DEFAULT_RUNS_PATH as _UNUSED  # sanity import
 from research.holdout import (
     HoldoutAlreadyClaimedError,
     load_holdout_klines,
+    load_research_funding,
     load_research_klines,
 )
 
@@ -35,11 +37,28 @@ def _row(offset: int, price: str = "100") -> KlineRow:
     )
 
 
+def _funding_row(offset: int, rate: str = "0.0001") -> FundingRow:
+    return FundingRow(
+        funding_time_ms=BASE + offset * STEP,
+        funding_rate=Decimal(rate),
+        mark_price=Decimal("50000"),
+    )
+
+
 @pytest.fixture
 def db_path(tmp_path):
     path = tmp_path / "klines.sqlite3"
     conn = connect(path)
     upsert_klines(conn, "BTC-USDT", "15m", [_row(i) for i in range(20)])  # bars 0..19
+    conn.close()
+    return path
+
+
+@pytest.fixture
+def funding_db_path(tmp_path):
+    path = tmp_path / "funding.sqlite3"
+    conn = connect(path)
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(i) for i in range(20)])  # settlements 0..19
     conn.close()
     return path
 
@@ -110,6 +129,84 @@ def test_load_research_klines_never_returns_data_at_or_after_the_cutoff(db_path,
     )
 
     assert all(k.open_time.timestamp() * 1000 < CUTOFF for k in klines)
+
+
+# ---------------------------------------------------------------------------
+# load_research_funding
+# ---------------------------------------------------------------------------
+
+
+def test_load_research_funding_returns_funding_rates_within_the_requested_range(
+    funding_db_path, holdout_config_path
+):
+    rates = load_research_funding(
+        BASE, BASE + 5 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path
+    )
+
+    assert len(rates) == 5
+
+
+def test_load_research_funding_clamps_end_ms_to_the_holdout_cutoff(funding_db_path, holdout_config_path):
+    rates = load_research_funding(
+        BASE, BASE + 20 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path
+    )
+
+    # Only settlements 0..9 (up to but not including CUTOFF) are research data.
+    assert len(rates) == 10
+    assert rates[-1].funding_time.timestamp() * 1000 == CUTOFF - STEP
+
+
+def test_load_research_funding_logs_a_warning_when_it_actually_clamps(funding_db_path, holdout_config_path, caplog):
+    with caplog.at_level("WARNING"):
+        load_research_funding(BASE, BASE + 20 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path)
+
+    assert any("clamp" in record.message.lower() for record in caplog.records)
+
+
+def test_load_research_funding_does_not_warn_when_end_ms_is_already_before_cutoff(
+    funding_db_path, holdout_config_path, caplog
+):
+    with caplog.at_level("WARNING"):
+        load_research_funding(BASE, BASE + 5 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path)
+
+    assert not any("clamp" in record.message.lower() for record in caplog.records)
+
+
+def test_load_research_funding_never_returns_data_at_or_after_the_cutoff(funding_db_path, holdout_config_path):
+    rates = load_research_funding(
+        BASE, BASE + 20 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path
+    )
+
+    assert all(r.funding_time.timestamp() * 1000 < CUTOFF for r in rates)
+
+
+def test_load_research_funding_defaults_to_btc_usdt_symbol(funding_db_path, holdout_config_path):
+    rates = load_research_funding(
+        BASE, BASE + 5 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path
+    )
+
+    assert len(rates) == 5  # would be 0 if the wrong default symbol were queried
+
+
+def test_load_research_funding_respects_an_explicit_symbol(funding_db_path, holdout_config_path):
+    rates = load_research_funding(
+        BASE, BASE + 5 * STEP, symbol="ETH-USDT", db_path=funding_db_path, holdout_config_path=holdout_config_path
+    )
+
+    assert rates == []
+
+
+def test_load_research_funding_returns_funding_rate_typed_objects_with_expected_fields(
+    funding_db_path, holdout_config_path
+):
+    rates = load_research_funding(
+        BASE, BASE + 1 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path
+    )
+
+    assert len(rates) == 1
+    assert rates[0].funding_rate == Decimal("0.0001")
+    assert rates[0].mark_price == Decimal("50000")
+    assert rates[0].funding_time.timestamp() * 1000 == BASE
 
 
 # ---------------------------------------------------------------------------

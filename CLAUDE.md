@@ -469,11 +469,15 @@ may unfairly penalize a legitimately low-frequency strategy — apply
 judgment, don't treat as absolute); profit factor floor 1.3-1.5
 (cushion for backtest-to-live slippage/fee mismodeling and the
 funding-rate gap — perpetual funding-rate P&L was not modeled anywhere
-in this pipeline when this floor was set; `sr-m` (below) built additive/
-opt-in funding P&L modeling, but no walk-forward run behind any figure
-in this section has actually threaded a real `funding_rates` series
-through yet, so the cushion's reasoning is unchanged until one does). A
-fold's
+in this pipeline when this floor was set; `sr-m` built additive/opt-in
+funding P&L modeling, and `sr-n` (below) then actually threaded a real
+`funding_rates` series through Configuration C's own 19-fold walk-
+forward: the real effect was small — mean Sharpe +0.027 to +0.039, mean
+profit factor 1.967 to 1.968 — so the profit-factor floor's slippage/fee
+cushion is still doing real work here, not funding P&L; this is one real
+data point, not a general proof the funding-rate gap never matters for a
+strategy with different (e.g. much shorter, funding-settlement-spanning)
+holding-period characteristics). A fold's
 `profit_factor: null` is interpreted according to why it's null: a
 zero-trade fold already fails eligibility via the Sharpe/trade-count
 requirements regardless of profit factor; a fold where every closed
@@ -484,16 +488,20 @@ must be the only holdout access on record for that `strategy_id`.
 
 ### Strategy Attempts So Far (as of 2026-07-28)
 
-Six strategy families have been built and walk-forward validated for
-real against live BingX data (Tasks E-L, sequenced after the
+Seven strategy families have been built and walk-forward validated for
+real against live BingX data (Tasks E-L plus N, sequenced after the
 infrastructure above): naive SMA crossover, ATR-risk-managed crossover
 (15m and 1h variants), a multi-lookback ensemble with ADX regime
 weighting and real volatility targeting (later refined with recalibrated
 ADX thresholds and an opt-in risk:reward search), regime-gated
-mean-reversion, a regime-adaptive momentum/mean-reversion blend, and a
-standalone on-balance-volume trend strategy. Full results, judgment
-calls, and honest negative findings for each:
-`.planning/sr-e-regime-momentum.md` through `.planning/sr-l-volume-signal.md`.
+mean-reversion, a regime-adaptive momentum/mean-reversion blend, a
+standalone on-balance-volume trend strategy, and a funding-rate-
+extremity contrarian strategy. Full results, judgment calls, and honest
+negative findings for each: `.planning/sr-e-regime-momentum.md` through
+`.planning/sr-l-volume-signal.md`, plus `.planning/sr-n-funding-rate-
+strategy.md` (Task M, `.planning/sr-m-funding-rate-pipeline.md`, is the
+funding infrastructure between L and N — a pipeline/metrics task, not a
+strategy attempt of its own).
 
 **Current best result** ("Configuration C", `sr-i`): the refined
 momentum ensemble — mean annualized Sharpe +0.027 (positive; the only
@@ -505,30 +513,74 @@ performed worse than this on every metric (`sr-k`, `sr-l`) — notably,
 the blend was expected by credible outside research (`sr-g`) to
 outperform momentum alone, and did not, on this project's real data.
 
-**Infrastructure built, strategy itself queued next** (`sr-m`,
-2026-07-27/28): a funding-rate-based signal is genuinely different from
-every price/volume signal tried so far and credible research supports
-it, but needed new data ingestion and a metrics-layer addition first —
-both now exist. `python/data/bingx_funding.py` + `backfill_funding.py`
-fetch and cache real BingX funding-rate history (real backfill run:
-2020-11-29T12:00:00Z through present, 6,199 rows — see "Exchange API
-Facts" above); `metrics/position.py`/`metrics/metrics.py` gained
-additive/opt-in funding P&L attribution (`PositionTracker(funding_rates=
-...)`), verified both by unit tests covering the sign-convention trap
-explicitly and against a real reconstructed trade from a real
-`hourly_momentum` backtest held open across a real funding settlement.
-No strategy has actually used this yet — building the funding-rate
-signal itself, and re-running it (and ideally Configuration C) with real
-funding P&L included, is the next task. **If that also doesn't clear the
-bar**, the next-larger option is
-reconsidering this project's deliberate single-symbol (BTC-USDT only)
-scope — a meaningful share of the Sharpe reported by the credible
-institutional research this project benchmarked against (e.g. Concretum
-Group's ensemble trend-following) plausibly comes from cross-symbol
-diversification a single-symbol design can't access. That's a real
-architecture reconsideration (touches the data pipeline's
-survivorship-bias handling, not just a new strategy file) and deserves
-its own `Discuss` pass — not a default fallback to reach for lightly.
+**Funding-rate infrastructure (`sr-m`, 2026-07-27/28), then a real
+funding-rate-based strategy attempt and Configuration C funding re-run
+(`sr-n`, 2026-07-28)**: `python/data/bingx_funding.py` +
+`backfill_funding.py` fetch and cache real BingX funding-rate history
+(real backfill run: 2020-11-29T12:00:00Z through present, 6,199 rows —
+see "Exchange API Facts" above); `metrics/position.py`/`metrics/
+metrics.py` gained additive/opt-in funding P&L attribution
+(`PositionTracker(funding_rates=...)`). `sr-n` then (a) built
+`python/research/strategies/funding_extremity.py`, a contrarian strategy
+on a rolling (self-relative, look-ahead-safe) funding-rate z-score — a
+real empirical check found funding's own stdev shifted ~9x across years,
+ruling out a fixed absolute threshold — and (b) threaded real funding
+P&L through `research/walkforward.py::run_walk_forward` (new additive
+`funding_rates` parameter) to re-run Configuration C with it included,
+resolving the previously-open question of whether funding P&L was
+silently costing (or helping) reported figures.
+
+**Configuration C + real funding P&L, real 19-fold re-run**: mean Sharpe
+moved from +0.027 to **+0.039**, min Sharpe from -8.442 to -8.382, mean
+profit factor 1.967 to 1.968, worst drawdown 4.23% to 4.24%, folds
+positive unchanged at 11/19, total trades unchanged at 199 (funding
+P&L doesn't change entries, only their economics). **A small, mostly
+neutral, slightly positive effect, not a meaningful reversal either
+direction** — consistent with this strategy's own diagnosed short average
+hold time (`sr-i`: ~19.3h mean for winners), too brief to accumulate many
+funding settlements. Eligibility verdict is unchanged (still fails fold-
+consistency, sign-test, and Sharpe-significance at all three 80/85/90%
+candidate floors) — funding P&L was not the missing piece for this
+strategy.
+
+**Funding-extremity contrarian strategy, real 19-fold run**: **7 total
+trades across all 19 folds** — a real, mechanistically-diagnosed
+(diagnostic script reproduced the same figure: 71 raw crossings into an
+extreme funding reading across the research window, but only 7 ever flip
+to the *opposite* extreme within the same 30-day fold window before the
+per-fold strategy state resets) finding, not noise. This is far below
+the Eligibility Bar's 100-trade floor — **the result is genuinely
+inconclusive, not a clean "no edge" finding** the way e.g. `sr-k`'s
+mean-reversion-alone result was (that one had 100+ trades and failed
+outright). The bottleneck is specifically the edge-triggering design
+(fire only on a *flip* to the opposite extreme, matching every other
+strategy in this codebase's "fire on state change" convention) combined
+with per-fold state reset and funding's slow (~3x/day) update cadence —
+not genuine rarity of extreme funding readings, which happen often
+enough (71 times) to support far more trades under a less conservative
+trigger rule. **Not fixed in this task** (changing the trigger rule after
+seeing a thin result would cross into tuning-after-the-fact, which this
+project's methodology explicitly treats as data snooping) — flagged as a
+concrete, scoped follow-up candidate instead. Full diagnosis, real
+numbers, and honest reasoning: `.planning/sr-n-funding-rate-strategy.md`.
+
+**Neither funding-rate avenue clears the bar, but for genuinely different
+reasons** — Configuration C's shortfall is unrelated to funding
+modeling (confirmed by this task), and the funding-extremity signal
+itself was never actually stress-tested at a real sample size. **Two
+live next-step candidates, not yet chosen between**: (1) revisit the
+funding-extremity strategy's edge-trigger design (e.g. fire on any
+crossing into extreme rather than requiring a flip) as a genuinely new,
+not-yet-run configuration — real follow-up work, not tuning, since it
+would be the *first* test of that design, not a retry of this one; (2)
+the single-symbol-scope reconsideration already on file: a meaningful
+share of the Sharpe reported by the credible institutional research this
+project benchmarked against (e.g. Concretum Group's ensemble trend-
+following) plausibly comes from cross-symbol diversification a single-
+symbol design can't access — a real architecture reconsideration
+(touches the data pipeline's survivorship-bias handling, not just a new
+strategy file) that deserves its own `Discuss` pass, not a default
+fallback to reach for lightly.
 
 ## Tooling Stack
 
