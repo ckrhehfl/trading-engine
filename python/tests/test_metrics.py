@@ -17,6 +17,7 @@ from metrics.metrics import (
     _win_rate,
     build_equity_curve,
     compute_metrics,
+    compute_return_moments,
 )
 from schemas.order_intent import OrderIntent, OrderType, Side
 
@@ -439,3 +440,89 @@ def test_compute_metrics_threads_funding_rates_through_to_closed_trades():
     # adjustment itself -- same trade count, same entry/exit prices.
     assert without_funding.closed_trades[0].funding_pnl == Decimal("0")
     assert without_funding.final_equity == STARTING_EQUITY
+
+
+# --- Return moments (skewness / raw kurtosis) --------------------------------
+#
+# Strategy Research Task Q: the Probabilistic/Deflated Sharpe Ratio needs the
+# third and fourth standardized moments of the return series the Sharpe was
+# computed from. Written first (TDD): these failed on `ImportError` /
+# `AttributeError` before `metrics/metrics.py` grew them. See
+# `.planning/sr-q-deflated-sharpe.md`.
+
+
+def test_return_moments_of_a_symmetric_series_have_zero_skew():
+    # Equity chosen so the per-bar returns are exactly [+0.1, -0.1, +0.1,
+    # -0.1] up to float rounding -- a symmetric set, so skewness ~ 0.
+    curve = [Decimal("100")]
+    for step in ("1.1", "0.9", "1.1", "0.9"):
+        curve.append(curve[-1] * Decimal(step))
+
+    moments = compute_return_moments(curve)
+
+    assert moments.num_returns == 4
+    assert moments.skewness == pytest.approx(0.0, abs=1e-9)
+
+
+def test_return_moments_match_hand_computed_population_moments():
+    curve = [Decimal("100"), Decimal("110"), Decimal("104.5"), Decimal("120"), Decimal("100")]
+    returns = [float((b - a) / a) for a, b in zip(curve, curve[1:])]
+    mean = fmean(returns)
+    m2 = fmean([(r - mean) ** 2 for r in returns])
+    m3 = fmean([(r - mean) ** 3 for r in returns])
+    m4 = fmean([(r - mean) ** 4 for r in returns])
+
+    moments = compute_return_moments(curve)
+
+    assert moments.num_returns == 4
+    assert moments.skewness == pytest.approx(m3 / m2**1.5)
+    assert moments.kurtosis == pytest.approx(m4 / m2**2)
+
+
+def test_return_kurtosis_is_raw_not_excess():
+    # A raw fourth standardized moment is 3.0 for a normal distribution and
+    # >= 1 for every real one -- never negative, as an *excess* kurtosis
+    # convention would allow. Bailey & Lopez de Prado's PSR formula takes
+    # the raw form, so getting this wrong shifts the estimator's variance
+    # term by exactly 2/4 * SR^2.
+    curve = [Decimal("100"), Decimal("110"), Decimal("104.5"), Decimal("120"), Decimal("100")]
+
+    assert compute_return_moments(curve).kurtosis >= 1.0
+
+
+def test_return_moments_are_none_for_degenerate_series():
+    # Fewer than two returns, and zero-variance returns, are both "no
+    # evidence" -- the same convention _sharpe_ratio already uses.
+    assert compute_return_moments([]).skewness is None
+    assert compute_return_moments([Decimal("100")]).kurtosis is None
+    assert compute_return_moments([Decimal("100"), Decimal("110"), Decimal("121")]).skewness is None
+    assert compute_return_moments([Decimal("100"), Decimal("110"), Decimal("121")]).num_returns == 2
+
+
+def test_compute_metrics_reports_return_moments_unconditionally():
+    # Unconditional, unlike the recent "only present when the feature is
+    # used" additions (funding_pnl_included, parameter_sensitivity): these
+    # are always computable from the equity curve compute_metrics already
+    # builds, and DSR needs them for every run. See
+    # `.planning/sr-q-deflated-sharpe.md` for the judgment call.
+    klines = [_kline(i, price) for i, price in enumerate(["100", "110", "104.5", "120", "100"])]
+    entry_intent = _intent(Side.LONG, "1", klines[0].open_time)
+    entry_fill = _fill(entry_intent, "100", "1", klines[0].open_time)
+
+    metrics = compute_metrics(klines, [entry_intent], [entry_fill], STARTING_EQUITY)
+
+    expected = compute_return_moments(metrics.equity_curve)
+    assert metrics.num_returns == expected.num_returns
+    assert metrics.return_skewness == pytest.approx(expected.skewness)
+    assert metrics.return_kurtosis == pytest.approx(expected.kurtosis)
+
+
+def test_compute_metrics_reports_none_moments_for_a_flat_run():
+    klines = [_kline(0, "100"), _kline(1, "100"), _kline(2, "100")]
+
+    metrics = compute_metrics(klines, [], [], STARTING_EQUITY)
+
+    assert metrics.num_returns == 2
+    assert metrics.return_skewness is None
+    assert metrics.return_kurtosis is None
+    assert metrics.sharpe_ratio is None

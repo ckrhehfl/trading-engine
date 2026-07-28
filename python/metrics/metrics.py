@@ -15,6 +15,18 @@ now addressed, opt-in, via `build_equity_curve`/`compute_metrics`'s
 attribution design and sign convention, and
 `.planning/sr-m-funding-rate-pipeline.md` for the verification behind it.
 Omitting `funding_rates` (every pre-existing caller) is unaffected.
+
+**Return moments (Strategy Research Task Q, unconditional)**: `Metrics`
+also carries `return_skewness`/`return_kurtosis`/`num_returns`, computed by
+`compute_return_moments` from the same equity curve the Sharpe ratio comes
+from. These exist because the Probabilistic/Deflated Sharpe Ratio
+(`research/eligibility.py`) is a non-normality-aware test and needs them,
+and because `research.walkforward._metrics_summary` deliberately drops
+`equity_curve` before logging -- so without these fields a logged run could
+never be re-evaluated under PSR/DSR without re-running the whole backtest.
+Unlike the funding-rate parameter above they are unconditional, not opt-in:
+they are always computable and always wanted. See
+`.planning/sr-q-deflated-sharpe.md`.
 """
 
 import math
@@ -47,6 +59,31 @@ _DAYS_PER_YEAR = 365
 
 
 @dataclass(frozen=True)
+class ReturnMoments:
+    """The third and fourth standardized moments of a per-observation
+    return series, plus how many returns they were computed from.
+
+    `kurtosis` is **raw** (3.0 for a normal distribution, >= 1 for every
+    real one), not excess -- Bailey & Lopez de Prado's Probabilistic Sharpe
+    Ratio formula takes the raw form, and an excess-kurtosis value fed into
+    it would shift the Sharpe estimator's variance term by exactly
+    `(2/4) * SR^2`. Named unambiguously here rather than left to a caller's
+    assumption; see `research/eligibility.py` and
+    `.planning/sr-q-deflated-sharpe.md`.
+
+    Both moments are `None` -- never `0.0` -- when there are fewer than two
+    returns or the returns have zero variance, the same "no evidence, not
+    bad evidence" convention `_sharpe_ratio` already uses for exactly those
+    inputs. `num_returns` is always a real count (`0` genuinely means zero
+    returns).
+    """
+
+    num_returns: int
+    skewness: float | None
+    kurtosis: float | None
+
+
+@dataclass(frozen=True)
 class Metrics:
     """Summary statistics for one backtest run.
 
@@ -56,6 +93,14 @@ class Metrics:
     zero closed trades, zero-variance per-bar returns, and zero losing
     trades respectively. `None` means "no evidence", which is a different
     claim than "bad evidence" (`0.0`) or "unboundedly good" (`inf`).
+
+    `return_skewness`/`return_kurtosis`/`num_returns` (Strategy Research
+    Task Q) describe the same per-bar return series `sharpe_ratio` is
+    computed from — see `ReturnMoments` for their contract, including that
+    the kurtosis is raw rather than excess. `compute_metrics` always
+    populates all three; their dataclass defaults exist only so that a
+    hand-constructed `Metrics` (test fixtures do this) does not have to
+    state moments it has no equity curve to derive.
     """
 
     starting_equity: Decimal
@@ -68,6 +113,9 @@ class Metrics:
     win_rate: float | None
     num_trades: int
     profit_factor: float | None
+    return_skewness: float | None = None
+    return_kurtosis: float | None = None
+    num_returns: int = 0
 
 
 def build_equity_curve(
@@ -187,6 +235,7 @@ def compute_metrics(
         klines, filled_intents, fills, starting_equity, funding_rates=funding_rates
     )
     final_equity = equity_curve[-1] if equity_curve else starting_equity
+    moments = compute_return_moments(equity_curve)
 
     return Metrics(
         starting_equity=starting_equity,
@@ -199,6 +248,67 @@ def compute_metrics(
         win_rate=_win_rate(closed_trades),
         num_trades=len(closed_trades),
         profit_factor=_profit_factor(closed_trades),
+        return_skewness=moments.skewness,
+        return_kurtosis=moments.kurtosis,
+        num_returns=moments.num_returns,
+    )
+
+
+def per_bar_returns(equity_curve: Sequence[Decimal]) -> list[float]:
+    """Per-bar simple returns `(equity[i] - equity[i-1]) / equity[i-1]`.
+
+    A bar whose *previous* equity is exactly 0 is skipped rather than
+    divided by: a return can't be expressed relative to a zero base. Not a
+    documented CLAUDE.md scenario (equity is not expected to reach exactly
+    zero), but skipping is the only safe option if it ever does.
+
+    Extracted so `_sharpe_ratio` and `compute_return_moments` can never
+    drift onto different definitions of "the return series" -- PSR/DSR
+    (`research/eligibility.py`) combine a Sharpe with the skewness and
+    kurtosis of the very same series, so a divergence between the two would
+    be silently wrong rather than loudly broken.
+    """
+    returns: list[float] = []
+    for previous, current in zip(equity_curve, equity_curve[1:]):
+        if previous == 0:
+            continue
+        returns.append(float((current - previous) / previous))
+    return returns
+
+
+def compute_return_moments(equity_curve: Sequence[Decimal]) -> ReturnMoments:
+    """Skewness and **raw** (not excess) kurtosis of `equity_curve`'s
+    per-observation simple returns -- see `ReturnMoments` for the contract.
+
+    Population (biased, divide-by-`n`) standardized moments, matching the
+    form Bailey & Lopez de Prado's PSR derivation assumes; the difference
+    from a sample-adjusted (Fisher) estimator is O(1/n) and negligible at
+    the observation counts this project works with (hundreds to tens of
+    thousands). Stdlib arithmetic only -- no numpy/scipy, per CLAUDE.md.
+
+    Deliberately generic over the sampling frequency: pass a raw per-bar
+    equity curve for per-bar moments, or a daily-resampled one (see
+    `research.eligibility.resample_equity_to_daily`) for daily moments. It
+    is the caller's job to keep the moments and the Sharpe they are paired
+    with on the same sampling frequency.
+    """
+    returns = per_bar_returns(equity_curve)
+    n = len(returns)
+    if n < 2:
+        return ReturnMoments(num_returns=n, skewness=None, kurtosis=None)
+
+    mean_return = fmean(returns)
+    deviations = [r - mean_return for r in returns]
+    m2 = fmean([d * d for d in deviations])
+    if m2 <= 0:
+        return ReturnMoments(num_returns=n, skewness=None, kurtosis=None)
+
+    m3 = fmean([d**3 for d in deviations])
+    m4 = fmean([d**4 for d in deviations])
+    return ReturnMoments(
+        num_returns=n,
+        skewness=m3 / (m2**1.5),
+        kurtosis=m4 / (m2 * m2),
     )
 
 
@@ -232,15 +342,10 @@ def _sharpe_ratio(equity_curve: list[Decimal], bars_per_day: int = _BARS_PER_DAY
     if len(equity_curve) < 2:
         return None
 
-    returns: list[float] = []
-    for previous, current in zip(equity_curve, equity_curve[1:]):
-        if previous == 0:
-            # Can't express a return relative to a zero-equity base.
-            # Not a documented CLAUDE.md scenario (equity is not expected
-            # to reach exactly zero), but skipping rather than dividing by
-            # zero is the only safe option if it ever does.
-            continue
-        returns.append(float((current - previous) / previous))
+    # Shared with compute_return_moments -- see per_bar_returns' docstring
+    # for why the two must agree on what "the return series" is (including
+    # its zero-equity-base skip rule).
+    returns = per_bar_returns(equity_curve)
 
     if len(returns) < 2:
         return None

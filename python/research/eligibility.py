@@ -58,16 +58,165 @@ caller can check directly against a `WalkForwardResult`'s `.aggregate` dict
 (`research/walkforward.py` already computes and logs them); this module
 exists specifically for the two statistically nontrivial checks this
 project's revised bar requires.
+
+## Probabilistic / Deflated Sharpe Ratio (Strategy Research Task Q)
+
+sr-j named the Probabilistic Sharpe Ratio as "the more statistically
+correct upgrade" over the plain t-test above, and deferred it -- "assessed
+and named, not built speculatively", the same treatment sr-g gave CSCV/PBO.
+This module now builds it, plus the Deflated Sharpe Ratio that extends it,
+from:
+
+- Bailey & Lopez de Prado, "The Sharpe Ratio Efficient Frontier", *Journal
+  of Risk* 15(2), 2012 -- PSR.
+- Bailey & Lopez de Prado, "The Deflated Sharpe Ratio: Correcting for
+  Selection Bias, Backtest Overfitting and Non-Normality", *Journal of
+  Portfolio Management* 40(5), 2014 -- DSR.
+
+    PSR(SR*) = Phi[ ((SR_hat - SR*) * sqrt(T - 1))
+                    / sqrt(1 - g3*SR_hat + ((g4 - 1)/4)*SR_hat^2) ]
+
+    SR0 = sqrt(V_hat) * [ (1 - gamma)*Phi^-1(1 - 1/N)
+                          + gamma*Phi^-1(1 - 1/(N*e)) ]
+
+    DSR = PSR(SR0)
+
+where `T` is the number of return observations, `g3`/`g4` are the return
+series' skewness and **raw** (3 for a normal, not excess) kurtosis, `gamma`
+is the Euler-Mascheroni constant, `V_hat` is the variance across the `N`
+trials of the estimated per-observation Sharpe, and `Phi`/`Phi^-1` are
+`statistics.NormalDist().cdf`/`.inv_cdf` -- so this stays stdlib-only, zero
+new dependencies, exactly like the t-test above.
+
+Why DSR matters here specifically: this project has now logged 1,839
+backtests across 8 strategy families. A significance test that ignores how
+much searching produced its best result is measuring the wrong thing. DSR
+is the standard correction -- it raises the bar a Sharpe must clear in
+proportion to the number of trials and their dispersion.
+
+### Sharpe units
+
+Every Sharpe quantity in this section is **per-observation**, never
+annualized. Convert with `deannualize_sharpe` (this project's fixed 365-day
+convention). Feeding an annualized Sharpe straight into `evaluate_psr`
+overstates PSR enormously -- at 1h bars the annualization factor is
+sqrt(24*365) ~= 93.6x.
+
+### Honest input audit (as of 2026-07-28)
+
+Available from a logged `runs/experiments.jsonl` record today:
+
+- `SR_hat`: per-fold (`fold_results[i].metrics.sharpe_ratio`) and aggregate
+  (`aggregate_metrics.mean_sharpe`) -- annualized, so de-annualize first.
+- `T`: `walk_forward_config.validate_bars * fold_count`, or
+  `data_range.num_bars`.
+- `V_hat`: assembled across a strategy family's records via
+  `sharpe_variance_across_trials`.
+- `N`: the trial count, supplied by the caller (a separate task owns
+  deriving it correctly from the experiment log; this module deliberately
+  takes it as a plain parameter so the two compose without either
+  depending on the other's internals).
+
+NOT available before Task Q, and the two gaps it closes:
+
+1. **Per-return skewness/kurtosis.** `walkforward._metrics_summary`
+   deliberately drops `equity_curve`, and `Metrics.equity_curve` exists
+   only in memory -- so a logged run carried nothing from which g3/g4 could
+   be recovered. Handled two ways: `evaluate_psr`/`evaluate_deflated_sharpe`
+   take `skewness`/`kurtosis` as explicit optional parameters that fall
+   back to the normal assumption (g3=0, g4=3) while **recording
+   `moments_source="normal_assumption"` on the result** -- never silently
+   normal; and `metrics.metrics.Metrics` now carries
+   `return_skewness`/`return_kurtosis`/`num_returns` unconditionally, so
+   runs logged from now on can be evaluated with real moments.
+2. **`bars_per_day`.** Previously inferable from a logged record only by
+   reverse-engineering `walk_forward_config.train_bars` (2160 => 1h,
+   8640 => 15m). Now logged directly in `walk_forward_config`.
+
+The normal fallback is defensible at this project's magnitudes, not just
+convenient: real BTC-USDT 1h returns measure skew ~= -0.103 and raw
+kurtosis ~= 12.89 (measured, not assumed -- see
+`.planning/sr-q-deflated-sharpe.md` for the reproduction), yet at T=3,600
+that moves the alpha=0.05 annualized-Sharpe detection threshold only from
+2.567 to 2.573 (~0.2%), because the per-bar Sharpe is ~4e-4 and the
+`((g4-1)/4)*SR_hat^2` term is therefore vanishingly small. The planning doc
+publishes the full sensitivity table.
+
+### One correction the papers' assumptions demand: daily resampling
+
+PSR assumes iid returns. This project's strategies hold positions ~19h
+across 1h bars, so per-bar returns are strongly autocorrelated *within* a
+trade -- which inflates the effective `T` and makes PSR
+**anti-conservative** (over-confident). The standard remedy is to evaluate
+on daily-resampled equity returns, and it is nearly free here because the
+detection threshold depends on calendar span, not sampling frequency
+(~ `1.645/sqrt(years)`): resampling 3,600 hourly points to 150 daily points
+moves the threshold only 2.566 -> 2.575 (ignoring the tiny SR^2 term).
+`resample_equity_to_daily` does the resampling and `psr_from_equity_curve`
+defaults to `SAMPLING_DAILY`; the per-bar path stays available via
+`sampling=SAMPLING_PER_BAR` and is documented, not hidden.
+
+### One numerical limit worth knowing about
+
+CPython's `statistics.NormalDist.cdf` is `0.5 * (1 + erf(z / sqrt(2)))`, so
+for `z` below roughly -8.3 the `erf` term reaches exactly -1.0 and the CDF
+returns **exactly 0.0** rather than the true ~1e-17. A `psr`/`dsr` of `0.0`
+therefore means "below double-precision resolution", not "impossible", and
+in particular is NOT this module's `None` ("no evidence") convention -- it
+is a real, decisively-negative answer. Deliberately not worked around: a
+strategy whose PSR is 1e-17 and one whose PSR is 0.0 get the same verdict.
+
+### Eligibility Bar status: PROPOSED, not adopted
+
+CLAUDE.md's Eligibility Bar is human-approval-gated (same status as Risk
+Parameters). DSR is a **proposed** replacement for its mean-Sharpe t-test
+clause and has not been approved. `evaluate_eligibility` therefore accepts
+an optional `deflated_sharpe` that it REPORTS and nothing more: `passed`
+is computed from exactly the same three checks as before. A later task
+collects the proposal for the human; this module must not front-run it.
 """
 
 import math
 from dataclasses import dataclass
 from decimal import Decimal
-from statistics import StatisticsError, fmean, stdev
+from statistics import NormalDist, StatisticsError, fmean, stdev
 from typing import Sequence
+
+from metrics.metrics import compute_return_moments, per_bar_returns
 
 DEFAULT_NULL_PROBABILITY = 0.5
 DEFAULT_SIGNIFICANCE_ALPHA = 0.05
+
+# 365, not 365.25 -- this project's fixed annualization convention (see
+# CLAUDE.md's "Strategy Research Operational Design" and
+# `metrics/metrics.py`'s `_DAYS_PER_YEAR`), not open to per-implementation
+# judgment.
+_DAYS_PER_YEAR = 365
+
+# Euler-Mascheroni constant, the `gamma` in the Deflated Sharpe Ratio's
+# expected-maximum (Gumbel) approximation. Not in stdlib `math` (which has
+# pi/e/tau/inf/nan only), so it is spelled out here to full float precision
+# rather than approximated.
+EULER_MASCHERONI = 0.5772156649015329
+
+# Moments of a standard normal distribution, used when a caller supplies no
+# measured skewness/kurtosis. The kurtosis is RAW (3.0), not excess (0.0) --
+# see `metrics.metrics.ReturnMoments`.
+NORMAL_SKEWNESS = 0.0
+NORMAL_KURTOSIS = 3.0
+
+# `PsrResult.moments_source` values -- the difference between "we measured
+# these moments" and "we assumed a normal distribution" is never left
+# implicit on a result.
+MOMENTS_SOURCE_OBSERVED = "observed"
+MOMENTS_SOURCE_NORMAL = "normal_assumption"
+
+# Sampling frequencies for `deannualize_sharpe`/`psr_from_equity_curve`.
+# Daily is the default everywhere -- see the module docstring's
+# "daily resampling" section for the iid-violation reasoning.
+SAMPLING_DAILY = "daily"
+SAMPLING_PER_BAR = "per_bar"
+_VALID_SAMPLINGS = (SAMPLING_DAILY, SAMPLING_PER_BAR)
 
 
 def _count_positive_folds(fold_sharpe_values: Sequence[float | None]) -> int:
@@ -430,6 +579,388 @@ def evaluate_mean_sharpe_significance(
 
 
 # ---------------------------------------------------------------------------
+# Probabilistic Sharpe Ratio (Bailey & Lopez de Prado 2012)
+# ---------------------------------------------------------------------------
+
+
+def resample_equity_to_daily(equity_curve: Sequence[Decimal], *, bars_per_day: int) -> list[Decimal]:
+    """One equity observation per **completed** day: the last bar of each
+    full `bars_per_day` block.
+
+    A trailing partial day is dropped entirely rather than contributing its
+    latest mark -- a partial day's final observation is not a day's close,
+    and including it would make the last "daily" return cover a different
+    span from every other one. With 3,610 hourly bars and `bars_per_day=24`
+    the result is the same 150 points as 3,600 bars would give.
+
+    Exists because PSR assumes iid returns while this project's strategies
+    hold positions across many bars (see the module docstring). `Decimal`
+    values are passed through untouched -- this only selects, never
+    arithmetic.
+    """
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
+    completed_days = len(equity_curve) // bars_per_day
+    return [equity_curve[(day + 1) * bars_per_day - 1] for day in range(completed_days)]
+
+
+def deannualize_sharpe(annualized_sharpe: float, *, bars_per_day: int, sampling: str = SAMPLING_DAILY) -> float:
+    """Convert this project's annualized Sharpe convention back to the
+    per-observation Sharpe PSR/DSR are defined on.
+
+    Divides by `sqrt(365)` for `SAMPLING_DAILY` (one observation per day) or
+    `sqrt(bars_per_day * 365)` for `SAMPLING_PER_BAR` -- the exact inverse
+    of `metrics.metrics._sharpe_ratio`'s annualization, 365 not 365.25.
+
+    `sampling` defaults to daily to match `psr_from_equity_curve`'s default;
+    it must match whatever series `T` was counted on, or the resulting PSR
+    is meaningless (at 1h bars the two differ by sqrt(24) ~= 4.9x).
+    """
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
+    if sampling not in _VALID_SAMPLINGS:
+        raise ValueError(f"sampling must be one of {_VALID_SAMPLINGS}, got {sampling!r}")
+
+    observations_per_year = _DAYS_PER_YEAR if sampling == SAMPLING_DAILY else bars_per_day * _DAYS_PER_YEAR
+    return annualized_sharpe / math.sqrt(observations_per_year)
+
+
+@dataclass(frozen=True)
+class PsrResult:
+    """`psr` and `z_score` are `None` -- never a fabricated `0.5`, never a
+    raised exception -- for degenerate inputs (fewer than 2 observations, an
+    undefined Sharpe, or moments implying a non-positive estimator
+    variance), the same "no evidence" convention as the rest of this module.
+
+    `moments_source` records whether `skewness`/`kurtosis` were measured
+    (`MOMENTS_SOURCE_OBSERVED`) or assumed normal
+    (`MOMENTS_SOURCE_NORMAL`); `sampling` records which return frequency the
+    inputs describe, or `None` when the caller supplied `SR_hat`/`T`
+    directly without saying.
+    """
+
+    psr: float | None
+    sharpe_ratio: float | None
+    benchmark_sharpe: float
+    num_observations: int
+    skewness: float
+    kurtosis: float
+    moments_source: str
+    z_score: float | None
+    sampling: str | None
+
+    def to_dict(self) -> dict:
+        return {
+            "psr": self.psr,
+            "sharpe_ratio": self.sharpe_ratio,
+            "benchmark_sharpe": self.benchmark_sharpe,
+            "num_observations": self.num_observations,
+            "skewness": self.skewness,
+            "kurtosis": self.kurtosis,
+            "moments_source": self.moments_source,
+            "z_score": self.z_score,
+            "sampling": self.sampling,
+        }
+
+
+def _resolve_moments(skewness: float | None, kurtosis: float | None) -> tuple[float, float, str]:
+    """Normal-assumption fallback with explicit provenance. A half-specified
+    pair raises: skewness and kurtosis come from the same return series, so
+    supplying one without the other is a caller mistake, not a partial
+    measurement worth silently completing.
+    """
+    if skewness is None and kurtosis is None:
+        return NORMAL_SKEWNESS, NORMAL_KURTOSIS, MOMENTS_SOURCE_NORMAL
+    if skewness is None:
+        raise ValueError("skewness must be supplied whenever kurtosis is (they describe the same series)")
+    if kurtosis is None:
+        raise ValueError("kurtosis must be supplied whenever skewness is (they describe the same series)")
+    if kurtosis < 1.0:
+        raise ValueError(f"kurtosis must be raw (>= 1, 3 for a normal), not excess, got {kurtosis}")
+    return skewness, kurtosis, MOMENTS_SOURCE_OBSERVED
+
+
+def evaluate_psr(
+    *,
+    sharpe_ratio: float | None,
+    num_observations: int,
+    benchmark_sharpe: float = 0.0,
+    skewness: float | None = None,
+    kurtosis: float | None = None,
+    sampling: str | None = None,
+) -> PsrResult:
+    """Probabilistic Sharpe Ratio: the probability that the true Sharpe
+    exceeds `benchmark_sharpe`, given an observed Sharpe estimated from
+    `num_observations` returns whose skewness/kurtosis are `skewness`/
+    `kurtosis` (Bailey & Lopez de Prado 2012):
+
+        PSR(SR*) = Phi[ ((SR_hat - SR*) * sqrt(T - 1))
+                        / sqrt(1 - g3*SR_hat + ((g4 - 1)/4)*SR_hat^2) ]
+
+    `sharpe_ratio` and `benchmark_sharpe` are **per-observation**, not
+    annualized -- see `deannualize_sharpe` and the module docstring.
+
+    `skewness`/`kurtosis` default to `None`, which falls back to the normal
+    assumption (0, 3) and records `moments_source="normal_assumption"` on
+    the result. They must be supplied together or not at all. `kurtosis` is
+    raw (3 for a normal), not excess; a value below 1 is impossible for a
+    real distribution and raises.
+
+    `sampling` is provenance only -- it is recorded on the result and never
+    used in the arithmetic, so a caller who de-annualized on a daily series
+    can say so.
+
+    Degenerate inputs yield `psr=None`/`z_score=None` rather than an
+    exception or a fabricated 0.5: fewer than 2 observations (the estimator
+    needs `T-1 >= 1`), a `None` `sharpe_ratio` (an undefined Sharpe, e.g. a
+    zero-trade fold), or moments that drive the estimator's variance term to
+    <= 0. A genuinely invalid *choice* -- a negative observation count, a
+    half-specified moment pair, an impossible kurtosis -- still raises.
+    """
+    if num_observations < 0:
+        raise ValueError(f"num_observations must be non-negative, got {num_observations}")
+
+    g3, g4, moments_source = _resolve_moments(skewness, kurtosis)
+
+    def _degenerate() -> PsrResult:
+        return PsrResult(
+            psr=None,
+            sharpe_ratio=sharpe_ratio,
+            benchmark_sharpe=benchmark_sharpe,
+            num_observations=num_observations,
+            skewness=g3,
+            kurtosis=g4,
+            moments_source=moments_source,
+            z_score=None,
+            sampling=sampling,
+        )
+
+    if sharpe_ratio is None or num_observations < 2:
+        return _degenerate()
+
+    variance_term = 1.0 - g3 * sharpe_ratio + ((g4 - 1.0) / 4.0) * sharpe_ratio * sharpe_ratio
+    if variance_term <= 0:
+        return _degenerate()
+
+    z_score = ((sharpe_ratio - benchmark_sharpe) * math.sqrt(num_observations - 1)) / math.sqrt(variance_term)
+    return PsrResult(
+        psr=NormalDist().cdf(z_score),
+        sharpe_ratio=sharpe_ratio,
+        benchmark_sharpe=benchmark_sharpe,
+        num_observations=num_observations,
+        skewness=g3,
+        kurtosis=g4,
+        moments_source=moments_source,
+        z_score=z_score,
+        sampling=sampling,
+    )
+
+
+def psr_from_equity_curve(
+    equity_curve: Sequence[Decimal],
+    *,
+    bars_per_day: int,
+    sampling: str = SAMPLING_DAILY,
+    benchmark_sharpe: float = 0.0,
+) -> PsrResult:
+    """`evaluate_psr` driven straight off an equity curve, with **real
+    measured moments** rather than the normal fallback.
+
+    `sampling` defaults to `SAMPLING_DAILY`: the curve is resampled to one
+    point per completed day (`resample_equity_to_daily`) before returns are
+    taken, because per-bar returns inside a multi-bar holding period are
+    autocorrelated and PSR assumes iid returns -- evaluating per-bar
+    over-counts the evidence and makes PSR anti-conservative. Pass
+    `sampling=SAMPLING_PER_BAR` for the raw per-bar path when that is
+    genuinely what is wanted (e.g. comparing against a per-bar figure
+    computed elsewhere); it is supported, just not the default.
+
+    The Sharpe, the moments, and `T` all come from the same resampled
+    series, so they cannot drift apart. `bars_per_day` is only used for the
+    resampling itself -- nothing here is annualized.
+    """
+    if sampling not in _VALID_SAMPLINGS:
+        raise ValueError(f"sampling must be one of {_VALID_SAMPLINGS}, got {sampling!r}")
+
+    if sampling == SAMPLING_DAILY:
+        series = resample_equity_to_daily(equity_curve, bars_per_day=bars_per_day)
+    else:
+        series = list(equity_curve)
+    moments = compute_return_moments(series)
+    returns = per_bar_returns(series)
+
+    per_observation_sharpe: float | None = None
+    if len(returns) >= 2:
+        mean_return = fmean(returns)
+        try:
+            stdev_return = stdev(returns)
+        except StatisticsError:
+            stdev_return = 0.0
+        if stdev_return > 0:
+            per_observation_sharpe = mean_return / stdev_return
+
+    return evaluate_psr(
+        sharpe_ratio=per_observation_sharpe,
+        num_observations=moments.num_returns,
+        benchmark_sharpe=benchmark_sharpe,
+        skewness=moments.skewness,
+        kurtosis=moments.kurtosis,
+        sampling=sampling,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Deflated Sharpe Ratio (Bailey & Lopez de Prado 2014)
+# ---------------------------------------------------------------------------
+
+
+def sharpe_variance_across_trials(trial_sharpe_ratios: Sequence[float | None]) -> float | None:
+    """`V_hat`: the sample variance of the estimated Sharpe ratios across
+    the trials a strategy family actually ran. `None` folds are excluded
+    (no evidence to include), matching `evaluate_mean_sharpe_significance`.
+
+    `None` -- never `0.0` -- for fewer than 2 defined values: a sample
+    variance needs at least two observations, and a fabricated zero would
+    silently collapse `deflated_sharpe_benchmark` to "no selection bias at
+    all", the most permissive possible answer.
+
+    The trial Sharpes must be on the SAME per-observation scale as the
+    `sharpe_ratio` eventually passed to `evaluate_deflated_sharpe` -- mixing
+    an annualized `V_hat` with a per-observation `SR_hat` would inflate the
+    benchmark by the annualization factor.
+    """
+    values = [float(s) for s in trial_sharpe_ratios if s is not None]
+    if len(values) < 2:
+        return None
+    return stdev(values) ** 2
+
+
+def deflated_sharpe_benchmark(*, trial_sharpe_variance: float | None, num_trials: int) -> float | None:
+    """`SR0`: the Sharpe an entirely edge-less researcher would expect to
+    reach as the *maximum* of `num_trials` independent trials whose Sharpe
+    estimates have variance `trial_sharpe_variance` (Bailey & Lopez de
+    Prado 2014):
+
+        SR0 = sqrt(V_hat) * [ (1 - gamma)*Phi^-1(1 - 1/N)
+                              + gamma*Phi^-1(1 - 1/(N*e)) ]
+
+    This is the benchmark DSR deflates against: more trials, or more
+    dispersed trials, mean a higher bar.
+
+    `num_trials == 1` returns exactly `0.0`: the expected maximum of a
+    single draw from a zero-mean distribution is 0, while the Gumbel-based
+    approximation above is undefined there (`Phi^-1(1 - 1/1) = Phi^-1(0) =
+    -inf`). So DSR at N=1 collapses to PSR against zero, which is exactly
+    what it should mean -- no search, no selection bias to correct.
+
+    `None` (not a fabricated 0.0) when `num_trials < 1`, or when
+    `trial_sharpe_variance` is `None`/`0.0` for `num_trials >= 2`. A zero
+    variance across 2+ trials means every trial produced the identical
+    Sharpe estimate, which in practice signals a caller passing one value
+    repeatedly rather than a real, informative trial set; the mathematical
+    limit (SR0 = 0, i.e. DSR = PSR(0)) is available by calling
+    `evaluate_psr` directly for any caller who genuinely wants it.
+
+    Note the approximation is asymptotic in `N` and is known to be rough at
+    very small counts (at N=2 it gives ~0.520*sqrt(V) against a true
+    expected maximum of 1/sqrt(pi) ~= 0.564*sqrt(V)) -- it errs toward
+    under-deflating there, which is the permissive direction, so a small-N
+    DSR should not be read as a conservative number.
+    """
+    if num_trials < 1:
+        return None
+    if num_trials == 1:
+        return 0.0
+    if trial_sharpe_variance is None:
+        return None
+    if trial_sharpe_variance < 0:
+        raise ValueError(f"trial_sharpe_variance must be non-negative, got {trial_sharpe_variance}")
+    if trial_sharpe_variance == 0:
+        return None
+
+    normal = NormalDist()
+    expected_max = (1.0 - EULER_MASCHERONI) * normal.inv_cdf(1.0 - 1.0 / num_trials) + (
+        EULER_MASCHERONI * normal.inv_cdf(1.0 - 1.0 / (num_trials * math.e))
+    )
+    return math.sqrt(trial_sharpe_variance) * expected_max
+
+
+@dataclass(frozen=True)
+class DeflatedSharpeResult:
+    """`dsr` is `PSR(SR0)` -- the probability the true Sharpe beats what
+    `num_trials` trials of pure luck would have produced. `None` whenever
+    `SR0` or the underlying PSR is undefined (see
+    `deflated_sharpe_benchmark` and `PsrResult`).
+
+    Deliberately has no `passed` field: DSR is a PROPOSED Eligibility Bar
+    criterion pending human approval (see the module docstring), and a
+    `passed` here would read as a gate that does not exist yet.
+    """
+
+    dsr: float | None
+    benchmark_sharpe: float | None
+    num_trials: int
+    trial_sharpe_variance: float | None
+    psr: PsrResult
+
+    def to_dict(self) -> dict:
+        return {
+            "dsr": self.dsr,
+            "benchmark_sharpe": self.benchmark_sharpe,
+            "num_trials": self.num_trials,
+            "trial_sharpe_variance": self.trial_sharpe_variance,
+            "psr": self.psr.to_dict(),
+        }
+
+
+def evaluate_deflated_sharpe(
+    *,
+    sharpe_ratio: float | None,
+    num_observations: int,
+    num_trials: int,
+    trial_sharpe_variance: float | None,
+    skewness: float | None = None,
+    kurtosis: float | None = None,
+    sampling: str | None = None,
+) -> DeflatedSharpeResult:
+    """Deflated Sharpe Ratio: `PSR(SR0)`, i.e. `evaluate_psr` against the
+    selection-bias-corrected benchmark `deflated_sharpe_benchmark` rather
+    than against zero (Bailey & Lopez de Prado 2014).
+
+    All Sharpe quantities -- `sharpe_ratio` and the trials behind
+    `trial_sharpe_variance` alike -- are **per-observation**, not
+    annualized, and must be on the same sampling frequency as each other
+    and as `num_observations`.
+
+    `num_trials` is taken as a plain parameter rather than derived here:
+    counting a strategy family's real trials from `runs/experiments.jsonl`
+    is a separate concern with its own subtleties (grid candidates vs.
+    standalone runs, re-runs of an identical configuration), owned
+    elsewhere. `num_trials=1` reduces this to `PSR(0)` exactly.
+
+    When `SR0` is undefined, `dsr` and `benchmark_sharpe` are both `None`
+    but the underlying `PSR(0)` is still reported on `.psr` -- a caller
+    losing the deflation should not also lose the undeflated figure.
+    """
+    benchmark = deflated_sharpe_benchmark(trial_sharpe_variance=trial_sharpe_variance, num_trials=num_trials)
+    psr = evaluate_psr(
+        sharpe_ratio=sharpe_ratio,
+        num_observations=num_observations,
+        benchmark_sharpe=benchmark if benchmark is not None else 0.0,
+        skewness=skewness,
+        kurtosis=kurtosis,
+        sampling=sampling,
+    )
+    return DeflatedSharpeResult(
+        dsr=psr.psr if benchmark is not None else None,
+        benchmark_sharpe=benchmark,
+        num_trials=num_trials,
+        trial_sharpe_variance=trial_sharpe_variance,
+        psr=psr,
+    )
+
+
+# ---------------------------------------------------------------------------
 # Combined evaluation
 # ---------------------------------------------------------------------------
 
@@ -440,14 +971,23 @@ class EligibilityResult:
     sign_test: SignTestResult
     sharpe_significance: MeanSharpeSignificanceResult
     passed: bool
+    deflated_sharpe: DeflatedSharpeResult | None = None
 
     def to_dict(self) -> dict:
-        return {
+        record = {
             "fold_consistency": self.fold_consistency.to_dict(),
             "sign_test": self.sign_test.to_dict(),
             "sharpe_significance": self.sharpe_significance.to_dict(),
             "passed": self.passed,
         }
+        # Present only when a caller actually supplied a DSR -- the same
+        # "field only appears when the feature is used" convention
+        # `research/walkforward.py` uses for `parameter_sensitivity` and
+        # `funding_pnl_included`, so an existing reader sees a byte-for-byte
+        # unchanged shape.
+        if self.deflated_sharpe is not None:
+            record["deflated_sharpe"] = self.deflated_sharpe.to_dict()
+        return record
 
 
 def evaluate_eligibility(
@@ -456,6 +996,7 @@ def evaluate_eligibility(
     min_fold_consistency: Decimal,
     null_probability: float = DEFAULT_NULL_PROBABILITY,
     significance_alpha: float = DEFAULT_SIGNIFICANCE_ALPHA,
+    deflated_sharpe: DeflatedSharpeResult | None = None,
 ) -> EligibilityResult:
     """CLAUDE.md's revised (2026-07-27) "fold consistency" + "aggregate
     significance" Eligibility Bar clauses, combined into one evaluation.
@@ -468,6 +1009,14 @@ def evaluate_eligibility(
     `passed` is `True` iff ALL THREE checks pass: fold-consistency AND the
     sign test AND the Sharpe-significance test ("Both required, not
     either").
+
+    `deflated_sharpe` (Strategy Research Task Q) is **reported and nothing
+    more**: it is carried onto the result and into `to_dict()`, and has
+    exactly zero influence on `passed`. CLAUDE.md's Eligibility Bar is
+    human-approval-gated (same status as Risk Parameters), and DSR is a
+    proposed replacement for the mean-Sharpe t-test clause that has not been
+    approved -- silently letting it gate anything here would be this module
+    unilaterally amending the bar. See the module docstring.
 
     This function does NOT evaluate the OTHER Eligibility Bar criteria
     (fold-count credibility floor, drawdown ceiling, minimum trade count,
@@ -483,4 +1032,5 @@ def evaluate_eligibility(
         sign_test=sign_test,
         sharpe_significance=sharpe_significance,
         passed=passed,
+        deflated_sharpe=deflated_sharpe,
     )
