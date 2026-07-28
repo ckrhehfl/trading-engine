@@ -8,6 +8,7 @@ import pytest
 
 from backtest.fill import Fill
 from backtest.kline import Kline
+from metrics.funding import FundingRate
 from metrics.metrics import (
     Metrics,
     _max_drawdown,
@@ -366,3 +367,75 @@ def test_compute_metrics_rejects_non_positive_bars_per_day():
     klines = [_kline(0, "100"), _kline(1, "110")]
     with pytest.raises(ValueError, match="bars_per_day"):
         compute_metrics(klines, [], [], STARTING_EQUITY, bars_per_day=0)
+
+
+# ---------------------------------------------------------------------------
+# funding_rates threading -- Strategy Research Task M, additive/opt-in.
+# Sign-convention/attribution correctness itself is metrics.position's
+# responsibility and covered by test_position.py; these tests only check
+# that metrics.py wires the (opt-in) funding series through correctly and
+# that omitting it changes nothing.
+# ---------------------------------------------------------------------------
+
+
+def _funding(rate: str, at: datetime, mark_price: str = "100") -> FundingRate:
+    return FundingRate(funding_time=at, funding_rate=Decimal(rate), mark_price=Decimal(mark_price))
+
+
+def test_build_equity_curve_omitting_funding_rates_behaves_exactly_as_passing_none_explicitly():
+    klines = [_kline(0, "100"), _kline(1, "100")]
+    entry_intent = _intent(Side.LONG, "1", klines[0].open_time)
+    entry_fill = _fill(entry_intent, "100", "1", klines[0].open_time)
+
+    omitted = build_equity_curve(klines, [entry_intent], [entry_fill], STARTING_EQUITY)
+    explicit_none = build_equity_curve(klines, [entry_intent], [entry_fill], STARTING_EQUITY, funding_rates=None)
+
+    assert omitted == explicit_none
+
+
+def test_build_equity_curve_reflects_funding_payment_at_the_bar_it_occurs():
+    # A long position held from bar 0, with a funding settlement landing
+    # exactly on bar 1's open_time -- the equity curve must show the
+    # funding-driven drop starting at bar 1, not only once the trade
+    # eventually closes (which is the whole point of calling
+    # apply_funding_through once per bar, not only once per fill).
+    klines = [_kline(0, "100"), _kline(1, "100"), _kline(2, "100")]
+    entry_intent = _intent(Side.LONG, "1", klines[0].open_time)
+    entry_fill = _fill(entry_intent, "100", "1", klines[0].open_time)
+    funding = [_funding("0.0001", klines[1].open_time, mark_price="100")]
+
+    equity_curve, closed_trades = build_equity_curve(
+        klines, [entry_intent], [entry_fill], STARTING_EQUITY, funding_rates=funding
+    )
+
+    assert equity_curve[0] == STARTING_EQUITY  # before the funding settlement
+    assert equity_curve[1] == STARTING_EQUITY - Decimal("0.01")  # notional 100 * rate 0.0001
+    assert equity_curve[2] == STARTING_EQUITY - Decimal("0.01")  # unchanged after
+    # Still open at klines[-1] -- force-closed there per the existing
+    # degenerate-input rule (unrelated to funding), which already
+    # includes the funding payment realized before that force-close ran.
+    assert len(closed_trades) == 1
+    assert closed_trades[0].funding_pnl == Decimal("-0.01")
+
+
+def test_compute_metrics_threads_funding_rates_through_to_closed_trades():
+    klines = [_kline(0, "100"), _kline(1, "100"), _kline(2, "100")]
+    entry_intent = _intent(Side.LONG, "1", klines[0].open_time)
+    entry_fill = _fill(entry_intent, "100", "1", klines[0].open_time)
+    exit_intent = _intent(Side.SHORT, "1", klines[2].open_time)
+    exit_fill = _fill(exit_intent, "100", "1", klines[2].open_time)
+    funding = [_funding("0.0001", klines[1].open_time, mark_price="100")]
+
+    with_funding = compute_metrics(
+        klines, [entry_intent, exit_intent], [entry_fill, exit_fill], STARTING_EQUITY, funding_rates=funding
+    )
+    without_funding = compute_metrics(klines, [entry_intent, exit_intent], [entry_fill, exit_fill], STARTING_EQUITY)
+
+    assert len(with_funding.closed_trades) == 1
+    assert with_funding.closed_trades[0].funding_pnl == Decimal("-0.01")
+    assert with_funding.closed_trades[0].realized_pnl == Decimal("-0.01")
+    assert with_funding.final_equity == STARTING_EQUITY - Decimal("0.01")
+    # The only difference from the no-funding run is the funding
+    # adjustment itself -- same trade count, same entry/exit prices.
+    assert without_funding.closed_trades[0].funding_pnl == Decimal("0")
+    assert without_funding.final_equity == STARTING_EQUITY

@@ -8,13 +8,49 @@ docstring). This module is the first consumer of a `BacktestResult`'s
 `fills`/`filled_intents`, turning a sequence of individual fills into
 position-level economics (realized P&L, trade boundaries) that
 `backtest/` deliberately does not compute.
+
+**Funding P&L attribution (Strategy Research Task M, additive/opt-in --
+see `.planning/sr-m-funding-rate-pipeline.md`)**: `PositionTracker`
+optionally accepts a `funding_rates` series (ascending by
+`funding_time`) and, as it processes fills in time order, attributes a
+funding payment/receipt into `realized_pnl` for every funding timestamp
+the current position was open through. `PositionTracker()` /
+`reconstruct_trades(filled_intents, fills)` with no `funding_rates`
+argument -- the shape every pre-existing caller in this codebase already
+uses -- behave byte-for-byte as before this feature existed; funding
+awareness only activates when a non-empty series is supplied.
+
+Sign convention (verified against BingX's own official documentation,
+not assumed from generic crypto-exchange knowledge -- see
+`.planning/sr-m-funding-rate-pipeline.md`): when `funding_rate > 0`,
+longs pay shorts; when `funding_rate < 0`, shorts pay longs. Payment =
+`abs(position_qty) * funding_row.mark_price * funding_rate`, using
+BingX's own historical mark price *at that exact settlement* (returned
+alongside the rate by the funding-rate history endpoint) rather than the
+position's entry price or a kline's close -- this is what makes the
+attribution match how a real exchange actually computes the payment.
+
+**Timestamp-boundary judgment call** (a position entering or exiting at
+the *exact* instant of a funding settlement -- documented and tested,
+see `.planning/sr-m-funding-rate-pipeline.md` for the full reasoning):
+funding for timestamp `T` is attributed using the position size that
+existed strictly *before* any fill/close event at `T` is applied. This
+means entering exactly at `T` is NOT charged for `T` (the position
+didn't exist yet going into the settlement snapshot), while exiting
+exactly at `T` IS charged for `T` (the position was still open going
+into it). Concretely: `PositionTracker.apply()`/`force_close()` both
+call `apply_funding_through(event_time)` — which catches up every
+pending funding row with `funding_time <= event_time` — *before*
+mutating `_position_qty` for that event.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
+from typing import Sequence
 
 from backtest.fill import Fill
+from metrics.funding import FundingRate
 from schemas.order_intent import OrderIntent, Side
 
 
@@ -43,6 +79,15 @@ class ClosedTrade:
     entry_price: Decimal  # size-weighted average entry price
     exit_price: Decimal  # size-weighted average exit price
     realized_pnl: Decimal
+    # Funding component of realized_pnl, broken out for transparency --
+    # realized_pnl already includes this (it is not an additional amount
+    # to add on top). Zero for every trade unless PositionTracker was
+    # constructed with a non-empty funding_rates series -- see this
+    # module's docstring. Defaults to 0 so any existing direct
+    # ClosedTrade(...) construction (none in this codebase today, but
+    # nothing prevents a future one) stays valid without naming this
+    # field.
+    funding_pnl: Decimal = Decimal(0)
 
 
 class PositionTracker:
@@ -76,7 +121,7 @@ class PositionTracker:
     between fills, not just the end-of-run result.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, funding_rates: Sequence[FundingRate] | None = None) -> None:
         self._position_qty = Decimal(0)
         self._avg_entry_price = Decimal(0)
         self._realized_pnl = Decimal(0)
@@ -90,6 +135,24 @@ class PositionTracker:
         self._lifecycle_realized_pnl = Decimal(0)
         self._lifecycle_exit_notional = Decimal(0)
         self._lifecycle_exit_qty = Decimal(0)
+        self._lifecycle_funding_pnl = Decimal(0)
+
+        # Funding attribution state -- see this module's docstring.
+        # `_funding_rates` stays `()` (empty) when the caller passes
+        # nothing, so `apply_funding_through` below is a guaranteed no-op
+        # loop (zero iterations) for every pre-existing call site, not a
+        # conditionally-skipped branch -- the cheapest possible way to
+        # guarantee zero behavior change for an unsupplied series.
+        if funding_rates:
+            for previous, current in zip(funding_rates, funding_rates[1:]):
+                if current.funding_time < previous.funding_time:
+                    raise ValueError(
+                        "funding_rates must be sorted ascending by funding_time "
+                        f"(found {current.funding_time} after {previous.funding_time})"
+                    )
+        self._funding_rates: Sequence[FundingRate] = funding_rates if funding_rates else ()
+        self._funding_cursor = 0
+        self._cumulative_funding_pnl = Decimal(0)
 
     @property
     def position_qty(self) -> Decimal:
@@ -112,11 +175,58 @@ class PositionTracker:
     def cumulative_fees(self) -> Decimal:
         return self._cumulative_fees
 
+    @property
+    def funding_pnl(self) -> Decimal:
+        """Cumulative funding P&L applied so far — always `Decimal(0)`
+        when no `funding_rates` were supplied at construction. Tracked
+        separately from (but already included in) `realized_pnl`, same
+        relationship `ClosedTrade.funding_pnl` has to
+        `ClosedTrade.realized_pnl` — see this module's docstring.
+        """
+        return self._cumulative_funding_pnl
+
+    def apply_funding_through(self, cutoff_time: datetime) -> Decimal:
+        """Attributes every pending funding row with `funding_time <=
+        cutoff_time` to the position size in effect *right now* (i.e.
+        before any fill/close event at `cutoff_time` itself has been
+        applied — see this module's docstring for why this specific
+        ordering is what makes the entering-at-T-vs-exiting-at-T
+        boundary come out the way it does). A funding row is skipped
+        (contributes nothing) when the tracker is flat at that instant,
+        but the internal cursor still advances past it either way, so a
+        later-reopened position is never retroactively charged for a
+        timestamp that passed while flat.
+
+        Safe to call redundantly with an already-passed or repeated
+        `cutoff_time` (e.g. once per backtest bar in
+        `metrics.metrics.build_equity_curve`, in addition to once per
+        fill inside `apply`/`force_close`) — the cursor only ever moves
+        forward, so a funding row already processed is never
+        double-counted. Returns the total funding P&L applied by this
+        specific call (not the running cumulative total — see
+        `funding_pnl` for that), mainly useful for tests.
+        """
+        applied = Decimal(0)
+        while self._funding_cursor < len(self._funding_rates):
+            row = self._funding_rates[self._funding_cursor]
+            if row.funding_time > cutoff_time:
+                break
+            if self._position_qty != 0:
+                notional = abs(self._position_qty) * row.mark_price
+                payment = -_sign(self._position_qty) * notional * row.funding_rate
+                self._realized_pnl += payment
+                self._lifecycle_funding_pnl += payment
+                self._cumulative_funding_pnl += payment
+                applied += payment
+            self._funding_cursor += 1
+        return applied
+
     def apply(self, intent: OrderIntent, fill: Fill) -> ClosedTrade | None:
         """Applies one (intent, fill) pair. Returns the just-closed
         `ClosedTrade` if this fill closed a lifecycle (exactly, or as the
         close half of a flip), else `None`.
         """
+        self.apply_funding_through(fill.fill_time)
         self._cumulative_fees += fill.fee
         signed_qty = fill.quantity if intent.side == Side.LONG else -fill.quantity
 
@@ -135,6 +245,7 @@ class PositionTracker:
         realized so it isn't silently dropped from trade-count/win-rate/
         profit-factor metrics. Returns `None` if already flat.
         """
+        self.apply_funding_through(time)
         if self._position_qty == 0:
             return None
         self._realize(abs(self._position_qty), price)
@@ -151,6 +262,7 @@ class PositionTracker:
             self._lifecycle_realized_pnl = Decimal(0)
             self._lifecycle_exit_notional = Decimal(0)
             self._lifecycle_exit_qty = Decimal(0)
+            self._lifecycle_funding_pnl = Decimal(0)
             self._avg_entry_price = price
             self._position_qty = signed_qty
         else:
@@ -204,11 +316,20 @@ class PositionTracker:
             quantity=self._lifecycle_quantity_opened,
             entry_price=self._avg_entry_price,
             exit_price=self._lifecycle_exit_notional / self._lifecycle_exit_qty,
-            realized_pnl=self._lifecycle_realized_pnl,
+            # realized_pnl is price P&L + funding P&L combined (see this
+            # module's docstring) -- funding_pnl below is the same amount
+            # broken out for transparency, not an additional amount on
+            # top of realized_pnl.
+            realized_pnl=self._lifecycle_realized_pnl + self._lifecycle_funding_pnl,
+            funding_pnl=self._lifecycle_funding_pnl,
         )
 
 
-def reconstruct_trades(filled_intents: list[OrderIntent], fills: list[Fill]) -> list[ClosedTrade]:
+def reconstruct_trades(
+    filled_intents: list[OrderIntent],
+    fills: list[Fill],
+    funding_rates: Sequence[FundingRate] | None = None,
+) -> list[ClosedTrade]:
     """Convenience entry point: walks index-aligned `filled_intents`/
     `fills` (as produced by `backtest.engine.run_backtest`'s
     `BacktestResult`) end to end and returns every fully-closed trade.
@@ -218,12 +339,17 @@ def reconstruct_trades(filled_intents: list[OrderIntent], fills: list[Fill]) -> 
     klines sequence), not this module's. Use `PositionTracker` directly
     (as `metrics.py` does) when that's needed.
 
+    `funding_rates` (default `None` — purely additive, every existing
+    caller omitting it is unaffected) is passed straight through to a
+    fresh `PositionTracker` — see this module's docstring for the
+    attribution design and sign convention.
+
     Raises `ValueError` (via `zip(..., strict=True)`) if `filled_intents`
     and `fills` have different lengths — that's a caller bug against the
     index-aligned `BacktestResult` contract, and must fail loudly rather
     than silently reconstruct trades from a truncated, misaligned pairing.
     """
-    tracker = PositionTracker()
+    tracker = PositionTracker(funding_rates)
     trades: list[ClosedTrade] = []
     for intent, fill in zip(filled_intents, fills, strict=True):
         closed = tracker.apply(intent, fill)

@@ -177,6 +177,47 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
   expect these numbers to keep drifting forward on every future run
   (rolling retention, not a fixed archive) — re-run `backfill.py` rather
   than trust any of these as permanent.
+- **Funding rate**: `GET /openApi/swap/v2/quote/fundingRate?symbol=BTC-
+  USDT` (`v2`, public, unauthenticated). Envelope matches every other
+  BingX endpoint (`{"code","msg","data"}`) except empty-result `data` is
+  `null`, not `[]` — confirmed both for a genuinely out-of-retention
+  range and an in-retention range with zero funding events in it.
+  Ordering newest-first within a page, silently capped to the newest
+  rows on an over-wide request — same shape as klines — but `limit` over
+  1000 is a hard server error (`code: 109400`), not a silent clamp,
+  unlike klines. **`data: null` is flaky/non-deterministic near the
+  retention edge**, confirmed two ways: `sr-m`'s original 2026-07-27
+  probing found a range independently known to have real data returning
+  `null` on ~1-in-6 to 1-in-2 of repeated identical calls; re-probed
+  2026-07-28 during this same task and found the flakiness had gotten
+  *worse* at the same boundary (15/15 consecutive `null`s for a range
+  the local cache already had real, previously-fetched rows for) —
+  consistent with a rolling retention window genuinely moving forward
+  hour to hour, not just a flaky server. A real, resumable
+  `backfill_funding.py` run (2026-07-27/28) confirms actual depth back
+  to **2020-11-29T12:00:00Z** (**6,199 rows** through 2026-07-27T16:00Z,
+  re-run multiple times to converge) — far deeper than funding's 8h
+  cadence would suggest is needed for a useful signal, and much deeper
+  than klines' own retention at any granularity. 3 small gaps (4-16h
+  each) remain unresolved right at that earliest boundary after 3+
+  reruns (15+ null-retries each) — treated as genuinely gone, same
+  "consistently null after 10-15 trials = really gone" standard as
+  klines' retention-edge probing. Real historical `fundingTime` values
+  are **not** always aligned to the modern 8h/28,800,000ms grid (a
+  2020-11-29 through 2021-01-05 stretch settles 4h off the grid every
+  later row uses, plus one isolated one-off row) — range validation for
+  this endpoint deliberately does not enforce grid alignment the way
+  klines does. Sign convention (verified against BingX's own official
+  docs): `fundingRate > 0` → longs pay shorts; `fundingRate < 0` →
+  shorts pay longs. Implemented as `payment = -sign(position_qty) ×
+  |position_qty| × markPrice × fundingRate` — `position_notional`
+  (`|position_qty| × markPrice`) is always the unsigned magnitude; the
+  position's own long(+1)/short(-1) sign is what actually flips the
+  payment direction between "pays" and "receives" for a given
+  `fundingRate` sign, using the funding row's own historical
+  `markPrice`. See `.planning/sr-m-funding-rate-pipeline.md` for the
+  full investigation and `python/metrics/position.py`'s module
+  docstring for the implementation-level detail.
 
 ### Verified — authenticated, VST key (2026-07-24, @ckrhehfl's demo-trading
 API key against `open-api-vst.bingx.com`)
@@ -427,8 +468,12 @@ aggregate; minimum 100 total trades across all folds (flagged tension:
 may unfairly penalize a legitimately low-frequency strategy — apply
 judgment, don't treat as absolute); profit factor floor 1.3-1.5
 (cushion for backtest-to-live slippage/fee mismodeling and the
-funding-rate gap — perpetual funding-rate P&L is not modeled anywhere
-in this pipeline, a known gap not solved by this design). A fold's
+funding-rate gap — perpetual funding-rate P&L was not modeled anywhere
+in this pipeline when this floor was set; `sr-m` (below) built additive/
+opt-in funding P&L modeling, but no walk-forward run behind any figure
+in this section has actually threaded a real `funding_rates` series
+through yet, so the cushion's reasoning is unchanged until one does). A
+fold's
 `profit_factor: null` is interpreted according to why it's null: a
 zero-trade fold already fails eligibility via the Sharpe/trade-count
 requirements regardless of profit factor; a fold where every closed
@@ -460,13 +505,22 @@ performed worse than this on every metric (`sr-k`, `sr-l`) — notably,
 the blend was expected by credible outside research (`sr-g`) to
 outperform momentum alone, and did not, on this project's real data.
 
-**Queued next, not yet started**: a funding-rate-based signal —
-genuinely different from every price/volume signal tried so far,
-credible research supports it, but needs new data ingestion (BingX
-funding-rate history, not yet built) and likely a metrics-layer addition
-(perpetual funding P&L is not modeled anywhere in this pipeline, a known
-gap noted since the Eligibility Bar's profit-factor floor was first
-set). **If that also doesn't clear the bar**, the next-larger option is
+**Infrastructure built, strategy itself queued next** (`sr-m`,
+2026-07-27/28): a funding-rate-based signal is genuinely different from
+every price/volume signal tried so far and credible research supports
+it, but needed new data ingestion and a metrics-layer addition first —
+both now exist. `python/data/bingx_funding.py` + `backfill_funding.py`
+fetch and cache real BingX funding-rate history (real backfill run:
+2020-11-29T12:00:00Z through present, 6,199 rows — see "Exchange API
+Facts" above); `metrics/position.py`/`metrics/metrics.py` gained
+additive/opt-in funding P&L attribution (`PositionTracker(funding_rates=
+...)`), verified both by unit tests covering the sign-convention trap
+explicitly and against a real reconstructed trade from a real
+`hourly_momentum` backtest held open across a real funding settlement.
+No strategy has actually used this yet — building the funding-rate
+signal itself, and re-running it (and ideally Configuration C) with real
+funding P&L included, is the next task. **If that also doesn't clear the
+bar**, the next-larger option is
 reconsidering this project's deliberate single-symbol (BTC-USDT only)
 scope — a meaningful share of the Sharpe reported by the credible
 institutional research this project benchmarked against (e.g. Concretum

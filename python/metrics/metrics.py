@@ -8,18 +8,24 @@ Not inside `backtest/` — that package stays scoped to fill simulation only
 separate, downstream concern that consumes a backtest's output; it does
 not simulate fills itself.
 
-**Known gap, not solved here**: perpetual funding-rate P&L is not modeled
-anywhere in this pipeline — flagged so it isn't silently forgotten, not
-addressed by this module.
+**Funding-rate P&L (Strategy Research Task M, additive/opt-in)**: the gap
+this docstring used to flag as "not modeled anywhere in this pipeline" is
+now addressed, opt-in, via `build_equity_curve`/`compute_metrics`'s
+`funding_rates` parameter -- see `metrics.position`'s docstring for the
+attribution design and sign convention, and
+`.planning/sr-m-funding-rate-pipeline.md` for the verification behind it.
+Omitting `funding_rates` (every pre-existing caller) is unaffected.
 """
 
 import math
 from dataclasses import dataclass
 from decimal import Decimal
 from statistics import StatisticsError, fmean, stdev
+from typing import Sequence
 
 from backtest.fill import Fill
 from backtest.kline import Kline
+from metrics.funding import FundingRate
 from metrics.position import ClosedTrade, PositionTracker
 from schemas.order_intent import OrderIntent
 
@@ -69,6 +75,7 @@ def build_equity_curve(
     filled_intents: list[OrderIntent],
     fills: list[Fill],
     starting_equity: Decimal,
+    funding_rates: Sequence[FundingRate] | None = None,
 ) -> tuple[list[Decimal], list[ClosedTrade]]:
     """Walks `klines` bar by bar, applying every `(intent, fill)` pair
     whose `fill.fill_time` has been reached (fills always land exactly on
@@ -87,12 +94,27 @@ def build_equity_curve(
     already used to mark the final bar to market just converts an
     unrealized amount already counted into a realized one.
 
+    `funding_rates` (default `None` — purely additive, every existing
+    caller omitting it sees byte-for-byte the same equity curve as
+    before this parameter existed) is passed straight through to a
+    fresh `PositionTracker`. When given, `tracker.apply_funding_through`
+    is also called once per bar (using that bar's `open_time`, *before*
+    this bar's own fills are processed — see `metrics.position`'s
+    docstring for why this ordering is what the entering-at-T-vs-
+    exiting-at-T judgment call requires), not only once per fill — so
+    `realized_pnl_so_far` in the formula above, and therefore the
+    reported equity curve itself, reflects a funding payment starting at
+    the exact bar it settles on rather than only once a position
+    eventually closes. `apply_funding_through` is cursor-based and safe
+    to call redundantly (see its own docstring), so this doesn't double-
+    count anything already applied inside `tracker.apply()` below.
+
     All arithmetic here is `Decimal`, matching `simulate_fill`'s exact
     precision — kept that way through this function; `Decimal` -> `float`
     conversion happens only in the statistical aggregation steps below
     (`_sharpe_ratio`), which stdlib `statistics`/`math` require.
     """
-    tracker = PositionTracker()
+    tracker = PositionTracker(funding_rates)
     closed_trades: list[ClosedTrade] = []
     equity_curve: list[Decimal] = []
 
@@ -100,6 +122,8 @@ def build_equity_curve(
     n_fills = len(fills)
 
     for kline in klines:
+        tracker.apply_funding_through(kline.open_time)
+
         while fill_index < n_fills and fills[fill_index].fill_time <= kline.open_time:
             closed = tracker.apply(filled_intents[fill_index], fills[fill_index])
             if closed is not None:
@@ -136,6 +160,7 @@ def compute_metrics(
     fills: list[Fill],
     starting_equity: Decimal,
     bars_per_day: int = _BARS_PER_DAY,
+    funding_rates: Sequence[FundingRate] | None = None,
 ) -> Metrics:
     """Builds the equity curve/closed-trade list and reduces them to the
     summary `Metrics` record. See `Metrics`' docstring for the degenerate-
@@ -145,13 +170,22 @@ def compute_metrics(
     straight through to `_sharpe_ratio`'s annualization -- see that
     function's docstring and this module's `_BARS_PER_DAY` comment for why
     it exists as a parameter rather than a hardcoded constant.
+
+    `funding_rates` (default `None` — purely additive, see
+    `build_equity_curve`'s docstring) is passed straight through to it.
+    When given, every reported figure derived from the equity curve or
+    `closed_trades` (`final_equity`, `total_return`, `sharpe_ratio`,
+    `max_drawdown`, `profit_factor`, each trade's `realized_pnl`) reflects
+    the now-more-complete P&L, funding included.
     """
     if starting_equity <= 0:
         raise ValueError(f"starting_equity must be positive, got {starting_equity}")
     if bars_per_day <= 0:
         raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
 
-    equity_curve, closed_trades = build_equity_curve(klines, filled_intents, fills, starting_equity)
+    equity_curve, closed_trades = build_equity_curve(
+        klines, filled_intents, fills, starting_equity, funding_rates=funding_rates
+    )
     final_equity = equity_curve[-1] if equity_curve else starting_equity
 
     return Metrics(
