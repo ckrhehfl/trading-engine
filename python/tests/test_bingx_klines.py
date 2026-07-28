@@ -142,8 +142,13 @@ def test_fetch_klines_page_rejects_limit_out_of_range(server, limit):
 
 
 def test_fetch_klines_page_rejects_unsupported_interval(server):
+    # "5m" rather than "1d": this test used "1d" as its stand-in for an
+    # unwired interval until Strategy Research Task T actually wired 1d
+    # up (see data/_grid.py). "5m" is the remaining interval named in
+    # CLAUDE.md's Current Scope but deliberately still not in INTERVAL_MS,
+    # so it plays the same role "1d" used to. The assertion is unchanged.
     with pytest.raises(ValueError, match="interval"):
-        fetch_klines_page(server.base_url, "BTC-USDT", "1d", BASE, BASE + STEP)
+        fetch_klines_page(server.base_url, "BTC-USDT", "5m", BASE, BASE + STEP)
 
 
 # ---------------------------------------------------------------------------

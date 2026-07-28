@@ -156,11 +156,24 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
 - **Historical kline retention on the live production endpoint
   (`open-api.bingx.com`) is granularity-dependent, not a single fixed
   window** — confirmed 2026-07-26 via direct binary-search probing (all
-  four granularities) plus a real, full `backfill.py` run for `1h`
-  specifically (the one this project's `hourly_momentum` strategy
-  actually depends on, so it got the stronger verification — a complete
-  fetch with an independently-confirmed zero-gap count, not just an
-  earliest-bar probe): `1d` back to ~2021-05-12 (~5 years); `1h` back to
+  four granularities) plus a real, full `backfill.py` run for `1h` and
+  (2026-07-28, Task T) `1d` — the two granularities this project's
+  strategy research actually depends on, so those two got the stronger
+  verification: a complete fetch with an independently-confirmed
+  zero-gap count, not just an earliest-bar probe. `1d` back to
+  **2021-05-14T00:00:00Z exactly** (confirmed by a real backfill:
+  **1,901 daily bars, zero internal gaps**, latest 2026-07-27, as of
+  2026-07-28 — a 5.21-year span, and the interval token is `1d` with
+  every bar's `time` on the UTC-midnight 86,400,000ms grid, i.e. BingX
+  does *not* open its daily candle at a local/exchange-timezone offset.
+  Gap count for `1d` was previously simply unknown — a binary search
+  finds an edge, it cannot find holes. Unlike `1h` below, `1d`'s
+  earlier probe-only estimate turned out **accurate**: it said
+  ~2021-05-12 / "~5 years" and the real backfill says 2021-05-14 /
+  5.21 years, a 2-day difference over 2 elapsed days, consistent with
+  both rolling retention and ±2 days of probe imprecision — the two
+  can't be told apart from one pair of observations. See
+  `.planning/sr-t-daily-data-path.md`); `1h` back to
   **2024-04-27T10:00:00Z exactly** (confirmed by the real backfill: **819.9
   days / 19,678 hourly bars, zero internal gaps**, as of 2026-07-26 —
   note this is the true span from that earliest date to "now," roughly
@@ -433,6 +446,24 @@ research to `1h` bars with its own, smaller windows (`train_bars=2160`,
 defaults above, scaled down for the `1h` timeframe, not the same
 numbers on a different unit), yielding **19** real folds — the number
 behind every result in "Strategy Attempts So Far" below.
+
+**A third timeframe, `1d`, and an inverted holdout (`sr-t`,
+2026-07-28)**: every one of the 1,839 logged backtest runs starts at or
+after 2024-04-27T10:00:00Z (1h retention's floor — verified directly
+against `runs/experiments.jsonl`), so **1d data before that date has
+been touched by zero trials in this project's history**. `sr-t` wired
+`1d` into the data pipeline and reserved that early window as a holdout:
+`configs/research/holdout_1d.json` uses a new, optional, backward-
+compatible `"holdout_side": "before"` config key (default `"after"`, so
+the 15m/1h configs are unaffected), making the holdout the **earliest**
+1,079 daily bars rather than a trailing slice. That looks backwards and
+isn't — a holdout is data whose contents have informed no decision, and
+here that is the early window; full reasoning in
+`.planning/sr-t-daily-data-path.md` and `python/research/holdout.py`'s
+module docstring. Detection floor ~0.96 annualized Sharpe over ~2.95
+years, vs. ~2.57 for the 1h trailing holdout. **No strategy has been
+written, run, or evaluated against 1d data** — deliberately, the
+specification must be committed before that window is ever loaded.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved

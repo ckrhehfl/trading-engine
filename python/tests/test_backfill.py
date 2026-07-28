@@ -149,6 +149,100 @@ def test_sync_range_rejects_inverted_range(server, conn):
 
 
 # ---------------------------------------------------------------------------
+# 1d granularity (Strategy Research Task T)
+#
+# The whole `sync_range` path -- grid validation, `find_missing_ranges`,
+# `iter_klines_range` pagination, `upsert_klines` -- exercised end to end
+# at daily granularity, not just the `_grid.INTERVAL_MS` lookup in
+# isolation. `1d` is the first interval whose 1000-candle page spans
+# years rather than days, so "the consumers still work when the step
+# changes by 96x" is the thing actually worth proving.
+# ---------------------------------------------------------------------------
+
+DAY_STEP = 86_400_000
+DAY_BASE = 1_714_176_000_000  # 2024-04-27T00:00:00Z, UTC-midnight aligned
+
+
+def test_sync_range_fetches_and_stores_daily_klines(server, conn):
+    times = [DAY_BASE + i * DAY_STEP for i in range(5)]
+    server.set_klines(times)
+
+    inserted = sync_range(
+        "BTC-USDT", "1d", times[0], times[-1] + DAY_STEP, conn=conn, base_url=server.base_url
+    )
+
+    assert inserted == 5
+    stored = [
+        row[0]
+        for row in conn.execute(
+            "SELECT open_time_ms FROM klines WHERE interval = '1d' ORDER BY open_time_ms"
+        )
+    ]
+    assert stored == times
+
+
+def test_sync_range_at_1d_refetches_only_a_genuinely_missing_day(server, conn):
+    times = [DAY_BASE + i * DAY_STEP for i in range(5)]
+    server.set_klines(times)
+    # Everything except day 2 is already cached.
+    upsert_klines(
+        conn,
+        "BTC-USDT",
+        "1d",
+        [
+            KlineRow(
+                open_time_ms=t,
+                open=Decimal("100"),
+                high=Decimal("100"),
+                low=Decimal("100"),
+                close=Decimal("100"),
+                volume=Decimal("1"),
+            )
+            for t in times
+            if t != times[2]
+        ],
+    )
+    server.requests.clear()
+
+    inserted = sync_range(
+        "BTC-USDT", "1d", times[0], times[-1] + DAY_STEP, conn=conn, base_url=server.base_url
+    )
+
+    assert inserted == 1
+    assert len(server.requests) == 1
+    assert int(server.requests[0]["params"]["startTime"]) == times[2]
+    assert server.requests[0]["params"]["interval"] == "1d"
+
+
+def test_sync_range_at_1d_rejects_a_range_misaligned_to_utc_midnight(server, conn):
+    # 2024-04-27T10:00:00Z is a legal 1h boundary but not a legal 1d one.
+    with pytest.raises(ValueError):
+        sync_range(
+            "BTC-USDT",
+            "1d",
+            DAY_BASE + 10 * 3_600_000,
+            DAY_BASE + DAY_STEP,
+            conn=conn,
+            base_url=server.base_url,
+        )
+
+
+def test_sync_range_keeps_1d_and_1h_rows_separate_for_the_same_symbol(server, conn):
+    # The cache is keyed on (symbol, interval, open_time_ms), so a daily
+    # bar and an hourly bar that share an open time are distinct rows --
+    # the real shared cache holds 15m, 1h and now 1d for BTC-USDT at once.
+    server.set_klines([DAY_BASE])
+
+    sync_range("BTC-USDT", "1d", DAY_BASE, DAY_BASE + DAY_STEP, conn=conn, base_url=server.base_url)
+    sync_range("BTC-USDT", "1h", DAY_BASE, DAY_BASE + 3_600_000, conn=conn, base_url=server.base_url)
+
+    rows = conn.execute(
+        "SELECT interval, open_time_ms FROM klines ORDER BY interval"
+    ).fetchall()
+    assert rows == [("1d", DAY_BASE), ("1h", DAY_BASE)]
+
+
+# ---------------------------------------------------------------------------
 # CLI helpers
 # ---------------------------------------------------------------------------
 
@@ -173,6 +267,32 @@ def test_main_exits_with_error_when_base_url_is_missing(monkeypatch):
 
     with pytest.raises(SystemExit):
         main(["--start", "2020-01-01T00:00:00+00:00"])
+
+
+def test_main_floors_the_default_end_to_the_1d_grid(monkeypatch, server, tmp_path):
+    # `main()`'s "now" default for `--end` is the one place this pipeline
+    # rounds instead of failing loud (see backfill.py). At 1d that
+    # rounding is a whole day wide, not 15 minutes -- which is exactly
+    # what keeps the current, still-forming daily bar out of the cache.
+    # Proven by inspecting the endTime actually sent to the exchange.
+    monkeypatch.setenv("BINGX_BASE_URL", server.base_url)
+
+    main(
+        [
+            "--symbol",
+            "BTC-USDT",
+            "--interval",
+            "1d",
+            "--start",
+            "2026-07-01T00:00:00+00:00",
+            "--db-path",
+            str(tmp_path / "klines.sqlite3"),
+        ]
+    )
+
+    assert server.requests, "expected at least one request to the exchange"
+    end_times = {int(r["params"]["endTime"]) for r in server.requests}
+    assert all(t % DAY_STEP == 0 for t in end_times), end_times
 
 
 def test_main_reads_base_url_from_environment_variable(monkeypatch, server, tmp_path):
