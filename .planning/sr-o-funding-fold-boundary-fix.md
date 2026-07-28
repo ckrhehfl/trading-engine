@@ -1,5 +1,4 @@
-# Strategy Research Task O: funding-extremity fold-boundary state-seeding
-fix
+# Strategy Research Task O: funding-extremity fold-boundary state-seeding fix
 
 ## Scope note
 
