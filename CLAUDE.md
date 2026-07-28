@@ -496,12 +496,14 @@ weighting and real volatility targeting (later refined with recalibrated
 ADX thresholds and an opt-in risk:reward search), regime-gated
 mean-reversion, a regime-adaptive momentum/mean-reversion blend, a
 standalone on-balance-volume trend strategy, and a funding-rate-
-extremity contrarian strategy. Full results, judgment calls, and honest
-negative findings for each: `.planning/sr-e-regime-momentum.md` through
-`.planning/sr-l-volume-signal.md`, plus `.planning/sr-n-funding-rate-
-strategy.md` (Task M, `.planning/sr-m-funding-rate-pipeline.md`, is the
-funding infrastructure between L and N — a pipeline/metrics task, not a
-strategy attempt of its own).
+extremity contrarian strategy (later fixed for a fold-boundary
+state-seeding bug, `sr-o`, without changing the strategy's underlying
+signal). Full results, judgment calls, and honest negative findings for
+each: `.planning/sr-e-regime-momentum.md` through `.planning/sr-l-volume-
+signal.md`, plus `.planning/sr-n-funding-rate-strategy.md` (Task M,
+`.planning/sr-m-funding-rate-pipeline.md`, is the funding infrastructure
+between L and N — a pipeline/metrics task, not a strategy attempt of its
+own) and `.planning/sr-o-funding-fold-boundary-fix.md`.
 
 **Current best result** ("Configuration C", `sr-i`): the refined
 momentum ensemble — mean annualized Sharpe +0.027 (positive; the only
@@ -564,23 +566,63 @@ project's methodology explicitly treats as data snooping) — flagged as a
 concrete, scoped follow-up candidate instead. Full diagnosis, real
 numbers, and honest reasoning: `.planning/sr-n-funding-rate-strategy.md`.
 
-**Neither funding-rate avenue clears the bar, but for genuinely different
-reasons** — Configuration C's shortfall is unrelated to funding
-modeling (confirmed by this task), and the funding-extremity signal
-itself was never actually stress-tested at a real sample size. **Two
-live next-step candidates, not yet chosen between**: (1) revisit the
-funding-extremity strategy's edge-trigger design (e.g. fire on any
-crossing into extreme rather than requiring a flip) as a genuinely new,
-not-yet-run configuration — real follow-up work, not tuning, since it
+**Funding-extremity fold-boundary fix, real 19-fold re-run (`sr-o`,
+2026-07-28)**: the 7-trade result above was diagnosed but explicitly not
+fixed in `sr-n` — this task fixed the specific mechanism, and re-derived
+it from real data first rather than trusting `sr-n`'s summary at face
+value. Root cause, confirmed directly: the strategy's rolling z-score was
+NEVER actually cold at any fold boundary (fed the full historical funding
+series, it fast-forwards to a warm, real reading on its very first
+`update()` call every fold, confirmed at all 19 real fold boundaries) —
+what was genuinely cold was `_signal_state` (the edge-trigger tracker of
+"last established extreme direction"), which a fresh per-fold strategy
+instance always started at `None`, discarding real, determinable
+knowledge of the market's prior state (a legitimate non-`None` value
+existed at all 19 real fold boundaries). Fixed via `initial_signal_state`/
+`compute_seed_signal_state` (new, `funding_extremity.py`): seeds
+`_signal_state` from a look-ahead-safe replay of real history up to each
+fold's own train-window end — the trigger RULE itself (fire only on a
+flip to the opposite extreme) is unchanged. Real result: total trades
+roughly doubled, **7 -> 14** (folds firing at least one trade: 5/19 ->
+8/19), confirming the diagnosed cause was correct and the fix worked
+mechanically. **The larger sample does NOT support a more favorable read
+of the signal — every headline metric that could move got WORSE, not
+better**, reported plainly rather than cherry-picked (mean Sharpe -0.0054
+-> -0.4839; min Sharpe -5.979 -> -7.979; mean profit factor 1.188 ->
+1.067; fold consistency 15.8% -> 21.1%, still far below the 80-90% floor).
+Eligibility bar: FAILS outright, at all three candidate floors, both
+before and after. 14 trades is still short of the 100-trade floor, so
+this remains data-limited in an absolute sense, but it is no longer
+"inconclusive due to an obvious, fixable harness bug" the way the 7-trade
+result was — the specific previously-identified mechanical cause is now
+fixed, and what's left is the underlying signal's own low
+frequency/performance at this threshold, not a harness artifact. Full
+mechanism, fix, and honest numbers: `.planning/sr-o-funding-fold-
+boundary-fix.md`.
+
+**Neither funding-rate avenue clears the bar.** Configuration C's
+shortfall is unrelated to funding modeling (`sr-n`); the funding-extremity
+signal has now been stress-tested at a real (still modest, 14-trade)
+sample size after `sr-o`'s fold-boundary fix, and fails decisively on
+*worse* aggregate metrics than the pre-fix 7-trade sample showed, not
+better. **Three live next-step candidates, not yet chosen between**: (1)
+the funding-extremity strategy's edge-trigger RULE itself (e.g. fire on
+any crossing into extreme rather than requiring a flip to the opposite
+extreme) remains untouched by `sr-o` (which fixed the state-reset
+mechanics around that rule, not the rule itself) — a genuinely new,
+not-yet-run configuration, real follow-up work, not tuning, since it
 would be the *first* test of that design, not a retry of this one; (2)
-the single-symbol-scope reconsideration already on file: a meaningful
-share of the Sharpe reported by the credible institutional research this
-project benchmarked against (e.g. Concretum Group's ensemble trend-
-following) plausibly comes from cross-symbol diversification a single-
-symbol design can't access — a real architecture reconsideration
-(touches the data pipeline's survivorship-bias handling, not just a new
-strategy file) that deserves its own `Discuss` pass, not a default
-fallback to reach for lightly.
+lowering `entry_z_threshold`/`funding_zscore_lookback` to generate more
+trades (`sr-o`'s own "deliberately out of scope" list) — same "genuinely
+new configuration, not tuning-after-the-fact" framing, since neither has
+been tried yet; (3) the single-symbol-scope reconsideration already on
+file: a meaningful share of the Sharpe reported by the credible
+institutional research this project benchmarked against (e.g. Concretum
+Group's ensemble trend-following) plausibly comes from cross-symbol
+diversification a single-symbol design can't access — a real architecture
+reconsideration (touches the data pipeline's survivorship-bias handling,
+not just a new strategy file) that deserves its own `Discuss` pass, not a
+default fallback to reach for lightly.
 
 ## Tooling Stack
 

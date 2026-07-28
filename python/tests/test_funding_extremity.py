@@ -1,7 +1,12 @@
 """Tests for `python/research/strategies/funding_extremity.py` -- Strategy
-Research Task N's funding-rate-extremity contrarian strategy. See
-CLAUDE.md's "Strategy Research Methodology" section and
-`.planning/sr-n-funding-rate-strategy.md` for the full design context.
+Research Task N's funding-rate-extremity contrarian strategy, and Strategy
+Research Task O's fold-boundary state-seeding fix on top of it. See
+CLAUDE.md's "Strategy Research Methodology" section,
+`.planning/sr-n-funding-rate-strategy.md` for the strategy's original
+design context, and `.planning/sr-o-funding-fold-boundary-fix.md` for the
+fold-boundary bug this file's `TestComputeSeedSignalState`/
+`TestInitialSignalStateSeeding`/`TestFitSeedsFromRealPreFoldHistory` classes
+cover.
 
 Written first (TDD).
 """
@@ -22,6 +27,7 @@ from research.strategies.funding_extremity import (
     FundingExtremityTrainable,
     RollingFundingZScore,
     _funding_signal,
+    compute_seed_signal_state,
 )
 from research.strategies.risk_management import DEFAULT_REFERENCE_EQUITY, DEFAULT_RISK_FRACTION
 from schemas.order_intent import OrderType, Side
@@ -60,6 +66,27 @@ def _flat_klines(count: int, price: str = "100", base_time: datetime = BASE_TIME
 
 def _funding_rate(open_time: datetime, rate: str, mark_price: str = "100") -> FundingRate:
     return FundingRate(funding_time=open_time, funding_rate=Decimal(rate), mark_price=Decimal(mark_price))
+
+
+def _single_crossing_rows(
+    base_time: datetime, lookback: int, extreme_rate: str, hours_step: int = 8
+) -> list[FundingRate]:
+    """`lookback` real settlements: `lookback - 1` identical neutral
+    ("1") readings, then one outlier (`extreme_rate`) as the LAST row --
+    a rolling sample z-score of an "n-1 identical + 1 outlier" window has
+    outlier magnitude EXACTLY `(n-1)/sqrt(n)`, regardless of how extreme
+    the outlier's actual value is (a real property of the sample-stdev
+    formula, not this file's choice) -- so `lookback` must be large enough
+    that this exceeds whatever `entry_z_threshold` a test uses. `lookback=10`
+    (`9/sqrt(10) ~= 2.846`) is this file's standard choice against
+    threshold=2, with a comfortable margin -- `lookback=3` (`2/sqrt(3) ~=
+    1.155`) is mathematically INCAPABLE of ever crossing threshold=2, no
+    matter the outlier's magnitude, which is why an earlier version of
+    this file's fold-boundary tests failed until this was found.
+    """
+    rows = [_funding_rate(base_time + timedelta(hours=hours_step * i), "1") for i in range(lookback - 1)]
+    rows.append(_funding_rate(base_time + timedelta(hours=hours_step * (lookback - 1)), extreme_rate))
+    return rows
 
 
 def _force_full_readiness(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -540,3 +567,229 @@ class TestFit:
 
         assert len(captured_kwargs) == 1
         assert captured_kwargs[0]["funding_rates"] is funding_rows
+
+
+# ---------------------------------------------------------------------------
+# compute_seed_signal_state -- Strategy Research Task O's fold-boundary fix.
+# See .planning/sr-o-funding-fold-boundary-fix.md for the full mechanism
+# this reconstructs: RollingFundingZScore's own rolling window was already
+# warm at every fold boundary (fed the full historical funding series), but
+# _signal_state (the edge-trigger tracker) was not -- a fresh
+# FundingExtremityStrategy always started it at None every fold, discarding
+# real knowledge of the market's last established extremity direction.
+# ---------------------------------------------------------------------------
+
+
+class TestComputeSeedSignalState:
+    def test_returns_none_when_no_settlement_ever_reaches_the_threshold(self):
+        rows = [_funding_rate(BASE_TIME + timedelta(hours=8 * i), "0.0001") for i in range(10)]
+        seed = compute_seed_signal_state(
+            rows, lookback_settlements=3, entry_z_threshold=Decimal("2"), known_through=rows[-1].funding_time
+        )
+        assert seed is None
+
+    def test_returns_none_before_lookback_warmup_is_satisfied(self):
+        rows = [_funding_rate(BASE_TIME + timedelta(hours=8 * i), "1") for i in range(2)]
+        seed = compute_seed_signal_state(
+            rows, lookback_settlements=5, entry_z_threshold=Decimal("2"), known_through=rows[-1].funding_time
+        )
+        assert seed is None
+
+    def test_returns_the_last_nonzero_direction_observed_not_the_first(self):
+        # A low-extreme crossing (-> contrarian LONG, +1) followed later by
+        # a high-extreme crossing (-> contrarian SHORT, -1) -- the seed must
+        # reflect the LATTER (most recent), not the first ever seen.
+        # lookback=10: see _single_crossing_rows's docstring for why a
+        # small lookback (e.g. 3) can never mathematically cross
+        # threshold=2 here, regardless of the outlier's magnitude.
+        lookback = 10
+        first_leg = _single_crossing_rows(BASE_TIME, lookback, "-100")  # low extreme -> +1
+        second_leg = _single_crossing_rows(
+            first_leg[-1].funding_time + timedelta(hours=8), lookback, "1000"  # high extreme -> -1
+        )
+        rows = first_leg + second_leg
+        seed = compute_seed_signal_state(
+            rows, lookback_settlements=lookback, entry_z_threshold=Decimal("2"), known_through=rows[-1].funding_time
+        )
+        assert seed == -1
+
+    def test_ignores_settlements_after_known_through_look_ahead_safety(self):
+        lookback = 10
+        first_leg = _single_crossing_rows(BASE_TIME, lookback, "-100")  # low extreme -> +1, BEFORE cutoff
+        second_leg = _single_crossing_rows(
+            first_leg[-1].funding_time + timedelta(hours=8), lookback, "1000"  # high extreme -> -1, AFTER cutoff
+        )
+        rows = first_leg + second_leg
+        seed = compute_seed_signal_state(
+            rows,
+            lookback_settlements=lookback,
+            entry_z_threshold=Decimal("2"),
+            known_through=first_leg[-1].funding_time,  # strictly before the second leg begins
+        )
+        assert seed == 1  # must NOT see the later, higher-magnitude -1 crossing
+
+
+# ---------------------------------------------------------------------------
+# initial_signal_state wired into FundingExtremityStrategy -- reproduces
+# the fold-boundary bug directly at the strategy level: the exact same
+# single crossing either fires (correctly seeded) or is silently wasted
+# establishing a baseline (unseeded, today's un-fixed default).
+# ---------------------------------------------------------------------------
+
+
+class TestInitialSignalStateSeeding:
+    def test_default_initial_signal_state_is_none_backward_compatible(self):
+        assert _strategy().signal_state is None
+
+    def test_a_single_opposite_extreme_crossing_never_fires_without_seeding(self, monkeypatch):
+        # This IS the fold-boundary bug: with no seed (the old, still-
+        # default behavior for any caller that doesn't opt in), a lone
+        # crossing into an extreme reading never fires a trade, because
+        # previous_signal defaults to None every time a fresh strategy
+        # instance is constructed -- exactly what limited Task N's real
+        # walk-forward run to 7 trades from 71 real crossings.
+        _force_full_readiness(monkeypatch)
+        monkeypatch.setattr(_ATR_MODULE_PATH, lambda self, kline: Decimal("2"))
+        sequence = [Decimal("-3")]  # low extreme -> contrarian LONG
+        values = iter(sequence)
+        monkeypatch.setattr(_ZSCORE_MODULE_PATH, lambda self, current_open_time: next(values))
+
+        strategy = _strategy()  # initial_signal_state defaults to None
+        klines = _flat_klines(len(sequence))
+        intents = [strategy(klines[: i + 1]) for i in range(len(klines))]
+        assert all(intent is None for intent in intents)
+
+    def test_the_same_single_crossing_fires_immediately_once_seeded_with_the_opposite_prior_state(self, monkeypatch):
+        # Identical scenario to the test above -- the ONLY difference is
+        # initial_signal_state=-1 (funding was, per real pre-fold history,
+        # most recently in a high-positive-z/crowded-LONG regime). The
+        # single low-extreme crossing now correctly differs from that
+        # seeded prior state and fires the contrarian LONG immediately,
+        # without needing a second in-window crossing to first establish a
+        # baseline.
+        _force_full_readiness(monkeypatch)
+        monkeypatch.setattr(_ATR_MODULE_PATH, lambda self, kline: Decimal("2"))
+        sequence = [Decimal("-3")]
+        values = iter(sequence)
+        monkeypatch.setattr(_ZSCORE_MODULE_PATH, lambda self, current_open_time: next(values))
+
+        strategy = _strategy(initial_signal_state=-1)
+        klines = _flat_klines(len(sequence))
+        intents = [strategy(klines[: i + 1]) for i in range(len(klines))]
+        fired = [i for i in intents if i is not None]
+        assert len(fired) == 1
+        assert fired[0].side == Side.LONG
+
+    def test_seeding_with_the_same_direction_does_not_spuriously_fire(self, monkeypatch):
+        # Sanity check on the seed's direction semantics: seeding with the
+        # SAME direction as the first in-window reading must not fire --
+        # no real flip occurred.
+        _force_full_readiness(monkeypatch)
+        monkeypatch.setattr(_ATR_MODULE_PATH, lambda self, kline: Decimal("2"))
+        sequence = [Decimal("-3")]
+        values = iter(sequence)
+        monkeypatch.setattr(_ZSCORE_MODULE_PATH, lambda self, current_open_time: next(values))
+
+        strategy = _strategy(initial_signal_state=1)  # already LONG-direction
+        klines = _flat_klines(len(sequence))
+        intents = [strategy(klines[: i + 1]) for i in range(len(klines))]
+        assert all(intent is None for intent in intents)
+
+
+# ---------------------------------------------------------------------------
+# FundingExtremityTrainable.fit() actually computing and threading the seed
+# through, from self._funding_rates and train_klines' own boundaries.
+# ---------------------------------------------------------------------------
+
+
+class TestFitSeedsFromRealPreFoldHistory:
+    def _trainable(self, tmp_path, **overrides: object) -> FundingExtremityTrainable:
+        kwargs: dict[str, Any] = dict(
+            strategy_id="test-funding-extremity",
+            strategy_version="v1",
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+            funding_rates=[],
+            funding_zscore_lookback=4,
+            runs_path=str(tmp_path / "experiments.jsonl"),
+        )
+        kwargs.update(overrides)
+        return FundingExtremityTrainable(**kwargs)
+
+    def test_fit_seeds_the_returned_strategy_from_real_history_ending_at_train_klines_last_bar(self, tmp_path):
+        # A real crowded-LONG (high z) settlement well before train begins
+        # -- the returned strategy's signal_state must reflect it (-1)
+        # WITHOUT anything inside train_klines itself needing to
+        # re-establish it. lookback=10: see _single_crossing_rows's
+        # docstring for why a small lookback (e.g. 3) can never
+        # mathematically cross threshold=2, regardless of magnitude.
+        lookback = 10
+        threshold = Decimal("2")
+        funding_rows = _single_crossing_rows(BASE_TIME, lookback, "1000")  # high extreme -> -1, last row at +72h
+        train_klines = _flat_klines(5, base_time=BASE_TIME + timedelta(hours=80))
+        trainable = self._trainable(
+            tmp_path, funding_rates=funding_rows, funding_zscore_lookback=lookback, entry_z_threshold=threshold
+        )
+        result = trainable.fit(train_klines, {}, parent_run_id="parent-seed-1")
+        assert result.signal_state == -1
+
+    def test_fit_seed_ignores_funding_data_at_or_after_train_klines_last_bar_look_ahead_safety(self, tmp_path):
+        # A settlement timed AFTER train_klines' own last bar must never
+        # influence the seed fit() computes for the strategy it returns --
+        # fit() only ever receives train_klines, and must not "peek" at
+        # what happens afterward even though self._funding_rates
+        # (deliberately, per this module's design) may extend arbitrarily
+        # far beyond it.
+        lookback = 10
+        threshold = Decimal("2")
+        before_rows = _single_crossing_rows(BASE_TIME, lookback, "-100")  # low extreme -> +1, last row at +72h
+
+        # train ends strictly between the "before" crossing (+72h) and the
+        # "after" crossing (whose own last, extreme row starts at +80h) --
+        # a clean, unambiguous split.
+        train_klines = _flat_klines(5, base_time=BASE_TIME + timedelta(hours=73))
+        after_train = train_klines[-1].open_time  # +77h
+
+        after_rows = _single_crossing_rows(
+            after_train + timedelta(hours=8), lookback, "1000"  # high extreme -> -1, AFTER train ends
+        )
+        funding_rows = before_rows + after_rows
+        trainable = self._trainable(
+            tmp_path, funding_rates=funding_rows, funding_zscore_lookback=lookback, entry_z_threshold=threshold
+        )
+        result = trainable.fit(train_klines, {}, parent_run_id="parent-seed-2")
+        assert result.signal_state == 1  # must NOT see the later, higher-magnitude -1 crossing
+
+    def test_fit_scoring_pass_is_also_seeded_consistently(self, tmp_path, monkeypatch):
+        # The in-sample scoring_strategy (used only for _log_candidate's
+        # diagnostic logging) should be seeded too, for the same "honest
+        # in-sample figures" reasons Task N already established for
+        # funding P&L (see module docstring's "Funding P&L" section) --
+        # verified via a spy on FundingExtremityStrategy's constructor
+        # capturing every initial_signal_state it's called with.
+        lookback = 10
+        threshold = Decimal("2")
+        funding_rows = _single_crossing_rows(BASE_TIME, lookback, "1000")  # high extreme -> -1, last row at +72h
+        train_klines = _flat_klines(5, base_time=BASE_TIME + timedelta(hours=80))
+        trainable = self._trainable(
+            tmp_path, funding_rates=funding_rows, funding_zscore_lookback=lookback, entry_z_threshold=threshold
+        )
+
+        import research.strategies.funding_extremity as module
+
+        real_init = module.FundingExtremityStrategy.__init__
+        seen_seeds = []
+
+        def spy_init(self, *args, **kwargs):
+            seen_seeds.append(kwargs.get("initial_signal_state"))
+            return real_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(module.FundingExtremityStrategy, "__init__", spy_init)
+        trainable.fit(train_klines, {}, parent_run_id="parent-seed-3")
+
+        # Two FundingExtremityStrategy instances are constructed per fit()
+        # call: the in-sample scoring_strategy, then the returned strategy.
+        # Both should see the real seeded value here (-1), since the seed
+        # -establishing settlement is before BOTH train_klines[0] and
+        # train_klines[-1].
+        assert seen_seeds == [-1, -1]

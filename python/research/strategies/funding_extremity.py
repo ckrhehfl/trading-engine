@@ -142,6 +142,74 @@ filter (vol-scalar warmup, or `final_quantity <= 0`) -- doing so would
 silently miss the entry once conditions later become favorable, unless
 the raw z-score reading happens to change again first.
 
+## Fold-boundary state seeding (Strategy Research Task O fix)
+
+Strategy Research Task N's real 19-fold walk-forward run found only 7
+trades fired despite 71 real crossings into an extreme funding reading --
+diagnosed there as an edge-trigger design bottleneck, but not fixed at the
+time (see `.planning/sr-n-funding-rate-strategy.md`'s "Diagnosing the
+7-trade result"). Task O's own re-derivation from real cached data
+(`.planning/sr-o-funding-fold-boundary-fix.md`) confirmed the PRECISE
+mechanism -- and it is narrower than "the z-score is cold every fold":
+`research.walkforward.run_walk_forward` builds a brand-new
+`FundingExtremityStrategy` for every fold via
+`FundingExtremityTrainable.fit()` (`_build_strategy()`), and that fresh
+instance is evaluated ONLY against that fold's own `validate_klines` --
+never `train_klines`. `RollingFundingZScore`'s own rolling window is
+*not* actually cold at any fold boundary: because `funding_rates` is
+always the full historical series (see that class's own docstring), its
+internal cursor fast-forwards through real pre-fold history on the very
+first `update()` call regardless of how "fresh" the instance is --
+confirmed empirically across all 19 real folds, every one gets a real,
+non-`None` z-score reading immediately. What IS genuinely cold every fold
+is `_signal_state` (the edge-trigger tracker of "the last established
+nonzero extremity direction"): a fresh `FundingExtremityStrategy` always
+starts it at `None`, discarding real knowledge of whichever direction
+funding was most recently extreme in before this fold began. This means
+the FIRST crossing within every fold's 30-day validate window is always
+wasted just re-establishing a baseline, and only a flip to the OPPOSITE
+extreme within the REMAINING span of that SAME fold can ever fire a trade
+-- and funding's demonstrated regime-persistence (sr-n) makes that rare.
+Confirmed directly: at every one of the 19 real fold boundaries, a real,
+well-defined, non-`None` "would-be" `_signal_state` exists from genuine
+prior history -- today's code discards all 19 of them.
+
+**Fix**: `initial_signal_state` (new constructor parameter, optional,
+default `None` -- preserves byte-for-byte identical behavior for any
+caller that doesn't pass it, e.g. every existing test in this module's
+test suite) lets a caller seed `_signal_state` at construction time.
+`compute_seed_signal_state` (module-level function, below) computes the
+CORRECT value from real history: it replays `RollingFundingZScore`/
+`_funding_signal` over `funding_rates` up to (and including) a
+`known_through` cutoff, returning the last nonzero direction observed --
+exactly what a strategy that had been running continuously since real
+funding history began would have accumulated by that point, using
+nothing but genuinely earlier real settlements (never fabricated, never
+the fold's own future data). `FundingExtremityTrainable.fit()` calls this
+once per fold: `train_klines[-1].open_time` (the last bar of THIS fold's
+own train window) as `known_through` for the strategy it returns for real
+`validate_klines` evaluation, and `train_klines[0].open_time` for the
+separate in-sample `scoring_strategy` (so even that diagnostic-only
+in-sample pass reflects genuine warmup, not a cold start, consistent with
+this module's existing "honesty" precedent for in-sample logging -- see
+"Funding P&L" section above). Threaded through via
+`_build_strategy(initial_signal_state=...)`.
+
+Look-ahead-safe by construction: `fit()` never receives `validate_klines`
+at all (`TrainableStrategy.fit`'s own docstring already requires this --
+"must not read `validate_klines` in any way"), so the seed can only ever
+reflect data already known by the time evaluation begins. Whether the
+`known_through` boundary treats an exactly-coincident settlement as
+included or excluded does not matter in practice: any settlement at or
+after a strategy's own first evaluated bar gets independently (and
+identically) reprocessed by that strategy's real per-bar
+`RollingFundingZScore.update()` call anyway, so the seed and the real
+evaluation loop always converge on the same `_signal_state` for that
+settlement regardless of which side of the boundary it's counted on --
+verified directly by a dedicated look-ahead-safety test proving a
+settlement timed after `train_klines[-1].open_time` never changes the
+seed `fit()` computes for the strategy it returns.
+
 ## No grid search (brand-new, not-yet-evaluated signal)
 
 Same judgment call as `mean_reversion.MeanReversionTrainable` (Task K):
@@ -322,6 +390,46 @@ def _funding_signal(zscore: Decimal, entry_threshold: Decimal) -> int:
     return 0
 
 
+def compute_seed_signal_state(
+    funding_rates: Sequence[FundingRate],
+    *,
+    lookback_settlements: int,
+    entry_z_threshold: Decimal,
+    known_through: datetime,
+) -> int | None:
+    """Reconstruct the `_signal_state` a continuously-running
+    `FundingExtremityStrategy` would have accumulated by `known_through`,
+    from real history alone -- see module docstring's "Fold-boundary state
+    seeding" section for why this exists (Strategy Research Task O, fixing
+    the mechanical bug Task N diagnosed but did not fix).
+
+    Replays `RollingFundingZScore`/`_funding_signal` over `funding_rates`
+    (which may extend arbitrarily far beyond `known_through` -- e.g. the
+    full historical series, per this module's established convention),
+    consuming only settlements with `funding_time <= known_through`, and
+    returns the LAST nonzero `_funding_signal` reading observed -- `None`
+    if the rolling window never warms up (fewer than `lookback_settlements`
+    real settlements at/before `known_through`) or no settlement ever
+    crossed `entry_z_threshold` in that span.
+
+    Look-ahead-safe by construction: a settlement with `funding_time >
+    known_through` is never consumed, regardless of how far `funding_rates`
+    extends beyond it (mirrors `RollingFundingZScore.update`'s own cursor
+    design -- see that class's docstring).
+    """
+    zscore_calc = RollingFundingZScore(funding_rates, lookback_settlements=lookback_settlements)
+    last_nonzero: int | None = None
+    for rate in funding_rates:
+        if rate.funding_time > known_through:
+            break
+        zscore = zscore_calc.update(rate.funding_time)
+        if zscore is not None:
+            signal = _funding_signal(zscore, entry_z_threshold)
+            if signal != 0:
+                last_nonzero = signal
+    return last_nonzero
+
+
 class FundingExtremityStrategy:
     """Bound, stateful `Strategy`: rolling funding-rate-z-score contrarian
     signal, edge-triggered, plus ATR-based stop/target exits and real
@@ -362,6 +470,7 @@ class FundingExtremityStrategy:
         target_annualized_vol: Decimal = DEFAULT_TARGET_ANNUALIZED_VOL,
         min_vol_scalar: Decimal = DEFAULT_MIN_VOL_SCALAR,
         max_vol_scalar: Decimal = DEFAULT_MAX_VOL_SCALAR,
+        initial_signal_state: int | None = None,
     ) -> None:
         if entry_z_threshold <= 0:
             raise ValueError(f"entry_z_threshold must be positive, got {entry_z_threshold}")
@@ -377,7 +486,14 @@ class FundingExtremityStrategy:
         self._reference_equity = reference_equity
         self._risk_fraction = risk_fraction
 
-        self._signal_state: int | None = None
+        # Defaults to None (a fresh, un-established baseline) -- the
+        # ORIGINAL, still-correct behavior for a strategy with no known
+        # prior history. A caller with real pre-fold funding history (see
+        # `compute_seed_signal_state` and module docstring's "Fold-boundary
+        # state seeding" section) may seed this instead, so this instance
+        # doesn't have to rediscover a direction the market was already in
+        # before this instance was constructed.
+        self._signal_state: int | None = initial_signal_state
         self._atr = AverageTrueRange(period=atr_period)
         self._vol = RollingRealizedVolatility(period=vol_period, bars_per_day=bars_per_day)
         self._position: OpenPosition | None = None
@@ -401,6 +517,16 @@ class FundingExtremityStrategy:
     @property
     def open_position(self) -> OpenPosition | None:
         return self._position
+
+    @property
+    def signal_state(self) -> int | None:
+        """The last established nonzero extremity direction (`+1`/`-1`), or
+        `None` if none has been observed yet -- exposed read-only, same
+        introspection convention as `open_position`, primarily for testing
+        `initial_signal_state` seeding (see module docstring's "Fold-
+        boundary state seeding" section).
+        """
+        return self._signal_state
 
     def __call__(self, window: Sequence[Kline]) -> OrderIntent | None:
         current = window[-1]
@@ -617,7 +743,19 @@ class FundingExtremityTrainable:
     def fit(self, train_klines: list[Kline], params: Mapping[str, Any], *, parent_run_id: str) -> Strategy:
         symbol = params.get("symbol", DEFAULT_SYMBOL)
 
-        scoring_strategy = self._build_strategy(symbol=symbol)
+        # Strategy Research Task O fix -- see module docstring's "Fold-
+        # boundary state seeding" section for the full mechanism and why
+        # each of these two calls uses a different `known_through` cutoff:
+        # the scoring pass below walks train_klines from its own start, so
+        # it must only know about history strictly up to (not into)
+        # train's own beginning; the returned strategy is evaluated
+        # against validate_klines (which begins immediately after
+        # train_klines ends), so it may know about everything through
+        # train's own last bar. Both are look-ahead-safe: fit() never
+        # receives validate_klines, so neither seed can reflect anything
+        # beyond real, already-known history.
+        scoring_seed = self._seed_signal_state(train_klines[0].open_time) if train_klines else None
+        scoring_strategy = self._build_strategy(symbol=symbol, initial_signal_state=scoring_seed)
         backtest_result = run_backtest(train_klines, scoring_strategy, self._fee_bps, self._slippage_bps)
         metrics = compute_metrics(
             train_klines,
@@ -628,9 +766,19 @@ class FundingExtremityTrainable:
             funding_rates=self._funding_rates,
         )
         self._log_candidate(symbol=symbol, train_klines=train_klines, metrics=metrics, parent_run_id=parent_run_id)
-        return self._build_strategy(symbol=symbol)
 
-    def _build_strategy(self, *, symbol: str) -> FundingExtremityStrategy:
+        validate_seed = self._seed_signal_state(train_klines[-1].open_time) if train_klines else None
+        return self._build_strategy(symbol=symbol, initial_signal_state=validate_seed)
+
+    def _seed_signal_state(self, known_through: datetime) -> int | None:
+        return compute_seed_signal_state(
+            self._funding_rates,
+            lookback_settlements=self._funding_zscore_lookback,
+            entry_z_threshold=self._entry_z_threshold,
+            known_through=known_through,
+        )
+
+    def _build_strategy(self, *, symbol: str, initial_signal_state: int | None = None) -> FundingExtremityStrategy:
         return FundingExtremityStrategy(
             symbol=symbol,
             funding_rates=self._funding_rates,
@@ -646,6 +794,7 @@ class FundingExtremityTrainable:
             target_annualized_vol=self._target_annualized_vol,
             min_vol_scalar=self._min_vol_scalar,
             max_vol_scalar=self._max_vol_scalar,
+            initial_signal_state=initial_signal_state,
         )
 
     def _log_candidate(
