@@ -367,6 +367,69 @@ $ cd python && uv run pytest -q
 687 passed in 60.25s
 ```
 
+## CodeRabbit review findings (PR #48)
+
+One review pass, 4 actionable findings. **All 4 accepted and fixed** —
+none declined.
+
+- **Major, genuine functional-correctness bug**: `FundingExtremityStrategy.
+  __call__`'s edge-trigger condition originally gated `atr is not None and
+  atr > 0` *inside* the same `if` that decides whether to attempt an
+  entry at all — so when ATR was unavailable (warmup, or a degenerate
+  `atr <= 0`) at the exact bar a real opposite-extreme crossing occurred,
+  `_open()` was never called, `entry_rejected_by_filters` stayed `False`
+  (it's only ever set *inside* the now-skipped branch), and `_signal_
+  state` was silently updated anyway — permanently losing that crossing
+  until the z-score flipped again, exactly the failure mode the `entry_
+  rejected_by_filters` mechanism exists to prevent (already correctly
+  handled for the vol-scalar/`final_quantity<=0` filters, just not for
+  ATR). Confirmed as a real bug via a failing-first TDD test
+  (`test_atr_warmup_does_not_consume_the_edge_trigger_state`, run against
+  the pre-fix code and confirmed to fail: `0 == 1`) before fixing.
+  **Real-run impact: none for the actual reported figures** — re-ran the
+  funding-extremity strategy's full 19-fold walk-forward after the fix
+  (`run_id=2177505c-b968-4bda-8aa8-9e2b686e777e`) and every figure
+  (7 trades, identical per-fold Sharpe values, identical eligibility
+  verdict) matched the pre-fix run byte-for-byte — because `AverageTrueRange`'s
+  own warmup (14 bars) completes almost immediately relative to
+  `RollingFundingZScore`'s (90 real settlements, up to ~30 days), ATR was
+  already long-warm by the time this strategy's z-score ever produces its
+  first real (non-`None`) reading in this specific dataset. A genuine
+  correctness fix for robustness (a degenerate `atr<=0` reading could
+  still occur at any point, not just during warmup), not one that changes
+  any number in this document.
+- **Real data-integrity risk**: `load_research_funding`'s `symbol`
+  default was a hardcoded `"BTC-USDT"` literal, unlike `load_research_
+  klines`'s config-derived default — a caller passing a holdout config
+  for a different symbol while forgetting to also pass `symbol` explicitly
+  would have silently paired that symbol's klines with BTC-USDT's funding
+  data. Fixed: `symbol` now defaults to `None`, resolved from the given
+  `holdout_config_path`'s own `symbol` field (matching `load_research_
+  klines`'s behavior exactly) when omitted; an explicit `symbol` still
+  overrides. New regression test
+  (`test_load_research_funding_default_symbol_tracks_a_non_btc_holdout_
+  config`) uses a real non-BTC holdout config to prove the default is
+  genuinely config-derived, not a literal that happens to match every
+  other fixture's BTC-USDT config.
+- **`zip(seq, seq[1:])` → `itertools.pairwise`**: a real Ruff finding
+  (B905/RUF007) in `RollingFundingZScore`'s ascending-order validation —
+  functionally identical, clearer intent, no slice copy. Fixed.
+- **Test coverage nitpick, accepted**: `test_fit_never_reads_klines_
+  beyond_train_klines`'s original form only compared `id(klines_arg) ==
+  id(klines)` against a `klines` array with no "future" beyond it to leak
+  in the first place — proving object-identity pass-through, not genuine
+  lookahead safety. Fixed to give `fit()` a real 40-bar array, pass only
+  the first 20 bars as `train_klines`, and assert every `run_backtest`
+  call's `klines_arg` ends exactly at `train_klines[-1].open_time` — a
+  test that would actually fail if `fit()` ever leaked bars 20-39 into
+  `run_backtest`.
+
+Full suite after all fixes: **689 passed** (was 687 immediately before
+this review pass — the 2 new regression tests, ATR-warmup and non-BTC-
+symbol, are the only production-code-touching fixes in this pass; the
+`pairwise` and lookahead-test changes don't add new test count on their
+own).
+
 ## Judgment calls resolved without asking
 
 - **z-score over rolling percentile** for the extremity threshold — see

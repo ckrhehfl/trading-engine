@@ -265,6 +265,39 @@ class TestContrarianDirectionEndToEnd:
         intents = self._fire(monkeypatch, sequence)
         assert all(i is None for i in intents)
 
+    def test_atr_warmup_does_not_consume_the_edge_trigger_state(self, monkeypatch):
+        # Real CodeRabbit review finding on this task's PR: an entry
+        # blocked purely by ATR being unavailable (warmup, or a
+        # degenerate atr<=0 reading) must not be treated as "the signal
+        # fired" for edge-trigger purposes -- otherwise the transition is
+        # silently lost even once ATR later becomes available, unless the
+        # raw z-score happens to change again first (see module
+        # docstring's "Edge-triggering" section).
+        _force_full_readiness(monkeypatch)
+        # bar0: high extreme -> establishes SHORT signal state (no prior
+        #       state to fire against yet).
+        # bar1: back in-band.
+        # bar2: low extreme -> WOULD flip to LONG, but ATR is still None
+        #       here (warmup) -- must be treated as a downstream-filter
+        #       rejection, not a consumed signal.
+        # bar3: still low extreme (unchanged reading), ATR now ready ->
+        #       must fire the LONG entry now, since bar2 must not have
+        #       already consumed the state.
+        zscore_sequence = [Decimal("3"), Decimal("0"), Decimal("-3"), Decimal("-3")]
+        atr_sequence = [Decimal("2"), Decimal("2"), None, Decimal("2")]
+        zvalues = iter(zscore_sequence)
+        avalues = iter(atr_sequence)
+        monkeypatch.setattr(_ZSCORE_MODULE_PATH, lambda self, current_open_time: next(zvalues))
+        monkeypatch.setattr(_ATR_MODULE_PATH, lambda self, kline: next(avalues))
+
+        strategy = _strategy()
+        klines = _flat_klines(len(zscore_sequence))
+        intents = [strategy(klines[: i + 1]) for i in range(len(klines))]
+
+        fired = [i for i in intents if i is not None]
+        assert len(fired) == 1
+        assert fired[0].side == Side.LONG
+
 
 # ---------------------------------------------------------------------------
 # Risk management composition (ATR stop/target, fixed-fractional sizing)
@@ -447,21 +480,29 @@ class TestFit:
         assert result.funding_zscore_lookback == 4
 
     def test_fit_never_reads_klines_beyond_train_klines(self, tmp_path, monkeypatch):
+        # Real CodeRabbit review finding on this task's PR: comparing only
+        # id(klines_arg) == id(klines) doesn't actually prove lookahead
+        # safety when `klines` IS the full array with nothing beyond it to
+        # leak. This version gives fit() a real future slice (bars 20..39)
+        # beyond train_klines (bars 0..19) and proves run_backtest is only
+        # ever called with data ending at train_klines' own last bar.
         trainable = self._trainable(tmp_path)
-        klines = _flat_klines(20)
+        full = _flat_klines(40)
+        train_klines = full[:20]
 
         import backtest.engine as engine_module
 
         real_run_backtest = engine_module.run_backtest
-        seen_ids = []
+        seen_last_times = []
 
         def spy(klines_arg, *args, **kwargs):
-            seen_ids.append(id(klines_arg))
+            seen_last_times.append(klines_arg[-1].open_time)
             return real_run_backtest(klines_arg, *args, **kwargs)
 
         monkeypatch.setattr("research.strategies.funding_extremity.run_backtest", spy)
-        trainable.fit(klines, {}, parent_run_id="parent-4")
-        assert all(kid == id(klines) for kid in seen_ids)
+        trainable.fit(train_klines, {}, parent_run_id="parent-4")
+        assert seen_last_times
+        assert all(t == train_klines[-1].open_time for t in seen_last_times)
 
     def test_default_params_used_when_trainable_constructed_without_override(self, tmp_path):
         trainable = FundingExtremityTrainable(

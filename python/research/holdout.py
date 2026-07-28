@@ -166,7 +166,7 @@ def load_research_funding(
     start_ms: int,
     end_ms: int,
     *,
-    symbol: str = "BTC-USDT",
+    symbol: str | None = None,
     db_path: str | Path = DEFAULT_DB_PATH,
     holdout_config_path: str | Path = DEFAULT_HOLDOUT_CONFIG_PATH,
 ) -> list[FundingRate]:
@@ -177,17 +177,24 @@ def load_research_funding(
     cutoff `holdout_config_path` names, matching this project's holdout
     discipline for price data (CLAUDE.md's Strategy Research Methodology).
 
-    `symbol` is a real, explicit parameter here -- unlike
-    `load_research_klines`, which reads `symbol` from the holdout config
-    it's given. Funding rate has no `interval` concept (see
-    `data/bingx_funding.py`'s module docstring) and therefore no dedicated
-    per-timeframe holdout config the way klines do (`configs/research/
-    holdout.json` for 15m vs. `configs/research/holdout_1h.json` for 1h)
-    -- the SAME `holdout_cutoff_ms` this call is given governs both the
-    kline data a caller loads via `load_research_klines` and the funding
-    data loaded here, so a caller working with 1h data passes
-    `holdout_config_path="configs/research/holdout_1h.json"` to both
-    calls, exactly as it already does for `load_research_klines`.
+    `symbol` defaults to `None`, meaning "use `holdout_config_path`'s own
+    `symbol`" -- the SAME symbol `load_research_klines` would use for that
+    same config path, so a caller loading both klines and funding for one
+    holdout config without explicitly naming a symbol is guaranteed to get
+    a matched pair, never a silent klines/funding symbol mismatch (a real
+    CodeRabbit review finding on this task's PR: a caller passing a non-
+    BTC holdout config while forgetting to also pass `symbol` here would
+    otherwise have silently mixed a BTC-USDT funding series into a
+    different symbol's backtest -- wrong data silently, worse than an
+    explicit failure). An explicitly supplied `symbol` still overrides the
+    config's own value, e.g. for a deliberate cross-symbol experiment.
+    Funding rate has no `interval` concept (see `data/bingx_funding.py`'s
+    module docstring) and therefore no dedicated per-timeframe holdout
+    config the way klines do (`configs/research/holdout.json` for 15m vs.
+    `configs/research/holdout_1h.json` for 1h) -- the SAME `holdout_
+    cutoff_ms`/`symbol` this call's config names governs both the kline
+    data a caller loads via `load_research_klines` and the funding data
+    loaded here.
 
     Deliberately no `load_holdout_funding` counterpart yet -- no task has
     needed one (this project's funding-rate strategy work so far never
@@ -199,6 +206,7 @@ def load_research_funding(
     """
     config = load_holdout_config(holdout_config_path)
     cutoff_ms = config["holdout_cutoff_ms"]
+    resolved_symbol = symbol if symbol is not None else config["symbol"]
 
     clamped_end_ms = min(end_ms, cutoff_ms)
     if clamped_end_ms < end_ms:
@@ -211,7 +219,7 @@ def load_research_funding(
             clamped_end_ms,
         )
 
-    return _load_funding_rates(symbol, start_ms, clamped_end_ms, db_path)
+    return _load_funding_rates(resolved_symbol, start_ms, clamped_end_ms, db_path)
 
 
 def load_holdout_klines(

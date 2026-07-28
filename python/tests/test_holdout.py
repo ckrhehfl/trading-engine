@@ -180,7 +180,11 @@ def test_load_research_funding_never_returns_data_at_or_after_the_cutoff(funding
     assert all(r.funding_time.timestamp() * 1000 < CUTOFF for r in rates)
 
 
-def test_load_research_funding_defaults_to_btc_usdt_symbol(funding_db_path, holdout_config_path):
+def test_load_research_funding_defaults_to_the_holdout_configs_own_symbol(funding_db_path, holdout_config_path):
+    # holdout_config_path's own fixture symbol is "BTC-USDT" -- this
+    # proves the default is genuinely read from the config (not a
+    # hardcoded literal) via the dedicated mismatched-symbol test below,
+    # which uses a config with a DIFFERENT symbol.
     rates = load_research_funding(
         BASE, BASE + 5 * STEP, db_path=funding_db_path, holdout_config_path=holdout_config_path
     )
@@ -193,6 +197,34 @@ def test_load_research_funding_respects_an_explicit_symbol(funding_db_path, hold
         BASE, BASE + 5 * STEP, symbol="ETH-USDT", db_path=funding_db_path, holdout_config_path=holdout_config_path
     )
 
+    assert rates == []
+
+
+def test_load_research_funding_default_symbol_tracks_a_non_btc_holdout_config(tmp_path, funding_db_path):
+    # Real CodeRabbit review finding on this task's PR: a hardcoded
+    # "BTC-USDT" default would silently query the wrong symbol's funding
+    # data for a caller using a holdout config for a different symbol and
+    # forgetting to also pass `symbol` explicitly. Proves the default is
+    # genuinely config-derived, not a hardcoded literal that happens to
+    # match the other fixtures' "BTC-USDT" config.
+    eth_config_path = tmp_path / "holdout_eth.json"
+    eth_config_path.write_text(
+        json.dumps(
+            {
+                "symbol": "ETH-USDT",
+                "interval": "15m",
+                "holdout_cutoff_ms": CUTOFF,
+                "set_on": "2026-07-26",
+                "rationale": "test fixture cutoff for a non-BTC symbol",
+            }
+        )
+    )
+
+    rates = load_research_funding(BASE, BASE + 5 * STEP, db_path=funding_db_path, holdout_config_path=eth_config_path)
+
+    # funding_db_path only has BTC-USDT rows stored -- querying with the
+    # config's own ETH-USDT symbol (the correct, non-hardcoded default)
+    # legitimately returns nothing, proving no silent BTC-USDT fallback.
     assert rates == []
 
 

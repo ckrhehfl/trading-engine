@@ -159,6 +159,7 @@ from collections import deque
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
+from itertools import pairwise
 from typing import Any
 from uuid import uuid4
 
@@ -260,7 +261,7 @@ class RollingFundingZScore:
                 f"lookback_settlements must be at least 2 (need >=2 samples for a sample "
                 f"stdev), got {lookback_settlements}"
             )
-        for previous, current in zip(funding_rates, funding_rates[1:]):
+        for previous, current in pairwise(funding_rates):
             if current.funding_time < previous.funding_time:
                 raise ValueError(
                     "funding_rates must be sorted ascending by funding_time "
@@ -421,16 +422,21 @@ class FundingExtremityStrategy:
                 intent = self._flatten(current)
         elif zscore is not None:
             previous_signal = self._signal_state
-            if (
-                previous_signal is not None
-                and current_signal != 0
-                and current_signal != previous_signal
-                and atr is not None
-                and atr > 0
-            ):
-                side = Side.LONG if current_signal > 0 else Side.SHORT
-                intent = self._open(current, side, atr, realized_vol)
-                entry_rejected_by_filters = intent is None
+            if previous_signal is not None and current_signal != 0 and current_signal != previous_signal:
+                if atr is None or atr <= 0:
+                    # ATR warmup (or a degenerate atr<=0 reading) is a
+                    # downstream filter too -- same treatment as the
+                    # vol-scalar/final_quantity<=0 filters below, and for
+                    # the same reason: this transition must not be
+                    # silently consumed just because ATR happened not to
+                    # be ready yet (a real CodeRabbit review finding on
+                    # this task's PR -- see module docstring's "Edge-
+                    # triggering" section).
+                    entry_rejected_by_filters = True
+                else:
+                    side = Side.LONG if current_signal > 0 else Side.SHORT
+                    intent = self._open(current, side, atr, realized_vol)
+                    entry_rejected_by_filters = intent is None
 
         # See module docstring's "Edge-triggering" section: do not consume
         # the edge-trigger state when an entry was attempted but rejected
