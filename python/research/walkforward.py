@@ -41,6 +41,7 @@ from backtest.kline import Kline
 from metrics.funding import FundingRate
 from metrics.metrics import Metrics, compute_metrics
 from research import experiment_log
+from research.overfitting_check import SENSITIVITY_PARENT_RUN_ID_PREFIX
 from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_sensitivity
 
 # Mark-to-market starting equity for each fold's independent evaluation.
@@ -192,6 +193,7 @@ def run_walk_forward(
     parent_run_id: str | None = None,
     candidate_index: int | None = None,
     total_candidates: int | None = None,
+    strategy_family: str | None = None,
     sensitivity_extractor: Callable[[Strategy], Sequence[int]] | None = None,
     sensitivity_fractions: Sequence[Decimal] = DEFAULT_PERTURBATION_FRACTIONS,
     runs_path: str = experiment_log.DEFAULT_RUNS_PATH,
@@ -222,6 +224,15 @@ def run_walk_forward(
     straight through to `log_run`; `parent_run_id`/`candidate_index`/
     `total_candidates` are for Task D's grid search (`None` for a
     standalone run, which is every call this task makes).
+
+    `strategy_family` (default `None` -- purely additive, Strategy
+    Research Task P) is passed straight through to `log_run`, which omits
+    the key entirely rather than writing `null` when it is `None`; see
+    that function's docstring and `research/lineage.py` for why. Supplying
+    it makes a run self-describing, so `research.overfitting_check.
+    check_project_combination_count` doesn't have to fall back to
+    `research.lineage.FAMILY_BY_STRATEGY_ID`'s curated historical map to
+    work out which research family the run belongs to.
 
     `train_bars`/`validate_bars`/`step_bars`/`fee_bps`/`slippage_bps` are
     keyword-only, unlike CLAUDE.md's Build-section signature snippet
@@ -344,16 +355,25 @@ def run_walk_forward(
                     starting_equity=starting_equity,
                     bars_per_day=bars_per_day,
                     fractions=sensitivity_fractions,
-                    # Deliberately NOT this fold's run_id: check_parameter_
-                    # sensitivity's own docstring explains why passing the
-                    # real grid search's own parent_run_id here would corrupt
-                    # research.overfitting_check's MinBTL-style counting (it
-                    # groups by parent_run_id and expects one consistent
-                    # total_candidates per group -- mixing in a batch of
-                    # single-candidate sensitivity fit() calls under the same
-                    # id breaks that assumption). Leaving this at its default
-                    # (None) makes every sensitivity-driven fit() call log as
-                    # its own standalone record instead.
+                    # Deliberately NOT this fold's bare run_id: check_
+                    # parameter_sensitivity's own docstring explains why
+                    # passing the real grid search's own parent_run_id here
+                    # would corrupt research.overfitting_check's MinBTL-style
+                    # counting (it groups by parent_run_id and expects one
+                    # consistent total_candidates per group -- mixing in a
+                    # batch of single-candidate sensitivity fit() calls under
+                    # the same id breaks that assumption).
+                    #
+                    # sr-g's fix for that was to leave this at its default
+                    # (None), making every sensitivity-driven fit() log as an
+                    # anonymous standalone record. Strategy Research Task P
+                    # supersedes that compromise with a PREFIXED DISTINCT id:
+                    # it's a different parent_run_id from the real grid's, so
+                    # the group-corruption problem sr-g solved stays solved,
+                    # and the records are now self-identifying as sensitivity
+                    # probes instead of being indistinguishable from real
+                    # standalone runs. See .planning/sr-p-trial-accounting.md.
+                    parent_run_id=f"{SENSITIVITY_PARENT_RUN_ID_PREFIX}{run_id}",
                 )
                 parameter_sensitivity = sensitivity_result.to_dict()
             except Exception as exc:  # noqa: BLE001 -- deliberately broad, see comment above
@@ -403,6 +423,7 @@ def run_walk_forward(
         parent_run_id=parent_run_id,
         candidate_index=candidate_index,
         total_candidates=total_candidates,
+        strategy_family=strategy_family,
         runs_path=runs_path,
     )
 

@@ -144,6 +144,7 @@ def log_run(
     parent_run_id: str | None = None,
     candidate_index: int | None = None,
     total_candidates: int | None = None,
+    strategy_family: str | None = None,
     runs_path: str | Path = DEFAULT_RUNS_PATH,
 ) -> dict:
     """Append one `record_type: "backtest_run"` entry. Called automatically
@@ -153,6 +154,17 @@ def log_run(
     search lineage fields from CLAUDE.md's design: all `None` for a
     standalone run (everything this task produces), set by Task D's grid
     search for each candidate backtest it spawns.
+
+    `strategy_family` (Strategy Research Task P, `.planning/sr-p-trial-
+    accounting.md`) records which research family this run belongs to, so
+    renaming a `strategy_id` between runs can't reset its data-snooping
+    history. **When `None`, the key is omitted from the record entirely** --
+    deliberately not written as `null` the way `parent_run_id` is. That
+    difference is functional, not cosmetic: "key absent" then unambiguously
+    means "pre-lineage record, attribute via `research.lineage`'s curated
+    map", while "key present" means "trust the record". A `null` would
+    collide the two cases. Every pre-Task-P record in
+    `runs/experiments.jsonl` is unaffected and still reads back identically.
 
     Returns the record actually written (with all types still Python-
     native, e.g. `Decimal`/`datetime` un-stringified) for a caller that
@@ -177,6 +189,11 @@ def log_run(
         "candidate_index": candidate_index,
         "total_candidates": total_candidates,
     }
+    # Only present when a caller actually supplied one -- see this
+    # function's docstring for why "key absent" and "key null" must stay
+    # distinguishable here.
+    if strategy_family is not None:
+        record["strategy_family"] = strategy_family
     return _append_record(record, runs_path)
 
 

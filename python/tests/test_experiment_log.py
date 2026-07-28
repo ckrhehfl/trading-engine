@@ -115,6 +115,29 @@ def test_log_run_passes_through_grid_search_lineage_fields(tmp_path):
     assert record["total_candidates"] == 8
 
 
+def test_log_run_omits_strategy_family_entirely_when_none(tmp_path):
+    # Deliberately NOT `"strategy_family": null` (the shape
+    # `parent_run_id` uses): "key absent" must unambiguously mean
+    # "pre-lineage record, attribute via research.lineage's curated map",
+    # while "key present" means "trust the record". A null would collide
+    # the two cases. See `.planning/sr-p-trial-accounting.md`.
+    runs_path = tmp_path / "experiments.jsonl"
+
+    log_run(**_log_run_kwargs(runs_path=runs_path))
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    assert "strategy_family" not in record
+
+
+def test_log_run_writes_strategy_family_when_supplied(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+
+    log_run(**_log_run_kwargs(strategy_family="trend-momentum", runs_path=runs_path))
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["strategy_family"] == "trend-momentum"
+
+
 def test_log_run_appends_without_clobbering_prior_records(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
