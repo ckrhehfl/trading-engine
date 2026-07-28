@@ -349,6 +349,25 @@ than assuming) showed it raises `ValueError` instead. The test was
 corrected to match the established behavior and the `"after"` mirror was
 pinned alongside it — the symmetry was found by checking, not asserted.
 
+## CodeRabbit review findings
+
+One actionable finding on the first review pass, accepted and fixed:
+
+- **`_clamp_research_range`'s `else` branch silently treated an unknown
+  `side` as `"before"`.** Both real callers pre-validate via
+  `resolve_holdout_side`, so there was no live path that could reach it —
+  but an `if after: ... else: ...` shape means a typo'd side inverts
+  which end of the range gets clamped, i.e. hands holdout data to a
+  research caller. That is exactly the failure this module's fail-loud
+  discipline exists to prevent, and the helper was contradicting the
+  principle its own docstrings state three times over. Fixed with an
+  explicit `elif HOLDOUT_SIDE_BEFORE` plus a raising `else`, and a test
+  that fails without it (`DID NOT RAISE ValueError`, confirmed red
+  first). A second test pins that the two valid sides clamp *opposite*
+  ends — so the branch that was previously reachable-by-accident is now
+  positively specified rather than just guarded. 739 tests total (was
+  737), all green.
+
 ## Deliberately out of scope
 
 - **Any strategy on 1d data.** See Scope note. Not "not done yet" — must

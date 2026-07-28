@@ -17,6 +17,7 @@ from data.store import connect, upsert_funding_rates, upsert_klines
 from research.experiment_log import DEFAULT_RUNS_PATH as _UNUSED  # sanity import
 from research.holdout import (
     HoldoutAlreadyClaimedError,
+    _clamp_research_range,
     load_holdout_config,
     load_holdout_klines,
     load_research_funding,
@@ -783,6 +784,27 @@ def test_load_holdout_config_accepts_both_valid_sides(tmp_path):
     for side in ("before", "after"):
         path = _write_config(tmp_path / f"holdout_{side}.json", holdout_side=side)
         assert load_holdout_config(path)["holdout_side"] == side
+
+
+def test_clamp_research_range_rejects_an_unknown_side_rather_than_assuming_before():
+    # CodeRabbit review finding on this task's PR. Both real callers
+    # pre-validate via `resolve_holdout_side`, so there is no live path
+    # that reaches this -- but an `if after: ... else: ...` shape would
+    # treat a typo'd side as "before" and silently invert which end of
+    # the range gets clamped, i.e. serve holdout data to a research
+    # caller. That is precisely the failure this module's fail-loud
+    # discipline exists to prevent, so the private helper enforces it
+    # itself rather than trusting every future caller to have validated.
+    with pytest.raises(ValueError):
+        _clamp_research_range("test", BASE, BASE + 20 * STEP, CUTOFF, "trailing")
+
+
+def test_clamp_research_range_clamps_the_opposite_end_for_each_valid_side():
+    after_start, after_end = _clamp_research_range("test", BASE, BASE + 20 * STEP, CUTOFF, "after")
+    before_start, before_end = _clamp_research_range("test", BASE, BASE + 20 * STEP, CUTOFF, "before")
+
+    assert (after_start, after_end) == (BASE, CUTOFF)  # end clamped down
+    assert (before_start, before_end) == (CUTOFF, BASE + 20 * STEP)  # start clamped up
 
 
 # --- the real, committed config files ---------------------------------------

@@ -172,15 +172,29 @@ def _clamp_research_range(
     two can't drift apart -- a research loader that clamped the wrong end
     would silently serve holdout data, and there is no test a caller
     could write to notice.
+
+    Re-rejects an unknown `side` itself (`ValueError`) rather than
+    falling through to either branch, even though both current callers
+    already pre-validate via `resolve_holdout_side` (CodeRabbit review
+    finding on Task T's PR). An `if after: ... else: ...` shape would
+    treat a typo'd side as `"before"` and silently invert which end gets
+    clamped -- serving holdout data to a research caller, the exact
+    failure this module's fail-loud discipline exists to prevent. Cheaper
+    to enforce here than to rely on every future caller having validated.
     """
     if side == HOLDOUT_SIDE_AFTER:
         clamped_start_ms, clamped_end_ms = start_ms, min(end_ms, cutoff_ms)
         clamped = clamped_end_ms < end_ms
         detail = f"requested end_ms={end_ms} is at/after"
-    else:
+    elif side == HOLDOUT_SIDE_BEFORE:
         clamped_start_ms, clamped_end_ms = max(start_ms, cutoff_ms), end_ms
         clamped = clamped_start_ms > start_ms
         detail = f"requested start_ms={start_ms} is before"
+    else:
+        raise ValueError(
+            f"_clamp_research_range: unknown holdout_side={side!r} -- "
+            f"expected one of {VALID_HOLDOUT_SIDES}"
+        )
 
     if clamped:
         logger.warning(
