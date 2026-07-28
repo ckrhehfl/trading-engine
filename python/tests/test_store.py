@@ -2,11 +2,23 @@ from decimal import Decimal
 
 import pytest
 
+from data.bingx_funding import FUNDING_INTERVAL_MS, FundingRow
 from data.bingx_klines import KlineRow
-from data.store import connect, fetch_klines, find_missing_ranges, upsert_klines
+from data.store import (
+    connect,
+    fetch_funding_rates,
+    fetch_klines,
+    find_missing_funding_ranges,
+    find_missing_ranges,
+    upsert_funding_rates,
+    upsert_klines,
+)
 
 STEP = 900_000
 BASE = (1_700_000_000_000 // STEP) * STEP
+
+FUNDING_STEP = FUNDING_INTERVAL_MS
+FUNDING_BASE = (1_700_000_000_000 // FUNDING_STEP) * FUNDING_STEP
 
 
 def _row(offset: int, price: str = "100") -> KlineRow:
@@ -17,6 +29,14 @@ def _row(offset: int, price: str = "100") -> KlineRow:
         low=Decimal(price),
         close=Decimal(price),
         volume=Decimal("1"),
+    )
+
+
+def _funding_row(offset: int, rate: str = "0.0001", mark_price: str = "50000") -> FundingRow:
+    return FundingRow(
+        funding_time_ms=FUNDING_BASE + offset * FUNDING_STEP,
+        funding_rate=Decimal(rate),
+        mark_price=Decimal(mark_price),
     )
 
 
@@ -261,3 +281,180 @@ def test_fetch_klines_rejects_misaligned_range(conn):
 def test_fetch_klines_rejects_inverted_range(conn):
     with pytest.raises(ValueError):
         fetch_klines(conn, "BTC-USDT", "15m", BASE + STEP, BASE)
+
+
+# ---------------------------------------------------------------------------
+# funding_rates table -- schema, upsert_funding_rates, find_missing_funding_
+# ranges, fetch_funding_rates. Mirrors the klines tests above; funding rows
+# have no "interval" the way klines do (see bingx_funding.py's docstring),
+# so these functions are scoped by (symbol, funding_time_ms) only.
+# ---------------------------------------------------------------------------
+
+
+def test_connect_creates_the_funding_rates_table(conn):
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(funding_rates)")}
+    assert columns == {
+        "symbol",
+        "funding_time_ms",
+        "funding_rate",
+        "mark_price",
+        "fetched_at",
+    }
+
+
+def test_connect_creates_both_tables_from_a_single_call(tmp_path):
+    # klines and funding_rates share one cache file/connection -- a
+    # research script joining both needs only one connect() call, not
+    # two separate DB files.
+    db_path = tmp_path / "shared.sqlite3"
+    conn = connect(db_path)
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(0)])
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(0)])
+    kline_count = conn.execute("SELECT COUNT(*) FROM klines").fetchone()[0]
+    funding_count = conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0]
+    conn.close()
+
+    assert kline_count == 1
+    assert funding_count == 1
+
+
+def test_upsert_funding_rates_inserts_new_rows_and_returns_the_inserted_count(conn):
+    inserted = upsert_funding_rates(conn, "BTC-USDT", [_funding_row(0), _funding_row(1), _funding_row(2)])
+
+    assert inserted == 3
+    stored = list(conn.execute("SELECT funding_time_ms FROM funding_rates ORDER BY funding_time_ms"))
+    assert stored == [(FUNDING_BASE,), (FUNDING_BASE + FUNDING_STEP,), (FUNDING_BASE + 2 * FUNDING_STEP,)]
+
+
+def test_upsert_funding_rates_is_a_no_op_for_rows_already_present(conn):
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(0), _funding_row(1)])
+
+    second_inserted = upsert_funding_rates(conn, "BTC-USDT", [_funding_row(0), _funding_row(1), _funding_row(2)])
+
+    assert second_inserted == 1
+    count = conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0]
+    assert count == 3
+
+
+def test_upsert_funding_rates_with_empty_rows_is_a_no_op(conn):
+    assert upsert_funding_rates(conn, "BTC-USDT", []) == 0
+    assert conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0] == 0
+
+
+def test_upsert_funding_rates_stores_decimal_values_as_exact_text_not_float(conn):
+    precise = Decimal("0.000123456789012345678")
+    row = FundingRow(funding_time_ms=FUNDING_BASE, funding_rate=precise, mark_price=precise)
+
+    upsert_funding_rates(conn, "BTC-USDT", [row])
+
+    raw = conn.execute(
+        "SELECT funding_rate, typeof(funding_rate) FROM funding_rates WHERE funding_time_ms = ?", (FUNDING_BASE,)
+    ).fetchone()
+    assert raw[1] == "text"
+    assert Decimal(raw[0]) == precise
+    assert raw[0] == str(precise)
+
+
+def test_upsert_funding_rates_scopes_rows_to_the_given_symbol(conn):
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(0)])
+    upsert_funding_rates(conn, "ETH-USDT", [_funding_row(0)])
+
+    count = conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0]
+    assert count == 2
+
+
+def test_find_missing_funding_ranges_returns_the_full_range_when_store_is_empty(conn):
+    gaps = find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + 5 * FUNDING_STEP)
+
+    assert gaps == [(FUNDING_BASE, FUNDING_BASE + 5 * FUNDING_STEP)]
+
+
+def test_find_missing_funding_ranges_returns_no_gaps_when_fully_populated(conn):
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(i) for i in range(5)])
+
+    gaps = find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + 5 * FUNDING_STEP)
+
+    assert gaps == []
+
+
+def test_find_missing_funding_ranges_detects_a_mid_range_gap(conn):
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(i) for i in [0, 1, 4, 5]])
+
+    gaps = find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + 6 * FUNDING_STEP)
+
+    assert gaps == [(FUNDING_BASE + 2 * FUNDING_STEP, FUNDING_BASE + 4 * FUNDING_STEP)]
+
+
+def test_find_missing_funding_ranges_is_scoped_to_symbol(conn):
+    upsert_funding_rates(conn, "ETH-USDT", [_funding_row(i) for i in range(5)])
+
+    gaps = find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + 5 * FUNDING_STEP)
+
+    assert gaps == [(FUNDING_BASE, FUNDING_BASE + 5 * FUNDING_STEP)]
+
+
+def test_find_missing_funding_ranges_accepts_a_range_not_aligned_to_funding_interval_ms(conn):
+    # Deliberately NOT a rejection test, unlike find_missing_ranges'
+    # klines equivalent: real historical funding timestamps are not
+    # always aligned to FUNDING_INTERVAL_MS (a genuine finding from a
+    # real backfill -- see bingx_funding.py's module docstring and
+    # .planning/sr-m-funding-rate-pipeline.md), so this module must
+    # accept an off-grid start_ms/end_ms rather than reject it -- e.g. a
+    # gap boundary this same function previously returned, fed back in
+    # by a caller like backfill_funding.sync_funding_range.
+    gaps = find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE + 1, FUNDING_BASE + FUNDING_STEP + 1)
+
+    assert gaps == [(FUNDING_BASE + 1, FUNDING_BASE + FUNDING_STEP + 1)]
+
+
+def test_find_missing_funding_ranges_rejects_inverted_range(conn):
+    with pytest.raises(ValueError):
+        find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE + FUNDING_STEP, FUNDING_BASE)
+
+
+def test_fetch_funding_rates_returns_rows_in_range_ordered_ascending(conn):
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(2), _funding_row(0), _funding_row(1)])
+
+    rows = fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + 3 * FUNDING_STEP)
+
+    assert [r.funding_time_ms for r in rows] == [FUNDING_BASE, FUNDING_BASE + FUNDING_STEP, FUNDING_BASE + 2 * FUNDING_STEP]
+
+
+def test_fetch_funding_rates_excludes_rows_outside_the_half_open_range(conn):
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(i) for i in range(5)])
+
+    rows = fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE + FUNDING_STEP, FUNDING_BASE + 3 * FUNDING_STEP)
+
+    assert [r.funding_time_ms for r in rows] == [FUNDING_BASE + FUNDING_STEP, FUNDING_BASE + 2 * FUNDING_STEP]
+
+
+def test_fetch_funding_rates_returns_empty_list_when_nothing_stored(conn):
+    assert fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + 5 * FUNDING_STEP) == []
+
+
+def test_fetch_funding_rates_returns_exact_decimal_values_not_float_rounded(conn):
+    precise = Decimal("0.000123456789012345678")
+    row = FundingRow(funding_time_ms=FUNDING_BASE, funding_rate=precise, mark_price=precise)
+    upsert_funding_rates(conn, "BTC-USDT", [row])
+
+    rows = fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + FUNDING_STEP)
+
+    assert rows[0].funding_rate == precise
+    assert rows[0].mark_price == precise
+
+
+def test_fetch_funding_rates_accepts_a_range_not_aligned_to_funding_interval_ms(conn):
+    row = _funding_row(0)
+    # Stored row sits inside an off-grid query range -- must not be
+    # rejected. See test_find_missing_funding_ranges_accepts_a_range_
+    # not_aligned_to_funding_interval_ms above for why.
+    upsert_funding_rates(conn, "BTC-USDT", [row])
+
+    rows = fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE - 1, FUNDING_BASE + FUNDING_STEP - 1)
+
+    assert [r.funding_time_ms for r in rows] == [row.funding_time_ms]
+
+
+def test_fetch_funding_rates_rejects_inverted_range(conn):
+    with pytest.raises(ValueError):
+        fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE + FUNDING_STEP, FUNDING_BASE)

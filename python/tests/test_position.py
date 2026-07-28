@@ -5,6 +5,7 @@ from uuid import uuid4
 import pytest
 
 from backtest.fill import Fill
+from metrics.funding import FundingRate
 from metrics.position import ClosedTrade, PositionTracker, reconstruct_trades
 from schemas.order_intent import OrderIntent, OrderType, Side
 
@@ -213,6 +214,240 @@ def test_force_close_on_a_flat_tracker_is_a_no_op():
 
 def test_reconstruct_trades_with_no_fills_returns_no_trades():
     assert reconstruct_trades([], []) == []
+
+
+def _funding(rate: str, at: datetime, mark_price: str = "100") -> FundingRate:
+    return FundingRate(funding_time=at, funding_rate=Decimal(rate), mark_price=Decimal(mark_price))
+
+
+# ---------------------------------------------------------------------------
+# Funding P&L attribution -- Strategy Research Task M. Opt-in via
+# PositionTracker(funding_rates=...) / reconstruct_trades(..., funding_rates=...).
+# Sign convention verified against BingX's own official documentation (see
+# .planning/sr-m-funding-rate-pipeline.md): fundingRate > 0 -> longs pay
+# shorts; fundingRate < 0 -> shorts pay longs. Payment = position notional
+# (using the funding row's own mark_price, matching how BingX actually
+# computes it) x funding_rate.
+# ---------------------------------------------------------------------------
+
+
+def test_position_held_across_zero_funding_timestamps_gets_no_adjustment():
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    exit_intent = _intent(Side.SHORT, "1", BASE_TIME + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "110", "1", BASE_TIME + timedelta(hours=1))
+    # Funding timestamp well outside [entry, exit] -- must not apply.
+    funding = [_funding("0.0001", BASE_TIME + timedelta(hours=5))]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert len(trades) == 1
+    assert trades[0].funding_pnl == Decimal("0")
+    assert trades[0].realized_pnl == Decimal("10")  # unchanged from the no-funding price P&L
+
+
+def test_long_position_pays_when_funding_rate_is_positive():
+    # A long position held through a single funding timestamp with a
+    # positive rate must PAY -- i.e. funding_pnl is negative and
+    # realized_pnl is reduced relative to price-only P&L. This is the
+    # sign-error trap the task brief explicitly calls out.
+    entry_intent = _intent(Side.LONG, "2", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "2", BASE_TIME)
+    exit_intent = _intent(Side.SHORT, "2", BASE_TIME + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "100", "2", BASE_TIME + timedelta(hours=1))
+    funding_time = BASE_TIME + timedelta(minutes=30)
+    funding = [_funding("0.0001", funding_time, mark_price="100")]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert len(trades) == 1
+    # notional = qty(2) * mark_price(100) = 200; payment = -200 * 0.0001 = -0.02
+    assert trades[0].funding_pnl == Decimal("-0.02")
+    assert trades[0].realized_pnl == Decimal("-0.02")  # 0 price P&L (flat exit) + funding
+
+
+def test_long_position_receives_when_funding_rate_is_negative():
+    entry_intent = _intent(Side.LONG, "2", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "2", BASE_TIME)
+    exit_intent = _intent(Side.SHORT, "2", BASE_TIME + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "100", "2", BASE_TIME + timedelta(hours=1))
+    funding_time = BASE_TIME + timedelta(minutes=30)
+    funding = [_funding("-0.0001", funding_time, mark_price="100")]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert trades[0].funding_pnl == Decimal("0.02")  # a long RECEIVES when the rate is negative
+    assert trades[0].realized_pnl == Decimal("0.02")
+
+
+def test_short_position_receives_when_funding_rate_is_positive():
+    entry_intent = _intent(Side.SHORT, "2", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "2", BASE_TIME)
+    exit_intent = _intent(Side.LONG, "2", BASE_TIME + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "100", "2", BASE_TIME + timedelta(hours=1))
+    funding_time = BASE_TIME + timedelta(minutes=30)
+    funding = [_funding("0.0001", funding_time, mark_price="100")]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert trades[0].funding_pnl == Decimal("0.02")  # a short RECEIVES when the rate is positive
+    assert trades[0].realized_pnl == Decimal("0.02")
+
+
+def test_short_position_pays_when_funding_rate_is_negative():
+    entry_intent = _intent(Side.SHORT, "2", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "2", BASE_TIME)
+    exit_intent = _intent(Side.LONG, "2", BASE_TIME + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "100", "2", BASE_TIME + timedelta(hours=1))
+    funding_time = BASE_TIME + timedelta(minutes=30)
+    funding = [_funding("-0.0001", funding_time, mark_price="100")]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert trades[0].funding_pnl == Decimal("-0.02")  # a short PAYS when the rate is negative
+    assert trades[0].realized_pnl == Decimal("-0.02")
+
+
+def test_funding_pnl_sums_across_multiple_funding_timestamps_held_through():
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    exit_intent = _intent(Side.SHORT, "1", BASE_TIME + timedelta(hours=25))
+    exit_fill = _fill(exit_intent, "100", "1", BASE_TIME + timedelta(hours=25))
+    funding = [
+        _funding("0.0001", BASE_TIME + timedelta(hours=8), mark_price="100"),
+        _funding("0.0002", BASE_TIME + timedelta(hours=16), mark_price="100"),
+        _funding("-0.0001", BASE_TIME + timedelta(hours=24), mark_price="100"),
+    ]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    # notional = 100 each time; payments = -0.01, -0.02, +0.01 => sum -0.02
+    assert trades[0].funding_pnl == Decimal("-0.02")
+
+
+def test_entering_exactly_at_a_funding_timestamp_does_not_charge_that_timestamp():
+    # Judgment call (documented in .planning/sr-m-funding-rate-pipeline.md):
+    # a position opened at the exact instant of a funding settlement was
+    # not "held through" it -- the settlement snapshot is treated as
+    # having already happened relative to this brand-new position.
+    funding_time = BASE_TIME
+    entry_intent = _intent(Side.LONG, "1", funding_time)
+    entry_fill = _fill(entry_intent, "100", "1", funding_time)
+    exit_intent = _intent(Side.SHORT, "1", funding_time + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "100", "1", funding_time + timedelta(hours=1))
+    funding = [_funding("0.0001", funding_time, mark_price="100")]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert trades[0].funding_pnl == Decimal("0")
+
+
+def test_exiting_exactly_at_a_funding_timestamp_does_charge_that_timestamp():
+    # The mirror-image judgment call: a position closed at the exact
+    # instant of a funding settlement WAS held through it (it was open
+    # for the entire period up to and including that instant), so it is
+    # charged/credited.
+    funding_time = BASE_TIME + timedelta(hours=1)
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    exit_intent = _intent(Side.SHORT, "1", funding_time)
+    exit_fill = _fill(exit_intent, "100", "1", funding_time)
+    funding = [_funding("0.0001", funding_time, mark_price="100")]
+
+    trades = reconstruct_trades([entry_intent, exit_intent], [entry_fill, exit_fill], funding_rates=funding)
+
+    assert trades[0].funding_pnl == Decimal("-0.01")
+
+
+def test_flat_period_between_two_trades_is_not_charged_funding():
+    # A funding timestamp that passes while the tracker is flat (between
+    # two separate lifecycles) must be skipped, not attributed to
+    # whichever lifecycle happens to be reconstructed next.
+    entry1 = _intent(Side.LONG, "1", BASE_TIME)
+    fill1 = _fill(entry1, "100", "1", BASE_TIME)
+    exit1 = _intent(Side.SHORT, "1", BASE_TIME + timedelta(hours=1))
+    fill1_exit = _fill(exit1, "100", "1", BASE_TIME + timedelta(hours=1))
+    # Flat here -- funding at hour 2 must be skipped entirely.
+    entry2 = _intent(Side.LONG, "1", BASE_TIME + timedelta(hours=3))
+    fill2 = _fill(entry2, "100", "1", BASE_TIME + timedelta(hours=3))
+    exit2 = _intent(Side.SHORT, "1", BASE_TIME + timedelta(hours=4))
+    fill2_exit = _fill(exit2, "100", "1", BASE_TIME + timedelta(hours=4))
+    funding = [_funding("0.0001", BASE_TIME + timedelta(hours=2), mark_price="100")]
+
+    trades = reconstruct_trades(
+        [entry1, exit1, entry2, exit2],
+        [fill1, fill1_exit, fill2, fill2_exit],
+        funding_rates=funding,
+    )
+
+    assert len(trades) == 2
+    assert trades[0].funding_pnl == Decimal("0")
+    assert trades[1].funding_pnl == Decimal("0")
+
+
+def test_position_tracker_funding_pnl_property_accumulates_across_the_trackers_lifetime():
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    funding = [_funding("0.0001", BASE_TIME + timedelta(hours=1), mark_price="100")]
+
+    tracker = PositionTracker(funding_rates=funding)
+    tracker.apply(entry_intent, entry_fill)
+    applied = tracker.apply_funding_through(BASE_TIME + timedelta(hours=2))
+
+    assert applied == Decimal("-0.01")
+    assert tracker.funding_pnl == Decimal("-0.01")
+
+
+def test_force_close_applies_funding_up_to_the_close_time():
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    funding = [_funding("0.0001", BASE_TIME + timedelta(hours=1), mark_price="100")]
+
+    tracker = PositionTracker(funding_rates=funding)
+    tracker.apply(entry_intent, entry_fill)
+    closed = tracker.force_close(Decimal("100"), BASE_TIME + timedelta(hours=2))
+
+    assert closed is not None
+    assert closed.funding_pnl == Decimal("-0.01")
+    assert closed.realized_pnl == Decimal("-0.01")  # flat price P&L (closed at entry price) + funding
+
+
+def test_default_position_tracker_has_no_funding_awareness_and_is_unaffected():
+    # No funding_rates argument at all -- the exact call shape every
+    # pre-existing caller in this codebase already uses. Must behave
+    # byte-for-byte as before this feature existed.
+    tracker = PositionTracker()
+    assert tracker.funding_pnl == Decimal("0")
+    applied = tracker.apply_funding_through(BASE_TIME + timedelta(days=999))
+    assert applied == Decimal("0")
+
+
+def test_funding_rates_must_be_sorted_ascending_by_funding_time():
+    unsorted = [
+        _funding("0.0001", BASE_TIME + timedelta(hours=2)),
+        _funding("0.0001", BASE_TIME + timedelta(hours=1)),
+    ]
+    with pytest.raises(ValueError, match="ascending"):
+        PositionTracker(funding_rates=unsorted)
+
+
+def test_scaling_position_uses_the_actually_held_quantity_at_each_funding_timestamp():
+    # Enter 1, scale in to 3 total, THEN a funding timestamp passes --
+    # the payment must be based on the size held at that instant (3), not
+    # the lifecycle's eventual total-opened quantity computed some other
+    # way, and not the size before scaling in (1).
+    e1 = _intent(Side.LONG, "1", BASE_TIME)
+    f1 = _fill(e1, "100", "1", BASE_TIME)
+    e2 = _intent(Side.LONG, "2", BASE_TIME + timedelta(minutes=10))
+    f2 = _fill(e2, "100", "2", BASE_TIME + timedelta(minutes=10))
+    exit_intent = _intent(Side.SHORT, "3", BASE_TIME + timedelta(hours=1))
+    exit_fill = _fill(exit_intent, "100", "3", BASE_TIME + timedelta(hours=1))
+    funding = [_funding("0.0001", BASE_TIME + timedelta(minutes=30), mark_price="100")]
+
+    trades = reconstruct_trades([e1, e2, exit_intent], [f1, f2, exit_fill], funding_rates=funding)
+
+    # notional = 3 * 100 = 300; payment = -300 * 0.0001 = -0.03
+    assert trades[0].funding_pnl == Decimal("-0.03")
 
 
 def test_reconstruct_trades_raises_on_mismatched_length_inputs_instead_of_silently_truncating():
