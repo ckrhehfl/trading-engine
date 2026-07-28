@@ -38,6 +38,7 @@ from uuid import uuid4
 
 from backtest.engine import BacktestResult, Strategy, run_backtest
 from backtest.kline import Kline
+from metrics.funding import FundingRate
 from metrics.metrics import Metrics, compute_metrics
 from research import experiment_log
 from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_sensitivity
@@ -186,6 +187,7 @@ def run_walk_forward(
     slippage_bps: Decimal,
     starting_equity: Decimal = _DEFAULT_STARTING_EQUITY,
     bars_per_day: int = _DEFAULT_BARS_PER_DAY,
+    funding_rates: Sequence[FundingRate] | None = None,
     is_holdout_run: bool = False,
     parent_run_id: str | None = None,
     candidate_index: int | None = None,
@@ -228,6 +230,27 @@ def run_walk_forward(
     `Decimal`s) are exactly the shape a transposed-argument bug hides in,
     and every call site in this codebase already passes them by keyword.
     See `.planning/sr-c-walkforward-holdout.md`.
+
+    `funding_rates` (default `None` -- purely additive, Strategy Research
+    Task N; every existing caller omitting it sees byte-for-byte the same
+    fold metrics as before this parameter existed) is passed straight
+    through, unfiltered, to every fold's `metrics.metrics.compute_metrics`
+    call as its own `funding_rates` argument -- so each fold's reported
+    Sharpe/return/drawdown/profit-factor and every `ClosedTrade.realized_
+    pnl` reflect real funding P&L, not just price P&L. Passing the SAME
+    (typically full-history) series to every fold is deliberate and safe,
+    not a lookahead risk: `compute_metrics`/`metrics.position.
+    PositionTracker.apply_funding_through` only ever consume funding rows
+    up to each kline's own `open_time` (see that module's docstring for
+    its cursor-based look-ahead-safety design) -- a fold's own
+    `validate_klines` upper bound still caps what actually gets applied,
+    regardless of how much extra (temporally later) data the passed-in
+    series happens to contain. Not threaded into
+    `sensitivity_extractor`/`check_parameter_sensitivity`'s in-sample
+    re-evaluations (a diagnostic-only, opt-in add-on with its own already-
+    documented failure containment) -- funding P&L for that path is
+    deliberately out of scope for this task, see
+    `.planning/sr-n-funding-rate-strategy.md`.
 
     `sensitivity_extractor` (default `None` -- purely additive, every
     existing caller is unaffected) opts a fold into the parameter-
@@ -292,6 +315,7 @@ def run_walk_forward(
             backtest_result.fills,
             starting_equity,
             bars_per_day=bars_per_day,
+            funding_rates=funding_rates,
         )
 
         parameter_sensitivity: dict | None = None
@@ -350,6 +374,20 @@ def run_walk_forward(
 
     aggregate = _aggregate_metrics(fold_results)
 
+    walk_forward_config: dict = {
+        "train_bars": train_bars,
+        "validate_bars": validate_bars,
+        "step_bars": step_bars,
+        "fold_count": len(fold_results),
+    }
+    # Additive -- only present when a caller opted in via funding_rates,
+    # so an existing reader of runs/experiments.jsonl sees byte-for-byte
+    # the same walk_forward_config shape as before this parameter existed
+    # (same "field only appears when the feature is actually used"
+    # convention as parameter_sensitivity above).
+    if funding_rates:
+        walk_forward_config["funding_pnl_included"] = True
+
     experiment_log.log_run(
         run_id=run_id,
         strategy_id=strategy_id,
@@ -358,12 +396,7 @@ def run_walk_forward(
         fold_results=[_fold_result_to_log_dict(fr) for fr in fold_results],
         aggregate_metrics=aggregate,
         data_range=_data_range(klines),
-        walk_forward_config={
-            "train_bars": train_bars,
-            "validate_bars": validate_bars,
-            "step_bars": step_bars,
-            "fold_count": len(fold_results),
-        },
+        walk_forward_config=walk_forward_config,
         fee_bps=fee_bps,
         slippage_bps=slippage_bps,
         is_holdout_run=is_holdout_run,

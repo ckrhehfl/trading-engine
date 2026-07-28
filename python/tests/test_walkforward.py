@@ -13,6 +13,7 @@ from uuid import uuid4
 import pytest
 
 from backtest.kline import Kline
+from metrics.funding import FundingRate
 from research.walkforward import generate_folds, run_walk_forward
 from schemas.order_intent import OrderIntent, OrderType, Side
 
@@ -324,6 +325,180 @@ def test_run_walk_forward_passes_bars_per_day_through_to_fold_sharpe_annualizati
         assert fold_default.metrics.sharpe_ratio is not None
         assert fold_1h.metrics.sharpe_ratio is not None
         assert fold_1h.metrics.sharpe_ratio == pytest.approx(fold_default.metrics.sharpe_ratio / 2)
+
+
+def _funding_rate(open_time: datetime, rate: str, mark_price: str = "100") -> FundingRate:
+    return FundingRate(funding_time=open_time, funding_rate=Decimal(rate), mark_price=Decimal(mark_price))
+
+
+# ---------------------------------------------------------------------------
+# funding_rates pass-through (Strategy Research Task N) -- additive/opt-in,
+# see run_walk_forward's own docstring for the full design.
+# ---------------------------------------------------------------------------
+
+
+def test_run_walk_forward_omitting_funding_rates_matches_explicit_none(tmp_path):
+    klines = _klines(16)
+
+    result_omitted = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=tmp_path / "omitted.jsonl",
+    )
+    result_explicit_none = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        funding_rates=None,
+        runs_path=tmp_path / "explicit_none.jsonl",
+    )
+
+    for fold_omitted, fold_none in zip(result_omitted.folds, result_explicit_none.folds, strict=True):
+        assert fold_omitted.metrics.final_equity == fold_none.metrics.final_equity
+        assert fold_omitted.metrics.sharpe_ratio == fold_none.metrics.sharpe_ratio
+
+
+def test_run_walk_forward_with_funding_rates_changes_the_fold_containing_a_settlement(tmp_path):
+    # 16 bars, 15-minute step (see _klines) -> fold 0's validate window is
+    # bars 4..7 (train_bars=4, validate_bars=4, step_bars=4).
+    # _BuyAndHoldStrategy signals on bar 4 (the window's first bar) but a
+    # GUARDED_MARKET intent fills at the NEXT bar's open (bar 5) -- and
+    # entering exactly AT a settlement is not charged for it (see
+    # metrics.position's entering-vs-exiting-at-exact-T docstring), so the
+    # settlement is placed at bar 6 (strictly after entry, strictly before
+    # the fold's final bar 7 where the position force-closes) to land
+    # squarely while the position is open.
+    klines = _klines(16)
+    settlement_time = klines[6].open_time
+    funding_rates = [_funding_rate(settlement_time, "0.01", mark_price="100")]
+
+    baseline = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=tmp_path / "baseline.jsonl",
+    )
+    with_funding = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        funding_rates=funding_rates,
+        runs_path=tmp_path / "with_funding.jsonl",
+    )
+
+    assert with_funding.folds[0].metrics.final_equity != baseline.folds[0].metrics.final_equity
+    assert with_funding.folds[0].metrics.closed_trades[0].funding_pnl != Decimal(0)
+
+
+def test_run_walk_forward_funding_rates_only_affect_folds_whose_validate_window_contains_a_settlement(tmp_path):
+    klines = _klines(16)
+    # Settlement lands inside fold 1's validate window (bars 8..11, entry
+    # fills at bar 9, force-close at bar 11 -- see the timing note in
+    # test_run_walk_forward_with_funding_rates_changes_the_fold_containing_
+    # a_settlement above), not fold 0's (bars 4..7) -- proves the full
+    # (unfiltered) series passed to every fold doesn't leak a settlement
+    # into a fold whose own validate window never actually reaches it.
+    settlement_time = klines[10].open_time
+    funding_rates = [_funding_rate(settlement_time, "0.01", mark_price="100")]
+
+    baseline = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=tmp_path / "baseline.jsonl",
+    )
+    with_funding = run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        funding_rates=funding_rates,
+        runs_path=tmp_path / "with_funding.jsonl",
+    )
+
+    assert with_funding.folds[0].metrics.final_equity == baseline.folds[0].metrics.final_equity
+    assert with_funding.folds[1].metrics.final_equity != baseline.folds[1].metrics.final_equity
+
+
+def test_run_walk_forward_logs_funding_pnl_included_only_when_funding_rates_supplied(tmp_path):
+    klines = _klines(16)
+    funding_rates = [_funding_rate(klines[5].open_time, "0.01", mark_price="100")]
+
+    run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=tmp_path / "no_funding.jsonl",
+    )
+    run_walk_forward(
+        klines,
+        _BuyAndHoldStrategy(),
+        "strat-funding",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        funding_rates=funding_rates,
+        runs_path=tmp_path / "with_funding.jsonl",
+    )
+
+    no_funding_record = json.loads((tmp_path / "no_funding.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    with_funding_record = json.loads((tmp_path / "with_funding.jsonl").read_text(encoding="utf-8").splitlines()[0])
+
+    assert "funding_pnl_included" not in no_funding_record["walk_forward_config"]
+    assert with_funding_record["walk_forward_config"]["funding_pnl_included"] is True
 
 
 def test_run_walk_forward_with_zero_folds_still_logs_exactly_one_record(tmp_path):

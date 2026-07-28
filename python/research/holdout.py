@@ -41,8 +41,10 @@ from pathlib import Path
 
 from backtest.kline import Kline
 from data.backfill import DEFAULT_DB_PATH
+from data.bingx_funding import FundingRow
 from data.bingx_klines import KlineRow
-from data.store import connect, fetch_klines
+from data.store import connect, fetch_funding_rates, fetch_klines
+from metrics.funding import FundingRate
 from research import experiment_log
 
 logger = logging.getLogger(__name__)
@@ -103,6 +105,34 @@ def _load_klines(
     return [_kline_row_to_kline(row) for row in rows]
 
 
+def _funding_row_to_rate(row: FundingRow) -> FundingRate:
+    """`FundingRow` (ms-timestamp-keyed, `data/`'s wire/storage format) ->
+    `FundingRate` (datetime-keyed, `metrics/`'s internal format). Mirrors
+    `_kline_row_to_kline`'s conversion pattern exactly -- this is the
+    conversion function `metrics/funding.py`'s own docstring already names
+    as the established precedent to follow for `FundingRow` -> `FundingRate`.
+    """
+    return FundingRate(
+        funding_time=datetime.fromtimestamp(row.funding_time_ms // 1000, tz=timezone.utc),
+        funding_rate=row.funding_rate,
+        mark_price=row.mark_price,
+    )
+
+
+def _load_funding_rates(
+    symbol: str,
+    start_ms: int,
+    end_ms: int,
+    db_path: str | Path,
+) -> list[FundingRate]:
+    conn = connect(db_path)
+    try:
+        rows = fetch_funding_rates(conn, symbol, start_ms, end_ms)
+    finally:
+        conn.close()
+    return [_funding_row_to_rate(row) for row in rows]
+
+
 def load_research_klines(
     start_ms: int,
     end_ms: int,
@@ -130,6 +160,66 @@ def load_research_klines(
         )
 
     return _load_klines(config["symbol"], config["interval"], start_ms, clamped_end_ms, db_path)
+
+
+def load_research_funding(
+    start_ms: int,
+    end_ms: int,
+    *,
+    symbol: str | None = None,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    holdout_config_path: str | Path = DEFAULT_HOLDOUT_CONFIG_PATH,
+) -> list[FundingRate]:
+    """Funding-rate counterpart to `load_research_klines` -- same
+    unconditional holdout-cutoff clamp (`end_ms` is clamped down to
+    `holdout_cutoff_ms`, never enforced as an error), so a funding series
+    loaded through this function can never carry rows at/after whatever
+    cutoff `holdout_config_path` names, matching this project's holdout
+    discipline for price data (CLAUDE.md's Strategy Research Methodology).
+
+    `symbol` defaults to `None`, meaning "use `holdout_config_path`'s own
+    `symbol`" -- the SAME symbol `load_research_klines` would use for that
+    same config path, so a caller loading both klines and funding for one
+    holdout config without explicitly naming a symbol is guaranteed to get
+    a matched pair, never a silent klines/funding symbol mismatch (a real
+    CodeRabbit review finding on this task's PR: a caller passing a non-
+    BTC holdout config while forgetting to also pass `symbol` here would
+    otherwise have silently mixed a BTC-USDT funding series into a
+    different symbol's backtest -- wrong data silently, worse than an
+    explicit failure). An explicitly supplied `symbol` still overrides the
+    config's own value, e.g. for a deliberate cross-symbol experiment.
+    Funding rate has no `interval` concept (see `data/bingx_funding.py`'s
+    module docstring) and therefore no dedicated per-timeframe holdout
+    config the way klines do (`configs/research/holdout.json` for 15m vs.
+    `configs/research/holdout_1h.json` for 1h) -- the SAME `holdout_
+    cutoff_ms`/`symbol` this call's config names governs both the kline
+    data a caller loads via `load_research_klines` and the funding data
+    loaded here.
+
+    Deliberately no `load_holdout_funding` counterpart yet -- no task has
+    needed one (this project's funding-rate strategy work so far never
+    touches the holdout split; see `.planning/sr-n-funding-rate-
+    strategy.md`), and adding one speculatively, ahead of any real caller,
+    would go against this project's "touch only what the task requires"
+    discipline. Add it, mirroring `load_holdout_klines`, when a real task
+    actually needs funding-inclusive holdout access.
+    """
+    config = load_holdout_config(holdout_config_path)
+    cutoff_ms = config["holdout_cutoff_ms"]
+    resolved_symbol = symbol if symbol is not None else config["symbol"]
+
+    clamped_end_ms = min(end_ms, cutoff_ms)
+    if clamped_end_ms < end_ms:
+        logger.warning(
+            "load_research_funding: requested end_ms=%d is at/after the holdout "
+            "cutoff (holdout_cutoff_ms=%d) -- clamping end_ms to %d so no "
+            "holdout data leaks into a research call",
+            end_ms,
+            cutoff_ms,
+            clamped_end_ms,
+        )
+
+    return _load_funding_rates(resolved_symbol, start_ms, clamped_end_ms, db_path)
 
 
 def load_holdout_klines(
