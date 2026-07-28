@@ -28,13 +28,24 @@ style probing this module's design is based on):
   `json.loads(..., parse_float=Decimal)` is used for the same defensive
   reason as `bingx_klines.py`.
 - **Ordering is newest-first (descending `fundingTime`) within a page**
-  -- same as klines. `iter_funding_range`'s cursor is always
-  `max(row.funding_time_ms) + step`, never array position.
+  -- same as klines. `iter_funding_range`'s cursor is always derived from
+  `max(row.funding_time_ms)`, never array position -- but unlike klines
+  it advances by `+ 1` (one millisecond), not `+ step`, precisely because
+  funding has no guaranteed fixed step; see `iter_funding_range`'s own
+  docstring for why a `+ step` jump is unsafe here in a way it isn't for
+  klines.
 - **Silent capping to the newest rows, same mechanism as klines**: a
   request whose `[startTime, endTime)` span holds more rows than
   `limit` returns only the `limit` rows closest to `endTime`, not the
   oldest. Confirmed empirically the same way `bingx_klines.py`'s module
-  docstring describes for klines.
+  docstring describes for klines. Because `chunk_span` (see
+  `iter_funding_range`) is sized from `FUNDING_INTERVAL_MS` as only a
+  *typical*-cadence estimate, not a guaranteed cap the way klines'
+  interval is, a chunk containing more real settlements than usual
+  (e.g. one extra genuine off-grid row) could in principle still trigger
+  capping and drop that chunk's oldest row -- `find_missing_funding_
+  ranges`' resumability is the safety net for this, with the residual
+  limitation noted in that function's own docstring.
 - **`limit` is a hard server-side error above 1000, not a silent
   clamp** -- a real, verified difference from klines. `limit=2000`
   returned `{"code": 109400, "msg": "Invalid parameters,
@@ -258,15 +269,29 @@ def iter_funding_range(
     limit: int = MAX_FUNDING_ROWS_PER_REQUEST,
 ) -> Iterator[FundingRow]:
     """Walk the half-open range `[start_ms, end_ms)` in `<= limit`-row
-    chunks, yielding every `FundingRow` found -- structurally identical
-    to `bingx_klines.iter_klines_range` (see that function's docstring
-    for the cursor-derivation and empty-chunk-is-not-an-error reasoning,
-    which applies unchanged here). The one behavioral difference is
-    entirely inside `fetch_funding_page` (the null-retry above), which
-    this function doesn't need to know about -- an empty page here can
-    mean either a genuine gap or an exhausted null-retry, and both are
-    handled the same way: advance the cursor by the full chunk width and
-    continue.
+    chunks, yielding every `FundingRow` found -- structurally similar to
+    `bingx_klines.iter_klines_range` (see that function's docstring for
+    the empty-chunk-is-not-an-error reasoning, which applies unchanged
+    here), but with one **deliberate difference in the cursor
+    derivation** driven by this module's own off-grid-timestamp finding
+    (see module docstring): the next request's cursor is
+    `max(row.funding_time_ms for row in page) + 1` (one millisecond past
+    the latest row actually returned), **not** `+ FUNDING_INTERVAL_MS`
+    the way klines advances by a full `+ step`. Klines can safely jump a
+    full interval because kline cadence is a genuinely fixed grid with no
+    exceptions; funding cadence is only *typically* 8h (real off-grid
+    rows are confirmed to exist -- see `FUNDING_INTERVAL_MS`'s own
+    comment). Jumping a full `FUNDING_INTERVAL_MS` past the latest
+    returned row risks silently stepping over a real row that happens to
+    sit less than one interval after it (CodeRabbit review finding on
+    this task's PR -- a `+1` cursor costs nothing beyond one extra
+    request touching an already-fetched row occasionally, which
+    `store.upsert_funding_rates`'s `INSERT OR IGNORE` absorbs for free).
+    An empty page can mean either a genuine gap or an exhausted
+    null-retry, and both are handled the same way: advance the cursor by
+    the full chunk width and continue -- unlike the max-time case, there
+    is no "latest row" to anchor a `+1` cursor to when the page is empty,
+    so the chunk-width jump remains the fallback there.
     """
     _validate_range(start_ms, end_ms)
     if not (1 <= limit <= MAX_FUNDING_ROWS_PER_REQUEST):
@@ -286,7 +311,7 @@ def iter_funding_range(
 
         if page:
             max_time = max(row.funding_time_ms for row in page)
-            cursor = max_time + FUNDING_INTERVAL_MS
+            cursor = max_time + 1
             yield from page
         else:
             cursor = chunk_end

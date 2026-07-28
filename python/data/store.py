@@ -279,8 +279,33 @@ def find_missing_funding_ranges(
     """Diff stored `funding_time_ms` values in `[start_ms, end_ms)`
     against the expected arithmetic sequence (step =
     `FUNDING_INTERVAL_MS`) and return the gaps as half-open
-    `(gap_start_ms, gap_end_ms)` tuples -- identical algorithm to
+    `(gap_start_ms, gap_end_ms)` tuples -- same algorithm shape as
     `find_missing_ranges`, just scoped by `symbol` only (no `interval`).
+
+    **Disclosed limitation, not fixed by this function** (CodeRabbit
+    review finding on this task's PR, judged a genuine but low-probability
+    residual risk rather than fixed outright -- see
+    `.planning/sr-m-funding-rate-pipeline.md`): because real funding
+    cadence is only *typically* `FUNDING_INTERVAL_MS` and not a guaranteed
+    fixed grid (see `bingx_funding.py`'s module docstring), this function
+    cannot detect a genuinely-missing row that happens to leave its two
+    stored neighbors spaced exactly `FUNDING_INTERVAL_MS` apart from each
+    other -- e.g. if the real, confirmed-present 2021-11-11T18:00:00Z row
+    (2h after 16:00:00Z, 6h before the next day's 00:00:00Z) had instead
+    been dropped by some transient fetch failure, its neighbors (16:00 and
+    next-day 00:00) are themselves exactly one `FUNDING_INTERVAL_MS`
+    apart, so no gap would ever be flagged for it, on this run or any
+    future rerun. This is a fundamental limit of diffing *stored*
+    timestamps against an *assumed* step with no independent oracle for
+    "was there supposed to be an extra row here" -- closing it fully would
+    need a structurally different re-verification strategy (e.g.
+    periodic full-range re-fetching regardless of apparent completeness),
+    which is a genuinely bigger change than this task's scope. Mitigated,
+    not solved, by `iter_funding_range`'s `+ 1`-not-`+ step` cursor
+    (closes the pagination-boundary version of this risk) and by this
+    being a rare, real-data-confirmed edge case (2 known anomalies across
+    ~5.7 years of history, both actually captured intact by this task's
+    real backfill run).
     """
     _validate_funding_range(start_ms, end_ms)
 

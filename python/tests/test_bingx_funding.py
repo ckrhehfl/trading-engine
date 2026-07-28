@@ -269,7 +269,18 @@ def test_iter_funding_range_walks_multiple_chunks_for_a_range_wider_than_limit(s
 
     assert sorted(r.funding_time_ms for r in rows) == times
     assert len(rows) == len(set(r.funding_time_ms for r in rows))  # no duplicates
-    assert len(server.requests) == 3  # chunks of 5, 5, 2
+    # 3 real-data chunks (5, 5, 2 rows) + _MAX_NULL_RETRIES (5) for one
+    # final, genuinely-empty trailing chunk. The trailing chunk exists
+    # because the cursor after the 3rd chunk is `max_time + 1` (not
+    # `max_time + FUNDING_INTERVAL_MS`, see iter_funding_range's
+    # docstring for why) -- `max_time + 1` doesn't overshoot all the way
+    # to `end_ms` the way a full-interval jump often coincidentally does,
+    # so one more (empty) chunk gets requested before the range is
+    # exhausted. A deliberate trade-off: a bounded, fixed extra request
+    # cost at the tail of a range, in exchange for never silently
+    # skipping a real off-grid row mid-range (the actual correctness bug
+    # this cursor change fixes -- see this task's CodeRabbit review).
+    assert len(server.requests) == 3 + 5
 
 
 def test_iter_funding_range_cursor_derives_from_actual_max_row_time_not_naive_limit_arithmetic(server, monkeypatch):
@@ -287,7 +298,7 @@ def test_iter_funding_range_cursor_derives_from_actual_max_row_time_not_naive_li
     # requests, not 1.
     assert len(server.requests) == 6
     second_request_start = int(server.requests[1]["params"]["startTime"])
-    assert second_request_start == BASE + 3 * STEP  # last real row's time + step
+    assert second_request_start == BASE + 2 * STEP + 1  # last real row's time + 1ms, not + step
     assert second_request_start != BASE + 5 * STEP  # naive start_ms + limit*step
 
 
@@ -299,9 +310,13 @@ def test_iter_funding_range_treats_empty_leading_region_as_normal_not_error(serv
     rows = list(iter_funding_range(server.base_url, "BTC-USDT", BASE, BASE + 8 * STEP, limit=3))
 
     assert sorted(r.funding_time_ms for r in rows) == real_times
-    # 2 genuinely-empty chunks x _MAX_NULL_RETRIES (5) each + 1 request for
-    # the final chunk (real data, no retry needed) = 11.
-    assert len(server.requests) == 11
+    # 2 genuinely-empty leading chunks x _MAX_NULL_RETRIES (5) each + 1
+    # request for the real-data chunk (no retry needed) + _MAX_NULL_
+    # RETRIES (5) more for one final, genuinely-empty trailing chunk --
+    # same `max_time + 1`-doesn't-overshoot-to-end_ms reasoning as
+    # test_iter_funding_range_walks_multiple_chunks_for_a_range_wider_
+    # than_limit above. 5 + 5 + 1 + 5 = 16.
+    assert len(server.requests) == 5 + 5 + 1 + 5
 
 
 def test_iter_funding_range_returns_empty_for_a_range_with_no_data_at_all(server, monkeypatch):

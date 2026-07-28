@@ -144,11 +144,17 @@ def main(argv: list[str] | None = None) -> None:
     if args.end:
         end_ms = _to_ms(args.end)
     else:
-        # "now", floored to the funding grid -- same one deliberate
-        # rounding exception as backfill.py's main() (see that module's
-        # docstring): every explicit, user-supplied start/end is
-        # validated and rejected if misaligned, but our own computed
-        # "now" default is never grid-aligned by construction.
+        # "now", floored to the funding grid -- purely a convenience
+        # default so an omitted --end doesn't send a millisecond-precision
+        # "right now" as endTime. Unlike backfill.py's analogous default
+        # (where every explicit, user-supplied start/end *is* validated
+        # and rejected if misaligned), this module's own _validate_range
+        # deliberately never enforces grid alignment on start_ms/end_ms at
+        # all -- explicit or computed -- because real historical funding
+        # timestamps aren't always aligned to FUNDING_INTERVAL_MS (see
+        # bingx_funding.py's module docstring). This flooring is just a
+        # sensible rounding choice for the default, not an alignment
+        # requirement this module enforces elsewhere.
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         end_ms = (now_ms // FUNDING_INTERVAL_MS) * FUNDING_INTERVAL_MS
 

@@ -129,22 +129,21 @@ FROM funding_rates`, 2026-07-28):
   independently-confirmed BingX-side pattern, not a fluke: funding rows
   are ~140 bytes and settle 3x/day vs. klines' 96 or 288x/day, so
   retaining years of funding history costs relatively little.
-- **3 gaps remain**, all clustered right at the earliest boundary, each
-  confirmed empty across 3+ separate backfill reruns (15+ null-retries
-  each, well past the "10-15 consecutive nulls = genuinely gone"
-  threshold `bingx_funding.py`'s own docstring already established for
-  the out-of-retention case):
-  - `2020-11-01T00:00:00Z` – `2020-11-29T12:00:00Z` (pre-boundary, no
-    data at all — expected, this is what confirms 2020-11-29T12:00:00Z
-    as the real earliest point, not an artifact of where the sentinel
-    start happened to land)
-  - `2020-12-01T00:00:00Z` – `2020-12-01T04:00:00Z` (a single missing
-    settlement, 4h wide)
-  - `2020-12-23T04:00:00Z` – `2020-12-23T12:00:00Z` (a single missing
-    settlement, 8h wide)
-  - `2021-01-05T12:00:00Z` – `2021-01-05T16:00:00Z` (a single missing
-    settlement, 4h wide)
-  These read as genuinely missing/unarchived individual settlements near
+- **1 confirmed pre-retention range, plus 3 unresolved settlement gaps**
+  right at the earliest boundary — four ranges total, but two different
+  categories, each confirmed empty across 3+ separate backfill reruns
+  (15+ null-retries each, well past the "10-15 consecutive nulls =
+  genuinely gone" threshold `bingx_funding.py`'s own docstring already
+  established for the out-of-retention case):
+  - `2020-11-01T00:00:00Z` – `2020-11-29T12:00:00Z` — the **expected**
+    pre-boundary empty range, not a data gap: this is what confirms
+    2020-11-29T12:00:00Z as the real earliest point, not an artifact of
+    where the sentinel start happened to land.
+  - Three genuine, still-unresolved **settlement gaps**, each a single
+    missing row: `2020-12-01T00:00:00Z` – `2020-12-01T04:00:00Z` (4h),
+    `2020-12-23T04:00:00Z` – `2020-12-23T12:00:00Z` (8h), and
+    `2021-01-05T12:00:00Z` – `2021-01-05T16:00:00Z` (4h).
+  These three read as genuinely missing/unarchived individual settlements near
   BingX's own retention edge, not a pipeline bug — the exact same
   `sync_funding_range` call that left them missing successfully closed
   every other gap in the same run (see next finding), including a
@@ -256,12 +255,91 @@ the inherited code, recorded here rather than left implicit)
 
 ## TDD / test results
 
-`cd python && uv run pytest`: **639 passed**, 0 failed, 0 errors (full
-suite, including all pre-existing tests — confirms the funding addition
-didn't regress anything already in place). New/modified test files:
-`test_bingx_funding.py`, `test_backfill_funding.py`,
-`fake_bingx_funding_server.py` (new), `test_store.py`,
-`test_position.py`, `test_metrics.py` (all modified, additive only).
+`cd python && uv run pytest`: **639 passed**, 0 failed, 0 errors on this
+session's first run (full suite, including all pre-existing tests —
+confirms the inherited funding addition didn't regress anything already
+in place); **641 passed** after this session's own CodeRabbit-driven
+fixes below (2 new regression tests added, see "CodeRabbit review
+findings"). New/modified test files: `test_bingx_funding.py`,
+`test_backfill_funding.py`, `fake_bingx_funding_server.py` (new),
+`test_store.py`, `test_position.py`, `test_metrics.py` (all modified,
+additive only).
+
+## CodeRabbit review findings (PR #47)
+
+CodeRabbit's first review found 7 actionable items. One was a genuine,
+non-trivial correctness finding; the rest were documentation-accuracy
+and test-coverage nitpicks. All addressed in this same PR (batched into
+one follow-up push, per this project's "batch fixes, don't re-request
+per-comment" review-rate-limit guidance):
+
+- **Major, genuine correctness gap**: real funding rows aren't always
+  spaced exactly `FUNDING_INTERVAL_MS` apart (this task's own finding —
+  see above), but both `iter_funding_range`'s pagination cursor and
+  `find_missing_funding_ranges`' gap detection assumed an exact 8h step.
+  A row skipped during collection for any reason could, in specific
+  circumstances, never be caught as a gap on any future rerun either —
+  concretely provable using this project's own already-discovered
+  2021-11-11T18:00:00Z anomaly: its two real neighbors (16:00:00Z and
+  the next day's 00:00:00Z) are themselves exactly one
+  `FUNDING_INTERVAL_MS` apart, so if the 18:00 row had ever been dropped,
+  `find_missing_funding_ranges` would report zero gap for that stretch,
+  forever. Fixed the part that's actually fixable: `iter_funding_range`'s
+  cursor now advances `max_time + 1` (one millisecond past the latest
+  *returned* row) instead of `max_time + FUNDING_INTERVAL_MS`, closing
+  the pagination-boundary version of the risk (a row landing less than
+  one interval after the previous page's latest row is no longer skipped
+  by construction). This has a real, measured trade-off: when a fetch
+  range's real data ends before its requested `end_ms` (the common case
+  at the tail of any `iter_funding_range` call), the `+1` cursor no
+  longer coincidentally overshoots past `end_ms` the way a full-interval
+  jump often did, so one extra, genuinely-empty trailing chunk gets
+  requested (costing a full `_MAX_NULL_RETRIES` = 5-request cascade) --
+  observed directly via two now-updated test assertions
+  (`test_iter_funding_range_walks_multiple_chunks_for_a_range_wider_
+  than_limit`: 3 → 8 requests; `test_iter_funding_range_treats_empty_
+  leading_region_as_normal_not_error`: 11 → 16 requests). Judged an
+  acceptable, bounded cost (a few seconds of wall-clock time once per
+  call) in exchange for closing a real silent-data-loss path. The
+  *other* half of the same finding -- `find_missing_funding_ranges`
+  being structurally unable to detect a dropped row whose two stored
+  neighbors coincidentally end up exactly one interval apart -- is **not
+  fixed**, and is not fixable without a structurally different
+  re-verification strategy (e.g. periodic full-range re-fetching
+  regardless of apparent completeness), which CodeRabbit's own review
+  labeled a "heavy lift" and this task's scope agrees is disproportionate
+  to a confirmed-rare edge case (2 known anomalies across ~5.7 years of
+  real history, both actually captured intact by this task's real
+  backfill run). Disclosed explicitly in `find_missing_funding_ranges`'s
+  own docstring instead, matching this codebase's existing pattern of
+  stating a mitigation's real limits rather than overclaiming (the
+  null-flakiness retry already carried an "this is a mitigation, not a
+  guarantee" caveat before this task started).
+- **Planning-doc gap count vs. gap list mismatch**: this document
+  originally said "3 gaps remain" while listing 4 ranges — fixed by
+  separating the expected pre-retention sentinel range from the 3
+  genuine, still-unresolved settlement gaps (see above, already
+  reflects the fix).
+- **CLAUDE.md sign-convention ambiguity**: "`position_notional ×
+  fundingRate`" didn't state whether `position_notional` was signed or
+  unsigned. Fixed to state explicitly that it's the unsigned magnitude
+  (`|position_qty| × markPrice`) and that the position's own long/short
+  sign is what actually flips payment direction — matching the real
+  implementation in `metrics/position.py`.
+- **`backfill_funding.py` stale comment**: a comment (copied from
+  `backfill.py`'s analogous one without updating it) claimed "every
+  explicit, user-supplied start/end is validated and rejected if
+  misaligned" — false for this module, whose `_validate_range`
+  deliberately never enforces alignment at all (see "Key empirical
+  findings"). Corrected to state only that the *computed* "now" default
+  is conveniently grid-floored, not that alignment is enforced anywhere.
+- **Test coverage nitpicks, both added**: a regression test confirming
+  `find_missing_funding_ranges` doesn't raise a false gap around a real,
+  present off-grid row (using the actual 2021-11-11T18:00:00Z pattern);
+  a regression test for the flip case (`PositionTracker` closing an
+  existing lifecycle and opening a new opposite-side one from a single
+  oversized fill) confirming `funding_pnl` lands on the closed lifecycle
+  only and resets to zero for the new one, not leaking either direction.
 
 ## Deliberately out of scope
 

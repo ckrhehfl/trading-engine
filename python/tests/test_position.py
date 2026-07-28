@@ -450,6 +450,51 @@ def test_scaling_position_uses_the_actually_held_quantity_at_each_funding_timest
     assert trades[0].funding_pnl == Decimal("-0.03")
 
 
+def test_flip_in_a_single_fill_attributes_pre_flip_funding_to_the_closed_lifecycle_and_resets_for_the_new_one():
+    # A flip (one fill both closes the existing lifecycle and opens a new,
+    # opposite-side one -- see PositionTracker._reduce_or_close_or_flip)
+    # is the regression risk CodeRabbit flagged for this task's PR:
+    # _lifecycle_funding_pnl must land on the CLOSED (old) lifecycle's
+    # ClosedTrade and reset to 0 for the freshly-opened one, not leak
+    # across the flip in either direction.
+    entry_intent = _intent(Side.LONG, "1", BASE_TIME)
+    entry_fill = _fill(entry_intent, "100", "1", BASE_TIME)
+    # Funding while LONG 1 is open, pre-flip -- must land on trade 1 only.
+    pre_flip_funding_time = BASE_TIME + timedelta(minutes=30)
+    flip_time = BASE_TIME + timedelta(hours=1)
+    # A single SHORT 3 fill against a LONG 1 position: closes the LONG (1)
+    # and opens a fresh SHORT 2 lifecycle at the same fill.
+    flip_intent = _intent(Side.SHORT, "3", flip_time)
+    flip_fill = _fill(flip_intent, "100", "3", flip_time)
+    # Funding while SHORT 2 is open, post-flip -- must land on trade 2 only.
+    post_flip_funding_time = flip_time + timedelta(minutes=30)
+    exit_intent = _intent(Side.LONG, "2", BASE_TIME + timedelta(hours=2))
+    exit_fill = _fill(exit_intent, "100", "2", BASE_TIME + timedelta(hours=2))
+    funding = [
+        _funding("0.0001", pre_flip_funding_time, mark_price="100"),
+        _funding("0.0002", post_flip_funding_time, mark_price="100"),
+    ]
+
+    trades = reconstruct_trades(
+        [entry_intent, flip_intent, exit_intent],
+        [entry_fill, flip_fill, exit_fill],
+        funding_rates=funding,
+    )
+
+    assert len(trades) == 2
+    long_trade, short_trade = trades
+    assert long_trade.side == Side.LONG
+    assert short_trade.side == Side.SHORT
+    # Trade 1 (closed by the flip): only the pre-flip funding, long pays
+    # on a positive rate. notional = 1 * 100 = 100; payment = -100 * 0.0001 = -0.01
+    assert long_trade.funding_pnl == Decimal("-0.01")
+    # Trade 2 (opened by the flip's residual): only the post-flip funding,
+    # starting from zero -- must NOT inherit trade 1's -0.01. Short
+    # receives on a positive rate: notional = 2 * 100 = 200; payment =
+    # -(-1) * 200 * 0.0002 = 0.04
+    assert short_trade.funding_pnl == Decimal("0.04")
+
+
 def test_reconstruct_trades_raises_on_mismatched_length_inputs_instead_of_silently_truncating():
     # filled_intents/fills must be index-aligned (same length) per the
     # BacktestResult contract — a mismatch is a caller bug that must be

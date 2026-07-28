@@ -407,6 +407,31 @@ def test_find_missing_funding_ranges_accepts_a_range_not_aligned_to_funding_inte
     assert gaps == [(FUNDING_BASE + 1, FUNDING_BASE + FUNDING_STEP + 1)]
 
 
+def test_find_missing_funding_ranges_reports_no_gap_for_a_real_off_grid_row_between_two_aligned_rows(conn):
+    # Real, confirmed-live pattern (see bingx_funding.py's module
+    # docstring): a genuine off-grid row can sit strictly between two
+    # otherwise-normal-cadence rows -- e.g. the real 2021-11-11T18:00:00Z
+    # settlement, 2h after a 16:00:00Z row and 6h before the following
+    # day's 00:00:00Z row. All three are actually stored here (unlike the
+    # disclosed-limitation scenario documented in this function's own
+    # docstring, where the off-grid row itself is missing) -- this test
+    # only asserts the *present* off-grid row doesn't trigger a false
+    # gap around itself, not that a *dropped* off-grid row would be
+    # caught (it structurally can't be -- see the docstring).
+    row_16 = FundingRow(funding_time_ms=FUNDING_BASE, funding_rate=Decimal("0.0001"), mark_price=Decimal("50000"))
+    row_18_off_grid = FundingRow(
+        funding_time_ms=FUNDING_BASE + 2 * 3_600_000, funding_rate=Decimal("0.0001"), mark_price=Decimal("50000")
+    )
+    row_next_00 = FundingRow(
+        funding_time_ms=FUNDING_BASE + FUNDING_STEP, funding_rate=Decimal("0.0001"), mark_price=Decimal("50000")
+    )
+    upsert_funding_rates(conn, "BTC-USDT", [row_16, row_18_off_grid, row_next_00])
+
+    gaps = find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE, FUNDING_BASE + FUNDING_STEP + 1)
+
+    assert gaps == []
+
+
 def test_find_missing_funding_ranges_rejects_inverted_range(conn):
     with pytest.raises(ValueError):
         find_missing_funding_ranges(conn, "BTC-USDT", FUNDING_BASE + FUNDING_STEP, FUNDING_BASE)

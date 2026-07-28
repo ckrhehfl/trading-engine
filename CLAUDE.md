@@ -209,11 +209,15 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
   this endpoint deliberately does not enforce grid alignment the way
   klines does. Sign convention (verified against BingX's own official
   docs): `fundingRate > 0` → longs pay shorts; `fundingRate < 0` →
-  shorts pay longs; payment = `position_notional × fundingRate`, using
-  the funding row's own historical `markPrice`. See
-  `.planning/sr-m-funding-rate-pipeline.md` for the full investigation
-  and `python/data/bingx_funding.py`'s module docstring for the
-  implementation-level detail.
+  shorts pay longs. Implemented as `payment = -sign(position_qty) ×
+  |position_qty| × markPrice × fundingRate` — `position_notional`
+  (`|position_qty| × markPrice`) is always the unsigned magnitude; the
+  position's own long(+1)/short(-1) sign is what actually flips the
+  payment direction between "pays" and "receives" for a given
+  `fundingRate` sign, using the funding row's own historical
+  `markPrice`. See `.planning/sr-m-funding-rate-pipeline.md` for the
+  full investigation and `python/metrics/position.py`'s module
+  docstring for the implementation-level detail.
 
 ### Verified — authenticated, VST key (2026-07-24, @ckrhehfl's demo-trading
 API key against `open-api-vst.bingx.com`)
