@@ -630,6 +630,17 @@ class TestPsrFromEquityCurve:
         assert result.psr is None
         assert result.sharpe_ratio is None
 
+    def test_rejects_bad_arguments_on_either_sampling_path(self):
+        curve = _synthetic_equity_curve(480)
+        with pytest.raises(ValueError, match="sampling"):
+            psr_from_equity_curve(curve, bars_per_day=24, sampling="weekly")
+        # bars_per_day is unused by the per-bar path, but a non-positive
+        # value is a caller bug either way -- it must not fail loudly on one
+        # path and pass silently on the other.
+        for sampling in (SAMPLING_DAILY, SAMPLING_PER_BAR):
+            with pytest.raises(ValueError, match="bars_per_day"):
+                psr_from_equity_curve(curve, bars_per_day=0, sampling=sampling)
+
 
 class TestSharpeVarianceAcrossTrials:
     def test_matches_the_sample_variance_of_the_trial_sharpes(self):

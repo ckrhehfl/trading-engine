@@ -615,6 +615,14 @@ def deannualize_sharpe(annualized_sharpe: float, *, bars_per_day: int, sampling:
     `sampling` defaults to daily to match `psr_from_equity_curve`'s default;
     it must match whatever series `T` was counted on, or the resulting PSR
     is meaningless (at 1h bars the two differ by sqrt(24) ~= 4.9x).
+
+    `bars_per_day` is validated even for `SAMPLING_DAILY`, where it is not
+    used in the arithmetic: a caller passing a non-positive bar count has a
+    bug worth surfacing at the entry point, and letting it through only when
+    the sampling happens to be daily would make the same mistake fail loudly
+    or silently depending on an unrelated argument. Same fail-loud
+    convention as `metrics.metrics._sharpe_ratio`'s own `bars_per_day`
+    check.
     """
     if bars_per_day <= 0:
         raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
@@ -777,8 +785,13 @@ def psr_from_equity_curve(
 
     The Sharpe, the moments, and `T` all come from the same resampled
     series, so they cannot drift apart. `bars_per_day` is only used for the
-    resampling itself -- nothing here is annualized.
+    resampling itself -- nothing here is annualized -- but is validated
+    either way, for the same reason `deannualize_sharpe` validates it: a
+    non-positive bar count is a caller bug regardless of which sampling
+    path it happens to take.
     """
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
     if sampling not in _VALID_SAMPLINGS:
         raise ValueError(f"sampling must be one of {_VALID_SAMPLINGS}, got {sampling!r}")
 
