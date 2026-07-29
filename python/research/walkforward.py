@@ -303,6 +303,15 @@ def run_walk_forward(
         raise ValueError(f"fee_bps must be non-negative, got {fee_bps}")
     if slippage_bps < 0:
         raise ValueError(f"slippage_bps must be non-negative, got {slippage_bps}")
+    # Checked here, not left to compute_metrics' own identical check: a run
+    # that produces zero folds never calls compute_metrics at all, so an
+    # unusable bars_per_day would otherwise be written into
+    # walk_forward_config below and logged as a successful run -- a value
+    # PSR/DSR then cannot de-annualize with. Same fail-loud-at-the-entry-
+    # point convention as the two checks above. (CodeRabbit review finding
+    # on PR #52.)
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
 
     folds = generate_folds(len(klines), train_bars, validate_bars, step_bars)
 

@@ -19,6 +19,7 @@ from research.eligibility import (
     DEFAULT_NULL_PROBABILITY,
     DEFAULT_SIGNIFICANCE_ALPHA,
     EULER_MASCHERONI,
+    DeflatedSharpeResult,
     MOMENTS_SOURCE_NORMAL,
     MOMENTS_SOURCE_OBSERVED,
     SAMPLING_DAILY,
@@ -685,9 +686,14 @@ class TestDeflatedSharpeBenchmark:
     def test_zero_variance_across_trials_yields_none(self):
         assert deflated_sharpe_benchmark(trial_sharpe_variance=0.0, num_trials=10) is None
 
-    def test_rejects_a_negative_variance(self):
-        with pytest.raises(ValueError, match="trial_sharpe_variance"):
-            deflated_sharpe_benchmark(trial_sharpe_variance=-1.0, num_trials=10)
+    def test_rejects_a_negative_variance_whatever_the_trial_count(self):
+        # A negative variance is a caller bug at any N. It must not fail
+        # loudly at N=10 while silently returning 0.0 at N=1 or None at
+        # N=0 -- the same consistency this module enforces for
+        # bars_per_day. (CodeRabbit review finding on PR #52.)
+        for num_trials in (0, 1, 2, 10):
+            with pytest.raises(ValueError, match="trial_sharpe_variance"):
+                deflated_sharpe_benchmark(trial_sharpe_variance=-1.0, num_trials=num_trials)
 
 
 class TestEvaluateDeflatedSharpe:
@@ -758,7 +764,7 @@ class TestEligibilityReportsButDoesNotGateOnDeflatedSharpe:
     DECIDES.
     """
 
-    def _dsr(self, sharpe_ratio: float):
+    def _dsr(self, sharpe_ratio: float) -> DeflatedSharpeResult:
         return evaluate_deflated_sharpe(
             sharpe_ratio=sharpe_ratio, num_observations=2000, num_trials=50, trial_sharpe_variance=0.01
         )

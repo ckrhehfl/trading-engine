@@ -404,9 +404,9 @@ than raising or fabricating — matching the module's existing conventions.
 TDD throughout: the tests were written first and confirmed failing
 (`ImportError` on the new names) before any implementation existed.
 
-**61 new tests**, all in existing files (`tests/test_eligibility.py`,
+**62 new tests**, all in existing files (`tests/test_eligibility.py`,
 `tests/test_metrics.py`, `tests/test_walkforward.py`). Full suite on the
-rebased tree: **849 passed** (788 on `main` at the rebase point, which
+rebased tree: **850 passed** (788 on `main` at the rebase point, which
 already includes `sr-t`'s and `sr-p`'s own new tests; nothing regressed).
 
 This branch was rebased onto `main` after `sr-t` (1d data path) and `sr-p`
@@ -450,6 +450,31 @@ from a fresh clone and from CI, and is the real research audit trail —
 tests must not read it. This matches the existing
 `TestMeanSharpeSignificanceRealFixture` fixture, which transcribes the
 original ensemble's real fold Sharpes the same way.
+
+### Review findings (CodeRabbit, PR #52) — all four accepted
+
+1. **`deflated_sharpe_benchmark` validated a negative `trial_sharpe_variance`
+   only *after* its `num_trials` early returns**, so the identical caller
+   bug raised at `N=10` but silently returned `0.0` at `N=1` and `None` at
+   `N=0`. A real inconsistency, and precisely the pattern this task had
+   already rejected for `bars_per_day` one commit earlier. Moved the check
+   ahead of every early return; the test now asserts it at `N ∈ {0, 1, 2, 10}`.
+2. **`run_walk_forward` did not validate `bars_per_day` at its entry
+   point.** `compute_metrics` has its own identical check, but a run that
+   produces **zero folds** never calls it — so an unusable value would be
+   written into the logged `walk_forward_config` as though the run were
+   fine, and PSR/DSR could never de-annualize that record. Now rejected up
+   front alongside the existing `fee_bps`/`slippage_bps` checks, with a
+   test that also asserts nothing was logged.
+3. `per_bar_returns` now uses `itertools.pairwise` instead of
+   `zip(curve, curve[1:])` — silences Ruff `B905`/`RUF007` and matches the
+   precedent already set in `research/strategies/funding_extremity.py`.
+   Behaviour identical.
+4. A missing return-type annotation on a test helper.
+
+Findings 1 and 2 are the substantive ones; both are the *same* class of
+defect (an input check placed where an unrelated argument can skip it),
+which is worth noting as a pattern rather than two isolated fixes.
 
 ## Deliberately out of scope
 

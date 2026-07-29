@@ -880,14 +880,20 @@ def deflated_sharpe_benchmark(*, trial_sharpe_variance: float | None, num_trials
     under-deflating there, which is the permissive direction, so a small-N
     DSR should not be read as a conservative number.
     """
+    # Validated before any early return, so a negative variance fails
+    # loudly regardless of `num_trials` -- the same consistency
+    # `deannualize_sharpe`/`psr_from_equity_curve` enforce for
+    # `bars_per_day`: one caller mistake must not fail loudly or pass
+    # silently depending on an unrelated argument. (CodeRabbit review
+    # finding on PR #52.)
+    if trial_sharpe_variance is not None and trial_sharpe_variance < 0:
+        raise ValueError(f"trial_sharpe_variance must be non-negative, got {trial_sharpe_variance}")
     if num_trials < 1:
         return None
     if num_trials == 1:
         return 0.0
     if trial_sharpe_variance is None:
         return None
-    if trial_sharpe_variance < 0:
-        raise ValueError(f"trial_sharpe_variance must be non-negative, got {trial_sharpe_variance}")
     if trial_sharpe_variance == 0:
         return None
 

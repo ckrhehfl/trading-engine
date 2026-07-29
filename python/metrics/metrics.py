@@ -32,6 +32,7 @@ they are always computable and always wanted. See
 import math
 from dataclasses import dataclass
 from decimal import Decimal
+from itertools import pairwise
 from statistics import StatisticsError, fmean, stdev
 from typing import Sequence
 
@@ -269,7 +270,7 @@ def per_bar_returns(equity_curve: Sequence[Decimal]) -> list[float]:
     be silently wrong rather than loudly broken.
     """
     returns: list[float] = []
-    for previous, current in zip(equity_curve, equity_curve[1:]):
+    for previous, current in pairwise(equity_curve):
         if previous == 0:
             continue
         returns.append(float((current - previous) / previous))

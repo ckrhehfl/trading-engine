@@ -1151,6 +1151,40 @@ def test_logged_fold_metrics_carry_the_return_moments_dsr_needs(tmp_path):
         assert fold["metrics"]["num_returns"] == 3  # 4 validate bars -> 3 returns
 
 
+def test_run_walk_forward_rejects_non_positive_bars_per_day_even_with_zero_folds(tmp_path):
+    """A zero-fold run never reaches `compute_metrics`, so its own
+    `bars_per_day` check never fires -- an unusable value would be written
+    straight into the logged `walk_forward_config` as if the run were fine,
+    and PSR/DSR could then never de-annualize that record's Sharpe. Rejected
+    at `run_walk_forward`'s entry point instead, matching its existing
+    `fee_bps`/`slippage_bps` validation. (CodeRabbit review finding on
+    PR #52.)
+    """
+    klines = _klines(4)  # too short for train_bars=4 + validate_bars=4
+    strategy = _BuyAndHoldStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    for bars_per_day in (0, -1):
+        with pytest.raises(ValueError, match="bars_per_day"):
+            run_walk_forward(
+                klines,
+                strategy,
+                "strat-1",
+                "v1",
+                {},
+                train_bars=4,
+                validate_bars=4,
+                step_bars=4,
+                fee_bps=Decimal("0"),
+                slippage_bps=Decimal("0"),
+                bars_per_day=bars_per_day,
+                runs_path=runs_path,
+            )
+
+    # And nothing was logged -- the run was rejected, not recorded.
+    assert not runs_path.exists()
+
+
 def test_logged_walk_forward_config_records_bars_per_day(tmp_path):
     """Also Task Q: `bars_per_day` was previously inferable from a logged
     record only by reverse-engineering `train_bars` (2160 => 1h, 8640 =>
