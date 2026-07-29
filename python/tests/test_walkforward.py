@@ -1113,3 +1113,103 @@ def test_run_walk_forward_threads_strategy_family_into_the_logged_record(tmp_pat
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[-1])
     assert record["strategy_family"] == "trend-momentum"
+
+
+# --- Logged shape for the Deflated Sharpe Ratio (Task Q) ---------------------
+
+
+def test_logged_fold_metrics_carry_the_return_moments_dsr_needs(tmp_path):
+    """Strategy Research Task Q: the Probabilistic/Deflated Sharpe Ratio
+    needs each run's return skewness/kurtosis and observation count, none of
+    which `_metrics_summary` previously persisted (`Metrics.equity_curve`,
+    the only thing they could be recomputed from, is deliberately dropped
+    before logging). Added unconditionally rather than behind an opt-in flag
+    -- see `.planning/sr-q-deflated-sharpe.md` for that judgment call.
+    """
+    klines = _klines(16)
+    strategy = _BuyAndHoldStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    run_walk_forward(
+        klines,
+        strategy,
+        "strat-1",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=runs_path,
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    for fold in record["fold_results"]:
+        assert "return_skewness" in fold["metrics"]
+        assert "return_kurtosis" in fold["metrics"]
+        assert fold["metrics"]["num_returns"] == 3  # 4 validate bars -> 3 returns
+
+
+def test_run_walk_forward_rejects_non_positive_bars_per_day_even_with_zero_folds(tmp_path):
+    """A zero-fold run never reaches `compute_metrics`, so its own
+    `bars_per_day` check never fires -- an unusable value would be written
+    straight into the logged `walk_forward_config` as if the run were fine,
+    and PSR/DSR could then never de-annualize that record's Sharpe. Rejected
+    at `run_walk_forward`'s entry point instead, matching its existing
+    `fee_bps`/`slippage_bps` validation. (CodeRabbit review finding on
+    PR #52.)
+    """
+    klines = _klines(4)  # too short for train_bars=4 + validate_bars=4
+    strategy = _BuyAndHoldStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    for bars_per_day in (0, -1):
+        with pytest.raises(ValueError, match="bars_per_day"):
+            run_walk_forward(
+                klines,
+                strategy,
+                "strat-1",
+                "v1",
+                {},
+                train_bars=4,
+                validate_bars=4,
+                step_bars=4,
+                fee_bps=Decimal("0"),
+                slippage_bps=Decimal("0"),
+                bars_per_day=bars_per_day,
+                runs_path=runs_path,
+            )
+
+    # And nothing was logged -- the run was rejected, not recorded.
+    assert not runs_path.exists()
+
+
+def test_logged_walk_forward_config_records_bars_per_day(tmp_path):
+    """Also Task Q: `bars_per_day` was previously inferable from a logged
+    record only by reverse-engineering `train_bars` (2160 => 1h, 8640 =>
+    15m), which is fragile and breaks the moment a new window size is used.
+    PSR/DSR need it to de-annualize a logged Sharpe, so it is now logged
+    directly -- unconditionally, since it is always known.
+    """
+    klines = _klines(16)
+    strategy = _BuyAndHoldStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    run_walk_forward(
+        klines,
+        strategy,
+        "strat-1",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        bars_per_day=24,
+        runs_path=runs_path,
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["walk_forward_config"]["bars_per_day"] == 24

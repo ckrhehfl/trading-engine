@@ -303,6 +303,15 @@ def run_walk_forward(
         raise ValueError(f"fee_bps must be non-negative, got {fee_bps}")
     if slippage_bps < 0:
         raise ValueError(f"slippage_bps must be non-negative, got {slippage_bps}")
+    # Checked here, not left to compute_metrics' own identical check: a run
+    # that produces zero folds never calls compute_metrics at all, so an
+    # unusable bars_per_day would otherwise be written into
+    # walk_forward_config below and logged as a successful run -- a value
+    # PSR/DSR then cannot de-annualize with. Same fail-loud-at-the-entry-
+    # point convention as the two checks above. (CodeRabbit review finding
+    # on PR #52.)
+    if bars_per_day <= 0:
+        raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
 
     folds = generate_folds(len(klines), train_bars, validate_bars, step_bars)
 
@@ -399,6 +408,15 @@ def run_walk_forward(
         "validate_bars": validate_bars,
         "step_bars": step_bars,
         "fold_count": len(fold_results),
+        # Unconditional (Strategy Research Task Q). Previously a logged
+        # record's timeframe was only inferable by reverse-engineering
+        # train_bars (2160 => 1h, 8640 => 15m) -- fragile, and wrong the
+        # moment a new window size is used. The Probabilistic/Deflated
+        # Sharpe Ratio must de-annualize a logged Sharpe (dividing by
+        # sqrt(bars_per_day * 365)), so it needs this exactly, not by
+        # inference. Same "always known, so always logged" reasoning as the
+        # return moments in _metrics_summary above.
+        "bars_per_day": bars_per_day,
     }
     # Additive -- only present when a caller opted in via funding_rates,
     # so an existing reader of runs/experiments.jsonl sees byte-for-byte
@@ -455,6 +473,17 @@ def _metrics_summary(metrics: Metrics) -> dict:
     for any caller that needs it (e.g. Task D's grid search comparing
     candidates); the persisted log only needs the numbers CLAUDE.md's
     Eligibility Bar is expressed in terms of.
+
+    `return_skewness`/`return_kurtosis`/`num_returns` (Strategy Research
+    Task Q) are logged **unconditionally**, departing from the recent
+    "field only appears when the feature is actually used" convention
+    below (`parameter_sensitivity`, `funding_pnl_included`). Justified
+    because they are always computable and the Probabilistic/Deflated
+    Sharpe Ratio needs them for every run: gating them behind a flag would
+    be pure ceremony, and dropping `equity_curve` (above) means a logged
+    record could otherwise never be re-evaluated under PSR/DSR without
+    re-running the entire backtest. Flagged as a judgment call in
+    `.planning/sr-q-deflated-sharpe.md`.
     """
     return {
         "starting_equity": metrics.starting_equity,
@@ -465,6 +494,9 @@ def _metrics_summary(metrics: Metrics) -> dict:
         "win_rate": metrics.win_rate,
         "num_trades": metrics.num_trades,
         "profit_factor": metrics.profit_factor,
+        "return_skewness": metrics.return_skewness,
+        "return_kurtosis": metrics.return_kurtosis,
+        "num_returns": metrics.num_returns,
     }
 
 
