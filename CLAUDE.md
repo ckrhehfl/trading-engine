@@ -632,8 +632,14 @@ change can be made without it being tuning-after-the-fact:
 from "n=30 for the CLT" (`sr-g` correctly demolished the *"30 trades
 per parameter"* rule as having no rigorous origin — that is a different
 claim, about *per-parameter* counts). It is the point at which a sign
-test over trade outcomes has any power at all, and below which
-per-trade statistics are dominated by their own estimation noise. The
+test over trade outcomes can be expected to have *usable* power, and
+below which per-trade statistics are dominated by their own estimation
+noise. Stated that way deliberately, on review: **not** "the point at
+which a sign test first has any power at all", which would contradict
+this same section's own holdout arithmetic below — at n=5 a literal 5/5
+sweep does reach p = 0.03125. The point is that below ~30 nothing short
+of a near-sweep is detectable, which is a floor on *usable* power, not
+on power existing. The
 real justification for choosing it here is empirical and specific: **a
 daily strategy over `sr-t`'s 822-bar 1d research window yields roughly
 30-60 trades**, so a 100-trade floor would reject every possible daily
@@ -746,9 +752,16 @@ records carry one and re-judging them under CSCV is arithmetically
 impossible without re-running every backtest; the historical trials are
 not commensurable (2 timeframes, 4 `walk_forward_config` shapes, 5
 lineage families, and the largest single grid ever run is **6**
-candidates against condition (a)'s ≥50); and no decision would change,
-since every configuration is already rejected by five to eight orders of
-magnitude.
+candidates against condition (a)'s ≥50); and no decision would change.
+That last one, stated precisely on review rather than as `sr-r`'s looser
+"every configuration is already rejected": the **14**
+`REJECTED`/`REJECTED-UNDERPOWERED` rows are rejected by five to eight
+orders of magnitude, so PBO would be spending real implementation effort
+to re-reject them, and the **4** `INCONCLUSIVE-DATA-LIMITED` rows are
+inconclusive for a *sample-size* reason PBO does not address — it
+measures whether a winner's out-of-sample rank beats median, it does not
+manufacture trades a 7- or 14-trade run never had. CSCV would leave that
+second group exactly where it is.
 
 **Correction to `sr-r`'s own wording, verified against
 `python/research/walkforward.py` on 2026-07-29** (found on review of the
