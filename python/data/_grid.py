@@ -11,13 +11,25 @@ Only `15m` was wired up through Task A (the original scope); `1h` was
 added in Strategy Research Task F (see `.planning/sr-f-risk-management-
 and-1h-variant.md`) to support a native-1h strategy variant needing real
 1h BingX history -- exactly the one-line addition Task A's own docstring
-anticipated, not a refactor. `5m` (also already named in CLAUDE.md's
-Current Scope) remains unwired until something actually needs it.
+anticipated, not a refactor. `1d` was added the same way in Strategy
+Research Task T (see `.planning/sr-t-daily-data-path.md`), to reach the
+~2.9 years of daily history that predates every backtest this project
+has ever logged -- BingX retains materially more history at coarser
+granularity (verified, see CLAUDE.md's "Exchange API Facts"). `5m` (also
+already named in CLAUDE.md's Current Scope) remains unwired until
+something actually needs it.
+
+`1d`'s step is a plain 86,400,000ms, which makes "grid-aligned" mean
+"UTC midnight" -- verified against the live endpoint 2026-07-28, every
+returned daily bar's `time` is exactly a multiple of 86,400,000 (BingX
+does *not* open its daily candle at a local/exchange-timezone offset,
+which would have made this constant wrong while still looking right).
 """
 
 INTERVAL_MS = {
     "15m": 900_000,
     "1h": 3_600_000,
+    "1d": 86_400_000,
 }
 
 
