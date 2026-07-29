@@ -414,8 +414,15 @@ Non-negotiable once strategy research begins:
   trials have been run against it and its detection floor is ~1.21
   annualized Sharpe (`sr-r`). Every additional trial raises the `N` any
   future winner must be deflated against while adding no new evidence,
-  so further search there is *strictly* value-destroying: it can only
-  lower a future DSR, never raise one. This window remains valid for
+  so further search there is *strictly* value-destroying: raising `N`
+  can only lower the DSR of any given result, never raise it. (Stated
+  precisely, at CodeRabbit's prompting on the PR that applied this
+  rule: the monotonicity is in `N` **at a fixed observed Sharpe**. A
+  new trial could of course post a higher raw Sharpe and become the new
+  winner — the argument against searching here is the *other* half of
+  that sentence, "adding no new evidence": on a window with a ~1.21
+  detection floor, such a result would be indistinguishable from luck
+  regardless.) This window remains valid for
   **reproducing** a previously logged result, for **diagnosing** a
   mechanism (as `sr-o` did), and for **infrastructure** testing — none
   of which select a configuration. It is closed to *selection*.
@@ -560,7 +567,14 @@ luck, not edge. Replaced with two required checks:
    single-member family, which would understate `N`. `resolve_family`
    surfaces this as a visible note rather than silently, but gating on
    DSR makes keeping that map honest a real obligation rather than a
-   diagnostic nicety.
+   diagnostic nicety. **Raised on review and deliberately not adopted
+   here**: making `resolve_family` *fail closed* (refuse to produce a
+   DSR at all for an unmapped `strategy_id`, rather than fall back to a
+   single-member family) would harden this properly. It is a code change
+   to `research/lineage.py` plus a new approval-gated rule, neither of
+   which belongs in a documentation-only change — recorded as a named
+   follow-up so the disclosed cost above is not mistaken for the last
+   word on it.
 
 All other criteria are unchanged by the 2026-07-27 revision: minimum
 8-10 folds for the result to be considered credible (met since `sr-f`
@@ -661,6 +675,19 @@ fold-based clauses have no meaning on one window):
 > **Explicitly NOT required: any fold-count, fold-consistency, or
 > sign-test criterion.**
 
+**Clause 2's "in force at the time" means pinned *before* access, not
+chosen after** (added on review of the applying PR; the approved wording
+left it ambiguous, and the ambiguity is exploitable). The trade-count
+floor, the drawdown ceiling, and the profit-factor floor must be written
+into the confirmation record — with the CLAUDE.md revision date they
+come from — **before the holdout is loaded**, and a later change to any
+of them is not applied retroactively to a holdout already spent. This is
+the same discipline the `1d` window is already reserved under ("the
+specification must be committed before that window is ever loaded"),
+stated here so it covers the *criteria* too, not just the strategy
+specification. A holdout judged against criteria selected after seeing
+it is not a holdout.
+
 The fold criteria are dropped rather than scaled down because scaling
 them down reproduces the exact error `sr-j` already identified and
 corrected once: at n=5 folds the **only** sign-test outcome clearing
@@ -700,16 +727,40 @@ a condition a script can check:
 > "is this winner's out-of-sample rank better than median?", which is
 > only an interesting question about something that already looks good.
 
+What checking the trigger actually reads: condition (a) needs
+`runs/experiments.jsonl` **plus** `research/lineage.py`'s curated family
+map (family membership is not self-describing in the log for records
+predating `sr-p`'s optional `strategy_family` key), and condition (b) is
+`research/eligibility.py`. Both are mechanical; "computable by a script"
+above means *no judgment call is required*, not *the JSONL alone
+suffices*.
+
 Three concrete current reasons to keep deferring, not a vibe (full
-detail in `.planning/sr-r-retrospective-closeout.md`): CSCV needs
-per-candidate equity curves and **zero** of the 1,839 logged records
-carry one (`walkforward._metrics_summary` discarded `equity_curve`
-before logging until `sr-q`) — arithmetically impossible without
-re-running every backtest; the historical trials are not commensurable
-(2 timeframes, 4 `walk_forward_config` shapes, 5 lineage families, and
-the largest single grid ever run is **6** candidates against condition
-(a)'s ≥50); and no decision would change, since every configuration is
-already rejected by five to eight orders of magnitude.
+detail in `.planning/sr-r-retrospective-closeout.md`): **CSCV needs
+per-candidate equity curves and nothing in this repo retains them** —
+`walkforward._metrics_summary` deliberately omits `equity_curve` (and
+**still does after `sr-q`**, which added `return_skewness`/
+`return_kurtosis`/`num_returns` *instead*, precisely so a logged record
+stays PSR/DSR-evaluable without one), so zero of the 1,839 logged
+records carry one and re-judging them under CSCV is arithmetically
+impossible without re-running every backtest; the historical trials are
+not commensurable (2 timeframes, 4 `walk_forward_config` shapes, 5
+lineage families, and the largest single grid ever run is **6**
+candidates against condition (a)'s ≥50); and no decision would change,
+since every configuration is already rejected by five to eight orders of
+magnitude.
+
+**Correction to `sr-r`'s own wording, verified against
+`python/research/walkforward.py` on 2026-07-29** (found on review of the
+applying PR): `sr-r` says `_metrics_summary` "discarded `equity_curve`
+before logging **until** `sr-q`", which reads as though `sr-q` fixed it.
+It did not — `_metrics_summary` still drops `equity_curve` by design, and
+its own docstring says so. The consequence is load-bearing for this
+trigger rather than cosmetic: condition (a)'s "per-candidate equity
+curves retained" is **not satisfiable by today's logging at all**, so
+equity-curve retention has to be built before the trigger can ever fire.
+That is a further reason this is a deferral rather than a near-term plan,
+not a reason to weaken the condition.
 
 ### Strategy Attempts So Far (closed out 2026-07-29)
 
