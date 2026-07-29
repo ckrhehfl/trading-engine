@@ -151,7 +151,7 @@ task:
 | `SR̂` aggregate | yes | `aggregate_metrics.mean_sharpe` (annualized) |
 | `T` | yes | `walk_forward_config.validate_bars × fold_count`, or `data_range.num_bars` |
 | `V̂` | yes | assembled across a family's records |
-| `N` | caller-supplied | a sibling task owns deriving it correctly |
+| `N` | caller-supplied | `sr-p`'s `FamilyOverfittingCheckResult.selection_trials` — see the aside below |
 | `γ₃`, `γ₄` | **NO** | `walkforward._metrics_summary` deliberately drops `equity_curve`; `Metrics.equity_curve` exists only in memory |
 | `bars_per_day` | **NO** | only inferable by reverse-engineering `train_bars` (2160 ⇒ 1h, 8640 ⇒ 15m) |
 
@@ -190,9 +190,19 @@ came out as:
 So "how many trials produced the best result" has at least two very
 different defensible answers (1,839 vs 33) before anyone even argues about
 re-runs of identical configurations. `evaluate_deflated_sharpe` therefore
-takes `num_trials` as a plain `int` parameter and derives nothing, so that
-the sibling task fixing the trial count and this one compose without
-either depending on the other's internals.
+takes `num_trials` as a plain `int` parameter and derives nothing.
+
+`sr-p` landed while this task was in flight and now owns that derivation.
+The composition point is concrete:
+`research.overfitting_check.FamilyOverfittingCheckResult.selection_trials`
+— documented there as "the honest `N` for this family" — feeds straight
+into `evaluate_deflated_sharpe(num_trials=..., ...)`. Deliberately still
+not wired together in code: `sr-p` deliberately reports *two* defensible
+counts (`selection_trials`, which includes reproduction runs, and
+`deduplicated_selection_trials`, which merges them), and its own docstring
+says choosing between them "is a judgment call the heuristic shouldn't
+make unilaterally". This module takes the number; it does not pick which
+one.
 
 ## Kurtosis sensitivity, reproduced
 
@@ -394,9 +404,20 @@ than raising or fabricating — matching the module's existing conventions.
 TDD throughout: the tests were written first and confirmed failing
 (`ImportError` on the new names) before any implementation existed.
 
-**60 new tests**, all in existing files (`tests/test_eligibility.py`,
-`tests/test_metrics.py`, `tests/test_walkforward.py`). Full suite:
-**760 passed** (700 before this task; nothing regressed).
+**61 new tests**, all in existing files (`tests/test_eligibility.py`,
+`tests/test_metrics.py`, `tests/test_walkforward.py`). Full suite on the
+rebased tree: **849 passed** (788 on `main` at the rebase point, which
+already includes `sr-t`'s and `sr-p`'s own new tests; nothing regressed).
+
+This branch was rebased onto `main` after `sr-t` (1d data path) and `sr-p`
+(family-level trial accounting) landed. The only conflict was in
+`tests/test_walkforward.py`, where `sr-p` and this task had each appended
+a new block to the end of the same file; resolved by keeping both blocks
+verbatim, derived mechanically from the index stages (with an assertion
+that neither side had modified any pre-existing line) rather than
+hand-transcribed. `research/walkforward.py` merged cleanly and carries
+both `sr-p`'s `strategy_family` / `sensitivity:`-prefixed `parent_run_id`
+and this task's `bars_per_day` + return-moment logging.
 
 Coverage, per the brief's list:
 
@@ -436,13 +457,15 @@ original ensemble's real fold Sharpes the same way.
   the Bar is human-approval-gated and a later task collects the proposal.
   Nothing in this task's code can cause a strategy to pass or fail
   differently than before it.
-- **Deriving `N` from the experiment log.** A sibling task owns the trial
-  count; `num_trials` is a plain parameter here so the two compose.
+- **Deriving `N` from the experiment log.** `sr-p` owns the trial count;
+  `num_trials` is a plain parameter here so the two compose (see the aside
+  above for the exact seam), and choosing between `sr-p`'s two defensible
+  counts stays a caller/human decision.
 - **Re-running any strategy under PSR/DSR to produce a new verdict.** This
   task builds and verifies the machinery. The illustrative Configuration C
   numbers above are exactly that — illustrative — and in particular no
-  DSR-at-a-real-`N` figure is published here, because the real `N` is the
-  sibling task's output, not this one's to guess.
+  DSR-at-a-real-`N` figure is published here, because the real `N` is
+  `sr-p`'s output and which of its two counts to use has not been decided.
 - **The Probabilistic Sharpe Ratio's confidence-interval / minimum-track-
   record-length companions** from the same 2012 paper. Not needed for the
   significance question; not built speculatively, same discipline as
