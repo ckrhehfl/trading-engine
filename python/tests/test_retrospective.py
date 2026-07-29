@@ -22,6 +22,7 @@ report honest rather than merely computed:
 """
 
 import json
+from dataclasses import replace
 from decimal import Decimal
 
 import pytest
@@ -33,6 +34,7 @@ from research.retrospective import (
     VERDICT_REJECTED,
     VERDICT_REJECTED_UNDERPOWERED,
     VERDICT_SURVIVES,
+    _build_parser,
     assign_verdict,
     build_retrospective,
     detection_floor_sharpe,
@@ -469,7 +471,9 @@ class TestAssignVerdict:
 class TestBuildRetrospective:
     def _two_family_log(self, tmp_path):
         runs_path = tmp_path / "experiments.jsonl"
-        # A real 19-fold-shaped run, plus a duplicate of it under a rename.
+        # A 10-fold run (not the real log's 19 -- fold count is deliberately
+        # irrelevant to everything asserted here), plus a duplicate of it
+        # under a rename.
         winner = [0.5, -0.4, 0.3, -0.2, 0.1, 0.6, -0.5, 0.2, -0.1, 0.4]
         _log_run(runs_path, strategy_id="ensemble-momentum", run_id="winner", fold_sharpes=winner, total_trades=400)
         _log_run(
@@ -566,6 +570,93 @@ class TestBuildRetrospective:
         )
 
         assert json.loads(json.dumps(report.to_dict()))["distinct_configurations"] == 2
+
+
+class TestUnresolvableTrialCount:
+    """CodeRabbit review finding on PR #53: an unresolvable trial count must
+    surface as `None` plus a note, never as a silent `0`.
+
+    A literal `N=0` happens to propagate harmlessly -- `deflated_sharpe_
+    benchmark` returns `None` below 1, so `dsr` would be `None` anyway and
+    `SURVIVES` stays unreachable -- but it would do so with nothing in
+    `notes` explaining why a row lost its DSR. `resolve_family` deliberately
+    returns an unmapped `strategy_id` as its own single-member family, so
+    this is a reachable state, not a theoretical one.
+    """
+
+    def test_an_unmapped_family_yields_none_trial_counts_and_a_note(self, tmp_path):
+        runs_path = tmp_path / "experiments.jsonl"
+        # Multi-fold, so it becomes a row -- but logged under a family name
+        # `research/lineage.py` has never heard of.
+        _log_run(
+            runs_path,
+            strategy_id="brand-new-idea",
+            run_id="unmapped",
+            fold_sharpes=[0.5, -0.4, 0.3],
+            total_trades=400,
+            strategy_family="not-a-known-family",
+        )
+
+        report = build_retrospective(runs_path=runs_path, min_fold_consistency=Decimal("0.8"))
+        row = report.rows[0]
+
+        # The family IS resolvable here (it is its own family), so only the
+        # purpose-keyed project count is at risk; assert neither is ever 0.
+        assert row.family_n != 0
+        assert row.project_n != 0
+
+    def test_a_none_trial_count_never_produces_survives(self, tmp_path):
+        """The safety property behind the whole finding."""
+        assert (
+            _verdict(dsr_project=None, mean_fold_sharpe=5.0, total_trades=500) != VERDICT_SURVIVES
+        )
+
+    def test_an_undefined_trial_count_renders_as_na_not_zero(self, tmp_path):
+        runs_path = tmp_path / "experiments.jsonl"
+        _log_run(
+            runs_path,
+            strategy_id="ensemble-momentum",
+            run_id="only",
+            fold_sharpes=[0.5, -0.4, 0.3],
+            total_trades=400,
+        )
+        report = build_retrospective(runs_path=runs_path, min_fold_consistency=Decimal("0.8"))
+        row = report.rows[0]
+        blanked = replace(row, family_n=None, project_n=None)
+        blanked_report = replace(report, rows=[blanked])
+
+        body = [line for line in render_markdown_table(blanked_report).splitlines() if line.startswith("|")][2:]
+
+        assert "| n/a | n/a |" in body[0]
+        assert " 0 |" not in body[0].replace("| 0.0", "")
+
+
+class TestFractionArgument:
+    """CodeRabbit review finding on PR #53. The finding was right -- an
+    unparseable `--min-fold-consistency` escaped as a raw traceback -- but
+    its suggested `type=Decimal` does NOT fix it: `argparse` only converts
+    `TypeError`/`ValueError` into a usage error, and
+    `decimal.InvalidOperation` is an `ArithmeticError`.
+    """
+
+    def test_a_valid_fraction_parses(self):
+        assert _build_parser().parse_args(["--min-fold-consistency", "0.85"]).min_fold_consistency == Decimal("0.85")
+
+    def test_the_default_is_the_permissive_end_of_the_approved_range(self):
+        assert _build_parser().parse_args([]).min_fold_consistency == Decimal("0.80")
+
+    @pytest.mark.parametrize("bad", ["abc", "", "nan%"])
+    def test_an_unparseable_value_is_a_usage_error_not_a_traceback(self, bad):
+        with pytest.raises(SystemExit):
+            _build_parser().parse_args(["--min-fold-consistency", bad])
+
+    @pytest.mark.parametrize("bad", ["0", "-0.5", "1.5"])
+    def test_an_out_of_range_value_is_a_usage_error(self, bad):
+        with pytest.raises(SystemExit):
+            _build_parser().parse_args(["--min-fold-consistency", bad])
+
+    def test_exactly_one_is_allowed(self):
+        assert _build_parser().parse_args(["--min-fold-consistency", "1"]).min_fold_consistency == Decimal(1)
 
 
 class TestRenderMarkdownTable:

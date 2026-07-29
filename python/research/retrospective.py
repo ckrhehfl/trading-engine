@@ -140,7 +140,7 @@ import math
 import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from statistics import NormalDist
 from typing import Any
@@ -631,8 +631,10 @@ class VerdictRow:
     sign_test_p: float | None
     t_test_p: float | None
     psr_n1: float | None
-    family_n: int
-    project_n: int
+    # `None` when no `sr-p` selection-trial count could be established for
+    # this row's family/purpose -- see `build_retrospective`. Never 0.
+    family_n: int | None
+    project_n: int | None
     dsr_family: float | None
     dsr_project: float | None
     bars_per_day: int | None
@@ -813,8 +815,25 @@ def build_retrospective(
         validated_span_years = validated_bars / (bars_per_day * 365) if bars_per_day else None
         num_observations = validated_bars // bars_per_day if bars_per_day else 0
 
-        family_n = project.families[run.family].selection_trials if run.family in project.families else 0
-        project_n = n_by_purpose.get(run.purpose, 0)
+        # `None`, never a fabricated 0, when a trial count cannot be
+        # established -- the module's own "no evidence, not zero evidence"
+        # convention. A literal `N=0` does in fact propagate harmlessly
+        # (`deflated_sharpe_benchmark` returns `None` below 1, so `dsr`
+        # would be `None` anyway and `SURVIVES` is unreachable), but it
+        # would do so *silently*: a row would lose its DSR with nothing in
+        # `notes` saying why. That matters here specifically because
+        # `resolve_family` deliberately returns an unmapped `strategy_id`
+        # as its own single-member family, so a family absent from `sr-p`'s
+        # results is a real, documented possibility rather than a
+        # theoretical one. (CodeRabbit review finding on PR #53.)
+        family_result = project.families.get(run.family)
+        family_n = family_result.selection_trials if family_result is not None else None
+        project_n = n_by_purpose.get(run.purpose)
+        if family_n is None or project_n is None:
+            notes.append(
+                f"run_id={run.run_id!r} family={run.family!r} purpose={run.purpose!r}: no sr-p selection-trial "
+                "count available -- DSR left undefined rather than deflated against a fabricated N"
+            )
 
         psr_n1 = None
         dsr_family = None
@@ -822,31 +841,31 @@ def build_retrospective(
         moments_source = "normal_assumption"
         if bars_per_day:
             daily_sharpe = _daily(mean_sharpe, bars_per_day)
-            family_variance = sharpe_variance_across_trials(
-                [_daily(value, bars_per_day) for value in trials.get(run.family, [])]
-            )
-            project_variance = sharpe_variance_across_trials(
-                [_daily(value, bars_per_day) for value in pooled_by_purpose.get(run.purpose, [])]
-            )
             psr = evaluate_psr(
                 sharpe_ratio=daily_sharpe, num_observations=num_observations, sampling=SAMPLING_DAILY
             )
             psr_n1 = psr.psr
             moments_source = psr.moments_source
-            dsr_family = evaluate_deflated_sharpe(
-                sharpe_ratio=daily_sharpe,
-                num_observations=num_observations,
-                num_trials=family_n,
-                trial_sharpe_variance=family_variance,
-                sampling=SAMPLING_DAILY,
-            ).dsr
-            dsr_project = evaluate_deflated_sharpe(
-                sharpe_ratio=daily_sharpe,
-                num_observations=num_observations,
-                num_trials=project_n,
-                trial_sharpe_variance=project_variance,
-                sampling=SAMPLING_DAILY,
-            ).dsr
+            if family_n is not None:
+                dsr_family = evaluate_deflated_sharpe(
+                    sharpe_ratio=daily_sharpe,
+                    num_observations=num_observations,
+                    num_trials=family_n,
+                    trial_sharpe_variance=sharpe_variance_across_trials(
+                        [_daily(value, bars_per_day) for value in trials.get(run.family, [])]
+                    ),
+                    sampling=SAMPLING_DAILY,
+                ).dsr
+            if project_n is not None:
+                dsr_project = evaluate_deflated_sharpe(
+                    sharpe_ratio=daily_sharpe,
+                    num_observations=num_observations,
+                    num_trials=project_n,
+                    trial_sharpe_variance=sharpe_variance_across_trials(
+                        [_daily(value, bars_per_day) for value in pooled_by_purpose.get(run.purpose, [])]
+                    ),
+                    sampling=SAMPLING_DAILY,
+                ).dsr
 
         floor = detection_floor_sharpe(data_span_years, alpha=significance_alpha) if data_span_years else None
         floor_validated = (
@@ -956,8 +975,8 @@ def _row_cells(row: VerdictRow) -> list[str]:
         _fmt(row.sign_test_p, ".3f"),
         _fmt(row.t_test_p, ".3f"),
         _fmt(row.psr_n1, ".4f"),
-        str(row.family_n),
-        str(row.project_n),
+        "n/a" if row.family_n is None else str(row.family_n),
+        "n/a" if row.project_n is None else str(row.project_n),
         _fmt(row.dsr_family, ".3g"),
         _fmt(row.dsr_project, ".3g"),
         _fmt(row.detection_floor, ".2f"),
@@ -981,6 +1000,31 @@ def render_markdown_table(report: RetrospectiveReport) -> str:
     return "\n".join(lines)
 
 
+def _fraction_argument(text: str) -> Decimal:
+    """`argparse` `type=` converter for `--min-fold-consistency`.
+
+    Deliberately **not** a bare `type=Decimal`: `argparse` only converts an
+    exception into a clean usage error when it is a `TypeError` or a
+    `ValueError`, and `decimal.InvalidOperation` is an `ArithmeticError` --
+    so `--min-fold-consistency abc` under `type=Decimal` still escapes as a
+    raw traceback. Verified, not assumed. (CodeRabbit review finding on
+    PR #53; the finding was right, its suggested fix was not.)
+
+    Range is `(0, 1]`, matching `eligibility.evaluate_fold_consistency`'s
+    own contract. CLAUDE.md's approved 80-90% band is deliberately NOT
+    enforced here: this is a retrospective diagnostic, not the Eligibility
+    Bar, and a reviewer must stay free to ask what the table looks like at
+    another floor.
+    """
+    try:
+        value = Decimal(text)
+    except InvalidOperation as exc:
+        raise argparse.ArgumentTypeError(f"not a valid decimal: {text!r}") from exc
+    if not 0 < value <= 1:
+        raise argparse.ArgumentTypeError(f"must be in (0, 1], got {text!r}")
+    return value
+
+
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
@@ -991,7 +1035,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runs-path", default=experiment_log.DEFAULT_RUNS_PATH)
     parser.add_argument(
         "--min-fold-consistency",
-        default="0.80",
+        type=_fraction_argument,
+        default=Decimal("0.80"),
         help="CLAUDE.md's approved range is 0.80-0.90; affects the reported pass flag only, never the verdict",
     )
     parser.add_argument("--min-total-trades", type=int, default=DEFAULT_MIN_TOTAL_TRADES)
@@ -1005,7 +1050,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _build_parser().parse_args(argv)
     report = build_retrospective(
         runs_path=args.runs_path,
-        min_fold_consistency=Decimal(args.min_fold_consistency),
+        min_fold_consistency=args.min_fold_consistency,
         min_total_trades=args.min_total_trades,
         plausible_max_true_sharpe=args.plausible_max_true_sharpe,
         dsr_threshold=args.dsr_threshold,

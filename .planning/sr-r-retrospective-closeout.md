@@ -137,8 +137,9 @@ Two unrelated derivations agreeing to four significant figures.
 
 ## What the real log actually contains
 
-All figures re-derived directly from the untouched
-`/mnt/c/Dev/trading-engine/runs/experiments.jsonl` (read-only).
+All figures re-derived directly from the untouched, repo-root-relative
+`runs/experiments.jsonl` (read-only; gitignored, so absent from a fresh
+clone and from CI).
 
 | Quantity | Real value | Brief's estimate |
 |---|---|---|
