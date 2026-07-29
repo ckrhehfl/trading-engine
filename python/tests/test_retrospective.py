@@ -27,7 +27,7 @@ from decimal import Decimal
 
 import pytest
 
-from research import experiment_log
+from research import experiment_log, retrospective
 from research.retrospective import (
     DEFAULT_DSR_THRESHOLD,
     VERDICT_INCONCLUSIVE_DATA_LIMITED,
@@ -40,6 +40,7 @@ from research.retrospective import (
     detection_floor_sharpe,
     distinct_multi_fold_runs,
     infer_bars_per_day,
+    main,
     render_markdown_table,
     trial_sharpe_ratios,
 )
@@ -584,32 +585,62 @@ class TestUnresolvableTrialCount:
     this is a reachable state, not a theoretical one.
     """
 
-    def test_an_unmapped_family_yields_none_trial_counts_and_a_note(self, tmp_path):
+    def test_an_unmapped_family_still_gets_a_real_count_never_zero(self, tmp_path):
+        """`resolve_family` returns an unmapped `strategy_id` as its own
+        single-member family, so the family IS present in sr-p's results and
+        gets a genuine count of 1 -- not the 0 the old fallback produced for
+        anything it could not look up.
+        """
         runs_path = tmp_path / "experiments.jsonl"
-        # Multi-fold, so it becomes a row -- but logged under a family name
-        # `research/lineage.py` has never heard of.
         _log_run(
             runs_path,
             strategy_id="brand-new-idea",
             run_id="unmapped",
             fold_sharpes=[0.5, -0.4, 0.3],
             total_trades=400,
-            strategy_family="not-a-known-family",
         )
+
+        row = build_retrospective(runs_path=runs_path, min_fold_consistency=Decimal("0.8")).rows[0]
+
+        assert row.family == "brand-new-idea"
+        assert row.family_n == 1
+        assert row.project_n == 1
+
+    def test_an_unrecognized_purpose_leaves_the_project_dsr_undefined_with_a_note(self, tmp_path, monkeypatch):
+        """The defensive branch itself, exercised end to end.
+
+        `research/lineage.py` only ever emits `"research"`/`"infrastructure"`
+        today, so this branch is unreachable through the public API as it
+        stands -- which is exactly why it is pinned here rather than left as
+        untested defensive code that could rot into a silent `N = 0`.
+        """
+        runs_path = tmp_path / "experiments.jsonl"
+        _log_run(
+            runs_path,
+            strategy_id="ensemble-momentum",
+            run_id="odd-purpose",
+            fold_sharpes=[0.5, -0.4, 0.3],
+            total_trades=400,
+        )
+
+        real_resolve = retrospective.resolve_family
+
+        def _exotic_purpose(strategy_id, record=None):
+            return replace(real_resolve(strategy_id, record), purpose="diagnostic")
+
+        monkeypatch.setattr(retrospective, "resolve_family", _exotic_purpose)
 
         report = build_retrospective(runs_path=runs_path, min_fold_consistency=Decimal("0.8"))
         row = report.rows[0]
 
-        # The family IS resolvable here (it is its own family), so only the
-        # purpose-keyed project count is at risk; assert neither is ever 0.
-        assert row.family_n != 0
-        assert row.project_n != 0
+        assert row.project_n is None
+        assert row.dsr_project is None
+        assert row.verdict != VERDICT_SURVIVES
+        assert any("no sr-p selection-trial count available" in note for note in report.notes)
 
-    def test_a_none_trial_count_never_produces_survives(self, tmp_path):
+    def test_a_none_trial_count_never_produces_survives(self):
         """The safety property behind the whole finding."""
-        assert (
-            _verdict(dsr_project=None, mean_fold_sharpe=5.0, total_trades=500) != VERDICT_SURVIVES
-        )
+        assert _verdict(dsr_project=None, mean_fold_sharpe=5.0, total_trades=500) != VERDICT_SURVIVES
 
     def test_an_undefined_trial_count_renders_as_na_not_zero(self, tmp_path):
         runs_path = tmp_path / "experiments.jsonl"
@@ -655,8 +686,67 @@ class TestFractionArgument:
         with pytest.raises(SystemExit):
             _build_parser().parse_args(["--min-fold-consistency", bad])
 
+    @pytest.mark.parametrize("bad", ["NaN", "sNaN", "-NaN", "Infinity", "-Infinity"])
+    def test_a_non_finite_decimal_is_a_usage_error_not_a_traceback(self, bad):
+        """`Decimal` PARSES these, then raises `InvalidOperation` from the
+        `0 < value <= 1` comparison -- an `ArithmeticError`, which `argparse`
+        does not convert. Caught by the `is_finite()` check.
+        """
+        with pytest.raises(SystemExit):
+            _build_parser().parse_args(["--min-fold-consistency", bad])
+
     def test_exactly_one_is_allowed(self):
         assert _build_parser().parse_args(["--min-fold-consistency", "1"]).min_fold_consistency == Decimal(1)
+
+
+class TestMain:
+    """The CLI path the close-out document's own reproduction command uses."""
+
+    def _log(self, tmp_path):
+        runs_path = tmp_path / "experiments.jsonl"
+        _log_run(
+            runs_path,
+            strategy_id="ensemble-momentum",
+            run_id="only",
+            fold_sharpes=[0.5, -0.4, 0.3],
+            total_trades=400,
+        )
+        return runs_path
+
+    def test_markdown_output_carries_the_detection_floor_column(self, tmp_path, capsys):
+        exit_code = main(["--runs-path", str(self._log(tmp_path)), "--min-fold-consistency", "0.80"])
+
+        out = capsys.readouterr().out
+        assert exit_code == 0
+        assert "detection floor" in out
+        assert "ensemble-momentum" in out
+
+    def test_json_output_is_parseable_and_carries_every_row(self, tmp_path, capsys):
+        exit_code = main(["--runs-path", str(self._log(tmp_path)), "--format", "json"])
+
+        payload = json.loads(capsys.readouterr().out)
+        assert exit_code == 0
+        assert payload["distinct_configurations"] == 1
+        assert payload["rows"][0]["detection_floor"] is not None
+        assert payload["min_fold_consistency"] == "0.80"
+
+    def test_notes_are_printed_after_the_markdown_table(self, tmp_path, capsys, monkeypatch):
+        real_resolve = retrospective.resolve_family
+        monkeypatch.setattr(
+            retrospective,
+            "resolve_family",
+            lambda strategy_id, record=None: replace(real_resolve(strategy_id, record), purpose="diagnostic"),
+        )
+
+        main(["--runs-path", str(self._log(tmp_path))])
+
+        assert "NOTE: " in capsys.readouterr().out
+
+    def test_a_missing_log_produces_an_empty_table_rather_than_an_error(self, tmp_path, capsys):
+        exit_code = main(["--runs-path", str(tmp_path / "absent.jsonl")])
+
+        assert exit_code == 0
+        assert "detection floor" in capsys.readouterr().out
 
 
 class TestRenderMarkdownTable:

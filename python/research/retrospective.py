@@ -1020,8 +1020,15 @@ def _fraction_argument(text: str) -> Decimal:
         value = Decimal(text)
     except InvalidOperation as exc:
         raise argparse.ArgumentTypeError(f"not a valid decimal: {text!r}") from exc
-    if not 0 < value <= 1:
-        raise argparse.ArgumentTypeError(f"must be in (0, 1], got {text!r}")
+    # `is_finite()` first, and not folded into the comparison: `Decimal`
+    # PARSES "NaN"/"sNaN" happily and then raises `InvalidOperation` from
+    # the COMPARISON, which -- being an `ArithmeticError` -- escapes
+    # `argparse` as a raw traceback just like the parse failure above.
+    # Verified, not assumed. (CodeRabbit review finding on PR #53, second
+    # pass.) `Infinity` needs no special case, but is covered by the same
+    # check rather than relying on the comparison to reject it.
+    if not value.is_finite() or not 0 < value <= 1:
+        raise argparse.ArgumentTypeError(f"must be a finite value in (0, 1], got {text!r}")
     return value
 
 
