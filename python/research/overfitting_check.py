@@ -47,12 +47,66 @@ known, accepted limitation rather than silently assumed away; see the
 planning doc for the alternative (querying `data/store.py` directly) that
 was considered and not built, to keep this module a pure function of the
 experiment log alone.
+
+## Strategy Research Task P: family-level and project-level accounting
+
+`check_combination_count` above is kept **byte-for-byte behaviourally
+unchanged** (it has tests and callers). Everything added below is strictly
+additive, and fixes three defects that made its number unusable as the `N`
+of a Deflated Sharpe Ratio -- full evidence in `.planning/sr-p-trial-
+accounting.md`, summarized here:
+
+1. **Renaming a strategy laundered its data-snooping history.** Counting
+   keyed on the bare `strategy_id` meant `ensemble-momentum-configuration-c`
+   reported 10 combinations / `"low"` risk while being a direct descendant
+   of `ensemble-momentum`'s 234-combination `"high"`-risk search.
+   `check_project_combination_count` counts per research *family*
+   (`research.lineage`) instead.
+2. **Parameter-sensitivity probes were miscounted as selection trials.**
+   382 of the real log's 1,839 `backtest_run` records are
+   `check_parameter_sensitivity` evaluations of an *already-selected*
+   winner's neighbours. They never influenced which candidate was chosen,
+   so under Bailey et al.'s framework they are not trials at all. sr-g
+   considered excluding them and chose not to ("flagging risk earlier and
+   more conservatively") -- defensible for a warning heuristic, not
+   defensible as the `N` of a statistic where `N` has a precise meaning.
+   They are now classified `TrialKind.SENSITIVITY_PROBE`, excluded from
+   `N`, and reported separately rather than discarded.
+3. **The count was sensitive to a wiring detail, not to research
+   activity.** `ma-crossover-task-g-sensitivity-demo` scored 6 and its
+   `-v2` re-run scored 33 for *identical* work, purely because the
+   sensitivity `fit()` calls were re-wired from
+   `parent_run_id=<enclosing run_id>` to `parent_run_id=None` between the
+   two. Both now score the same.
+
+`TrialKind` classification replaces the old flat "+1 per record":
+
+- `SELECTION` -- a real selection trial: has a genuine `parent_run_id`
+  (a grid-search candidate) or is a multi-fold standalone walk-forward run.
+  These are what `N` counts.
+- `SENSITIVITY_PROBE` -- excluded from `N`, reported separately.
+- `REPRODUCTION` -- a re-run of an already-counted configuration. **Still
+  counted in `N` by default and reported separately, never silently merged
+  away** (see `FamilyOverfittingCheckResult.deduplicated_selection_trials`
+  for the deduplicated view a reviewer can choose instead).
+
+**Which `N` to report: both, always.** Bailey's `N` is "the number of
+trials from which this maximum was selected". Within `trend-momentum` this
+project compared 97 momentum variants against each other -- but it also
+chose momentum over mean-reversion, over the blend, over volume, over
+funding, *after seeing all of their results*. So the honest `N` for "the
+best thing this project found" is the project-level research total, not
+any single family's.
 """
 
+import json
 from dataclasses import dataclass, field
+from enum import StrEnum
 from pathlib import Path
+from typing import Any, Mapping
 
 from research import experiment_log
+from research.lineage import INFRASTRUCTURE_PURPOSE, RESEARCH_PURPOSE, FamilyResolution, resolve_family
 
 # 365, not 365.25 -- matches this project's existing fixed annualization
 # convention (`metrics/metrics.py`'s `_DAYS_PER_YEAR`, CLAUDE.md's
@@ -302,6 +356,525 @@ def check_combination_count(
         data_span_years=data_span_years,
         combinations_per_year=combinations_per_year,
         risk_level=risk_level,
+        warning=warning,
+        notes=notes,
+    )
+
+
+# ===========================================================================
+# Strategy Research Task P: family-level / project-level trial accounting.
+# Everything below is strictly additive -- `check_combination_count` above
+# is untouched. See this module's docstring and
+# `.planning/sr-p-trial-accounting.md`.
+# ===========================================================================
+
+# `run_walk_forward` tags the `parent_run_id` of every `fit()` call its
+# opt-in parameter-sensitivity check makes with this prefix, so those
+# records are self-identifying instead of indistinguishable from real
+# standalone runs. A *prefixed distinct* id (rather than the enclosing
+# run's own id) keeps sr-g's original concern solved -- the probes still
+# never join the real grid's `parent_run_id` group, so that group's
+# `total_candidates` stays consistent.
+SENSITIVITY_PARENT_RUN_ID_PREFIX = "sensitivity:"
+
+# `params` keys that carry no information about the configuration actually
+# under test, so a fingerprint built only from them would be worthless.
+# `symbol` is constant project-wide (single-symbol scope). `candidates` is
+# the grid *definition* a caller passed in, not the configuration the
+# `Trainable` was constructed with -- verified against the real log: six
+# separate ensemble-momentum runs representing materially different work
+# all log the identical `{"candidates": [[15], [20], [25], [30]]}`. See
+# `research/lineage.py`'s docstring for the full verification.
+_UNINFORMATIVE_PARAM_KEYS = frozenset({"symbol", "candidates"})
+
+
+class TrialKind(StrEnum):
+    """What role a logged `backtest_run` record actually played, replacing
+    the old flat "+1 per record". Only `SELECTION` counts toward `N`.
+
+    `REPRODUCTION` is deliberately **not** returned by
+    `classify_trial_kind`: whether a configuration is a re-run of an
+    earlier one is a property of the record's position in the whole log,
+    not of the record itself, so it can only be assigned while aggregating
+    (see `check_project_combination_count`).
+    """
+
+    SELECTION = "selection"
+    SENSITIVITY_PROBE = "sensitivity_probe"
+    REPRODUCTION = "reproduction"
+
+
+def classify_trial_kind(record: Mapping[str, Any]) -> TrialKind:
+    """Classify one `backtest_run` record as a selection trial or a
+    parameter-sensitivity probe.
+
+    Two rules, in order:
+
+    1. **Self-describing** (records written after Strategy Research Task
+       P): a `parent_run_id` beginning with
+       `SENSITIVITY_PARENT_RUN_ID_PREFIX` is a sensitivity probe. Any other
+       non-`None` `parent_run_id` is a grid-search candidate, i.e. a real
+       selection trial.
+    2. **Empirical rule for historical records** (`parent_run_id is None`):
+       a standalone record with **exactly one fold** is a sensitivity
+       probe; a standalone multi-fold record is a real walk-forward run.
+
+    Rule 2 is an **empirical fact about *this* project's
+    `runs/experiments.jsonl`, not a general invariant** -- stated that way
+    deliberately. It was verified exhaustively against the real 1,839-record
+    log: exactly 382 records are standalone-and-single-fold, they belong to
+    exactly three `strategy_id`s (`ensemble-momentum` 190,
+    `single-lookback-momentum` 165,
+    `ma-crossover-task-g-sensitivity-demo-v2` 27), and exactly those three
+    ran `check_parameter_sensitivity` under sr-g's post-wiring-fix
+    configuration. Each count reconciles exactly with that run's own
+    recorded neighbour evaluations (e.g. `ensemble-momentum`'s two
+    sensitivity-enabled runs: 2 x 19 folds x (1 winner + 4 neighbours) =
+    190). Zero counterexamples across the whole log. Rule 1 makes rule 2
+    unnecessary for anything logged from now on.
+    """
+    parent_run_id = record.get("parent_run_id")
+    if isinstance(parent_run_id, str) and parent_run_id.startswith(SENSITIVITY_PARENT_RUN_ID_PREFIX):
+        return TrialKind.SENSITIVITY_PROBE
+    if parent_run_id is not None:
+        return TrialKind.SELECTION
+    if len(record.get("fold_results") or []) == 1:
+        return TrialKind.SENSITIVITY_PROBE
+    return TrialKind.SELECTION
+
+
+@dataclass(frozen=True)
+class FamilyOverfittingCheckResult:
+    """One research family's corrected trial accounting.
+
+    `selection_trials` is the honest `N` for this family. It **includes**
+    `reproduction_trials` on purpose: a re-run is reported, never silently
+    merged away, because whether two identically-fingerprinted runs are
+    genuinely "one trial" is a judgment call the heuristic shouldn't make
+    unilaterally. `deduplicated_selection_trials` is the merged view a
+    reviewer can use instead once they've checked the reproductions are
+    real.
+
+    `naive_total_combinations` is what the pre-Task-P flat rule reports
+    over the same records, kept alongside so the size of the correction is
+    visible rather than something a reader has to reconstruct.
+    """
+
+    family: str
+    purpose: str
+    strategy_ids: list[str]
+    naive_total_combinations: int
+    selection_trials: int
+    sensitivity_probe_trials: int
+    reproduction_trials: int
+    deduplicated_selection_trials: int
+    data_span_start_ms: int | None
+    data_span_end_ms: int | None
+    data_span_years: float | None
+    combinations_per_year: float | None
+    risk_level: str
+    warning: str
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "family": self.family,
+            "purpose": self.purpose,
+            "strategy_ids": list(self.strategy_ids),
+            "naive_total_combinations": self.naive_total_combinations,
+            "selection_trials": self.selection_trials,
+            "sensitivity_probe_trials": self.sensitivity_probe_trials,
+            "reproduction_trials": self.reproduction_trials,
+            "deduplicated_selection_trials": self.deduplicated_selection_trials,
+            "data_span_start_ms": self.data_span_start_ms,
+            "data_span_end_ms": self.data_span_end_ms,
+            "data_span_years": self.data_span_years,
+            "combinations_per_year": self.combinations_per_year,
+            "risk_level": self.risk_level,
+            "warning": self.warning,
+            "notes": list(self.notes),
+        }
+
+
+@dataclass(frozen=True)
+class ProjectOverfittingCheckResult:
+    """Per-family results plus project-level totals split by `purpose`.
+
+    **Report both levels, always.** Bailey et al.'s `N` is "the number of
+    trials from which this maximum was selected". Within one family the
+    project compared that family's own variants against each other -- but
+    it also chose between families, after seeing all of their results, so
+    the honest `N` behind "the best result this project found" is
+    `research_selection_trials`, not any single family's figure.
+    Infrastructure runs (pipeline end-to-end checks that were never
+    candidates for paper trading) are counted and reported separately, so
+    they neither inflate the research `N` nor silently disappear.
+    """
+
+    families: dict[str, FamilyOverfittingCheckResult]
+    research_selection_trials: int
+    infrastructure_selection_trials: int
+    total_selection_trials: int
+    research_sensitivity_probe_trials: int
+    infrastructure_sensitivity_probe_trials: int
+    total_sensitivity_probe_trials: int
+    research_reproduction_trials: int
+    infrastructure_reproduction_trials: int
+    total_reproduction_trials: int
+    naive_total_combinations: int
+    warning: str
+    notes: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict:
+        return {
+            "families": {name: result.to_dict() for name, result in self.families.items()},
+            "research_selection_trials": self.research_selection_trials,
+            "infrastructure_selection_trials": self.infrastructure_selection_trials,
+            "total_selection_trials": self.total_selection_trials,
+            "research_sensitivity_probe_trials": self.research_sensitivity_probe_trials,
+            "infrastructure_sensitivity_probe_trials": self.infrastructure_sensitivity_probe_trials,
+            "total_sensitivity_probe_trials": self.total_sensitivity_probe_trials,
+            "research_reproduction_trials": self.research_reproduction_trials,
+            "infrastructure_reproduction_trials": self.infrastructure_reproduction_trials,
+            "total_reproduction_trials": self.total_reproduction_trials,
+            "naive_total_combinations": self.naive_total_combinations,
+            "warning": self.warning,
+            "notes": list(self.notes),
+        }
+
+
+def _canonical(value: Any) -> str:
+    return json.dumps(value, sort_keys=True, default=str)
+
+
+def _params_fingerprint(record: Mapping[str, Any]) -> str | None:
+    """Canonical JSON of the record's *informative* `params`, or `None`
+    when it carries no real configuration information (see
+    `_UNINFORMATIVE_PARAM_KEYS`).
+    """
+    params = record.get("params")
+    if not isinstance(params, Mapping):
+        return None
+    informative = {k: v for k, v in params.items() if k not in _UNINFORMATIVE_PARAM_KEYS}
+    if not informative:
+        return None
+    return _canonical(informative)
+
+
+def _standalone_fingerprint(family: str, record: Mapping[str, Any]) -> str:
+    """Configuration fingerprint for one standalone walk-forward record.
+
+    Primary key `(family, params, walk_forward_config, data_range)` when
+    `params` is informative. Every real multi-fold record in this project's
+    log falls through to the documented fallback key
+    `(family, strategy_version, aggregate_metrics.mean_sharpe)` instead,
+    because `run_walk_forward` never sees the `Trainable`'s constructor
+    arguments and so cannot log them -- see this module's docstring and
+    `FamilyOverfittingCheckResult`'s honest-limits note.
+    """
+    params_fingerprint = _params_fingerprint(record)
+    if params_fingerprint is not None:
+        return _canonical(
+            [
+                "params",
+                family,
+                params_fingerprint,
+                _canonical(record.get("walk_forward_config") or {}),
+                _canonical(record.get("data_range") or {}),
+            ]
+        )
+    return _canonical(
+        [
+            "fallback",
+            family,
+            record.get("strategy_version"),
+            (record.get("aggregate_metrics") or {}).get("mean_sharpe"),
+        ]
+    )
+
+
+def _group_fingerprint(family: str, records: list[Mapping[str, Any]]) -> str:
+    """Configuration fingerprint for one grid-search group (all the records
+    sharing a `parent_run_id`). Built from the *set* of `(params,
+    data_range)` pairs its candidate records cover, so the same grid
+    re-evaluated over the same windows fingerprints identically regardless
+    of the order the folds happened to be logged in.
+    """
+    members = sorted(
+        _canonical(
+            [
+                _params_fingerprint(record) or f"version:{record.get('strategy_version')}",
+                _canonical(record.get("data_range") or {}),
+            ]
+        )
+        for record in records
+    )
+    return _canonical(["group", family, members])
+
+
+@dataclass
+class _TrialUnit:
+    """One countable unit of "combinations tried": either a whole
+    `parent_run_id` group (weight = its `total_candidates`) or a single
+    standalone record (weight 1). `order` is the log position of the first
+    record that opened the unit, so reproduction detection can walk units
+    in the order the research actually happened.
+    """
+
+    order: int
+    kind: TrialKind
+    weight: int
+    fingerprint: str | None
+
+
+@dataclass
+class _FamilyAccumulator:
+    """Mutable per-family scratch state for the single pass over the log."""
+
+    family: str
+    purpose: str
+    strategy_ids: list[str] = field(default_factory=list)
+    notes: list[str] = field(default_factory=list)
+    standalone_records: list[tuple[int, dict]] = field(default_factory=list)
+    parent_groups: dict[str, list[dict]] = field(default_factory=dict)
+    group_order: dict[str, int] = field(default_factory=dict)
+    min_start_ms: int | None = None
+    max_end_ms: int | None = None
+
+    def observe(self, order: int, record: dict, resolution: FamilyResolution) -> None:
+        if resolution.strategy_id not in self.strategy_ids:
+            self.strategy_ids.append(resolution.strategy_id)
+        if resolution.note is not None and resolution.note not in self.notes:
+            self.notes.append(resolution.note)
+
+        parent_run_id = record.get("parent_run_id")
+        if parent_run_id is None:
+            self.standalone_records.append((order, record))
+        else:
+            if parent_run_id not in self.parent_groups:
+                self.parent_groups[parent_run_id] = []
+                self.group_order[parent_run_id] = order
+            self.parent_groups[parent_run_id].append(record)
+
+        data_range = record.get("data_range") or {}
+        start_ms = data_range.get("start_ms")
+        end_ms = data_range.get("end_ms")
+        if start_ms is not None:
+            self.min_start_ms = start_ms if self.min_start_ms is None else min(self.min_start_ms, start_ms)
+        if end_ms is not None:
+            self.max_end_ms = end_ms if self.max_end_ms is None else max(self.max_end_ms, end_ms)
+
+
+def _scan_project_records(runs_path: str | Path) -> dict[str, _FamilyAccumulator]:
+    """Single pass over `runs_path`, bucketing every `backtest_run` record
+    into its research family (`research.lineage.resolve_family`).
+    `holdout_access` records are ignored entirely, same as
+    `check_combination_count`.
+    """
+    accumulators: dict[str, _FamilyAccumulator] = {}
+    for order, record in enumerate(experiment_log.read_records(runs_path)):
+        if record.get("record_type") != "backtest_run":
+            continue
+        resolution = resolve_family(record.get("strategy_id", ""), record)
+        accumulator = accumulators.get(resolution.family)
+        if accumulator is None:
+            accumulator = _FamilyAccumulator(family=resolution.family, purpose=resolution.purpose)
+            accumulators[resolution.family] = accumulator
+        accumulator.observe(order, record, resolution)
+    return accumulators
+
+
+def _build_trial_units(accumulator: _FamilyAccumulator) -> tuple[list[_TrialUnit], dict[str, int], list[str]]:
+    """Reduce one family's raw records to countable `_TrialUnit`s, plus the
+    resolved per-`parent_run_id` counts and any defensive notes.
+    """
+    units: list[_TrialUnit] = []
+    for order, record in accumulator.standalone_records:
+        if classify_trial_kind(record) is TrialKind.SENSITIVITY_PROBE:
+            units.append(_TrialUnit(order=order, kind=TrialKind.SENSITIVITY_PROBE, weight=1, fingerprint=None))
+        else:
+            units.append(
+                _TrialUnit(
+                    order=order,
+                    kind=TrialKind.SELECTION,
+                    weight=1,
+                    fingerprint=_standalone_fingerprint(accumulator.family, record),
+                )
+            )
+
+    selection_groups = {
+        parent_run_id: records
+        for parent_run_id, records in accumulator.parent_groups.items()
+        if not parent_run_id.startswith(SENSITIVITY_PARENT_RUN_ID_PREFIX)
+    }
+    resolved_groups, notes = _resolve_parent_groups(
+        {
+            parent_run_id: [record.get("total_candidates") for record in records]
+            for parent_run_id, records in selection_groups.items()
+        }
+    )
+
+    for parent_run_id, records in accumulator.parent_groups.items():
+        order = accumulator.group_order[parent_run_id]
+        if parent_run_id.startswith(SENSITIVITY_PARENT_RUN_ID_PREFIX):
+            # Every record in a sensitivity group is its own probe
+            # evaluation (each logs `total_candidates=1`), so the group's
+            # probe count is its record count -- not the "one count per
+            # group" rule that applies to a real grid search, where the
+            # same N-candidate grid is deliberately re-evaluated per fold.
+            units.append(
+                _TrialUnit(order=order, kind=TrialKind.SENSITIVITY_PROBE, weight=len(records), fingerprint=None)
+            )
+        else:
+            units.append(
+                _TrialUnit(
+                    order=order,
+                    kind=TrialKind.SELECTION,
+                    weight=resolved_groups[parent_run_id],
+                    fingerprint=_group_fingerprint(accumulator.family, records),
+                )
+            )
+
+    units.sort(key=lambda unit: unit.order)
+    return units, resolved_groups, notes
+
+
+def _count_units(units: list[_TrialUnit]) -> tuple[int, int, int]:
+    """Walk units in log order, returning
+    `(selection_trials, sensitivity_probe_trials, reproduction_trials)`.
+    A selection unit whose fingerprint was already seen is counted as a
+    reproduction **in addition to** (not instead of) counting toward
+    `selection_trials` -- see `FamilyOverfittingCheckResult`'s docstring.
+    """
+    seen: set[str] = set()
+    selection = 0
+    probes = 0
+    reproductions = 0
+    for unit in units:
+        if unit.kind is TrialKind.SENSITIVITY_PROBE:
+            probes += unit.weight
+            continue
+        selection += unit.weight
+        if unit.fingerprint in seen:
+            reproductions += unit.weight
+        elif unit.fingerprint is not None:
+            seen.add(unit.fingerprint)
+    return selection, probes, reproductions
+
+
+def _build_family_warning(result_family: str, selection: int, probes: int, years: float | None, level: str) -> str:
+    if level == "unknown":
+        return (
+            f"family={result_family!r}: {selection} selection trial(s) (plus {probes} sensitivity probe(s) "
+            "excluded from N), but no usable data span could be computed from the logged records' data_range "
+            "fields -- cannot assess overfitting risk from this heuristic"
+        )
+    return (
+        f"family={result_family!r}: {selection} selection trial(s) across {years:.2f} year(s) of logged data "
+        f"({selection / years:.1f}/year) -- MinBTL-spirit risk level: {level.upper()}. "
+        f"{probes} sensitivity probe(s) excluded from N (post-selection diagnostics, never selection trials). "
+        "A warning only, not a block."
+    )
+
+
+def _build_family_result(accumulator: _FamilyAccumulator) -> FamilyOverfittingCheckResult:
+    units, resolved_groups, group_notes = _build_trial_units(accumulator)
+    selection, probes, reproductions = _count_units(units)
+
+    data_span_years: float | None = None
+    if (
+        accumulator.min_start_ms is not None
+        and accumulator.max_end_ms is not None
+        and accumulator.max_end_ms > accumulator.min_start_ms
+    ):
+        data_span_years = (accumulator.max_end_ms - accumulator.min_start_ms) / _MS_PER_YEAR
+
+    risk_level, combinations_per_year = _compute_risk_level(selection, data_span_years)
+    naive_total = sum(resolved_groups.values()) + len(accumulator.standalone_records)
+
+    return FamilyOverfittingCheckResult(
+        family=accumulator.family,
+        purpose=accumulator.purpose,
+        strategy_ids=list(accumulator.strategy_ids),
+        naive_total_combinations=naive_total,
+        selection_trials=selection,
+        sensitivity_probe_trials=probes,
+        reproduction_trials=reproductions,
+        deduplicated_selection_trials=selection - reproductions,
+        data_span_start_ms=accumulator.min_start_ms,
+        data_span_end_ms=accumulator.max_end_ms,
+        data_span_years=data_span_years,
+        combinations_per_year=combinations_per_year,
+        risk_level=risk_level,
+        warning=_build_family_warning(accumulator.family, selection, probes, data_span_years, risk_level),
+        notes=accumulator.notes + group_notes,
+    )
+
+
+def _sum_by_purpose(families: dict[str, FamilyOverfittingCheckResult], attribute: str, purpose: str) -> int:
+    return sum(getattr(result, attribute) for result in families.values() if result.purpose == purpose)
+
+
+def check_project_combination_count(
+    runs_path: str | Path = experiment_log.DEFAULT_RUNS_PATH,
+) -> ProjectOverfittingCheckResult:
+    """Project-wide corrected trial accounting: one
+    `FamilyOverfittingCheckResult` per research family, plus project-level
+    totals split by `purpose` (`"research"` vs `"infrastructure"`).
+
+    This is the function whose `research_selection_trials` is the honest
+    `N` for "the best result this project found" -- families were not
+    chosen blind of each other, so a single family's own count understates
+    the real selection bias. See this module's docstring for the three
+    defects in `check_combination_count`'s number that this corrects, and
+    `.planning/sr-p-trial-accounting.md` for the verified evidence behind
+    each.
+
+    A warning, never a block -- the established convention throughout this
+    module (and `research/holdout.py` before it).
+    """
+    accumulators = _scan_project_records(runs_path)
+    families = {name: _build_family_result(accumulator) for name, accumulator in accumulators.items()}
+
+    research_selection = _sum_by_purpose(families, "selection_trials", RESEARCH_PURPOSE)
+    infrastructure_selection = _sum_by_purpose(families, "selection_trials", INFRASTRUCTURE_PURPOSE)
+    research_probes = _sum_by_purpose(families, "sensitivity_probe_trials", RESEARCH_PURPOSE)
+    infrastructure_probes = _sum_by_purpose(families, "sensitivity_probe_trials", INFRASTRUCTURE_PURPOSE)
+    research_reproductions = _sum_by_purpose(families, "reproduction_trials", RESEARCH_PURPOSE)
+    infrastructure_reproductions = _sum_by_purpose(families, "reproduction_trials", INFRASTRUCTURE_PURPOSE)
+    naive_total = sum(result.naive_total_combinations for result in families.values())
+
+    notes: list[str] = []
+    for result in families.values():
+        notes.extend(result.notes)
+
+    if not families:
+        warning = f"no backtest_run records found in {str(runs_path)!r} -- nothing to assess"
+    else:
+        warning = (
+            f"project-wide corrected trial accounting: {research_selection} research selection trial(s) "
+            f"(the honest N for the best result this project found, since strategy families were compared "
+            f"against each other, not chosen blind) + {infrastructure_selection} infrastructure selection "
+            f"trial(s) = {research_selection + infrastructure_selection} total. "
+            f"{research_probes + infrastructure_probes} sensitivity probe(s) excluded from N; "
+            f"{research_reproductions + infrastructure_reproductions} of the selection trial(s) are "
+            f"reproductions of an already-counted configuration, reported but deliberately not merged away. "
+            f"The pre-correction flat count over the same records was {naive_total}. "
+            "A warning only, not a block."
+        )
+
+    return ProjectOverfittingCheckResult(
+        families=families,
+        research_selection_trials=research_selection,
+        infrastructure_selection_trials=infrastructure_selection,
+        total_selection_trials=research_selection + infrastructure_selection,
+        research_sensitivity_probe_trials=research_probes,
+        infrastructure_sensitivity_probe_trials=infrastructure_probes,
+        total_sensitivity_probe_trials=research_probes + infrastructure_probes,
+        research_reproduction_trials=research_reproductions,
+        infrastructure_reproduction_trials=infrastructure_reproductions,
+        total_reproduction_trials=research_reproductions + infrastructure_reproductions,
+        naive_total_combinations=naive_total,
         warning=warning,
         notes=notes,
     )

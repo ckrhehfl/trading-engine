@@ -1008,3 +1008,108 @@ def test_run_walk_forward_requires_train_validate_step_fee_slippage_to_be_keywor
             Decimal("0"),
             Decimal("0"),
         )
+
+
+# ---------------------------------------------------------------------------
+# Strategy Research Task P: self-describing lineage on new records
+# (`.planning/sr-p-trial-accounting.md`). Both additions are strictly
+# additive -- `strategy_family` defaults to `None` (key omitted entirely),
+# and the sensitivity `parent_run_id` change only affects the records the
+# opt-in sensitivity check itself produces.
+# ---------------------------------------------------------------------------
+
+
+class _ParentRunIdRecordingStrategy(_CandidateGridStrategy):
+    """`_CandidateGridStrategy` that also records every `parent_run_id`
+    its `fit()` is called with, so a test can assert what the walk-forward
+    fold loop and the sensitivity check each pass down.
+    """
+
+    def __init__(self, profitable_candidates):
+        super().__init__(profitable_candidates)
+        self.parent_run_ids: list[str | None] = []
+
+    def fit(self, train_klines, params, *, parent_run_id=None):
+        self.parent_run_ids.append(parent_run_id)
+        return super().fit(train_klines, params, parent_run_id=parent_run_id)
+
+
+def test_run_walk_forward_tags_sensitivity_fits_with_a_prefixed_parent_run_id(tmp_path):
+    # sr-g deliberately left check_parameter_sensitivity's parent_run_id
+    # at None so the probes wouldn't join the real grid's group and
+    # corrupt its per-group total_candidates assumption. A *prefixed
+    # distinct* id avoids that same problem while making the records
+    # self-identifying, which is what Task P needs -- see
+    # `.planning/sr-p-trial-accounting.md` for the supersession reasoning.
+    klines = _klines(16)
+    strategy = _ParentRunIdRecordingStrategy(profitable_candidates={(10,), (9,), (11,), (8,), (13,)})
+    runs_path = tmp_path / "experiments.jsonl"
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-sensitivity-parent",
+        "v1",
+        {"candidates": [(10,)]},
+        train_bars=4,
+        validate_bars=4,
+        step_bars=4,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        sensitivity_extractor=_extract_winning_candidate,
+        runs_path=runs_path,
+    )
+
+    sensitivity_parent = f"sensitivity:{result.run_id}"
+    assert sensitivity_parent in strategy.parent_run_ids
+    assert result.run_id in strategy.parent_run_ids
+    # The two are distinct ids, so a sensitivity-driven fit() can never
+    # land in the real grid search's own parent_run_id group.
+    assert sensitivity_parent != result.run_id
+
+
+def test_run_walk_forward_omits_strategy_family_from_the_logged_record_by_default(tmp_path):
+    klines = _klines(12)
+    strategy = _RecordingStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    run_walk_forward(
+        klines,
+        strategy,
+        "strat-1",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=2,
+        step_bars=2,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=runs_path,
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert "strategy_family" not in record
+
+
+def test_run_walk_forward_threads_strategy_family_into_the_logged_record(tmp_path):
+    klines = _klines(12)
+    strategy = _RecordingStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+
+    run_walk_forward(
+        klines,
+        strategy,
+        "strat-1",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=2,
+        step_bars=2,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        strategy_family="trend-momentum",
+        runs_path=runs_path,
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert record["strategy_family"] == "trend-momentum"

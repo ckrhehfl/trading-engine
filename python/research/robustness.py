@@ -308,28 +308,31 @@ def check_parameter_sensitivity(
 
     `parent_run_id` (default `None`) is passed straight through to every
     `strategy.fit()` call this function makes (the winner's re-evaluation
-    and every neighbor's), so a caller *can* attribute all of them to a
-    shared lineage id if it has a genuine reason to. **`research.
-    walkforward.run_walk_forward`'s own `sensitivity_extractor` wiring
-    deliberately does NOT pass its fold's `run_id` here** -- doing so
-    would put this call's single-candidate `fit()` calls under the exact
-    same `parent_run_id` as that same fold's real grid-search candidates
-    (which share one `total_candidates` describing the real grid size),
-    and `research.overfitting_check.check_combination_count` groups
-    records by `parent_run_id` assuming one consistent `total_candidates`
-    per group -- mixing the two in would corrupt that count (a real bug
-    caught by running this against the real accumulated experiment log
-    during this feature's own development; see `.planning/sr-g-
-    overfitting-safeguards.md`). Leaving `parent_run_id=None` here makes
-    every sensitivity-driven `fit()` call log as its own standalone
-    record instead, each counted as its own "+1" combination by the
-    MinBTL-style counter -- a deliberate, documented choice (not an
-    oversight) to count sensitivity-check evaluations toward that total
-    even though they never influence which candidate is selected: they
-    are still genuine additional configurations backtested against the
-    same real data, and this project's overfitting-safeguard philosophy
-    favors flagging risk earlier rather than assuming a diagnostic-only
-    framing places them safely out of scope.
+    and every neighbor's), so a caller can attribute all of them to a
+    shared lineage id. **`research.walkforward.run_walk_forward`'s own
+    `sensitivity_extractor` wiring must never pass its fold's bare
+    `run_id` here** -- doing so would put this call's single-candidate
+    `fit()` calls under the exact same `parent_run_id` as that same fold's
+    real grid-search candidates (which share one `total_candidates`
+    describing the real grid size), and `research.overfitting_check`
+    groups records by `parent_run_id` assuming one consistent
+    `total_candidates` per group -- mixing the two in would corrupt that
+    count (a real bug caught by running this against the real accumulated
+    experiment log during this feature's own development; see
+    `.planning/sr-g-overfitting-safeguards.md`).
+
+    `run_walk_forward` therefore passes
+    `f"{overfitting_check.SENSITIVITY_PARENT_RUN_ID_PREFIX}{run_id}"` --
+    a *distinct* id from the real grid's, so the group-corruption problem
+    above stays solved, while making these records self-identifying as
+    post-selection diagnostics rather than indistinguishable from real
+    standalone runs (Strategy Research Task P; supersedes sr-g's original
+    `parent_run_id=None` compromise, which achieved the first property but
+    not the second -- see `.planning/sr-p-trial-accounting.md`). Records
+    tagged this way are counted as `TrialKind.SENSITIVITY_PROBE` and
+    reported separately from the selection-trial `N`, since a
+    post-selection perturbation never influenced which candidate was
+    chosen and so is not a "trial" in Bailey et al.'s sense.
     """
     winning = tuple(winning_candidate)
     winning_return, _winning_trades, winning_error = _evaluate_candidate(

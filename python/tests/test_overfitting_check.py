@@ -19,7 +19,13 @@ from decimal import Decimal
 import pytest
 
 from research import experiment_log
-from research.overfitting_check import check_combination_count
+from research.overfitting_check import (
+    SENSITIVITY_PARENT_RUN_ID_PREFIX,
+    TrialKind,
+    check_combination_count,
+    check_project_combination_count,
+    classify_trial_kind,
+)
 
 BASE_TIME = datetime(2024, 1, 1, tzinfo=timezone.utc)
 MS_PER_DAY = 24 * 3600 * 1000
@@ -325,3 +331,340 @@ def test_check_combination_count_result_to_dict_is_json_serializable(tmp_path):
 
     json.dumps(result.to_dict(), default=str)
     assert result.to_dict()["strategy_id"] == "strat-a"
+
+
+# ---------------------------------------------------------------------------
+# Strategy Research Task P: family-level / project-level trial accounting
+# (`.planning/sr-p-trial-accounting.md`). Everything below is strictly
+# additive -- every test above must keep passing byte-for-byte, since
+# `check_combination_count`'s existing signature and behaviour are a hard
+# backward-compatibility requirement.
+# ---------------------------------------------------------------------------
+
+
+def _log_run_record(
+    runs_path,
+    *,
+    strategy_id: str,
+    run_id: str,
+    start_ms: int,
+    end_ms: int,
+    fold_count: int = 19,
+    params: dict | None = None,
+    strategy_version: str = "v1",
+    mean_sharpe: float | None = 0.5,
+    strategy_family: str | None = None,
+    parent_run_id: str | None = None,
+    candidate_index: int | None = None,
+    total_candidates: int | None = None,
+) -> dict:
+    """Richer `log_run` helper than `_log_backtest_run` above: the Task P
+    counting rules read `fold_results` length (the historical
+    sensitivity-probe rule), `params`/`strategy_version`/
+    `aggregate_metrics` (the reproduction fingerprint) and
+    `strategy_family`, none of which the older helper varies.
+    """
+    return experiment_log.log_run(
+        run_id=run_id,
+        strategy_id=strategy_id,
+        strategy_version=strategy_version,
+        params=params if params is not None else {},
+        fold_results=[{"fold_index": i} for i in range(fold_count)],
+        aggregate_metrics={"fold_count": fold_count, "mean_sharpe": mean_sharpe},
+        data_range={"start_ms": start_ms, "end_ms": end_ms, "num_bars": (end_ms - start_ms) // 900_000},
+        walk_forward_config={"train_bars": 2160, "validate_bars": 720, "step_bars": 720, "fold_count": fold_count},
+        fee_bps=Decimal("5"),
+        slippage_bps=Decimal("2"),
+        is_holdout_run=False,
+        parent_run_id=parent_run_id,
+        candidate_index=candidate_index,
+        total_candidates=total_candidates,
+        strategy_family=strategy_family,
+        runs_path=runs_path,
+    )
+
+
+def _two_year_span() -> tuple[int, int]:
+    start = int(BASE_TIME.timestamp() * 1000)
+    return start, start + 730 * MS_PER_DAY
+
+
+def test_classify_trial_kind_treats_a_standalone_single_fold_record_as_a_sensitivity_probe():
+    # The empirical rule over THIS log (see `.planning/sr-p-trial-
+    # accounting.md`): every standalone one-fold record in
+    # runs/experiments.jsonl is a check_parameter_sensitivity evaluation,
+    # never a selection trial. Not a general invariant.
+    record = {"parent_run_id": None, "fold_results": [{"fold_index": 0}]}
+
+    assert classify_trial_kind(record) is TrialKind.SENSITIVITY_PROBE
+
+
+def test_classify_trial_kind_treats_a_standalone_multi_fold_record_as_a_selection_trial():
+    record = {"parent_run_id": None, "fold_results": [{"fold_index": i} for i in range(19)]}
+
+    assert classify_trial_kind(record) is TrialKind.SELECTION
+
+
+def test_classify_trial_kind_treats_a_sensitivity_prefixed_parent_as_a_probe_regardless_of_folds():
+    record = {"parent_run_id": f"{SENSITIVITY_PARENT_RUN_ID_PREFIX}abc-123", "fold_results": []}
+
+    assert classify_trial_kind(record) is TrialKind.SENSITIVITY_PROBE
+
+
+def test_classify_trial_kind_treats_a_real_parent_run_id_as_a_selection_trial():
+    record = {"parent_run_id": "abc-123", "fold_results": [{"fold_index": 0}]}
+
+    assert classify_trial_kind(record) is TrialKind.SELECTION
+
+
+def test_check_project_combination_count_excludes_sensitivity_probes_from_n(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(
+        runs_path, strategy_id="ensemble-momentum", run_id="wf-1", start_ms=start, end_ms=end, mean_sharpe=0.1
+    )
+    for i in range(9):
+        _log_run_record(
+            runs_path,
+            strategy_id="ensemble-momentum",
+            run_id=f"probe-{i}",
+            start_ms=start,
+            end_ms=end,
+            fold_count=1,
+            params={"fast": 10 + i, "slow": 40},
+            mean_sharpe=0.1,
+        )
+
+    result = check_project_combination_count(runs_path=runs_path)
+    family = result.families["trend-momentum"]
+
+    assert family.sensitivity_probe_trials == 9
+    assert family.selection_trials == 1
+    assert family.naive_total_combinations == 10  # what the old flat +1-per-record rule gives
+
+
+def test_check_project_combination_count_groups_renamed_strategy_ids_into_one_family(tmp_path):
+    # Defect 1: counting keyed on bare strategy_id lets a rename launder
+    # the data-snooping history. `ensemble-momentum-configuration-c` is a
+    # direct descendant of `ensemble-momentum`; both must land in one
+    # family whose N reflects the whole search.
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    for candidate_index in range(30):
+        _log_run_record(
+            runs_path,
+            strategy_id="ensemble-momentum",
+            run_id=f"c{candidate_index}",
+            start_ms=start,
+            end_ms=end,
+            fold_count=1,
+            params={"lookback": candidate_index},
+            parent_run_id="wf-run-1",
+            candidate_index=candidate_index,
+            total_candidates=30,
+        )
+    _log_run_record(
+        runs_path,
+        strategy_id="ensemble-momentum-configuration-c",
+        run_id="wf-2",
+        start_ms=start,
+        end_ms=end,
+        mean_sharpe=0.9,
+    )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert set(result.families) == {"trend-momentum"}
+    family = result.families["trend-momentum"]
+    assert family.selection_trials == 31
+    assert sorted(family.strategy_ids) == ["ensemble-momentum", "ensemble-momentum-configuration-c"]
+    # And the naive per-strategy_id view still reports the laundered 1.
+    laundered = check_combination_count("ensemble-momentum-configuration-c", runs_path=runs_path)
+    assert laundered.total_combinations_tried == 1
+
+
+def test_check_project_combination_count_reports_reproductions_separately_without_merging_them(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    for i in range(3):
+        _log_run_record(
+            runs_path,
+            strategy_id="obv-trend",
+            run_id=f"rerun-{i}",
+            start_ms=start,
+            end_ms=end,
+            strategy_version="v1",
+            mean_sharpe=-2.85,
+        )
+
+    result = check_project_combination_count(runs_path=runs_path)
+    family = result.families["volume"]
+
+    assert family.selection_trials == 3  # NOT silently deduplicated to 1
+    assert family.reproduction_trials == 2
+    assert family.deduplicated_selection_trials == 1
+
+
+def test_check_project_combination_count_does_not_call_distinct_results_a_reproduction(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    for i, sharpe in enumerate((-2.85, -1.11, 0.42)):
+        _log_run_record(
+            runs_path, strategy_id="obv-trend", run_id=f"run-{i}", start_ms=start, end_ms=end, mean_sharpe=sharpe
+        )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.families["volume"].reproduction_trials == 0
+
+
+def test_check_project_combination_count_splits_project_totals_by_purpose(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="r1", start_ms=start, end_ms=end, mean_sharpe=0.1)
+    _log_run_record(runs_path, strategy_id="mean-reversion", run_id="r2", start_ms=start, end_ms=end, mean_sharpe=0.2)
+    _log_run_record(
+        runs_path, strategy_id="ma-crossover-task-d-e2e", run_id="r3", start_ms=start, end_ms=end, mean_sharpe=0.3
+    )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.research_selection_trials == 2
+    assert result.infrastructure_selection_trials == 1
+    assert result.total_selection_trials == 3
+
+
+def test_check_project_combination_count_prefers_a_logged_strategy_family(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(
+        runs_path,
+        strategy_id="obv-trend",
+        run_id="r1",
+        start_ms=start,
+        end_ms=end,
+        strategy_family="carry",
+        mean_sharpe=0.1,
+    )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert set(result.families) == {"carry"}
+
+
+def test_check_project_combination_count_keeps_an_unmapped_strategy_id_as_its_own_family_with_a_note(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="never-seen-before", run_id="r1", start_ms=start, end_ms=end)
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert "never-seen-before" in result.families
+    assert any("never-seen-before" in note for note in result.families["never-seen-before"].notes)
+
+
+def test_check_project_combination_count_counts_a_grid_group_once_not_once_per_record(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    for fold in range(19):
+        for candidate_index in range(4):
+            _log_run_record(
+                runs_path,
+                strategy_id="ensemble-momentum",
+                run_id=f"f{fold}-c{candidate_index}",
+                start_ms=start,
+                end_ms=end,
+                fold_count=1,
+                params={"lookback": candidate_index},
+                parent_run_id="wf-run-1",
+                candidate_index=candidate_index,
+                total_candidates=4,
+            )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.families["trend-momentum"].selection_trials == 4
+
+
+def test_check_project_combination_count_ignores_holdout_access_records(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="r1", start_ms=start, end_ms=end)
+    experiment_log.log_holdout_access(
+        strategy_id="obv-trend",
+        symbol="BTC-USDT",
+        interval="1h",
+        start_ms=end,
+        end_ms=end + MS_PER_DAY,
+        runs_path=runs_path,
+    )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.total_selection_trials == 1
+
+
+def test_check_project_combination_count_on_an_empty_log_is_an_unremarkable_zero(tmp_path):
+    result = check_project_combination_count(runs_path=tmp_path / "nothing-here.jsonl")
+
+    assert result.families == {}
+    assert result.total_selection_trials == 0
+    assert "no backtest_run records" in result.warning
+
+
+def test_check_project_combination_count_risk_level_uses_selection_trials_not_the_naive_total(tmp_path):
+    # 400 sensitivity probes over 2 years would be >30/year (HIGH) under
+    # the naive count; the corrected N here is 1 combination over 2 years.
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="wf-1", start_ms=start, end_ms=end)
+    for i in range(400):
+        _log_run_record(
+            runs_path,
+            strategy_id="obv-trend",
+            run_id=f"probe-{i}",
+            start_ms=start,
+            end_ms=end,
+            fold_count=1,
+            params={"obv_ma_period": i},
+        )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.families["volume"].risk_level == "low"
+    assert result.families["volume"].sensitivity_probe_trials == 400
+
+
+def test_project_and_family_results_to_dict_are_json_serializable(tmp_path):
+    import json
+
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="r1", start_ms=start, end_ms=end)
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    json.dumps(result.to_dict(), default=str)
+    assert result.to_dict()["families"]["volume"]["family"] == "volume"
+
+
+def test_check_combination_count_is_unchanged_by_the_new_trial_accounting(tmp_path):
+    # Hard backward-compatibility requirement: the per-strategy_id
+    # function keeps its old flat "+1 per standalone record" behaviour,
+    # sensitivity probes included, so its existing callers/tests see
+    # exactly what they saw before Task P.
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="wf-1", start_ms=start, end_ms=end)
+    for i in range(9):
+        _log_run_record(
+            runs_path,
+            strategy_id="obv-trend",
+            run_id=f"probe-{i}",
+            start_ms=start,
+            end_ms=end,
+            fold_count=1,
+            params={"obv_ma_period": i},
+        )
+
+    assert check_combination_count("obv-trend", runs_path=runs_path).total_combinations_tried == 10
