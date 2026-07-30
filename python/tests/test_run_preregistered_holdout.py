@@ -14,6 +14,7 @@ result.md`), not by this test suite.
 
 import json
 import math
+import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -268,7 +269,7 @@ def test_refuses_a_research_split_registration(tmp_path, holdout_config_path, ru
     )
     prereg = load_preregistration(path)
 
-    with pytest.raises(ValueError, match="research.run_preregistered"):
+    with pytest.raises(ValueError, match=re.escape("research.run_preregistered")):
         run_preregistered_holdout(
             prereg, strategy=_RecordingTrainable(), klines=_klines(NUM_BARS), runs_path=runs_path
         )
@@ -400,13 +401,68 @@ def test_the_strategys_own_fit_diagnostic_record_is_not_the_holdout_confirmation
     assert all("preregistration_id" not in child for child in children)
 
 
-def test_a_bar_count_other_than_the_registered_one_warns(tmp_path, holdout_config_path, db_path, runs_path, caplog):
+def test_a_bar_count_other_than_the_registered_one_fails_closed(tmp_path, holdout_config_path, db_path, runs_path):
+    # Unlike research.run_preregistered's identical-looking research-split
+    # check (which only warns), the dedicated holdout runner fails closed:
+    # this is an exactly-once, never-re-run confirmation, and continuing to
+    # gate against a detection floor/trade-count floor computed from a bar
+    # count that no longer matches the actually-loaded window would be
+    # silently comparing against thresholds that no longer describe the
+    # evaluated data. (CodeRabbit review finding on this PR.)
     prereg = load_preregistration(
         _write_prereg(tmp_path, holdout_config_path, data={**_config()["data"], "expected_bars": NUM_BARS + 5})
     )
-    with caplog.at_level("WARNING"):
+    with pytest.raises(ValueError, match="expected_bars"):
         run_preregistered_holdout(prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path)
-    assert any("expected_bars" in record.message for record in caplog.records)
+
+    # The load itself succeeded (real data was legitimately read before the
+    # bar-count check fires), so the single-access claim is correctly spent
+    # even though the overall run raised afterward -- a re-run needs a
+    # deliberate force_reclaim_reason, same as any other legitimate holdout
+    # re-access.
+    assert len(_holdout_access_records(runs_path)) == 1
+    # But no outer confirmation record was logged: the run never reached
+    # the point where it would compute or log a result.
+    assert _backtest_records(runs_path) == []
+
+
+def test_injecting_klines_directly_warns_that_the_holdout_claim_was_skipped(
+    tmp_path, holdout_config_path, runs_path, caplog
+):
+    # The klines= injection path exists for tests only (mirrors research
+    # .run_preregistered's identical parameter) -- it never calls
+    # load_holdout_klines, so no holdout_access claim is recorded. Loud by
+    # design, in case this is ever reached on a real path by mistake.
+    # (CodeRabbit review finding on this PR.)
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
+
+    with caplog.at_level("WARNING"):
+        run_preregistered_holdout(
+            prereg, strategy=_RecordingTrainable(), klines=_klines(NUM_BARS), runs_path=runs_path
+        )
+
+    assert any("were injected by the caller" in record.message for record in caplog.records)
+    assert _holdout_access_records(runs_path) == []
+
+
+def test_a_never_trading_strategy_lands_in_the_fail_region_end_to_end(
+    tmp_path, holdout_config_path, db_path, runs_path
+):
+    # Drives the REAL backtest -> compute_metrics -> psr_from_equity_curve ->
+    # evaluate_gating pipeline through a genuine zero-trade result (not a
+    # hand-constructed Metrics/PsrResult fixture, which the evaluate_gating
+    # unit tests below already cover), confirming the degenerate case lands
+    # in FAIL via the real pipeline too. (CodeRabbit review suggestion.)
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
+
+    result = run_preregistered_holdout(
+        prereg, strategy=_NeverTradesTrainable(), db_path=db_path, runs_path=runs_path
+    )
+
+    assert result.metrics.num_trades == 0
+    assert result.outcome == OUTCOME_FAIL
+    assert result.gating_checks["min_total_trades"].passed is False
+    assert result.gating_checks["profit_factor"].passed is False
 
 
 # ---------------------------------------------------------------------------

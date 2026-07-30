@@ -496,7 +496,21 @@ def run_preregistered_holdout(
     verify_detection_floor(prereg)
 
     data = prereg.data
-    if klines is None:
+    if klines is not None:
+        # Test-only injection path (mirrors research.run_preregistered's
+        # identical `klines` parameter). Bypassing load_holdout_klines here
+        # means NO holdout_access claim gets recorded and the single-access
+        # enforcement is skipped entirely -- harmless for a test double, but
+        # worth being loud about in case this is ever reached on a real path
+        # by mistake. (CodeRabbit review finding on this PR.)
+        logger.warning(
+            "run_preregistered_holdout: klines were injected by the caller, so "
+            "research.holdout.load_holdout_klines was NOT called and NO holdout_access claim was "
+            "recorded for strategy_id=%r. This path is for tests only -- a real holdout "
+            "confirmation must go through the enforced single-access loader.",
+            prereg.strategy_id,
+        )
+    else:
         klines = load_holdout_klines(
             data["start_ms"],
             data["end_ms"],
@@ -509,13 +523,23 @@ def run_preregistered_holdout(
         )
 
     if len(klines) != data["expected_bars"]:
-        logger.warning(
-            "run_preregistered_holdout: pre-registration %r declares expected_bars=%d but %d bar(s) "
-            "loaded. The registered window is what the declared detection floor and trade-count "
-            "floor were computed from, so a gap here invalidates both.",
-            prereg.preregistration_id,
-            data["expected_bars"],
-            len(klines),
+        # Fail CLOSED here, unlike research.run_preregistered's identical-
+        # looking check on a research-split run (which only warns): this is
+        # the holdout confirmation, evaluated exactly once and never re-run
+        # under the same strategy_id. The registered detection floor and
+        # trade-count floor were both computed FROM expected_bars at
+        # registration time; continuing to gate against them when the
+        # actually-loaded window differs would silently compare the result
+        # against floors that no longer describe what was evaluated -- a
+        # research-split caller can just re-run with a corrected window, but
+        # a holdout confirmation cannot without burning a second, human-
+        # justified claim. (CodeRabbit review finding on this PR.)
+        raise ValueError(
+            f"pre-registration {prereg.preregistration_id!r} declares expected_bars="
+            f"{data['expected_bars']} but {len(klines)} bar(s) loaded. The registered window is "
+            "what the declared detection floor and trade-count floor were computed from, so a gap "
+            "here invalidates both gating thresholds -- refusing to score a holdout confirmation "
+            "against floors that no longer describe the evaluated window."
         )
 
     run_id = str(uuid4())
