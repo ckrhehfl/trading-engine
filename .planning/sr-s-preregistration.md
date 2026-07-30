@@ -167,7 +167,7 @@ Writing that down first would have ended the 1h research programme roughly
 so a disappointing result cannot be re-narrated afterwards. It requires
 **three** regions, not two:
 
-```
+```text
 PASS  /  INCONCLUSIVE  /  FAIL
 ```
 
@@ -215,7 +215,7 @@ validates the *artifact* and never judges the research.
 `frequency_scaled_min_trades(*, total_evaluated_bars, bars_per_day)` implements
 the amended wording literally:
 
-```
+```text
 max(30, min(100, floor(total_evaluated_bars / bars_per_day / 20)))
 ```
 
@@ -284,13 +284,27 @@ Why that one, and only that one:
 
 ### One residual gap, named rather than hidden
 
-A caller who omits `total_candidates` **entirely** is warned, not blocked.
-Absence is not an exceedance, and the block is specifically about exceeding a
-registered number. The omission is visible three ways: the warning, the
-`mismatches` list, and a logged `total_candidates: null` on the record itself.
-Blocking on absence was considered and rejected as the wrong trade: it would
-make the check unusable for any caller legitimately reporting a single
-non-grid run, in exchange for closing a hole that is already loud.
+A caller who omits `total_candidates` **entirely** — or passes it as `None`,
+which is this codebase's established "not a grid search" value, written by
+`log_run` for every standalone run — is warned, not blocked. Absence is not an
+exceedance, and the block is specifically about exceeding a registered number.
+The omission is visible three ways: the warning, the `mismatches` list, and a
+logged `total_candidates: null` on the record itself. Blocking on absence was
+considered and rejected as the wrong trade: it would make the check unusable
+for any caller legitimately reporting a single non-grid run, in exchange for
+closing a hole that is already loud.
+
+### One evasion route that was closed on review
+
+A count that is *present but not an integer* — `"7"`, `7.0`, `True` — used to
+fall through to the warning-only path, because `"7" > 6` never compares
+greater. That was a real way around the one hard block, found by CodeRabbit's
+review of this PR. It now raises `PreregistrationError` (not
+`GridExpansionError`: nothing has been *shown* to be expanded — the claim
+simply is not a candidate count). **This is a type check on the block's input,
+not a second policy gate**, and it keeps the distinction the gap above rests
+on: `None`/absent is a claim of nothing and warns; a non-count is a caller bug
+and fails loud, per `_require_int`'s convention throughout this module.
 
 ### Two refusals, and why only one is "the hard block"
 
@@ -310,18 +324,36 @@ comparison surface, and this refusal is not on it.
 The brief specified a best-effort `git diff --quiet -- <path>`, with
 `experiment_log._git_head_sha`'s defensive `try/except (OSError,
 SubprocessError)` shape. The implementation keeps the shape and the
-never-blocks semantics, but uses **`git status --porcelain -- <path>`**
-instead, for a concrete reason:
+never-blocks semantics, but uses
+**`git status --porcelain --ignored -- <path>`** instead. Both departures are
+based on a direct probe of real repositories rather than assumption:
 
 > An **untracked** file produces no `git diff` at all. `git diff --quiet`
 > therefore reports "clean" for a registration that **was never committed** —
 > the strongest possible version of exactly the failure this check exists to
 > catch. `git status --porcelain` reports it as `??`.
 
-Return values: `True` clean, `False` modified-or-untracked (loud warning),
-`None` when git could not answer (loud warning). Never a raised exception,
-never a block — the recorded sha is the durable record, and this check exists
-to make a soft failure visible, not to prevent it.
+> **`--ignored` is load-bearing** (added on CodeRabbit's review of this PR,
+> and the finding was correct). A **gitignored** file — or any file inside an
+> ignored directory — produces *empty* plain porcelain output, so
+> `git status --porcelain` alone also calls it "clean". This repo gitignores
+> `runs/` and `python/data/var/`, so a registration dropped into either would
+> have been reported as committed while being invisible to git entirely.
+
+Probed behaviour, per state, reproduced in the module docstring:
+
+```text
+tracked, unmodified   -> ""                  -> True
+tracked, modified     -> " M <path>"          -> False
+untracked             -> "?? <path>"          -> False
+ignored file          -> "!! <path>"          -> False
+inside ignored dir    -> "!! <dir>/"          -> False
+not a git checkout    -> CalledProcessError   -> None
+```
+
+Never a raised exception, never a block — the recorded sha is the durable
+record, and this check exists to make a soft failure visible, not to prevent
+it.
 
 ---
 
@@ -395,6 +427,29 @@ criterion stays with `research/eligibility.py` and
 `research/overfitting_check.py`; a runner that also graded itself would be the
 same conflation the Bar's own "PROPOSED, not adopted" discipline avoids.
 
+### `funding_included` is observed, not restated (fixed on review)
+
+The first implementation built `run_kwargs["funding_included"]` by copying
+`procedure["funding_included"]` straight out of the registration — which made
+that one comparison **trivially self-satisfying**, so it could never catch
+anything. CodeRabbit caught it, and the finding was correct.
+
+It is now derived from the funding series that will **actually** be applied
+(`bool(funding_rates)` after resolution), which required moving the
+`check_run_matches_preregistration` call to *after* data loading. Two real
+conflicts it now catches, both previously silent:
+
+- a caller **injecting** `funding_rates` under a registration declaring
+  `funding_included: false` — funding P&L applied under a specification that
+  denies it;
+- a registration declaring `true` whose window loads **no funding rows at
+  all** — a funding-inclusive claim that is not inclusive in fact.
+
+Both warn rather than block, like every mismatch except the candidate count.
+The cost of the reorder is that the candidate-count block would now fire after
+a sqlite read rather than before — immaterial, since on the runner's path it
+cannot fire at all by construction.
+
 ---
 
 ## How this composes with the amended Eligibility Bar
@@ -465,8 +520,8 @@ been run.
 | `configs/research/preregistrations/example-ma-crossover-infrastructure-demo.json` | **new.** One committed reference instance; creates the directory; asserted valid by a test. |
 | `python/research/experiment_log.py` | `log_run` gains the two optional fields (omitted when `None`) + `require_complete_preregistration_pair`. |
 | `python/research/walkforward.py` | `run_walk_forward` gains and threads the two optional fields; validates the pair at its entry point. |
-| `python/tests/test_preregistration.py` | **new**, 151 tests. |
-| `python/tests/test_run_preregistered.py` | **new**, 12 tests. |
+| `python/tests/test_preregistration.py` | **new**, 162 tests. |
+| `python/tests/test_run_preregistered.py` | **new**, 14 tests. |
 | `python/tests/test_experiment_log.py` | +4 tests (omitted-when-`None`, written-when-supplied, half-specified rejected ×2). |
 | `python/tests/test_walkforward.py` | +4 tests (same four, at the harness level). |
 
@@ -501,7 +556,7 @@ Tests were written first and confirmed failing against the unmodified tree —
 new files, and 6 real assertion/`TypeError` failures for the additive logged
 fields:
 
-```
+```text
 FAILED test_log_run_writes_both_preregistration_fields_when_supplied
 FAILED test_log_run_rejects_a_half_specified_preregistration_pair[kwargs0/1]
 FAILED test_run_walk_forward_threads_the_preregistration_fields_into_the_record
@@ -523,8 +578,27 @@ documented behaviour) plus the end-to-end test proving the data layer still
 rejects it. The change was to the *design*, made explicit, not to a test that
 was inconveniently failing.
 
-**Full suite: 1,095 passed** (924 on `main` at the branch point + 171 new).
-Nothing regressed; nothing was skipped or xfailed.
+**Full suite: 1,108 passed** (924 on `main` at the branch point + 184 new).
+Nothing regressed; nothing was skipped or xfailed. (1,095 at first push; the
+four review fixes below added 13 more tests.)
+
+### CodeRabbit review: four findings, all four accepted
+
+The review requested changes on the exact HEAD sha, and every finding was a
+real defect rather than a style preference. Recorded here because two of them
+were genuine holes in the mechanism this task exists to provide:
+
+| Finding | Verdict | Fix |
+|---|---|---|
+| `warn_if_uncommitted` reads a **gitignored** file as clean | **Real hole.** Confirmed by direct probe: ignored files produce empty porcelain output. | `--ignored` added; 2 tests (ignored file, ignored directory). |
+| A non-integer `total_candidates` slips past the hard block | **Real hole.** `"7" > 6` never compares greater, so a quoted count reached the warning-only path. | Raises `PreregistrationError`; 8 parametrized tests + 1 for the `None` case that must still only warn. |
+| `funding_included` copied from the registration into its own comparison | **Real hole.** The comparison was self-satisfying. | Derived from the resolved series; check moved after data loading; 2 tests. |
+| Four fenced blocks in this document lack a language | Valid lint. | `text` added, matching CLAUDE.md's own convention. |
+
+Two of these are worth stating plainly: a check that cannot fail is worse than
+no check, because it reads as coverage. Both the funding comparison and the
+ignored-file case were exactly that, and neither would have been caught by the
+tests as originally written.
 
 ### Coverage of what the brief asked for specifically
 
@@ -546,7 +620,7 @@ Real `python -m research.run_preregistered` invocation against a synthetic
 200-bar sqlite fixture and a synthetic registration, in a scratchpad
 directory. Abridged output:
 
-```
+```text
 WARN warn_if_uncommitted: could not ask git about .../sr-s-cli-demo.json
      (returned non-zero exit status 128) -- cannot confirm the pre-registration
      is committed; the recorded sha256 remains the durable record

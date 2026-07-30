@@ -167,27 +167,6 @@ def run_preregistered(
 
     procedure = prereg.procedure
     data = prereg.data
-    run_kwargs = {
-        "strategy_id": prereg.strategy_id,
-        "strategy_version": prereg.strategy_version,
-        "strategy_family": prereg.strategy_family,
-        "symbol": data["symbol"],
-        "interval": data["interval"],
-        "train_bars": procedure["train_bars"],
-        "validate_bars": procedure["validate_bars"],
-        "step_bars": procedure["step_bars"],
-        "bars_per_day": procedure["bars_per_day"],
-        "fee_bps": prereg.fee_bps,
-        "slippage_bps": prereg.slippage_bps,
-        "funding_included": procedure["funding_included"],
-        "is_holdout_run": False,
-        "total_candidates": prereg.total_candidates,
-    }
-    # Cannot fire on this path -- the count compared is derived from the file
-    # it is compared against. Called anyway, deliberately: it is also what
-    # emits the mismatch warnings, and skipping it here would leave the one
-    # real caller of the check untested in practice.
-    check_run_matches_preregistration(prereg, run_kwargs)
 
     if klines is None:
         klines = load_research_klines(
@@ -218,6 +197,37 @@ def run_preregistered(
             db_path=db_path,
             holdout_config_path=data["holdout_config_path"],
         )
+
+    run_kwargs = {
+        "strategy_id": prereg.strategy_id,
+        "strategy_version": prereg.strategy_version,
+        "strategy_family": prereg.strategy_family,
+        "symbol": data["symbol"],
+        "interval": data["interval"],
+        "train_bars": procedure["train_bars"],
+        "validate_bars": procedure["validate_bars"],
+        "step_bars": procedure["step_bars"],
+        "bars_per_day": procedure["bars_per_day"],
+        "fee_bps": prereg.fee_bps,
+        "slippage_bps": prereg.slippage_bps,
+        # Derived from the series that will ACTUALLY be applied, not copied
+        # from the registration -- otherwise this one comparison would be
+        # trivially self-satisfying and could never catch anything. Two real
+        # conflicts it now catches, both previously silent: a caller injecting
+        # `funding_rates` under a registration declaring
+        # `funding_included: false`, and a registration declaring `true` whose
+        # window loads no funding rows at all. (CodeRabbit review finding on
+        # this task's PR.) The check warns rather than blocks, like every
+        # mismatch except the candidate count.
+        "funding_included": bool(funding_rates),
+        "is_holdout_run": False,
+        "total_candidates": prereg.total_candidates,
+    }
+    # The candidate-count block cannot fire on this path -- the count compared
+    # is derived from the same file it is compared against, which is the point
+    # (see the module docstring). Called anyway, deliberately: it is what emits
+    # the mismatch warnings above, including the funding one.
+    check_run_matches_preregistration(prereg, run_kwargs)
 
     if strategy is None:
         strategy = build_strategy(prereg, runs_path=runs_path)

@@ -890,16 +890,36 @@ def warn_if_uncommitted(path: str | Path) -> bool | None:
     it. Same defensive `try/except (OSError, SubprocessError)` shape as
     `experiment_log._git_head_sha`.
 
-    Uses `git status --porcelain -- <path>` rather than the plainer
-    `git diff --quiet -- <path>`: an **untracked** file produces no diff at
-    all, so `git diff` reports "clean" for a registration that was never
-    committed -- the strongest version of exactly the failure this is here
-    to catch. `git status` reports it as `??`.
+    Uses `git status --porcelain --ignored -- <path>` rather than the plainer
+    `git diff --quiet -- <path>`, for two reasons established by direct
+    probing of real repositories rather than assumption:
+
+    - An **untracked** file produces no `git diff` at all, so `git diff`
+      reports "clean" for a registration that was never committed -- the
+      strongest version of exactly the failure this is here to catch.
+      `git status` reports it as `??`.
+    - **`--ignored` is load-bearing, not decoration** (CodeRabbit review
+      finding on this task's PR, confirmed by probe): a **gitignored** file --
+      or any file inside an ignored directory -- produces *empty* plain
+      porcelain output, so `git status --porcelain` alone would also call it
+      "clean". This repo gitignores `runs/` and `python/data/var/`, so a
+      registration dropped into either would otherwise be reported as
+      committed while being invisible to git entirely. With `--ignored`, both
+      cases report `!!` and are correctly treated as not-committed.
+
+    Observed per-state behaviour, for the record:
+
+        tracked, unmodified   -> ""                     -> True
+        tracked, modified     -> " M <path>"            -> False
+        untracked             -> "?? <path>"            -> False
+        ignored file          -> "!! <path>"            -> False
+        inside ignored dir    -> "!! <dir>/"            -> False
+        not a git checkout    -> CalledProcessError     -> None
     """
     file_path = Path(path).resolve()
     try:
         result = subprocess.run(
-            ["git", "status", "--porcelain", "--", str(file_path)],
+            ["git", "status", "--porcelain", "--ignored", "--", str(file_path)],
             cwd=file_path.parent,
             capture_output=True,
             text=True,
@@ -917,9 +937,10 @@ def warn_if_uncommitted(path: str | Path) -> bool | None:
 
     if result.stdout.strip():
         logger.warning(
-            "warn_if_uncommitted: %s has uncommitted changes (or is untracked): %r. A "
-            "pre-registration is only evidence if it was committed BEFORE the run -- commit it, "
-            "then re-run, or the recorded sha256 will point at a file no reviewer can retrieve",
+            "warn_if_uncommitted: %s is not committed as-is -- git reports %r (' M' = modified, "
+            "'??' = untracked, '!!' = gitignored). A pre-registration is only evidence if it was "
+            "committed BEFORE the run: commit it and re-run, or the recorded sha256 will point at "
+            "a file no reviewer can retrieve",
             file_path,
             result.stdout.strip(),
         )
@@ -1061,19 +1082,34 @@ def check_run_matches_preregistration(
         observed["funding_included"] = bool(observed["funding_rates"])
 
     registered_total = registered["total_candidates"]
-    if "total_candidates" in observed:
+    if "total_candidates" in observed and observed["total_candidates"] is not None:
         observed_total = observed["total_candidates"]
-        if isinstance(observed_total, int) and not isinstance(observed_total, bool):
-            if observed_total > registered_total:
-                raise GridExpansionError(
-                    f"total_candidates: this run reports {observed_total} candidate(s) but the "
-                    f"pre-registration {prereg.preregistration_id!r} registered {registered_total} "
-                    f"(sha256 {prereg.sha256}). Searching more than was declared is the one "
-                    "thing pre-registration exists to prevent: it inflates the N every future "
-                    "result must be deflated against, invisibly. Widen the grid in the "
-                    "committed registration file -- where the change shows up in git log -- or "
-                    "register a new specification with a new id."
-                )
+        # A present-but-non-integer count is a caller bug, and it must not be
+        # able to slip past the block below by being unusable: `"12"` would
+        # never compare greater than 6, so a quoted count would previously
+        # have fallen through to the warning-only path. Fail loud instead,
+        # with the module's validation error type rather than
+        # `GridExpansionError` -- nothing has been shown to be expanded, the
+        # claim simply is not a candidate count. This is a type check on the
+        # block's input, not a second policy gate. (CodeRabbit review finding
+        # on this task's PR.)
+        if isinstance(observed_total, bool) or not isinstance(observed_total, int):
+            raise PreregistrationError(
+                f"total_candidates: this run reports {observed_total!r}, which is not an "
+                f"integer candidate count, so it cannot be compared against the "
+                f"{registered_total} registered by {prereg.preregistration_id!r}. Pass an "
+                "int, or omit the field entirely to record that no count was claimed."
+            )
+        if observed_total > registered_total:
+            raise GridExpansionError(
+                f"total_candidates: this run reports {observed_total} candidate(s) but the "
+                f"pre-registration {prereg.preregistration_id!r} registered {registered_total} "
+                f"(sha256 {prereg.sha256}). Searching more than was declared is the one "
+                "thing pre-registration exists to prevent: it inflates the N every future "
+                "result must be deflated against, invisibly. Widen the grid in the "
+                "committed registration file -- where the change shows up in git log -- or "
+                "register a new specification with a new id."
+            )
 
     fields_compared: list[str] = []
     mismatches: list[str] = []

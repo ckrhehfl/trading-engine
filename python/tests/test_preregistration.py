@@ -853,6 +853,33 @@ def test_a_never_committed_registration_warns(git_repo, caplog):
     assert any("uncommitted" in record.message.lower() for record in caplog.records)
 
 
+def test_a_gitignored_registration_warns(git_repo, caplog):
+    # `git status --porcelain` WITHOUT `--ignored` reports nothing at all for
+    # an ignored file, so it would be read as "clean" -- verified by direct
+    # probe. This repo gitignores `runs/` and `python/data/var/`, so a
+    # registration dropped into either would otherwise look committed while
+    # being invisible to git. (CodeRabbit review finding on this task's PR.)
+    (git_repo / ".gitignore").write_text(f"{PREREG_ID}.json\n", encoding="utf-8")
+    path = _write(git_repo, _valid_config())
+
+    with caplog.at_level("WARNING"):
+        assert warn_if_uncommitted(path) is False
+
+    assert any("not committed" in record.message.lower() for record in caplog.records)
+
+
+def test_a_registration_inside_a_gitignored_directory_warns(git_repo, caplog):
+    (git_repo / ".gitignore").write_text("reserved/\n", encoding="utf-8")
+    directory = git_repo / "reserved"
+    directory.mkdir()
+    path = _write(directory, _valid_config())
+
+    with caplog.at_level("WARNING"):
+        assert warn_if_uncommitted(path) is False
+
+    assert any("not committed" in record.message.lower() for record in caplog.records)
+
+
 def test_git_being_unavailable_warns_and_returns_none(tmp_path, monkeypatch, caplog):
     path = _write(tmp_path, _valid_config())
 
@@ -944,6 +971,31 @@ def test_the_grid_block_names_both_numbers(tmp_path):
 
     with pytest.raises(GridExpansionError, match=r"registered 6"):
         check_run_matches_preregistration(prereg, _run_kwargs(total_candidates=9))
+
+
+@pytest.mark.parametrize("bogus", ["7", "6", 7.0, 6.0, True, False, [7], {"n": 7}])
+def test_a_non_integer_candidate_count_cannot_slip_past_the_block(tmp_path, bogus):
+    # `"7" > 6` never compares greater, so a quoted count would previously
+    # have fallen through to the warning-only path -- an evasion route around
+    # the one hard block. It now fails loudly instead. (CodeRabbit review
+    # finding on this task's PR.)
+    prereg = load_preregistration(_write(tmp_path, _valid_config()))
+
+    with pytest.raises(PreregistrationError, match="total_candidates"):
+        check_run_matches_preregistration(prereg, _run_kwargs(total_candidates=bogus))
+
+
+def test_an_explicit_none_candidate_count_still_only_warns(tmp_path, caplog):
+    # `None` is this codebase's established "not a grid search" value --
+    # `log_run` writes it for every standalone run -- so it is a claim of
+    # nothing, treated exactly like the absent case: warned, never raised.
+    prereg = load_preregistration(_write(tmp_path, _valid_config()))
+
+    with caplog.at_level("WARNING"):
+        result = check_run_matches_preregistration(prereg, _run_kwargs(total_candidates=None))
+
+    assert any("total_candidates" in mismatch for mismatch in result.mismatches)
+    assert caplog.records
 
 
 def test_an_exactly_equal_candidate_count_is_not_a_mismatch(tmp_path):

@@ -19,6 +19,7 @@ import pytest
 from backtest.kline import Kline
 from data.bingx_klines import KlineRow
 from data.store import connect, upsert_klines
+from metrics.funding import FundingRate
 from research.experiment_log import read_records
 from research.preregistration import SPLIT_HOLDOUT, load_preregistration
 from research.run_preregistered import main, run_preregistered
@@ -280,6 +281,47 @@ def test_a_bar_count_other_than_the_registered_one_warns(tmp_path, holdout_confi
         )
 
     assert any("expected_bars" in record.message for record in caplog.records)
+
+
+def test_injecting_funding_under_a_registration_that_denies_it_warns(
+    tmp_path, holdout_config_path, runs_path, caplog
+):
+    # `funding_included` in run_kwargs is derived from the series that will
+    # ACTUALLY be applied, not copied from the registration -- otherwise this
+    # comparison would be trivially self-satisfying and could never catch
+    # anything. (CodeRabbit review finding on this task's PR.)
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
+    assert prereg.procedure["funding_included"] is False
+
+    with caplog.at_level("WARNING"):
+        run_preregistered(
+            prereg,
+            strategy=_RecordingTrainable(),
+            klines=_klines(NUM_BARS),
+            funding_rates=[
+                FundingRate(
+                    funding_time=datetime(2026, 1, 1, 8, tzinfo=timezone.utc),
+                    funding_rate=Decimal("0.0001"),
+                    mark_price=Decimal("50000"),
+                )
+            ],
+            runs_path=runs_path,
+        )
+
+    assert any("funding_included" in record.message for record in caplog.records)
+
+
+def test_a_run_with_no_funding_under_a_registration_that_denies_it_does_not_warn(
+    tmp_path, holdout_config_path, runs_path, caplog
+):
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
+
+    with caplog.at_level("WARNING"):
+        run_preregistered(
+            prereg, strategy=_RecordingTrainable(), klines=_klines(NUM_BARS), runs_path=runs_path
+        )
+
+    assert not any("funding_included" in record.message for record in caplog.records)
 
 
 def test_the_runner_refuses_to_drive_a_holdout_confirmation_registration(
