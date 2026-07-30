@@ -92,6 +92,29 @@ def _git_head_sha() -> str | None:
         return None
 
 
+def require_complete_preregistration_pair(
+    preregistration_id: str | None,
+    preregistration_sha256: str | None,
+) -> None:
+    """Raise `ValueError` unless the two pre-registration provenance fields
+    are both supplied or both absent.
+
+    Public (no leading underscore) on purpose: `research/walkforward.py`
+    calls it at *its* entry point, before running any folds, so a caller
+    mistake fails before a completed run's results would be thrown away at
+    logging time -- the same reasoning as that function's own `bars_per_day`
+    check. `log_run` calls it too, so the invariant holds for every writer,
+    not only the ones that remembered.
+    """
+    if (preregistration_id is None) != (preregistration_sha256 is None):
+        raise ValueError(
+            "preregistration_id and preregistration_sha256 must be supplied together or not "
+            f"at all (got id={preregistration_id!r}, sha256={preregistration_sha256!r}) -- a "
+            "logged pre-registration claim without its integrity hash cannot be checked against "
+            "the committed file, and a hash with no id cannot be attributed to one"
+        )
+
+
 def _append_record(record: dict, runs_path: str | Path) -> dict:
     path = Path(runs_path)
     is_new_file = not path.exists()
@@ -145,6 +168,8 @@ def log_run(
     candidate_index: int | None = None,
     total_candidates: int | None = None,
     strategy_family: str | None = None,
+    preregistration_id: str | None = None,
+    preregistration_sha256: str | None = None,
     runs_path: str | Path = DEFAULT_RUNS_PATH,
 ) -> dict:
     """Append one `record_type: "backtest_run"` entry. Called automatically
@@ -166,10 +191,31 @@ def log_run(
     collide the two cases. Every pre-Task-P record in
     `runs/experiments.jsonl` is unaffected and still reads back identically.
 
+    `preregistration_id`/`preregistration_sha256` (Strategy Research Task S,
+    `.planning/sr-s-preregistration.md`) record which committed
+    pre-registration a run was made under, and the SHA-256 of that file's
+    bytes **as read at run time** -- so a later edit to the registration
+    becomes detectable by comparing the file against what the log says was
+    hashed. Both follow `strategy_family`'s "key omitted entirely when
+    `None`" convention, for the same reason: *absent* must unambiguously
+    mean "this run was not made under a pre-registration", which a `null`
+    would collide with "made under one, but nobody recorded which".
+
+    The two must be supplied **together or not at all** -- a record claiming
+    a pre-registration with no integrity hash (or a hash with nothing to
+    attribute it to) is worse than one claiming nothing, because it looks
+    like provenance while proving none. Same "they describe the same thing,
+    so half of them is a caller mistake" rule
+    `research/eligibility.py::_resolve_moments` applies to
+    skewness/kurtosis. Enforced here, at the writer, so no caller can
+    bypass it; `run_walk_forward` re-checks at its own entry point so a
+    completed run's fold results are not thrown away at logging time.
+
     Returns the record actually written (with all types still Python-
     native, e.g. `Decimal`/`datetime` un-stringified) for a caller that
     wants to inspect what was logged without re-parsing the file.
     """
+    require_complete_preregistration_pair(preregistration_id, preregistration_sha256)
     record = {
         "record_type": "backtest_run",
         "run_id": run_id,
@@ -194,6 +240,10 @@ def log_run(
     # distinguishable here.
     if strategy_family is not None:
         record["strategy_family"] = strategy_family
+    if preregistration_id is not None:
+        # Validated as a complete pair above, so the sha is non-None here.
+        record["preregistration_id"] = preregistration_id
+        record["preregistration_sha256"] = preregistration_sha256
     return _append_record(record, runs_path)
 
 

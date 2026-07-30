@@ -138,6 +138,56 @@ def test_log_run_writes_strategy_family_when_supplied(tmp_path):
     assert record["strategy_family"] == "trend-momentum"
 
 
+def test_log_run_omits_both_preregistration_fields_entirely_when_none(tmp_path):
+    # Same "key absent, never null" convention as `strategy_family` above,
+    # and for the same reason: absent must unambiguously mean "this run was
+    # not made under a pre-registration" (Strategy Research Task S).
+    runs_path = tmp_path / "experiments.jsonl"
+
+    log_run(**_log_run_kwargs(runs_path=runs_path))
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    assert "preregistration_id" not in record
+    assert "preregistration_sha256" not in record
+
+
+def test_log_run_writes_both_preregistration_fields_when_supplied(tmp_path):
+    runs_path = tmp_path / "experiments.jsonl"
+    sha = "a" * 64
+
+    log_run(
+        **_log_run_kwargs(
+            preregistration_id="sr-u-daily-attempt",
+            preregistration_sha256=sha,
+            runs_path=runs_path,
+        )
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
+    assert record["preregistration_id"] == "sr-u-daily-attempt"
+    assert record["preregistration_sha256"] == sha
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"preregistration_id": "sr-u-daily-attempt"},
+        {"preregistration_sha256": "a" * 64},
+    ],
+)
+def test_log_run_rejects_a_half_specified_preregistration_pair(tmp_path, kwargs):
+    # A record claiming a pre-registration with no integrity hash (or a
+    # hash with nothing to attribute it to) is worse than one claiming
+    # nothing -- same "supplied together or not at all" rule
+    # `eligibility._resolve_moments` applies to skewness/kurtosis.
+    runs_path = tmp_path / "experiments.jsonl"
+
+    with pytest.raises(ValueError, match="preregistration"):
+        log_run(**_log_run_kwargs(runs_path=runs_path, **kwargs))
+
+    assert not runs_path.exists()
+
+
 def test_log_run_appends_without_clobbering_prior_records(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 

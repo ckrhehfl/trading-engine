@@ -194,6 +194,8 @@ def run_walk_forward(
     candidate_index: int | None = None,
     total_candidates: int | None = None,
     strategy_family: str | None = None,
+    preregistration_id: str | None = None,
+    preregistration_sha256: str | None = None,
     sensitivity_extractor: Callable[[Strategy], Sequence[int]] | None = None,
     sensitivity_fractions: Sequence[Decimal] = DEFAULT_PERTURBATION_FRACTIONS,
     runs_path: str = experiment_log.DEFAULT_RUNS_PATH,
@@ -233,6 +235,21 @@ def run_walk_forward(
     check_project_combination_count` doesn't have to fall back to
     `research.lineage.FAMILY_BY_STRATEGY_ID`'s curated historical map to
     work out which research family the run belongs to.
+
+    `preregistration_id`/`preregistration_sha256` (default `None` -- purely
+    additive, Strategy Research Task S) are passed straight through to
+    `log_run`, which omits both keys entirely rather than writing `null`
+    when they are `None`; see that function's docstring and
+    `research/preregistration.py`. They record which committed
+    pre-registration a run was made under, and the SHA-256 of that file's
+    bytes as read at run time. They must be supplied together or not at
+    all, validated at this function's entry point rather than only in
+    `log_run` for the same reason as the `bars_per_day` check below:
+    `log_run` runs after every fold has already been backtested, so failing
+    there would throw away a completed run's results.
+    `research/run_preregistered.py` is the intended caller; anything else
+    passing them is asserting a provenance claim it should be able to
+    substantiate.
 
     `train_bars`/`validate_bars`/`step_bars`/`fee_bps`/`slippage_bps` are
     keyword-only, unlike CLAUDE.md's Build-section signature snippet
@@ -312,6 +329,10 @@ def run_walk_forward(
     # on PR #52.)
     if bars_per_day <= 0:
         raise ValueError(f"bars_per_day must be positive, got {bars_per_day}")
+    # Same "fail at the entry point, not at logging time" reasoning as the
+    # check above (Strategy Research Task S): `log_run` enforces this too,
+    # but by then every fold has already been backtested.
+    experiment_log.require_complete_preregistration_pair(preregistration_id, preregistration_sha256)
 
     folds = generate_folds(len(klines), train_bars, validate_bars, step_bars)
 
@@ -442,6 +463,8 @@ def run_walk_forward(
         candidate_index=candidate_index,
         total_candidates=total_candidates,
         strategy_family=strategy_family,
+        preregistration_id=preregistration_id,
+        preregistration_sha256=preregistration_sha256,
         runs_path=runs_path,
     )
 
