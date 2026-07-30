@@ -1,0 +1,70 @@
+{
+  "preregistration_id": "daily-tsmom-ensemble-1d-holdout",
+  "registered_at": "2026-07-30T00:00:00Z",
+  "strategy_family": "daily-tsmom",
+  "strategy_id": "daily-tsmom-ensemble",
+  "strategy_version": "v1",
+  "strategy_entry_point": "research.strategies.daily_tsmom_ensemble:DailyTsmomEnsembleTrainable",
+  "hypothesis": "A zero-fitted-parameter time-series-momentum ensemble -- the average sign of BTC-USDT's own trailing 21/63/126/252-trading-day returns (Moskowitz-Ooi-Pedersen 2012's canonical 1/3/6/12-month lookback set), sized to a constant 20% annualized volatility target, with no ADX regime gate, no ATR stop/target, no risk:reward grid and no funding signal driving direction or size -- exhibits a real, non-zero, positive risk-adjusted return (a Probabilistic Sharpe Ratio >= 0.95 against a zero benchmark, on daily-resampled returns) over BTC-USDT's earliest available 1d BingX history (2021-05-14 through 2024-04-26, configs/research/holdout_1d.json's early-window holdout) -- a window no trial in this project's history has ever accessed before this registration.",
+  "prior_art": [
+    "Moskowitz, Ooi, Pedersen (2012), 'Time Series Momentum,' Journal of Financial Economics 104(2) -- the literature source for the 21/63/126/252-trading-day lookback set and the constant-volatility-target sizing convention this strategy implements literally, chosen by the paper rather than fitted by this project.",
+    ".planning/sr-r-retrospective-closeout.md -- the statistical close-out finding that closed the 1h research window to further selection (0 of 18 configurations survive DSR against the project's 117-trial N) and named the 1d early-window holdout as the only untouched window this project has whose detection floor sits below a plausible real edge.",
+    ".planning/sr-t-daily-data-path.md -- the 1d data path and the early-window holdout reservation (configs/research/holdout_1d.json, holdout_side='before') this registration spends.",
+    ".planning/sr-s-preregistration.md -- the pre-registration schema and mechanism (python/research/preregistration.py) this file is an instance of.",
+    ".planning/sr-u-preregistered-attempt-spec.md -- this attempt's own full design record: every judgment call (order-emission mapping, warmup handling, funding-accounting decision) with its reasoning, and an explicit confirmation that no 1d price data was accessed while writing this registration or the strategy it names."
+  ],
+  "data": {
+    "symbol": "BTC-USDT",
+    "interval": "1d",
+    "source": "BingX production klines, cached in python/data/var/klines.sqlite3 by python/data/backfill.py",
+    "split": "holdout",
+    "holdout_config_path": "configs/research/holdout_1d.json",
+    "start_ms": 1620950400000,
+    "end_ms": 1714176000000,
+    "expected_bars": 1079
+  },
+  "parameter_grid": [
+    { "lookbacks": [21, 63, 126, 252] }
+  ],
+  "total_candidates": 1,
+  "free_parameter_count": 0,
+  "procedure": {
+    "fee_bps": "5",
+    "slippage_bps": "2",
+    "bars_per_day": 1,
+    "funding_included": false
+  },
+  "primary_criterion": {
+    "kind": "holdout_psr",
+    "threshold": 0.95,
+    "max_drawdown_ceiling": "0.20",
+    "min_total_trades": 53,
+    "profit_factor_floor": "1.3",
+    "criteria_pinned_at_claude_md_revision": "2026-07-29",
+    "require_sharpe_above_detection_floor": true
+  },
+  "secondary_reported_not_gating": [
+    "Observed max drawdown against the 20% ceiling (a required gating field on this registration's schema per CLAUDE.md's holdout single-window variant clause 2; the actual observed number is reported here for context regardless of which side of the floor it lands on).",
+    "Observed total trade count against the 53-trade frequency-scaled floor for this 1,079-bar/1d geometry (also a gating field on the schema; the actual count -- and how far above or below the floor it lands -- is itself informative given this attempt's disclosed Option-B, sign-change-only trade-count risk, see research/strategies/daily_tsmom_ensemble.py's module docstring).",
+    "Observed profit factor against the 1.3 floor (also a gating field on the schema; reported here for context).",
+    "PSR at N=1 (undeflated by construction, since this holdout was never searched over -- identical to the gating PSR figure here; reported for continuity with every walk-forward registration's own PSR-at-N=1 secondary line).",
+    "No fold-level breakdown applies -- CLAUDE.md's single-window holdout confirmation variant explicitly drops every fold-based clause (fold consistency, sign test) rather than scaling them down. This line exists only to say so explicitly, per this schema's own required-non-empty-list shape, rather than leave the absence unexplained."
+  ],
+  "declared_detection_floor_sharpe": 0.9567,
+  "declared_power": {
+    "assumed_true_sharpe": 1.0,
+    "probability": 0.5297,
+    "derivation": "One-sided, alpha=0.05: power = Phi(sqrt(years)*SR_true - Phi^-1(1-alpha)), the same normal-approximation method research/retrospective.py (sr-r) used for the 1h/15m windows. years = 1079 bars / 1 bar-per-day / 365 = 2.95616. Phi^-1(0.95) = 1.6448536 (statistics.NormalDist().inv_cdf(0.95)). At assumed_true_sharpe=1.0 (the registered value): power = Phi(sqrt(2.95616)*1.0 - 1.6448536) = Phi(1.71932 - 1.64485) = Phi(0.07447) = 0.5297. At assumed_true_sharpe=2.0 (reported for completeness per this attempt's own spec, not the registered scalar value -- the schema's declared_power object carries exactly one point): power = Phi(sqrt(2.95616)*2.0 - 1.6448536) = Phi(3.43864 - 1.64485) = Phi(1.79379) = 0.9636. Writing either number down before the run is what none of the project's 117 prior 1h-window trials ever did; this registration's own PASS region is decided on the observed PSR directly, not on this power figure -- power only describes how likely a real edge of the assumed size would have been detected, before anyone saw a result."
+  },
+  "outcome_interpretation": {
+    "PASS": "PSR >= 0.95 on daily-resampled holdout returns against a zero benchmark, with max drawdown <= 20%, total trades >= 53 and profit factor >= 1.3 all cleared, AND the observed annualized Sharpe exceeding this window's own 0.9567 detection floor (CLAUDE.md's holdout single-window variant, clause 3). A genuine candidate for paper trading, subject to the rest of CLAUDE.md's Backtest/Walk-Forward Eligibility Bar and its separate Paper Trading Pass Criteria / Live Entry Criteria -- this outcome is not itself an automatic promotion.",
+    "INCONCLUSIVE": "PSR positive but below 0.95, OR the observed Sharpe fails to exceed the window's own 0.9567 detection floor (reported 'not powered to confirm' per clause 3), OR total trades fall below the 53-trade floor (reported INCONCLUSIVE-DATA-LIMITED -- neither a pass nor a fail, and not evidence against the strategy). Park the hypothesis; the only legitimate remedy is more calendar time or more data, explicitly NOT another search, another threshold, or another lookback set. Meta-consequence, pre-committed here rather than decided after seeing the result: an INCONCLUSIVE outcome on this attempt ends the BTC-only price-signal research program as a line of work -- the next move is a named structural change (multi-symbol expansion with survivorship-safe data, or a genuinely different data source entirely), not another grid, on any timeframe, against any signal class.",
+    "FAIL": "PSR at or below 0 (a non-positive point estimate, or the statistic is undefined for a degenerate zero-trade result). The hypothesis is dead as specified. Meta-consequence, pre-committed here rather than decided after seeing the result: a FAIL on this attempt ends the BTC-only price-signal research program as a line of work -- the next move is a named structural change (multi-symbol expansion with survivorship-safe data, or a genuinely different data source entirely), not another grid, on any timeframe, against any signal class."
+  },
+  "stopping_rule": "Exactly one execution of this registration against configs/research/holdout_1d.json's early-window holdout, via research.holdout.load_holdout_klines's single-access-per-strategy_id claim mechanism. Re-access after the first requires a force_reclaim_reason under that machinery's own existing rules; any such reclaim is itself a second access, which this registration's own stopping rule treats as already having happened, not as license for a second real attempt under this same hypothesis. No candidate may be added, removed or re-valued after this file is committed: a changed grid is a NEW registration with a new preregistration_id, visible in git log and in the preregistration_sha256 recorded on the affected run.",
+  "rationale": "The single pre-registered attempt decided at Gate 2 (human decision, 2026-07-30, after sr-s built the pre-registration mechanism and sr-t reserved the window): a zero-fitted-parameter, literature-specified daily TSMOM ensemble, run exactly once against the virgin 1d early-window holdout. Every number in this file is real and self-consistent: 1,079 bars = configs/research/holdout_1d.json's own holdout span (2021-05-14T00:00:00Z through 2024-04-27T00:00:00Z exclusive, i.e. through 2024-04-26 inclusive); the 0.9567 detection floor and the 53-trade frequency-scaled floor are both recomputed directly from that same bar count (research/preregistration.py::frequency_scaled_min_trades reproduces 53 exactly: floor(1079/1/20)=53, already inside the [30,100] clamp). Full design reasoning -- including the order-emission mapping decision (rebalance-to-target vs only-on-sign-change; this attempt chose the latter, Option B), the all-four-lookbacks-warm-together warmup decision, and the decision not to wire funding P&L into this attempt's accounting -- lives in .planning/sr-u-preregistered-attempt-spec.md. This task (sr-u) commits the strategy implementation and this registration; it does not execute it. A separate, later task (sr-v) loads configs/research/holdout_1d.json's holdout klines and runs this registration exactly once.",
+  "notes": [
+    "Every value under primary_criterion restates a human-approved Eligibility Bar constant (CLAUDE.md, revised 2026-07-29). research/preregistration.py rejects any registration that restates one LAXER than approved and accepts stricter -- see that module's docstring for why that is conformance checking rather than an opinion about the research.",
+    "Known confounds, stated here rather than discovered after the run (per .planning/sr-u-preregistered-attempt-spec.md): the 2021-05-14 through 2024-04-26 window spans the 2021 bull-market top, the 2022 LUNA/FTX-driven bear market, and the 2023 recovery -- an unusually trend-friendly stretch by BTC's own multi-year history. A PASS on this window is real evidence but weaker evidence for a 2026-forward edge than the detection-floor/power arithmetic alone suggests; this is a property of the calendar, not something the statistics correct for."
+  ]
+}

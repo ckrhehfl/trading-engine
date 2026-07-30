@@ -147,6 +147,20 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/sr-n-funding-rate-strategy.md",
     ),
+    # --- daily time-series momentum (Gate 2's single pre-registered `1d`
+    # holdout attempt) ------------------------------------------------------
+    # Registered as `strategy_family="daily-tsmom"` at run time too (see
+    # configs/research/preregistrations/daily-tsmom-ensemble-1d-holdout.json),
+    # so this entry is a fail-closed fallback, not the only way this run
+    # resolves -- kept current per CLAUDE.md's amended Eligibility Bar
+    # clause 2 (a DSR/PSR computed against an "unmapped" resolution is
+    # inadmissible), in case a future runner ever fails to pass
+    # `strategy_family=` explicitly.
+    "daily-tsmom-ensemble": FamilyEntry(
+        family="daily-tsmom",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/sr-u-preregistered-attempt-spec.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them

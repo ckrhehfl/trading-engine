@@ -123,7 +123,14 @@ def test_every_curated_family_has_exactly_one_purpose():
 
 def test_curated_map_covers_the_families_named_in_the_planning_doc():
     families = {entry.family for entry in FAMILY_BY_STRATEGY_ID.values()}
-    assert families == {"trend-momentum", "mean-reversion", "volume", "funding", "infrastructure"}
+    assert families == {
+        "trend-momentum",
+        "mean-reversion",
+        "volume",
+        "funding",
+        "daily-tsmom",
+        "infrastructure",
+    }
 
 
 def test_family_resolution_to_dict_is_json_serializable():
