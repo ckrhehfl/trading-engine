@@ -813,7 +813,7 @@ equity-curve retention has to be built before the trigger can ever fire.
 That is a further reason this is a deferral rather than a near-term plan,
 not a reason to weaken the condition.
 
-### Strategy Attempts So Far (closed out 2026-07-29)
+### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`)
 
 Eight strategy attempts across **four research families** (plus
 infrastructure demos) were built and walk-forward validated against real
@@ -859,27 +859,80 @@ additional trial raises the `N` that any future winner must be deflated
 against. The live options are therefore about *changing the evidence
 base*, not the signal:
 
-1. **The `1d` early-window holdout (`sr-t`).** ~2.95 years of data no
-   trial in this project's history has touched, with a detection floor
-   of **~0.96** — the only untouched window this project has whose
-   floor sits below a plausible real edge. A strategy specification
-   must be committed *before* that window is ever loaded.
-2. **Multi-symbol expansion.** A meaningful share of the Sharpe
-   reported by the institutional research benchmarked in `sr-g`
-   plausibly comes from cross-symbol diversification a single-symbol
-   design cannot access. A real architecture reconsideration (it
-   touches the data pipeline's survivorship-bias handling, per Strategy
-   Research Methodology) that deserves its own `Discuss` pass.
-3. **Stop adding strategies and build the infrastructure instead**
+1. **~~The `1d` early-window holdout (`sr-t`)~~ — spent, INCONCLUSIVE
+   (`sr-v`, 2026-07-30; full result below).** This was the only
+   untouched single-symbol BTC-USDT price window this project had with
+   a detection floor below a plausible real edge; it no longer is.
+2. **Multi-symbol expansion, with survivorship-safe data.** A
+   meaningful share of the Sharpe reported by the institutional
+   research benchmarked in `sr-g` plausibly comes from cross-symbol
+   diversification a single-symbol design cannot access. A real
+   architecture reconsideration (it touches the data pipeline's
+   survivorship-bias handling, per Strategy Research Methodology) that
+   deserves its own `Discuss` pass — now the pre-registration's own
+   named remedy for the INCONCLUSIVE result below, not just an item on
+   a list.
+3. **A genuinely different data source entirely** — the
+   pre-registration's other named remedy, alongside (2); neither is
+   chosen yet, and choosing between them is a human `Discuss`, not
+   resolved here.
+4. **Stop adding strategies and build the infrastructure instead**
    (Priorities #8-#10). Nothing about the paper-trading loop,
    supervision, or `ExchangeAdapter` work is blocked by the absence of
    a validated strategy — CLAUDE.md already says they can and should
-   proceed on dummy signals.
+   proceed on dummy signals. Unlike (2)/(3), this does not require
+   resolving the BTC-only price-signal question first.
+
+**Explicitly NOT a live option**: another search, threshold, or
+lookback set, on any timeframe, against any signal class — the
+pre-registration's own pre-committed stopping rule for this exact
+outcome (see below).
 
 **Retired**: the two funding-extremity follow-ups previously listed
 here as live candidates (changing the edge-trigger rule; lowering
 `entry_z_threshold`/`funding_zscore_lookback`). Both are more searching
 on the spent 1h window — see the standing rule above.
+
+**`sr-s`/`sr-t`/`sr-u`/`sr-v` spent the `1d` holdout option above
+(2026-07-30).** `sr-s` built the pre-registration mechanism
+(`python/research/preregistration.py`) so a single attempt's `N=1`
+claim would be provable, not merely asserted, rather than another
+untracked trial. `sr-t` wired the `1d` interval into the data pipeline
+and reserved its early window as the holdout (see "A third timeframe,
+`1d`" above). `sr-u` then committed the full specification — a
+zero-fitted-parameter Moskowitz-Ooi-Pedersen (2012) daily
+time-series-momentum ensemble (the literature's own canonical
+21/63/126/252-trading-day lookback set, constant 20%-annualized-
+vol-target sizing, no ADX gate, no ATR stop, no funding signal —
+`free_parameter_count: 0`) and its registration
+(`configs/research/preregistrations/daily-tsmom-ensemble-1d-holdout.json`)
+**before** any `1d` price data was ever accessed. `sr-v` then executed
+it — exactly once, for real, against the registered window
+(2021-05-14 through 2024-04-26, 1,079 daily bars):
+
+- **PSR 0.9367** — positive, but below the registered 0.95 threshold.
+- **Observed annualized Sharpe 0.882** — below the window's own 0.9567
+  detection floor ("not powered to confirm", clause 3).
+- **26 trades** — below the 53-trade frequency-scaled floor.
+- Max drawdown (12.0%) and profit factor (2.87) both cleared
+  comfortably, but PASS requires all five checks, and this result hits
+  three separate INCONCLUSIVE triggers at once.
+
+**Verdict: INCONCLUSIVE** — not a rejection, not a pass. Real, full
+result, the logged record
+(`run_id=8143a525-3159-447b-991d-2f11a0ef790b`), and an honest account
+of the one (non-hypothesis-related) invocation bug hit and fixed during
+execution: `.planning/sr-v-preregistered-attempt-result.md`.
+
+**Per the pre-registration's own pre-committed meta-consequence**
+(written before the run, not decided after seeing it): this
+INCONCLUSIVE result **ends the BTC-only price-signal research program
+as a line of work.** "The only legitimate remedy is more calendar time
+or more data, explicitly NOT another search, another threshold, or
+another lookback set" — the next move is a named structural change,
+options (2) and (3) above, not another grid on any timeframe against
+any signal class. Whether and how to pursue either is a human
+`Discuss`, not resolved here.
 
 ## Tooling Stack
 
