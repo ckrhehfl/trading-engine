@@ -407,6 +407,47 @@ Non-negotiable once strategy research begins:
   pipeline built for that must retain delisted/inactive symbols, not
   only currently-active ones, or backtests across that universe will be
   biased upward by construction.
+- **No further parameter searching on the `BTC-USDT` 1h research window
+  (2024-04-27T10:00Z → 2026-02-26T07:00Z, 16,078 bars).** (Added
+  2026-07-29, human-approved; derivation in
+  `.planning/sr-r-retrospective-closeout.md`.) 117 research selection
+  trials have been run against it and its detection floor is ~1.21
+  annualized Sharpe (`sr-r`). Every additional trial raises the `N` any
+  future winner must be deflated against while adding no new evidence,
+  so further search there is *strictly* value-destroying: raising `N`
+  can only lower the DSR of any given result, never raise it. (Stated
+  precisely, at CodeRabbit's prompting on the PR that applied this
+  rule: the monotonicity is in `N` **at a fixed observed Sharpe**. A
+  new trial could of course post a higher raw Sharpe and become the new
+  winner — the argument against searching here is the *other* half of
+  that sentence, "adding no new evidence": on a window with a ~1.21
+  detection floor, such a result would be indistinguishable from luck
+  regardless.) This window remains valid for
+  **reproducing** a previously logged result, for **diagnosing** a
+  mechanism (as `sr-o` did), and for **infrastructure** testing — none
+  of which select a configuration. It is closed to *selection*.
+
+  New strategy work goes to a window with usable statistical power: the
+  `1d` path and its early-window holdout (`sr-t`), or a multi-symbol
+  universe (which needs its own `Discuss` pass first, per the
+  survivorship-bias clause above).
+
+  **What this explicitly retires**, named so the decision is not
+  silently reversed later by a reader of the old text: (a) the
+  funding-extremity **edge-trigger rule change** (fire on any crossing
+  into extreme, rather than requiring a flip to the opposite extreme),
+  and (b) **lowering `entry_z_threshold` / `funding_zscore_lookback`**
+  to generate more trades. CLAUDE.md previously framed both as
+  "genuinely new configurations, not tuning" — and that framing was
+  *correct on its own terms*: neither has been run, so neither is a
+  retry. **The reason to retire them is different and does not
+  contradict it.** It is not that they would be tuning; it is that the
+  window they would be run on can no longer support a conclusion in
+  either direction. Running them would produce a 19-fold result
+  deflated against `N` = 118 or 119, on a window with a 1.21 detection
+  floor. If the funding-extremity trigger design is still believed in,
+  the honest way to test it is on the `1d` window under the holdout
+  confirmation protocol below, with the specification committed first.
 
 ### Strategy Research Operational Design
 
@@ -444,8 +485,9 @@ research bars after the holdout cutoff) and moved primary strategy
 research to `1h` bars with its own, smaller windows (`train_bars=2160`,
 `validate_bars=720`, `step_bars=720` — distinct from the `15m`
 defaults above, scaled down for the `1h` timeframe, not the same
-numbers on a different unit), yielding **19** real folds — the number
-behind every result in "Strategy Attempts So Far" below.
+numbers on a different unit), yielding **19** real folds — the fold
+count behind every `1h`-timeframe result in "Strategy Attempts So Far"
+below (the earlier `15m` runs counted there have 3).
 
 **A third timeframe, `1d`, and an inverted holdout (`sr-t`,
 2026-07-28)**: every one of the 1,839 logged backtest runs starts at or
@@ -470,7 +512,11 @@ Risk Parameters: changing these needs explicit human approval; approved
 as part of this design's 2026-07-25 sign-off, **fold-consistency clause
 revised 2026-07-27** — full statistical derivation in
 `.planning/sr-j-fold-diagnosis-and-eligibility-review.md`, summarized
-here): the original "positive annualized Sharpe in every fold" wording
+here — and **clause 2's significance test, the minimum trade count, the
+holdout single-window variant, and the CSCV/PBO revisit trigger all
+revised 2026-07-29**, human-approved, derivation in
+`.planning/sr-r-retrospective-closeout.md`): the original "positive
+annualized Sharpe in every fold" wording
 was found to be statistically stricter than intended — even a
 genuinely strong, real 80%-true-edge strategy clears a literal 19/19
 sweep only ~1.4% of the time, so demanding literal 100% mostly measures
@@ -479,29 +525,79 @@ luck, not edge. Replaced with two required checks:
    annualized Sharpe (not literal 100%).
 2. **Aggregate significance**: the full set of per-fold Sharpe ratios
    must reject "no real edge" via *both* a binomial sign test (fold
-   win/loss count against p=0.5) *and* a significance check on the mean
-   fold Sharpe against zero (one-sample t-test as the immediately
-   implementable stdlib-only version; the more rigorous Probabilistic
-   Sharpe Ratio upgrade is assessed and deferred, same treatment as
-   CSCV/PBO in the overfitting-safeguards design — not built
-   speculatively). Both required, not either — they catch different
-   failure modes (win-rate-only noise vs. aggregate-risk-adjusted-return
-   noise a fold-percentage alone wouldn't rule out). **Disclosed open
-   cost**: the t-test's exact p-value needs either `scipy` or an
-   accepted approximation — not yet resolved, deferred to when this
-   criterion is actually implemented rather than just defined.
+   win/loss count against p=0.5) *and* a **Deflated Sharpe Ratio**
+   (Bailey & López de Prado 2014,
+   `research/eligibility.py::evaluate_deflated_sharpe`) of at least
+   **0.95**, computed on daily-resampled returns, against the
+   **project-level** selection-trial count `N` from
+   `research/overfitting_check.py::check_project_combination_count`
+   (`research_selection_trials`) and the variance of that same trial
+   set's Sharpe estimates. The one-sample t-test it replaces may still
+   be reported for continuity but is no longer a pass criterion.
+   Both required, not either — they catch different failure modes
+   (win-rate-only noise vs. aggregate-risk-adjusted-return noise a
+   fold-percentage alone wouldn't rule out).
 
-All other criteria are unchanged by this revision: minimum 8-10 folds
-for the result to be considered credible (met since `sr-f` moved
-primary research to `1h` bars — see "Walk-forward depth" above); max
-drawdown ceiling 20-25% per-fold and
-aggregate; minimum 100 total trades across all folds (flagged tension:
-may unfairly penalize a legitimately low-frequency strategy — apply
-judgment, don't treat as absolute); profit factor floor 1.3-1.5
+   The project-level `N`, not the family-level one, because strategy
+   families in this project were compared against each other after
+   their results were known — see
+   `.planning/sr-r-retrospective-closeout.md`.
+
+   The t-test asks "is this mean fold Sharpe distinguishable from
+   zero?" and has *no notion whatever of how much searching produced
+   it*. With 117 logged research trials against 1.8 years of a single
+   symbol, that is the wrong question. DSR is the standard, published
+   correction. This is not a tightening for its own sake — it is the
+   difference between a statistic that could have been passed by
+   searching hard enough and one that cannot. Adopted 2026-07-29 rather
+   than after a future run, so it can never be accused of being fitted
+   to a result: retrospectively it changes nothing, because every run
+   in the log already fails the t-test too.
+
+   `sr-j`'s **disclosed open cost** — "the t-test's exact p-value needs
+   either `scipy` or an accepted approximation" — is now closed twice
+   over: `sr-k` implemented the exact t-distribution p-value via the
+   regularized incomplete beta function, and DSR needs only
+   `statistics.NormalDist`. Both are stdlib-only.
+
+   **The `N` this gate is computed against must fail closed** (tightened
+   on review of the applying PR; this preserves the approved 0.95
+   threshold's intent rather than changing it). DSR requires an `N`, and
+   `N` requires `research/lineage.py`'s curated family map
+   (`FAMILY_BY_STRATEGY_ID`) to stay current. A strategy run without a
+   `strategy_family=` argument and without a curated entry resolves to
+   its own single-member family (`FamilyResolution.source ==
+   "unmapped"`), which **understates** `N` — and understating `N` makes
+   this gate *weaker* than 0.95 intends, because a smaller `N` inflates
+   DSR. So: **a DSR computed against an `"unmapped"` family resolution —
+   or against any resolution whose `note` indicates an under-counted `N`
+   — is not admissible as an Eligibility Bar pass.** The curated entry
+   (with its required
+   `.planning/` citation) or an explicit `strategy_family=` must exist
+   *first*; absent either, the run is reported as unevaluable for
+   aggregate significance — never passed on a fallback count.
+   `resolve_family` already surfaces both conditions rather than hiding
+   them (`source`, `note`); this clause makes acting on that signal
+   mandatory rather than optional, which is what turns "keep the map
+   honest" from a diagnostic nicety into a real obligation.
+
+   One asymmetry, deliberate and *not* treated the same way: an
+   unrecognized **logged** `strategy_family` defaults its `purpose` to
+   `"research"`, which **overstates** selection bias rather than
+   understating it. That fails in the safe direction — it can only lower
+   DSR — so it proceeds, carrying its note.
+
+All other criteria are unchanged by the 2026-07-27 revision: minimum
+8-10 folds for the result to be considered credible (met since `sr-f`
+moved primary research to `1h` bars — see "Walk-forward depth" above);
+max drawdown ceiling 20-25% per-fold and
+aggregate; the **minimum total trade count, itself revised 2026-07-29 —
+see immediately below**; profit factor floor 1.3-1.5
 (cushion for backtest-to-live slippage/fee mismodeling and the
 funding-rate gap — perpetual funding-rate P&L was not modeled anywhere
 in this pipeline when this floor was set; `sr-m` built additive/opt-in
-funding P&L modeling, and `sr-n` (below) then actually threaded a real
+funding P&L modeling, and `sr-n`
+(`.planning/sr-n-funding-rate-strategy.md`) then actually threaded a real
 `funding_rates` series through Configuration C's own 19-fold walk-
 forward: the real effect was small — mean Sharpe +0.027 to +0.039, mean
 profit factor 1.967 to 1.968 — so the profit-factor floor's slippage/fee
@@ -513,147 +609,277 @@ holding-period characteristics). A fold's
 zero-trade fold already fails eligibility via the Sharpe/trade-count
 requirements regardless of profit factor; a fold where every closed
 trade won (zero losing trades) trivially satisfies the floor — there's
-no evidence of a poor risk/reward ratio to reject. The holdout
-confirmation run must clear the same bar (single-window version) and
-must be the only holdout access on record for that `strategy_id`.
+no evidence of a poor risk/reward ratio to reject.
 
-### Strategy Attempts So Far (as of 2026-07-28)
+**Minimum trade count, revised 2026-07-29** (replacing the flat
+"minimum 100 total trades across all folds" and its "may unfairly
+penalize a legitimately low-frequency strategy — apply judgment"
+hedge). Resolved concretely and **in advance of any daily run**, rather
+than after one fails on a technicality — which is the only time such a
+change can be made without it being tuning-after-the-fact:
 
-Seven strategy families have been built and walk-forward validated for
-real against live BingX data (Tasks E-L plus N, sequenced after the
-infrastructure above): naive SMA crossover, ATR-risk-managed crossover
-(15m and 1h variants), a multi-lookback ensemble with ADX regime
-weighting and real volatility targeting (later refined with recalibrated
-ADX thresholds and an opt-in risk:reward search), regime-gated
-mean-reversion, a regime-adaptive momentum/mean-reversion blend, a
-standalone on-balance-volume trend strategy, and a funding-rate-
-extremity contrarian strategy (later fixed for a fold-boundary
-state-seeding bug, `sr-o`, without changing the strategy's underlying
-signal). Full results, judgment calls, and honest negative findings for
-each: `.planning/sr-e-regime-momentum.md` through `.planning/sr-l-volume-
-signal.md`, plus `.planning/sr-n-funding-rate-strategy.md` (Task M,
-`.planning/sr-m-funding-rate-pipeline.md`, is the funding infrastructure
-between L and N — a pipeline/metrics task, not a strategy attempt of its
-own) and `.planning/sr-o-funding-fold-boundary-fix.md`.
+> **Minimum trade count, scaled to the strategy's own frequency.** The
+> floor is
+> `max(30, min(100, floor(total_evaluated_bars / bars_per_day / 20)))` —
+> i.e. roughly one trade per 20 evaluated days, clamped to `[30, 100]`.
+> Concretely, at the three geometries this project actually uses:
+>
+> | Timeframe | Evaluated bars | Evaluated days | days ÷ 20 | Floor after clamp |
+> |---|---|---|---|---|
+> | 1h, 19 folds × 720 | 13,680 | 570 | 28 | **30** |
+> | 15m, 3 folds × 2,880 | 8,640 | 90 | 4 | **30** |
+> | 1d, 822 research bars (`sr-t`) | 822 | 822 | 41 | **41** |
+>
+> The **absolute floor of 30** is the binding constraint at every
+> timeframe this project actually uses, so in practice this reads:
+> **the floor becomes 30, not 100**, and the 100 cap only re-engages
+> for a strategy trading far more often than any attempted so far.
+>
+> A run below the floor is reported `INCONCLUSIVE-DATA-LIMITED` —
+> neither a pass nor a fail. It is not evidence against the strategy
+> and must not be written up as such.
 
-**Current best result** ("Configuration C", `sr-i`): the refined
-momentum ensemble — mean annualized Sharpe +0.027 (positive; the only
-attempt so far with a positive mean), 11 of 19 folds positive, mean
-profit factor 1.97, worst drawdown 4.2%. Still short of the Eligibility
-Bar (needs 80-90% of folds positive; this is at 58%). Mean-reversion
-alone, the momentum/reversion blend, and the volume-based strategy all
-performed worse than this on every metric (`sr-k`, `sr-l`) — notably,
-the blend was expected by credible outside research (`sr-g`) to
-outperform momentum alone, and did not, on this project's real data.
+**Why 30, and why it is not a weakening.** 30 is not folklore borrowed
+from "n=30 for the CLT" (`sr-g` correctly demolished the *"30 trades
+per parameter"* rule as having no rigorous origin — that is a different
+claim, about *per-parameter* counts). It is the point at which a sign
+test over trade outcomes can be expected to have *usable* power, and
+below which per-trade statistics are dominated by their own estimation
+noise. Stated that way deliberately, on review: **not** "the point at
+which a sign test first has any power at all", which would contradict
+this same section's own holdout arithmetic below — at n=5 a literal 5/5
+sweep does reach p = 0.03125. The point is that below ~30 nothing short
+of a near-sweep is detectable, which is a floor on *usable* power, not
+on power existing. The
+real justification for choosing it here is empirical and specific: **a
+daily strategy over `sr-t`'s 822-bar 1d research window yields roughly
+30-60 trades**, so a 100-trade floor would reject every possible daily
+strategy *on frequency alone, before looking at its returns* — a
+criterion that cannot be satisfied is not a criterion. Retrospectively
+it resolves nothing convenient either: `regime-momentum-btc-15m` (16
+trades) and both funding-extremity runs (7 and 14) all stay below 30,
+so **the funding-extremity result remains genuinely inconclusive under
+the new floor as well** — worth stating because it removes any
+suspicion that this change was reverse-engineered to resolve that
+specific open question. It does not.
 
-**Funding-rate infrastructure (`sr-m`, 2026-07-27/28), then a real
-funding-rate-based strategy attempt and Configuration C funding re-run
-(`sr-n`, 2026-07-28)**: `python/data/bingx_funding.py` +
-`backfill_funding.py` fetch and cache real BingX funding-rate history
-(real backfill run: 2020-11-29T12:00:00Z through present, 6,199 rows —
-see "Exchange API Facts" above); `metrics/position.py`/`metrics/
-metrics.py` gained additive/opt-in funding P&L attribution
-(`PositionTracker(funding_rates=...)`). `sr-n` then (a) built
-`python/research/strategies/funding_extremity.py`, a contrarian strategy
-on a rolling (self-relative, look-ahead-safe) funding-rate z-score — a
-real empirical check found funding's own stdev shifted ~9x across years,
-ruling out a fixed absolute threshold — and (b) threaded real funding
-P&L through `research/walkforward.py::run_walk_forward` (new additive
-`funding_rates` parameter) to re-run Configuration C with it included,
-resolving the previously-open question of whether funding P&L was
-silently costing (or helping) reported figures.
+**Holdout confirmation.** The holdout confirmation run must be the only
+holdout access on record for that `strategy_id`, and must clear the
+following single-window variant of this bar (defined 2026-07-29,
+replacing the previously-undefined "(single-window version)" — the
+fold-based clauses have no meaning on one window):
 
-**Configuration C + real funding P&L, real 19-fold re-run**: mean Sharpe
-moved from +0.027 to **+0.039**, min Sharpe from -8.442 to -8.382, mean
-profit factor 1.967 to 1.968, worst drawdown 4.23% to 4.24%, folds
-positive unchanged at 11/19, total trades unchanged at 199 (funding
-P&L doesn't change entries, only their economics). **A small, mostly
-neutral, slightly positive effect, not a meaningful reversal either
-direction** — consistent with this strategy's own diagnosed short average
-hold time (`sr-i`: ~19.3h mean for winners), too brief to accumulate many
-funding settlements. Eligibility verdict is unchanged (still fails fold-
-consistency, sign-test, and Sharpe-significance at all three 80/85/90%
-candidate floors) — funding P&L was not the missing piece for this
-strategy.
+> **Holdout confirmation (single-window variant).** A holdout run is a
+> single evaluation window, so the fold-based clauses do not apply and
+> are not to be simulated by chopping the holdout into pseudo-folds.
+> The holdout run must instead clear:
+>
+> 1. **PSR ≥ 0.95** (`evaluate_psr` against a zero benchmark) on
+>    daily-resampled holdout returns, using measured return moments.
+>    Deliberately **PSR, not DSR**: the holdout was never searched
+>    over — one access, one run, on data no decision has touched — so
+>    there is no selection bias to deflate, and `N`=1 makes DSR
+>    identical to PSR anyway.
+> 2. The **non-fold criteria unchanged**: max drawdown ≤ 20-25%, the
+>    trade count floor in force at the time, and the profit-factor
+>    floor of 1.3-1.5.
+> 3. The run's observed Sharpe must exceed the **holdout window's own
+>    detection floor** (`retrospective.detection_floor_sharpe`), stated
+>    explicitly in the confirmation report. If it does not, the holdout
+>    is reported as **not powered to confirm**, and clearing the other
+>    criteria does not constitute confirmation.
+>
+> **Explicitly NOT required: any fold-count, fold-consistency, or
+> sign-test criterion.**
 
-**Funding-extremity contrarian strategy, real 19-fold run**: **7 total
-trades across all 19 folds** — a real, mechanistically-diagnosed
-(diagnostic script reproduced the same figure: 71 raw crossings into an
-extreme funding reading across the research window, but only 7 ever flip
-to the *opposite* extreme within the same 30-day fold window before the
-per-fold strategy state resets) finding, not noise. This is far below
-the Eligibility Bar's 100-trade floor — **the result is genuinely
-inconclusive, not a clean "no edge" finding** the way e.g. `sr-k`'s
-mean-reversion-alone result was (that one had 100+ trades and failed
-outright). The bottleneck is specifically the edge-triggering design
-(fire only on a *flip* to the opposite extreme, matching every other
-strategy in this codebase's "fire on state change" convention) combined
-with per-fold state reset and funding's slow (~3x/day) update cadence —
-not genuine rarity of extreme funding readings, which happen often
-enough (71 times) to support far more trades under a less conservative
-trigger rule. **Not fixed in this task** (changing the trigger rule after
-seeing a thin result would cross into tuning-after-the-fact, which this
-project's methodology explicitly treats as data snooping) — flagged as a
-concrete, scoped follow-up candidate instead. Full diagnosis, real
-numbers, and honest reasoning: `.planning/sr-n-funding-rate-strategy.md`.
+**Clause 2's "in force at the time" means pinned *before* access, not
+chosen after** (added on review of the applying PR; the approved wording
+left it ambiguous, and the ambiguity is exploitable). The trade-count
+floor, the drawdown ceiling, and the profit-factor floor must be written
+into the confirmation record — with the CLAUDE.md revision date they
+come from — **before the holdout is loaded**, and a later change to any
+of them is not applied retroactively to a holdout already spent. This is
+the same discipline the `1d` window is already reserved under ("the
+specification must be committed before that window is ever loaded"),
+stated here so it covers the *criteria* too, not just the strategy
+specification. A holdout judged against criteria selected after seeing
+it is not a holdout.
 
-**Funding-extremity fold-boundary fix, real 19-fold re-run (`sr-o`,
-2026-07-28)**: the 7-trade result above was diagnosed but explicitly not
-fixed in `sr-n` — this task fixed the specific mechanism, and re-derived
-it from real data first rather than trusting `sr-n`'s summary at face
-value. Root cause, confirmed directly: the strategy's rolling z-score was
-NEVER actually cold at any fold boundary (fed the full historical funding
-series, it fast-forwards to a warm, real reading on its very first
-`update()` call every fold, confirmed at all 19 real fold boundaries) —
-what was genuinely cold was `_signal_state` (the edge-trigger tracker of
-"last established extreme direction"), which a fresh per-fold strategy
-instance always started at `None`, discarding real, determinable
-knowledge of the market's prior state (a legitimate non-`None` value
-existed at all 19 real fold boundaries). Fixed via `initial_signal_state`/
-`compute_seed_signal_state` (new, `funding_extremity.py`): seeds
-`_signal_state` from a look-ahead-safe replay of real history up to each
-fold's own train-window end — the trigger RULE itself (fire only on a
-flip to the opposite extreme) is unchanged. Real result: total trades
-roughly doubled, **7 -> 14** (folds firing at least one trade: 5/19 ->
-8/19), confirming the diagnosed cause was correct and the fix worked
-mechanically. **The larger sample does NOT support a more favorable read
-of the signal — every headline metric that could move got WORSE, not
-better**, reported plainly rather than cherry-picked (mean Sharpe -0.0054
--> -0.4839; min Sharpe -5.979 -> -7.979; mean profit factor 1.188 ->
-1.067; fold consistency 15.8% -> 21.1%, still far below the 80-90% floor).
-Eligibility bar: FAILS outright, at all three candidate floors, both
-before and after. 14 trades is still short of the 100-trade floor, so
-this remains data-limited in an absolute sense, but it is no longer
-"inconclusive due to an obvious, fixable harness bug" the way the 7-trade
-result was — the specific previously-identified mechanical cause is now
-fixed, and what's left is the underlying signal's own low
-frequency/performance at this threshold, not a harness artifact. Full
-mechanism, fix, and honest numbers: `.planning/sr-o-funding-fold-
-boundary-fix.md`.
+The fold criteria are dropped rather than scaled down because scaling
+them down reproduces the exact error `sr-j` already identified and
+corrected once: at n=5 folds the **only** sign-test outcome clearing
+α=0.05 is a literal **5/5 sweep** (p = 0.03125); 4/5 gives p = 0.1875,
+not close. Applying the fold-based bar to a 5-window holdout would
+therefore demand a literal 100% sweep — **stricter than the 19-fold
+bar**, which `sr-j` set at 80-90% precisely because demanding literal
+100% "mostly measures luck, not edge". **Detection floors to expect**,
+so a future confirmation run is not surprised by them: the 1h trailing
+holdout is **~2.57** annualized Sharpe (`sr-q`), the 1d early-window
+holdout **~0.96** over ~2.95 years (`sr-t`). The 1d holdout is by a
+wide margin this project's best-powered untouched window — the only one
+whose floor sits below a plausible real edge.
 
-**Neither funding-rate avenue clears the bar.** Configuration C's
-shortfall is unrelated to funding modeling (`sr-n`); the funding-extremity
-signal has now been stress-tested at a real (still modest, 14-trade)
-sample size after `sr-o`'s fold-boundary fix, and fails decisively on
-*worse* aggregate metrics than the pre-fix 7-trade sample showed, not
-better. **Three live next-step candidates, not yet chosen between**: (1)
-the funding-extremity strategy's edge-trigger RULE itself (e.g. fire on
-any crossing into extreme rather than requiring a flip to the opposite
-extreme) remains untouched by `sr-o` (which fixed the state-reset
-mechanics around that rule, not the rule itself) — a genuinely new,
-not-yet-run configuration, real follow-up work, not tuning, since it
-would be the *first* test of that design, not a retry of this one; (2)
-lowering `entry_z_threshold`/`funding_zscore_lookback` to generate more
-trades (`sr-o`'s own "deliberately out of scope" list) — same "genuinely
-new configuration, not tuning-after-the-fact" framing, since neither has
-been tried yet; (3) the single-symbol-scope reconsideration already on
-file: a meaningful share of the Sharpe reported by the credible
-institutional research this project benchmarked against (e.g. Concretum
-Group's ensemble trend-following) plausibly comes from cross-symbol
-diversification a single-symbol design can't access — a real architecture
-reconsideration (touches the data pipeline's survivorship-bias handling,
-not just a new strategy file) that deserves its own `Discuss` pass, not a
-default fallback to reach for lightly.
+**CSCV / PBO revisit trigger** (added 2026-07-29, replacing `sr-g`
+Finding 3's "revisit at Implementation Priority #9 … the point where
+this project's actual hyperparameter-search scale grows enough", which
+was not falsifiable — "enough" was unmeasured, and Priority #9 is a
+milestone whose arrival says nothing about search scale). The
+recommendation itself is unchanged — **continue to defer** — but now on
+a condition a script can check:
+
+> **CSCV / PBO revisit trigger (checkable, not a milestone).**
+> Implement Combinatorially Symmetric Cross-Validation and the
+> Probability of Backtest Overfitting when **both** hold:
+>
+> **(a)** one research family has evaluated **≥ 50 candidates over one
+> common fold geometry**, with **per-candidate equity curves
+> retained**; and
+>
+> **(b)** that family's winner reaches **DSR ≥ 0.90 at the family-level
+> `N`**.
+>
+> Both are computable from `runs/experiments.jsonl` by a script;
+> neither requires a judgment call. (b) exists so CSCV is spent on a
+> candidate that has already survived the cheaper test — PBO answers
+> "is this winner's out-of-sample rank better than median?", which is
+> only an interesting question about something that already looks good.
+
+**What checking the trigger actually reads**, named concretely on review
+of the applying PR — a trigger nobody can evaluate is not a trigger:
+
+- **Family membership**: `runs/experiments.jsonl`'s optional
+  `strategy_family` key (`lineage.STRATEGY_FAMILY_KEY`, written by
+  `experiment_log.log_run` only when non-`None`, so *absent* means
+  "attribute via the curated map"), else
+  `research/lineage.py::FAMILY_BY_STRATEGY_ID`. Which of the two answered
+  is recorded on `FamilyResolution.source`
+  (`logged`/`curated_map`/`unmapped`) — and an `unmapped` resolution is
+  inadmissible here for the same fail-closed reason as in clause 2 above.
+- **Lineage-map version**: the map carries no version field, deliberately
+  — what pins it is git history plus the required per-entry `.planning/`
+  citation (15 entries as of 2026-07-28, one per `strategy_id` that has
+  ever appeared in the log). A trigger evaluation must therefore record
+  the `research/lineage.py` commit sha it ran against, or the candidate
+  count it produces is not reproducible.
+- **Per-candidate equity curves**: **stored nowhere today.** This is the
+  hard blocker below, not a lookup — `Metrics.equity_curve` exists in
+  memory only and nothing persists it per candidate. Where retention
+  should live (an `equity_curve` field back in `_metrics_summary`, versus
+  a sidecar artifact keyed by `run_id`/`candidate_index` that avoids
+  putting a 720-point series on every log line) is a real design choice
+  and is **deliberately left open** rather than settled in a
+  documentation change. Condition (a) cannot be evaluated at all until
+  one of them is built — that prerequisite is part of the trigger, not a
+  footnote to it.
+- **Condition (b)**: `research/eligibility.py::evaluate_deflated_sharpe`,
+  against the family-level `N` from
+  `research/overfitting_check.py::check_project_combination_count`.
+
+"Computable from `runs/experiments.jsonl` by a script" above means *no
+judgment call is required* — **not** *the JSONL alone suffices*, which it
+does not.
+
+Three concrete current reasons to keep deferring, not a vibe (full
+detail in `.planning/sr-r-retrospective-closeout.md`): **CSCV needs
+per-candidate equity curves and nothing in this repo retains them** —
+`walkforward._metrics_summary` deliberately omits `equity_curve` (and
+**still does after `sr-q`**, which added `return_skewness`/
+`return_kurtosis`/`num_returns` *instead*, precisely so a logged record
+stays PSR/DSR-evaluable without one), so zero of the 1,839 logged
+records carry one and re-judging them under CSCV is arithmetically
+impossible without re-running every backtest; the historical trials are
+not commensurable (2 timeframes, 4 `walk_forward_config` shapes, 5
+lineage families, and the largest single grid ever run is **6**
+candidates against condition (a)'s ≥50); and no decision would change.
+That last one, stated precisely on review rather than as `sr-r`'s looser
+"every configuration is already rejected": the **14**
+`REJECTED`/`REJECTED-UNDERPOWERED` rows are rejected by five to eight
+orders of magnitude, so PBO would be spending real implementation effort
+to re-reject them, and the **4** `INCONCLUSIVE-DATA-LIMITED` rows are
+inconclusive for a *sample-size* reason PBO does not address — it
+measures whether a winner's out-of-sample rank beats median, it does not
+manufacture trades a 7- or 14-trade run never had. CSCV would leave that
+second group exactly where it is.
+
+**Correction to `sr-r`'s own wording, verified against
+`python/research/walkforward.py` on 2026-07-29** (found on review of the
+applying PR): `sr-r` says `_metrics_summary` "discarded `equity_curve`
+before logging **until** `sr-q`", which reads as though `sr-q` fixed it.
+It did not — `_metrics_summary` still drops `equity_curve` by design, and
+its own docstring says so. The consequence is load-bearing for this
+trigger rather than cosmetic: condition (a)'s "per-candidate equity
+curves retained" is **not satisfiable by today's logging at all**, so
+equity-curve retention has to be built before the trigger can ever fire.
+That is a further reason this is a deferral rather than a near-term plan,
+not a reason to weaken the condition.
+
+### Strategy Attempts So Far (closed out 2026-07-29)
+
+Eight strategy attempts across **four research families** (plus
+infrastructure demos) were built and walk-forward validated against real
+BingX data in Tasks E-L and N-O: naive SMA crossover, ATR-risk-managed
+crossover (15m and 1h), a multi-lookback ensemble with ADX regime
+weighting and volatility targeting (refined into "Configuration C"),
+regime-gated mean-reversion, a momentum/mean-reversion blend, an
+on-balance-volume trend strategy, and a funding-rate-extremity
+contrarian strategy. Per-task detail and honest negative findings:
+`.planning/sr-e-*.md` through `.planning/sr-o-*.md`.
+
+**`sr-r` closed this line of research out statistically.** Every
+distinct multi-fold run in the log — **18 configurations de-duplicated
+from 33 runs** — was re-judged under `sr-p`'s honest trial count and
+`sr-q`'s Deflated Sharpe Ratio. Full table:
+`.planning/sr-r-retrospective-closeout.md`.
+
+**Result: nothing survives. 0 of 18.** The best result in the project's
+history (Configuration C with funding P&L, mean annualized Sharpe
+**+0.039**) reaches **DSR = 2.0e-05** against the project's **117**
+research selection trials — indistinguishable from the best of 117 coin
+flips. Twelve configurations are `REJECTED`, two
+`REJECTED-UNDERPOWERED`, four `INCONCLUSIVE-DATA-LIMITED` (below the
+trade-count floor: both funding-extremity runs at 7 and 14 trades, and
+two early runs).
+
+**The single most important finding is about the window, not the
+strategies.** The 1h research window's own **detection floor is ~1.21
+annualized Sharpe** (one-sided α=0.05 over 1.84 years); the 15m
+window's is **~2.18**. A real edge of 0.4-0.8 Sharpe — the range
+credible institutional trend-following actually reports — **could not
+have been detected here by any strategy, however well specified**. So
+"DSR ≈ 0" across the board means **not shown**, and emphatically **not
+shown absent**. Configuration C would have needed an annualized Sharpe
+of **4.6** to clear DSR 0.95 at this `N` — a target that says more
+about having searched 117 times against 1.8 years of one symbol than
+about any strategy.
+
+**Consequence: the 1h research window is spent** (see the standing rule
+under "Non-negotiable once strategy research begins" above). Further
+searching on it cannot produce a defensible result, because every
+additional trial raises the `N` that any future winner must be deflated
+against. The live options are therefore about *changing the evidence
+base*, not the signal:
+
+1. **The `1d` early-window holdout (`sr-t`).** ~2.95 years of data no
+   trial in this project's history has touched, with a detection floor
+   of **~0.96** — the only untouched window this project has whose
+   floor sits below a plausible real edge. A strategy specification
+   must be committed *before* that window is ever loaded.
+2. **Multi-symbol expansion.** A meaningful share of the Sharpe
+   reported by the institutional research benchmarked in `sr-g`
+   plausibly comes from cross-symbol diversification a single-symbol
+   design cannot access. A real architecture reconsideration (it
+   touches the data pipeline's survivorship-bias handling, per Strategy
+   Research Methodology) that deserves its own `Discuss` pass.
+3. **Stop adding strategies and build the infrastructure instead**
+   (Priorities #8-#10). Nothing about the paper-trading loop,
+   supervision, or `ExchangeAdapter` work is blocked by the absence of
+   a validated strategy — CLAUDE.md already says they can and should
+   proceed on dummy signals.
+
+**Retired**: the two funding-extremity follow-ups previously listed
+here as live candidates (changing the edge-trigger rule; lowering
+`entry_z_threshold`/`funding_zscore_lookback`). Both are more searching
+on the spent 1h window — see the standing rule above.
 
 ## Tooling Stack
 
