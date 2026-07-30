@@ -560,21 +560,32 @@ luck, not edge. Replaced with two required checks:
    regularized incomplete beta function, and DSR needs only
    `statistics.NormalDist`. Both are stdlib-only.
 
-   **New disclosed cost of adopting DSR as a gate**: DSR requires an
-   `N`, and `N` requires `research/lineage.py`'s curated family map to
-   stay current. A new strategy family run without a `strategy_family=`
-   argument and without a curated entry resolves to its own
-   single-member family, which would understate `N`. `resolve_family`
-   surfaces this as a visible note rather than silently, but gating on
-   DSR makes keeping that map honest a real obligation rather than a
-   diagnostic nicety. **Raised on review and deliberately not adopted
-   here**: making `resolve_family` *fail closed* (refuse to produce a
-   DSR at all for an unmapped `strategy_id`, rather than fall back to a
-   single-member family) would harden this properly. It is a code change
-   to `research/lineage.py` plus a new approval-gated rule, neither of
-   which belongs in a documentation-only change — recorded as a named
-   follow-up so the disclosed cost above is not mistaken for the last
-   word on it.
+   **The `N` this gate is computed against must fail closed** (tightened
+   on review of the applying PR; this preserves the approved 0.95
+   threshold's intent rather than changing it). DSR requires an `N`, and
+   `N` requires `research/lineage.py`'s curated family map
+   (`FAMILY_BY_STRATEGY_ID`) to stay current. A strategy run without a
+   `strategy_family=` argument and without a curated entry resolves to
+   its own single-member family (`FamilyResolution.source ==
+   "unmapped"`), which **understates** `N` — and understating `N` makes
+   this gate *weaker* than 0.95 intends, because a smaller `N` inflates
+   DSR. So: **a DSR computed against an `"unmapped"` family resolution —
+   or against any resolution whose `note` indicates an under-counted `N`
+   — is not admissible as an Eligibility Bar pass.** The curated entry
+   (with its required
+   `.planning/` citation) or an explicit `strategy_family=` must exist
+   *first*; absent either, the run is reported as unevaluable for
+   aggregate significance — never passed on a fallback count.
+   `resolve_family` already surfaces both conditions rather than hiding
+   them (`source`, `note`); this clause makes acting on that signal
+   mandatory rather than optional, which is what turns "keep the map
+   honest" from a diagnostic nicety into a real obligation.
+
+   One asymmetry, deliberate and *not* treated the same way: an
+   unrecognized **logged** `strategy_family` defaults its `purpose` to
+   `"research"`, which **overstates** selection bias rather than
+   understating it. That fails in the safe direction — it can only lower
+   DSR — so it proceeds, carrying its note.
 
 All other criteria are unchanged by the 2026-07-27 revision: minimum
 8-10 folds for the result to be considered credible (met since `sr-f`
@@ -733,13 +744,40 @@ a condition a script can check:
 > "is this winner's out-of-sample rank better than median?", which is
 > only an interesting question about something that already looks good.
 
-What checking the trigger actually reads: condition (a) needs
-`runs/experiments.jsonl` **plus** `research/lineage.py`'s curated family
-map (family membership is not self-describing in the log for records
-predating `sr-p`'s optional `strategy_family` key), and condition (b) is
-`research/eligibility.py`. Both are mechanical; "computable by a script"
-above means *no judgment call is required*, not *the JSONL alone
-suffices*.
+**What checking the trigger actually reads**, named concretely on review
+of the applying PR — a trigger nobody can evaluate is not a trigger:
+
+- **Family membership**: `runs/experiments.jsonl`'s optional
+  `strategy_family` key (`lineage.STRATEGY_FAMILY_KEY`, written by
+  `experiment_log.log_run` only when non-`None`, so *absent* means
+  "attribute via the curated map"), else
+  `research/lineage.py::FAMILY_BY_STRATEGY_ID`. Which of the two answered
+  is recorded on `FamilyResolution.source`
+  (`logged`/`curated_map`/`unmapped`) — and an `unmapped` resolution is
+  inadmissible here for the same fail-closed reason as in clause 2 above.
+- **Lineage-map version**: the map carries no version field, deliberately
+  — what pins it is git history plus the required per-entry `.planning/`
+  citation (15 entries as of 2026-07-28, one per `strategy_id` that has
+  ever appeared in the log). A trigger evaluation must therefore record
+  the `research/lineage.py` commit sha it ran against, or the candidate
+  count it produces is not reproducible.
+- **Per-candidate equity curves**: **stored nowhere today.** This is the
+  hard blocker below, not a lookup — `Metrics.equity_curve` exists in
+  memory only and nothing persists it per candidate. Where retention
+  should live (an `equity_curve` field back in `_metrics_summary`, versus
+  a sidecar artifact keyed by `run_id`/`candidate_index` that avoids
+  putting a 720-point series on every log line) is a real design choice
+  and is **deliberately left open** rather than settled in a
+  documentation change. Condition (a) cannot be evaluated at all until
+  one of them is built — that prerequisite is part of the trigger, not a
+  footnote to it.
+- **Condition (b)**: `research/eligibility.py::evaluate_deflated_sharpe`,
+  against the family-level `N` from
+  `research/overfitting_check.py::check_project_combination_count`.
+
+"Computable from `runs/experiments.jsonl` by a script" above means *no
+judgment call is required* — **not** *the JSONL alone suffices*, which it
+does not.
 
 Three concrete current reasons to keep deferring, not a vibe (full
 detail in `.planning/sr-r-retrospective-closeout.md`): **CSCV needs
