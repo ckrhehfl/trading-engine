@@ -63,7 +63,6 @@ already consume) plus `params["parameter_names"]`,
 import argparse
 import importlib
 import logging
-from decimal import Decimal
 from pathlib import Path
 from typing import Any, Sequence
 
@@ -81,7 +80,7 @@ from research.preregistration import (
     load_preregistration,
     warn_if_uncommitted,
 )
-from research.walkforward import WalkForwardResult, run_walk_forward
+from research.walkforward import TrainableStrategy, WalkForwardResult, run_walk_forward
 
 logger = logging.getLogger(__name__)
 
@@ -106,7 +105,7 @@ def resolve_entry_point(prereg: Preregistration) -> Any:
     return getattr(importlib.import_module(module_path), attribute)
 
 
-def build_strategy(prereg: Preregistration, *, runs_path: str | Path):
+def build_strategy(prereg: Preregistration, *, runs_path: str | Path) -> TrainableStrategy:
     """Instantiate the registered strategy via this module's documented
     calling convention (see the module docstring).
     """
@@ -123,7 +122,7 @@ def build_strategy(prereg: Preregistration, *, runs_path: str | Path):
 def run_preregistered(
     prereg: Preregistration,
     *,
-    strategy: Any | None = None,
+    strategy: TrainableStrategy | None = None,
     klines: list[Kline] | None = None,
     funding_rates: Sequence[FundingRate] | None = None,
     runs_path: str | Path = experiment_log.DEFAULT_RUNS_PATH,
