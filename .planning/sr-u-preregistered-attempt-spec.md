@@ -198,7 +198,7 @@ but funding must not gate or size the signal."
 `DailyTsmomEnsembleTrainable` still accepts an optional `funding_rates`
 constructor parameter (default `None`), purely additive and unused by the
 registered configuration -- symmetry with every sibling `Trainable`'s
-`compute_metrics` call, and a a future, *separately* pre-registered attempt
+`compute_metrics` call, and a future, *separately* pre-registered attempt
 could opt in without a constructor-signature change. It is never read by
 the signal itself, only (if ever supplied) by P&L accounting, matching the
 brief's own "must not gate or size the signal" constraint regardless of
