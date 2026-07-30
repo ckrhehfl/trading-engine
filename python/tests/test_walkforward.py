@@ -1115,6 +1115,97 @@ def test_run_walk_forward_threads_strategy_family_into_the_logged_record(tmp_pat
     assert record["strategy_family"] == "trend-momentum"
 
 
+# ---------------------------------------------------------------------------
+# Strategy Research Task S: pre-registration provenance on new records
+# (`.planning/sr-s-preregistration.md`). Strictly additive -- both fields
+# default to `None`, in which case the keys are omitted entirely.
+# ---------------------------------------------------------------------------
+
+
+def test_run_walk_forward_omits_the_preregistration_fields_by_default(tmp_path):
+    klines = _klines(12)
+    runs_path = tmp_path / "experiments.jsonl"
+
+    run_walk_forward(
+        klines,
+        _RecordingStrategy(),
+        "strat-1",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=2,
+        step_bars=2,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        runs_path=runs_path,
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert "preregistration_id" not in record
+    assert "preregistration_sha256" not in record
+
+
+def test_run_walk_forward_threads_the_preregistration_fields_into_the_record(tmp_path):
+    klines = _klines(12)
+    runs_path = tmp_path / "experiments.jsonl"
+    sha = "b" * 64
+
+    run_walk_forward(
+        klines,
+        _RecordingStrategy(),
+        "strat-1",
+        "v1",
+        {},
+        train_bars=4,
+        validate_bars=2,
+        step_bars=2,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        preregistration_id="sr-s-demo",
+        preregistration_sha256=sha,
+        runs_path=runs_path,
+    )
+
+    record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert record["preregistration_id"] == "sr-s-demo"
+    assert record["preregistration_sha256"] == sha
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"preregistration_id": "sr-s-demo"},
+        {"preregistration_sha256": "b" * 64},
+    ],
+)
+def test_run_walk_forward_rejects_a_half_specified_preregistration_pair(tmp_path, kwargs):
+    """Rejected at this function's entry point, not left to `log_run`'s own
+    identical check: `log_run` runs only after every fold has already been
+    backtested, so failing there would throw away a completed run's results.
+    Same reasoning as the `bars_per_day` check below.
+    """
+    klines = _klines(12)
+    runs_path = tmp_path / "experiments.jsonl"
+
+    with pytest.raises(ValueError, match="preregistration"):
+        run_walk_forward(
+            klines,
+            _RecordingStrategy(),
+            "strat-1",
+            "v1",
+            {},
+            train_bars=4,
+            validate_bars=2,
+            step_bars=2,
+            fee_bps=Decimal("0"),
+            slippage_bps=Decimal("0"),
+            runs_path=runs_path,
+            **kwargs,
+        )
+
+    assert not runs_path.exists()
+
+
 # --- Logged shape for the Deflated Sharpe Ratio (Task Q) ---------------------
 
 
