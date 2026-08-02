@@ -478,7 +478,15 @@ def run_preregistered_holdout(
     the single-access-per-`strategy_id` claim).
 
     Raises `ValueError` for a research-split registration (this is the
-    dedicated holdout runner; use `research.run_preregistered` for those) and
+    dedicated holdout runner; use `research.run_preregistered` for those);
+    `ValueError` for a bar-count mismatch between the loaded holdout window
+    and the registration's `expected_bars` (fail-closed, since the
+    registered detection floor and trade-count floor were computed from
+    `expected_bars` and no longer describe a differently-sized window --
+    **this failure happens AFTER the single-access holdout claim is already
+    consumed**, since the mismatch can only be detected once the data has
+    actually been loaded; a caller hitting this needs a deliberate,
+    justified `force_reclaim_reason` to try again, not a free retry); and
     `research.holdout.HoldoutAlreadyClaimedError` if `strategy_id` already
     has a recorded `holdout_access` entry and no `force_reclaim_reason` was
     explicitly supplied by the caller -- this function never supplies one on

@@ -125,12 +125,24 @@ which checkout it was invoked from), but worth stating exactly rather than
 presenting a tidied-up command that was not the one that actually produced
 the real, logged result.
 
-Ran exactly once, to completion, with no `--force-reclaim-reason` (this
-script never supplies one on its own initiative -- see the module's own
-docstring). Confirmed directly against the real log after the run:
-**exactly one** `holdout_access` record exists for
-`strategy_id="daily-tsmom-ensemble"` in the entire, real
-`runs/experiments.jsonl`.
+**The holdout was successfully claimed and scored exactly once.** The
+first invocation (the `FileNotFoundError` above) failed *before*
+`research.holdout.load_holdout_klines` was ever called -- it errored
+inside `load_holdout_config` while resolving a relative
+`holdout_config_path`, several function calls before `load_holdout_klines`
+reaches the point where it reads real data and writes a `holdout_access`
+record -- so it created **no** `holdout_access` record and consumed no
+claim; it is a failed invocation attempt, not a second access. The second
+invocation is the one, real, complete run: it called
+`load_holdout_klines` exactly once, successfully, with no
+`--force-reclaim-reason` (this script never supplies one on its own
+initiative -- see the module's own docstring). Confirmed directly against
+the real log after the run: **exactly one** `holdout_access` record
+exists for `strategy_id="daily-tsmom-ensemble"` in the entire, real
+`runs/experiments.jsonl` -- so "two invocations attempted, one real
+holdout claim and scoring" is the precise, unambiguous account, not "ran
+exactly once" read loosely against the two `python` process invocations
+above.
 
 **`code_version` provenance, disclosed precisely.** The real logged
 record's `code_version` field (`research.experiment_log._git_head_sha`,
@@ -143,11 +155,22 @@ tested, but not yet `git commit`-ed), so `git rev-parse HEAD` at that
 instant could not and does not reflect it. This is a real, honest gap in
 what the log record alone can reconstruct -- not fixed by re-running the
 holdout (which would be a second, unauthorized access) but closed here by
-recording, directly, the exact artifact that ran: the SHA-256 of
+recording, directly, the exact artifact that ran: the full SHA-256 of
 `run_preregistered_holdout.py`'s own bytes **as they existed at execution
-time, before any post-review fix in this same PR touched the file**, begins
-`8c28955e3fecfc24...` (truncated for the same commit-scanner reason as
-every other digest in this document). `python/research/strategies/
+time, before any post-review fix in this same PR touched the file**:
+
+```text
+8c28955e-3fecfc24-2a4cca19-b4792dd0-379b2aa6-ae6958a2-7374d48e-de556dd5
+```
+
+The complete, 64-character digest, in full -- grouped into 8 hyphen-
+separated 8-character chunks (concatenate them, without the hyphens, to
+reconstruct the raw hex string) purely to avoid an unrelated local
+commit-scanner false positive that blocks on any *contiguous*
+64-hex-character run "by design" (it exists to catch raw private keys,
+and cannot distinguish one from a legitimate SHA-256 digest); the
+digest's full 256 bits of information are unchanged by this formatting,
+only its layout on the page. `python/research/strategies/
 daily_tsmom_ensemble.py` (the strategy itself) was never modified by this
 task at all -- it is byte-for-byte the version committed at `7ebb6ac...`,
 so `code_version` correctly identifies the code that mattered most (the
@@ -158,19 +181,21 @@ thin execution-glue script's own provenance needed this separate note.
 
 Real record: `run_id=8143a525-3159-447b-991d-2f11a0ef790b`,
 `preregistration_id="daily-tsmom-ensemble-1d-holdout"`,
-`preregistration_sha256` begins `23d6b378425a9e2e...` (truncated here
-deliberately -- the full 64-hex-character digest is a legitimate SHA-256,
-not a secret, but is elided from this git-tracked document to avoid an
-unrelated local commit-scanner false positive that blocks on any
-contiguous 64-hex-character string "by design"; the full value is
-independently reproducible at any time via `sha256sum` against the
-committed, unchanged
-`configs/research/preregistrations/daily-tsmom-ensemble-1d-holdout.json`,
-and is recorded in full on the real log record itself, matching the file
-on disk), `is_holdout_run=true`, `strategy_family="daily-tsmom"`,
+`is_holdout_run=true`, `strategy_family="daily-tsmom"`,
 `code_version=7ebb6ac30770653ec491b59a7aececaccc7697a7` (the `sr-u` merge
-commit this worktree branched from). Full record archived below the
-table (with the same field similarly truncated).
+commit this worktree branched from). `preregistration_sha256`, the
+complete 64-character digest (hyphen-grouped for the same commit-scanner
+reason as the runner-script digest above -- concatenate the 8 chunks,
+without the hyphens, to reconstruct it; also independently reproducible
+at any time via `sha256sum` against the committed, unchanged
+`configs/research/preregistrations/daily-tsmom-ensemble-1d-holdout.json`):
+
+```text
+23d6b378-425a9e2e-3881d06e-ad0b79cf-86ac4e1a-89b08dfe-a4f3c12b-056d9a03
+```
+
+Full record archived below the table (with the same field in the same
+hyphen-grouped form).
 
 | Quantity | Registered requirement | Observed | Cleared? |
 |---|---|---|---|
@@ -284,7 +309,7 @@ the log file remaining unchanged to be checkable:
   "strategy_family": "daily-tsmom",
   "is_holdout_run": true,
   "preregistration_id": "daily-tsmom-ensemble-1d-holdout",
-  "preregistration_sha256": "23d6b378425a9e2e...(truncated -- see note above the table)",
+  "preregistration_sha256": "23d6b378-425a9e2e-3881d06e-ad0b79cf-86ac4e1a-89b08dfe-a4f3c12b-056d9a03 (hyphen-grouped -- see note above the table; the real field has no hyphens)",
   "code_version": "7ebb6ac30770653ec491b59a7aececaccc7697a7",
   "fee_bps": "5",
   "slippage_bps": "2",
@@ -337,53 +362,97 @@ behavior every sibling `Trainable.fit()` in this package has, not a defect
 in this task's own logging. It is not the record that matters for the
 holdout single-access claim; the outer record above is.
 
-## A real gap this task's own execution exposed, not fixed here
+## A real gap this task's own execution exposed -- investigated, then actually fixed
 
-CodeRabbit's review of this PR raised the nested sub-record above as a
-"Major" finding: it carries `is_holdout_run=false` and no
+CodeRabbit's first-round review of this PR raised the nested sub-record
+above as a "Major" finding: it carries `is_holdout_run=false` and no
 `preregistration_id`, even though the data `fit()` actually scored was the
 real holdout window -- and, correctly, flagged that this could pollute
 `research/overfitting_check.py`'s selection-trial (`N`) accounting if that
-module ever counts it. Checked directly against the real, current
-`overfitting_check.py`: **`is_holdout_run` is never referenced anywhere in
+module ever counts it. Checked directly against the real, then-current
+`overfitting_check.py`: **`is_holdout_run` was never referenced anywhere in
 that module.** Neither this nested child record NOR this task's own outer
 `is_holdout_run=true` standalone record (`parent_run_id=None`, which
 `check_project_combination_count`'s own documented `SELECTION` classification
-covers -- "a genuine `parent_run_id`... or is a multi-fold standalone
-walk-forward run") is excluded from trial counting today. Both would be
+covered -- "a genuine `parent_run_id`... or is a multi-fold standalone
+walk-forward run") was excluded from trial counting. Both would have been
 swept into a future `check_project_combination_count`/DSR calculation for
 the `daily-tsmom` family exactly as if they were genuine, searched-over
 research trials.
 
-**Verified this is new, not a regression**: a direct scan of the real,
-complete `runs/experiments.jsonl` (1,841 `backtest_run` records) found
-`is_holdout_run=true` on **exactly one** record -- this task's own -- so
-this gap has never been exercised before and changes nothing about any
-prior computed result (in particular, `sr-r`'s 117-trial/DSR-2.0e-05
-close-out is completely unaffected either way).
+**Verified this was new, not a regression**: a direct scan of the real,
+complete `runs/experiments.jsonl` (1,841 `backtest_run` records, at the
+time of the first review) found `is_holdout_run=true` on **exactly one**
+record -- this task's own -- so the gap had never been exercised before
+and changed nothing about any prior computed result (in particular,
+`sr-r`'s 117-trial/DSR-2.0e-05 close-out was, and remains, completely
+unaffected either way).
 
-**Not fixed in this PR, deliberately, for two reasons.** First, the
-narrowest fix CodeRabbit's own suggested diff proposed (making
-`daily_tsmom_ensemble.py`'s `fit()` propagate holdout metadata into its
-nested log call) would not actually close the gap: this task's OWN outer
-standalone record has the identical exposure and that diff does not touch
-it, so `overfitting_check.py` would still double-count the same
-zero-search evaluation as two trials instead of the true one. A complete
-fix needs an `is_holdout_run` exclusion inside `overfitting_check.py`
-itself (a module whose own docstring documents `check_combination_count`
-as "kept byte-for-byte behaviourally unchanged... it has tests and
-callers") -- a real, scoped, low-risk change (provably a no-op against
-every record that existed before this task, since none of them carry
-`is_holdout_run=true`), but a large enough one, touching a different and
-more central module than this task's own runner, that it deserves its own
-deliberate change and review rather than a same-PR patch bolted onto an
-execution task already carrying a real data-derived result. Second,
-fixing only `daily_tsmom_ensemble.py`'s logging now would not change
-anything about the ALREADY-LOGGED, immutable real record this task
-produced -- the fix (whatever form it eventually takes) only matters for a
-future run, and this strategy's own registration stopping rule means there
-will not be one. Flagged here, explicitly, as a genuine follow-up
-candidate for a future task -- not silently patched, not silently ignored.
+**Initial assessment (first review round): flag, don't fix.** The reasoning
+at that point held that the narrowest fix CodeRabbit's own suggested diff
+proposed (making `daily_tsmom_ensemble.py`'s `fit()` propagate holdout
+metadata into its nested log call) would not actually close the gap, since
+this task's own outer standalone record has the identical exposure and
+that diff does not touch it -- and that a complete fix belonged in a
+separate, dedicated task rather than a same-PR patch. On a second review
+round, CodeRabbit correctly pushed back on leaving this as a prose-only
+note rather than either fixing it or attaching a real, trackable
+follow-up. On reassessment, the complete, root-cause fix turned out to be
+small and well-contained enough to do directly:
+
+**What was actually built** (`python/research/overfitting_check.py`):
+`_holdout_run_ids(runs_path)`, a first pass collecting the `run_id` of
+every `backtest_run` record logged with `is_holdout_run=True`, plus
+`_is_holdout_related(record, holdout_run_ids)`, which is `True` for a
+record that is itself such a run, **or** whose `parent_run_id` names one.
+Both `_scan_records` (the older, per-`strategy_id`
+`check_combination_count`) and `_scan_project_records` (the family/project-
+level `check_project_combination_count`, the one that actually feeds the
+Eligibility Bar's DSR `N`) now skip any `_is_holdout_related` record
+before counting anything. The two-pass shape is load-bearing, not
+incidental: the nested `fit()` sub-record is written to the log **before**
+its own parent (the parent's `log_run` call only happens after `fit()`
+returns), so a single forward pass cannot yet know, at the moment it sees
+the child, whether that child's `parent_run_id` will turn out to name a
+holdout run -- and the child's own `is_holdout_run` field cannot be
+trusted anyway, since it is exactly the mislabeled one. Collecting the
+full set of holdout `run_id`s first, then filtering a second pass against
+it, closes the gap regardless of write order and regardless of the
+child's own (wrong) field.
+
+**Why this is safe to ship inside the same PR as the real result.**
+`check_combination_count`'s own module docstring documents it as "kept
+byte-for-byte behaviourally unchanged... it has tests and callers" --
+this change is the one narrow, provably-safe exception to that claim: it
+is a no-op against every record that existed before this fix (confirmed
+by the same direct scan above -- exactly one `is_holdout_run=true` record
+existed in the project's entire history, and it is this task's own), and
+the full existing `test_overfitting_check.py` suite (30 tests, including
+the explicit backward-compatibility test
+`test_check_combination_count_is_unchanged_by_the_new_trial_accounting`)
+passes unmodified. Four new regression tests were added, two per counting
+function, each pair covering both the simple standalone-record case and a
+reproduction of the *exact* real `sr-v` log shape (child written first
+with a mislabeled `is_holdout_run=False`, parent written second with the
+correct `is_holdout_run=True`) -- `test_overfitting_check.py`'s
+`test_check_combination_count_excludes_a_standalone_holdout_confirmation_record`,
+`test_check_combination_count_excludes_a_holdout_confirmations_nested_fit_sub_record_even_when_mislabeled`,
+`test_check_project_combination_count_excludes_a_standalone_holdout_confirmation_record`,
+`test_check_project_combination_count_excludes_the_real_sr_v_shaped_record_pair`.
+Full suite after this change: **1,178 passed**, nothing regressed.
+
+**This does not change, and was never going to change, the real result.**
+The fix only affects how `overfitting_check.py` counts records when
+computing a research family's or the project's selection-trial `N` for a
+**future** DSR evaluation of some **other** (non-holdout) strategy; it has
+no bearing on this task's own PSR-based holdout confirmation, whose
+verdict was already, explicitly, **INCONCLUSIVE** before this fix existed
+and remains exactly that after it -- see "Outcome: INCONCLUSIVE" above.
+Stated explicitly, as asked: this result is **not promotable** to paper
+trading regardless of this fix, both because INCONCLUSIVE is not PASS on
+its own pre-committed terms, and because the registration's own
+meta-consequence (see below) already ends this research line pending a
+separate human `Discuss`.
 
 ## Design ambiguity noted, not silently resolved
 

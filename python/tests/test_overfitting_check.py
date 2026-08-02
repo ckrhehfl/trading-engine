@@ -41,6 +41,7 @@ def _log_backtest_run(
     candidate_index: int | None = None,
     total_candidates: int | None = None,
     run_id: str | None = None,
+    is_holdout_run: bool = False,
 ) -> dict:
     return experiment_log.log_run(
         run_id=run_id or f"run-{start_ms}-{candidate_index}-{parent_run_id}",
@@ -53,7 +54,7 @@ def _log_backtest_run(
         walk_forward_config={},
         fee_bps=Decimal("5"),
         slippage_bps=Decimal("2"),
-        is_holdout_run=False,
+        is_holdout_run=is_holdout_run,
         parent_run_id=parent_run_id,
         candidate_index=candidate_index,
         total_candidates=total_candidates,
@@ -183,6 +184,56 @@ def test_check_combination_count_ignores_holdout_access_records(tmp_path):
     result = check_combination_count("strat-a", runs_path=runs_path)
 
     assert result.total_combinations_tried == 1
+
+
+def test_check_combination_count_excludes_a_standalone_holdout_confirmation_record(tmp_path):
+    # Strategy Research Task V: a holdout confirmation was never searched
+    # over, so it must not count as a selection trial either.
+    runs_path = tmp_path / "experiments.jsonl"
+    start = int(BASE_TIME.timestamp() * 1000)
+    end = start + 30 * MS_PER_DAY
+    _log_backtest_run(runs_path, strategy_id="strat-a", start_ms=start, end_ms=end, run_id="a-1")
+    _log_backtest_run(
+        runs_path, strategy_id="strat-a", start_ms=start, end_ms=end, run_id="holdout-1", is_holdout_run=True
+    )
+
+    result = check_combination_count("strat-a", runs_path=runs_path)
+
+    assert result.total_combinations_tried == 1
+
+
+def test_check_combination_count_excludes_a_holdout_confirmations_nested_fit_sub_record_even_when_mislabeled(
+    tmp_path,
+):
+    # Reproduces the real sr-v log shape exactly: the nested fit()
+    # diagnostic sub-record is written FIRST (is_holdout_run=False, matching
+    # DailyTsmomEnsembleTrainable.fit()'s real, pre-existing, mislabeling
+    # behaviour -- it never knows the data it was handed was a holdout
+    # window), and its own parent (the real holdout confirmation,
+    # is_holdout_run=True) is written SECOND, only after fit() returns. Both
+    # must be excluded regardless of this write order or the child's own
+    # (wrong) is_holdout_run field.
+    runs_path = tmp_path / "experiments.jsonl"
+    start = int(BASE_TIME.timestamp() * 1000)
+    end = start + 30 * MS_PER_DAY
+    _log_backtest_run(runs_path, strategy_id="strat-a", start_ms=start, end_ms=end, run_id="a-1")
+    _log_backtest_run(
+        runs_path,
+        strategy_id="strat-a",
+        start_ms=start,
+        end_ms=end,
+        run_id="holdout-1-fit-diagnostic",
+        parent_run_id="holdout-1",
+        is_holdout_run=False,  # mislabeled, exactly like the real bug
+    )
+    _log_backtest_run(
+        runs_path, strategy_id="strat-a", start_ms=start, end_ms=end, run_id="holdout-1", is_holdout_run=True
+    )
+
+    result = check_combination_count("strat-a", runs_path=runs_path)
+
+    assert result.total_combinations_tried == 1
+    assert result.parent_run_groups == {}
 
 
 def test_check_combination_count_computes_data_span_in_years_from_the_widest_logged_range(tmp_path):
@@ -357,6 +408,7 @@ def _log_run_record(
     parent_run_id: str | None = None,
     candidate_index: int | None = None,
     total_candidates: int | None = None,
+    is_holdout_run: bool = False,
 ) -> dict:
     """Richer `log_run` helper than `_log_backtest_run` above: the Task P
     counting rules read `fold_results` length (the historical
@@ -375,7 +427,7 @@ def _log_run_record(
         walk_forward_config={"train_bars": 2160, "validate_bars": 720, "step_bars": 720, "fold_count": fold_count},
         fee_bps=Decimal("5"),
         slippage_bps=Decimal("2"),
-        is_holdout_run=False,
+        is_holdout_run=is_holdout_run,
         parent_run_id=parent_run_id,
         candidate_index=candidate_index,
         total_candidates=total_candidates,
@@ -602,6 +654,65 @@ def test_check_project_combination_count_ignores_holdout_access_records(tmp_path
     result = check_project_combination_count(runs_path=runs_path)
 
     assert result.total_selection_trials == 1
+
+
+def test_check_project_combination_count_excludes_a_standalone_holdout_confirmation_record(tmp_path):
+    # Strategy Research Task V: a holdout confirmation was never searched
+    # over, so it must not inflate any family's or the project's N.
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="r1", start_ms=start, end_ms=end)
+    _log_run_record(
+        runs_path,
+        strategy_id="daily-tsmom-ensemble",
+        run_id="holdout-1",
+        start_ms=start,
+        end_ms=end,
+        is_holdout_run=True,
+    )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.total_selection_trials == 1
+    assert "daily-tsmom" not in result.families
+
+
+def test_check_project_combination_count_excludes_the_real_sr_v_shaped_record_pair(tmp_path):
+    # Reproduces the real logged shape exactly: the nested fit() diagnostic
+    # sub-record (parent_run_id set, is_holdout_run=False -- mislabeled,
+    # since fit() never knows the data it scored came from a holdout split)
+    # is written FIRST, and the real holdout confirmation itself
+    # (is_holdout_run=True, single fold, parent_run_id=None) is written
+    # SECOND, only once fit() returns. Neither may count toward any
+    # family's or the project's N, regardless of this write order.
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(runs_path, strategy_id="obv-trend", run_id="r1", start_ms=start, end_ms=end)
+    _log_run_record(
+        runs_path,
+        strategy_id="daily-tsmom-ensemble",
+        run_id="holdout-1-fit-diagnostic",
+        start_ms=start,
+        end_ms=end,
+        parent_run_id="holdout-1",
+        total_candidates=1,
+        fold_count=1,
+        is_holdout_run=False,
+    )
+    _log_run_record(
+        runs_path,
+        strategy_id="daily-tsmom-ensemble",
+        run_id="holdout-1",
+        start_ms=start,
+        end_ms=end,
+        fold_count=1,
+        is_holdout_run=True,
+    )
+
+    result = check_project_combination_count(runs_path=runs_path)
+
+    assert result.total_selection_trials == 1
+    assert "daily-tsmom" not in result.families
 
 
 def test_check_project_combination_count_on_an_empty_log_is_an_unremarkable_zero(tmp_path):
