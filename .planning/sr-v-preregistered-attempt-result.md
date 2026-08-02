@@ -126,13 +126,14 @@ presenting a tidied-up command that was not the one that actually produced
 the real, logged result.
 
 **The holdout was successfully claimed and scored exactly once.** The
-first invocation (the `FileNotFoundError` above) failed *before*
-`research.holdout.load_holdout_klines` was ever called -- it errored
-inside `load_holdout_config` while resolving a relative
-`holdout_config_path`, several function calls before `load_holdout_klines`
-reaches the point where it reads real data and writes a `holdout_access`
-record -- so it created **no** `holdout_access` record and consumed no
-claim; it is a failed invocation attempt, not a second access. The second
+first invocation (the `FileNotFoundError` above) **entered**
+`research.holdout.load_holdout_klines` (the function call did happen) but
+failed **inside** it, in its own call to `load_holdout_config`, while
+resolving a relative `holdout_config_path` -- well before
+`load_holdout_klines` reaches the point where it actually reads real
+kline data or writes a `holdout_access` record. So it created **no**
+`holdout_access` record and consumed no claim; it is a failed invocation
+attempt, not a second access. The second
 invocation is the one, real, complete run: it called
 `load_holdout_klines` exactly once, successfully, with no
 `--force-reclaim-reason` (this script never supplies one on its own
@@ -295,9 +296,15 @@ trend-following signal than a typical multi-year BTC stretch would be.
 
 ## Full real log record
 
-Archived here verbatim (re-serialized for readability; the real record is
-one line in `runs/experiments.jsonl`) so this document does not depend on
-the log file remaining unchanged to be checkable:
+**This is a display-only transcription, not a byte-for-byte copy of the
+raw log line**: re-serialized (multi-line, indented) for readability, and
+with exactly one field's value reformatted -- `preregistration_sha256`
+below is hyphen-grouped into 8 chunks, for the same commit-scanner reason
+explained earlier in this document (concatenate the 8 chunks, without the
+hyphens, to get the real value; the real field itself contains no
+hyphens). No other field is altered. The real record is one line in
+`runs/experiments.jsonl`, so this document does not depend on the log
+file remaining unchanged to stay checkable:
 
 ```json
 {
@@ -309,7 +316,7 @@ the log file remaining unchanged to be checkable:
   "strategy_family": "daily-tsmom",
   "is_holdout_run": true,
   "preregistration_id": "daily-tsmom-ensemble-1d-holdout",
-  "preregistration_sha256": "23d6b378-425a9e2e-3881d06e-ad0b79cf-86ac4e1a-89b08dfe-a4f3c12b-056d9a03 (hyphen-grouped -- see note above the table; the real field has no hyphens)",
+  "preregistration_sha256": "23d6b378-425a9e2e-3881d06e-ad0b79cf-86ac4e1a-89b08dfe-a4f3c12b-056d9a03",
   "code_version": "7ebb6ac30770653ec491b59a7aececaccc7697a7",
   "fee_bps": "5",
   "slippage_bps": "2",
@@ -420,14 +427,28 @@ full set of holdout `run_id`s first, then filtering a second pass against
 it, closes the gap regardless of write order and regardless of the
 child's own (wrong) field.
 
-**Why this is safe to ship inside the same PR as the real result.**
-`check_combination_count`'s own module docstring documents it as "kept
-byte-for-byte behaviourally unchanged... it has tests and callers" --
-this change is the one narrow, provably-safe exception to that claim: it
-is a no-op against every record that existed before this fix (confirmed
-by the same direct scan above -- exactly one `is_holdout_run=true` record
-existed in the project's entire history, and it is this task's own), and
-the full existing `test_overfitting_check.py` suite (30 tests, including
+**Why this is safe to ship inside the same PR as the real result -- stated
+precisely, not as a blanket "no-op" claim.** `check_combination_count`'s
+own module docstring documents it as "kept byte-for-byte behaviourally
+unchanged... it has tests and callers". This change is **not** a no-op
+against literally every record in the log -- it is, by design, a change
+in how the two records this task itself already logged (the outer
+`is_holdout_run=true` confirmation and its nested `fit()` sub-record) get
+counted, from "counted as a selection trial" to "excluded", which is the
+entire point of the fix. What the change **is** a no-op against: every
+**other**, non-holdout record already in the log -- every prior
+research/infrastructure result's own counted trials are completely
+unaffected, confirmed both by the direct scan (no other record anywhere
+in the project's history carries `is_holdout_run=true`) and by the full
+existing `test_overfitting_check.py` suite passing unmodified. Also worth
+naming explicitly rather than leaving implicit: this filter will equally
+exclude any **future** holdout-related record for the `daily-tsmom`
+family (or any other strategy family) from that family's own eligibility/
+`N` accounting going forward -- which is the correct, intended behavior
+for any future holdout confirmation, not a side effect specific to this
+one.
+
+The full existing `test_overfitting_check.py` suite (30 tests, including
 the explicit backward-compatibility test
 `test_check_combination_count_is_unchanged_by_the_new_trial_accounting`)
 passes unmodified. Four new regression tests were added, two per counting
@@ -453,6 +474,66 @@ trading regardless of this fix, both because INCONCLUSIVE is not PASS on
 its own pre-committed terms, and because the registration's own
 meta-consequence (see below) already ends this research line pending a
 separate human `Discuss`.
+
+## Two more third-round findings: one fixed asymmetrically, one declined and tracked
+
+A third CodeRabbit review round found the second round's fixes real but
+incomplete in three more places. Two were straightforward precision
+corrections (the loader-entry-vs-claim-creation wording above, and the
+"no-op" claim above); the other two are worth recording the reasoning
+for, since the reasoning is more than a one-line fix.
+
+**`verify_trade_floor`/`verify_detection_floor`'s return values were being
+silently discarded** -- both are called in `run_preregistered_holdout` but
+neither result gated anything, so a genuinely wrong declared floor could
+have silently scored a holdout confirmation against it. Correct finding,
+fixed **asymmetrically, deliberately, not by applying the same raise to
+both**: `verify_detection_floor` now gates execution (raises `ValueError`
+before any holdout data is loaded, i.e. before the single-access claim
+could be consumed) because `declared_detection_floor_sharpe` has no
+load-time cross-check anywhere else in this codebase -- `research
+.preregistration.validate_preregistration` only confirms it is positive,
+never that it matches a recomputed value. `verify_trade_floor` stays
+warn-only, on purpose: `min_total_trades` **does** have a load-time
+"registered >= floor" guarantee (`validate_preregistration`'s own
+`_validate_trade_floor`, computed from the exact same immutable inputs
+this module independently recomputes from), so a mismatch here can, by
+construction, only ever mean "registered is a legitimately stricter
+floor" -- never an approved-floor violation -- and gating execution on
+that would incorrectly reject a valid registration, contradicting
+`research.preregistration`'s own explicit "stricter is always accepted"
+policy. Two new tests confirm both halves of the asymmetry:
+`test_a_mismatched_declared_detection_floor_fails_closed_before_loading_any_holdout_data`
+(raises, before any claim is consumed) and
+`test_a_registration_stricter_than_the_trade_floor_still_runs_to_completion`
+(does not raise). This asymmetry is not an inconsistency to be smoothed
+over later -- it reflects a genuine structural difference between the two
+fields, and both functions' docstrings now say so explicitly.
+
+**`force_reclaim_reason` accepts any non-blank string, even to reclaim a
+normally-*completed* holdout access, not only a failed one.** Correct
+observation about the current mechanism's actual behavior. **Declined,
+deliberately, and tracked instead of patched.** This is not a gap
+introduced by this task -- it is `research/holdout.py`'s own documented,
+deliberate design from Strategy Research Task C ("A legitimate re-run
+requires `force_reclaim_reason` — a mandatory, non-blank, human-written
+justification, itself logged — not a bare boolean override"), explicitly
+cited by `research/preregistration.py`'s own module docstring as the
+established precedent for that module's identical "warn, don't block"
+philosophy. Restricting it to "only when the prior access clearly failed"
+would need a schema change first (today's `holdout_access` record --
+`accessed_at`/`strategy_id`/`symbol`/`interval`/`start_ms`/`end_ms`/
+`force_reclaim_reason` -- carries no outcome/success field to check
+against at all) and a real, non-obvious design decision about what
+"clearly failed" means algorithmically. Reversing a deliberate,
+cross-referenced, multi-module architectural pattern under review pressure
+on an unrelated execution task is exactly what CLAUDE.md's Development
+Methodology reserves a `Discuss` pass for, not a same-PR patch. Tracked as
+a real, trackable follow-up rather than left as only a prose note here:
+[github.com/ckrhehfl/trading-engine/issues/58](https://github.com/ckrhehfl/trading-engine/issues/58).
+Not urgent -- no holdout re-access has ever happened in this project's
+history; exactly one `holdout_access` record exists in the entire real
+log (`sr-v`'s own), and it was never reclaimed.
 
 ## Design ambiguity noted, not silently resolved
 

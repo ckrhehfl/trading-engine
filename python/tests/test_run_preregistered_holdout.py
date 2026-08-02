@@ -409,8 +409,20 @@ def test_a_bar_count_other_than_the_registered_one_fails_closed(tmp_path, holdou
     # count that no longer matches the actually-loaded window would be
     # silently comparing against thresholds that no longer describe the
     # evaluated data. (CodeRabbit review finding on this PR.)
+    # declared_detection_floor_sharpe must be recomputed for the overridden
+    # expected_bars too, or verify_detection_floor's own (correct, separate)
+    # fail-closed check fires first and this test would be exercising the
+    # wrong code path.
+    overridden_bars = NUM_BARS + 5
     prereg = load_preregistration(
-        _write_prereg(tmp_path, holdout_config_path, data={**_config()["data"], "expected_bars": NUM_BARS + 5})
+        _write_prereg(
+            tmp_path,
+            holdout_config_path,
+            data={**_config()["data"], "expected_bars": overridden_bars},
+            declared_detection_floor_sharpe=recompute_detection_floor_sharpe(
+                total_evaluated_bars=overridden_bars, bars_per_day=1
+            ),
+        )
     )
     with pytest.raises(ValueError, match="expected_bars"):
         run_preregistered_holdout(prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path)
@@ -463,6 +475,50 @@ def test_a_never_trading_strategy_lands_in_the_fail_region_end_to_end(
     assert result.outcome == OUTCOME_FAIL
     assert result.gating_checks["min_total_trades"].passed is False
     assert result.gating_checks["profit_factor"].passed is False
+
+
+def test_a_mismatched_declared_detection_floor_fails_closed_before_loading_any_holdout_data(
+    tmp_path, holdout_config_path, db_path, runs_path
+):
+    # Unlike verify_trade_floor (never fatal -- see its own docstring for
+    # the structural reason), a wrong declared_detection_floor_sharpe has no
+    # other safety net anywhere in this codebase, so it must gate execution,
+    # and specifically BEFORE any holdout data is loaded (i.e. before the
+    # single-access claim could be consumed) -- a caller who fixes a real
+    # transcription error in the registration must not have already spent
+    # the one real access finding out. (CodeRabbit review finding.)
+    prereg = load_preregistration(
+        _write_prereg(tmp_path, holdout_config_path, declared_detection_floor_sharpe=99.0)
+    )
+
+    with pytest.raises(ValueError, match="declared_detection_floor_sharpe"):
+        run_preregistered_holdout(prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path)
+
+    # No claim was consumed and no result was logged -- the failure happened
+    # before load_holdout_klines was ever reached.
+    assert _holdout_access_records(runs_path) == []
+    assert _backtest_records(runs_path) == []
+
+
+def test_a_registration_stricter_than_the_trade_floor_still_runs_to_completion(
+    tmp_path, holdout_config_path, db_path, runs_path
+):
+    # The mirror image of the test above: verify_trade_floor's mismatch case
+    # (a registration holding itself to a STRICTER trade-count floor than
+    # required) must never block execution -- doing so would incorrectly
+    # reject a valid registration, contradicting research.preregistration's
+    # own "stricter is always accepted" policy.
+    stricter_criterion = {**_config()["primary_criterion"], "min_total_trades": NUM_BARS}
+    prereg = load_preregistration(
+        _write_prereg(tmp_path, holdout_config_path, primary_criterion=stricter_criterion)
+    )
+
+    result = run_preregistered_holdout(
+        prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path
+    )
+
+    assert result.klines_count == NUM_BARS
+    assert len(_holdout_access_records(runs_path)) == 1
 
 
 # ---------------------------------------------------------------------------

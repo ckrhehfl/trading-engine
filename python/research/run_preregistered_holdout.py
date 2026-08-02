@@ -142,11 +142,23 @@ def _data_range(klines: list[Kline]) -> dict:
 # ---------------------------------------------------------------------------
 # Independent recomputation of the two numbers a registration is not free to
 # choose -- not a duplicate of research.preregistration's own load-time
-# validation (which already enforces "registered >= floor"), but a second,
-# independent check at *execution* time that this module's own understanding
-# of the registration's declared geometry agrees with what was committed.
-# Never blocks: a caller with a bad registration would already have failed
-# at load_preregistration time.
+# validation, but a second, independent check at *execution* time that this
+# module's own understanding of the registration's declared geometry agrees
+# with what was committed.
+#
+# The two functions below are DELIBERATELY asymmetric in whether a mismatch
+# gates execution (raises) or only warns -- see each docstring for why, and
+# `run_preregistered_holdout`'s own call site below for where the asymmetry
+# is actually enforced. In short: `min_total_trades` has a load-time
+# "registered >= floor" guarantee from `research.preregistration
+# .validate_preregistration` (stricter allowed, laxer rejected) computed from
+# the exact same immutable inputs this module recomputes from, so a mismatch
+# here can *only* ever mean "registered is legitimately stricter" -- gating
+# execution on it would incorrectly block a valid registration.
+# `declared_detection_floor_sharpe` has NO such load-time cross-check
+# anywhere in this codebase (`validate_preregistration` only checks it is
+# positive) -- a mismatch there is a genuine, reachable error with no other
+# safety net, and DOES gate execution.
 # ---------------------------------------------------------------------------
 
 
@@ -155,10 +167,26 @@ def verify_trade_floor(prereg: Preregistration) -> bool:
     registration's own declared `data.expected_bars`/`procedure.bars_per_day`
     and confirm the registered `primary_criterion.min_total_trades` equals
     it exactly. `research.preregistration.validate_preregistration` already
-    enforces `registered >= floor` (stricter allowed) at load time; this is
-    an independent recomputation at run time, logged loudly (never raised)
-    when it disagrees, so a mismatch is visible before the gating checks
-    below are read as trustworthy.
+    enforces `registered >= floor` (stricter allowed) at load time, from
+    this exact same recomputation, against the exact same immutable
+    `prereg.data`/`prereg.procedure` inputs -- so **by construction, a
+    `False` return here can only ever mean "registered is a legitimately
+    stricter floor than required"**, never "registered is laxer than
+    approved" (that case is structurally unreachable: it would already have
+    raised `PreregistrationError` inside `load_preregistration`, before a
+    `Preregistration` object exists to call this function with at all).
+
+    Because of that guarantee, a `False` return is **never treated as fatal**
+    by any caller in this module -- doing so would incorrectly block a valid,
+    more-conservative-than-required registration, contradicting
+    `research.preregistration`'s own explicit "stricter is always accepted"
+    policy. This function still exists and is still called (logged loudly,
+    never raised, on mismatch) purely as a self-consistency sanity check:
+    this specific registration was designed to match the floor exactly (see
+    `.planning/sr-u-preregistered-attempt-spec.md`), so a mismatch -- while
+    provably safe -- is still worth a human noticing before trusting the
+    gating checks below. Contrast `verify_detection_floor`, which gates
+    execution, precisely because it has no equivalent structural guarantee.
     """
     floor = frequency_scaled_min_trades(
         total_evaluated_bars=prereg.data["expected_bars"],
@@ -202,9 +230,20 @@ def recompute_detection_floor_sharpe(*, total_evaluated_bars: int, bars_per_day:
 def verify_detection_floor(prereg: Preregistration, *, tolerance: float = 1e-3) -> bool:
     """Recompute the declared detection-floor Sharpe from the registration's
     own declared geometry and confirm it matches
-    `declared_detection_floor_sharpe` within `tolerance`. Logged loudly
-    (never raised) on mismatch, for the same "independent recomputation,
-    not blind trust" reason as `verify_trade_floor`.
+    `declared_detection_floor_sharpe` within `tolerance`.
+
+    Unlike `verify_trade_floor`, a `False` return here **does gate
+    execution** (see `run_preregistered_holdout`'s call site) -- because,
+    unlike `min_total_trades`, `declared_detection_floor_sharpe` has NO
+    load-time cross-check anywhere in this codebase:
+    `research.preregistration.validate_preregistration` only confirms it is
+    positive, never that it actually equals the recomputed value for the
+    registration's own declared geometry. A wrong `declared_detection_floor
+    _sharpe` (a typo, a stale copy-paste, an arithmetic slip) would
+    otherwise pass validation silently and then gate this run's own
+    PASS/INCONCLUSIVE/FAIL determination against the wrong number, with
+    nothing else in this project positioned to catch it. This function is
+    that catch.
     """
     recomputed = recompute_detection_floor_sharpe(
         total_evaluated_bars=prereg.data["expected_bars"],
@@ -483,10 +522,19 @@ def run_preregistered_holdout(
     and the registration's `expected_bars` (fail-closed, since the
     registered detection floor and trade-count floor were computed from
     `expected_bars` and no longer describe a differently-sized window --
-    **this failure happens AFTER the single-access holdout claim is already
+    **on the real loader path (`klines=None`, i.e. every real invocation),
+    this failure happens AFTER the single-access holdout claim is already
     consumed**, since the mismatch can only be detected once the data has
-    actually been loaded; a caller hitting this needs a deliberate,
-    justified `force_reclaim_reason` to try again, not a free retry); and
+    actually been loaded, so a caller hitting this on that path needs a
+    deliberate, justified `force_reclaim_reason` to try again, not a free
+    retry -- this does NOT apply when a test injects `klines` directly,
+    since that path never calls `load_holdout_klines` at all and so never
+    writes a claim to consume in the first place); `ValueError` if
+    `verify_detection_floor` finds the registered `declared_detection_floor
+    _sharpe` does not match the recomputed value for the registration's own
+    declared geometry (checked, and fails closed, BEFORE any holdout data is
+    loaded -- see `verify_detection_floor`'s own docstring for why this one,
+    unlike `verify_trade_floor`, gates execution); and
     `research.holdout.HoldoutAlreadyClaimedError` if `strategy_id` already
     has a recorded `holdout_access` entry and no `force_reclaim_reason` was
     explicitly supplied by the caller -- this function never supplies one on
@@ -500,8 +548,26 @@ def run_preregistered_holdout(
         )
 
     warn_if_uncommitted(prereg.path)
+    # verify_trade_floor's False is never fatal here -- see its own
+    # docstring: by construction it can only mean "registered is a
+    # legitimately stricter floor", never an approved-floor violation.
     verify_trade_floor(prereg)
-    verify_detection_floor(prereg)
+    # verify_detection_floor's False IS fatal, checked and raised BEFORE any
+    # holdout data is loaded (i.e. before the single-access claim could be
+    # consumed) -- see its own docstring for why this field has no other
+    # safety net in this codebase.
+    if not verify_detection_floor(prereg):
+        raise ValueError(
+            f"pre-registration {prereg.preregistration_id!r}: declared_detection_floor_sharpe="
+            f"{prereg.config['declared_detection_floor_sharpe']!r} does not match the value "
+            "independently recomputed from this registration's own declared geometry (see the "
+            "WARNING logged just above by verify_detection_floor for the exact numbers). Refusing "
+            "to load or score holdout data against a detection floor that may be wrong -- a "
+            "committed registration must not be edited after the fact; fix requires either "
+            "correcting a genuine transcription error before this registration's very first real "
+            "access (none has happened yet if this fires), or registering a new specification "
+            "under a new preregistration_id."
+        )
 
     data = prereg.data
     if klines is not None:
