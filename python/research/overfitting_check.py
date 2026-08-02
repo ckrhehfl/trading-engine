@@ -97,6 +97,34 @@ chose momentum over mean-reversion, over the blend, over volume, over
 funding, *after seeing all of their results*. So the honest `N` for "the
 best thing this project found" is the project-level research total, not
 any single family's.
+
+## Strategy Research Task V: holdout confirmations excluded from `N`
+
+One narrow, provably-safe amendment to the "byte-for-byte behaviourally
+unchanged" claim above: `_scan_records`/`_scan_project_records` now also
+skip any record related to a logged holdout confirmation -- both the
+outer `is_holdout_run=True` standalone record and any nested `fit()`
+diagnostic sub-record naming it as `parent_run_id`, via the two-pass
+`_holdout_run_ids`/`_is_holdout_related` helpers (a single forward pass
+cannot exclude the nested record, because it is written to the log
+*before* its own parent, and its own `is_holdout_run` field is not
+reliable -- see `_holdout_run_ids`'s docstring for the concrete case that
+motivated this).
+
+This was a real, previously-latent gap: before this fix, `is_holdout_run`
+was never referenced anywhere in this module, so a holdout confirmation's
+records -- which were never searched over and must never inflate a
+selection-trial `N` -- would have been counted exactly like a genuine
+research trial the moment `check_project_combination_count` (or the older
+`check_combination_count`) was next called. Found and fixed the same day
+it was first exercisable: a direct scan of the real, complete
+`runs/experiments.jsonl` at the time of this fix found exactly **one**
+`is_holdout_run=True` record in the project's entire history (the `sr-v`
+holdout confirmation itself), so this change is provably a no-op against
+every prior computed result in this project, including `sr-r`'s
+117-trial/DSR-2.0e-05 close-out. See
+`.planning/sr-v-preregistered-attempt-result.md` for the full
+investigation.
 """
 
 import json
@@ -167,6 +195,61 @@ class OverfittingCheckResult:
         }
 
 
+def _holdout_run_ids(runs_path: str | Path) -> set[str]:
+    """Every `run_id` of a `backtest_run` record logged with
+    `is_holdout_run=True` (Strategy Research Task V).
+
+    A **separate pass**, not inlined into the main scan below, because a
+    holdout confirmation's own nested `fit()` diagnostic sub-record is
+    written to the log BEFORE its parent (the parent's own `log_run` call
+    happens only after `fit()` returns) -- so a single forward pass cannot
+    yet know, at the moment it encounters a child record, whether that
+    child's `parent_run_id` will turn out to name a holdout run. Collecting
+    the full set up front lets `_scan_records`/`_scan_project_records`
+    exclude a holdout run's records -- both the outer standalone record
+    itself and any nested sub-record naming it as `parent_run_id` --
+    regardless of write order, and regardless of whether the nested
+    sub-record's OWN `is_holdout_run` field happens to be accurate.
+
+    That last clause is not hypothetical: it is the real, concrete case
+    this exists to fix. `DailyTsmomEnsembleTrainable.fit()`'s in-sample-
+    scoring sub-record was logged with `is_holdout_run=False` even though
+    the data it actually scored was the real `1d` holdout window --
+    matching every sibling `Trainable.fit()`'s pre-existing convention of
+    never knowing (or asking) whether the data it was handed came from a
+    holdout split. See `.planning/sr-v-preregistered-attempt-result.md`
+    for the full investigation: before this fix, this module never
+    referenced `is_holdout_run` at all, so neither that mislabeled child
+    record nor its own correctly-labeled parent were excluded from
+    selection-trial counting -- verified to be a real, previously-latent
+    gap (a direct scan of the complete historical log found exactly one
+    `is_holdout_run=True` record ever logged before this fix existed, so
+    the exclusion below is provably a no-op against every prior computed
+    result).
+    """
+    ids: set[str] = set()
+    for record in experiment_log.read_records(runs_path):
+        if record.get("record_type") != "backtest_run":
+            continue
+        if record.get("is_holdout_run") is True:
+            run_id = record.get("run_id")
+            if run_id is not None:
+                ids.add(run_id)
+    return ids
+
+
+def _is_holdout_related(record: Mapping[str, Any], holdout_run_ids: set[str]) -> bool:
+    """`True` for a record that is itself a logged holdout confirmation, or
+    a nested sub-record of one (its `parent_run_id` names a holdout run).
+    See `_holdout_run_ids`'s docstring for why both cases matter and why
+    this can't be decided from one record in isolation.
+    """
+    if record.get("is_holdout_run") is True:
+        return True
+    parent_run_id = record.get("parent_run_id")
+    return parent_run_id is not None and parent_run_id in holdout_run_ids
+
+
 def _scan_records(
     strategy_id: str,
     runs_path: str | Path,
@@ -176,9 +259,14 @@ def _scan_records(
     resolved to one count per group -- see `_resolve_parent_groups`),
     count standalone (`parent_run_id is None`) records, and track the
     widest `[start_ms, end_ms]` span observed across every matching
-    record's `data_range`. `record_type: "holdout_access"` entries and
-    records for a different `strategy_id` are skipped entirely.
+    record's `data_range`. `record_type: "holdout_access"` entries,
+    records for a different `strategy_id`, and any record related to a
+    logged holdout confirmation (see `_holdout_run_ids`/
+    `_is_holdout_related`, Strategy Research Task V) are skipped entirely
+    -- a holdout confirmation was never searched over, so it is not a
+    selection trial and must not be counted as one.
     """
+    holdout_run_ids = _holdout_run_ids(runs_path)
     parent_totals: dict[str, list[int | None]] = {}
     standalone_count = 0
     min_start_ms: int | None = None
@@ -188,6 +276,8 @@ def _scan_records(
         if record.get("record_type") != "backtest_run":
             continue
         if record.get("strategy_id") != strategy_id:
+            continue
+        if _is_holdout_related(record, holdout_run_ids):
             continue
 
         parent_run_id = record.get("parent_run_id")
@@ -313,7 +403,11 @@ def check_combination_count(
     (a standalone run -- e.g. a direct `run_walk_forward` call not itself
     a candidate of an outer grid search) counts as exactly 1 combination.
     `record_type: "holdout_access"` entries are ignored entirely (not
-    combinations-tried).
+    combinations-tried); so is any record related to a logged holdout
+    confirmation (Strategy Research Task V, `_holdout_run_ids`/
+    `_is_holdout_related`) -- a holdout confirmation was never searched
+    over, so it is not a combination "tried" in the sense this heuristic
+    measures.
 
     Returns `risk_level="unknown"` (not `"low"`) when nothing has ever
     been logged for `strategy_id`, or when a data span can't be computed
@@ -669,11 +763,18 @@ def _scan_project_records(runs_path: str | Path) -> dict[str, _FamilyAccumulator
     """Single pass over `runs_path`, bucketing every `backtest_run` record
     into its research family (`research.lineage.resolve_family`).
     `holdout_access` records are ignored entirely, same as
-    `check_combination_count`.
+    `check_combination_count`. Any record related to a logged holdout
+    confirmation (see `_holdout_run_ids`/`_is_holdout_related`, Strategy
+    Research Task V) is skipped too -- a holdout confirmation was never
+    searched over, so it must not inflate any family's or the project's
+    selection-trial `N`.
     """
+    holdout_run_ids = _holdout_run_ids(runs_path)
     accumulators: dict[str, _FamilyAccumulator] = {}
     for order, record in enumerate(experiment_log.read_records(runs_path)):
         if record.get("record_type") != "backtest_run":
+            continue
+        if _is_holdout_related(record, holdout_run_ids):
             continue
         resolution = resolve_family(record.get("strategy_id", ""), record)
         accumulator = accumulators.get(resolution.family)
@@ -829,6 +930,12 @@ def check_project_combination_count(
     defects in `check_combination_count`'s number that this corrects, and
     `.planning/sr-p-trial-accounting.md` for the verified evidence behind
     each.
+
+    Excludes every record related to a logged holdout confirmation
+    (Strategy Research Task V, `_holdout_run_ids`/`_is_holdout_related`) --
+    a holdout confirmation was never searched over, so counting it toward
+    `N` would be exactly the selection-bias overstatement this function
+    exists to correct, not an instance of it.
 
     A warning, never a block -- the established convention throughout this
     module (and `research/holdout.py` before it).
