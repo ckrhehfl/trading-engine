@@ -414,13 +414,14 @@ def test_a_bar_count_other_than_the_registered_one_fails_closed(tmp_path, holdou
     # fail-closed check fires first and this test would be exercising the
     # wrong code path.
     overridden_bars = NUM_BARS + 5
+    bars_per_day = _config()["procedure"]["bars_per_day"]
     prereg = load_preregistration(
         _write_prereg(
             tmp_path,
             holdout_config_path,
             data={**_config()["data"], "expected_bars": overridden_bars},
             declared_detection_floor_sharpe=recompute_detection_floor_sharpe(
-                total_evaluated_bars=overridden_bars, bars_per_day=1
+                total_evaluated_bars=overridden_bars, bars_per_day=bars_per_day
             ),
         )
     )

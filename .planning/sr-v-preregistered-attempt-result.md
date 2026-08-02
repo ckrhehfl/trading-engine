@@ -478,7 +478,7 @@ separate human `Discuss`.
 ## Two more third-round findings: one fixed asymmetrically, one declined and tracked
 
 A third CodeRabbit review round found the second round's fixes real but
-incomplete in three more places. Two were straightforward precision
+incomplete in four more places. Two were straightforward precision
 corrections (the loader-entry-vs-claim-creation wording above, and the
 "no-op" claim above); the other two are worth recording the reasoning
 for, since the reasoning is more than a one-line fix.
