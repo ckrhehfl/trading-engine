@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from data.backfill_macro import SERIES_START_DATE, main, sync_macro_range
-from data.fred_client import ObservationRow
+from data.fred_client import INTER_REQUEST_DELAY_S, ObservationRow
 from data.store import connect, upsert_macro_observations
 from tests.fake_fred_server import FakeFredServer
 
@@ -159,6 +159,28 @@ def test_sync_macro_range_persists_each_batch_before_fetching_the_next(server, c
 
     assert inserted == 5
     assert committed_counts_after_each_batch == [2, 4, 5]
+
+
+def test_sync_macro_range_sleeps_between_disjoint_gaps_but_not_before_the_first(server, conn, monkeypatch):
+    # Two disjoint gaps in one call: Tue missing (gap 1), Thu+Fri missing
+    # (gap 2), with Mon and Wed already stored to split them. Without a
+    # delay between gaps, a backfill resuming across several small gaps
+    # would fire each gap's first request back to back with zero delay
+    # between them -- CodeRabbit review finding on this PR.
+    mon, tue, wed, thu, fri = WEEKDAYS
+    upsert_macro_observations(
+        conn, "DGS10", [ObservationRow(observation_date=d, value=Decimal("4.0")) for d in [mon, wed]]
+    )
+    server.set_observations("DGS10", [(d, "4.0") for d in [tue, thu, fri]])
+    sleep_calls: list[float] = []
+    monkeypatch.setattr("data.backfill_macro.time.sleep", sleep_calls.append)
+
+    inserted = sync_macro_range("DGS10", mon, fri, conn=conn, base_url=server.base_url, api_key=FAKE_API_KEY)
+
+    assert inserted == 3  # tue, thu, fri
+    # Exactly one inter-gap delay (before the second gap's first request);
+    # none before the very first request overall.
+    assert sleep_calls == [INTER_REQUEST_DELAY_S]
 
 
 # ---------------------------------------------------------------------------

@@ -76,14 +76,16 @@ CREATE TABLE IF NOT EXISTS macro_series (
 
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """Open (creating if needed) the local kline+funding cache and ensure
-    both schemas exist. `db_path` may be `":memory:"` for tests.
+    """Open (creating if needed) the local klines/funding/macro cache and
+    ensure all three schemas exist. `db_path` may be `":memory:"` for
+    tests.
 
     `sqlite3.connect` creates the database file itself but not any
     missing parent directory, so the parent is created here (a no-op
     when it already exists) -- otherwise a fresh clone's first
-    `backfill.py`/`backfill_funding.py` run would fail on a missing
-    `python/data/var/` directory before ever reaching BingX.
+    `backfill.py`/`backfill_funding.py`/`backfill_macro.py` run would
+    fail on a missing `python/data/var/` directory before ever reaching
+    BingX or FRED.
     """
     if str(db_path) != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)

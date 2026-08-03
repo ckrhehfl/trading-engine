@@ -62,6 +62,19 @@ def test_fetch_observations_page_uses_parse_float_decimal_to_avoid_float_roundtr
     assert rows[0].value == Decimal(precise_value)
 
 
+def test_fetch_observations_page_rejects_a_non_finite_decimal_value(server):
+    # Decimal("NaN")/Decimal("Infinity") parse without raising -- FRED is
+    # not known to ever send these (only a real number or the "."
+    # marker), but a non-finite value stored as text and read back later
+    # would compare unequal to itself and be indistinguishable from a
+    # genuine value at a glance. CodeRabbit review finding on this PR.
+    body = '{"count":1,"offset":0,"limit":100000,"observations":[{"date":"2026-01-02","value":"NaN"}]}'
+    server.force_response(200, body)
+
+    with pytest.raises(FredClientError):
+        fetch_observations_page(server.base_url, "DGS10", FAKE_API_KEY, "2026-01-02", "2026-01-02")
+
+
 def test_fetch_observations_page_parses_the_missing_value_marker_to_none(server):
     # Real, live-verified finding: a US market holiday that falls on a
     # weekday (e.g. 2026-07-03, observed for July 4th) still gets a real

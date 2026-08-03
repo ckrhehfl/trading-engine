@@ -342,6 +342,14 @@ def _parse_row(row: object) -> ObservationRow:
             value = Decimal(raw_value)
         except (TypeError, ValueError, ArithmeticError) as exc:
             raise FredClientError(f"malformed observation row (unparseable value): {row!r}") from exc
+        if not value.is_finite():
+            # Decimal("NaN")/Decimal("Infinity") parse without raising --
+            # FRED is not known to ever send these (only a real number or
+            # the "." marker above), but a non-finite value silently
+            # stored as text and read back later would compare unequal to
+            # itself and be indistinguishable from a genuine value at a
+            # glance. Fail loud here rather than downstream.
+            raise FredClientError(f"malformed observation row (non-finite value): {row!r}")
 
     return ObservationRow(observation_date=raw_date, value=value)
 

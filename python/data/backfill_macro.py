@@ -26,10 +26,16 @@ import argparse
 import logging
 import os
 import sqlite3
+import time
 from datetime import datetime, timezone
 
 from data.backfill import DEFAULT_DB_PATH
-from data.fred_client import MAX_OBSERVATIONS_PER_REQUEST, ObservationRow, iter_observations
+from data.fred_client import (
+    INTER_REQUEST_DELAY_S,
+    MAX_OBSERVATIONS_PER_REQUEST,
+    ObservationRow,
+    iter_observations,
+)
 from data.store import connect, find_missing_macro_ranges, upsert_macro_observations
 
 logger = logging.getLogger(__name__)
@@ -76,9 +82,20 @@ def sync_macro_range(
     aware gap detection (see `store.py`) is what makes an ordinary
     weekend a permanent non-gap rather than something this function ever
     tries to fetch. Returns the total number of newly inserted rows.
+
+    Each gap's first request is separated from the previous gap's last
+    request by `INTER_REQUEST_DELAY_S` (the same delay
+    `fred_client.iter_observations` already applies *within* a single
+    gap's own pagination) -- without it, a backfill resuming across
+    several small, disjoint gaps would fire their first requests back to
+    back with no delay at all between them.
     """
     total_inserted = 0
-    for gap_start, gap_end in find_missing_macro_ranges(conn, series_id, start_date, end_date):
+    for gap_index, (gap_start, gap_end) in enumerate(
+        find_missing_macro_ranges(conn, series_id, start_date, end_date)
+    ):
+        if gap_index > 0:
+            time.sleep(INTER_REQUEST_DELAY_S)
         logger.info("fetching missing macro range [%s, %s] for %s", gap_start, gap_end, series_id)
         fetched_in_gap = 0
         batch: list[ObservationRow] = []

@@ -87,15 +87,21 @@ inert today.
 
 ### Range is inclusive on both ends — a genuine, deliberate divergence
 
-`observation_start <= date <= observation_end`, confirmed by requesting
-`limit=5&offset=0` then `limit=5&offset=5` against `DGS10` and getting
-exactly the next 5 rows with no overlap or gap, and by a single-day
-request (`start == end`) returning exactly one row. This is the opposite
+`observation_start <= date <= observation_end`, confirmed by a single-day
+request (`start == end`) returning exactly one row, and by a multi-day
+request returning rows dated exactly on both the requested
+`observation_start` and `observation_end` themselves (not one-past
+either boundary the way a half-open range would). This is the opposite
 of `bingx_klines.py`/`bingx_funding.py`'s half-open `[start, end)`
 convention. **Deliberately not translated** to half-open anywhere in
 `fred_client.py` — `store.find_missing_macro_ranges` is where calendar
 judgment calls (what does "the next day" mean when weekends/holidays can
 legitimately be absent) belong, not the wire client.
+
+(Separately, real `offset`/`limit` pagination was also confirmed —
+`limit=5&offset=0` then `limit=5&offset=5` against `DGS10` returned the
+next 5 rows with no overlap or gap — but that verifies pagination
+mechanics, not boundary inclusivity; see "Pagination is real" below.)
 
 ### Pagination is real, but not needed for these three series today
 
@@ -246,7 +252,7 @@ harmless: FRED just won't return rows for it, same as any other request.
 After the real backfill (numbers below), the same command was run a
 second time immediately. Real output, not a fake-server test:
 
-```
+```text
 fetching missing macro range [2026-07-31, 2026-08-03] for DGS10
 range [2026-07-31, 2026-08-03]: fetched 0 rows (total newly inserted so far: 0)
 fetching missing macro range [2026-07-27, 2026-08-03] for DTWEXBGS
