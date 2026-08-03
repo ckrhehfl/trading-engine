@@ -163,7 +163,16 @@ def main(argv: list[str] | None = None) -> None:
 
     conn = connect(args.db_path)
     try:
-        for series_id in series_ids:
+        for series_index, series_id in enumerate(series_ids):
+            if series_index > 0:
+                # Same rate-limit mitigation as the inter-gap delay inside
+                # sync_macro_range (see its docstring) -- without this, the
+                # previous series' last request and this series' first
+                # request would fire back to back with no delay at all,
+                # even though FRED's (undocumented, see fred_client.py's
+                # module docstring) rate limit applies per API key across
+                # every request that key makes, not per series.
+                time.sleep(INTER_REQUEST_DELAY_S)
             start_date = args.start or SERIES_START_DATE[series_id]
             total = sync_macro_range(
                 series_id,

@@ -266,3 +266,33 @@ def test_main_defaults_to_all_three_series_when_none_specified(monkeypatch, serv
     stored_series = {row[0] for row in conn.execute("SELECT DISTINCT series_id FROM macro_series")}
     conn.close()
     assert stored_series == set(SERIES_START_DATE)
+
+
+def test_main_sleeps_between_series_but_not_before_the_first(monkeypatch, server, tmp_path):
+    # FRED's (undocumented) rate limit applies per API key across every
+    # request that key makes, not per series -- so main()'s own loop over
+    # series must apply the same inter-request delay at series boundaries
+    # that sync_macro_range already applies at gap boundaries within one
+    # series. CodeRabbit review finding on this PR (the first fix only
+    # covered gaps within a single sync_macro_range call).
+    monkeypatch.setenv("FRED_API_KEY", FAKE_API_KEY)
+    for series_id in SERIES_START_DATE:
+        server.set_observation(series_id, SERIES_START_DATE[series_id], "1.0")
+    sleep_calls: list[float] = []
+    monkeypatch.setattr("data.backfill_macro.time.sleep", sleep_calls.append)
+
+    main(
+        [
+            "--end",
+            "2026-01-01",
+            "--db-path",
+            str(tmp_path / "macro.sqlite3"),
+            "--base-url",
+            server.base_url,
+        ]
+    )
+
+    # 3 series -> 2 boundaries -> exactly 2 sleeps, all at INTER_REQUEST_DELAY_S
+    # (each series has exactly one gap here, so none of sync_macro_range's
+    # own within-call inter-gap sleeps fire).
+    assert sleep_calls == [INTER_REQUEST_DELAY_S, INTER_REQUEST_DELAY_S]
