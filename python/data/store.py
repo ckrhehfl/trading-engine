@@ -1,4 +1,5 @@
-"""Local SQLite cache for BingX klines and funding rates.
+"""Local SQLite cache for BingX klines/funding rates and FRED macro
+series.
 
 Klines schema exactly as specified in CLAUDE.md's "Strategy Research
 Operational Design" section, keyed on `(symbol, interval,
@@ -6,22 +7,28 @@ open_time_ms)`. Funding-rate schema added by Strategy Research Task M
 (see `.planning/sr-m-funding-rate-pipeline.md`), keyed on `(symbol,
 funding_time_ms)` -- no `interval` column, since funding rate has no
 interval concept the way klines does (see `bingx_funding.py`'s
-docstring). Both tables live in the same cache file/connection so a
-research script needing both klines and funding data only ever needs
-one `connect()` call. OHLCV/funding values are stored as exact `TEXT`,
-never SQLite `REAL`/float -- same reasoning as `schemas/_types.py`'s
+docstring). Macro-series schema added by Strategy Research Task W (see
+`.planning/sr-w-macro-data-pipeline.md`), keyed on `(series_id,
+observation_date)` -- a `TEXT` calendar date (FRED's own `YYYY-MM-DD`),
+not an `INTEGER` ms timestamp the way the other two tables are, since
+FRED's own unit is a date, not a millisecond epoch (see
+`fred_client.py`'s module docstring). All three tables live in the same
+cache file/connection so a research script needing any combination of
+klines, funding, and macro data only ever needs one `connect()` call.
+Price/rate/macro values are stored as exact `TEXT`, never SQLite
+`REAL`/float -- same reasoning as `schemas/_types.py`'s
 `PositiveDecimalString`: this codebase treats float round-tripping of
-price/volume/rate values as a correctness bug, not a style preference.
+numeric values as a correctness bug, not a style preference.
 
-`upsert_klines`/`upsert_funding_rates` both use `INSERT OR IGNORE`
-against their primary key -- this is the resumability mechanism:
-re-fetching an overlapping range becomes a no-op for rows already
-present, with no separate "have I already fetched this" bookkeeping
-needed anywhere else in the pipeline.
+`upsert_klines`/`upsert_funding_rates`/`upsert_macro_observations` all
+use `INSERT OR IGNORE` against their primary key -- this is the
+resumability mechanism: re-fetching an overlapping range becomes a
+no-op for rows already present, with no separate "have I already
+fetched this" bookkeeping needed anywhere else in the pipeline.
 """
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Iterable
@@ -29,6 +36,7 @@ from typing import Iterable
 from data._grid import interval_ms, require_valid_range
 from data.bingx_funding import FUNDING_INTERVAL_MS, FundingRow
 from data.bingx_klines import KlineRow
+from data.fred_client import ObservationRow
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS klines (
@@ -56,22 +64,35 @@ CREATE TABLE IF NOT EXISTS funding_rates (
 );
 """
 
+MACRO_SCHEMA = """
+CREATE TABLE IF NOT EXISTS macro_series (
+  series_id TEXT NOT NULL,
+  observation_date TEXT NOT NULL,
+  value TEXT,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (series_id, observation_date)
+);
+"""
+
 
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """Open (creating if needed) the local kline+funding cache and ensure
-    both schemas exist. `db_path` may be `":memory:"` for tests.
+    """Open (creating if needed) the local klines/funding/macro cache and
+    ensure all three schemas exist. `db_path` may be `":memory:"` for
+    tests.
 
     `sqlite3.connect` creates the database file itself but not any
     missing parent directory, so the parent is created here (a no-op
     when it already exists) -- otherwise a fresh clone's first
-    `backfill.py`/`backfill_funding.py` run would fail on a missing
-    `python/data/var/` directory before ever reaching BingX.
+    `backfill.py`/`backfill_funding.py`/`backfill_macro.py` run would
+    fail on a missing `python/data/var/` directory before ever reaching
+    BingX or FRED.
     """
     if str(db_path) != ":memory:":
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.execute(SCHEMA)
     conn.execute(FUNDING_SCHEMA)
+    conn.execute(MACRO_SCHEMA)
     conn.commit()
     return conn
 
@@ -362,6 +383,198 @@ def fetch_funding_rates(
             funding_time_ms=row[0],
             funding_rate=Decimal(row[1]),
             mark_price=Decimal(row[2]),
+        )
+        for row in rows
+    ]
+
+
+# ---------------------------------------------------------------------------
+# macro_series -- FRED daily macro observations. Keyed by (series_id,
+# observation_date), a calendar date, not a fixed-step ms timestamp --
+# see fred_client.py's module docstring for why FRED's own inclusive
+# date range is preserved as-is rather than translated to this
+# pipeline's usual half-open ms convention. `find_missing_macro_ranges`
+# below is the load-bearing piece: gap detection here cannot reuse
+# find_missing_ranges'/find_missing_funding_ranges' "diff against an
+# arithmetic step sequence" algorithm, because daily macro data has no
+# fixed step -- FRED simply never returns a row at all for a Saturday or
+# Sunday (see fred_client.py's module docstring), so an "expect one row
+# per calendar day" gap check would misfire on every single weekend,
+# forever. The actual invariant this module enforces instead: the
+# expected calendar for a macro series is *weekdays only*
+# (Monday-Friday), not *every* calendar day and not a full
+# market-holiday-aware trading calendar either -- a real market holiday
+# that falls on a weekday still gets a real row from FRED (value "."),
+# so it is never a gap once fetched once; only a weekday FRED has never
+# returned anything for at all (not yet fetched, or not yet published)
+# is a gap.
+# ---------------------------------------------------------------------------
+
+
+def _validate_macro_date_range(start_date: str, end_date: str) -> None:
+    # Mirrors fred_client._validate_date_range -- duplicated rather than
+    # imported, same "each module owns its own range check" precedent as
+    # bingx_funding.py's _validate_range vs. store.py's
+    # _validate_funding_range. FRED's own range is inclusive both ends
+    # (see fred_client.py's module docstring), so `start_date ==
+    # end_date` is a legitimate single-day request and only
+    # `start_date > end_date` is rejected.
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    if start > end:
+        raise ValueError(f"start_date ({start_date}) must be <= end_date ({end_date})")
+
+
+def _expected_weekdays(start_date: str, end_date: str) -> list[str]:
+    """Every Monday-Friday calendar date in the inclusive range
+    `[start_date, end_date]`, ascending, as `YYYY-MM-DD` strings. This is
+    the "expected calendar" `find_missing_macro_ranges` diffs stored
+    rows against -- see this section's header comment for why weekdays
+    (not every calendar day, not a holiday-aware trading calendar) is
+    the right invariant.
+    """
+    start = date.fromisoformat(start_date)
+    end = date.fromisoformat(end_date)
+    one_day = timedelta(days=1)
+    days: list[str] = []
+    current = start
+    while current <= end:
+        if current.weekday() < 5:  # Monday=0 .. Friday=4
+            days.append(current.isoformat())
+        current += one_day
+    return days
+
+
+def upsert_macro_observations(
+    conn: sqlite3.Connection,
+    series_id: str,
+    rows: Iterable[ObservationRow],
+) -> int:
+    """Insert `rows`, skipping any already present at the same
+    `(series_id, observation_date)`. Returns the number of rows actually
+    newly inserted -- same `INSERT OR IGNORE` resumability mechanism and
+    `cursor.rowcount` caveat as `upsert_klines`/`upsert_funding_rates`.
+
+    A row whose `value is None` (FRED's own "." missing-observation
+    marker, see `fred_client.py`'s module docstring) is stored with a
+    real SQL `NULL` in the `value` column -- deliberately still inserted,
+    not skipped. Skipping it would make `find_missing_macro_ranges`
+    re-request that same date forever (it would never stop looking
+    "missing"); storing it with `NULL` records "FRED told us there is no
+    observation for this date" as a real, fetched fact, distinct from
+    "we have never asked".
+    """
+    rows = list(rows)
+    if not rows:
+        return 0
+
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    params = [
+        (
+            series_id,
+            row.observation_date,
+            str(row.value) if row.value is not None else None,
+            fetched_at,
+        )
+        for row in rows
+    ]
+
+    cursor = conn.executemany(
+        "INSERT OR IGNORE INTO macro_series (series_id, observation_date, value, fetched_at) VALUES (?, ?, ?, ?)",
+        params,
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
+def find_missing_macro_ranges(
+    conn: sqlite3.Connection,
+    series_id: str,
+    start_date: str,
+    end_date: str,
+) -> list[tuple[str, str]]:
+    """Diff stored `observation_date` values in the inclusive range
+    `[start_date, end_date]` against the *weekday-only* expected calendar
+    (`_expected_weekdays` -- see this section's header comment for why
+    weekends must never be treated as gaps) and return the gaps as
+    inclusive `(gap_start_date, gap_end_date)` date-string pairs --
+    directly usable as `fred_client.iter_observations`'s own inclusive
+    `start_date`/`end_date` arguments.
+
+    A gap's `(start, end)` may itself span a weekend internally (e.g. a
+    missing Thursday and the following Monday, with nothing stored for
+    either) -- that's fine and deliberate: re-requesting that whole
+    inclusive span from FRED is harmless (FRED simply won't return rows
+    for the Saturday/Sunday inside it, same as any other request), and
+    coalescing adjacent missing weekdays into one range keeps this
+    function's contiguous-run merging identical in shape to
+    `find_missing_ranges`/`find_missing_funding_ranges` above, just over
+    a non-uniform (weekdays-only) calendar instead of a fixed ms step.
+
+    A stored row with `value IS NULL` (FRED's "." marker) counts as
+    *present* here, same as any other stored row -- only an
+    `observation_date` with no row at all is a gap. See
+    `upsert_macro_observations`'s docstring for why that row is stored
+    at all rather than skipped.
+    """
+    _validate_macro_date_range(start_date, end_date)
+
+    expected = _expected_weekdays(start_date, end_date)
+    if not expected:
+        return []
+
+    existing = {
+        row[0]
+        for row in conn.execute(
+            "SELECT observation_date FROM macro_series "
+            "WHERE series_id = ? AND observation_date >= ? AND observation_date <= ?",
+            (series_id, start_date, end_date),
+        )
+    }
+
+    gaps: list[tuple[str, str]] = []
+    run_start: str | None = None
+    run_end: str | None = None
+    for day in expected:
+        if day not in existing:
+            if run_start is None:
+                run_start = day
+            run_end = day
+        elif run_start is not None:
+            gaps.append((run_start, run_end))
+            run_start = None
+    if run_start is not None:
+        gaps.append((run_start, run_end))
+
+    return gaps
+
+
+def fetch_macro_observations(
+    conn: sqlite3.Connection,
+    series_id: str,
+    start_date: str,
+    end_date: str,
+) -> list[ObservationRow]:
+    """Read stored macro observations in the inclusive range
+    `[start_date, end_date]`, ordered ascending by `observation_date`.
+    Read-path counterpart to `upsert_macro_observations` -- returns typed
+    `ObservationRow`s with `Decimal | None` values parsed back from exact
+    `TEXT`/`NULL` storage, same discipline as `fetch_klines`/
+    `fetch_funding_rates`.
+    """
+    _validate_macro_date_range(start_date, end_date)
+
+    rows = conn.execute(
+        "SELECT observation_date, value FROM macro_series "
+        "WHERE series_id = ? AND observation_date >= ? AND observation_date <= ? "
+        "ORDER BY observation_date",
+        (series_id, start_date, end_date),
+    ).fetchall()
+
+    return [
+        ObservationRow(
+            observation_date=row[0],
+            value=Decimal(row[1]) if row[1] is not None else None,
         )
         for row in rows
     ]
