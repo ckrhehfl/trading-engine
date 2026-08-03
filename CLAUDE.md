@@ -963,8 +963,8 @@ precedent.
 scaled floor** (60 validate bars × 12 folds = 720 evaluated bars, not
 the full 822 research bars — 2 trades short), worst-fold drawdown 27.3%
 (over the 20-25% ceiling), mean profit factor 0.32 (under the 1.3-1.5
-floor), sign test p=0.9998 and one-sided t-test p=0.978 (both point the
-wrong way), PSR (N=1) 0.034, DSR 0.0135 at the family's own N=2, DSR
+floor), sign test p=0.9998 and one-sided t-test p=0.978, PSR (N=1)
+0.034, DSR 0.0135 at the family's own N=2, DSR
 5.0×10⁻¹¹ at the project-level research N=119 (117 prior + this
 family's 2).
 

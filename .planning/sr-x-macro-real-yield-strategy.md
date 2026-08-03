@@ -487,17 +487,14 @@ best.
 
 Reported descriptively, not as a directional conclusion (see "Honest
 summary" above -- a sub-floor run is not evidence for or against the
-hypothesis): the macro signal's point estimate is the first in this
-project's history that reads as negative and fold-consistent in that
-direction (11 of 12 folds negative) rather than merely indistinguishable
-from noise. Numerically, that differs from Configuration C's near-zero
-DSR, which `sr-r` attributed to the 1h window lacking the statistical
-power to detect a real edge either way. Whether this run's numbers
-reflect anything real about the hypothesis, noise, or an artifact of
-this specific window/lookback/inversion/geometry combination is
-explicitly **not** something this single, sub-floor run can settle --
-named here as a numerical fact for a follow-up task to weigh, not as
-this task's own verdict on the hypothesis.
+hypothesis): **11 of 12 folds** report a negative Sharpe, a numeric fact
+about this run's own fold-by-fold results, stated with no interpretation
+attached. Whether this run's numbers reflect anything real about the
+hypothesis, noise, or an artifact of this specific window/lookback/
+inversion/geometry combination is explicitly **not** something this
+single, sub-floor run can settle -- named here as a numerical fact for a
+follow-up task to weigh, not as this task's own verdict on the
+hypothesis.
 
 ## Code provenance
 
