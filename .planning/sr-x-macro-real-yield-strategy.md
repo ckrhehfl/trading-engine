@@ -425,21 +425,23 @@ own standing rule, this is neither a pass nor a fail and must not be
 written up as evidence against the hypothesis on the trade-count
 technicality alone.
 
-**Substantively, stated plainly and not softened**: unlike `sr-v`'s
-INCONCLUSIVE result (whose PSR/Sharpe/trade-count all landed *close to*
-their respective bars, genuinely ambiguous), **every criterion here
-except the trade-count floor is not close to its bar at all** -- fold
-consistency 8.3% against an 80% floor, a sign test and t-test both
-pointing the wrong way, a 27.3% drawdown against a 20-25% ceiling, a
-0.32 profit factor against a 1.3-1.5 floor, and a deeply negative
-Sharpe against a positive detection floor. This is a materially
-different shape of INCONCLUSIVE than `sr-v`'s: a real signal that
-happened to fall 2 trades short of a floor would still show *some*
-directional coherence elsewhere; this one does not. The honest
-reading is that this specific run gives no support for the hypothesis
-as specified over this window and geometry -- while remaining, on the
-letter of CLAUDE.md's rule, formally unable to reject it outright given
-the sub-floor trade count.
+**The remaining metrics are reported descriptively only, not as a
+directional conclusion.** Below the trade-count floor, per CLAUDE.md's
+own standing rule, no metric here -- however it reads -- constitutes a
+pass, a fail, or evidence against the strategy, and none of them is
+grounds for a follow-up change (see "The temptation," next). Stated as
+a purely factual/statistical observation, not a verdict: this run's
+shape differs from `sr-v`'s INCONCLUSIVE result. `sr-v`'s PSR/Sharpe/
+trade-count all landed *close to* their respective bars; here, every
+criterion besides the trade-count floor itself is numerically far from
+its bar -- fold consistency 8.3% against an 80% floor, a sign test and
+t-test both landing on the low side, a 27.3% drawdown against a 20-25%
+ceiling, a 0.32 profit factor against a 1.3-1.5 floor, and a Sharpe far
+below a positive detection floor. That numerical fact is recorded here
+for completeness and for whoever designs a follow-up task to have the
+full picture -- it is not, and must not be read as, a claim about
+whether the underlying hypothesis is true or false, which this
+sub-floor run is not powered to settle in either direction.
 
 ## The temptation, disclosed rather than acted on
 
@@ -481,21 +483,21 @@ best.
 |---|---|---|---|---|---|
 | Configuration C + funding (`sr-n`, best 1h result) | 1h research, 1.84y | 117 | +0.039 | ~1.21 | REJECTED (DSR 2.0e-05) |
 | Daily TSMOM ensemble (`sr-v`, holdout) | 1d holdout, 2.95y | 1 (holdout) | +0.882 | 0.957 | INCONCLUSIVE (close to every bar) |
-| **Macro real-yield trend (this task)** | **1d research, 2.25y** | **119 (project) / 2 (family)** | **-1.303** | **1.10-1.17** | **INCONCLUSIVE-DATA-LIMITED (34 vs 36 trades); substantively negative on every other criterion** |
+| **Macro real-yield trend (this task)** | **1d research, 2.25y** | **119 (project) / 2 (family)** | **-1.303** | **1.10-1.17** | **INCONCLUSIVE-DATA-LIMITED (34 vs 36 trades)** |
 
-The macro signal is the first hypothesis in this project's history whose
-point estimate is not merely "not distinguishable from noise" but
-**actively negative and fold-consistent in that direction** (11 of 12
-folds negative). That is itself informative in a way "DSR ~= 0" alone is
-not: Configuration C's near-zero DSR reflects a real edge this project's
-1h window lacked the statistical power to detect either way (`sr-r`'s
-own finding); this result's negative point estimate, deeply negative
-fold consistency, and negative-signed sign/t-tests are not a power
-problem in the same sense -- the study saw a directionally coherent
-signal, and it was consistently in the opposite direction from the one
-that was hypothesized, on this window, at this lookback, under this
-inversion. That is a materially different, and more informative, kind of
-"not shown" than Configuration C's.
+Reported descriptively, not as a directional conclusion (see "Honest
+summary" above -- a sub-floor run is not evidence for or against the
+hypothesis): the macro signal's point estimate is the first in this
+project's history that reads as negative and fold-consistent in that
+direction (11 of 12 folds negative) rather than merely indistinguishable
+from noise. Numerically, that differs from Configuration C's near-zero
+DSR, which `sr-r` attributed to the 1h window lacking the statistical
+power to detect a real edge either way. Whether this run's numbers
+reflect anything real about the hypothesis, noise, or an artifact of
+this specific window/lookback/inversion/geometry combination is
+explicitly **not** something this single, sub-floor run can settle --
+named here as a numerical fact for a follow-up task to weigh, not as
+this task's own verdict on the hypothesis.
 
 ## Code provenance
 
