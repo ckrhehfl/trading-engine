@@ -4,14 +4,18 @@ import pytest
 
 from data.bingx_funding import FUNDING_INTERVAL_MS, FundingRow
 from data.bingx_klines import KlineRow
+from data.fred_client import ObservationRow
 from data.store import (
     connect,
     fetch_funding_rates,
     fetch_klines,
+    fetch_macro_observations,
     find_missing_funding_ranges,
+    find_missing_macro_ranges,
     find_missing_ranges,
     upsert_funding_rates,
     upsert_klines,
+    upsert_macro_observations,
 )
 
 STEP = 900_000
@@ -483,3 +487,270 @@ def test_fetch_funding_rates_accepts_a_range_not_aligned_to_funding_interval_ms(
 def test_fetch_funding_rates_rejects_inverted_range(conn):
     with pytest.raises(ValueError):
         fetch_funding_rates(conn, "BTC-USDT", FUNDING_BASE + FUNDING_STEP, FUNDING_BASE)
+
+
+# ---------------------------------------------------------------------------
+# macro_series table -- schema, upsert_macro_observations,
+# find_missing_macro_ranges, fetch_macro_observations. Keyed by
+# (series_id, observation_date), a calendar date not a fixed-step ms
+# timestamp -- gap detection here has no fixed-grid equivalent to
+# find_missing_ranges'/find_missing_funding_ranges' arithmetic-sequence
+# diff, since FRED never returns a row at all for a weekend (see
+# fred_client.py's module docstring). The tests below specifically
+# exercise that weekday-vs-weekend distinction, not just mirror the
+# klines/funding shape.
+# ---------------------------------------------------------------------------
+
+# A real Mon-Fri work week: 2026-01-05 (Mon) through 2026-01-09 (Fri).
+# 2026-01-10/11 are the following Sat/Sun. 2026-01-12 is the next Monday.
+MON = "2026-01-05"
+TUE = "2026-01-06"
+WED = "2026-01-07"
+THU = "2026-01-08"
+FRI = "2026-01-09"
+SAT = "2026-01-10"
+SUN = "2026-01-11"
+NEXT_MON = "2026-01-12"
+WORK_WEEK = [MON, TUE, WED, THU, FRI]
+
+# 2026-01-01 is a real weekday US holiday (New Year's Day observed) --
+# used for the "." missing-value-marker tests below.
+HOLIDAY_WEEKDAY = "2026-01-01"
+
+
+def _obs(observation_date: str, value: str | None = "4.0") -> ObservationRow:
+    return ObservationRow(observation_date=observation_date, value=None if value is None else Decimal(value))
+
+
+def test_connect_creates_the_macro_series_table(conn):
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(macro_series)")}
+    assert columns == {"series_id", "observation_date", "value", "fetched_at"}
+
+
+def test_connect_creates_all_three_tables_from_a_single_call(tmp_path):
+    db_path = tmp_path / "shared.sqlite3"
+    conn = connect(db_path)
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(0)])
+    upsert_funding_rates(conn, "BTC-USDT", [_funding_row(0)])
+    upsert_macro_observations(conn, "DGS10", [_obs(MON)])
+    kline_count = conn.execute("SELECT COUNT(*) FROM klines").fetchone()[0]
+    funding_count = conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0]
+    macro_count = conn.execute("SELECT COUNT(*) FROM macro_series").fetchone()[0]
+    conn.close()
+
+    assert kline_count == 1
+    assert funding_count == 1
+    assert macro_count == 1
+
+
+def test_upsert_macro_observations_inserts_new_rows_and_returns_the_inserted_count(conn):
+    inserted = upsert_macro_observations(conn, "DGS10", [_obs(d) for d in WORK_WEEK])
+
+    assert inserted == 5
+    stored = [row[0] for row in conn.execute("SELECT observation_date FROM macro_series ORDER BY observation_date")]
+    assert stored == WORK_WEEK
+
+
+def test_upsert_macro_observations_is_a_no_op_for_rows_already_present(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(MON), _obs(TUE)])
+
+    second_inserted = upsert_macro_observations(conn, "DGS10", [_obs(MON), _obs(TUE), _obs(WED)])
+
+    assert second_inserted == 1  # only WED is genuinely new
+    count = conn.execute("SELECT COUNT(*) FROM macro_series").fetchone()[0]
+    assert count == 3
+
+
+def test_upsert_macro_observations_with_empty_rows_is_a_no_op(conn):
+    assert upsert_macro_observations(conn, "DGS10", []) == 0
+    assert conn.execute("SELECT COUNT(*) FROM macro_series").fetchone()[0] == 0
+
+
+def test_upsert_macro_observations_stores_decimal_values_as_exact_text_not_float(conn):
+    precise = Decimal("4.123456789012345678")
+    upsert_macro_observations(conn, "DGS10", [ObservationRow(observation_date=MON, value=precise)])
+
+    raw = conn.execute(
+        "SELECT value, typeof(value) FROM macro_series WHERE observation_date = ?", (MON,)
+    ).fetchone()
+    assert raw[1] == "text"
+    assert Decimal(raw[0]) == precise
+    assert raw[0] == str(precise)
+
+
+def test_upsert_macro_observations_stores_null_for_the_missing_value_marker(conn):
+    # FRED's own "." marker (a real weekday holiday) is parsed to
+    # value=None by fred_client.py -- this must land as a real SQL NULL,
+    # not the literal string "None" or ".".
+    upsert_macro_observations(conn, "DGS10", [_obs(HOLIDAY_WEEKDAY, value=None)])
+
+    raw = conn.execute(
+        "SELECT value, typeof(value) FROM macro_series WHERE observation_date = ?", (HOLIDAY_WEEKDAY,)
+    ).fetchone()
+    assert raw[0] is None
+    assert raw[1] == "null"
+
+
+def test_upsert_macro_observations_scopes_rows_to_the_given_series_id(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(MON)])
+    upsert_macro_observations(conn, "SP500", [_obs(MON)])  # same date, different series
+
+    count = conn.execute("SELECT COUNT(*) FROM macro_series").fetchone()[0]
+    assert count == 2  # both kept -- PK includes series_id, not a collision
+
+
+def test_find_missing_macro_ranges_returns_the_full_weekday_range_when_store_is_empty(conn):
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, FRI)
+
+    assert gaps == [(MON, FRI)]
+
+
+def test_find_missing_macro_ranges_returns_no_gaps_when_fully_populated(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(d) for d in WORK_WEEK])
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, FRI)
+
+    assert gaps == []
+
+
+def test_find_missing_macro_ranges_does_not_flag_a_weekend_as_a_gap(conn):
+    # The core behavior this task exists to get right: a fully-populated
+    # work week plus its following weekend must show zero gaps, even
+    # though no row for SAT/SUN was ever stored -- because a weekend was
+    # never *expected* to have one. A naive "one row per calendar day"
+    # check would misfire here.
+    upsert_macro_observations(conn, "DGS10", [_obs(d) for d in WORK_WEEK])
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, SUN)
+
+    assert gaps == []
+
+
+def test_find_missing_macro_ranges_detects_a_gap_that_spans_a_weekend(conn):
+    # THU and FRI missing, then the weekend (never expected), then the
+    # next Monday present. The gap must stop at FRI, not swallow the
+    # weekend dates into its own (start, end) bounds as if they were
+    # also missing weekdays.
+    upsert_macro_observations(conn, "DGS10", [_obs(MON), _obs(TUE), _obs(WED), _obs(NEXT_MON)])
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, NEXT_MON)
+
+    assert gaps == [(THU, FRI)]
+
+
+def test_find_missing_macro_ranges_treats_a_null_value_row_as_present_not_missing(conn):
+    # A stored "." (holiday) row must count as present, exactly like any
+    # other stored row -- only a date with no row at all is a gap.
+    upsert_macro_observations(
+        conn, "DGS10", [_obs(HOLIDAY_WEEKDAY, value=None), _obs("2026-01-02")]
+    )
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", HOLIDAY_WEEKDAY, "2026-01-02")
+
+    assert gaps == []
+
+
+def test_find_missing_macro_ranges_detects_a_leading_gap(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(d) for d in [WED, THU, FRI]])
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, FRI)
+
+    assert gaps == [(MON, TUE)]
+
+
+def test_find_missing_macro_ranges_detects_a_trailing_gap(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(d) for d in [MON, TUE, WED]])
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, FRI)
+
+    assert gaps == [(THU, FRI)]
+
+
+def test_find_missing_macro_ranges_detects_a_mid_range_gap(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(d) for d in [MON, TUE, FRI]])  # WED, THU missing
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, FRI)
+
+    assert gaps == [(WED, THU)]
+
+
+def test_find_missing_macro_ranges_is_scoped_to_series_id(conn):
+    upsert_macro_observations(conn, "SP500", [_obs(d) for d in WORK_WEEK])  # different series
+
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, FRI)
+
+    assert gaps == [(MON, FRI)]  # SP500 rows don't count as DGS10 coverage
+
+
+def test_find_missing_macro_ranges_accepts_a_single_day_range(conn):
+    gaps = find_missing_macro_ranges(conn, "DGS10", MON, MON)
+
+    assert gaps == [(MON, MON)]
+
+
+def test_find_missing_macro_ranges_returns_no_gaps_for_a_weekend_only_range(conn):
+    # Neither day in [SAT, SUN] is ever expected to have a row.
+    gaps = find_missing_macro_ranges(conn, "DGS10", SAT, SUN)
+
+    assert gaps == []
+
+
+def test_find_missing_macro_ranges_rejects_inverted_range(conn):
+    with pytest.raises(ValueError):
+        find_missing_macro_ranges(conn, "DGS10", FRI, MON)
+
+
+# ---------------------------------------------------------------------------
+# fetch_macro_observations
+# ---------------------------------------------------------------------------
+
+
+def test_fetch_macro_observations_returns_rows_in_range_ordered_ascending(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(FRI), _obs(MON), _obs(WED)])
+
+    rows = fetch_macro_observations(conn, "DGS10", MON, FRI)
+
+    assert [r.observation_date for r in rows] == [MON, WED, FRI]
+
+
+def test_fetch_macro_observations_excludes_rows_outside_the_inclusive_range(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(d) for d in WORK_WEEK])
+
+    rows = fetch_macro_observations(conn, "DGS10", TUE, THU)
+
+    assert [r.observation_date for r in rows] == [TUE, WED, THU]  # both ends included
+
+
+def test_fetch_macro_observations_returns_empty_list_when_nothing_stored(conn):
+    assert fetch_macro_observations(conn, "DGS10", MON, FRI) == []
+
+
+def test_fetch_macro_observations_is_scoped_to_series_id(conn):
+    upsert_macro_observations(conn, "SP500", [_obs(MON)])
+    upsert_macro_observations(conn, "DGS10", [_obs(MON)])
+
+    rows = fetch_macro_observations(conn, "DGS10", MON, MON)
+
+    assert len(rows) == 1
+
+
+def test_fetch_macro_observations_returns_exact_decimal_values_not_float_rounded(conn):
+    precise = Decimal("4.123456789012345678")
+    upsert_macro_observations(conn, "DGS10", [ObservationRow(observation_date=MON, value=precise)])
+
+    rows = fetch_macro_observations(conn, "DGS10", MON, MON)
+
+    assert rows[0].value == precise
+
+
+def test_fetch_macro_observations_returns_none_for_a_stored_missing_value_marker_row(conn):
+    upsert_macro_observations(conn, "DGS10", [_obs(HOLIDAY_WEEKDAY, value=None)])
+
+    rows = fetch_macro_observations(conn, "DGS10", HOLIDAY_WEEKDAY, HOLIDAY_WEEKDAY)
+
+    assert rows[0].value is None
+
+
+def test_fetch_macro_observations_rejects_inverted_range(conn):
+    with pytest.raises(ValueError):
+        fetch_macro_observations(conn, "DGS10", FRI, MON)
