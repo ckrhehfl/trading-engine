@@ -161,6 +161,21 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/sr-u-preregistered-attempt-spec.md",
     ),
+    # --- macro-conditioned (first genuinely non-price-derived signal;
+    # ordinary iterative research on the untouched BTC 1d RESEARCH split,
+    # not a pre-registered holdout attempt) --------------------------------
+    # Registered as `strategy_family="macro-conditioned"` at run time too
+    # (see the real walk-forward driver in
+    # `.planning/sr-x-macro-real-yield-strategy.md`), so this entry is a
+    # fail-closed fallback, not the only way this run resolves -- kept
+    # current per CLAUDE.md's amended Eligibility Bar clause 2 (a DSR
+    # computed against an "unmapped" resolution is inadmissible), in case
+    # a future runner ever fails to pass `strategy_family=` explicitly.
+    "macro-real-yield-trend": FamilyEntry(
+        family="macro-conditioned",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/sr-x-macro-real-yield-strategy.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them

@@ -813,7 +813,7 @@ equity-curve retention has to be built before the trigger can ever fire.
 That is a further reason this is a deferral rather than a near-term plan,
 not a reason to weaken the condition.
 
-### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`)
+### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`; first macro-conditioned attempt `sr-x`, 2026-08-04)
 
 Eight strategy attempts across **four research families** (plus
 infrastructure demos) were built and walk-forward validated against real
@@ -933,6 +933,58 @@ another lookback set" — the next move is a named structural change,
 options (2) and (3) above, not another grid on any timeframe against
 any signal class. Whether and how to pursue either is a human
 `Discuss`, not resolved here.
+
+**`sr-x` (2026-08-04) ran the first genuinely non-price-derived signal
+this project has ever tested: a 10-year real-yield (`DFII10`, via FRED)
+trend, INVERTED (falling real yields → BTC-bullish/long; rising →
+BTC-bearish/short), against the untouched BTC 1d **research** split
+(2024-04-27 onward — never the spent 1d holdout), via ordinary
+iterative walk-forward, not a pre-registered holdout attempt.
+Zero-fitted-parameter (`total_candidates: 1`, a single pre-committed
+63-trading-day lookback — the middle of `daily_tsmom_ensemble.py`'s own
+literature-sourced 21/63/126/252 set), sizing via the standing 20%-vol-
+target convention, no ADX/ATR/funding/price-momentum combination — a
+clean, standalone test. `train_bars=90, validate_bars=60, step_bars=60`
+→ 12 folds over 822 bars, chosen by bar-count arithmetic alone before
+the run, matching this project's own detection-floor-driven fold-sizing
+precedent.
+
+**Result (`run_id=848a9f13-9fc7-478c-90ac-70cf03a8025c`,
+`strategy_family=macro-conditioned`): mean annualized Sharpe −1.303**
+(1 of 12 folds positive), **34 trades against a 36-trade frequency-
+scaled floor** (2 short), worst-fold drawdown 27.3% (over the 20-25%
+ceiling), mean profit factor 0.32 (under the 1.3-1.5 floor), sign test
+p=0.9998 and one-sided t-test p=0.978 (both point the wrong way), PSR
+(N=1) 0.034, DSR 0.0135 at the family's own N=2, DSR 5.0×10⁻¹¹ at the
+project-level research N=119 (117 prior + this family's 2).
+
+**Verdict: formally INCONCLUSIVE-DATA-LIMITED** (the 36-trade floor
+governs first, per the standing rule above — "neither a pass nor a
+fail... not evidence against the strategy"), but **substantively
+different in character from `sr-v`'s INCONCLUSIVE**: every other
+criterion is not merely short of its bar but decisively on the wrong
+side of it (8.3% fold consistency against an 80% floor; a deeply
+negative, fold-consistent point estimate against a positive ~1.10-1.17
+detection floor) — a directionally coherent signal that ran opposite to
+the hypothesized direction on this window, at this lookback, under this
+inversion, not a power problem the way Configuration C's near-zero DSR
+was. Three temptations (loosen the fold geometry to clear the trade
+floor; flip the inversion; shorten the lookback) were named and not
+acted on, matching `sr-v`'s own precedent for handling a near-miss
+honestly. Full result, statistical detail, and the real `DFII10`
+backfill (6,151 rows, 2003-01-02 onward): `.planning/sr-x-macro-real-
+yield-strategy.md`.
+
+This does not by itself close off the macro-data-source remedy the way
+`sr-v` closed off BTC-only price signals — one lookback/inversion/
+geometry combination on one FRED series is a first data point, not an
+exhaustive test of "is macro data useful at all" (`DGS10`/`DTWEXBGS`/
+`SP500` remain uncached-as-signals; `sr-w` cached all three for exactly
+this reason). Any follow-up (a different lookback, the un-inverted
+reading, a different fold geometry, a different series) is a
+**separate, pre-committed** task per this project's standing
+"no tuning after seeing a result" discipline — not a same-PR retry, and
+not resolved here.
 
 ## Tooling Stack
 

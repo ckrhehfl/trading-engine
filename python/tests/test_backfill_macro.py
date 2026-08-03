@@ -246,7 +246,7 @@ def test_main_defaults_start_to_the_series_own_verified_observation_start(monkey
     assert stored == [real_start]
 
 
-def test_main_defaults_to_all_three_series_when_none_specified(monkeypatch, server, tmp_path):
+def test_main_defaults_to_all_series_when_none_specified(monkeypatch, server, tmp_path):
     monkeypatch.setenv("FRED_API_KEY", FAKE_API_KEY)
     for series_id in SERIES_START_DATE:
         server.set_observation(series_id, SERIES_START_DATE[series_id], "1.0")
@@ -292,7 +292,12 @@ def test_main_sleeps_between_series_but_not_before_the_first(monkeypatch, server
         ]
     )
 
-    # 3 series -> 2 boundaries -> exactly 2 sleeps, all at INTER_REQUEST_DELAY_S
-    # (each series has exactly one gap here, so none of sync_macro_range's
-    # own within-call inter-gap sleeps fire).
-    assert sleep_calls == [INTER_REQUEST_DELAY_S, INTER_REQUEST_DELAY_S]
+    # N series -> N-1 boundaries -> exactly N-1 sleeps, all at
+    # INTER_REQUEST_DELAY_S (each series has exactly one gap here, so none
+    # of sync_macro_range's own within-call inter-gap sleeps fire). Derived
+    # from SERIES_START_DATE's own length rather than hardcoded, so this
+    # test does not silently stop covering the boundary count the moment a
+    # future task adds a fifth series the way this task added a fourth
+    # (DFII10, Strategy Research Task X).
+    expected_boundary_sleeps = len(SERIES_START_DATE) - 1
+    assert sleep_calls == [INTER_REQUEST_DELAY_S] * expected_boundary_sleeps
