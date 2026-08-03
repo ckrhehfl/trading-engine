@@ -75,8 +75,8 @@ klines in non-decreasing date order, which is the order
 `KlineWindow(klines, i + 1)`).
 """
 
+from collections.abc import Sequence
 from decimal import Decimal
-from typing import Sequence
 
 from backtest.kline import Kline
 from data.fred_client import ObservationRow

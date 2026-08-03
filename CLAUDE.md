@@ -979,8 +979,8 @@ This does not by itself close off the macro-data-source remedy the way
 `sr-v` closed off BTC-only price signals — one lookback/inversion/
 geometry combination on one FRED series is a first data point, not an
 exhaustive test of "is macro data useful at all" (`DGS10`/`DTWEXBGS`/
-`SP500` remain uncached-as-signals; `sr-w` cached all three for exactly
-this reason). Any follow-up (a different lookback, the un-inverted
+`SP500` are cached but never yet tested as signals; `sr-w` cached all
+three for exactly this reason). Any follow-up (a different lookback, the un-inverted
 reading, a different fold geometry, a different series) is a
 **separate, pre-committed** task per this project's standing
 "no tuning after seeing a result" discipline — not a same-PR retry, and

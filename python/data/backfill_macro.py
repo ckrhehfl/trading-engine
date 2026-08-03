@@ -137,7 +137,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="append",
         dest="series_ids",
         choices=sorted(SERIES_START_DATE),
-        help="repeatable; default: all three candidate series (%s)" % ", ".join(sorted(SERIES_START_DATE)),
+        help="repeatable; default: every candidate series (%s)" % ", ".join(sorted(SERIES_START_DATE)),
     )
     parser.add_argument(
         "--start",

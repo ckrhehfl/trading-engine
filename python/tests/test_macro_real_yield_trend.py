@@ -371,7 +371,18 @@ class TestFitNoSearch:
             fee_bps=Decimal("0"),
             slippage_bps=Decimal("0"),
             bars_per_day=1,
-            macro_observations=[_obs(_date_str(-10), "2.0")],
+            lookback=2,
+            vol_period=2,
+            # Enough REAL observations, with lookback=2, to produce a
+            # non-empty trend-sign series (see
+            # test_fit_logs_a_real_backtest_when_the_trend_actually_signals
+            # below) -- a single-observation fixture would make
+            # compute_real_yield_trend_signs return [] for the default
+            # lookback=63, so every test in this class would silently
+            # exercise a permanently-flat, trade-free fit() path without
+            # any of them asserting on that fact. CodeRabbit review
+            # finding on this PR.
+            macro_observations=[_obs(_date_str(i - 10), v) for i, v in enumerate(["2.0", "2.1", "2.2", "2.0", "1.9"])],
             runs_path=str(tmp_path / "experiments.jsonl"),
         )
         kwargs.update(overrides)
@@ -403,6 +414,23 @@ class TestFitNoSearch:
         assert result.position_sign == 0
         assert result.position_quantity == Decimal(0)
         assert trainable.lookback == 21
+
+    def test_fit_logs_a_real_backtest_when_the_trend_actually_signals(self, tmp_path):
+        # Exercises the actual trade-producing path (the fixture's default
+        # lookback=2 + 5 real observations produce a real, non-empty trend
+        # sign), not just the candidate-count/fresh-instance bookkeeping
+        # every other test in this class checks.
+        trainable = self._trainable(tmp_path)
+        klines = _klines(50)
+        trainable.fit(klines, {}, parent_run_id="parent-5")
+        records = list(read_records(str(tmp_path / "experiments.jsonl")))
+        candidate_records = [r for r in records if r.get("parent_run_id") == "parent-5"]
+        assert len(candidate_records) == 1
+        aggregate_metrics = candidate_records[0]["aggregate_metrics"]
+        fold_results = candidate_records[0]["fold_results"]
+        assert aggregate_metrics["num_trades"] >= 1
+        assert len(fold_results) == 1
+        assert fold_results[0]["metrics"]["num_trades"] == aggregate_metrics["num_trades"]
 
     def test_default_lookback_is_63_trading_days(self):
         assert DEFAULT_LOOKBACK_TRADING_DAYS == 63
@@ -476,12 +504,16 @@ class TestFitNeverTouchesValidateData:
         )
         assert result.aggregate["fold_count"] >= 1
         assert len(seen_train_klines) == result.aggregate["fold_count"]
-        for fold_result, observed_train in zip(result.folds, seen_train_klines):
+        for fold_result, observed_train in zip(result.folds, seen_train_klines, strict=True):
             expected_train = klines[fold_result.train_start_index : fold_result.train_end_index]
             assert observed_train == expected_train
-            # And explicitly NOT the validate slice.
-            validate_slice = klines[fold_result.validate_start_index : fold_result.validate_end_index]
-            assert observed_train != validate_slice or fold_result.train_start_index == fold_result.validate_start_index
+            # And explicitly NOT any bar from the validate range -- an
+            # index-boundary check, not a value comparison: every kline in
+            # this test shares the same constant price, so a value
+            # comparison against the validate slice would pass or fail by
+            # coincidence of length rather than by evidence (CodeRabbit
+            # review finding on this PR).
+            assert fold_result.train_end_index <= fold_result.validate_start_index
 
 
 class TestRunWalkForwardIntegrationSynthetic:
