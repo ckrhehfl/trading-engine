@@ -55,6 +55,18 @@ SERIES_START_DATE = {
     "DTWEXBGS": "2006-01-02",  # Nominal Broad U.S. Dollar Index
     "SP500": "2016-08-01",  # S&P 500
     "DGS10": "1962-01-02",  # 10-Year Treasury Constant Maturity Yield
+    # 10-Year Treasury Inflation-Indexed Security, Constant Maturity (the
+    # real yield) -- added by Strategy Research Task X
+    # (`.planning/sr-x-macro-real-yield-strategy.md`) for the macro-real-
+    # yield-trend strategy. Verified live via the `/fred/series` metadata
+    # endpoint 2026-08-03/04, the same one-time-by-hand process sr-w used
+    # for the original three series (see this module's own docstring for
+    # why there is nothing to probe here -- FRED publishes each series'
+    # real start itself). TIPS (the underlying security this yield is
+    # derived from) only began regular reissuance in 2003, well before
+    # this project's earliest BTC data (2021-05-14), so this addition
+    # does not constrain the macro+BTC joint window.
+    "DFII10": "2003-01-02",  # 10-Year Treasury Inflation-Indexed Security
 }
 
 # Same incremental-write reasoning as backfill.py's/backfill_funding.py's
@@ -125,7 +137,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         action="append",
         dest="series_ids",
         choices=sorted(SERIES_START_DATE),
-        help="repeatable; default: all three candidate series (%s)" % ", ".join(sorted(SERIES_START_DATE)),
+        help=f"repeatable; default: every candidate series ({', '.join(sorted(SERIES_START_DATE))})",
     )
     parser.add_argument(
         "--start",

@@ -129,6 +129,7 @@ def test_curated_map_covers_the_families_named_in_the_planning_doc():
         "volume",
         "funding",
         "daily-tsmom",
+        "macro-conditioned",
         "infrastructure",
     }
 
