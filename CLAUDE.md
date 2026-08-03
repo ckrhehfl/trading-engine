@@ -813,7 +813,7 @@ equity-curve retention has to be built before the trigger can ever fire.
 That is a further reason this is a deferral rather than a near-term plan,
 not a reason to weaken the condition.
 
-### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`; first macro-conditioned attempt `sr-x`, 2026-08-04)
+### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`; first macro-conditioned attempt `sr-x`, 2026-08-03)
 
 Eight strategy attempts across **four research families** (plus
 infrastructure demos) were built and walk-forward validated against real
@@ -934,9 +934,17 @@ options (2) and (3) above, not another grid on any timeframe against
 any signal class. Whether and how to pursue either is a human
 `Discuss`, not resolved here.
 
-**`sr-x` (2026-08-04) ran the first genuinely non-price-derived signal
-this project has ever tested: a 10-year real-yield (`DFII10`, via FRED)
-trend, INVERTED (falling real yields → BTC-bullish/long; rising →
+**`sr-x` (2026-08-03) is the first real pursuit of remedy (3) named
+above ("a genuinely different data source entirely") — authorized
+directly via this task's own brief, which pre-decided the specific
+hypothesis before any code was written ("decided, not yours to
+redesign"); that authorization is the human `Discuss` remedy (3)'s
+listing called for, for this one specific instance (FRED macro data,
+`DFII10` specifically), not a resolution of the broader (2)-vs-(3)
+comparison, which remains open.** It ran the first genuinely
+non-price-derived signal this project has ever tested: a 10-year
+real-yield (`DFII10`, via FRED) trend, INVERTED (falling real yields →
+BTC-bullish/long; rising →
 BTC-bearish/short), against the untouched BTC 1d **research** split
 (2024-04-27 onward — never the spent 1d holdout), via ordinary
 iterative walk-forward, not a pre-registered holdout attempt.
