@@ -163,18 +163,17 @@ trend.py` has zero changes in this task's diff.
 ### 4b. A wording precision this task's own existence triggers, fixed in `CLAUDE.md` (not in this file)
 
 `SP500` is itself a price index — this task's own signal is price-derived,
-just not derived from **BTC's own** price. CLAUDE.md's existing `sr-x`
-paragraph described that task's `DFII10` real-yield signal as "the first
-genuinely non-price-derived signal this project has ever tested," which
-was accurate for a Treasury real yield (Fed/Treasury data, no price
-concept at all) but becomes an imprecise thing to keep saying, project-
-wide, once this task adds a genuine price index to the same
-`macro-conditioned` family under the same descriptive umbrella. Fixed at
-the source (`CLAUDE.md`'s `sr-x` paragraph, not duplicated or restated
-here): "non-price-derived" → "non-BTC-price-derived", with a pointer to
-this task. This document itself never contained the imprecise phrase —
-noted here only so a reader following a review comment anchored near
-this section finds the actual fix's real location rather than a dead end.
+just not derived from **BTC's own** price. Before this task existed,
+`CLAUDE.md`'s `sr-x` paragraph described `DFII10`'s real-yield signal
+with a phrase accurate for a Treasury real yield (Fed/Treasury data, no
+price concept at all) but that becomes imprecise, project-wide, once
+this task adds a genuine price index to the same `macro-conditioned`
+family under the same descriptive umbrella. **Fixed at the source**:
+`CLAUDE.md`'s `sr-x` paragraph now distinguishes "not derived from BTC's
+own price" from the broader, no-longer-accurate "not derived from any
+price at all." This document does not restate or own that wording —
+this note exists only so a reader following a review comment anchored
+near this section finds the fix's real location rather than a dead end.
 
 ### 5. Sizing, order emission, zero-trend tie-break: identical to the sibling, not re-justified
 
