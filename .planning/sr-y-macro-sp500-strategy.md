@@ -255,12 +255,22 @@ to a stray local file
 (`python/runs/experiments.jsonl`, inside the gitignored worktree
 `runs/` path) instead.
 
-**Fix, not a re-run**: these 12 records are a byte-for-byte faithful
-account of a real, already-computed, deterministic diagnostic (no search,
-no randomness — `total_candidates: 1` — so a second logging destination
-changes nothing about their content). Re-running the walk-forward to fix
-a pure logging-destination bug would have created an unjustified second
-real trial against research data for no statistical reason. Instead, the
+**Fix, not a re-run**: these 12 records' computed *metrics* (Sharpe,
+drawdown, trade count, equity, etc.) are deterministic given fixed
+inputs and no parameter search (`total_candidates: 1` — a second logging
+destination changes nothing about what those metrics are). This does
+NOT mean the records are byte-identical across a hypothetical re-run:
+each record's own `run_id` (`uuid4()`-generated) and `logged_at`
+(execution-time timestamp) would differ on a fresh execution, same as
+any other logged run in this project. The 12 records that actually exist
+were copied verbatim from the stray file to the real log, not
+regenerated — so the specific bytes now in the real log (including their
+real `run_id`/`logged_at` values) are exactly the bytes the original,
+buggy execution produced, unmodified by the fix. Re-running the
+walk-forward to fix a pure logging-destination bug would have created an
+unjustified second real trial against research data for no statistical
+reason, and would additionally have produced different `run_id`/
+`logged_at` values with no compensating benefit. Instead, the
 12 stray lines were appended verbatim to the real shared
 `runs/experiments.jsonl` (verified: `parent_run_id` on all 12 correctly
 points at `e0abfeaa-...`, the real outer run already logged there,
