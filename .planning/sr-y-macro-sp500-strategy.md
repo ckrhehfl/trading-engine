@@ -209,6 +209,7 @@ for this task** — `FRED_API_KEY` was never read or needed.
 | `python/research/lineage.py` | `FAMILY_BY_STRATEGY_ID["macro-sp500-trend"]` added, same `"macro-conditioned"` family as `macro-real-yield-trend`, citing this document. |
 | `python/tests/test_macro_sp500_trend.py` | **new**, 32 tests, TDD (written and confirmed failing on `ModuleNotFoundError: No module named 'research.strategies.macro_sp500_trend'` before the strategy module existed — true red-green). |
 | `.planning/sr-y-macro-sp500-strategy.md` | this document. |
+| `.planning/sr-y-appended-log-records.jsonl` | **new.** A sanitized, git-tracked copy of the 12 real log records affected by the disclosed logging bug below — see "Reproducibility of the appended records". |
 | `CLAUDE.md` | "Strategy Attempts So Far" updated with this attempt. |
 
 **Zero new dependencies. `research/macro_alignment.py` and
@@ -266,32 +267,37 @@ points at `e0abfeaa-...`, the real outer run already logged there,
 `candidate_index=0`/`total_candidates=1` on all 12, matching the
 sibling's own shape exactly), and the stray local file was deleted.
 
-**Reproducibility of the appended records, without a git-tracked log
-artifact.** `runs/` is deliberately `.gitignore`d project-wide (it is
-the shared runtime data cache, not source) — no prior strategy-research
-task (`sr-v` through `sr-x`) has ever committed a copy of
-`runs/experiments.jsonl` or a slice of it to git, and this task does not
-introduce that as a new precedent. The verification trail instead relies
-on what this project already uses for run identity: each of the 12
-appended records carries its own real `run_id`
-(`9d5f680b-4867-4e49-b465-b71a06e4b68f` through
-`38bbe556-805b-4444-a77a-b8e67251811b`, all with `parent_run_id` pointing
-at the real outer run `e0abfeaa-cfb3-49b5-b247-955a54789baa`, matching
-the sibling's own already-logged shape record-for-record), and — as one
-further, concrete, independently reproducible check specific to this
-disclosure — the SHA-256 of the 12 lines exactly as appended (concatenated
-in file order, computed from the real shared log after the append):
+**Reproducibility of the appended records.** `runs/` itself stays
+`.gitignore`d project-wide (it is the shared runtime data cache, not
+source) — this task does not start committing that live file, matching
+every prior strategy-research task (`sr-v` through `sr-x`). Instead, a
+**sanitized, git-tracked copy of exactly the 12 corrected records** is
+committed alongside this document:
+`.planning/sr-y-appended-log-records.jsonl` — the literal 12 JSONL lines
+appended to the real shared `runs/experiments.jsonl` (verified
+non-sensitive before committing: no secrets, no account identifiers,
+no credentials — purely backtest diagnostic numbers: per-fold Sharpe/
+drawdown/trade-count/equity figures, bar-index ranges, and this run's
+own real UUIDs/timestamps). SHA-256 of that committed file:
 
 ```text
 82996276-189578f4-f321b3bd-09cef39f-ce74c6fb-15a3ec54-9c598fd2-670c7b15
 ```
 
-reproducible via
-`sha256sum` (or the equivalent) against those 12 `run_id`s' lines in the
-real `runs/experiments.jsonl` by anyone with access to that file — the
-same "reproducible from the real artifact, not asserted" standard this
-document's own code-provenance section (below) applies to the source
-files.
+— independently reproducible via `sha256sum
+.planning/sr-y-appended-log-records.jsonl` against the committed file
+itself, and cross-checkable against the real shared
+`runs/experiments.jsonl` (each of the 12 `run_id`s,
+`9d5f680b-4867-4e49-b465-b71a06e4b68f` through
+`38bbe556-805b-4444-a77a-b8e67251811b`, all carrying `parent_run_id`
+pointing at the real outer run `e0abfeaa-cfb3-49b5-b247-955a54789baa`,
+matching the sibling's own already-logged shape record-for-record) by
+anyone with access to that live file. This is a documentation-level
+sidecar for this specific disclosure, not a general change to how this
+project logs or tracks experiment records — the live `runs/
+experiments.jsonl` remains the single source of truth for every run,
+including these 12; this file is a fixed, timestamped copy of a slice
+of it, not a second live log.
 
 **Consequence for trial accounting, corrected before any DSR/PSR number
 below was computed**: before this fix, `research.overfitting_check.
