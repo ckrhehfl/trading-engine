@@ -942,7 +942,9 @@ redesign"); that authorization is the human `Discuss` remedy (3)'s
 listing called for, for this one specific instance (FRED macro data,
 `DFII10` specifically), not a resolution of the broader (2)-vs-(3)
 comparison, which remains open.** It ran the first genuinely
-non-price-derived signal this project has ever tested: a 10-year
+non-BTC-price-derived signal this project has ever tested (precise
+wording, not "non-price-derived" generally — `sr-y` below tests `SP500`,
+itself a price index, just not BTC's own): a 10-year
 real-yield (`DFII10`, via FRED) trend, INVERTED (falling real yields →
 BTC-bullish/long; rising →
 BTC-bearish/short), against the untouched BTC 1d **research** split

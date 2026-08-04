@@ -89,12 +89,16 @@ class TestComputeSp500TrendSigns:
             compute_sp500_trend_signs([_obs("2024-01-01", "2.0")], lookback=-1)
 
     def test_rising_value_over_the_lookback_produces_positive_sign(self):
-        observations = [_obs(f"2024-01-{d:02d}", v) for d, v in zip(range(1, 5), ["2.00", "2.10", "2.20", "2.50"])]
+        observations = [
+            _obs(f"2024-01-{d:02d}", v) for d, v in zip(range(1, 5), ["2.00", "2.10", "2.20", "2.50"], strict=True)
+        ]
         result = compute_sp500_trend_signs(observations, lookback=2)
         assert [row.value for row in result] == [Decimal(1), Decimal(1)]
 
     def test_falling_value_over_the_lookback_produces_negative_sign(self):
-        observations = [_obs(f"2024-01-{d:02d}", v) for d, v in zip(range(1, 5), ["2.50", "2.20", "2.10", "2.00"])]
+        observations = [
+            _obs(f"2024-01-{d:02d}", v) for d, v in zip(range(1, 5), ["2.50", "2.20", "2.10", "2.00"], strict=True)
+        ]
         result = compute_sp500_trend_signs(observations, lookback=2)
         assert [row.value for row in result] == [Decimal(-1), Decimal(-1)]
 
@@ -445,6 +449,15 @@ class TestFitNeverTouchesValidateData:
 
     def test_fit_is_only_ever_called_with_each_folds_train_klines(self, tmp_path, monkeypatch):
         klines = _klines(40, price="100")
+        # Deliberately inert: a single macro observation against
+        # lookback=1 leaves `compute_sp500_trend_signs` with only one real
+        # observation to work with, which is fewer than `lookback + 1`
+        # needed to produce even one trend row -- so `trend_observations`
+        # is `[]` and the strategy never emits a signal or an order for
+        # the whole test. That is fine here: this test's only concern is
+        # `fit()`'s own call boundaries (which klines each fold's `fit()`
+        # call receives), not order emission, so a fold producing zero
+        # trades does not weaken what this test actually checks.
         macro_observations = [_obs(_date_str(-5), "2.0")]
         trainable = MacroSp500TrendTrainable(
             strategy_id="test-macro-sp500-wf-fit-scope",

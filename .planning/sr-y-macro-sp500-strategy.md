@@ -183,9 +183,9 @@ the S&P 500 signal alone.
 ## `SP500` cache verification (no new backfill needed)
 
 Verified directly against the real shared cache
-(`/mnt/c/Dev/trading-engine/python/data/var/klines.sqlite3`) before
-writing any code, per this task's own instruction to check rather than
-assume:
+(`python/data/var/klines.sqlite3`, gitignored, populated by
+`data/backfill_macro.py`) before writing any code, per this task's own
+instruction to check rather than assume:
 
 ```text
 SP500:   2,610 rows, 2016-08-01 through 2026-07-31, 96 null (holiday) rows
@@ -241,8 +241,9 @@ honestly rather than silently fixing them: the real walk-forward driver
 script constructed `MacroSp500TrendTrainable` without passing
 `runs_path=` explicitly, so it fell back to
 `experiment_log.DEFAULT_RUNS_PATH` ("runs/experiments.jsonl", relative
-to cwd) instead of the real shared
-`/mnt/c/Dev/trading-engine/runs/experiments.jsonl`. The outer
+to cwd) instead of the real shared `runs/experiments.jsonl` at the
+repository root (gitignored; the shared runtime data cache every prior
+strategy-research task has logged to). The outer
 `run_walk_forward(...)` call in the same script DID pass `runs_path=`
 explicitly, so the single 12-fold aggregate record (the one that matters
 for every metric reported below) landed in the correct shared log
@@ -264,6 +265,33 @@ real trial against research data for no statistical reason. Instead, the
 points at `e0abfeaa-...`, the real outer run already logged there,
 `candidate_index=0`/`total_candidates=1` on all 12, matching the
 sibling's own shape exactly), and the stray local file was deleted.
+
+**Reproducibility of the appended records, without a git-tracked log
+artifact.** `runs/` is deliberately `.gitignore`d project-wide (it is
+the shared runtime data cache, not source) — no prior strategy-research
+task (`sr-v` through `sr-x`) has ever committed a copy of
+`runs/experiments.jsonl` or a slice of it to git, and this task does not
+introduce that as a new precedent. The verification trail instead relies
+on what this project already uses for run identity: each of the 12
+appended records carries its own real `run_id`
+(`9d5f680b-4867-4e49-b465-b71a06e4b68f` through
+`38bbe556-805b-4444-a77a-b8e67251811b`, all with `parent_run_id` pointing
+at the real outer run `e0abfeaa-cfb3-49b5-b247-955a54789baa`, matching
+the sibling's own already-logged shape record-for-record), and — as one
+further, concrete, independently reproducible check specific to this
+disclosure — the SHA-256 of the 12 lines exactly as appended (concatenated
+in file order, computed from the real shared log after the append):
+
+```text
+82996276-189578f4-f321b3bd-09cef39f-ce74c6fb-15a3ec54-9c598fd2-670c7b15
+```
+
+reproducible via
+`sha256sum` (or the equivalent) against those 12 `run_id`s' lines in the
+real `runs/experiments.jsonl` by anyone with access to that file — the
+same "reproducible from the real artifact, not asserted" standard this
+document's own code-provenance section (below) applies to the source
+files.
 
 **Consequence for trial accounting, corrected before any DSR/PSR number
 below was computed**: before this fix, `research.overfitting_check.
@@ -551,7 +579,7 @@ python/research/lineage.py
 05830181-c5b489f5-9eb1911f-74321145-1ca55b1c-195ebf33-9ef1e1fd-c4b74da9
 ```
 
-Neither file was modified after these hashes were computed and before
+None of these files were modified after these hashes were computed and before
 this PR was opened. (Full, unambiguous digests are also independently
 reproducible at any time via `sha256sum` against the final committed
 files, which is the authoritative source — the values above are a
