@@ -176,6 +176,20 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/sr-x-macro-real-yield-strategy.md",
     ),
+    # Second macro-conditioned attempt (S&P 500 trend, NOT inverted --
+    # same family as the real-yield attempt above, same hypothesis class,
+    # a different specific FRED variable). Registered as
+    # `strategy_family="macro-conditioned"` at run time too (see the real
+    # walk-forward driver in `.planning/sr-y-macro-sp500-strategy.md`), so
+    # this entry is a fail-closed fallback, not the only way this run
+    # resolves -- kept current per CLAUDE.md's amended Eligibility Bar
+    # clause 2, in case a future runner ever fails to pass
+    # `strategy_family=` explicitly.
+    "macro-sp500-trend": FamilyEntry(
+        family="macro-conditioned",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/sr-y-macro-sp500-strategy.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them

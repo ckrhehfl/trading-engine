@@ -813,7 +813,7 @@ equity-curve retention has to be built before the trigger can ever fire.
 That is a further reason this is a deferral rather than a near-term plan,
 not a reason to weaken the condition.
 
-### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`; first macro-conditioned attempt `sr-x`, 2026-08-03)
+### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`; first macro-conditioned attempt `sr-x`, 2026-08-03; second and, per explicit human decision, last planned macro-conditioned attempt `sr-y`, 2026-08-04)
 
 Eight strategy attempts across **four research families** (plus
 infrastructure demos) were built and walk-forward validated against real
@@ -984,13 +984,75 @@ macro-real-yield-strategy.md`.
 This does not by itself close off the macro-data-source remedy the way
 `sr-v` closed off BTC-only price signals — one lookback/inversion/
 geometry combination on one FRED series is a first data point, not an
-exhaustive test of "is macro data useful at all" (`DGS10`/`DTWEXBGS`/
-`SP500` are cached but never yet tested as signals; `sr-w` cached all
-three for exactly this reason). Any follow-up (a different lookback, the un-inverted
-reading, a different fold geometry, a different series) is a
-**separate, pre-committed** task per this project's standing
-"no tuning after seeing a result" discipline — not a same-PR retry, and
-not resolved here.
+exhaustive test of "is macro data useful at all". `sr-y` (immediately
+below) is the second data point, on the same window and fold geometry.
+
+**`sr-y` (2026-08-04) is the second and, per explicit human decision
+made at that task's own outset, last planned macro-conditioned
+attempt.** It tests the S&P 500 (`SP500`, via FRED)'s own trend, NOT
+INVERTED (rising S&P 500/risk-on → BTC-bullish/long; falling → BTC-
+bearish/short — the opposite structural shape from `sr-x`'s inverse
+real-yield relationship), against the same untouched BTC 1d
+**research** split `sr-x` used, via ordinary iterative walk-forward.
+Same zero-fitted-parameter discipline (`total_candidates: 1`), the SAME
+63-trading-day lookback `sr-x` used — reused deliberately for direct
+comparability between the two macro attempts rather than re-derived —
+same 20%-vol-target sizing, same Option B order emission, no ADX/ATR/
+funding/price-momentum/real-yield combination. Same fold geometry as
+`sr-x` (`train_bars=90, validate_bars=60, step_bars=60` → 12 folds over
+822 bars), chosen for direct comparability per this task's own brief.
+
+**Result (`run_id=e0abfeaa-cfb3-49b5-b247-955a54789baa`,
+`strategy_family=macro-conditioned`): mean annualized Sharpe −0.284**
+(7 of 12 folds positive, 58.3% fold consistency), **19 trades against
+the same 36-trade frequency-scaled floor** (17 trades short — a wider
+miss than `sr-x`'s 2-trade near-miss), worst-fold drawdown 14.4%
+(comfortably inside the 20-25% ceiling, unlike `sr-x`'s 27.3%), mean
+profit factor 0.21 (under the 1.3-1.5 floor, and lower than `sr-x`'s
+own 0.32), sign test p=0.387 and one-sided t-test p=0.612 (both far
+less extreme than `sr-x`'s near-1.0 values, but still failing to reject
+the null), PSR (N=1) 0.345, DSR 0.137 at the family's own N=4, DSR
+2.20×10⁻⁷ at the project-level research N=121 (117 pre-`sr-x` + 2 from
+`sr-x`'s own strategy + 2 from this run). A real, disclosed logging bug
+(a driver-script omission sent 12 of 13 records to a stray local file
+instead of the shared log) was found and fixed — by appending the real,
+already-computed records to the correct log, not by re-running — before
+any figure above was read off; full account in
+`.planning/sr-y-macro-sp500-strategy.md`. That fix also recomputed
+`sr-x`'s own family/project-level DSR downward (`N=2→4`, `N=119→121`:
+`DSR 0.0135→0.00586`, `DSR 5.0×10⁻¹¹→4.76×10⁻¹¹`) — a real, disclosed
+instance of this project's own "every additional trial lowers the DSR
+of an existing result" rule in action, not a change to `sr-x`'s already-
+decisive verdict.
+
+**Verdict: INCONCLUSIVE-DATA-LIMITED** (below the 36-trade floor by a
+wider margin than `sr-x`). The remaining metrics are reported
+descriptively only and are not grounds for a directional conclusion —
+several read less extreme than `sr-x`'s (fold consistency, sign/t-test
+p-values, drawdown, and a point estimate whose magnitude sits below its
+own detection floor rather than past it in the wrong direction) while
+one reads more extreme (profit factor); this mixed pattern is not
+evidence that S&P 500 trend is closer to (or further from) a real edge
+than real yield trend — both runs are simply underpowered by trade
+count. Three temptations (loosen the fold geometry to clear the trade
+floor; flip to the inverted mapping after seeing a negative result;
+shorten the lookback, whose mechanism a real sign-distribution check
+made unusually legible — the S&P 500 trend at 63 trading days flipped
+sign only 10 times in ~2.5 years of the research window) were named and
+not acted on. Full result, statistical detail, the sign-correctness
+verification, and the disclosed logging-bug account:
+`.planning/sr-y-macro-sp500-strategy.md`.
+
+**Per this task's own governing brief, this was the last planned macro
+attempt** before this project's research line either pivots to on-chain
+data or pauses — `DGS10` (nominal 10-year yield) and `DTWEXBGS` (dollar
+index) remain cached (`sr-w`) but untested, and testing either is not
+currently scheduled; it would need its own fresh authorization the same
+way the real-yield and S&P 500 hypotheses each were. The broader (2)
+multi-symbol-expansion vs. (3) genuinely-different-data-source choice
+named earlier in this section remains open — two data points within
+option (3) do not resolve it, and resolving it is a human `Discuss`, not
+something either macro task decided on its own authority.
 
 ## Tooling Stack
 
