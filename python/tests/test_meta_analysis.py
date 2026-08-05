@@ -67,6 +67,20 @@ class TestCombineZScores:
         with pytest.raises(ValueError, match="positive"):
             combine_z_scores([1.0, 2.0], weights=[1.0, -3.0])
 
+    def test_rejects_non_finite_z_score(self):
+        with pytest.raises(ValueError, match="finite"):
+            combine_z_scores([1.0, math.nan])
+        with pytest.raises(ValueError, match="finite"):
+            combine_z_scores([1.0, math.inf])
+        with pytest.raises(ValueError, match="finite"):
+            combine_z_scores([1.0, -math.inf])
+
+    def test_rejects_non_finite_weight(self):
+        with pytest.raises(ValueError, match="finite"):
+            combine_z_scores([1.0, 2.0], weights=[1.0, math.nan])
+        with pytest.raises(ValueError, match="finite"):
+            combine_z_scores([1.0, 2.0], weights=[1.0, math.inf])
+
     def test_degenerate_single_input_returns_its_own_z_score_unchanged(self):
         # n=1: Z_combined = w*z / sqrt(w^2) = z for any positive w --
         # combining "one test with itself" must be a no-op.

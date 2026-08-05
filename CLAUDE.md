@@ -1297,8 +1297,14 @@ Z-score answering a different question. It does **not** resolve which of
 CLAUDE.md's two live options — multi-symbol expansion (remedy 2) or a
 human policy-exception decision to proceed toward paper trading despite
 not formally clearing every gate — is the right next step; that remains
-an open human `Discuss`, fed by these numbers, not decided by them. Full
-derivation, the drawdown-bound proof, and the complete numerical detail:
+an open human `Discuss`, fed by these numbers, not decided by them. Such
+a policy exception, if ever granted, would be a decision to proceed
+DESPITE the unmet drawdown/trade-count gates — it would not retroactively
+satisfy them, would not waive this section's own non-negotiable rolling
+walk-forward validation requirement (a single-window holdout, combined or
+not, is still not that), and would not substitute for the Eligibility
+Bar's holdout single-window variant itself. Full derivation, the
+drawdown-bound proof, and the complete numerical detail:
 `.planning/sr-ac-combined-holdout-meta-analysis.md`.
 
 ## Tooling Stack

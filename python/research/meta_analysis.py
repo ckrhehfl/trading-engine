@@ -183,11 +183,15 @@ def combine_z_scores(
     function's test suite verifies exactly that identity rather than just
     asserting it runs.
 
-    Raises for an empty `z_scores`, a `weights` of different length, or
-    any non-positive weight (the same validation `sample_size_weights`
-    applies to its own output) -- a zero or negative weight has no
-    sensible meaning in this formula and is virtually always a caller
-    mistake rather than a valid degenerate input.
+    Raises for an empty `z_scores`, a `weights` of different length, a
+    non-finite (`NaN`/`inf`/`-inf`) z-score, or a weight that is
+    non-positive or non-finite (the same validation `sample_size_weights`
+    applies to its own output, extended to also reject `NaN`/`inf`): a
+    non-finite input would silently propagate into a non-finite or
+    spuriously "maximal-confidence" `combined_z`/`combined_probability`
+    rather than fail loudly, and is virtually always a caller mistake
+    (e.g. a `NaN` z-score from an upstream degenerate PSR computation)
+    rather than a valid input to combine.
     """
     if not z_scores:
         raise ValueError("z_scores must be non-empty")
@@ -201,11 +205,14 @@ def combine_z_scores(
                 f"weights must be the same length as z_scores "
                 f"({len(resolved_weights)} != {len(z_scores)})"
             )
+    for z_score in z_scores:
+        if not math.isfinite(z_score):
+            raise ValueError(f"each z_score must be finite, got {z_score}")
     for weight in resolved_weights:
-        if weight <= 0:
-            raise ValueError(f"each weight must be positive, got {weight}")
+        if not math.isfinite(weight) or weight <= 0:
+            raise ValueError(f"each weight must be finite and positive, got {weight}")
 
-    numerator = sum(w * z for w, z in zip(resolved_weights, z_scores))
+    numerator = sum(w * z for w, z in zip(resolved_weights, z_scores, strict=True))
     denominator = math.sqrt(sum(w * w for w in resolved_weights))
     combined_z = numerator / denominator
     combined_probability = NormalDist().cdf(combined_z)

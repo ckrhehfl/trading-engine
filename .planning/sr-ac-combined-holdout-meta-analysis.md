@@ -424,7 +424,19 @@ this task.
    human policy-exception decision to proceed toward paper trading
    despite not formally clearing every Eligibility Bar gate. This
    document computes the clearest possible honest numbers to inform that
-   decision; it does not make the decision.
+   decision; it does not make the decision. **A policy exception, if
+   granted, would be a decision to proceed DESPITE the combined series
+   not clearing the drawdown and trade-count gates -- it would not, and
+   could not, retroactively satisfy those gates, waive CLAUDE.md's own
+   non-negotiable rolling walk-forward validation requirement ("No
+   strategy is eligible for paper trading without walk-forward
+   validation... a single split can't distinguish a real edge from a
+   result that happened to fit one historical window" -- which two
+   single-window holdout confirmations, combined or not, still are not),
+   or substitute for what the Eligibility Bar's holdout single-window
+   variant itself requires. Nothing in this document proposes,
+   recommends, or constitutes such an exception; it only states plainly
+   what a human granting one would actually be overriding.
 
 ---
 
