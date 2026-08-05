@@ -552,9 +552,10 @@ issue #58, for a different finding on the same module.
    its own scope (no code changes are in scope here at all -- see
    "Deliberately out of scope" below); this project's holdout
    confirmations are rare, sequential, single-operator CLI invocations
-   (two in this project's entire history, `sr-v` and this registration's
-   own pending execution), so the practical risk is low, but the finding
-   is real and worth a proper `Discuss` pass on what locking primitive
+   (this project's history contains one completed holdout confirmation,
+   `sr-v`; this registration's own execution remains pending), so the
+   practical risk is low, but the finding is real and worth a proper
+   `Discuss` pass on what locking primitive
    fits this project's file-based storage layer -- not a same-PR patch
    under review pressure on an unrelated task.
 4. **Schema-enforced `force_reclaim_reason` matching.** A real
@@ -571,7 +572,7 @@ issue #58, for a different finding on the same module.
    blast radius than this task's own registration-only scope, and again
    a `Discuss`-pass-shaped decision, not a rushed fix.
 
-Findings 3 and 4 (fixed) are prose-only, same as round 1's fixes;
+Findings 1 and 2 (fixed) are prose-only, same as round 1's fixes;
 re-verified clean after editing (`load_preregistration` loads without
 error, `verify_trade_floor`/`verify_detection_floor` both still `True`,
 new `sha256` since the file's bytes changed again).
