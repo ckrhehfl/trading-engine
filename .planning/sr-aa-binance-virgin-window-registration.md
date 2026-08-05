@@ -451,6 +451,58 @@ registration's own declared fields).
   any of the above could run for real: `uv sync` inside `python/`, then
   the real backfill described above.)
 
+## CodeRabbit review: two real findings, both fixed in the registration text
+
+CodeRabbit's review of this PR (targeting the exact commit that added
+these two files) returned `CHANGES_REQUESTED` with two findings. Both
+were checked against the real code before accepting them (per this
+project's standing "verify each finding against current code" review
+convention), found genuinely valid, and fixed by editing the
+registration's own prose -- neither required a code change.
+
+1. **`INCONCLUSIVE` and `FAIL` were not mutually exclusive as written.**
+   The original `INCONCLUSIVE` text's second and third `OR` clauses
+   ("Sharpe fails to exceed the detection floor", "trades fall below the
+   floor") did not explicitly require PSR to be positive, so a
+   non-positive-PSR result could, read literally, satisfy both the
+   `INCONCLUSIVE` and `FAIL` prose simultaneously. Checked directly
+   against `research/run_preregistered_holdout.py::evaluate_gating`'s
+   real code (reproduced above) to confirm what the actual precedence
+   is rather than guessing: `elif psr_result.psr is None or
+   psr_result.psr <= 0: outcome = OUTCOME_FAIL` runs **before** the
+   `else: outcome = OUTCOME_INCONCLUSIVE` branch -- so a non-positive PSR
+   is *always* `FAIL` in the real code, regardless of the other four
+   checks. **Fixed** by rewording `INCONCLUSIVE` to open with "PSR is
+   POSITIVE (> 0) but..." and adding an explicit "MUTUALLY EXCLUSIVE
+   WITH FAIL BY CONSTRUCTION, matching `evaluate_gating`'s own real
+   precedence" sentence to both regions. This is the same ambiguity
+   `sr-u`'s own original `1d`-holdout registration also had (verified by
+   re-reading it) -- not introduced by this task, but worth fixing here
+   regardless of where it first appeared, since a registration's whole
+   value is being unambiguous before a result exists.
+2. **"Exactly one execution" overstated what the mechanism actually
+   guarantees.** `research.holdout.load_holdout_klines`'s
+   `force_reclaim_reason` is deliberately permissive (declined-to-tighten,
+   tracked as issue #58 per `sr-v`'s own account) -- it accepts any
+   non-blank reason, including one reclaiming an access that already
+   completed normally. So a *third* access to this `strategy_id`,
+   beyond the second one this registration itself represents, remains
+   mechanically possible, not blocked. **Fixed** by adding an explicit
+   paragraph to `stopping_rule` naming this limit directly (mirroring
+   how `sr-u`'s own `stopping_rule` already handled the *first*-to-second
+   version of this same honesty requirement: "any such reclaim is itself
+   a second access, which this registration's own stopping rule treats
+   as already having happened, not as license for a second real
+   attempt") -- extended here one level further, to a hypothetical third
+   access.
+
+Both fixes are prose-only; neither changes `declared_detection_floor_
+sharpe`, `min_total_trades`, the data window, or any other field
+`verify_trade_floor`/`verify_detection_floor` check -- both re-run clean
+after the edit (`True`/`True`), and `load_preregistration` still loads
+and validates without error (new `sha256`, since the file's bytes
+changed: `1349013a...`).
+
 ## Deliberately out of scope (restated from the task brief, for the record)
 
 - **Executing this registration against real Binance holdout data,**
