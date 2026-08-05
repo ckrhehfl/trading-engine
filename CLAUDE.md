@@ -1179,6 +1179,70 @@ named earlier in this section remains open — two data points within
 option (3) do not resolve it, and resolving it is a human `Discuss`, not
 something either macro task decided on its own authority.
 
+**`sr-aa`/`sr-ab` (2026-08-05) is the second, independent same-asset-
+alternate-venue replication of `sr-u`/`sr-v`'s identical zero-fitted-
+parameter daily-TSMOM hypothesis** — same code
+(`research/strategies/daily_tsmom_ensemble.py`, byte-for-byte
+unmodified), same 21/63/126/252-trading-day lookback set, same 20%-vol-
+target sizing, `free_parameter_count: 0` — this time against Binance
+spot BTCUSDT's own pre-2021 "virgin" window (2017-08-17 through
+2021-05-13, 1,366 daily bars, `configs/research/holdout_1d_binance_
+virgin.json`), rather than another search, threshold, or lookback set.
+`sr-aa` registered the hypothesis and holdout config
+(`configs/research/preregistrations/daily-tsmom-ensemble-binance-virgin-
+holdout.json`) before any access; `sr-ab` executed it for real. Two
+real, disclosed, non-hypothesis infrastructure bugs were hit and fixed
+during execution — a relative-path invocation gotcha (the same class
+`sr-v` already documented) and a missing Binance backfill in the
+shared, gitignored `klines.sqlite3` (the original `sr-z`/`sr-aa`
+backfill lived in a since-cleaned-up isolated git worktree) — both
+fixed by re-running the existing, unmodified `backfill_binance.py` for
+real against the live Binance API, not by touching any strategy,
+registration, or config file. Because the empty-result attempt this
+caused had already technically consumed the single-access claim (per
+`research/holdout.py`'s own pre-disclosed "the claim is written once
+the read completes, even on an empty result" behavior, and exposed
+zero real information about the window), completing the real access
+required a second, disclosed `force_reclaim_reason` — full accounting
+in `.planning/sr-ab-binance-virgin-holdout-result.md`.
+
+**Result (`run_id=a84d52ba-5f5d-43bd-a528-3d5cd494208a`,
+`strategy_family=daily-tsmom`): PSR 0.9945** (above the 0.95
+threshold), **observed annualized Sharpe 1.305** (above the window's
+own 0.8503 detection floor), **profit factor 7.68** (above the 1.3
+floor) — three of five gating checks clear cleanly, all three by wide
+margins and all three stronger than `sr-v`'s own corresponding numbers
+(PSR 0.9367, Sharpe 0.882, profit factor 2.87). The remaining two
+checks miss by very narrow margins: **64 trades against a 68-trade
+floor** (4 short), and **max drawdown 20.135% against the 20%
+ceiling** (0.135 percentage points over).
+
+**Verdict: INCONCLUSIVE** (2 of 5 gating checks fail). Per the
+registration's own pre-committed `outcome_interpretation.INCONCLUSIVE`
+text — reconsidered honestly rather than copied from `sr-u`'s older
+wording, which this registration deliberately superseded for this
+specific attempt: this result **parks the zero-parameter daily-TSMOM-
+on-BTC-spot-price hypothesis specifically** — the only remaining
+legitimate remedy for this hypothesis is a structurally different
+signal class or a structurally different asset universe, not another
+exchange's price series for the same instrument — and does **not**
+retroactively validate or invalidate `sr-v`'s own BingX-window
+INCONCLUSIVE result, which stands unaffected on its own terms. It
+**does** close off same-asset alternate-venue replication specifically
+as a further remedy for this hypothesis — Binance's pre-2021 window
+was this project's last remaining independent-ish BTC-price data
+source (Binance/BingX daily closes correlate at 0.999955, per `sr-z`).
+It does **not** close off CLAUDE.md's remedy (2) (multi-symbol
+expansion with survivorship-safe data) or remedy (3) (a genuinely
+different, non-price-index asset class or data source, e.g. on-chain
+data, named in `sr-y`'s own closing text) — both remain open,
+undecided, human-`Discuss` questions neither `sr-aa` nor `sr-ab`
+resolves. The temptation to read significance into how narrow both
+misses are was named and not acted on, matching `sr-v`'s own precedent
+for handling a near-miss honestly. Full result, the two infrastructure-
+bug accounts, and a side-by-side comparison with `sr-v`'s own numbers:
+`.planning/sr-ab-binance-virgin-holdout-result.md`.
+
 ## Tooling Stack
 
 | Layer | Choice | Status |
