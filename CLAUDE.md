@@ -1243,6 +1243,70 @@ for handling a near-miss honestly. Full result, the two infrastructure-
 bug accounts, and a side-by-side comparison with `sr-v`'s own numbers:
 `.planning/sr-ab-binance-virgin-holdout-result.md`.
 
+**`sr-ac` (2026-08-05) is a retrospective statistical meta-analysis of
+`sr-v` and `sr-ab` together — not a new strategy attempt, not a new
+trial, and not a new pre-registration.** No holdout data was accessed to
+produce it; everything is computed from the two runs' own already-logged
+summary statistics. It answers the human operator's reasonable question
+— given the pattern of two narrow INCONCLUSIVE misses on the same
+zero-fitted-parameter hypothesis, how strong is the combined case,
+really — as honestly and completely as already-logged data allows.
+
+Two independent, disjoint-sample significance tests for the same null
+("true Sharpe ≤ 0") can be combined via Stouffer's (weighted) Z-score
+method (Stouffer et al. 1949; sample-size weighting per Whitlock 2005),
+using each run's own already-logged `psr.z_score`
+(`sr-v`: 1.5274, n=1078; `sr-ab`: 2.5410, n=1365) — a new, tested
+function, `research.meta_analysis.combine_z_scores`. **Result: combined
+Z = 2.914, corresponding probability Φ(Z) = 0.9982 — clears the
+project's standing 0.95 convention comfortably**, stronger than either
+individual PSR (`sr-v`: 0.9367; `sr-ab`: 0.9945).
+
+**That significance result does not, and cannot, produce a formal PASS,
+for a separate, purely mathematical reason established independently of
+it.** For any chronological concatenation of two return series, the
+combined max drawdown is provably `>= max(leg 1's own max drawdown, leg
+2's own max drawdown)` — proved directly (the combined running peak at
+any point can only be raised, never lowered, by the other leg's own
+levels) and confirmed numerically against 2,000 synthetic equity-curve
+pairs. Concatenating `sr-ab` (2017-2021) then `sr-v` (2021-2024) in real
+calendar order: `combined_drawdown >= max(0.1199, 0.2014) = 0.2014` —
+**already over the registered 0.20 ceiling**, before the true combined
+figure (which could only be higher, never lower) is even considered. A
+full PASS on the combined series' drawdown criterion is therefore
+mathematically impossible regardless of the significance result above.
+
+Combined trade count sums exactly (no path-dependency, unlike drawdown):
+`26 + 64 = 90`. The real combined frequency-scaled floor, recomputed via
+`research.preregistration.frequency_scaled_min_trades` against the
+combined 2,445 bars (not hand-arithmetic): **100** — so 90 combined
+trades falls 10 short. Profit factor is comfortably clear on both legs
+individually (2.87, 7.68, both far above the 1.3 floor) but a rigorous
+*pooled* figure is not reconstructable from logged fields alone (gross
+win/loss sums aren't separately logged, only the ratio) — not forced as
+an approximation, and not the binding constraint either way.
+
+**Bottom line, stated as plainly as the numbers allow**: the combined
+significance is real and meaningfully stronger than either individual
+result — genuine evidence, not an artifact of this analysis. It does
+**not** show a live-tradeable strategy: the drawdown ceiling is a
+practical risk-control limit and the trade-count floor is a
+minimum-evidence-volume requirement, both independent of whether a mean
+effect is statistically real, and neither is overridden by a strong
+Z-score answering a different question. It does **not** resolve which of
+CLAUDE.md's two live options — multi-symbol expansion (remedy 2) or a
+human policy-exception decision to proceed toward paper trading despite
+not formally clearing every gate — is the right next step; that remains
+an open human `Discuss`, fed by these numbers, not decided by them. Such
+a policy exception, if ever granted, would be a decision to proceed
+DESPITE the unmet drawdown/trade-count gates — it would not retroactively
+satisfy them, would not waive this section's own non-negotiable rolling
+walk-forward validation requirement (a single-window holdout, combined or
+not, is still not that), and would not substitute for the Eligibility
+Bar's holdout single-window variant itself. Full derivation, the
+drawdown-bound proof, and the complete numerical detail:
+`.planning/sr-ac-combined-holdout-meta-analysis.md`.
+
 ## Tooling Stack
 
 | Layer | Choice | Status |
