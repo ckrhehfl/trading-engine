@@ -451,7 +451,7 @@ registration's own declared fields).
   any of the above could run for real: `uv sync` inside `python/`, then
   the real backfill described above.)
 
-## CodeRabbit review: two real findings, both fixed in the registration text
+## CodeRabbit review, round 1: two real findings, both fixed in the registration text
 
 CodeRabbit's review of this PR (targeting the exact commit that added
 these two files) returned `CHANGES_REQUESTED` with two findings. Both
@@ -502,6 +502,79 @@ sharpe`, `min_total_trades`, the data window, or any other field
 after the edit (`True`/`True`), and `load_preregistration` still loads
 and validates without error (new `sha256`, since the file's bytes
 changed: `1349013a...`).
+
+## CodeRabbit review, round 2: two more prose fixes, two declined-and-tracked
+
+A second review round (targeting the round-1 fix commit) returned
+`CHANGES_REQUESTED` again, with four findings. The first two were
+direct, valid follow-ups on round 1's own fixes; the second two asked
+for code/schema changes to `research/holdout.py` and
+`research/preregistration.py` and were declined for this task, tracked
+instead -- exactly the precedent `sr-v`'s own PR already set (issue
+#58) for a different finding on the same module.
+
+3. **`INCONCLUSIVE`'s rewording in round 1 was still not exhaustive.**
+   It named three failure modes (PSR below threshold, Sharpe below
+   floor, trades below floor) as its `OR` list, but a positive-PSR
+   result failing *only* the max-drawdown ceiling or *only* the
+   profit-factor floor was not literally covered -- the exact ambiguity
+   `sr-v`'s own "Design ambiguity noted, not silently resolved" section
+   flagged for `sr-u`'s original registration, now caught here instead by
+   CodeRabbit. **Fixed** by rewriting `INCONCLUSIVE` to state the real,
+   complete code behavior directly: `if all five checks pass: PASS`,
+   `elif PSR is None or PSR <= 0: FAIL`, `else: INCONCLUSIVE` -- i.e.
+   INCONCLUSIVE is the true catch-all for *any* combination of the five
+   checks falling short (given positive PSR), not just the three most
+   common/interesting ones, which are still named for context but no
+   longer imply an exhaustive list.
+4. **The `force_reclaim_reason` text's own "INDEPENDENT,
+   NEVER-BEFORE-TOUCHED" wording overstated things relative to the
+   caveat this same task had already disclosed elsewhere** (the "How
+   virgin is virgin, really" section above, and the holdout config's own
+   `rationale`) -- `sr-z`'s early-era data-quality check *did* read four
+   real price levels from inside this window. Having the caveat fully
+   reasoned through in one place while the force-reclaim justification
+   text itself still read as an unqualified claim was a real, catchable
+   inconsistency. **Fixed** by rewording that sentence to "no strategy,
+   backtest, or research-selection trial has ever accessed this window"
+   (accurate and still exactly what matters for the holdout mechanism)
+   and adding an explicit pointer to the fuller disclosed caveat, rather
+   than repeating "NEVER-BEFORE-TOUCHED" unqualified.
+5. **Atomic claim acquisition in `load_holdout_klines`.** A real
+   observation: the check-then-write claim sequence
+   (`_find_holdout_access` -> `_load_klines` ->
+   `experiment_log.log_holdout_access`) is not atomic, so two concurrent
+   callers could theoretically both pass the claim check before either
+   writes its record. **Declined for this task, tracked as
+   [issue #64](https://github.com/ckrhehfl/trading-engine/issues/64).**
+   This is a pre-existing property of `research/holdout.py`, not
+   something this registration-only PR introduced or could fix within
+   its own scope (no code changes are in scope here at all -- see
+   "Deliberately out of scope" below); this project's holdout
+   confirmations are rare, sequential, single-operator CLI invocations
+   (two in this project's entire history, `sr-v` and this registration's
+   own pending execution), so the practical risk is low, but the finding
+   is real and worth a proper `Discuss` pass on what locking primitive
+   fits this project's file-based storage layer -- not a same-PR patch
+   under review pressure on an unrelated task.
+6. **Schema-enforced `force_reclaim_reason` matching.** A real
+   observation: nothing mechanically checks that the reason actually
+   passed to `load_holdout_klines` at run time matches what a
+   registration's own `stopping_rule` pre-committed -- today it is
+   enforced by a human reading the prose, not by code. **Declined for
+   this task, tracked in the same
+   [issue #64](https://github.com/ckrhehfl/trading-engine/issues/64).**
+   Implementing it would mean a schema change to
+   `research/preregistration.py` affecting every future registration
+   (and a real design question about whether it applies retroactively to
+   `sr-u`'s/`sr-v`'s own already-committed registration) -- broader
+   blast radius than this task's own registration-only scope, and again
+   a `Discuss`-pass-shaped decision, not a rushed fix.
+
+Findings 3 and 4 (fixed) are prose-only, same as round 1's fixes;
+re-verified clean after editing (`load_preregistration` loads without
+error, `verify_trade_floor`/`verify_detection_floor` both still `True`,
+new `sha256` since the file's bytes changed again).
 
 ## Deliberately out of scope (restated from the task brief, for the record)
 
