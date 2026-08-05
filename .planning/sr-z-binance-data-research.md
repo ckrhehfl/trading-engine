@@ -28,8 +28,10 @@ attempts (`sr-x`, `sr-y`) came back data-limited rather than resolved,
 this project's own governing arithmetic
 (`detection_floor ~= 1.645/sqrt(years)`, one-sided α=0.05) says BingX's
 5.21-year `1d` retention has a **~0.72** annualized-Sharpe detection
-floor -- above the 0.4-0.8 credible-institutional-edge range CLAUDE.md
-already cites, meaning a real edge in that range may be structurally
+floor -- inside, but near the top of, the 0.4-0.8 credible-
+institutional-edge range CLAUDE.md already cites (0.72 is itself within
+0.4-0.8, not above it), meaning a real edge anywhere in the *lower*
+part of that range (0.4-0.72, most of its width) may be structurally
 undetectable on BingX data alone, however well any strategy is
 specified.
 
@@ -67,10 +69,10 @@ research purposes need justification first.
    early-era data-quality check, regime segmentation, detection-floor
    arithmetic.
 
-**87 new tests** (`test_binance_klines.py` 35, `test_backfill_binance.py`
-52). Full suite: **1,369 passed**, up from 1,282 (this project's most
-recent full-suite count immediately prior, from `sr-y`). Nothing
-regressed.
+**52 new tests** (`test_binance_klines.py` 35, `test_backfill_binance.py`
+17). Full suite: **1,369 passed**, up from 1,317 (`sr-y`'s own final
+count, this project's most recent full-suite count immediately prior --
+1,369 - 52 = 1,317 reconciles exactly). Nothing regressed.
 
 ## Real API findings -- Binance (spot + USDT-M futures)
 
@@ -127,7 +129,7 @@ covers more candles than `limit` returns the `limit` candles **closest
 to `startTime`**, ascending -- the newest candles in range are silently
 dropped, not the oldest. Live evidence (spot, `1d`):
 
-```
+```text
 startTime=1502928000000, endTime=1900000000000, limit=2000 (over max)
 -> 1000 rows, first=1502928000000 (the real start), last=1589241600000
 ```
@@ -301,16 +303,23 @@ the catch-up backfill above) intersected with Binance spot BTCUSDT --
 | Binance log-return stdev | 0.028633 |
 
 **This is about as strong as two independent price series can agree.**
-The practical implication for this task's governing question: a signal
-validated on Binance spot data would transfer to BingX BTC-USDT
-futures with very high confidence at daily granularity -- the two
-venues are pricing the same underlying almost identically at daily
-close, not merely "BTC is fungible so it's probably fine" as an
-assumption. This does **not** by itself prove intraday/execution-level
-transfer (spreads, funding, slippage, liquidation cascades can all
-differ venue-to-venue even when daily closes correlate this tightly) --
-that question is out of scope here (no strategy or execution modeling
-was touched).
+The two venues are pricing the same underlying almost identically at
+daily close -- not merely "BTC is fungible so it's probably fine" as an
+assumption, a real, computed number instead. **What this does and does
+not license, stated precisely rather than generalized (CodeRabbit
+review finding on this PR: an earlier draft of this section overstated
+the conclusion as signal transferability)**: it shows the **daily price
+series** are comparable, which is the actual question this task's own
+governing brief asked ("is it even valid to use [Binance] given BTC's
+market structure changed enormously"). It does **not** show that a
+trading *signal* built on Binance data would transfer profitably to
+BingX -- a real signal's performance also depends on volume, funding,
+basis, execution costs, and timing/alignment, none of which a price-only
+correlation measures, and none of which this task modeled. That is a
+separate, signal-specific, cost-inclusive backtest-and-paper-validation
+question for whichever future task actually builds a strategy on this
+data -- not something this infrastructure task's correlation number can
+answer on its own.
 
 ## Spot/futures basis divergence -- a real computed number
 
@@ -449,13 +458,21 @@ annualization convention, not `365.25`).
 | Binance futures, full pooled | 2019-09-08 -> 2026-08-04 | 6.912 | 0.626 |
 | BingX `1d` (current baseline, CLAUDE.md) | 5.21 years | 5.21 | 0.721 |
 
-**This is the single most important number in this task.** Pooling
-Binance spot's full history drops the detection floor to **0.549** --
-for the first time in this project's history, *below* the 0.4-0.8
-credible-institutional-edge range CLAUDE.md cites, rather than sitting
-above it the way BingX's own 0.72 does. Binance futures alone (the
-instrument-matched but shorter series) still improves meaningfully on
-BingX, to 0.626.
+**This is the single most important number in this task.** Both 0.549
+and BingX's own 0.721 fall *inside* the 0.4-0.8 credible-institutional-
+edge range CLAUDE.md cites -- neither is outside it, and the honest
+framing is about *where inside the range* the floor sits, not an
+inside-vs-outside flip (an earlier draft of this section stated it as
+a flip; corrected on CodeRabbit review). BingX's 0.721 sits near the
+range's top: only its narrow top sliver (~0.72-0.8, about a fifth of
+the range's width) is detectable, and the rest (0.4-0.72) is not.
+Pooling Binance spot's full history moves the floor down to **0.549**,
+meaningfully lower inside the same range -- roughly the top two-thirds
+of the range (~0.55-0.8) becomes detectable, a real and substantial
+statistical-power gain, though the bottom third (0.4-0.55) still is
+not. Binance futures alone (the instrument-matched but shorter series)
+still improves meaningfully on BingX, to 0.626 -- inside the range,
+between the other two.
 
 ### (b) Per-regime, fine-grained (8-way)
 

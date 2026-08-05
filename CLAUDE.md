@@ -378,10 +378,17 @@ being added.
   check" disclosure). Both are materially deeper than BingX's own best
   `1d` retention (5.21 years) — pooling Binance spot's full ~8.97-year
   history drops this project's own `1.645/sqrt(years)` detection floor
-  to **~0.55** annualized Sharpe, for the first time *below* the
-  0.4-0.8 credible-institutional-edge range this file already cites
-  (BingX's own 5.21-year floor is ~0.72, above that range). Like every
-  other retention figure in this file, expect this to keep drifting
+  to **~0.55** annualized Sharpe. **Both this and BingX's own 5.21-year
+  floor (~0.72) fall inside, not outside, the 0.4-0.8
+  credible-institutional-edge range this file already cites** — the
+  real difference is *where* inside that range: BingX's ~0.72 sits
+  near the range's top, so only its narrow top sliver (~0.72-0.8) is
+  detectable and the rest (0.4-0.72, most of the range) is not;
+  Binance's ~0.55 moves that boundary meaningfully lower, so roughly
+  the top two-thirds of the range (~0.55-0.8) becomes detectable. Real
+  power gain, not a change from "undetectable" to "detectable" outright
+  — the low end of the credible range (below ~0.55) still isn't. Like
+  every other retention figure in this file, expect this to keep drifting
   forward on future runs — re-run `backfill_binance.py` rather than
   trust this as permanent.
 - **Rate limits are real, numeric, and confirmed live** — a first for
@@ -405,9 +412,14 @@ being added.
 - **Binance spot BTCUSDT vs. BingX BTC-USDT daily-close correlation
   over their full overlap (2021-05-14 through 2026-08-04, 1,909 common
   days): 1.000000.** Daily log-return correlation: **0.999955**
-  (n=1,908). A signal validated on Binance spot data would transfer to
-  BingX BTC-USDT futures with very high confidence at daily
-  granularity — not merely assumed from "BTC is fungible."
+  (n=1,908). This shows the two venues' **daily price series** are
+  extremely tightly linked — not merely assumed from "BTC is
+  fungible." It does **not** by itself show that a trading *signal*
+  developed on Binance data would transfer profitably to BingX: a real
+  signal's performance also depends on volume, funding, basis,
+  execution costs, and timing/alignment, none of which a price-only
+  correlation measures. That question needs its own signal-specific,
+  cost-inclusive backtest and paper validation — not asserted here.
 - **Binance spot vs. futures basis, over their full overlap
   (2019-09-08 through 2026-08-04, 2,523 common days)**: mean
   `(futures-spot)/spot` = -0.0154%, stdev 0.0652%, range -0.74% to

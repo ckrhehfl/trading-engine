@@ -209,9 +209,22 @@ def test_sync_range_does_not_collide_with_an_existing_bingx_btc_usdt_row(spot_se
 # ---------------------------------------------------------------------------
 
 
-def test_main_rejects_an_unknown_market(monkeypatch):
-    with pytest.raises(SystemExit):
+def test_main_rejects_an_unknown_market_via_argparse_choices(capsys):
+    # main() itself does not re-validate args.market (see its own
+    # comment) -- _parse_args' `choices=sorted(MARKET_CONFIG)` already
+    # rejects an unknown market at the argparse layer, the same
+    # trust-argparse convention backfill_macro.py's own `--series-id`
+    # already uses. This test exercises that real argparse behavior
+    # (SystemExit(2) + a usage message on stderr naming the bad value),
+    # not a main()-level branch (CodeRabbit review finding on this PR:
+    # the previous version of this test technically passed but only
+    # ever exercised argparse, regardless of whether main() had its own
+    # redundant check).
+    with pytest.raises(SystemExit) as exc_info:
         main(["--market", "bybit", "--start", "2020-01-01T00:00:00+00:00", "--end", "2020-01-02T00:00:00+00:00"])
+
+    assert exc_info.value.code == 2
+    assert "bybit" in capsys.readouterr().err
 
 
 def test_main_accepts_a_base_url_override_for_test_injection(monkeypatch, spot_server, tmp_path):
@@ -271,6 +284,23 @@ def test_main_defaults_symbol_to_btcusdt_and_market_to_spot(monkeypatch, spot_se
 
 
 def test_main_floors_the_default_end_to_the_grid(monkeypatch, spot_server, tmp_path):
+    # "Now" is frozen rather than left to the real wall clock (CodeRabbit
+    # review finding on this PR): main() omits --end here specifically to
+    # exercise its real datetime.now()-based default, but BASE is a fixed
+    # ~2023-11 test epoch, so an unfrozen "now" would make the requested
+    # range -- and therefore the request count and runtime -- grow
+    # indefinitely as real calendar time passes after this test is
+    # written. Freezing "now" a few days after BASE keeps the range (and
+    # the test) small and deterministic regardless of when it's actually
+    # run, while still exercising the real floor-to-grid code path.
+    frozen_now_ms = BASE + 3 * STEP + STEP // 2  # a few days in, mid-day (not grid-aligned itself)
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime.fromtimestamp(frozen_now_ms / 1000, tz=tz)
+
+    monkeypatch.setattr("data.backfill_binance.datetime", _FrozenDatetime)
     start_iso = datetime.fromtimestamp(BASE / 1000, tz=timezone.utc).isoformat()
 
     main(
@@ -294,6 +324,9 @@ def test_main_floors_the_default_end_to_the_grid(monkeypatch, spot_server, tmp_p
     # was actually sent; reconstruct it before checking grid alignment.
     end_times = {int(r["params"]["endTime"]) + 1 for r in spot_server.requests}
     assert all(t % STEP == 0 for t in end_times), end_times
+    # With "now" frozen, the floored end is exact and deterministic --
+    # BASE + 3*STEP (the still-forming partial day is excluded).
+    assert max(end_times) == BASE + 3 * STEP
 
 
 def test_market_config_has_the_expected_real_defaults():

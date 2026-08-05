@@ -192,21 +192,36 @@ def main(argv: list[str] | None = None) -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args(argv)
 
-    if args.market not in MARKET_CONFIG:
-        raise SystemExit(f"unknown market {args.market!r}; supported: {sorted(MARKET_CONFIG)}")
+    # No redundant re-check of args.market here -- _parse_args' own
+    # `choices=sorted(MARKET_CONFIG)` already rejects an unknown market
+    # at the argparse layer (a real HTTP-400-style SystemExit(2) before
+    # this function body ever runs), same trust-argparse convention
+    # backfill_macro.py's own `--series-id choices=` already establishes
+    # (CodeRabbit review finding on this PR: an extra check here would be
+    # unreachable dead code, and the test that had targeted it would
+    # only ever be exercising argparse's own behavior). `sync_range`'s
+    # own `market not in MARKET_CONFIG` guard is unrelated and stays --
+    # it's real defense-in-depth for a caller invoking it directly,
+    # bypassing this CLI layer entirely.
     config = MARKET_CONFIG[args.market]
 
     step = interval_ms(args.interval)
     start_ms = _to_ms(args.start or config["default_start_iso"])
-    if args.end:
-        end_ms = _to_ms(args.end)
-    else:
-        # "now", floored to the grid -- same reasoning as backfill.py's
-        # own default --end (this default is computed by us, not
-        # user-supplied input, so it's the one place this module rounds
-        # rather than fails loud).
-        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
-        end_ms = (now_ms // step) * step
+    # "now", floored to the grid -- excludes the still-forming current
+    # candle. Applied as a hard CAP on end_ms regardless of whether
+    # --end was given, not just as the default when it's omitted:
+    # CodeRabbit review finding on this PR -- a caller-supplied --end at
+    # or after "now" would otherwise request a grid slot Binance is
+    # still actively updating (require_valid_range only checks grid
+    # alignment and start < end, not "not in the future"), and once
+    # such a row is stored, find_missing_ranges treats it as
+    # permanently present -- a rerun after the candle actually closes
+    # would never refetch and correct it. Capping here means the
+    # partial-candle risk is structurally avoided rather than merely
+    # documented.
+    now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+    now_floored_ms = (now_ms // step) * step
+    end_ms = min(_to_ms(args.end), now_floored_ms) if args.end else now_floored_ms
 
     base_url = args.base_url or config["default_base_url"]
 
