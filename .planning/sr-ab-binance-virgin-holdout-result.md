@@ -31,7 +31,7 @@ preregistration path given relative to that directory (mirroring this
 task's own suggested `cd python && uv run python -m
 research.run_preregistered_holdout ../configs/...` invocation form), hit:
 
-```
+```text
 FileNotFoundError: [Errno 2] No such file or directory:
 'configs/research/holdout_1d_binance_virgin.json'
 ```
@@ -60,7 +60,7 @@ successful, empty SQL result -- not an exception), so
 `run_preregistered_holdout`'s post-load `expected_bars` check correctly
 failed closed:
 
-```
+```text
 ValueError: pre-registration 'daily-tsmom-ensemble-binance-virgin-holdout'
 declares expected_bars=1366 but 0 bar(s) loaded.
 ```
@@ -108,30 +108,38 @@ every particular to `sr-aa`'s own original verification of this same
 window.
 
 **Consequence, stated plainly**: this task's real, single, intended access
-required a SECOND `--force-reclaim-reason` (a fourth `holdout_access`
-record for `strategy_id=daily-tsmom-ensemble` overall, a third beyond
-`sr-v`'s own original) to complete, because the empty-result attempt above
-had already consumed the claim this task's own pre-committed reason was
-meant to spend. The follow-up reason passed was newly written by this
-task (not pre-committed before any access, unlike the first) but
-documents the full chain above in full honesty, states explicitly that it
-is a continuation of the same single originally-authorized access (not a
-new, independent attempt at the hypothesis), and that no strategy
-parameter, threshold, or holdout config was touched to produce the fix --
-only the missing raw market data was re-fetched via the project's own
-existing, unmodified pipeline. Full verbatim text of both
-`force_reclaim_reason` strings is preserved in `runs/experiments.jsonl`'s
-own `holdout_access` records (see "Full real log record" below).
+required a SECOND `--force-reclaim-reason` to complete, because the
+empty-result attempt above had already consumed the claim this task's own
+pre-committed reason was meant to spend. Counting precisely: for
+`strategy_id=daily-tsmom-ensemble` specifically, this task's real,
+successful access is the **third** `holdout_access` record ever written
+(`sr-v`'s own original, 2026-07-30; this task's empty-result attempt;
+this task's real, successful attempt -- two beyond `sr-v`'s own original,
+not one). The follow-up reason passed was newly written by this task
+(not pre-committed before any access, unlike the first) but documents the
+full chain above in full honesty, states explicitly that it is a
+continuation of the same single originally-authorized access (not a new,
+independent attempt at the hypothesis), and that no strategy parameter,
+threshold, or holdout config was touched to produce the fix -- only the
+missing raw market data was re-fetched via the project's own existing,
+unmodified pipeline. Full verbatim text of both `force_reclaim_reason`
+strings is preserved in `runs/experiments.jsonl`'s own `holdout_access`
+records (see "Full real log record" below).
 
-**Both `sr-v`'s original holdout_access record (2026-07-30) and `sr-aa`'s
-BingX-sourced holdout access are untouched by any of this** -- reconfirmed
-directly against `runs/experiments.jsonl` after this task's real run
-completed: exactly 4 `holdout_access` records total exist project-wide
-(`task-c-e2e-verification-holdout` -- unrelated infra-test strategy_id;
+**`sr-v`'s original holdout_access record (2026-07-30, the only
+BingX-sourced `daily-tsmom-ensemble` holdout access that exists anywhere
+in the log) is untouched by any of this** -- reconfirmed directly against
+`runs/experiments.jsonl` after this task's real run completed: exactly 4
+`holdout_access` records total exist project-wide, across all
+strategy_ids (`task-c-e2e-verification-holdout` -- unrelated infra-test
+strategy_id, not `daily-tsmom-ensemble`, untouched by this task;
 `daily-tsmom-ensemble`/`BTC-USDT`/2026-07-30 -- `sr-v`'s own, unmodified;
 `daily-tsmom-ensemble`/`BINANCE:BTCUSDT`/2026-08-05T08:40:35 -- this
 task's empty-result attempt; `daily-tsmom-ensemble`/`BINANCE:BTCUSDT`
-/2026-08-05T08:44:21 -- this task's real, successful attempt).
+/2026-08-05T08:44:21 -- this task's real, successful attempt). Of these
+4, 3 belong to `strategy_id=daily-tsmom-ensemble`; `sr-aa` itself never
+accessed any holdout (it only registered the Binance config and
+pre-registration -- see its own "Scope note").
 
 ## The real, successful invocation
 
