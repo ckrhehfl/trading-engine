@@ -297,7 +297,7 @@ def test_main_floors_the_default_end_to_the_grid(monkeypatch, spot_server, tmp_p
 
     class _FrozenDatetime(datetime):
         @classmethod
-        def now(cls, tz=None):
+        def now(cls, tz=None) -> datetime:
             return datetime.fromtimestamp(frozen_now_ms / 1000, tz=tz)
 
     monkeypatch.setattr("data.backfill_binance.datetime", _FrozenDatetime)
