@@ -510,10 +510,10 @@ A second review round (targeting the round-1 fix commit) returned
 direct, valid follow-ups on round 1's own fixes; the second two asked
 for code/schema changes to `research/holdout.py` and
 `research/preregistration.py` and were declined for this task, tracked
-instead -- exactly the precedent `sr-v`'s own PR already set (issue
-#58) for a different finding on the same module.
+instead -- exactly the precedent `sr-v`'s own PR already set with
+issue #58, for a different finding on the same module.
 
-3. **`INCONCLUSIVE`'s rewording in round 1 was still not exhaustive.**
+1. **`INCONCLUSIVE`'s rewording in round 1 was still not exhaustive.**
    It named three failure modes (PSR below threshold, Sharpe below
    floor, trades below floor) as its `OR` list, but a positive-PSR
    result failing *only* the max-drawdown ceiling or *only* the
@@ -527,7 +527,7 @@ instead -- exactly the precedent `sr-v`'s own PR already set (issue
    checks falling short (given positive PSR), not just the three most
    common/interesting ones, which are still named for context but no
    longer imply an exhaustive list.
-4. **The `force_reclaim_reason` text's own "INDEPENDENT,
+2. **The `force_reclaim_reason` text's own "INDEPENDENT,
    NEVER-BEFORE-TOUCHED" wording overstated things relative to the
    caveat this same task had already disclosed elsewhere** (the "How
    virgin is virgin, really" section above, and the holdout config's own
@@ -540,7 +540,7 @@ instead -- exactly the precedent `sr-v`'s own PR already set (issue
    (accurate and still exactly what matters for the holdout mechanism)
    and adding an explicit pointer to the fuller disclosed caveat, rather
    than repeating "NEVER-BEFORE-TOUCHED" unqualified.
-5. **Atomic claim acquisition in `load_holdout_klines`.** A real
+3. **Atomic claim acquisition in `load_holdout_klines`.** A real
    observation: the check-then-write claim sequence
    (`_find_holdout_access` -> `_load_klines` ->
    `experiment_log.log_holdout_access`) is not atomic, so two concurrent
@@ -557,7 +557,7 @@ instead -- exactly the precedent `sr-v`'s own PR already set (issue
    is real and worth a proper `Discuss` pass on what locking primitive
    fits this project's file-based storage layer -- not a same-PR patch
    under review pressure on an unrelated task.
-6. **Schema-enforced `force_reclaim_reason` matching.** A real
+4. **Schema-enforced `force_reclaim_reason` matching.** A real
    observation: nothing mechanically checks that the reason actually
    passed to `load_holdout_klines` at run time matches what a
    registration's own `stopping_rule` pre-committed -- today it is
