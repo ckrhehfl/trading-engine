@@ -310,6 +310,117 @@ live API so far. Everything under "Documented, not yet empirically
 verified" needs a real API key (VST is fine) before Priority #7 code
 that depends on it is trusted.
 
+## Exchange API Facts — Binance (data-research source only, not an `ExchangeAdapter`)
+
+**Binance is not, and has no plan to become, a live-trading venue in
+this project** — BingX remains the only exchange with a paper/live
+path (Current Scope, `ExchangeAdapter`, Priority #7). Binance is used
+exclusively as a deeper historical-data source for strategy research
+(`python/data/binance_klines.py`, `backfill_binance.py` — Strategy
+Research Task Z, `.planning/sr-z-binance-data-research.md`): no
+credentials, no order placement, read-only public klines only. This
+section exists for the same reason BingX's own does — verify before
+relying on these facts — not because a second live-trading surface is
+being added.
+
+### Verified (called the live public API directly and observed the response, 2026-08-05)
+
+- Symbol: `BTCUSDT` (no dash — differs from BingX's `BTC-USDT`).
+  Spot: `GET https://api.binance.com/api/v3/klines`. USDT-M futures:
+  `GET https://fapi.binance.com/fapi/v1/klines`.
+- Response is a **bare JSON array of arrays, by position**, not an
+  object envelope: `[open_time_ms, open, high, low, close, volume,
+  close_time_ms, quote_asset_volume, num_trades,
+  taker_buy_base_volume, taker_buy_quote_volume, ignore]`.
+  `open_time_ms`/`close_time_ms`/`num_trades` are bare (unquoted)
+  integers; OHLCV/volume fields are quoted strings — confirmed
+  identically for spot and futures.
+- **`endTime` is INCLUSIVE, not half-open** — confirmed by a real
+  `startTime == endTime` request returning exactly one row. This
+  project's own pipeline convention is half-open `[start, end)`
+  everywhere else (BingX, and internally for Binance too via
+  `binance_klines.py`'s `endTime = end_ms - 1` translation) — a
+  genuine, load-bearing wire-level divergence to remember if calling
+  this endpoint directly outside that module.
+- **Silent over-limit capping keeps the OLDEST rows (closest to
+  `startTime`), the opposite of BingX's verified newest-closest-to-
+  `endTime` capping.** Confirmed for both spot and futures. A direct
+  consequence: Binance's own rows come back **oldest-first
+  (ascending)**, not newest-first like BingX.
+- **Max `limit` differs by market and by enforcement style**: spot's
+  hard max is **1000**, silently capped (no error) for anything
+  higher, confirmed by exact row count for `limit=1001` and
+  `limit=1500` alike. Futures' hard max is **1500**, enforced as a
+  real `HTTP 400` (`{"code":-1130,"msg":"Data sent for parameter
+  'limit' is not valid."}`) for `limit=1501` — futures rejects
+  over-limit outright, spot does not.
+- **A range starting before a symbol's real listing date returns an
+  empty array** (`[]`), not an error and not padded — confirmed for
+  spot BTCUSDT requesting 2017-01-01 through 2017-08-15 (before the
+  real 2017-08-17 start).
+- **Errors are a real non-2xx HTTP status with a JSON object body**
+  (`{"code": <int>, "msg": "..."}`) — confirmed `400` for both a bad
+  `limit` (spot) and a bad `symbol` (futures) — never a `200` with an
+  embedded error code the way BingX works.
+- **Real historical depth, confirmed via a full backfill with
+  independently-verified zero internal gaps** (same "earliest-bar
+  probe alone is not enough, a full backfill with a real gap count is"
+  standard this file already applies to BingX `1h`/`1d`): spot BTCUSDT
+  `1d` back to **2017-08-17T00:00:00Z exactly** (**3,275 daily bars,
+  zero internal gaps**, latest bar 2026-08-04 — a ~8.97-year span, and
+  the interval token is `1d` with every bar on the UTC-midnight
+  86,400,000ms grid, same as BingX's own `1d`); USDT-M futures BTCUSDT
+  `1d` back to **2019-09-08T00:00:00Z** (**2,523 daily bars, zero
+  internal gaps** — verified to the same gap-detection standard as
+  spot, though not independently re-verified for listing-date-artifact
+  or early-era data quality the way spot was — see
+  `.planning/sr-z-binance-data-research.md` for the full "lighter
+  check" disclosure). Both are materially deeper than BingX's own best
+  `1d` retention (5.21 years) — pooling Binance spot's full ~8.97-year
+  history drops this project's own `1.645/sqrt(years)` detection floor
+  to **~0.55** annualized Sharpe, for the first time *below* the
+  0.4-0.8 credible-institutional-edge range this file already cites
+  (BingX's own 5.21-year floor is ~0.72, above that range). Like every
+  other retention figure in this file, expect this to keep drifting
+  forward on future runs — re-run `backfill_binance.py` rather than
+  trust this as permanent.
+- **Rate limits are real, numeric, and confirmed live** — a first for
+  this pipeline (BingX and FRED both rely on undocumented/third-party
+  estimates). Live-fetched via each host's own `GET .../exchangeInfo`
+  `rateLimits` field: spot `REQUEST_WEIGHT` = **6000/minute** per IP;
+  futures `REQUEST_WEIGHT` = **2400/minute** per IP. Per-request weight
+  costs (spot: flat 2 regardless of `limit`; futures: tiered 1/2/5/10
+  by `limit` bucket) are sourced from Binance's own official
+  docs/changelog rather than re-derived from isolated request-header
+  deltas this session, so held to slightly lower confidence than the
+  live-fetched budget numbers themselves. **HTTP 418** is Binance's own
+  documented signal for a temporary IP ban after repeated rate-limit
+  violations (distinct from `429`) — not observed live (no violation
+  was triggered), deliberately treated as non-retryable in
+  `binance_klines.py` on the same "don't retry into an active ban"
+  principle BingX's own non-retryable statuses already follow.
+
+### Verified — real, computed statistics (not an API fact, but load-bearing for how this data should be used)
+
+- **Binance spot BTCUSDT vs. BingX BTC-USDT daily-close correlation
+  over their full overlap (2021-05-14 through 2026-08-04, 1,909 common
+  days): 1.000000.** Daily log-return correlation: **0.999955**
+  (n=1,908). A signal validated on Binance spot data would transfer to
+  BingX BTC-USDT futures with very high confidence at daily
+  granularity — not merely assumed from "BTC is fungible."
+- **Binance spot vs. futures basis, over their full overlap
+  (2019-09-08 through 2026-08-04, 2,523 common days)**: mean
+  `(futures-spot)/spot` = -0.0154%, stdev 0.0652%, range -0.74% to
+  +1.80% — tight, and narrowing over time (mean absolute basis 0.057%
+  in the first third of the overlap vs. ~0.044% in the later two
+  thirds), consistent with a maturing derivatives market rather than a
+  data-quality issue.
+
+Only public, unauthenticated read endpoints (klines only) have been
+called against the live API. No authenticated Binance endpoint has
+ever been called by this project, and none is planned — see the
+data-research-only framing above.
+
 ## LLM Usage Policy
 
 Allowed: coding assistance, research support, backtest interpretation, log
