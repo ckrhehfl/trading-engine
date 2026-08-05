@@ -81,6 +81,43 @@ class TestCombineZScores:
         with pytest.raises(ValueError, match="finite"):
             combine_z_scores([1.0, 2.0], weights=[1.0, math.inf])
 
+    def test_equal_extremely_large_weights_do_not_overflow(self):
+        # Squaring 1e200 alone overflows float64 (1e200**2 == 1e400 ->
+        # inf) -- if combine_z_scores summed w**2 without first
+        # normalizing by the max weight, this would produce a non-finite
+        # or garbage combined_z. Equal weights should still reduce to the
+        # same unweighted identity as elsewhere in this file.
+        huge = 1e200
+        result = combine_z_scores([1.0, 2.0], weights=[huge, huge])
+        assert math.isfinite(result.combined_z)
+        assert result.combined_z == pytest.approx((1.0 + 2.0) / math.sqrt(2))
+
+    def test_equal_extremely_small_weights_do_not_underflow(self):
+        tiny = 1e-200
+        result = combine_z_scores([1.0, 2.0], weights=[tiny, tiny])
+        assert math.isfinite(result.combined_z)
+        assert result.combined_z == pytest.approx((1.0 + 2.0) / math.sqrt(2))
+
+    def test_extreme_weight_ratio_does_not_silently_zero_out_via_overflow(self):
+        # Confirmed bug this test guards against: WITHOUT normalizing by
+        # the max weight first, sum(w**2) for w=[1e200, 1e-200] overflows
+        # to float('inf') (1e200**2 == 1e400), which collapses
+        # combined_z to 0.0 -- a silently WRONG answer (the dominant
+        # weight's own z-score should carry the result, not vanish),
+        # not a raised error. With normalization, the negligible weight
+        # correctly contributes ~nothing and the dominant weight's own
+        # z-score (1.0) carries the result.
+        result = combine_z_scores([1.0, 2.0], weights=[1e200, 1e-200])
+        assert math.isfinite(result.combined_z)
+        assert result.combined_z == pytest.approx(1.0, abs=1e-9)
+
+    def test_extreme_weights_still_report_the_original_unnormalized_values(self):
+        # The internal normalization used to avoid overflow must not leak
+        # into what the result reports -- a caller inspecting `.weights`
+        # should see exactly what it passed in, not a rescaled version.
+        result = combine_z_scores([1.0, 2.0], weights=[1e200, 1e-200])
+        assert result.weights == (1e200, 1e-200)
+
     def test_degenerate_single_input_returns_its_own_z_score_unchanged(self):
         # n=1: Z_combined = w*z / sqrt(w^2) = z for any positive w --
         # combining "one test with itself" must be a no-op.

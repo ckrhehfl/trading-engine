@@ -192,6 +192,26 @@ def combine_z_scores(
     rather than fail loudly, and is virtually always a caller mistake
     (e.g. a `NaN` z-score from an upstream degenerate PSR computation)
     rather than a valid input to combine.
+
+    Individually finite, individually valid weights can still combine
+    badly at extreme magnitude: squaring a weight around `1e200` or
+    larger overflows `float`'s ~1.8e308 max (`(1e200)**2 == 1e400`,
+    which Python evaluates to `inf`), which would silently collapse
+    `combined_z` to `0.0` -- a WRONG answer, not a raised error and not
+    the mathematically correct one (the dominant weight's own z-score
+    should dominate the result, not vanish from it). Guarded against by
+    normalizing `resolved_weights` by their own maximum before summing:
+    `Z_combined` is exactly invariant under uniform positive rescaling of
+    every weight by the same positive constant (both the numerator and
+    `sqrt(sum(w^2))` denominator scale by that same constant, so the
+    ratio is unchanged), so this changes nothing mathematically while
+    keeping every squared term within float range for any realistic
+    caller input. The two weighted sums additionally use `math.fsum`
+    (Neumaier/Shewchuk summation) rather than the builtin `sum`, for the
+    same reason this project already prefers `Decimal`/exact arithmetic
+    where practical -- lower accumulated floating-point error, at no
+    real cost for the small input sizes this function is ever called
+    with.
     """
     if not z_scores:
         raise ValueError("z_scores must be non-empty")
@@ -212,8 +232,15 @@ def combine_z_scores(
         if not math.isfinite(weight) or weight <= 0:
             raise ValueError(f"each weight must be finite and positive, got {weight}")
 
-    numerator = sum(w * z for w, z in zip(resolved_weights, z_scores, strict=True))
-    denominator = math.sqrt(sum(w * w for w in resolved_weights))
+    # Normalize by the largest weight before squaring/summing -- see the
+    # overflow discussion above. `resolved_weights` (the caller-facing,
+    # UN-normalized values) is still what gets reported on the result
+    # below, so this scaling is purely an internal computation detail.
+    max_weight = max(resolved_weights)
+    scaled_weights = [w / max_weight for w in resolved_weights]
+
+    numerator = math.fsum(w * z for w, z in zip(scaled_weights, z_scores, strict=True))
+    denominator = math.sqrt(math.fsum(w * w for w in scaled_weights))
     combined_z = numerator / denominator
     combined_probability = NormalDist().cdf(combined_z)
 
