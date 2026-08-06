@@ -1307,6 +1307,78 @@ Bar's holdout single-window variant itself. Full derivation, the
 drawdown-bound proof, and the complete numerical detail:
 `.planning/sr-ac-combined-holdout-meta-analysis.md`.
 
+**Paper Trading Policy Exception — `daily-tsmom-ensemble` (human-approved
+2026-08-05).** CLAUDE.md's standing rule requires clearing the
+Backtest/Walk-Forward Eligibility Bar, including rolling walk-forward
+validation, before paper-trading eligibility. Neither is true here in the
+usual sense, stated precisely rather than glossed over:
+
+1. Neither of `daily-tsmom-ensemble`'s two independent pre-registered
+   holdout confirmations (`sr-v`, BingX 2021-2024; `sr-ab`, Binance
+   2017-2021) formally cleared all five gating criteria. `sr-v` missed
+   PSR (0.9367<0.95), Sharpe-vs-detection-floor (0.882<0.9567), and trade
+   count (26<53) — passing only drawdown and profit factor. `sr-ab`
+   missed drawdown (20.135%>20%) and trade count (64<68) — passing PSR,
+   Sharpe-vs-floor, and profit factor. **The two did not fail in the same
+   way**: `sr-v` missed on statistical significance itself, not merely on
+   practical gates.
+2. `sr-ac`'s retrospective meta-analysis (no new data access) found that
+   combining both independent, disjoint-sample significance tests via
+   Stouffer's weighted Z-score method yields Z=2.914, Φ(Z)=0.9982 —
+   genuinely strong, and stronger than either individual PSR. This is
+   meta-analysis working as intended: a real small-to-moderate effect can
+   fail to reach significance in either individually underpowered sample
+   while still being real and detectable once the independent samples are
+   properly combined. `sr-ac` also proved the combined drawdown
+   mathematically must be ≥20.14% (already over the 20% ceiling) and
+   found combined trades (90) fall short of the recomputed combined floor
+   (100).
+3. This strategy has never been walk-forward validated via rolling
+   train/validate folds on any 1d data — deliberately: to protect the
+   holdout, no 1d price data was accessed before either pre-registered
+   confirmation (`sr-u`'s own design). The two single-window holdout
+   confirmations, on two structurally different, disjoint multi-year
+   eras, stand in place of rolling folds here. This is judged acceptable
+   specifically **because** the strategy has zero fitted parameters
+   (`free_parameter_count: 0`, the literature's own canonical
+   Moskowitz-Ooi-Pedersen lookback set) — the failure mode rolling
+   walk-forward exists to catch (a result that fits one window because it
+   was tuned or selected against it) has no foothold here, since nothing
+   was tuned or selected on any of this project's own data. A strategy
+   with any fitted or selected parameter would NOT qualify for this same
+   reasoning.
+
+Given this evidence pattern — genuine combined statistical significance,
+missing only on practical risk-control (drawdown) and
+minimum-evidence-volume (trade count) gates, on a strategy with no
+overfitting surface to protect against — the human operator explicitly
+approved proceeding to paper trading as the next evidence-gathering step,
+rather than requiring further backtest research (e.g. multi-symbol
+expansion) first. Multi-symbol expansion was deprioritized for now on a
+separate, practical judgment (human-stated, not re-derived here): a
+survivorship-safe, comparably-liquid multi-symbol universe beyond BTC/ETH
+is not readily available from this project's current data sources.
+CLAUDE.md's own multi-symbol architecture goals (see "Long-term Design
+Targets") are unaffected by this — it is a near-term sequencing choice,
+not an architectural reversal.
+
+**Scope, stated precisely so this is not read more broadly than
+intended**: this exception applies ONLY to `daily-tsmom-ensemble` v1
+(`research/strategies/daily_tsmom_ensemble.py`, unchanged) proceeding to
+PAPER trading. It does NOT: waive the Paper Trading Pass Criteria (still
+requires 30-45 days, 50+ trades, zero critical crashes/duplicate
+orders/position mismatches/risk-gateway bypasses, paper score 80+, kill
+switch verified, before any live consideration — and given the backtest
+evidence itself fell short of the trade-count floor, paper trading's own
+50+-trade requirement is doing more evidentiary work than usual here, not
+less); waive the separate Live Entry Criteria; relax any Risk Parameter
+(canary tier limits apply in full); or loosen the Eligibility Bar, the
+walk-forward-validation requirement, or the standing rule against further
+parameter searching for any OTHER strategy. A future strategy citing this
+exception without a comparably strong multi-window independent
+replication AND zero fitted parameters is not following this precedent
+correctly.
+
 ## Tooling Stack
 
 | Layer | Choice | Status |
