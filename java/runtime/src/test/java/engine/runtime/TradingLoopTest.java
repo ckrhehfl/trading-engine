@@ -337,4 +337,93 @@ class TradingLoopTest {
             assertNull(loop.lastError());
         }
     }
+
+    /**
+     * Paper-trading bridge Task E ({@code .planning/paper-trading-e-
+     * reconciliation.md}): {@link TradingLoop#submittedOrderIds()} is the
+     * source of truth {@link Reconciler#check} cross-checks against {@link
+     * OrderStore} and {@link PaperBroker} -- neither of those two exposes a
+     * full enumeration of everything it has ever tracked, so this loop's
+     * own record of "every order id I successfully registered through
+     * OrderPipeline" is what fills that gap. This test proves it
+     * accumulates correctly across multiple ticks, not just within one.
+     */
+    @Test
+    void submittedOrderIdsTracksEveryOrderCreatedThroughThePipelineAcrossTicks() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        // Fresh intentId every call (see DummySignalSource's own Javadoc) --
+        // fires every tick, unmarketable LIMIT so each resulting order stays
+        // observably pending rather than filling and vanishing.
+        DummySignalSource signalSource = new DummySignalSource(
+                SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("40000"), 1);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // above the limit -> unmarketable, both signals stay pending
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            assertTrue(loop.submittedOrderIds().isEmpty(), "nothing submitted yet");
+
+            loop.tick();
+            loop.tick();
+
+            assertEquals(2, loop.submittedOrderIds().size());
+            assertEquals(2, broker.pendingOrders().size());
+            assertTrue(
+                    broker.pendingOrders().keySet().containsAll(loop.submittedOrderIds()),
+                    "every id TradingLoop recorded submitting must be a real pending order in PaperBroker");
+        }
+    }
+
+    /**
+     * The real, if rare, scenario {@link Reconciler}'s {@code
+     * DUPLICATE_SUBMISSION_ATTEMPT} mismatch type exists to catch. A real
+     * {@code FileSignalSource} would never produce this (its whole job is
+     * deduping by {@code intent_id}) -- this uses the same permissive
+     * lambda {@link SignalSource} technique the symbol-mismatch tests above
+     * already use, standing in for "if that dedup ever broke".
+     */
+    @Test
+    void submittedOrderIdsRecordsARepeatWhenTheSameIntentIsSubmittedOnTwoSeparateTicks() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        OrderIntent repeatedIntent = new OrderIntent(
+                UUID.randomUUID(),
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("40000"),
+                "1d",
+                Instant.now());
+        SignalSource signalSource = () -> Optional.of(repeatedIntent);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // unmarketable -> stays pending after the first successful submit
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            loop.tick(); // first submit succeeds, order registered + pending
+            assertNull(loop.lastError());
+            assertEquals(1, broker.pendingOrders().size());
+
+            loop.tick(); // OrderStore.createOrder idempotently returns the
+            // SAME existing order (same intentId), but PaperBroker.submit's
+            // own seenClientOrderIds guard rejects the re-submit -- caught
+            // by tick()'s own catch-all, not propagated.
+            assertNotNull(loop.lastError(), "re-submitting the same order id must be rejected by PaperBroker");
+
+            // Despite the second submitToBroker call failing, TradingLoop
+            // still recorded the attempt (it happens before submitToBroker
+            // is called) -- this is exactly the real signature
+            // Reconciler#check's DUPLICATE_SUBMISSION_ATTEMPT type exists to
+            // catch.
+            assertEquals(2, loop.submittedOrderIds().size());
+            assertEquals(repeatedIntent.intentId(), loop.submittedOrderIds().get(0));
+            assertEquals(repeatedIntent.intentId(), loop.submittedOrderIds().get(1));
+        }
+    }
 }

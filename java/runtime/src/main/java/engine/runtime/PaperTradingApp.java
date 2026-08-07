@@ -46,8 +46,8 @@ import org.slf4j.LoggerFactory;
  * ScheduledExecutorService} cleanly), not restarting a crashed process.
  *
  * <p><b>Daily reporting</b> (Paper-trading bridge Task D -- see
- * {@code .planning/paper-trading-d-daily-reporting.md}): every scheduled
- * cycle now runs {@link DailyReportGenerator#beforeTick()}, then
+ * {@code .planning/paper-trading-d-daily-reporting.md}): {@link
+ * #runTick()} runs {@link DailyReportGenerator#beforeTick()}, then
  * {@link TradingLoop#tick()}, then {@link DailyReportGenerator#afterTick()}
  * -- {@code beforeTick()} detects a UTC day boundary and, when one is
  * crossed, writes the just-completed day's report to
@@ -55,6 +55,18 @@ import org.slf4j.LoggerFactory;
  * runs. See {@code DailyReportGenerator}'s own class Javadoc for the full
  * design (day-boundary detection, restart-mid-day behavior, trade/error
  * attribution).
+ *
+ * <p><b>Internal consistency reconciliation</b> (paper-trading bridge Task
+ * E, see {@code .planning/paper-trading-e-reconciliation.md}): {@link
+ * #runTick()} calls {@link #reconcile()} after every scheduled {@link
+ * TradingLoop#tick()} (and after the daily-report bookkeeping above),
+ * regardless of whether that tick itself succeeded -- a tick failure and
+ * an internal-bookkeeping inconsistency are orthogonal signals, and
+ * running the check unconditionally can surface exactly why a tick
+ * failed (e.g. a duplicate-submission attempt). {@link #reconcile()} is
+ * also public and safe to call directly (e.g. from a test) with no side
+ * effect beyond logging and, on a real mismatch, tripping {@link
+ * #killSwitch} -- both idempotent.
  */
 public final class PaperTradingApp {
 
@@ -88,9 +100,13 @@ public final class PaperTradingApp {
 
     private final TradingLoop tradingLoop;
     private final DailyReportGenerator dailyReportGenerator;
+    private final OrderStore orderStore;
+    private final PaperBroker paperBroker;
+    private final KillSwitch killSwitch;
     private final long tickIntervalSeconds;
     private final ScheduledExecutorService executor;
     private volatile ScheduledFuture<?> scheduledTask;
+    private volatile ReconciliationReport lastReconciliationReport;
 
     /**
      * Builds the real {@link RiskGateway}/{@link OrderStore}/
@@ -142,14 +158,15 @@ public final class PaperTradingApp {
         this.tickIntervalSeconds = tickIntervalSeconds;
 
         RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
-        OrderStore orderStore = new OrderStore();
-        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, orderStore);
-        PaperBroker paperBroker = new PaperBroker(FEE_BPS, SLIPPAGE_BPS);
+        this.orderStore = new OrderStore();
+        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
+        this.paperBroker = new PaperBroker(FEE_BPS, SLIPPAGE_BPS);
         FileSignalSource signalSource = new FileSignalSource(signalPath);
         BingXPriceFeed priceFeed = new BingXPriceFeed(bingxBaseUrl);
-        KillSwitch killSwitch = new KillSwitch();
+        this.killSwitch = new KillSwitch();
 
-        this.tradingLoop = new TradingLoop(orderPipeline, paperBroker, signalSource, priceFeed, killSwitch, symbol);
+        this.tradingLoop =
+                new TradingLoop(orderPipeline, this.paperBroker, signalSource, priceFeed, this.killSwitch, symbol);
         this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
 
@@ -294,6 +311,41 @@ public final class PaperTradingApp {
         } else {
             log.info("tick complete: lastTickAt={} equity={}", tradingLoop.lastTickAt(), tradingLoop.currentEquity());
         }
+        // Runs regardless of the tick's own outcome above -- see class
+        // Javadoc, "Internal consistency reconciliation".
+        reconcile();
+    }
+
+    /**
+     * Runs {@link Reconciler#check} against this app's own {@link
+     * OrderStore} and {@link PaperBroker}, using {@link TradingLoop
+     * #submittedOrderIds()} as the known-submission history -- see class
+     * Javadoc and {@code .planning/paper-trading-e-reconciliation.md} for
+     * the full design and why a detected mismatch trips {@link
+     * #killSwitch}. Updates {@link #lastReconciliationReport()} with the
+     * result before returning it.
+     */
+    public ReconciliationReport reconcile() {
+        ReconciliationReport report = Reconciler.check(tradingLoop.submittedOrderIds(), orderStore, paperBroker);
+        lastReconciliationReport = report;
+        if (!report.isClean()) {
+            log.error(
+                    "internal consistency check found {} mismatch(es); tripping kill switch -- see the individual"
+                            + " mismatch log line(s) above for detail",
+                    report.mismatches().size());
+            killSwitch.trip();
+        }
+        return report;
+    }
+
+    /**
+     * The most recent {@link #reconcile()} result, or {@code null} if
+     * {@link #reconcile()} has never run yet (e.g. before the first
+     * scheduled tick). Read-only -- unlike {@link #reconcile()} itself,
+     * calling this has no side effect and never trips the kill switch.
+     */
+    public ReconciliationReport lastReconciliationReport() {
+        return lastReconciliationReport;
     }
 
     /**
@@ -365,6 +417,16 @@ public final class PaperTradingApp {
     /** Test/manual-verification-only accessor -- same status as {@link #tradingLoop()} above. */
     DailyReportGenerator dailyReportGenerator() {
         return dailyReportGenerator;
+    }
+
+    /** Test-only accessor (package-private) -- see {@link #tradingLoop()}'s own Javadoc. */
+    OrderStore orderStore() {
+        return orderStore;
+    }
+
+    /** Test-only accessor (package-private) -- see {@link #tradingLoop()}'s own Javadoc. */
+    KillSwitch killSwitch() {
+        return killSwitch;
     }
 
     public static void main(String[] args) {
