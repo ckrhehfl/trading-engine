@@ -1,21 +1,29 @@
 package engine.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import engine.oms.Order;
+import engine.risk.AccountState;
+import engine.risk.RiskGateway;
+import engine.risk.RiskLimits;
 import engine.schemas.OrderIntent;
 import engine.schemas.OrderType;
 import engine.schemas.SchemaObjectMapper;
 import engine.schemas.Side;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -251,6 +259,113 @@ class PaperTradingAppTest {
             } finally {
                 app.stop();
             }
+        }
+    }
+
+    /**
+     * Paper-trading bridge Task E ({@code .planning/paper-trading-e-
+     * reconciliation.md}): {@link PaperTradingApp#reconcile()} is the real
+     * wiring point for {@link Reconciler#check} in this app -- a normal
+     * signal-to-fill flow through the real {@link RiskGateway}/{@link
+     * OrderPipeline}/{@link PaperBroker} graph must report clean and must
+     * not touch the kill switch.
+     */
+    @Test
+    void reconcileReportsCleanAfterANormalFillAndDoesNotTripTheKillSwitch(@TempDir Path tempDir) throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.01"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            PaperTradingApp app = new PaperTradingApp(SYMBOL, server.baseUrl(), signalPath, 60);
+
+            app.tradingLoop().tick(); // real fill, GUARDED_MARKET
+            ReconciliationReport report = app.reconcile();
+
+            assertTrue(report.isClean(), "expected a clean report after a normal fill: " + report.mismatches());
+            assertFalse(app.killSwitch().isTripped());
+            assertEquals(report, app.lastReconciliationReport());
+        }
+    }
+
+    /**
+     * Proves {@link PaperTradingApp#runTick()} (driven by {@link
+     * PaperTradingApp#start()}) automatically calls {@link
+     * PaperTradingApp#reconcile()} on every scheduled tick, not only when a
+     * caller invokes it directly -- {@link
+     * PaperTradingApp#lastReconciliationReport()} starts {@code null} and
+     * becomes non-null once the real scheduler has run at least one tick.
+     */
+    @Test
+    void startAutomaticallyRunsReconciliationAfterEveryScheduledTick(@TempDir Path tempDir) throws Exception {
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            Path signalPath = tempDir.resolve("latest.json"); // never written -- ticks are no-ops but still real
+            PaperTradingApp app = new PaperTradingApp(SYMBOL, server.baseUrl(), signalPath, 1);
+
+            assertEquals(null, app.lastReconciliationReport());
+
+            app.start();
+            try {
+                ReconciliationReport report =
+                        awaitNonNull(app::lastReconciliationReport, Duration.ofSeconds(5));
+                assertTrue(report.isClean());
+            } finally {
+                app.stop();
+            }
+        }
+    }
+
+    /**
+     * The real, end-to-end demonstration this task's own brief asks for:
+     * manufacture a genuine internal-consistency violation and confirm
+     * {@link PaperTradingApp#reconcile()} both reports it and trips the
+     * kill switch. An order is registered in this app's own real {@link
+     * engine.oms.OrderStore} (via a second {@link OrderPipeline} pointed at
+     * the same store -- a real {@link RiskGateway#evaluate} call, not a
+     * hand-built {@code RiskDecision}) but deliberately never handed to
+     * {@link engine.execution.PaperBroker} -- the exact orphan scenario
+     * {@link TradingLoop#submitToBroker}'s own Javadoc names. Reflection is
+     * used only to seed {@link TradingLoop}'s own submitted-order-id
+     * history with this id, standing in for what a real {@code tick()}
+     * call would have recorded -- the same technique {@code TradingLoopTest
+     * }'s own equity-depleted test already uses to reach a field with no
+     * other public entry point.
+     */
+    @Test
+    void reconcileDetectsARealOrphanedOrderAndTripsTheKillSwitch(@TempDir Path tempDir) throws Exception {
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            Path signalPath = tempDir.resolve("latest.json"); // never written
+            PaperTradingApp app = new PaperTradingApp(SYMBOL, server.baseUrl(), signalPath, 60);
+
+            OrderPipeline sideChannel = new OrderPipeline(new RiskGateway(RiskLimits.canary()), app.orderStore());
+            OrderIntent orphanIntent = new OrderIntent(
+                    UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"),
+                    new BigDecimal("40000"), "1d", Instant.now());
+            AccountState account =
+                    new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+            Order orphan = sideChannel.submitIntent(orphanIntent, new BigDecimal("60000"), account).orElseThrow();
+            // orphan is now real and registered in app's own OrderStore
+            // (state NEW) -- deliberately never submitted to PaperBroker.
+
+            Field submittedIdsField = TradingLoop.class.getDeclaredField("submittedOrderIds");
+            submittedIdsField.setAccessible(true);
+            @SuppressWarnings("unchecked")
+            List<UUID> submittedIds = (List<UUID>) submittedIdsField.get(app.tradingLoop());
+            submittedIds.add(orphan.clientOrderId());
+
+            ReconciliationReport report = app.reconcile();
+
+            assertFalse(report.isClean());
+            assertEquals(1, report.mismatches().size());
+            assertEquals(ReconciliationMismatchType.ORPHANED_IN_BROKER, report.mismatches().get(0).type());
+            assertEquals(orphan.clientOrderId(), report.mismatches().get(0).orderId());
+            assertTrue(app.killSwitch().isTripped(), "a detected internal-consistency mismatch must trip the kill switch");
+            assertEquals(report, app.lastReconciliationReport());
         }
     }
 }

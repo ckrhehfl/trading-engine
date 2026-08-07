@@ -9,9 +9,11 @@ import engine.schemas.OrderIntent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -84,6 +86,20 @@ import org.slf4j.LoggerFactory;
  * {@code .planning/paper-trading-c-scheduler-entrypoint.md} for the full
  * writeup of why this layer was chosen over validating inside
  * {@link FileSignalSource} itself.
+ *
+ * <p><b>Submitted-order-id tracking</b> (paper-trading bridge Task E, see
+ * {@code .planning/paper-trading-e-reconciliation.md}): every client order
+ * id that {@link OrderPipeline#submitIntent} successfully registers is
+ * appended to an internal history, exposed read-only via {@link
+ * #submittedOrderIds()}. This exists purely to feed {@link Reconciler
+ * #check}, which cross-checks it against {@link engine.oms.OrderStore} and
+ * {@link PaperBroker}'s own bookkeeping -- neither of those two classes
+ * exposes a full enumeration of everything it has ever tracked, so this
+ * loop's own record fills that gap. It is a plain, unbounded {@code
+ * List<UUID>} -- fine for this project's currently-known usage (a
+ * daily-cadence strategy produces, at most, a handful of entries per day
+ * over a 30-45 day paper-trading run), not designed to be pruned or bounded
+ * for a much higher-frequency signal source.
  */
 public final class TradingLoop {
 
@@ -101,6 +117,7 @@ public final class TradingLoop {
     private BigDecimal equity = INITIAL_EQUITY;
     private boolean lastLoggedTripState = false;
     private boolean equityDepletedLogged = false;
+    private final List<UUID> submittedOrderIds = new ArrayList<>();
 
     private volatile Instant lastTickAt;
     private volatile Throwable lastError;
@@ -178,6 +195,14 @@ public final class TradingLoop {
                         } else {
                             Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
                             if (order.isPresent()) {
+                                // Recorded before submitToBroker() below, not
+                                // after -- see Reconciler's own Javadoc: a
+                                // submission *attempt* is what
+                                // DUPLICATE_SUBMISSION_ATTEMPT detects, and
+                                // that must be true even when the broker call
+                                // itself goes on to fail (e.g. PaperBroker's
+                                // own duplicate-id guard).
+                                submittedOrderIds.add(order.get().clientOrderId());
                                 submitToBroker(order.get(), price);
                             }
                         }
@@ -205,6 +230,17 @@ public final class TradingLoop {
 
     public synchronized BigDecimal currentEquity() {
         return equity;
+    }
+
+    /**
+     * Every client order id this loop has ever successfully registered
+     * through {@link OrderPipeline#submitIntent} -- including a repeat of
+     * the same id, if one ever occurs (see class Javadoc, "Submitted-
+     * order-id tracking"). A snapshot copy is returned; mutating it does
+     * not affect this loop's own internal history.
+     */
+    public synchronized List<UUID> submittedOrderIds() {
+        return List.copyOf(submittedOrderIds);
     }
 
     /**
