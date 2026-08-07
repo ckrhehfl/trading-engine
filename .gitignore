@@ -10,5 +10,20 @@ build/
 *.class
 .DS_Store
 logs/
-runs/
+# runs/experiments.jsonl (the research trial log) stays gitignored -- it is
+# a large, purely local research artifact (see research/experiment_log.py's
+# DEFAULT_RUNS_PATH docstring). runs/live_signals.jsonl is the opposite: a
+# low-volume, once-daily operational audit trail for the daily-tsmom-ensemble
+# paper-trading signal runner (python/live/generate_daily_signal.py) that is
+# deliberately git-committed, same treatment as any other operational log --
+# see .planning/paper-trading-b-signal-runner.md. `runs/*` (not `runs/`)
+# is required for the negation below to take effect -- git does not descend
+# into a directory excluded via a bare trailing-slash pattern.
+runs/*
+!runs/live_signals.jsonl
 python/data/var/
+# Locally-generated runtime data for the live paper-trading signal runner
+# (python/live/generate_daily_signal.py) -- the signal file(s) it writes,
+# mirroring python/data/var/'s existing gitignore treatment for the kline
+# cache above.
+var/live/
