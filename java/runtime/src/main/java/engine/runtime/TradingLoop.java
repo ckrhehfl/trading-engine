@@ -65,6 +65,25 @@ import org.slf4j.LoggerFactory;
  * equivalent Javadoc note on monthly/hard-stop/emergency-stop), not a bug.
  * It exists purely so {@link RiskGateway#evaluate} has a real, moving
  * number to evaluate against instead of a hardcoded constant every tick.
+ *
+ * <p><b>Symbol-match validation</b> (closes GitHub issue #70 / the release
+ * gate recorded in {@code .planning/paper-trading-a-signal-source.md}):
+ * every signal {@link #tick()} receives from {@link SignalSource
+ * #nextSignal()} is checked against this loop's own configured
+ * {@link #symbol} before it is ever handed to {@link OrderPipeline
+ * #submitIntent}. This class -- not any one {@code SignalSource}
+ * implementation -- owns the check, deliberately: {@code symbol} is
+ * already this loop's own single source of truth for "what am I actually
+ * trading" (it is what {@link #priceFeed} is polled with and what
+ * {@code OrderPipeline}/{@code PaperBroker} are driven with two lines
+ * later), so the invariant belongs to the class that already holds it,
+ * not duplicated into every current or future {@code SignalSource}
+ * implementation. A mismatch is a defined, logged skip -- exactly like
+ * the kill-switch-tripped and equity-depleted skips above -- never a
+ * thrown exception and never a {@link #lastError()}. See
+ * {@code .planning/paper-trading-c-scheduler-entrypoint.md} for the full
+ * writeup of why this layer was chosen over validating inside
+ * {@link FileSignalSource} itself.
  */
 public final class TradingLoop {
 
@@ -144,9 +163,23 @@ public final class TradingLoop {
                     Optional<OrderIntent> signal = signalSource.nextSignal();
                     if (signal.isPresent()) {
                         OrderIntent intent = signal.get();
-                        Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
-                        if (order.isPresent()) {
-                            submitToBroker(order.get(), price);
+                        if (!intent.symbol().equals(symbol)) {
+                            // See class Javadoc, "Symbol-match validation".
+                            // A defined, logged skip -- not a tick failure
+                            // -- so lastError is untouched, same treatment
+                            // as the kill-switch/equity-depleted skips
+                            // above.
+                            log.warn(
+                                    "signal {} has symbol {} but this loop is configured for {}; rejecting,"
+                                            + " not submitting",
+                                    intent.intentId(),
+                                    intent.symbol(),
+                                    symbol);
+                        } else {
+                            Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
+                            if (order.isPresent()) {
+                                submitToBroker(order.get(), price);
+                            }
                         }
                     }
                 }

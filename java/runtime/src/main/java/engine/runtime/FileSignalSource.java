@@ -36,6 +36,14 @@ import org.slf4j.LoggerFactory;
  * primary error handling -- a bad signal file must not even register as a
  * "tick failed" event the way an unrelated bug would.
  *
+ * <p><b>Does not itself validate {@code OrderIntent.symbol()} against
+ * anything</b> -- a delivered intent's symbol is whatever the file
+ * contained, unchecked here. That validation exists, deliberately one
+ * layer up: see {@link TradingLoop}'s own "Symbol-match validation"
+ * Javadoc section and {@code .planning/paper-trading-c-scheduler-
+ * entrypoint.md} for why {@code TradingLoop} -- not this class -- owns
+ * the check (closes GitHub issue #70).
+ *
  * <p>Takes a {@link Path}, not a bare {@code String} -- matches
  * {@code engine.schemas.SchemaCompatTest}'s own convention for fixture
  * paths (the only existing file-path-typed precedent in this codebase;

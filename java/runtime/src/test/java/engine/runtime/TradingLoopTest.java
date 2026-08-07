@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -242,6 +243,98 @@ class TradingLoopTest {
             // Zero fees on this PaperBroker -- filling the seed order
             // doesn't change equity, so it should still read exactly zero.
             assertEquals(0, BigDecimal.ZERO.compareTo(loop.currentEquity()));
+        }
+    }
+
+    /**
+     * Symbol-match validation (closes GitHub issue #70 / the release gate
+     * recorded in {@code .planning/paper-trading-a-signal-source.md}):
+     * {@code TradingLoop} is the layer that owns "what symbol is this loop
+     * actually configured for" (it already threads {@code symbol} through
+     * to both {@code priceFeed.latestPrice} and {@code orderPipeline
+     * .submitIntent} today), so the check lives here rather than inside
+     * any one {@link SignalSource} implementation -- see
+     * {@code .planning/paper-trading-c-scheduler-entrypoint.md} for the
+     * full layer-choice writeup. A plain lambda {@link SignalSource} is
+     * used here (not {@link DummySignalSource}, which always shares
+     * {@code TradingLoopTest}'s own {@code SYMBOL} constant by
+     * construction, and not {@link FileSignalSource}, which has no
+     * symbol-awareness at all) specifically so a mismatched symbol can be
+     * constructed directly and cheaply.
+     */
+    @Test
+    void tickRejectsASignalWithAMismatchedSymbolWithoutSubmittingItOrFailingTheTick() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        // LIMIT, deliberately unmarketable at this test's price (60000) --
+        // same technique the class-level Javadoc and every other test in
+        // this file already use: if the symbol check did NOT exist, this
+        // exact intent would still reach OrderPipeline/PaperBroker and
+        // become visibly pending, so pendingOrders() staying empty is a
+        // real, distinguishing assertion about the check itself -- not
+        // just "nothing filled", which a GUARDED_MARKET intent's immediate
+        // fill (regardless of symbol) could not have distinguished.
+        OrderIntent wrongSymbolIntent = new OrderIntent(
+                UUID.randomUUID(),
+                "ETH-USDT", // TradingLoop below is configured for SYMBOL ("BTC-USDT")
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        SignalSource signalSource = () -> Optional.of(wrongSymbolIntent);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // above the limit -> would be unmarketable if it ever reached the broker
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            loop.tick();
+
+            assertTrue(
+                    broker.pendingOrders().isEmpty(),
+                    "a signal whose symbol does not match the configured symbol must never reach PaperBroker");
+            // A rejected-by-symbol-mismatch signal is a defined, logged skip
+            // -- not a tick failure -- exactly like the equity-depleted and
+            // kill-switch-tripped skip paths above.
+            assertNull(loop.lastError());
+            assertNotNull(loop.lastTickAt());
+        }
+    }
+
+    @Test
+    void tickSubmitsASignalWithAMatchingSymbolNormally() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        // Same unmarketable-LIMIT shape as the mismatch test above, except
+        // for the symbol -- isolates "does a matching signal still flow
+        // through" from every other variable.
+        OrderIntent matchingIntent = new OrderIntent(
+                UUID.randomUUID(),
+                SYMBOL, // matches TradingLoop's own configured symbol below
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        SignalSource signalSource = () -> Optional.of(matchingIntent);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // above the limit -> unmarketable, stays pending (proof of submission)
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            loop.tick();
+
+            assertEquals(
+                    1,
+                    broker.pendingOrders().size(),
+                    "a signal whose symbol matches the configured symbol must flow through unchanged");
+            assertNull(loop.lastError());
         }
     }
 }
