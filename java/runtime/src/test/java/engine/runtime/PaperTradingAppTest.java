@@ -3,6 +3,7 @@ package engine.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -14,8 +15,11 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.UUID;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
@@ -251,6 +255,68 @@ class PaperTradingAppTest {
             } finally {
                 app.stop();
             }
+        }
+    }
+
+    private static final class MutableClock extends Clock {
+        private Instant instant;
+
+        MutableClock(Instant instant) {
+            this.instant = instant;
+        }
+
+        void advanceTo(Instant newInstant) {
+            this.instant = newInstant;
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            throw new UnsupportedOperationException("not needed by these tests");
+        }
+
+        @Override
+        public Instant instant() {
+            return instant;
+        }
+    }
+
+    /**
+     * A CodeRabbit review finding on this task's own PR (#73): without
+     * {@link PaperTradingApp#stop()} calling {@link DailyReportGenerator
+     * #finalizeCompletedDayOnShutdown()}, a UTC day that ends between the
+     * last real scheduled tick and the process actually stopping would
+     * never get a report -- nothing would be left to notice the boundary.
+     * Drives a real tick (via the package-private {@code runTick()}
+     * accessor, same technique {@code aManuallyDrivenTickReadsARealSignalFileAndProducesARealFill}
+     * uses) on 2026-08-07, advances the injected clock into 2026-08-08
+     * WITHOUT another tick, then calls {@code stop()} directly and
+     * confirms the report for 2026-08-07 exists anyway.
+     */
+    @Test
+    void stopFinalizesADayThatEndedBeforeTheNextScheduledTickWouldHaveNoticed(@TempDir Path tempDir)
+            throws IOException {
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            Path signalPath = tempDir.resolve("latest.json"); // never written -- a quiet day is enough to prove the wiring
+            Path reportsDir = tempDir.resolve("reports");
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T23:58:00Z"));
+            PaperTradingApp app =
+                    new PaperTradingApp(SYMBOL, server.baseUrl(), signalPath, 300, reportsDir, clock);
+
+            app.runTick(); // the only tick this test drives, still on 2026-08-07
+
+            clock.advanceTo(Instant.parse("2026-08-08T00:03:00Z")); // "process stops" past midnight, before another tick
+            app.stop();
+
+            Path reportFile = reportsDir.resolve("2026-08-07.json");
+            assertTrue(
+                    Files.exists(reportFile),
+                    "stop() must finalize a day that already ended even though no further tick ever ran");
         }
     }
 }

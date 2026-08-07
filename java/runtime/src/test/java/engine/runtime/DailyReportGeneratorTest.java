@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import engine.execution.Fill;
 import engine.execution.PaperBroker;
 import engine.oms.OrderStore;
 import engine.risk.RiskGateway;
@@ -22,6 +23,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -185,6 +187,9 @@ class DailyReportGeneratorTest {
             assertTrue(
                     loop.currentEquity().compareTo(new BigDecimal("100000")) < 0,
                     "sanity check: two real fills must have already dropped equity below the starting value");
+            // Captured before the boundary crossing below -- TradingLoop's
+            // own fillHistory() is the ground truth for application order.
+            List<Fill> expectedOrder = loop.fillHistory();
 
             clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
             generator.beforeTick();
@@ -195,6 +200,18 @@ class DailyReportGeneratorTest {
             assertTrue(
                     report.endingEquity().compareTo(report.startingEquity()) < 0,
                     "equity must have dropped by the fee on each of the two fills");
+            // Order, not just count -- a report that silently reversed
+            // (or otherwise reordered) trades would still pass a
+            // count-only assertion; comparing clientOrderId index-by-index
+            // against TradingLoop's own fillHistory() (the real
+            // application order) would not.
+            assertEquals(2, expectedOrder.size());
+            for (int i = 0; i < expectedOrder.size(); i++) {
+                assertEquals(
+                        expectedOrder.get(i).clientOrderId(),
+                        report.trades().get(i).clientOrderId(),
+                        "trade at index " + i + " must match TradingLoop's own application order");
+            }
         }
     }
 
@@ -327,5 +344,154 @@ class DailyReportGeneratorTest {
                     new BigDecimal("97000").compareTo(report.startingEquity()),
                     "starting equity must reflect the restart moment, not the true (unknowable) start of the UTC day");
         }
+    }
+
+    /**
+     * A CodeRabbit review finding on this task's own PR (#73): the
+     * original {@code writeReport} discarded the completed {@link
+     * DailyReport} the instant a write failed (e.g. a transient disk
+     * error), because the caller always advanced to the new day
+     * regardless of whether the write succeeded -- a real, permanent data
+     * loss for that day. Forces a real {@link IOException} (not a mock --
+     * this codebase has no mocking framework) by pointing {@code
+     * reportsDirectory} at a path whose own parent already exists as a
+     * plain file, so {@code Files.createDirectories} genuinely cannot
+     * create it, then confirms the report is retried -- and eventually
+     * succeeds with its ORIGINAL data -- once the obstruction is removed.
+     */
+    @Test
+    void aReportThatFailsToWriteIsRetriedOnALaterTickRatherThanDiscarded(@TempDir Path tempDir) throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            // A real file (not a directory) sitting exactly where the
+            // reports directory needs to be created -- Files
+            // .createDirectories() genuinely cannot create a directory
+            // where a plain file already exists, a real IOException, not
+            // a simulated one.
+            Path blockingFile = tempDir.resolve("blocked");
+            Files.writeString(blockingFile, "not a directory");
+            Path reportsDir = blockingFile.resolve("daily");
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+
+            for (int i = 0; i < 2; i++) {
+                generator.beforeTick();
+                loop.tick();
+                generator.afterTick();
+            }
+
+            clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator.beforeTick(); // the write attempted here must fail
+
+            assertFalse(Files.exists(reportsDir.resolve("2026-08-07.json")), "the write was obstructed -- must not exist yet");
+            assertEquals(1, generator.pendingReportCount(), "the failed report must be retained, not discarded");
+            assertEquals(LocalDate.of(2026, 8, 8), generator.currentDay(), "day tracking must still advance despite the write failure");
+
+            // Remove the obstruction, then simulate an ordinary same-day
+            // tick (no new boundary crossing) -- the retry must happen on
+            // ANY later beforeTick() call, not only at the next boundary.
+            Files.delete(blockingFile);
+            generator.beforeTick();
+
+            assertEquals(0, generator.pendingReportCount(), "the retry must have succeeded and cleared the pending queue");
+            Path reportFile = reportsDir.resolve("2026-08-07.json");
+            assertTrue(Files.exists(reportFile), "the retried report must now exist");
+            DailyReport report = mapper.readValue(reportFile.toFile(), DailyReport.class);
+            assertEquals(LocalDate.of(2026, 8, 7), report.date(), "the retried report must still be for the original day, not the day it was retried on");
+            assertEquals(2, report.ticksAttempted(), "the retried report must still carry its original day's data");
+        }
+    }
+
+    /**
+     * A CodeRabbit review finding on this task's own PR (#73): the
+     * original design only ever detected a day boundary inside {@link
+     * DailyReportGenerator#beforeTick()}, which only runs immediately
+     * before a real {@link TradingLoop#tick()} -- so if the process
+     * stops (e.g. {@code PaperTradingApp.stop()}) after a UTC day has
+     * already ended but before the next scheduled tick would have
+     * noticed, that day's report would never be written at all. This
+     * tests {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()}
+     * directly: ticks happen only on 2026-08-07, the clock is advanced
+     * into 2026-08-08 WITHOUT another {@code beforeTick()}/{@code tick()}/
+     * {@code afterTick()} cycle (simulating the process stopping before
+     * its next scheduled tick), and confirms the shutdown-only call still
+     * produces 2026-08-07's report.
+     */
+    @Test
+    void finalizeCompletedDayOnShutdownWritesADayThatEndedBeforeTheNextTickWouldHaveNoticed(@TempDir Path tempDir)
+            throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T23:58:00Z"));
+            Path reportsDir = tempDir.resolve("daily");
+            DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+
+            generator.beforeTick();
+            loop.tick();
+            generator.afterTick();
+
+            // The process "stops" here, past midnight UTC, before another
+            // beforeTick() would ever have run.
+            clock.advanceTo(Instant.parse("2026-08-08T00:03:00Z"));
+            assertFalse(
+                    Files.exists(reportsDir.resolve("2026-08-07.json")),
+                    "sanity check: no ordinary tick happened after the boundary, so nothing should have written yet");
+
+            generator.finalizeCompletedDayOnShutdown();
+
+            Path reportFile = reportsDir.resolve("2026-08-07.json");
+            assertTrue(Files.exists(reportFile), "shutdown must finalize a day that already ended, not leave it unwritten");
+            DailyReport report = mapper.readValue(reportFile.toFile(), DailyReport.class);
+            assertEquals(LocalDate.of(2026, 8, 7), report.date());
+            assertEquals(1, report.ticksAttempted());
+
+            // Idempotent: calling it again must not error or double-write anything odd.
+            generator.finalizeCompletedDayOnShutdown();
+            assertEquals(LocalDate.of(2026, 8, 8), generator.currentDay());
+        }
+    }
+
+    /**
+     * {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()} must
+     * be a safe no-op when nothing has ever been tracked -- e.g. a
+     * process that constructs {@code PaperTradingApp} and is stopped
+     * before its first scheduled tick ever fires.
+     */
+    @Test
+    void finalizeCompletedDayOnShutdownIsANoOpWhenNothingWasEverTracked(@TempDir Path tempDir) {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+        BingXPriceFeed priceFeed = new BingXPriceFeed("http://127.0.0.1:1"); // never actually called
+
+        TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+        Path reportsDir = tempDir.resolve("daily");
+        DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+
+        generator.finalizeCompletedDayOnShutdown(); // must not throw
+
+        assertFalse(Files.isDirectory(reportsDir), "nothing was ever tracked -- no report should be written");
     }
 }

@@ -303,6 +303,12 @@ public final class PaperTradingApp {
      * #main}'s JVM shutdown hook (SIGTERM / normal JVM exit); safe to
      * call more than once (a shutdown hook racing an explicit {@code
      * stop()} elsewhere) or even if {@link #start()} was never called.
+     *
+     * <p>Also calls {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()}
+     * after the executor has stopped -- without this, a UTC day that ends
+     * between the last real tick and the process actually stopping would
+     * never get a report at all, since nothing would be left to call
+     * {@link DailyReportGenerator#beforeTick()} and notice the boundary.
      */
     public synchronized void stop() {
         log.info("stopping paper trading loop");
@@ -316,6 +322,7 @@ public final class PaperTradingApp {
             Thread.currentThread().interrupt();
             executor.shutdownNow();
         }
+        dailyReportGenerator.finalizeCompletedDayOnShutdown();
     }
 
     /**

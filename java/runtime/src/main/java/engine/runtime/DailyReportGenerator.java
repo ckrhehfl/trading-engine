@@ -12,7 +12,9 @@ import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -85,16 +87,25 @@ import org.slf4j.LoggerFactory;
  * caveat). A day during which the process never ran at all produces no
  * report for that day at all -- also disclosed, not silently patched over.
  *
- * <p><b>Write failures never propagate</b>: a failure while writing the
- * report file is caught, logged at {@code ERROR} (maximally visible --
- * "no missing daily reports" is a hard Paper Trading Pass Criterion, so a
- * silently-swallowed write failure is exactly the failure mode that
- * criterion exists to catch), and swallowed -- matching
- * {@link TradingLoop#tick()}'s own "never propagate out of a scheduled
- * cycle" contract. The write itself is atomic (temp file + {@code
- * ATOMIC_MOVE}), the same {@code .tmp}-then-rename convention {@code
- * python/live/generate_daily_signal.py} already uses for its own signal
- * file, so a reader never observes a half-written report.
+ * <p><b>Write failures never propagate, and never discard data</b>: a
+ * failure while writing the report file is caught and logged at
+ * {@code ERROR} (maximally visible -- "no missing daily reports" is a
+ * hard Paper Trading Pass Criterion, so a silently-swallowed write
+ * failure is exactly the failure mode that criterion exists to catch),
+ * but the completed {@link DailyReport} itself is <b>not</b> discarded --
+ * it is kept in a small in-memory pending queue and retried at the start
+ * of every subsequent {@link #beforeTick()} call (in order, oldest
+ * first) until it actually succeeds. Day tracking still advances to the
+ * new day immediately regardless of whether the write succeeded --
+ * a transient disk error must not stall the whole loop's day-boundary
+ * detection, only that one day's report delivery. Same restart caveat
+ * as everything else here: the pending queue is in-memory only, so a
+ * process restart while a report is still pending loses it, same as any
+ * other unwritten state this class holds. The write itself is atomic
+ * (temp file + {@code ATOMIC_MOVE}), the same {@code .tmp}-then-rename
+ * convention {@code python/live/generate_daily_signal.py} already uses
+ * for its own signal file, so a reader never observes a half-written
+ * report.
  */
 public final class DailyReportGenerator {
 
@@ -112,6 +123,10 @@ public final class DailyReportGenerator {
     private int ticksAttempted;
     private int ticksSucceeded;
     private final List<DailyReport.TickError> errorsThisDay = new ArrayList<>();
+    // Completed-but-not-yet-durably-written reports, oldest first -- see
+    // class Javadoc's "Write failures never propagate, and never discard
+    // data" section.
+    private final Deque<DailyReport> pendingReports = new ArrayDeque<>();
 
     /** Production convenience constructor -- real wall-clock UTC time. */
     public DailyReportGenerator(TradingLoop tradingLoop, Path reportsDirectory) {
@@ -132,6 +147,7 @@ public final class DailyReportGenerator {
      * rather than in {@link #afterTick()}.
      */
     public synchronized void beforeTick() {
+        flushPendingReports();
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (currentDay == null) {
             startNewDay(today);
@@ -139,13 +155,41 @@ public final class DailyReportGenerator {
         }
         if (today.isAfter(currentDay)) {
             LocalDate finishedDay = currentDay;
-            writeReport(buildReport(finishedDay));
+            enqueueAndAttemptWrite(buildReport(finishedDay));
             startNewDay(today);
         }
         // today.isBefore(currentDay): a backwards clock adjustment (NTP
         // sync, manual change) -- deliberately not treated as a boundary;
         // the day already being tracked keeps accumulating rather than
         // finalizing early on a clock glitch.
+    }
+
+    /**
+     * Finalizes and writes the report for the current day if it has
+     * already ended by wall-clock time, without waiting for another
+     * {@link #beforeTick()} call to notice. Meant to be called exactly
+     * once during graceful shutdown (see {@link PaperTradingApp#stop()})
+     * -- otherwise a day that finishes between the process's last real
+     * tick and the process actually stopping would never get finalized
+     * at all, since nothing would ever call {@link #beforeTick()} again
+     * to detect it. Safe to call more than once (idempotent, matching
+     * {@code PaperTradingApp.stop()}'s own idempotency) and safe to call
+     * even if {@link #beforeTick()} was never called at all (nothing to
+     * finalize). Deliberately does <b>not</b> finalize the still-in-
+     * progress current day -- only a day that has fully ended is ever
+     * written, matching every other write path in this class.
+     */
+    public synchronized void finalizeCompletedDayOnShutdown() {
+        flushPendingReports();
+        if (currentDay == null) {
+            return; // nothing was ever tracked -- e.g. stopped before the first tick
+        }
+        LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
+        if (today.isAfter(currentDay)) {
+            LocalDate finishedDay = currentDay;
+            enqueueAndAttemptWrite(buildReport(finishedDay));
+            startNewDay(today);
+        }
     }
 
     /** Must be called once, immediately after every real {@link TradingLoop#tick()} call. See class Javadoc. */
@@ -193,7 +237,38 @@ public final class DailyReportGenerator {
                 uptimeFraction);
     }
 
-    private void writeReport(DailyReport report) {
+    /**
+     * Attempts to write every still-pending report, oldest first, removing
+     * each from the queue as it succeeds. Stops at the first one that
+     * still fails (rather than skipping ahead) so reports are written in
+     * chronological order and a persistently-broken write path doesn't
+     * get silently retried out of order.
+     */
+    private void flushPendingReports() {
+        while (!pendingReports.isEmpty()) {
+            DailyReport pending = pendingReports.peekFirst();
+            if (writeReport(pending)) {
+                pendingReports.removeFirst();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /** Writes {@code report} now; if that fails, keeps it for a later retry instead of discarding it. */
+    private void enqueueAndAttemptWrite(DailyReport report) {
+        if (!writeReport(report)) {
+            pendingReports.addLast(report);
+            log.warn(
+                    "daily report for {} could not be written and will be retried on a later tick;"
+                            + " {} report(s) now pending",
+                    report.date(),
+                    pendingReports.size());
+        }
+    }
+
+    /** Returns whether the write succeeded -- never throws, see class Javadoc's "Write failures" section. */
+    private boolean writeReport(DailyReport report) {
         try {
             Files.createDirectories(reportsDirectory);
             String fileName = report.date() + ".json";
@@ -212,15 +287,24 @@ public final class DailyReportGenerator {
                     report.ticksAttempted(),
                     report.ticksSucceeded(),
                     report.killSwitchTripped());
+            return true;
         } catch (IOException e) {
             // Deliberately swallowed, not rethrown -- see class Javadoc's
-            // "Write failures never propagate" section.
+            // "Write failures never propagate, and never discard data"
+            // section. The report itself is retried by the caller, not
+            // lost here.
             log.error("failed to write daily report for {}: {}", report.date(), e.toString(), e);
+            return false;
         }
     }
 
     /** Test/manual-verification-only accessor -- mirrors {@code PaperTradingApp.tradingLoop()}'s existing precedent. */
     LocalDate currentDay() {
         return currentDay;
+    }
+
+    /** Test/manual-verification-only accessor -- same status as {@link #currentDay()} above. */
+    int pendingReportCount() {
+        return pendingReports.size();
     }
 }

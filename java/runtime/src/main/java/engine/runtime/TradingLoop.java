@@ -99,6 +99,26 @@ import org.slf4j.LoggerFactory;
  * "starts clean" restart story as everything else on this class, see
  * above); {@code DailyReportGenerator} is the one that slices it into
  * daily windows, this class has no notion of a day boundary itself.
+ *
+ * <p><b>Unbounded growth, considered and deliberately not addressed here
+ * (CodeRabbit review finding on Task D's own PR #73):</b> a genuinely
+ * high-frequency strategy retaining every {@link Fill} for a process's
+ * entire uptime could eventually matter for memory. At this project's
+ * actual current scale it does not: the only strategy with a paper-
+ * trading policy exception (`daily-tsmom-ensemble`, see CLAUDE.md) is a
+ * daily-bar strategy producing at most a small handful of fills per day,
+ * against a single symbol, over the Paper Trading Pass Criteria's own
+ * 30-45 day window -- tens of {@code Fill} records, not thousands. A
+ * "consume unreported fills, retain only fills belonging to a not-yet-
+ * durably-written report" redesign was considered and rejected for this
+ * task: it would require {@code TradingLoop} itself to learn about report
+ * write success/failure, reopening exactly the day-boundary/report
+ * coupling this class's own design deliberately keeps out of it (see
+ * "Trade attribution" in {@code DailyReportGenerator}'s class Javadoc --
+ * that class owns all notion of "day," this one does not). Revisit if
+ * this project ever runs a materially higher-frequency strategy or a
+ * materially longer-lived process than its current single-symbol,
+ * daily-bar, weeks-long paper-trading scope.
  */
 public final class TradingLoop {
 
