@@ -18,11 +18,16 @@ import org.slf4j.LoggerFactory;
 /**
  * The actual running loop that drives {@link OrderPipeline} against
  * {@link PaperBroker} on a REST-polled price feed ({@link BingXPriceFeed}),
- * using {@link DummySignalSource} as its (explicitly not real) signal
- * source -- see that class's Javadoc, and CLAUDE.md's "Strategy Research
- * Methodology" section, for why. Paper-only: no {@code BingXAdapter}/live
- * wiring exists in this class or anywhere it's called from -- see
- * .planning/08b-trading-loop.md's "Deliberately out of scope" section.
+ * using a pluggable {@link SignalSource} for its signals -- e.g.
+ * {@link DummySignalSource} (explicitly not real, see that class's Javadoc,
+ * and CLAUDE.md's "Strategy Research Methodology" section, for why) or
+ * {@link FileSignalSource} (a real strategy's output, delivered by a
+ * separate process). This class depends only on the {@code SignalSource}
+ * interface, not on any one implementation -- see
+ * {@code .planning/paper-trading-a-signal-source.md}. Paper-only: no
+ * {@code BingXAdapter}/live wiring exists in this class or anywhere it's
+ * called from -- see .planning/08b-trading-loop.md's "Deliberately out of
+ * scope" section.
  *
  * <p>{@link #tick()} is the entire unit of work, meant to be invoked
  * repeatedly by an external scheduler (a
@@ -69,7 +74,7 @@ public final class TradingLoop {
 
     private final OrderPipeline orderPipeline;
     private final PaperBroker paperBroker;
-    private final DummySignalSource signalSource;
+    private final SignalSource signalSource;
     private final BingXPriceFeed priceFeed;
     private final KillSwitch killSwitch;
     private final String symbol;
@@ -84,7 +89,7 @@ public final class TradingLoop {
     public TradingLoop(
             OrderPipeline orderPipeline,
             PaperBroker paperBroker,
-            DummySignalSource signalSource,
+            SignalSource signalSource,
             BingXPriceFeed priceFeed,
             KillSwitch killSwitch,
             String symbol) {
