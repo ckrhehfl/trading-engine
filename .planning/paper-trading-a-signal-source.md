@@ -96,7 +96,14 @@ the same `SchemaObjectMapper` the production code uses (not hand-written
 JSON strings), so the tests exercise the real wire shape rather than an
 assumed one.
 
-Full suite after the change: **170 tests, 0 failures, 0 errors** across
+Two more tests were added after this initial TDD pass, in direct
+response to CodeRabbit review of PR #68 (see "CodeRabbit review
+findings" below): `anIntentIdThatReappearsAfterADifferentOneWasDeliveredIsRedeliveredNotSuppressed`
+and `aFreshInstanceAfterARestartRedeliversAnIntentIdThePriorInstanceAlreadyDelivered`
+— both make an explicit, tested contract out of a limitation that was
+previously only implicit in the single-pointer implementation.
+
+Full suite after all changes: **172 tests, 0 failures, 0 errors** across
 all six `java/` modules (`schemas`, `oms`, `risk`, `execution`,
 `exchange`, `runtime`).
 
@@ -173,6 +180,94 @@ all six `java/` modules (`schemas`, `oms`, `risk`, `execution`,
   the strategy-research line's own `sr-*.md` lettered convention is the
   closer precedent for a multi-task effort under one banner.
 
+## CodeRabbit review findings
+
+One review round on PR #68 (`ASSERTIVE` profile), two actionable findings,
+both `🟠 Major`.
+
+**Partially addressed, in this PR** (CodeRabbit itself offered this as an
+explicit alternative to the finding's primary "heavy lift" suggestion —
+see below):
+
+- **`FileSignalSource`'s dedup is a single in-memory pointer, not a
+  durable, all-history set of delivered `intentId`s.** Two concrete
+  consequences the finding named: (1) an `intentId` that reappears after a
+  different one was delivered in between ("A, then B, then A again") is
+  redelivered, not suppressed; (2) the tracking doesn't survive a process
+  restart. CodeRabbit's primary suggestion was durable, cross-restart
+  idempotent storage of every processed `intentId`, with `OrderPipeline`/
+  `OrderStore` also enforcing dedup — its own severity tag on that
+  suggestion was `🏗️ Heavy lift`. Its own comment named a lighter
+  alternative in the same breath: "reduce the contract to 'only suppress
+  a consecutive identical file' and make the A→B→A and restart cases
+  explicit in tests." Took that path, not the heavy one:
+  - `FileSignalSource`'s class Javadoc now states the single-pointer
+    contract precisely (see "Dedup scope, stated precisely" in the
+    class's own Javadoc) rather than implying a stronger guarantee than
+    the code actually provides.
+  - Two new tests make both consequences explicit and asserted, not just
+    described:
+    `anIntentIdThatReappearsAfterADifferentOneWasDeliveredIsRedeliveredNotSuppressed`
+    and
+    `aFreshInstanceAfterARestartRedeliversAnIntentIdThePriorInstanceAlreadyDelivered`.
+  - The heavier fix (durable storage, cross-component `OrderPipeline`/
+    `OrderStore` dedup) was **not** implemented here, and not because it
+    lacks merit — reasoning: (a) it directly contradicts the governing
+    brief's own exact spec for this class ("track the last-delivered
+    `intentId` internally"); (b) `OrderStore`/`PaperBroker` are both
+    in-memory-only today (see `TradingLoop`'s own Javadoc, "does not
+    assume any prior state... 'start clean' is the only state there
+    is") — durable dedup in `FileSignalSource` alone, with no durable
+    order/position state anywhere else in the system, would be a
+    partial, inconsistent fix, not a real one; a real fix needs durable
+    `OrderStore`/reconciliation, which doesn't exist yet anywhere in this
+    codebase; (c) `OrderPipeline`/`OrderStore` are both on this task's
+    explicit out-of-scope list. This is the same "fix what's cheap and
+    real, decline and document what needs its own design pass" pattern
+    `.planning/08b-trading-loop.md`'s own CodeRabbit findings section
+    already used for the `OrderStore` orphan-on-broker-failure finding —
+    real follow-on work, most naturally paired with the governing plan's
+    own Task E ("minimal internal reconciliation") or a dedicated
+    durable-state effort, not a silent scope expansion of this task.
+    Replied to the review comment with this reasoning; not implemented,
+    tracked here instead.
+
+**Declined in this PR, with reasoning, tracked as an open item:**
+
+- **No symbol-match validation between a signal's `OrderIntent.symbol()`
+  and the price/order symbol anywhere in the
+  `TradingLoop`→`OrderPipeline`→`RiskGateway`→`PaperBroker.submit()`
+  chain.** CodeRabbit's own investigation (it ran a real repo-wide script
+  to check this before writing the finding, visible in the review
+  comment's analysis trace) confirmed the gap is real and confirmed it
+  predates this PR: `OrderPipeline`, `RiskGateway`, and `PaperBroker` all
+  already lacked any `intent.symbol().equals(...)` check before this
+  task's diff — `DummySignalSource` never exercised the gap because it's
+  constructed with a fixed, caller-chosen symbol that every existing test
+  happens to keep in sync with `TradingLoop`'s own `symbol` field, not
+  because anything enforces that they match. `FileSignalSource` makes the
+  gap easier to hit in practice (a real external file could plausibly
+  carry a different symbol than intended) but does not introduce it.
+  **Not fixed here** — the governing brief's "Explicitly out of scope"
+  list names exactly this boundary: "Do not touch `RiskGateway`,
+  `OrderPipeline`, `PaperBroker`, or `KillSwitch` internals — this task
+  only adds the new interface/implementation and retypes `TradingLoop`'s
+  field." A correct fix touches `TradingLoop.submitToBroker`/`tick()`
+  logic (or `PaperBroker.submit()` itself) beyond a type-only change, and
+  per CLAUDE.md's Development Methodology, a behavioral change to
+  R3-risk components needs its own `Discuss` pass, not a fix folded into
+  an unrelated task under review pressure. Concretely, the more natural
+  place to decide *where* this validation should live (inside
+  `FileSignalSource` itself, guarding against an untrusted external file
+  specifically; or centrally in `PaperBroker`/`OrderPipeline`, guarding
+  every signal source uniformly) is the governing plan's own Task C,
+  which is what actually decides the real configured symbol and wires
+  `FileSignalSource` to it — deciding it here, without that wiring
+  context, risks guessing wrong about which layer should own the check.
+  Replied to the review comment with this reasoning; flagged here as a
+  real, disclosed gap for Task C (or a dedicated follow-up) to resolve,
+  not silently dropped.
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - The Python side that will actually write these files (Task B).
@@ -188,13 +283,15 @@ all six `java/` modules (`schemas`, `oms`, `risk`, `execution`,
 - `./gradlew :runtime:compileTestJava` against the test-first
   `FileSignalSourceTest` failed with the expected "cannot find symbol"
   errors before `FileSignalSource` existed.
-- `./gradlew :runtime:test --tests FileSignalSourceTest` — 6/6 pass,
+- `./gradlew :runtime:test --tests FileSignalSourceTest` — 8/8 pass (6
+  from the original TDD list plus the 2 dedup-scope tests added in
+  response to CodeRabbit review, see "CodeRabbit review findings"),
   `system-err` in the XML report confirms both warning-log call sites
   actually fire.
 - `./gradlew :runtime:test --tests TradingLoopTest --tests
   DummySignalSourceTest` — unchanged, all pass, confirming the interface
   extraction is behavior-preserving.
-- `./gradlew test` (full multi-module suite) — **170 tests, 0 failures, 0
+- `./gradlew test` (full multi-module suite) — **172 tests, 0 failures, 0
   errors**.
 - PR opened, not merged — per the governing brief and CLAUDE.md's
   Auto-merge Policy, this is Java runtime code adjacent to OMS/Risk

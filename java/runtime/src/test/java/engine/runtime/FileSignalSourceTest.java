@@ -132,4 +132,66 @@ class FileSignalSourceTest {
         // polled again, unchanged since intentY was delivered -> empty
         assertFalse(source.nextSignal().isPresent());
     }
+
+    /**
+     * Documents, deliberately, a real limitation raised on CodeRabbit
+     * review of PR #68 (see {@code FileSignalSource}'s class Javadoc,
+     * "Dedup scope, stated precisely", and
+     * {@code .planning/paper-trading-a-signal-source.md}'s "CodeRabbit
+     * review findings" section for the full reasoning on why this is not
+     * fixed in this task): {@code lastDeliveredIntentId} is a single
+     * pointer, not a durable set of every {@code intentId} ever seen, so
+     * an intent that reappears after a different one was delivered in
+     * between is delivered again, not suppressed as a duplicate.
+     */
+    @Test
+    void anIntentIdThatReappearsAfterADifferentOneWasDeliveredIsRedeliveredNotSuppressed(@TempDir Path tempDir)
+            throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        OrderIntent intentA = newIntent();
+        writeIntent(signalFile, intentA);
+
+        FileSignalSource source = new FileSignalSource(signalFile);
+
+        assertEquals(intentA.intentId(), source.nextSignal().orElseThrow().intentId());
+
+        OrderIntent intentB = newIntent();
+        writeIntent(signalFile, intentB);
+        assertEquals(intentB.intentId(), source.nextSignal().orElseThrow().intentId());
+
+        // File reverts to A -- the SAME source instance, not a restart.
+        // The single-pointer contract only compares against the most
+        // recently delivered id (B), so A no longer matches and is
+        // delivered again.
+        writeIntent(signalFile, intentA);
+        assertEquals(intentA.intentId(), source.nextSignal().orElseThrow().intentId());
+    }
+
+    /**
+     * Documents, deliberately, the restart half of the same limitation:
+     * {@code lastDeliveredIntentId} lives only in memory, so a fresh
+     * instance (standing in for a process restart -- {@code TradingLoop}/
+     * {@code PaperTradingApp} construct exactly one {@code FileSignalSource}
+     * per process lifetime) has no memory of what a prior instance already
+     * delivered.
+     */
+    @Test
+    void aFreshInstanceAfterARestartRedeliversAnIntentIdThePriorInstanceAlreadyDelivered(@TempDir Path tempDir)
+            throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        OrderIntent intent = newIntent();
+        writeIntent(signalFile, intent);
+
+        FileSignalSource beforeRestart = new FileSignalSource(signalFile);
+        assertEquals(intent.intentId(), beforeRestart.nextSignal().orElseThrow().intentId());
+        assertFalse(beforeRestart.nextSignal().isPresent()); // normal dedup, same instance
+
+        // Simulate a process restart: a brand-new FileSignalSource against
+        // the same, untouched file.
+        FileSignalSource afterRestart = new FileSignalSource(signalFile);
+        assertEquals(
+                intent.intentId(),
+                afterRestart.nextSignal().orElseThrow().intentId(),
+                "a fresh instance has no memory of what a prior instance already delivered");
+    }
 }

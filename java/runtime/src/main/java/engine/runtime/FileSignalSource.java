@@ -38,6 +38,49 @@ import org.slf4j.LoggerFactory;
  * paths (the only existing file-path-typed precedent in this codebase;
  * {@link BingXPriceFeed}'s {@code baseUrl} is a URL string, not a
  * filesystem path, so it isn't a comparable precedent here).
+ *
+ * <p><b>Dedup scope, stated precisely (raised on CodeRabbit review of
+ * PR #68 -- see {@code .planning/paper-trading-a-signal-source.md}'s
+ * "CodeRabbit review findings" section):</b> {@link #lastDeliveredIntentId}
+ * is a single in-memory pointer, not a durable, all-history set of every
+ * {@code intentId} ever delivered. Concretely, this class only ever
+ * suppresses re-delivering whichever {@code intentId} it delivered most
+ * recently -- two consequences follow, both deliberate, neither hidden: (1)
+ * a since-superseded {@code intentId} reappearing after a different one was
+ * delivered in between ("A, then B, then A again") would be delivered a
+ * second time -- exercised directly by
+ * {@code FileSignalSourceTest#anIntentIdThatReappearsAfterADifferentOneWasDeliveredIsRedeliveredNotSuppressed};
+ * and (2) this tracking does not survive a process restart -- a fresh
+ * {@code FileSignalSource} instance (e.g. after {@code PaperTradingApp}
+ * restarts) has forgotten everything a prior instance delivered, and will
+ * redeliver whatever the file currently holds even if that exact
+ * {@code intentId} was already delivered and acted on before the restart --
+ * exercised directly by
+ * {@code FileSignalSourceTest#aFreshInstanceAfterARestartRedeliversAnIntentIdThePriorInstanceAlreadyDelivered}.
+ * Neither is a bug relative to this task's scope: the task that specified
+ * this class ("track the last-delivered {@code intentId} internally")
+ * describes exactly this single-pointer design, and it is consistent with
+ * -- not a regression from -- {@link TradingLoop}'s own already-documented
+ * "does not assume any prior state... 'start clean' is the only state
+ * there is" restart story (see that class's Javadoc): today, an OMS/
+ * broker-level restart already forgets every in-flight order regardless of
+ * what this class remembers, so durable {@code intentId} tracking here
+ * alone would not, by itself, prevent a duplicate order after a restart --
+ * a real fix needs durable order/position state, which does not exist
+ * anywhere in this codebase yet (see {@code OrderStore}/{@code PaperBroker}
+ * -- both in-memory only). Building durable dedup into only this one class
+ * would be a partial, inconsistent fix, not a real one. Case (1) is also,
+ * separately, not expected to occur in practice given the intended Python
+ * producer's own write pattern (a later, separate task; see the governing
+ * plan): it either leaves the file untouched or overwrites it with a
+ * brand-new, never-before-seen {@code intentId} -- never reverts to an
+ * older one -- but this class's own contract does not assume or depend on
+ * that producer behavior, which is exactly why both cases are tested and
+ * disclosed here rather than asserted safe. Durable, cross-restart
+ * idempotency (if ever needed) is real, scoped follow-on work -- most
+ * naturally paired with the paper-trading bridge plan's own Task E
+ * ("minimal internal reconciliation") or a dedicated durable-`OrderStore`
+ * effort, not a silent addition to this task.
  */
 public final class FileSignalSource implements SignalSource {
 
