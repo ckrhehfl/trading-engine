@@ -27,8 +27,13 @@ import java.util.concurrent.atomic.AtomicLong;
  * <b>none of that applies here</b>, because this class is not strategy
  * research and its output must never be promoted to paper/live trading as
  * if it were a validated signal.
+ *
+ * <p>Implements {@link SignalSource} -- {@code final} does not need to be
+ * removed to do so; a final class can implement any number of interfaces,
+ * {@code final} only forbids subclassing. No other change was needed here
+ * to retrofit this class onto the extracted interface.
  */
-public final class DummySignalSource {
+public final class DummySignalSource implements SignalSource {
 
     private final String symbol;
     private final Side side;
@@ -63,6 +68,7 @@ public final class DummySignalSource {
      * one) on every {@code everyNthCall}-th call, counting from 1;
      * {@link Optional#empty()} on every other call.
      */
+    @Override
     public Optional<OrderIntent> nextSignal() {
         long call = callCount.incrementAndGet();
         if (call % everyNthCall != 0) {
