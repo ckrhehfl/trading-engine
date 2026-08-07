@@ -9,6 +9,7 @@ import engine.schemas.OrderIntent;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -84,6 +85,20 @@ import org.slf4j.LoggerFactory;
  * {@code .planning/paper-trading-c-scheduler-entrypoint.md} for the full
  * writeup of why this layer was chosen over validating inside
  * {@link FileSignalSource} itself.
+ *
+ * <p><b>Fill history</b> ({@link #fillHistory()}) and <b>kill-switch
+ * state</b> ({@link #killSwitchTripped()}) are both read-only accessors
+ * added for {@code DailyReportGenerator} (Paper-trading bridge Task D --
+ * see {@code .planning/paper-trading-d-daily-reporting.md}), which needs
+ * both to build a per-UTC-day report but has no reason to hold its own
+ * separate reference to a {@code KillSwitch}, and no other way to learn
+ * "what trades happened" -- this class was the only place that already
+ * saw every {@link Fill} as it happened. {@code fillHistory} is an
+ * unbounded in-memory list for this instance's lifetime (not persisted,
+ * not reset except by constructing a fresh {@code TradingLoop} -- same
+ * "starts clean" restart story as everything else on this class, see
+ * above); {@code DailyReportGenerator} is the one that slices it into
+ * daily windows, this class has no notion of a day boundary itself.
  */
 public final class TradingLoop {
 
@@ -101,6 +116,7 @@ public final class TradingLoop {
     private BigDecimal equity = INITIAL_EQUITY;
     private boolean lastLoggedTripState = false;
     private boolean equityDepletedLogged = false;
+    private final List<Fill> fillHistory = new ArrayList<>();
 
     private volatile Instant lastTickAt;
     private volatile Throwable lastError;
@@ -208,6 +224,23 @@ public final class TradingLoop {
     }
 
     /**
+     * Every {@link Fill} this loop has ever applied, in application order,
+     * since this instance was constructed. See class Javadoc's "Fill
+     * history" section for why this exists and its restart caveat.
+     */
+    public synchronized List<Fill> fillHistory() {
+        return List.copyOf(fillHistory);
+    }
+
+    /**
+     * Delegates to this loop's own {@link KillSwitch#isTripped()}. See
+     * class Javadoc's "Fill history" section for why this accessor exists.
+     */
+    public boolean killSwitchTripped() {
+        return killSwitch.isTripped();
+    }
+
+    /**
      * {@link OrderPipeline#submitIntent} already registered {@code order}
      * in {@code OrderStore} by the time this is called -- that registration
      * happens atomically with {@link RiskGateway#evaluate}, deliberately
@@ -245,6 +278,7 @@ public final class TradingLoop {
     private synchronized void applyFills(List<Fill> fills) {
         for (Fill fill : fills) {
             equity = equity.subtract(fill.fee());
+            fillHistory.add(fill);
         }
     }
 
