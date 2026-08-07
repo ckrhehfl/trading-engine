@@ -349,11 +349,19 @@ see below):
   mitigation — trusting Task B "by construction" to only ever write the
   one symbol this bridge supports is NOT itself a mitigation (an external
   process's output is exactly the untrusted input this gap is about);
-  the actual (b) mitigation must instead require a recorded preflight
-  check, before every supervised run, that compares the signal file's
-  `OrderIntent.symbol()` against `configuredSymbol` and logs the result,
-  and must explicitly NOT permit unattended/unsupervised activation
-  until (a) exists — recorded in this repo's
+  the actual (b) mitigation must instead require, for every supervised
+  run: either the preflight-checked signal file/payload is frozen
+  (copied aside or otherwise made immutable) from the moment of the
+  preflight check through actual consumption, so nothing can change it
+  in between; or `OrderIntent.symbol()` is re-compared against
+  `configuredSymbol` again immediately before order submission, not only
+  at preflight time — a preflight check alone does not close this gate,
+  since an external process could rewrite `signalFilePath` between the
+  check and `TradingLoop` actually consuming it (a real TOCTOU gap, not
+  a hypothetical one, given the file is written by a separate,
+  independently-scheduled process per Task B). Either sub-option must
+  keep the recorded logging, and must explicitly NOT permit
+  unattended/unsupervised activation until (a) exists — recorded in this repo's
   `.planning/` the same way this gap itself is recorded here. Until
   either exists, this bridge should not be treated as safe against a
   misconfigured or corrupted external signal file carrying an
