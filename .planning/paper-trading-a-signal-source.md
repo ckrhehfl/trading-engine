@@ -183,7 +183,32 @@ all six `java/` modules (`schemas`, `oms`, `risk`, `execution`,
 ## CodeRabbit review findings
 
 One review round on PR #68 (`ASSERTIVE` profile), two actionable findings,
-both `🟠 Major`.
+both `🟠 Major`. Final disposition, ahead of the detail below: the
+dedup-scope finding's own thread is fully resolved — CodeRabbit's own
+follow-up caught one more real thing worth recording here: the fix's
+first pass (commit `43f63d1`) left the class Javadoc's *opening*
+paragraph still asserting "deliver each distinct `intentId` exactly
+once", contradicting the new, precise "Dedup scope, stated precisely"
+section added two paragraphs below it. Fixed in commit `abb55a8` —
+reworded the opening paragraph to describe the actual behavior instead
+of a stronger guarantee than the code provides. A subsequent CodeRabbit
+re-review of that exact commit came back with zero actionable comments.
+The symbol-validation finding's thread was, by CodeRabbit's own explicit
+choice, left unresolved as a tracking marker rather than a request for a
+fix in this PR — its own reply says as much ("이 리뷰 의견은 미해결 상태로
+유지하겠습니다... 이 PR에서 수정을 요구하지는 않겠습니다", roughly "I'll
+keep this review comment unresolved... I won't require a fix in this
+PR") and separately confirmed the underlying reasoning (pre-existing
+gap, needs a design decision, correctly out of scope for an interface-
+extraction PR). That one open thread is why GitHub's native
+`reviewDecision`/`mergeStateStatus` still read `CHANGES_REQUESTED`/
+`BLOCKED` even though every actual code-level finding has been resolved
+or explicitly deferred with reasoning both sides agree on — a real,
+disclosed distinction between "the CodeRabbit commit-status check is
+green against the exact HEAD sha" (true, verified) and "GitHub's
+native PR-review UI shows a fully clean state" (not true, by mutual,
+documented choice) — left for the human to resolve when merging, not
+force-closed here.
 
 **Partially addressed, in this PR** (CodeRabbit itself offered this as an
 explicit alternative to the finding's primary "heavy lift" suggestion —
