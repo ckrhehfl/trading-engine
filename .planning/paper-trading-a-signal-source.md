@@ -275,8 +275,13 @@ see below):
   yet. **Acceptance criteria for closing this gate**: either (a) a
   durable record of delivered `intentId`s that survives a process
   restart, consulted by `FileSignalSource` (or its replacement) before
-  redelivering, with a test that actually kills and restarts the
-  relevant component and asserts no duplicate order results; or (b) an
+  redelivering, with a fault-injection test that terminates the relevant
+  component after the order side effect but before durable
+  deduplication/order-state commit, then restarts it and asserts no
+  duplicate order results (a plain kill-and-restart test is not
+  sufficient on its own — it must specifically exercise the crash window
+  between the order side effect and the durable dedup write, not just
+  restart at an arbitrary point); or (b) an
   explicit, documented, human-approved operational mitigation (e.g. a
   manual pre-restart check, or accepting the residual risk for the
   supervised-manual-run phase this plan's own "Runs locally, not VPS-
@@ -341,9 +346,14 @@ see below):
   logged warning rather than submitting it, with a test proving a
   mismatched signal is rejected and a matched one still flows through
   unchanged; or (b) an explicit, documented, human-approved operational
-  mitigation (e.g. Task B is trusted by construction to only ever write
-  the one symbol this bridge supports, recorded as an accepted
-  constraint rather than an enforced one) — recorded in this repo's
+  mitigation — trusting Task B "by construction" to only ever write the
+  one symbol this bridge supports is NOT itself a mitigation (an external
+  process's output is exactly the untrusted input this gap is about);
+  the actual (b) mitigation must instead require a recorded preflight
+  check, before every supervised run, that compares the signal file's
+  `OrderIntent.symbol()` against `configuredSymbol` and logs the result,
+  and must explicitly NOT permit unattended/unsupervised activation
+  until (a) exists — recorded in this repo's
   `.planning/` the same way this gap itself is recorded here. Until
   either exists, this bridge should not be treated as safe against a
   misconfigured or corrupted external signal file carrying an
