@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -47,17 +48,20 @@ class PaperTradingAppTest {
     }
 
     /**
-     * Bounded polling helper (CodeRabbit review finding on this task's
-     * PR) -- replaces a fixed {@code Thread.sleep(...)} with short
-     * polling intervals and a clear deadline, so this test fails only
-     * after genuinely waiting {@code timeout} for {@code supplier} to
-     * stop returning {@code null}, rather than either flaking on a slow
-     * CI runner (too-short fixed sleep) or wasting wall-clock time on a
-     * fast one (too-generous fixed sleep).
+     * Bounded polling helpers (CodeRabbit review findings on this task's
+     * PR) -- replace a fixed {@code Thread.sleep(...)} with short
+     * polling intervals and a clear deadline, so a test fails only after
+     * genuinely waiting {@code timeout}, rather than either flaking on a
+     * slow CI runner (too-short fixed sleep) or wasting wall-clock time
+     * on a fast one (too-generous fixed sleep). Both measure the
+     * deadline via {@link System#nanoTime()}, not {@link Instant#now()}
+     * -- a monotonic clock, immune to a concurrent wall-clock adjustment
+     * (NTP sync, DST, manual change) artificially shortening or
+     * lengthening the effective wait.
      */
     private static <T> T awaitNonNull(Supplier<T> supplier, Duration timeout) throws InterruptedException {
-        Instant deadline = Instant.now().plus(timeout);
-        while (Instant.now().isBefore(deadline)) {
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadlineNanos) {
             T value = supplier.get();
             if (value != null) {
                 return value;
@@ -66,6 +70,17 @@ class PaperTradingAppTest {
         }
         fail("condition not met within " + timeout);
         throw new AssertionError("unreachable"); // fail() always throws; keeps the compiler happy
+    }
+
+    private static void awaitCondition(BooleanSupplier condition, Duration timeout) throws InterruptedException {
+        long deadlineNanos = System.nanoTime() + timeout.toNanos();
+        while (System.nanoTime() < deadlineNanos) {
+            if (condition.getAsBoolean()) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        fail("condition not met within " + timeout);
     }
 
     @Test
@@ -198,7 +213,20 @@ class PaperTradingAppTest {
                 // at delay 0, so this should resolve almost immediately in
                 // practice; a 5s deadline is generous headroom against a
                 // loaded CI runner without making a slow environment flake.
-                awaitNonNull(() -> app.tradingLoop().lastTickAt(), Duration.ofSeconds(5));
+                Instant firstTick = awaitNonNull(() -> app.tradingLoop().lastTickAt(), Duration.ofSeconds(5));
+                assertNull(app.tradingLoop().lastError());
+
+                // Proves RECURRING scheduling, not just a single initial
+                // tick (a CodeRabbit review finding on this task's PR: the
+                // test's own name claimed "recurring" but the original
+                // assertion only ever observed one tick) -- wait for a
+                // later lastTickAt() than the first one already observed.
+                awaitCondition(
+                        () -> {
+                            Instant latest = app.tradingLoop().lastTickAt();
+                            return latest != null && latest.isAfter(firstTick);
+                        },
+                        Duration.ofSeconds(5));
                 assertNull(app.tradingLoop().lastError());
             } finally {
                 app.stop();
