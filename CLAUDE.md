@@ -1342,11 +1342,26 @@ usual sense, stated precisely rather than glossed over:
    specifically **because** the strategy has zero fitted parameters
    (`free_parameter_count: 0`, the literature's own canonical
    Moskowitz-Ooi-Pedersen lookback set) — the failure mode rolling
-   walk-forward exists to catch (a result that fits one window because it
-   was tuned or selected against it) has no foothold here, since nothing
-   was tuned or selected on any of this project's own data. A strategy
-   with any fitted or selected parameter would NOT qualify for this same
-   reasoning.
+   walk-forward exists to catch (a result that fits one window because a
+   free parameter was tuned or selected against it) has no foothold in
+   `daily-tsmom-ensemble`'s own design, and **neither holdout was ever
+   searched over or iteratively adjusted** (single-access enforced by
+   `research.holdout`, `total_candidates: 1` on both registrations). This
+   is a narrower, more precisely bounded claim than "this project never
+   engaged in any selection at all" — it plainly did: 117 research trials
+   across 8 strategy families (see "Strategy Attempts So Far" above)
+   preceded the decision to pursue TSMOM specifically, and that decision
+   was itself informed by watching those other families fail. What zero
+   fitted parameters actually rules out is narrower and still real:
+   nothing *within* `daily-tsmom-ensemble` itself was tuned or selected
+   against either holdout, or against any 1d data at all. A strategy
+   with any fitted or selected internal parameter would not qualify for
+   this specific reasoning at all. Separately, and disclosed here rather
+   than folded into the "zero fitted parameters" claim: the project-level
+   selection history above (117 trials, 8 families, TSMOM chosen only
+   after the others failed) is a real form of selection distinct from
+   parameter-fitting, and this exception rests on the latter being absent
+   — not on a claim that the former never happened.
 
 Given this evidence pattern — genuine combined statistical significance,
 missing only on practical risk-control (drawdown) and
@@ -1366,7 +1381,7 @@ not an architectural reversal.
 intended**: this exception applies ONLY to `daily-tsmom-ensemble` v1
 (`research/strategies/daily_tsmom_ensemble.py`, unchanged) proceeding to
 PAPER trading. It does NOT: waive the Paper Trading Pass Criteria (still
-requires 30-45 days, 50+ trades, zero critical crashes/duplicate
+requires a minimum of 30 days (45 recommended), 50+ trades, zero critical crashes/duplicate
 orders/position mismatches/risk-gateway bypasses, paper score 80+, kill
 switch verified, before any live consideration — and given the backtest
 evidence itself fell short of the trade-count floor, paper trading's own
