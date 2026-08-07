@@ -257,6 +257,35 @@ see below):
     Replied to the review comment with this reasoning; not implemented,
     tracked here instead.
 
+  **Release gate (added in response to CodeRabbit's follow-up review of
+  commit `cd2a00f`, which correctly asked that this be a real gate, not
+  just a disclosed note):** durable, cross-restart `intentId`
+  idempotency — coordinated across `FileSignalSource` and a durable
+  `OrderStore`/reconciliation layer — **must exist before the paper-
+  trading bridge is activated against a real, unattended, restart-
+  capable process** (i.e. before Task C's `PaperTradingApp` is ever run
+  continuously rather than manually/under supervision for a single
+  session). Until it does, the residual risk is real and specific:
+  a process restart while the signal file still holds an already-acted-
+  on `intentId` will resubmit that same order — directly relevant to
+  CLAUDE.md's Paper Trading Pass Criteria's "zero duplicate orders".
+  **Owner**: whoever builds Task C (the scheduler/`main()` entrypoint)
+  or a dedicated durable-`OrderStore` follow-up, whichever lands first —
+  not assigned to a specific person/session here, since neither exists
+  yet. **Acceptance criteria for closing this gate**: either (a) a
+  durable record of delivered `intentId`s that survives a process
+  restart, consulted by `FileSignalSource` (or its replacement) before
+  redelivering, with a test that actually kills and restarts the
+  relevant component and asserts no duplicate order results; or (b) an
+  explicit, documented, human-approved operational mitigation (e.g. a
+  manual pre-restart check, or accepting the residual risk for the
+  supervised-manual-run phase this plan's own "Runs locally, not VPS-
+  provisioned" section already describes) — recorded in this repo's
+  `.planning/` the same way this gap itself is recorded here. Until
+  either exists, running the bridge unattended across a restart is
+  **not** covered by this task's testing and should not be treated as
+  safe against duplicate orders on that specific failure mode.
+
 **Declined in this PR, with reasoning, tracked as an open item:**
 
 - **No symbol-match validation between a signal's `OrderIntent.symbol()`
@@ -292,6 +321,33 @@ see below):
   Replied to the review comment with this reasoning; flagged here as a
   real, disclosed gap for Task C (or a dedicated follow-up) to resolve,
   not silently dropped.
+
+  **Release gate (added in response to CodeRabbit's follow-up review of
+  commit `cd2a00f`):** symbol-match validation between a signal's
+  `OrderIntent.symbol()` and the configured/priced symbol **must exist
+  before the paper-trading bridge is activated against a real signal
+  file from an external process** (i.e. before Task B's Python runner is
+  ever pointed at the same `signalFilePath` a running `TradingLoop`
+  actually reads) — `DummySignalSource`'s hardcoded, caller-controlled
+  symbol never exercises this risk, but `FileSignalSource` reading an
+  externally-written file genuinely can. **Owner**: whoever builds Task
+  C, since Task C is what decides the real configured symbol and
+  actually wires `FileSignalSource` to it (see above) — not assigned to
+  a specific person/session here, since Task C doesn't exist yet.
+  **Acceptance criteria for closing this gate**: either (a) an explicit
+  `intent.symbol().equals(configuredSymbol)` check at a deliberately
+  chosen layer (`FileSignalSource` itself, or centrally in
+  `PaperBroker`/`OrderPipeline`), rejecting a mismatched signal with a
+  logged warning rather than submitting it, with a test proving a
+  mismatched signal is rejected and a matched one still flows through
+  unchanged; or (b) an explicit, documented, human-approved operational
+  mitigation (e.g. Task B is trusted by construction to only ever write
+  the one symbol this bridge supports, recorded as an accepted
+  constraint rather than an enforced one) — recorded in this repo's
+  `.planning/` the same way this gap itself is recorded here. Until
+  either exists, this bridge should not be treated as safe against a
+  misconfigured or corrupted external signal file carrying an
+  unintended symbol.
 
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
