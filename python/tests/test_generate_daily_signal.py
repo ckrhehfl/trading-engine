@@ -62,7 +62,7 @@ def server():
 
 
 @pytest.fixture(autouse=True)
-def _no_real_sleep(monkeypatch):
+def _no_real_sleep(monkeypatch) -> None:
     monkeypatch.setattr("data.bingx_klines.time.sleep", lambda _s: None)
 
 
@@ -246,6 +246,18 @@ def test_generate_signal_default_runs_path_is_the_isolated_live_log(tmp_path, mo
     assert not (tmp_path / experiment_log.DEFAULT_RUNS_PATH).exists()
 
 
+def test_generate_signal_returns_none_for_empty_klines_without_logging_anything(tmp_path, monkeypatch):
+    """An empty klines list must short-circuit before DailyTsmomEnsembleTrainable
+    is even constructed -- no fit() call, no degenerate backtest_run record.
+    """
+    monkeypatch.chdir(tmp_path)
+
+    decision = generate_signal([], parent_run_id="test-empty", runs_path=LIVE_RUNS_PATH)
+
+    assert decision is None
+    assert not (tmp_path / LIVE_RUNS_PATH).exists()  # fit() was never called -- nothing was logged
+
+
 # ---------------------------------------------------------------------------
 # write_signal_atomically
 # ---------------------------------------------------------------------------
@@ -292,7 +304,10 @@ def test_write_signal_atomically_fully_replaces_existing_content(tmp_path):
 def test_write_signal_atomically_leaves_no_leftover_tmp_file(tmp_path):
     target = tmp_path / "latest.json"
     write_signal_atomically(_order_intent(), target)
-    assert not (tmp_path / "latest.json.tmp").exists()
+    # The temp filename is process-unique (PID + random UUID), not a fixed
+    # "<name>.tmp" -- glob for any leftover ".*<name>.*.tmp" instead of
+    # checking one exact path.
+    assert not list(tmp_path.glob(".latest.json.*.tmp"))
 
 
 def test_write_signal_atomically_uses_os_replace_for_the_final_move(tmp_path, monkeypatch):
@@ -300,7 +315,7 @@ def test_write_signal_atomically_uses_os_replace_for_the_final_move(tmp_path, mo
     calls = []
     real_replace = os.replace
 
-    def spy_replace(src, dst):
+    def spy_replace(src, dst) -> None:
         calls.append((str(src), str(dst)))
         return real_replace(src, dst)
 
@@ -311,7 +326,44 @@ def test_write_signal_atomically_uses_os_replace_for_the_final_move(tmp_path, mo
     assert len(calls) == 1
     src, dst = calls[0]
     assert dst == str(target)
-    assert src == str(target) + ".tmp"
+    # Process-unique temp name: ".<final-name>.<pid>.<uuid-hex>.tmp",
+    # written into the SAME directory as the final target.
+    assert src.startswith(str(tmp_path / ".latest.json."))
+    assert src.endswith(".tmp")
+    assert src != str(target) + ".tmp"  # not the old fixed-name scheme
+
+
+def test_write_signal_atomically_removes_the_tmp_file_on_a_failed_write(tmp_path, monkeypatch):
+    target = tmp_path / "latest.json"
+
+    def failing_replace(src, dst) -> None:
+        raise OSError("simulated failure during the final atomic rename")
+
+    monkeypatch.setattr("live.generate_daily_signal.os.replace", failing_replace)
+
+    with pytest.raises(OSError, match="simulated failure"):
+        write_signal_atomically(_order_intent(), target)
+
+    assert not target.exists()  # the final path was never created
+    assert not list(tmp_path.glob(".latest.json.*.tmp"))  # and the temp file was cleaned up, not left behind
+
+
+def test_write_signal_atomically_two_invocations_use_distinct_tmp_paths(tmp_path, monkeypatch):
+    target = tmp_path / "latest.json"
+    seen_tmp_paths = []
+    real_replace = os.replace
+
+    def capturing_replace(src, dst) -> None:
+        seen_tmp_paths.append(str(src))
+        return real_replace(src, dst)
+
+    monkeypatch.setattr("live.generate_daily_signal.os.replace", capturing_replace)
+
+    write_signal_atomically(_order_intent("1"), target)
+    write_signal_atomically(_order_intent("2"), target)
+
+    assert len(seen_tmp_paths) == 2
+    assert seen_tmp_paths[0] != seen_tmp_paths[1]  # two invocations never reuse the same temp path
 
 
 # ---------------------------------------------------------------------------
@@ -388,8 +440,9 @@ def test_main_leaves_existing_signal_file_untouched_when_no_signal_today(server,
 
 def test_main_exits_with_error_when_base_url_is_missing(monkeypatch):
     monkeypatch.delenv("BINGX_BASE_URL", raising=False)
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc_info:
         main([])
+    assert exc_info.value.code != 0  # a real error exit, not a clean/successful 0
 
 
 def test_main_warns_when_fetch_bars_is_below_the_warmup_floor(server, tmp_path, monkeypatch, caplog):
@@ -414,3 +467,44 @@ def test_main_warns_when_fetch_bars_is_below_the_warmup_floor(server, tmp_path, 
 
     assert exit_code == 0
     assert any("below the strategy's own" in message for message in caplog.messages)
+
+
+def test_main_warns_distinctly_when_fetched_bars_fall_short_of_the_request(server, tmp_path, monkeypatch, caplog):
+    """Different scenario from the --fetch-bars-too-low case above: here
+    the REQUEST is fine (default 300), but the exchange itself only has
+    fewer bars actually available in that range (e.g. a real retention
+    boundary or a genuine gap) -- main() must warn with a message that
+    distinguishes this from both a bad --fetch-bars choice and a genuine
+    'no signal today' decision, and must skip signal generation entirely
+    (a real CodeRabbit review finding on this task's PR).
+    """
+    monkeypatch.setenv("BINGX_BASE_URL", server.base_url)
+    now_ms = BASE_DAY_MS + DEFAULT_FETCH_BARS * DAY_STEP
+    end_ms = (now_ms // DAY_STEP) * DAY_STEP
+    # Only 50 of the 300 requested trailing days actually have data on the
+    # (fake) exchange -- the rest is genuinely absent, not merely uncached.
+    short_times = [end_ms - i * DAY_STEP for i in range(1, 51)]
+    server.set_klines(short_times)
+    monkeypatch.setattr("live.generate_daily_signal._current_time_ms", lambda: now_ms)
+
+    runs_path = tmp_path / "live_signals.jsonl"
+
+    with caplog.at_level("WARNING"):
+        exit_code = main(
+            [
+                "--db-path",
+                str(tmp_path / "klines.sqlite3"),
+                "--signal-path",
+                str(tmp_path / "signal.json"),
+                "--runs-path",
+                str(runs_path),
+            ]
+        )
+
+    assert exit_code == 0
+    assert not runs_path.exists()  # generate_signal() (and fit()) never ran for this short-data run
+    assert any("only 50 klines available" in message for message in caplog.messages)
+    # And the OTHER warning (bad --fetch-bars choice) must NOT have fired --
+    # the request itself (default 300) was fine, only the exchange's real
+    # data came up short.
+    assert not any("--fetch-bars=" in message for message in caplog.messages)

@@ -48,10 +48,12 @@ state" below).
    value is today's real decision: a real `OrderIntent` on a sign-category
    change ("Option B" emission), or `None` on "hold, nothing changed".
 4. **Emit** (`write_signal_atomically`): a real decision is serialized
-   (`OrderIntent.model_dump_json()`) and written ATOMICALLY -- a `.tmp`
-   sibling written first, then `os.replace()`'d onto the final path
-   (atomic on POSIX) -- to
-   `var/live/signals/BTC-USDT/daily-tsmom-ensemble/latest.json`. A `None`
+   (`OrderIntent.model_dump_json()`) and written ATOMICALLY -- a
+   process-unique `.tmp` sibling written first, then `os.replace()`'d
+   onto the final path (atomic on POSIX) -- to
+   `var/live/signals/<symbol>/daily-tsmom-ensemble/latest.json`
+   (`var/live/signals/BTC-USDT/daily-tsmom-ensemble/latest.json` for this
+   script's own `DEFAULT_SYMBOL`; see `default_signal_path()`). A `None`
    decision leaves that file completely untouched: this is deliberate, and
    matches the downstream Java `FileSignalSource`'s (a parallel task) "no
    new file content observed = nothing new to act on" semantics for
@@ -172,12 +174,23 @@ MIN_WARMUP_BARS = 253
 # must stay >= MIN_WARMUP_BARS.
 DEFAULT_FETCH_BARS = 300
 
-# var/live/signals/BTC-USDT/daily-tsmom-ensemble/latest.json -- built from
-# the constants above rather than duplicated as a second literal. New,
-# gitignored tree (see .gitignore's `var/live/` entry), mirroring
+# New, gitignored tree (see .gitignore's `var/live/` entry), mirroring
 # `python/data/var/`'s existing gitignore treatment for locally-generated,
 # non-source runtime data.
-DEFAULT_SIGNAL_PATH = f"var/live/signals/{DEFAULT_SYMBOL}/{STRATEGY_ID}/latest.json"
+
+
+def default_signal_path(symbol: str = DEFAULT_SYMBOL) -> str:
+    """`var/live/signals/{symbol}/{STRATEGY_ID}/latest.json`, computed
+    from the actual `symbol` in play rather than always the import-time
+    `DEFAULT_SYMBOL` constant -- so `main()`'s own default (when
+    `--signal-path` isn't given) tracks a caller-supplied `--symbol`
+    instead of silently pointing at the BTC-USDT path regardless (a real
+    CodeRabbit review finding on this task's PR).
+    """
+    return f"var/live/signals/{symbol}/{STRATEGY_ID}/latest.json"
+
+
+DEFAULT_SIGNAL_PATH = default_signal_path()
 
 
 def _current_time_ms() -> int:
@@ -277,12 +290,18 @@ def generate_signal(
     to the research default; nothing in this module ever constructs a
     `DailyTsmomEnsembleTrainable` without passing `runs_path` explicitly.
 
-    An empty `klines` list returns `None` (nothing to feed the strategy,
-    same as any other warmup shortfall) rather than raising -- a caller
-    (`main()`) is expected to log this case itself, since it usually
-    indicates a fetch problem worth surfacing distinctly from "no signal
+    An empty `klines` list returns `None` immediately, WITHOUT
+    constructing a `DailyTsmomEnsembleTrainable` or calling `fit()` --
+    there is nothing to train or score, and calling `fit()` on an empty
+    window would still log a degenerate `backtest_run` record for no
+    real work done. A caller (`main()`) still logs this case itself with
+    its own more specific message, since a genuinely empty fetch usually
+    indicates a problem worth surfacing distinctly from "no signal
     today".
     """
+    if not klines:
+        return None
+
     trainable = DailyTsmomEnsembleTrainable(
         strategy_id=STRATEGY_ID,
         strategy_version=STRATEGY_VERSION,
@@ -300,27 +319,57 @@ def generate_signal(
 
 def write_signal_atomically(intent: OrderIntent, path: str | Path = DEFAULT_SIGNAL_PATH) -> None:
     """Serialize `intent` (`model_dump_json()`) and write it to `path`
-    ATOMICALLY: a `.tmp` sibling is written first (and fully flushed to
-    disk before being renamed), then `os.replace()`'d onto the final path.
-    `os.replace()` is atomic on POSIX -- a concurrent reader (the
-    downstream Java `FileSignalSource`, built in a parallel task) can
-    never observe a partially-written file, only the complete previous
-    content or the complete new content.
+    ATOMICALLY: a process-unique `.tmp` sibling is written first (and
+    fully flushed to disk before being renamed), then `os.replace()`'d
+    onto the final path. `os.replace()` is atomic on POSIX -- a
+    concurrent reader (the downstream Java `FileSignalSource`, built in a
+    parallel task) can never observe a partially-written file, only the
+    complete previous content or the complete new content.
+
+    The temp filename includes the PID and a random UUID (not a fixed
+    `<name>.tmp`) so two overlapping invocations (e.g. a stuck cron job
+    racing a manual re-run) never write through the same temp path and
+    clobber each other's in-flight write -- each still ends by atomically
+    replacing the SAME final `target`, so the last `os.replace()` to run
+    still wins cleanly, but neither can corrupt the other's temp file
+    content first. If anything fails before the rename completes, the
+    temp file is removed rather than left behind (a real CodeRabbit
+    review finding on this task's PR).
+
+    After a successful rename, the parent directory's own fd is fsync'd
+    too -- best-effort, never raises -- mirroring
+    `research.experiment_log._append_record`'s identical two-tier
+    durability pattern: `os.fsync` on the temp file's own fd (above)
+    only guarantees the file's *data*, not that the directory entry
+    pointing at it has itself reached disk (the well-known POSIX
+    "fsync doesn't sync the containing directory" gap).
 
     Creates `path`'s parent directory tree if it doesn't exist yet (the
     first real signal this process ever writes).
     """
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = target.parent / f"{target.name}.tmp"
+    tmp_path = target.parent / f".{target.name}.{os.getpid()}.{uuid4().hex}.tmp"
     payload = intent.model_dump_json()
 
-    with open(tmp_path, "w", encoding="utf-8") as f:
-        f.write(payload)
-        f.flush()
-        os.fsync(f.fileno())
+    try:
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, target)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
 
-    os.replace(tmp_path, target)
+    try:
+        dir_fd = os.open(target.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
+    except OSError:
+        pass
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -329,7 +378,14 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser.add_argument("--interval", default=DEFAULT_INTERVAL)
     parser.add_argument("--fetch-bars", type=int, default=DEFAULT_FETCH_BARS)
     parser.add_argument("--db-path", default=str(DEFAULT_DB_PATH))
-    parser.add_argument("--signal-path", default=DEFAULT_SIGNAL_PATH)
+    parser.add_argument(
+        "--signal-path",
+        default=None,
+        help=(
+            "default: var/live/signals/<--symbol>/daily-tsmom-ensemble/latest.json, "
+            "computed from --symbol (see default_signal_path())"
+        ),
+    )
     parser.add_argument("--runs-path", default=LIVE_RUNS_PATH)
     parser.add_argument(
         "--base-url",
@@ -342,6 +398,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = _parse_args(argv)
+    signal_path = args.signal_path if args.signal_path is not None else default_signal_path(args.symbol)
 
     if not args.base_url:
         raise SystemExit(
@@ -372,8 +429,25 @@ def main(argv: list[str] | None = None) -> int:
         args.interval,
         f" (most recent open_time={klines[-1].open_time.isoformat()})" if klines else "",
     )
-    if not klines:
-        logger.warning("generate_daily_signal: zero klines fetched -- nothing to feed the strategy today")
+    # Below MIN_WARMUP_BARS (which includes the zero-klines case) is a
+    # DATA problem (an empty/short fetch -- retention limits, a real gap,
+    # a network hiccup that still returned partial cached data), not a
+    # real "the strategy looked and found no signal today" decision.
+    # Distinguished with its own warning and an early return, rather than
+    # calling generate_signal() and letting it silently return None for a
+    # reason that has nothing to do with today's actual sign -- a real
+    # CodeRabbit review finding on this task's PR: conflating the two
+    # would make an operator reading the logs unable to tell "nothing to
+    # trade today" from "this run couldn't get enough data to decide."
+    if len(klines) < MIN_WARMUP_BARS:
+        logger.warning(
+            "generate_daily_signal: only %d klines available (fetched from a %d-bar request), below "
+            "the strategy's %d-bar warmup requirement -- skipping signal generation this run (this is "
+            "NOT a real 'no signal today' decision, just insufficient data)",
+            len(klines),
+            args.fetch_bars,
+            MIN_WARMUP_BARS,
+        )
         return 0
 
     parent_run_id = f"live-{datetime.now(timezone.utc):%Y-%m-%d}-{uuid4()}"
@@ -388,14 +462,14 @@ def main(argv: list[str] | None = None) -> int:
         logger.info("no signal today (no sign-category change) -- signal file left untouched")
         return 0
 
-    write_signal_atomically(decision, args.signal_path)
+    write_signal_atomically(decision, signal_path)
     logger.info(
         "wrote signal: side=%s quantity=%s symbol=%s intent_id=%s -> %s",
         decision.side,
         decision.quantity,
         decision.symbol,
         decision.intent_id,
-        args.signal_path,
+        signal_path,
     )
     return 0
 

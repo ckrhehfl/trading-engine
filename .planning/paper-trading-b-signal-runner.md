@@ -127,7 +127,7 @@ without being needlessly large).
 - **Cron line** (documented per the task brief, **not installed** — out
   of scope for this task):
 
-  ```
+  ```text
   5 0 * * *  cd /path/to/trading-engine && PYTHONPATH=python python/.venv/bin/python -m live.generate_daily_signal
   ```
 
@@ -181,7 +181,7 @@ effect. Verified directly, not just reasoned about — `git status --short
 --ignored -uall runs/` with both a real `runs/experiments.jsonl` and a
 real `runs/live_signals.jsonl` present shows:
 
-```
+```text
 ?? runs/live_signals.jsonl
 !! runs/experiments.jsonl
 ```
@@ -233,13 +233,13 @@ Run from the worktree root (repo-root-relative default paths, matching
 `python/` first breaks those same relative defaults, the exact
 class of bug `sr-v`/`sr-ab` each hit and documented):
 
-```
+```bash
 PYTHONPATH=python BINGX_BASE_URL=https://open-api.bingx.com python/.venv/bin/python -m live.generate_daily_signal
 ```
 
 Real, unedited output:
 
-```
+```text
 2026-08-07 18:50:24,880 INFO fetching missing range [1760140800000, 1786060800000) for BTC-USDT/1d
 2026-08-07 18:50:25,141 INFO range [1760140800000, 1786060800000): fetched 300 rows (total newly inserted so far: 300)
 2026-08-07 18:50:25,155 INFO fetched 300 klines for BTC-USDT/1d (most recent open_time=2026-08-06T00:00:00+00:00)
@@ -280,15 +280,31 @@ window (2025-10-11 through 2026-08-06) postdates every existing
 holdout/research split in this project by construction (it's today's
 real market data).
 
-Not re-run a second time for this doc: `research.holdout`'s
-single-access discipline is specific to *holdout* data and doesn't apply
-here, but re-running gratuitously would still create a second, redundant
-log record for no reason — one real, disclosed invocation is what the
-task asked for and what's shown above.
+**A second real invocation happened, disclosed rather than silently
+dropped.** After the CodeRabbit review findings below were fixed
+(particularly the reworked `write_signal_atomically`), the script was
+run live a second time — same command as above — specifically to confirm
+the *hardened* atomic-write path still works correctly end-to-end
+against the real exchange, not just under test. This is not the
+single-access-per-`strategy_id` discipline `research.holdout` enforces
+for *holdout* data (that concern doesn't apply here — this is today's
+live market data, never a holdout split), so nothing was "spent" by
+running twice; it did produce a second, real `backtest_run` record
+(`run_id=4a06d7ef-116f-4359-bed4-3abe07296176`,
+`parent_run_id=live-2026-08-07-7c2b3f19-8253-480f-aa42-d6939682d5ea`,
+`logged_at=2026-08-07T10:03:48Z`) and rewrote the signal file with a new
+`intent_id` (`51f0a2da-df26-47bc-b98e-0f484a798f4d`) but the identical
+`side=LONG`/`quantity` (all 300 bars were already cache-hit from the
+first run, so the strategy replayed the exact same decision). Both real
+records are in the committed `runs/live_signals.jsonl` (2 lines total);
+`runs/experiments.jsonl` still does not exist anywhere in this worktree
+after either run — re-verified, not just carried over from the first
+check.
 
 ## Test coverage
 
-`python/tests/test_generate_daily_signal.py`, 16 tests, all against the
+`python/tests/test_generate_daily_signal.py`, 20 tests (16 initial + 4
+added responding to the CodeRabbit review below), all against the
 project's existing `FakeBingXKlinesServer` (stdlib `http.server`, the
 same fixture `test_backfill.py` uses — no mocking framework, matching
 this codebase's established Python test philosophy) or `tmp_path`:
@@ -299,18 +315,75 @@ this codebase's established Python test philosophy) or `tmp_path`:
   calls).
 - `generate_signal`: `None` on a flat (no sign-change) series; a real
   `OrderIntent` on a genuine sign change; the two `runs_path` isolation
-  tests described above.
+  tests described above; an empty `klines` list returns `None` without
+  ever constructing `DailyTsmomEnsembleTrainable` (nothing logged).
 - `write_signal_atomically`: creates parent dirs and writes valid JSON;
-  fully replaces stale existing content; leaves no leftover `.tmp` file;
-  uses `os.replace()` for the final move (spied, not just inferred).
+  fully replaces stale existing content; leaves no leftover temp file;
+  uses `os.replace()` for the final move (spied, not just inferred, and
+  its temp-path naming asserted, not just its call count); removes the
+  temp file on a simulated write failure; two invocations never reuse
+  the same temp path.
 - `main()`: full end-to-end signal write against a fake server; a
   pre-existing signal file is left byte-for-byte untouched when no
-  signal fires; exits with an error when `BINGX_BASE_URL` is missing;
-  warns when `--fetch-bars` is set below the warmup floor.
+  signal fires; exits with a genuinely nonzero code when `BINGX_BASE_URL`
+  is missing; warns (with two DISTINCT messages, each asserted not to
+  fire when the other's condition is the actual cause) when `--fetch-bars`
+  is itself set below the warmup floor vs. when the request was fine but
+  the exchange's actual data came up short.
 
-Full suite (`cd python && uv run pytest -q`): **1407 passed** (1391
-pre-existing + 16 new), 0 failures, run both before this task's changes
-(baseline) and after.
+Full suite (`cd python && uv run pytest -q`): **1407 passed** before the
+review-response fixes below (16 new tests at that point); **4 more
+tests** added responding to CodeRabbit's review (20 total in this file)
+push the full-suite total to **1411**, 0 failures.
+
+## CodeRabbit review findings, and what was fixed
+
+The PR's CodeRabbit review (`state: CHANGES_REQUESTED`, verified against
+the exact HEAD sha via the GitHub reviews API — the green `CodeRabbit`
+status check alone does not imply approval, per this task's own explicit
+instruction) raised 7 actionable findings, all in low-risk Python
+operational code (no OMS/Risk Gateway/Execution/credentials/live-trading
+surface) — reviewed and fixed manually rather than via Autofix, per
+CLAUDE.md's Code Review Gate guidance to still read the change even where
+Autofix would be acceptable:
+
+1. **`--signal-path`'s default silently ignored a custom `--symbol`** —
+   it was a module-load-time constant built from `DEFAULT_SYMBOL`, not
+   the runtime `args.symbol`. Fixed: a new `default_signal_path(symbol)`
+   function, `--signal-path` now defaults to `None` and `main()` resolves
+   it from `args.symbol` only when the flag isn't explicitly given.
+2. **`main()` conflated "insufficient fetched data" with "no signal
+   today."** If the exchange's actual data came up short of the request
+   (a real gap, a retention boundary), the old code logged the same "no
+   signal today" message a genuine hold decision would produce —
+   operationally misleading. Fixed: `main()` now checks
+   `len(klines) < MIN_WARMUP_BARS` right after fetching and returns early
+   with its own distinct warning, before `generate_signal` is ever
+   called, so the two cases are never confused in the logs.
+3. **The atomic write used a fixed `<name>.tmp` path**, left it behind on
+   a failed write, and never fsync'd the parent directory. Fixed:
+   `write_signal_atomically` now uses a process-unique temp name (PID +
+   random UUID hex), removes it in an `except`/`raise` on any failure,
+   and best-effort fsyncs the parent directory's fd after a successful
+   rename — the same two-tier durability pattern
+   `research.experiment_log._append_record` already uses for exactly the
+   same POSIX "fsync doesn't sync the containing directory" gap.
+4. **`generate_signal` didn't guard against empty `klines`** — it would
+   still construct a `DailyTsmomEnsembleTrainable` and call `fit()`,
+   logging a degenerate record for no real work. Fixed: an early
+   `if not klines: return None`, before any construction happens.
+5. **The four code fences in this doc were missing language tags.**
+   Fixed (`text` for the git-status/log-output blocks, `bash` for the
+   shell command).
+6. **Two test helpers were missing `-> None` return-type annotations**
+   (`_no_real_sleep`, `spy_replace` — ANN202). Fixed.
+7. **The missing-`BINGX_BASE_URL` test only checked `SystemExit` was
+   raised, not that its exit code was actually nonzero.** Fixed: asserts
+   `exc_info.value.code != 0`.
+
+None of these findings changed this doc's own already-reported real live
+invocation result (above) — that run predates the fixes and is reported
+exactly as it happened, not re-run or retroactively edited to match.
 
 ## Explicitly not done here (per task scope)
 
