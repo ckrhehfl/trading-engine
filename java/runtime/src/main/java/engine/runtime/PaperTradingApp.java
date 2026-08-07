@@ -299,30 +299,54 @@ public final class PaperTradingApp {
     /**
      * Cleanly stops the scheduled loop: no new tick is scheduled after
      * this returns, and any in-flight tick is given up to 10 seconds to
-     * finish before a forced {@code shutdownNow()}. Called from {@link
-     * #main}'s JVM shutdown hook (SIGTERM / normal JVM exit); safe to
-     * call more than once (a shutdown hook racing an explicit {@code
+     * finish before a forced {@code shutdownNow()} (itself given a further
+     * 5 seconds to actually confirm termination -- see below). Called from
+     * {@link #main}'s JVM shutdown hook (SIGTERM / normal JVM exit); safe
+     * to call more than once (a shutdown hook racing an explicit {@code
      * stop()} elsewhere) or even if {@link #start()} was never called.
      *
-     * <p>Also calls {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()}
-     * after the executor has stopped -- without this, a UTC day that ends
-     * between the last real tick and the process actually stopping would
-     * never get a report at all, since nothing would be left to call
-     * {@link DailyReportGenerator#beforeTick()} and notice the boundary.
+     * <p>Calls {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()}
+     * -- but only after real termination is confirmed, never unconditionally
+     * (a CodeRabbit review finding on this task's own PR #73):
+     * {@code ExecutorService.shutdownNow()} attempts to interrupt an
+     * in-flight task, it does not guarantee the task actually stops before
+     * this method returns. If a straggling {@link #runTick()} were still
+     * running concurrently with {@code finalizeCompletedDayOnShutdown()},
+     * that tick's {@code afterTick()} call could land on either side of
+     * the finalize -- either silently missing from the finalized report,
+     * or incorrectly counted against the day tracking that already reset
+     * for after finalization. Skipping finalization entirely when
+     * termination can't be confirmed avoids that race outright: the
+     * completed day simply stays unwritten, no worse than any other
+     * already-disclosed "process stopped without a clean tick cycle"
+     * limitation (see {@code DailyReportGenerator}'s own class Javadoc),
+     * logged loudly rather than silently risking a wrong report.
      */
     public synchronized void stop() {
         log.info("stopping paper trading loop");
         executor.shutdown();
+        boolean terminated;
         try {
-            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+            terminated = executor.awaitTermination(10, TimeUnit.SECONDS);
+            if (!terminated) {
                 log.warn("paper trading loop did not stop cleanly within 10s, forcing shutdown");
                 executor.shutdownNow();
+                terminated = executor.awaitTermination(5, TimeUnit.SECONDS);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             executor.shutdownNow();
+            terminated = false;
         }
-        dailyReportGenerator.finalizeCompletedDayOnShutdown();
+        if (terminated) {
+            dailyReportGenerator.finalizeCompletedDayOnShutdown();
+        } else {
+            log.error(
+                    "paper trading loop did not terminate even after a forced shutdown; skipping daily-report"
+                            + " finalization to avoid finalizing while a tick may still be in flight -- if a UTC"
+                            + " day already ended, its report will remain unwritten unless a future process"
+                            + " restart reaches that day's boundary again");
+        }
     }
 
     /**

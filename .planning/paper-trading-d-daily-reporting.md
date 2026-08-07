@@ -498,6 +498,100 @@ failures, 0 errors** -- up from 193 (3 new `DailyReportGeneratorTest` +
 1 new `PaperTradingAppTest`, plus the 1 existing test strengthened for
 finding 4).
 
+### Second review round (commit `2ff03bb`, state `CHANGES_REQUESTED` again)
+
+Pushing the fix-up commit above triggered a second, real, full review
+(verified against the reviews API, not just the status check -- the
+status check briefly showed "pass" for an interim reply-only review
+before the actual full review of the new diff landed a few minutes
+later). It raised 3 more findings against the round-1 fixes themselves:
+
+5. **Major -- a newly-completed report could write out of order ahead of
+   an older, still-pending one** (`DailyReportGenerator`, the round-1
+   `enqueueAndAttemptWrite`): valid, real bug in the round-1 fix itself.
+   That method attempted a direct write of the newly-completed report
+   FIRST, only falling back to the pending queue if that direct attempt
+   failed -- so if an older report was already stuck in the queue (e.g.
+   from an earlier still-unresolved failure) while the newer report's own
+   target path happened to be independently writable, the newer one could
+   get written before the older one, breaking this class's own promised
+   chronological delivery order. **Fixed**: `enqueueAndAttemptWrite` is
+   gone; every completed report is now unconditionally enqueued first
+   (`pendingReports.addLast(...)`), and `flushPendingReports()` -- which
+   drains strictly oldest-first, stopping at the first still-failing
+   report -- is now the ONLY method that ever calls `writeReport`, called
+   unconditionally at the end of every `beforeTick()`/
+   `finalizeCompletedDayOnShutdown()` call. New test:
+   `aStillPendingOlderReportBlocksAYoungerOneFromWritingOutOfOrder`
+   obstructs only 2026-08-07's own target file (a directory sitting where
+   that one file needs to go) while leaving 2026-08-08's own future
+   target path completely normal, and confirms 2026-08-08's report stays
+   queued rather than writing ahead of the stuck 2026-08-07 one --
+   `pendingReportCount() == 2`, `2026-08-08.json` does not exist -- until
+   the obstruction clears and both write, in order.
+6. **Major -- `stop()` could finalize while a straggling tick was still
+   in flight** (`PaperTradingApp`, outside the diff range):
+   `ExecutorService.shutdownNow()` attempts to interrupt an in-flight
+   task but does not guarantee it actually stops before the call
+   returns; the round-1 `stop()` called
+   `finalizeCompletedDayOnShutdown()` unconditionally right after
+   `shutdownNow()`, with no confirmation the straggling tick had really
+   ended. A tick still running concurrently could reach its own
+   `afterTick()` on either side of the finalize, either silently missing
+   from the finalized report or getting counted against day-tracking
+   state that had already reset. **Fixed**: `stop()` now performs a
+   second, shorter (5s) `awaitTermination` after `shutdownNow()` and only
+   calls `finalizeCompletedDayOnShutdown()` if termination is actually
+   confirmed; if it can't be confirmed, finalization is skipped entirely
+   and logged at `ERROR` -- a day staying unwritten in this rare case is
+   strictly safer than risking a wrong one. **Not accompanied by a new
+   automated test**, disclosed rather than silently skipped: reliably
+   forcing this exact race requires a task that genuinely hangs past a
+   real 10s+5s timeout, which would mean either a slow/flaky ~15-second
+   test or injectable shutdown-timeout durations added purely for
+   testability (no mocking framework exists in this codebase to fake
+   `ExecutorService` termination behavior otherwise). Given
+   CodeRabbit's own "Heavy lift" effort label on this finding and this
+   project's standing "touch only what the task requires" guidance, the
+   correctness fix was made (it is unambiguously more correct and
+   strictly safer than before, and costs nothing at runtime) but the
+   matching slow/complex test infrastructure was not built for this task
+   -- flagged here explicitly as a real, disclosed test gap rather than
+   silently passed over.
+7. **Major -- durable, restart-recoverable persistence for
+   `pendingReports`** (`DailyReportGenerator`): a generically valid
+   suggestion, **declined as out of scope**, not implemented. This asks
+   for exactly the kind of durable cross-restart persistence that
+   nothing in this codebase has anywhere yet (`OrderStore`/`PaperBroker`
+   are both in-memory only, `FileSignalSource`'s own dedup pointer
+   doesn't survive a restart either -- all already-disclosed, pre-
+   existing precedents, not oversights specific to this task). Building
+   one is real, scoped follow-on work if this project's restart-
+   persistence story is ever revisited wholesale, not a piece to bolt
+   onto one queue in one class as a drive-by addition. The in-memory-only
+   limitation this finding is about was already explicitly disclosed in
+   round 1's own Javadoc addition (`DailyReportGenerator`'s "Write
+   failures never propagate..." section: "a process restart while a
+   report is still pending loses it, same as any other unwritten state
+   this class holds") -- the class Javadoc was extended further to name
+   this specific finding and the reasoning for declining it, and a reply
+   was posted on the review thread pointing back to that existing
+   disclosure rather than treating it as newly discovered.
+
+Finding 3 from the first round (`fillHistory` unbounded growth) was
+independently withdrawn by CodeRabbit itself after reading the round-1
+Javadoc disclosure and reply (`review_comment_withdrawn`, 2026-08-07):
+*"확인했습니다. 현재 paper-trading 범위에서는 `fillHistory`의 무제한 보관이 실질적인
+운영 위험이 되지 않습니다... 이 finding은 철회합니다"* ("Confirmed. At the current
+paper-trading scope, `fillHistory`'s unbounded retention is not a
+practical operational risk... withdrawing this finding") -- independent
+confirmation the round-1 judgment call was sound, not just asserted by
+this task's own author.
+
+Full suite after the second round's fixes (`./gradlew clean test`):
+**198 tests, 0 failures, 0 errors** -- up from 197 (1 new
+`DailyReportGeneratorTest`).
+
 **Also fixed, unrelated to CodeRabbit**: the local `.githooks/pre-commit`
 hook (`gitleaks protect --staged`) flagged this very document's own real
 local-run JSON output as a `generic-api-key` false positive -- gitleaks'
@@ -526,26 +620,31 @@ the same value appears in the doc.
 - `./gradlew :runtime:compileTestJava` against `DailyReportGeneratorTest`
   failed with 22 real "cannot find symbol" compile errors
   (`DailyReportGenerator`, `DailyReport`) before either class existed.
-- `./gradlew :runtime:test --tests DailyReportGeneratorTest` -- 9/9 pass
-  (6 from the original TDD pass + 3 added responding to CodeRabbit
-  findings 1 and 2).
+- `./gradlew :runtime:test --tests DailyReportGeneratorTest` -- 10/10
+  pass (6 from the original TDD pass + 3 responding to round-1 findings
+  1 and 2 + 1 responding to round-2 finding 5).
 - `./gradlew :runtime:test --tests PaperTradingAppTest` -- 14/14 pass
-  (13 unmodified from Task C + 1 added responding to CodeRabbit finding 2).
+  (13 unmodified from Task C + 1 responding to round-1 finding 2).
 - `./gradlew :runtime:test --tests TradingLoopTest` -- 7/7 pass
   (unmodified from Task C).
-- `./gradlew clean test` (full multi-module suite) -- **197 tests, 0
+- `./gradlew clean test` (full multi-module suite) -- **198 tests, 0
   failures, 0 errors** across all six `java/` modules.
 - Real local run against the real BingX VST endpoint, through a real
   simulated day boundary, with a real fill -- see above; actual report
   file contents shown, not asserted.
 - Local `gitleaks protect --staged` pre-commit hook passes clean (see
   "Also fixed, unrelated to CodeRabbit" above).
-- A real CodeRabbit review (state `CHANGES_REQUESTED`, verified via the
-  GitHub reviews API against the exact HEAD sha, not just a green status
-  check -- the status check alone was misleadingly green while rate-
-  limited) was obtained and responded to; a second review is expected
-  after the fix-up commit, per CLAUDE.md's "batch fixes into one push
-  before requesting re-review" guidance.
+- Two real, full CodeRabbit reviews obtained and responded to, each
+  verified via the GitHub reviews API against the exact HEAD sha at the
+  time -- not just a green status check, which was briefly misleading
+  twice (rate-limited-but-green after PR open; a reply-only review
+  transiently showing "pass" before the real full review of the second
+  commit actually landed). Round 1 (commit `76e764d`, `CHANGES_REQUESTED`,
+  4 findings) and round 2 (commit `2ff03bb`, `CHANGES_REQUESTED`, 3 more
+  findings against the round-1 fixes themselves) are both addressed
+  above. A third review is expected after this round's own fix-up
+  commit, per CLAUDE.md's "batch fixes into one push before requesting
+  re-review" guidance.
 - PR opened, not merged -- per the governing plan and CLAUDE.md's
   Auto-merge Policy, this is Java runtime code (extends `TradingLoop`
   and `PaperTradingApp`, both R3-risk-adjacent) and requires explicit

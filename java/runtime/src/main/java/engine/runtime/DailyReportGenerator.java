@@ -87,25 +87,38 @@ import org.slf4j.LoggerFactory;
  * caveat). A day during which the process never ran at all produces no
  * report for that day at all -- also disclosed, not silently patched over.
  *
- * <p><b>Write failures never propagate, and never discard data</b>: a
- * failure while writing the report file is caught and logged at
- * {@code ERROR} (maximally visible -- "no missing daily reports" is a
- * hard Paper Trading Pass Criterion, so a silently-swallowed write
- * failure is exactly the failure mode that criterion exists to catch),
- * but the completed {@link DailyReport} itself is <b>not</b> discarded --
- * it is kept in a small in-memory pending queue and retried at the start
- * of every subsequent {@link #beforeTick()} call (in order, oldest
- * first) until it actually succeeds. Day tracking still advances to the
- * new day immediately regardless of whether the write succeeded --
- * a transient disk error must not stall the whole loop's day-boundary
- * detection, only that one day's report delivery. Same restart caveat
- * as everything else here: the pending queue is in-memory only, so a
+ * <p><b>Write failures never propagate, never discard data, and never
+ * reorder</b>: a failure while writing the report file is caught and
+ * logged at {@code ERROR} (maximally visible -- "no missing daily
+ * reports" is a hard Paper Trading Pass Criterion, so a silently-
+ * swallowed write failure is exactly the failure mode that criterion
+ * exists to catch), but the completed {@link DailyReport} itself is
+ * <b>not</b> discarded -- every completed report, without exception, is
+ * enqueued to a small in-memory pending queue and only ever written by
+ * {@link #flushPendingReports()}, which drains it strictly oldest-first
+ * and stops at the first one that still fails. No report is ever written
+ * directly outside that queue, so a newer, independently-writable report
+ * can never land ahead of an older one that's still stuck (see
+ * {@code flushPendingReports()}'s own Javadoc for the CodeRabbit review
+ * finding this closes). {@link #beforeTick()}/{@link
+ * #finalizeCompletedDayOnShutdown()} both call it unconditionally on
+ * every invocation, so a still-pending report is retried on every later
+ * tick, not only at the next day boundary. Day tracking still advances
+ * to the new day immediately regardless of whether the write succeeded
+ * -- a transient disk error must not stall the whole loop's day-boundary
+ * detection, only that one day's report delivery. Same restart caveat as
+ * everything else here: the pending queue is in-memory only, so a
  * process restart while a report is still pending loses it, same as any
- * other unwritten state this class holds. The write itself is atomic
- * (temp file + {@code ATOMIC_MOVE}), the same {@code .tmp}-then-rename
- * convention {@code python/live/generate_daily_signal.py} already uses
- * for its own signal file, so a reader never observes a half-written
- * report.
+ * other unwritten state this class holds -- a real, disclosed limitation
+ * (a CodeRabbit review finding on this task's own PR #73 suggested a
+ * durable, restart-recoverable outbox; declined as out of scope -- this
+ * codebase has no durable persistence anywhere yet, see {@code
+ * OrderStore}/{@code PaperBroker}'s own identical in-memory-only
+ * precedent, and building one is real, scoped follow-on work, not a
+ * silent addition to this task). The write itself is atomic (temp file +
+ * {@code ATOMIC_MOVE}), the same {@code .tmp}-then-rename convention
+ * {@code python/live/generate_daily_signal.py} already uses for its own
+ * signal file, so a reader never observes a half-written report.
  */
 public final class DailyReportGenerator {
 
@@ -147,21 +160,19 @@ public final class DailyReportGenerator {
      * rather than in {@link #afterTick()}.
      */
     public synchronized void beforeTick() {
-        flushPendingReports();
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (currentDay == null) {
             startNewDay(today);
-            return;
-        }
-        if (today.isAfter(currentDay)) {
+        } else if (today.isAfter(currentDay)) {
             LocalDate finishedDay = currentDay;
-            enqueueAndAttemptWrite(buildReport(finishedDay));
+            pendingReports.addLast(buildReport(finishedDay));
             startNewDay(today);
         }
         // today.isBefore(currentDay): a backwards clock adjustment (NTP
         // sync, manual change) -- deliberately not treated as a boundary;
         // the day already being tracked keeps accumulating rather than
         // finalizing early on a clock glitch.
+        flushPendingReports();
     }
 
     /**
@@ -180,16 +191,16 @@ public final class DailyReportGenerator {
      * written, matching every other write path in this class.
      */
     public synchronized void finalizeCompletedDayOnShutdown() {
-        flushPendingReports();
         if (currentDay == null) {
             return; // nothing was ever tracked -- e.g. stopped before the first tick
         }
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (today.isAfter(currentDay)) {
             LocalDate finishedDay = currentDay;
-            enqueueAndAttemptWrite(buildReport(finishedDay));
+            pendingReports.addLast(buildReport(finishedDay));
             startNewDay(today);
         }
+        flushPendingReports();
     }
 
     /** Must be called once, immediately after every real {@link TradingLoop#tick()} call. See class Javadoc. */
@@ -238,11 +249,19 @@ public final class DailyReportGenerator {
     }
 
     /**
-     * Attempts to write every still-pending report, oldest first, removing
-     * each from the queue as it succeeds. Stops at the first one that
-     * still fails (rather than skipping ahead) so reports are written in
-     * chronological order and a persistently-broken write path doesn't
-     * get silently retried out of order.
+     * The ONLY method that ever calls {@link #writeReport}: every newly
+     * completed report is enqueued to {@link #pendingReports} first (never
+     * written directly), and this drains that queue oldest-first,
+     * removing each as it succeeds. Stops at the first one that still
+     * fails, rather than skipping ahead to a later, possibly-independently-
+     * writable report -- a CodeRabbit review finding on this task's own PR
+     * (#73): an earlier version wrote a newly-completed report directly,
+     * which could let it land ahead of an older, still-failing one if the
+     * failure happened to be file-specific rather than categorical (e.g. a
+     * blocked path for one date but not another), breaking the
+     * chronological delivery this class's own Javadoc promises. Routing
+     * every write through this single queue-then-flush path makes that
+     * ordering structurally guaranteed rather than incidental.
      */
     private void flushPendingReports() {
         while (!pendingReports.isEmpty()) {
@@ -250,20 +269,12 @@ public final class DailyReportGenerator {
             if (writeReport(pending)) {
                 pendingReports.removeFirst();
             } else {
+                log.warn(
+                        "{} daily report(s) still pending (oldest: {}); will retry on a later tick",
+                        pendingReports.size(),
+                        pending.date());
                 break;
             }
-        }
-    }
-
-    /** Writes {@code report} now; if that fails, keeps it for a later retry instead of discarding it. */
-    private void enqueueAndAttemptWrite(DailyReport report) {
-        if (!writeReport(report)) {
-            pendingReports.addLast(report);
-            log.warn(
-                    "daily report for {} could not be written and will be retried on a later tick;"
-                            + " {} report(s) now pending",
-                    report.date(),
-                    pendingReports.size());
         }
     }
 

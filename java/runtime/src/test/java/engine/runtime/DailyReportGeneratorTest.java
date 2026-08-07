@@ -413,6 +413,84 @@ class DailyReportGeneratorTest {
     }
 
     /**
+     * A second CodeRabbit review finding on this task's own PR (#73),
+     * against the fix for the finding above: the original fix still let a
+     * newly-completed report attempt a DIRECT write first, only falling
+     * back to the pending queue if that direct attempt failed -- so if an
+     * OLDER report was already stuck in the queue (still failing) while a
+     * NEWER report's own target path happened to be independently
+     * writable, the newer one could get written first, breaking this
+     * class's own promised chronological delivery order. This test
+     * obstructs ONLY 2026-08-07's specific target file (a directory
+     * sitting where that one file needs to go -- 2026-08-08's own target
+     * path is completely unobstructed) and confirms 2026-08-08's report is
+     * NOT written while 2026-08-07's remains stuck, only recovering both,
+     * in order, once the obstruction is cleared.
+     */
+    @Test
+    void aStillPendingOlderReportBlocksAYoungerOneFromWritingOutOfOrder(@TempDir Path tempDir) throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            Path reportsDir = tempDir.resolve("daily");
+            Files.createDirectories(reportsDir);
+            // Obstructs ONLY 2026-08-07's own target file -- a directory
+            // sitting exactly where that one file needs to be written,
+            // while reportsDir itself (and 2026-08-08's own future target
+            // path) stays completely normal and writable.
+            Path obstructedTarget = reportsDir.resolve("2026-08-07.json");
+            Files.createDirectories(obstructedTarget);
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+
+            generator.beforeTick(); // seeds 2026-08-07
+            loop.tick();
+            generator.afterTick();
+
+            // Cross into 2026-08-08 -- 2026-08-07's report is built and
+            // enqueued, but its write fails (obstructed target).
+            clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator.beforeTick();
+            loop.tick();
+            generator.afterTick();
+            assertEquals(1, generator.pendingReportCount(), "2026-08-07's report must be stuck pending");
+
+            // Cross into 2026-08-09 -- 2026-08-08's report is now also
+            // completed and would, on its own, be perfectly writable. The
+            // fix under test is that it must NOT be written yet, because
+            // an older report is still stuck ahead of it in the queue.
+            clock.advanceTo(Instant.parse("2026-08-09T00:05:00Z"));
+            generator.beforeTick();
+
+            assertEquals(
+                    2,
+                    generator.pendingReportCount(),
+                    "2026-08-08's report must also be queued, not written out of order ahead of the stuck 2026-08-07 one");
+            assertFalse(
+                    Files.exists(reportsDir.resolve("2026-08-08.json")),
+                    "2026-08-08's own target path was never obstructed -- if ordering were not enforced, it would already exist here");
+
+            // Clear the obstruction and let an ordinary later tick retry --
+            // both must now succeed, oldest first.
+            Files.delete(obstructedTarget);
+            generator.beforeTick();
+
+            assertEquals(0, generator.pendingReportCount());
+            assertTrue(Files.isRegularFile(reportsDir.resolve("2026-08-07.json")));
+            assertTrue(Files.isRegularFile(reportsDir.resolve("2026-08-08.json")));
+        }
+    }
+
+    /**
      * A CodeRabbit review finding on this task's own PR (#73): the
      * original design only ever detected a day boundary inside {@link
      * DailyReportGenerator#beforeTick()}, which only runs immediately
