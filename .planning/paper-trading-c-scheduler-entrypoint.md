@@ -5,10 +5,13 @@
 This is **Task C** of the 5-task paper-trading bridge plan governing
 `daily-tsmom-ensemble`'s human-approved move to paper trading (see
 CLAUDE.md's "Paper Trading Policy Exception" and
-`/home/minju/.claude/plans/tender-finding-matsumoto.md`, the governing
-plan). Depends on Task A (`SignalSource`/`FileSignalSource`, merged, PR
-#68) and Task B (`python/live/generate_daily_signal.py`, merged, PR
-#69). R3-risk component (`java/runtime`) — TDD discipline applied
+`.claude/plans/tender-finding-matsumoto.md`, the governing plan — same
+reference convention `.planning/paper-trading-b-signal-runner.md`
+already uses; see "Judgment calls" below for why this stays a reference
+rather than a committed copy). Depends on Task A
+(`SignalSource`/`FileSignalSource`, merged, PR #68) and Task B
+(`python/live/generate_daily_signal.py`, merged, PR #69) — both merged
+to `main`. R3-risk component (`java/runtime`) — TDD discipline applied
 throughout, per CLAUDE.md's Development Methodology.
 
 This task also closes **GitHub issue #70** and the symbol-match-
@@ -306,6 +309,26 @@ brief but cheap and prevents a real misuse (double-scheduling the same
 `TradingLoop` onto the same executor). Tested directly
 (`startCannotBeCalledTwice`).
 
+### Judgment call: the governing-plan reference stays a reference, not a committed copy
+
+CodeRabbit review flagged this doc's original reference to the governing
+plan as a machine-specific absolute path
+(`/home/minju/.claude/plans/tender-finding-matsumoto.md`), which would
+not resolve for another reader or clone, and suggested committing the
+plan itself into the repo with a repository-relative reference. Fixed
+the leaked-absolute-path half directly (the "Scope note" section above
+now reads `.claude/plans/tender-finding-matsumoto.md`) — but that is the
+same reference form `.planning/paper-trading-b-signal-runner.md`
+already uses for the identical file, and neither that file nor this one
+actually commits the plan document into the repo (confirmed: `git log
+--all -- .claude/plans/tender-finding-matsumoto.md` returns nothing).
+Followed that existing, already-reviewed precedent rather than
+unilaterally deciding to commit a personal, cross-project Claude Code
+planning artifact (which lives under the user's own `~/.claude/plans/`,
+outside any one repo, and may reference other unrelated work) into this
+public repository — that is a real scope/content decision this task
+was not asked to make, not a documentation nit.
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - **OS-level process supervision** (systemd, restart-recovery). This
@@ -345,7 +368,7 @@ matching-symbol (`BTC-USDT`) signal and waited past another real tick
 before stopping. Actual captured log output (SLF4J via `slf4j-simple`,
 real timestamps):
 
-```
+```text
 [Test worker] INFO engine.runtime.PaperTradingApp - PaperTradingApp constructed: symbol=BTC-USDT bingxBaseUrl=https://open-api-vst.bingx.com signalPath=/tmp/junit-.../latest.json tickIntervalSeconds=3 riskTier=canary
 === STEP 1: writing a MISMATCHED-symbol signal (ETH-USDT) ===
 wrote intent_id=89d5e4eb-6a5c-45e4-a87f-b32c92331c2a symbol=ETH-USDT

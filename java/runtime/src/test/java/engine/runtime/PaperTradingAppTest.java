@@ -3,7 +3,7 @@ package engine.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import engine.schemas.OrderIntent;
@@ -14,8 +14,10 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -42,6 +44,28 @@ class PaperTradingAppTest {
 
     private void writeIntent(Path path, OrderIntent intent) throws IOException {
         Files.writeString(path, mapper.writeValueAsString(intent));
+    }
+
+    /**
+     * Bounded polling helper (CodeRabbit review finding on this task's
+     * PR) -- replaces a fixed {@code Thread.sleep(...)} with short
+     * polling intervals and a clear deadline, so this test fails only
+     * after genuinely waiting {@code timeout} for {@code supplier} to
+     * stop returning {@code null}, rather than either flaking on a slow
+     * CI runner (too-short fixed sleep) or wasting wall-clock time on a
+     * fast one (too-generous fixed sleep).
+     */
+    private static <T> T awaitNonNull(Supplier<T> supplier, Duration timeout) throws InterruptedException {
+        Instant deadline = Instant.now().plus(timeout);
+        while (Instant.now().isBefore(deadline)) {
+            T value = supplier.get();
+            if (value != null) {
+                return value;
+            }
+            Thread.sleep(50);
+        }
+        fail("condition not met within " + timeout);
+        throw new AssertionError("unreachable"); // fail() always throws; keeps the compiler happy
     }
 
     @Test
@@ -170,10 +194,11 @@ class PaperTradingAppTest {
 
             app.start();
             try {
-                // 1s interval, initial tick at delay 0 -- 1.5s is comfortable
-                // margin for at least one real tick to have completed.
-                Thread.sleep(1500);
-                assertTrue(app.tradingLoop().lastTickAt() != null, "at least one scheduled tick should have run");
+                // Bounded polling, not a fixed sleep -- the initial tick fires
+                // at delay 0, so this should resolve almost immediately in
+                // practice; a 5s deadline is generous headroom against a
+                // loaded CI runner without making a slow environment flake.
+                awaitNonNull(() -> app.tradingLoop().lastTickAt(), Duration.ofSeconds(5));
                 assertNull(app.tradingLoop().lastError());
             } finally {
                 app.stop();
