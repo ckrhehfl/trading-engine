@@ -21,9 +21,12 @@ import org.slf4j.LoggerFactory;
  * the paper-trading-bridge plan): a later, separate task's Python daily
  * runner writes roughly one new signal file per day; {@link TradingLoop}
  * ticks far more often than that via a scheduler. The dedup behavior below
- * (deliver each distinct {@code intentId} exactly once) is what makes most
- * of those ticks correctly see nothing new, even though the file itself is
- * present and valid the whole time.
+ * (suppress redelivering whichever {@code intentId} this instance most
+ * recently delivered) is what makes most of those ticks correctly see
+ * nothing new, even though the file itself is present and valid the whole
+ * time. <b>This is deliberately narrower than "deliver each distinct
+ * {@code intentId} exactly once" -- see "Dedup scope, stated precisely"
+ * below for the exact, tested contract.</b>
  *
  * <p>Deliberately tolerant of every condition short of a genuinely new,
  * valid signal -- a missing file, a malformed/unparseable file, or a file
