@@ -115,7 +115,35 @@ public final class PaperBroker implements OrderExecutor {
                 if (!order.symbol().equals(symbol)) {
                     return order;
                 }
-                Optional<Fill> fill = tryFill(order, price);
+                // tryFill/order.fill() are not expected to throw for an
+                // order this broker itself has kept consistent -- but
+                // Order is a shared mutable object (see Reconciler's own
+                // Javadoc: OrderPipeline hands PaperBroker.submit the same
+                // instance it registered in OrderStore), so a caller that
+                // mutates this exact Order through some other path (e.g.
+                // driving it to CANCELLED directly, bypassing
+                // PaperBroker#cancel) can leave it in a state
+                // order.fill() legitimately rejects. Per OrderExecutor's
+                // own "never throw for a per-order resolution failure"
+                // contract, that must not take down every other pending
+                // order's resolution this same call -- caught, logged
+                // loudly, and dropped from pendingOrders (not left to
+                // retry-and-fail forever) so Reconciler's own
+                // ORPHANED_IN_BROKER check catches the resulting
+                // inconsistency on its next pass, same as an ambiguous
+                // submit failure already does.
+                Optional<Fill> fill;
+                try {
+                    fill = tryFill(order, price);
+                } catch (RuntimeException e) {
+                    log.error(
+                            "order {} failed to resolve during pollFills and is being dropped from pending"
+                                    + " tracking -- this order is now orphaned; Reconciler's ORPHANED_IN_BROKER"
+                                    + " check should catch it: {}",
+                            order.clientOrderId(),
+                            e.toString());
+                    return null; // remove from pending -- see comment above
+                }
                 if (fill.isEmpty()) {
                     return order;
                 }

@@ -51,16 +51,21 @@ import java.util.UUID;
  * specifically -- it does not extend to eager caller-error validation of
  * {@code pollFills}'s own arguments.</b> A {@code null} {@code symbol}/
  * {@code referencePrice}, or a non-positive {@code referencePrice}, is a
- * caller bug, not a per-order failure, and both existing implementations
- * (today just {@link PaperBroker}) are expected to keep failing fast on it
- * via a conventional precondition check ({@code
+ * caller bug, not a per-order failure, and every implementation of this
+ * interface (today just {@link PaperBroker}) is expected to keep failing
+ * fast on it via a conventional precondition check ({@code
  * Objects.requireNonNull}/an explicit positivity check) -- the same
  * standard Java argument-validation convention every other method in this
  * codebase follows, deliberately not suppressed here. A future {@code
- * ExchangeOrderExecutor} should follow the same split: throw immediately
- * for a malformed call, but never let one pending order's own resolution
+ * ExchangeOrderExecutor} must follow the same split: throw immediately for
+ * a malformed call, but never let one pending order's own resolution
  * failure prevent every other order in the same {@code pollFills} call
- * from being resolved.
+ * from being resolved -- {@link PaperBroker#pollFills} itself already
+ * does this (a per-order failure is caught, logged, and the order is
+ * dropped from {@link #pendingOrders()} for {@code
+ * engine.runtime.Reconciler} to catch as orphaned, rather than being
+ * allowed to fail every other pending order's resolution in the same
+ * call).
  */
 public interface OrderExecutor {
 

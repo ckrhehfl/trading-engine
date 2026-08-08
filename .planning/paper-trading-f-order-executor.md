@@ -20,6 +20,47 @@ already used once in this codebase for `SignalSource`/`DummySignalSource`
 (`.planning/paper-trading-a-signal-source.md`), which served as the
 template for both the mechanics and the documentation rigor here.
 
+### GSD phase status
+
+Added explicitly on CodeRabbit review request (see "CodeRabbit review
+findings" below) — not a restructuring of this doc's established
+`paper-trading-*` section convention (`Scope note` / `What was built` /
+`TDD` / `Judgment calls` / `CodeRabbit review findings` / `Explicitly out
+of scope` / `Verification`, which every prior task doc in this series
+already uses and which this doc keeps), just an explicit mapping onto
+CLAUDE.md's own GSD phase loop so the status of each phase is stated
+rather than left implicit:
+
+- **Discuss**: resolved by the governing brief itself, not re-litigated
+  here — the interface shape (`submit`/`pollFills`/`pendingOrders`/
+  `cancel`), the exact rename, and the retype targets were all specified
+  directly in the task brief handed to this session (mirroring how
+  `sr-x`'s own brief "pre-decided the specific hypothesis before any code
+  was written"). No open design ambiguity remained to discuss before
+  starting.
+- **Plan**: `.claude/plans/tender-finding-matsumoto.md` (the governing
+  3-task VST integration plan) is the plan; this doc's "Scope note" and
+  "Exact rename site count" record how the real code matched or deviated
+  from it.
+- **Execute**: this document's "What was built," "Exact rename site
+  count," "TDD," and "Judgment calls" sections.
+- **Verify**: this document's "Verification" section — real local test
+  runs (`./gradlew clean build`, 213 tests/0 failures/0 errors as of the
+  final state after CodeRabbit review) and a real observed CI run
+  (including the genuine `gradlew` permission failure and its fix), not
+  a claim that tests would pass.
+- **Ship**: **pending.** PR #77 is open, CI is green, and a real
+  CodeRabbit review has landed against the current HEAD commit — but per
+  the governing brief's own explicit instruction and CLAUDE.md's
+  Auto-merge Policy (Java OMS/Execution/runtime code is excluded from
+  delegated auto-merge regardless of CI/CodeRabbit status), **this PR is
+  not merged and must not be merged by an LLM session.** No human
+  approver or approval timestamp is recorded here because none exists
+  yet as of this writing — that field is intentionally left for a human
+  to fill in on the PR itself (the actual source of truth for approval
+  state) when they act on it, not invented here to make this section
+  look more complete than the real state.
+
 ## What was built
 
 Five changes, all in `java/execution` and `java/runtime`, plus one new CI
@@ -49,7 +90,18 @@ workflow:
   behavior change, since the method already did exactly what the new name
   says. `@Override` added to all four interface methods (`submit`,
   `pollFills`, `pendingOrders`, `cancel`), matching this codebase's
-  existing convention on `DummySignalSource.nextSignal()`.
+  existing convention on `DummySignalSource.nextSignal()`. **Added in
+  CodeRabbit review round 2** (see "CodeRabbit review findings" below,
+  not part of the original rename): `pollFills`'s per-order loop now
+  catches a `RuntimeException` from resolving any single pending order,
+  logs it, and drops that one order from `pendingOrders` (for
+  `Reconciler`'s `ORPHANED_IN_BROKER` check to catch), rather than
+  letting it propagate and abort every other pending order's resolution
+  in the same call — a real, narrow gap between `OrderExecutor`'s own
+  newly-written "never throw for a per-order resolution failure"
+  contract and what the implementation actually did, reachable via
+  `Order`'s shared-mutable-reference design (see `Reconciler`'s own
+  Javadoc), not a hypothetical.
 - **`TradingLoop`** (type-level substitution) — the field and constructor
   parameter were retyped from `PaperBroker` to `OrderExecutor`. The field
   was also **renamed** from `paperBroker` to `orderExecutor` — see
@@ -143,17 +195,30 @@ mechanical rename rather than new behavior:
    Java's own widening-reference-conversion rules.
 7. Ran the full multi-module suite (`./gradlew clean build`) — green.
 
-## Expected diff shape: confirmed accurate
+## Expected diff shape: confirmed accurate, with one disclosed exception
 
 The governing brief predicted the test-file diff would be **zero** except
 the mechanical `pollFills` rename in `PaperBrokerTest.java`, and warned
 that needing to change test *logic* anywhere else would be a signal to
-stop and re-investigate. This held exactly: `git diff --stat` on the
-final change set shows only `PaperBrokerTest.java` (rename-only, 10
-lines) among test files; `TradingLoopTest.java`, `ReconcilerTest.java`,
-`DailyReportGeneratorTest.java`, and `PaperTradingAppTest.java` are
-byte-for-byte unchanged. No point in this task required stopping to
-re-investigate.
+stop and re-investigate. This held exactly through the initial
+implementation and the first CodeRabbit review round: `TradingLoopTest
+.java`, `ReconcilerTest.java`, `DailyReportGeneratorTest.java`, and
+`PaperTradingAppTest.java` are byte-for-byte unchanged throughout this
+entire task, and `PaperBrokerTest.java`'s only change through round 1
+was the rename.
+
+**One exception, added in round 2 of CodeRabbit review** (see
+"CodeRabbit review findings" below for the full reasoning): a real,
+narrow per-order fault-isolation gap in `PaperBroker.pollFills` was
+found and fixed, with one new test
+(`pollFillsIsolatesASingleOrdersResolutionFailureAndStillResolvesOtherPendingOrders`)
+added to `PaperBrokerTest.java` to cover it. This is not a rename and
+not "changing test logic" in the sense the governing brief's warning was
+about (no existing test's assertions changed) — it is new coverage for a
+real bug the task's own newly-written `OrderExecutor` Javadoc contract
+exposed, not a pre-planned feature. Flagged explicitly here rather than
+folded silently into the "confirmed accurate" claim, since it is a real,
+if small, deviation from a pure rename-only diff.
 
 ## Judgment calls
 
@@ -215,13 +280,14 @@ re-investigate.
 
 ## CodeRabbit review findings
 
-One review round on PR #77 (`ASSERTIVE` profile), against commit
-`ab91fc1` (the first commit — the review ran before the `gradlew`
-mode fix and this doc's own subsequent updates were pushed): 6
-actionable comments. Disposition below, each verified against the
-real current code before deciding, per the review's own "verify each
-finding against current code, fix only still-valid issues, skip the
-rest with a brief reason" instruction.
+Two review rounds on PR #77 (`ASSERTIVE` profile). Disposition below,
+each verified against the real current code before deciding, per each
+review's own "verify each finding against current code, fix only
+still-valid issues, skip the rest with a brief reason" instruction.
+
+### Round 1 (against commit `ab91fc1`, the first commit — before the
+`gradlew` mode fix and this doc's own subsequent updates were pushed):
+6 actionable comments.
 
 **Fixed, this PR:**
 
@@ -286,26 +352,112 @@ rest with a brief reason" instruction.
   this specific class of failure, so it was judged unnecessary on top
   of that.
 
-**Declined, with reasoning, not attempted here:**
+**Declined in round 1, reconsidered in round 2 (see below):**
 
 - **"Update the R3 planning record... to document the Discuss, Plan,
   Execute, Verify, and Ship stages with their outcomes... record
   CodeRabbit's final pass status plus the human approver, approval
-  time, and PR link."** Declined for two reasons. First, no planning
-  doc in this repo's history (`paper-trading-a` through `-e`, nor any
-  `sr-*` doc) follows a rigid Discuss/Plan/Execute/Verify/Ship-labeled
-  template — the established convention (`Scope note` / `What was
-  built` / `TDD` / `Judgment calls` / `CodeRabbit review findings` /
-  `Explicitly out of scope` / `Verification`) already covers the same
-  substance without a mechanical relabeling, and this doc already
-  follows it. Second, and more concretely: "record... the human
-  approver, approval time" can't be done truthfully yet — this PR is,
-  by this same task's own explicit instruction, not merged and has no
-  human approval on record at the time this doc is written. Writing
-  placeholder approval metadata now would be worse than not writing it
-  at all; a human approver, if and when one signs off, can add that
-  note directly on the PR itself, which is the actual source of truth
-  for approval state (see "PR opened, not merged" below).
+  time, and PR link."** Round 1's initial disposition (declined
+  outright) reasoned that no planning doc in this repo's history uses a
+  rigid Discuss/Plan/Execute/Verify/Ship-labeled template, and that
+  inventing an approval timestamp before one exists would be dishonest.
+  CodeRabbit repeated this finding in round 2 with a sharper, more
+  reasonable framing ("mark Ship as pending... without inventing
+  approval metadata") that directly addressed the part of round 1's
+  reasoning that was actually about substance (not wanting to invent
+  data), rather than the part that was about doc-convention
+  consistency. Net result, applied in round 2: added a "GSD phase
+  status" subsection (see near the top of this document) explicitly
+  naming each phase's status, with Ship marked **pending** and no
+  invented approver/timestamp — the doc's own established section
+  structure (`Scope note` / `What was built` / etc.) was kept, not
+  replaced, since restructuring it wholesale was never the substantive
+  part of the request.
+
+### Round 2 (against commit `b1e6b65`, after round 1's fixes were
+pushed — a real review confirmed via the GitHub reviews API to target
+this exact commit sha, not a stale/rate-limited status): 4 actionable
+comments.
+
+**Fixed, this PR:**
+
+- **GSD phase status** — see immediately above; applied this round.
+- **`OrderExecutor.java`'s "both existing implementations (today just
+  `PaperBroker`)" was confusing, self-contradictory wording** ("both"
+  implies two, immediately followed by a clarification that there is
+  only one). Genuinely introduced by round 1's own fix, not
+  pre-existing. Corrected to "every implementation of this interface
+  (today just `PaperBroker`)".
+- **`PaperBroker.pollFills` did not actually isolate a single pending
+  order's own resolution failure from every other pending order's
+  resolution in the same call — a real, if narrow, gap between the
+  Javadoc contract round 1 had just written and what the code actually
+  did.** Verified this is genuinely reachable, not purely theoretical:
+  `Order` is a shared mutable object (`Reconciler`'s own Javadoc already
+  documents `OrderPipeline.submitIntent` handing `PaperBroker.submit`
+  the exact same instance it registers in `OrderStore`), so a caller
+  holding that same reference can drive an order `PaperBroker` still
+  considers pending into a terminal state through a path other than
+  `PaperBroker#cancel` (e.g. calling `order.requestCancel()`/
+  `confirmCancel()` directly) — the next `pollFills` call's
+  `order.fill()` for it then throws `IllegalStateException`
+  (`CANCELLED` is not in `Order`'s `CAN_FILL` set), and before this fix
+  that exception would propagate out of the *entire* `pollFills` call,
+  losing every other pending order's fill for that tick too. Unlike the
+  null/negative-argument case (round 1), this is squarely a per-order
+  resolution failure, not caller-error argument validation — exactly
+  what the "never throw" contract is supposed to cover, so fixing the
+  implementation (not just further qualifying the Javadoc) was the
+  correct call here, not scope creep: wrapped the per-order `tryFill`
+  call in `pollFills`'s loop in a `try/catch (RuntimeException)`,
+  logging loudly and dropping the poisoned order from `pendingOrders`
+  (so `Reconciler`'s own `ORPHANED_IN_BROKER` check catches the
+  resulting inconsistency on its next pass — the same disposition an
+  ambiguous `submit` failure already gets, not a new pattern). Added
+  one new test,
+  `pollFillsIsolatesASingleOrdersResolutionFailureAndStillResolvesOtherPendingOrders`,
+  using only real objects (no mocking framework exists in this
+  codebase): a poisoned order is driven to `CANCELLED` directly,
+  bypassing `broker.cancel(...)`, while a second, healthy pending order
+  for the same symbol proves the poisoned order's failure doesn't
+  prevent the healthy one from resolving in the same `pollFills` call.
+  This is a small, additive, real bug fix discovered *by* writing this
+  task's own Javadoc contract, not a pre-planned feature — judged
+  in-scope despite the task's "provably inert" framing because leaving
+  it unfixed would mean the Javadoc this task itself wrote was not
+  actually true of the one implementation that exists.
+
+**Declined, with reasoning, not attempted here:**
+
+- **"Update the plan to block the live `ExchangeOrderExecutor`
+  integration and define reconciliation for ambiguous submit outcomes:
+  persist `SUBMISSION_UNKNOWN` by clientOrderId, prevent unsafe
+  retries, query exchange state, and reconcile before retrying... Add
+  tests covering post-acceptance timeout, pre-acceptance failure, safe
+  retry, and restart deduplication."** This is real, valuable design
+  work — but it is designing `ExchangeOrderExecutor`'s own submit/retry
+  semantics against a real exchange, which is explicitly **Task G**,
+  not Task F, per the governing brief's own "Explicitly out of scope"
+  list ("Do not build `ExchangeOrderExecutor`, any BingX-specific code,
+  or anything touching `ExchangeAdapter`/`BingXAdapter` — that's Task
+  G, a separate later task") and the governing plan's own Task G
+  section (which already names most of this: tracking pending state
+  only after real acknowledgment, a status-mapping table, per-order
+  failure containment in `pollFills`, TDD against a hand-written
+  `ExchangeAdapter` test double). `OrderExecutor`'s own Javadoc already
+  documents the mechanism that exists **today**, without needing new
+  persisted state, for the ambiguous-`submit` case: a `TradingLoop`
+  submit that throws leaves the order registered in `OrderStore` but
+  never reaches `pendingOrders()`, which `Reconciler` already flags as
+  `ORPHANED_IN_BROKER` — automatically tripping the kill switch until a
+  human looks, entirely with code that already exists and is already
+  tested. Designing a full persisted-`SUBMISSION_UNKNOWN`/safe-retry
+  protocol now, ahead of `ExchangeOrderExecutor` actually existing,
+  would be architecture work for a class that hasn't been written yet —
+  exactly the kind of R3-risk design CLAUDE.md's Development
+  Methodology says needs its own `Discuss` pass at the time, not
+  something decided under review pressure on an unrelated PR. Tracked
+  here as a real, disclosed pointer for Task G, not silently dropped.
 
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
@@ -335,7 +487,12 @@ rest with a brief reason" instruction.
 - `./gradlew clean build` (full multi-module suite, all six modules,
   clean — not incremental) — **BUILD SUCCESSFUL**, **212 tests, 0
   failures, 0 errors** (summed from every module's JUnit XML report:
-  schemas, oms, risk, execution, exchange, runtime).
+  schemas, oms, risk, execution, exchange, runtime) after the original
+  implementation; **213 tests, 0 failures, 0 errors** after CodeRabbit
+  review round 2 added the one new `PaperBrokerTest` fault-isolation
+  test (see "Expected diff shape" and "CodeRabbit review findings"
+  above) — re-ran `./gradlew clean build` again after that fix and
+  confirmed the higher count with the same zero-failures result.
 - `.github/workflows/java-tests.yml` YAML syntax validated locally
   (`python3 -c "import yaml; yaml.safe_load(...)"`) before pushing.
 - **Confirmed, on CodeRabbit review, that `./gradlew build` running the

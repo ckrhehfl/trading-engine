@@ -131,6 +131,43 @@ class PaperBrokerTest {
     }
 
     @Test
+    void pollFillsIsolatesASingleOrdersResolutionFailureAndStillResolvesOtherPendingOrders() {
+        // Order is a shared mutable object -- OrderPipeline.submitIntent
+        // hands PaperBroker.submit the exact same instance it registered
+        // in OrderStore (see Reconciler's own Javadoc), so a caller can
+        // drive an Order PaperBroker still considers pending into a
+        // terminal state through a path other than PaperBroker#cancel.
+        // This simulates exactly that: poisonedOrder is cancelled directly
+        // (bypassing broker.cancel(...)), leaving it CANCELLED while still
+        // present in the broker's own pendingOrders map -- so the next
+        // pollFills call's order.fill() for it throws IllegalStateException
+        // (CANCELLED is not in Order's CAN_FILL set). healthyOrder is a
+        // second, otherwise-identical pending order for the same symbol,
+        // included specifically to prove the poisoned order's failure does
+        // not prevent it from resolving in the same call -- the exact
+        // property OrderExecutor's "never throw for a per-order resolution
+        // failure" contract requires.
+        PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
+        Order poisonedOrder = limitOrder(Side.LONG, "1", "98");
+        Order healthyOrder = limitOrder(Side.LONG, "1", "98");
+        broker.submit(poisonedOrder, new BigDecimal("100")); // stays pending
+        broker.submit(healthyOrder, new BigDecimal("100")); // stays pending
+        poisonedOrder.requestCancel();
+        poisonedOrder.confirmCancel(); // now CANCELLED, but still in broker.pendingOrders()
+
+        List<Fill> fills = broker.pollFills("BTC-USDT", new BigDecimal("97")); // marketable for both
+
+        assertEquals(1, fills.size(), "the healthy order's fill must still resolve despite the poisoned one");
+        assertEquals(healthyOrder.clientOrderId(), fills.get(0).clientOrderId());
+        assertEquals(OrderState.FILLED, healthyOrder.state());
+        assertEquals(OrderState.CANCELLED, poisonedOrder.state(), "poisoned order's own state is untouched");
+        assertFalse(
+                broker.pendingOrders().containsKey(poisonedOrder.clientOrderId()),
+                "the poisoned order must be dropped from pending tracking, not retried forever");
+        assertFalse(broker.pendingOrders().containsKey(healthyOrder.clientOrderId()));
+    }
+
+    @Test
     void limitOrderFillPriceIsNeverWorseThanLimitEvenWithSlippageConfigured() {
         // Regression: slippage must never be layered onto a LIMIT fill —
         // the exact bug CodeRabbit caught in python/backtest/fill.py.
