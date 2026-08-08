@@ -506,7 +506,7 @@ status check briefly showed "pass" for an interim reply-only review
 before the actual full review of the new diff landed a few minutes
 later). It raised 3 more findings against the round-1 fixes themselves:
 
-5. **Major -- a newly-completed report could write out of order ahead of
+1. **Major -- a newly-completed report could write out of order ahead of
    an older, still-pending one** (`DailyReportGenerator`, the round-1
    `enqueueAndAttemptWrite`): valid, real bug in the round-1 fix itself.
    That method attempted a direct write of the newly-completed report
@@ -529,7 +529,7 @@ later). It raised 3 more findings against the round-1 fixes themselves:
    queued rather than writing ahead of the stuck 2026-08-07 one --
    `pendingReportCount() == 2`, `2026-08-08.json` does not exist -- until
    the obstruction clears and both write, in order.
-6. **Major -- `stop()` could finalize while a straggling tick was still
+2. **Major -- `stop()` could finalize while a straggling tick was still
    in flight** (`PaperTradingApp`, outside the diff range):
    `ExecutorService.shutdownNow()` attempts to interrupt an in-flight
    task but does not guarantee it actually stops before the call
@@ -558,7 +558,7 @@ later). It raised 3 more findings against the round-1 fixes themselves:
    matching slow/complex test infrastructure was not built for this task
    -- flagged here explicitly as a real, disclosed test gap rather than
    silently passed over.
-7. **Major -- durable, restart-recoverable persistence for
+3. **Major -- durable, restart-recoverable persistence for
    `pendingReports`** (`DailyReportGenerator`): a generically valid
    suggestion, **declined as out of scope**, not implemented. This asks
    for exactly the kind of durable cross-restart persistence that
@@ -592,6 +592,118 @@ Full suite after the second round's fixes (`./gradlew clean test`):
 **198 tests, 0 failures, 0 errors** -- up from 197 (1 new
 `DailyReportGeneratorTest`).
 
+### Merging Task E (PR #72) and a third review round
+
+Between the second round's fixes and this section, Task E ("minimal
+internal reconciliation between OrderStore and PaperBroker", the
+governing plan's own parallel-with-D task) merged to `main` as PR #72
+-- confirmed via `gh pr view 73 --json mergeable` reporting
+`CONFLICTING` once that landed, since Task E independently modified the
+exact same two files this task's own core change touches
+(`TradingLoop.java`: adds `submittedOrderIds()`/tracking, orthogonal to
+this task's `fillHistory()`/`killSwitchTripped()`; `PaperTradingApp.java`:
+adds `reconcile()`/`OrderStore`/`KillSwitch` fields and a
+`runTick()`-tail call, orthogonal to this task's `beforeTick()`/
+`afterTick()` wiring and `stop()` changes). Resolved via a real `git
+merge origin/main` (not a rebase, to avoid a force-push) -- both
+`TradingLoop.java` conflict hunks (class Javadoc, one field
+declaration, one accessor-method block) and `PaperTradingApp.java`'s
+four conflict hunks (class Javadoc, field declarations, the
+`tradingLoop`/`dailyReportGenerator` construction lines, and the
+trailing test accessors) were resolved by keeping both tasks' additions
+side-by-side, since none of Task E's changes and this task's own
+changes actually overlap in *behavior*, only in *file location* --
+`runTick()` itself merged cleanly with no conflict marker at all
+(`beforeTick() -> tick() -> afterTick() -> log -> reconcile()`, exactly
+the right combined order: daily-report bookkeeping and reconciliation
+both need to observe the tick's real outcome, and neither depends on
+the other's result). `PaperTradingAppTest.java`'s own conflict (both
+tasks' new tests were inserted at the identical point in the file, right
+after `startCannotBeCalledTwice`) needed a full manual reconstruction
+rather than a hunk-by-hunk resolution, since the two sides' dangling
+brace boundaries were textually ambiguous to `git merge`'s own 3-way
+algorithm -- resolved by writing out the complete, correctly-ordered
+file directly (MutableClock class, this task's `stopFinalizes...` test,
+then Task E's three reconciliation tests) rather than trusting the
+conflict markers' exact split points. `TradingLoopTest.java` had no
+conflict at all -- this task never touched that file.
+
+Full suite after the merge (`./gradlew clean test`): **211 tests, 0
+failures, 0 errors** across all six `java/` modules -- 198 (this task's
+own) + 13 (Task E's: 8 new `ReconcilerTest`, 2 new `TradingLoopTest`, 3
+new `PaperTradingAppTest`), confirming the merge is not just
+syntactically valid but semantically correct: both tasks' functionality
+and every one of their own tests pass together.
+
+**Considered, and deliberately not done as part of this merge: making
+the daily report also surface `PaperTradingApp.reconcile()`'s own
+`ReconciliationReport`** (e.g. a `reconciliationClean`/mismatch-count
+field on `DailyReport`). This would be a real, plausible improvement --
+"zero position mismatches" is itself one of CLAUDE.md's Paper Trading
+Pass Criteria, and a reconciliation-aware daily report would make that
+criterion directly auditable from the same artifact as everything else.
+Not implemented here because: (1) it is genuinely new scope beyond
+either task's own governing brief -- Task D's brief asked for equity,
+trades, errors, kill-switch state, and uptime; Task E's own reporting
+is `lastReconciliationReport()`, a separate, already-complete accessor,
+not something Task D's brief asked this class to absorb; (2) the
+`Reconciler`/`ReconciliationReport` types live in `engine.runtime`
+alongside this task's own classes (no import boundary would need
+crossing), so this is a real design option, not blocked by anything
+structural -- which is exactly why it deserves its own `Discuss` pass
+rather than a drive-by addition made only because a merge happened to
+put both classes in front of the same session; and (3) `DailyReportGenerator`
+already has a real, working, independently-useful contract today
+(`beforeTick()`/`afterTick()`, called once per tick, building a report
+from `TradingLoop`-only state) -- adding a `PaperTradingApp`-level
+dependency (reconciliation only exists on `PaperTradingApp`, not on
+`TradingLoop`) would mean either passing `ReconciliationReport` in from
+outside (a `DailyReportGenerator` API change) or having
+`DailyReportGenerator` reach up into `PaperTradingApp` (an inverted,
+backwards dependency this class's whole design avoids elsewhere). Flagged
+here, not silently dropped, exactly per CLAUDE.md's "flag pre-existing
+[or newly-surfaced] scope instead of grabbing it unasked" spirit -- a
+future task (most naturally scoped as its own small follow-up, not
+folded into either D or E after the fact) can pick this up with a real
+`Discuss` pass on the two design options in (3) above.
+
+A **third, real, full CodeRabbit review** landed on the merge commit
+(`2c59507`, state `CHANGES_REQUESTED`) with 2 more findings, both fixed:
+
+1. **Major, Quick win -- no `AtomicMoveNotSupportedException` fallback.**
+   `Files.move(tmp, target, ATOMIC_MOVE, REPLACE_EXISTING)` was the only
+   move attempted; on a filesystem that doesn't support atomic move at
+   all (some network mounts, certain cross-volume setups), that
+   condition never changes between retries, so a report would fail this
+   exact way forever rather than actually recovering via the pending-
+   queue retry mechanism round 1 built. **Fixed**: catches
+   `AtomicMoveNotSupportedException` specifically, logs a warning (the
+   guarantee is genuinely weaker without atomicity -- a reader could in
+   principle observe a moment where neither file exists -- so this is
+   disclosed, not silent), and retries with a plain `REPLACE_EXISTING`
+   move. Existing `IOException` handling (log at ERROR, return `false`,
+   let the caller's pending-queue retry take over) is unchanged for
+   failures of either move attempt. Not accompanied by a new dedicated
+   test -- forcing a real `AtomicMoveNotSupportedException` deterministically
+   needs a filesystem/mount configuration this test environment doesn't
+   have (unlike the earlier write-failure tests, which use an ordinary
+   file-vs-directory conflict any filesystem raises identically); the
+   existing `DailyReportGeneratorTest` suite continues to exercise the
+   normal `ATOMIC_MOVE` path and the ordinary-`IOException` fallback
+   path, both unaffected by this change.
+2. **Nitpick -- markdownlint MD029 (ordered-list prefix consistency).**
+   This document's own "Second review round" subsection restarted its
+   findings list at "5." (continuing round 1's own "1.-4." numbering
+   across two visually-separated lists) rather than starting its own
+   list fresh at "1." -- fixed by renumbering that list to "1.-3." (with
+   the one cross-reference to it in this document's own "Verification"
+   section updated to match).
+
+Full suite after the third round's fix (`./gradlew clean test`): **211
+tests, 0 failures, 0 errors** (unchanged count from the merge above --
+this round's only code change was the `AtomicMoveNotSupportedException`
+fallback, which adds no new test).
+
 **Also fixed, unrelated to CodeRabbit**: the local `.githooks/pre-commit`
 hook (`gitleaks protect --staged`) flagged this very document's own real
 local-run JSON output as a `generic-api-key` false positive -- gitleaks'
@@ -622,29 +734,37 @@ the same value appears in the doc.
   (`DailyReportGenerator`, `DailyReport`) before either class existed.
 - `./gradlew :runtime:test --tests DailyReportGeneratorTest` -- 10/10
   pass (6 from the original TDD pass + 3 responding to round-1 findings
-  1 and 2 + 1 responding to round-2 finding 5).
-- `./gradlew :runtime:test --tests PaperTradingAppTest` -- 14/14 pass
-  (13 unmodified from Task C + 1 responding to round-1 finding 2).
-- `./gradlew :runtime:test --tests TradingLoopTest` -- 7/7 pass
-  (unmodified from Task C).
-- `./gradlew clean test` (full multi-module suite) -- **198 tests, 0
-  failures, 0 errors** across all six `java/` modules.
+  1 and 2 + 1 responding to round-2 finding 1).
+- `./gradlew :runtime:test --tests PaperTradingAppTest` -- 17/17 pass
+  (13 unmodified from Task C + 1 responding to round-1 finding 2 + 3
+  from Task E, merged in -- see "Merging Task E" above).
+- `./gradlew :runtime:test --tests TradingLoopTest` -- 9/9 pass (7
+  unmodified from Task C + 2 from Task E, merged in).
+- `./gradlew :runtime:test --tests ReconcilerTest` -- 8/8 pass (Task E's
+  own test file, untouched by this task, merged in).
+- `./gradlew clean test` (full multi-module suite, after merging Task E
+  and the third review round's fix) -- **211 tests, 0 failures, 0
+  errors** across all six `java/` modules.
 - Real local run against the real BingX VST endpoint, through a real
   simulated day boundary, with a real fill -- see above; actual report
   file contents shown, not asserted.
 - Local `gitleaks protect --staged` pre-commit hook passes clean (see
   "Also fixed, unrelated to CodeRabbit" above).
-- Two real, full CodeRabbit reviews obtained and responded to, each
+- Three real, full CodeRabbit reviews obtained and responded to, each
   verified via the GitHub reviews API against the exact HEAD sha at the
-  time -- not just a green status check, which was briefly misleading
-  twice (rate-limited-but-green after PR open; a reply-only review
-  transiently showing "pass" before the real full review of the second
-  commit actually landed). Round 1 (commit `76e764d`, `CHANGES_REQUESTED`,
-  4 findings) and round 2 (commit `2ff03bb`, `CHANGES_REQUESTED`, 3 more
-  findings against the round-1 fixes themselves) are both addressed
-  above. A third review is expected after this round's own fix-up
-  commit, per CLAUDE.md's "batch fixes into one push before requesting
-  re-review" guidance.
+  time -- not just a green status check, which was repeatedly misleading
+  (rate-limited-but-green after PR open; a reply-only review transiently
+  showing "pass" before a real full review actually landed; a stale
+  `APPROVED` review auto-`DISMISSED` by GitHub once the Task E merge
+  commit was pushed, exactly as expected -- an approval is only ever
+  valid for the exact sha it was submitted against). Round 1 (commit
+  `76e764d`, `CHANGES_REQUESTED`, 4 findings), round 2 (commit
+  `2ff03bb`, `CHANGES_REQUESTED`, 3 more findings against the round-1
+  fixes themselves), and round 3 (commit `2c59507`, the post-merge
+  commit, `CHANGES_REQUESTED`, 2 more findings) are all addressed above.
+  A fourth review is expected after this round's own fix-up commit, per
+  CLAUDE.md's "batch fixes into one push before requesting re-review"
+  guidance.
 - PR opened, not merged -- per the governing plan and CLAUDE.md's
   Auto-merge Policy, this is Java runtime code (extends `TradingLoop`
   and `PaperTradingApp`, both R3-risk-adjacent) and requires explicit

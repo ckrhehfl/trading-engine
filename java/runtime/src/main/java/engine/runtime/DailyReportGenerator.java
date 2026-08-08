@@ -6,6 +6,7 @@ import engine.schemas.SchemaObjectMapper;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -287,7 +288,26 @@ public final class DailyReportGenerator {
             Path tmp = reportsDirectory.resolve(fileName + ".tmp");
             String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(report);
             Files.writeString(tmp, json);
-            Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            try {
+                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (AtomicMoveNotSupportedException e) {
+                // A CodeRabbit review finding on this task's own PR (#73):
+                // some filesystems (network mounts, certain cross-volume
+                // setups) don't support ATOMIC_MOVE at all -- without this
+                // fallback, that condition never changes between retries,
+                // so the report would fail this exact way forever, on
+                // every future tick, rather than actually recovering. Not
+                // atomic (a reader could in principle observe a moment
+                // where neither the old nor the new file exists), but
+                // still strictly better than a permanent failure loop --
+                // logged so the degraded guarantee is visible.
+                log.warn(
+                        "ATOMIC_MOVE not supported for {} -> {}, falling back to a non-atomic replace: {}",
+                        tmp,
+                        target,
+                        e.toString());
+                Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING);
+            }
             log.info(
                     "wrote daily report for {} to {}: trades={} errors={} ticksAttempted={} ticksSucceeded={}"
                             + " killSwitchTripped={}",
