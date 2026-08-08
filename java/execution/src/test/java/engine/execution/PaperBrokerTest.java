@@ -105,12 +105,12 @@ class PaperBrokerTest {
     }
 
     @Test
-    void onPriceUpdateFillsPendingLimitOrderOnceMarketable() {
+    void pollFillsFillsPendingLimitOrderOnceMarketable() {
         PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
         Order order = limitOrder(Side.LONG, "1", "98");
         broker.submit(order, new BigDecimal("100")); // stays pending
 
-        List<Fill> fills = broker.onPriceUpdate("BTC-USDT", new BigDecimal("97"));
+        List<Fill> fills = broker.pollFills("BTC-USDT", new BigDecimal("97"));
 
         assertEquals(1, fills.size());
         assertBigDecimalEquals(new BigDecimal("97"), fills.get(0).price());
@@ -119,15 +119,52 @@ class PaperBrokerTest {
     }
 
     @Test
-    void onPriceUpdateIgnoresPendingOrdersForOtherSymbols() {
+    void pollFillsIgnoresPendingOrdersForOtherSymbols() {
         PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
         Order order = limitOrder(Side.LONG, "1", "98");
         broker.submit(order, new BigDecimal("100")); // stays pending, symbol BTC-USDT
 
-        List<Fill> fills = broker.onPriceUpdate("ETH-USDT", new BigDecimal("50"));
+        List<Fill> fills = broker.pollFills("ETH-USDT", new BigDecimal("50"));
 
         assertTrue(fills.isEmpty());
         assertEquals(OrderState.ACKNOWLEDGED, order.state());
+    }
+
+    @Test
+    void pollFillsIsolatesASingleOrdersResolutionFailureAndStillResolvesOtherPendingOrders() {
+        // Order is a shared mutable object -- OrderPipeline.submitIntent
+        // hands PaperBroker.submit the exact same instance it registered
+        // in OrderStore (see Reconciler's own Javadoc), so a caller can
+        // drive an Order PaperBroker still considers pending into a
+        // terminal state through a path other than PaperBroker#cancel.
+        // This simulates exactly that: poisonedOrder is cancelled directly
+        // (bypassing broker.cancel(...)), leaving it CANCELLED while still
+        // present in the broker's own pendingOrders map -- so the next
+        // pollFills call's order.fill() for it throws IllegalStateException
+        // (CANCELLED is not in Order's CAN_FILL set). healthyOrder is a
+        // second, otherwise-identical pending order for the same symbol,
+        // included specifically to prove the poisoned order's failure does
+        // not prevent it from resolving in the same call -- the exact
+        // property OrderExecutor's "never throw for a per-order resolution
+        // failure" contract requires.
+        PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
+        Order poisonedOrder = limitOrder(Side.LONG, "1", "98");
+        Order healthyOrder = limitOrder(Side.LONG, "1", "98");
+        broker.submit(poisonedOrder, new BigDecimal("100")); // stays pending
+        broker.submit(healthyOrder, new BigDecimal("100")); // stays pending
+        poisonedOrder.requestCancel();
+        poisonedOrder.confirmCancel(); // now CANCELLED, but still in broker.pendingOrders()
+
+        List<Fill> fills = broker.pollFills("BTC-USDT", new BigDecimal("97")); // marketable for both
+
+        assertEquals(1, fills.size(), "the healthy order's fill must still resolve despite the poisoned one");
+        assertEquals(healthyOrder.clientOrderId(), fills.get(0).clientOrderId());
+        assertEquals(OrderState.FILLED, healthyOrder.state());
+        assertEquals(OrderState.CANCELLED, poisonedOrder.state(), "poisoned order's own state is untouched");
+        assertFalse(
+                broker.pendingOrders().containsKey(poisonedOrder.clientOrderId()),
+                "the poisoned order must be dropped from pending tracking, not retried forever");
+        assertFalse(broker.pendingOrders().containsKey(healthyOrder.clientOrderId()));
     }
 
     @Test
@@ -164,7 +201,7 @@ class PaperBrokerTest {
 
         assertEquals(OrderState.CANCELLED, order.state());
         assertFalse(broker.pendingOrders().containsKey(order.clientOrderId()));
-        List<Fill> fills = broker.onPriceUpdate("BTC-USDT", new BigDecimal("50")); // would have been marketable
+        List<Fill> fills = broker.pollFills("BTC-USDT", new BigDecimal("50")); // would have been marketable
         assertTrue(fills.isEmpty());
     }
 
@@ -202,12 +239,12 @@ class PaperBrokerTest {
     }
 
     @Test
-    void onPriceUpdateRejectsZeroOrNegativePrice() {
+    void pollFillsRejectsZeroOrNegativePrice() {
         PaperBroker broker = new PaperBroker(new BigDecimal("0"), new BigDecimal("0"));
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> broker.onPriceUpdate("BTC-USDT", new BigDecimal("-1")));
+                () -> broker.pollFills("BTC-USDT", new BigDecimal("-1")));
     }
 
     @Test
@@ -246,7 +283,7 @@ class PaperBrokerTest {
                 futures.add(pool.submit(() -> {
                     ready.countDown();
                     go.await();
-                    return broker.onPriceUpdate("BTC-USDT", new BigDecimal("99")); // marketable
+                    return broker.pollFills("BTC-USDT", new BigDecimal("99")); // marketable
                 }));
             }
             assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS), "threads never reached start line");
@@ -257,9 +294,9 @@ class PaperBrokerTest {
                 try {
                     totalFills += future.get(5, java.util.concurrent.TimeUnit.SECONDS).size();
                 } catch (java.util.concurrent.ExecutionException e) {
-                    throw new AssertionError("onPriceUpdate must not throw under concurrent access", e);
+                    throw new AssertionError("pollFills must not throw under concurrent access", e);
                 } catch (java.util.concurrent.TimeoutException e) {
-                    throw new AssertionError("onPriceUpdate call did not complete in time", e);
+                    throw new AssertionError("pollFills call did not complete in time", e);
                 }
             }
 

@@ -1,6 +1,7 @@
 package engine.runtime;
 
 import engine.execution.Fill;
+import engine.execution.OrderExecutor;
 import engine.execution.PaperBroker;
 import engine.oms.Order;
 import engine.risk.AccountState;
@@ -18,15 +19,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * The actual running loop that drives {@link OrderPipeline} against
- * {@link PaperBroker} on a REST-polled price feed ({@link BingXPriceFeed}),
- * using a pluggable {@link SignalSource} for its signals -- e.g.
- * {@link DummySignalSource} (explicitly not real, see that class's Javadoc,
- * and CLAUDE.md's "Strategy Research Methodology" section, for why) or
- * {@link FileSignalSource} (a real strategy's output, delivered by a
- * separate process). This class depends only on the {@code SignalSource}
- * interface, not on any one implementation -- see
- * {@code .planning/paper-trading-a-signal-source.md}. Paper-only: no
+ * The actual running loop that drives {@link OrderPipeline} against a
+ * pluggable {@link OrderExecutor} -- {@link PaperBroker} (the internal
+ * simulator) is the only implementation that exists today, but this class
+ * depends only on the interface, so a future real-exchange wrapper can be
+ * swapped in without ever touching this class's control-flow logic (see
+ * {@code .planning/paper-trading-f-order-executor.md}) -- on a REST-polled
+ * price feed ({@link BingXPriceFeed}), using a pluggable {@link
+ * SignalSource} for its signals -- e.g. {@link DummySignalSource}
+ * (explicitly not real, see that class's Javadoc, and CLAUDE.md's "Strategy
+ * Research Methodology" section, for why) or {@link FileSignalSource} (a
+ * real strategy's output, delivered by a separate process). This class
+ * depends only on the {@code SignalSource}/{@code OrderExecutor}
+ * interfaces, not on any one implementation of either -- see
+ * {@code .planning/paper-trading-a-signal-source.md} and
+ * {@code .planning/paper-trading-f-order-executor.md}. Paper-only today: no
  * {@code BingXAdapter}/live wiring exists in this class or anywhere it's
  * called from -- see .planning/08b-trading-loop.md's "Deliberately out of
  * scope" section.
@@ -45,16 +52,16 @@ import org.slf4j.LoggerFactory;
  * what "24/7 supervision" means at this stage.
  *
  * <p><b>Reconciliation on construction</b>: this class does not assume any
- * prior state. It reads {@link PaperBroker#pendingOrders()} fresh every
- * {@code tick()} (via the unconditional {@code onPriceUpdate} call below)
+ * prior state. It reads {@link OrderExecutor#pendingOrders()} fresh every
+ * {@code tick()} (via the unconditional {@code pollFills} call below)
  * rather than caching anything from before it was constructed -- correct
- * for a paper loop, since {@code PaperBroker}/{@code OrderStore} are both
- * in-memory and non-durable already, so "start clean" is the only state
- * there is. A live loop swapped in later would instead need a real
- * reconciliation step here (querying
+ * for today's paper loop, since {@code PaperBroker}/{@code OrderStore} are
+ * both in-memory and non-durable already, so "start clean" is the only
+ * state there is. A live {@code OrderExecutor} swapped in later would
+ * instead need a real reconciliation step here (querying
  * {@code ExchangeAdapter.getPositions()}/{@code getBalance()} as ground
  * truth) -- not built, but this class's shape (no persisted/cached state
- * of its own beyond what it reads from {@code PaperBroker} each tick)
+ * of its own beyond what it reads from {@code OrderExecutor} each tick)
  * doesn't make that swap-in awkward.
  *
  * <p><b>Equity tracking</b> is intentionally minimal, not a PnL engine: it
@@ -77,7 +84,7 @@ import org.slf4j.LoggerFactory;
  * implementation -- owns the check, deliberately: {@code symbol} is
  * already this loop's own single source of truth for "what am I actually
  * trading" (it is what {@link #priceFeed} is polled with and what
- * {@code OrderPipeline}/{@code PaperBroker} are driven with two lines
+ * {@code OrderPipeline}/{@code OrderExecutor} are driven with two lines
  * later), so the invariant belongs to the class that already holds it,
  * not duplicated into every current or future {@code SignalSource}
  * implementation. A mismatch is a defined, logged skip -- exactly like
@@ -127,7 +134,7 @@ import org.slf4j.LoggerFactory;
  * appended to an internal history, exposed read-only via {@link
  * #submittedOrderIds()}. This exists purely to feed {@link Reconciler
  * #check}, which cross-checks it against {@link engine.oms.OrderStore} and
- * {@link PaperBroker}'s own bookkeeping -- neither of those two classes
+ * {@link OrderExecutor}'s own bookkeeping -- neither of those two classes
  * exposes a full enumeration of everything it has ever tracked, so this
  * loop's own record fills that gap. It is a plain, unbounded {@code
  * List<UUID>} -- fine for this project's currently-known usage (a
@@ -142,7 +149,7 @@ public final class TradingLoop {
     private static final int PNL_PERCENT_SCALE = 8;
 
     private final OrderPipeline orderPipeline;
-    private final PaperBroker paperBroker;
+    private final OrderExecutor orderExecutor;
     private final SignalSource signalSource;
     private final BingXPriceFeed priceFeed;
     private final KillSwitch killSwitch;
@@ -159,13 +166,13 @@ public final class TradingLoop {
 
     public TradingLoop(
             OrderPipeline orderPipeline,
-            PaperBroker paperBroker,
+            OrderExecutor orderExecutor,
             SignalSource signalSource,
             BingXPriceFeed priceFeed,
             KillSwitch killSwitch,
             String symbol) {
         this.orderPipeline = Objects.requireNonNull(orderPipeline, "orderPipeline is required");
-        this.paperBroker = Objects.requireNonNull(paperBroker, "paperBroker is required");
+        this.orderExecutor = Objects.requireNonNull(orderExecutor, "orderExecutor is required");
         this.signalSource = Objects.requireNonNull(signalSource, "signalSource is required");
         this.priceFeed = Objects.requireNonNull(priceFeed, "priceFeed is required");
         this.killSwitch = Objects.requireNonNull(killSwitch, "killSwitch is required");
@@ -177,7 +184,7 @@ public final class TradingLoop {
      * fetch the latest price and reconcile any pending orders against it
      * regardless of whether a new signal fires this tick, (3) if the
      * switch isn't tripped, ask for a new signal and submit it through
-     * {@link OrderPipeline}/{@link PaperBroker} if one is produced. Never
+     * {@link OrderPipeline}/{@link OrderExecutor} if one is produced. Never
      * throws -- see class Javadoc.
      */
     public synchronized void tick() {
@@ -194,7 +201,7 @@ public final class TradingLoop {
             }
 
             BigDecimal price = priceFeed.latestPrice(symbol);
-            applyFills(paperBroker.onPriceUpdate(symbol, price));
+            applyFills(orderExecutor.pollFills(symbol, price));
 
             if (!tripped) {
                 // Equity only ever moves down here (see class Javadoc), and
@@ -303,9 +310,9 @@ public final class TradingLoop {
      * that ever calls {@code Order.fromApprovedDecision}), so it cannot be
      * deferred until after a successful broker submission without
      * reopening exactly the provenance gap {@code OrderPipeline} exists to
-     * close. If {@link PaperBroker#submit} throws here, {@code order} is
+     * close. If {@link OrderExecutor#submit} throws here, {@code order} is
      * left registered in {@code OrderStore} but never reaches
-     * {@code PaperBroker.pendingOrders()} -- an orphan that will never
+     * {@code OrderExecutor.pendingOrders()} -- an orphan that will never
      * receive a fill. A structural fix (rollback, or a deferred-persistence
      * redesign of {@code OrderPipeline}/{@code OrderStore}'s public
      * contract) is out of scope for this class -- see
@@ -318,11 +325,11 @@ public final class TradingLoop {
      */
     private void submitToBroker(Order order, BigDecimal price) {
         try {
-            Optional<Fill> fill = paperBroker.submit(order, price);
+            Optional<Fill> fill = orderExecutor.submit(order, price);
             fill.ifPresent(f -> applyFills(List.of(f)));
         } catch (RuntimeException e) {
             log.error(
-                    "order {} was registered in OrderStore but PaperBroker.submit failed -- "
+                    "order {} was registered in OrderStore but OrderExecutor.submit failed -- "
                             + "it is now orphaned and will never receive a fill: {}",
                     order.clientOrderId(),
                     e.toString());
