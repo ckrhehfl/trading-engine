@@ -241,10 +241,31 @@ re-investigate.
   failures, 0 errors** (summed from every module's JUnit XML report:
   schemas, oms, risk, execution, exchange, runtime).
 - `.github/workflows/java-tests.yml` YAML syntax validated locally
-  (`python3 -c "import yaml; yaml.safe_load(...)"`) before pushing; real
-  first-run CI result recorded in the PR description / reported back
-  separately once observed (cannot be observed from a local session
-  before the PR actually exists on GitHub).
+  (`python3 -c "import yaml; yaml.safe_load(...)"`) before pushing.
+- **Real first CI run failed, and the cause was a genuine pre-existing
+  repo bug this task's CI was the first thing to ever surface**:
+  `./gradlew: Permission denied` (exit 126). `git ls-files --stage
+  java/gradlew` showed the file tracked at mode `100644` (non-executable)
+  since it was first committed (#9, "shared schemas skeleton") — masked
+  locally the entire time because this session's dev environment has
+  `core.fileMode=false` (common on a Windows/WSL-mounted filesystem),
+  so no local `git status`/`ls -la` ever showed a problem, and no
+  human had ever run `./gradlew` from a strict-mode checkout before
+  this PR's CI. Fixed at the root, not worked around per-workflow:
+  `git update-index --chmod=+x java/gradlew` (content/blob sha
+  unchanged, only the tracked tree-entry mode moved to `100755`),
+  committed separately from the main Task F change set so the fix and
+  its reasoning are visible in isolation. Chose this over a `chmod +x`
+  step inside `java-tests.yml` itself because the underlying bug is
+  general, not CI-specific — it would also break a plain `git clone` +
+  `./gradlew ...` on any ordinary Linux/macOS machine with normal
+  `core.fileMode=true` behavior, not just this one workflow, so fixing
+  only the workflow would leave the same landmine for the next
+  workflow, script, or human clone that ever invokes `gradlew` directly.
+  Second CI run (after the fix) passed in ~1m1s.
+- Full PR check suite, final state: `bingx-hostname-guard` pass,
+  `gitleaks` pass, `java-tests` pass (both push events on the PR
+  branch), `CodeRabbit` — see PR thread for its own status.
 - PR opened, not merged — per the governing brief and CLAUDE.md's
   Auto-merge Policy, this is Java OMS/Execution/runtime code and requires
   explicit human sign-off regardless of CI/CodeRabbit status.
