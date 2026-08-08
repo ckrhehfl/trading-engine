@@ -16,6 +16,7 @@ import engine.schemas.Side;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
+import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -409,6 +410,69 @@ class DailyReportGeneratorTest {
             DailyReport report = mapper.readValue(reportFile.toFile(), DailyReport.class);
             assertEquals(LocalDate.of(2026, 8, 7), report.date(), "the retried report must still be for the original day, not the day it was retried on");
             assertEquals(2, report.ticksAttempted(), "the retried report must still carry its original day's data");
+        }
+    }
+
+    /**
+     * A second-round CodeRabbit review finding on this task's own PR
+     * (#73): the {@code AtomicMoveNotSupportedException} fallback added
+     * in response to an earlier finding had no dedicated test, and a
+     * later review round confirmed (empirically, via a real throwaway
+     * probe against this project's own dev/CI environment -- Java 21's
+     * own {@code Files.move} Javadoc warns this is filesystem-
+     * implementation-specific) that pre-creating the target file does
+     * NOT reliably force this path: an atomic move over an existing
+     * plain file simply succeeds here. Deterministic coverage instead
+     * uses the package-private {@code AtomicMover}-injecting constructor
+     * to force the atomic attempt to fail on demand, then confirms the
+     * real (non-injected) non-atomic fallback move actually completes
+     * the write.
+     */
+    @Test
+    void anAtomicMoveFailureFallsBackToANonAtomicReplaceAndStillCompletesTheWrite(@TempDir Path tempDir)
+            throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            Path reportsDir = tempDir.resolve("daily");
+            // Every atomic-move attempt fails, standing in for a
+            // filesystem that genuinely can't complete one -- deterministic
+            // and portable, unlike trying to force this via real
+            // filesystem/mount setup (see class-level discussion above).
+            DailyReportGenerator generator = new DailyReportGenerator(
+                    loop,
+                    reportsDir,
+                    clock,
+                    (source, target) -> {
+                        throw new AtomicMoveNotSupportedException(
+                                source.toString(), target.toString(), "simulated: atomic move not supported");
+                    });
+
+            generator.beforeTick();
+            loop.tick();
+            generator.afterTick();
+
+            clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator.beforeTick();
+
+            assertEquals(
+                    0,
+                    generator.pendingReportCount(),
+                    "the non-atomic fallback must have completed the write on the very first attempt");
+            Path reportFile = reportsDir.resolve("2026-08-07.json");
+            assertTrue(Files.exists(reportFile), "report must exist via the non-atomic fallback path");
+            DailyReport report = mapper.readValue(reportFile.toFile(), DailyReport.class);
+            assertEquals(LocalDate.of(2026, 8, 7), report.date());
+            assertEquals(1, report.ticksAttempted());
         }
     }
 

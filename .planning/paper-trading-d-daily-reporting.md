@@ -704,6 +704,95 @@ tests, 0 failures, 0 errors** (unchanged count from the merge above --
 this round's only code change was the `AtomicMoveNotSupportedException`
 fallback, which adds no new test).
 
+### Fourth review round (commit `48cd8a2`, `CHANGES_REQUESTED` again)
+
+One new finding, plus two re-raised from round 2 -- this round CodeRabbit
+pushed back harder on both re-raised ones rather than accepting the
+round-2 disclosures as final. Each handled on its own terms:
+
+1. **Major, Quick win, NEW -- the round-3 `AtomicMoveNotSupportedException`
+   fallback had no dedicated test, and (per CodeRabbit's own cited,
+   verified Java 21 `Files.move` documentation) pre-creating the target
+   file doesn't reliably force that path anyway.** Checked, not assumed:
+   `Files.move`'s own Javadoc states that under `ATOMIC_MOVE`,
+   `REPLACE_EXISTING` is ignored, and whether an existing target is
+   replaced or rejected is implementation-specific. A real, throwaway
+   probe against this project's own dev/CI environment confirmed the
+   practical consequence directly: moving an existing plain target file
+   under `ATOMIC_MOVE` + `REPLACE_EXISTING` **succeeds** here (not an
+   assumption -- observed output: `move succeeded; target now contains:
+   new`), so a test that merely pre-creates the target would pass for
+   the wrong reason (the atomic path itself, never touching the
+   fallback) rather than actually exercising the fallback -- exactly the
+   gap CodeRabbit's finding named. **Fixed two ways**: (a) also catch
+   `FileAlreadyExistsException` alongside `AtomicMoveNotSupportedException`,
+   since Java's own docs name it as the implementation-specific existing-
+   target failure mode; (b) the real fix for testability -- a new
+   package-private `AtomicMover` functional-interface seam (same
+   pattern, same justification, as the existing `Clock` injection
+   overload): production code defaults to the real `Files.move`, and a
+   new 4-arg test-only constructor overload lets a test supply a mover
+   that deterministically throws on demand. New test
+   `anAtomicMoveFailureFallsBackToANonAtomicReplaceAndStillCompletesTheWrite`
+   forces the atomic attempt to fail unconditionally and confirms the
+   real (non-injected) non-atomic fallback move actually completes the
+   write, with the original day's data intact.
+2. **Major, Heavy lift, RE-RAISED -- `stop()`'s shutdown-termination-
+   confirmation logic (round-2 finding 2) still has no deterministic
+   test.** CodeRabbit's round-4 ask is specific and goes beyond
+   documentation: inject the `ExecutorService` or the termination-wait
+   durations, and deterministically prove both (a) finalization doesn't
+   run before an in-flight tick actually terminates, and (b)
+   finalization is skipped when termination can't be confirmed.
+   **Still not built, on the same "Heavy lift" cost/benefit judgment as
+   round 2, now made concrete rather than asserted**: building this for
+   real needs injectable `Duration` timeouts on `PaperTradingApp`
+   (another test-only constructor overload) paired with a way to make a
+   real tick block deterministically past a short configured timeout --
+   `BingXPriceFeed` already has a real 10s `HttpRequest` timeout
+   (checked directly in its source), so the only portable way to force
+   a *longer*-than-configured hang without relying on OS/network-
+   specific behavior is a fake server that never responds, combined with
+   a short enough injected timeout to keep the test fast. This is
+   buildable, but is real additional production surface (two more
+   timeout parameters threaded through `PaperTradingApp`'s constructor
+   chain) for a class whose actual logic is already conservative and
+   fail-safe by construction (skips finalization, logs at `ERROR`,
+   rather than risking a wrong report, exactly when termination can't be
+   confirmed) -- the code path is safe by design even though it isn't
+   yet proven by an automated test. **This is the point CodeRabbit is
+   pressing on and this task is not resolving unilaterally**: its own
+   finding text says to either build the fix or get explicit human
+   approval to accept the gap. Flagged explicitly for the human
+   reviewing this PR, not re-declined a second time on this task's own
+   authority alone.
+3. **Major, Heavy lift, RE-RAISED -- durable, restart-recoverable
+   persistence for `pendingReports` (round-2 finding 3).** CodeRabbit's
+   round-4 wording is now explicit that a documentation-only decline is
+   not sufficient for this PR: "do not leave the restart-loss limitation
+   merely documented or declined... if this limitation is genuinely
+   meant to be out of scope, state the possibility of pending-report
+   loss before restart in the PR objective and operational limitations,
+   and get explicit human approval." **Still declined on this task's own
+   authority, for the same reasons as round 2** (this codebase has no
+   durable cross-restart persistence anywhere -- `OrderStore`/
+   `PaperBroker` are both in-memory only, `FileSignalSource`'s own
+   dedup doesn't survive a restart either -- and CodeRabbit's own round-2
+   withdrawal of the analogous `fillHistory` finding, after running real
+   verification against this exact codebase, already confirms that
+   reasoning holds). **The explicit-human-approval ask itself is
+   surfaced here, not silently assumed granted**: this exception --
+   accepting that a report can be permanently lost if the process
+   restarts while that report is still queued after a write failure --
+   needs the human reviewing this PR to actually see and approve it, not
+   an unstated assumption. Both this and finding 2 above are called out
+   together in this task's final report back, precisely because they're
+   the two places CodeRabbit is asking for a decision only a human can
+   make for this project, not something this task should decide alone.
+
+Full suite after this round's fix (`./gradlew clean test`): **212 tests,
+0 failures, 0 errors** (211 + 1 new `DailyReportGeneratorTest`).
+
 **Also fixed, unrelated to CodeRabbit**: the local `.githooks/pre-commit`
 hook (`gitleaks protect --staged`) flagged this very document's own real
 local-run JSON output as a `generic-api-key` false positive -- gitleaks'
@@ -732,9 +821,10 @@ the same value appears in the doc.
 - `./gradlew :runtime:compileTestJava` against `DailyReportGeneratorTest`
   failed with 22 real "cannot find symbol" compile errors
   (`DailyReportGenerator`, `DailyReport`) before either class existed.
-- `./gradlew :runtime:test --tests DailyReportGeneratorTest` -- 10/10
+- `./gradlew :runtime:test --tests DailyReportGeneratorTest` -- 11/11
   pass (6 from the original TDD pass + 3 responding to round-1 findings
-  1 and 2 + 1 responding to round-2 finding 1).
+  1 and 2 + 1 responding to round-2 finding 1 + 1 responding to round-4
+  finding 1).
 - `./gradlew :runtime:test --tests PaperTradingAppTest` -- 17/17 pass
   (13 unmodified from Task C + 1 responding to round-1 finding 2 + 3
   from Task E, merged in -- see "Merging Task E" above).
@@ -743,14 +833,14 @@ the same value appears in the doc.
 - `./gradlew :runtime:test --tests ReconcilerTest` -- 8/8 pass (Task E's
   own test file, untouched by this task, merged in).
 - `./gradlew clean test` (full multi-module suite, after merging Task E
-  and the third review round's fix) -- **211 tests, 0 failures, 0
+  and all four review rounds' fixes) -- **212 tests, 0 failures, 0
   errors** across all six `java/` modules.
 - Real local run against the real BingX VST endpoint, through a real
   simulated day boundary, with a real fill -- see above; actual report
   file contents shown, not asserted.
 - Local `gitleaks protect --staged` pre-commit hook passes clean (see
   "Also fixed, unrelated to CodeRabbit" above).
-- Three real, full CodeRabbit reviews obtained and responded to, each
+- Four real, full CodeRabbit reviews obtained and responded to, each
   verified via the GitHub reviews API against the exact HEAD sha at the
   time -- not just a green status check, which was repeatedly misleading
   (rate-limited-but-green after PR open; a reply-only review transiently
@@ -760,11 +850,30 @@ the same value appears in the doc.
   valid for the exact sha it was submitted against). Round 1 (commit
   `76e764d`, `CHANGES_REQUESTED`, 4 findings), round 2 (commit
   `2ff03bb`, `CHANGES_REQUESTED`, 3 more findings against the round-1
-  fixes themselves), and round 3 (commit `2c59507`, the post-merge
-  commit, `CHANGES_REQUESTED`, 2 more findings) are all addressed above.
-  A fourth review is expected after this round's own fix-up commit, per
-  CLAUDE.md's "batch fixes into one push before requesting re-review"
-  guidance.
+  fixes themselves), round 3 (commit `2c59507`, the post-merge commit,
+  `CHANGES_REQUESTED`, 2 more findings), and round 4 (commit `48cd8a2`,
+  `CHANGES_REQUESTED`, 1 new finding fixed plus 2 re-raised findings
+  handled as explicit human-decision flags, not re-declined
+  unilaterally) are all addressed above.
+
+**Two items require human review-time input, not resolved by this task
+on its own authority** (both from round 4, "Fourth review round"
+above): (1) `PaperTradingApp.stop()`'s shutdown-termination-confirmation
+logic has no deterministic automated test proving the concurrency
+invariant it's designed around -- the logic itself is conservative and
+fail-safe by construction, but CodeRabbit is asking for either real test
+coverage or an explicit accept of that gap; (2) `DailyReportGenerator
+.pendingReports` is in-memory-only, so a process restart while a report
+is queued after a write failure loses that report permanently --
+CodeRabbit is asking for either a durable outbox or an explicit accept
+of that gap. Both declines are technically defensible on this task's own
+stated reasoning (matches this codebase's existing in-memory-only
+precedents, and CodeRabbit itself independently verified and withdrew
+the closely analogous `fillHistory` finding in round 2), but a
+CodeRabbit reviewer insisting twice on the same R3-risk-adjacent gap is
+exactly the situation CLAUDE.md's Auto-merge Policy already reserves for
+a human decision, not an LLM agent's own authority.
+
 - PR opened, not merged -- per the governing plan and CLAUDE.md's
   Auto-merge Policy, this is Java runtime code (extends `TradingLoop`
   and `PaperTradingApp`, both R3-risk-adjacent) and requires explicit

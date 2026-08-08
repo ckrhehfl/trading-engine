@@ -7,6 +7,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -129,6 +130,7 @@ public final class DailyReportGenerator {
     private final TradingLoop tradingLoop;
     private final Path reportsDirectory;
     private final Clock clock;
+    private final AtomicMover atomicMover;
     private final ObjectMapper objectMapper = SchemaObjectMapper.create();
 
     private LocalDate currentDay;
@@ -149,9 +151,43 @@ public final class DailyReportGenerator {
 
     /** {@code clock} is overridable so tests can drive day-boundary crossings without waiting on real time. */
     public DailyReportGenerator(TradingLoop tradingLoop, Path reportsDirectory, Clock clock) {
+        this(tradingLoop, reportsDirectory, clock, DailyReportGenerator::defaultAtomicMove);
+    }
+
+    /**
+     * Test-only overload (package-private -- not part of this class's
+     * real operational API, same status as the {@code Clock} overload
+     * above): {@code atomicMover} is a seam over just the risky part of
+     * {@link #writeReport}, so a test can deterministically force the
+     * {@code ATOMIC_MOVE} attempt to fail (an {@code
+     * AtomicMoveNotSupportedException} or the target-already-exists case
+     * Java's own docs say is implementation-specific -- see class
+     * Javadoc's "Write failures" section) without needing real,
+     * filesystem-specific conditions that can't be forced portably. A
+     * CodeRabbit review finding on this task's own PR (#73): confirmed
+     * empirically (not assumed) that simply pre-creating the target file
+     * does NOT reliably force this path -- on this project's own dev/CI
+     * environment, {@code Files.move} with {@code ATOMIC_MOVE} +
+     * {@code REPLACE_EXISTING} over an existing plain file succeeds via
+     * the atomic path, exactly as Java 21's own docs warn ("if the
+     * target file exists, it is implementation-specific whether the
+     * existing file is replaced or if the method fails").
+     */
+    DailyReportGenerator(TradingLoop tradingLoop, Path reportsDirectory, Clock clock, AtomicMover atomicMover) {
         this.tradingLoop = Objects.requireNonNull(tradingLoop, "tradingLoop is required");
         this.reportsDirectory = Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
+        this.atomicMover = Objects.requireNonNull(atomicMover, "atomicMover is required");
+    }
+
+    private static void defaultAtomicMove(Path source, Path target) throws IOException {
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Testability seam -- see the 4-arg constructor's Javadoc above. */
+    @FunctionalInterface
+    interface AtomicMover {
+        void move(Path source, Path target) throws IOException;
     }
 
     /**
@@ -289,20 +325,31 @@ public final class DailyReportGenerator {
             String json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsString(report);
             Files.writeString(tmp, json);
             try {
-                Files.move(tmp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
-            } catch (AtomicMoveNotSupportedException e) {
+                atomicMover.move(tmp, target);
+            } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
                 // A CodeRabbit review finding on this task's own PR (#73):
                 // some filesystems (network mounts, certain cross-volume
-                // setups) don't support ATOMIC_MOVE at all -- without this
+                // setups) don't support ATOMIC_MOVE at all
+                // (AtomicMoveNotSupportedException) -- without this
                 // fallback, that condition never changes between retries,
                 // so the report would fail this exact way forever, on
-                // every future tick, rather than actually recovering. Not
-                // atomic (a reader could in principle observe a moment
-                // where neither the old nor the new file exists), but
-                // still strictly better than a permanent failure loop --
-                // logged so the degraded guarantee is visible.
+                // every future tick, rather than actually recovering.
+                // FileAlreadyExistsException is the second, separately
+                // documented case: per Java 21's own Files.move Javadoc,
+                // ATOMIC_MOVE causes REPLACE_EXISTING to be ignored, and
+                // whether an existing target is replaced or rejected when
+                // the move can't be done atomically is implementation-
+                // specific -- confirmed NOT reliably forceable through
+                // real filesystem setup alone (see the 4-arg constructor's
+                // Javadoc), so covered here defensively even though this
+                // class's own single-write-per-date usage pattern means a
+                // target normally never pre-exists when this runs. Neither
+                // fallback is atomic (a reader could in principle observe
+                // a moment where neither the old nor the new file exists),
+                // but both are strictly better than a permanent failure
+                // loop -- logged so the degraded guarantee is visible.
                 log.warn(
-                        "ATOMIC_MOVE not supported for {} -> {}, falling back to a non-atomic replace: {}",
+                        "atomic move not usable for {} -> {}, falling back to a non-atomic replace: {}",
                         tmp,
                         target,
                         e.toString());
