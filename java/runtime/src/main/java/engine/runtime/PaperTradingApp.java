@@ -6,6 +6,7 @@ import engine.risk.RiskGateway;
 import engine.risk.RiskLimits;
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -44,16 +45,28 @@ import org.slf4j.LoggerFactory;
  * shutdown (a JVM shutdown hook stopping the {@code
  * ScheduledExecutorService} cleanly), not restarting a crashed process.
  *
+ * <p><b>Daily reporting</b> (Paper-trading bridge Task D -- see
+ * {@code .planning/paper-trading-d-daily-reporting.md}): {@link
+ * #runTick()} runs {@link DailyReportGenerator#beforeTick()}, then
+ * {@link TradingLoop#tick()}, then {@link DailyReportGenerator#afterTick()}
+ * -- {@code beforeTick()} detects a UTC day boundary and, when one is
+ * crossed, writes the just-completed day's report to
+ * {@code var/live/reports/daily/<date>.json} before the new day's tick
+ * runs. See {@code DailyReportGenerator}'s own class Javadoc for the full
+ * design (day-boundary detection, restart-mid-day behavior, trade/error
+ * attribution).
+ *
  * <p><b>Internal consistency reconciliation</b> (paper-trading bridge Task
  * E, see {@code .planning/paper-trading-e-reconciliation.md}): {@link
  * #runTick()} calls {@link #reconcile()} after every scheduled {@link
- * TradingLoop#tick()}, regardless of whether that tick itself succeeded --
- * a tick failure and an internal-bookkeeping inconsistency are orthogonal
- * signals, and running the check unconditionally can surface exactly why a
- * tick failed (e.g. a duplicate-submission attempt). {@link #reconcile()}
- * is also public and safe to call directly (e.g. from a test, or a future
- * daily-report task) with no side effect beyond logging and, on a real
- * mismatch, tripping {@link #killSwitch} -- both idempotent.
+ * TradingLoop#tick()} (and after the daily-report bookkeeping above),
+ * regardless of whether that tick itself succeeded -- a tick failure and
+ * an internal-bookkeeping inconsistency are orthogonal signals, and
+ * running the check unconditionally can surface exactly why a tick
+ * failed (e.g. a duplicate-submission attempt). {@link #reconcile()} is
+ * also public and safe to call directly (e.g. from a test) with no side
+ * effect beyond logging and, on a real mismatch, tripping {@link
+ * #killSwitch} -- both idempotent.
  */
 public final class PaperTradingApp {
 
@@ -83,8 +96,10 @@ public final class PaperTradingApp {
     static final String ENV_BINGX_BASE_URL = "BINGX_BASE_URL"; // matches the existing java/python-wide convention
     static final String ENV_SIGNAL_PATH = "PAPER_TRADING_SIGNAL_PATH";
     static final String ENV_TICK_INTERVAL_SECONDS = "PAPER_TRADING_TICK_INTERVAL_SECONDS";
+    static final String ENV_REPORTS_DIRECTORY = "PAPER_TRADING_REPORTS_DIR";
 
     private final TradingLoop tradingLoop;
+    private final DailyReportGenerator dailyReportGenerator;
     private final OrderStore orderStore;
     private final PaperBroker paperBroker;
     private final KillSwitch killSwitch;
@@ -104,9 +119,39 @@ public final class PaperTradingApp {
      * unreachable {@code bingxBaseUrl}.
      */
     public PaperTradingApp(String symbol, String bingxBaseUrl, Path signalPath, long tickIntervalSeconds) {
+        this(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, resolveReportsDirectory(null));
+    }
+
+    /**
+     * Same as the 4-arg constructor, with an explicit {@code reportsDirectory}
+     * (see {@link DailyReportGenerator}) instead of the default
+     * {@code var/live/reports/daily}.
+     */
+    public PaperTradingApp(
+            String symbol, String bingxBaseUrl, Path signalPath, long tickIntervalSeconds, Path reportsDirectory) {
+        this(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory, Clock.systemUTC());
+    }
+
+    /**
+     * Test/manual-verification-only overload (package-private -- not part
+     * of this class's real operational API, same status as {@link
+     * #tradingLoop()}/{@link #dailyReportGenerator()} below): lets a test
+     * inject a {@link Clock} so {@link DailyReportGenerator} day-boundary
+     * crossings can be driven deterministically instead of waiting on real
+     * wall-clock time.
+     */
+    PaperTradingApp(
+            String symbol,
+            String bingxBaseUrl,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock) {
         Objects.requireNonNull(symbol, "symbol is required");
         Objects.requireNonNull(bingxBaseUrl, "bingxBaseUrl is required");
         Objects.requireNonNull(signalPath, "signalPath is required");
+        Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
+        Objects.requireNonNull(clock, "clock is required");
         if (tickIntervalSeconds <= 0) {
             throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
         }
@@ -122,15 +167,17 @@ public final class PaperTradingApp {
 
         this.tradingLoop =
                 new TradingLoop(orderPipeline, this.paperBroker, signalSource, priceFeed, this.killSwitch, symbol);
+        this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
 
         log.info(
                 "PaperTradingApp constructed: symbol={} bingxBaseUrl={} signalPath={} tickIntervalSeconds={}"
-                        + " riskTier=canary",
+                        + " reportsDirectory={} riskTier=canary",
                 symbol,
                 bingxBaseUrl,
                 signalPath,
-                tickIntervalSeconds);
+                tickIntervalSeconds,
+                reportsDirectory);
     }
 
     /**
@@ -154,6 +201,11 @@ public final class PaperTradingApp {
      *       same path)
      *   <li>{@code PAPER_TRADING_TICK_INTERVAL_SECONDS} (optional,
      *       default 300 / 5 minutes)
+     *   <li>{@code PAPER_TRADING_REPORTS_DIR} (optional, default {@code
+     *       var/live/reports/daily}, resolved relative to the JVM's
+     *       working directory -- same repository-root-relative convention
+     *       as {@code PAPER_TRADING_SIGNAL_PATH} above; see {@link
+     *       DailyReportGenerator})
      * </ul>
      */
     public static PaperTradingApp fromEnvironment() {
@@ -161,7 +213,8 @@ public final class PaperTradingApp {
         String bingxBaseUrl = requireNonBlank(System.getenv(ENV_BINGX_BASE_URL), ENV_BINGX_BASE_URL);
         Path signalPath = resolveSignalPath(System.getenv(ENV_SIGNAL_PATH), symbol);
         long tickIntervalSeconds = resolveTickIntervalSeconds(System.getenv(ENV_TICK_INTERVAL_SECONDS));
-        return new PaperTradingApp(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds);
+        Path reportsDirectory = resolveReportsDirectory(System.getenv(ENV_REPORTS_DIRECTORY));
+        return new PaperTradingApp(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
     }
 
     static String firstNonBlank(String value, String fallback) {
@@ -190,6 +243,20 @@ public final class PaperTradingApp {
             return Path.of(raw);
         }
         return Path.of("var", "live", "signals", symbol, STRATEGY_ID, "latest.json");
+    }
+
+    /**
+     * {@code var/live/reports/daily} when {@code raw} is null/blank --
+     * matches this task's own governing plan's stated path exactly.
+     * Resolved relative to the JVM's working directory when {@code raw}
+     * is relative (the default is), same convention as
+     * {@link #resolveSignalPath}.
+     */
+    static Path resolveReportsDirectory(String raw) {
+        if (raw != null && !raw.isBlank()) {
+            return Path.of(raw);
+        }
+        return Path.of("var", "live", "reports", "daily");
     }
 
     static long resolveTickIntervalSeconds(String raw) {
@@ -223,8 +290,17 @@ public final class PaperTradingApp {
         scheduledTask = executor.scheduleAtFixedRate(this::runTick, 0, tickIntervalSeconds, TimeUnit.SECONDS);
     }
 
-    private void runTick() {
+    /**
+     * Package-private, not {@code private} -- see {@link #dailyReportGenerator()}'s
+     * Javadoc for why: this is the real per-cycle unit of work (day-boundary
+     * check, then the trading tick, then day-accumulator update), reused
+     * by both the real scheduler ({@link #start()}) and tests/manual-run
+     * harnesses that want a full cycle without waiting on the scheduler.
+     */
+    void runTick() {
+        dailyReportGenerator.beforeTick();
         tradingLoop.tick();
+        dailyReportGenerator.afterTick();
         Throwable error = tradingLoop.lastError();
         if (error != null) {
             log.warn(
@@ -275,22 +351,53 @@ public final class PaperTradingApp {
     /**
      * Cleanly stops the scheduled loop: no new tick is scheduled after
      * this returns, and any in-flight tick is given up to 10 seconds to
-     * finish before a forced {@code shutdownNow()}. Called from {@link
-     * #main}'s JVM shutdown hook (SIGTERM / normal JVM exit); safe to
-     * call more than once (a shutdown hook racing an explicit {@code
+     * finish before a forced {@code shutdownNow()} (itself given a further
+     * 5 seconds to actually confirm termination -- see below). Called from
+     * {@link #main}'s JVM shutdown hook (SIGTERM / normal JVM exit); safe
+     * to call more than once (a shutdown hook racing an explicit {@code
      * stop()} elsewhere) or even if {@link #start()} was never called.
+     *
+     * <p>Calls {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()}
+     * -- but only after real termination is confirmed, never unconditionally
+     * (a CodeRabbit review finding on this task's own PR #73):
+     * {@code ExecutorService.shutdownNow()} attempts to interrupt an
+     * in-flight task, it does not guarantee the task actually stops before
+     * this method returns. If a straggling {@link #runTick()} were still
+     * running concurrently with {@code finalizeCompletedDayOnShutdown()},
+     * that tick's {@code afterTick()} call could land on either side of
+     * the finalize -- either silently missing from the finalized report,
+     * or incorrectly counted against the day tracking that already reset
+     * for after finalization. Skipping finalization entirely when
+     * termination can't be confirmed avoids that race outright: the
+     * completed day simply stays unwritten, no worse than any other
+     * already-disclosed "process stopped without a clean tick cycle"
+     * limitation (see {@code DailyReportGenerator}'s own class Javadoc),
+     * logged loudly rather than silently risking a wrong report.
      */
     public synchronized void stop() {
         log.info("stopping paper trading loop");
         executor.shutdown();
+        boolean terminated;
         try {
-            if (!executor.awaitTermination(10, TimeUnit.SECONDS)) {
+            terminated = executor.awaitTermination(10, TimeUnit.SECONDS);
+            if (!terminated) {
                 log.warn("paper trading loop did not stop cleanly within 10s, forcing shutdown");
                 executor.shutdownNow();
+                terminated = executor.awaitTermination(5, TimeUnit.SECONDS);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             executor.shutdownNow();
+            terminated = false;
+        }
+        if (terminated) {
+            dailyReportGenerator.finalizeCompletedDayOnShutdown();
+        } else {
+            log.error(
+                    "paper trading loop did not terminate even after a forced shutdown; skipping daily-report"
+                            + " finalization to avoid finalizing while a tick may still be in flight -- if a UTC"
+                            + " day already ended, its report will remain unwritten unless a future process"
+                            + " restart reaches that day's boundary again");
         }
     }
 
@@ -305,6 +412,11 @@ public final class PaperTradingApp {
      */
     TradingLoop tradingLoop() {
         return tradingLoop;
+    }
+
+    /** Test/manual-verification-only accessor -- same status as {@link #tradingLoop()} above. */
+    DailyReportGenerator dailyReportGenerator() {
+        return dailyReportGenerator;
     }
 
     /** Test-only accessor (package-private) -- see {@link #tradingLoop()}'s own Javadoc. */

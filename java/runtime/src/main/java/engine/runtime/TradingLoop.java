@@ -87,6 +87,40 @@ import org.slf4j.LoggerFactory;
  * writeup of why this layer was chosen over validating inside
  * {@link FileSignalSource} itself.
  *
+ * <p><b>Fill history</b> ({@link #fillHistory()}) and <b>kill-switch
+ * state</b> ({@link #killSwitchTripped()}) are both read-only accessors
+ * added for {@code DailyReportGenerator} (Paper-trading bridge Task D --
+ * see {@code .planning/paper-trading-d-daily-reporting.md}), which needs
+ * both to build a per-UTC-day report but has no reason to hold its own
+ * separate reference to a {@code KillSwitch}, and no other way to learn
+ * "what trades happened" -- this class was the only place that already
+ * saw every {@link Fill} as it happened. {@code fillHistory} is an
+ * unbounded in-memory list for this instance's lifetime (not persisted,
+ * not reset except by constructing a fresh {@code TradingLoop} -- same
+ * "starts clean" restart story as everything else on this class, see
+ * above); {@code DailyReportGenerator} is the one that slices it into
+ * daily windows, this class has no notion of a day boundary itself.
+ *
+ * <p><b>Unbounded growth, considered and deliberately not addressed here
+ * (CodeRabbit review finding on Task D's own PR #73):</b> a genuinely
+ * high-frequency strategy retaining every {@link Fill} for a process's
+ * entire uptime could eventually matter for memory. At this project's
+ * actual current scale it does not: the only strategy with a paper-
+ * trading policy exception (`daily-tsmom-ensemble`, see CLAUDE.md) is a
+ * daily-bar strategy producing at most a small handful of fills per day,
+ * against a single symbol, over the Paper Trading Pass Criteria's own
+ * 30-45 day window -- tens of {@code Fill} records, not thousands. A
+ * "consume unreported fills, retain only fills belonging to a not-yet-
+ * durably-written report" redesign was considered and rejected for this
+ * task: it would require {@code TradingLoop} itself to learn about report
+ * write success/failure, reopening exactly the day-boundary/report
+ * coupling this class's own design deliberately keeps out of it (see
+ * "Trade attribution" in {@code DailyReportGenerator}'s class Javadoc --
+ * that class owns all notion of "day," this one does not). Revisit if
+ * this project ever runs a materially higher-frequency strategy or a
+ * materially longer-lived process than its current single-symbol,
+ * daily-bar, weeks-long paper-trading scope.
+ *
  * <p><b>Submitted-order-id tracking</b> (paper-trading bridge Task E, see
  * {@code .planning/paper-trading-e-reconciliation.md}): every client order
  * id that {@link OrderPipeline#submitIntent} successfully registers is
@@ -117,6 +151,7 @@ public final class TradingLoop {
     private BigDecimal equity = INITIAL_EQUITY;
     private boolean lastLoggedTripState = false;
     private boolean equityDepletedLogged = false;
+    private final List<Fill> fillHistory = new ArrayList<>();
     private final List<UUID> submittedOrderIds = new ArrayList<>();
 
     private volatile Instant lastTickAt;
@@ -233,6 +268,23 @@ public final class TradingLoop {
     }
 
     /**
+     * Every {@link Fill} this loop has ever applied, in application order,
+     * since this instance was constructed. See class Javadoc's "Fill
+     * history" section for why this exists and its restart caveat.
+     */
+    public synchronized List<Fill> fillHistory() {
+        return List.copyOf(fillHistory);
+    }
+
+    /**
+     * Delegates to this loop's own {@link KillSwitch#isTripped()}. See
+     * class Javadoc's "Fill history" section for why this accessor exists.
+     */
+    public boolean killSwitchTripped() {
+        return killSwitch.isTripped();
+    }
+
+    /**
      * Every client order id this loop has ever successfully registered
      * through {@link OrderPipeline#submitIntent} -- including a repeat of
      * the same id, if one ever occurs (see class Javadoc, "Submitted-
@@ -281,6 +333,7 @@ public final class TradingLoop {
     private synchronized void applyFills(List<Fill> fills) {
         for (Fill fill : fills) {
             equity = equity.subtract(fill.fee());
+            fillHistory.add(fill);
         }
     }
 
