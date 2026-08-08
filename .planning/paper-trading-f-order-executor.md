@@ -621,6 +621,38 @@ no further instance of either inaccuracy survived uncorrected — none
 found. `./gradlew clean build` re-run clean after all round 4 changes:
 see "Verification" below for the final count.
 
+### Final CodeRabbit status (after round 4's fixes, commit `83a438d`)
+
+The round-4 fixes were pushed and CodeRabbit's own commit status
+transitioned to `success`/"Review completed" against this exact commit
+sha — confirmed directly via
+`GET /repos/.../commits/83a438d.../status` (not just the cached `gh pr
+checks` display, per this task's own "verify a real review object
+targets the exact current HEAD sha" instruction). Unlike every prior
+round, this one produced **no new PR review object and no new inline
+comments** (`GET /repos/.../pulls/77/reviews` and `.../pulls/77/comments`
+both confirmed — nothing timestamped after this push) — read as CodeRabbit
+finding zero actionable issues in the round-4 diff, not as the review
+having silently failed to run (the commit status genuinely flipped to
+`success` at the time the push completed).
+
+**One real, disclosed consequence, precedented by Task A's own PR #68**
+(`.planning/paper-trading-a-signal-source.md`'s own "CodeRabbit review
+findings" section describes the identical situation): because no new
+review object was submitted to formally supersede round 4's own
+`CHANGES_REQUESTED` review, GitHub's native `reviewDecision` and
+`mergeStateStatus` continue to read `CHANGES_REQUESTED`/`BLOCKED`, even
+though the CodeRabbit commit-status check itself is genuinely green
+against the current HEAD and every actual finding across all four
+rounds has been fixed or explicitly declined with recorded reasoning.
+This is the same real, disclosed gap between "the automated check is
+green" and "GitHub's PR-review UI shows fully clean" that Task A's own
+doc already established as an acceptable, left-for-the-human state —
+not force-resolved here (e.g. by dismissing the stale review via the
+API), since that is exactly the kind of PR-state action reserved for
+the human reviewer at merge time, not something this session should do
+on its own authority.
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `ExchangeOrderExecutor`, any BingX-specific execution code, or anything
