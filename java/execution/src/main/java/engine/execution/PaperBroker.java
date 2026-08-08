@@ -28,8 +28,19 @@ import org.slf4j.LoggerFactory;
  * rather than replaying historical bars — there is no lookahead concept
  * here (nothing is being replayed), so {@link Instant#now()} for fill
  * timestamps is correct, not a bug.
+ *
+ * <p>Implements {@link OrderExecutor} -- {@code final} does not need to be
+ * removed to do so; a final class can implement any number of interfaces,
+ * {@code final} only forbids subclassing (same fact already confirmed for
+ * {@code DummySignalSource implements SignalSource}). {@code
+ * onPriceUpdate} was renamed to {@link #pollFills} as part of this retrofit
+ * -- purely mechanical, zero behavior change: it already did exactly what
+ * the new name says, resolve previously-pending orders against a reference
+ * price, called once per {@code TradingLoop} tick regardless of whether the
+ * price actually changed. See {@code .planning/paper-trading-f-order-
+ * executor.md}.
  */
-public final class PaperBroker {
+public final class PaperBroker implements OrderExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(PaperBroker.class);
     private static final BigDecimal BPS_DIVISOR = new BigDecimal("10000");
@@ -61,10 +72,12 @@ public final class PaperBroker {
         this.slippageBps = slippageBps;
     }
 
+    @Override
     public Map<UUID, Order> pendingOrders() {
         return Collections.unmodifiableMap(pendingOrders);
     }
 
+    @Override
     public Optional<Fill> submit(Order order, BigDecimal currentPrice) {
         Objects.requireNonNull(order, "order is required");
         Objects.requireNonNull(currentPrice, "currentPrice is required");
@@ -86,7 +99,8 @@ public final class PaperBroker {
         return fill;
     }
 
-    public List<Fill> onPriceUpdate(String symbol, BigDecimal price) {
+    @Override
+    public List<Fill> pollFills(String symbol, BigDecimal price) {
         Objects.requireNonNull(symbol, "symbol is required");
         Objects.requireNonNull(price, "price is required");
         requirePositivePrice(price);
@@ -94,7 +108,7 @@ public final class PaperBroker {
         List<Fill> fills = new ArrayList<>();
         for (UUID id : new ArrayList<>(pendingOrders.keySet())) {
             // computeIfPresent makes the check-fill-remove sequence atomic
-            // per order id: concurrent onPriceUpdate/cancel calls racing on
+            // per order id: concurrent pollFills/cancel calls racing on
             // the same pending order can no longer interleave, since
             // ConcurrentHashMap serializes invocations for a given key.
             pendingOrders.computeIfPresent(id, (orderId, order) -> {
@@ -112,6 +126,7 @@ public final class PaperBroker {
         return fills;
     }
 
+    @Override
     public void cancel(Order order) {
         Objects.requireNonNull(order, "order is required");
         pendingOrders.computeIfPresent(order.clientOrderId(), (id, pending) -> null);

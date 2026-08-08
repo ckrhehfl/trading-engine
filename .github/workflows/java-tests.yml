@@ -1,0 +1,39 @@
+name: java-tests
+
+# Runs the full Java multi-module test suite (all six modules under java/:
+# schemas, oms, risk, execution, exchange, runtime) on every push and PR.
+# No Java CI existed in this repository before this workflow -- Paper
+# Trading Bridge Task F (.planning/paper-trading-f-order-executor.md)
+# added it specifically because that task retypes a field across four
+# modules (the OrderExecutor interface extraction) with nothing but a
+# human running Gradle by hand to verify it actually compiles and passes
+# -- this closes that gap for every future change to java/, not just
+# this one task.
+#
+# Deliberately does NOT touch anything network- or credential-related:
+# `./gradlew build` runs the existing unit test suite only -- no real
+# BingX host is ever contacted by any test in this repo (see
+# BingXAdapterTest's own in-process fake-server pattern) -- matching
+# CLAUDE.md's "never add live exchange write-access in CI" rule.
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  java-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Build and test all modules
+        working-directory: java
+        run: ./gradlew build --no-daemon
