@@ -42,10 +42,16 @@ import java.util.UUID;
  * already does the right thing with this -- it is unchanged by this
  * interface's introduction. This asymmetry produces a useful emergent
  * property, not just an inconvenience: a real submit that times out
- * ambiguously leaves the {@link Order} registered but never reaches {@link
- * #pendingOrders()}, which {@code engine.runtime.Reconciler} already flags
- * as {@code ORPHANED_IN_BROKER} -- automatically tripping the kill switch
- * until a human looks.
+ * ambiguously leaves the {@link Order} registered in a still-open state
+ * ({@code SUBMITTED}) but never reaches {@link #pendingOrders()}, which
+ * {@code engine.runtime.Reconciler#check} already flags as {@code
+ * ORPHANED_IN_BROKER} -- and {@code engine.runtime.PaperTradingApp
+ * #reconcile()}, the caller that actually invokes {@code Reconciler
+ * #check} on a schedule, trips the kill switch on any non-clean report,
+ * including this one, until a human looks. ({@code Reconciler#check}
+ * itself only reports and logs a mismatch -- it never trips anything;
+ * tripping is entirely its caller's decision, see {@code Reconciler}'s
+ * own Javadoc.)
  *
  * <p><b>This "never throw" contract governs per-order resolution failures
  * specifically -- it does not extend to eager caller-error validation of

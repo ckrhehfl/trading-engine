@@ -127,19 +127,28 @@ public final class PaperBroker implements OrderExecutor {
                 // own "never throw for a per-order resolution failure"
                 // contract, that must not take down every other pending
                 // order's resolution this same call -- caught, logged
-                // loudly, and dropped from pendingOrders (not left to
-                // retry-and-fail forever) so Reconciler's own
-                // ORPHANED_IN_BROKER check catches the resulting
-                // inconsistency on its next pass, same as an ambiguous
-                // submit failure already does.
+                // loudly, and dropped from pendingOrders rather than left
+                // to retry-and-fail forever. Whether Reconciler's own
+                // ORPHANED_IN_BROKER check then flags the result depends
+                // on the order's own OrderStore-recorded state at that
+                // point: if it's still one of Reconciler's OPEN_STATES
+                // (e.g. this failure was a genuine internal bug on an
+                // order OrderStore still considers open), dropping it
+                // here creates the mismatch ORPHANED_IN_BROKER exists to
+                // catch. If the order had already reached a terminal
+                // state through some other path (as in the CANCELLED
+                // example above), OrderStore and this broker now simply
+                // agree the order isn't live -- there is no further
+                // inconsistency left for Reconciler to detect, which is
+                // fine: the order really is resolved, just not through
+                // this broker's own fill/cancel path.
                 Optional<Fill> fill;
                 try {
                     fill = tryFill(order, price);
                 } catch (RuntimeException e) {
                     log.error(
                             "order {} failed to resolve during pollFills and is being dropped from pending"
-                                    + " tracking -- this order is now orphaned; Reconciler's ORPHANED_IN_BROKER"
-                                    + " check should catch it: {}",
+                                    + " tracking -- see this method's own comment for what happens next: {}",
                             order.clientOrderId(),
                             e.toString());
                     return null; // remove from pending -- see comment above

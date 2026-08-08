@@ -107,14 +107,17 @@ workflow:
   CodeRabbit review round 2** (see "CodeRabbit review findings" below,
   not part of the original rename): `pollFills`'s per-order loop now
   catches a `RuntimeException` from resolving any single pending order,
-  logs it, and drops that one order from `pendingOrders` (for
-  `Reconciler`'s `ORPHANED_IN_BROKER` check to catch), rather than
+  logs it, and drops that one order from `pendingOrders`, rather than
   letting it propagate and abort every other pending order's resolution
   in the same call — a real, narrow gap between `OrderExecutor`'s own
   newly-written "never throw for a per-order resolution failure"
   contract and what the implementation actually did, reachable via
   `Order`'s shared-mutable-reference design (see `Reconciler`'s own
-  Javadoc), not a hypothetical.
+  Javadoc), not a hypothetical. Whether dropping the order also produces
+  a `Reconciler` `ORPHANED_IN_BROKER` finding depends on the order's own
+  `OrderStore`-recorded state at that point (see "CodeRabbit review
+  findings" round 4 below for the precise, corrected claim — round 2's
+  original wording here overstated it).
 - **`TradingLoop`** (type-level substitution) — the field and constructor
   parameter were retyped from `PaperBroker` to `OrderExecutor`. The field
   was also **renamed** from `paperBroker` to `orderExecutor` — see
@@ -428,10 +431,11 @@ sha, not a stale/rate-limited status): 4 actionable comments.
   correct call here, not scope creep: wrapped the per-order `tryFill`
   call in `pollFills`'s loop in a `try/catch (RuntimeException)`,
   logging loudly and dropping the poisoned order from `pendingOrders`
-  (so `Reconciler`'s own `ORPHANED_IN_BROKER` check catches the
-  resulting inconsistency on its next pass — the same disposition an
-  ambiguous `submit` failure already gets, not a new pattern). Added
-  one new test,
+  (a real correction to this claim's own first-pass wording was needed
+  after round 4's review — see "CodeRabbit review findings" round 4
+  below for the corrected, precise account of what `Reconciler`
+  actually does with the dropped order in this specific test's
+  scenario). Added one new test,
   `pollFillsIsolatesASingleOrdersResolutionFailureAndStillResolvesOtherPendingOrders`,
   using only real objects (no mocking framework exists in this
   codebase): a poisoned order is driven to `CANCELLED` directly,
@@ -464,11 +468,18 @@ sha, not a stale/rate-limited status): 4 actionable comments.
   `ExchangeAdapter` test double). `OrderExecutor`'s own Javadoc already
   documents the mechanism that exists **today**, without needing new
   persisted state, for the ambiguous-`submit` case: a `TradingLoop`
-  submit that throws leaves the order registered in `OrderStore` but
-  never reaches `pendingOrders()`, which `Reconciler` already flags as
-  `ORPHANED_IN_BROKER` — automatically tripping the kill switch until a
-  human looks, entirely with code that already exists and is already
-  tested. Designing a full persisted-`SUBMISSION_UNKNOWN`/safe-retry
+  submit that throws leaves the order registered in `OrderStore` in a
+  still-open state (`SUBMITTED`, one of `Reconciler`'s own
+  `OPEN_STATES`) but never reaches `pendingOrders()`, which
+  `Reconciler#check` already flags as `ORPHANED_IN_BROKER` — and
+  `PaperTradingApp.reconcile()`, the caller that actually runs
+  `Reconciler#check` on a schedule and is the one that calls
+  `killSwitch.trip()` on any non-clean report (`Reconciler#check` itself
+  only reports and logs — see its own Javadoc — the corrected attribution
+  is also now reflected in `OrderExecutor.java`'s own Javadoc, fixed on
+  this same review round), trips the kill switch until a human looks,
+  entirely with code that already exists and is already tested.
+  Designing a full persisted-`SUBMISSION_UNKNOWN`/safe-retry
   protocol now, ahead of `ExchangeOrderExecutor` actually existing,
   would be architecture work for a class that hasn't been written yet —
   exactly the kind of R3-risk design CLAUDE.md's Development
@@ -524,16 +535,93 @@ All three fixed, this PR:
 - **The `LIVE_TRADING_ENABLED`/`live_trading` due-diligence claim in the
   Verification section overstated its own scope.** Real, correctly-
   identified: "no such flag exists anywhere in this codebase yet" is
-  false as literally written — a repo-wide grep (not the `java/exchange`
-  + `java/runtime`-scoped one this task actually ran) finds both strings
-  in `.coderabbit.yaml` (as example text inside its own automated-review
-  policy describing what a disallowed future diff would contain, not an
-  active flag) and in this document itself (self-referentially, from
+  false as literally written — a repo-wide grep (not the
+  `java/exchange`-and-`java/runtime`-scoped one this task actually ran)
+  finds both strings in `.coderabbit.yaml` (as example text inside its
+  own automated-review policy describing what a disallowed future diff
+  would contain, not an active flag) and in this document itself
+  (self-referentially, from
   round 2's version of this same sentence). Fixed by narrowing the claim
   to what was actually verified — the CI-executed build scope and the
   `:exchange` test sources specifically — and disclosing the two
   non-live-trading-enabling matches the wider grep does find, rather
   than an unqualified "anywhere in this codebase."
+
+### Round 4
+
+Against commit `a9d9324` (after round 3's fixes were pushed): 1 inline
+actionable comment plus 1 "outside diff range" comment. Both fixed,
+this PR:
+
+- **The Round 3 Markdown-lint claim ("0 issues") was scoped narrower
+  than it read.** Real, correctly-identified: the round 3 write-up's
+  own `markdownlint-cli2` run was deliberately restricted to MD022 only
+  (`--config` limiting to `{"default": false, "MD022": true}`), but the
+  prose reporting "0 issues" didn't make that scoping explicit, reading
+  as an unqualified clean bill. A separate, real issue existed outside
+  that narrow scope: an MD004 (`ul-style`) violation at the line
+  containing "`java/exchange` + `java/runtime`-scoped" — the `+` at the
+  very start of a wrapped continuation line was valid Markdown syntax
+  for starting a new `+`-style unordered list item, not the "combine
+  these two things" prose it was meant to read as. Fixed by rewording
+  to `` `java/exchange`-and-`java/runtime`-scoped `` (no leading `+`
+  possible), then re-ran `markdownlint-cli2` with **no config
+  restriction at all** (the tool's own full default rule set, not just
+  MD022) against the fixed document: genuinely **0 issues** — this
+  time an honest, unscoped result, not a re-assertion of the same
+  narrow claim.
+- **`Reconciler`'s `ORPHANED_IN_BROKER` behavior and the actual
+  `KillSwitch`-tripping caller were both stated imprecisely in several
+  places.** Two distinct, both real, correctly-identified inaccuracies:
+  1. `Reconciler.check(...)` only ever reports `ORPHANED_IN_BROKER` for
+     an order whose `OrderStore`-recorded state is one of `Reconciler`'s
+     own `OPEN_STATES` (`NEW`, `SUBMITTED`, `ACKNOWLEDGED`,
+     `PARTIALLY_FILLED`, `CANCEL_PENDING`) — confirmed directly against
+     `Reconciler.java`'s real condition,
+     `OPEN_STATES.contains(state) && !pending.containsKey(id)`. Round
+     2's new test drives its poisoned order to `CANCELLED`, a
+     **terminal** state and explicitly **not** in `OPEN_STATES` — so for
+     that specific test scenario, dropping the order from
+     `PaperBroker.pendingOrders()` does **not** produce an
+     `ORPHANED_IN_BROKER` finding, because `OrderStore` and `PaperBroker`
+     already agree the order isn't live once both sides reflect that;
+     there is no remaining inconsistency for `Reconciler` to detect. The
+     broader per-order-failure fix itself is still correct and still
+     needed (an order failing mid-loop must not abort every other
+     order's resolution that same call, which round 2's test correctly
+     proves) — only the specific downstream claim about what `Reconciler`
+     then does with a *terminal-state* poisoned order was wrong. Fixed
+     everywhere this was asserted: `PaperBroker.pollFills`'s own code
+     comment and log message (now states the real, conditional
+     behavior — `ORPHANED_IN_BROKER` fires only if the order's
+     `OrderStore` state is still open at drop time), and this document's
+     "What was built" and round 2 write-ups above (both now point here
+     rather than repeating the incorrect unconditional claim).
+  2. `Reconciler.check(...)` itself never trips a `KillSwitch` — it only
+     reports and logs (confirmed directly against `Reconciler.java`:
+     no `KillSwitch` reference anywhere in that class). It is
+     `PaperTradingApp.reconcile()` — the actual caller that runs
+     `Reconciler.check(...)` on a schedule via `runTick()` — that calls
+     `killSwitch.trip()` when the returned report isn't clean. This
+     exact "Reconciler... automatically tripping the kill switch"
+     phrasing traces back to the governing plan's own Decisions section,
+     which this task's `OrderExecutor.java` Javadoc was instructed to
+     state near-verbatim — the imprecision predates this specific
+     document, but was worth fixing now that a real reviewer caught it.
+     Fixed in `OrderExecutor.java`'s own class Javadoc (now attributes
+     the trip to `PaperTradingApp.reconcile()` specifically, and states
+     that `Reconciler#check` itself only reports/logs) and in this
+     document's own "declined" bullet above for the same claim.
+
+**Self-check, same push as round 4's fixes above (not a separate
+CodeRabbit round):** after making the round 4 fixes, re-read every
+remaining `ORPHANED_IN_BROKER`/`KillSwitch`/`tripping` mention across
+this document, `OrderExecutor.java`, and `PaperBroker.java` to confirm
+no further instance of either inaccuracy survived uncorrected — none
+found. `./gradlew clean build` re-run clean after all round 4 changes:
+see "Verification" below for the final count.
+
+## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `ExchangeOrderExecutor`, any BingX-specific execution code, or anything
   touching `ExchangeAdapter`/`BingXAdapter` (Task G).
