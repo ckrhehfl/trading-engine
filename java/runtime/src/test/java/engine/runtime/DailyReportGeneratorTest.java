@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -448,11 +449,17 @@ class DailyReportGeneratorTest {
             // filesystem that genuinely can't complete one -- deterministic
             // and portable, unlike trying to force this via real
             // filesystem/mount setup (see class-level discussion above).
+            // Counts its own invocations (a CodeRabbit review finding on
+            // this task's own PR #73) so the test can confirm the atomic
+            // path was actually attempted, not merely that the end state
+            // happens to look right via some other path.
+            AtomicInteger atomicMoveAttempts = new AtomicInteger(0);
             DailyReportGenerator generator = new DailyReportGenerator(
                     loop,
                     reportsDir,
                     clock,
                     (source, target) -> {
+                        atomicMoveAttempts.incrementAndGet();
                         throw new AtomicMoveNotSupportedException(
                                 source.toString(), target.toString(), "simulated: atomic move not supported");
                     });
@@ -464,6 +471,7 @@ class DailyReportGeneratorTest {
             clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
             generator.beforeTick();
 
+            assertEquals(1, atomicMoveAttempts.get(), "the atomic move path must actually have been attempted first");
             assertEquals(
                     0,
                     generator.pendingReportCount(),

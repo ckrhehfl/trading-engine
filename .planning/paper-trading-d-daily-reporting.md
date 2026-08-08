@@ -793,6 +793,27 @@ round-2 disclosures as final. Each handled on its own terms:
 Full suite after this round's fix (`./gradlew clean test`): **212 tests,
 0 failures, 0 errors** (211 + 1 new `DailyReportGeneratorTest`).
 
+### Fifth review round (commit `1916cc9`, `CHANGES_REQUESTED` again)
+
+One small, trivial finding -- the two human-decision-flagged items from
+round 4 were not re-raised, consistent with CodeRabbit's own "does not
+re-review already reviewed... commits" incremental-review note:
+
+1. **Trivial -- the new round-4 test never confirmed the injected
+   `AtomicMover` was actually invoked.** `anAtomicMoveFailureFallsBackToANonAtomicReplaceAndStillCompletesTheWrite`
+   asserted only the end state (file exists, `pendingReportCount() == 0`)
+   -- a real gap, since a bug that skipped the atomic attempt entirely
+   and went straight to the fallback would have passed the test
+   identically. **Fixed**: the injected lambda now increments an
+   `AtomicInteger` on every call, and the test asserts exactly one
+   invocation before asserting the end state, confirming the atomic path
+   was genuinely attempted and genuinely failed, not merely that things
+   turned out fine some other way.
+
+Full suite after this round's fix (`./gradlew clean test`): **212 tests,
+0 failures, 0 errors** (unchanged count -- this round strengthened an
+existing test's assertions rather than adding a new one).
+
 **Also fixed, unrelated to CodeRabbit**: the local `.githooks/pre-commit`
 hook (`gitleaks protect --staged`) flagged this very document's own real
 local-run JSON output as a `generic-api-key` false positive -- gitleaks'
