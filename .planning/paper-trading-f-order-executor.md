@@ -448,6 +448,53 @@ sha, not a stale/rate-limited status): 4 actionable comments.
   it unfixed would mean the Javadoc this task itself wrote was not
   actually true of the one implementation that exists.
 
+  **This fix's own `Discuss`/`Plan` record** (added on a later
+  CodeRabbit review round's explicit request — the task-level "GSD phase
+  status" section above narrates the whole task, not this one in-task
+  deviation specifically, and CodeRabbit correctly pointed out the
+  difference matters for an R3-risk runtime change): **Discuss** — the
+  only real design question was *where* the fault boundary goes. Two
+  options existed: (a) catch around the whole `pollFills` loop body
+  (simpler, but one poisoned order would still lose every other pending
+  order's fill that tick — the exact bug being fixed) or (b) catch
+  per-order, inside the `computeIfPresent` callback (chosen — isolates
+  exactly one order per failure, matches the `OrderExecutor` interface's
+  own "never throw for a per-order resolution failure" contract this
+  task itself wrote). No second person to discuss with mid-task; the
+  choice is recorded here rather than asserted as if a separate meeting
+  happened, per this project's own "don't invent approvals that don't
+  exist" discipline. **Plan** — the design above (b), stated in advance
+  of writing it in this same review-response pass. **Assumptions this
+  fix makes explicit**: (1) `order.fill()`/`tryFill()` throwing means
+  the `Order` is in a state this broker's own bookkeeping no longer
+  matches (i.e. a caller mutated the shared `Order` instance through a
+  path other than this broker) — not a transient/retryable condition, so
+  retrying the same poisoned order on the next tick would fail
+  identically forever; dropping it from `pendingOrders` immediately, not
+  retrying, is therefore correct rather than merely convenient. (2) It is
+  **safe** to drop the order from `pendingOrders` specifically because
+  `PaperBroker` never independently persists position/equity state
+  derived from a pending order until `fill()` actually succeeds — so
+  dropping a poisoned entry loses no state this broker itself considered
+  authoritative. **`Reconciler`/`KillSwitch` impact**, stated precisely
+  (see "Declined" below for where this reasoning is also used): whether
+  `Reconciler#check` subsequently flags the dropped order as
+  `ORPHANED_IN_BROKER` depends entirely on that order's own
+  `OrderStore`-recorded state at the moment it's dropped — if `OrderStore`
+  still considers it open (one of `Reconciler`'s `OPEN_STATES`), the drop
+  creates exactly the mismatch `ORPHANED_IN_BROKER` exists to catch, and
+  `PaperTradingApp.reconcile()` (not `Reconciler#check` itself, which only
+  reports) trips the kill switch on the next reconciliation pass. If
+  `OrderStore` had already independently reached a terminal state through
+  the same non-`PaperBroker#cancel` path that poisoned the order in the
+  first place (as in this fix's own test scenario, which drives the order
+  to `CANCELLED` directly), the two are already in agreement and there is
+  nothing left for `Reconciler` to flag — not a gap, a correctly-resolved
+  case. **Verify** — the new test named above, run for real as part of
+  the full suite (`./gradlew clean build`, 213 tests / 0 failures / 0
+  errors, both locally and via the new `java-tests.yml` CI run added by
+  this same task), not asserted without running it.
+
 **Declined, with reasoning, not attempted here:**
 
 - **"Update the plan to block the live `ExchangeOrderExecutor`
