@@ -12,13 +12,26 @@ on; neither of those is touched here. R3-risk component (`java/execution`,
 `java/runtime`, adjacent to `PaperBroker`/`TradingLoop`/`Reconciler`) — TDD
 discipline applied throughout, per CLAUDE.md's Development Methodology.
 
-This is explicitly a **provably inert** refactor: extract an interface
-from an existing concrete class, retrofit that class onto it, and widen
-two call sites' parameter types to the interface. No new runtime behavior
-was introduced anywhere in this task. The same retrofit pattern was
-already used once in this codebase for `SignalSource`/`DummySignalSource`
+This was designed and initially built as an explicitly **provably inert**
+refactor: extract an interface from an existing concrete class, retrofit
+that class onto it, and widen two call sites' parameter types to the
+interface. The same retrofit pattern was already used once in this
+codebase for `SignalSource`/`DummySignalSource`
 (`.planning/paper-trading-a-signal-source.md`), which served as the
 template for both the mechanics and the documentation rigor here.
+
+**That inert framing held through the original implementation and
+CodeRabbit review round 1.** It stopped being fully true in round 2: a
+real, narrow runtime behavior change was added to
+`PaperBroker.pollFills` (per-order `RuntimeException` isolation) to fix
+a genuine gap between the `OrderExecutor` contract this task itself
+wrote and what `PaperBroker` actually did — flagged precisely, not
+glossed over, in "Expected diff shape" and "CodeRabbit review findings"
+below. The `OrderExecutor` interface extraction and the `PaperBroker`/
+`TradingLoop`/`Reconciler` retype itself remain behavior-preserving;
+that one later fix is the one exception, and is called out everywhere
+it's relevant rather than folded silently into an "inert" claim that
+would no longer be accurate.
 
 ### GSD phase status
 
@@ -142,8 +155,9 @@ workflow:
   version comment) rather than a floating tag — `actions/checkout` reuses
   the exact same pin already used by the other two workflows
   (`3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1`);
-  `actions/setup-java` is pinned to `b6effb05e454b25005698d916606bdc6ffcbf961
-  # v5.7.0`, confirmed as the real commit for that tag via the GitHub API
+  `actions/setup-java` is pinned to
+  `b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0`, confirmed as the
+  real commit for that tag via the GitHub API
   (`GET /repos/actions/setup-java/git/refs/tags/v5.7.0`) rather than typed
   from memory. Java 21 / Temurin (matches every `build.gradle.kts`
   toolchain declaration), `cache: gradle` enabled (a single built-in
@@ -285,9 +299,11 @@ each verified against the real current code before deciding, per each
 review's own "verify each finding against current code, fix only
 still-valid issues, skip the rest with a brief reason" instruction.
 
-### Round 1 (against commit `ab91fc1`, the first commit — before the
-`gradlew` mode fix and this doc's own subsequent updates were pushed):
-6 actionable comments.
+### Round 1
+
+Against commit `ab91fc1` (the first commit — before the `gradlew` mode
+fix and this doc's own subsequent updates were pushed): 6 actionable
+comments.
 
 **Fixed, this PR:**
 
@@ -374,10 +390,11 @@ still-valid issues, skip the rest with a brief reason" instruction.
   replaced, since restructuring it wholesale was never the substantive
   part of the request.
 
-### Round 2 (against commit `b1e6b65`, after round 1's fixes were
-pushed — a real review confirmed via the GitHub reviews API to target
-this exact commit sha, not a stale/rate-limited status): 4 actionable
-comments.
+### Round 2
+
+Against commit `b1e6b65` (after round 1's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, not a stale/rate-limited status): 4 actionable comments.
 
 **Fixed, this PR:**
 
@@ -459,7 +476,64 @@ comments.
   something decided under review pressure on an unrelated PR. Tracked
   here as a real, disclosed pointer for Task G, not silently dropped.
 
-## Explicitly out of scope (per the governing brief, not attempted here)
+### Round 3
+
+Against commit `faaa371` (after round 2's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha): 1 inline actionable comment plus 2 "outside diff range" comments.
+All three fixed, this PR:
+
+- **Markdown MD022 (headings must be surrounded by blank lines)** on
+  this document's own "### Round 1"/"### Round 2" headings — both had
+  been written as long, wrapped multi-line headings (the heading text
+  continuing directly onto the next line with no blank line before the
+  following paragraph), which is invalid Markdown heading syntax, not
+  just a style nit: everything after a heading's own line break renders
+  as a separate, un-blank-line-separated paragraph rather than part of
+  the heading. Fixed by shortening both headings to a single short line
+  and moving the parenthetical detail into a properly blank-line-
+  separated paragraph immediately below each — this "Round 3" heading
+  uses that same corrected shape from the start. Verified the fix, and
+  checked for further instances of the same class of problem, with a
+  real linter rather than by eye: `npx markdownlint-cli2` (MD022 only)
+  against this document found one additional, related issue CodeRabbit
+  hadn't flagged — an inline code span (the `actions/setup-java` SHA +
+  version-comment pin, in "What was built") that had been line-wrapped
+  in the source such that its continuation line started with `# v5.7.0`,
+  which risks being misparsed as an ATX heading by a renderer that
+  classifies block structure before resolving inline code spans (a real
+  rendering risk, not just a linter preference). Fixed by keeping that
+  entire code span on one unwrapped line, matching the `actions/
+  checkout` pin's own formatting immediately above it. Re-ran
+  `markdownlint-cli2` after both fixes: **0 issues**.
+- **This document's own "provably inert" framing in the Scope note no
+  longer matched round 2's actual fix.** A real, correctly-identified
+  inconsistency: the Scope note's opening line asserted "no new runtime
+  behavior was introduced anywhere in this task" as an unqualified,
+  present-tense claim, while "Expected diff shape" and "CodeRabbit
+  review findings" both already honestly disclosed that round 2 added a
+  real runtime behavior change (`PaperBroker.pollFills`'s per-order
+  fault isolation). The disclosure existed, but the Scope note's own
+  framing hadn't been updated to be consistent with it — a reader
+  stopping at the Scope note alone would have come away with a false
+  impression. Fixed by rewriting the Scope note to state plainly that
+  the inert framing held through round 1 and stopped being fully true
+  in round 2, with a pointer to where the one exception is detailed,
+  rather than asserting an absolute that the rest of the document
+  already contradicts.
+- **The `LIVE_TRADING_ENABLED`/`live_trading` due-diligence claim in the
+  Verification section overstated its own scope.** Real, correctly-
+  identified: "no such flag exists anywhere in this codebase yet" is
+  false as literally written — a repo-wide grep (not the `java/exchange`
+  + `java/runtime`-scoped one this task actually ran) finds both strings
+  in `.coderabbit.yaml` (as example text inside its own automated-review
+  policy describing what a disallowed future diff would contain, not an
+  active flag) and in this document itself (self-referentially, from
+  round 2's version of this same sentence). Fixed by narrowing the claim
+  to what was actually verified — the CI-executed build scope and the
+  `:exchange` test sources specifically — and disclosing the two
+  non-live-trading-enabling matches the wider grep does find, rather
+  than an unqualified "anywhere in this codebase."
 
 - `ExchangeOrderExecutor`, any BingX-specific execution code, or anything
   touching `ExchangeAdapter`/`BingXAdapter` (Task G).
@@ -499,18 +573,35 @@ comments.
   `:exchange` module in CI specifically does not violate CLAUDE.md's
   "never add live exchange write-access in CI" rule** (a real,
   worth-checking question, since `:exchange` is the one module whose
-  production code talks to a real BingX host): grepped `java/exchange`
-  and `java/runtime` for `LIVE_TRADING_ENABLED`/`live_trading` — zero
-  hits, no such flag exists anywhere in this codebase yet. Read
-  `BingXAdapterTest.java` directly — it stands up a local in-process
-  `HttpServer` bound to `127.0.0.1` on a random port (the same pattern
-  `BingXPriceFeedTest`/`TradingLoopTest`/`ReconcilerTest` already use via
-  `FakeBingXTradesServer`), never contacts a real BingX host either way.
-  Both `BingXAdapterTest` and `BingXSignerTest` construct their adapter
-  with hardcoded dummy strings (`"test-api-key"`/`"test-api-secret"`),
-  never `System.getenv(...)` — confirmed via grep, zero `System.getenv`
-  calls in either test file. Nothing in the `:exchange` test suite reads
-  a real credential or could enable live trading.
+  production code talks to a real BingX host). Grepped `java/exchange`
+  and `java/runtime` (the workflow's own build scope + the module that
+  wires it) for `LIVE_TRADING_ENABLED`/`live_trading` — zero hits in
+  either. **Correction, made on CodeRabbit review round 3**: the
+  original wording here ("no such flag exists anywhere in this
+  codebase yet") overstated what was actually checked — a repo-wide
+  grep does find `LIVE_TRADING_ENABLED`/`live_trading` in
+  `.coderabbit.yaml` (as example strings inside its own
+  automated-review policy text, describing what a *future* live-
+  trading-enabling diff would look like, not an active flag) and in
+  this very document (this sentence and its round-2 predecessor,
+  self-referentially, plus CLAUDE.md's Tooling Stack row noting the
+  guardrail hook is "not built yet"). Neither is a real, live,
+  enableable flag anywhere in actual `java/`/`python/` source — the
+  conclusion that the CI-executed test paths cannot enable live
+  trading stands, scoped precisely to what was inspected: the
+  `java-tests.yml` workflow's own build scope (`./gradlew build`,
+  no env vars set beyond what `setup-java` needs) and the `:exchange`
+  test sources, not a claim about the whole repository. Separately
+  read `BingXAdapterTest.java` directly — it stands up a local
+  in-process `HttpServer` bound to `127.0.0.1` on a random port (the
+  same pattern `BingXPriceFeedTest`/`TradingLoopTest`/`ReconcilerTest`
+  already use via `FakeBingXTradesServer`), never contacts a real
+  BingX host either way. Both `BingXAdapterTest` and `BingXSignerTest`
+  construct their adapter with hardcoded dummy strings
+  (`"test-api-key"`/`"test-api-secret"`), never `System.getenv(...)` —
+  confirmed via grep, zero `System.getenv` calls in either test file.
+  Nothing in the `:exchange` test suite reads a real credential or
+  could enable live trading.
 - **Real first CI run failed, and the cause was a genuine pre-existing
   repo bug this task's CI was the first thing to ever surface**:
   `./gradlew: Permission denied` (exit 126). `git ls-files --stage
