@@ -20,6 +20,19 @@ on:
   push:
   pull_request:
 
+# Cancels a superseded run when new commits land on the same branch/PR
+# while an earlier run is still in flight -- keeps runs for distinct
+# branches/PRs independent (the ref is part of the group key), only
+# collapses redundant runs of the same one. Neither of the two existing
+# workflows (bingx-hostname-guard.yml, gitleaks.yml) has this today; added
+# here on CodeRabbit review since this workflow is the first to actually
+# run a real, multi-minute build+test suite (the other two are
+# single-grep/single-scan jobs, seconds each, where queue buildup was
+# never a practical problem).
+concurrency:
+  group: java-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   java-tests:
     runs-on: ubuntu-latest

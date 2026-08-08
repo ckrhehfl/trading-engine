@@ -30,14 +30,16 @@ workflow:
   referencePrice)`, `List<Fill> pollFills(String symbol, BigDecimal
   referencePrice)`, `Map<UUID, Order> pendingOrders()`, `void
   cancel(Order)`. Its Javadoc states, as required by the governing brief:
-  the error-contract asymmetry (`pollFills` must never throw; `submit` may
-  throw and a thrown `submit` is an ambiguous outcome, which
-  `TradingLoop.submitToBroker`'s existing orphan-handling already handles
-  correctly and unchanged), and the extensibility invariant near-verbatim
-  from the brief ("a new exchange/venue means writing a new
-  `ExchangeAdapter` implementation, never a new `OrderExecutor`
-  implementation... there should only ever be two `OrderExecutor`
-  implementations in this codebase").
+  the error-contract asymmetry (`pollFills` must never throw for a
+  **per-order resolution failure**; `submit` may throw and a thrown
+  `submit` is an ambiguous outcome, which `TradingLoop.submitToBroker`'s
+  existing orphan-handling already handles correctly and unchanged), and
+  the extensibility invariant near-verbatim from the brief ("a new
+  exchange/venue means writing a new `ExchangeAdapter` implementation,
+  never a new `OrderExecutor` implementation... there should only ever be
+  two `OrderExecutor` implementations in this codebase"). The "per-order
+  resolution failure" qualifier was added after CodeRabbit review — see
+  "CodeRabbit review findings" below.
 - **`PaperBroker implements OrderExecutor`** (retrofit) — `final` was not
   removed (confirmed directly, same fact already established for
   `DummySignalSource implements SignalSource`: a final class can implement
@@ -211,6 +213,100 @@ re-investigate.
   it's a sub-task of the governing 3-task VST integration plan — same
   reasoning Task A's own doc already recorded for this choice.
 
+## CodeRabbit review findings
+
+One review round on PR #77 (`ASSERTIVE` profile), against commit
+`ab91fc1` (the first commit — the review ran before the `gradlew`
+mode fix and this doc's own subsequent updates were pushed): 6
+actionable comments. Disposition below, each verified against the
+real current code before deciding, per the review's own "verify each
+finding against current code, fix only still-valid issues, skip the
+rest with a brief reason" instruction.
+
+**Fixed, this PR:**
+
+- **`OrderExecutor.pollFills`'s "never throw" contract didn't actually
+  match `PaperBroker.pollFills`'s real implementation.** A genuine,
+  correctly-identified bug in this task's own Javadoc, not a
+  pre-existing issue: `PaperBroker.pollFills` calls
+  `Objects.requireNonNull(symbol, ...)`,
+  `Objects.requireNonNull(price, ...)`, and `requirePositivePrice(price)`
+  — all three can throw (`NullPointerException`/
+  `IllegalArgumentException`), and `PaperBrokerTest`'s own
+  `pollFillsRejectsZeroOrNegativePrice` test explicitly asserts this
+  throwing behavior via `assertThrows`. CodeRabbit offered two
+  alternative fixes: loosen the documented contract, or change
+  `PaperBroker.pollFills` to swallow these exceptions instead (and
+  update the test to expect an empty result). Chose the **first**
+  option, not the second — the second is a real behavior change (a
+  negative-price call would silently return `List.of()` instead of
+  throwing), which directly contradicts this task's own "provably
+  inert, zero behavior change" charter and the governing brief's
+  explicit "if you find yourself needing to change test logic... stop"
+  warning. Fixed by adding a new Javadoc paragraph to
+  `OrderExecutor.java` (both the class-level "Error contract" section
+  and the `pollFills` method Javadoc) that precisely scopes the
+  "never throw" guarantee to **per-order resolution failures**
+  specifically, explicitly carving out eager caller-error argument
+  validation (null/non-positive arguments) as a distinct, still-legal-
+  to-throw-for case — matching this codebase's existing argument-
+  validation convention everywhere else. Zero behavior change; only
+  the contract's own documentation became accurate. `PaperBrokerTest`
+  is unaffected — still zero test-logic changes beyond the original
+  rename.
+- **CI concurrency control.** Added a `concurrency:` block
+  (`cancel-in-progress: true`, keyed on workflow + ref) to
+  `java-tests.yml` so a rapid sequence of pushes to the same branch/PR
+  doesn't pile up redundant multi-minute runs. Neither existing
+  workflow (`bingx-hostname-guard.yml`, `gitleaks.yml`) has this, but
+  neither of those runs longer than a few seconds either — this is the
+  first workflow in the repo where queue buildup is a real, practical
+  concern, so the inconsistency with the other two is judged
+  acceptable rather than matched.
+- **Planning doc's own description of the workflow's build scope and a
+  due-diligence check on the `:exchange` module in CI.** The doc
+  already said "all six modules" rather than "unit-test-only," so no
+  wording change was needed there — but performed and recorded the
+  actual due-diligence check CodeRabbit asked for before merging:
+  grepped for `LIVE_TRADING_ENABLED`/`live_trading` (zero hits
+  anywhere in `java/exchange` or `java/runtime`), and read
+  `BingXAdapterTest.java`/`BingXSignerTest.java` directly to confirm
+  they use an in-process fake `HttpServer` (never a real BingX host)
+  and hardcoded dummy credential strings (never `System.getenv`). See
+  "Verification" below for the specific findings.
+- **Planning doc's CI-verification note.** Was written before this
+  PR's real CI had ever run (a placeholder acknowledging that limit).
+  Superseded by this doc's own later update once the real first
+  `java-tests` run actually happened (see "Verification" below) — the
+  real observed run result is now what's recorded, not a description
+  of the local-only YAML syntax check. `actionlint` was not
+  additionally installed/run — a real, live GitHub Actions execution
+  (which surfaced the genuine `gradlew` permission bug below) is
+  strictly stronger evidence than static linting would have been for
+  this specific class of failure, so it was judged unnecessary on top
+  of that.
+
+**Declined, with reasoning, not attempted here:**
+
+- **"Update the R3 planning record... to document the Discuss, Plan,
+  Execute, Verify, and Ship stages with their outcomes... record
+  CodeRabbit's final pass status plus the human approver, approval
+  time, and PR link."** Declined for two reasons. First, no planning
+  doc in this repo's history (`paper-trading-a` through `-e`, nor any
+  `sr-*` doc) follows a rigid Discuss/Plan/Execute/Verify/Ship-labeled
+  template — the established convention (`Scope note` / `What was
+  built` / `TDD` / `Judgment calls` / `CodeRabbit review findings` /
+  `Explicitly out of scope` / `Verification`) already covers the same
+  substance without a mechanical relabeling, and this doc already
+  follows it. Second, and more concretely: "record... the human
+  approver, approval time" can't be done truthfully yet — this PR is,
+  by this same task's own explicit instruction, not merged and has no
+  human approval on record at the time this doc is written. Writing
+  placeholder approval metadata now would be worse than not writing it
+  at all; a human approver, if and when one signs off, can add that
+  note directly on the PR itself, which is the actual source of truth
+  for approval state (see "PR opened, not merged" below).
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `ExchangeOrderExecutor`, any BingX-specific execution code, or anything
@@ -242,6 +338,22 @@ re-investigate.
   schemas, oms, risk, execution, exchange, runtime).
 - `.github/workflows/java-tests.yml` YAML syntax validated locally
   (`python3 -c "import yaml; yaml.safe_load(...)"`) before pushing.
+- **Confirmed, on CodeRabbit review, that `./gradlew build` running the
+  `:exchange` module in CI specifically does not violate CLAUDE.md's
+  "never add live exchange write-access in CI" rule** (a real,
+  worth-checking question, since `:exchange` is the one module whose
+  production code talks to a real BingX host): grepped `java/exchange`
+  and `java/runtime` for `LIVE_TRADING_ENABLED`/`live_trading` — zero
+  hits, no such flag exists anywhere in this codebase yet. Read
+  `BingXAdapterTest.java` directly — it stands up a local in-process
+  `HttpServer` bound to `127.0.0.1` on a random port (the same pattern
+  `BingXPriceFeedTest`/`TradingLoopTest`/`ReconcilerTest` already use via
+  `FakeBingXTradesServer`), never contacts a real BingX host either way.
+  Both `BingXAdapterTest` and `BingXSignerTest` construct their adapter
+  with hardcoded dummy strings (`"test-api-key"`/`"test-api-secret"`),
+  never `System.getenv(...)` — confirmed via grep, zero `System.getenv`
+  calls in either test file. Nothing in the `:exchange` test suite reads
+  a real credential or could enable live trading.
 - **Real first CI run failed, and the cause was a genuine pre-existing
   repo bug this task's CI was the first thing to ever surface**:
   `./gradlew: Permission denied` (exit 126). `git ls-files --stage

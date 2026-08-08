@@ -29,11 +29,12 @@ import java.util.UUID;
  * that's the {@code ExchangeAdapter} extension point, not this one.
  *
  * <p><b>Error contract, asymmetric on purpose.</b> {@link #pollFills} must
- * <b>never throw</b> -- an implementation that encounters a single order's
- * own failure (e.g. a real exchange query failing for just that one pending
- * order) must log it and skip that order, still returning whatever fills
- * did resolve for every other order this same call. {@link #submit}, by
- * contrast, <b>may throw</b>, and callers should treat a thrown {@code
+ * <b>never throw for a per-order resolution failure</b> -- an
+ * implementation that encounters a single order's own failure while
+ * resolving it (e.g. a real exchange query failing for just that one
+ * pending order) must log it and skip that order, still returning whatever
+ * fills did resolve for every other order this same call. {@link #submit},
+ * by contrast, <b>may throw</b>, and callers should treat a thrown {@code
  * submit} as an <b>ambiguous</b> outcome -- the order may or may not have
  * actually been accepted by the venue. {@code TradingLoop.submitToBroker}'s
  * existing orphan-handling (logging the order as orphaned and rethrowing so
@@ -45,6 +46,21 @@ import java.util.UUID;
  * #pendingOrders()}, which {@code engine.runtime.Reconciler} already flags
  * as {@code ORPHANED_IN_BROKER} -- automatically tripping the kill switch
  * until a human looks.
+ *
+ * <p><b>This "never throw" contract governs per-order resolution failures
+ * specifically -- it does not extend to eager caller-error validation of
+ * {@code pollFills}'s own arguments.</b> A {@code null} {@code symbol}/
+ * {@code referencePrice}, or a non-positive {@code referencePrice}, is a
+ * caller bug, not a per-order failure, and both existing implementations
+ * (today just {@link PaperBroker}) are expected to keep failing fast on it
+ * via a conventional precondition check ({@code
+ * Objects.requireNonNull}/an explicit positivity check) -- the same
+ * standard Java argument-validation convention every other method in this
+ * codebase follows, deliberately not suppressed here. A future {@code
+ * ExchangeOrderExecutor} should follow the same split: throw immediately
+ * for a malformed call, but never let one pending order's own resolution
+ * failure prevent every other order in the same {@code pollFills} call
+ * from being resolved.
  */
 public interface OrderExecutor {
 
@@ -67,8 +83,11 @@ public interface OrderExecutor {
      * {@link Fill} produced by this call. Meant to be called once per
      * {@code TradingLoop} tick, regardless of whether a new signal fired
      * that tick -- reconciling previously-pending orders is unconditional.
-     * Must <b>never throw</b> -- see this interface's own Javadoc, "Error
-     * contract, asymmetric on purpose".
+     * Must <b>never throw for a per-order resolution failure</b> -- may
+     * still throw eagerly for an invalid argument (a {@code null} {@code
+     * symbol}/{@code referencePrice}, or a non-positive {@code
+     * referencePrice}). See this interface's own Javadoc, "Error contract,
+     * asymmetric on purpose", for the precise scope of this contract.
      */
     List<Fill> pollFills(String symbol, BigDecimal referencePrice);
 
