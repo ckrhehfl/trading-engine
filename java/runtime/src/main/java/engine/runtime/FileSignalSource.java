@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import engine.schemas.OrderIntent;
 import engine.schemas.SchemaObjectMapper;
 import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -118,6 +121,7 @@ public final class FileSignalSource implements SignalSource {
 
     private final Path signalFilePath;
     private final Path deliveredMarkerPath;
+    private final AtomicMover atomicMover;
     private final ObjectMapper objectMapper = SchemaObjectMapper.create();
 
     private volatile UUID lastDeliveredIntentId;
@@ -132,9 +136,31 @@ public final class FileSignalSource implements SignalSource {
      * dedup". {@code null} is exactly the one-arg constructor's behavior.
      */
     public FileSignalSource(Path signalFilePath, Path deliveredMarkerPath) {
+        this(signalFilePath, deliveredMarkerPath, FileSignalSource::defaultAtomicMove);
+    }
+
+    /**
+     * Test-only overload (package-private -- not part of this class's real
+     * operational API), mirroring {@code DailyReportGenerator}/{@code
+     * SubmissionMarkerStore}'s own identical {@code AtomicMover}
+     * testability seam: lets a test force the {@code ATOMIC_MOVE} attempt
+     * to fail deterministically.
+     */
+    FileSignalSource(Path signalFilePath, Path deliveredMarkerPath, AtomicMover atomicMover) {
         this.signalFilePath = Objects.requireNonNull(signalFilePath, "signalFilePath is required");
         this.deliveredMarkerPath = deliveredMarkerPath;
+        this.atomicMover = Objects.requireNonNull(atomicMover, "atomicMover is required");
         this.lastDeliveredIntentId = readMarker();
+    }
+
+    private static void defaultAtomicMove(Path source, Path target) throws IOException {
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    /** Testability seam -- see the 3-arg constructor's Javadoc above. */
+    @FunctionalInterface
+    interface AtomicMover {
+        void move(Path source, Path target) throws IOException;
     }
 
     /**
@@ -235,7 +261,26 @@ public final class FileSignalSource implements SignalSource {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.writeString(deliveredMarkerPath, intentId.toString());
+            // Atomic (temp file + move) -- matches DailyReportGenerator's
+            // own already-established convention in this exact codebase. A
+            // plain Files.writeString truncates the existing file before
+            // writing, so a crash mid-write could leave an empty or
+            // partial UUID behind, silently losing this file's whole
+            // durable-dedup guarantee (see class Javadoc, "Durable,
+            // cross-restart dedup") -- a real, correctly-identified
+            // CodeRabbit review finding on this PR.
+            Path tmp = deliveredMarkerPath.resolveSibling(deliveredMarkerPath.getFileName() + ".tmp");
+            Files.writeString(tmp, intentId.toString());
+            try {
+                atomicMover.move(tmp, deliveredMarkerPath);
+            } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
+                log.warn(
+                        "atomic move not usable for {} -> {}, falling back to a non-atomic replace: {}",
+                        tmp,
+                        deliveredMarkerPath,
+                        e.toString());
+                Files.move(tmp, deliveredMarkerPath, StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException e) {
             log.warn(
                     "failed to persist delivered-marker file {} for intentId {} -- a restart before this is"

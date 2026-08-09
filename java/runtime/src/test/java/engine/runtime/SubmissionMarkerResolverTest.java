@@ -15,10 +15,27 @@ import org.junit.jupiter.api.io.TempDir;
  * {@link SubmissionMarkerResolver} is the startup-time (or kill-switch-
  * reset-time) resolution step for any persisted {@link SubmissionMarker} --
  * see that class's own Javadoc and {@code .planning/paper-trading-h-vst-
- * integration.md} for the full design, including the documented judgment
- * call on why this uses {@code getPositions()} rather than {@code
- * queryOrder()} (a marker that never captured an {@code exchangeOrderId}
- * cannot be queried by one).
+ * integration.md} for the full design.
+ *
+ * <p><b>Revised after a real, correctly-identified CodeRabbit review finding
+ * on this PR (marked Critical):</b> the original design cleared a marker
+ * whenever {@code getPositions()} showed no matching non-zero position for
+ * that marker's symbol, reasoning that this meant the submission "most
+ * likely never reached the exchange." That reasoning was wrong: an order
+ * that <i>was</i> accepted but is still open and unfilled (e.g. a
+ * {@code LIMIT} order resting away from the market) also produces zero
+ * matching position -- a position only exists once quantity is actually
+ * filled. Auto-clearing in that case would have permitted a fresh resubmit
+ * of an order that is, in fact, already live at the exchange -- a real
+ * duplicate-order risk, the exact failure mode this whole mechanism exists
+ * to prevent. There is no currently-available signal (see the class
+ * Javadoc's own "why {@code getPositions()}, not {@code queryOrder}"
+ * section -- unchanged, still true) that can positively rule out "the order
+ * is open and unfilled." Every persisted marker is therefore now
+ * <b>always</b> treated as unresolved and left recorded -- {@code
+ * getPositions()} is still called and logged, purely as diagnostic context
+ * for whichever human ends up investigating, but it no longer drives any
+ * clear/no-clear decision.
  */
 class SubmissionMarkerResolverTest {
 
@@ -35,40 +52,32 @@ class SubmissionMarkerResolverTest {
 
         SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
 
-        assertTrue(resolution.clearedAsSafe().isEmpty());
-        assertTrue(resolution.requiresHumanReview().isEmpty());
+        assertTrue(resolution.unresolvedMarkers().isEmpty());
     }
 
     /**
-     * "Pre-acceptance failure" scenario from the governing task brief: the
-     * ambiguous submit never actually reached the exchange, so no matching
-     * position exists -- safe to clear the marker and allow a fresh submit.
+     * The specific scenario the fixed critical finding names: an order that
+     * really was accepted but is still open/unfilled shows zero matching
+     * position, exactly like an order that never reached the exchange at
+     * all -- both must be treated identically (unresolved, never cleared).
      */
     @Test
-    void aMarkerWithNoMatchingPositionIsClearedAsSafe(@TempDir Path tempDir) {
+    void aMarkerWithNoMatchingPositionIsStillTreatedAsUnresolvedNeverAutoCleared(@TempDir Path tempDir) {
         SubmissionMarkerStore store = new SubmissionMarkerStore(tempDir.resolve("markers.json"));
         UUID id = UUID.randomUUID();
         store.record(id, "BTC-USDT");
         FakeExchangeAdapter adapter = new FakeExchangeAdapter();
-        adapter.willReturnPositions(List.of()); // no positions at all
+        adapter.willReturnPositions(List.of()); // no positions at all -- ambiguous, not proof of absence
 
         SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
 
-        assertEquals(1, resolution.clearedAsSafe().size());
-        assertEquals(id, resolution.clearedAsSafe().get(0).clientOrderId());
-        assertTrue(resolution.requiresHumanReview().isEmpty());
-        assertTrue(store.all().isEmpty(), "the marker must actually be cleared from durable storage, not just reported");
+        assertEquals(1, resolution.unresolvedMarkers().size());
+        assertEquals(id, resolution.unresolvedMarkers().get(0).clientOrderId());
+        assertEquals(1, store.all().size(), "an unresolved marker must never be silently dropped or auto-cleared");
     }
 
-    /**
-     * "Post-acceptance timeout" scenario from the governing task brief: the
-     * order really was accepted by the exchange (a real position now exists
-     * for that symbol) -- must NOT auto-clear (which would permit a future
-     * duplicate resubmit) and must NOT silently retry; flagged for human
-     * review instead, and the marker stays recorded.
-     */
     @Test
-    void aMarkerWithAMatchingNonZeroPositionRequiresHumanReviewAndIsNotCleared(@TempDir Path tempDir) {
+    void aMarkerWithAMatchingNonZeroPositionIsAlsoUnresolvedAndNotCleared(@TempDir Path tempDir) {
         SubmissionMarkerStore store = new SubmissionMarkerStore(tempDir.resolve("markers.json"));
         UUID id = UUID.randomUUID();
         store.record(id, "BTC-USDT");
@@ -77,14 +86,13 @@ class SubmissionMarkerResolverTest {
 
         SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
 
-        assertTrue(resolution.clearedAsSafe().isEmpty());
-        assertEquals(1, resolution.requiresHumanReview().size());
-        assertEquals(id, resolution.requiresHumanReview().get(0).clientOrderId());
-        assertEquals(1, store.all().size(), "an unresolved marker must not be silently dropped");
+        assertEquals(1, resolution.unresolvedMarkers().size());
+        assertEquals(id, resolution.unresolvedMarkers().get(0).clientOrderId());
+        assertEquals(1, store.all().size());
     }
 
     @Test
-    void aZeroSizedPositionForTheSymbolDoesNotCountAsMatchingSoTheMarkerIsClearedAsSafe(@TempDir Path tempDir) {
+    void aZeroSizedPositionForTheSymbolStillLeavesTheMarkerUnresolved(@TempDir Path tempDir) {
         SubmissionMarkerStore store = new SubmissionMarkerStore(tempDir.resolve("markers.json"));
         UUID id = UUID.randomUUID();
         store.record(id, "BTC-USDT");
@@ -93,11 +101,12 @@ class SubmissionMarkerResolverTest {
 
         SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
 
-        assertEquals(1, resolution.clearedAsSafe().size());
+        assertEquals(1, resolution.unresolvedMarkers().size());
+        assertEquals(1, store.all().size());
     }
 
     @Test
-    void aPositionForADifferentSymbolDoesNotResolveAMarkerForAnotherSymbol(@TempDir Path tempDir) {
+    void aPositionForADifferentSymbolDoesNotAffectAMarkerForAnotherSymbol(@TempDir Path tempDir) {
         SubmissionMarkerStore store = new SubmissionMarkerStore(tempDir.resolve("markers.json"));
         UUID id = UUID.randomUUID();
         store.record(id, "BTC-USDT");
@@ -106,25 +115,23 @@ class SubmissionMarkerResolverTest {
 
         SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
 
-        assertEquals(1, resolution.clearedAsSafe().size(), "an unrelated symbol's position must not block clearing");
+        assertEquals(1, resolution.unresolvedMarkers().size());
     }
 
     @Test
-    void multipleMarkersAreEachResolvedIndependentlyAgainstOneSharedPositionsCall(@TempDir Path tempDir) {
+    void multipleMarkersAreAllUnresolvedRegardlessOfIndividualPositionMatch(@TempDir Path tempDir) {
         SubmissionMarkerStore store = new SubmissionMarkerStore(tempDir.resolve("markers.json"));
-        UUID safeId = UUID.randomUUID();
-        UUID reviewId = UUID.randomUUID();
-        store.record(safeId, "ETH-USDT");
-        store.record(reviewId, "BTC-USDT");
+        UUID noPositionId = UUID.randomUUID();
+        UUID matchingPositionId = UUID.randomUUID();
+        store.record(noPositionId, "ETH-USDT");
+        store.record(matchingPositionId, "BTC-USDT");
         FakeExchangeAdapter adapter = new FakeExchangeAdapter();
         adapter.willReturnPositions(List.of(position("BTC-USDT", "0.01")));
 
         SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
 
-        assertEquals(1, resolution.clearedAsSafe().size());
-        assertEquals(safeId, resolution.clearedAsSafe().get(0).clientOrderId());
-        assertEquals(1, resolution.requiresHumanReview().size());
-        assertEquals(reviewId, resolution.requiresHumanReview().get(0).clientOrderId());
+        assertEquals(2, resolution.unresolvedMarkers().size());
+        assertEquals(2, store.all().size(), "neither marker is ever auto-cleared, regardless of position match");
     }
 
     @Test
@@ -135,5 +142,25 @@ class SubmissionMarkerResolverTest {
 
         // Must not throw -- proves getPositions() was never invoked.
         SubmissionMarkerResolver.resolve(store, adapter);
+    }
+
+    /**
+     * {@code getPositions()} is now purely diagnostic (see class Javadoc) --
+     * its own failure must not block startup from reaching a safe state.
+     * Every marker is unresolved regardless of whether the diagnostic call
+     * itself succeeded.
+     */
+    @Test
+    void getPositionsFailureIsToleratedAndAllMarkersAreStillReportedUnresolved(@TempDir Path tempDir) {
+        SubmissionMarkerStore store = new SubmissionMarkerStore(tempDir.resolve("markers.json"));
+        UUID id = UUID.randomUUID();
+        store.record(id, "BTC-USDT");
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willFailPositionsWith(new RuntimeException("network error"));
+
+        SubmissionMarkerResolver.Resolution resolution = SubmissionMarkerResolver.resolve(store, adapter);
+
+        assertEquals(1, resolution.unresolvedMarkers().size());
+        assertEquals(id, resolution.unresolvedMarkers().get(0).clientOrderId());
     }
 }

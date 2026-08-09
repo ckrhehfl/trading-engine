@@ -70,17 +70,32 @@ seam against — Paper Trading Bridge Tasks F-H, `.planning/paper-trading-f-
 order-executor.md` through `-h-vst-integration.md`). `engine.runtime.
 TradingLoop` depends only on `engine.execution.OrderExecutor` (`submit` +
 `pollFills` + `pendingOrders` + `cancel`), never on a concrete
-implementation. There are, and are meant to only ever be, exactly two:
-`PaperBroker` (the internal simulator — resolves fills synchronously from
-an injected price) and `ExchangeOrderExecutor` (venue-agnostic, wraps the
-`ExchangeAdapter` **interface**, never a concrete adapter — polls
-`queryOrder` for real, asynchronous fills). **A new venue means writing a
-new `ExchangeAdapter` implementation; it never means writing a new
-`OrderExecutor` implementation.** If a change looks like it needs a
-third `OrderExecutor`, that is a signal the change belongs in
-`ExchangeAdapter` instead — see `OrderExecutor`'s own Javadoc, which
-states this same invariant near-verbatim as the class's "Extensibility
-invariant."
+implementation. There are, and are meant to only ever be, exactly two
+**venue-shaped** implementations: `PaperBroker` (the internal simulator —
+resolves fills synchronously from an injected price) and
+`ExchangeOrderExecutor` (venue-agnostic, wraps the `ExchangeAdapter`
+**interface**, never a concrete adapter — polls `queryOrder` for real,
+asynchronous fills). **A new venue means writing a new `ExchangeAdapter`
+implementation; it never means writing a new `OrderExecutor`
+implementation.** If a change looks like it needs a third venue-specific
+`OrderExecutor`, that is a signal the change belongs in `ExchangeAdapter`
+instead — see `OrderExecutor`'s own Javadoc, which states this same
+invariant near-verbatim as the class's "Extensibility invariant."
+
+**Approved exception: venue-agnostic decorators** (added Task H, on real
+CodeRabbit review of `engine.runtime.PersistentSubmissionOrderExecutor`,
+which durably records/clears a `SUBMISSION_UNKNOWN` marker around any
+wrapped `OrderExecutor`'s `submit` call). A class that implements
+`OrderExecutor` purely to add a cross-cutting concern around **any**
+wrapped `OrderExecutor` — with zero venue knowledge of its own — is a
+structurally different extension than a second exchange-specific
+implementation, and does not reopen the risk the invariant above protects
+against (venue-specific submission logic leaking outside `ExchangeAdapter`).
+The literal count of classes implementing `OrderExecutor` can therefore
+legitimately exceed two once a decorator like this exists; what must stay
+at exactly two is the count of implementations that know how to talk to a
+specific venue. Full reasoning in `OrderExecutor`'s own Javadoc and
+`.planning/paper-trading-h-vst-integration.md`.
 
 `engine.runtime.PaperTradingApp`'s `PAPER_TRADING_EXECUTION_MODE`
 (`simulated` default | `bingx-vst`) selects which `OrderExecutor` gets

@@ -3,6 +3,8 @@ package engine.runtime;
 import engine.exchange.BalanceSnapshot;
 import engine.exchange.ExchangeAdapter;
 import engine.exchange.PositionSnapshot;
+import engine.risk.RiskLimits;
+import engine.schemas.Side;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.util.List;
@@ -11,11 +13,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Real, four-step startup check that must run against a real {@link
- * ExchangeAdapter} before {@code engine.execution.ExchangeOrderExecutor} is
- * ever constructed in {@code bingx-vst} mode -- see {@code
- * .planning/paper-trading-h-vst-integration.md} for the full design and
- * {@link PaperTradingApp}'s own Javadoc for where this is wired in.
+ * Real startup check that must run against a real {@link ExchangeAdapter}
+ * before {@code engine.execution.ExchangeOrderExecutor} is ever constructed
+ * in {@code bingx-vst} mode -- see {@code .planning/paper-trading-h-vst-
+ * integration.md} for the full design and {@link PaperTradingApp}'s own
+ * Javadoc for where this is wired in.
  *
  * <ol>
  *   <li>{@link ExchangeAdapter#getBalance()} -- fail closed unless the real
@@ -33,12 +35,12 @@ import org.slf4j.LoggerFactory;
  *       obviously wrong.
  *   <li>Logs the real balance (account state, not a secret -- safe to log,
  *       unlike the API key/secret this class never even has access to; see
- *       point 4 below). Also logs, informationally only -- never a hard
- *       gate -- if the balance looks small relative to canary-tier sizing
- *       (~2% of the {@code 100000} sim-equity baseline {@code TradingLoop}
- *       uses): BingX itself will reject an under-margined order (which
- *       {@code ExchangeOrderExecutor} already maps cleanly to {@code
- *       order.reject()}), so an under-funded VST account would just
+ *       the last point below). Also logs, informationally only -- never a
+ *       hard gate -- if the balance looks small relative to canary-tier
+ *       sizing (~2% of the {@code 100000} sim-equity baseline {@code
+ *       TradingLoop} uses): BingX itself will reject an under-margined
+ *       order (which {@code ExchangeOrderExecutor} already maps cleanly to
+ *       {@code order.reject()}), so an under-funded VST account would just
  *       silently never trade rather than error outright -- logging loudly
  *       here means that gets noticed instead.
  *   <li>{@link ExchangeAdapter#getPositions()} -- any non-zero position
@@ -48,7 +50,28 @@ import org.slf4j.LoggerFactory;
  *       against unknown pre-existing state, {@link Result#killSwitchShouldStartTripped()}
  *       comes back {@code true} -- the caller is expected to trip {@code
  *       KillSwitch} immediately after construction, requiring a deliberate
- *       human reset before any new signal is ever submitted.
+ *       human reset before any new signal is ever submitted. If a non-zero
+ *       position is found, step 4 (leverage enforcement, below) is skipped
+ *       entirely -- moot given no order can be submitted until a human
+ *       resets the kill switch, and a leverage change while a position is
+ *       open is commonly rejected by exchanges (not documented for BingX
+ *       specifically, but not worth risking).
+ *   <li><b>Leverage enforcement (added after a real, correctly-identified
+ *       CodeRabbit review finding on this PR):</b> only when starting clean
+ *       (step 3 found no pre-existing position), actively sets the real
+ *       exchange-side leverage for {@code symbol}, both {@code LONG} and
+ *       {@code SHORT} (hedge mode -- the confirmed real default per
+ *       CLAUDE.md's "Verified" section, and the only shape {@code
+ *       BingXAdapter#setLeverage} sends), to {@code RiskLimits.canary()
+ *       .baseLeverage()} -- closing a real, empirically-confirmed gap: this
+ *       project's own real VST verification run found a fresh account's
+ *       real default leverage was {@code 20X}, entirely independent of and
+ *       unenforced by {@code RiskGateway}'s own approved {@code 1x}, because
+ *       nothing previously called {@code setLeverage} anywhere in this
+ *       codebase. Fails closed (propagates) if either call fails, exactly
+ *       like the asset check -- this process must not begin normal
+ *       tick-driven trading believing leverage is constrained when it may
+ *       not actually be.
  *   <li>Never logs the API key/secret anywhere in this class -- structurally
  *       guaranteed, not just a discipline: this class is constructed with
  *       only an {@link ExchangeAdapter} reference, which exposes no
@@ -81,18 +104,20 @@ public final class VstPreflight {
     public record Result(BalanceSnapshot balance, boolean killSwitchShouldStartTripped) {}
 
     /**
-     * Runs all four checks against {@code adapter} in order. Throws {@link
+     * Runs all five checks against {@code adapter} in order. Throws {@link
      * IllegalStateException} (step 1 only) rather than returning a failure
      * result -- an asset mismatch is not a recoverable condition this class
      * has any safe fallback for, so it must stop construction outright, not
      * hand back a value a careless caller could ignore. Any exception thrown
-     * by {@code adapter.getBalance()}/{@code adapter.getPositions()} itself
-     * (e.g. a real network failure) propagates uncaught -- this is a
-     * one-shot startup check, not a per-tick call with its own retry/never-
-     * throw contract like {@code OrderExecutor.pollFills}.
+     * by {@code adapter.getBalance()}/{@code adapter.getPositions()}/{@code
+     * adapter.setLeverage} itself (e.g. a real network failure) propagates
+     * uncaught -- this is a one-shot startup check, not a per-tick call with
+     * its own retry/never-throw contract like {@code OrderExecutor
+     * #pollFills}.
      */
-    public static Result run(ExchangeAdapter adapter) {
+    public static Result run(ExchangeAdapter adapter, String symbol) {
         Objects.requireNonNull(adapter, "adapter is required");
+        Objects.requireNonNull(symbol, "symbol is required");
 
         BalanceSnapshot balance = adapter.getBalance();
         if (!EXPECTED_ASSET.equals(balance.asset())) {
@@ -132,11 +157,21 @@ public final class VstPreflight {
                     "VstPreflight: non-zero position(s) found at startup -- this process has no restart-recovery"
                             + "/reconciliation-against-real-positions story for pre-existing state; starting with"
                             + " the kill switch already TRIPPED, a deliberate human reset is required before any"
-                            + " new signal is submitted. positions={}",
+                            + " new signal is submitted. Skipping leverage enforcement -- moot until a human"
+                            + " resets the kill switch. positions={}",
                     positions);
             return new Result(balance, true);
         }
         log.info("VstPreflight: no pre-existing non-zero positions found, clean start");
+
+        int canaryBaseLeverage = RiskLimits.canary().baseLeverage().intValueExact();
+        adapter.setLeverage(symbol, Side.LONG, canaryBaseLeverage);
+        adapter.setLeverage(symbol, Side.SHORT, canaryBaseLeverage);
+        log.info(
+                "VstPreflight: real exchange-side leverage for {} set to {}x (LONG and SHORT, hedge mode) --"
+                        + " matching RiskGateway's own canary-tier base leverage",
+                symbol,
+                canaryBaseLeverage);
         return new Result(balance, false);
     }
 }

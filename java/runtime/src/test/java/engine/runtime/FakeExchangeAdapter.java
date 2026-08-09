@@ -7,8 +7,10 @@ import engine.exchange.PositionMode;
 import engine.exchange.PositionSnapshot;
 import engine.oms.Order;
 import engine.schemas.Side;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Hand-written {@link ExchangeAdapter} test double, local to {@code
@@ -21,18 +23,24 @@ import java.util.Objects;
  * convention means every module keeps its own small, local fakes rather than
  * introduce a shared test-fixtures dependency for one class.
  *
- * <p>Only {@link #getBalance()} and {@link #getPositions()} are scriptable
- * -- the only two {@link ExchangeAdapter} methods {@link VstPreflight} and
- * {@link SubmissionMarkerResolver} ever call. Every other method throws
- * {@link UnsupportedOperationException}, asserting by construction that
- * neither of those classes calls anything else.
+ * <p>{@link #getBalance()}/{@link #getPositions()}/{@link #setLeverage} are
+ * scriptable -- the only three {@link ExchangeAdapter} methods {@link
+ * VstPreflight} and {@link SubmissionMarkerResolver} ever call ({@code
+ * setLeverage} added for {@code VstPreflight}'s own real leverage-
+ * enforcement step). Every other method throws {@link
+ * UnsupportedOperationException}, asserting by construction that neither of
+ * those classes calls anything else.
  */
 final class FakeExchangeAdapter implements ExchangeAdapter {
+
+    record LeverageCall(String symbol, Side side, int leverage) {}
 
     private volatile BalanceSnapshot balance;
     private volatile RuntimeException balanceFailure;
     private volatile List<PositionSnapshot> positions = List.of();
     private volatile RuntimeException positionsFailure;
+    private volatile RuntimeException setLeverageFailure;
+    private final List<LeverageCall> leverageCalls = new CopyOnWriteArrayList<>();
 
     void willReturnBalance(BalanceSnapshot balance) {
         this.balance = Objects.requireNonNull(balance);
@@ -48,6 +56,14 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     void willFailPositionsWith(RuntimeException failure) {
         this.positionsFailure = Objects.requireNonNull(failure);
+    }
+
+    void willFailSetLeverageWith(RuntimeException failure) {
+        this.setLeverageFailure = Objects.requireNonNull(failure);
+    }
+
+    List<LeverageCall> leverageCalls() {
+        return new ArrayList<>(leverageCalls);
     }
 
     @Override
@@ -86,7 +102,10 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     @Override
     public void setLeverage(String symbol, Side side, int leverage) {
-        throw new UnsupportedOperationException("this fake's setLeverage is not scripted for this test suite");
+        if (setLeverageFailure != null) {
+            throw setLeverageFailure;
+        }
+        leverageCalls.add(new LeverageCall(symbol, side, leverage));
     }
 
     @Override

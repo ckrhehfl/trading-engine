@@ -284,4 +284,57 @@ class FileSignalSourceTest {
                 afterRestart.nextSignal().isPresent(),
                 "the marker file must reflect the LAST delivered intentId (B), not the first (A)");
     }
+
+    /**
+     * Marker writes are atomic (temp file + move) -- a real, correctly-
+     * identified CodeRabbit review finding on this PR: a plain {@code
+     * Files.writeString} truncates the existing file before writing, so a
+     * process crash mid-write could leave an empty or partial UUID behind,
+     * which {@link FileSignalSource#readMarker()} would then either treat
+     * as "no marker" (empty) or log-and-ignore (invalid UUID) -- either way
+     * losing the durable dedup guarantee this whole mechanism exists for,
+     * silently. Matches {@code DailyReportGenerator}'s own already-
+     * established {@code .tmp}-then-move convention in this exact codebase.
+     */
+    @Test
+    void markerWritesAreAtomicNoTempFileLeftBehindAfterASuccessfulDelivery(@TempDir Path tempDir) throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        Path markerFile = tempDir.resolve("delivered.marker");
+        writeIntent(signalFile, newIntent());
+        FileSignalSource source = new FileSignalSource(signalFile, markerFile);
+
+        source.nextSignal();
+
+        assertTrue(Files.exists(markerFile));
+        assertFalse(
+                Files.exists(tempDir.resolve("delivered.marker.tmp")),
+                "the temp file must be renamed away, not left behind");
+    }
+
+    /**
+     * Test-only seam (package-private constructor overload, mirroring
+     * {@code DailyReportGenerator}/{@code SubmissionMarkerStore}'s own
+     * identical {@code AtomicMover} testability pattern): forces the
+     * atomic-move step to fail, proving the fallback still leaves the
+     * marker durably correct rather than silently losing it.
+     */
+    @Test
+    void aNonAtomicMoveFallbackStillPersistsTheMarkerWhenAtomicMoveFails(@TempDir Path tempDir) throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        Path markerFile = tempDir.resolve("delivered.marker");
+        OrderIntent intent = newIntent();
+        writeIntent(signalFile, intent);
+        FileSignalSource.AtomicMover flakyMover = (source, target) -> {
+            throw new java.nio.file.AtomicMoveNotSupportedException(
+                    source.toString(), target.toString(), "test-forced failure");
+        };
+        FileSignalSource source = new FileSignalSource(signalFile, markerFile, flakyMover);
+
+        source.nextSignal();
+
+        FileSignalSource afterRestart = new FileSignalSource(signalFile, markerFile);
+        assertFalse(
+                afterRestart.nextSignal().isPresent(),
+                "the marker must have been durably persisted via the non-atomic fallback");
+    }
 }

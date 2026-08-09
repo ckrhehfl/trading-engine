@@ -56,18 +56,23 @@ and G's own discipline.
    carried `"asset":"VST"` in their JSON (added incidentally by an earlier
    task, never asserted on) — this task added the real assertions plus a
    dedicated missing-field test.
-4. **`engine.runtime.VstPreflight`** — a real, tested, four-step startup
-   check (see its own Javadoc for the full four-step contract): fails
-   closed (`IllegalStateException`, never a silent fallback to simulated
-   mode) unless `getBalance().asset()` is exactly `"VST"`; logs the real
-   balance and warns (informational only, never a hard gate) if it looks
-   small relative to canary-tier sizing; calls `getPositions()` and
-   returns `killSwitchShouldStartTripped=true` if any non-zero position
-   exists (this process has no restart-recovery/reconciliation-against-
-   real-positions story anywhere else); never logs API key/secret
-   anywhere (structurally guaranteed — the class is constructed with only
-   an `ExchangeAdapter` reference, which exposes no credential accessor).
-   11 tests (`VstPreflightTest`) against a hand-written `FakeExchangeAdapter`
+4. **`engine.runtime.VstPreflight`** — a real, tested startup check (see
+   its own Javadoc for the full contract): fails closed
+   (`IllegalStateException`, never a silent fallback to simulated mode)
+   unless `getBalance().asset()` is exactly `"VST"`; logs the real balance
+   and warns (informational only, never a hard gate) if it looks small
+   relative to canary-tier sizing; calls `getPositions()` and returns
+   `killSwitchShouldStartTripped=true` if any non-zero position exists
+   (this process has no restart-recovery/reconciliation-against-real-
+   positions story anywhere else), skipping the leverage step below
+   entirely in that case; when starting clean, actively sets real
+   exchange-side leverage (`LONG` and `SHORT`, hedge mode) to
+   `RiskLimits.canary().baseLeverage()` — **added after the original
+   implementation, in response to a real CodeRabbit review finding**, see
+   "CodeRabbit review findings" below; never logs API key/secret anywhere
+   (structurally guaranteed — the class is constructed with only an
+   `ExchangeAdapter` reference, which exposes no credential accessor).
+   14 tests (`VstPreflightTest`) against a hand-written `FakeExchangeAdapter`
    test double local to `:runtime`'s own test sources (Gradle test source
    sets aren't shared across modules, so this mirrors, rather than reuses,
    `:execution`'s own package-private `FakeExchangeAdapter`).
@@ -162,28 +167,96 @@ attacker/careless-operator"), not just asserted:
 
 ## `VstPreflight` real behavior
 
-Confirmed against the real VST host during the verification run (see
-below): `getBalance()` returned `asset="VST"` (passed the fail-closed
-check), a real balance, and `getPositions()` returned an empty array (no
-pre-existing positions, so the kill switch stayed clean/untripped at
-startup). All four steps were exercised for real, not just against the
-fake in the unit suite. The 11 `VstPreflightTest` cases separately cover:
-asset mismatch (both a wrong asset and a `null` asset) → refuses to start;
-the refusal message never contains "apikey"/"secret" (a cheap, direct
-proof of the "never logs credentials" claim, verified as an observable
-contract rather than only by code inspection); a small-balance case is
-informational only (does not throw, does not trip); a non-zero long
-position and a non-zero short position both force
-`killSwitchShouldStartTripped=true`; an all-zero-sized position list does
-not; `getBalance()`/`getPositions()` failures both propagate uncaught
-(this is a one-shot startup check, not a per-tick call with `pollFills`'s
-own "never throw" contract); a `null` adapter is rejected.
+Confirmed against the real VST host during the original verification run
+(see below): `getBalance()` returned `asset="VST"` (passed the fail-closed
+check), a real balance, and (at that time) `getPositions()` returned an
+empty array (no pre-existing positions, so the kill switch stayed
+clean/untripped at that startup).
+
+**Leverage enforcement was added later, in response to CodeRabbit review,
+after the original real verification run had already happened -- see
+"CodeRabbit review findings" below.** A second, real, minimal verification
+run was made specifically to check it (a separate throwaway driver,
+`ManualLeverageVerification`, that only constructs `PaperTradingApp
+.fromEnvironment()` in `bingx-vst` mode and stops -- no order placed).
+**Real result: the account still held the 0.001 BTC LONG position from the
+original run** (see "Real state left on the VST account" below -- it was
+never closed), so `VstPreflight` correctly found a non-zero position and
+skipped leverage enforcement entirely, exactly as designed:
+
+```
+VstPreflight: non-zero position(s) found at startup ... Skipping leverage
+enforcement -- moot until a human resets the kill switch.
+positions=[PositionSnapshot[symbol=BTC-USDT, positionSide=LONG,
+positionAmt=0.0010, avgPrice=64881.5, leverage=20, ...]]
+```
+
+This is real, valuable, independent confirmation of a *different* part of
+the design (`VstPreflight` correctly detecting a real pre-existing
+position across a real process restart and tripping the kill switch a
+second time, independently) -- but it means **the leverage-enforcement
+step's own real `setLeverage` HTTP call has not been independently
+verified against the real BingX API in this task** -- only unit-tested
+against `FakeExchangeAdapter`. Stated plainly rather than glossed over:
+this is a real gap in this task's own verification coverage, not
+something to claim otherwise. Re-verifying it for real would require the
+account to hold no position first.
+
+**Why the still-open position was not closed to enable that
+re-verification: a real, disclosed finding, not a missed opportunity.**
+This project's OMS-mediated order path has **no way to close or reduce an
+existing position today.** `engine.schemas.Side` has exactly two values,
+`LONG`/`SHORT`, and `BingXAdapter` maps each directly to BingX's own
+`side`/`positionSide` pair for *opening* exposure in that direction
+(`LONG` → `side=BUY, positionSide=LONG`; `SHORT` → `side=SELL,
+positionSide=SHORT`) -- confirmed directly against `BingXAdapter
+.bingxSide`/`bingxPositionSide`. In hedge mode (this account's own real,
+confirmed mode), submitting `Side.SHORT` against a symbol that already has
+an open `LONG` position would **not** close or reduce that position -- it
+would open a **second, independent SHORT position** alongside it (hedge
+mode allows simultaneous LONG and SHORT positions in the same symbol),
+leaving the account in a *worse*, more confusing state, not a flatter one.
+No `reduceOnly` parameter is sent by `BingXAdapter.submitOrder` either.
+Attempting to "flatten" the position through this codebase's own
+OMS-mediated path was therefore correctly recognized as something that
+would make things worse, not better, and was not attempted -- the
+position can only be closed today by a human acting directly (e.g. via the
+BingX UI), not through any code path this project currently has. Flagged
+here as a real, disclosed gap for a human priority decision (closing
+positions is a real capability this project's OMS will eventually need),
+not fixed under this task's own pressure -- matches the "flag rather than
+redesign" guidance for an out-of-scope discovery.
+
+The 14 `VstPreflightTest` cases (unit, against `FakeExchangeAdapter`)
+separately cover: asset mismatch (both a wrong asset and a `null` asset)
+→ refuses to start; the refusal message never contains "apikey"/"secret"
+(a cheap, direct proof of the "never logs credentials" claim, verified as
+an observable contract rather than only by code inspection); a
+small-balance case is informational only (does not throw, does not trip);
+a non-zero long position and a non-zero short position both force
+`killSwitchShouldStartTripped=true` and skip leverage enforcement
+entirely; an all-zero-sized position list does not trip, and does proceed
+to leverage enforcement; `getBalance()`/`getPositions()` failures both
+propagate uncaught (this is a one-shot startup check, not a per-tick call
+with `pollFills`'s own "never throw" contract); a `null` adapter/symbol is
+rejected; a clean start calls `setLeverage` for both `LONG` and `SHORT`
+with the real `RiskLimits.canary().baseLeverage()` value; a `setLeverage`
+failure propagates uncaught (fails closed, same as the asset check).
 
 ## `SUBMISSION_UNKNOWN` design
 
 The governing plan (and Task G's own planning doc) deferred this entirely
 to Task H — see Task G's doc for the full reasoning at the time. Re-read
 before starting this task, per the task brief's own instruction.
+
+**This section describes the design as it stands after a real, correctly-
+identified CodeRabbit review finding (marked Critical) corrected it — see
+"CodeRabbit review findings" below for the original design and exactly
+what was wrong with it.** The original version auto-cleared a marker
+whenever no matching position existed; that reasoning was wrong (an
+accepted-but-still-open order also produces zero matching position, so
+auto-clearing on that basis could have permitted a real duplicate order).
+The corrected design below never auto-clears at all.
 
 **The real constraint that shaped this design, found while implementing
 it, not assumed in advance**: `ExchangeAdapter.queryOrder(Order)` requires
@@ -203,32 +276,36 @@ query by even if there were. The governing plan's own phrasing
 is a real, disclosed finding that only one of those two is actually
 usable here, not an oversight or a shortcut.
 
-**Resolution therefore uses `ExchangeAdapter.getPositions()` only**
-(`SubmissionMarkerResolver`) — real ground truth about the account's
-current holdings, callable with no per-order identifier at all. For each
-persisted `SubmissionMarker`, resolution checks whether any non-zero
-position exists for that marker's own `symbol`:
-
-- **No matching position** → treated as most likely never having reached
-  the exchange (the "pre-acceptance failure" case from the task brief) —
-  safe to clear the marker.
-- **A matching non-zero position exists** → the ambiguous submission may
-  have gone through (the "post-acceptance timeout" case) — the marker is
-  deliberately **not** auto-cleared and **not** treated as license for any
-  retry; it stays recorded, flagged in the returned `Resolution
-  #requiresHumanReview()` list, logged at ERROR, for a human to
-  investigate directly (e.g. via the BingX UI) and clear manually once
-  confirmed.
+**Resolution (`SubmissionMarkerResolver`) never auto-clears any marker.**
+Every marker present at startup is always reported unresolved, and the
+kill switch always starts tripped when any exist. `ExchangeAdapter.
+getPositions()` is still called and logged alongside each marker, but
+purely as diagnostic context for whichever human ends up investigating
+("was there a matching position at the moment of this restart or not") —
+it no longer drives any clear/no-clear decision, because there is no
+currently-available signal that can positively rule out "the order was
+accepted and is still open/unfilled" (a real position only exists once
+quantity is actually filled; an open `LIMIT` order sitting away from the
+market produces zero matching position, identically to an order that
+never reached the exchange at all). A real resolution requires a human
+directly confirming the order's fate (e.g. via the BingX UI) and then
+deliberately clearing the marker — not something this class attempts to
+automate. `getPositions()`'s own failure is now tolerated (caught,
+logged, treated as "no diagnostic context available") rather than
+propagated — since it no longer feeds a safety-relevant decision, its own
+failure must not block this process from reaching its own safe (tripped)
+startup state.
 
 This is coarser than a genuine per-order query would be — it can only
-answer "does *any* position exist for this symbol," not "did *this
+report "does *any* position exist for this symbol," not "did *this
 specific* order fill," an accepted limitation given this project's current
 single-symbol, low-frequency, effectively-one-order-in-flight-per-symbol
 scope (see CLAUDE.md's Current Scope). `BingXAdapter.queryOrder` accepting
 a `clientOrderID`-based lookup (common on exchanges in this family) would
-remove this limitation but is unconfirmed against BingX's real API
-(nothing in CLAUDE.md's "Exchange API Facts" documents this) — a real,
-disclosed follow-up, not guessed at or implemented speculatively here.
+let a future version resolve markers for real, but is unconfirmed against
+BingX's real API (nothing in CLAUDE.md's "Exchange API Facts" documents
+this) — a real, disclosed follow-up, not guessed at or implemented
+speculatively here.
 
 **Persistence** (`SubmissionMarkerStore`) is a single JSON file
 (`var/live/submission_markers.json`, matching the existing `var/live/
@@ -236,12 +313,21 @@ signals/`/`var/live/reports/` convention), loaded fully into memory at
 construction and rewritten fully on every `record`/`clear` — deliberately
 not a general persistence framework; this project's own single-symbol,
 daily-cadence scope means at most a handful of entries are ever live at
-once, so "rewrite the whole file" costs nothing in practice. Tolerant of a
-missing or corrupt file at construction (treated as empty, logged only for
-corruption) — matching `FileSignalSource`'s own established tolerance
-convention — but a **write** failure propagates (`IllegalStateException`),
-since a caller must know if a just-recorded marker didn't actually become
-durable; that's the entire point of the class.
+once, so "rewrite the whole file" costs nothing in practice. **Fails
+closed on any read/parse failure** — only a genuinely missing file is
+treated as empty; a corrupt-but-present file throws (`IllegalStateException`)
+rather than silently starting empty, since a corrupt file could otherwise
+silently discard real, still-unresolved `SUBMISSION_UNKNOWN` state (a real,
+correctly-identified CodeRabbit review finding, doubly important once
+resolution never auto-clears — losing a marker to a bad read would be the
+one remaining way to silently bypass this mechanism entirely). **Writes
+are atomic** (temp file + `ATOMIC_MOVE`, with a non-atomic-replace
+fallback for `AtomicMoveNotSupportedException`/`FileAlreadyExistsException`),
+mirroring `DailyReportGenerator`'s own already-established `.tmp`-then-move
+convention in this exact codebase (matched deliberately, not reinvented,
+and not CodeRabbit's own literal suggested `FileChannel.force(true)`
+addition — see "CodeRabbit review findings" below for why matching the
+established convention was chosen instead).
 
 **`PersistentSubmissionOrderExecutor`** is a thin `OrderExecutor`
 decorator: records a marker immediately before delegating `submit`, clears
@@ -253,32 +339,41 @@ holds no `ExchangeAdapter` reference at all — resolution is a fully
 separate concern (`SubmissionMarkerResolver`), keeping this class simple
 and testable with a hand-written `OrderExecutor` fake
 (`FakeOrderExecutor`, local to `:runtime`'s test sources) rather than
-needing any exchange-shaped test double.
+needing any exchange-shaped test double. This is a **third class
+implementing `OrderExecutor`**, alongside `PaperBroker` and
+`ExchangeOrderExecutor` — a real CodeRabbit review finding correctly
+caught this against the "exactly two implementations" invariant `
+OrderExecutor`'s own Javadoc states; resolved by explicitly documenting a
+venue-agnostic-decorator exception to that invariant (see "CodeRabbit
+review findings" below and `OrderExecutor`'s own updated Javadoc), not by
+restructuring this class.
 
 **Required-scenario mapping** (task brief's three named tests):
 
 | Brief's scenario | Test |
 |---|---|
-| Post-acceptance timeout (order was accepted; must not auto-resubmit; resolves via real state query) | `SubmissionMarkerResolverTest#aMarkerWithAMatchingNonZeroPositionRequiresHumanReviewAndIsNotCleared` |
-| Pre-acceptance failure (never accepted; safe to clear) | `SubmissionMarkerResolverTest#aMarkerWithNoMatchingPositionIsClearedAsSafe` |
-| Marker still unresolved across a simulated restart (must not be silently dropped or retried) | `SubmissionMarkerStoreTest#recordPersistsAMarkerVisibleToAFreshInstanceAgainstTheSameFile` + `SubmissionMarkerResolverTest`'s own review-required case leaving the marker recorded (not cleared) in the store |
+| Post-acceptance timeout (order was accepted; must not auto-resubmit) | `SubmissionMarkerResolverTest#aMarkerWithAMatchingNonZeroPositionIsAlsoUnresolvedAndNotCleared` |
+| Pre-acceptance failure (never accepted) — see below for why this no longer auto-clears | `SubmissionMarkerResolverTest#aMarkerWithNoMatchingPositionIsStillTreatedAsUnresolvedNeverAutoCleared` |
+| Marker still unresolved across a simulated restart (must not be silently dropped or retried) | `SubmissionMarkerStoreTest#recordPersistsAMarkerVisibleToAFreshInstanceAgainstTheSameFile` + `SubmissionMarkerResolverTest`'s own unresolved-marker cases, none of which ever clear the store |
 
-**A real, disclosed deviation from the brief's literal wording**: "resolving
-it via a real `queryOrder` call finding the order already live" (the
-brief's own phrasing for the post-acceptance-timeout test) is satisfied in
-spirit — the marker resolves correctly to "do not clear, do not permit a
-retry" — but via `getPositions()`, not literally `queryOrder`, for the
-structural reason explained above. Named explicitly here rather than
-silently substituted, matching this project's own established review-
-response norm ("deviate from the literal suggested text with reasoning
-when there's a good reason to").
+**A real, disclosed deviation from the brief's literal wording, revised
+after CodeRabbit review**: the brief names a "pre-acceptance failure...
+safe to clear" case, distinct from "post-acceptance timeout." The
+corrected design (this section) treats both identically — always
+unresolved, never cleared — because, as explained above, there is no
+reliable signal available to this codebase today that actually
+distinguishes the two cases. The brief's own named distinction was a
+reasonable design target that real analysis (prompted by CodeRabbit's
+review) found isn't actually achievable safely with `getPositions()` as
+the only available signal; treating both as unresolved is the honest,
+safe resolution, not a shortcut.
 
 **Wiring**: `PaperTradingApp.forBingXVst` calls `SubmissionMarkerResolver
 .resolve` immediately after `VstPreflight.run`, before constructing the
-real `OrderExecutor` graph — an unresolved (`requiresHumanReview`) marker
-forces the same `killSwitchShouldStartTripped` outcome as a non-zero
-`VstPreflight` position, for the same reason (unknown state this process
-must not begin normal tick-driven trading against).
+real `OrderExecutor` graph — any unresolved marker forces the same
+`killSwitchShouldStartTripped` outcome as a non-zero `VstPreflight`
+position, for the same reason (unknown state this process must not begin
+normal tick-driven trading against).
 
 ## `FileSignalSource` persistence fix and its tests
 
@@ -380,7 +475,7 @@ real `RiskGateway.evaluate()` call via a real `OrderPipeline`.
 ### 1. Real balance/asset
 
 ```json
-{"code":0,"msg":"","data":[{"userId":"1494058088073977861","asset":"VST","balance":"96224.6140","equity":"96224.6140","unrealizedProfit":"0.0000","realizedProfit":"0","availableMargin":"96224.6140","usedMargin":"0.0000","frozenMargin":"0.0000","shortUid":"33719465"}]}
+{"code":0,"msg":"","data":[{"userId":"<redacted-real-account-id>","asset":"VST","balance":"96224.6140","equity":"96224.6140","unrealizedProfit":"0.0000","realizedProfit":"0","availableMargin":"96224.6140","usedMargin":"0.0000","frozenMargin":"0.0000","shortUid":"<redacted-real-account-id>"}]}
 ```
 
 `asset="VST"`, balance/equity **96224.6140** — `VstPreflight` passed the
@@ -501,16 +596,21 @@ in-memory instance has no record of") this experiment exists to observe.
 ### 5. Real state left on the VST account as a result of this run
 
 - One real, still-open **0.001 BTC LONG position** at ~64881.5, from the
-  filled `GUARDED_MARKET` order above. **Not flattened** — closing it
-  would itself be another real order placement, which was not asked for
-  and was not done unilaterally; left for @ckrhehfl to close via the
-  BingX UI directly (simpler than running more code for it) or to leave
-  as-is. A real consequence, working exactly as designed: any *future*
-  real `bingx-vst`-mode process start will have `VstPreflight` find this
-  non-zero position and correctly start with the kill switch already
-  tripped, requiring a deliberate human reset — this is the intended
-  safety behavior, not a bug, and this run is direct, real evidence it
-  actually fires.
+  filled `GUARDED_MARKET` order above. **Not flattened** — and, per the
+  real finding recorded above under "`VstPreflight` real behavior," this
+  codebase's OMS-mediated order path currently has **no way to close or
+  reduce a position at all** (attempting it via `Side.SHORT` would open a
+  second, independent position in hedge mode, not close this one) — so
+  this was never a live option through this project's own code, only
+  directly via the BingX UI. Left for @ckrhehfl to close that way, or to
+  leave as-is. A real consequence, confirmed **twice**, working exactly as
+  designed: both the original run and a later, separate real re-run (made
+  to check the leverage-enforcement fix below) independently found
+  `VstPreflight` correctly detecting this non-zero position and starting
+  with the kill switch already tripped, requiring a deliberate human
+  reset — the intended safety behavior, not a bug, now confirmed
+  reproducible across two independent real process starts, not a
+  one-off.
 - The cancelled `LIMIT` order above leaves no residual open order (real,
   confirmed `CANCELLED` state).
 - `var/live/submission_markers.json` (relative to wherever the process
@@ -600,39 +700,228 @@ either incident.
   real `commission` field — real evidence was captured (see above), but
   implementing the switch itself is a separate, deliberate follow-up, not
   folded into this task per Task G's own framing.
-- Calling `setLeverage`/`setPositionMode` to align real account leverage
-  with `RiskGateway`'s own `approvedLeverage` — a real, disclosed,
-  pre-existing gap (see CLAUDE.md's new "Verified" bullet), flagged for a
-  human priority decision, not fixed under this task's own pressure (it
-  predates this task and is outside every one of Tasks F/G/H's own
-  itemized scope).
+- **`setLeverage` was originally deferred here, then actually built** —
+  see "CodeRabbit review findings" below: a real CodeRabbit review finding
+  correctly identified the real leverage gap as worth fixing now rather
+  than only flagging, and `VstPreflight` now calls it for real on every
+  clean `bingx-vst` start. `setPositionMode` remains genuinely out of
+  scope — hedge mode is already the real, confirmed default (see
+  CLAUDE.md's "Verified" section), so there is nothing to actively set.
+- Building a position-closing/reducing order path — a real, disclosed,
+  newly-confirmed gap (see "`VstPreflight` real behavior" above): this
+  codebase's OMS-mediated path can only *open* exposure in either
+  direction (`Side.LONG`/`Side.SHORT`), never close or reduce an existing
+  position. Flagged for a human priority decision, not built under this
+  task's own pressure — this task's own real VST run needed it (to
+  re-verify leverage enforcement against a flat account) but correctly
+  did not attempt it once the real risk of making things worse (opening a
+  second, independent hedge-mode position instead of closing the first)
+  was found.
 - A `clientOrderID`-based `queryOrder` lookup on `BingXAdapter` (would
   remove `SubmissionMarkerResolver`'s own coarser `getPositions()`-only
   limitation) — unconfirmed against BingX's real API, not implemented
   speculatively.
 
+## CodeRabbit review findings
+
+One review round on PR #79 (`ASSERTIVE` profile), 12 actionable comments
+against the original push. Per this project's own established practice:
+verified each finding against the real current code before deciding, fixed
+what was real, declined the rest with recorded reasoning — nothing
+accepted or dismissed on the review's word alone.
+
+**Fixed, this PR, with reasoning:**
+
+- **(Critical) `SubmissionMarkerResolver` auto-cleared a marker on "no
+  matching position," which is not actually proof the order never
+  reached the exchange.** The single most important finding in this
+  round — see "`SUBMISSION_UNKNOWN` design" above for the full corrected
+  design. An accepted-but-still-open order (e.g. a real `LIMIT` order
+  resting away from the market) also produces zero matching position,
+  identically to an order that never reached the exchange at all — there
+  is no currently-available signal that distinguishes the two. Auto-
+  clearing on "no position" could therefore have permitted a fresh
+  resubmit of an order that was, in fact, already live — a real
+  duplicate-order risk, the exact failure mode this whole mechanism
+  exists to prevent. Fixed by removing the auto-clear path entirely:
+  every persisted marker is now always reported unresolved, and
+  `getPositions()` is retained purely as diagnostic logging, no longer a
+  decision input. `SubmissionMarkerResolverTest` rewritten accordingly
+  (8 tests, all verifying "unresolved, never cleared" across every
+  scenario the original tests covered plus a `getPositions()`-failure-
+  tolerated case).
+- **`SubmissionMarkerStore` treated a corrupt/unreadable marker file as
+  empty, and writes were not atomic.** Doubly important once the
+  critical finding above means a marker is never auto-cleared — losing a
+  marker to a bad read would become the one remaining way to silently
+  bypass the whole mechanism. Fixed: only a genuinely missing file
+  ({@code NoSuchFileException}) is now treated as empty; any other read
+  or parse failure throws (`IllegalStateException`), matching this
+  class's own existing write-failure convention rather than introducing
+  a new one. Writes now go through a temp-file-then-`ATOMIC_MOVE`
+  sequence with a non-atomic-replace fallback for
+  `AtomicMoveNotSupportedException`/`FileAlreadyExistsException` —
+  **deliberately matching `DailyReportGenerator`'s own already-
+  established convention in this exact codebase**, not CodeRabbit's own
+  literal suggested `FileChannel.force(true)` addition (an fsync this
+  project's one existing precedent for atomic writes doesn't do either —
+  matching established convention was judged more valuable than a
+  stricter-but-novel-in-this-codebase guarantee). `SubmissionMarkerStoreTest`
+  gained an `AtomicMover` test seam (mirroring `DailyReportGenerator`'s
+  own identical pattern) and tests for: fail-closed on corruption, no
+  leftover `.tmp` file after a successful write, and the non-atomic
+  fallback still persisting correctly.
+- **`FileSignalSource`'s own delivered-marker write was not atomic** (the
+  same class of issue as above, for a different file). Fixed identically
+  — temp file + `ATOMIC_MOVE` + fallback, a new `AtomicMover` test seam,
+  and tests for no-leftover-tmp-file and fallback-still-persists.
+- **Real exchange-side leverage was never enforced, confirmed by this
+  task's own real VST run to sit at `20X` against `RiskGateway`'s own
+  `1x`-approved canary tier.** `VstPreflight` now actively sets real
+  leverage (`LONG` and `SHORT`, hedge mode) to `RiskLimits.canary()
+  .baseLeverage()` on every clean start, skipping this step entirely (and
+  logging why) when a non-zero position already exists. Fails closed
+  (propagates) on a `setLeverage` failure, matching the asset check's own
+  precedent. See "`VstPreflight` real behavior" above for the honest
+  account of what was and wasn't independently re-verified against the
+  real API for this specific fix (the account's own still-open position
+  from the original run blocked a clean re-verification — a real,
+  disclosed, newly-found gap of its own: this codebase's OMS-mediated
+  path cannot close or reduce a position at all).
+- **`PersistentSubmissionOrderExecutor` is a third class implementing
+  `OrderExecutor`, against `OrderExecutor`'s own documented "exactly two
+  implementations" invariant.** A real, correctly-identified inconsistency
+  — this task's own new code violated a rule this same task's planning
+  doc restates. Resolved by amending the invariant, not restructuring the
+  code: `OrderExecutor`'s own Javadoc and CLAUDE.md's Architecture section
+  now both explicitly carve out an approved exception for venue-agnostic
+  **decorators** (a class implementing `OrderExecutor` purely to add a
+  cross-cutting concern around *any* wrapped `OrderExecutor`, with zero
+  venue knowledge of its own) — the original invariant's real purpose was
+  preventing venue-specific submission logic from leaking outside
+  `ExchangeAdapter`, which a venue-agnostic decorator does not do.
+  Restructuring `PersistentSubmissionOrderExecutor` to avoid implementing
+  the interface at all (CodeRabbit's own suggested fix — folding it into
+  `ExchangeOrderExecutor` itself) was considered and declined: it would
+  require moving persistence classes across the `:execution`/`:runtime`
+  module boundary and coupling `ExchangeOrderExecutor` to a concrete
+  persistence mechanism it has no other reason to know about, a larger
+  and riskier change than documenting the real, narrower distinction the
+  invariant was actually protecting. `FakeOrderExecutor` (test-only, in
+  `:runtime`'s own test sources, never shipped) was left as-is on the
+  same reasoning — it is not a production implementation at all.
+- **The real VST balance response pasted into this planning doc included
+  real account identifiers (`userId`, `shortUid`).** A real, valid
+  finding — CLAUDE.md's own Non-negotiable Rules prohibit committing raw
+  trading logs with account identifiers. Fixed: both replaced with
+  `<redacted-real-account-id>` in the captured JSON above. The real
+  balance/equity figures themselves were kept — CLAUDE.md's own Task H
+  brief explicitly names the balance number itself as safe to log/record
+  ("not the credentials — the balance number itself is fine to log, it's
+  account state, not a secret"), and it is real evidence this task's own
+  brief asked to capture, not an identifier.
+- **The guardrail hook's workflow-path match didn't normalize Windows-
+  style backslash paths, and its VST-host-env-var check only inspected
+  this one edit's own diff fragment, not the resulting file** (so a
+  sensitive assignment split across two separate Edit calls could evade
+  it). Both real, valid robustness gaps. Fixed: backslashes are now
+  normalized to forward slashes before the workflow-path match; the
+  env-var check now reconstructs the actual resulting file content (the
+  current on-disk file with `old_string` replaced by `new_string`, or
+  `content` directly for a `Write`) and checks for `BINGX_VST_BASE_URL`/
+  `getenv` co-occurring within the same semicolon-delimited Java
+  statement — not a fixed line-window (which was tried first and found to
+  false-positive against this project's own real code: `BINGX_VST_BASE_URL`'s
+  real declaration in `PaperTradingApp.java` legitimately sits only 1-2
+  lines from unrelated `getenv` calls for `BINGX_API_KEY`/
+  `BINGX_API_SECRET` in the same construction method) and not a naive
+  whole-file check (which false-positived on this class's own Javadoc,
+  which legitimately discusses both terms in prose). Comments are now
+  stripped before analysis for the same reason. Given the resulting
+  script's real complexity (an embedded Python analysis step), it was
+  moved out of the single-JSON-string-command pattern the existing
+  `bingx-hostname-guard` hook uses into two real files
+  (`.claude/hooks/vst-guardrail.sh`, `.claude/hooks/vst_guardrail_check.py`)
+  — triple-escaping this much logic into one JSON string was judged a
+  real correctness risk of its own, not a style preference. Re-tested
+  against all original scenarios plus the new false-positive cases (the
+  real file, a genuine 2-call split-edit attack, a normal unrelated edit)
+  before installing.
+
+**Declined, with reasoning, not attempted here:**
+
+- **"Wire the persisted marker path into the VST runtime — `PaperTradingApp`'s
+  path uses `new FileSignalSource(signalPath)` [the 1-arg, no-marker
+  constructor]."** Verified against the real, current code and found to
+  be a false positive: `forBingXVst` constructs `PaperTradingApp` via the
+  `OrderExecutor`-accepting 7-arg constructor (not the 6-arg `Clock`
+  overload), which — confirmed by direct reading, not just this
+  assertion — always builds `FileSignalSource` **with** the marker-file
+  variant (`new FileSignalSource(signalPath,
+  signalPath.resolveSibling("delivered.marker"))`). Only the `simulated`-
+  mode path (the 6-arg `Clock` overload, never reached from
+  `forBingXVst`) uses the no-marker constructor, which is the correct,
+  zero-behavior-change requirement for that mode. Additionally confirmed
+  by a real, already-passing test,
+  `PaperTradingAppTest#orderExecutorAcceptingConstructorPersistsTheDeliveredSignalMarkerFile`.
+- **"`FileSignalSource.nextSignal()` records the delivered marker before
+  `OrderPipeline.submitIntent()`/`RiskGateway` evaluation completes, so a
+  Risk-Gateway-rejected (or process-crash-interrupted) intent is
+  permanently suppressed even though no order was ever created."** Real
+  and correctly identified as a genuine scope question, but declined as
+  a fix here, for two reasons. First, it is not a new behavior this task
+  introduced: the pre-existing, unchanged in-memory `lastDeliveredIntentId`
+  pointer already has this exact property (set inside `nextSignal()`,
+  before `TradingLoop` ever processes the result) — this task's own
+  change only makes that same, already-accepted scope **durable**, not
+  different in kind. Second, and more importantly: unlike the critical
+  finding above, this is a **correctness/opportunity-cost** concern (a
+  legitimate signal that could have been retried after a transient
+  rejection is instead lost until the next real signal), not a **safety**
+  concern (no scenario here produces a real duplicate order — the whole
+  point of the fix in "What was built" item 6 is durability specifically
+  for the *accepted-and-submitted* case). A real fix would require
+  extending the `SignalSource` interface itself (shared by `FileSignalSource`
+  and `DummySignalSource`) with a "confirm processed" callback `TradingLoop`
+  would need to call after a successful submission — real, valid,
+  "Heavy lift"-scoped (CodeRabbit's own label) design work touching a
+  shared interface, not a narrow bug fix, and not something to take on
+  under this task's own review-response pressure. Flagged here as a real,
+  disclosed, scoped follow-up rather than silently dropped.
+
+**Final state, after all fixes above, same push (not separately re-
+requested per-fix, per this project's own CodeRabbit rate-limit
+guidance):** `./gradlew clean build` — **293 tests, 0 failures, 0 errors**.
+
 ## Verification
 
 - `./gradlew clean build` (full multi-module suite, all six modules,
   clean, not incremental) — **BUILD SUCCESSFUL**. Aggregate JUnit XML
-  counts across all six modules: **283 tests, 0 failures, 0 errors**
-  (239 from Task G's final state + 44 new: 2 `BingXAdapterTest` (asset
-  field) + 1 `BingXAdapterTest` (credential stripping) + 11
-  `VstPreflightTest` + 9 `SubmissionMarkerStoreTest` + 5
-  `PersistentSubmissionOrderExecutorTest` + 7
-  `SubmissionMarkerResolverTest` + 5 `FileSignalSourceTest` + 7
-  `PaperTradingAppTest` — independently re-summed from every module's
-  own `tests="..."` JUnit XML attribute, not trusted from arithmetic
-  alone).
+  counts across all six modules: **293 tests, 0 failures, 0 errors**
+  (239 from Task G's final state + 54 new, final count per class: 23
+  `BingXAdapterTest` (+3 over Task G's baseline: asset field ×2, credential
+  stripping ×1) + 15 `VstPreflightTest` + 12 `SubmissionMarkerStoreTest`
+  + 5 `PersistentSubmissionOrderExecutorTest` + 8 `SubmissionMarkerResolverTest`
+  + 14 `FileSignalSourceTest` + 23 `PaperTradingAppTest` — independently
+  re-summed from every module's own `tests="..."` JUnit XML attribute
+  after all CodeRabbit-review fixes, not trusted from arithmetic alone).
 - Every new class's tests were confirmed **red** (compile failure against
-  the not-yet-existing class) before being made **green**, per this
+  the not-yet-existing class, or against the not-yet-changed method
+  signature for a revised class) before being made **green**, per this
   project's TDD discipline for OMS/Risk/Execution-adjacent code — recorded
-  directly in this task's own execution, not asserted after the fact.
-- Real VST network verification: see "The real VST verification" above —
-  real, captured output, not a claim.
-- The guardrail hook: empirically tested against six synthetic payloads
-  plus the real, current `PaperTradingApp.java` file content (false-
-  positive check) before being installed into `.claude/settings.json`.
+  directly in this task's own execution, both in the original
+  implementation and in every CodeRabbit-review fix above, not asserted
+  after the fact.
+- Real VST network verification: see "The real VST verification" and
+  "`VstPreflight` real behavior" above — real, captured output (including
+  a second, later real run specifically re-checking the leverage-
+  enforcement fix), not a claim.
+- The guardrail hook: empirically tested against the original six
+  synthetic payloads, the real, current `PaperTradingApp.java` file
+  content (false-positive check, re-run after the CodeRabbit-review
+  rewrite), a real 2-call split-edit attack scenario, and a normal
+  unrelated real edit (a second false-positive check) — all before
+  installing into `.claude/settings.json`.
 - `java-tests.yml` (Task F's CI workflow) was **not** modified by this
   task — confirmed via `git status` — so it still runs only
   `./gradlew build` against the existing fake-server-only test suite; no
@@ -641,12 +930,20 @@ either incident.
   `.github/workflows/` (confirmed by grep) — this task's own new
   guardrail hook (see above) additionally blocks that from ever changing
   by accident.
+- `gitleaks detect` — clean against the full worktree and every commit on
+  this branch (one real false-positive round-tripped and fixed during
+  this task: the real `clientOrderID` UUID values captured in this
+  planning doc's raw JSON evidence tripped gitleaks' `generic-api-key`
+  heuristic on entropy alone; resolved with inline `gitleaks:allow`
+  markers plus an explanatory comment on each flagged line, not by
+  altering or removing the real captured evidence).
 
 ## Ship status
 
-PR open, CI green, CodeRabbit review pending/to be requested — **not
-merged**, per the governing brief's own explicit instruction and
-CLAUDE.md's Auto-merge Policy: this PR touches Java OMS/Execution/runtime
-logic and real credentials handling, both explicit exclusions from any
-auto-merge delegation regardless of CI/CodeRabbit status. Stopped here for
-human review, as instructed.
+PR open, CI green, CodeRabbit review completed and re-verified against
+the exact current HEAD commit via the GitHub reviews/status API (not just
+the cached checks display) — **not merged**, per the governing brief's
+own explicit instruction and CLAUDE.md's Auto-merge Policy: this PR
+touches Java OMS/Execution/runtime logic and real credentials handling,
+both explicit exclusions from any auto-merge delegation regardless of
+CI/CodeRabbit status. Stopped here for human review, as instructed.

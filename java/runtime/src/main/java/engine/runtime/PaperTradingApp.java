@@ -397,11 +397,11 @@ public final class PaperTradingApp {
         String apiSecret = requireNonBlank(System.getenv(ENV_BINGX_API_SECRET), ENV_BINGX_API_SECRET);
         BingXAdapter adapter = new BingXAdapter(apiKey, apiSecret, BINGX_VST_BASE_URL);
 
-        VstPreflight.Result preflight = VstPreflight.run(adapter);
+        VstPreflight.Result preflight = VstPreflight.run(adapter, symbol);
 
         SubmissionMarkerStore markerStore = new SubmissionMarkerStore(SUBMISSION_MARKERS_PATH);
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
-        boolean unresolvedMarkers = !markerResolution.requiresHumanReview().isEmpty();
+        boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
 
         OrderExecutor orderExecutor =
                 new PersistentSubmissionOrderExecutor(new ExchangeOrderExecutor(adapter, FEE_BPS), markerStore);

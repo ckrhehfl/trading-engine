@@ -2,7 +2,6 @@ package engine.runtime;
 
 import engine.exchange.ExchangeAdapter;
 import engine.exchange.PositionSnapshot;
-import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
@@ -13,41 +12,54 @@ import org.slf4j.LoggerFactory;
 /**
  * Startup-time (or kill-switch-reset-time) resolution step for every {@link
  * SubmissionMarker} a {@link PersistentSubmissionOrderExecutor} has left
- * recorded -- the "query real exchange state before any retry is permitted"
- * half of {@code SUBMISSION_UNKNOWN} handling. Called from {@link
- * PaperTradingApp}'s {@code bingx-vst}-mode construction path, alongside
- * {@link VstPreflight}, before normal tick-driven trading ever begins. Like
- * {@code Reconciler#check}, this class only <b>reports</b> -- it never
- * trips a {@link KillSwitch} itself; the caller decides what a non-empty
- * {@link Resolution#requiresHumanReview()} means for kill-switch state
- * (mirrors {@code Reconciler#check}'s own division of labor from {@code
- * PaperTradingApp#reconcile()}).
+ * recorded. Called from {@link PaperTradingApp}'s {@code bingx-vst}-mode
+ * construction path, alongside {@link VstPreflight}, before normal
+ * tick-driven trading ever begins. Like {@code Reconciler#check}, this class
+ * only <b>reports</b> -- it never trips a {@link KillSwitch} itself; the
+ * caller decides what a non-empty {@link Resolution#unresolvedMarkers()}
+ * means for kill-switch state.
  *
- * <p><b>Why this uses {@link ExchangeAdapter#getPositions()}, not {@link
- * ExchangeAdapter#queryOrder}, and why that is a real, disclosed judgment
- * call, not an oversight.</b> {@code queryOrder(Order)} requires a concrete
- * {@link engine.oms.Order} carrying a non-null {@code exchangeOrderId()} --
- * but the entire reason a {@link SubmissionMarker} exists is that {@code
- * adapter.submitOrder} threw <i>before</i> an {@code exchangeOrderId} was
- * ever captured (confirmed directly against {@code BingXAdapter.submitOrder}:
- * every code path that assigns one is unreachable if the call throws). Even
- * setting that aside, the in-memory {@link engine.oms.Order} object itself
- * does not survive a real process restart -- {@code OrderStore} is
- * in-memory only (see its own Javadoc) -- so there is no {@code Order} to
- * query by, by construction, for exactly the restart scenario this class
- * exists to handle. {@code getPositions()} needs neither: it is real
- * ground truth about what the account currently holds, callable with no
- * per-order identifier at all. This is coarser than a per-order query would
- * be (it can only answer "does <i>any</i> position exist for this symbol,"
- * not "did <i>this specific</i> order fill") -- an accepted limitation
- * given this project's current single-symbol, low-frequency, at-most-one-
- * order-in-flight-per-symbol scope (see CLAUDE.md's Current Scope); revisit
- * if multiple concurrent in-flight orders per symbol ever become real.
- * {@code BingXAdapter.queryOrder} accepting a {@code clientOrderID}-based
- * lookup (common on exchanges in this family) would remove this limitation,
- * but is unconfirmed against BingX's real API (see CLAUDE.md's "Exchange
- * API Facts") and not implemented here -- a real, disclosed follow-up, not
- * guessed at.
+ * <p><b>Every persisted marker is always reported unresolved. This class
+ * never auto-clears a marker.</b> This is a deliberate, safety-first design
+ * -- a real, correctly-identified CodeRabbit review finding on this PR
+ * (marked Critical) found that the original design's own reasoning was
+ * wrong: it cleared a marker whenever {@link ExchangeAdapter#getPositions()}
+ * showed no matching non-zero position for that marker's symbol, on the
+ * theory that this meant the submission "most likely never reached the
+ * exchange." That is false in a real, reachable case: an order that
+ * <i>was</i> accepted but is still open and unfilled (e.g. a real
+ * {@code LIMIT} order resting away from the market) also produces zero
+ * matching position -- a position only exists once quantity is actually
+ * filled. Auto-clearing on "no position" would therefore have permitted a
+ * fresh resubmit of an order that is, in fact, already live at the exchange
+ * -- a real duplicate-order risk, the exact failure mode
+ * {@code SUBMISSION_UNKNOWN} handling exists to prevent. There is no
+ * currently-available signal that can positively rule out "the order is
+ * open and unfilled" (see below) -- so the only safe default is to never
+ * auto-clear at all. Resolving a marker for real requires a human directly
+ * confirming the order's real fate (e.g. via the BingX UI/API) and then
+ * deliberately clearing it -- not something this class attempts to automate.
+ *
+ * <p><b>Why {@link ExchangeAdapter#getPositions()} is still called, purely
+ * as diagnostic context, not a decision input.</b> {@code queryOrder(Order)}
+ * requires a concrete {@link engine.oms.Order} carrying a non-null {@code
+ * exchangeOrderId()} -- but the entire reason a {@link SubmissionMarker}
+ * exists is that {@code adapter.submitOrder} threw <i>before</i> an {@code
+ * exchangeOrderId} was ever captured (confirmed directly against
+ * {@code BingXAdapter.submitOrder}: every code path that assigns one is
+ * unreachable if the call throws). Even setting that aside, the in-memory
+ * {@link engine.oms.Order} object itself does not survive a real process
+ * restart -- {@code OrderStore} is in-memory only -- so there is no
+ * {@code Order} to query by, by construction, for exactly the restart
+ * scenario this class exists to handle. {@code getPositions()} is still
+ * fetched and logged alongside each unresolved marker purely to give a
+ * human investigating a faster starting point (e.g. "was there a matching
+ * position at the moment of this restart or not") -- it no longer decides
+ * anything. {@code BingXAdapter.queryOrder} accepting a {@code
+ * clientOrderID}-based lookup (common on exchanges in this family) would
+ * let a future version resolve markers for real, but is unconfirmed against
+ * BingX's real API (see CLAUDE.md's "Exchange API Facts") and not
+ * implemented here -- a real, disclosed follow-up, not guessed at.
  */
 final class SubmissionMarkerResolver {
 
@@ -55,29 +67,18 @@ final class SubmissionMarkerResolver {
 
     private SubmissionMarkerResolver() {}
 
-    /**
-     * @param clearedAsSafe markers with no matching non-zero position for
-     *     their symbol -- treated as most likely never having reached the
-     *     exchange, already cleared from {@code store} by the time this is
-     *     returned.
-     * @param requiresHumanReview markers with a matching non-zero position
-     *     for their symbol -- the ambiguous submission may have gone
-     *     through; deliberately left recorded in {@code store} (never
-     *     auto-cleared, never a basis for an automatic retry) until a human
-     *     confirms what actually happened.
-     */
-    record Resolution(List<SubmissionMarker> clearedAsSafe, List<SubmissionMarker> requiresHumanReview) {}
+    /** @param unresolvedMarkers every marker currently in the store -- see class Javadoc for why none is ever auto-cleared. */
+    record Resolution(List<SubmissionMarker> unresolvedMarkers) {}
 
     /**
-     * Resolves every marker currently in {@code store} against one shared
-     * {@code adapter.getPositions()} call (not one call per marker -- cheap
-     * and avoids any risk of the account's position set changing between
-     * markers within a single resolution pass). Never throws for a
-     * marker-level decision; a real {@code getPositions()} failure (e.g. a
-     * network error) propagates uncaught, matching {@link VstPreflight
-     * #run}'s own "one-shot startup check, not a per-tick call" contract --
-     * a caller unable to even ask the exchange what it currently holds has
-     * no safe basis for any resolution decision at all.
+     * Reports every marker currently in {@code store} as unresolved, logging
+     * each alongside whether a matching non-zero position currently exists
+     * for its symbol (diagnostic only -- see class Javadoc). Never throws:
+     * a {@code getPositions()} failure (e.g. a network error) is caught and
+     * logged rather than propagated, since it is purely diagnostic and must
+     * not prevent this process from reaching a safe (tripped) startup state
+     * -- unlike {@link VstPreflight#run}, whose own {@code getPositions()}
+     * call result is load-bearing for its own decision and does propagate.
      */
     static Resolution resolve(SubmissionMarkerStore store, ExchangeAdapter adapter) {
         Objects.requireNonNull(store, "store is required");
@@ -85,41 +86,43 @@ final class SubmissionMarkerResolver {
 
         List<SubmissionMarker> markers = store.all();
         if (markers.isEmpty()) {
-            return new Resolution(List.of(), List.of());
+            return new Resolution(List.of());
         }
 
-        List<PositionSnapshot> positions = adapter.getPositions();
+        Set<String> symbolsWithOpenPosition = fetchSymbolsWithOpenPositionForDiagnosticsOnly(adapter);
+
+        for (SubmissionMarker marker : markers) {
+            boolean matchingPosition = symbolsWithOpenPosition.contains(marker.symbol());
+            log.error(
+                    "SUBMISSION_UNKNOWN marker clientOrderId={} symbol={} recordedAt={} -- unresolved; requires"
+                            + " deliberate human review before any new signal is submitted for this symbol"
+                            + " (diagnostic only, does not by itself confirm or rule out the order: a matching"
+                            + " non-zero position currently exists for this symbol = {}).",
+                    marker.clientOrderId(),
+                    marker.symbol(),
+                    marker.recordedAtIso(),
+                    matchingPosition);
+        }
+        return new Resolution(markers);
+    }
+
+    private static Set<String> fetchSymbolsWithOpenPositionForDiagnosticsOnly(ExchangeAdapter adapter) {
+        List<PositionSnapshot> positions;
+        try {
+            positions = adapter.getPositions();
+        } catch (RuntimeException e) {
+            log.warn(
+                    "getPositions() failed while gathering diagnostic context for unresolved SUBMISSION_UNKNOWN"
+                            + " marker(s) -- proceeding without it, every marker is still reported unresolved: {}",
+                    e.toString());
+            return Set.of();
+        }
         Set<String> symbolsWithOpenPosition = new HashSet<>();
         for (PositionSnapshot position : positions) {
             if (position.positionAmt() != null && position.positionAmt().signum() != 0) {
                 symbolsWithOpenPosition.add(position.symbol());
             }
         }
-
-        List<SubmissionMarker> cleared = new ArrayList<>();
-        List<SubmissionMarker> needsReview = new ArrayList<>();
-        for (SubmissionMarker marker : markers) {
-            if (symbolsWithOpenPosition.contains(marker.symbol())) {
-                log.error(
-                        "SUBMISSION_UNKNOWN marker clientOrderId={} symbol={} recordedAt={} -- a real non-zero"
-                                + " position exists for this symbol; the ambiguous submission may have gone"
-                                + " through. NOT auto-clearing and NOT permitting a retry -- requires deliberate"
-                                + " human review.",
-                        marker.clientOrderId(),
-                        marker.symbol(),
-                        marker.recordedAtIso());
-                needsReview.add(marker);
-            } else {
-                log.warn(
-                        "SUBMISSION_UNKNOWN marker clientOrderId={} symbol={} recordedAt={} -- no matching"
-                                + " position found; treating as most likely never reached the exchange, clearing.",
-                        marker.clientOrderId(),
-                        marker.symbol(),
-                        marker.recordedAtIso());
-                store.clear(marker.clientOrderId());
-                cleared.add(marker);
-            }
-        }
-        return new Resolution(List.copyOf(cleared), List.copyOf(needsReview));
+        return symbolsWithOpenPosition;
     }
 }
