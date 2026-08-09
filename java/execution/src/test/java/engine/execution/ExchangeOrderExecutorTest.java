@@ -395,4 +395,180 @@ class ExchangeOrderExecutorTest {
 
         assertThrows(IllegalArgumentException.class, () -> executor.pollFills(SYMBOL, new BigDecimal("-1")));
     }
+
+    // --- Data-integrity validations added on CodeRabbit review (PR #78) ---
+
+    @Test
+    void filledStatusReportedWhileOurOwnStateNeverReachedFilledIsCorruptDataButPreservesTheAlreadyAppliedFill() {
+        // A real quantity mismatch between the venue's own order and this
+        // project's approvedQuantity: the exchange reports FILLED, but the
+        // reported quantity (6) is less than approvedQuantity (10), so
+        // order.fill(6) legitimately lands in PARTIALLY_FILLED, not FILLED.
+        // The status string alone must never be trusted to discard pending
+        // tracking -- but the 6-unit fill that WAS legitimately applied
+        // before the mismatch was caught must still be reported, not
+        // silently dropped from equity/fill-history accounting.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "10"); // approvedQuantity = 10
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "FILLED", new BigDecimal("6"), new BigDecimal("100")));
+
+        List<Fill> fills = assertDoesNotThrow(() -> executor.pollFills(SYMBOL, new BigDecimal("100")));
+
+        assertEquals(1, fills.size(), "the real 6-unit delta was legitimately applied before the mismatch was caught");
+        assertBigDecimalEquals(new BigDecimal("6"), fills.get(0).quantity());
+        assertEquals(
+                OrderState.PARTIALLY_FILLED,
+                order.state(),
+                "6 of 10 filled -- order.fill() legitimately lands in PARTIALLY_FILLED, not FILLED");
+        assertFalse(
+                executor.pendingOrders().containsKey(order.clientOrderId()),
+                "a FILLED-status/actual-state mismatch is corrupt/inconsistent data -- dropped, not silently"
+                        + " trusted or retried forever");
+    }
+
+    @Test
+    void filledQuantityDecreasingFromAPreviousPollIsTreatedAsCorruptDataAndDropsTheOrder() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED", new BigDecimal("5"), new BigDecimal("100")),
+                // Impossible: reported quantity decreased from 5 to 3.
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED", new BigDecimal("3"), new BigDecimal("100")));
+
+        List<Fill> firstFills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertEquals(1, firstFills.size());
+
+        List<Fill> secondFills = assertDoesNotThrow(() -> executor.pollFills(SYMBOL, new BigDecimal("100")));
+
+        assertTrue(secondFills.isEmpty());
+        assertFalse(
+                executor.pendingOrders().containsKey(order.clientOrderId()),
+                "corrupt/decreasing quantity data must drop the order, not be silently ignored or retried forever");
+    }
+
+    @Test
+    void nonPositiveIncrementNotionalIsTreatedAsCorruptDataAndDropsTheOrder() {
+        // A positive quantity delta whose cumulative notional does not
+        // strictly increase is internally inconsistent -- a real
+        // cumulative avgPrice can never make total notional decrease as
+        // quantity increases.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED", new BigDecimal("5"), new BigDecimal("100")), // notional 500
+                // qty increases to 6 (delta > 0) but notional drops to 300 -- impossible.
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED", new BigDecimal("6"), new BigDecimal("50")));
+
+        List<Fill> firstFills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertEquals(1, firstFills.size());
+
+        List<Fill> secondFills = assertDoesNotThrow(() -> executor.pollFills(SYMBOL, new BigDecimal("100")));
+
+        assertTrue(secondFills.isEmpty());
+        assertFalse(executor.pendingOrders().containsKey(order.clientOrderId()));
+    }
+
+    @Test
+    void nullFilledQuantityAfterAPreviousNonZeroFillIsTreatedAsCorruptDataAndDropsTheOrder() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED", new BigDecimal("5"), new BigDecimal("100")),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED", null, null));
+
+        List<Fill> firstFills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertEquals(1, firstFills.size());
+
+        List<Fill> secondFills = assertDoesNotThrow(() -> executor.pollFills(SYMBOL, new BigDecimal("100")));
+
+        assertTrue(secondFills.isEmpty());
+        assertFalse(
+                executor.pendingOrders().containsKey(order.clientOrderId()),
+                "filled quantity regressing to null after real progress was recorded must never be silently"
+                        + " treated as 'back to zero'");
+    }
+
+    @Test
+    void nullFilledQuantityOnAFreshOrderWithNoPriorProgressIsNotAnErrorAndStaysPending() {
+        // Distinguishes the above from a fresh order's very first poll: a
+        // null filledQuantity with no prior recorded progress is "no
+        // evidence of any fill yet," not corruption.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(order.clientOrderId(), new OrderStatus(order.exchangeOrderId(), "NEW", null, null));
+
+        List<Fill> fills = assertDoesNotThrow(() -> executor.pollFills(SYMBOL, new BigDecimal("100")));
+
+        assertTrue(fills.isEmpty());
+        assertEquals(OrderState.ACKNOWLEDGED, order.state());
+        assertTrue(executor.pendingOrders().containsKey(order.clientOrderId()));
+    }
+
+    // --- Concurrency regression test added on CodeRabbit review (PR #78) ---
+
+    @Test
+    void concurrentPollFillsForTheSamePendingOrderFillItExactlyOnce() throws InterruptedException {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.alwaysRespond(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "FILLED", new BigDecimal("1"), new BigDecimal("100")));
+
+        int threadCount = 20;
+        java.util.concurrent.ExecutorService pool = java.util.concurrent.Executors.newFixedThreadPool(threadCount);
+        try {
+            java.util.concurrent.CountDownLatch ready = new java.util.concurrent.CountDownLatch(threadCount);
+            java.util.concurrent.CountDownLatch go = new java.util.concurrent.CountDownLatch(1);
+            List<java.util.concurrent.Future<List<Fill>>> futures = new java.util.ArrayList<>();
+            for (int i = 0; i < threadCount; i++) {
+                futures.add(pool.submit(() -> {
+                    ready.countDown();
+                    go.await();
+                    return executor.pollFills(SYMBOL, new BigDecimal("100"));
+                }));
+            }
+            assertTrue(ready.await(5, java.util.concurrent.TimeUnit.SECONDS), "threads never reached start line");
+            go.countDown();
+
+            int totalFills = 0;
+            for (java.util.concurrent.Future<List<Fill>> future : futures) {
+                try {
+                    totalFills += future.get(5, java.util.concurrent.TimeUnit.SECONDS).size();
+                } catch (java.util.concurrent.ExecutionException e) {
+                    throw new AssertionError("pollFills must not throw under concurrent access", e);
+                } catch (java.util.concurrent.TimeoutException e) {
+                    throw new AssertionError("pollFills call did not complete in time", e);
+                }
+            }
+
+            assertEquals(1, totalFills, "the order's single fill must be produced exactly once across all concurrent pollers");
+            assertEquals(OrderState.FILLED, order.state());
+            assertFalse(executor.pendingOrders().containsKey(order.clientOrderId()));
+        } finally {
+            pool.shutdownNow();
+        }
+    }
 }

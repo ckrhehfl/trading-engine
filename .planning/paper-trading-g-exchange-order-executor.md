@@ -43,9 +43,10 @@ beyond the existing in-process patterns this codebase already uses).
   `setPositionMode` all throw `UnsupportedOperationException` — asserting,
   by construction, that `ExchangeOrderExecutor` never calls any of them
   (it doesn't need to for anything in this task's scope).
-- **`engine.execution.ExchangeOrderExecutorTest`** — 20 tests (7 required
-  scenarios + 13 additional coverage tests), all against `FakeExchangeAdapter`,
-  no real network access anywhere.
+- **`engine.execution.ExchangeOrderExecutorTest`** — 26 tests (7 required
+  scenarios + 19 additional coverage tests, the latter including 6 added
+  during CodeRabbit review — see "CodeRabbit review findings" below), all
+  against `FakeExchangeAdapter`, no real network access anywhere.
 
 ## Venue-agnostic design, verified
 
@@ -323,6 +324,157 @@ constructor/argument-validation tests
 `submitRejectsZeroOrNegativeReferencePrice`,
 `pollFillsRejectsZeroOrNegativeReferencePrice`).
 
+## CodeRabbit review findings
+
+One review round on PR #78 (`ASSERTIVE` profile), against commit
+`fe875c5` (the original push) — confirmed via the GitHub reviews API to
+target this exact commit sha (`GET .../commits/fe875c5.../status` showed
+`CodeRabbit`/`success` for that sha specifically, and
+`GET .../pulls/78/reviews` showed the review object's own `commit_id`
+matching it), not a stale/rate-limited status. 2 actionable comments,
+both real, both fixed — no finding declined.
+
+**Finding 1 (Critical): per-order bookkeeping not atomic across the three
+separate maps.** The original implementation kept `pendingOrders`,
+`cumulativeFilledQty`, and `cumulativeNotional` as three independent
+`ConcurrentHashMap`s. Two concurrent `pollFills` calls for the same order
+could each read the same stale `previousQty`, both compute the same
+`delta`, and both call `order.fill(delta)` — a real double-fill risk
+`Order`'s own internal `synchronized` methods do not prevent (they
+protect `Order`'s own field consistency, not the caller's read-then-write
+sequence across three separate maps). `submit()` also had a narrower
+publish race: nothing stopped a caller from observing the order in
+`pendingOrders()` before its cumulative-tracking entries existed.
+
+Fixed by consolidating all three into one `PendingOrderState` object
+(the `Order` reference plus its own cumulative quantity/notional) stored
+in a single `Map<UUID, PendingOrderState>`, mutated only from within a
+`pendingOrders.computeIfPresent(id, ...)` callback in `pollFills` —
+mirroring `PaperBroker.pollFills`'s own established `computeIfPresent`
+pattern and its identical reasoning (serializes every invocation for the
+same key; concurrent calls on different orders remain fully parallel).
+`submit()` now publishes one fully-constructed `PendingOrderState` in a
+single `put`, closing the narrower race too. `ExchangeAdapter#queryOrder`
+— a real network call in production — is deliberately kept **outside**
+the atomic block: holding a `ConcurrentHashMap` bin lock across blocking
+I/O would be its own hazard, and it isn't needed for correctness, since
+the delta computation inside the atomic block always reads the map's
+*current* cumulative state at the moment it runs, not a value captured
+before the lock — a second, slightly-stale concurrent poll for the same
+order computes a smaller (often zero) delta against the already-updated
+state rather than double-crediting it. This reasoning is stated in the
+class Javadoc ("Atomicity and concurrency"), not just asserted here.
+
+CodeRabbit's own suggested alternative (`synchronized` on all three
+public methods) was not taken — it would fully serialize calls across
+*every* order and symbol, not just concurrent access to the *same*
+order, a strictly worse design than the per-key atomicity above, and
+inconsistent with `PaperBroker`'s own established non-`synchronized`,
+per-key pattern in this exact codebase.
+
+Added the explicitly-requested regression test,
+`concurrentPollFillsForTheSamePendingOrderFillItExactlyOnce` (20 threads,
+a `CountDownLatch` start barrier, all polling the same pending order
+scripted via the new `FakeExchangeAdapter.alwaysRespond` steady-state
+helper) — asserts exactly one fill is produced in total across every
+thread. `FakeExchangeAdapter` itself was made thread-safe as part of
+this fix (its maps converted to `ConcurrentHashMap`, its
+per-order-queue `poll()` calls synchronized) — it is now itself
+exercised under real concurrent access, not just used from a single
+thread.
+
+**Finding 2 (Major): cumulative execution data wasn't validated before
+being trusted.** Three real gaps, all in `resolveOne`/`applyStatusMapping`:
+(a) a `null` `filledQuantity` was silently treated as zero regardless of
+prior recorded progress — a genuine *regression* (the venue previously
+reported real progress, then reports nothing) was indistinguishable from
+"hasn't filled yet"; (b) nothing checked that a positive quantity delta
+corresponded to a positive notional delta — a cumulative `avgPrice`
+report inconsistent with previously-recorded notional could silently
+produce a negative `incrementPrice`/fee; (c) a `FILLED` status removed
+the order from pending tracking unconditionally, without checking that
+`Order.state()` actually reached `FILLED` — trusting the status *string*
+alone over the OMS's own derived truth.
+
+Fixed all three, each routed through the state-corruption path (throw,
+caught by the containing method, order dropped from pending) rather than
+silently accepted or endlessly retried:
+
+- `filledQuantity == null` **with previously-recorded nonzero progress**
+  now throws (a real regression, never legitimate). `filledQuantity ==
+  null` **with zero prior progress** (a fresh order's first poll(s)) is
+  still treated as "no evidence of any fill yet" (equivalent to zero) —
+  a deliberate, disclosed narrowing of CodeRabbit's own literal suggested
+  diff (which throws on `null` unconditionally). Reasoning for the
+  narrowing: this project has no empirical confirmation (from a real VST
+  call — that's explicitly Task H's job) of whether BingX reports an
+  unfilled order's `executedQty` as an explicit `"0"` or omits/nulls the
+  field; unconditionally throwing on `null` risks a severe regression if
+  the latter turns out to be true in production — every single freshly
+  submitted order would be dropped from pending tracking on its very
+  first poll. Throwing only on a *regression from known-nonzero progress*
+  keeps the same protection CodeRabbit's finding is actually about (a
+  quantity that was once known can never legitimately become unknown)
+  without that production risk, and every one of this task's own tests
+  that model "hasn't filled yet" already use an explicit `BigDecimal.ZERO`
+  rather than relying on this fallback, so nothing in this task's own
+  test suite depends on the softer treatment either way. Posted as a
+  reply on the review thread rather than silently deviating.
+- A positive delta whose `incrementNotional` is not strictly positive now
+  throws (`nonPositiveIncrementNotionalIsTreatedAsCorruptDataAndDropsTheOrder`).
+- The `FILLED` branch now throws if `order.state() != OrderState.FILLED`
+  after this poll's own delta was applied
+  (`filledStatusReportedWhileOurOwnStateNeverReachedFilledIsCorruptDataButPreservesTheAlreadyAppliedFill`).
+
+**A refinement beyond CodeRabbit's own suggested diff, on the same
+principle Task F's own PR #77 review response already established
+("fix the underlying concern, deviate from the literal suggested diff
+with reasoning when there's a good reason to")**: CodeRabbit's example
+diff has the `FILLED`-state-mismatch throw propagate all the way out of
+`pollFills` for that order, which — traced through the *original*
+control flow — would have discarded any fill legitimately computed
+earlier in the very same `resolveOne` call (e.g. a real 6-of-10-unit
+delta that was already applied to `order.fill(6)` before the mismatch
+against `FILLED` was even checked). That would silently under-count
+`TradingLoop`'s own equity/fill-history accounting for a real execution
+that genuinely happened — a new problem CodeRabbit's own suggested fix
+would have introduced while fixing the one it found. Restructured
+`resolveOne` so a status-mapping validation failure (this one, and any
+future one added to `applyStatusMapping`) is caught locally, still
+returning any fill already produced earlier in the same call, while
+still flagging the order for removal from pending tracking — the two are
+different concerns ("did money/quantity legitimately move, and must it
+be reported" vs. "should this order keep being polled") and this keeps
+them separately correct. Exceptions from `order.fill(...)` itself (state
+corruption with nothing yet computed to preserve) are unaffected and
+still propagate normally to `pollFills`'s outer catch. Verified this
+distinction with a dedicated test,
+`filledStatusReportedWhileOurOwnStateNeverReachedFilledIsCorruptDataButPreservesTheAlreadyAppliedFill`,
+which asserts the 6-unit fill **is** returned even though the order is
+also dropped.
+
+Six new tests added for this finding:
+`filledStatusReportedWhileOurOwnStateNeverReachedFilledIsCorruptDataButPreservesTheAlreadyAppliedFill`,
+`filledQuantityDecreasingFromAPreviousPollIsTreatedAsCorruptDataAndDropsTheOrder`,
+`nonPositiveIncrementNotionalIsTreatedAsCorruptDataAndDropsTheOrder`,
+`nullFilledQuantityAfterAPreviousNonZeroFillIsTreatedAsCorruptDataAndDropsTheOrder`,
+`nullFilledQuantityOnAFreshOrderWithNoPriorProgressIsNotAnErrorAndStaysPending`
+(proving the deliberate narrowing above), and the concurrency test
+counted under Finding 1. Re-verified the naive-reuse anti-bug test
+(`secondPartialFillUsesIncrementalPriceNotNaiveCumulativeAvgPriceReuse`)
+still fails under a temporarily-reintroduced naive implementation and
+passes under the real fix, since this fix rewrote the surrounding method
+substantially enough to warrant re-checking rather than assuming it
+still held.
+
+**Final state**: 26 tests in `ExchangeOrderExecutorTest` (up from the
+original 20), full multi-module suite **239 tests, 0 failures, 0
+errors** (213 pre-existing + 26 new — exact sum, re-confirmed the same
+way as the original count). Pushed as a single follow-up commit rather
+than several small ones, per this project's own CodeRabbit rate-limit
+guidance ("batch fixes for multiple review findings into one push
+before requesting re-review").
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - Wiring into `PaperTradingApp`, `BINGX_*` environment variables, VST
@@ -350,13 +502,23 @@ constructor/argument-validation tests
   failures, 0 errors.
 - Anti-bug regression check: temporarily reverted the incremental-price
   fix to the naive `avgPrice` reuse, re-ran the one test — failed as
-  expected (`AssertionFailedError`); reverted back, re-ran — green.
+  expected (`AssertionFailedError`); reverted back, re-ran — green. Full
+  multi-module suite at this point: **233 tests, 0 failures, 0 errors**
+  (213 from Task F's final state + 20 new from this task).
+- After the CodeRabbit review round (see "CodeRabbit review findings"
+  above): re-ran the same anti-bug regression check against the
+  substantially-rewritten `resolveOne` — still fails under a
+  temporarily-reintroduced naive implementation, still passes under the
+  real fix. `./gradlew :execution:test --tests
+  "engine.execution.ExchangeOrderExecutorTest"` — green, **26** tests
+  (up from 20), 0 failures, 0 errors.
 - `./gradlew clean build` (full multi-module suite, all six modules,
-  clean, not incremental) — **BUILD SUCCESSFUL**. Aggregate JUnit XML
-  counts across all six modules: **233 tests, 0 failures, 0 errors**
-  (213 from Task F's final state + 20 new from this task — exact sum,
-  independently confirmed by re-summing every module's own
-  `tests="..."` XML attribute rather than trusting the arithmetic).
+  clean, not incremental), final state after the CodeRabbit fixes —
+  **BUILD SUCCESSFUL**. Aggregate JUnit XML counts across all six
+  modules: **239 tests, 0 failures, 0 errors** (213 from Task F's final
+  state + 26 from this task's final state — exact sum, independently
+  confirmed by re-summing every module's own `tests="..."` XML attribute
+  rather than trusting the arithmetic).
 - Venue-agnostic design verified directly via `grep -n "^import"` against
   the real file (see "Venue-agnostic design, verified" above), not
   asserted from having written it carefully.
