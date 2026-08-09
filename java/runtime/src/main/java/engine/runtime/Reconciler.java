@@ -1,5 +1,6 @@
 package engine.runtime;
 
+import engine.execution.OrderExecutor;
 import engine.execution.PaperBroker;
 import engine.oms.Order;
 import engine.oms.OrderState;
@@ -54,9 +55,15 @@ import org.slf4j.LoggerFactory;
  * {@code Fill}'s own quantity/price was considered and rejected for the
  * same reason: {@link PaperBroker#submit}'s {@code tryFill} computes a
  * {@code Fill} using the exact same {@code BigDecimal} it passes to {@code
- * order.fill(...)}, so with today's fill-or-nothing (no partial fill)
- * logic, that comparison is also structurally guaranteed to match — it
- * would test nothing.
+ * order.fill(...)}, so with {@link PaperBroker}'s own current fill-or-
+ * nothing (no partial fill) logic, that comparison is structurally
+ * guaranteed to match for this implementation — it would test nothing.
+ * This is a property of {@code PaperBroker}'s own implementation, not a
+ * guarantee the {@link OrderExecutor} interface itself makes — a future
+ * implementation wrapping a real exchange can, and is expected to, produce
+ * genuine partial fills (see {@code OrderExecutor}'s own Javadoc), so this
+ * specific rejection reasoning would need revisiting if/when this check is
+ * ever run against such an implementation instead of {@code PaperBroker}.
  *
  * <p><b>What "position mismatch" means here.</b> No {@code Position} class
  * exists anywhere in this codebase yet (see the governing plan). {@link
@@ -101,9 +108,9 @@ public final class Reconciler {
     private Reconciler() {}
 
     /**
-     * Compares {@code orderStore} and {@code paperBroker}'s own bookkeeping
-     * for every id in {@code submittedOrderIds} (see {@link
-     * TradingLoop#submittedOrderIds()}), plus every id {@code paperBroker}
+     * Compares {@code orderStore} and {@code orderExecutor}'s own
+     * bookkeeping for every id in {@code submittedOrderIds} (see {@link
+     * TradingLoop#submittedOrderIds()}), plus every id {@code orderExecutor}
      * itself currently has pending, and returns every mismatch found. Never
      * throws for a detected mismatch — mismatches are data, reported in the
      * returned {@link ReconciliationReport}, and also logged at ERROR
@@ -111,15 +118,20 @@ public final class Reconciler {
      * mismatch (e.g. tripping a {@link KillSwitch}) is the caller's job,
      * deliberately kept out of this method — see {@code
      * .planning/paper-trading-e-reconciliation.md} for why.
+     *
+     * <p>{@code orderExecutor}'s static type is {@link OrderExecutor}, not
+     * {@link PaperBroker} -- as of {@code .planning/paper-trading-f-order-
+     * executor.md}, this method works against any implementation, not just
+     * the internal simulator, without any change to its own logic.
      */
     public static ReconciliationReport check(
-            List<UUID> submittedOrderIds, OrderStore orderStore, PaperBroker paperBroker) {
+            List<UUID> submittedOrderIds, OrderStore orderStore, OrderExecutor orderExecutor) {
         Objects.requireNonNull(submittedOrderIds, "submittedOrderIds is required");
         Objects.requireNonNull(orderStore, "orderStore is required");
-        Objects.requireNonNull(paperBroker, "paperBroker is required");
+        Objects.requireNonNull(orderExecutor, "orderExecutor is required");
 
         List<ReconciliationMismatch> mismatches = new ArrayList<>();
-        Map<UUID, Order> pending = paperBroker.pendingOrders();
+        Map<UUID, Order> pending = orderExecutor.pendingOrders();
 
         Map<UUID, Long> submissionCounts = new HashMap<>();
         for (UUID id : submittedOrderIds) {
@@ -157,8 +169,8 @@ public final class Reconciler {
                                 id,
                                 "OrderStore has this order in state "
                                         + state
-                                        + " (still open), but PaperBroker has no pending record of it -- it will"
-                                        + " never receive a fill or cancel confirmation"));
+                                        + " (still open), but the OrderExecutor has no pending record of it -- it"
+                                        + " will never receive a fill or cancel confirmation"));
             }
         }
 
@@ -168,9 +180,9 @@ public final class Reconciler {
                         new ReconciliationMismatch(
                                 ReconciliationMismatchType.UNTRACKED_IN_BROKER,
                                 id,
-                                "PaperBroker has a pending order for this id that was never recorded as"
-                                        + " submitted -- it may have reached PaperBroker through a path other"
-                                        + " than the tracked submission flow"));
+                                "the OrderExecutor has a pending order for this id that was never recorded as"
+                                        + " submitted -- it may have reached the OrderExecutor through a path"
+                                        + " other than the tracked submission flow"));
             }
         }
 
