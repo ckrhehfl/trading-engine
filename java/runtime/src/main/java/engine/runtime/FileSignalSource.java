@@ -87,23 +87,54 @@ import org.slf4j.LoggerFactory;
  * brand-new, never-before-seen {@code intentId} -- never reverts to an
  * older one -- but this class's own contract does not assume or depend on
  * that producer behavior, which is exactly why both cases are tested and
- * disclosed here rather than asserted safe. Durable, cross-restart
- * idempotency (if ever needed) is real, scoped follow-on work -- most
- * naturally paired with the paper-trading bridge plan's own Task E
- * ("minimal internal reconciliation") or a dedicated durable-`OrderStore`
- * effort, not a silent addition to this task.
+ * disclosed here rather than asserted safe.
+ *
+ * <p><b>Durable, cross-restart dedup (Paper Trading Bridge Task H -- added,
+ * not the "real, scoped follow-on work" this section previously called
+ * it).</b> The two-arg constructor accepts an optional {@code
+ * deliveredMarkerPath}. {@code null} (what the one-arg constructor always
+ * passes) is exactly the single-pointer, in-memory-only behavior described
+ * above, byte-for-byte -- the currently-running simulated paper-trading
+ * process is unaffected by this addition since nothing changes its own
+ * construction call. When non-null: the last-delivered {@code intentId} is
+ * additionally persisted to that file (overwritten, not appended -- this
+ * class only ever needs the single most recent value, matching {@code
+ * lastDeliveredIntentId}'s own single-pointer scope) immediately after a
+ * genuinely new signal is delivered, and read back at construction time to
+ * seed {@code lastDeliveredIntentId} before the very first {@code
+ * nextSignal()} call -- closing the real duplicate-order risk this
+ * section's restart caveat describes: without this, a process restart on
+ * the same UTC day after a signal fired would redeliver it, and against a
+ * real venue ({@code ExchangeOrderExecutor}/{@code BingXAdapter}) that
+ * means a real second order, not just an inflated simulator trade count.
+ * Marker-file read/write failures are tolerated the same way the signal
+ * file's own read failures are (logged, never thrown) -- a marker file
+ * this class doesn't fully control the lifecycle of should degrade to
+ * "less protection," never to a crash.
  */
 public final class FileSignalSource implements SignalSource {
 
     private static final Logger log = LoggerFactory.getLogger(FileSignalSource.class);
 
     private final Path signalFilePath;
+    private final Path deliveredMarkerPath;
     private final ObjectMapper objectMapper = SchemaObjectMapper.create();
 
     private volatile UUID lastDeliveredIntentId;
 
     public FileSignalSource(Path signalFilePath) {
+        this(signalFilePath, null);
+    }
+
+    /**
+     * Same as the one-arg constructor, with an optional {@code
+     * deliveredMarkerPath} -- see class Javadoc, "Durable, cross-restart
+     * dedup". {@code null} is exactly the one-arg constructor's behavior.
+     */
+    public FileSignalSource(Path signalFilePath, Path deliveredMarkerPath) {
         this.signalFilePath = Objects.requireNonNull(signalFilePath, "signalFilePath is required");
+        this.deliveredMarkerPath = deliveredMarkerPath;
+        this.lastDeliveredIntentId = readMarker();
     }
 
     /**
@@ -111,7 +142,8 @@ public final class FileSignalSource implements SignalSource {
      * file (empty, no log -- an ordinary, expected steady state between
      * daily writes) &gt; unreadable/unparseable file (empty, logged warning)
      * &gt; already-delivered {@code intentId} (empty, no log -- also an
-     * ordinary steady state) &gt; genuinely new intent (delivered, remembered).
+     * ordinary steady state) &gt; genuinely new intent (delivered, remembered,
+     * and -- if {@code deliveredMarkerPath} is configured -- persisted).
      */
     @Override
     public synchronized Optional<OrderIntent> nextSignal() {
@@ -148,6 +180,69 @@ public final class FileSignalSource implements SignalSource {
             return Optional.empty();
         }
         lastDeliveredIntentId = intent.intentId();
+        writeMarker(intent.intentId());
         return Optional.of(intent);
+    }
+
+    /**
+     * Reads {@link #deliveredMarkerPath} (if configured) to seed {@link
+     * #lastDeliveredIntentId} before this instance's very first {@link
+     * #nextSignal()} call. Returns {@code null} (today's exact starting
+     * state) for a null path, a missing file, or any read/parse failure --
+     * a marker file this class doesn't fully control the lifecycle of
+     * degrades to "less protection," matching this class's own established
+     * tolerance for the signal file itself, never to a constructor
+     * exception.
+     */
+    private UUID readMarker() {
+        if (deliveredMarkerPath == null) {
+            return null;
+        }
+        String raw;
+        try {
+            raw = Files.readString(deliveredMarkerPath).trim();
+        } catch (NoSuchFileException e) {
+            return null;
+        } catch (IOException e) {
+            log.warn(
+                    "failed to read delivered-marker file {}, starting with no remembered intentId: {}",
+                    deliveredMarkerPath,
+                    e.toString());
+            return null;
+        }
+        if (raw.isEmpty()) {
+            return null;
+        }
+        try {
+            return UUID.fromString(raw);
+        } catch (IllegalArgumentException e) {
+            log.warn(
+                    "delivered-marker file {} does not contain a valid UUID, starting with no remembered"
+                            + " intentId: {}",
+                    deliveredMarkerPath,
+                    e.toString());
+            return null;
+        }
+    }
+
+    /** No-op if {@link #deliveredMarkerPath} is null. A write failure is logged, never thrown -- see {@link #readMarker()}. */
+    private void writeMarker(UUID intentId) {
+        if (deliveredMarkerPath == null) {
+            return;
+        }
+        try {
+            Path parent = deliveredMarkerPath.toAbsolutePath().getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(deliveredMarkerPath, intentId.toString());
+        } catch (IOException e) {
+            log.warn(
+                    "failed to persist delivered-marker file {} for intentId {} -- a restart before this is"
+                            + " fixed could redeliver this signal: {}",
+                    deliveredMarkerPath,
+                    intentId,
+                    e.toString());
+        }
     }
 }

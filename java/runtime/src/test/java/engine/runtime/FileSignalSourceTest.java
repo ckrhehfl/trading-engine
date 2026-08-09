@@ -194,4 +194,94 @@ class FileSignalSourceTest {
                 afterRestart.nextSignal().orElseThrow().intentId(),
                 "a fresh instance has no memory of what a prior instance already delivered");
     }
+
+    /**
+     * Task H's own fix for the real duplicate-order risk the restart test
+     * above documents: an optional, additive, opt-in persisted delivered-
+     * marker file. {@code null} (the 1-arg constructor, exercised by every
+     * test above) means exactly today's in-memory-only behavior -- this
+     * test proves the 2-arg constructor with an explicit {@code null}
+     * marker path is byte-for-byte equivalent, not just "close enough."
+     */
+    @Test
+    void aNullMarkerPathBehavesExactlyLikeTheOneArgConstructor(@TempDir Path tempDir) throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        OrderIntent intent = newIntent();
+        writeIntent(signalFile, intent);
+
+        FileSignalSource source = new FileSignalSource(signalFile, null);
+
+        assertEquals(intent.intentId(), source.nextSignal().orElseThrow().intentId());
+        assertFalse(source.nextSignal().isPresent());
+    }
+
+    /**
+     * The actual point of this fix: a marker file already containing a
+     * previously-delivered {@code intentId} must refuse to redeliver it on
+     * the very first {@code nextSignal()} call after a simulated restart --
+     * unlike {@code aFreshInstanceAfterARestartRedeliversAnIntentIdThePriorInstanceAlreadyDelivered}
+     * above (which documents the {@code null}-marker-path behavior this
+     * fix is deliberately additive to, not a replacement for).
+     */
+    @Test
+    void aPreExistingMarkerFileWithAPreviouslyDeliveredIntentIdIsNotRedeliveredOnFirstCall(@TempDir Path tempDir)
+            throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        Path markerFile = tempDir.resolve("delivered.marker");
+        OrderIntent intent = newIntent();
+        writeIntent(signalFile, intent);
+        Files.writeString(markerFile, intent.intentId().toString());
+
+        FileSignalSource source = new FileSignalSource(signalFile, markerFile);
+
+        assertFalse(
+                source.nextSignal().isPresent(),
+                "a marker file that already recorded this intentId must suppress redelivery immediately");
+    }
+
+    /**
+     * End-to-end proof the fix actually closes the restart gap: deliver an
+     * intent through one instance (persisting the marker), then construct a
+     * brand-new instance against the same files (a real restart) and
+     * confirm it does NOT redeliver -- the opposite of {@code
+     * aFreshInstanceAfterARestartRedeliversAnIntentIdThePriorInstanceAlreadyDelivered}'s
+     * null-marker-path behavior above.
+     */
+    @Test
+    void aSuccessfulDeliveryPersistsTheMarkerSoAFreshInstanceAfterARestartDoesNotRedeliverIt(@TempDir Path tempDir)
+            throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        Path markerFile = tempDir.resolve("delivered.marker");
+        OrderIntent intent = newIntent();
+        writeIntent(signalFile, intent);
+
+        FileSignalSource beforeRestart = new FileSignalSource(signalFile, markerFile);
+        assertEquals(intent.intentId(), beforeRestart.nextSignal().orElseThrow().intentId());
+
+        FileSignalSource afterRestart = new FileSignalSource(signalFile, markerFile);
+        assertFalse(
+                afterRestart.nextSignal().isPresent(),
+                "the persisted marker must survive the simulated restart and suppress redelivery");
+    }
+
+    @Test
+    void aDistinctNewIntentIsStillDeliveredNormallyWithAMarkerPathConfigured(@TempDir Path tempDir)
+            throws IOException {
+        Path signalFile = tempDir.resolve("latest.json");
+        Path markerFile = tempDir.resolve("delivered.marker");
+        OrderIntent intentA = newIntent();
+        writeIntent(signalFile, intentA);
+
+        FileSignalSource source = new FileSignalSource(signalFile, markerFile);
+        assertEquals(intentA.intentId(), source.nextSignal().orElseThrow().intentId());
+
+        OrderIntent intentB = newIntent();
+        writeIntent(signalFile, intentB);
+        assertEquals(intentB.intentId(), source.nextSignal().orElseThrow().intentId());
+
+        FileSignalSource afterRestart = new FileSignalSource(signalFile, markerFile);
+        assertFalse(
+                afterRestart.nextSignal().isPresent(),
+                "the marker file must reflect the LAST delivered intentId (B), not the first (A)");
+    }
 }

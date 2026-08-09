@@ -64,6 +64,38 @@ Reassess the Python/Java split if: solo-dev burden becomes excessive, a
 Python prototype proves sufficient on its own, or Python/Java schema drift
 keeps recurring.
 
+**`OrderExecutor`/`ExchangeAdapter` layering rule** (added when the BingX
+VST integration effort gave this a second real implementation to prove the
+seam against — Paper Trading Bridge Tasks F-H, `.planning/paper-trading-f-
+order-executor.md` through `-h-vst-integration.md`). `engine.runtime.
+TradingLoop` depends only on `engine.execution.OrderExecutor` (`submit` +
+`pollFills` + `pendingOrders` + `cancel`), never on a concrete
+implementation. There are, and are meant to only ever be, exactly two:
+`PaperBroker` (the internal simulator — resolves fills synchronously from
+an injected price) and `ExchangeOrderExecutor` (venue-agnostic, wraps the
+`ExchangeAdapter` **interface**, never a concrete adapter — polls
+`queryOrder` for real, asynchronous fills). **A new venue means writing a
+new `ExchangeAdapter` implementation; it never means writing a new
+`OrderExecutor` implementation.** If a change looks like it needs a
+third `OrderExecutor`, that is a signal the change belongs in
+`ExchangeAdapter` instead — see `OrderExecutor`'s own Javadoc, which
+states this same invariant near-verbatim as the class's "Extensibility
+invariant."
+
+`engine.runtime.PaperTradingApp`'s `PAPER_TRADING_EXECUTION_MODE`
+(`simulated` default | `bingx-vst`) selects which `OrderExecutor` gets
+built at startup — `simulated` builds the exact `PaperBroker` graph this
+project has always run; `bingx-vst` builds a real `BingXAdapter`-backed
+`ExchangeOrderExecutor` (wrapped in `PersistentSubmissionOrderExecutor`
+for durable `SUBMISSION_UNKNOWN` handling — see `.planning/paper-trading-
+h-vst-integration.md`), pointed at a hardcoded VST-host Java constant with
+**no environment variable, argument, or other configuration surface**
+able to route it anywhere else. The two modes are meant to run as two
+independent processes (distinct `PAPER_TRADING_REPORTS_DIR`, independent
+`KillSwitch`), not a runtime toggle on one running process — see that
+same planning doc for why, and for the still-open human decision on which
+loop's clock counts toward the Paper Trading Pass Criteria below.
+
 ## Non-negotiable Rules
 
 - Never enable live trading without explicit human approval.
@@ -254,6 +286,105 @@ API key against `open-api-vst.bingx.com`)
   confirmed as the default, not one-way. OMS should still set it
   explicitly on startup rather than rely on this (a default can change),
   but "undocumented" is no longer the reason to do so.
+- **Real order placement, fill, cancel, and duplicate-`clientOrderID`
+  behavior (2026-08-09, Paper Trading Bridge Task H's real VST
+  verification — full raw JSON and narrative in `.planning/paper-
+  trading-h-vst-integration.md`)**: a real `GUARDED_MARKET` BTC-USDT
+  order (0.001 BTC, LONG), submitted through the full, real, OMS-mediated
+  path (`OrderIntent → OrderPipeline → RiskGateway → Order →
+  ExchangeOrderExecutor → BingXAdapter`), was acknowledged with a real
+  `exchangeOrderId` and observed `FILLED` — `POST
+  /openApi/swap/v2/trade/order`'s own **submit** response already
+  reported `"status":"FILLED"` (a market order matched essentially
+  instantly against the demo book), even though this codebase's own
+  `ExchangeOrderExecutor.submit` deliberately never assumes an instant
+  fill from that response (always returns `Optional.empty()`, resolved
+  only via a later `pollFills`/`queryOrder`) — so the ~1.5s "ack-to-fill"
+  latency actually observed reflects this project's own polling cadence,
+  not real exchange latency, which is at or near the same round trip as
+  acknowledgment itself.
+  - **A real `commission` field exists** on `queryOrder`'s response
+    (`GET /openApi/swap/v2/trade/order`) — e.g. `"commission":"-0.032441"`
+    (negative = fee charged) — confirming (not yet acted on; a real,
+    evidence-first follow-up per `ExchangeOrderExecutor`'s own Javadoc,
+    Paper Trading Bridge Task G) that a real fee figure is available on
+    the wire, not modeled-only. For this trade it was extremely close to
+    this project's own modeled `FEE_BPS=5` estimate (`0.03244075`
+    modeled vs. `0.032441` real, ~5bps either way) — one real data
+    point, not a general proof the two always agree this closely.
+  - **Cancel confirmed real**: `DELETE /openApi/swap/v2/trade/order`
+    against a real, unfilled `LIMIT` order (priced far from market)
+    returned the real status token `"CANCELLED"` (double-L) — confirms
+    the REST-casing half of the previously-documented REST/WebSocket
+    casing inconsistency; WebSocket's own `"CANCELED"` casing remains
+    unverified (no WebSocket call has ever been made by this project).
+  - **Duplicate `clientOrderID` is rejected server-side, not silently
+    accepted or ignored**: a second, independent submission (a genuinely
+    separate `RiskGateway`+`OrderStore`+`OrderPipeline`+
+    `ExchangeOrderExecutor` graph — simulating a second process/session
+    whose own `OrderStore` never saw the first submission, e.g. exactly
+    the restart scenario Task H's own `FileSignalSource` marker-file fix
+    protects against) carrying the **same** `clientOrderID` as the
+    already-filled order above returned
+    `{"code":101400,"msg":"clientOrderID unique check failed"}` — a real,
+    definitive rejection (mapped cleanly by this project's own
+    `ExchangeOrderExecutor`/`Order.reject()` path), not a silent
+    duplicate fill. This is real evidence BingX's own server-side
+    idempotency is a genuine additional safety layer on top of (not a
+    substitute for) this project's own software-side protections —
+    unconfirmed before this run, and not something to rely on exclusively
+    given it is observed, not officially documented, behavior.
+  - **Real account-wide leverage observed: `"20X"`** on a fresh VST
+    account's BTC-USDT position — **not** this project's own `RiskGateway`
+    `approvedLeverage` (canary tier's base `1x`), because **nothing in
+    this codebase calls `POST /openApi/swap/v2/trade/leverage` yet**
+    (confirmed by grep — `setLeverage` exists on `ExchangeAdapter` and is
+    implemented by `BingXAdapter`, but no caller anywhere invokes it). A
+    real, disclosed, **pre-existing** gap (predates Task H, and outside
+    every one of Tasks F/G/H's own itemized scope — `VstPreflight`'s four
+    steps and `ExchangeOrderExecutor`'s own design both deliberately
+    never call `setLeverage`/`setPositionMode`) now confirmed empirically
+    for the first time: real notional-at-risk on the exchange is
+    currently governed by whatever leverage the VST account already has
+    configured (BingX's own account-level default, `20x` observed here),
+    **not** by what `RiskGateway` computed and approved internally. Not
+    fixed under Task H's own pressure — flagged here for a human
+    priority decision, since it has real risk-sizing implications before
+    any canary-live consideration (canary tier's own documented ceiling
+    is `2x`).
+  - **A real, disclosed credential-handling incident during this same
+    verification, fixed at the root cause**: the real `BINGX_API_KEY`
+    value was briefly written to a local, gitignored scratch log file
+    (never committed, never pushed) after a CRLF-terminated `.env`
+    (confirmed: `file .env` reports `ASCII text, with CRLF line
+    terminators`) was sourced naively via `bash source`, leaving a
+    trailing `\r` on the value; the JDK's own `HttpRequest.Builder
+    #header` rejects a raw `\r` in a header value (RFC 7230) with an
+    `IllegalArgumentException` whose message embeds the literal
+    (invalid) value — i.e. the real credential — verbatim. The exposed
+    scratch file was overwritten immediately on discovery; a separate,
+    unrelated `cat -A` diagnostic command (checking for the same CRLF
+    issue) also briefly surfaced the real `FRED_API_KEY` value in a tool
+    transcript for the same reason (a missing final `.env` newline broke
+    an ad hoc redaction filter). Root-caused and fixed for real, not just
+    disclosed: `BingXAdapter`'s constructor now `.strip()`s both
+    `apiKey`/`apiSecret` before storing them, closing this class of issue
+    at its one real entry point rather than relying on every future
+    credential source to be pre-sanitized — regression test
+    `BingXAdapterTest#constructorStripsLeadingAndTrailingWhitespaceFromCredentials`.
+    **Neither exposure reached any committed file, git history, or a
+    public surface** — both were local-only (a gitignored scratch file
+    and this session's own tool-call transcript) — but both values
+    should still be treated as potentially compromised out of caution;
+    rotating `BINGX_API_KEY` (VST-only, no withdrawal permission per this
+    project's own Non-negotiable Rules) and `FRED_API_KEY` (free,
+    read-only, no live-trading surface) is a cheap, low-stakes precaution
+    a human can take at their convenience. `BINGX_API_SECRET` was never
+    used as an HTTP header value anywhere in this codebase (only for a
+    client-side HMAC signature, never transmitted or logged in plaintext)
+    and was independently confirmed, via a redacted diagnostic check, to
+    never have hit this same failure path — no evidence it was ever
+    exposed.
 
 ### Documented, not yet empirically verified (2026-07-24 research pass —
 read from BingX's official docs site, not tested against a live key yet;
@@ -1400,7 +1531,7 @@ correctly.
 |---|---|---|
 | CLI foundation | ripgrep, gh, uv | as needed |
 | Guardrails (hooks) | `dwarvesf/claude-guardrails` (Lite, global `~/.claude/settings.json`) | active now — brought forward from "when `.env` appears" because the repo is public |
-| Guardrails (project-specific) | hook blocking live-flag activation and exchange live-order endpoints | not built yet — add before real exchange credentials appear |
+| Guardrails (project-specific) | hook blocking CI-workflow references to VST order-execution credentials/mode and Java edits that would source `BINGX_VST_BASE_URL` from an environment variable | active now (added Paper Trading Bridge Task H, `.claude/settings.json`'s second `PreToolUse` hook — see `.planning/paper-trading-h-vst-integration.md` for exactly what it does and does not cover) |
 | Secret scanning (local) | `gitleaks` via `.githooks/pre-commit` (`git config core.hooksPath .githooks`) | active now — covers generic secrets (private keys, etc.) that GitHub push protection's free tier doesn't (see "repo is public" note above) |
 | Methodology | GSD (`.planning/` artifacts) + TDD rule above | active now |
 | MCP | Context7, GitHub MCP | add when useful, not urgent |

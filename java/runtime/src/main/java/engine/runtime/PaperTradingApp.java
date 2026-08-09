@@ -1,5 +1,8 @@
 package engine.runtime;
 
+import engine.exchange.BingXAdapter;
+import engine.execution.ExchangeOrderExecutor;
+import engine.execution.OrderExecutor;
 import engine.execution.PaperBroker;
 import engine.oms.OrderStore;
 import engine.risk.RiskGateway;
@@ -67,6 +70,28 @@ import org.slf4j.LoggerFactory;
  * also public and safe to call directly (e.g. from a test) with no side
  * effect beyond logging and, on a real mismatch, tripping {@link
  * #killSwitch} -- both idempotent.
+ *
+ * <p><b>Execution mode (Paper Trading Bridge Task H -- see {@code
+ * .planning/paper-trading-h-vst-integration.md}).</b> {@code
+ * PAPER_TRADING_EXECUTION_MODE} selects which {@link OrderExecutor} {@link
+ * #fromEnvironment()} builds: {@code simulated} (the default -- also the
+ * default for unset/blank/any unrecognized value, this project's standing
+ * fail-safe-to-known-good convention) constructs the exact same {@link
+ * PaperBroker}-based graph this class has always built, with zero behavior
+ * change; {@code bingx-vst} instead builds a real {@code BingXAdapter}-
+ * backed {@link ExchangeOrderExecutor} (wrapped in {@link
+ * PersistentSubmissionOrderExecutor} for durable {@code SUBMISSION_UNKNOWN}
+ * handling), pointed at the hardcoded {@link #BINGX_VST_BASE_URL} constant
+ * -- <b>there is no environment variable, argument, or other configuration
+ * surface anywhere in this class that can route the order-execution path
+ * to any other host.</b> This is deliberately different from {@code
+ * BINGX_BASE_URL} (unchanged: the public price feed only, via {@link
+ * BingXPriceFeed}) -- hardcoding the *VST* host specifically is fine per
+ * the {@code bingx-hostname-guard} hook's own header comment (it only ever
+ * blocks the *production* hostname literal); eliminating the configuration
+ * surface entirely is a stronger guarantee than validating it would be. See
+ * {@link VstPreflight} for the real startup check {@code bingx-vst} mode
+ * runs before any tick-driven trading begins.
  */
 public final class PaperTradingApp {
 
@@ -98,10 +123,42 @@ public final class PaperTradingApp {
     static final String ENV_TICK_INTERVAL_SECONDS = "PAPER_TRADING_TICK_INTERVAL_SECONDS";
     static final String ENV_REPORTS_DIRECTORY = "PAPER_TRADING_REPORTS_DIR";
 
+    /** See class Javadoc, "Execution mode". */
+    static final String ENV_EXECUTION_MODE = "PAPER_TRADING_EXECUTION_MODE";
+
+    static final String EXECUTION_MODE_SIMULATED = "simulated";
+    static final String EXECUTION_MODE_BINGX_VST = "bingx-vst";
+
+    /**
+     * Required only in {@code bingx-vst} mode -- the same credentials
+     * already used to verify the VST endpoint by hand (see CLAUDE.md's
+     * "Verified -- authenticated, VST key" section). Never logged anywhere
+     * in this class -- see class Javadoc.
+     */
+    static final String ENV_BINGX_API_KEY = "BINGX_API_KEY";
+
+    static final String ENV_BINGX_API_SECRET = "BINGX_API_SECRET";
+
+    /**
+     * The VST (demo-trading) host, as a Java constant -- <b>not</b> an
+     * environment variable. See class Javadoc, "Execution mode", for why
+     * this is deliberately the only way the {@code bingx-vst} order-
+     * execution path can ever be pointed anywhere. {@code private}: nothing
+     * outside {@link #forBingXVst} ever needs this value directly (a test
+     * wanting to inject a fake VST-backed executor uses the {@link
+     * #PaperTradingApp(String, String, Path, long, Path, Clock,
+     * OrderExecutor) OrderExecutor-accepting constructor} instead, which
+     * never touches this constant at all).
+     */
+    private static final String BINGX_VST_BASE_URL = "https://open-api-vst.bingx.com";
+
+    /** {@code var/live/} convention, matching {@code signals}/{@code reports/daily} -- see class Javadoc. */
+    private static final Path SUBMISSION_MARKERS_PATH = Path.of("var", "live", "submission_markers.json");
+
     private final TradingLoop tradingLoop;
     private final DailyReportGenerator dailyReportGenerator;
     private final OrderStore orderStore;
-    private final PaperBroker paperBroker;
+    private final OrderExecutor orderExecutor;
     private final KillSwitch killSwitch;
     private final long tickIntervalSeconds;
     private final ScheduledExecutorService executor;
@@ -138,7 +195,12 @@ public final class PaperTradingApp {
      * #tradingLoop()}/{@link #dailyReportGenerator()} below): lets a test
      * inject a {@link Clock} so {@link DailyReportGenerator} day-boundary
      * crossings can be driven deterministically instead of waiting on real
-     * wall-clock time.
+     * wall-clock time. Always builds a real {@link PaperBroker} and a
+     * marker-free {@link FileSignalSource} -- <b>zero behavior change</b>
+     * from before Task H, byte-for-byte -- see {@link
+     * #PaperTradingApp(String, String, Path, long, Path, Clock,
+     * OrderExecutor) the OrderExecutor-accepting overload} below for the
+     * {@code bingx-vst}-mode path, which this constructor never touches.
      */
     PaperTradingApp(
             String symbol,
@@ -160,24 +222,90 @@ public final class PaperTradingApp {
         RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
-        this.paperBroker = new PaperBroker(FEE_BPS, SLIPPAGE_BPS);
+        this.orderExecutor = new PaperBroker(FEE_BPS, SLIPPAGE_BPS);
         FileSignalSource signalSource = new FileSignalSource(signalPath);
         BingXPriceFeed priceFeed = new BingXPriceFeed(bingxBaseUrl);
         this.killSwitch = new KillSwitch();
 
         this.tradingLoop =
-                new TradingLoop(orderPipeline, this.paperBroker, signalSource, priceFeed, this.killSwitch, symbol);
+                new TradingLoop(orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol);
         this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
         this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
 
         log.info(
                 "PaperTradingApp constructed: symbol={} bingxBaseUrl={} signalPath={} tickIntervalSeconds={}"
-                        + " reportsDirectory={} riskTier=canary",
+                        + " reportsDirectory={} riskTier=canary executionMode={}",
                 symbol,
                 bingxBaseUrl,
                 signalPath,
                 tickIntervalSeconds,
-                reportsDirectory);
+                reportsDirectory,
+                EXECUTION_MODE_SIMULATED);
+    }
+
+    /**
+     * Test/manual-verification-only overload (package-private -- not part
+     * of this class's real operational API), mirroring the {@link Clock}
+     * overload above exactly (same pattern: a real dependency a test or the
+     * real {@code bingx-vst} wiring path needs to inject, everything else
+     * identical). Lets a caller supply a pre-built {@link OrderExecutor}
+     * instead of always constructing a {@link PaperBroker} -- this is what
+     * {@link #forBingXVst} uses to wire in a real {@code BingXAdapter}-
+     * backed executor, and what a test uses to exercise this class's
+     * construction/wiring logic against a fake {@link OrderExecutor}
+     * without a real network call.
+     *
+     * <p>Unlike the {@code PaperBroker}-building overload above, this one
+     * always builds {@link FileSignalSource} with a persisted delivered-
+     * marker file (a sibling of {@code signalPath} named {@code
+     * delivered.marker}) -- see {@code FileSignalSource}'s own Javadoc,
+     * "Durable, cross-restart dedup": any caller of this overload is either
+     * a test that wants realistic coverage of that behavior, or the real
+     * {@code bingx-vst} path, which is exactly the case this protection
+     * exists for (a real venue, where a redelivered signal means a real
+     * second order).
+     */
+    PaperTradingApp(
+            String symbol,
+            String bingxBaseUrl,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock,
+            OrderExecutor orderExecutor) {
+        Objects.requireNonNull(symbol, "symbol is required");
+        Objects.requireNonNull(bingxBaseUrl, "bingxBaseUrl is required");
+        Objects.requireNonNull(signalPath, "signalPath is required");
+        Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
+        Objects.requireNonNull(clock, "clock is required");
+        Objects.requireNonNull(orderExecutor, "orderExecutor is required");
+        if (tickIntervalSeconds <= 0) {
+            throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
+        }
+        this.tickIntervalSeconds = tickIntervalSeconds;
+
+        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        this.orderStore = new OrderStore();
+        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
+        this.orderExecutor = orderExecutor;
+        FileSignalSource signalSource = new FileSignalSource(signalPath, signalPath.resolveSibling("delivered.marker"));
+        BingXPriceFeed priceFeed = new BingXPriceFeed(bingxBaseUrl);
+        this.killSwitch = new KillSwitch();
+
+        this.tradingLoop =
+                new TradingLoop(orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol);
+        this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
+        this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
+
+        log.info(
+                "PaperTradingApp constructed: symbol={} bingxBaseUrl={} signalPath={} tickIntervalSeconds={}"
+                        + " reportsDirectory={} riskTier=canary orderExecutor={}",
+                symbol,
+                bingxBaseUrl,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                orderExecutor.getClass().getSimpleName());
     }
 
     /**
@@ -206,6 +334,12 @@ public final class PaperTradingApp {
      *       working directory -- same repository-root-relative convention
      *       as {@code PAPER_TRADING_SIGNAL_PATH} above; see {@link
      *       DailyReportGenerator})
+     *   <li>{@code PAPER_TRADING_EXECUTION_MODE} (optional, default {@code
+     *       simulated} -- see class Javadoc, "Execution mode"). Only in
+     *       {@code bingx-vst} mode: {@code BINGX_API_KEY}/{@code
+     *       BINGX_API_SECRET} (both required, no default -- never
+     *       hardcoded, matching this project's standing credential
+     *       convention; see {@link #forBingXVst})
      * </ul>
      */
     public static PaperTradingApp fromEnvironment() {
@@ -214,7 +348,83 @@ public final class PaperTradingApp {
         Path signalPath = resolveSignalPath(System.getenv(ENV_SIGNAL_PATH), symbol);
         long tickIntervalSeconds = resolveTickIntervalSeconds(System.getenv(ENV_TICK_INTERVAL_SECONDS));
         Path reportsDirectory = resolveReportsDirectory(System.getenv(ENV_REPORTS_DIRECTORY));
+        String executionMode = resolveExecutionMode(System.getenv(ENV_EXECUTION_MODE));
+        if (EXECUTION_MODE_BINGX_VST.equals(executionMode)) {
+            return forBingXVst(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
+        }
         return new PaperTradingApp(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
+    }
+
+    /**
+     * {@code bingx-vst} only for an exact (case-sensitive, after trimming)
+     * match of {@link #EXECUTION_MODE_BINGX_VST}; {@link
+     * #EXECUTION_MODE_SIMULATED} for {@code null}, blank, or any other
+     * value -- this project's standing "fail safe to the known-good
+     * default" convention (see {@link #resolveTickIntervalSeconds}'s own
+     * precedent, though that one fails loud rather than safe -- unlike a
+     * malformed tick interval, an unrecognized execution mode has an
+     * obviously-safe fallback, so silently defaulting is the right choice
+     * here specifically).
+     */
+    static String resolveExecutionMode(String raw) {
+        if (raw != null && EXECUTION_MODE_BINGX_VST.equals(raw.trim())) {
+            return EXECUTION_MODE_BINGX_VST;
+        }
+        return EXECUTION_MODE_SIMULATED;
+    }
+
+    /**
+     * Builds the real {@code bingx-vst}-mode graph: a real {@code
+     * BingXAdapter} pointed at the hardcoded {@link #BINGX_VST_BASE_URL}
+     * constant (never {@code bingxBaseUrl}, which remains the price-feed-
+     * only host), a real {@link VstPreflight#run} check (fails closed on a
+     * non-VST balance asset), real {@code SUBMISSION_UNKNOWN} marker
+     * resolution via {@link SubmissionMarkerResolver} against any marker a
+     * prior process instance left behind, and a {@link
+     * PersistentSubmissionOrderExecutor}-wrapped {@link
+     * ExchangeOrderExecutor} as the order-execution path. The kill switch
+     * starts tripped if either {@link VstPreflight} found a non-zero
+     * pre-existing position, or {@link SubmissionMarkerResolver} found an
+     * unresolved marker requiring human review -- either is unknown state
+     * this process must not start normal tick-driven trading against. Never
+     * logs {@code apiKey}/{@code apiSecret} -- both are read directly from
+     * {@code System.getenv} into local variables only ever passed to {@code
+     * BingXAdapter}'s constructor, never into a log statement.
+     */
+    private static PaperTradingApp forBingXVst(
+            String symbol, String bingxBaseUrl, Path signalPath, long tickIntervalSeconds, Path reportsDirectory) {
+        String apiKey = requireNonBlank(System.getenv(ENV_BINGX_API_KEY), ENV_BINGX_API_KEY);
+        String apiSecret = requireNonBlank(System.getenv(ENV_BINGX_API_SECRET), ENV_BINGX_API_SECRET);
+        BingXAdapter adapter = new BingXAdapter(apiKey, apiSecret, BINGX_VST_BASE_URL);
+
+        VstPreflight.Result preflight = VstPreflight.run(adapter);
+
+        SubmissionMarkerStore markerStore = new SubmissionMarkerStore(SUBMISSION_MARKERS_PATH);
+        SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
+        boolean unresolvedMarkers = !markerResolution.requiresHumanReview().isEmpty();
+
+        OrderExecutor orderExecutor =
+                new PersistentSubmissionOrderExecutor(new ExchangeOrderExecutor(adapter, FEE_BPS), markerStore);
+
+        PaperTradingApp app = new PaperTradingApp(
+                symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory, Clock.systemUTC(),
+                orderExecutor);
+
+        if (preflight.killSwitchShouldStartTripped() || unresolvedMarkers) {
+            app.killSwitch.trip();
+            log.error(
+                    "PaperTradingApp starting in bingx-vst mode with the kill switch already TRIPPED"
+                            + " (preflightFoundNonZeroPosition={}, unresolvedSubmissionMarkersRequiringReview={})"
+                            + " -- a deliberate human reset is required before any new signal is submitted.",
+                    preflight.killSwitchShouldStartTripped(),
+                    unresolvedMarkers);
+        }
+        log.info(
+                "PaperTradingApp constructed in bingx-vst mode: symbol={} vstBaseUrl={} balanceAsset={}",
+                symbol,
+                BINGX_VST_BASE_URL,
+                preflight.balance().asset());
+        return app;
     }
 
     static String firstNonBlank(String value, String fallback) {
@@ -318,15 +528,17 @@ public final class PaperTradingApp {
 
     /**
      * Runs {@link Reconciler#check} against this app's own {@link
-     * OrderStore} and {@link PaperBroker}, using {@link TradingLoop
-     * #submittedOrderIds()} as the known-submission history -- see class
-     * Javadoc and {@code .planning/paper-trading-e-reconciliation.md} for
-     * the full design and why a detected mismatch trips {@link
-     * #killSwitch}. Updates {@link #lastReconciliationReport()} with the
-     * result before returning it.
+     * OrderStore} and {@link OrderExecutor} (a {@link PaperBroker} in
+     * {@code simulated} mode, an {@code ExchangeOrderExecutor}-based
+     * executor in {@code bingx-vst} mode -- see class Javadoc, "Execution
+     * mode"), using {@link TradingLoop#submittedOrderIds()} as the known-
+     * submission history -- see class Javadoc and {@code .planning/paper-
+     * trading-e-reconciliation.md} for the full design and why a detected
+     * mismatch trips {@link #killSwitch}. Updates {@link
+     * #lastReconciliationReport()} with the result before returning it.
      */
     public ReconciliationReport reconcile() {
-        ReconciliationReport report = Reconciler.check(tradingLoop.submittedOrderIds(), orderStore, paperBroker);
+        ReconciliationReport report = Reconciler.check(tradingLoop.submittedOrderIds(), orderStore, orderExecutor);
         lastReconciliationReport = report;
         if (!report.isClean()) {
             log.error(
@@ -427,6 +639,19 @@ public final class PaperTradingApp {
     /** Test-only accessor (package-private) -- see {@link #tradingLoop()}'s own Javadoc. */
     KillSwitch killSwitch() {
         return killSwitch;
+    }
+
+    /**
+     * Test/manual-verification-only accessor -- same status as {@link
+     * #tradingLoop()} above. Added for Task H's real VST verification (see
+     * {@code .planning/paper-trading-h-vst-integration.md}): a manual
+     * verification driver needs a real {@link #cancel} call against a real
+     * pending order to observe BingX's actual cancelled-status token
+     * (CANCELLED vs CANCELED), which {@link TradingLoop} itself has no
+     * reason to ever expose a cancel path for.
+     */
+    OrderExecutor orderExecutor() {
+        return orderExecutor;
     }
 
     public static void main(String[] args) {
