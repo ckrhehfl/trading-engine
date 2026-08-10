@@ -58,3 +58,25 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+// A real, committed way to launch PaperTradingApp -- not the Gradle
+// `application` plugin (deliberately, per PaperTradingApp's own Javadoc:
+// its default working directory wouldn't match this project's
+// repo-root-relative path assumptions for the signal file/reports
+// directory). A plain `JavaExec` task with `workingDir` set explicitly to
+// the repo root sidesteps that without pulling in the plugin's other
+// defaults. Zero behavior/logic change to PaperTradingApp itself -- this
+// only adds a way to invoke its existing, already-reviewed `main()`.
+// Used by `scripts/paper-trading-watchdog.sh` so a restart after a real
+// process death (e.g. the tmux server itself dying, observed for real
+// during this project's own local-run phase) doesn't depend on an
+// ephemeral, session-scoped scratch file to reconstruct the classpath.
+tasks.register<JavaExec>("runPaperTradingApp") {
+    group = "application"
+    description = "Runs engine.runtime.PaperTradingApp.main() with the real runtime classpath."
+    mainClass.set("engine.runtime.PaperTradingApp")
+    classpath = sourceSets["main"].runtimeClasspath
+    workingDir = rootDir.parentFile // java/ -> repo root
+    standardOutput = System.out
+    errorOutput = System.err
+}
