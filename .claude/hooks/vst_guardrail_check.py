@@ -64,8 +64,8 @@ variables/fields, e.g.
 
 ```java
 private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";
-String configuredHost = System.getProperty(VST_HOST_PROPERTY);
-private static final String BINGX_VST_BASE_URL = configuredHost;
+private static final String CONFIGURED_HOST = System.getProperty(VST_HOST_PROPERTY);
+private static final String BINGX_VST_BASE_URL = CONFIGURED_HOST;
 ```
 
 -- confirmed for real (not just reasoned about) that this candidate
@@ -232,7 +232,7 @@ def check_workflow_guardrail(file_path: str, candidate: str) -> bool:
     return bool(FORBIDDEN_WORKFLOW_TOKENS_RE.search(candidate))
 
 
-GETENV_EQUIVALENT_TOKENS = ("getenv", "getproperty")
+GETENV_EQUIVALENT_TOKENS = ("getenv", "getproperty", "getproperties")
 
 
 def check_java_guardrail(file_path: str, candidate: str) -> bool:
@@ -240,16 +240,24 @@ def check_java_guardrail(file_path: str, candidate: str) -> bool:
     has BINGX_VST_BASE_URL and a getenv-equivalent accessor co-occurring in the same
     semicolon-delimited statement.
 
-    Checks both `System.getenv(...)` and `System.getProperty(...)` (real,
-    correctly-identified CodeRabbit review finding on this PR: the
-    pre-fix check only looked for the literal substring "getenv", so
-    `System.getProperty(...)` -- a real, different JVM configuration
-    surface, settable via a `-D` flag, that CLAUDE.md's own "no
-    environment variable, argument, or OTHER CONFIGURATION SURFACE"
-    wording already covers -- was not textually caught at all). The
-    chained `System.getenv().get("BINGX_VST_BASE_URL")` form was already
-    covered before this fix (both substrings already co-occur in that
-    one statement) -- verified by its own regression test, not assumed.
+    Checks `System.getenv(...)`, `System.getProperty(...)` (singular), and
+    `System.getProperties()` (plural, Map-style -- `.get("KEY")` reads a
+    single property out of the full snapshot it returns; a real,
+    independently-verified gap, found and fixed alongside a separate,
+    inaccurate claim about this same file that did not hold up under
+    direct testing -- see `.planning/paper-trading-h-vst-integration.md`'s
+    "round 5" section for the full account of both). "getproperty" is
+    deliberately NOT a substring of "getproperties" (they diverge at the
+    11th character, `y` vs `i`), so the plural form needed its own token,
+    not just a broader existing one. The pre-fix check only looked for the
+    literal substring "getenv", so `System.getProperty(...)` -- a real,
+    different JVM configuration surface, settable via a `-D` flag, that
+    CLAUDE.md's own "no environment variable, argument, or OTHER
+    CONFIGURATION SURFACE" wording already covers -- was not textually
+    caught at all either, until an earlier round's fix. The chained
+    `System.getenv().get("BINGX_VST_BASE_URL")` form was already covered
+    before that fix (both substrings already co-occur in that one
+    statement) -- verified by its own regression test, not assumed.
     """
     if not JAVA_PATH_RE.search(normalize_path(file_path)):
         return False

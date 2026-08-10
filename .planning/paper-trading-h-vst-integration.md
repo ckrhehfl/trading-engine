@@ -1249,8 +1249,8 @@ statement-level substring co-occurrence check entirely:
 
 ```java
 private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";
-String configuredHost = System.getProperty(VST_HOST_PROPERTY);
-private static final String BINGX_VST_BASE_URL = configuredHost;
+private static final String CONFIGURED_HOST = System.getProperty(VST_HOST_PROPERTY);
+private static final String BINGX_VST_BASE_URL = CONFIGURED_HOST;
 ```
 
 Confirmed real, not just reasoned about: ran `check_java_guardrail`
@@ -1308,6 +1308,104 @@ matching the established precedent of `FileSignalSource`'s own
 marker-timing issue from round 1/2 (also left open with recorded
 reasoning rather than force-fixed or silently closed).
 
+## Round 5: a coordinator message with one inaccurate claim, verified rather than trusted
+
+A coordinator message (not the human operator directly) reported "a
+genuinely fresh CodeRabbit review... two real findings that need
+actual fixes" against the round-4 HEAD (`fe96583`). Per this task's own
+standing practice (every prior coordinator message this task received
+was independently verified against the real GitHub API rather than
+taken on faith — see round 2's own "process gap" correction above),
+both claims were checked against the actual current code and the
+actual GitHub review data before any fix was written. One held up,
+one did not, and a third, real, different finding was found in the
+process that the coordinator's message never mentioned at all.
+
+**Claim 1, "`reconstruct_candidate` fails open on a file-read error or
+an `old_string` mismatch": verified FALSE.** The claimed mechanism —
+"on `OSError` it sets `current = ""`, then still calls
+`current.replace(old_string, new_string, 1)`... silently no-ops and
+returns `""`" — does not match the actual code and never has:
+
+```python
+if old_string in current:
+    return current.replace(old_string, new_string, 1)
+return current + "\n" + new_string   # the actual fallback -- not .replace()
+```
+
+`.replace()` is only ever called inside the `if old_string in current`
+branch; the `OSError`/not-found paths both fall to the *other* branch,
+which appends `new_string` rather than discarding it. Verified two
+independent ways, not just re-read: (1) direct execution —
+`reconstruct_candidate` against a nonexistent `file_path` (forcing
+`OSError`) with a `new_string` containing `BINGX_API_KEY` returned
+`'\nSOME_KEY: placeholder\n  BINGX_API_KEY: ...'` (not `""`), and
+`check_workflow_guardrail` against it returned `True` (correctly
+blocked) — repeated for the `old_string`-not-found-in-a-real-file case
+with the same result; (2) `git show 481eecf:.claude/hooks/
+vst_guardrail_check.py` — this file's **very first commit**, before any
+of this task's four review rounds — already has the identical
+`current + "\n" + new_string` fallback, not a `.replace()` call. This
+specific bug has never existed in this file's history. The claim's
+attached "add a repository-boundary check before opening `file_path`"
+suggestion was also not pursued: it does not appear in the actual
+CodeRabbit review found against this exact HEAD (see below), and no
+concrete exploit path was identified for a **read-only** boundary check
+in a hook whose only externally-visible output is `OK`/`BLOCK_*` text,
+never file content. Not fixed, because there was nothing to fix — a
+fix would have been for an imagined bug, not a real one.
+
+**Claim 2, "`System.getProperties().get(...)` (plural, Map-style) isn't
+in `GETENV_EQUIVALENT_TOKENS`": verified TRUE**, independent of its
+claimed sourcing (see below). `check_java_guardrail` against `String x
+= (String) System.getProperties().get("BINGX_VST_BASE_URL");` returned
+`False` before this fix — "getproperty" (singular) is not a substring
+of "getproperties" (plural; they diverge at the 11th character, `y` vs
+`i`), so the existing token list didn't catch it. Fixed for real, TDD:
+`GETENV_EQUIVALENT_TOKENS` now includes `"getproperties"`, with a new
+regression test, `test_blocks_system_getproperties_plural_map_style_form`,
+confirmed red before the fix and green after.
+
+**What a real GitHub API check found instead of the coordinator's two
+claims**: querying `gh api repos/.../pulls/79/reviews` for any review
+targeting commit `fe96583` found **zero** — the reviews shown as "most
+recent" were all still against the prior commit `7caa8ce`. A GraphQL
+`reviewThreads` query for threads created after the `fe96583` push
+found exactly **one** new thread, confirmed via its `originalCommit`/
+`commit` GraphQL fields to genuinely target `fe96583` — and it is
+neither of the coordinator's two claims. It is a real, valid, minor
+finding: this document's and both Python files' copies of round 4's
+"known limitation" example snippet mixed a field-context declaration
+with a bare local-variable declaration
+(`String configuredHost = System.getProperty(...)`) that is not legal
+directly inside a class body — not valid, compilable Java for the
+field context it was meant to represent. Fixed in all three places
+(this document, `vst_guardrail_check.py`'s module docstring,
+`test_vst_guardrail_check.py`'s pinning test) by making the middle line
+a real `private static final String CONFIGURED_HOST = ...` field too —
+re-verified after the fix that the corrected, now-valid snippet still
+demonstrates the exact same bypass (`check_java_guardrail` still
+returns `False` against it), so fixing the example's Java validity did
+not accidentally also fix, or further break, the actual limitation
+being documented.
+
+**Also noted, not independently re-verified in depth per the
+coordinator's own "handled, no action needed" framing**: `gh api
+repos/.../pulls/79/reviews` does show exactly 4 reviews now in state
+`DISMISSED` (one of which, on inspection, was the round-3
+`APPROVED` review rather than a `CHANGES_REQUESTED` one — a minor
+inaccuracy in the coordinator's characterization, not investigated
+further since it was explicitly out of scope for this response and
+does not affect any thread this task is responsible for).
+
+**Final state after round 5**: `python3 .claude/hooks/
+test_vst_guardrail_check.py` — **29 tests, 0 failures, 0 errors** (28 +
+1 new). No Java files changed this round, so `./gradlew clean build`'s
+own 300-test count is unaffected. Replied to the one genuinely new
+GitHub thread with real evidence (the corrected snippet, and
+confirmation the demonstrated bypass is unchanged); the round-4 thread
+remains the sole deliberately-open one.
+
 ## Ship status
 
 Round 3's fixes (commit `7caa8ce`) were pushed, and a real CodeRabbit
@@ -1323,19 +1421,31 @@ relying on GitHub/CodeRabbit's own auto-resolution alone.
 
 A documentation-only follow-up commit (recording that confirmed-green
 state in this file) surfaced round 4's single new finding on manual
-re-review (see above) — deliberately left unresolved with recorded
-reasoning, not fixed and not silently closed. **Final real state**: CI
-checks green (`java-tests`, `gitleaks`, `bingx-hostname-guard`, each
-×2 for the duplicate workflow trigger; `CodeRabbit`'s own commit status
-API entry for the current HEAD reads `state: success`, `description:
+re-review — deliberately left unresolved with recorded reasoning, not
+fixed and not silently closed. A round-4 disclosure commit then
+surfaced round 5: a coordinator message claiming two real findings
+against the round-4 HEAD, one of which (the `reconstruct_candidate`
+fail-open claim) was independently verified FALSE against both live
+code execution and this file's full git history, and one of which (the
+`getProperties()` plural gap) was verified TRUE and fixed; a real,
+different, minor finding the coordinator's message never mentioned
+(the "known limitation" example's Java validity) was found via direct
+GitHub API verification and fixed too. Full accounting above.
+
+**Final real state**: CI checks green (`java-tests`, `gitleaks`,
+`bingx-hostname-guard`); `CodeRabbit`'s own commit status API entry for
+the round-4 HEAD (`fe96583`) reads `state: success`, `description:
 "Review completed"` — verified via `gh api repos/.../commits/<sha>/
 status`, not the cached `gh pr checks` display, per the governing
-brief's own instruction); **21 review threads total, 20 resolved, 1
-deliberately left open** (the round-4 variable-aliasing finding, with a
-real evidence reply recorded on the thread and full reasoning in this
-document). PR remains **not merged**, per the governing brief's own
-explicit instruction and CLAUDE.md's Auto-merge Policy: this PR touches
-Java OMS/Execution/runtime logic and real credentials handling, both
+brief's own instruction. **22 review threads total as of round 5's
+own commit not yet pushed for a fresh review** (21 after round 4 + 1
+new from round 5's real finding), 21 resolved, 1 deliberately left
+open (the round-4 variable-aliasing finding). Round 5's own commit is
+being pushed next; a fresh CodeRabbit review against that new HEAD is
+the remaining step before this can be reported fully confirmed. PR
+remains **not merged**, per the governing brief's own explicit
+instruction and CLAUDE.md's Auto-merge Policy: this PR touches Java
+OMS/Execution/runtime logic and real credentials handling, both
 explicit exclusions from any auto-merge delegation regardless of
 CI/CodeRabbit status. Stopped here for human review, as instructed
 originally and reaffirmed by the coordinator's round-2 message.

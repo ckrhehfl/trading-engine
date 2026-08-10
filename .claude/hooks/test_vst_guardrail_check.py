@@ -132,8 +132,8 @@ class CheckJavaGuardrailTest(unittest.TestCase):
         # together -- not silent, undocumented drift either direction.
         candidate = (
             'private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";\n'
-            "String configuredHost = System.getProperty(VST_HOST_PROPERTY);\n"
-            "private static final String BINGX_VST_BASE_URL = configuredHost;\n"
+            "private static final String CONFIGURED_HOST = System.getProperty(VST_HOST_PROPERTY);\n"
+            "private static final String BINGX_VST_BASE_URL = CONFIGURED_HOST;\n"
         )
         self.assertFalse(
             check_java_guardrail("Foo.java", candidate),
@@ -141,6 +141,20 @@ class CheckJavaGuardrailTest(unittest.TestCase):
             " now fails, the bypass has been closed for real and this test (and the docstring) should be"
             " updated to reflect that, not silently left stale",
         )
+
+    def test_blocks_system_getproperties_plural_map_style_form(self):
+        # A real, independently-verified gap (found and fixed alongside a
+        # separate, inaccurate claim about this same file that did NOT hold
+        # up under direct testing -- see .planning/paper-trading-h-vst-
+        # integration.md's "round 5" section for the full account of both).
+        # System.getProperties() (plural, no arguments) returns a
+        # Map<Object,Object>-shaped Properties snapshot; .get("KEY") reads
+        # a single property out of it -- a different real JVM configuration
+        # accessor than System.getProperty(String) (singular), and the
+        # pre-fix GETENV_EQUIVALENT_TOKENS list only contained "getproperty",
+        # not "getproperties", so this form was not textually caught.
+        candidate = 'String x = (String) System.getProperties().get("BINGX_VST_BASE_URL");'
+        self.assertTrue(check_java_guardrail("Foo.java", candidate))
 
     def test_still_blocks_the_chained_system_getenv_get_form(self):
         # Not a new bug -- the existing same-statement substring
