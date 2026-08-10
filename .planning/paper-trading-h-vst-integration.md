@@ -1224,16 +1224,22 @@ present in Task G's own accepted planning doc.
 
 ## Ship status
 
-Round 3 (this section, current): a third, real CodeRabbit review landed
-against the round-2 HEAD commit with 5 actionable comments, all
-independently verified as real (not assumed from the review's own
-prose) and fixed for real per "CodeRabbit review findings, round 3"
-above, TDD throughout. Round-3 changes are being committed and pushed
-next; a fresh CodeRabbit review against the new HEAD is the remaining
-step before this task is reportable as genuinely, fully green. PR
-remains **not merged**, per the governing brief's own explicit
-instruction and CLAUDE.md's Auto-merge Policy: this PR touches Java
-OMS/Execution/runtime logic and real credentials handling, both
-explicit exclusions from any auto-merge delegation regardless of
-CI/CodeRabbit status. Stopped here for human review, as instructed
-originally and reaffirmed by the coordinator's round-2 message.
+Round 3's fixes (commit `7caa8ce`) were pushed, and a fourth, real
+CodeRabbit review landed against that exact HEAD sha (confirmed via the
+GitHub reviews API's own `commit_id` field, not the cached checks
+display) with state **APPROVED** — zero further actionable comments.
+All CI checks green (`java-tests`, `gitleaks`, `bingx-hostname-guard`,
+`CodeRabbit`, each ×2 for the duplicate workflow trigger). All 20
+review threads across all three rounds confirmed **resolved** via the
+GitHub GraphQL `reviewThreads` API (`isResolved: true`, 0 unresolved) —
+including replying to each of round 3's own 5 threads with real
+evidence (code references, test names, real command output) before
+confirming resolution, matching the same standard applied in round 2
+rather than relying on GitHub/CodeRabbit's own auto-resolution alone.
+Genuinely, fully green. PR remains **not merged**, per the governing
+brief's own explicit instruction and CLAUDE.md's Auto-merge Policy:
+this PR touches Java OMS/Execution/runtime logic and real credentials
+handling, both explicit exclusions from any auto-merge delegation
+regardless of CI/CodeRabbit status. Stopped here for human review, as
+instructed originally and reaffirmed by the coordinator's round-2
+message.
