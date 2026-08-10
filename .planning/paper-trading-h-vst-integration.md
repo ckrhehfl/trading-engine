@@ -1298,9 +1298,10 @@ regression test,
 `test_known_disclosed_limitation_variable_aliased_bypass_across_statements_is_not_currently_blocked`,
 pins the current (accepted) behavior deliberately — so if this is ever
 actually fixed, the test fails and forces a deliberate update rather
-than silent drift in either direction. `python3 .claude/hooks/
-test_vst_guardrail_check.py` — **28 tests, 0 failures, 0 errors** (27 +
-1 new). Replied to the GitHub thread with this same reasoning
+than silent drift in either direction.
+`python3 .claude/hooks/test_vst_guardrail_check.py` — **28 tests, 0
+failures, 0 errors** (27 + 1 new). Replied to the GitHub thread with
+this same reasoning
 (real command output showing the confirmed bypass, the "Heavy lift"
 weighing above, and the pointer to the new disclosure/test) — this
 thread is the one item in this task left **deliberately unresolved**,
@@ -1398,9 +1399,10 @@ inaccuracy in the coordinator's characterization, not investigated
 further since it was explicitly out of scope for this response and
 does not affect any thread this task is responsible for).
 
-**Final state after round 5**: `python3 .claude/hooks/
-test_vst_guardrail_check.py` — **29 tests, 0 failures, 0 errors** (28 +
-1 new). No Java files changed this round, so `./gradlew clean build`'s
+**Final state after round 5**:
+`python3 .claude/hooks/test_vst_guardrail_check.py` — **29 tests, 0
+failures, 0 errors** (28 + 1 new). No Java files changed this round, so
+`./gradlew clean build`'s
 own 300-test count is unaffected. Replied to the one genuinely new
 GitHub thread with real evidence (the corrected snippet, and
 confirmation the demonstrated bypass is unchanged); the round-4 thread
