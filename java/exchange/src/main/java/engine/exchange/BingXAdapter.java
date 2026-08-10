@@ -52,9 +52,26 @@ public final class BingXAdapter implements ExchangeAdapter {
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * {@code apiKey}/{@code apiSecret} are {@link String#strip()}ped before
+     * being stored -- a defensive fix, not cosmetic: a credential sourced
+     * from a CRLF-terminated {@code .env} file (or any other whitespace-
+     * contaminated source) that still carries a trailing {@code \r} would
+     * otherwise reach {@code java.net.http.HttpRequest.Builder#header} as
+     * the literal {@code X-BX-APIKEY} header value, which the JDK rejects
+     * outright ({@code IllegalArgumentException}, a raw {@code \r} is not a
+     * legal HTTP header-value character per RFC 7230) -- with an exception
+     * message that embeds the invalid value <b>verbatim</b>, i.e. the real
+     * credential, in cleartext, into whatever catches or logs that
+     * exception. Found for real during Paper Trading Bridge Task H's
+     * manual VST verification (see {@code .planning/paper-trading-h-vst-
+     * integration.md}) -- not a hypothetical. Stripping here closes the
+     * whole class of issue at its one real entry point rather than relying
+     * on every future caller to pre-sanitize its own credential source.
+     */
     public BingXAdapter(String apiKey, String apiSecret, String baseUrl) {
-        this.apiKey = Objects.requireNonNull(apiKey, "apiKey is required");
-        this.apiSecret = Objects.requireNonNull(apiSecret, "apiSecret is required");
+        this.apiKey = Objects.requireNonNull(apiKey, "apiKey is required").strip();
+        this.apiSecret = Objects.requireNonNull(apiSecret, "apiSecret is required").strip();
         this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl is required");
         this.httpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build();
     }
@@ -181,7 +198,8 @@ public final class BingXAdapter implements ExchangeAdapter {
                 parseBigDecimal(balanceNode, "equity"),
                 parseBigDecimal(balanceNode, "availableMargin"),
                 parseBigDecimal(balanceNode, "usedMargin"),
-                parseBigDecimal(balanceNode, "unrealizedProfit"));
+                parseBigDecimal(balanceNode, "unrealizedProfit"),
+                parseString(balanceNode, "asset"));
     }
 
     /**
@@ -276,6 +294,17 @@ public final class BingXAdapter implements ExchangeAdapter {
             throw new ExchangeException("BingX request interrupted calling " + path, e);
         }
 
+        // DEBUG only (not shown at this project's default INFO level, see
+        // slf4j-simple's own default) -- the raw wire response never
+        // contains apiKey/apiSecret (BingX's own response envelope never
+        // echoes request credentials back), so this is safe to log
+        // unconditionally. Added for Task H's real VST verification (see
+        // .planning/paper-trading-h-vst-integration.md) -- captures exactly
+        // the raw JSON that section's own capture requirements ask for
+        // (e.g. whether a real `commission` field exists on a fill), and is
+        // generally useful for any future debugging against a real host.
+        log.debug("BingX response for {} {}: HTTP {} body={}", httpMethod, path, response.statusCode(), response.body());
+
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new ExchangeException(
                     "BingX request to " + path + " returned HTTP " + response.statusCode() + ": " + response.body());
@@ -325,6 +354,15 @@ public final class BingXAdapter implements ExchangeAdapter {
             throw new ExchangeException("BingX order response missing orderId field: " + dataNode);
         }
         return orderIdNode.asText();
+    }
+
+    /** Returns {@code null} if the field is missing/JSON null, matching {@link #parseBigDecimal}'s own convention. */
+    private static String parseString(JsonNode node, String field) {
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return null;
+        }
+        return value.asText();
     }
 
     private static BigDecimal parseBigDecimal(JsonNode node, String field) {

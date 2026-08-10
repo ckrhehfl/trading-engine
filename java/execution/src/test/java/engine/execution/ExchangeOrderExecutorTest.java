@@ -571,4 +571,161 @@ class ExchangeOrderExecutorTest {
             pool.shutdownNow();
         }
     }
+
+    // --- SubmissionListener (added Task H, replacing the earlier
+    // PersistentSubmissionOrderExecutor decorator design -- see
+    // SubmissionListener's own Javadoc) ---
+
+    /** Hand-written test double, no mocking framework, matching this codebase's established convention. */
+    private static final class RecordingSubmissionListener implements SubmissionListener {
+        private final List<String> events = new java.util.ArrayList<>();
+
+        @Override
+        public void beforeSubmit(Order order) {
+            events.add("before:" + order.clientOrderId());
+        }
+
+        @Override
+        public void afterSubmitSucceeded(Order order) {
+            events.add("after:" + order.clientOrderId());
+        }
+    }
+
+    @Test
+    void twoArgConstructorDefaultsToTheNoOpListenerAndBehavesExactlyAsBefore() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "1");
+
+        assertDoesNotThrow(() -> executor.submit(order, new BigDecimal("1000")));
+        assertEquals(OrderState.ACKNOWLEDGED, order.state());
+    }
+
+    @Test
+    void listenerReceivesBeforeSubmitThenAfterSubmitSucceededOnANormalSubmit() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        RecordingSubmissionListener listener = new RecordingSubmissionListener();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), listener);
+        Order order = order(Side.LONG, "1");
+
+        executor.submit(order, new BigDecimal("1000"));
+
+        assertEquals(
+                List.of("before:" + order.clientOrderId(), "after:" + order.clientOrderId()), listener.events,
+                "beforeSubmit must run before adapter.submitOrder, afterSubmitSucceeded only after it returns normally");
+    }
+
+    @Test
+    void listenerReceivesOnlyBeforeSubmitWhenSubmitOrderThrows() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.throwOnNextSubmit(new RuntimeException("network timeout"));
+        RecordingSubmissionListener listener = new RecordingSubmissionListener();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), listener);
+        Order order = order(Side.LONG, "1");
+
+        assertThrows(RuntimeException.class, () -> executor.submit(order, new BigDecimal("1000")));
+
+        assertEquals(
+                List.of("before:" + order.clientOrderId()), listener.events,
+                "afterSubmitSucceeded must NOT run when adapter.submitOrder throws -- the ambiguity must survive");
+    }
+
+    @Test
+    void listenerReceivesBeforeThenAfterEvenWhenTheSubmitIsRejectedNotThrown() {
+        // A REJECTED submit is a definitive, non-ambiguous outcome (unlike a
+        // thrown submitOrder) -- adapter.submitOrder itself does not throw,
+        // it just leaves the order REJECTED, so afterSubmitSucceeded must
+        // still fire (the "succeeded" in its name means "the call returned
+        // normally", not "the order was accepted").
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.rejectNextSubmit("insufficient margin");
+        RecordingSubmissionListener listener = new RecordingSubmissionListener();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), listener);
+        Order order = order(Side.LONG, "1");
+
+        executor.submit(order, new BigDecimal("1000"));
+
+        assertEquals(OrderState.REJECTED, order.state());
+        assertEquals(List.of("before:" + order.clientOrderId(), "after:" + order.clientOrderId()), listener.events);
+    }
+
+    @Test
+    void threeArgConstructorRejectsNullListener() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        assertThrows(
+                NullPointerException.class,
+                () -> new ExchangeOrderExecutor(adapter, BigDecimal.ZERO, null));
+    }
+
+    // --- Real CodeRabbit review finding on this PR's round 2 (afterSubmitSucceeded
+    // failure orphan risk): by the time afterSubmitSucceeded runs, adapter.submitOrder
+    // already returned normally and the order is definitively ACKNOWLEDGED with a
+    // real exchangeOrderId -- a failure in afterSubmitSucceeded (e.g. a real
+    // MarkerRecordingSubmissionListener's marker-clear I/O failure) must never cause
+    // this now-known-live order to silently drop out of poll/fill/cancel tracking. ---
+
+    /** Hand-written test double whose afterSubmitSucceeded always throws -- simulates a real marker-clear I/O failure. */
+    private static final class ThrowingAfterSubmitListener implements SubmissionListener {
+        @Override
+        public void beforeSubmit(Order order) {}
+
+        @Override
+        public void afterSubmitSucceeded(Order order) {
+            throw new IllegalStateException("simulated marker-clear failure");
+        }
+    }
+
+    @Test
+    void afterSubmitSucceededThrowingDoesNotPreventTheOrderFromEnteringPendingTracking() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), new ThrowingAfterSubmitListener());
+        Order order = order(Side.LONG, "1");
+
+        assertDoesNotThrow(() -> executor.submit(order, new BigDecimal("1000")));
+
+        assertEquals(OrderState.ACKNOWLEDGED, order.state());
+        assertTrue(
+                executor.pendingOrders().containsKey(order.clientOrderId()),
+                "the exchange already acknowledged this order -- a listener failure afterward must not orphan it"
+                        + " from this executor's own poll/fill/cancel tracking");
+    }
+
+    @Test
+    void afterSubmitSucceededThrowingIsLoggedButDoesNotPropagateOutOfSubmit() {
+        // Deliberately different from submitThatThrowsPropagatesAndLeavesOrderUntracked
+        // above: there, adapter.submitOrder itself throws, so the submission's outcome
+        // is genuinely ambiguous and TradingLoop#submitToBroker's "orphaned, will never
+        // receive a fill" handling is correct. Here, the exchange definitively
+        // acknowledged the order (submitOrder returned normally) before
+        // afterSubmitSucceeded ever ran -- rethrowing would trigger that same
+        // "orphaned" handling for an order that is neither orphaned nor unfillable,
+        // only its own SUBMISSION_UNKNOWN marker failed to durably clear.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), new ThrowingAfterSubmitListener());
+        Order order = order(Side.LONG, "1");
+
+        Optional<Fill> result = assertDoesNotThrow(() -> executor.submit(order, new BigDecimal("1000")));
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void afterSubmitSucceededThrowingStillAllowsANormalPollToFillTheOrder() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), new ThrowingAfterSubmitListener());
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "FILLED", new BigDecimal("1"), new BigDecimal("100")));
+
+        List<Fill> fills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertEquals(
+                1,
+                fills.size(),
+                "the order must still be pollable/fillable normally after a listener-only failure at submit time");
+        assertEquals(OrderState.FILLED, order.state());
+    }
 }

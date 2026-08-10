@@ -3,11 +3,13 @@ package engine.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import engine.execution.PaperBroker;
 import engine.oms.Order;
 import engine.risk.AccountState;
 import engine.risk.RiskGateway;
@@ -431,6 +433,129 @@ class PaperTradingAppTest {
             assertEquals(orphan.clientOrderId(), report.mismatches().get(0).orderId());
             assertTrue(app.killSwitch().isTripped(), "a detected internal-consistency mismatch must trip the kill switch");
             assertEquals(report, app.lastReconciliationReport());
+        }
+    }
+
+    // ---- Paper Trading Bridge Task H: execution mode + OrderExecutor-accepting constructor ----
+
+    @Test
+    void resolveExecutionModeDefaultsToSimulatedForNullBlankOrUnrecognizedValues() {
+        assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode(null));
+        assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode(""));
+        assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode("   "));
+        assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode("simulated"));
+        assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode("garbage"));
+        assertEquals(
+                PaperTradingApp.EXECUTION_MODE_SIMULATED,
+                PaperTradingApp.resolveExecutionMode("BINGX-VST"),
+                "case-sensitive by design -- only the exact documented lowercase value opts into bingx-vst mode");
+    }
+
+    @Test
+    void resolveExecutionModeReturnsBingxVstOnlyForAnExactMatch() {
+        assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("bingx-vst"));
+        assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("  bingx-vst  "));
+    }
+
+    /**
+     * Verifies the actual safety-critical invariant this task's brief calls
+     * out explicitly: the VST host is a hardcoded {@code private static
+     * final} constant, unreachable via any environment variable or
+     * argument. Reflection is the only way to observe it directly (by
+     * design -- see the field's own Javadoc for why it's {@code private}),
+     * matching this test suite's own established precedent for reaching a
+     * field with no other access point ({@code
+     * reconcileDetectsARealOrphanedOrderAndTripsTheKillSwitch} above uses
+     * the same technique for {@code TradingLoop.submittedOrderIds}).
+     */
+    @Test
+    void bingxVstBaseUrlIsHardcodedToTheDocumentedVstHost() throws Exception {
+        Field field = PaperTradingApp.class.getDeclaredField("BINGX_VST_BASE_URL");
+        field.setAccessible(true);
+        assertEquals("https://open-api-vst.bingx.com", field.get(null));
+    }
+
+    @Test
+    void orderExecutorAcceptingConstructorRejectsNullOrderExecutor(@TempDir Path tempDir) throws IOException {
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            Path signalPath = tempDir.resolve("latest.json");
+            assertThrows(
+                    NullPointerException.class,
+                    () -> new PaperTradingApp(
+                            SYMBOL, server.baseUrl(), signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(),
+                            null));
+        }
+    }
+
+    /**
+     * The real point of the OrderExecutor-accepting constructor: a caller
+     * (a test here, {@code forBingXVst} in real production use) can inject
+     * any {@link engine.execution.OrderExecutor} instance, and that exact
+     * instance is used directly -- no separate {@link PaperBroker} is ever
+     * constructed internally. Proven via reference identity
+     * ({@code assertSame} against {@link PaperTradingApp#orderExecutor()}),
+     * not a hand-written fake's own call count -- a real {@link
+     * PaperBroker} is injected here specifically so this test uses only
+     * the two real, canonical {@code OrderExecutor} implementations (see
+     * {@code engine.execution.OrderExecutor}'s own "exactly two
+     * implementations" invariant), matching a real CodeRabbit review
+     * finding on this PR that a hand-written {@code FakeOrderExecutor}
+     * test double was itself a third implementation, even though
+     * test-only.
+     */
+    @Test
+    void constructingWithAnExplicitOrderExecutorUsesThatExactInstanceInsteadOfBuildingAPaperBroker(
+            @TempDir Path tempDir) throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.01"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        PaperBroker injectedExecutor = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            PaperTradingApp app = new PaperTradingApp(
+                    SYMBOL, server.baseUrl(), signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(),
+                    injectedExecutor);
+
+            app.tradingLoop().tick();
+
+            assertNull(app.tradingLoop().lastError());
+            assertSame(
+                    injectedExecutor, app.orderExecutor(),
+                    "the exact injected OrderExecutor instance must be used, not a freshly-built PaperBroker");
+        }
+    }
+
+    /**
+     * The OrderExecutor-accepting constructor also always wires {@link
+     * FileSignalSource}'s persisted delivered-marker file (see that
+     * class's own Javadoc) -- proven here by a real tick that delivers a
+     * signal, then confirming the sibling marker file now exists and
+     * records that same {@code intentId}.
+     */
+    @Test
+    void orderExecutorAcceptingConstructorPersistsTheDeliveredSignalMarkerFile(@TempDir Path tempDir)
+            throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.01"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            PaperTradingApp app = new PaperTradingApp(
+                    SYMBOL, server.baseUrl(), signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(),
+                    new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
+
+            app.tradingLoop().tick();
+
+            Path markerFile = signalPath.resolveSibling("delivered.marker");
+            assertTrue(Files.exists(markerFile), "the persisted delivered-marker file must be written");
+            assertEquals(intent.intentId().toString(), Files.readString(markerFile));
         }
     }
 }

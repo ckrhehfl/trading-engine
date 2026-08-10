@@ -248,6 +248,7 @@ class BingXAdapterTest {
         assertEquals(0, new BigDecimal("900").compareTo(balance.availableMargin()));
         assertEquals(0, new BigDecimal("150").compareTo(balance.usedMargin()));
         assertEquals(0, new BigDecimal("50").compareTo(balance.unrealizedProfit()));
+        assertEquals("VST", balance.asset());
         assertEquals("/openApi/swap/v3/user/balance", server.lastPath());
     }
 
@@ -265,6 +266,22 @@ class BingXAdapterTest {
         BalanceSnapshot balance = adapter.getBalance();
 
         assertEquals(0, new BigDecimal("1000").compareTo(balance.balance()));
+        assertEquals("VST", balance.asset(), "asset must come from the same first entry as every other field");
+    }
+
+    @Test
+    void getBalanceReturnsNullAssetWhenFieldIsMissing() {
+        // Matches parseBigDecimal's own missing-field convention (null, not
+        // an exception) -- VstPreflight is the one that fails closed on a
+        // null/non-"VST" asset, not this parsing layer.
+        server.respondWith(
+                200,
+                "{\"code\":0,\"msg\":\"\",\"data\":[{\"balance\":\"1000\",\"equity\":\"1000\","
+                        + "\"availableMargin\":\"1000\",\"usedMargin\":\"0\",\"unrealizedProfit\":\"0\"}]}");
+
+        BalanceSnapshot balance = adapter.getBalance();
+
+        assertEquals(null, balance.asset());
     }
 
     @Test
@@ -333,6 +350,34 @@ class BingXAdapterTest {
         server.respondWith(200, "");
 
         assertThrows(ExchangeException.class, () -> adapter.getBalance());
+    }
+
+    /**
+     * Real-world motivated (Paper Trading Bridge Task H's real VST
+     * verification): a {@code .env} file with CRLF line terminators,
+     * sourced via a naive {@code bash source}, leaves a trailing {@code \r}
+     * on the last-read value. A raw {@code \r} in an HTTP header value is
+     * illegal (RFC 7230) -- the JDK's {@code HttpRequest.Builder#header}
+     * throws {@code IllegalArgumentException} with a message that embeds
+     * the literal (invalid) header value, i.e. the real credential, verbatim
+     * -- a genuine credential-leak risk into logs/stack traces from a
+     * whitespace-handling gap, not a hypothetical. Stripping in the
+     * constructor closes this class of issue at the source rather than
+     * relying on every caller to pre-sanitize.
+     */
+    @Test
+    void constructorStripsLeadingAndTrailingWhitespaceFromCredentials() {
+        server.respondWith(200, "{\"code\":0,\"msg\":\"\",\"data\":{}}");
+        BingXAdapter strippingAdapter = new BingXAdapter("test-api-key\r\n \t", " \ttest-api-secret\r\n", server.baseUrl());
+
+        strippingAdapter.setPositionMode(PositionMode.ONE_WAY);
+
+        assertEquals(
+                "test-api-key",
+                server.lastApiKeyHeader(),
+                "a credential with trailing/leading whitespace or control characters must be stripped before use,"
+                        + " so a real request never risks throwing (and potentially leaking the raw value in an"
+                        + " exception message) on an otherwise-valid credential");
     }
 
     @Test

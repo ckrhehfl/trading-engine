@@ -19,14 +19,28 @@ import java.util.UUID;
  * touching {@code TradingLoop}'s control-flow logic -- see
  * {@code .planning/paper-trading-f-order-executor.md}.
  *
- * <p><b>Extensibility invariant.</b> A new exchange/venue means writing a
- * new {@code ExchangeAdapter} implementation, never a new {@code
- * OrderExecutor} implementation. There should only ever be two {@code
- * OrderExecutor} implementations in this codebase: the internal simulator
- * ({@link PaperBroker}) and one venue-agnostic wrapper around the {@code
- * ExchangeAdapter} interface (built in a later task). If you find yourself
- * about to write a second exchange-specific {@code OrderExecutor}, stop --
- * that's the {@code ExchangeAdapter} extension point, not this one.
+ * <p><b>Extensibility invariant, strict: exactly two implementations,
+ * ever.</b> A new exchange/venue means writing a new {@code ExchangeAdapter}
+ * implementation, never a new {@code OrderExecutor} implementation. There
+ * are, and must only ever be, exactly two classes implementing this
+ * interface in this codebase: the internal simulator ({@link PaperBroker})
+ * and one venue-agnostic wrapper around the {@code ExchangeAdapter}
+ * interface ({@code engine.execution.ExchangeOrderExecutor}, Paper Trading
+ * Bridge Task G). If you find yourself about to write a second
+ * exchange-specific {@code OrderExecutor}, stop -- that's the {@code
+ * ExchangeAdapter} extension point, not this one. If you find yourself
+ * about to write a decorator/wrapper around an existing {@code
+ * OrderExecutor} to add some cross-cutting concern (e.g. durable
+ * submission-outcome marking), that is <b>also</b> not a new {@code
+ * OrderExecutor} -- see {@link SubmissionListener} for the correct pattern:
+ * {@code ExchangeOrderExecutor} itself takes an injectable collaborator
+ * interface for exactly this purpose, so a cross-cutting concern is
+ * composed in via dependency injection, not layered on top as a competing
+ * implementation of this interface. (An earlier version of Paper Trading
+ * Bridge Task H tried the wrapper/decorator approach for durable {@code
+ * SUBMISSION_UNKNOWN} marking and, on real CodeRabbit review, found it
+ * genuinely violated this exact invariant -- {@link SubmissionListener} is
+ * the corrected design, not a documented exception to this one.)
  *
  * <p><b>Error contract, asymmetric on purpose.</b> {@link #pollFills} must
  * <b>never throw for a per-order resolution failure</b> -- an
