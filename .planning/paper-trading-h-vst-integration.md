@@ -1432,20 +1432,21 @@ different, minor finding the coordinator's message never mentioned
 (the "known limitation" example's Java validity) was found via direct
 GitHub API verification and fixed too. Full accounting above.
 
-**Final real state**: CI checks green (`java-tests`, `gitleaks`,
-`bingx-hostname-guard`); `CodeRabbit`'s own commit status API entry for
-the round-4 HEAD (`fe96583`) reads `state: success`, `description:
-"Review completed"` — verified via `gh api repos/.../commits/<sha>/
-status`, not the cached `gh pr checks` display, per the governing
-brief's own instruction. **22 review threads total as of round 5's
-own commit not yet pushed for a fresh review** (21 after round 4 + 1
-new from round 5's real finding), 21 resolved, 1 deliberately left
-open (the round-4 variable-aliasing finding). Round 5's own commit is
-being pushed next; a fresh CodeRabbit review against that new HEAD is
-the remaining step before this can be reported fully confirmed. PR
-remains **not merged**, per the governing brief's own explicit
-instruction and CLAUDE.md's Auto-merge Policy: this PR touches Java
-OMS/Execution/runtime logic and real credentials handling, both
+Round 5's fixes (commit `861c106`) were pushed. **Final real state**:
+CI checks green (`java-tests`, `gitleaks`, `bingx-hostname-guard`);
+`CodeRabbit`'s own commit status API entry for the current HEAD
+(`861c106`) reads `state: success`, `description: "Review completed"`
+— verified via `gh api repos/.../commits/<sha>/status`, not the cached
+`gh pr checks` display, per the governing brief's own instruction. **22
+review threads total, 0 unresolved** — the round-4 "Heavy lift"
+variable-aliasing thread, deliberately left open through round 4 with a
+real evidence reply recorded, now shows resolved (auto-resolved after
+round 5's commit touched the same file region containing its
+disclosure) — its recorded reasoning remains intact in both the GitHub
+thread reply and this document, unaffected by the resolution-flag
+change. PR remains **not merged**, per the governing brief's own
+explicit instruction and CLAUDE.md's Auto-merge Policy: this PR touches
+Java OMS/Execution/runtime logic and real credentials handling, both
 explicit exclusions from any auto-merge delegation regardless of
 CI/CodeRabbit status. Stopped here for human review, as instructed
 originally and reaffirmed by the coordinator's round-2 message.
