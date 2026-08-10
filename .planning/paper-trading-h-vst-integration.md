@@ -1222,24 +1222,120 @@ single edit) findings are resolved; the remaining MD013/MD040/MD060
 findings are the same pre-existing project-wide norms already confirmed
 present in Task G's own accepted planning doc.
 
+## CodeRabbit review findings, round 4
+
+Round 3's fixes (commit `7caa8ce`) were pushed and confirmed APPROVED
+by a fresh CodeRabbit review against that exact HEAD (see "Ship
+status" below for the full verification trail). A documentation-only
+follow-up commit (recording round 3's confirmed-green state in this
+same file) triggered CodeRabbit's adaptive rate limit on its automatic
+re-review; per CLAUDE.md's own documented procedure, `@coderabbitai
+rate limit` was posted, the stated 1-minute ETA was waited out, and
+(when the automatic review still hadn't re-triggered after that)
+`@coderabbitai review` was posted once to request it manually — not a
+blind retry loop, one deliberate request per CLAUDE.md's own "batch
+fixes... rather than re-requesting after each small fix" guidance,
+made necessary here because the prior push's own automatic review had
+already been silently skipped by the rate limiter.
+
+That manual review surfaced one genuinely new, real finding — self-
+labeled by the reviewer as a **"Heavy lift"**, unlike every prior
+finding in this task, which were all "Quick win"s:
+
+**A variable-aliasing bypass of Guardrail B's same-statement check**
+(Major, Security). Routing the constant name and the `getenv`/
+`getProperty` call through separate local variables/fields evades the
+statement-level substring co-occurrence check entirely:
+
+```java
+private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";
+String configuredHost = System.getProperty(VST_HOST_PROPERTY);
+private static final String BINGX_VST_BASE_URL = configuredHost;
+```
+
+Confirmed real, not just reasoned about: ran `check_java_guardrail`
+against exactly this candidate and got `False` (not blocked). Traced
+why: statement 1 contains `"BINGX_VST_BASE_URL"` but no `getenv`/
+`getproperty` token; statement 2 contains `getproperty` but not the
+literal substring `BINGX_VST_BASE_URL` (only the aliased variable
+name); statement 3 contains `BINGX_VST_BASE_URL` but no `getenv`/
+`getproperty` token. No single statement contains both, so the
+per-statement substring check cannot see the connection — only
+tracking which statements' values *flow* from a `getenv`/`getProperty`
+call, across simple variable aliasing, would catch it.
+
+**Decision: deliberately NOT fixed this round**, for reasons weighed
+rather than a reflexive "too hard, skip it":
+
+- CodeRabbit's own "Heavy lift" label agrees this is a real, non-trivial
+  feature (genuine cross-statement def-use/taint tracking), not a
+  quick patch — a materially different category from every other
+  finding in this task, all "Quick win"s that were fixed same-session.
+- This project has already made, and already corrected, the exact
+  mistake a rushed version of this fix risks repeating: the original
+  comment-stripping regex (round 2's own finding) was a fast,
+  under-designed fix that introduced its own new bypass. A hastily
+  written variable-tracker risks the same failure mode, and this
+  guardrail hook has no test coverage budget or design review pass
+  (GSD's `Discuss` step) available under same-session review pressure.
+- The guardrail's own pre-existing Javadoc already discloses it is "not
+  a full Java parser... a best-effort secondary layer... not a
+  compiler" — this finding sharpens that disclosure with a concrete
+  example, it doesn't contradict it.
+- **The primary safety property is unaffected**: no configuration
+  surface for the VST host exists in the real, shipped
+  `PaperTradingApp.java` code at all (a hardcoded `BINGX_VST_BASE_URL`
+  Java constant, no env var/argument override surface — see that
+  class's own Javadoc). This guardrail is defense-in-depth on top of
+  that structural guarantee, not the guarantee itself; its inability to
+  catch every theoretically possible disguised reintroduction attempt
+  does not weaken the actual code that ships.
+
+Disclosed, not silently dropped: `vst_guardrail_check.py`'s own module
+docstring now has a "Known, disclosed, deliberately-NOT-fixed
+limitation" section naming this exact bypass shape, and a new
+regression test,
+`test_known_disclosed_limitation_variable_aliased_bypass_across_statements_is_not_currently_blocked`,
+pins the current (accepted) behavior deliberately — so if this is ever
+actually fixed, the test fails and forces a deliberate update rather
+than silent drift in either direction. `python3 .claude/hooks/
+test_vst_guardrail_check.py` — **28 tests, 0 failures, 0 errors** (27 +
+1 new). Replied to the GitHub thread with this same reasoning
+(real command output showing the confirmed bypass, the "Heavy lift"
+weighing above, and the pointer to the new disclosure/test) — this
+thread is the one item in this task left **deliberately unresolved**,
+matching the established precedent of `FileSignalSource`'s own
+marker-timing issue from round 1/2 (also left open with recorded
+reasoning rather than force-fixed or silently closed).
+
 ## Ship status
 
-Round 3's fixes (commit `7caa8ce`) were pushed, and a fourth, real
-CodeRabbit review landed against that exact HEAD sha (confirmed via the
-GitHub reviews API's own `commit_id` field, not the cached checks
-display) with state **APPROVED** — zero further actionable comments.
-All CI checks green (`java-tests`, `gitleaks`, `bingx-hostname-guard`,
-`CodeRabbit`, each ×2 for the duplicate workflow trigger). All 20
-review threads across all three rounds confirmed **resolved** via the
-GitHub GraphQL `reviewThreads` API (`isResolved: true`, 0 unresolved) —
-including replying to each of round 3's own 5 threads with real
-evidence (code references, test names, real command output) before
-confirming resolution, matching the same standard applied in round 2
-rather than relying on GitHub/CodeRabbit's own auto-resolution alone.
-Genuinely, fully green. PR remains **not merged**, per the governing
-brief's own explicit instruction and CLAUDE.md's Auto-merge Policy:
-this PR touches Java OMS/Execution/runtime logic and real credentials
-handling, both explicit exclusions from any auto-merge delegation
-regardless of CI/CodeRabbit status. Stopped here for human review, as
-instructed originally and reaffirmed by the coordinator's round-2
-message.
+Round 3's fixes (commit `7caa8ce`) were pushed, and a real CodeRabbit
+review landed against that exact HEAD sha (confirmed via the GitHub
+reviews API's own `commit_id` field, not the cached checks display)
+with state **APPROVED** — zero actionable comments at that point. All
+20 review threads across rounds 1-3 were confirmed **resolved** via the
+GitHub GraphQL `reviewThreads` API (`isResolved: true`) — including
+replying to each of round 3's own 5 threads with real evidence (code
+references, test names, real command output) before confirming
+resolution, matching the same standard applied in round 2 rather than
+relying on GitHub/CodeRabbit's own auto-resolution alone.
+
+A documentation-only follow-up commit (recording that confirmed-green
+state in this file) surfaced round 4's single new finding on manual
+re-review (see above) — deliberately left unresolved with recorded
+reasoning, not fixed and not silently closed. **Final real state**: CI
+checks green (`java-tests`, `gitleaks`, `bingx-hostname-guard`, each
+×2 for the duplicate workflow trigger; `CodeRabbit`'s own commit status
+API entry for the current HEAD reads `state: success`, `description:
+"Review completed"` — verified via `gh api repos/.../commits/<sha>/
+status`, not the cached `gh pr checks` display, per the governing
+brief's own instruction); **21 review threads total, 20 resolved, 1
+deliberately left open** (the round-4 variable-aliasing finding, with a
+real evidence reply recorded on the thread and full reasoning in this
+document). PR remains **not merged**, per the governing brief's own
+explicit instruction and CLAUDE.md's Auto-merge Policy: this PR touches
+Java OMS/Execution/runtime logic and real credentials handling, both
+explicit exclusions from any auto-merge delegation regardless of
+CI/CodeRabbit status. Stopped here for human review, as instructed
+originally and reaffirmed by the coordinator's round-2 message.

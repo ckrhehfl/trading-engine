@@ -54,6 +54,37 @@ Java syntax beyond comments/string/char literals and `;` as a statement
 delimiter. A best-effort secondary layer (the primary safety property is
 that no configuration surface for the VST host exists at all, see
 `PaperTradingApp`'s own Javadoc), not a compiler.
+
+**Known, disclosed, deliberately-NOT-fixed limitation** (found on a real
+CodeRabbit review of this same PR, round 4 -- self-labeled by the
+reviewer as a "Heavy lift", i.e. this is not being waved away, it was
+weighed): the same-statement check can be evaded by routing the
+constant name and the getenv-equivalent call through separate local
+variables/fields, e.g.
+
+```java
+private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";
+String configuredHost = System.getProperty(VST_HOST_PROPERTY);
+private static final String BINGX_VST_BASE_URL = configuredHost;
+```
+
+-- confirmed for real (not just reasoned about) that this candidate
+does NOT get blocked by `check_java_guardrail` as it stands. Closing
+this properly needs genuine cross-statement variable/constant taint
+tracking (a real def-use pass: does `BINGX_VST_BASE_URL`'s value flow,
+even through simple aliasing, from a `getenv`/`getProperty` call
+anywhere earlier in the file), which is a real, non-trivial feature --
+not a quick fix, and specifically the same class of mistake this file's
+own history already warns against (the original naive regex comment-
+stripper was exactly this: a fast, under-designed fix that introduced
+its own new bypass). Deliberately deferred rather than rushed under
+review pressure; needs its own design pass (GSD's `Discuss` step) if
+ever built, not a same-session patch. Does not weaken this hook's
+actual primary safety property, which was never "catches every possible
+disguised attempt" -- see the paragraph above: no configuration surface
+for the VST host exists in the real, shipped code at all, independent
+of whether this best-effort secondary layer can detect every
+theoretically possible attempt to reintroduce one.
 """
 
 import json

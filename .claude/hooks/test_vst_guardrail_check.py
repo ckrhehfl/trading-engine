@@ -119,6 +119,29 @@ class CheckJavaGuardrailTest(unittest.TestCase):
         candidate = 'private static final String BINGX_VST_BASE_URL = System.getProperty("x");'
         self.assertTrue(check_java_guardrail("Foo.java", candidate))
 
+    def test_known_disclosed_limitation_variable_aliased_bypass_across_statements_is_not_currently_blocked(self):
+        # Real, correctly-identified CodeRabbit review finding on this PR
+        # (round 4), deliberately NOT fixed -- see vst_guardrail_check.py's
+        # own module docstring, "Known, disclosed, deliberately-NOT-fixed
+        # limitation", for the full reasoning (a real "Heavy lift" per the
+        # reviewer's own label: closing this needs genuine cross-statement
+        # variable/constant taint tracking, not a quick fix). This test
+        # pins the CURRENT, accepted behavior deliberately: if this ever
+        # starts passing (i.e. the bypass gets blocked), that is a real,
+        # deliberate fix that should update this test and the docstring
+        # together -- not silent, undocumented drift either direction.
+        candidate = (
+            'private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";\n'
+            "String configuredHost = System.getProperty(VST_HOST_PROPERTY);\n"
+            "private static final String BINGX_VST_BASE_URL = configuredHost;\n"
+        )
+        self.assertFalse(
+            check_java_guardrail("Foo.java", candidate),
+            "this is the known, disclosed, deliberately-unfixed variable-aliasing bypass -- if this assertion"
+            " now fails, the bypass has been closed for real and this test (and the docstring) should be"
+            " updated to reflect that, not silently left stale",
+        )
+
     def test_still_blocks_the_chained_system_getenv_get_form(self):
         # Not a new bug -- the existing same-statement substring
         # co-occurrence check already catches this shape (both "getenv"
