@@ -1,0 +1,187 @@
+#!/usr/bin/env python3
+"""Regression tests for vst_guardrail_check.py -- stdlib unittest only, no
+extra dependency needed (run via `python3 -m unittest
+.claude/hooks/test_vst_guardrail_check.py` from the repo root, or
+directly as a script). Covers the two real, correctly-identified
+CodeRabbit review findings this file's own functions were rewritten to
+close (comment-stripping bypass via `//` inside a string literal;
+Guardrail A only checking the diff fragment, not the resulting file) plus
+the pre-existing false-positive checks against this project's own real
+code.
+"""
+
+import os
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from vst_guardrail_check import (  # noqa: E402
+    check_java_guardrail,
+    check_workflow_guardrail,
+    normalize_path,
+    reconstruct_candidate,
+    strip_java_comments,
+)
+
+
+class StripJavaCommentsTest(unittest.TestCase):
+    def test_removes_line_comment(self):
+        self.assertEqual(strip_java_comments("int x = 1; // comment\n"), "int x = 1; \n")
+
+    def test_removes_block_comment(self):
+        self.assertEqual(strip_java_comments("int x /* comment */ = 1;"), "int x  = 1;")
+
+    def test_removes_javadoc_block_comment_spanning_lines(self):
+        text = "/**\n * getenv and BINGX_VST_BASE_URL discussed here\n */\nint x = 1;"
+        self.assertEqual(strip_java_comments(text), "\n\n\nint x = 1;")
+
+    def test_does_not_strip_double_slash_inside_a_string_literal(self):
+        # The exact real bypass CodeRabbit found: a naive `//`-based
+        # comment stripper erases "https://" and everything after it on
+        # the line, including the real getenv(...) call that follows.
+        text = 'String x = "https://" + System.getenv("BINGX_VST_BASE_URL");'
+        self.assertEqual(strip_java_comments(text), text, "a // inside a string literal must not start a comment")
+
+    def test_does_not_strip_double_slash_inside_a_char_literal_context(self):
+        text = "char a = '/'; char b = '/';"
+        self.assertEqual(strip_java_comments(text), text)
+
+    def test_handles_escaped_quote_inside_string_without_ending_it_early(self):
+        text = 'String x = "a \\" // still inside the string" + getenv("y");'
+        # The escaped quote must not end the string early -- if it did,
+        # the following `//` would be seen as CODE-state and start a
+        # real (incorrect) comment.
+        self.assertEqual(strip_java_comments(text), text)
+
+    def test_real_comment_after_a_string_with_slashes_is_still_stripped(self):
+        text = 'String x = "https://example.com"; // real comment\nint y = 2;'
+        expected = 'String x = "https://example.com"; \nint y = 2;'
+        self.assertEqual(strip_java_comments(text), expected)
+
+
+class CheckJavaGuardrailTest(unittest.TestCase):
+    def test_blocks_getenv_and_constant_in_same_statement(self):
+        candidate = 'private static final String BINGX_VST_BASE_URL = System.getenv("X");'
+        self.assertTrue(check_java_guardrail("Foo.java", candidate))
+
+    def test_the_real_bypass_payload_from_the_coderabbit_finding_is_now_blocked(self):
+        candidate = (
+            "package engine.runtime;\n"
+            "public class Foo {\n"
+            '    private static final String BINGX_VST_BASE_URL =\n'
+            '        "https://" + System.getenv("BINGX_VST_BASE_URL");\n'
+            "}\n"
+        )
+        self.assertTrue(check_java_guardrail("Foo.java", candidate))
+
+    def test_does_not_block_unrelated_statements_even_when_close_together(self):
+        # Mirrors the real, legitimate PaperTradingApp.forBingXVst shape:
+        # a getenv call for a different constant sits right next to the
+        # real BINGX_VST_BASE_URL usage, in separate statements.
+        candidate = (
+            'String apiKey = requireNonBlank(System.getenv(ENV_BINGX_API_KEY), ENV_BINGX_API_KEY);\n'
+            'BingXAdapter adapter = new BingXAdapter(apiKey, apiSecret, BINGX_VST_BASE_URL);\n'
+        )
+        self.assertFalse(check_java_guardrail("Foo.java", candidate))
+
+    def test_does_not_block_javadoc_prose_mentioning_both_terms(self):
+        candidate = (
+            "/**\n"
+            " * Discusses getenv and BINGX_VST_BASE_URL together in prose,\n"
+            " * with no semicolon anywhere in this comment.\n"
+            " */\n"
+            "public final class Foo {}\n"
+        )
+        self.assertFalse(check_java_guardrail("Foo.java", candidate))
+
+    def test_non_java_file_is_never_checked(self):
+        candidate = 'BINGX_VST_BASE_URL = System.getenv("x");'
+        self.assertFalse(check_java_guardrail("Foo.py", candidate))
+
+
+class CheckWorkflowGuardrailTest(unittest.TestCase):
+    def test_blocks_forbidden_token_in_workflow_file(self):
+        self.assertTrue(check_workflow_guardrail(".github/workflows/x.yml", "env:\n  BINGX_API_KEY: secret\n"))
+
+    def test_blocks_bingx_vst_mode_mention(self):
+        self.assertTrue(
+            check_workflow_guardrail(".github/workflows/x.yml", "env:\n  PAPER_TRADING_EXECUTION_MODE: bingx-vst\n")
+        )
+
+    def test_normalizes_windows_style_backslash_paths(self):
+        self.assertTrue(check_workflow_guardrail("C:\\repo\\.github\\workflows\\x.yml", "BINGX_API_KEY: x"))
+
+    def test_does_not_block_a_normal_workflow_file(self):
+        self.assertFalse(check_workflow_guardrail(".github/workflows/x.yml", "run: ./gradlew build\n"))
+
+    def test_non_workflow_file_is_never_checked(self):
+        self.assertTrue(check_workflow_guardrail is not None)  # sanity
+        self.assertFalse(check_workflow_guardrail("java/Foo.java", "BINGX_API_KEY"))
+
+
+class ReconstructCandidateSplitEditTest(unittest.TestCase):
+    """The real, correctly-identified CodeRabbit review finding: Guardrail A
+    (and, before an earlier fix, Guardrail B too) only ever checked the raw
+    new_string fragment of a single Edit call -- a forbidden token split
+    across two separate Edit calls into a workflow file would pass both
+    individually. This proves the fix: reconstruct_candidate reads the
+    real current file and applies the edit, so a second call sees the
+    *completed* forbidden pattern.
+    """
+
+    def test_a_forbidden_token_split_across_two_edits_is_detected_on_the_second(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            workflow_dir = os.path.join(tmp, ".github", "workflows")
+            os.makedirs(workflow_dir, exist_ok=True)
+            workflow_path = os.path.join(workflow_dir, "check.yml")
+            # Step 1 (already applied to disk): introduces the YAML key
+            # with no value yet -- innocuous on its own.
+            with open(workflow_path, "w", encoding="utf-8") as fh:
+                fh.write("env:\n  SOME_KEY: placeholder\n")
+
+            # Step 2 (the call under evaluation): a separate Edit that
+            # appends the real forbidden key, completing the pattern only
+            # once spliced into the real current file.
+            tool_input = {
+                "file_path": workflow_path,
+                "old_string": "  SOME_KEY: placeholder\n",
+                "new_string": "  SOME_KEY: placeholder\n  BINGX_API_KEY: ${{ secrets.BINGX_API_KEY }}\n",
+            }
+            candidate = reconstruct_candidate(tool_input)
+            self.assertTrue(check_workflow_guardrail(workflow_path, candidate))
+
+    def test_a_split_bingx_vst_base_url_getenv_statement_is_detected_on_the_second_java_edit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            java_path = os.path.join(tmp, "Split.java")
+            with open(java_path, "w", encoding="utf-8") as fh:
+                fh.write(
+                    "package engine.runtime;\n"
+                    "public class Split {\n"
+                    "    private static final String BINGX_VST_BASE_URL = System.getenv(\n"
+                )
+            tool_input = {
+                "file_path": java_path,
+                "old_string": "System.getenv(\n",
+                "new_string": 'System.getenv(\n        "BINGX_VST_BASE_URL");\n}\n',
+            }
+            candidate = reconstruct_candidate(tool_input)
+            self.assertTrue(check_java_guardrail(java_path, candidate))
+
+    def test_write_tool_content_is_used_directly_not_reconstructed(self):
+        tool_input = {"file_path": "x.java", "content": 'String x = "https://" + System.getenv("BINGX_VST_BASE_URL");'}
+        candidate = reconstruct_candidate(tool_input)
+        self.assertTrue(check_java_guardrail("x.java", candidate))
+
+
+class NormalizePathTest(unittest.TestCase):
+    def test_backslashes_become_forward_slashes(self):
+        self.assertEqual(normalize_path("C:\\a\\b.yml"), "C:/a/b.yml")
+
+    def test_none_becomes_empty_string(self):
+        self.assertEqual(normalize_path(None), "")
+
+
+if __name__ == "__main__":
+    unittest.main()

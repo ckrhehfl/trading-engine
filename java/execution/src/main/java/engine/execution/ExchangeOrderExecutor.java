@@ -180,17 +180,31 @@ import org.slf4j.LoggerFactory;
  * the venue actually charges -- see the planning doc for the plan to
  * capture and evaluate a real commission field in a later task.
  *
- * <p><b>Ambiguous-submit ({@code SUBMISSION_UNKNOWN}) handling is
- * deliberately NOT built here.</b> A persisted, restart-surviving marker for
- * an ambiguous {@code submit} outcome, and the startup/kill-switch-reset
- * logic to resolve one before any retry, is wiring/safety-layer design --
- * see the planning doc's own section on this judgment call for the full
- * reasoning. Today, an ambiguous submit is still caught by the existing,
- * already-tested mechanism {@link OrderExecutor}'s own Javadoc documents: an
- * order that throws out of {@code submit} never reaches {@link
- * #pendingOrders()}, which {@code Reconciler#check} flags as {@code
- * ORPHANED_IN_BROKER} and {@code engine.runtime.PaperTradingApp#reconcile()}
- * trips the kill switch on.
+ * <p><b>Ambiguous-submit ({@code SUBMISSION_UNKNOWN}) handling is composed
+ * in via {@link SubmissionListener}, not built directly into this class.</b>
+ * Originally (Paper Trading Bridge Task H, first pass) this was deliberately
+ * left entirely unbuilt here, with a separate decorator (`engine.runtime.
+ * PersistentSubmissionOrderExecutor`) wrapping this class from the outside
+ * to add durable marker recording. A real CodeRabbit review finding on that
+ * same task correctly caught that the decorator was a **third** class
+ * implementing {@link OrderExecutor}, against this interface's own
+ * documented "exactly two implementations" invariant. The corrected design:
+ * {@link #submit} calls {@link SubmissionListener#beforeSubmit} immediately
+ * before {@link ExchangeAdapter#submitOrder}, and {@link
+ * SubmissionListener#afterSubmitSucceeded} immediately after it returns
+ * normally (never if it throws) -- see that interface's own Javadoc for the
+ * precise contract. The default ({@code SubmissionListener.NO_OP}, via the
+ * 2-arg constructor) makes this exactly as inert as before this feature
+ * existed; a real, durable listener (`engine.runtime.
+ * MarkerRecordingSubmissionListener`, backed by a JSON marker file) is
+ * injected only in {@code bingx-vst} mode. Independent of this composition
+ * point: an ambiguous submit is still caught by the existing, already-tested
+ * reactive mechanism {@link OrderExecutor}'s own Javadoc documents: an order
+ * that throws out of {@code submit} never reaches {@link #pendingOrders()},
+ * which {@code Reconciler#check} flags as {@code ORPHANED_IN_BROKER} and
+ * {@code engine.runtime.PaperTradingApp#reconcile()} trips the kill switch
+ * on. {@code SubmissionListener} is the *proactive* complement to that
+ * reactive backstop, not a replacement for it.
  */
 public final class ExchangeOrderExecutor implements OrderExecutor {
 
@@ -216,12 +230,25 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
 
     private final ExchangeAdapter adapter;
     private final BigDecimal feeBps;
+    private final SubmissionListener submissionListener;
 
     private final Map<UUID, PendingOrderState> pendingOrders = new ConcurrentHashMap<>();
 
     public ExchangeOrderExecutor(ExchangeAdapter adapter, BigDecimal feeBps) {
+        this(adapter, feeBps, SubmissionListener.NO_OP);
+    }
+
+    /**
+     * Same as the 2-arg constructor, with an explicit {@link
+     * SubmissionListener} -- see that interface's own Javadoc for the
+     * full contract and why it exists (durable {@code SUBMISSION_UNKNOWN}
+     * marking, composed in rather than wrapped around this class as a
+     * competing {@code OrderExecutor} implementation).
+     */
+    public ExchangeOrderExecutor(ExchangeAdapter adapter, BigDecimal feeBps, SubmissionListener submissionListener) {
         this.adapter = Objects.requireNonNull(adapter, "adapter is required");
         this.feeBps = Objects.requireNonNull(feeBps, "feeBps is required");
+        this.submissionListener = Objects.requireNonNull(submissionListener, "submissionListener is required");
         if (feeBps.signum() < 0) {
             throw new IllegalArgumentException("feeBps must not be negative, was " + feeBps);
         }
@@ -240,8 +267,15 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
         Objects.requireNonNull(referencePrice, "referencePrice is required");
         requirePositivePrice(referencePrice);
 
+        // See SubmissionListener's own Javadoc for the precise contract:
+        // beforeSubmit always runs; afterSubmitSucceeded runs only if
+        // adapter.submitOrder returns normally (does not throw) -- a
+        // thrown submitOrder leaves the ambiguity beforeSubmit recorded,
+        // deliberately unresolved.
+        submissionListener.beforeSubmit(order);
         // May throw -- deliberately not caught here, see class Javadoc.
         adapter.submitOrder(order);
+        submissionListener.afterSubmitSucceeded(order);
 
         if (order.state() == OrderState.ACKNOWLEDGED && order.exchangeOrderId() != null) {
             // One fully-constructed object published atomically -- no

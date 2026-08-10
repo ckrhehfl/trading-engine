@@ -722,7 +722,7 @@ either incident.
   limitation) — unconfirmed against BingX's real API, not implemented
   speculatively.
 
-## CodeRabbit review findings
+## CodeRabbit review findings, round 1
 
 One review round on PR #79 (`ASSERTIVE` profile), 12 actionable comments
 against the original push. Per this project's own established practice:
@@ -893,35 +893,199 @@ accepted or dismissed on the review's word alone.
 requested per-fix, per this project's own CodeRabbit rate-limit
 guidance):** `./gradlew clean build` — **293 tests, 0 failures, 0 errors**.
 
+## CodeRabbit review findings, round 2
+
+A second, real review landed against commit `481eecf` (round 1's own
+fixes) — 3 new actionable comments, all real. This round's own process
+went further than round 1's: every still-open thread from round 1 (not
+just the 3 new ones) was re-verified against the real current code, and
+every genuinely-fixed thread was replied to with real evidence and
+explicitly resolved via the GitHub API — not just described here. Full
+detail below; the concrete thread-by-thread record (comment IDs, replies)
+lives in the PR itself, not duplicated here.
+
+**Fixed, this round, with reasoning:**
+
+- **(Critical) The guardrail hook's comment-stripping regex stripped `//`
+  even inside a string literal**, e.g. `"https://" + System.getenv(
+  "BINGX_VST_BASE_URL")` — the old `//[^\n]*` regex treated the `//` in
+  `"https://"` as a line-comment start, erasing the real `getenv(...)`
+  call and the `BINGX_VST_BASE_URL` string that followed, causing a false
+  `NOMATCH` (a real bypass of Guardrail B). Fixed by replacing the regex
+  with a real, minimal state-machine lexer (`strip_java_comments` in
+  `vst_guardrail_check.py`) that tracks string/char-literal state
+  (respecting `\"`/`\'` escapes) before ever treating `//`/`/*` as
+  comment-introducing. A new file, `test_vst_guardrail_check.py` (22
+  tests, stdlib `unittest`, zero extra dependencies — run via `python3
+  .claude/hooks/test_vst_guardrail_check.py`), covers this directly
+  (`test_the_real_bypass_payload_from_the_coderabbit_finding_is_now_blocked`
+  uses the exact payload shape from the review comment) plus escaped
+  quotes, char literals, multiline block comments, and confirms real
+  comments/Javadoc prose are still correctly stripped. Re-verified the
+  false-positive check against the real, current `PaperTradingApp.java`
+  — still not blocked.
+- **(Critical) Guardrail A (the CI-workflow check) only ever checked the
+  raw `new_string` diff fragment, not the resulting file** — a real,
+  correctly-identified gap: an earlier round already gave Guardrail B
+  (the VST-host check) candidate-reconstruction (reading the real current
+  file and applying `old_string`→`new_string`), but Guardrail A had not
+  received the same treatment, so a forbidden token split across two
+  separate `Edit` calls into a workflow file would have passed both
+  individually. Fixed by unifying both guardrails into one Python script
+  sharing a single `reconstruct_candidate()` path — `vst-guardrail.sh` is
+  now a thin wrapper interpreting `vst_guardrail_check.py`'s
+  `OK`/`BLOCK_WORKFLOW`/`BLOCK_JAVA` output, rather than two independently
+  -evolving code paths that could drift apart again. Given the resulting
+  script's real complexity (a real lexer, shared reconstruction logic), it
+  no longer fits safely as a single triple-escaped JSON string command —
+  moved entirely into two real files (`vst-guardrail.sh`,
+  `vst_guardrail_check.py`), a correctness choice, not a style one.
+  Regression test:
+  `ReconstructCandidateSplitEditTest#test_a_forbidden_token_split_across_two_edits_is_detected_on_the_second`,
+  which writes a real temp `.github/workflows/check.yml`, simulates a
+  first `Edit` already applied to disk, then confirms a second, separate
+  `Edit` completing the forbidden pattern is caught against the
+  reconstructed full file.
+- **(Minor) `SubmissionMarkerStoreTest#defaultAtomicMoverUsesRealAtomicMove`
+  didn't actually exercise the production default** — it re-implemented
+  the same `ATOMIC_MOVE` logic as `SubmissionMarkerStore::defaultAtomicMove`
+  via a lambda injected through the `AtomicMover` test seam, so the
+  production default path itself was never called; if `ATOMIC_MOVE` were
+  ever accidentally removed from `defaultAtomicMove`, this test would
+  still have passed. Fixed exactly as suggested: renamed to
+  `defaultAtomicMoverPersistsWithoutTheTestSeam`, now uses the 1-arg
+  constructor (the real production path), with the no-leftover-`.tmp`-file
+  assertion added and the now-unused `StandardCopyOption` import removed.
+
+**A fourth, real architectural finding raised again in round 2 (repeating
+round 1's own already-fixed-by-documented-exception item, this time
+correctly rejecting that resolution) drove a genuine redesign, not just a
+reply:** `PersistentSubmissionOrderExecutor` and the test-only
+`FakeOrderExecutor` were both still flagged as violating `OrderExecutor`'s
+"exactly two implementations" invariant — round 1's own response had
+amended the invariant's documentation to carve out a "venue-agnostic
+decorator" exception rather than change the code. On renewed pressure
+(via this session's own coordinating review, citing the same real
+CodeRabbit finding), that resolution was re-examined and found to be the
+wrong call: a documented exception is a weaker guarantee than a design
+that makes the violation structurally impossible, and the actual fix was
+not as costly as first estimated. **Real redesign, this round:**
+
+- New `engine.execution.SubmissionListener` interface (`beforeSubmit`/
+  `afterSubmitSucceeded`) — lets a caller observe (and durably record)
+  submission-outcome ambiguity without `ExchangeOrderExecutor` needing to
+  know anything about persistence or any specific venue.
+- `ExchangeOrderExecutor` gained a new 3-arg constructor overload
+  (`ExchangeAdapter`, `feeBps`, `SubmissionListener`) — the existing 2-arg
+  constructor is byte-for-byte unchanged in behavior (delegates to the new
+  one with a `NO_OP` listener), so every one of Task G's own existing
+  `ExchangeOrderExecutorTest` cases needed zero changes. `submit()` now
+  calls `listener.beforeSubmit(order)` immediately before
+  `adapter.submitOrder`, and `listener.afterSubmitSucceeded(order)`
+  immediately after it returns normally — **never** if it throws, which is
+  exactly the ambiguity a marker recorded in `beforeSubmit` needs to
+  survive. Five new tests in `ExchangeOrderExecutorTest` cover the full
+  contract, including a real submit-throws case (via `FakeExchangeAdapter
+  #throwOnNextSubmit`) proving `afterSubmitSucceeded` is correctly
+  skipped.
+- New `engine.runtime.MarkerRecordingSubmissionListener` — a plain
+  collaborator (implements `SubmissionListener`, **not** `OrderExecutor`)
+  that delegates directly to `SubmissionMarkerStore#record`/`#clear`. Four
+  tests cover its own delegation contract (all the real
+  persistence/atomicity/fail-closed logic is already covered by
+  `SubmissionMarkerStoreTest`, so these are intentionally thin).
+- `PersistentSubmissionOrderExecutor.java` and its test file were
+  **deleted entirely** (`git rm`), not kept alongside the new design.
+  `PaperTradingApp.forBingXVst` now constructs `new ExchangeOrderExecutor
+  (adapter, FEE_BPS, new MarkerRecordingSubmissionListener(markerStore))`
+  directly as the `OrderExecutor` — no wrapping decorator.
+- `FakeOrderExecutor.java` (test-only, `:runtime`) was **also deleted**.
+  `PaperTradingAppTest`'s two tests that used it now inject a real
+  `PaperBroker` instance (one of the two canonical `OrderExecutor`
+  implementations) and assert reference identity
+  (`assertSame(injectedExecutor, app.orderExecutor())`) instead of a hand-
+  written fake's own call count — proving the exact injected instance is
+  used without needing a third test-only implementation at all.
+- `OrderExecutor.java`'s own Javadoc and CLAUDE.md's "`OrderExecutor`/
+  `ExchangeAdapter` layering rule" paragraph were both **reverted** to the
+  strict, unqualified "exactly two implementations, full stop" wording —
+  the "approved exception: venue-agnostic decorators" paragraph added in
+  round 1 is gone; `SubmissionListener` is documented as the corrected
+  design, not a carved-out exception to keep.
+
+**Declined, with reasoning, not attempted here (repeated from round 1,
+re-verified and re-affirmed in round 2, thread left open — not
+resolved):**
+
+- **"Wire the persisted marker path into the VST runtime."** Re-verified
+  against the real, current code a second time and confirmed, again, to
+  be a false positive: `forBingXVst` uses the `OrderExecutor`-accepting
+  constructor, which always wires the marker-file variant of
+  `FileSignalSource`. Replied on the GitHub thread with the exact code
+  reference and test name, and resolved the thread via the API (round 1
+  had only recorded this reasoning in this document, not on the actual
+  PR thread — a real gap in round 1's own process, corrected this round).
+- **"Don't record the delivered marker before order submission
+  completes."** Same reasoning as round 1 (see above) — replied on the
+  GitHub thread with the same reasoning, restated, and **left the thread
+  open** (not resolved) since it's a genuine, acknowledged trade-off, not
+  something to assert closed by fiat.
+
+**A real, disclosed process gap from round 1, corrected this round:**
+round 1's own fixes were only ever described in this planning document —
+none of round 1's 12 review threads were replied to or resolved via the
+GitHub API itself, leaving them all showing as open/unaddressed in the
+PR's own UI regardless of what this document said. This round replied to
+and resolved (or, for the one genuinely-declined item, replied to and
+deliberately left open) every one of round 1's own threads in addition to
+the 3 new ones — 14 of 15 total review threads on this PR are now
+resolved, with the one remaining open thread carrying a real, recorded
+reply explaining why.
+
+**Final state, after all round 2 fixes, one push (not separately
+re-requested per-fix):** `./gradlew clean build` — **297 tests, 0
+failures, 0 errors**; `python3 .claude/hooks/test_vst_guardrail_check.py`
+— **22 tests, 0 failures, 0 errors**.
+
 ## Verification
 
 - `./gradlew clean build` (full multi-module suite, all six modules,
   clean, not incremental) — **BUILD SUCCESSFUL**. Aggregate JUnit XML
-  counts across all six modules: **293 tests, 0 failures, 0 errors**
-  (239 from Task G's final state + 54 new, final count per class: 23
-  `BingXAdapterTest` (+3 over Task G's baseline: asset field ×2, credential
-  stripping ×1) + 15 `VstPreflightTest` + 12 `SubmissionMarkerStoreTest`
-  + 5 `PersistentSubmissionOrderExecutorTest` + 8 `SubmissionMarkerResolverTest`
-  + 14 `FileSignalSourceTest` + 23 `PaperTradingAppTest` — independently
-  re-summed from every module's own `tests="..."` JUnit XML attribute
-  after all CodeRabbit-review fixes, not trusted from arithmetic alone).
-- Every new class's tests were confirmed **red** (compile failure against
-  the not-yet-existing class, or against the not-yet-changed method
-  signature for a revised class) before being made **green**, per this
-  project's TDD discipline for OMS/Risk/Execution-adjacent code — recorded
-  directly in this task's own execution, both in the original
-  implementation and in every CodeRabbit-review fix above, not asserted
-  after the fact.
+  counts across all six modules: **297 tests, 0 failures, 0 errors**
+  (239 from Task G's final state + real, net new/changed tests across
+  both CodeRabbit review rounds; independently re-summed from every
+  module's own `tests="..."` JUnit XML attribute after all fixes, not
+  trusted from arithmetic alone). `PersistentSubmissionOrderExecutorTest`
+  and `FakeOrderExecutor`/its own indirect test coverage no longer exist
+  (both deleted, round 2) — replaced by `ExchangeOrderExecutorTest`'s five
+  new `SubmissionListener`-contract tests and
+  `MarkerRecordingSubmissionListenerTest`'s four tests.
+- `python3 .claude/hooks/test_vst_guardrail_check.py` (stdlib `unittest`,
+  zero extra dependencies) — **22 tests, 0 failures, 0 errors** — new in
+  round 2, covering the comment-stripping lexer, both guardrails, and the
+  split-edit candidate-reconstruction fix directly, not just via the
+  shell-level end-to-end scenarios below.
+- Every new/revised class's tests were confirmed **red** (compile failure
+  against the not-yet-existing class or not-yet-changed method signature)
+  before being made **green**, per this project's TDD discipline for
+  OMS/Risk/Execution-adjacent code — recorded directly in this task's own
+  execution, in the original implementation and in every CodeRabbit-review
+  fix across both rounds, not asserted after the fact.
 - Real VST network verification: see "The real VST verification" and
   "`VstPreflight` real behavior" above — real, captured output (including
   a second, later real run specifically re-checking the leverage-
   enforcement fix), not a claim.
 - The guardrail hook: empirically tested against the original six
   synthetic payloads, the real, current `PaperTradingApp.java` file
-  content (false-positive check, re-run after the CodeRabbit-review
-  rewrite), a real 2-call split-edit attack scenario, and a normal
-  unrelated real edit (a second false-positive check) — all before
-  installing into `.claude/settings.json`.
+  content (false-positive check, re-run after each rewrite), a real 2-call
+  split-edit attack scenario for both guardrails, and a normal unrelated
+  real edit (a second false-positive check) — all before installing into
+  `.claude/settings.json`, on top of the 22 unit tests above.
+- All 15 CodeRabbit review threads on the PR were individually verified
+  against real current code; 14 replied-to-and-resolved via the GitHub
+  API with real evidence (code references, test names, or real command
+  output), 1 replied-to-and-deliberately-left-open with recorded
+  reasoning — not just described in this document.
 - `java-tests.yml` (Task F's CI workflow) was **not** modified by this
   task — confirmed via `git status` — so it still runs only
   `./gradlew build` against the existing fake-server-only test suite; no
@@ -940,10 +1104,33 @@ guidance):** `./gradlew clean build` — **293 tests, 0 failures, 0 errors**.
 
 ## Ship status
 
-PR open, CI green, CodeRabbit review completed and re-verified against
-the exact current HEAD commit via the GitHub reviews/status API (not just
-the cached checks display) — **not merged**, per the governing brief's
-own explicit instruction and CLAUDE.md's Auto-merge Policy: this PR
-touches Java OMS/Execution/runtime logic and real credentials handling,
-both explicit exclusions from any auto-merge delegation regardless of
-CI/CodeRabbit status. Stopped here for human review, as instructed.
+Round 2 (this section): a second, real CodeRabbit review landed on PR
+#79 after round 1's fixes were pushed. Independent verification via the
+GitHub GraphQL `reviewThreads` API (not the coordinator's paraphrase,
+and not memory) found 3 genuinely new findings (both guardrail-hook
+bugs, the `SubmissionMarkerStoreTest` naming/seam issue) plus 3 items
+from round 1 that were already fixed in code but never replied-to/
+resolved on GitHub — a real process gap, corrected this round by
+replying to and resolving all applicable threads with real evidence
+(code references, test names, real command output) rather than
+re-doing already-complete work. All 5 real fixes (leverage enforcement
+confirmed already present and correct from round 1; `FileSignalSource`
+marker wiring confirmed already correct from round 1;
+`SubmissionMarkerResolver`'s no-auto-clear redesign confirmed already
+correct from round 1; the `OrderExecutor`/`SubmissionListener`
+architecture redesign, genuinely new this round; both guardrail-hook
+bugs, genuinely new this round) are done, TDD throughout, full green
+build confirmed (297 Java tests, 22 Python guardrail tests, 0
+failures/errors either suite).
+
+Round-2 changes are staged and committed on `feat/paper-trading-h-vst-
+integration`, pushed, and a fresh CodeRabbit review against the new HEAD
+commit is the one remaining step before this task is reportable as
+genuinely done — tracked as in-progress below, not yet confirmed at the
+time this section was last edited. PR remains **not merged**, per the
+governing brief's own explicit instruction and CLAUDE.md's Auto-merge
+Policy: this PR touches Java OMS/Execution/runtime logic and real
+credentials handling, both explicit exclusions from any auto-merge
+delegation regardless of CI/CodeRabbit status. Stopped here for human
+review, as instructed both originally and by the coordinator's own
+round-2 message.

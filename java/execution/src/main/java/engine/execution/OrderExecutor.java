@@ -19,42 +19,28 @@ import java.util.UUID;
  * touching {@code TradingLoop}'s control-flow logic -- see
  * {@code .planning/paper-trading-f-order-executor.md}.
  *
- * <p><b>Extensibility invariant.</b> A new exchange/venue means writing a
- * new {@code ExchangeAdapter} implementation, never a new {@code
- * OrderExecutor} implementation. There should only ever be two <b>venue-
- * shaped</b> {@code OrderExecutor} implementations in this codebase: the
- * internal simulator ({@link PaperBroker}) and one venue-agnostic wrapper
- * around the {@code ExchangeAdapter} interface ({@code
- * engine.execution.ExchangeOrderExecutor}, Paper Trading Bridge Task G). If
- * you find yourself about to write a second exchange-specific {@code
- * OrderExecutor}, stop -- that's the {@code ExchangeAdapter} extension
- * point, not this one.
- *
- * <p><b>Approved exception: venue-agnostic decorators (added Paper Trading
- * Bridge Task H, on real review of {@code
- * engine.runtime.PersistentSubmissionOrderExecutor}).</b> The invariant
- * above is about not duplicating <i>venue-specific submission logic</i>
- * outside {@code ExchangeAdapter} -- it was never meant to forbid the
- * ordinary Decorator pattern: a class that implements this interface purely
- * to add a cross-cutting concern around <b>any</b> wrapped {@code
- * OrderExecutor}, with zero venue knowledge of its own, is a structurally
- * different kind of extension than a second exchange-specific
- * implementation, and does not reopen the risk the invariant protects
- * against (a venue's own submission semantics leaking outside {@code
- * ExchangeAdapter}). {@code PersistentSubmissionOrderExecutor} is exactly
- * this: it depends only on this interface and a durable marker store,
- * never on {@code ExchangeAdapter} or anything BingX-specific, and works
- * identically wrapping either existing implementation. A literal
- * implementation count in this codebase can therefore legitimately exceed
- * two once a decorator like this exists -- what must stay at exactly two is
- * the count of implementations that know how to talk to a specific venue
- * (directly, or via wrapping {@code ExchangeAdapter}). Before adding
- * another class implementing this interface, ask: does it know anything
- * about a specific exchange? If yes, it belongs in {@code ExchangeAdapter}
- * instead, per the invariant above, unchanged. If no -- it wraps any
- * {@code OrderExecutor} and adds a concern orthogonal to venue semantics --
- * it is a decorator, and this paragraph is the standing approval for that
- * category, not a one-off exception for this one class.
+ * <p><b>Extensibility invariant, strict: exactly two implementations,
+ * ever.</b> A new exchange/venue means writing a new {@code ExchangeAdapter}
+ * implementation, never a new {@code OrderExecutor} implementation. There
+ * are, and must only ever be, exactly two classes implementing this
+ * interface in this codebase: the internal simulator ({@link PaperBroker})
+ * and one venue-agnostic wrapper around the {@code ExchangeAdapter}
+ * interface ({@code engine.execution.ExchangeOrderExecutor}, Paper Trading
+ * Bridge Task G). If you find yourself about to write a second
+ * exchange-specific {@code OrderExecutor}, stop -- that's the {@code
+ * ExchangeAdapter} extension point, not this one. If you find yourself
+ * about to write a decorator/wrapper around an existing {@code
+ * OrderExecutor} to add some cross-cutting concern (e.g. durable
+ * submission-outcome marking), that is <b>also</b> not a new {@code
+ * OrderExecutor} -- see {@link SubmissionListener} for the correct pattern:
+ * {@code ExchangeOrderExecutor} itself takes an injectable collaborator
+ * interface for exactly this purpose, so a cross-cutting concern is
+ * composed in via dependency injection, not layered on top as a competing
+ * implementation of this interface. (An earlier version of Paper Trading
+ * Bridge Task H tried the wrapper/decorator approach for durable {@code
+ * SUBMISSION_UNKNOWN} marking and, on real CodeRabbit review, found it
+ * genuinely violated this exact invariant -- {@link SubmissionListener} is
+ * the corrected design, not a documented exception to this one.)
  *
  * <p><b>Error contract, asymmetric on purpose.</b> {@link #pollFills} must
  * <b>never throw for a per-order resolution failure</b> -- an

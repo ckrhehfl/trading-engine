@@ -3,11 +3,13 @@ package engine.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import engine.execution.PaperBroker;
 import engine.oms.Order;
 import engine.risk.AccountState;
 import engine.risk.RiskGateway;
@@ -489,36 +491,41 @@ class PaperTradingAppTest {
     /**
      * The real point of the OrderExecutor-accepting constructor: a caller
      * (a test here, {@code forBingXVst} in real production use) can inject
-     * any {@link engine.execution.OrderExecutor}, and it is used directly
-     * -- no {@link engine.execution.PaperBroker} is ever constructed. Drives
-     * a real signal through the real {@link RiskGateway}/{@link
-     * OrderPipeline} exactly like {@code
-     * aManuallyDrivenTickReadsARealSignalFileAndProducesARealFill} above,
-     * but asserts against the injected {@link FakeOrderExecutor}'s own call
-     * count rather than {@code PaperBroker}-derived equity math -- proving
-     * the injected executor, not a PaperBroker, actually received the
-     * submission.
+     * any {@link engine.execution.OrderExecutor} instance, and that exact
+     * instance is used directly -- no separate {@link PaperBroker} is ever
+     * constructed internally. Proven via reference identity
+     * ({@code assertSame} against {@link PaperTradingApp#orderExecutor()}),
+     * not a hand-written fake's own call count -- a real {@link
+     * PaperBroker} is injected here specifically so this test uses only
+     * the two real, canonical {@code OrderExecutor} implementations (see
+     * {@code engine.execution.OrderExecutor}'s own "exactly two
+     * implementations" invariant), matching a real CodeRabbit review
+     * finding on this PR that a hand-written {@code FakeOrderExecutor}
+     * test double was itself a third implementation, even though
+     * test-only.
      */
     @Test
-    void constructingWithAnExplicitOrderExecutorUsesItDirectlyInsteadOfBuildingAPaperBroker(@TempDir Path tempDir)
-            throws IOException {
+    void constructingWithAnExplicitOrderExecutorUsesThatExactInstanceInsteadOfBuildingAPaperBroker(
+            @TempDir Path tempDir) throws IOException {
         Path signalPath = tempDir.resolve("latest.json");
         OrderIntent intent = new OrderIntent(
                 UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("0.01"), null, "1d",
                 Instant.now());
         writeIntent(signalPath, intent);
-        FakeOrderExecutor fakeExecutor = new FakeOrderExecutor();
+        PaperBroker injectedExecutor = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
 
         try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
             server.respondWithPrice("60000");
             PaperTradingApp app = new PaperTradingApp(
                     SYMBOL, server.baseUrl(), signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(),
-                    fakeExecutor);
+                    injectedExecutor);
 
             app.tradingLoop().tick();
 
             assertNull(app.tradingLoop().lastError());
-            assertEquals(1, fakeExecutor.submitCallCount(), "the injected OrderExecutor must receive the submission");
+            assertSame(
+                    injectedExecutor, app.orderExecutor(),
+                    "the exact injected OrderExecutor instance must be used, not a freshly-built PaperBroker");
         }
     }
 
@@ -542,7 +549,7 @@ class PaperTradingAppTest {
             server.respondWithPrice("60000");
             PaperTradingApp app = new PaperTradingApp(
                     SYMBOL, server.baseUrl(), signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(),
-                    new FakeOrderExecutor());
+                    new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
 
             app.tradingLoop().tick();
 

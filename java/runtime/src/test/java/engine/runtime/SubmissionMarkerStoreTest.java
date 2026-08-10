@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -178,19 +177,22 @@ class SubmissionMarkerStoreTest {
     }
 
     @Test
-    void defaultAtomicMoverUsesRealAtomicMove(@TempDir Path tempDir) throws IOException {
-        // Confirms the production default actually goes through
-        // StandardCopyOption.ATOMIC_MOVE, not just some file write --
-        // exercised indirectly (a real move happens, verified by content),
-        // matching this class's own already-tested "durable across a
-        // simulated restart" behavior, now via the explicit AtomicMover
-        // seam rather than only the implicit default.
+    void defaultAtomicMoverPersistsWithoutTheTestSeam(@TempDir Path tempDir) {
+        // Real, correctly-identified CodeRabbit review finding: the
+        // previous version of this test injected a lambda that
+        // re-implemented the exact same logic as the production default
+        // (SubmissionMarkerStore::defaultAtomicMove) via the AtomicMover
+        // seam, rather than actually exercising the production default
+        // itself through the 1-arg constructor -- so if ATOMIC_MOVE were
+        // ever accidentally removed from defaultAtomicMove, this test
+        // would still have passed. Fixed: uses the 1-arg constructor
+        // directly, exercising the real production code path.
         Path file = tempDir.resolve("markers.json");
-        SubmissionMarkerStore store = new SubmissionMarkerStore(
-                file, (source, target) -> Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING));
+        SubmissionMarkerStore store = new SubmissionMarkerStore(file);
 
         store.record(UUID.randomUUID(), "BTC-USDT");
 
         assertTrue(Files.exists(file));
+        assertFalse(Files.exists(tempDir.resolve("markers.json.tmp")));
     }
 }

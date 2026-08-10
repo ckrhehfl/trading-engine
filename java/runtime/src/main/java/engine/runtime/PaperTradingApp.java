@@ -79,9 +79,13 @@ import org.slf4j.LoggerFactory;
  * fail-safe-to-known-good convention) constructs the exact same {@link
  * PaperBroker}-based graph this class has always built, with zero behavior
  * change; {@code bingx-vst} instead builds a real {@code BingXAdapter}-
- * backed {@link ExchangeOrderExecutor} (wrapped in {@link
- * PersistentSubmissionOrderExecutor} for durable {@code SUBMISSION_UNKNOWN}
- * handling), pointed at the hardcoded {@link #BINGX_VST_BASE_URL} constant
+ * backed {@link ExchangeOrderExecutor}, given a real {@link
+ * MarkerRecordingSubmissionListener} (backed by {@link
+ * SubmissionMarkerStore}) for durable {@code SUBMISSION_UNKNOWN} handling
+ * -- composed in via {@code ExchangeOrderExecutor}'s own {@code
+ * SubmissionListener} constructor parameter, not a wrapping decorator (see
+ * {@code engine.execution.SubmissionListener}'s own Javadoc for why),
+ * pointed at the hardcoded {@link #BINGX_VST_BASE_URL} constant
  * -- <b>there is no environment variable, argument, or other configuration
  * surface anywhere in this class that can route the order-execution path
  * to any other host.</b> This is deliberately different from {@code
@@ -380,9 +384,10 @@ public final class PaperTradingApp {
      * only host), a real {@link VstPreflight#run} check (fails closed on a
      * non-VST balance asset), real {@code SUBMISSION_UNKNOWN} marker
      * resolution via {@link SubmissionMarkerResolver} against any marker a
-     * prior process instance left behind, and a {@link
-     * PersistentSubmissionOrderExecutor}-wrapped {@link
-     * ExchangeOrderExecutor} as the order-execution path. The kill switch
+     * prior process instance left behind, and an {@link
+     * ExchangeOrderExecutor} (given a real {@link
+     * MarkerRecordingSubmissionListener}) as the order-execution path. The
+     * kill switch
      * starts tripped if either {@link VstPreflight} found a non-zero
      * pre-existing position, or {@link SubmissionMarkerResolver} found an
      * unresolved marker requiring human review -- either is unknown state
@@ -403,8 +408,8 @@ public final class PaperTradingApp {
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
         boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
 
-        OrderExecutor orderExecutor =
-                new PersistentSubmissionOrderExecutor(new ExchangeOrderExecutor(adapter, FEE_BPS), markerStore);
+        OrderExecutor orderExecutor = new ExchangeOrderExecutor(
+                adapter, FEE_BPS, new MarkerRecordingSubmissionListener(markerStore));
 
         PaperTradingApp app = new PaperTradingApp(
                 symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory, Clock.systemUTC(),

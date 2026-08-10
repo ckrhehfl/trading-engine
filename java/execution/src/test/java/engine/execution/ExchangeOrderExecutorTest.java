@@ -571,4 +571,89 @@ class ExchangeOrderExecutorTest {
             pool.shutdownNow();
         }
     }
+
+    // --- SubmissionListener (added Task H, replacing the earlier
+    // PersistentSubmissionOrderExecutor decorator design -- see
+    // SubmissionListener's own Javadoc) ---
+
+    /** Hand-written test double, no mocking framework, matching this codebase's established convention. */
+    private static final class RecordingSubmissionListener implements SubmissionListener {
+        private final List<String> events = new java.util.ArrayList<>();
+
+        @Override
+        public void beforeSubmit(Order order) {
+            events.add("before:" + order.clientOrderId());
+        }
+
+        @Override
+        public void afterSubmitSucceeded(Order order) {
+            events.add("after:" + order.clientOrderId());
+        }
+    }
+
+    @Test
+    void twoArgConstructorDefaultsToTheNoOpListenerAndBehavesExactlyAsBefore() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"));
+        Order order = order(Side.LONG, "1");
+
+        assertDoesNotThrow(() -> executor.submit(order, new BigDecimal("1000")));
+        assertEquals(OrderState.ACKNOWLEDGED, order.state());
+    }
+
+    @Test
+    void listenerReceivesBeforeSubmitThenAfterSubmitSucceededOnANormalSubmit() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        RecordingSubmissionListener listener = new RecordingSubmissionListener();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), listener);
+        Order order = order(Side.LONG, "1");
+
+        executor.submit(order, new BigDecimal("1000"));
+
+        assertEquals(
+                List.of("before:" + order.clientOrderId(), "after:" + order.clientOrderId()), listener.events,
+                "beforeSubmit must run before adapter.submitOrder, afterSubmitSucceeded only after it returns normally");
+    }
+
+    @Test
+    void listenerReceivesOnlyBeforeSubmitWhenSubmitOrderThrows() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.throwOnNextSubmit(new RuntimeException("network timeout"));
+        RecordingSubmissionListener listener = new RecordingSubmissionListener();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), listener);
+        Order order = order(Side.LONG, "1");
+
+        assertThrows(RuntimeException.class, () -> executor.submit(order, new BigDecimal("1000")));
+
+        assertEquals(
+                List.of("before:" + order.clientOrderId()), listener.events,
+                "afterSubmitSucceeded must NOT run when adapter.submitOrder throws -- the ambiguity must survive");
+    }
+
+    @Test
+    void listenerReceivesBeforeThenAfterEvenWhenTheSubmitIsRejectedNotThrown() {
+        // A REJECTED submit is a definitive, non-ambiguous outcome (unlike a
+        // thrown submitOrder) -- adapter.submitOrder itself does not throw,
+        // it just leaves the order REJECTED, so afterSubmitSucceeded must
+        // still fire (the "succeeded" in its name means "the call returned
+        // normally", not "the order was accepted").
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.rejectNextSubmit("insufficient margin");
+        RecordingSubmissionListener listener = new RecordingSubmissionListener();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), listener);
+        Order order = order(Side.LONG, "1");
+
+        executor.submit(order, new BigDecimal("1000"));
+
+        assertEquals(OrderState.REJECTED, order.state());
+        assertEquals(List.of("before:" + order.clientOrderId(), "after:" + order.clientOrderId()), listener.events);
+    }
+
+    @Test
+    void threeArgConstructorRejectsNullListener() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        assertThrows(
+                NullPointerException.class,
+                () -> new ExchangeOrderExecutor(adapter, BigDecimal.ZERO, null));
+    }
 }

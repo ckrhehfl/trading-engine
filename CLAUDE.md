@@ -70,40 +70,34 @@ seam against — Paper Trading Bridge Tasks F-H, `.planning/paper-trading-f-
 order-executor.md` through `-h-vst-integration.md`). `engine.runtime.
 TradingLoop` depends only on `engine.execution.OrderExecutor` (`submit` +
 `pollFills` + `pendingOrders` + `cancel`), never on a concrete
-implementation. There are, and are meant to only ever be, exactly two
-**venue-shaped** implementations: `PaperBroker` (the internal simulator —
-resolves fills synchronously from an injected price) and
-`ExchangeOrderExecutor` (venue-agnostic, wraps the `ExchangeAdapter`
-**interface**, never a concrete adapter — polls `queryOrder` for real,
-asynchronous fills). **A new venue means writing a new `ExchangeAdapter`
-implementation; it never means writing a new `OrderExecutor`
-implementation.** If a change looks like it needs a third venue-specific
-`OrderExecutor`, that is a signal the change belongs in `ExchangeAdapter`
-instead — see `OrderExecutor`'s own Javadoc, which states this same
-invariant near-verbatim as the class's "Extensibility invariant."
-
-**Approved exception: venue-agnostic decorators** (added Task H, on real
-CodeRabbit review of `engine.runtime.PersistentSubmissionOrderExecutor`,
-which durably records/clears a `SUBMISSION_UNKNOWN` marker around any
-wrapped `OrderExecutor`'s `submit` call). A class that implements
-`OrderExecutor` purely to add a cross-cutting concern around **any**
-wrapped `OrderExecutor` — with zero venue knowledge of its own — is a
-structurally different extension than a second exchange-specific
-implementation, and does not reopen the risk the invariant above protects
-against (venue-specific submission logic leaking outside `ExchangeAdapter`).
-The literal count of classes implementing `OrderExecutor` can therefore
-legitimately exceed two once a decorator like this exists; what must stay
-at exactly two is the count of implementations that know how to talk to a
-specific venue. Full reasoning in `OrderExecutor`'s own Javadoc and
-`.planning/paper-trading-h-vst-integration.md`.
+implementation. There are, and must only ever be, **exactly two**
+implementations, full stop — no decorator/wrapper exception: `PaperBroker`
+(the internal simulator — resolves fills synchronously from an injected
+price) and `ExchangeOrderExecutor` (venue-agnostic, wraps the
+`ExchangeAdapter` **interface**, never a concrete adapter — polls
+`queryOrder` for real, asynchronous fills). **A new venue means writing a
+new `ExchangeAdapter` implementation; it never means writing a new
+`OrderExecutor` implementation.** A cross-cutting concern (e.g. durable
+submission-outcome marking) is composed into `ExchangeOrderExecutor` via
+an injectable collaborator interface (`engine.execution.
+SubmissionListener`), not layered on top as a third `OrderExecutor`
+implementation — an earlier version of Task H tried the wrapper/decorator
+approach for exactly this (`engine.runtime.
+PersistentSubmissionOrderExecutor`, since removed) and, on real CodeRabbit
+review, found it genuinely violated this invariant; `SubmissionListener`
+is the corrected design, not an exception carved out to keep it. See
+`OrderExecutor`'s own Javadoc for the full "Extensibility invariant" and
+`.planning/paper-trading-h-vst-integration.md` for the real review finding
+and correction.
 
 `engine.runtime.PaperTradingApp`'s `PAPER_TRADING_EXECUTION_MODE`
 (`simulated` default | `bingx-vst`) selects which `OrderExecutor` gets
 built at startup — `simulated` builds the exact `PaperBroker` graph this
 project has always run; `bingx-vst` builds a real `BingXAdapter`-backed
-`ExchangeOrderExecutor` (wrapped in `PersistentSubmissionOrderExecutor`
-for durable `SUBMISSION_UNKNOWN` handling — see `.planning/paper-trading-
-h-vst-integration.md`), pointed at a hardcoded VST-host Java constant with
+`ExchangeOrderExecutor`, given a real `SubmissionListener` (`engine.
+runtime.MarkerRecordingSubmissionListener`) for durable
+`SUBMISSION_UNKNOWN` handling — see `.planning/paper-trading-h-vst-
+integration.md`), pointed at a hardcoded VST-host Java constant with
 **no environment variable, argument, or other configuration surface**
 able to route it anywhere else. The two modes are meant to run as two
 independent processes (distinct `PAPER_TRADING_REPORTS_DIR`, independent
