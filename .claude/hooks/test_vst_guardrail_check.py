@@ -1,16 +1,25 @@
 #!/usr/bin/env python3
 """Regression tests for vst_guardrail_check.py -- stdlib unittest only, no
-extra dependency needed (run via `python3 -m unittest
-.claude/hooks/test_vst_guardrail_check.py` from the repo root, or
-directly as a script). Covers the two real, correctly-identified
+extra dependency needed (run via `python3 .claude/hooks/
+test_vst_guardrail_check.py` from the repo root, matching vst-guardrail.sh's
+own documented invocation form -- NOT `python3 -m unittest
+.claude/hooks/test_vst_guardrail_check.py`, a real, correctly-identified
+CodeRabbit review finding on this PR: `-m unittest` treats its argument as
+a dotted module/test name, not a file path, and raises `ValueError: Empty
+module name` for a path shaped like this one; confirmed by actually running
+it, not just reasoned about). Covers the real, correctly-identified
 CodeRabbit review findings this file's own functions were rewritten to
 close (comment-stripping bypass via `//` inside a string literal;
-Guardrail A only checking the diff fragment, not the resulting file) plus
+Guardrail A only checking the diff fragment, not the resulting file;
+System.getProperty as an undetected getenv-equivalent bypass; a payload
+shape reconstruct_candidate can't understand silently passing as OK) plus
 the pre-existing false-positive checks against this project's own real
 code.
 """
 
+import json
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -100,6 +109,24 @@ class CheckJavaGuardrailTest(unittest.TestCase):
         candidate = 'BINGX_VST_BASE_URL = System.getenv("x");'
         self.assertFalse(check_java_guardrail("Foo.py", candidate))
 
+    def test_blocks_system_getproperty_as_an_undetected_getenv_equivalent_bypass(self):
+        # Real, correctly-identified CodeRabbit review finding on this PR:
+        # the pre-fix check only looked for the literal substring "getenv",
+        # so System.getProperty(...) -- a real, different JVM configuration
+        # surface (settable via a -D flag) that CLAUDE.md's own "no
+        # environment variable, argument, or other configuration surface"
+        # wording already covers -- was not textually caught at all.
+        candidate = 'private static final String BINGX_VST_BASE_URL = System.getProperty("x");'
+        self.assertTrue(check_java_guardrail("Foo.java", candidate))
+
+    def test_still_blocks_the_chained_system_getenv_get_form(self):
+        # Not a new bug -- the existing same-statement substring
+        # co-occurrence check already catches this shape (both "getenv"
+        # and "BINGX_VST_BASE_URL" appear in the one statement), verified
+        # here as a regression test rather than left unconfirmed.
+        candidate = 'String x = System.getenv().get("BINGX_VST_BASE_URL");'
+        self.assertTrue(check_java_guardrail("Foo.java", candidate))
+
 
 class CheckWorkflowGuardrailTest(unittest.TestCase):
     def test_blocks_forbidden_token_in_workflow_file(self):
@@ -173,6 +200,44 @@ class ReconstructCandidateSplitEditTest(unittest.TestCase):
         tool_input = {"file_path": "x.java", "content": 'String x = "https://" + System.getenv("BINGX_VST_BASE_URL");'}
         candidate = reconstruct_candidate(tool_input)
         self.assertTrue(check_java_guardrail("x.java", candidate))
+
+
+class ReconstructCandidateUnrecognizedPayloadTest(unittest.TestCase):
+    """Real, correctly-identified CodeRabbit review finding on this PR:
+    before this fix, a payload shape reconstruct_candidate doesn't
+    understand (e.g. a hypothetical multi-edit "edits" array, or a truly
+    empty tool_input) fell through to `new_string or ""` -- silently
+    returning an empty string that both guardrails then check and always
+    pass (nothing to match against), i.e. the guardrail silently no-ops
+    for a payload shape it can't actually analyze. reconstruct_candidate
+    must instead return None for anything it cannot confidently
+    reconstruct, and main() must fail closed (block) rather than treat
+    None as OK -- matching this project's own established fail-closed
+    convention (e.g. SubmissionMarkerStore.load()) rather than silently
+    degrading a security-relevant check.
+    """
+
+    def test_an_edits_array_payload_is_not_silently_treated_as_ok(self):
+        tool_input = {
+            "file_path": "Foo.java",
+            "edits": [{"old_string": "a", "new_string": "b"}],
+        }
+        self.assertIsNone(reconstruct_candidate(tool_input))
+
+    def test_a_truly_empty_tool_input_is_not_silently_treated_as_ok(self):
+        self.assertIsNone(reconstruct_candidate({"file_path": "Foo.java"}))
+
+    def test_main_blocks_on_an_unrecognized_payload_shape_rather_than_printing_ok(self):
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vst_guardrail_check.py")
+        payload = json.dumps({
+            "tool_input": {
+                "file_path": "Foo.java",
+                "edits": [{"old_string": "a", "new_string": "b"}],
+            }
+        })
+        result = subprocess.run([sys.executable, script], input=payload, capture_output=True, text=True, timeout=10)
+        self.assertNotEqual(result.stdout.strip(), "OK", "an unrecognized payload shape must never print OK")
+        self.assertEqual(result.stdout.strip(), "BLOCK_UNRECOGNIZED_PAYLOAD")
 
 
 class NormalizePathTest(unittest.TestCase):

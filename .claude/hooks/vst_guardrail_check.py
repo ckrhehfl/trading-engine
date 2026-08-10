@@ -74,10 +74,23 @@ def normalize_path(file_path: str) -> str:
     return (file_path or "").replace("\\", "/")
 
 
-def reconstruct_candidate(tool_input: dict) -> str:
+def reconstruct_candidate(tool_input: dict):
     """Reconstructs the resulting file content this tool call would
     produce -- see module docstring for why this (not just the raw diff
     fragment) is what both guardrails must check.
+
+    Returns `None` -- not `""` -- for any payload shape this function does
+    not confidently recognize (real, correctly-identified CodeRabbit review
+    finding on this PR): the only two shapes it understands are Write's
+    `content` and Edit's `old_string`+`new_string` pair. Anything else
+    (e.g. a hypothetical multi-edit `edits` array, or a `tool_input` with
+    none of these keys at all) previously fell through to `new_string or
+    ""`, silently returning an empty string that both guardrails then check
+    and always pass against -- i.e. the guardrail silently no-opped for a
+    payload shape it could not actually analyze, rather than failing
+    closed. `main()` treats `None` as a hard block, matching this
+    project's own established fail-closed convention elsewhere (e.g.
+    `engine.runtime.SubmissionMarkerStore.load()`).
     """
     file_path = tool_input.get("file_path")
     new_string = tool_input.get("new_string")
@@ -99,7 +112,7 @@ def reconstruct_candidate(tool_input: dict) -> str:
         # -- fail toward still analyzing something rather than silently
         # skipping the check.
         return current + "\n" + new_string
-    return new_string or ""
+    return None
 
 
 def strip_java_comments(text: str) -> str:
@@ -188,14 +201,32 @@ def check_workflow_guardrail(file_path: str, candidate: str) -> bool:
     return bool(FORBIDDEN_WORKFLOW_TOKENS_RE.search(candidate))
 
 
+GETENV_EQUIVALENT_TOKENS = ("getenv", "getproperty")
+
+
 def check_java_guardrail(file_path: str, candidate: str) -> bool:
     """Guardrail B: True if this is a .java file whose resulting content (after comment-stripping)
-    has BINGX_VST_BASE_URL and getenv co-occurring in the same semicolon-delimited statement."""
+    has BINGX_VST_BASE_URL and a getenv-equivalent accessor co-occurring in the same
+    semicolon-delimited statement.
+
+    Checks both `System.getenv(...)` and `System.getProperty(...)` (real,
+    correctly-identified CodeRabbit review finding on this PR: the
+    pre-fix check only looked for the literal substring "getenv", so
+    `System.getProperty(...)` -- a real, different JVM configuration
+    surface, settable via a `-D` flag, that CLAUDE.md's own "no
+    environment variable, argument, or OTHER CONFIGURATION SURFACE"
+    wording already covers -- was not textually caught at all). The
+    chained `System.getenv().get("BINGX_VST_BASE_URL")` form was already
+    covered before this fix (both substrings already co-occur in that
+    one statement) -- verified by its own regression test, not assumed.
+    """
     if not JAVA_PATH_RE.search(normalize_path(file_path)):
         return False
     stripped = strip_java_comments(candidate)
     return any(
-        "BINGX_VST_BASE_URL" in statement and "getenv" in statement.lower() for statement in stripped.split(";")
+        "BINGX_VST_BASE_URL" in statement
+        and any(token in statement.lower() for token in GETENV_EQUIVALENT_TOKENS)
+        for statement in stripped.split(";")
     )
 
 
@@ -205,6 +236,15 @@ def main() -> None:
     file_path = tool_input.get("file_path") or ""
     candidate = reconstruct_candidate(tool_input)
 
+    if candidate is None:
+        # Fail closed (real, correctly-identified CodeRabbit review finding
+        # on this PR): a payload shape reconstruct_candidate cannot
+        # confidently analyze must never be silently treated as OK -- see
+        # that function's own docstring. vst-guardrail.sh's own catch-all
+        # case already fails closed on any decision string other than OK/
+        # BLOCK_WORKFLOW/BLOCK_JAVA, so this needs no shell-side change.
+        print("BLOCK_UNRECOGNIZED_PAYLOAD")
+        return
     if check_workflow_guardrail(file_path, candidate):
         print("BLOCK_WORKFLOW")
         return

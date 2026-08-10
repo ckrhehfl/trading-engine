@@ -70,6 +70,10 @@ case "$DECISION" in
   OK)
     exit 0
     ;;
+  BLOCK_UNRECOGNIZED_PAYLOAD)
+    echo "BLOCKED: this tool call's payload shape (neither Write's content nor Edit's old_string+new_string) could not be reconstructed into resulting file content to check -- failing closed rather than silently treating an unanalyzable edit as safe. See vst_guardrail_check.py's reconstruct_candidate docstring." >&2
+    exit 2
+    ;;
   *)
     echo "BLOCKED: vst_guardrail_check.py produced an unexpected result ('$DECISION') -- failing closed rather than silently allowing the edit." >&2
     exit 2

@@ -453,8 +453,8 @@ during design, not discovered after installing.
 
 **What was actually run, in order, all for real, all through the full
 OMS-mediated path** (`OrderIntent → OrderPipeline → RiskGateway → Order →
-ExchangeOrderExecutor/PersistentSubmissionOrderExecutor → BingXAdapter →
-the real VST host `open-api-vst.bingx.com`): a real `PaperTradingApp` was
+ExchangeOrderExecutor/PersistentSubmissionOrderExecutor → BingXAdapter`)
+against the real VST host `open-api-vst.bingx.com`: a real `PaperTradingApp` was
 constructed via `PaperTradingApp.fromEnvironment()` (the exact same public
 entrypoint `main()` uses) with `PAPER_TRADING_EXECUTION_MODE=bingx-vst`
 and real `BINGX_API_KEY`/`BINGX_API_SECRET` sourced from the actual,
@@ -1051,26 +1051,32 @@ failures, 0 errors**; `python3 .claude/hooks/test_vst_guardrail_check.py`
 
 - `./gradlew clean build` (full multi-module suite, all six modules,
   clean, not incremental) — **BUILD SUCCESSFUL**. Aggregate JUnit XML
-  counts across all six modules: **297 tests, 0 failures, 0 errors**
-  (239 from Task G's final state + real, net new/changed tests across
-  both CodeRabbit review rounds; independently re-summed from every
+  counts across all six modules: **300 tests, 0 failures, 0 errors**
+  (239 from Task G's final state + real, net new/changed tests across all
+  three CodeRabbit review rounds; independently re-summed from every
   module's own `tests="..."` JUnit XML attribute after all fixes, not
   trusted from arithmetic alone). `PersistentSubmissionOrderExecutorTest`
   and `FakeOrderExecutor`/its own indirect test coverage no longer exist
-  (both deleted, round 2) — replaced by `ExchangeOrderExecutorTest`'s five
-  new `SubmissionListener`-contract tests and
+  (both deleted, round 2) — replaced by `ExchangeOrderExecutorTest`'s eight
+  new `SubmissionListener`-contract tests (five from round 2, three more
+  from round 3's `afterSubmitSucceeded`-ordering fix) and
   `MarkerRecordingSubmissionListenerTest`'s four tests.
 - `python3 .claude/hooks/test_vst_guardrail_check.py` (stdlib `unittest`,
-  zero extra dependencies) — **22 tests, 0 failures, 0 errors** — new in
-  round 2, covering the comment-stripping lexer, both guardrails, and the
-  split-edit candidate-reconstruction fix directly, not just via the
-  shell-level end-to-end scenarios below.
+  zero extra dependencies) — **27 tests, 0 failures, 0 errors** (22 from
+  round 2 + 5 from round 3: the `getProperty`/chained-`getenv().get()`
+  cases and the unrecognized-payload fail-closed cases), covering the
+  comment-stripping lexer, both guardrails, the split-edit
+  candidate-reconstruction fix, and (round 3) the `getProperty` bypass fix
+  and the fail-closed-on-unrecognized-payload fix directly, not just via
+  the shell-level end-to-end scenarios below.
 - Every new/revised class's tests were confirmed **red** (compile failure
-  against the not-yet-existing class or not-yet-changed method signature)
-  before being made **green**, per this project's TDD discipline for
-  OMS/Risk/Execution-adjacent code — recorded directly in this task's own
-  execution, in the original implementation and in every CodeRabbit-review
-  fix across both rounds, not asserted after the fact.
+  against the not-yet-existing class or not-yet-changed method signature,
+  or a real failing assertion against a real thrown exception for round
+  3's `afterSubmitSucceeded`-ordering fix) before being made **green**,
+  per this project's TDD discipline for OMS/Risk/Execution-adjacent code —
+  recorded directly in this task's own execution, in the original
+  implementation and in every CodeRabbit-review fix across all three
+  rounds, not asserted after the fact.
 - Real VST network verification: see "The real VST verification" and
   "`VstPreflight` real behavior" above — real, captured output (including
   a second, later real run specifically re-checking the leverage-
@@ -1102,35 +1108,132 @@ failures, 0 errors**; `python3 .claude/hooks/test_vst_guardrail_check.py`
   markers plus an explanatory comment on each flagged line, not by
   altering or removing the real captured evidence).
 
+## CodeRabbit review findings, round 3
+
+A third, real CodeRabbit review landed against the exact round-2 HEAD
+commit (`63b0427`, verified via the GitHub reviews API's own
+`commit_id` field, not assumed) — `CHANGES_REQUESTED`, 5 actionable
+comments. Each was independently verified against current code before
+any fix, not taken on faith:
+
+1. **CLAUDE.md's leverage-enforcement text was genuinely stale**
+   (Major). It still read "nothing in this codebase calls `POST
+   /openApi/swap/v2/trade/leverage` yet" and "`VstPreflight`'s four
+   steps... deliberately never call `setLeverage`" — both were true
+   when originally written but became false the moment round 1 added
+   real leverage enforcement to `VstPreflight` (now 5 steps, not 4,
+   confirmed by reading the current file). Fixed by rewriting the
+   passage to describe the real current behavior: `VstPreflight` sets
+   `LONG`/`SHORT` leverage to `RiskLimits.canary().baseLeverage()` on
+   every clean start, skips enforcement entirely (and trips the kill
+   switch) when a pre-existing position is found, and fails closed if
+   either `setLeverage` call itself fails. Also disclosed, newly and
+   explicitly in this same passage: the real HTTP call itself is still
+   unverified against the live BingX API (only against a hand-written
+   fake in `VstPreflightTest`), because the account still holds the
+   original verification run's position and this codebase's OMS has no
+   way to close/reduce it.
+
+2. **A real orphan-risk bug in `ExchangeOrderExecutor.submit`** (Major,
+   data integrity). `submissionListener.afterSubmitSucceeded(order)` ran
+   *before* `pendingOrders.put(...)` — so if a real
+   `MarkerRecordingSubmissionListener`'s marker-clear failed (a real
+   `IllegalStateException` path in `SubmissionMarkerStore.clear()` on
+   I/O failure), the exception propagated out of `submit()` before the
+   already-exchange-acknowledged order was ever registered for
+   poll/fill/cancel tracking — and `TradingLoop#submitToBroker` logs
+   exactly that scenario as "orphaned, will never receive a fill" and
+   rethrows, which `Reconciler`/`PaperTradingApp#reconcile()` would then
+   treat as `ORPHANED_IN_BROKER` and trip the kill switch, for an order
+   that was in fact real, live, and fillable — only its own durable
+   marker failed to clear. Fixed for real: `pendingOrders.put(...)` now
+   runs immediately after `adapter.submitOrder` returns (before
+   `afterSubmitSucceeded`), and a thrown `afterSubmitSucceeded` is now
+   caught and logged at ERROR rather than rethrown, since by that point
+   the order is already known-live and already tracked. `SubmissionListener`'s
+   own Javadoc rewritten to state this throwing contract precisely (it
+   previously said "not expected to throw", which was never actually
+   true of a real persistence-backed implementation). Three new tests in
+   `ExchangeOrderExecutorTest`: `afterSubmitSucceededThrowingDoesNotPreventTheOrderFromEnteringPendingTracking`,
+   `afterSubmitSucceededThrowingIsLoggedButDoesNotPropagateOutOfSubmit`,
+   `afterSubmitSucceededThrowingStillAllowsANormalPollToFillTheOrder` —
+   confirmed red (the exact `IllegalStateException` from the throwing
+   test double propagated uncaught) before the fix, green after.
+
+3. **`System.getProperty("BINGX_VST_BASE_URL")` was a real, undetected
+   bypass of Guardrail B** (Major, part of the "outside diff range"/path
+   findings). The pre-fix check only searched for the literal substring
+   `"getenv"`, so `System.getProperty(...)` — a real, different JVM
+   configuration surface (settable via a `-D` flag) that CLAUDE.md's own
+   "no environment variable, argument, or other configuration surface"
+   wording already covers in spirit — passed through untouched. Fixed by
+   checking for either `"getenv"` or `"getproperty"` (case-insensitive)
+   co-occurring with `BINGX_VST_BASE_URL` in the same statement. The
+   already-suspected-covered "chained `System.getenv().get(...)` form"
+   was verified, not assumed, to already have been caught by the
+   existing same-statement substring check (both substrings already
+   co-occur) — its own new regression test
+   (`test_still_blocks_the_chained_system_getenv_get_form`) confirms
+   this rather than leaving it asserted only in prose.
+
+4. **`reconstruct_candidate` silently returned `""` for a payload shape
+   it could not recognize** (Major/quick-win). A hypothetical multi-edit
+   `edits`-array payload, or any `tool_input` with none of `content`/
+   `old_string`+`new_string`, fell through to `new_string or ""` —
+   returning an empty string both guardrails then check and always pass
+   against, i.e. the guardrail silently no-opped rather than failing
+   closed for a shape it could not actually analyze. Fixed:
+   `reconstruct_candidate` now returns `None` for any such shape, and
+   `main()` prints a new `BLOCK_UNRECOGNIZED_PAYLOAD` decision that
+   `vst-guardrail.sh` now handles with its own explicit message
+   (previously would have hit its already-existing fail-closed catch-all
+   case with a more generic message — still correct, now clearer).
+   Matches this project's own established fail-closed convention (e.g.
+   `SubmissionMarkerStore.load()`) rather than a new one invented for
+   this fix. Three new tests in a new `ReconstructCandidateUnrecognizedPayloadTest`
+   class, including one that runs the real script as a subprocess and
+   asserts its stdout is never `"OK"` for this shape.
+
+5. **The Python test module's own documented run command didn't
+   actually work** (minor/quick-win). The docstring said `python3 -m
+   unittest .claude/hooks/test_vst_guardrail_check.py`; running it for
+   real produces `ValueError: Empty module name`, because `-m unittest`
+   treats its argument as a dotted module/test name, not a file path.
+   Fixed by correcting the docstring to the form that actually works and
+   that `vst-guardrail.sh`'s own comment already documents: `python3
+   .claude/hooks/test_vst_guardrail_check.py`.
+
+**Not acted on** (from the review's own "Autofix" prompt block, which
+lists every open comment regardless of whether it's independently
+verified as still valid — same standard applied in round 2): nothing
+this round was found invalid on inspection: all 5 actionable comments
+were verified as real and fixed as described above, not partially or
+selectively.
+
+**Final state, after all round-3 fixes:** `./gradlew clean build` — **300
+tests, 0 failures, 0 errors** (297 + 3 new `ExchangeOrderExecutorTest`
+cases); `python3 .claude/hooks/test_vst_guardrail_check.py` — **27 tests,
+0 failures, 0 errors** (22 + 5 new: 2 `getProperty`/chained-form cases, 3
+unrecognized-payload cases). `npx markdownlint-cli2` re-run against this
+same planning doc after these edits: the MD018 (heading misparse) and all
+5 MD038 (space-inside-code-span, actually one multi-line unclosed-code-span
+bug producing 5 cascaded false positives, root-caused and fixed with a
+single edit) findings are resolved; the remaining MD013/MD040/MD060
+findings are the same pre-existing project-wide norms already confirmed
+present in Task G's own accepted planning doc.
+
 ## Ship status
 
-Round 2 (this section): a second, real CodeRabbit review landed on PR
-#79 after round 1's fixes were pushed. Independent verification via the
-GitHub GraphQL `reviewThreads` API (not the coordinator's paraphrase,
-and not memory) found 3 genuinely new findings (both guardrail-hook
-bugs, the `SubmissionMarkerStoreTest` naming/seam issue) plus 3 items
-from round 1 that were already fixed in code but never replied-to/
-resolved on GitHub — a real process gap, corrected this round by
-replying to and resolving all applicable threads with real evidence
-(code references, test names, real command output) rather than
-re-doing already-complete work. All 5 real fixes (leverage enforcement
-confirmed already present and correct from round 1; `FileSignalSource`
-marker wiring confirmed already correct from round 1;
-`SubmissionMarkerResolver`'s no-auto-clear redesign confirmed already
-correct from round 1; the `OrderExecutor`/`SubmissionListener`
-architecture redesign, genuinely new this round; both guardrail-hook
-bugs, genuinely new this round) are done, TDD throughout, full green
-build confirmed (297 Java tests, 22 Python guardrail tests, 0
-failures/errors either suite).
-
-Round-2 changes are staged and committed on `feat/paper-trading-h-vst-
-integration`, pushed, and a fresh CodeRabbit review against the new HEAD
-commit is the one remaining step before this task is reportable as
-genuinely done — tracked as in-progress below, not yet confirmed at the
-time this section was last edited. PR remains **not merged**, per the
-governing brief's own explicit instruction and CLAUDE.md's Auto-merge
-Policy: this PR touches Java OMS/Execution/runtime logic and real
-credentials handling, both explicit exclusions from any auto-merge
-delegation regardless of CI/CodeRabbit status. Stopped here for human
-review, as instructed both originally and by the coordinator's own
-round-2 message.
+Round 3 (this section, current): a third, real CodeRabbit review landed
+against the round-2 HEAD commit with 5 actionable comments, all
+independently verified as real (not assumed from the review's own
+prose) and fixed for real per "CodeRabbit review findings, round 3"
+above, TDD throughout. Round-3 changes are being committed and pushed
+next; a fresh CodeRabbit review against the new HEAD is the remaining
+step before this task is reportable as genuinely, fully green. PR
+remains **not merged**, per the governing brief's own explicit
+instruction and CLAUDE.md's Auto-merge Policy: this PR touches Java
+OMS/Execution/runtime logic and real credentials handling, both
+explicit exclusions from any auto-merge delegation regardless of
+CI/CodeRabbit status. Stopped here for human review, as instructed
+originally and reaffirmed by the coordinator's round-2 message.

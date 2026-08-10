@@ -656,4 +656,76 @@ class ExchangeOrderExecutorTest {
                 NullPointerException.class,
                 () -> new ExchangeOrderExecutor(adapter, BigDecimal.ZERO, null));
     }
+
+    // --- Real CodeRabbit review finding on this PR's round 2 (afterSubmitSucceeded
+    // failure orphan risk): by the time afterSubmitSucceeded runs, adapter.submitOrder
+    // already returned normally and the order is definitively ACKNOWLEDGED with a
+    // real exchangeOrderId -- a failure in afterSubmitSucceeded (e.g. a real
+    // MarkerRecordingSubmissionListener's marker-clear I/O failure) must never cause
+    // this now-known-live order to silently drop out of poll/fill/cancel tracking. ---
+
+    /** Hand-written test double whose afterSubmitSucceeded always throws -- simulates a real marker-clear I/O failure. */
+    private static final class ThrowingAfterSubmitListener implements SubmissionListener {
+        @Override
+        public void beforeSubmit(Order order) {}
+
+        @Override
+        public void afterSubmitSucceeded(Order order) {
+            throw new IllegalStateException("simulated marker-clear failure");
+        }
+    }
+
+    @Test
+    void afterSubmitSucceededThrowingDoesNotPreventTheOrderFromEnteringPendingTracking() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), new ThrowingAfterSubmitListener());
+        Order order = order(Side.LONG, "1");
+
+        assertDoesNotThrow(() -> executor.submit(order, new BigDecimal("1000")));
+
+        assertEquals(OrderState.ACKNOWLEDGED, order.state());
+        assertTrue(
+                executor.pendingOrders().containsKey(order.clientOrderId()),
+                "the exchange already acknowledged this order -- a listener failure afterward must not orphan it"
+                        + " from this executor's own poll/fill/cancel tracking");
+    }
+
+    @Test
+    void afterSubmitSucceededThrowingIsLoggedButDoesNotPropagateOutOfSubmit() {
+        // Deliberately different from submitThatThrowsPropagatesAndLeavesOrderUntracked
+        // above: there, adapter.submitOrder itself throws, so the submission's outcome
+        // is genuinely ambiguous and TradingLoop#submitToBroker's "orphaned, will never
+        // receive a fill" handling is correct. Here, the exchange definitively
+        // acknowledged the order (submitOrder returned normally) before
+        // afterSubmitSucceeded ever ran -- rethrowing would trigger that same
+        // "orphaned" handling for an order that is neither orphaned nor unfillable,
+        // only its own SUBMISSION_UNKNOWN marker failed to durably clear.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), new ThrowingAfterSubmitListener());
+        Order order = order(Side.LONG, "1");
+
+        Optional<Fill> result = assertDoesNotThrow(() -> executor.submit(order, new BigDecimal("1000")));
+
+        assertTrue(result.isEmpty());
+    }
+
+    @Test
+    void afterSubmitSucceededThrowingStillAllowsANormalPollToFillTheOrder() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("0"), new ThrowingAfterSubmitListener());
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "FILLED", new BigDecimal("1"), new BigDecimal("100")));
+
+        List<Fill> fills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertEquals(
+                1,
+                fills.size(),
+                "the order must still be pollable/fillable normally after a listener-only failure at submit time");
+        assertEquals(OrderState.FILLED, order.state());
+    }
 }

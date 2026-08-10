@@ -343,24 +343,35 @@ API key against `open-api-vst.bingx.com`)
     substitute for) this project's own software-side protections —
     unconfirmed before this run, and not something to rely on exclusively
     given it is observed, not officially documented, behavior.
-  - **Real account-wide leverage observed: `"20X"`** on a fresh VST
-    account's BTC-USDT position — **not** this project's own `RiskGateway`
-    `approvedLeverage` (canary tier's base `1x`), because **nothing in
-    this codebase calls `POST /openApi/swap/v2/trade/leverage` yet**
-    (confirmed by grep — `setLeverage` exists on `ExchangeAdapter` and is
-    implemented by `BingXAdapter`, but no caller anywhere invokes it). A
-    real, disclosed, **pre-existing** gap (predates Task H, and outside
-    every one of Tasks F/G/H's own itemized scope — `VstPreflight`'s four
-    steps and `ExchangeOrderExecutor`'s own design both deliberately
-    never call `setLeverage`/`setPositionMode`) now confirmed empirically
-    for the first time: real notional-at-risk on the exchange is
-    currently governed by whatever leverage the VST account already has
-    configured (BingX's own account-level default, `20x` observed here),
-    **not** by what `RiskGateway` computed and approved internally. Not
-    fixed under Task H's own pressure — flagged here for a human
-    priority decision, since it has real risk-sizing implications before
-    any canary-live consideration (canary tier's own documented ceiling
-    is `2x`).
+  - **Real account-wide leverage originally observed: `"20X"`** on a fresh
+    VST account's BTC-USDT position, independent of and unenforced by
+    `RiskGateway`'s own approved leverage — because at the time of that
+    original observation, **nothing in this codebase called `POST
+    /openApi/swap/v2/trade/leverage`** (confirmed by grep — `setLeverage`
+    existed on `ExchangeAdapter` and was implemented by `BingXAdapter`,
+    but had no caller anywhere). **Since fixed, on real CodeRabbit review
+    of this same PR**: `VstPreflight` (see below) now actively calls
+    `ExchangeAdapter#setLeverage` for both `LONG` and `SHORT` (hedge mode)
+    to `RiskLimits.canary().baseLeverage()` on every clean start (no
+    pre-existing position found) — closing the gap the `20X` observation
+    above exposed. **Fails closed**: if a pre-existing non-zero position
+    is found, leverage enforcement is skipped entirely (a leverage change
+    while a position is open is commonly rejected by exchanges) and the
+    kill switch starts already tripped instead, requiring a deliberate
+    human reset before any new signal is submitted — so this process
+    never proceeds to normal trading believing leverage is constrained
+    when a stale, unconstrained position might still exist. If either
+    `setLeverage` call itself fails, that propagates uncaught and refuses
+    to start, the same fail-closed treatment as the asset check above.
+    Real per-call HTTP verification against the live BingX VST API is
+    still outstanding as of this note — confirmed only against a
+    hand-written fake `ExchangeAdapter` (`VstPreflightTest`) — because the
+    account still held a real position from the original verification run
+    and this codebase's OMS-mediated order path has no way to close/reduce
+    a position at all (submitting `Side.SHORT` in hedge mode opens a
+    second, independent position rather than closing the existing `LONG`
+    one) — a separate, real, disclosed gap, out of scope for this task.
+    Full detail on both: `.planning/paper-trading-h-vst-integration.md`.
   - **A real, disclosed credential-handling incident during this same
     verification, fixed at the root cause**: the real `BINGX_API_KEY`
     value was briefly written to a local, gitignored scratch log file

@@ -29,9 +29,25 @@ import engine.oms.Order;
  * it throws, {@code afterSubmitSucceeded} is <b>not</b> called (the
  * submission's outcome remains genuinely ambiguous, which is exactly the
  * state a caller recording a marker in {@link #beforeSubmit} needs to
- * leave recorded). Neither method receives a return value or is expected
- * to throw -- an implementation that wants to observe or persist state
- * must do so via its own side effects.
+ * leave recorded). Neither method receives a return value; an
+ * implementation that wants to observe or persist state must do so via
+ * its own side effects.
+ *
+ * <p><b>Throwing, precisely</b> (a real, durable-persistence-backed
+ * implementation -- e.g. {@code engine.runtime.MarkerRecordingSubmissionListener}
+ * -- can genuinely throw on an I/O failure, so this is not a hypothetical):
+ * a thrown {@link #beforeSubmit} propagates uncaught out of
+ * {@code submit} exactly like a thrown {@code adapter.submitOrder} would --
+ * {@code adapter.submitOrder} is never even reached, so there is no
+ * ambiguity to preserve, this is simply an early submission failure. A
+ * thrown {@link #afterSubmitSucceeded} is different: by the time it runs,
+ * {@code adapter.submitOrder} has already returned normally and the order
+ * is definitively known-live (already registered for poll/fill/cancel
+ * tracking) -- {@code ExchangeOrderExecutor#submit} catches and logs that
+ * failure rather than propagating it, since rethrowing would incorrectly
+ * mark a known-live, already-tracked order as orphaned. See {@code
+ * ExchangeOrderExecutor#submit}'s own Javadoc/implementation for exactly
+ * where.
  */
 public interface SubmissionListener {
 
