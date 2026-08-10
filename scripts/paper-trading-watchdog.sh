@@ -16,8 +16,23 @@
 # Idempotent: safe to run every few minutes via cron. Does nothing if
 # both sessions are already alive.
 #
+# Credential handling, revised on real CodeRabbit review of this same
+# script: the original version did `source <(tr -d '\r' < .env)`, which
+# executes the *entire file's content as shell code*, not just parses
+# KEY=VALUE pairs -- a real, correctly-identified risk for something run
+# automatically and unattended (a human manually typing the equivalent
+# `source` command once, with eyes on it, is a materially different risk
+# profile than a cron job re-running it every 5 minutes indefinitely).
+# `get_env_var` below never executes `.env`'s content -- it only greps
+# for one specific `KEY=` line prefix and returns the literal text after
+# it. The extracted values are then passed to `tmux new-session` as
+# separate argv elements (via `env KEY=value ...`), not concatenated into
+# a shell command string, so a value containing shell metacharacters
+# still can't be reinterpreted as code either.
+#
 # Usage: scripts/paper-trading-watchdog.sh
-# Logs to var/live/watchdog.log (created if missing).
+# Logs to var/live/watchdog.log (created if missing). Never logs a
+# credential value.
 
 set -euo pipefail
 
@@ -31,22 +46,49 @@ log() {
     printf '%s %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$1" >>"$LOG_FILE"
 }
 
+# Extracts one KEY=VALUE pair's value from .env WITHOUT ever executing
+# the file's content as shell code (see module header). .env has CRLF
+# line endings (a real, previously-disclosed issue -- see
+# .planning/paper-trading-h-vst-integration.md's "credential-handling
+# incident" section); tr -d '\r' strips it before matching. Last match
+# wins if the key appears more than once (mirrors normal `source`/
+# `export` semantics). Prints nothing (empty string) if the key isn't
+# present -- callers must check for that themselves, this function never
+# fails loudly on a missing key on its own.
+get_env_var() {
+    local key="$1"
+    tr -d '\r' <"$REPO_ROOT/.env" | grep -E "^${key}=" | tail -n1 | cut -d'=' -f2-
+}
+
 start_simulated() {
     log "starting simulated session (was not running)"
-    tmux new-session -d -s paper-trading -c "$REPO_ROOT" \
-        "cd '$REPO_ROOT/java' && BINGX_BASE_URL=https://open-api.bingx.com ./gradlew -q :runtime:runPaperTradingApp"
+    tmux new-session -d -s paper-trading -c "$REPO_ROOT/java" \
+        env BINGX_BASE_URL=https://open-api.bingx.com \
+        ./gradlew -q :runtime:runPaperTradingApp
 }
 
 start_vst() {
+    local api_key api_secret
+    api_key="$(get_env_var BINGX_API_KEY)"
+    api_secret="$(get_env_var BINGX_API_SECRET)"
+    if [[ -z "$api_key" || -z "$api_secret" ]]; then
+        log "ERROR: BINGX_API_KEY/BINGX_API_SECRET missing or empty in .env -- refusing to start bingx-vst session (value itself never logged)"
+        return 1
+    fi
     log "starting bingx-vst session (was not running)"
-    # .env has CRLF line endings (a real, previously-disclosed issue --
-    # see .planning/paper-trading-h-vst-integration.md's "credential-
-    # handling incident" section); tr -d '\r' strips it before sourcing.
-    # BingXAdapter's own constructor also .strip()s credentials as a
-    # second, independent layer, but stripping at the source is cheaper
-    # and avoids relying on that alone.
-    tmux new-session -d -s paper-trading-vst -c "$REPO_ROOT" \
-        "cd '$REPO_ROOT' && set -a && source <(tr -d '\r' < .env) && set +a && cd '$REPO_ROOT/java' && PAPER_TRADING_EXECUTION_MODE=bingx-vst BINGX_BASE_URL=https://open-api.bingx.com PAPER_TRADING_REPORTS_DIR=var/live/reports/vst ./gradlew -q :runtime:runPaperTradingApp"
+    # Each KEY=value below is its own argv element to `env` (tmux
+    # new-session's trailing arguments form an argv array here, not a
+    # single string re-parsed by a shell) -- so even a credential value
+    # containing shell metacharacters is passed through literally, never
+    # reinterpreted as code.
+    tmux new-session -d -s paper-trading-vst -c "$REPO_ROOT/java" \
+        env \
+        "BINGX_API_KEY=$api_key" \
+        "BINGX_API_SECRET=$api_secret" \
+        PAPER_TRADING_EXECUTION_MODE=bingx-vst \
+        BINGX_BASE_URL=https://open-api.bingx.com \
+        PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
+        ./gradlew -q :runtime:runPaperTradingApp
 }
 
 # `=name` forces an EXACT session-name match. Without the `=`, tmux's
