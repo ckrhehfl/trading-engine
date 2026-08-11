@@ -644,4 +644,248 @@ class DailyReportGeneratorTest {
 
         assertFalse(Files.isDirectory(reportsDir), "nothing was ever tracked -- no report should be written");
     }
+
+    /**
+     * GitHub issue #75: a fresh {@code DailyReportGenerator} with nothing
+     * previously durable on disk must behave exactly as it did before this
+     * feature existed -- no extra file/directory created purely from
+     * construction, no change to the already-tested "quiet day" behavior.
+     * Guards against the durable-outbox addition silently changing
+     * behavior for every already-running process that has no pending
+     * report at all (the overwhelmingly common case).
+     */
+    @Test
+    void aFreshGeneratorWithNoPriorDurableFileBehavesExactlyAsBeforeThisFeature(@TempDir Path tempDir)
+            throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            Path reportsDir = tempDir.resolve("daily");
+            DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+
+            assertEquals(0, generator.pendingReportCount(), "nothing pending on a fresh generator with no prior durable file");
+
+            generator.beforeTick();
+            loop.tick();
+            generator.afterTick();
+            clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator.beforeTick();
+
+            assertTrue(Files.exists(reportsDir.resolve("2026-08-07.json")), "an ordinary day boundary must still write normally");
+            assertEquals(0, generator.pendingReportCount(), "nothing should be pending after a normal, unobstructed write");
+        }
+    }
+
+    /**
+     * GitHub issue #75: a report write failure must be durably persisted
+     * with its REAL content, not just held in memory -- verified by
+     * reading {@link DailyReportGenerator#pendingReportsFilePath} directly
+     * off disk (not through this generator's own in-memory accessors) and
+     * deserializing it. Uses the same narrow single-file obstruction
+     * {@code aStillPendingOlderReportBlocksAYoungerOneFromWritingOutOfOrder}
+     * already established (a directory sitting exactly where ONE date's
+     * target file needs to go) rather than the coarser {@code
+     * reportsDirectory}-blocking technique used elsewhere in this file --
+     * that coarser technique would ALSO obstruct the durable outbox file
+     * itself (a sibling of {@code reportsDirectory}), which would prove
+     * nothing about durable persistence succeeding.
+     */
+    @Test
+    void aReportThatFailsToWriteIsAlsoPersistedDurablyWithItsRealContent(@TempDir Path tempDir) throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            Path reportsDir = tempDir.resolve("daily");
+            Files.createDirectories(reportsDir);
+            Path obstructedTarget = reportsDir.resolve("2026-08-07.json");
+            Files.createDirectories(obstructedTarget); // a directory sitting where the file needs to go
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+
+            for (int i = 0; i < 2; i++) {
+                generator.beforeTick();
+                loop.tick();
+                generator.afterTick();
+            }
+            clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator.beforeTick(); // the write attempted here must fail
+
+            assertEquals(1, generator.pendingReportCount());
+            Path pendingFile = DailyReportGenerator.pendingReportsFilePath(reportsDir);
+            assertTrue(Files.exists(pendingFile), "the failed report must be durably persisted, not just held in memory");
+
+            DailyReport[] durablyPending = mapper.readValue(pendingFile.toFile(), DailyReport[].class);
+            assertEquals(1, durablyPending.length);
+            assertEquals(LocalDate.of(2026, 8, 7), durablyPending[0].date(), "the durable file's real content must match the failed report");
+            assertEquals(2, durablyPending[0].ticksAttempted(), "the durable file must carry the report's real data, not a placeholder");
+        }
+    }
+
+    /**
+     * GitHub issue #75: once the retried write actually succeeds, the
+     * entry must be gone from BOTH the in-memory accessor AND the durable
+     * file's own real content -- not just one or the other.
+     */
+    @Test
+    void aSuccessfulRetryRemovesTheEntryFromBothInMemoryAndDurableState(@TempDir Path tempDir) throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            Path reportsDir = tempDir.resolve("daily");
+            Files.createDirectories(reportsDir);
+            Path obstructedTarget = reportsDir.resolve("2026-08-07.json");
+            Files.createDirectories(obstructedTarget);
+
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            DailyReportGenerator generator = new DailyReportGenerator(loop, reportsDir, clock);
+            Path pendingFile = DailyReportGenerator.pendingReportsFilePath(reportsDir);
+
+            generator.beforeTick();
+            loop.tick();
+            generator.afterTick();
+            clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator.beforeTick(); // fails, queued + durably persisted
+
+            assertEquals(1, generator.pendingReportCount());
+            assertEquals(1, mapper.readValue(pendingFile.toFile(), DailyReport[].class).length);
+
+            Files.delete(obstructedTarget);
+            generator.beforeTick(); // ordinary same-day tick -- must retry and succeed
+
+            assertEquals(0, generator.pendingReportCount(), "in-memory/store-backed count must reflect the successful retry");
+            DailyReport[] remaining = mapper.readValue(pendingFile.toFile(), DailyReport[].class);
+            assertEquals(0, remaining.length, "the durable file itself must also reflect the successful retry, not just in-memory state");
+        }
+    }
+
+    /**
+     * <b>The core property GitHub issue #75 exists to prove.</b> A report
+     * queued after a write failure must survive a REAL simulated process
+     * restart: constructs one {@code DailyReportGenerator} (with its own
+     * {@code TradingLoop}/{@code PaperBroker}/etc. graph, all abandoned
+     * afterward exactly as a real crash would abandon them -- nothing
+     * further is ever called on them), forces a write failure so a report
+     * gets queued and durably persisted, then constructs a completely
+     * independent, FRESH {@code DailyReportGenerator} (fresh {@code
+     * TradingLoop} graph, fresh {@code MutableClock}) pointed at the SAME
+     * {@code reportsDirectory} -- exactly matching how a real restart
+     * reuses the same configured {@code PAPER_TRADING_REPORTS_DIR} -- and
+     * confirms the fresh instance already knows about the still-pending
+     * report immediately after construction (before any {@code
+     * beforeTick()} ever runs on it), then that clearing the obstruction
+     * and letting an ordinary tick run actually completes it, with its
+     * ORIGINAL (pre-crash) day's data intact.
+     */
+    @Test
+    void aReportStillPendingAfterAWriteFailureIsResumedAndCompletedByAFreshInstanceAfterARestart(
+            @TempDir Path tempDir) throws Exception {
+        Path reportsDir = tempDir.resolve("daily");
+        Files.createDirectories(reportsDir);
+        // Obstructs ONLY 2026-08-07's own target file -- reportsDir itself,
+        // and its sibling durable pending-report file, stay completely
+        // normal and writable (see
+        // aReportThatFailsToWriteIsAlsoPersistedDurablyWithItsRealContent's
+        // own comment for why this narrower technique, not the
+        // reportsDir-parent-blocking one used elsewhere in this file, is
+        // required here).
+        Path obstructedTarget = reportsDir.resolve("2026-08-07.json");
+        Files.createDirectories(obstructedTarget);
+        Path pendingFile = DailyReportGenerator.pendingReportsFilePath(reportsDir);
+
+        OrderPipeline pipeline1 = newPipeline();
+        PaperBroker broker1 = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource1 =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch1 = new KillSwitch();
+
+        try (FakeBingXTradesServer server1 = new FakeBingXTradesServer()) {
+            server1.respondWithPrice("60000");
+            BingXPriceFeed priceFeed1 = new BingXPriceFeed(server1.baseUrl());
+            TradingLoop loop1 = new TradingLoop(pipeline1, broker1, signalSource1, priceFeed1, killSwitch1, SYMBOL);
+
+            MutableClock clock1 = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+            DailyReportGenerator generator1 = new DailyReportGenerator(loop1, reportsDir, clock1);
+
+            for (int i = 0; i < 2; i++) {
+                generator1.beforeTick();
+                loop1.tick();
+                generator1.afterTick();
+            }
+            clock1.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+            generator1.beforeTick(); // the write fails -- queued + durably persisted
+
+            assertEquals(1, generator1.pendingReportCount(), "the failed report must be queued before the simulated crash");
+            assertTrue(Files.exists(pendingFile), "the pending report must be durable BEFORE the simulated crash");
+            // "The process crashes" here: generator1/loop1/broker1/pipeline1
+            // are simply abandoned -- nothing further is ever called on any
+            // of them below.
+        }
+
+        // "The process restarts": a completely independent TradingLoop
+        // graph, a fresh MutableClock, and a fresh DailyReportGenerator --
+        // pointed at the SAME reportsDir, and therefore (via the
+        // deterministic sibling derivation) the same durable pending-
+        // reports file.
+        OrderPipeline pipeline2 = newPipeline();
+        PaperBroker broker2 = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource2 =
+                new DummySignalSource(SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000);
+        KillSwitch killSwitch2 = new KillSwitch();
+
+        try (FakeBingXTradesServer server2 = new FakeBingXTradesServer()) {
+            server2.respondWithPrice("61000");
+            BingXPriceFeed priceFeed2 = new BingXPriceFeed(server2.baseUrl());
+            TradingLoop loop2 = new TradingLoop(pipeline2, broker2, signalSource2, priceFeed2, killSwitch2, SYMBOL);
+
+            MutableClock clock2 = new MutableClock(Instant.parse("2026-08-09T00:05:00Z"));
+            DailyReportGenerator generator2 = new DailyReportGenerator(loop2, reportsDir, clock2);
+
+            // The core assertion: resumed from durable state at
+            // CONSTRUCTION time, before generator2.beforeTick() has ever
+            // been called.
+            assertEquals(
+                    1,
+                    generator2.pendingReportCount(),
+                    "a fresh instance must resume the still-pending report from durable state, not start empty");
+
+            Files.delete(obstructedTarget); // the transient obstruction clears
+            generator2.beforeTick(); // an ordinary tick -- must retry and complete the resumed report
+
+            assertEquals(0, generator2.pendingReportCount(), "the resumed report must have been successfully retried");
+            Path reportFile = reportsDir.resolve("2026-08-07.json");
+            assertTrue(Files.exists(reportFile), "the resumed report must now actually be written to disk");
+            DailyReport recovered = mapper.readValue(reportFile.toFile(), DailyReport.class);
+            assertEquals(LocalDate.of(2026, 8, 7), recovered.date(), "the recovered report must still be for its ORIGINAL day, not the restart day");
+            assertEquals(2, recovered.ticksAttempted(), "the recovered report must still carry its original (pre-crash) day's data");
+
+            DailyReport[] remainingDurable = mapper.readValue(pendingFile.toFile(), DailyReport[].class);
+            assertEquals(0, remainingDurable.length, "the durable file itself must also be cleared after the successful recovery");
+        }
+    }
 }
