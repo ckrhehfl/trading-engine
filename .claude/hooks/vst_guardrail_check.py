@@ -55,36 +55,77 @@ delimiter. A best-effort secondary layer (the primary safety property is
 that no configuration surface for the VST host exists at all, see
 `PaperTradingApp`'s own Javadoc), not a compiler.
 
-**Known, disclosed, deliberately-NOT-fixed limitation** (found on a real
-CodeRabbit review of this same PR, round 4 -- self-labeled by the
-reviewer as a "Heavy lift", i.e. this is not being waved away, it was
-weighed): the same-statement check can be evaded by routing the
-constant name and the getenv-equivalent call through separate local
-variables/fields, e.g.
+**Cross-statement alias/taint tracking** (added to close a real,
+disclosed gap tracked as GitHub issue #80 -- originally found on a real
+CodeRabbit review of PR #79, round 4, self-labeled by the reviewer as a
+"Heavy lift", i.e. not waved away, it was weighed and deliberately
+deferred rather than rushed under review pressure). The same-statement
+check above cannot see a config-lookup call and `BINGX_VST_BASE_URL`
+connected only through intermediate variable/field assignments, e.g.:
 
 ```java
 private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";
-private static final String CONFIGURED_HOST = System.getProperty(VST_HOST_PROPERTY);
-private static final String BINGX_VST_BASE_URL = CONFIGURED_HOST;
+String configuredHost = System.getProperty(VST_HOST_PROPERTY);
+private static final String BINGX_VST_BASE_URL = configuredHost;
 ```
 
--- confirmed for real (not just reasoned about) that this candidate
-does NOT get blocked by `check_java_guardrail` as it stands. Closing
-this properly needs genuine cross-statement variable/constant taint
-tracking (a real def-use pass: does `BINGX_VST_BASE_URL`'s value flow,
-even through simple aliasing, from a `getenv`/`getProperty` call
-anywhere earlier in the file), which is a real, non-trivial feature --
-not a quick fix, and specifically the same class of mistake this file's
-own history already warns against (the original naive regex comment-
-stripper was exactly this: a fast, under-designed fix that introduced
-its own new bypass). Deliberately deferred rather than rushed under
-review pressure; needs its own design pass (GSD's `Discuss` step) if
-ever built, not a same-session patch. Does not weaken this hook's
-actual primary safety property, which was never "catches every possible
-disguised attempt" -- see the paragraph above: no configuration surface
-for the VST host exists in the real, shipped code at all, independent
-of whether this best-effort secondary layer can detect every
-theoretically possible attempt to reintroduce one.
+-- confirmed for real (not just reasoned about) that this candidate did
+NOT get blocked by `check_java_guardrail` before this fix.
+`_detect_cross_statement_alias_bypass` (with its two helpers,
+`_split_assignment` and `_expr_is_tainted`) closes this specific shape
+with a real, bounded def-use pass over the same comment-stripped,
+`;`-delimited statement sequence Guardrail B already uses -- not a full
+Java parser and not general-purpose taint analysis, matching this
+file's existing "best-effort secondary layer, not a compiler" framing.
+It walks statements in file order and recognizes only one syntactic
+shape: `<modifiers/type> NAME = EXPR;` (the first top-level `=` in the
+statement -- not `==`/`!=`/`<=`/`>=`/a compound-assignment operator --
+splits the statement; `NAME` is the last identifier token before it).
+A variable/field becomes "tainted" the moment its own `EXPR` either
+directly contains a getenv-equivalent token (the same
+`GETENV_EQUIVALENT_TOKENS` list the same-statement check uses) or
+references, as a whole identifier, a name already tainted by an
+earlier statement in the file -- so taint propagates transitively
+through an arbitrary-length chain of simple aliases, not just one hop.
+The moment a statement assigns to (or otherwise defines/reassigns)
+`BINGX_VST_BASE_URL` from a tainted expression, this is flagged exactly
+as the direct same-statement co-occurrence already is. Both the
+`System.getProperty` and `System.getenv` alias forms are covered (same
+shared token list), per issue #80's own acceptance criteria.
+
+Deliberately bounded, and honest about it -- three concrete gaps this
+pass does NOT close, named so they are not silently assumed covered:
+
+1. **Method-call-mediated aliasing**: if the getenv-equivalent call is
+   wrapped inside a separate helper method (even in the same file) and
+   only that method's *return value* reaches `BINGX_VST_BASE_URL`
+   (`private static String loadHost() { return System.getenv(...); }
+   ... BINGX_VST_BASE_URL = loadHost();`), this pass does not follow
+   the call into the method body -- there is no call-graph/
+   interprocedural analysis, only textual taint through `NAME = EXPR`
+   assignment chains. Confirmed NOT blocked, pinned by
+   `test_known_disclosed_limitation_method_call_mediated_bypass_is_not_currently_blocked`.
+2. **Multi-variable declarations** (`String a = X, b = Y;`) and any
+   assignment shape other than the single `NAME = EXPR` pattern (e.g. a
+   chained `a = b = EXPR` form) are not parsed -- `_split_assignment`
+   returns `None` for anything it doesn't confidently recognize, the
+   same fail-toward-"can't confirm, don't assert taint" posture as the
+   rest of this file's conservative design, rather than guessing.
+3. **Cross-file aliasing**: this pass (like the rest of Guardrail B)
+   only ever sees the one candidate file's own reconstructed content
+   for this one tool call -- a value assigned from a getenv-equivalent
+   call in one file and referenced by name (e.g. a shared constant
+   imported from another class) in a different file's
+   `BINGX_VST_BASE_URL` assignment is invisible to it.
+
+None of these three weaken the primary safety property any further than
+the file's existing framing already accounts for (see above: no
+configuration surface exists in the real, shipped code at all,
+independent of this best-effort layer's coverage) -- they are the same
+class of "did not attempt full interprocedural/cross-file analysis"
+scoping this file has disclosed from the start, just enumerated
+concretely now that the single-file, single-hop gap issue #80 tracked
+is closed.
 """
 
 import json
@@ -234,11 +275,99 @@ def check_workflow_guardrail(file_path: str, candidate: str) -> bool:
 
 GETENV_EQUIVALENT_TOKENS = ("getenv", "getproperty", "getproperties")
 
+TARGET_CONSTANT_NAME = "BINGX_VST_BASE_URL"
+
+# Matches a single top-level `=` (a plain assignment/declaration
+# operator), NOT `==`/`!=`/`<=`/`>=`/a compound-assignment operator
+# (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`) -- see
+# `_split_assignment`'s own docstring for why only the first such match
+# per statement is used as the split point.
+ASSIGNMENT_OPERATOR_RE = re.compile(r"(?<![=!<>+\-*/%&|^])=(?!=)")
+
+# Matches the trailing identifier token in a left-hand side like
+# "private static final String BINGX_VST_BASE_URL" -> "BINGX_VST_BASE_URL",
+# or "this.field" -> "field" (`.` is not a `\w` character).
+TRAILING_IDENTIFIER_RE = re.compile(r"(\w+)\s*$")
+
+
+def _split_assignment(statement: str):
+    """Splits a single semicolon-delimited STATEMENT into `(name, expr)` if
+    it looks like a simple `<modifiers/type> NAME = EXPR` declaration or
+    plain reassignment -- returns `None` if the statement contains no
+    top-level `=` operator at all (e.g. a bare method call, a `return`
+    statement, a class/method declaration header, a `for(...)` clause
+    fragment after splitting on `;`). `NAME` is the last identifier token
+    immediately before the first top-level `=` (so modifiers/types such as
+    `private static final String` are discarded, keeping just the
+    variable/field name being declared or reassigned); `EXPR` is
+    everything after it, unparsed.
+
+    Only the FIRST top-level `=` is used as the split point (a Java
+    declaration/assignment has exactly one) -- e.g. for
+    `String x = "a=b";`, the first match is the real assignment operator
+    after `x`, not the `=` inside the string literal, so `EXPR` correctly
+    captures the full `"a=b"` right-hand side. See module docstring,
+    "Cross-statement alias/taint tracking," for the honest, bounded scope
+    this narrow shape does NOT attempt to cover (multi-variable
+    declarations, chained assignments, method-call return values).
+    """
+    match = ASSIGNMENT_OPERATOR_RE.search(statement)
+    if not match:
+        return None
+    lhs = statement[: match.start()]
+    expr = statement[match.end():]
+    name_match = TRAILING_IDENTIFIER_RE.search(lhs)
+    if not name_match:
+        return None
+    return name_match.group(1), expr
+
+
+def _expr_is_tainted(expr: str, tainted_vars: set) -> bool:
+    """True if EXPR either directly contains a getenv-equivalent call
+    (same `GETENV_EQUIVALENT_TOKENS` list as the same-statement check), or
+    references -- as a whole identifier, not a substring -- a variable
+    name already known to be tainted from an earlier statement in file
+    order (TAINTED_VARS)."""
+    if any(token in expr.lower() for token in GETENV_EQUIVALENT_TOKENS):
+        return True
+    if not tainted_vars:
+        return False
+    alias_re = re.compile(r"\b(?:" + "|".join(re.escape(name) for name in tainted_vars) + r")\b")
+    return bool(alias_re.search(expr))
+
+
+def _detect_cross_statement_alias_bypass(statements) -> bool:
+    """Real, bounded cross-statement alias/taint tracking closing the
+    GitHub issue #80 gap -- see module docstring, "Cross-statement
+    alias/taint tracking," for the full design and its honest limits.
+
+    Walks STATEMENTS (already comment-stripped and split on `;`, same
+    sequence the same-statement check above uses) in file order, tracking
+    which simple variable/field names are "tainted" -- their value derives,
+    directly or through a chain of plain `NAME = EXPR` assignments, from a
+    getenv-equivalent call earlier in the same file. Returns True the
+    moment a statement assigns to (or otherwise defines/reassigns)
+    BINGX_VST_BASE_URL using a tainted expression.
+    """
+    tainted_vars = set()
+    for statement in statements:
+        parsed = _split_assignment(statement)
+        if parsed is None:
+            continue
+        name, expr = parsed
+        if _expr_is_tainted(expr, tainted_vars):
+            if name == TARGET_CONSTANT_NAME:
+                return True
+            tainted_vars.add(name)
+    return False
+
 
 def check_java_guardrail(file_path: str, candidate: str) -> bool:
     """Guardrail B: True if this is a .java file whose resulting content (after comment-stripping)
-    has BINGX_VST_BASE_URL and a getenv-equivalent accessor co-occurring in the same
-    semicolon-delimited statement.
+    reads BINGX_VST_BASE_URL from a getenv-equivalent accessor, either directly (both appear in the
+    same semicolon-delimited statement) or via cross-statement variable/field aliasing (the value
+    flows from a getenv-equivalent call into BINGX_VST_BASE_URL through one or more intermediate
+    `NAME = EXPR` assignments -- see `_detect_cross_statement_alias_bypass`).
 
     Checks `System.getenv(...)`, `System.getProperty(...)` (singular), and
     `System.getProperties()` (plural, Map-style -- `.get("KEY")` reads a
@@ -258,15 +387,25 @@ def check_java_guardrail(file_path: str, candidate: str) -> bool:
     `System.getenv().get("BINGX_VST_BASE_URL")` form was already covered
     before that fix (both substrings already co-occur in that one
     statement) -- verified by its own regression test, not assumed.
+
+    The cross-statement alias pass (added to close GitHub issue #80) runs
+    as a second, additive layer whenever the direct same-statement check
+    doesn't already find a match -- it never narrows or replaces the
+    direct check, only extends coverage to the aliasing shape the direct
+    check structurally cannot see.
     """
     if not JAVA_PATH_RE.search(normalize_path(file_path)):
         return False
     stripped = strip_java_comments(candidate)
-    return any(
-        "BINGX_VST_BASE_URL" in statement
+    statements = stripped.split(";")
+    direct_hit = any(
+        TARGET_CONSTANT_NAME in statement
         and any(token in statement.lower() for token in GETENV_EQUIVALENT_TOKENS)
-        for statement in stripped.split(";")
+        for statement in statements
     )
+    if direct_hit:
+        return True
+    return _detect_cross_statement_alias_bypass(statements)
 
 
 def main() -> None:
