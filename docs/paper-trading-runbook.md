@@ -45,13 +45,14 @@ Copy `.env.example` to `.env` and fill in real values:
 cp .env.example .env
 ```
 
-Required for the paper-trading loops:
+Required only for the BingX VST loop (the simulated loop needs no
+BingX API credentials at all — see §6):
 
 - `BINGX_API_KEY` / `BINGX_API_SECRET` — a BingX API key. **Must be a
   VST (demo-trading) key, never a production key with real funds or
   withdrawal permission** — see CLAUDE.md's Non-negotiable Rules.
 
-Optional, only for research scripts (not needed for paper trading itself):
+Optional, only for research scripts (not needed for either paper-trading loop):
 
 - `FRED_API_KEY` — only needed if re-running macro-data research
   scripts. Free, get one at
@@ -178,8 +179,11 @@ would all produce the same "no log entries" result as genuinely
 healthy, nothing-ever-crashed operation. Confirm the cron job is
 actually firing first (e.g. `grep CRON /var/log/syslog` on a system
 that logs cron invocations, or temporarily add a harmless
-`echo "$(date)" >> var/live/watchdog-heartbeat.log` line to the script
-while first setting this up) — only once that's confirmed does an
+`echo "$(date -Is)" >> "$REPO_ROOT/var/live/watchdog-heartbeat.log"`
+line to the script — an absolute path via the script's own already-
+computed `$REPO_ROOT`, not a relative one, since cron does not
+guarantee a working directory — while first setting this up) — only
+once that's confirmed does an
 empty `watchdog.log` mean "nothing's been crashing" rather than "this
 isn't running at all."
 
