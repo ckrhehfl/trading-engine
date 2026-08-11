@@ -45,13 +45,17 @@ Copy `.env.example` to `.env` and fill in real values:
 cp .env.example .env
 ```
 
-Required for paper trading:
+Required for the paper-trading loops:
+
 - `BINGX_API_KEY` / `BINGX_API_SECRET` — a BingX API key. **Must be a
   VST (demo-trading) key, never a production key with real funds or
   withdrawal permission** — see CLAUDE.md's Non-negotiable Rules.
+
+Optional, only for research scripts (not needed for paper trading itself):
+
 - `FRED_API_KEY` — only needed if re-running macro-data research
-  scripts; not needed for the paper-trading loops themselves. Free,
-  get one at <https://fred.stlouisfed.org/docs/api/api_key.html>.
+  scripts. Free, get one at
+  <https://fred.stlouisfed.org/docs/api/api_key.html>.
 
 **Never commit `.env`. Never paste its contents into a chat session or
 anywhere else.** `.env.example`'s own `BINGX_BASE_URL` default
@@ -65,6 +69,7 @@ Two independent processes, run as separate `tmux` sessions so a
 problem in one (e.g. a `KillSwitch` trip) can never affect the other.
 
 **Simulated (internal fill simulator, no real network writes)**:
+
 ```bash
 tmux new-session -d -s paper-trading -c ~/trading-engine/java \
     env BINGX_BASE_URL=https://open-api.bingx.com \
@@ -76,6 +81,7 @@ this by hand at least once so you actually see the startup log
 (confirms the account is really a VST account, confirms no leftover
 position, confirms leverage got set) before relying on the watchdog to
 restart it silently later:
+
 ```bash
 tmux new-session -d -s paper-trading-vst -c ~/trading-engine/java \
     env BINGX_API_KEY="$(grep -E '^BINGX_API_KEY=' ~/trading-engine/.env | cut -d= -f2-)" \
@@ -90,10 +96,12 @@ tmux new-session -d -s paper-trading-vst -c ~/trading-engine/java \
 once by hand — it does exactly this, for both sessions, only starting
 whichever isn't already running. See §5.)
 
-Check it actually started cleanly:
+Check it actually started cleanly (`=name` forces an exact session
+match — see §5's note on why a bare, unprefixed target is unsafe here):
+
 ```bash
-tmux capture-pane -t paper-trading -p
-tmux capture-pane -t paper-trading-vst -p
+tmux capture-pane -t =paper-trading -p
+tmux capture-pane -t =paper-trading-vst -p
 ```
 
 Look for `starting paper trading loop` and a `tick complete` line for
@@ -105,15 +113,27 @@ a pre-existing position, etc.) rather than starting silently broken.
 ## 4. Scheduled jobs (cron)
 
 Two separate jobs, both idempotent (safe to re-run, safe if already
-running):
+running).
 
-```
-# Daily signal generation, 00:05 UTC (adjust the hour for your
-# machine's local timezone — this project's own reference server runs
-# on KST, so 00:05 UTC = 09:05 KST = "5 9 * * *")
+**Timezone note, read before copying the schedule below**: standard
+(Vixie) `cron` runs on the host's own local system timezone, not UTC —
+there is no portable, universally-supported way to pin a single
+crontab line to UTC (`CRON_TZ=...` exists on some modern
+implementations, e.g. cronie, but isn't part of the original spec and
+isn't guaranteed present). The `5 9 * * *` below is therefore a
+**KST-specific example** (this project's own reference machine's
+timezone), not a portable "00:05 UTC" expression — recompute the
+correct local-time hour/minute for your own machine's timezone rather
+than copying it as-is.
+
+```cron
+# Daily signal generation -- intended to run at 00:05 UTC. On a
+# KST (UTC+9) machine that's 09:05 local time, hence "5 9 * * *" below.
+# Recompute for your own machine's local timezone -- see the note above.
 5 9 * * * cd ~/trading-engine && PYTHONPATH=python BINGX_BASE_URL=https://open-api.bingx.com python/.venv/bin/python -m live.generate_daily_signal >> ~/trading-engine/var/live/cron.log 2>&1
 
-# Process watchdog, every 5 minutes
+# Process watchdog, every 5 minutes -- timezone-independent (a fixed
+# interval, not a specific time of day)
 */5 * * * * ~/trading-engine/scripts/paper-trading-watchdog.sh
 ```
 
@@ -129,6 +149,18 @@ history (a genuine security finding from code review, fixed: it never
 executes `.env`'s content, only extracts the two specific credential
 values it needs and passes them as literal subprocess arguments).
 
+It checks session existence with `=paper-trading`/`=paper-trading-vst`
+(the `=` forces an **exact** name match), not a bare, unprefixed name —
+a real bug caught during testing: `tmux`'s target-session matching is
+prefix-based by default, so a bare `-t paper-trading` check can falsely
+report success against the differently-named `paper-trading-vst`
+session (and vice versa is not a concern here since `paper-trading` is
+a prefix of `paper-trading-vst`, not the other way around) — meaning
+the simulated session could stay dead indefinitely while the check kept
+reporting it healthy. Every example command in this runbook that
+targets a specific session uses the same `=name` form for the same
+reason — don't drop the `=` when copying them.
+
 **What it does and doesn't cover**: it recovers from "the process died
 but the machine is still on" (e.g. the `tmux` server itself crashing,
 observed for real once during this project's own operation). It does
@@ -139,8 +171,17 @@ until the machine (and `cron`) come back and the next 5-minute tick
 fires.
 
 Check `var/live/watchdog.log` for a history of when it's had to
-restart something — an empty or absent log is a good sign (nothing's
-been crashing).
+restart something. **An empty or absent log does NOT by itself prove
+the watchdog is running** — a missing cron job, a wrong path, a
+permissions problem, or the watchdog script itself failing to launch
+would all produce the same "no log entries" result as genuinely
+healthy, nothing-ever-crashed operation. Confirm the cron job is
+actually firing first (e.g. `grep CRON /var/log/syslog` on a system
+that logs cron invocations, or temporarily add a harmless
+`echo "$(date)" >> var/live/watchdog-heartbeat.log` line to the script
+while first setting this up) — only once that's confirmed does an
+empty `watchdog.log` mean "nothing's been crashing" rather than "this
+isn't running at all."
 
 ## 6. Where things read credentials/hosts from, precisely
 
@@ -161,20 +202,20 @@ been crashing).
 ## 7. Checking on things day-to-day
 
 ```bash
-tmux ls                                    # both sessions alive?
-tmux capture-pane -t paper-trading -p | tail -20
-tmux capture-pane -t paper-trading-vst -p | tail -20
-cat var/live/cron.log | tail -20           # daily signal generation history
-cat var/live/watchdog.log                  # any restarts needed?
-ls var/live/reports/daily/                 # simulated loop's daily reports
-ls var/live/reports/vst/                   # VST loop's daily reports
+tmux ls                                     # both sessions alive?
+tmux capture-pane -t =paper-trading -p | tail -20
+tmux capture-pane -t =paper-trading-vst -p | tail -20
+cat var/live/cron.log | tail -20            # daily signal generation history
+cat var/live/watchdog.log                   # any restarts needed?
+ls var/live/reports/daily/                  # simulated loop's daily reports
+ls var/live/reports/vst/                    # VST loop's daily reports
 ```
 
 ## 8. Stopping everything
 
 ```bash
-tmux kill-session -t paper-trading
-tmux kill-session -t paper-trading-vst
+tmux kill-session -t =paper-trading
+tmux kill-session -t =paper-trading-vst
 ```
 
 Remove the two crontab lines (`crontab -e`) if you want the watchdog to
