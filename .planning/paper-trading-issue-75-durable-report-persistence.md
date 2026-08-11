@@ -115,10 +115,10 @@ behavior (the only guarantee that existed before issue #75) is preserved
 even when durability itself is degraded (e.g. a disk-full condition) --
 durability is a best-effort enhancement layered on top of that
 pre-existing guarantee, not a replacement for it. Both fail-safe paths
-are directly tested: `PendingDailyReportStoreTest
-#aCorruptFileFailsSafeByStartingEmptyRatherThanThrowing`,
-`#anUnreadablePathFailsSafeByStartingEmptyRatherThanThrowing`,
-`#aPersistFailureDoesNotThrowAndTheInMemoryQueueStaysCorrect`.
+are directly tested:
+`PendingDailyReportStoreTest#aCorruptFileFailsSafeByStartingEmptyRatherThanThrowing`,
+`PendingDailyReportStoreTest#anUnreadablePathFailsSafeByStartingEmptyRatherThanThrowing`,
+`PendingDailyReportStoreTest#aPersistFailureDoesNotThrowAndTheInMemoryQueueStaysCorrect`.
 
 ## File path convention
 

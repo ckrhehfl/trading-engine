@@ -147,6 +147,45 @@ class PendingDailyReportStoreTest {
     }
 
     /**
+     * A real CodeRabbit review finding on this task's own PR: a file
+     * containing the literal JSON token {@code null} parses successfully
+     * (Jackson maps it to a {@code null} {@code List}, not a parse
+     * exception) -- {@code pending.addAll(null)} would otherwise throw a
+     * {@code NullPointerException} straight out of the constructor,
+     * defeating this class's own "fails safe, never throws" contract for
+     * exactly the malformed-input case it exists to guard against.
+     */
+    @Test
+    void aFileContainingLiteralJsonNullFailsSafeByStartingEmptyRatherThanThrowing(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("pending.json");
+        Files.writeString(file, "null");
+
+        PendingDailyReportStore store = assertDoesNotThrow(() -> new PendingDailyReportStore(file));
+
+        assertTrue(store.all().isEmpty());
+    }
+
+    /**
+     * The companion case to the literal-{@code null} finding above: a
+     * well-formed JSON array containing a {@code null} element parses to a
+     * list containing a {@code null} {@code DailyReport} -- which would NPE
+     * later (e.g. {@code persist()}'s own serialization, or a caller
+     * reading {@code pending.date()}) rather than at load time. Must be
+     * rejected the same way: fail safe, empty queue, never throw.
+     */
+    @Test
+    void aFileContainingAJsonArrayWithANullElementFailsSafeByStartingEmptyRatherThanThrowing(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("pending.json");
+        Files.writeString(file, "[null]");
+
+        PendingDailyReportStore store = assertDoesNotThrow(() -> new PendingDailyReportStore(file));
+
+        assertTrue(store.all().isEmpty());
+    }
+
+    /**
      * A persist (write) failure must also fail safe rather than propagate
      * -- see class Javadoc's "must never crash the scheduler" reasoning.
      * The in-memory mutation must still be visible even though the durable

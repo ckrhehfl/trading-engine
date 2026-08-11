@@ -142,6 +142,26 @@ final class PendingDailyReportStore {
                     e);
             return;
         }
+        // A real CodeRabbit review finding on this task's own PR: a file
+        // containing literal JSON `null` parses successfully (Jackson maps
+        // it to a null List, not a parse exception) -- pending.addAll(null)
+        // would then throw a NullPointerException straight out of this
+        // constructor, defeating this class's own "fails safe, never
+        // throws" contract for exactly the corrupt-input case it exists to
+        // guard against. Likewise a well-formed array containing a null
+        // element (e.g. `[null]`) parses to a list containing a null
+        // DailyReport, which would NPE later (persist()'s own
+        // serialization, or a caller like DailyReportGenerator reading
+        // pending.date()) rather than here. Both are treated the same as
+        // any other malformed input: logged, empty queue, never thrown.
+        if (loaded == null || loaded.stream().anyMatch(Objects::isNull)) {
+            log.error(
+                    "pending daily report file {} parsed to a null list or contained a null entry -- starting with"
+                            + " an empty pending-report queue rather than risking a NullPointerException later (see"
+                            + " GitHub issue #75); any report(s) previously durable in this file may be lost",
+                    filePath);
+            return;
+        }
         pending.addAll(loaded);
     }
 
