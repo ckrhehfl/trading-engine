@@ -10,6 +10,7 @@ import engine.risk.RiskLimits;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
 import java.util.Objects;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -108,6 +109,19 @@ public final class PaperTradingApp {
     static final long DEFAULT_TICK_INTERVAL_SECONDS = 300; // 5 minutes -- see class/task planning doc for why
 
     /**
+     * {@link #stop()}'s own termination-wait timeouts -- see that method's
+     * Javadoc for what each one gates. Production code always uses these
+     * two values; only the package-private {@link #PaperTradingApp(String,
+     * String, Path, long, Path, Clock, Duration, Duration) Duration-
+     * accepting test-only constructor overload} (GitHub issue #74) can
+     * override them, matching the existing {@link Clock}-injection
+     * precedent's own "production defaults, test-only override" shape.
+     */
+    static final Duration DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT = Duration.ofSeconds(10);
+
+    static final Duration DEFAULT_FORCED_SHUTDOWN_TIMEOUT = Duration.ofSeconds(5);
+
+    /**
      * Same {@code FEE_BPS}/{@code SLIPPAGE_BPS} {@code python/live/
      * generate_daily_signal.py} documents using for consistency with the
      * pre-registered/backtested configuration (`sr-v`/`sr-ab`) -- reused
@@ -165,6 +179,8 @@ public final class PaperTradingApp {
     private final OrderExecutor orderExecutor;
     private final KillSwitch killSwitch;
     private final long tickIntervalSeconds;
+    private final Duration gracefulShutdownTimeout;
+    private final Duration forcedShutdownTimeout;
     private final ScheduledExecutorService executor;
     private volatile ScheduledFuture<?> scheduledTask;
     private volatile ReconciliationReport lastReconciliationReport;
@@ -213,15 +229,70 @@ public final class PaperTradingApp {
             long tickIntervalSeconds,
             Path reportsDirectory,
             Clock clock) {
+        this(
+                symbol,
+                bingxBaseUrl,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                clock,
+                DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT,
+                DEFAULT_FORCED_SHUTDOWN_TIMEOUT);
+    }
+
+    /**
+     * Test-only overload (package-private -- not part of this class's real
+     * operational API, same status as the {@link Clock} overload above,
+     * which this one now delegates to it): lets a test inject {@link
+     * #stop()}'s own two termination-wait {@link Duration}s (see that
+     * method's Javadoc) instead of always using the real {@link
+     * #DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT}/{@link
+     * #DEFAULT_FORCED_SHUTDOWN_TIMEOUT} values. Added to close GitHub issue
+     * #74 -- a round-4 CodeRabbit finding on PR #73 (accepted as a
+     * disclosed gap at the time): {@code stop()}'s shutdown-termination-
+     * confirmation logic had no deterministic test forcing a real tick to
+     * hang past a short configured timeout and proving both (a)
+     * finalization never runs before an in-flight tick actually
+     * terminates, and (b) finalization is skipped when termination can't
+     * be confirmed. Always builds a real {@link PaperBroker} and a
+     * marker-free {@link FileSignalSource} -- same zero-behavior-change
+     * status as the {@link Clock}-only overload above; see {@link
+     * #PaperTradingApp(String, String, Path, long, Path, Clock,
+     * OrderExecutor) the OrderExecutor-accepting overload} below for the
+     * {@code bingx-vst}-mode path, which this constructor never touches
+     * (and which does not accept these two {@code Duration}s -- out of
+     * scope for issue #74, see its own governing task brief).
+     */
+    PaperTradingApp(
+            String symbol,
+            String bingxBaseUrl,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock,
+            Duration gracefulShutdownTimeout,
+            Duration forcedShutdownTimeout) {
         Objects.requireNonNull(symbol, "symbol is required");
         Objects.requireNonNull(bingxBaseUrl, "bingxBaseUrl is required");
         Objects.requireNonNull(signalPath, "signalPath is required");
         Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
         Objects.requireNonNull(clock, "clock is required");
+        Objects.requireNonNull(gracefulShutdownTimeout, "gracefulShutdownTimeout is required");
+        Objects.requireNonNull(forcedShutdownTimeout, "forcedShutdownTimeout is required");
         if (tickIntervalSeconds <= 0) {
             throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
         }
+        if (gracefulShutdownTimeout.isNegative()) {
+            throw new IllegalArgumentException(
+                    "gracefulShutdownTimeout must not be negative, was " + gracefulShutdownTimeout);
+        }
+        if (forcedShutdownTimeout.isNegative()) {
+            throw new IllegalArgumentException(
+                    "forcedShutdownTimeout must not be negative, was " + forcedShutdownTimeout);
+        }
         this.tickIntervalSeconds = tickIntervalSeconds;
+        this.gracefulShutdownTimeout = gracefulShutdownTimeout;
+        this.forcedShutdownTimeout = forcedShutdownTimeout;
 
         RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
         this.orderStore = new OrderStore();
@@ -257,7 +328,12 @@ public final class PaperTradingApp {
      * {@link #forBingXVst} uses to wire in a real {@code BingXAdapter}-
      * backed executor, and what a test uses to exercise this class's
      * construction/wiring logic against a fake {@link OrderExecutor}
-     * without a real network call.
+     * without a real network call. Always uses the real {@link
+     * #DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT}/{@link
+     * #DEFAULT_FORCED_SHUTDOWN_TIMEOUT} values -- unlike the {@link Clock}-
+     * only overload above, this one has no {@code Duration}-accepting
+     * counterpart (out of scope for GitHub issue #74, see that overload's
+     * own Javadoc).
      *
      * <p>Unlike the {@code PaperBroker}-building overload above, this one
      * always builds {@link FileSignalSource} with a persisted delivered-
@@ -287,6 +363,8 @@ public final class PaperTradingApp {
             throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
         }
         this.tickIntervalSeconds = tickIntervalSeconds;
+        this.gracefulShutdownTimeout = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT;
+        this.forcedShutdownTimeout = DEFAULT_FORCED_SHUTDOWN_TIMEOUT;
 
         RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
         this.orderStore = new OrderStore();
@@ -567,12 +645,16 @@ public final class PaperTradingApp {
 
     /**
      * Cleanly stops the scheduled loop: no new tick is scheduled after
-     * this returns, and any in-flight tick is given up to 10 seconds to
-     * finish before a forced {@code shutdownNow()} (itself given a further
-     * 5 seconds to actually confirm termination -- see below). Called from
-     * {@link #main}'s JVM shutdown hook (SIGTERM / normal JVM exit); safe
-     * to call more than once (a shutdown hook racing an explicit {@code
-     * stop()} elsewhere) or even if {@link #start()} was never called.
+     * this returns, and any in-flight tick is given up to {@link
+     * #gracefulShutdownTimeout} (production default {@link
+     * #DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT}, 10 seconds) to finish before a
+     * forced {@code shutdownNow()} (itself given a further {@link
+     * #forcedShutdownTimeout}, production default {@link
+     * #DEFAULT_FORCED_SHUTDOWN_TIMEOUT}, 5 seconds, to actually confirm
+     * termination -- see below). Called from {@link #main}'s JVM shutdown
+     * hook (SIGTERM / normal JVM exit); safe to call more than once (a
+     * shutdown hook racing an explicit {@code stop()} elsewhere) or even if
+     * {@link #start()} was never called.
      *
      * <p>Calls {@link DailyReportGenerator#finalizeCompletedDayOnShutdown()}
      * -- but only after real termination is confirmed, never unconditionally
@@ -589,18 +671,30 @@ public final class PaperTradingApp {
      * completed day simply stays unwritten, no worse than any other
      * already-disclosed "process stopped without a clean tick cycle"
      * limitation (see {@code DailyReportGenerator}'s own class Javadoc),
-     * logged loudly rather than silently risking a wrong report.
+     * logged loudly rather than silently risking a wrong report. This
+     * specific invariant -- finalization never runs before an in-flight
+     * tick actually terminates, and is skipped outright when termination
+     * can't be confirmed within {@code gracefulShutdownTimeout} plus
+     * {@code forcedShutdownTimeout} -- is deterministically proven in
+     * {@code PaperTradingAppTest} (GitHub issue #74), using the {@link
+     * #PaperTradingApp(String, String, Path, long, Path, Clock, Duration,
+     * Duration) Duration-accepting test-only constructor overload} to
+     * shrink these two timeouts and a real hung fake HTTP server ({@code
+     * FakeBingXTradesServer#hangForever()}) to force a real tick to block
+     * past them.
      */
     public synchronized void stop() {
         log.info("stopping paper trading loop");
         executor.shutdown();
         boolean terminated;
         try {
-            terminated = executor.awaitTermination(10, TimeUnit.SECONDS);
+            terminated = executor.awaitTermination(gracefulShutdownTimeout.toMillis(), TimeUnit.MILLISECONDS);
             if (!terminated) {
-                log.warn("paper trading loop did not stop cleanly within 10s, forcing shutdown");
+                log.warn(
+                        "paper trading loop did not stop cleanly within {}, forcing shutdown",
+                        gracefulShutdownTimeout);
                 executor.shutdownNow();
-                terminated = executor.awaitTermination(5, TimeUnit.SECONDS);
+                terminated = executor.awaitTermination(forcedShutdownTimeout.toMillis(), TimeUnit.MILLISECONDS);
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
