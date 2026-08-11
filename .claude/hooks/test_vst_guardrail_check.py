@@ -119,27 +119,126 @@ class CheckJavaGuardrailTest(unittest.TestCase):
         candidate = 'private static final String BINGX_VST_BASE_URL = System.getProperty("x");'
         self.assertTrue(check_java_guardrail("Foo.java", candidate))
 
-    def test_known_disclosed_limitation_variable_aliased_bypass_across_statements_is_not_currently_blocked(self):
-        # Real, correctly-identified CodeRabbit review finding on this PR
-        # (round 4), deliberately NOT fixed -- see vst_guardrail_check.py's
-        # own module docstring, "Known, disclosed, deliberately-NOT-fixed
-        # limitation", for the full reasoning (a real "Heavy lift" per the
-        # reviewer's own label: closing this needs genuine cross-statement
-        # variable/constant taint tracking, not a quick fix). This test
-        # pins the CURRENT, accepted behavior deliberately: if this ever
-        # starts passing (i.e. the bypass gets blocked), that is a real,
-        # deliberate fix that should update this test and the docstring
-        # together -- not silent, undocumented drift either direction.
+    def test_issue_80_exact_bypass_example_via_getproperty_alias_is_now_blocked(self):
+        # GitHub issue #80's own exact bypass example (also the same shape
+        # CodeRabbit originally flagged in PR #79 round 4). Previously
+        # pinned here as a deliberately-NOT-fixed limitation
+        # (test_known_disclosed_limitation_variable_aliased_bypass_across_
+        # statements_is_not_currently_blocked, now replaced by this test):
+        # closing this needed genuine cross-statement variable/constant
+        # taint tracking -- see vst_guardrail_check.py's module docstring,
+        # "Cross-statement alias/taint tracking", for the real fix. This is
+        # the getProperty alias form specifically; the getenv form is
+        # covered separately below (issue #80 requires both).
         candidate = (
             'private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";\n'
-            "private static final String CONFIGURED_HOST = System.getProperty(VST_HOST_PROPERTY);\n"
-            "private static final String BINGX_VST_BASE_URL = CONFIGURED_HOST;\n"
+            "String configuredHost = System.getProperty(VST_HOST_PROPERTY);\n"
+            "private static final String BINGX_VST_BASE_URL = configuredHost;\n"
+        )
+        self.assertTrue(
+            check_java_guardrail("Foo.java", candidate),
+            "issue #80's exact bypass example (getProperty alias form) must now be blocked",
+        )
+
+    def test_cross_statement_alias_bypass_via_getenv_is_also_blocked(self):
+        # Issue #80's acceptance criteria explicitly require BOTH
+        # System.getProperty and System.getenv alias forms to be covered,
+        # not just one -- same shape as the getProperty test above, with
+        # System.getenv substituted for System.getProperty.
+        candidate = (
+            'private static final String VST_HOST_PROPERTY = "BINGX_VST_BASE_URL";\n'
+            "String configuredHost = System.getenv(VST_HOST_PROPERTY);\n"
+            "private static final String BINGX_VST_BASE_URL = configuredHost;\n"
+        )
+        self.assertTrue(
+            check_java_guardrail("Foo.java", candidate),
+            "the same cross-statement alias bypass via System.getenv (not just System.getProperty) must be blocked",
+        )
+
+    def test_cross_statement_alias_bypass_via_transitive_chain_is_blocked(self):
+        # A longer alias chain (three hops: rawHost -> normalizedHost ->
+        # BINGX_VST_BASE_URL) than issue #80's own two-hop example -- proves
+        # taint propagates forward through more than one intermediate
+        # variable, not just a single alias hop.
+        candidate = (
+            'String rawHost = System.getenv("VST_HOST");\n'
+            "String normalizedHost = rawHost;\n"
+            "private static final String BINGX_VST_BASE_URL = normalizedHost;\n"
+        )
+        self.assertTrue(
+            check_java_guardrail("Foo.java", candidate),
+            "taint must propagate transitively through a multi-hop alias chain, not just one hop",
+        )
+
+    def test_unrelated_getenv_assignment_that_never_flows_into_the_constant_is_not_blocked(self):
+        # False-positive guard: a genuinely different, unrelated variable is
+        # also assigned from System.getenv(...), but its value never flows
+        # (directly or via alias) into BINGX_VST_BASE_URL, which is instead
+        # assigned a separate, plain string literal. The cross-statement
+        # alias check must not be broad enough to flag this.
+        candidate = (
+            'private static final String ENV_BINGX_API_KEY = "BINGX_API_KEY";\n'
+            "String apiKey = System.getenv(ENV_BINGX_API_KEY);\n"
+            'private static final String BINGX_VST_BASE_URL = "https://open-api-vst.bingx.com";\n'
         )
         self.assertFalse(
             check_java_guardrail("Foo.java", candidate),
-            "this is the known, disclosed, deliberately-unfixed variable-aliasing bypass -- if this assertion"
-            " now fails, the bypass has been closed for real and this test (and the docstring) should be"
-            " updated to reflect that, not silently left stale",
+            "an unrelated getenv-sourced variable that never flows into BINGX_VST_BASE_URL must not be blocked",
+        )
+
+    def test_known_disclosed_limitation_method_call_mediated_bypass_is_not_currently_blocked(self):
+        # Real, disclosed, deliberately-NOT-closed gap in the new
+        # cross-statement alias tracking -- see vst_guardrail_check.py's
+        # own module docstring for the full list of what this pass does
+        # NOT catch. There is no interprocedural/call-graph analysis: if
+        # the getenv-equivalent call is hidden inside a separate helper
+        # method's body and only that method's RETURN VALUE reaches
+        # BINGX_VST_BASE_URL, the textual `NAME = EXPR` taint chain never
+        # sees the getenv call at all (loadHost() is just an opaque call
+        # expression to this analysis). This test pins the CURRENT,
+        # accepted-for-now bypassed behavior deliberately -- if this ever
+        # starts passing, that is a real, deliberate fix that should update
+        # this test and the docstring together, not silent drift.
+        candidate = (
+            "package engine.runtime;\n"
+            "public class Foo {\n"
+            "    private static String loadHost() {\n"
+            '        return System.getenv("SOME_OTHER_KEY");\n'
+            "    }\n"
+            "    private static final String BINGX_VST_BASE_URL = loadHost();\n"
+            "}\n"
+        )
+        self.assertFalse(
+            check_java_guardrail("Foo.java", candidate),
+            "this is the known, disclosed, deliberately-unfixed method-call-mediated aliasing bypass -- if this"
+            " assertion now fails, the bypass has been closed for real and this test (and the docstring) should"
+            " be updated to reflect that, not silently left stale",
+        )
+
+    def test_annotation_named_element_assignment_does_not_hide_the_real_alias_bypass(self):
+        # Real CodeRabbit review finding on this PR: the original
+        # `_split_assignment` picked the first `=` character anywhere in
+        # the statement text, with no notion of parenthesis nesting -- so
+        # a Java annotation's own named-element-assignment syntax (e.g.
+        # `@SuppressWarnings(value = "unused")`) sitting immediately before
+        # a real `BINGX_VST_BASE_URL = host;` declaration in the same
+        # statement contains an earlier `=` (inside the annotation's own
+        # parentheses) that isn't the statement's real assignment operator.
+        # The old code matched that first, wrongly extracted "value" as
+        # NAME, and silently swallowed the real assignment into an
+        # unparsed tail of EXPR -- never examining BINGX_VST_BASE_URL as
+        # its own assignment target at all. Confirmed for real (not just
+        # reasoned about) that this bypassed the pre-fix code.
+        candidate = (
+            'String key = "BINGX_VST_BASE_URL";\n'
+            "String host = System.getenv(key);\n"
+            '@SuppressWarnings(value = "unused")\n'
+            "String BINGX_VST_BASE_URL = host;\n"
+        )
+        self.assertTrue(
+            check_java_guardrail("Foo.java", candidate),
+            "an annotation's own named-element assignment must not hide the real BINGX_VST_BASE_URL alias bypass"
+            " that follows it in the same statement",
         )
 
     def test_blocks_system_getproperties_plural_map_style_form(self):
