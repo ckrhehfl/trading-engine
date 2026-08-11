@@ -14,9 +14,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.List;
 import java.util.Objects;
 import org.slf4j.Logger;
@@ -96,7 +94,7 @@ import org.slf4j.LoggerFactory;
  * swallowed write failure is exactly the failure mode that criterion
  * exists to catch), but the completed {@link DailyReport} itself is
  * <b>not</b> discarded -- every completed report, without exception, is
- * enqueued to a small in-memory pending queue and only ever written by
+ * enqueued to {@link #pendingReportStore} and only ever written by
  * {@link #flushPendingReports()}, which drains it strictly oldest-first
  * and stops at the first one that still fails. No report is ever written
  * directly outside that queue, so a newer, independently-writable report
@@ -108,19 +106,37 @@ import org.slf4j.LoggerFactory;
  * tick, not only at the next day boundary. Day tracking still advances
  * to the new day immediately regardless of whether the write succeeded
  * -- a transient disk error must not stall the whole loop's day-boundary
- * detection, only that one day's report delivery. Same restart caveat as
- * everything else here: the pending queue is in-memory only, so a
- * process restart while a report is still pending loses it, same as any
- * other unwritten state this class holds -- a real, disclosed limitation
- * (a CodeRabbit review finding on this task's own PR #73 suggested a
- * durable, restart-recoverable outbox; declined as out of scope -- this
- * codebase has no durable persistence anywhere yet, see {@code
- * OrderStore}/{@code PaperBroker}'s own identical in-memory-only
- * precedent, and building one is real, scoped follow-on work, not a
- * silent addition to this task). The write itself is atomic (temp file +
- * {@code ATOMIC_MOVE}), the same {@code .tmp}-then-rename convention
- * {@code python/live/generate_daily_signal.py} already uses for its own
- * signal file, so a reader never observes a half-written report.
+ * detection, only that one day's report delivery. The write itself is
+ * atomic (temp file + {@code ATOMIC_MOVE}), the same {@code .tmp}-then-
+ * rename convention {@code python/live/generate_daily_signal.py} already
+ * uses for its own signal file, so a reader never observes a
+ * half-written report.
+ *
+ * <p><b>The pending queue is durable across a process restart</b> (GitHub
+ * issue #75, fixing a real, disclosed limitation flagged on this class's
+ * own originating PR #73: "the pending queue is in-memory only, so a
+ * process restart while a report is still pending loses it" -- declined
+ * as out of scope for #73, revisited here once real paper trading's
+ * evidence-gathering window made that gap unacceptable). {@link
+ * #pendingReportStore} is a {@link PendingDailyReportStore} -- a durable,
+ * single-JSON-file outbox at {@link #pendingReportsFilePath}, mirroring
+ * {@link SubmissionMarkerStore}'s own established durable-local-file
+ * pattern (Paper Trading Bridge Task H) rather than a new design: every
+ * {@code append}/{@code removeOldest} call persists immediately (temp
+ * file + atomic move, same convention as the report write itself), and a
+ * fresh instance re-reads any still-pending entries at construction --
+ * so a fresh {@code DailyReportGenerator} pointed at the same {@code
+ * reportsDirectory} after a real process restart resumes exactly where
+ * the previous instance left off, with zero explicit "resume" call
+ * needed (the very next {@link #beforeTick()} call's unconditional
+ * {@link #flushPendingReports()} does it automatically). See {@link
+ * #pendingReportsFilePath} for the file-path convention and {@link
+ * PendingDailyReportStore}'s own class Javadoc for the one deliberate
+ * divergence from {@code SubmissionMarkerStore}'s pattern: this store
+ * fails SAFE (starts empty, logs loudly), not closed (throws), on a
+ * corrupt or unreadable durable file -- refusing to start the whole
+ * paper-trading process over one corrupt local bookkeeping file would
+ * work against "no missing daily reports" more than it protects it.
  */
 public final class DailyReportGenerator {
 
@@ -139,10 +155,11 @@ public final class DailyReportGenerator {
     private int ticksAttempted;
     private int ticksSucceeded;
     private final List<DailyReport.TickError> errorsThisDay = new ArrayList<>();
-    // Completed-but-not-yet-durably-written reports, oldest first -- see
-    // class Javadoc's "Write failures never propagate, and never discard
-    // data" section.
-    private final Deque<DailyReport> pendingReports = new ArrayDeque<>();
+    // Completed-but-not-yet-durably-written reports, oldest first -- durable
+    // across a process restart (GitHub issue #75). See class Javadoc's
+    // "Write failures never propagate, and never discard data" and "The
+    // pending queue is durable across a process restart" sections.
+    private final PendingDailyReportStore pendingReportStore;
 
     /** Production convenience constructor -- real wall-clock UTC time. */
     public DailyReportGenerator(TradingLoop tradingLoop, Path reportsDirectory) {
@@ -178,6 +195,15 @@ public final class DailyReportGenerator {
         this.reportsDirectory = Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
         this.clock = Objects.requireNonNull(clock, "clock is required");
         this.atomicMover = Objects.requireNonNull(atomicMover, "atomicMover is required");
+        // Deliberately its own, always-default AtomicMover, independent of
+        // the atomicMover parameter above -- that seam controls only the
+        // primary report-file write (see DailyReportGeneratorTest's own
+        // atomic-move-failure test, which asserts an exact invocation
+        // count against it); entangling the two would make that assertion
+        // depend on this store's own internal write cadence too. See
+        // PendingDailyReportStoreTest for this store's own independent
+        // atomic-move-fallback coverage.
+        this.pendingReportStore = new PendingDailyReportStore(pendingReportsFilePath(this.reportsDirectory));
     }
 
     private static void defaultAtomicMove(Path source, Path target) throws IOException {
@@ -188,6 +214,29 @@ public final class DailyReportGenerator {
     @FunctionalInterface
     interface AtomicMover {
         void move(Path source, Path target) throws IOException;
+    }
+
+    /**
+     * The durable pending-report outbox file for a given {@code
+     * reportsDirectory} -- GitHub issue #75. Deterministically derived
+     * (a sibling of {@code reportsDirectory}, e.g. {@code
+     * var/live/reports/pending_daily_reports.json} for the default {@code
+     * var/live/reports/daily} reports directory) rather than threaded
+     * through as a separate constructor parameter, so that two {@code
+     * DailyReportGenerator} instances constructed against the SAME {@code
+     * reportsDirectory} -- exactly what a real process restart looks like,
+     * since {@code PaperTradingApp} always passes the same configured
+     * {@code PAPER_TRADING_REPORTS_DIR} -- automatically share the same
+     * durable file with zero extra wiring. Deliberately a sibling of
+     * {@code reportsDirectory} (i.e. inside {@code var/live/reports/} but
+     * NOT inside {@code var/live/reports/daily/}), not a file inside
+     * {@code reportsDirectory} itself, so it stays clearly distinct from
+     * the actual completed per-day report files that live there. Package-
+     * private (not private) so a test can independently compute the exact
+     * path to assert against the durable file's real content.
+     */
+    static Path pendingReportsFilePath(Path reportsDirectory) {
+        return reportsDirectory.resolveSibling("pending_daily_reports.json");
     }
 
     /**
@@ -202,7 +251,7 @@ public final class DailyReportGenerator {
             startNewDay(today);
         } else if (today.isAfter(currentDay)) {
             LocalDate finishedDay = currentDay;
-            pendingReports.addLast(buildReport(finishedDay));
+            pendingReportStore.append(buildReport(finishedDay));
             startNewDay(today);
         }
         // today.isBefore(currentDay): a backwards clock adjustment (NTP
@@ -234,7 +283,7 @@ public final class DailyReportGenerator {
         LocalDate today = LocalDate.ofInstant(clock.instant(), ZoneOffset.UTC);
         if (today.isAfter(currentDay)) {
             LocalDate finishedDay = currentDay;
-            pendingReports.addLast(buildReport(finishedDay));
+            pendingReportStore.append(buildReport(finishedDay));
             startNewDay(today);
         }
         flushPendingReports();
@@ -287,8 +336,8 @@ public final class DailyReportGenerator {
 
     /**
      * The ONLY method that ever calls {@link #writeReport}: every newly
-     * completed report is enqueued to {@link #pendingReports} first (never
-     * written directly), and this drains that queue oldest-first,
+     * completed report is enqueued to {@link #pendingReportStore} first
+     * (never written directly), and this drains that queue oldest-first,
      * removing each as it succeeds. Stops at the first one that still
      * fails, rather than skipping ahead to a later, possibly-independently-
      * writable report -- a CodeRabbit review finding on this task's own PR
@@ -298,17 +347,23 @@ public final class DailyReportGenerator {
      * blocked path for one date but not another), breaking the
      * chronological delivery this class's own Javadoc promises. Routing
      * every write through this single queue-then-flush path makes that
-     * ordering structurally guaranteed rather than incidental.
+     * ordering structurally guaranteed rather than incidental. Iterates a
+     * snapshot ({@link PendingDailyReportStore#all()}) taken once at the
+     * top -- safe because nothing else mutates {@link #pendingReportStore}
+     * concurrently (this method only ever runs inside this class's own
+     * {@code synchronized} {@link #beforeTick()}/{@link
+     * #finalizeCompletedDayOnShutdown()}), so the snapshot's order always
+     * matches the store's real front-to-back order as each entry is
+     * removed.
      */
     private void flushPendingReports() {
-        while (!pendingReports.isEmpty()) {
-            DailyReport pending = pendingReports.peekFirst();
+        for (DailyReport pending : pendingReportStore.all()) {
             if (writeReport(pending)) {
-                pendingReports.removeFirst();
+                pendingReportStore.removeOldest();
             } else {
                 log.warn(
                         "{} daily report(s) still pending (oldest: {}); will retry on a later tick",
-                        pendingReports.size(),
+                        pendingReportStore.all().size(),
                         pending.date());
                 break;
             }
@@ -383,6 +438,6 @@ public final class DailyReportGenerator {
 
     /** Test/manual-verification-only accessor -- same status as {@link #currentDay()} above. */
     int pendingReportCount() {
-        return pendingReports.size();
+        return pendingReportStore.all().size();
     }
 }
