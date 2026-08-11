@@ -188,7 +188,10 @@ def load_daily_reports(reports_dir: Path) -> list[dict[str, Any]]:
     for path in sorted(reports_dir.glob("*.json")):
         try:
             parsed = json.loads(path.read_text())
-        except (json.JSONDecodeError, OSError):
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            # UnicodeDecodeError isn't an OSError subclass -- a file with
+            # invalid UTF-8 bytes would otherwise propagate uncaught and
+            # crash the whole dashboard over one corrupted report.
             continue
         if _looks_like_daily_report(parsed):
             reports.append(parsed)

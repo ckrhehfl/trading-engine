@@ -14,7 +14,7 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
-import live.dashboard as dashboard
+from live import dashboard
 from live.dashboard import (
     LoopStatus,
     TickStatus,
@@ -159,25 +159,34 @@ def test_load_daily_reports_accepts_well_formed_report_alongside_malformed_ones(
     assert [r["date"] for r in reports] == ["2026-08-10"]
 
 
+def test_load_daily_reports_skips_invalid_utf8_file(tmp_path):
+    # Path.read_text() raises UnicodeDecodeError on invalid UTF-8 bytes --
+    # not an OSError/json.JSONDecodeError subclass, so this needs its own
+    # except clause (real CodeRabbit review finding on this PR).
+    (tmp_path / "2026-08-10.json").write_text(json.dumps({"date": "2026-08-10", "trades": [], "errors": []}))
+    (tmp_path / "2026-08-11.json").write_bytes(b'{"date": "2026-08-11"}\xff')
+    reports = load_daily_reports(tmp_path)
+    assert [r["date"] for r in reports] == ["2026-08-10"]
+
+
+def _raising_read_text(_path: Path, *_args: object, **_kwargs: object) -> str:
+    """Shared `Path.read_text` monkeypatch target simulating a TOCTOU read
+    failure (e.g. the file was rotated/deleted between an earlier
+    `is_file()` check and this read)."""
+    raise OSError
+
+
 def test_latest_signal_decision_read_error_returns_none(tmp_path, monkeypatch):
     log = tmp_path / "cron.log"
     log.write_text("2026-08-10 09:05:06,610 INFO no signal today (no sign-category change) -- signal file left untouched\n")
-
-    def raising_read_text(self, *args, **kwargs):
-        raise OSError("simulated read failure (e.g. log rotated away between the check and the read)")
-
-    monkeypatch.setattr(Path, "read_text", raising_read_text)
+    monkeypatch.setattr(Path, "read_text", _raising_read_text)
     assert latest_signal_decision(log) is None
 
 
 def test_tail_lines_read_error_returns_empty(tmp_path, monkeypatch):
     log = tmp_path / "watchdog.log"
     log.write_text("line 1\n")
-
-    def raising_read_text(self, *args, **kwargs):
-        raise OSError("simulated read failure (e.g. log rotated away between the check and the read)")
-
-    monkeypatch.setattr(Path, "read_text", raising_read_text)
+    monkeypatch.setattr(Path, "read_text", _raising_read_text)
     assert tail_lines(log) == []
 
 
