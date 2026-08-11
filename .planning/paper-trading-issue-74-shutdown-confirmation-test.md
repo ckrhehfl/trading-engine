@@ -58,11 +58,20 @@ constructor-injection surface needed to make it testable.
    mode — so a permanently-blocked handler thread can never keep the test
    JVM alive; `close()` additionally calls `handlerExecutor.shutdownNow()`
    before `server.stop(0)` as an extra (defense-in-depth, not load-
-   bearing given the daemon threads) cleanup step.
+   bearing given the daemon threads) cleanup step. The `hangForever`
+   branch also closes the `HttpExchange` in a `finally` block before
+   returning (a real CodeRabbit review finding on this task's own PR #85:
+   `com.sun.net.httpserver`'s own contract requires an exchange to be
+   closed — via a sent response or an explicit `close()` — to release its
+   resources; never sending a response must not mean never releasing
+   them either).
 
 3. Two new tests in `PaperTradingAppTest`, both real, end-to-end,
    scheduler-driven (`app.start()`/`app.stop()`, not a manually-invoked
-   `tick()`) — see "Both proof cases" below.
+   `tick()`) — see "Both proof cases" below. Proof case (b)'s blocking
+   mechanism was revised on review (the original `Duration.ZERO` design
+   was replaced with a genuinely uninterruptible one) — full account
+   under "Judgment calls" below.
 
 ## Judgment calls
 
@@ -96,21 +105,47 @@ both proof cases below:
   itself slow.
 - **Proof case (b)** (finalization is skipped) needed a way to prove
   "termination not confirmed" that does **not** race against that same
-  recovery time, since racing a real interrupt's completion against an
-  arbitrary short timeout (e.g. "set the second wait to 10ms and hope the
-  recovery takes longer") would be genuinely flaky on a slow/fast CI
-  runner either direction. `Duration.ZERO` is the resolution: `ExecutorService
-  #awaitTermination(0, ...)` (verified against `ThreadPoolExecutor`'s own
-  implementation) checks current state and returns immediately without
-  waiting at all. Calling `shutdownNow()` and then *immediately*, same
-  thread, no yield in between, checking `awaitTermination(0, ...)` cannot
-  possibly observe a state where the just-requested interrupt has already
-  been scheduled, processed by a different thread, and fully unwound back
-  through `TradingLoop.tick()`'s catch block and the rest of `runTick()`
-  — there is no interleaving of the JVM's own thread scheduler that makes
-  "recovery in the same instant as the check, with no scheduling gap at
-  all" a real possibility. This makes proof case (b) deterministic by
-  construction rather than by a timing margin.
+  recovery time. The first version of this test tried to get there with
+  `forcedShutdownTimeout=Duration.ZERO`, reasoning that `ExecutorService
+  #awaitTermination(0, ...)` checks current state and returns immediately
+  without waiting, and that calling `shutdownNow()` then *immediately*,
+  same thread, no explicit yield in between, checking `awaitTermination(0,
+  ...)` couldn't observe the just-requested interrupt already having taken
+  effect. **A real CodeRabbit review finding on this task's own PR #85
+  showed that reasoning was genuinely unsound, backed by its own
+  independent probe of the same `ExecutorService` contract**: `
+  shutdownNow()` only *requests* the interrupt, it does not wait for the
+  interrupted task to actually finish, and on a multi-core machine the
+  worker thread can process that interrupt and complete the rest of
+  `runTick()` on a *different core*, in true parallel execution, while the
+  calling thread is still between the `shutdownNow()` call and the very
+  next `awaitTermination(0, ...)` line — "same thread, no yield" bounds
+  the *calling* thread's own progress, not the independently-scheduled
+  *worker* thread's, so it never actually ruled out the race. This made
+  the original version of this test intermittently flaky in the direction
+  that matters most: occasionally observing `terminated == true` and
+  silently failing to exercise the `terminated == false` path it exists
+  to prove — exactly the kind of failure a deterministic test must not
+  have.
+
+  **Fixed by removing the race entirely, not by tuning it**: the test now
+  has a background thread acquire `TradingLoop`'s own intrinsic lock (the
+  same monitor `tick()`'s `synchronized` keyword uses) and hold it,
+  blocked on a `CountDownLatch`, until the test explicitly releases it.
+  Entering a plain `synchronized` block while another thread holds the
+  monitor does **not** respond to `Thread#interrupt()` at all (unlike
+  blocking I/O or a `java.util.concurrent.locks.Lock`) — the waiting
+  thread's interrupt flag gets set, but it keeps waiting for the monitor
+  regardless, for as long as the lock is held. `app.start()`'s scheduled
+  task therefore blocks trying to *enter* `tradingLoop.tick()` itself,
+  deterministically, completely independent of `shutdownNow()`, real
+  network timing, or CPU scheduling — no interrupt-recovery race is
+  possible because no interrupt can do anything here at all. The fake
+  server stays in its default, immediately-responding mode for this test
+  (unreachable — `tick()` never gets far enough to call it), and the
+  latch is always released in a `finally` block so the once-blocked tick
+  and its executor thread cleanly complete before the test method
+  returns, rather than leaking a permanently-blocked thread.
 
 ### Why no prior successful tick is needed to seed a day boundary
 
@@ -169,11 +204,24 @@ still in flight (i.e. `finalizeCompletedDayOnShutdown()`'s own
 ### Flakiness check
 
 Both new tests were run 8 consecutive times via a fresh (`--rerun`)
-Gradle invocation each time; all 8 runs passed with no observed
-variance in outcome (`stopFinalizesOnlyAfterAGenuinelyInFlightTick
+Gradle invocation each time on the original (pre-review) design; all 8
+runs passed with no observed variance in outcome. That check did not,
+and structurally could not, catch proof case (b)'s real flaw (the
+`Duration.ZERO` race CodeRabbit found) — the failure mode is a rare race
+between two independently-scheduled threads, not something 8 samples on
+one machine reliably surfaces; this is exactly why "8 green runs" was
+not treated as sufficient justification on its own once a real,
+mechanism-level flaw was identified, and why the fix removes the race
+structurally rather than adding more sample runs to the old design.
+After the fix (the `TradingLoop`-monitor-holding design, "Judgment
+calls" above), both tests were re-run **10** consecutive times with
+`--rerun`; all 10 passed (`stopFinalizesOnlyAfterAGenuinelyInFlightTick
 ActuallyTerminatesViaForcedShutdown` consistently ~0.28-0.4s,
 `stopSkipsFinalizationAndLeavesDayTrackingUnadvancedWhenTerminationCannot
-BeConfirmed` consistently ~0.3-0.4s) before this was considered done.
+BeConfirmed` consistently ~0.3-0.4s) — the new design has no timing
+dependency left to make flaky in the first place, so this is
+confirmatory rather than the primary basis for confidence the way it
+was pre-fix.
 
 ## Both proof cases
 
@@ -187,10 +235,16 @@ BeConfirmed` consistently ~0.3-0.4s) before this was considered done.
   premature snapshot.
 - **`stopSkipsFinalizationAndLeavesDayTrackingUnadvancedWhenTermination
   CannotBeConfirmed`**: `gracefulShutdownTimeout=200ms`,
-  `forcedShutdownTimeout=Duration.ZERO`. Both waits fail to confirm
-  termination (the second deterministically, by construction — see
-  above); `terminated` ends up `false`; no report is ever written and
-  `currentDay()` never advances.
+  `forcedShutdownTimeout=200ms`. A background thread holds `TradingLoop`'s
+  own intrinsic lock for the test's duration, so the scheduled tick
+  blocks trying to *enter* `tick()` itself — a form of blocking that
+  `Thread#interrupt()` cannot affect at all, unlike blocking I/O. Both
+  waits therefore reliably observe `false`, deterministically, with no
+  dependency on real interrupt-recovery timing; `terminated` ends up
+  `false`; no report is ever written and `currentDay()` never advances.
+  See "Judgment calls" above for why this replaced an earlier
+  `Duration.ZERO` + network-hang design that a real CodeRabbit review
+  finding showed was racy.
 
 ## Verification
 
@@ -202,7 +256,17 @@ BeConfirmed` consistently ~0.3-0.4s) before this was considered done.
   all 25 tests in the class pass (23 pre-existing + 2 new).
 - `./gradlew clean build` (full multi-module suite, matching
   `.github/workflows/java-tests.yml`): **302 tests, 0 failures, 0
-  errors, 0 skipped**, across all 6 modules.
-- The two new tests specifically re-run 8 consecutive times with
+  errors, 0 skipped**, across all 6 modules — reconfirmed after the
+  review-driven fixes below, with the same result.
+- The two new tests specifically re-run 10 consecutive times with
   `--rerun` (forcing real re-execution, not Gradle's cached UP-TO-DATE
-  skip) — no flakiness observed.
+  skip), post-fix — no flakiness observed.
+- **Real CodeRabbit review, round 1** (PR #85, commit `e74635c`, a real
+  review object confirmed via the GitHub reviews API to target that
+  exact commit sha — not just a green status badge, see this task's own
+  process requirements): 2 actionable findings, both legitimate, both
+  fixed directly rather than declined — `FakeBingXTradesServer`'s
+  `hangForever` branch now closes the `HttpExchange` in a `finally`
+  block, and proof case (b) was redesigned to remove a genuine
+  interrupt-recovery race (see "Judgment calls" above for the full
+  account of both).

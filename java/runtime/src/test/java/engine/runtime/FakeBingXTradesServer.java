@@ -115,11 +115,18 @@ final class FakeBingXTradesServer implements AutoCloseable {
             // interrupts it); the CLIENT side of the still-open connection
             // is unblocked separately, by its own caller's interrupt or its
             // own fixed request timeout -- never by anything this method
-            // does.
+            // does. The finally block closes the HttpExchange on every exit
+            // from this branch (a CodeRabbit review finding on this task's
+            // own PR #85: com.sun.net.httpserver's own contract requires an
+            // exchange to be closed -- via a sent response or an explicit
+            // close() -- to release its resources; never sending a response
+            // here must not mean never releasing them either).
             try {
                 new CountDownLatch(1).await();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            } finally {
+                exchange.close();
             }
             return;
         }

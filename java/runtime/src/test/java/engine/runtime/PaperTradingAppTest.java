@@ -32,6 +32,8 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -417,38 +419,91 @@ class PaperTradingAppTest {
      * Javadoc -- not independently assertable here, this codebase has no
      * log-capture framework in this module, see this task's own planning
      * doc), when termination cannot be confirmed even after the forced
-     * shutdown. Same real hung-server setup as the test above, but the
-     * forced-shutdown timeout is {@link Duration#ZERO} -- {@code
-     * awaitTermination(0, ...)} checks the executor's current state and
-     * returns immediately without waiting at all (see {@code
-     * ThreadPoolExecutor#awaitTermination}'s own implementation), so this
-     * assertion does not race the real (separately confirmed, millisecond-
-     * scale) interrupt-recovery time the test above relies on -- there is
-     * no possible interleaving where the just-requested {@code
-     * shutdownNow()} interrupt has already been scheduled, processed, and
-     * fully unwound back through {@code TradingLoop.tick()}'s catch block
-     * and the rest of {@code runTick()} by the time the very next line of
-     * {@code stop()} (on the same thread, no yield in between) checks.
+     * shutdown.
+     *
+     * <p><b>Revised on a real CodeRabbit review finding on this task's own
+     * PR #85</b>: an earlier version of this test reused the network-hung
+     * server from the test above, paired with {@code
+     * forcedShutdownTimeout=Duration.ZERO} (reasoning: {@code
+     * awaitTermination(0, ...)} checks state immediately without waiting).
+     * CodeRabbit found that reasoning genuinely unsound, backed by its own
+     * real probe: {@code shutdownNow()} only <i>requests</i> the interrupt,
+     * it does not wait for the interrupted task to actually finish -- on a
+     * multi-core machine, the worker thread can process the interrupt and
+     * complete the rest of {@code runTick()} on a different core, in true
+     * parallel execution, while the calling thread is still between the
+     * {@code shutdownNow()} call and the immediately-following {@code
+     * awaitTermination(0, ...)} check; nothing about "same thread, no
+     * explicit yield" rules that out. That made the old version of this
+     * test intermittently flaky in the direction that matters most --
+     * occasionally observing {@code terminated == true} and silently
+     * failing to exercise the {@code terminated == false} path it exists to
+     * prove.
+     *
+     * <p>Fixed by switching to a genuinely, structurally uninterruptible
+     * block instead of racing a real interrupt's recovery time: a
+     * background test thread acquires {@link TradingLoop}'s own intrinsic
+     * lock (the same monitor {@link TradingLoop#tick()}'s {@code
+     * synchronized} keyword uses) and holds it until this test explicitly
+     * releases a {@link CountDownLatch}. Unlike blocking I/O or a {@code
+     * java.util.concurrent.locks.Lock}, entering a plain {@code
+     * synchronized} block while another thread holds the monitor does
+     * <b>not</b> respond to {@code Thread#interrupt()} at all -- the
+     * waiting thread's interrupt flag is set, but it keeps waiting for the
+     * monitor regardless, indefinitely. {@code app.start()}'s scheduled
+     * task therefore blocks trying to <i>enter</i> {@code tradingLoop.tick()}
+     * -- deterministically, for as long as the test holds the lock,
+     * completely independent of {@code shutdownNow()}, real network
+     * timing, or CPU scheduling. The fake server is left in its default
+     * (immediately-responding) mode -- unreachable here, since {@code
+     * tick()} never gets far enough to call it -- and the latch is always
+     * released in a {@code finally} block so the once-blocked tick, and the
+     * executor thread running it, cleanly complete before this test method
+     * returns.
      */
     @Test
     void stopSkipsFinalizationAndLeavesDayTrackingUnadvancedWhenTerminationCannotBeConfirmed(@TempDir Path tempDir)
             throws Exception {
         try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
-            server.hangForever();
+            server.respondWithPrice("60000"); // never actually reached -- see class Javadoc above
             Path signalPath = tempDir.resolve("latest.json");
             Path reportsDir = tempDir.resolve("reports");
             MutableClock clock = new MutableClock(Instant.parse("2026-08-07T12:00:00Z"));
             PaperTradingApp app = new PaperTradingApp(
                     SYMBOL, server.baseUrl(), signalPath, 300, reportsDir, clock,
-                    Duration.ofMillis(200), Duration.ZERO);
+                    Duration.ofMillis(200), Duration.ofMillis(200));
 
-            app.start();
+            CountDownLatch monitorAcquired = new CountDownLatch(1);
+            CountDownLatch releaseMonitor = new CountDownLatch(1);
+            Thread monitorHolder = new Thread(
+                    () -> {
+                        synchronized (app.tradingLoop()) {
+                            monitorAcquired.countDown();
+                            try {
+                                releaseMonitor.await();
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    },
+                    "test-tradingloop-monitor-holder");
+            monitorHolder.start();
             try {
-                awaitCondition(() -> server.lastPath() != null, Duration.ofSeconds(5));
+                assertTrue(
+                        monitorAcquired.await(5, TimeUnit.SECONDS),
+                        "test setup: monitor-holder thread never acquired TradingLoop's own lock");
+
+                // beforeTick() (DailyReportGenerator's own monitor, not
+                // TradingLoop's) still runs and seeds currentDay; the
+                // immediate first tick then blocks trying to enter
+                // TradingLoop.tick() itself, unable to proceed at all for
+                // as long as the lock above is held.
+                app.start();
+                awaitCondition(() -> app.dailyReportGenerator().currentDay() != null, Duration.ofSeconds(5));
 
                 clock.advanceTo(Instant.parse("2026-08-08T00:03:00Z"));
 
-                app.stop();
+                app.stop(); // both awaits reliably observe false -- monitor-entry blocking cannot be interrupted
 
                 Path reportFile = reportsDir.resolve("2026-08-07.json");
                 assertFalse(
@@ -461,6 +516,8 @@ class PaperTradingAppTest {
                                 + " run");
                 assertEquals(0, app.dailyReportGenerator().pendingReportCount());
             } finally {
+                releaseMonitor.countDown();
+                monitorHolder.join(Duration.ofSeconds(5).toMillis());
                 app.stop();
             }
         }
