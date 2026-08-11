@@ -215,6 +215,32 @@ class CheckJavaGuardrailTest(unittest.TestCase):
             " be updated to reflect that, not silently left stale",
         )
 
+    def test_annotation_named_element_assignment_does_not_hide_the_real_alias_bypass(self):
+        # Real CodeRabbit review finding on this PR: the original
+        # `_split_assignment` picked the first `=` character anywhere in
+        # the statement text, with no notion of parenthesis nesting -- so
+        # a Java annotation's own named-element-assignment syntax (e.g.
+        # `@SuppressWarnings(value = "unused")`) sitting immediately before
+        # a real `BINGX_VST_BASE_URL = host;` declaration in the same
+        # statement contains an earlier `=` (inside the annotation's own
+        # parentheses) that isn't the statement's real assignment operator.
+        # The old code matched that first, wrongly extracted "value" as
+        # NAME, and silently swallowed the real assignment into an
+        # unparsed tail of EXPR -- never examining BINGX_VST_BASE_URL as
+        # its own assignment target at all. Confirmed for real (not just
+        # reasoned about) that this bypassed the pre-fix code.
+        candidate = (
+            'String key = "BINGX_VST_BASE_URL";\n'
+            "String host = System.getenv(key);\n"
+            '@SuppressWarnings(value = "unused")\n'
+            "String BINGX_VST_BASE_URL = host;\n"
+        )
+        self.assertTrue(
+            check_java_guardrail("Foo.java", candidate),
+            "an annotation's own named-element assignment must not hide the real BINGX_VST_BASE_URL alias bypass"
+            " that follows it in the same statement",
+        )
+
     def test_blocks_system_getproperties_plural_map_style_form(self):
         # A real, independently-verified gap (found and fixed alongside a
         # separate, inaccurate claim about this same file that did NOT hold

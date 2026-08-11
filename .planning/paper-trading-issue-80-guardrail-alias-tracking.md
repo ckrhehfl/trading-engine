@@ -58,29 +58,38 @@ Two new small functions plus one orchestrator, all operating on the same
 comment-stripped, `;`-split statement sequence `check_java_guardrail`
 already builds for the same-statement check:
 
-1. **`_split_assignment(statement)`** — recognizes exactly one syntactic
-   shape: `<modifiers/type> NAME = EXPR`. Finds the first top-level `=`
-   via `ASSIGNMENT_OPERATOR_RE`
-   (`(?<![=!<>+\-*/%&|^])=(?!=)`) — a lookbehind/lookahead pair that
-   excludes `==`, `!=`, `<=`, `>=`, and the compound-assignment operators
-   (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`) from matching as a
-   plain assignment. Everything before that `=` is the left-hand side;
-   the last identifier token in it (via `TRAILING_IDENTIFIER_RE`,
-   `(\w+)\s*$`) is `NAME` — this discards modifiers/types
-   (`private static final String`) and handles `this.field`-style
-   left-hand sides too (`.` is not `\w`, so the regex still lands on
-   `field`). Everything after the `=` is `EXPR`, unparsed. Returns
-   `None` for any statement with no top-level `=` at all (a bare method
-   call, a `return` statement, a class/method header, a `for(...)`
-   header fragment after the `;`-split) — the same
-   fail-toward-"can't-confirm-so-don't-assert-taint" posture the rest of
-   this file already uses.
+1. **`_split_assignment(statement)`**, via
+   **`_find_top_level_assignment_index(statement)`** — recognizes exactly
+   one syntactic shape: `<modifiers/type> NAME = EXPR`. Finds the first
+   `=` that is (a) a plain assignment operator, not `==`/`!=`/`<=`/`>=`
+   or a compound-assignment operator (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
+   `|=`, `^=`), AND (b) sits at **bracket depth 0** — not inside
+   `(...)`/`[...]`/`{...}` — AND (c) outside a string/char literal, via a
+   real minimal state-machine scan (three states: code, string, char,
+   reusing the same escape-aware literal handling `strip_java_comments`
+   already established) rather than a regex. Everything before that `=`
+   is the left-hand side; the last identifier token in it (via
+   `TRAILING_IDENTIFIER_RE`, `(\w+)\s*$`) is `NAME` — this discards
+   modifiers/types (`private static final String`) and handles
+   `this.field`-style left-hand sides too (`.` is not `\w`, so the regex
+   still lands on `field`). Everything after the `=` is `EXPR`,
+   unparsed. Returns `None` for any statement with no such `=` at all (a
+   bare method call, a `return` statement, a class/method header, a
+   `for(...)` header fragment after the `;`-split, or a statement whose
+   only `=` sits inside an annotation's own parentheses — see below) —
+   the same fail-toward-"can't-confirm-so-don't-assert-taint" posture the
+   rest of this file already uses.
 
-   Using only the *first* top-level `=` as the split point matters for a
-   case like `String x = "a=b";` — the first match lands right after
-   `x`, correctly, not on the `=` inside the string literal, because
-   `re.search` finds the leftmost match and `EXPR` is simply "everything
-   after that point," string contents included.
+   The bracket-depth tracking is not the original design — see
+   "CodeRabbit review, round 1" below for why a first, regex-only version
+   (matching the first `=` character anywhere in the statement text, with
+   no notion of parenthesis nesting) shipped initially and was corrected
+   before merge. Depth tracking also subsumes the `String x = "a=b";`
+   case the original design called out: the scan reaches the real
+   assignment `=` after `x` before it ever enters the string, both
+   because it's textually first *and* because entering `STRING` state via
+   the `"` correctly stops the scan from ever treating an `=` inside the
+   literal as a candidate.
 
 2. **`_expr_is_tainted(expr, tainted_vars)`** — `EXPR` is tainted if it
    directly contains a getenv-equivalent token (same
@@ -89,8 +98,13 @@ already builds for the same-statement check:
    are all covered identically here — this is what makes both alias
    forms issue #80 asks for work through one shared code path rather
    than two parallel ones), OR if it references, as a whole identifier
-   (word-boundary-matched, not a substring), a name already in
-   `tainted_vars`.
+   (not a substring), a name already in `tainted_vars`. Implemented by
+   extracting every identifier-shaped token out of `EXPR` once via a
+   single fixed, pre-compiled `IDENTIFIER_TOKEN_RE` (`\w+`) and checking
+   set intersection against `tainted_vars` — not, as the original version
+   did, by building and compiling a fresh alternation regex
+   (`\b(?:name1|name2|...)\b`) from `tainted_vars` on every call. See
+   "CodeRabbit review, round 1" below for why that changed before merge.
 
 3. **`_detect_cross_statement_alias_bypass(statements)`** — walks
    statements in file order maintaining a `set()` of tainted variable
@@ -202,6 +216,57 @@ properties of the new pass rather than padding coverage:
 (pinning the new, honestly-disclosed remaining gap, matching how the
 issue #80 gap itself was originally pinned before being closed here).
 
+## CodeRabbit review, round 1
+
+CodeRabbit's first review of PR #82 (targeting commit `a6cf5ae`, the
+initial push) found three issues, all addressed in a follow-up commit
+before requesting re-review, per this project's own "batch fixes into
+one push" convention:
+
+1. **🔴 Critical — method-call-mediated bypass not blocked.** Re-flagged
+   the exact `loadHost()` shape this design document and the module
+   docstring already named and disclosed as an intentional, bounded scope
+   limit (the task's own brief explicitly named this shape as acceptable
+   to disclose rather than solve — "a full Java parser or
+   general-purpose taint analysis" was explicitly out of scope). **Not
+   fixed in this PR** — replying on the review thread explaining the
+   deliberate scope decision, and opening GitHub issue #83 to track it
+   for a future task, matching this project's own established "acknowledge
+   a real, disclosed gap via a tracked issue rather than a rushed fix
+   under review pressure" precedent (the same precedent issue #80 itself
+   cites: #58, #64, #70, #74, #75). Implementing real interprocedural/
+   call-graph taint analysis in response to review-cycle pressure would
+   repeat exactly the mistake this file's own history already warns
+   against.
+2. **🔴 Critical — annotation named-element assignment hides the real
+   bypass.** Real, confirmed-by-direct-testing finding: the original
+   `_split_assignment` matched the first `=` character anywhere in the
+   statement text with no notion of parenthesis nesting, so
+   `@SuppressWarnings(value = "unused")` immediately preceding a real
+   `BINGX_VST_BASE_URL = host;` in the same statement hid the real
+   assignment behind the annotation's own `value = ...` syntax. **Fixed**:
+   `_find_top_level_assignment_index` replaces the regex with a real
+   minimal state-machine scan tracking bracket depth (`([{`/`)]}`) and
+   string/char literal state, matching only a depth-0, literal-outside
+   `=`. Pinned by
+   `test_annotation_named_element_assignment_does_not_hide_the_real_alias_bypass`
+   (written first, confirmed failing against the pre-fix code, then made
+   to pass).
+3. **🟠 Major — dynamic alias regex rebuilt/recompiled on every call.**
+   Real finding, and separately flagged by an automated pattern-matching
+   tool as a generic "regex built from non-literal data" ReDoS smell (not
+   an actually exploitable ReDoS here — every alternative was
+   `re.escape`d and Java identifiers can't contain regex metacharacters —
+   but the underlying performance concern, an ever-growing regex
+   recompiled per statement for a long alias chain, was real). **Fixed**:
+   `_expr_is_tainted` now extracts identifier tokens from `EXPR` once via
+   a single fixed, pre-compiled `IDENTIFIER_TOKEN_RE` and checks set
+   intersection against `tainted_vars`, instead of building a fresh
+   alternation regex from `tainted_vars` every call. Behaviorally
+   equivalent to the prior approach (same whole-identifier semantics, same
+   lack of string/char-literal awareness within `EXPR` — unchanged in
+   either direction).
+
 ## Verification
 
 Full existing Python guardrail test suite, run via the project's own
@@ -212,15 +277,16 @@ comment already warns raises `ValueError: Empty module name` for a path
 shaped like this one):
 
 ```
-Ran 33 tests in 0.036s
+Ran 34 tests in 0.034s
 
 OK
 ```
 
-33 = the pre-existing 29 (unchanged in body) + 1 replaced
-(now-blocked-instead-of-pinned-limitation) + 4 new (getenv alias,
-transitive chain, false-positive guard, new pinned limitation) — net +4
-tests, 0 regressions.
+34 = the pre-existing 29 (unchanged in body) + 1 replaced
+(now-blocked-instead-of-pinned-limitation) + 5 new (getenv alias,
+transitive chain, false-positive guard, new pinned limitation,
+annotation-bypass regression from CodeRabbit round 1) — net +5 tests, 0
+regressions.
 
 `vst-guardrail.sh` was inspected and confirmed to need no change: it
 only pipes the hook payload into `vst_guardrail_check.py` and maps its

@@ -277,45 +277,122 @@ GETENV_EQUIVALENT_TOKENS = ("getenv", "getproperty", "getproperties")
 
 TARGET_CONSTANT_NAME = "BINGX_VST_BASE_URL"
 
-# Matches a single top-level `=` (a plain assignment/declaration
-# operator), NOT `==`/`!=`/`<=`/`>=`/a compound-assignment operator
-# (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`, `|=`, `^=`) -- see
-# `_split_assignment`'s own docstring for why only the first such match
-# per statement is used as the split point.
-ASSIGNMENT_OPERATOR_RE = re.compile(r"(?<![=!<>+\-*/%&|^])=(?!=)")
-
 # Matches the trailing identifier token in a left-hand side like
 # "private static final String BINGX_VST_BASE_URL" -> "BINGX_VST_BASE_URL",
 # or "this.field" -> "field" (`.` is not a `\w` character).
 TRAILING_IDENTIFIER_RE = re.compile(r"(\w+)\s*$")
+
+# Matches every identifier-shaped token in an expression -- used by
+# `_expr_is_tainted` to check alias references via a single pre-compiled,
+# fixed pattern (not one rebuilt from TAINTED_VARS on every call; see that
+# function's own docstring for why).
+IDENTIFIER_TOKEN_RE = re.compile(r"\w+")
+
+
+def _find_top_level_assignment_index(statement: str) -> int:
+    """Scans STATEMENT (already comment-stripped by `strip_java_comments`)
+    for the first `=` that is a plain assignment/declaration operator --
+    NOT `==`/`!=`/`<=`/`>=`/a compound-assignment operator (`+=`, `-=`,
+    `*=`, `/=`, `%=`, `&=`, `|=`, `^=`) -- AND sits at bracket depth 0
+    (not inside `(...)`/`[...]`/`{...}`) AND outside a string/char
+    literal. Returns its index, or -1 if no such operator exists.
+
+    A real, minimal state-machine scan (three states: code, string, char --
+    the same escape-aware string/char handling `strip_java_comments`
+    already uses), not a regex -- a real CodeRabbit review finding on this
+    PR found the original regex-only version (matching the first `=`
+    character anywhere in the statement text, with no notion of
+    parenthesis nesting) has a genuine false-negative: a Java annotation's
+    own named-element-assignment syntax immediately preceding a real
+    assignment in the same statement, e.g.
+
+    ```java
+    @SuppressWarnings(value = "unused")
+    String BINGX_VST_BASE_URL = host;
+    ```
+
+    contains an earlier `=` inside the annotation's own parentheses
+    (`value = "unused"`) that is not the statement's real assignment
+    operator. A depth-unaware scan matches that one first, wrongly reads
+    "value" as NAME, and silently swallows the real
+    `BINGX_VST_BASE_URL = host` assignment into an unparsed tail of EXPR --
+    never examining it as its own assignment target at all. Tracking
+    bracket depth (incrementing on any of `([{`, decrementing on any of
+    `)]}`) and only matching at depth 0 closes this: the annotation's own
+    `=` sits at depth 1 and is skipped, so the scan continues to the real,
+    depth-0 assignment that follows.
+    """
+    depth = 0
+    n = len(statement)
+    CODE, STRING, CHAR = range(3)
+    state = CODE
+    i = 0
+    while i < n:
+        c = statement[i]
+        if state == CODE:
+            if c in "([{":
+                depth += 1
+                i += 1
+                continue
+            if c in ")]}":
+                depth -= 1
+                i += 1
+                continue
+            if c == '"':
+                state = STRING
+                i += 1
+                continue
+            if c == "'":
+                state = CHAR
+                i += 1
+                continue
+            if depth == 0 and c == "=":
+                prev = statement[i - 1] if i > 0 else ""
+                nxt = statement[i + 1] if i + 1 < n else ""
+                if prev not in "=!<>+-*/%&|^" and nxt != "=":
+                    return i
+            i += 1
+        elif state == STRING:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if c == '"':
+                state = CODE
+            i += 1
+        elif state == CHAR:
+            if c == "\\" and i + 1 < n:
+                i += 2
+                continue
+            if c == "'":
+                state = CODE
+            i += 1
+    return -1
 
 
 def _split_assignment(statement: str):
     """Splits a single semicolon-delimited STATEMENT into `(name, expr)` if
     it looks like a simple `<modifiers/type> NAME = EXPR` declaration or
     plain reassignment -- returns `None` if the statement contains no
-    top-level `=` operator at all (e.g. a bare method call, a `return`
-    statement, a class/method declaration header, a `for(...)` clause
-    fragment after splitting on `;`). `NAME` is the last identifier token
-    immediately before the first top-level `=` (so modifiers/types such as
+    depth-0, literal-outside assignment operator at all (e.g. a bare
+    method call, a `return` statement, a class/method declaration header,
+    a `for(...)` clause fragment after splitting on `;`, or a statement
+    whose only `=` sits inside an annotation's parentheses -- see
+    `_find_top_level_assignment_index`). `NAME` is the last identifier
+    token immediately before that operator (so modifiers/types such as
     `private static final String` are discarded, keeping just the
     variable/field name being declared or reassigned); `EXPR` is
     everything after it, unparsed.
 
-    Only the FIRST top-level `=` is used as the split point (a Java
-    declaration/assignment has exactly one) -- e.g. for
-    `String x = "a=b";`, the first match is the real assignment operator
-    after `x`, not the `=` inside the string literal, so `EXPR` correctly
-    captures the full `"a=b"` right-hand side. See module docstring,
-    "Cross-statement alias/taint tracking," for the honest, bounded scope
-    this narrow shape does NOT attempt to cover (multi-variable
-    declarations, chained assignments, method-call return values).
+    See module docstring, "Cross-statement alias/taint tracking," for the
+    honest, bounded scope this narrow shape does NOT attempt to cover
+    (multi-variable declarations, chained assignments, method-call return
+    values).
     """
-    match = ASSIGNMENT_OPERATOR_RE.search(statement)
-    if not match:
+    idx = _find_top_level_assignment_index(statement)
+    if idx == -1:
         return None
-    lhs = statement[: match.start()]
-    expr = statement[match.end():]
+    lhs = statement[:idx]
+    expr = statement[idx + 1:]
     name_match = TRAILING_IDENTIFIER_RE.search(lhs)
     if not name_match:
         return None
@@ -327,13 +404,32 @@ def _expr_is_tainted(expr: str, tainted_vars: set) -> bool:
     (same `GETENV_EQUIVALENT_TOKENS` list as the same-statement check), or
     references -- as a whole identifier, not a substring -- a variable
     name already known to be tainted from an earlier statement in file
-    order (TAINTED_VARS)."""
+    order (TAINTED_VARS).
+
+    Extracts every identifier-shaped token out of EXPR once via the fixed,
+    pre-compiled `IDENTIFIER_TOKEN_RE` and checks set intersection against
+    TAINTED_VARS, rather than building and compiling a fresh alternation
+    regex from TAINTED_VARS on every call -- a real CodeRabbit review
+    finding on this PR: the original approach re-compiled an
+    ever-growing regex on every statement for a long alias chain,
+    quadratic in the number of tainted variables, and was also flagged by
+    an automated pattern-matching tool as regex-built-from-non-literal-data
+    (a generic ReDoS smell -- not an actual exploitable ReDoS here, since
+    every alternative is `re.escape`d and Java identifiers can't contain
+    regex metacharacters, but the token-set approach sidesteps the pattern
+    entirely rather than arguing about whether it's exploitable in
+    practice). Behaviorally equivalent to the prior word-boundary regex
+    match (same whole-identifier semantics, same lack of string/char
+    literal awareness within EXPR -- a tainted variable's name appearing
+    inside an EXPR string literal was already indistinguishable from a
+    real reference before this change and still is after it).
+    """
     if any(token in expr.lower() for token in GETENV_EQUIVALENT_TOKENS):
         return True
     if not tainted_vars:
         return False
-    alias_re = re.compile(r"\b(?:" + "|".join(re.escape(name) for name in tainted_vars) + r")\b")
-    return bool(alias_re.search(expr))
+    identifiers = set(IDENTIFIER_TOKEN_RE.findall(expr))
+    return not tainted_vars.isdisjoint(identifiers)
 
 
 def _detect_cross_statement_alias_bypass(statements) -> bool:
