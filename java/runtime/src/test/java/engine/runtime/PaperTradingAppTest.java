@@ -2,6 +2,7 @@ package engine.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -26,10 +27,13 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;
@@ -326,6 +330,196 @@ class PaperTradingAppTest {
             assertTrue(
                     Files.exists(reportFile),
                     "stop() must finalize a day that already ended even though no further tick ever ran");
+        }
+    }
+
+    /**
+     * GitHub issue #74 (round-4 CodeRabbit finding on PR #73, human-
+     * approved as an accepted gap at the time, now closed): {@link
+     * PaperTradingApp#stop()}'s shutdown-termination-confirmation logic
+     * had no deterministic test proving finalization never runs before a
+     * genuinely in-flight tick actually terminates. This test forces a
+     * real tick to hang past a short, injected graceful-shutdown timeout
+     * (the new {@link PaperTradingApp#PaperTradingApp(String, String,
+     * Path, long, Path, Clock, Duration, Duration) Duration-accepting
+     * test-only constructor overload}, matching the existing {@link Clock}
+     * -injection precedent exactly) using {@link
+     * FakeBingXTradesServer#hangForever()} -- a real, local HTTP server
+     * that accepts the connection but never responds, so {@code
+     * BingXPriceFeed}'s blocking call is genuinely still in-flight when
+     * {@code stop()}'s graceful {@code awaitTermination} window elapses.
+     * A generous forced-shutdown timeout then gives {@code
+     * ExecutorService#shutdownNow()}'s real thread-interrupt (confirmed
+     * separately, empirically, to unblock a hung {@code HttpClient.send()}
+     * call in low single-digit milliseconds -- see this task's own
+     * planning doc) ample room to actually resolve, so this proves the
+     * "termination eventually confirmed" half of the invariant, not the
+     * "never confirmed" half (the next test below).
+     *
+     * <p>The proof that finalization ran only <b>after</b>, never before
+     * or concurrently with, the in-flight tick's own completion is the
+     * written report's own {@code ticksAttempted}/{@code ticksSucceeded}/
+     * {@code errors} fields: {@link DailyReportGenerator#afterTick()} is
+     * what populates those, and it only ever runs (from {@link
+     * PaperTradingApp#runTick()}) after {@link TradingLoop#tick()} itself
+     * has returned -- if finalization had run before that, the report
+     * would show a day with zero attempted ticks instead of the one real,
+     * interrupted tick this test forces.
+     */
+    @Test
+    void stopFinalizesOnlyAfterAGenuinelyInFlightTickActuallyTerminatesViaForcedShutdown(@TempDir Path tempDir)
+            throws Exception {
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.hangForever();
+            Path signalPath = tempDir.resolve("latest.json"); // never written -- irrelevant, the hang happens first
+            Path reportsDir = tempDir.resolve("reports");
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T12:00:00Z"));
+            // tickIntervalSeconds=300 -- long enough that only the immediate
+            // (delay=0) first tick ever fires during this test's short real
+            // wall-clock lifetime; a second real tick firing would let its
+            // own beforeTick() notice the day boundary first, defeating the
+            // point of this test (proving stop()'s OWN finalize path).
+            PaperTradingApp app = new PaperTradingApp(
+                    SYMBOL, server.baseUrl(), signalPath, 300, reportsDir, clock,
+                    Duration.ofMillis(200), Duration.ofSeconds(3));
+
+            app.start();
+            try {
+                // Confirms the immediate first tick has genuinely reached
+                // and been received by the hung server -- not merely
+                // scheduled -- before racing stop() against it.
+                awaitCondition(() -> server.lastPath() != null, Duration.ofSeconds(5));
+
+                clock.advanceTo(Instant.parse("2026-08-08T00:03:00Z")); // day boundary crossed while the tick is still in flight
+
+                app.stop();
+
+                Path reportFile = reportsDir.resolve("2026-08-07.json");
+                assertTrue(
+                        Files.exists(reportFile),
+                        "finalization must run once the forced shutdown actually confirms termination");
+
+                DailyReport report = mapper.readValue(reportFile.toFile(), DailyReport.class);
+                assertEquals(
+                        1, report.ticksAttempted(),
+                        "the report must reflect the in-flight tick's own completed afterTick() bookkeeping --"
+                                + " proof finalization ran strictly after that tick actually finished, not before");
+                assertEquals(0, report.ticksSucceeded());
+                assertEquals(1, report.errors().size());
+                assertNotNull(app.tradingLoop().lastError(), "the forcibly-interrupted tick must have recorded its own error");
+            } finally {
+                app.stop();
+            }
+        }
+    }
+
+    /**
+     * The other half of GitHub issue #74's acceptance criteria: finalization
+     * must be SKIPPED, with an ERROR logged (see {@code stop()}'s own
+     * Javadoc -- not independently assertable here, this codebase has no
+     * log-capture framework in this module, see this task's own planning
+     * doc), when termination cannot be confirmed even after the forced
+     * shutdown.
+     *
+     * <p><b>Revised on a real CodeRabbit review finding on this task's own
+     * PR #85</b>: an earlier version of this test reused the network-hung
+     * server from the test above, paired with {@code
+     * forcedShutdownTimeout=Duration.ZERO} (reasoning: {@code
+     * awaitTermination(0, ...)} checks state immediately without waiting).
+     * CodeRabbit found that reasoning genuinely unsound, backed by its own
+     * real probe: {@code shutdownNow()} only <i>requests</i> the interrupt,
+     * it does not wait for the interrupted task to actually finish -- on a
+     * multi-core machine, the worker thread can process the interrupt and
+     * complete the rest of {@code runTick()} on a different core, in true
+     * parallel execution, while the calling thread is still between the
+     * {@code shutdownNow()} call and the immediately-following {@code
+     * awaitTermination(0, ...)} check; nothing about "same thread, no
+     * explicit yield" rules that out. That made the old version of this
+     * test intermittently flaky in the direction that matters most --
+     * occasionally observing {@code terminated == true} and silently
+     * failing to exercise the {@code terminated == false} path it exists to
+     * prove.
+     *
+     * <p>Fixed by switching to a genuinely, structurally uninterruptible
+     * block instead of racing a real interrupt's recovery time: a
+     * background test thread acquires {@link TradingLoop}'s own intrinsic
+     * lock (the same monitor {@link TradingLoop#tick()}'s {@code
+     * synchronized} keyword uses) and holds it until this test explicitly
+     * releases a {@link CountDownLatch}. Unlike blocking I/O or a {@code
+     * java.util.concurrent.locks.Lock}, entering a plain {@code
+     * synchronized} block while another thread holds the monitor does
+     * <b>not</b> respond to {@code Thread#interrupt()} at all -- the
+     * waiting thread's interrupt flag is set, but it keeps waiting for the
+     * monitor regardless, indefinitely. {@code app.start()}'s scheduled
+     * task therefore blocks trying to <i>enter</i> {@code tradingLoop.tick()}
+     * -- deterministically, for as long as the test holds the lock,
+     * completely independent of {@code shutdownNow()}, real network
+     * timing, or CPU scheduling. The fake server is left in its default
+     * (immediately-responding) mode -- unreachable here, since {@code
+     * tick()} never gets far enough to call it -- and the latch is always
+     * released in a {@code finally} block so the once-blocked tick, and the
+     * executor thread running it, cleanly complete before this test method
+     * returns.
+     */
+    @Test
+    void stopSkipsFinalizationAndLeavesDayTrackingUnadvancedWhenTerminationCannotBeConfirmed(@TempDir Path tempDir)
+            throws Exception {
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // never actually reached -- see class Javadoc above
+            Path signalPath = tempDir.resolve("latest.json");
+            Path reportsDir = tempDir.resolve("reports");
+            MutableClock clock = new MutableClock(Instant.parse("2026-08-07T12:00:00Z"));
+            PaperTradingApp app = new PaperTradingApp(
+                    SYMBOL, server.baseUrl(), signalPath, 300, reportsDir, clock,
+                    Duration.ofMillis(200), Duration.ofMillis(200));
+
+            CountDownLatch monitorAcquired = new CountDownLatch(1);
+            CountDownLatch releaseMonitor = new CountDownLatch(1);
+            Thread monitorHolder = new Thread(
+                    () -> {
+                        synchronized (app.tradingLoop()) {
+                            monitorAcquired.countDown();
+                            try {
+                                releaseMonitor.await();
+                            } catch (InterruptedException e) {
+                                Thread.currentThread().interrupt();
+                            }
+                        }
+                    },
+                    "test-tradingloop-monitor-holder");
+            monitorHolder.start();
+            try {
+                assertTrue(
+                        monitorAcquired.await(5, TimeUnit.SECONDS),
+                        "test setup: monitor-holder thread never acquired TradingLoop's own lock");
+
+                // beforeTick() (DailyReportGenerator's own monitor, not
+                // TradingLoop's) still runs and seeds currentDay; the
+                // immediate first tick then blocks trying to enter
+                // TradingLoop.tick() itself, unable to proceed at all for
+                // as long as the lock above is held.
+                app.start();
+                awaitCondition(() -> app.dailyReportGenerator().currentDay() != null, Duration.ofSeconds(5));
+
+                clock.advanceTo(Instant.parse("2026-08-08T00:03:00Z"));
+
+                app.stop(); // both awaits reliably observe false -- monitor-entry blocking cannot be interrupted
+
+                Path reportFile = reportsDir.resolve("2026-08-07.json");
+                assertFalse(
+                        Files.exists(reportFile),
+                        "finalization must be skipped -- never risk a wrong/incomplete report -- when"
+                                + " termination cannot be confirmed");
+                assertEquals(
+                        LocalDate.parse("2026-08-07"), app.dailyReportGenerator().currentDay(),
+                        "day tracking must not have advanced -- finalizeCompletedDayOnShutdown() must never have"
+                                + " run");
+                assertEquals(0, app.dailyReportGenerator().pendingReportCount());
+            } finally {
+                releaseMonitor.countDown();
+                monitorHolder.join(Duration.ofSeconds(5).toMillis());
+                app.stop();
+            }
         }
     }
 
