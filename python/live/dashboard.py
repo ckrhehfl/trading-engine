@@ -157,19 +157,41 @@ def capture_pane(session: str, history_lines: int = 2000) -> str | None:
     return result.stdout
 
 
+def _looks_like_daily_report(parsed: Any) -> bool:
+    """Rejects JSON that parses fine but doesn't have the shape every
+    downstream reader in this module assumes (`report.get(...)`, trade
+    sorting by `filled_at`, `errors[-1].get("message")`). `DailyReport`
+    files are always written by Java's `DailyReportGenerator` in normal
+    operation, but a corrupted/truncated/hand-edited file should be
+    skipped, not crash the whole dashboard on `AttributeError`/`TypeError`
+    partway through rendering."""
+    if not isinstance(parsed, dict):
+        return False
+    trades = parsed.get("trades")
+    if trades is not None and (not isinstance(trades, list) or not all(isinstance(t, dict) for t in trades)):
+        return False
+    errors = parsed.get("errors")
+    if errors is not None and (not isinstance(errors, list) or not all(isinstance(e, dict) for e in errors)):
+        return False
+    return True
+
+
 def load_daily_reports(reports_dir: Path) -> list[dict[str, Any]]:
     """Reads every `DailyReport` JSON file in `reports_dir`, sorted by
     filename (which is the report's own date, `<date>.json`). Skips a file
-    that fails to parse rather than aborting the whole dashboard over one
-    bad report."""
+    that fails to parse, or that parses but doesn't look like a real
+    `DailyReport` (see `_looks_like_daily_report`), rather than aborting
+    the whole dashboard over one bad report."""
     if not reports_dir.is_dir():
         return []
     reports = []
     for path in sorted(reports_dir.glob("*.json")):
         try:
-            reports.append(json.loads(path.read_text()))
+            parsed = json.loads(path.read_text())
         except (json.JSONDecodeError, OSError):
             continue
+        if _looks_like_daily_report(parsed):
+            reports.append(parsed)
     return reports
 
 
@@ -244,8 +266,15 @@ def latest_signal_decision(cron_log: Path) -> dict[str, str] | None:
     of which pattern it is."""
     if not cron_log.is_file():
         return None
+    try:
+        text = cron_log.read_text(errors="replace")
+    except OSError:
+        # TOCTOU: log rotation/deletion between the is_file() check above
+        # and this read. This is optional status info, not something worth
+        # failing the whole dashboard over.
+        return None
     latest = None
-    for line in cron_log.read_text(errors="replace").splitlines():
+    for line in text.splitlines():
         m = CRON_WROTE_SIGNAL_RE.match(line)
         if m:
             latest = {"timestamp": m.group("ts"), "decision": "signal", "detail": m.group("detail")}
@@ -259,8 +288,12 @@ def latest_signal_decision(cron_log: Path) -> dict[str, str] | None:
 def tail_lines(path: Path, n: int = 8) -> list[str]:
     if not path.is_file():
         return []
-    lines = path.read_text(errors="replace").splitlines()
-    return lines[-n:]
+    try:
+        text = path.read_text(errors="replace")
+    except OSError:
+        # Same TOCTOU rationale as latest_signal_decision above.
+        return []
+    return text.splitlines()[-n:]
 
 
 def _fmt_money(value: Decimal | None) -> str:
@@ -419,7 +452,13 @@ def format_dashboard(statuses: list[LoopStatus]) -> str:
         except OSError:
             pass
     else:
-        parts.append("Standing signal file: none (no live order intent currently pending)")
+        # Deliberately states only the one thing actually observed --
+        # no file at this path -- and nothing about order-intent state
+        # more broadly. A missing file doesn't prove nothing is pending:
+        # it could have already been consumed by the Java FileSignalSource
+        # and be in flight through OMS/RiskGateway/Execution, which this
+        # script has no visibility into (real CodeRabbit review finding).
+        parts.append(f"Standing signal file: none present at {SIGNAL_FILE}")
     parts.append("")
 
     parts.append("-" * 78)

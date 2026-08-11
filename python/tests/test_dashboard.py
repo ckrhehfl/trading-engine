@@ -12,12 +12,15 @@ sample text/files instead.
 
 import json
 from decimal import Decimal
+from pathlib import Path
 
+import live.dashboard as dashboard
 from live.dashboard import (
     LoopStatus,
     TickStatus,
     _decimal_default,
     current_equity,
+    format_dashboard,
     format_loop_section,
     kill_switch_mentioned,
     latest_signal_decision,
@@ -132,6 +135,64 @@ def test_load_daily_reports_skips_corrupt_file(tmp_path):
 
 def test_load_daily_reports_missing_dir_returns_empty(tmp_path):
     assert load_daily_reports(tmp_path / "does-not-exist") == []
+
+
+def test_load_daily_reports_skips_array_root(tmp_path):
+    (tmp_path / "2026-08-11.json").write_text(json.dumps(["not", "a", "dict"]))
+    assert load_daily_reports(tmp_path) == []
+
+
+def test_load_daily_reports_skips_non_list_errors_field(tmp_path):
+    (tmp_path / "2026-08-11.json").write_text(json.dumps({"date": "2026-08-11", "errors": "not-a-list"}))
+    assert load_daily_reports(tmp_path) == []
+
+
+def test_load_daily_reports_skips_non_dict_trade_items(tmp_path):
+    (tmp_path / "2026-08-11.json").write_text(json.dumps({"date": "2026-08-11", "trades": ["not-a-dict"]}))
+    assert load_daily_reports(tmp_path) == []
+
+
+def test_load_daily_reports_accepts_well_formed_report_alongside_malformed_ones(tmp_path):
+    (tmp_path / "2026-08-10.json").write_text(json.dumps({"date": "2026-08-10", "trades": [], "errors": []}))
+    (tmp_path / "2026-08-11.json").write_text(json.dumps(["not", "a", "dict"]))
+    reports = load_daily_reports(tmp_path)
+    assert [r["date"] for r in reports] == ["2026-08-10"]
+
+
+def test_latest_signal_decision_read_error_returns_none(tmp_path, monkeypatch):
+    log = tmp_path / "cron.log"
+    log.write_text("2026-08-10 09:05:06,610 INFO no signal today (no sign-category change) -- signal file left untouched\n")
+
+    def raising_read_text(self, *args, **kwargs):
+        raise OSError("simulated read failure (e.g. log rotated away between the check and the read)")
+
+    monkeypatch.setattr(Path, "read_text", raising_read_text)
+    assert latest_signal_decision(log) is None
+
+
+def test_tail_lines_read_error_returns_empty(tmp_path, monkeypatch):
+    log = tmp_path / "watchdog.log"
+    log.write_text("line 1\n")
+
+    def raising_read_text(self, *args, **kwargs):
+        raise OSError("simulated read failure (e.g. log rotated away between the check and the read)")
+
+    monkeypatch.setattr(Path, "read_text", raising_read_text)
+    assert tail_lines(log) == []
+
+
+def test_format_dashboard_does_not_overclaim_about_pending_order_intent(tmp_path, monkeypatch):
+    # A missing signal file only proves there's no file at that path -- it
+    # does NOT prove no live order intent is pending anywhere in the system
+    # (it could already have been consumed by the Java FileSignalSource and
+    # be in flight through OMS/RiskGateway/Execution, which this script has
+    # no visibility into). Real CodeRabbit review finding on this PR.
+    monkeypatch.setattr(dashboard, "SIGNAL_FILE", tmp_path / "does-not-exist.json")
+    monkeypatch.setattr(dashboard, "CRON_LOG", tmp_path / "no-cron.log")
+    monkeypatch.setattr(dashboard, "WATCHDOG_LOG", tmp_path / "no-watchdog.log")
+    text = format_dashboard([])
+    assert "no live order intent" not in text.lower()
+    assert "none present at" in text
 
 
 def test_current_equity_prefers_live_tick_over_daily_report():
