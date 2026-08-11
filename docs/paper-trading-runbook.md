@@ -217,7 +217,8 @@ cd python && .venv/bin/python -m live.dashboard --json # machine-readable
 
 It's read-only and makes no exchange call of its own -- it only reads
 data that already exists (`DailyReport` JSON files, each loop's `tmux`
-pane output, `watchdog.log`/`cron.log`). The VST balance figure it shows
+pane output, `watchdog.log`/`cron.log`, and the standing signal file if
+present). The VST balance figure it shows
 is `VstPreflight`'s own real balance query from that session's last
 startup, not a fresh live-refreshed call -- see the module docstring
 (`python/live/dashboard.py`) for the full detail and disclosed
