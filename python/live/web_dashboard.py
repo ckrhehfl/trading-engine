@@ -153,14 +153,19 @@ def render_loop(config: dashboard.LoopConfig, status: dashboard.LoopStatus) -> N
     col2.metric("누적 수익률 (baseline 대비)", _fmt_pct(cum_pct))
     col3.metric("완료된 일별 리포트", str(len(status.daily_reports)))
 
-    # `kill_switch_mentioned=False` means "not seen in the visible tmux
-    # scrollback" -- that's also what a dead/unreadable session pane
-    # looks like (capture_pane returns None), not proof the kill switch
-    # is actually fine. `serious` (amber/orange), not `critical` (red):
-    # a mention is "worth a human look," not itself proof of a trip --
-    # overclaiming certainty here was a real CodeRabbit review finding
-    # on the original version of this dashboard.
-    if status.kill_switch_mentioned:
+    # Three states, not two: `dashboard.LoopStatus.kill_switch_mentioned`
+    # is `None` when the tmux pane couldn't be read at all (dead/
+    # unreadable session) -- distinct from `False` ("read fine,
+    # genuinely no mention"). Rendering `None` the same as `False` would
+    # show a falsely reassuring "no mention" for a pane this dashboard
+    # never actually got to look at -- a real CodeRabbit review finding
+    # on this PR, closing the same class of overclaiming a prior review
+    # already flagged for this file's kill-switch treatment once before.
+    # `serious` (amber/orange), not `critical` (red), for an actual
+    # mention: it's "worth a human look," not itself proof of a trip.
+    if status.kill_switch_mentioned is None:
+        st.caption("킬스위치: 확인 불가 (tmux 로그를 읽을 수 없음)")
+    elif status.kill_switch_mentioned:
         st.markdown(_badge(_STATUS_SERIOUS, "킬스위치 언급 감지 -- 확인 필요"), unsafe_allow_html=True)
     else:
         st.caption("킬스위치: 로그에서 언급 없음")
@@ -203,7 +208,7 @@ def main() -> None:
     # more column, not a layout rewrite -- see dashboard.py's own
     # "one entry per loop" design note).
     columns = st.columns(len(dashboard.LOOPS))
-    for column, config in zip(columns, dashboard.LOOPS):
+    for column, config in zip(columns, dashboard.LOOPS, strict=True):
         with column, st.container(border=True):
             status = dashboard.gather_loop_status(config)
             render_loop(config, status)
