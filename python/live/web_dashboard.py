@@ -40,6 +40,38 @@ from live import dashboard
 
 REFRESH_SECONDS = 30
 
+# Validated tokens from the dataviz skill's reference palette
+# (references/palette.md) -- consumed as-is, not re-derived, matching
+# .streamlit/config.toml's [theme] section so the badges below and
+# Streamlit's own chrome (st.line_chart's line color included, via
+# primaryColor) read as one palette. Status colors are fixed/never
+# themed by design: `good`/`critical` map to a loop's own alive state,
+# `serious` to "needs a human look" (kill switch mentioned in the
+# visible log) -- deliberately NOT `critical`, since a mention is not
+# proof of an actual trip, just something worth checking (see
+# render_loop's own comment on this same distinction, carried over from
+# the original CodeRabbit finding this dashboard already had to
+# address once).
+_STATUS_GOOD = "#0ca30c"
+_STATUS_SERIOUS = "#ec835a"
+_STATUS_CRITICAL = "#d03b3b"
+
+
+def _badge(color: str, label: str) -> str:
+    """A small inline pill: colored dot + label, never color alone --
+    same "icon/shape + text, not hue alone" rule the skill's status
+    palette requires. `color + "1a"` appends ~10% alpha for the tinted
+    background (color is always a 6-hex-digit constant above, never
+    user input, so this string-append is safe here).
+    """
+    return (
+        f'<span style="display:inline-flex;align-items:center;gap:6px;'
+        f'padding:3px 12px;border-radius:999px;background:{color}1a;'
+        f'color:{color};font-weight:600;font-size:0.85rem;white-space:nowrap;">'
+        f'<span style="width:8px;height:8px;border-radius:50%;background:{color};'
+        f'flex-shrink:0;"></span>{label}</span>'
+    )
+
 
 def _fmt_pct(value: Decimal | None) -> str:
     if value is None:
@@ -92,16 +124,26 @@ def equity_history(status: dashboard.LoopStatus) -> pd.DataFrame | None:
 
 
 def render_loop(config: dashboard.LoopConfig, status: dashboard.LoopStatus) -> None:
-    header = f"{config.display_name}  ({config.symbol})"
-    st.subheader(f"🟢 {header} -- RUNNING" if status.alive else f"🔴 {header} -- NOT RUNNING")
+    """One loop's card. Wrapped in `st.container(border=True)` by the
+    caller (`main`) rather than in here, so the border spans everything
+    `main` places inside it (including anything a future loop-specific
+    addition might append) -- keeping the "where does the card start
+    and end" decision at the call site.
+    """
+    st.subheader(config.display_name)
+    st.caption(config.symbol)
+    st.markdown(
+        _badge(_STATUS_GOOD, "운영 중") if status.alive else _badge(_STATUS_CRITICAL, "중단됨"),
+        unsafe_allow_html=True,
+    )
 
     current, dod_pct = day_over_day(status)
     cum_pct = dashboard.return_pct(current) if current is not None else None
 
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     col1.metric(
-        "Equity",
-        f"{current:,.2f}" if current is not None else "unknown",
+        "자산",
+        f"{current:,.2f}" if current is not None else "알 수 없음",
         delta=(
             f"{_fmt_pct(dod_pct)} ({'전일 대비' if status.daily_reports else 'baseline 대비'})"
             if dod_pct is not None
@@ -109,16 +151,19 @@ def render_loop(config: dashboard.LoopConfig, status: dashboard.LoopStatus) -> N
         ),
     )
     col2.metric("누적 수익률 (baseline 대비)", _fmt_pct(cum_pct))
+    col3.metric("완료된 일별 리포트", str(len(status.daily_reports)))
+
     # `kill_switch_mentioned=False` means "not seen in the visible tmux
-    # scrollback" -- that's also what a dead/unreadable session pane looks
-    # like (capture_pane returns None), not proof the kill switch is
-    # actually fine. Showing a green "정상" for that case would overclaim
-    # certainty this dashboard doesn't have -- real CodeRabbit review finding.
-    col3.metric(
-        "Kill Switch",
-        "🔴 로그 언급 감지 / 확인 필요" if status.kill_switch_mentioned else "⚪ 로그에서 언급 없음",
-    )
-    col4.metric("완료된 일별 리포트", str(len(status.daily_reports)))
+    # scrollback" -- that's also what a dead/unreadable session pane
+    # looks like (capture_pane returns None), not proof the kill switch
+    # is actually fine. `serious` (amber/orange), not `critical` (red):
+    # a mention is "worth a human look," not itself proof of a trip --
+    # overclaiming certainty here was a real CodeRabbit review finding
+    # on the original version of this dashboard.
+    if status.kill_switch_mentioned:
+        st.markdown(_badge(_STATUS_SERIOUS, "킬스위치 언급 감지 -- 확인 필요"), unsafe_allow_html=True)
+    else:
+        st.caption("킬스위치: 로그에서 언급 없음")
 
     if status.real_balance is not None:
         rb = status.real_balance
@@ -146,31 +191,44 @@ def main() -> None:
 
     st.title("Paper Trading Dashboard")
     st.caption(
-        f"Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')} -- auto-refreshes every "
-        f"{REFRESH_SECONDS}s. Read-only, makes no exchange call of its own -- reads the same already-existing "
-        "data files as `python -m live.dashboard` (see docs/paper-trading-runbook.md)."
+        f"생성 시각 {datetime.now(timezone.utc).isoformat(timespec='seconds')} -- {REFRESH_SECONDS}초마다 "
+        "자동 새로고침됩니다. 읽기 전용이며 거래소 호출을 직접 하지 않습니다 -- `python -m live.dashboard`와 "
+        "동일한 기존 데이터 파일만 읽습니다 (docs/paper-trading-runbook.md 참고)."
     )
 
-    for config in dashboard.LOOPS:
-        status = dashboard.gather_loop_status(config)
-        render_loop(config, status)
-        st.divider()
+    # Side by side, not stacked -- `layout="wide"` already claims the
+    # full browser width, and comparing the two loops at a glance is
+    # the actual point of a dashboard. Generalizes to any number of
+    # `dashboard.LOOPS` entries automatically (a future loop is one
+    # more column, not a layout rewrite -- see dashboard.py's own
+    # "one entry per loop" design note).
+    columns = st.columns(len(dashboard.LOOPS))
+    for column, config in zip(columns, dashboard.LOOPS):
+        with column, st.container(border=True):
+            status = dashboard.gather_loop_status(config)
+            render_loop(config, status)
 
-    st.subheader("일별 시그널 생성 (cron: live.generate_daily_signal)")
-    decision = dashboard.latest_signal_decision(dashboard.CRON_LOG)
-    if decision is None:
-        st.caption("var/live/cron.log 에서 아직 결정 내역을 찾지 못했습니다.")
-    elif decision["decision"] == "hold":
-        st.caption(f"최근 결정: HOLD ({decision['timestamp']}, {decision['detail']})")
-    else:
-        st.caption(f"최근 결정: SIGNAL ({decision['timestamp']}) -- {decision['detail']}")
+    st.divider()
 
-    st.subheader("최근 watchdog 재시작 내역")
-    wd_tail = dashboard.tail_lines(dashboard.WATCHDOG_LOG, 8)
-    if wd_tail:
-        st.code("\n".join(wd_tail), language=None)
-    else:
-        st.caption("기록 없음 (계속 정상이었거나, watchdog 자체가 안 돌고 있을 수 있음 -- runbook 5절 참고).")
+    footer_left, footer_right = st.columns(2)
+    with footer_left, st.container(border=True):
+        st.subheader("일별 시그널 생성")
+        st.caption("cron: live.generate_daily_signal")
+        decision = dashboard.latest_signal_decision(dashboard.CRON_LOG)
+        if decision is None:
+            st.caption("var/live/cron.log 에서 아직 결정 내역을 찾지 못했습니다.")
+        elif decision["decision"] == "hold":
+            st.caption(f"최근 결정: HOLD ({decision['timestamp']}, {decision['detail']})")
+        else:
+            st.caption(f"최근 결정: SIGNAL ({decision['timestamp']}) -- {decision['detail']}")
+
+    with footer_right, st.container(border=True):
+        st.subheader("최근 watchdog 재시작 내역")
+        wd_tail = dashboard.tail_lines(dashboard.WATCHDOG_LOG, 8)
+        if wd_tail:
+            st.code("\n".join(wd_tail), language=None)
+        else:
+            st.caption("기록 없음 (계속 정상이었거나, watchdog 자체가 안 돌고 있을 수 있음 -- runbook 5절 참고).")
 
 
 if __name__ == "__main__":
