@@ -333,6 +333,37 @@ def test_format_loop_section_surfaces_tick_errors():
     assert "second failure" in text
 
 
+def test_format_loop_section_kill_switch_three_states():
+    """`kill_switch_mentioned` is `bool | None`, not a plain `bool` --
+    `None` ("couldn't check, pane unreadable") must render distinctly
+    from `False` ("checked, genuinely no mention"), not silently the
+    same falsy line. A real CodeRabbit review finding on this PR.
+    """
+
+    def _status(*, kill_switch_mentioned: bool | None) -> LoopStatus:
+        return LoopStatus(
+            key="simulated",
+            display_name="SIMULATED LOOP",
+            session="paper-trading",
+            alive=True,
+            tick=None,
+            kill_switch_mentioned=kill_switch_mentioned,
+            daily_reports=[],
+        )
+
+    unreadable_text = format_loop_section(_status(kill_switch_mentioned=None))
+    assert "unable to check" in unreadable_text
+    assert "no trip mentioned" not in unreadable_text
+
+    clean_text = format_loop_section(_status(kill_switch_mentioned=False))
+    assert "no trip mentioned in visible scrollback" in clean_text
+    assert "unable to check" not in clean_text
+
+    tripped_text = format_loop_section(_status(kill_switch_mentioned=True))
+    assert "MENTIONED IN VISIBLE SCROLLBACK" in tripped_text
+    assert "unable to check" not in tripped_text
+
+
 def test_format_loop_section_no_error_section_when_clean():
     status = LoopStatus(
         key="simulated",

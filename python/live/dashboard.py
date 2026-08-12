@@ -247,7 +247,12 @@ class LoopStatus:
     session: str
     alive: bool
     tick: TickStatus | None
-    kill_switch_mentioned: bool
+    # `None` means "couldn't check" (tmux pane unreadable/session not
+    # found) -- distinct from `False` ("read the pane fine, genuinely
+    # no mention"). Conflating the two into a bare `bool` would let an
+    # unreadable pane render as a falsely reassuring "no trip
+    # mentioned" -- see gather_loop_status and format_loop_section.
+    kill_switch_mentioned: bool | None
     daily_reports: list[dict[str, Any]]
     real_balance: dict[str, Decimal | None] | None = None
 
@@ -256,7 +261,9 @@ def gather_loop_status(config: LoopConfig) -> LoopStatus:
     pane = capture_pane(config.session)
     alive = session_alive(config.session)
     tick = parse_latest_tick(pane) if pane else None
-    ks = kill_switch_mentioned(pane) if pane else False
+    # `None`, not `False`, when there's no pane text to check -- see
+    # LoopStatus.kill_switch_mentioned's own docstring for why.
+    ks = kill_switch_mentioned(pane) if pane else None
     real_balance = parse_latest_vst_balance(pane) if (config.check_real_balance and pane) else None
     reports = load_daily_reports(config.reports_dir)
     return LoopStatus(config.key, config.display_name, config.session, alive, tick, ks, reports, real_balance)
@@ -367,14 +374,13 @@ def format_loop_section(status: LoopStatus) -> str:
     else:
         lines.append("Return:      unknown (no tick data or daily report available yet)")
 
-    lines.append(
-        "Kill switch: "
-        + (
-            "MENTIONED IN VISIBLE SCROLLBACK -- check logs"
-            if status.kill_switch_mentioned
-            else "no trip mentioned in visible scrollback"
-        )
-    )
+    if status.kill_switch_mentioned is None:
+        kill_switch_line = "unable to check -- tmux pane unreadable or session not found"
+    elif status.kill_switch_mentioned:
+        kill_switch_line = "MENTIONED IN VISIBLE SCROLLBACK -- check logs"
+    else:
+        kill_switch_line = "no trip mentioned in visible scrollback"
+    lines.append("Kill switch: " + kill_switch_line)
     lines.append(f"Daily reports on record: {len(status.daily_reports)}")
 
     if status.real_balance is not None:

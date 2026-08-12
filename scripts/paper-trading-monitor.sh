@@ -56,14 +56,47 @@ watch_pane_cmd() {
 # needs a pane-level target the same way `capture-pane` does (see
 # `live/dashboard.py`'s `capture_pane` docstring for the same finding);
 # a bare session name fails with "can't find pane", confirmed empirically
-# while building this script.
+# while building this script. Each `select-pane -T` right after its own
+# `new-session`/`split-window` labels the pane that command just made
+# active -- simpler than tracking pane ids, since exactly one pane is
+# active at each of these points.
 tmux new-session -d -s "$MONITOR_SESSION" -c "$REPO_ROOT" "$(watch_pane_cmd paper-trading)"
+tmux select-pane -t "=$MONITOR_SESSION:" -T "SIM 로그 (읽기전용)"
+
 tmux split-window -t "=$MONITOR_SESSION:" -c "$REPO_ROOT" "$(watch_pane_cmd paper-trading-vst)"
+tmux select-pane -t "=$MONITOR_SESSION:" -T "VST 로그 (읽기전용)"
+
 tmux split-window -t "=$MONITOR_SESSION:" -c "$REPO_ROOT/python" \
     "watch -n 30 .venv/bin/python -m live.dashboard"
+tmux select-pane -t "=$MONITOR_SESSION:" -T "대시보드 (30초 자동갱신)"
+
 tmux split-window -t "=$MONITOR_SESSION:" -c "$REPO_ROOT" \
     "mkdir -p var/live && touch var/live/watchdog.log var/live/cron.log && tail -f var/live/watchdog.log var/live/cron.log"
+tmux select-pane -t "=$MONITOR_SESSION:" -T "watchdog / cron 로그"
+
 tmux select-layout -t "=$MONITOR_SESSION:" tiled
+
+# Cosmetic only (never affects the trading sessions themselves): a
+# titled border per pane instead of four unlabeled log streams, and a
+# status bar naming the session and the (harmless) detach key. Colors
+# reused from the same validated palette python/live/web_dashboard.py's
+# badges are built against (dataviz skill reference palette) -- the
+# active pane's border uses the sequential/primary blue, the status bar
+# the dark chart surface -- so the terminal view and the browser
+# dashboard read as one system rather than two unrelated tools. Plain
+# `#rrggbb` tmux color syntax; degrades harmlessly to tmux's default
+# colors on a terminal without truecolor support, nothing here is load
+# bearing.
+tmux set-option -t "=$MONITOR_SESSION:" pane-border-status top
+tmux set-option -t "=$MONITOR_SESSION:" pane-border-format " #{pane_title} "
+tmux set-option -t "=$MONITOR_SESSION:" pane-border-style "fg=#c3c2b7"
+tmux set-option -t "=$MONITOR_SESSION:" pane-active-border-style "fg=#2a78d6,bold"
+tmux set-option -t "=$MONITOR_SESSION:" status-style "bg=#1a1a19,fg=#c3c2b7"
+tmux set-option -t "=$MONITOR_SESSION:" status-left " paper-trading-monitor "
+tmux set-option -t "=$MONITOR_SESSION:" status-left-style "fg=#3987e5,bold"
+tmux set-option -t "=$MONITOR_SESSION:" status-left-length 30
+tmux set-option -t "=$MONITOR_SESSION:" status-right " 분리: prefix+d (거래는 중단되지 않음) | %H:%M:%S "
+tmux set-option -t "=$MONITOR_SESSION:" status-right-length 60
 
 echo "Started '$MONITOR_SESSION' with 4 panes: paper-trading (read-only), paper-trading-vst (read-only),"
 echo "auto-refreshing dashboard (30s), watchdog/cron log tail. Attaching now."

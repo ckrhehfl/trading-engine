@@ -6,3 +6,15 @@ headless = true
 
 [browser]
 gatherUsageStats = false
+
+# Validated light-mode palette (dataviz skill reference instance) -- not
+# invented here, the same tokens live.web_dashboard.py's own status
+# badges and chart line color are built against, so the theme and the
+# hand-styled bits stay one consistent palette rather than two.
+[theme]
+base = "light"
+primaryColor = "#2a78d6"
+backgroundColor = "#f9f9f7"
+secondaryBackgroundColor = "#fcfcfb"
+textColor = "#0b0b0b"
+font = "sans serif"
