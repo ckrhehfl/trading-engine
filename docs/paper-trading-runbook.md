@@ -134,8 +134,13 @@ specific time of day).
 # the identical decision no matter what time of day it actually runs
 # during a given UTC date, so "catch up whenever the machine next wakes
 # up" is exactly as correct as "run at the originally-intended minute."
-# See scripts/paper-trading-daily-signal.sh's own header comment for
-# the full design (marker file, why a failed run isn't marked done).
+# An exclusive, non-blocking flock (held for the marker check through
+# the marker write) makes overlapping invocations safe too -- a run
+# that's still in flight when the next tick fires is not duplicated;
+# the second instance just exits immediately. See
+# scripts/paper-trading-daily-signal.sh's own header comment for the
+# full design (marker file, the lock, why a failed run isn't marked
+# done).
 */5 * * * * /path/to/trading-engine/scripts/paper-trading-daily-signal.sh
 
 # Process watchdog, every 5 minutes -- timezone-independent (a fixed

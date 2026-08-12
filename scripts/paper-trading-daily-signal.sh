@@ -29,7 +29,23 @@
 # date this script completed a successful run for -- only written
 # AFTER the python invocation exits 0, so a failed run (network error,
 # etc.) leaves no marker and gets retried on the very next cron tick
-# rather than being silently marked "done" for the day.
+# rather than being silently marked "done" for the day. Written
+# atomically (temp file + `mv` within the same directory, mirroring
+# generate_daily_signal.py's own `write_signal_atomically`) so a
+# process killed mid-write can never leave a truncated/corrupted
+# marker on disk -- worst case a stale-but-intact date, which just
+# triggers a normal, safe re-run rather than any ambiguity.
+#
+# Concurrency: an exclusive, non-blocking `flock` (held from before the
+# marker check through after the marker write) makes overlapping
+# invocations safe. Without it, a single run that happens to take
+# longer than 5 minutes (a slow/hanging BingX fetch, a retry) could
+# still be in flight when the next cron tick fires; both instances
+# would read the same not-yet-updated marker, both decide "not done
+# today," and both call live.generate_daily_signal concurrently against
+# the shared SQLite kline cache. A second instance that finds the lock
+# already held exits 0 immediately (not an error -- another instance is
+# already handling this tick's work).
 #
 # Usage: scripts/paper-trading-daily-signal.sh
 # Logs to var/live/cron.log (created if missing), same file the old
@@ -42,7 +58,16 @@ cd "$REPO_ROOT"
 
 LOG_FILE="var/live/cron.log"
 MARKER_FILE="var/live/last_signal_run_date.txt"
+LOCK_FILE="var/live/.daily-signal.lock"
 mkdir -p "$(dirname "$LOG_FILE")"
+
+# Exclusive, non-blocking lock on fd 200 for the rest of this script's
+# lifetime -- released automatically on exit (including the early skip
+# below and any failure), no explicit unlock needed.
+exec 200>"$LOCK_FILE"
+if ! flock -n 200; then
+    exit 0
+fi
 
 TODAY_UTC="$(date -u +%Y-%m-%d)"
 LAST_RUN_DATE="$(cat "$MARKER_FILE" 2>/dev/null || true)"
@@ -58,4 +83,14 @@ fi
 
 # Only reached if the block above exited 0 (set -e aborts the script
 # before this line on any failure) -- marks today as genuinely done.
-echo "$TODAY_UTC" >"$MARKER_FILE"
+# Atomic: written to a temp file in the same directory first, then
+# `mv`'d into place -- `mv` within one filesystem is a rename, atomic
+# on POSIX, same guarantee generate_daily_signal.py's own
+# `write_signal_atomically` relies on for the signal file itself. The
+# trap cleans up the temp file if anything between its creation and the
+# rename fails.
+TMP_MARKER="$(mktemp "${MARKER_FILE}.XXXXXX")"
+trap 'rm -f "$TMP_MARKER"' EXIT
+echo "$TODAY_UTC" >"$TMP_MARKER"
+mv "$TMP_MARKER" "$MARKER_FILE"
+trap - EXIT
