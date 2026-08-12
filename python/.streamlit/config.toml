@@ -1,0 +1,8 @@
+# Local-only, personal single-user dashboard -- never expose this beyond
+# localhost. See python/live/web_dashboard.py's module docstring for why.
+[server]
+address = "127.0.0.1"
+headless = true
+
+[browser]
+gatherUsageStats = false

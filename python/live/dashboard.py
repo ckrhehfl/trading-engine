@@ -40,10 +40,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 # baseline for a return% comparable across sim and VST.
 INITIAL_EQUITY = Decimal("100000")
 
-SIMULATED_SESSION = "paper-trading"
-VST_SESSION = "paper-trading-vst"
-SIMULATED_REPORTS_DIR = REPO_ROOT / "var" / "live" / "reports" / "daily"
-VST_REPORTS_DIR = REPO_ROOT / "var" / "live" / "reports" / "vst"
 WATCHDOG_LOG = REPO_ROOT / "var" / "live" / "watchdog.log"
 CRON_LOG = REPO_ROOT / "var" / "live" / "cron.log"
 SIGNAL_FILE = REPO_ROOT / "var" / "live" / "signals" / "BTC-USDT" / "daily-tsmom-ensemble" / "latest.json"
@@ -60,6 +56,46 @@ VST_BALANCE_RE = re.compile(
 KILL_SWITCH_RE = re.compile(r"kill switch already TRIPPED|tripping kill switch", re.IGNORECASE)
 CRON_NO_SIGNAL_RE = re.compile(r"^(?P<ts>[\d-]+ [\d:,]+) \S+ no signal today")
 CRON_WROTE_SIGNAL_RE = re.compile(r"^(?P<ts>[\d-]+ [\d:,]+) \S+ wrote signal: (?P<detail>.+)")
+
+
+@dataclass(frozen=True)
+class LoopConfig:
+    """Identifies one paper-trading loop to report on.
+
+    Both `main()` and `live.web_dashboard` iterate `LOOPS` below rather than
+    naming `simulated`/`vst` individually -- adding a future loop (a
+    different symbol, asset class, or venue -- e.g. a KR/US equities loop)
+    is one more `LoopConfig` entry, not a change to any rendering code.
+    `symbol`/`asset_class` are descriptive only today (nothing here branches
+    on them yet); they exist so a future multi-asset entry has somewhere to
+    say what it is without another schema change.
+    """
+
+    key: str
+    display_name: str
+    session: str
+    reports_dir: Path
+    check_real_balance: bool
+    symbol: str = "BTC-USDT"
+    asset_class: str = "crypto-perp"
+
+
+LOOPS: list[LoopConfig] = [
+    LoopConfig(
+        key="simulated",
+        display_name="SIMULATED LOOP",
+        session="paper-trading",
+        reports_dir=REPO_ROOT / "var" / "live" / "reports" / "daily",
+        check_real_balance=False,
+    ),
+    LoopConfig(
+        key="vst",
+        display_name="BINGX VST LOOP",
+        session="paper-trading-vst",
+        reports_dir=REPO_ROOT / "var" / "live" / "reports" / "vst",
+        check_real_balance=True,
+    ),
+]
 
 
 def _to_decimal(value: str | None) -> Decimal | None:
@@ -216,16 +252,14 @@ class LoopStatus:
     real_balance: dict[str, Decimal | None] | None = None
 
 
-def gather_loop_status(
-    key: str, display_name: str, session: str, reports_dir: Path, check_real_balance: bool
-) -> LoopStatus:
-    pane = capture_pane(session)
-    alive = session_alive(session)
+def gather_loop_status(config: LoopConfig) -> LoopStatus:
+    pane = capture_pane(config.session)
+    alive = session_alive(config.session)
     tick = parse_latest_tick(pane) if pane else None
     ks = kill_switch_mentioned(pane) if pane else False
-    real_balance = parse_latest_vst_balance(pane) if (check_real_balance and pane) else None
-    reports = load_daily_reports(reports_dir)
-    return LoopStatus(key, display_name, session, alive, tick, ks, reports, real_balance)
+    real_balance = parse_latest_vst_balance(pane) if (config.check_real_balance and pane) else None
+    reports = load_daily_reports(config.reports_dir)
+    return LoopStatus(config.key, config.display_name, config.session, alive, tick, ks, reports, real_balance)
 
 
 def current_equity(status: LoopStatus) -> Decimal | None:
@@ -521,12 +555,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output instead of the human-readable report")
     args = parser.parse_args(argv)
 
-    statuses = [
-        gather_loop_status(
-            "simulated", "SIMULATED LOOP", SIMULATED_SESSION, SIMULATED_REPORTS_DIR, check_real_balance=False
-        ),
-        gather_loop_status("vst", "BINGX VST LOOP", VST_SESSION, VST_REPORTS_DIR, check_real_balance=True),
-    ]
+    statuses = [gather_loop_status(config) for config in LOOPS]
 
     if args.json:
         print(json.dumps(to_json_dict(statuses), indent=2, default=_decimal_default))
