@@ -40,6 +40,7 @@ from live.generate_daily_signal import (
     MIN_WARMUP_BARS,
     STRATEGY_ID,
     STRATEGY_VERSION,
+    _deterministic_intent_id,
     _kline_row_to_kline,
     fetch_live_klines,
     generate_signal,
@@ -256,6 +257,31 @@ def test_generate_signal_returns_none_for_empty_klines_without_logging_anything(
 
     assert decision is None
     assert not (tmp_path / LIVE_RUNS_PATH).exists()  # fit() was never called -- nothing was logged
+
+
+# ---------------------------------------------------------------------------
+# _deterministic_intent_id -- retry-safety for the live production path
+# ---------------------------------------------------------------------------
+
+
+def test_deterministic_intent_id_is_stable_for_the_same_symbol_and_bar():
+    created_at = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    first = _deterministic_intent_id(symbol="BTC-USDT", created_at=created_at)
+    second = _deterministic_intent_id(symbol="BTC-USDT", created_at=created_at)
+    assert first == second
+
+
+def test_deterministic_intent_id_differs_across_symbols():
+    created_at = datetime(2026, 8, 11, tzinfo=timezone.utc)
+    btc = _deterministic_intent_id(symbol="BTC-USDT", created_at=created_at)
+    eth = _deterministic_intent_id(symbol="ETH-USDT", created_at=created_at)
+    assert btc != eth
+
+
+def test_deterministic_intent_id_differs_across_decision_bars():
+    day1 = _deterministic_intent_id(symbol="BTC-USDT", created_at=datetime(2026, 8, 11, tzinfo=timezone.utc))
+    day2 = _deterministic_intent_id(symbol="BTC-USDT", created_at=datetime(2026, 8, 12, tzinfo=timezone.utc))
+    assert day1 != day2
 
 
 # ---------------------------------------------------------------------------
@@ -508,3 +534,42 @@ def test_main_warns_distinctly_when_fetched_bars_fall_short_of_the_request(serve
     # the request itself (default 300) was fine, only the exchange's real
     # data came up short.
     assert not any("--fetch-bars=" in message for message in caplog.messages)
+
+
+def test_main_retry_reproduces_the_identical_intent_id(server, tmp_path, monkeypatch):
+    """The real scenario scripts/paper-trading-daily-signal.sh's own
+    retry logic depends on: two independent main() invocations for the
+    SAME UTC day's real decision must write the identical intent_id, not
+    a fresh random one each time -- otherwise a retry after an
+    interruption (e.g. between a successful write and that script's own
+    completion-marker update -- see its header comment) could look like
+    a genuinely new order intent to the downstream Java
+    FileSignalSource, risking a real duplicate (VST) order for what is
+    actually the same underlying decision. A real CodeRabbit review
+    finding on this task's PR.
+    """
+    monkeypatch.setenv("BINGX_BASE_URL", server.base_url)
+    now_ms = BASE_DAY_MS + DEFAULT_FETCH_BARS * DAY_STEP
+    _seed_warmup_server(server, now_ms=now_ms, fetch_bars=DEFAULT_FETCH_BARS, jump_price="200")
+    monkeypatch.setattr("live.generate_daily_signal._current_time_ms", lambda: now_ms)
+
+    signal_path = tmp_path / "signal.json"
+    db_path = tmp_path / "klines.sqlite3"
+    common_args = [
+        "--db-path",
+        str(db_path),
+        "--signal-path",
+        str(signal_path),
+    ]
+
+    exit_code = main(common_args + ["--runs-path", str(tmp_path / "live_signals_1.jsonl")])
+    assert exit_code == 0
+    first_intent_id = json.loads(signal_path.read_text(encoding="utf-8"))["intent_id"]
+
+    # A second, fully independent invocation simulating a retry -- same
+    # real "today," same underlying (cached) kline data.
+    exit_code2 = main(common_args + ["--runs-path", str(tmp_path / "live_signals_2.jsonl")])
+    assert exit_code2 == 0
+    second_intent_id = json.loads(signal_path.read_text(encoding="utf-8"))["intent_id"]
+
+    assert first_intent_id == second_intent_id

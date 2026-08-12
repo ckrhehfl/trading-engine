@@ -117,7 +117,7 @@ import os
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
 from backtest.kline import Kline
 from data.backfill import DEFAULT_DB_PATH, sync_range
@@ -174,6 +174,18 @@ MIN_WARMUP_BARS = 253
 # must stay >= MIN_WARMUP_BARS.
 DEFAULT_FETCH_BARS = 300
 
+# Fixed, deterministic namespace for `_deterministic_intent_id` below --
+# derived once via `uuid5(NAMESPACE_URL, ...)` from a human-readable
+# string rather than a random constant, so it's reproducible by anyone
+# reading this file rather than a magic value that has to be trusted.
+# Scoped to THIS module only: `DailyTsmomEnsembleStrategy.__call__`
+# itself still assigns a fresh `uuid4()` per decision unchanged --
+# that path is shared with backtesting/research, where each simulated
+# decision needs its own unique id and no real order is ever placed
+# from it, so retry-determinism doesn't apply there the way it does
+# here.
+_INTENT_ID_NAMESPACE = uuid5(NAMESPACE_URL, "trading-engine.live.generate_daily_signal")
+
 # New, gitignored tree (see .gitignore's `var/live/` entry), mirroring
 # `python/data/var/`'s existing gitignore treatment for locally-generated,
 # non-source runtime data.
@@ -201,6 +213,32 @@ def _current_time_ms() -> int:
     unchanged: this always returns the real current time.
     """
     return int(datetime.now(timezone.utc).timestamp() * 1000)
+
+
+def _deterministic_intent_id(*, symbol: str, created_at: datetime) -> UUID:
+    """A stable `intent_id` for a given (symbol, strategy, decision bar),
+    via `uuid5` rather than `DailyTsmomEnsembleStrategy.__call__`'s own
+    fresh `uuid4()` per call.
+
+    Exists so that re-running this script for a UTC day whose decision
+    was already computed and written -- e.g. a retry after this process
+    is interrupted between `write_signal_atomically` succeeding and
+    `scripts/paper-trading-daily-signal.sh`'s own completion marker
+    being updated (see that script's header comment) -- produces the
+    IDENTICAL `intent_id` rather than a new random one. The downstream
+    Java `FileSignalSource` treats a changed `intent_id` as a genuinely
+    new order intent; a random id on every retry would risk a real
+    duplicate (VST) order for what is actually the same underlying
+    decision -- a real CodeRabbit review finding on this task's PR.
+
+    Keyed on the decision's own `created_at` (the daily bar it was
+    actually computed for -- yesterday's UTC-midnight-aligned close,
+    per `fetch_live_klines`'s "excludes today's still-forming bar"
+    rule) rather than "now," so it is reproducible from the input data
+    alone, not from wall-clock retry timing.
+    """
+    name = f"{STRATEGY_ID}:{STRATEGY_VERSION}:{symbol}:{created_at.isoformat()}"
+    return uuid5(_INTENT_ID_NAMESPACE, name)
 
 
 def _kline_row_to_kline(row: KlineRow) -> Kline:
@@ -461,6 +499,15 @@ def main(argv: list[str] | None = None) -> int:
     if decision is None:
         logger.info("no signal today (no sign-category change) -- signal file left untouched")
         return 0
+
+    # Overrides the strategy's own fresh uuid4() with a deterministic id
+    # tied to (symbol, strategy, decision bar) -- see
+    # _deterministic_intent_id's own docstring for why: this is the live
+    # production emit boundary, where a retry of the SAME day's decision
+    # must reproduce the SAME intent_id, not a new random one.
+    decision = decision.model_copy(
+        update={"intent_id": _deterministic_intent_id(symbol=args.symbol, created_at=decision.created_at)}
+    )
 
     write_signal_atomically(decision, signal_path)
     logger.info(
