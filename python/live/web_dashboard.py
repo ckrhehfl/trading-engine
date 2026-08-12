@@ -40,16 +40,6 @@ from live import dashboard
 
 REFRESH_SECONDS = 30
 
-st.set_page_config(page_title="Paper Trading Dashboard", layout="wide")
-st.markdown(f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">', unsafe_allow_html=True)
-
-st.title("Paper Trading Dashboard")
-st.caption(
-    f"Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')} -- auto-refreshes every "
-    f"{REFRESH_SECONDS}s. Read-only, makes no exchange call of its own -- reads the same already-existing "
-    "data files as `python -m live.dashboard` (see docs/paper-trading-runbook.md)."
-)
-
 
 def _fmt_pct(value: Decimal | None) -> str:
     if value is None:
@@ -112,10 +102,22 @@ def render_loop(config: dashboard.LoopConfig, status: dashboard.LoopStatus) -> N
     col1.metric(
         "Equity",
         f"{current:,.2f}" if current is not None else "unknown",
-        delta=(f"{_fmt_pct(dod_pct)} (전일 대비)" if dod_pct is not None else None),
+        delta=(
+            f"{_fmt_pct(dod_pct)} ({'전일 대비' if status.daily_reports else 'baseline 대비'})"
+            if dod_pct is not None
+            else None
+        ),
     )
     col2.metric("누적 수익률 (baseline 대비)", _fmt_pct(cum_pct))
-    col3.metric("Kill Switch", "🔴 확인 필요" if status.kill_switch_mentioned else "🟢 정상")
+    # `kill_switch_mentioned=False` means "not seen in the visible tmux
+    # scrollback" -- that's also what a dead/unreadable session pane looks
+    # like (capture_pane returns None), not proof the kill switch is
+    # actually fine. Showing a green "정상" for that case would overclaim
+    # certainty this dashboard doesn't have -- real CodeRabbit review finding.
+    col3.metric(
+        "Kill Switch",
+        "🔴 로그 언급 감지 / 확인 필요" if status.kill_switch_mentioned else "⚪ 로그에서 언급 없음",
+    )
     col4.metric("완료된 일별 리포트", str(len(status.daily_reports)))
 
     if status.real_balance is not None:
@@ -139,6 +141,16 @@ def render_loop(config: dashboard.LoopConfig, status: dashboard.LoopStatus) -> N
 
 
 def main() -> None:
+    st.set_page_config(page_title="Paper Trading Dashboard", layout="wide")
+    st.markdown(f'<meta http-equiv="refresh" content="{REFRESH_SECONDS}">', unsafe_allow_html=True)
+
+    st.title("Paper Trading Dashboard")
+    st.caption(
+        f"Generated {datetime.now(timezone.utc).isoformat(timespec='seconds')} -- auto-refreshes every "
+        f"{REFRESH_SECONDS}s. Read-only, makes no exchange call of its own -- reads the same already-existing "
+        "data files as `python -m live.dashboard` (see docs/paper-trading-runbook.md)."
+    )
+
     for config in dashboard.LOOPS:
         status = dashboard.gather_loop_status(config)
         render_loop(config, status)
@@ -161,4 +173,12 @@ def main() -> None:
         st.caption("기록 없음 (계속 정상이었거나, watchdog 자체가 안 돌고 있을 수 있음 -- runbook 5절 참고).")
 
 
-main()
+if __name__ == "__main__":
+    # Streamlit's own script runner does set __name__ to "__main__" for the
+    # entrypoint script given to `streamlit run` (confirmed against
+    # Streamlit's own source during review of this PR) -- this guard is
+    # what keeps a plain `from live.web_dashboard import day_over_day`
+    # (as tests/test_web_dashboard.py does) from also triggering a full
+    # dashboard render -- including real tmux subprocess calls for both
+    # loops -- as an import side effect. Real CodeRabbit review finding.
+    main()
