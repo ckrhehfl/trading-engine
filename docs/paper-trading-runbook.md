@@ -225,6 +225,52 @@ startup, not a fresh live-refreshed call -- see the module docstring
 limitations (e.g. that figure disappears from the dashboard once enough
 ticks scroll it out of `tmux`'s history buffer between restarts).
 
+Both loops are described by `live.dashboard.LOOPS` (a list of
+`LoopConfig`, one entry per loop) rather than hardcoded individually --
+adding a future loop (a different symbol, asset class, or venue) is one
+more entry there, not a rewrite of this dashboard or the two tools below.
+
+### Watching continuously, not just checking once
+
+Neither of the above is "always on" by itself -- each one prints a
+snapshot when you run it and stops. Two ways to get a continuously
+updating view instead, both read-only, both optional (the dashboard
+command above is always available as a fallback):
+
+**A 4-pane `tmux` view** -- both loops' live logs, an auto-refreshing
+dashboard, and the watchdog/cron log tail, side by side in one terminal:
+
+```bash
+scripts/paper-trading-monitor.sh
+```
+
+Opens (or re-attaches to, if already running) a separate `paper-trading-
+monitor` session with 4 panes: `paper-trading` (read-only), `paper-
+trading-vst` (read-only), the dashboard refreshed every 30s via `watch`,
+and a `tail -f` on `watchdog.log`/`cron.log`. The two loop panes attach
+with `-r` (read-only) -- this view can never send input into either
+trading loop, no matter what gets typed into it. Detaching
+(`tmux` prefix + `d`) only detaches your view; it does not stop either
+loop, and running the script again while it's already up just re-attaches
+instead of creating a second copy.
+
+**A graphical, auto-refreshing web dashboard** (Streamlit) -- the same
+stock-app-style "current value + vs.-yesterday %" cards, a per-loop
+equity chart, and a recent-trades table, all in a browser tab that
+refreshes itself every 30 seconds:
+
+```bash
+cd python && .venv/bin/streamlit run live/web_dashboard.py
+```
+
+Then open the printed `http://127.0.0.1:8501` URL. Binds to
+`127.0.0.1` only (`python/.streamlit/config.toml`) -- never reachable
+from outside this machine. Like the CLI dashboard, it's read-only and
+reuses that same module's data-gathering functions rather than parsing
+anything itself -- see `python/live/web_dashboard.py`'s module docstring
+for detail and for why the refresh is a plain page reload rather than a
+`streamlit`-internal rerun loop.
+
 For raw detail beyond what the dashboard summarizes:
 
 ```bash
