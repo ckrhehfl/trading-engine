@@ -340,7 +340,7 @@ def test_format_loop_section_kill_switch_three_states():
     same falsy line. A real CodeRabbit review finding on this PR.
     """
 
-    def _status(kill_switch_mentioned: bool | None) -> LoopStatus:
+    def _status(*, kill_switch_mentioned: bool | None) -> LoopStatus:
         return LoopStatus(
             key="simulated",
             display_name="SIMULATED LOOP",
@@ -351,15 +351,15 @@ def test_format_loop_section_kill_switch_three_states():
             daily_reports=[],
         )
 
-    unreadable_text = format_loop_section(_status(None))
+    unreadable_text = format_loop_section(_status(kill_switch_mentioned=None))
     assert "unable to check" in unreadable_text
     assert "no trip mentioned" not in unreadable_text
 
-    clean_text = format_loop_section(_status(False))
+    clean_text = format_loop_section(_status(kill_switch_mentioned=False))
     assert "no trip mentioned in visible scrollback" in clean_text
     assert "unable to check" not in clean_text
 
-    tripped_text = format_loop_section(_status(True))
+    tripped_text = format_loop_section(_status(kill_switch_mentioned=True))
     assert "MENTIONED IN VISIBLE SCROLLBACK" in tripped_text
     assert "unable to check" not in tripped_text
 
