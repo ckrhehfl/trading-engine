@@ -44,8 +44,20 @@
 # would read the same not-yet-updated marker, both decide "not done
 # today," and both call live.generate_daily_signal concurrently against
 # the shared SQLite kline cache. A second instance that finds the lock
-# already held exits 0 immediately (not an error -- another instance is
-# already handling this tick's work).
+# already held (flock's own exit 1) exits 0 immediately -- not an
+# error, another instance is already handling this tick's work. Any
+# OTHER non-zero flock exit (a real syscall/filesystem problem, not
+# contention) is logged and propagated instead of being silently
+# treated the same as ordinary contention.
+#
+# `insufficient data` handling: live.generate_daily_signal itself
+# exits 0 for two DIFFERENT reasons -- a genuine "no signal today"
+# decision, or a data problem (too few klines to warm up the strategy;
+# its own module explicitly logs this as "NOT a real 'no signal today'
+# decision"). Marking the marker done in the second case would leave a
+# real data gap silently un-retried for the rest of the UTC day. This
+# script greps its own captured output for that exact log phrase to
+# tell the two apart, rather than trusting exit code 0 alone.
 #
 # Usage: scripts/paper-trading-daily-signal.sh
 # Logs to var/live/cron.log (created if missing), same file the old
@@ -62,11 +74,22 @@ LOCK_FILE="var/live/.daily-signal.lock"
 mkdir -p "$(dirname "$LOG_FILE")"
 
 # Exclusive, non-blocking lock on fd 200 for the rest of this script's
-# lifetime -- released automatically on exit (including the early skip
-# below and any failure), no explicit unlock needed.
+# lifetime -- released automatically on exit (including any early exit
+# below), no explicit unlock needed. `if flock ...; then/else` (rather
+# than `flock ...; $?`) keeps this compatible with `set -e`, which
+# would otherwise abort the script on flock's own non-zero exit before
+# FLOCK_EXIT could ever be inspected.
 exec 200>"$LOCK_FILE"
-if ! flock -n 200; then
+if flock -n 200; then
+    FLOCK_EXIT=0
+else
+    FLOCK_EXIT=$?
+fi
+if [[ $FLOCK_EXIT -eq 1 ]]; then
     exit 0
+elif [[ $FLOCK_EXIT -ne 0 ]]; then
+    echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') paper-trading-daily-signal: flock failed unexpectedly (exit $FLOCK_EXIT), not ordinary contention" >>"$LOG_FILE"
+    exit "$FLOCK_EXIT"
 fi
 
 TODAY_UTC="$(date -u +%Y-%m-%d)"
@@ -76,19 +99,36 @@ if [[ "$LAST_RUN_DATE" == "$TODAY_UTC" ]]; then
     exit 0
 fi
 
-{
+# `set +e` around the invocation itself: this script wants to inspect
+# the real exit code (and log it) rather than have `set -e` abort
+# mid-script before that's possible.
+set +e
+RUN_OUTPUT="$( {
     echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') paper-trading-daily-signal: running for $TODAY_UTC (last completed run: ${LAST_RUN_DATE:-none})"
     PYTHONPATH=python BINGX_BASE_URL=https://open-api.bingx.com python/.venv/bin/python -m live.generate_daily_signal
-} >>"$LOG_FILE" 2>&1
+} 2>&1 )"
+PYTHON_EXIT=$?
+set -e
 
-# Only reached if the block above exited 0 (set -e aborts the script
-# before this line on any failure) -- marks today as genuinely done.
-# Atomic: written to a temp file in the same directory first, then
-# `mv`'d into place -- `mv` within one filesystem is a rename, atomic
-# on POSIX, same guarantee generate_daily_signal.py's own
-# `write_signal_atomically` relies on for the signal file itself. The
-# trap cleans up the temp file if anything between its creation and the
-# rename fails.
+echo "$RUN_OUTPUT" >>"$LOG_FILE"
+
+if [[ $PYTHON_EXIT -ne 0 ]]; then
+    exit "$PYTHON_EXIT"
+fi
+
+if grep -q "insufficient data" <<<"$RUN_OUTPUT"; then
+    # A real data problem, not a genuine "no signal today" decision --
+    # do NOT mark today done; retry on the next cron tick instead.
+    exit 0
+fi
+
+# Only reached on a genuine successful run (a real decision, "no
+# signal today" included) -- marks today as done. Atomic: written to a
+# temp file in the same directory first, then `mv`'d into place --
+# `mv` within one filesystem is a rename, atomic on POSIX, same
+# guarantee generate_daily_signal.py's own `write_signal_atomically`
+# relies on for the signal file itself. The trap cleans up the temp
+# file if anything between its creation and the rename fails.
 TMP_MARKER="$(mktemp "${MARKER_FILE}.XXXXXX")"
 trap 'rm -f "$TMP_MARKER"' EXIT
 echo "$TODAY_UTC" >"$TMP_MARKER"
