@@ -114,28 +114,38 @@ a pre-existing position, etc.) rather than starting silently broken.
 ## 4. Scheduled jobs (cron)
 
 Two separate jobs, both idempotent (safe to re-run, safe if already
-running).
-
-**Timezone note, read before copying the schedule below**: standard
-(Vixie) `cron` runs on the host's own local system timezone, not UTC —
-there is no portable, universally-supported way to pin a single
-crontab line to UTC (`CRON_TZ=...` exists on some modern
-implementations, e.g. cronie, but isn't part of the original spec and
-isn't guaranteed present). The `5 9 * * *` below is therefore a
-**KST-specific example** (this project's own reference machine's
-timezone), not a portable "00:05 UTC" expression — recompute the
-correct local-time hour/minute for your own machine's timezone rather
-than copying it as-is.
+running), both timezone-independent (fixed 5-minute intervals, not a
+specific time of day).
 
 ```cron
-# Daily signal generation -- intended to run at 00:05 UTC. On a
-# KST (UTC+9) machine that's 09:05 local time, hence "5 9 * * *" below.
-# Recompute for your own machine's local timezone -- see the note above.
-5 9 * * * cd ~/trading-engine && PYTHONPATH=python BINGX_BASE_URL=https://open-api.bingx.com python/.venv/bin/python -m live.generate_daily_signal >> ~/trading-engine/var/live/cron.log 2>&1
+# Daily signal generation, catch-up-capable -- every 5 minutes, checks
+# whether live.generate_daily_signal has already completed for the
+# CURRENT UTC CALENDAR DAY (tracked in
+# var/live/last_signal_run_date.txt) and runs it if not, retrying every
+# 5 minutes until it succeeds. Replaces an earlier fixed-time-of-day
+# entry (e.g. "5 9 * * *" on a KST machine, for the intended 00:05 UTC)
+# that had a real, observed failure mode: a machine that's
+# asleep/off/suspended at that exact minute causes standard cron to
+# silently and PERMANENTLY skip that day -- cron never retroactively
+# runs a missed job. This is safe to run every 5 minutes instead of
+# once a day specifically because live.generate_daily_signal is
+# documented idempotent and stateless across invocations (see that
+# module's own docstring, "No cross-invocation state") -- it produces
+# the identical decision no matter what time of day it actually runs
+# during a given UTC date, so "catch up whenever the machine next wakes
+# up" is exactly as correct as "run at the originally-intended minute."
+# An exclusive, non-blocking flock (held for the marker check through
+# the marker write) makes overlapping invocations safe too -- a run
+# that's still in flight when the next tick fires is not duplicated;
+# the second instance just exits immediately. See
+# scripts/paper-trading-daily-signal.sh's own header comment for the
+# full design (marker file, the lock, why a failed run isn't marked
+# done).
+*/5 * * * * /path/to/trading-engine/scripts/paper-trading-daily-signal.sh
 
 # Process watchdog, every 5 minutes -- timezone-independent (a fixed
 # interval, not a specific time of day)
-*/5 * * * * ~/trading-engine/scripts/paper-trading-watchdog.sh
+*/5 * * * * /path/to/trading-engine/scripts/paper-trading-watchdog.sh
 ```
 
 Install with `crontab -e` (or `(crontab -l; echo "...") | crontab -`
