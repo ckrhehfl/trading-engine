@@ -1,0 +1,20 @@
+{
+  "_comment": "KRX weekday market holidays for the years listed in coveredYears. Weekends are never listed (KrxMarketCalendar already treats every Saturday/Sunday as closed regardless of this file). A year NOT in coveredYears is treated as closed for every date in it (fail-closed -- see CLAUDE.md's KIS/KOSPI200 Phase 1 design, Task 3), not assumed open. Hand-researched from KRX's own public holiday calendar and cross-checked against a second independent source on 2026-08-13 (see .planning/kis-c-trading-calendar.md for the sources) -- re-verify and extend before relying on this past the years listed. December 31 year-end closures are announced by KRX only in mid-December of the preceding year and are deliberately NOT guessed here for years without an official announcement yet.",
+  "coveredYears": [2026],
+  "holidays": [
+    "2026-01-01",
+    "2026-02-16",
+    "2026-02-17",
+    "2026-02-18",
+    "2026-03-02",
+    "2026-05-01",
+    "2026-05-05",
+    "2026-05-25",
+    "2026-08-17",
+    "2026-09-24",
+    "2026-09-25",
+    "2026-10-05",
+    "2026-10-09",
+    "2026-12-25"
+  ]
+}
