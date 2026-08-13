@@ -169,14 +169,23 @@ records are already interface-typed / BingX-free, so writing
 `KisAdapter implements ExchangeAdapter` alone reuses all of them
 unmodified — no second `OrderExecutor` implementation needed, matching
 this section's own invariant. What's genuinely missing: (1)
-`ExchangeAdapter.setLeverage` is perpetual-futures/margin-account-
-specific with no obvious 1:1 KRX equivalent (KRX futures margin is
-exchange-mandated, not a user-settable multiplier) — likely a documented
-no-op in `KisAdapter`, provisional pending real KIS docs. `setPositionMode`
-is different: **not a silent no-op** (tightened on real CodeRabbit
-review — a caller silently believing an unsupported mode was set is a
-real correctness risk, not a cosmetic gap) — `KisAdapter.setPositionMode`
-must throw or otherwise signal "unsupported here" explicitly; (2)
+`ExchangeAdapter.setLeverage`/`setPositionMode` are perpetual-futures/
+margin-account-specific with no obvious 1:1 KRX equivalent (KRX futures
+margin is exchange-mandated, not a user-settable multiplier). **Neither
+is a silent no-op** (tightened twice on real CodeRabbit review — first
+for `setPositionMode`, then again for `setLeverage` on a second review
+pass of the same PR: a caller, the KIS factory, or `KisPreflight` silently
+treating a normal return from either as "protection successfully applied"
+would let the KIS loop start trading believing a safeguard exists that
+never actually ran). Both methods on `KisAdapter` must throw or otherwise
+signal "unsupported here" explicitly, and neither the `forKisPaper()`
+factory nor `KisPreflight` may treat that signal as a success condition.
+Skipping the *exchange-side* leverage-setting call does not mean skipping
+risk enforcement: `RiskGateway`'s own notional/margin limit — the
+contract-multiplier conversion in the `RiskLimits` section below — is
+what actually bounds this loop's exposure, and must keep applying in
+full regardless of what `setLeverage`/`setPositionMode` do or don't do
+on the exchange side; (2)
 `RiskDecision`/`Order`'s `approvedLeverage` field is structurally
 required end-to-end but functionally dead in the actual submit path
 today (`BingXAdapter.submitOrder` never reads it — leverage is only
@@ -198,10 +207,21 @@ CodeRabbit review, sourced against KRX's own official trading-hours page)
 **KOSPI200 futures also has a night session (18:00-06:00 KST) that this
 phase's `KrxMarketCalendar` explicitly does not support** — Phase 1
 covers the regular session only, disclosed here rather than silently
-narrowed; night-session support (and the holiday/final-trading-day
-exceptions a real calendar needs) is future work. Moving lunar-calendar
-holidays are a separate, already-noted gap (`java.time`'s built-in
-chronologies cannot express them); (5) `PaperTradingApp` hardcodes
+narrowed. **The regular session itself is shorter on each contract's
+final trading day — 08:45-15:20 KST, not 08:45-15:45** (a second real
+correction from a second CodeRabbit review pass, sourced against the
+same KRX official page): `KrxMarketCalendar` must identify final trading
+days and apply the shorter close, and — because that identification
+depends on future contract-expiry-calendar data this phase doesn't yet
+have a committed source for — **fail closed**: if a given date's
+final-trading-day status can't be determined from whatever fixture
+exists, treat the session as **closed** rather than defaulting to the
+longer 15:45 close, and cover the boundary (a real final trading day at
+15:20-15:45, and an unknown/undetermined date) with real tests, not just
+the ordinary-day case. Night-session support and the exact
+final-trading-day identification rule are future work — moving
+lunar-calendar holidays are a separate, already-noted gap (`java.time`'s
+built-in chronologies cannot express them); (5) `PaperTradingApp` hardcodes
 BingX-specific env vars and a `forBingXVst()` factory — adding KIS means
 an analogous new factory method and new KIS-named env vars, matching the
 project's existing, accepted pattern, not a regression to fix.
@@ -285,10 +305,25 @@ against a meaningless figure — "reused unmodified" was true for the
 first. Task 2/4 must define and test the real quantity → notional
 conversion for KOSPI200 futures (contract count × index price ×
 ₩250,000) before `RiskLimits.canary()`'s percentages mean anything for
-this loop, including fake-KIS-server tests for max-quantity, rounding,
-insufficient-margin, and limit-exceedance behavior. The fixed
-`approvedLeverage` placeholder noted above satisfies the schema only —
-it is not itself a risk control and must not be treated as one. A
+this loop. **The conversion's own rules, made concrete on a second
+CodeRabbit review pass rather than left as "define during the task"**:
+quantity must be a positive integer contract count; the price source is
+the order's own limit price for a limit order, else a defined current/
+reference price for a market order (exact source confirmed during Task
+2/4, not invented here); all arithmetic uses `BigDecimal` with exposure
+always **rounded up, never down** (rounding down could understate a
+position's real notional and let an over-limit order through); the
+margin-rate input has a defined source and a staleness check; **missing
+or stale price/margin data is a rejection (fail closed), never a
+silent fallback**; and this entire conversion runs **before**
+`RiskLimits.canary()`'s own percentage check, not after or in parallel —
+ordering matters, since the percentage check is meaningless against a
+number this conversion hasn't yet produced correctly. Fake-KIS-server
+tests must cover max-quantity, rounding direction, insufficient-margin,
+missing/stale price-or-margin input, and limit-exceedance behavior — not
+just the happy path. The fixed `approvedLeverage` placeholder noted above
+satisfies the schema only — it is not itself a risk control and must not
+be treated as one. A
 KOSPI200-specific `RiskLimits` *tier* (new percentage numbers) remains
 future, Strategy-Research-gated work per this file's own non-negotiable
 rule against weakening risk limits without approval — not decided or
