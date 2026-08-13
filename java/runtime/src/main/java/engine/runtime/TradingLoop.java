@@ -24,8 +24,10 @@ import org.slf4j.LoggerFactory;
  * simulator) is the only implementation that exists today, but this class
  * depends only on the interface, so a future real-exchange wrapper can be
  * swapped in without ever touching this class's control-flow logic (see
- * {@code .planning/paper-trading-f-order-executor.md}) -- on a REST-polled
- * price feed ({@link BingXPriceFeed}), using a pluggable {@link
+ * {@code .planning/paper-trading-f-order-executor.md}) -- and against a
+ * pluggable {@link PriceFeed} ({@link BingXPriceFeed} is the only
+ * implementation that exists today, polling a REST endpoint; same
+ * extraction precedent as {@link OrderExecutor}), using a pluggable {@link
  * SignalSource} for its signals -- e.g. {@link DummySignalSource}
  * (explicitly not real, see that class's Javadoc, and CLAUDE.md's "Strategy
  * Research Methodology" section, for why) or {@link FileSignalSource} (a
@@ -151,7 +153,7 @@ public final class TradingLoop {
     private final OrderPipeline orderPipeline;
     private final OrderExecutor orderExecutor;
     private final SignalSource signalSource;
-    private final BingXPriceFeed priceFeed;
+    private final PriceFeed priceFeed;
     private final KillSwitch killSwitch;
     private final String symbol;
 
@@ -168,7 +170,7 @@ public final class TradingLoop {
             OrderPipeline orderPipeline,
             OrderExecutor orderExecutor,
             SignalSource signalSource,
-            BingXPriceFeed priceFeed,
+            PriceFeed priceFeed,
             KillSwitch killSwitch,
             String symbol) {
         this.orderPipeline = Objects.requireNonNull(orderPipeline, "orderPipeline is required");
