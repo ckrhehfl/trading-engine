@@ -522,8 +522,15 @@ public final class PaperTradingApp {
      * var:
      *
      * <ul>
-     *   <li>{@code PAPER_TRADING_SYMBOL} (optional, default {@code
-     *       BTC-USDT})
+     *   <li>{@code PAPER_TRADING_EXECUTION_MODE} (optional, default {@code
+     *       simulated} -- see class Javadoc, "Execution mode"). Read
+     *       first, since it changes how every other var below is resolved.
+     *   <li>{@code PAPER_TRADING_SYMBOL} -- optional with default {@code
+     *       BTC-USDT} in {@code simulated}/{@code bingx-vst} mode;
+     *       <b>required, no default</b>, in {@code kis-paper} mode ({@code
+     *       BTC-USDT} is not a valid KIS KOSPI200 futures symbol, so this
+     *       mode never silently falls back to it -- see {@link
+     *       #forKisPaper})
      *   <li>{@code BINGX_BASE_URL} (required, no default, in {@code
      *       simulated}/{@code bingx-vst} mode only -- matches the existing
      *       java/python-wide convention of never hardcoding a BingX host in
@@ -544,28 +551,37 @@ public final class PaperTradingApp {
      *       working directory -- same repository-root-relative convention
      *       as {@code PAPER_TRADING_SIGNAL_PATH} above; see {@link
      *       DailyReportGenerator})
-     *   <li>{@code PAPER_TRADING_EXECUTION_MODE} (optional, default {@code
-     *       simulated} -- see class Javadoc, "Execution mode"). Only in
-     *       {@code bingx-vst} mode: {@code BINGX_API_KEY}/{@code
+     *   <li>Only in {@code bingx-vst} mode: {@code BINGX_API_KEY}/{@code
      *       BINGX_API_SECRET} (both required, no default -- never
      *       hardcoded, matching this project's standing credential
      *       convention; see {@link #forBingXVst})
+     *   <li>Only in {@code kis-paper} mode: {@code KIS_APP_KEY}/{@code
+     *       KIS_APP_SECRET}/{@code KIS_ACCOUNT_NO} (all three required, no
+     *       default -- same credential convention as above) and {@code
+     *       KIS_ACCOUNT_PRODUCT_CODE} (optional, default {@link
+     *       #DEFAULT_KIS_ACCOUNT_PRODUCT_CODE}, {@code "03"}); see {@link
+     *       #forKisPaper}
      * </ul>
      */
     public static PaperTradingApp fromEnvironment() {
-        String symbol = firstNonBlank(System.getenv(ENV_SYMBOL), DEFAULT_SYMBOL);
-        Path signalPath = resolveSignalPath(System.getenv(ENV_SIGNAL_PATH), symbol);
+        String executionMode = resolveExecutionMode(System.getenv(ENV_EXECUTION_MODE));
         long tickIntervalSeconds = resolveTickIntervalSeconds(System.getenv(ENV_TICK_INTERVAL_SECONDS));
         Path reportsDirectory = resolveReportsDirectory(System.getenv(ENV_REPORTS_DIRECTORY));
-        String executionMode = resolveExecutionMode(System.getenv(ENV_EXECUTION_MODE));
         if (EXECUTION_MODE_KIS_PAPER.equals(executionMode)) {
-            // kis-paper never touches BINGX_BASE_URL -- KisPriceFeed is built
-            // from KIS_PAPER_BASE_URL instead, so this mode must not require
-            // a BingX-only env var just to start (a real CodeRabbit review
-            // finding: requiring it unconditionally above this branch would
-            // have made kis-paper unstartable with only KIS credentials set).
+            // No DEFAULT_SYMBOL fallback here, deliberately (a real
+            // CodeRabbit review finding): DEFAULT_SYMBOL is BTC-USDT, which
+            // is not a valid KIS KOSPI200 futures symbol -- silently
+            // defaulting to it would send a nonsensical symbol into
+            // KisAdapter/KisPreflight instead of failing fast with a clear
+            // message. kis-paper never touches BINGX_BASE_URL either --
+            // KisPriceFeed is built from KIS_PAPER_BASE_URL instead, so this
+            // mode must not require a BingX-only env var just to start.
+            String symbol = requireNonBlank(System.getenv(ENV_SYMBOL), ENV_SYMBOL);
+            Path signalPath = resolveSignalPath(System.getenv(ENV_SIGNAL_PATH), symbol);
             return forKisPaper(symbol, signalPath, tickIntervalSeconds, reportsDirectory);
         }
+        String symbol = firstNonBlank(System.getenv(ENV_SYMBOL), DEFAULT_SYMBOL);
+        Path signalPath = resolveSignalPath(System.getenv(ENV_SIGNAL_PATH), symbol);
         String bingxBaseUrl = requireNonBlank(System.getenv(ENV_BINGX_BASE_URL), ENV_BINGX_BASE_URL);
         if (EXECUTION_MODE_BINGX_VST.equals(executionMode)) {
             return forBingXVst(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
@@ -574,28 +590,45 @@ public final class PaperTradingApp {
     }
 
     /**
-     * {@code bingx-vst}/{@code kis-paper} only for an exact (case-
-     * sensitive, after trimming) match of {@link #EXECUTION_MODE_BINGX_VST}/
-     * {@link #EXECUTION_MODE_KIS_PAPER}; {@link #EXECUTION_MODE_SIMULATED}
-     * for {@code null}, blank, or any other value -- this project's
-     * standing "fail safe to the known-good default" convention (see
-     * {@link #resolveTickIntervalSeconds}'s own precedent, though that one
-     * fails loud rather than safe -- unlike a malformed tick interval, an
-     * unrecognized execution mode has an obviously-safe fallback, so
-     * silently defaulting is the right choice here specifically).
+     * {@link #EXECUTION_MODE_SIMULATED} only for {@code null} or blank
+     * (the real "unset" case, this project's standing "fail safe to the
+     * known-good default" convention); an exact (case-sensitive, after
+     * trimming) match of {@link #EXECUTION_MODE_BINGX_VST}/{@link
+     * #EXECUTION_MODE_KIS_PAPER} for those two; anything else -- including
+     * a misspelling of a real mode, e.g. {@code "kis-papr"} -- throws
+     * rather than silently falling back to {@code simulated}.
+     *
+     * <p><b>Deliberately tightened from an earlier version of this method
+     * that defaulted every unrecognized value to {@code simulated}</b> (a
+     * real CodeRabbit review finding on the PR that added {@code
+     * kis-paper}): with only {@code simulated}/{@code bingx-vst} to choose
+     * between, an unrecognized value had one obviously-safe fallback. With
+     * three modes, that reasoning breaks -- a typo'd {@code kis-paper} or
+     * {@code bingx-vst} would silently start the {@code simulated}-only
+     * graph instead, which could look like a functioning deployment (no
+     * startup error) while the intended real order path never runs at
+     * all. Failing loud here matches this class's own established
+     * "unresolved calendar/preflight state trips the kill switch rather
+     * than guessing" philosophy elsewhere in this file.
      */
     static String resolveExecutionMode(String raw) {
-        if (raw == null) {
+        if (raw == null || raw.isBlank()) {
             return EXECUTION_MODE_SIMULATED;
         }
         String trimmed = raw.trim();
+        if (EXECUTION_MODE_SIMULATED.equals(trimmed)) {
+            return EXECUTION_MODE_SIMULATED;
+        }
         if (EXECUTION_MODE_BINGX_VST.equals(trimmed)) {
             return EXECUTION_MODE_BINGX_VST;
         }
         if (EXECUTION_MODE_KIS_PAPER.equals(trimmed)) {
             return EXECUTION_MODE_KIS_PAPER;
         }
-        return EXECUTION_MODE_SIMULATED;
+        throw new IllegalStateException(
+                ENV_EXECUTION_MODE + " must be '" + EXECUTION_MODE_SIMULATED + "', '" + EXECUTION_MODE_BINGX_VST
+                        + "', or '" + EXECUTION_MODE_KIS_PAPER + "' (or unset/blank, which defaults to '"
+                        + EXECUTION_MODE_SIMULATED + "') -- was '" + raw + "'");
     }
 
     /**
@@ -674,6 +707,56 @@ public final class PaperTradingApp {
      * System.getenv} into local variables only ever passed to {@link
      * KisTokenProvider}/{@link KisAdapter}'s constructors, never into a log
      * statement.
+     *
+     * <p><b>Two real, disclosed-not-fixed gaps, flagged on real CodeRabbit
+     * review of the PR that added this method -- both matter before this
+     * mode is ever pointed at anything beyond a dummy signal, neither is
+     * fixed here</b> (matching this project's own established precedent
+     * for Task 2's two similarly-deferred KIS gaps -- the missing
+     * client-order-id equivalent and {@code GUARDED_MARKET}'s missing
+     * wire-level guard, see {@code KisAdapter}'s own Javadoc -- rather than
+     * rushing a fix for R3-risk-adjacent logic under review pressure):
+     * <ol>
+     *   <li><b>{@code RiskGateway} has no KOSPI200 contract-multiplier
+     *   conversion.</b> It computes notional as plain {@code quantity ×
+     *   price}; a real KOSPI200 futures contract is worth {@code index
+     *   points × ₩250,000} (KRX's own official multiplier -- see
+     *   CLAUDE.md's "KIS/KOSPI200 venue integration, Phase 1" section).
+     *   Until that conversion exists and runs before {@code
+     *   RiskLimits.canary()}'s percentage check, the canary 2% order-
+     *   notional limit does not meaningfully bound a KIS order's real
+     *   exposure -- it is evaluated against a number that is off by the
+     *   contract multiplier. This was anticipated, not newly discovered:
+     *   CLAUDE.md's own design review already named this as required
+     *   "before the canary percentages mean anything here." It remains
+     *   unbuilt because it is real R3-risk architecture (a change to
+     *   {@code RiskGateway}'s own notional calculation, touching every
+     *   venue) that needs its own {@code Discuss} pass, not something to
+     *   improvise under review pressure on a wiring-only task. {@code
+     *   kis-paper} mode is unaffected in practice today only because it
+     *   still runs against {@code DummySignalSource} with no real
+     *   strategy connected, and real submission is separately blocked on
+     *   the account's own paper-trading credential setup -- neither of
+     *   those facts makes the gap safe to leave unresolved once either
+     *   changes.
+     *   <li><b>{@code FileSignalSource}'s delivered-marker file could
+     *   collide with {@code bingx-vst}'s if both processes were ever
+     *   pointed at the same {@code signalPath}.</b> {@link
+     *   #KIS_SUBMISSION_MARKERS_PATH} solves a different problem (durable
+     *   {@code SUBMISSION_UNKNOWN} tracking) and does not solve this one.
+     *   In practice this does not collide today: {@link #resolveSignalPath}
+     *   derives the default path from {@code symbol}, and {@code kis-paper}
+     *   trades a KOSPI200 futures symbol while {@code bingx-vst} trades
+     *   {@code BTC-USDT} -- two different default paths. It <b>would</b>
+     *   collide if an operator explicitly overrode {@code
+     *   PAPER_TRADING_SIGNAL_PATH} to the same value for both processes --
+     *   an unsupported configuration, not one either process detects or
+     *   rejects. A real fix (a venue-specific delivered-marker path,
+     *   analogous to {@link #KIS_SUBMISSION_MARKERS_PATH} above) is a
+     *   reasonable follow-up but is deliberately not built speculatively
+     *   here for a misconfiguration that requires an operator to
+     *   explicitly force two independent processes onto one signal file.
+     * </ol>
      */
     private static PaperTradingApp forKisPaper(
             String symbol, Path signalPath, long tickIntervalSeconds, Path reportsDirectory) {

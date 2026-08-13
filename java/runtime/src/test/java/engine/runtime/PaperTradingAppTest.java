@@ -633,20 +633,35 @@ class PaperTradingAppTest {
     // ---- Paper Trading Bridge Task H: execution mode + OrderExecutor-accepting constructor ----
 
     @Test
-    void resolveExecutionModeDefaultsToSimulatedForNullBlankOrUnrecognizedValues() {
+    void resolveExecutionModeDefaultsToSimulatedForNullOrBlank() {
         assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode(null));
         assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode(""));
         assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode("   "));
         assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode("simulated"));
-        assertEquals(PaperTradingApp.EXECUTION_MODE_SIMULATED, PaperTradingApp.resolveExecutionMode("garbage"));
-        assertEquals(
-                PaperTradingApp.EXECUTION_MODE_SIMULATED,
-                PaperTradingApp.resolveExecutionMode("BINGX-VST"),
-                "case-sensitive by design -- only the exact documented lowercase value opts into bingx-vst mode");
-        assertEquals(
-                PaperTradingApp.EXECUTION_MODE_SIMULATED,
-                PaperTradingApp.resolveExecutionMode("KIS-PAPER"),
-                "case-sensitive by design -- only the exact documented lowercase value opts into kis-paper mode");
+    }
+
+    /**
+     * Real CodeRabbit review finding: an earlier version of this method
+     * silently defaulted every unrecognized value to {@code simulated} --
+     * with three real modes now, a typo of {@code bingx-vst}/{@code
+     * kis-paper} would have silently started the wrong (inert) graph
+     * instead of failing fast. See {@link PaperTradingApp#resolveExecutionMode}'s
+     * own Javadoc for the full reasoning.
+     */
+    @Test
+    void resolveExecutionModeRejectsUnrecognizedValuesRatherThanDefaultingToSimulated() {
+        assertThrows(IllegalStateException.class, () -> PaperTradingApp.resolveExecutionMode("garbage"));
+        assertThrows(
+                IllegalStateException.class,
+                () -> PaperTradingApp.resolveExecutionMode("BINGX-VST"),
+                "case-sensitive by design -- only the exact documented lowercase value opts into bingx-vst mode, and"
+                        + " a case-mismatched near-miss must fail loud, not silently fall back to simulated");
+        assertThrows(
+                IllegalStateException.class,
+                () -> PaperTradingApp.resolveExecutionMode("KIS-PAPER"),
+                "case-sensitive by design -- only the exact documented lowercase value opts into kis-paper mode, and"
+                        + " a case-mismatched near-miss must fail loud, not silently fall back to simulated");
+        assertThrows(IllegalStateException.class, () -> PaperTradingApp.resolveExecutionMode("kis-papr"));
     }
 
     @Test

@@ -370,6 +370,40 @@ prerequisite for the existing canary numbers to be meaningful at all,
 which is different from, and needed regardless of, that future tier
 question.
 
+**Task 4, as actually implemented, did not build the contract-multiplier
+conversion above** — flagged explicitly here (real CodeRabbit review of
+the Task 4 PR) rather than left silently unresolved by this section's own
+"Task 2/4 must define and test" requirement quietly going unmet. Task 4's
+scope turned out to be the wiring layer only (`forKisPaper()`,
+`KisPreflight`, the `kis-paper` execution mode) — the conversion itself
+still needs its own `Discuss` pass and its own task, matching this
+project's Development Methodology's mandatory-`Discuss`-for-R3-risk rule
+rather than being improvised under review pressure on a wiring task. The
+practical consequence, stated plainly: **`RiskLimits.canary()`'s 2%
+order-notional limit does not meaningfully bound a real KIS order's
+exposure today** — it is checked against `quantity × price`, off from
+the real notional by the ₩250,000 contract multiplier. This is inert as
+of Task 4 (still `DummySignalSource`, and real submission is separately
+blocked on the account's own paper-credential setup), but must be
+resolved — as its own dedicated task, per the requirement above — before
+`kis-paper` mode is ever pointed at a real strategy signal or left
+running unattended with real (even paper-account) credentials.
+
+**A second, smaller Task 4 finding, same review**: `FileSignalSource`'s
+delivered-marker file (see Task H's own "durable, cross-restart dedup"
+design) could collide between `bingx-vst` and `kis-paper` if an operator
+ever explicitly overrode `PAPER_TRADING_SIGNAL_PATH` to the same value
+for both processes — `KIS_SUBMISSION_MARKERS_PATH` (Task 4's own
+separate submission-marker file) solves a different problem and does not
+prevent this. Not a collision in practice today: `resolveSignalPath`'s
+default path is derived from `symbol`, and the two
+modes trade different symbols (a KOSPI200 futures contract vs.
+`BTC-USDT`), so their default paths never match. Deliberately not
+fixed speculatively for a misconfiguration that requires an operator to
+force two independent processes onto one signal file by hand; a
+venue-specific delivered-marker path is a reasonable real follow-up if
+this ever becomes a real operational pattern.
+
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
 — see the futures-only narrowing above); the KOSPI200 futures night
