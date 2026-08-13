@@ -301,6 +301,34 @@ Key/Secret generation (not yet done as of this writing) — everything
 else in Task 4 (building/testing against a fake server) is not blocked
 by it.
 
+**Two more real gaps found while actually implementing `KisAdapter`
+(Task 2), explicitly deferred to Task 4 rather than fixed in Task 2 —
+Task 2 has zero live wiring and cannot itself exercise either path, but
+Task 4 must resolve both before real submission ever happens**: (a)
+**ambiguous-submission recovery has no real answer for KIS.** KIS's
+order request carries no client-supplied idempotency key at all (unlike
+BingX's own `clientOrderID`, confirmed via this project's real VST
+verification to give BingX genuine server-side duplicate-submission
+rejection) — if a network failure happens after KIS genuinely accepts an
+order but before the response is observed, the resulting `Order` is
+`SUBMITTED` with no `exchangeOrderId`, and `KisAdapter.queryOrder`
+cannot resolve it (it searches by `exchangeOrderId`, which doesn't exist
+yet in this scenario). Before KIS is wired into a live-submitting
+`ExchangeOrderExecutor`, a real resolution path must exist — matching a
+pending order against `inquire-ccnl`'s result set by symbol/side/
+quantity/time rather than by ID, or an explicit manual-confirmation step
+— and must never be "just resubmit." (b) **`GUARDED_MARKET` has no
+wire-level price guard for KIS, same as BingX already has none.** When
+`limitPrice()` is null, `KisAdapter` sends a real, unprotected market
+order (`UNIT_PRICE="0"`) — mirroring `BingXAdapter`'s own already-shipped
+`"MARKET"` mapping exactly, so this is a pre-existing characteristic of
+this project's order-guard design as a whole, not something Task 2
+introduces fresh. It is exactly what the Live Entry Criteria's own
+"market-order guard enabled" line exists to gate — that verification has
+not happened for either adapter yet and needs its own dedicated
+`Discuss` before `GUARDED_MARKET` is ever used against a real account
+through either adapter, not just KIS's.
+
 `RiskLimits.canary()`'s existing percentage-based limits are reused
 unmodified for this phase, but **only after a real contract-multiplier
 conversion is added — not as-is** (tightened on real CodeRabbit review,
