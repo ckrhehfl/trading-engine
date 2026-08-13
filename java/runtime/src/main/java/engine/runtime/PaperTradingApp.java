@@ -466,7 +466,11 @@ public final class PaperTradingApp {
      * unlike BTC's 24/7 market). Always builds {@link FileSignalSource}
      * with a persisted delivered-marker file, same reasoning as the
      * {@code bingx-vst} overload above -- a real venue, where a redelivered
-     * signal means a real second order.
+     * signal means a real second order -- but under a KIS-specific
+     * filename ({@code kis-delivered.marker}, not the shared {@code
+     * delivered.marker} the {@code bingx-vst} overload uses) so the two
+     * venues' delivery state can never collide even if ever pointed at the
+     * same {@code signalPath} (a real CodeRabbit review finding).
      */
     PaperTradingApp(
             String symbol,
@@ -497,7 +501,16 @@ public final class PaperTradingApp {
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
-        FileSignalSource signalSource = new FileSignalSource(signalPath, signalPath.resolveSibling("delivered.marker"));
+        // "kis-delivered.marker", not the shared "delivered.marker" name
+        // the bingx-vst overload uses below -- a real CodeRabbit review
+        // finding: if an operator ever pointed both processes at the same
+        // signalPath, a shared marker filename would let one venue's
+        // delivery silently suppress the other's. Distinct filenames close
+        // this for free (KIS_SUBMISSION_MARKERS_PATH, a few lines below in
+        // forKisPaper, solves a different problem and was never meant to
+        // cover this one -- see this constructor's own Javadoc).
+        FileSignalSource signalSource =
+                new FileSignalSource(signalPath, signalPath.resolveSibling("kis-delivered.marker"));
         this.killSwitch = new KillSwitch();
 
         this.tradingLoop =
@@ -709,28 +722,40 @@ public final class PaperTradingApp {
      * statement.
      *
      * <p><b>Two real, disclosed-not-fixed gaps, flagged on real CodeRabbit
-     * review of the PR that added this method -- both matter before this
-     * mode is ever pointed at anything beyond a dummy signal, neither is
-     * fixed here</b> (matching this project's own established precedent
-     * for Task 2's two similarly-deferred KIS gaps -- the missing
-     * client-order-id equivalent and {@code GUARDED_MARKET}'s missing
-     * wire-level guard, see {@code KisAdapter}'s own Javadoc -- rather than
-     * rushing a fix for R3-risk-adjacent logic under review pressure):
+     * review of the PR that added this method. One is fixed here (see
+     * below); the other is real R3-risk architecture that needs its own
+     * {@code Discuss} pass and is disclosed, not improvised under review
+     * pressure on a wiring-only task -- matching this project's own
+     * established precedent for Task 2's two similarly-deferred KIS gaps
+     * (the missing client-order-id equivalent and {@code GUARDED_MARKET}'s
+     * missing wire-level guard, see {@code KisAdapter}'s own Javadoc):
      * <ol>
-     *   <li><b>{@code RiskGateway} has no KOSPI200 contract-multiplier
-     *   conversion.</b> It computes notional as plain {@code quantity ×
-     *   price}; a real KOSPI200 futures contract is worth {@code index
-     *   points × ₩250,000} (KRX's own official multiplier -- see
-     *   CLAUDE.md's "KIS/KOSPI200 venue integration, Phase 1" section).
-     *   Until that conversion exists and runs before {@code
-     *   RiskLimits.canary()}'s percentage check, the canary 2% order-
-     *   notional limit does not meaningfully bound a KIS order's real
-     *   exposure -- it is evaluated against a number that is off by the
-     *   contract multiplier. This was anticipated, not newly discovered:
-     *   CLAUDE.md's own design review already named this as required
-     *   "before the canary percentages mean anything here." It remains
-     *   unbuilt because it is real R3-risk architecture (a change to
-     *   {@code RiskGateway}'s own notional calculation, touching every
+     *   <li><b>Fixed: {@code FileSignalSource}'s delivered-marker file
+     *   could have collided with {@code bingx-vst}'s</b> if both processes
+     *   were ever pointed at the same {@code signalPath} -- {@link
+     *   #KIS_SUBMISSION_MARKERS_PATH} solves a different problem (durable
+     *   {@code SUBMISSION_UNKNOWN} tracking), not this one. The {@link
+     *   PriceFeed}-accepting constructor above now uses a KIS-specific
+     *   marker filename ({@code kis-delivered.marker}) instead of the
+     *   shared {@code delivered.marker} name, closing this for free even
+     *   though the two venues' default {@code signalPath}s (derived from
+     *   {@code symbol} via {@link #resolveSignalPath}) never actually
+     *   collide in practice today ({@code kis-paper} trades a KOSPI200
+     *   futures symbol, {@code bingx-vst} trades {@code BTC-USDT}).
+     *   <li><b>Still open: {@code RiskGateway} has no KOSPI200
+     *   contract-multiplier conversion.</b> It computes notional as plain
+     *   {@code quantity × price}; a real KOSPI200 futures contract is
+     *   worth {@code index points × ₩250,000} (KRX's own official
+     *   multiplier -- see CLAUDE.md's "KIS/KOSPI200 venue integration,
+     *   Phase 1" section). Until that conversion exists and runs before
+     *   {@code RiskLimits.canary()}'s percentage check, the canary 2%
+     *   order-notional limit does not meaningfully bound a KIS order's
+     *   real exposure -- it is evaluated against a number that is off by
+     *   the contract multiplier. This was anticipated, not newly
+     *   discovered: CLAUDE.md's own design review already named this as
+     *   required "before the canary percentages mean anything here." It
+     *   remains unbuilt because it is real R3-risk architecture (a change
+     *   to {@code RiskGateway}'s own notional calculation, touching every
      *   venue) that needs its own {@code Discuss} pass, not something to
      *   improvise under review pressure on a wiring-only task. {@code
      *   kis-paper} mode is unaffected in practice today only because it
@@ -739,23 +764,6 @@ public final class PaperTradingApp {
      *   the account's own paper-trading credential setup -- neither of
      *   those facts makes the gap safe to leave unresolved once either
      *   changes.
-     *   <li><b>{@code FileSignalSource}'s delivered-marker file could
-     *   collide with {@code bingx-vst}'s if both processes were ever
-     *   pointed at the same {@code signalPath}.</b> {@link
-     *   #KIS_SUBMISSION_MARKERS_PATH} solves a different problem (durable
-     *   {@code SUBMISSION_UNKNOWN} tracking) and does not solve this one.
-     *   In practice this does not collide today: {@link #resolveSignalPath}
-     *   derives the default path from {@code symbol}, and {@code kis-paper}
-     *   trades a KOSPI200 futures symbol while {@code bingx-vst} trades
-     *   {@code BTC-USDT} -- two different default paths. It <b>would</b>
-     *   collide if an operator explicitly overrode {@code
-     *   PAPER_TRADING_SIGNAL_PATH} to the same value for both processes --
-     *   an unsupported configuration, not one either process detects or
-     *   rejects. A real fix (a venue-specific delivered-marker path,
-     *   analogous to {@link #KIS_SUBMISSION_MARKERS_PATH} above) is a
-     *   reasonable follow-up but is deliberately not built speculatively
-     *   here for a misconfiguration that requires an operator to
-     *   explicitly force two independent processes onto one signal file.
      * </ol>
      */
     private static PaperTradingApp forKisPaper(

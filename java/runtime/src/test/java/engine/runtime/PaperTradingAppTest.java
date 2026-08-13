@@ -861,10 +861,17 @@ class PaperTradingAppTest {
      * Same guarantee as {@link #orderExecutorAcceptingConstructorPersistsTheDeliveredSignalMarkerFile}
      * above, for the {@code PriceFeed}-accepting constructor -- {@code
      * kis-paper} is a real venue where a redelivered signal means a real
-     * second order, same reasoning as {@code bingx-vst}.
+     * second order, same reasoning as {@code bingx-vst}. Also proves the
+     * real CodeRabbit review fix this constructor now carries: the marker
+     * filename is KIS-specific ({@code kis-delivered.marker}), not the
+     * shared {@code delivered.marker} name the {@code bingx-vst} overload
+     * uses -- checking that the shared name was NOT also written is what
+     * actually proves the two venues' delivery state can never collide,
+     * not just that some marker file exists.
      */
     @Test
-    void priceFeedAcceptingConstructorPersistsTheDeliveredSignalMarkerFile(@TempDir Path tempDir) throws IOException {
+    void priceFeedAcceptingConstructorPersistsAKisSpecificDeliveredSignalMarkerFile(@TempDir Path tempDir)
+            throws IOException {
         Path signalPath = tempDir.resolve("latest.json");
         OrderIntent intent = new OrderIntent(
                 UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1"), null, "1d",
@@ -878,9 +885,14 @@ class PaperTradingAppTest {
 
         app.runTick();
 
-        Path markerFile = signalPath.resolveSibling("delivered.marker");
-        assertTrue(Files.exists(markerFile), "the persisted delivered-marker file must be written");
-        assertEquals(intent.intentId().toString(), Files.readString(markerFile));
+        Path kisMarkerFile = signalPath.resolveSibling("kis-delivered.marker");
+        assertTrue(Files.exists(kisMarkerFile), "the KIS-specific delivered-marker file must be written");
+        assertEquals(intent.intentId().toString(), Files.readString(kisMarkerFile));
+        Path sharedBingxStyleMarkerFile = signalPath.resolveSibling("delivered.marker");
+        assertFalse(
+                Files.exists(sharedBingxStyleMarkerFile),
+                "must not also write the bingx-vst-style shared marker name -- that would defeat the whole point of"
+                        + " a venue-specific filename");
     }
 
     /**

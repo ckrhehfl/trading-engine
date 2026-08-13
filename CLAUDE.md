@@ -389,20 +389,22 @@ resolved — as its own dedicated task, per the requirement above — before
 `kis-paper` mode is ever pointed at a real strategy signal or left
 running unattended with real (even paper-account) credentials.
 
-**A second, smaller Task 4 finding, same review**: `FileSignalSource`'s
-delivered-marker file (see Task H's own "durable, cross-restart dedup"
-design) could collide between `bingx-vst` and `kis-paper` if an operator
-ever explicitly overrode `PAPER_TRADING_SIGNAL_PATH` to the same value
-for both processes — `KIS_SUBMISSION_MARKERS_PATH` (Task 4's own
-separate submission-marker file) solves a different problem and does not
-prevent this. Not a collision in practice today: `resolveSignalPath`'s
-default path is derived from `symbol`, and the two
-modes trade different symbols (a KOSPI200 futures contract vs.
-`BTC-USDT`), so their default paths never match. Deliberately not
-fixed speculatively for a misconfiguration that requires an operator to
-force two independent processes onto one signal file by hand; a
-venue-specific delivered-marker path is a reasonable real follow-up if
-this ever becomes a real operational pattern.
+**A second, smaller Task 4 finding, same review, now fixed**:
+`FileSignalSource`'s delivered-marker file (see Task H's own "durable,
+cross-restart dedup" design) could have collided between `bingx-vst` and
+`kis-paper` if an operator ever explicitly overrode
+`PAPER_TRADING_SIGNAL_PATH` to the same value for both processes —
+`KIS_SUBMISSION_MARKERS_PATH` (Task 4's own separate submission-marker
+file) solves a different problem and never prevented this. Not a
+collision in practice even before this fix — `resolveSignalPath`'s
+default path is derived from `symbol`, and the two modes trade different
+symbols (a KOSPI200 futures contract vs. `BTC-USDT`), so their default
+paths never matched — but cheap enough to close outright rather than
+merely disclose: the `kis-paper` constructor now writes to a
+KIS-specific marker filename (`kis-delivered.marker`), not the shared
+`delivered.marker` name the `bingx-vst` path uses, so the two venues'
+delivery state can never collide even under a forced same-path
+misconfiguration.
 
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
