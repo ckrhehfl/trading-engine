@@ -643,12 +643,22 @@ class PaperTradingAppTest {
                 PaperTradingApp.EXECUTION_MODE_SIMULATED,
                 PaperTradingApp.resolveExecutionMode("BINGX-VST"),
                 "case-sensitive by design -- only the exact documented lowercase value opts into bingx-vst mode");
+        assertEquals(
+                PaperTradingApp.EXECUTION_MODE_SIMULATED,
+                PaperTradingApp.resolveExecutionMode("KIS-PAPER"),
+                "case-sensitive by design -- only the exact documented lowercase value opts into kis-paper mode");
     }
 
     @Test
     void resolveExecutionModeReturnsBingxVstOnlyForAnExactMatch() {
         assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("bingx-vst"));
         assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("  bingx-vst  "));
+    }
+
+    @Test
+    void resolveExecutionModeReturnsKisPaperOnlyForAnExactMatch() {
+        assertEquals(PaperTradingApp.EXECUTION_MODE_KIS_PAPER, PaperTradingApp.resolveExecutionMode("kis-paper"));
+        assertEquals(PaperTradingApp.EXECUTION_MODE_KIS_PAPER, PaperTradingApp.resolveExecutionMode("  kis-paper  "));
     }
 
     /**
@@ -751,5 +761,159 @@ class PaperTradingAppTest {
             assertTrue(Files.exists(markerFile), "the persisted delivered-marker file must be written");
             assertEquals(intent.intentId().toString(), Files.readString(markerFile));
         }
+    }
+
+    // ---- KIS/KOSPI200 Phase 1 Task 4: PriceFeed-accepting constructor + TradingCalendar gating ----
+
+    /**
+     * Same reflection technique as {@link #bingxVstBaseUrlIsHardcodedToTheDocumentedVstHost}
+     * above, for the analogous KIS constant -- see that test's own Javadoc
+     * for why reflection is the only access point by design.
+     */
+    @Test
+    void kisPaperBaseUrlIsHardcodedToTheDocumentedPaperHost() throws Exception {
+        Field field = PaperTradingApp.class.getDeclaredField("KIS_PAPER_BASE_URL");
+        field.setAccessible(true);
+        assertEquals("https://openapivts.koreainvestment.com:29443", field.get(null));
+    }
+
+    @Test
+    void priceFeedAcceptingConstructorRejectsNullArguments(@TempDir Path tempDir) {
+        Path signalPath = tempDir.resolve("latest.json");
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        PaperBroker executor = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+
+        assertThrows(
+                NullPointerException.class,
+                () -> new PaperTradingApp(
+                        null, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                        executor));
+        assertThrows(
+                NullPointerException.class,
+                () -> new PaperTradingApp(
+                        SYMBOL, null, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                        executor));
+        assertThrows(
+                NullPointerException.class,
+                () -> new PaperTradingApp(
+                        SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), null,
+                        executor));
+        assertThrows(
+                NullPointerException.class,
+                () -> new PaperTradingApp(
+                        SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                        null));
+    }
+
+    /**
+     * Mirrors {@link #constructingWithAnExplicitOrderExecutorUsesThatExactInstanceInsteadOfBuildingAPaperBroker}
+     * above, for the {@code PriceFeed}-accepting constructor: proves both
+     * the injected {@link OrderExecutor} and the injected {@link
+     * TradingCalendar} are the exact instances used (reference identity for
+     * the executor via {@code assertSame}; for the calendar, via its own
+     * call-count -- {@link TradingCalendar} exposes no accessor on {@link
+     * PaperTradingApp} to compare identity against directly, so observing
+     * that it was actually consulted is the real proof it's wired in, not
+     * ignored).
+     */
+    @Test
+    void constructingWithPriceFeedConstructorUsesTheInjectedOrderExecutorAndTradingCalendar(@TempDir Path tempDir)
+            throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        PaperBroker injectedExecutor = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                injectedExecutor);
+
+        app.runTick();
+
+        assertSame(
+                injectedExecutor, app.orderExecutor(),
+                "the exact injected OrderExecutor instance must be used, not a freshly-built PaperBroker");
+        assertTrue(calendar.callCount() > 0, "runTick() must consult the injected TradingCalendar");
+        assertNull(app.tradingLoop().lastError());
+    }
+
+    /**
+     * Same guarantee as {@link #orderExecutorAcceptingConstructorPersistsTheDeliveredSignalMarkerFile}
+     * above, for the {@code PriceFeed}-accepting constructor -- {@code
+     * kis-paper} is a real venue where a redelivered signal means a real
+     * second order, same reasoning as {@code bingx-vst}.
+     */
+    @Test
+    void priceFeedAcceptingConstructorPersistsTheDeliveredSignalMarkerFile(@TempDir Path tempDir) throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(),
+                new FakeTradingCalendar(true), new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
+
+        app.runTick();
+
+        Path markerFile = signalPath.resolveSibling("delivered.marker");
+        assertTrue(Files.exists(markerFile), "the persisted delivered-marker file must be written");
+        assertEquals(intent.intentId().toString(), Files.readString(markerFile));
+    }
+
+    /**
+     * The real point of threading {@link TradingCalendar} through {@link
+     * PaperTradingApp#runTick()} (see that method's own Javadoc): when the
+     * calendar reports closed, {@link TradingLoop#tick()} must never run at
+     * all -- proven here via {@link TradingLoop#lastTickAt()} staying
+     * {@code null} (it is only ever set inside {@code tick()}'s own
+     * {@code finally} block, so a null value after a real {@code runTick()}
+     * call is direct proof {@code tick()} itself was never entered, not
+     * merely that it produced no observable side effect). {@code
+     * beforeTick()}/{@code afterTick()}/{@link PaperTradingApp#reconcile()}
+     * must still run regardless -- proven by a clean {@link
+     * ReconciliationReport} being recorded even though no tick ran.
+     */
+    @Test
+    void runTickSkipsTradingLoopTickWhenTradingCalendarReportsClosedButStillRunsSurroundingBookkeeping(
+            @TempDir Path tempDir) throws IOException {
+        Path signalPath = tempDir.resolve("latest.json"); // never written -- irrelevant, tick() must not even look
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(false);
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
+
+        app.runTick();
+
+        assertNull(app.tradingLoop().lastTickAt(), "TradingLoop.tick() must never run while the market is closed");
+        assertTrue(calendar.callCount() > 0, "the calendar must actually have been consulted");
+        assertNotNull(
+                app.lastReconciliationReport(), "reconcile() must still run unconditionally after a skipped tick");
+        assertTrue(app.lastReconciliationReport().isClean());
+    }
+
+    /** Complement to the skip test above: an open calendar must let the tick run normally. */
+    @Test
+    void runTickRunsTradingLoopTickWhenTradingCalendarReportsOpen(@TempDir Path tempDir) throws IOException {
+        Path signalPath = tempDir.resolve("latest.json"); // never written -- an empty tick is enough to prove entry
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
+
+        app.runTick();
+
+        assertNotNull(app.tradingLoop().lastTickAt(), "TradingLoop.tick() must run while the market is open");
     }
 }

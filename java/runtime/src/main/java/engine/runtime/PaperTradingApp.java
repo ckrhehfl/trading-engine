@@ -1,6 +1,8 @@
 package engine.runtime;
 
 import engine.exchange.BingXAdapter;
+import engine.exchange.KisAdapter;
+import engine.exchange.KisTokenProvider;
 import engine.execution.ExchangeOrderExecutor;
 import engine.execution.OrderExecutor;
 import engine.execution.PaperBroker;
@@ -146,6 +148,8 @@ public final class PaperTradingApp {
 
     static final String EXECUTION_MODE_SIMULATED = "simulated";
     static final String EXECUTION_MODE_BINGX_VST = "bingx-vst";
+    /** See class Javadoc, "Execution mode -- kis-paper". */
+    static final String EXECUTION_MODE_KIS_PAPER = "kis-paper";
 
     /**
      * Required only in {@code bingx-vst} mode -- the same credentials
@@ -170,14 +174,68 @@ public final class PaperTradingApp {
      */
     private static final String BINGX_VST_BASE_URL = "https://open-api-vst.bingx.com";
 
+    /**
+     * Required only in {@code kis-paper} mode -- never logged anywhere in
+     * this class, same discipline as the BingX credentials above. {@code
+     * KIS_ACCOUNT_NO} is KIS's 8-digit {@code CANO}; {@code
+     * KIS_ACCOUNT_PRODUCT_CODE} is optional, defaulting to {@code "03"}
+     * (KIS's own real source uses this for a futures/options account --
+     * see {@code KisAdapter}'s own Javadoc).
+     */
+    static final String ENV_KIS_APP_KEY = "KIS_APP_KEY";
+
+    static final String ENV_KIS_APP_SECRET = "KIS_APP_SECRET";
+    static final String ENV_KIS_ACCOUNT_NO = "KIS_ACCOUNT_NO";
+    static final String ENV_KIS_ACCOUNT_PRODUCT_CODE = "KIS_ACCOUNT_PRODUCT_CODE";
+    static final String DEFAULT_KIS_ACCOUNT_PRODUCT_CODE = "03";
+
+    /**
+     * The KIS paper-trading (모의투자) host, as a Java constant -- <b>not</b>
+     * an environment variable, same "no configuration surface" reasoning
+     * and same {@code private} visibility as {@link #BINGX_VST_BASE_URL}
+     * above (see that field's own Javadoc). Used for both {@link
+     * KisTokenProvider}'s token endpoint and every {@link
+     * engine.exchange.KisAdapter}/{@code KisPriceFeed} call in {@code
+     * kis-paper} mode -- KIS's real API serves both from the same host,
+     * unlike BingX's separate price-feed-vs-order-execution split.
+     */
+    private static final String KIS_PAPER_BASE_URL = "https://openapivts.koreainvestment.com:29443";
+
     /** {@code var/live/} convention, matching {@code signals}/{@code reports/daily} -- see class Javadoc. */
     private static final Path SUBMISSION_MARKERS_PATH = Path.of("var", "live", "submission_markers.json");
+
+    /**
+     * A separate marker-file path from {@link #SUBMISSION_MARKERS_PATH}
+     * above -- deliberately, not an oversight: {@code bingx-vst} and {@code
+     * kis-paper} run as two independent processes (see class Javadoc,
+     * "Execution mode"), and both submit live orders through the same
+     * {@code ExchangeOrderExecutor}/{@code SubmissionMarkerStore} machinery.
+     * Sharing one marker file between them would let one venue's markers
+     * collide with the other's, corrupting both processes' {@code
+     * SUBMISSION_UNKNOWN} recovery state. {@link #SUBMISSION_MARKERS_PATH}
+     * itself is left untouched (not renamed/parameterized) so the
+     * already-running {@code bingx-vst} process's behavior is completely
+     * unaffected by this task.
+     */
+    private static final Path KIS_SUBMISSION_MARKERS_PATH = Path.of("var", "live", "kis_submission_markers.json");
 
     private final TradingLoop tradingLoop;
     private final DailyReportGenerator dailyReportGenerator;
     private final OrderStore orderStore;
     private final OrderExecutor orderExecutor;
     private final KillSwitch killSwitch;
+    private final Clock clock;
+    /**
+     * Every constructor below except the new KIS-specific one (see {@link
+     * #PaperTradingApp(String, PriceFeed, Path, long, Path, Clock,
+     * TradingCalendar, OrderExecutor)}) hardcodes this to {@link
+     * AlwaysOpenTradingCalendar} internally, not as a settable parameter --
+     * this is what keeps {@code simulated}/{@code bingx-vst} mode provably
+     * unaffected by this field's introduction (see CLAUDE.md's KIS/KOSPI200
+     * Phase 1 design, Task 3/4): there is no code path by which either of
+     * those modes could ever end up with a different calendar.
+     */
+    private final TradingCalendar tradingCalendar;
     private final long tickIntervalSeconds;
     private final Duration gracefulShutdownTimeout;
     private final Duration forcedShutdownTimeout;
@@ -293,6 +351,8 @@ public final class PaperTradingApp {
         this.tickIntervalSeconds = tickIntervalSeconds;
         this.gracefulShutdownTimeout = gracefulShutdownTimeout;
         this.forcedShutdownTimeout = forcedShutdownTimeout;
+        this.clock = clock;
+        this.tradingCalendar = new AlwaysOpenTradingCalendar();
 
         RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
         this.orderStore = new OrderStore();
@@ -365,6 +425,8 @@ public final class PaperTradingApp {
         this.tickIntervalSeconds = tickIntervalSeconds;
         this.gracefulShutdownTimeout = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT;
         this.forcedShutdownTimeout = DEFAULT_FORCED_SHUTDOWN_TIMEOUT;
+        this.clock = clock;
+        this.tradingCalendar = new AlwaysOpenTradingCalendar();
 
         RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
         this.orderStore = new OrderStore();
@@ -388,6 +450,70 @@ public final class PaperTradingApp {
                 tickIntervalSeconds,
                 reportsDirectory,
                 orderExecutor.getClass().getSimpleName());
+    }
+
+    /**
+     * KIS-specific overload (package-private -- what {@link #forKisPaper}
+     * uses, same "not part of this class's real public API" status as the
+     * other package-private overloads above). Takes a {@link PriceFeed}
+     * directly instead of a {@code bingxBaseUrl} string -- the existing
+     * {@code OrderExecutor}-accepting overload above always builds a {@link
+     * BingXPriceFeed} internally, which is wrong for this venue ({@code
+     * kis-paper} needs {@code engine.runtime.KisPriceFeed} instead) -- and
+     * a real {@link TradingCalendar} instead of always defaulting to {@link
+     * AlwaysOpenTradingCalendar} (see CLAUDE.md's KIS/KOSPI200 Phase 1
+     * design, Task 3/4: KOSPI200 futures has real fixed trading hours,
+     * unlike BTC's 24/7 market). Always builds {@link FileSignalSource}
+     * with a persisted delivered-marker file, same reasoning as the
+     * {@code bingx-vst} overload above -- a real venue, where a redelivered
+     * signal means a real second order.
+     */
+    PaperTradingApp(
+            String symbol,
+            PriceFeed priceFeed,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock,
+            TradingCalendar tradingCalendar,
+            OrderExecutor orderExecutor) {
+        Objects.requireNonNull(symbol, "symbol is required");
+        Objects.requireNonNull(priceFeed, "priceFeed is required");
+        Objects.requireNonNull(signalPath, "signalPath is required");
+        Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
+        Objects.requireNonNull(clock, "clock is required");
+        Objects.requireNonNull(tradingCalendar, "tradingCalendar is required");
+        Objects.requireNonNull(orderExecutor, "orderExecutor is required");
+        if (tickIntervalSeconds <= 0) {
+            throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
+        }
+        this.tickIntervalSeconds = tickIntervalSeconds;
+        this.gracefulShutdownTimeout = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT;
+        this.forcedShutdownTimeout = DEFAULT_FORCED_SHUTDOWN_TIMEOUT;
+        this.clock = clock;
+        this.tradingCalendar = tradingCalendar;
+
+        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        this.orderStore = new OrderStore();
+        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
+        this.orderExecutor = orderExecutor;
+        FileSignalSource signalSource = new FileSignalSource(signalPath, signalPath.resolveSibling("delivered.marker"));
+        this.killSwitch = new KillSwitch();
+
+        this.tradingLoop =
+                new TradingLoop(orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol);
+        this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
+        this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
+
+        log.info(
+                "PaperTradingApp constructed: symbol={} signalPath={} tickIntervalSeconds={} reportsDirectory={}"
+                        + " riskTier=canary orderExecutor={} tradingCalendar={}",
+                symbol,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                orderExecutor.getClass().getSimpleName(),
+                tradingCalendar.getClass().getSimpleName());
     }
 
     /**
@@ -434,23 +560,33 @@ public final class PaperTradingApp {
         if (EXECUTION_MODE_BINGX_VST.equals(executionMode)) {
             return forBingXVst(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
         }
+        if (EXECUTION_MODE_KIS_PAPER.equals(executionMode)) {
+            return forKisPaper(symbol, signalPath, tickIntervalSeconds, reportsDirectory);
+        }
         return new PaperTradingApp(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
     }
 
     /**
-     * {@code bingx-vst} only for an exact (case-sensitive, after trimming)
-     * match of {@link #EXECUTION_MODE_BINGX_VST}; {@link
-     * #EXECUTION_MODE_SIMULATED} for {@code null}, blank, or any other
-     * value -- this project's standing "fail safe to the known-good
-     * default" convention (see {@link #resolveTickIntervalSeconds}'s own
-     * precedent, though that one fails loud rather than safe -- unlike a
-     * malformed tick interval, an unrecognized execution mode has an
-     * obviously-safe fallback, so silently defaulting is the right choice
-     * here specifically).
+     * {@code bingx-vst}/{@code kis-paper} only for an exact (case-
+     * sensitive, after trimming) match of {@link #EXECUTION_MODE_BINGX_VST}/
+     * {@link #EXECUTION_MODE_KIS_PAPER}; {@link #EXECUTION_MODE_SIMULATED}
+     * for {@code null}, blank, or any other value -- this project's
+     * standing "fail safe to the known-good default" convention (see
+     * {@link #resolveTickIntervalSeconds}'s own precedent, though that one
+     * fails loud rather than safe -- unlike a malformed tick interval, an
+     * unrecognized execution mode has an obviously-safe fallback, so
+     * silently defaulting is the right choice here specifically).
      */
     static String resolveExecutionMode(String raw) {
-        if (raw != null && EXECUTION_MODE_BINGX_VST.equals(raw.trim())) {
+        if (raw == null) {
+            return EXECUTION_MODE_SIMULATED;
+        }
+        String trimmed = raw.trim();
+        if (EXECUTION_MODE_BINGX_VST.equals(trimmed)) {
             return EXECUTION_MODE_BINGX_VST;
+        }
+        if (EXECUTION_MODE_KIS_PAPER.equals(trimmed)) {
+            return EXECUTION_MODE_KIS_PAPER;
         }
         return EXECUTION_MODE_SIMULATED;
     }
@@ -507,6 +643,76 @@ public final class PaperTradingApp {
                 symbol,
                 BINGX_VST_BASE_URL,
                 preflight.balance().asset());
+        return app;
+    }
+
+    /**
+     * Builds the real {@code kis-paper}-mode graph -- mirrors {@link
+     * #forBingXVst}'s shape (real adapter -> real preflight -> submission-
+     * marker resolution -> {@link ExchangeOrderExecutor} -> construct ->
+     * trip kill switch if needed -> log without credentials), not its
+     * specific logic (see {@link KisPreflight}'s own Javadoc for why it
+     * can't mirror {@link VstPreflight}'s asset-name gate). A real {@link
+     * KisAdapter} and {@link KisPriceFeed} share one {@link
+     * KisTokenProvider} (see {@code KisPriceFeed}'s own Javadoc for why
+     * they can't be the same class), both pointed at the hardcoded {@link
+     * #KIS_PAPER_BASE_URL} constant -- never {@code bingxBaseUrl}, and
+     * there is no environment variable, argument, or other configuration
+     * surface in this class that can route this path anywhere else (same
+     * guarantee as {@link #forBingXVst}). Uses the real {@link
+     * KrxMarketCalendar} (not {@link AlwaysOpenTradingCalendar}) so {@link
+     * #runTick()} only drives {@link TradingLoop#tick()} during KOSPI200's
+     * real trading hours. Never logs {@code appKey}/{@code appSecret}/
+     * {@code accountNo} -- all three are read directly from {@code
+     * System.getenv} into local variables only ever passed to {@link
+     * KisTokenProvider}/{@link KisAdapter}'s constructors, never into a log
+     * statement.
+     */
+    private static PaperTradingApp forKisPaper(
+            String symbol, Path signalPath, long tickIntervalSeconds, Path reportsDirectory) {
+        String appKey = requireNonBlank(System.getenv(ENV_KIS_APP_KEY), ENV_KIS_APP_KEY);
+        String appSecret = requireNonBlank(System.getenv(ENV_KIS_APP_SECRET), ENV_KIS_APP_SECRET);
+        String accountNo = requireNonBlank(System.getenv(ENV_KIS_ACCOUNT_NO), ENV_KIS_ACCOUNT_NO);
+        String accountProductCode =
+                firstNonBlank(System.getenv(ENV_KIS_ACCOUNT_PRODUCT_CODE), DEFAULT_KIS_ACCOUNT_PRODUCT_CODE);
+
+        KisTokenProvider tokenProvider = new KisTokenProvider(appKey, appSecret, KIS_PAPER_BASE_URL);
+        KisAdapter adapter = new KisAdapter(tokenProvider, accountNo, accountProductCode, KIS_PAPER_BASE_URL);
+        KisPriceFeed priceFeed = new KisPriceFeed(tokenProvider, KIS_PAPER_BASE_URL);
+
+        KisPreflight.Result preflight = KisPreflight.run(adapter);
+
+        SubmissionMarkerStore markerStore = new SubmissionMarkerStore(KIS_SUBMISSION_MARKERS_PATH);
+        SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
+        boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
+
+        OrderExecutor orderExecutor = new ExchangeOrderExecutor(
+                adapter, FEE_BPS, new MarkerRecordingSubmissionListener(markerStore));
+
+        PaperTradingApp app = new PaperTradingApp(
+                symbol,
+                priceFeed,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                Clock.systemUTC(),
+                new KrxMarketCalendar(),
+                orderExecutor);
+
+        if (preflight.killSwitchShouldStartTripped() || unresolvedMarkers) {
+            app.killSwitch.trip();
+            log.error(
+                    "PaperTradingApp starting in kis-paper mode with the kill switch already TRIPPED"
+                            + " (preflightFoundNonZeroPosition={}, unresolvedSubmissionMarkersRequiringReview={})"
+                            + " -- a deliberate human reset is required before any new signal is submitted.",
+                    preflight.killSwitchShouldStartTripped(),
+                    unresolvedMarkers);
+        }
+        log.info(
+                "PaperTradingApp constructed in kis-paper mode: symbol={} kisPaperBaseUrl={} balance={}",
+                symbol,
+                KIS_PAPER_BASE_URL,
+                preflight.balance().balance());
         return app;
     }
 
@@ -589,21 +795,37 @@ public final class PaperTradingApp {
      * check, then the trading tick, then day-accumulator update), reused
      * by both the real scheduler ({@link #start()}) and tests/manual-run
      * harnesses that want a full cycle without waiting on the scheduler.
+     *
+     * <p><b>{@link TradingLoop#tick()} itself is gated on {@link
+     * #tradingCalendar}</b> (added for {@code kis-paper} mode -- see
+     * CLAUDE.md's KIS/KOSPI200 Phase 1 design, Task 3/4): {@code
+     * simulated}/{@code bingx-vst} always use {@link
+     * AlwaysOpenTradingCalendar}, so this is unconditionally {@code true}
+     * for them -- provably unaffected, not just asserted. {@code
+     * beforeTick()}/{@code afterTick()}/{@link #reconcile()} all still run
+     * regardless of whether the market is open, matching this method's own
+     * existing "regardless of the tick's own outcome" philosophy below --
+     * a closed market is a defined, expected skip, not a failure.
      */
     void runTick() {
         dailyReportGenerator.beforeTick();
-        tradingLoop.tick();
-        dailyReportGenerator.afterTick();
-        Throwable error = tradingLoop.lastError();
-        if (error != null) {
-            log.warn(
-                    "tick completed with an error: lastTickAt={} equity={} error={}",
-                    tradingLoop.lastTickAt(),
-                    tradingLoop.currentEquity(),
-                    error.toString());
+        if (tradingCalendar.isOpen(clock.instant())) {
+            tradingLoop.tick();
+            Throwable error = tradingLoop.lastError();
+            if (error != null) {
+                log.warn(
+                        "tick completed with an error: lastTickAt={} equity={} error={}",
+                        tradingLoop.lastTickAt(),
+                        tradingLoop.currentEquity(),
+                        error.toString());
+            } else {
+                log.info(
+                        "tick complete: lastTickAt={} equity={}", tradingLoop.lastTickAt(), tradingLoop.currentEquity());
+            }
         } else {
-            log.info("tick complete: lastTickAt={} equity={}", tradingLoop.lastTickAt(), tradingLoop.currentEquity());
+            log.debug("market closed per {}, skipping tick", tradingCalendar.getClass().getSimpleName());
         }
+        dailyReportGenerator.afterTick();
         // Runs regardless of the tick's own outcome above -- see class
         // Javadoc, "Internal consistency reconciliation".
         reconcile();
