@@ -254,7 +254,17 @@ lookup against a small committed static fixture — no Korean-lunar
 `Chronology` ships in the JDK and no calendar library exists in this
 repo today, so a live per-tick network call is rejected in favor of a
 fixture, sourced by hand from KRX's official calendar or exported once
-from KIS's own holiday API after real paper credentials exist), gating
+from KIS's own holiday API after real paper credentials exist). **Same
+fail-closed rule as the final-trading-day case above, stated explicitly
+for the holiday lookup itself (third CodeRabbit review pass, same PR)**:
+a date missing from the fixture, or any failure looking it up, resolves
+to **closed**, never open — an undetermined session status must never be
+treated as "market's open." `PaperTradingApp.runTick()` must not call
+`tradingLoop.tick()` (and therefore never reach `submitOrder`) for any
+date `KrxMarketCalendar` can't positively confirm as open. Tests must
+cover the undetermined-status case and a holiday boundary explicitly,
+confirming `submitOrder` is never invoked for either, not just the
+ordinary open/closed cases. This `TradingCalendar` gates
 only the `tradingLoop.tick()` call inside `PaperTradingApp.runTick()`
 (recommended: in-process, not OS/cron-level, matching this project's
 existing "the class that already owns the check gets it" pattern — a
