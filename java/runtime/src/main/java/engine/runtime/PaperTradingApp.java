@@ -721,16 +721,15 @@ public final class PaperTradingApp {
      * KisTokenProvider}/{@link KisAdapter}'s constructors, never into a log
      * statement.
      *
-     * <p><b>Three real gaps, flagged across two rounds of real CodeRabbit
-     * review of the PR that added this method.</b> One is fixed here
-     * directly; one is structurally mitigated (not solved) by an
-     * unconditional kill-switch trip below; one is disclosed and deferred
-     * as real R3-risk/core-architecture work needing its own {@code
-     * Discuss} pass -- matching this project's own established precedent
-     * for Task 2's two similarly-deferred KIS gaps (the missing
+     * <p><b>Three real gaps, flagged across three rounds of real CodeRabbit
+     * review of the PR that added this method.</b> Two are fixed directly;
+     * one is structurally mitigated (not solved) by an unconditional
+     * kill-switch trip below -- matching this project's own established
+     * precedent for Task 2's two similarly-deferred KIS gaps (the missing
      * client-order-id equivalent and {@code GUARDED_MARKET}'s missing
-     * wire-level guard, see {@code KisAdapter}'s own Javadoc) rather than
-     * improvising a fix for any of these under review pressure:
+     * wire-level guard, see {@code KisAdapter}'s own Javadoc) for the one
+     * gap that couldn't be fixed outright without real R3-risk architecture
+     * work:
      * <ol>
      *   <li><b>Fixed: {@code FileSignalSource}'s delivered-marker file
      *   could have collided with {@code bingx-vst}'s</b> if both processes
@@ -744,6 +743,27 @@ public final class PaperTradingApp {
      *   {@code symbol} via {@link #resolveSignalPath}) never actually
      *   collide in practice today ({@code kis-paper} trades a KOSPI200
      *   futures symbol, {@code bingx-vst} trades {@code BTC-USDT}).
+     *   <li><b>Fixed: {@link #runTick()}'s {@link TradingCalendar} gate
+     *   used to skip {@code OrderExecutor.pollFills} along with everything
+     *   else in {@link TradingLoop#tick()} while the market was closed.</b>
+     *   A real fill, cancel, or expiry at the exchange right at/after
+     *   close would not have been reflected in this process's own {@code
+     *   OrderStore}/{@code OrderExecutor} state until the market reopened
+     *   -- {@link #reconcile()} runs every tick regardless, but only checks
+     *   internal consistency between this process's own records, not
+     *   against the exchange's live state, so it could not have caught
+     *   this staleness either. {@link TradingLoop#pollPendingFills()} (new
+     *   -- the same price-fetch-and-{@code pollFills} work {@code tick()}
+     *   always did as its own first step, now also its own standalone
+     *   method) is now called directly from {@link #runTick()}'s
+     *   market-closed branch, so pending-order reconciliation runs on
+     *   every tick regardless of market hours; only new-signal processing
+     *   is actually gated by {@link #tradingCalendar}. This gap never
+     *   existed for {@code simulated}/
+     *   {@code bingx-vst} (both always use {@link AlwaysOpenTradingCalendar},
+     *   so their {@code tick()} always ran) -- it was new, introduced by
+     *   {@code kis-paper} being the first mode with a calendar that can
+     *   actually report closed.
      *   <li><b>Mitigated, not solved: {@code RiskGateway} has no KOSPI200
      *   contract-multiplier conversion.</b> It computes notional as plain
      *   {@code quantity × price}; a real KOSPI200 futures contract is
@@ -758,10 +778,10 @@ public final class PaperTradingApp {
      *   unbuilt because it is real R3-risk architecture (a change to
      *   {@code RiskGateway}'s own notional calculation, touching every
      *   venue) that needs its own {@code Discuss} pass. <b>Correcting an
-     *   earlier version of this same disclosure, on the same review</b>:
-     *   this graph is fully order-submission-capable the moment a real
-     *   signal appears at {@code signalPath} -- the earlier claim that
-     *   {@code kis-paper} mode was "unaffected in practice" because it
+     *   earlier version of this same disclosure, on an earlier review
+     *   round</b>: this graph is fully order-submission-capable the moment
+     *   a real signal appears at {@code signalPath} -- an earlier claim
+     *   that {@code kis-paper} mode was "unaffected in practice" because it
      *   "still runs against {@code DummySignalSource}" was simply wrong;
      *   this method has always wired a real {@link FileSignalSource}, the
      *   same as {@link #forBingXVst} does. The real mitigation is below:
@@ -771,26 +791,6 @@ public final class PaperTradingApp {
      *   submitted order without a deliberate human reset first. Remove
      *   that unconditional trip only once the contract-multiplier
      *   conversion is built and tested.
-     *   <li><b>Disclosed, deferred: {@link #runTick()}'s {@link
-     *   TradingCalendar} gate skips {@code OrderExecutor.pollFills} along
-     *   with everything else in {@link TradingLoop#tick()} while the
-     *   market is closed.</b> A real fill, cancel, or expiry that happens
-     *   at the exchange right at/after close would not be reflected in
-     *   this process's own {@code OrderStore}/{@code OrderExecutor} state
-     *   until the next time the market opens and a tick runs -- {@link
-     *   #reconcile()} still runs on every tick regardless, but it only
-     *   checks internal consistency between this process's own records,
-     *   not against the exchange's live state, so it cannot catch this
-     *   particular staleness either. This gap does not exist for {@code
-     *   simulated}/{@code bingx-vst} (both always use {@link
-     *   AlwaysOpenTradingCalendar}, so their {@code tick()} -- and
-     *   therefore {@code pollFills} -- always runs) -- it is new,
-     *   introduced by {@code kis-paper} being the first mode with a
-     *   calendar that can actually report closed. A real fix means
-     *   splitting "poll pending fills" from "process a new signal" as
-     *   separably-gateable concerns, likely inside {@link TradingLoop}
-     *   itself (shared by all three modes) -- real, non-trivial surgery on
-     *   a core, heavily-tested class, not something to rush here.
      * </ol>
      */
     private static PaperTradingApp forKisPaper(
@@ -947,6 +947,18 @@ public final class PaperTradingApp {
      * regardless of whether the market is open, matching this method's own
      * existing "regardless of the tick's own outcome" philosophy below --
      * a closed market is a defined, expected skip, not a failure.
+     *
+     * <p><b>A closed market skips new-signal processing only, not fill
+     * polling</b> (real CodeRabbit review finding, corrected across two
+     * review rounds on the PR that added this gate): a pending order can
+     * resolve at the exchange at any time, including right at/after close,
+     * so {@link TradingLoop#pollPendingFills()} -- the poll-and-reconcile
+     * portion {@link TradingLoop#tick()} would otherwise run as its own
+     * first step -- is called directly here even when the market is
+     * closed. Wrapped in its own {@code try}/{@code catch} (matching this
+     * class's own "a single tick's failure must never propagate"
+     * philosophy) since it runs outside {@code tick()}'s own error
+     * handling in this branch.
      */
     void runTick() {
         dailyReportGenerator.beforeTick();
@@ -964,7 +976,14 @@ public final class PaperTradingApp {
                         "tick complete: lastTickAt={} equity={}", tradingLoop.lastTickAt(), tradingLoop.currentEquity());
             }
         } else {
-            log.debug("market closed per {}, skipping tick", tradingCalendar.getClass().getSimpleName());
+            log.debug(
+                    "market closed per {}, skipping new-signal processing -- still polling pending fills",
+                    tradingCalendar.getClass().getSimpleName());
+            try {
+                tradingLoop.pollPendingFills();
+            } catch (RuntimeException e) {
+                log.warn("pollPendingFills failed while market closed, will retry next scheduled tick", e);
+            }
         }
         dailyReportGenerator.afterTick();
         // Runs regardless of the tick's own outcome above -- see class

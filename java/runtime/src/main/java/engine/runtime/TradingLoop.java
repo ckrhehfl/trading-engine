@@ -262,6 +262,38 @@ public final class TradingLoop {
         }
     }
 
+    /**
+     * The same price-fetch-and-{@link OrderExecutor#pollFills} work {@link
+     * #tick()} always did as its own first step, now also exposed as its
+     * own standalone method (real CodeRabbit review finding on the PR that
+     * added {@link PaperTradingApp}'s {@code kis-paper} mode): a caller
+     * gating {@code tick()} on real market hours (see {@code
+     * TradingCalendar}) still needs pending orders' fill/cancel/expiry
+     * status reconciled against the exchange even while new-signal
+     * processing is paused -- an order can resolve at the exchange at any
+     * time, not only during this loop's own defined trading-hours window.
+     * {@code tick()}'s own two lines are deliberately left as their own
+     * inline statements rather than rewritten to call this method --
+     * {@code tick()} already needs the fetched {@code price} again later
+     * for signal submission, and threading it back out of a shared helper
+     * was more restructuring than this fix warranted; the two lines here
+     * are intentionally the same two lines, not a shared call, so this
+     * addition cannot change {@code tick()}'s own already-tested behavior
+     * at all.
+     *
+     * <p>Deliberately does <b>not</b> touch {@link #lastTickAt()}/{@link
+     * #lastError()} or catch its own exceptions the way {@code tick()}
+     * does -- those two fields specifically mean "the last time {@code
+     * tick()} (the full method, including new-signal processing) ran and
+     * what happened," and a caller invoking this method directly needs its
+     * own error handling, not a misleading update to state that means
+     * something more specific than "a poll happened."
+     */
+    public synchronized void pollPendingFills() {
+        BigDecimal price = priceFeed.latestPrice(symbol);
+        applyFills(orderExecutor.pollFills(symbol, price));
+    }
+
     /** Health-check surface for this priority -- see class Javadoc. */
     public Instant lastTickAt() {
         return lastTickAt;

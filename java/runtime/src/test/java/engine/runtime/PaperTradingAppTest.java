@@ -12,6 +12,7 @@ import static org.junit.jupiter.api.Assertions.fail;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import engine.execution.PaperBroker;
 import engine.oms.Order;
+import engine.oms.OrderState;
 import engine.risk.AccountState;
 import engine.risk.RiskGateway;
 import engine.risk.RiskLimits;
@@ -942,5 +943,69 @@ class PaperTradingAppTest {
         app.runTick();
 
         assertNotNull(app.tradingLoop().lastTickAt(), "TradingLoop.tick() must run while the market is open");
+    }
+
+    /**
+     * Real CodeRabbit review finding, fixed: a closed market must gate
+     * only new-signal processing, not fill polling for an already-pending
+     * order -- an order can resolve at the exchange at any time, not only
+     * during this loop's own configured trading hours. Seeds a real
+     * pending order directly through {@code app}'s own {@link
+     * #orderStore()}-backed pipeline (same technique {@code
+     * TradingLoopTest#tickWithNoSignalStillAppliesPriceUpdateToExistingPendingOrders}
+     * uses), submits it to the same {@link PaperBroker} instance {@code
+     * app} was constructed with at a non-marketable price, then closes the
+     * calendar and drives one {@code runTick()} at a marketable price --
+     * the order filling despite the closed calendar is direct proof
+     * {@link TradingLoop#pollPendingFills()} actually ran, not just that
+     * {@code runTick()} didn't throw. {@link TradingLoop#lastTickAt()}
+     * staying {@code null} throughout (same assertion as the skip test
+     * above) proves this happened without {@code tick()}'s own new-signal
+     * path ever running.
+     */
+    @Test
+    void runTickPollsPendingFillsEvenWhenTradingCalendarReportsClosed(@TempDir Path tempDir) throws Exception {
+        Path signalPath = tempDir.resolve("latest.json"); // never written -- irrelevant to this test
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeTradingCalendar calendar = new FakeTradingCalendar(false);
+        // Deliberately below the seeded order's own 50000 limit -- see below.
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("40000"));
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar, broker);
+
+        // Seeded through app's own OrderStore (via a side-channel pipeline,
+        // same technique reconcileDetectsARealOrphanedOrderAndTripsTheKillSwitch
+        // above uses) and directly registered as submitted (submittedOrderIds
+        // below), so reconcile() -- which still runs after every runTick(),
+        // closed market or not -- finds no mismatch; this test is about
+        // TradingCalendar gating, not internal-consistency reconciliation.
+        OrderPipeline seedPipeline = new OrderPipeline(new RiskGateway(RiskLimits.canary()), app.orderStore());
+        OrderIntent seedIntent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"),
+                new BigDecimal("50000"), "15m", Instant.now());
+        AccountState seedAccount =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        Order seedOrder = seedPipeline.submitIntent(seedIntent, new BigDecimal("60000"), seedAccount).orElseThrow();
+        broker.submit(seedOrder, new BigDecimal("60000")); // not marketable at 60000 -> stays pending
+        assertEquals(1, broker.pendingOrders().size());
+        Field submittedIdsField = TradingLoop.class.getDeclaredField("submittedOrderIds");
+        submittedIdsField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<UUID> submittedIds = (List<UUID>) submittedIdsField.get(app.tradingLoop());
+        submittedIds.add(seedOrder.clientOrderId());
+
+        app.runTick(); // priceFeed serves 40000, below the seeded LIMIT(50000) LONG order -> marketable
+
+        assertTrue(
+                broker.pendingOrders().isEmpty(),
+                "the seeded pending order must have been polled and filled even though the market was closed");
+        assertEquals(OrderState.FILLED, seedOrder.state());
+        assertNull(
+                app.tradingLoop().lastTickAt(),
+                "TradingLoop.tick() itself (new-signal processing) must still never run while the market is closed");
+        assertTrue(
+                app.lastReconciliationReport().isClean(),
+                "no internal-consistency mismatch expected -- the seeded order was registered as submitted");
     }
 }

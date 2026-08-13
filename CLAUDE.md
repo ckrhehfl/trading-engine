@@ -418,24 +418,39 @@ not the shared `delivered.marker` name the `bingx-vst` path uses, so the
 two venues' delivery state can never collide even under a forced
 same-path misconfiguration.
 
-**A third Task 4 finding, same review round as the correction above,
-disclosed and deferred**: `PaperTradingApp.runTick()`'s `TradingCalendar`
-gate skips `OrderExecutor.pollFills` along with everything else in
-`TradingLoop.tick()` while the market is closed — a real fill, cancel, or
-expiry at the exchange right at/after close would not be reflected in
-this process's own `OrderStore`/`OrderExecutor` state until the market
-reopens and a tick runs again. `reconcile()` still runs every tick
-regardless, but it only checks internal consistency between this
-process's own records, not against the exchange's live state, so it
-cannot catch this particular staleness either. This gap is new, not
-pre-existing — `simulated`/`bingx-vst` always use
-`AlwaysOpenTradingCalendar`, so their `tick()` (and therefore
-`pollFills`) always runs; `kis-paper` is the first mode whose calendar
-can actually report closed. A real fix means separating "poll pending
-fills" from "process a new signal" as independently-gateable concerns,
-most likely inside `TradingLoop` itself — shared by all three modes, real
-surgery on a core, heavily-tested class, not something to rush under
-review pressure on a wiring task.
+**A third Task 4 finding, flagged twice across two review rounds before
+being fixed rather than left deferred**: `PaperTradingApp.runTick()`'s
+`TradingCalendar` gate used to skip `OrderExecutor.pollFills` along with
+everything else in `TradingLoop.tick()` while the market was closed — a
+real fill, cancel, or expiry at the exchange right at/after close would
+not have been reflected in this process's own `OrderStore`/
+`OrderExecutor` state until the market reopened and a tick ran again.
+`reconcile()` runs every tick regardless, but only checks internal
+consistency between this process's own records, not against the
+exchange's live state, so it could not have caught this staleness
+either. This gap was new, not pre-existing — `simulated`/`bingx-vst`
+always use `AlwaysOpenTradingCalendar`, so their `tick()` (and therefore
+`pollFills`) always ran; `kis-paper` is the first mode whose calendar can
+actually report closed. Initially disclosed and deferred as "real
+surgery on `TradingLoop`, a core class shared by all three modes, not
+something to rush under review pressure" — CodeRabbit pushed back a
+second time citing this project's own stated Java Trading Plane scope
+("partial fill handling, cancel/replace, … position reconciliation"),
+and on reinspection the actual fix turned out to be small and additive,
+not the redesign originally assumed: `TradingLoop.pollPendingFills()` is
+a new public method containing the same price-fetch-and-`pollFills` two
+lines `tick()` already ran as its own first step (left in place there
+unchanged, not rewritten to call the new method, since `tick()` also
+needs the fetched price again later for signal submission) — `runTick()`
+now calls this directly from its market-closed branch, wrapped in its
+own `try`/`catch` matching this class's "a single tick's failure must
+never propagate" convention. Pending-order reconciliation now runs on
+every tick regardless of market hours; only new-signal processing is
+gated by `TradingCalendar`. Proven, not just implemented: a new
+`PaperTradingAppTest` case seeds a real pending order, closes the
+calendar, and confirms the order still fills on `runTick()` while
+`TradingLoop.lastTickAt()` stays `null` throughout (proving `tick()`'s
+own new-signal path genuinely never ran).
 
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
