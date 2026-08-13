@@ -105,6 +105,145 @@ independent processes (distinct `PAPER_TRADING_REPORTS_DIR`, independent
 same planning doc for why, and for the still-open human decision on which
 loop's clock counts toward the Paper Trading Pass Criteria below.
 
+**KIS/KOSPI200 venue integration, Phase 1 — planned, not yet built**
+(design committed here per `.planning/README.md`'s "a detailed design for
+work that hasn't started yet lives directly in CLAUDE.md, in full, until
+that work actually begins" rule; full task-level detail in the governing
+plan file referenced at execution time). This is the first real test of
+this file's own "Multi-exchange / multi-symbol / equities expansion
+without refactoring OMS, Risk Gateway, or Execution" Long-term Design
+Target: adding 한국투자증권(Korea Investment & Securities, "KIS")'s REST
+API for **KOSPI200 index futures/options** as a **third** independent
+paper-trading loop, alongside the two already-running BingX loops (own
+process, own `PAPER_TRADING_REPORTS_DIR`, own `KillSwitch` — same pattern
+`bingx-vst` already established relative to `simulated`).
+
+*Why KOSPI200 futures/options, not individual stocks or an ETF*: futures/
+options structurally resemble BTC perpetuals far more than cash equities
+do — a real margin account, both LONG and SHORT directions supported
+natively, so the existing `Side.LONG`/`Side.SHORT` enum maps cleanly with
+zero schema change. Individual KR stocks/ETFs would have forced a `Side`
+schema change (cash equities are effectively BUY-only for a retail
+account) — sidestepped by this choice.
+
+*Why KIS, not Kiwoom/eBest/Toss* (researched, not assumed): KIS was the
+first Korean broker to offer a REST (not Windows-only OCX/COM) API, has
+by far the most mature Python/Java community tooling, and — the deciding
+factor — its official GitHub repo (`koreainvestment/open-trading-api`)
+confirms real 모의투자 (paper trading) support for domestic futures/
+options specifically (a `domestic_futureoption/` example directory, a
+`my_paper_future` config field), not just stocks. Kiwoom's new REST API
+(2026) is a legitimate future alternative but too new to have the same
+depth of real-world-verified documentation; Toss's new OpenAPI has no
+confirmed paper-trading support at all, which disqualifies it outright
+given this project's non-negotiable paper-trading-first rule.
+
+*Scope, deliberately narrow*: infrastructure only — mirrors exactly how
+the original BTC paper-trading loop was built and proven against
+`DummySignalSource` before any validated BTC strategy existed
+(Implementation Priority #6-8's own precedent). A real KOSPI200 strategy
+is explicitly out of scope for this phase: it would need its own
+walk-forward-validated research under this file's Strategy Research
+Methodology, a separate future `Discuss`, not decided or started here.
+
+*Codebase audit, confirmed by direct inspection before any task
+breakdown*: the `OrderExecutor`/`ExchangeAdapter` seam above is already
+fully venue-agnostic — `ExchangeOrderExecutor`, `Reconciler`,
+`SubmissionMarkerResolver`, `MarkerRecordingSubmissionListener`, and the
+shared `BalanceSnapshot`/`OrderStatus`/`PositionSnapshot`/`PositionMode`
+records are already interface-typed / BingX-free, so writing
+`KisAdapter implements ExchangeAdapter` alone reuses all of them
+unmodified — no second `OrderExecutor` implementation needed, matching
+this section's own invariant. What's genuinely missing: (1)
+`ExchangeAdapter.setLeverage`/`setPositionMode` are perpetual-futures/
+margin-account-specific with no obvious 1:1 KRX equivalent (KRX futures
+margin is exchange-mandated, not a user-settable multiplier) — likely
+documented no-ops in `KisAdapter`, provisional pending real KIS docs; (2)
+`RiskDecision`/`Order`'s `approvedLeverage` field is structurally
+required end-to-end but functionally dead in the actual submit path
+today (`BingXAdapter.submitOrder` never reads it — leverage is only
+applied once, account-wide, by `VstPreflight`), so `KisAdapter` can
+satisfy it with a fixed placeholder, no schema change needed; (3)
+`engine.runtime.TradingLoop` is hard-typed to the concrete class
+`BingXPriceFeed`, not an interface — a real blocking prerequisite,
+structurally identical to the `OrderExecutor` extraction already done
+once for `PaperBroker`; (4) no market-hours/calendar concept exists
+anywhere — `TradingLoop.tick()` has exactly one production call site
+(`PaperTradingApp.runTick()`, a plain fixed-rate
+`ScheduledExecutorService`) with no internal scheduling assumptions of
+its own to fight, but KRX's real 09:00-15:30 KST weekday-only session
+(plus moving lunar-calendar holidays `java.time`'s built-in chronologies
+cannot express) needs new logic that does not need to touch `TradingLoop`
+itself; (5) `PaperTradingApp` hardcodes BingX-specific env vars and a
+`forBingXVst()` factory — adding KIS means an analogous new factory
+method and new KIS-named env vars, matching the project's existing,
+accepted pattern, not a regression to fix.
+
+*Task breakdown* (own `.planning/kis-a/-b/-c/-d-*.md` doc per task, own
+PR each, **stop-and-ask merges** — Java runtime/exchange logic, same
+auto-merge exclusion already applied to all OMS/Risk/Execution-adjacent
+work regardless of CI/CodeRabbit status): **1)** extract an
+`engine.runtime.PriceFeed` interface (`BingXPriceFeed implements
+PriceFeed`, `TradingLoop` retypes to it) — mirrors the original
+`OrderExecutor` extraction exactly, expected zero test-file diff,
+confirmed not assumed (`TradingLoopTest` passes `BingXPriceFeed` by
+reference, compiles unchanged; `PaperTradingAppTest` never references it
+directly). **2)** `KisAdapter implements ExchangeAdapter` in
+`java/exchange` (same module as `BingXAdapter`, no new Gradle dependency)
+plus `KisTokenProvider` (KIS's OAuth2 App-Key/Secret → cached access
+token — genuinely new, no `BingXSigner` precedent, since BingX's scheme
+is stateless per-request HMAC) plus a `KisPriceFeed` decision (its own
+class, mirroring `BingXPriceFeed`'s separateness from the authenticated
+adapter, **or** folded into `KisAdapter` if KIS's quote endpoints turn
+out to need the same OAuth2 token — verify during this task, don't
+assume), all TDD'd against a hand-written fake KIS HTTP server (this
+project's established no-mocking-framework convention), zero live
+wiring. Exact KOSPI200 contract-symbol/TR-code/endpoint details verified
+against real KIS docs during this task, not designed in advance. **3)**
+a new `engine.runtime.TradingCalendar` interface
+(`AlwaysOpenTradingCalendar` for `simulated`/`bingx-vst`, provably inert
+via its own test; `KrxMarketCalendar` for real KST hours + a holiday
+lookup against a small committed static fixture — no Korean-lunar
+`Chronology` ships in the JDK and no calendar library exists in this
+repo today, so a live per-tick network call is rejected in favor of a
+fixture, sourced by hand from KRX's official calendar or exported once
+from KIS's own holiday API after real paper credentials exist), gating
+only the `tradingLoop.tick()` call inside `PaperTradingApp.runTick()`
+(recommended: in-process, not OS/cron-level, matching this project's
+existing "the class that already owns the check gets it" pattern — a
+real design fork, confirm before this task starts rather than deciding
+unilaterally mid-implementation). **4)** `PaperTradingApp` wiring
+(`PAPER_TRADING_EXECUTION_MODE=kis-paper`, `forKisPaper()`, `KIS_APP_KEY`/
+`KIS_APP_SECRET` env vars, hardcoded `KIS_PAPER_BASE_URL` Java constant
+with no env-var override — same no-config-surface security pattern as
+`BINGX_VST_BASE_URL`) plus `KisPreflight`. **`KisPreflight` cannot mirror
+`VstPreflight`'s specific gating logic**, only its shape:
+`VstPreflight`'s core safety gate is "fail closed unless `balance.asset()`
+is exactly `VST`," which works because BingX's demo accounts have a
+textually distinct settlement asset; KIS's real/paper split is
+base-URL-driven instead, so `KisPreflight` needs its own real signal for
+"is this genuinely the paper account" — identified from real KIS docs
+during this task, treated with the same weight as a risk-limit change,
+not a cosmetic rename. Leverage enforcement is skipped entirely (not
+called as a no-op). Real verification against KIS's actual API is
+blocked on the user's own KIS 모의투자 registration + App Key/Secret
+generation (not yet done as of this writing) — everything else in Task 4
+(building/testing against a fake server) is not blocked by it.
+
+`RiskLimits.canary()` is reused unmodified for this phase — same
+"known-good default while running against a dummy signal" precedent the
+original BTC bridge used. A KOSPI200-specific tier's real numbers are
+future, Strategy-Research-gated work per this file's own non-negotiable
+rule against weakening risk limits without approval — not decided or
+invented here.
+
+Explicitly out of scope this entire phase: any real KOSPI200 strategy or
+promotion off `DummySignalSource`; real contract-symbol/TR-code specifics
+(verified during implementation, not designed now); extending
+`scripts/paper-trading-watchdog.sh`/the dashboards/cron for a third loop;
+a new `RiskLimits` tier with real numbers; `.env`/credential provisioning
+(blocked on the user's own KIS registration).
+
 ## Non-negotiable Rules
 
 - Never enable live trading without explicit human approval.
