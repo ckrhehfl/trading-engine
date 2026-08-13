@@ -20,9 +20,7 @@ public interface TradingCalendar {
     /**
      * @param now must not be {@code null} -- every implementation rejects a
      *     {@code null} argument (never silently treats it as open or
-     *     closed); {@link PaperTradingApp#runTick()}'s only real caller
-     *     always supplies {@code clock.instant()}, which is never {@code
-     *     null}.
+     *     closed). Callers must provide a non-null {@code Instant}.
      */
     boolean isOpen(Instant now);
 }
