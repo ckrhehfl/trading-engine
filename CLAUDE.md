@@ -113,17 +113,31 @@ plan file referenced at execution time). This is the first real test of
 this file's own "Multi-exchange / multi-symbol / equities expansion
 without refactoring OMS, Risk Gateway, or Execution" Long-term Design
 Target: adding 한국투자증권(Korea Investment & Securities, "KIS")'s REST
-API for **KOSPI200 index futures/options** as a **third** independent
+API for **KOSPI200 index futures** as a **third** independent
 paper-trading loop, alongside the two already-running BingX loops (own
 process, own `PAPER_TRADING_REPORTS_DIR`, own `KillSwitch` — same pattern
 `bingx-vst` already established relative to `simulated`).
 
-*Why KOSPI200 futures/options, not individual stocks or an ETF*: futures/
-options structurally resemble BTC perpetuals far more than cash equities
-do — a real margin account, both LONG and SHORT directions supported
-natively, so the existing `Side.LONG`/`Side.SHORT` enum maps cleanly with
-zero schema change. Individual KR stocks/ETFs would have forced a `Side`
-schema change (cash equities are effectively BUY-only for a retail
+**Narrowed to futures only, options explicitly deferred** (tightened on
+real CodeRabbit review of the PR that added this section): `OrderIntent`/
+`Order`/`Fill`/`SubmissionMarker` all identify an instrument with a single
+free-form `String symbol`. A KOSPI200 **futures** contract is fully
+identified by its expiry month alone, so a plain symbol string stays
+sufficient — the "zero schema change" claim below holds. A KOSPI200
+**option** additionally needs strike price, expiry, and call/put — none
+of which a bare symbol string round-trips today, and defining a canonical
+format plus parsing/validation/round-trip tests for that is real,
+undesigned work. Rather than assume it away, options are out of scope for
+this phase entirely; revisit as its own follow-up once a canonical
+option-symbol format is designed and tested.
+
+*Why KOSPI200 futures, not individual stocks or an ETF*: futures
+structurally resemble BTC perpetuals far more than cash equities do — a
+real margin account, both LONG and SHORT directions supported natively,
+so the existing `Side.LONG`/`Side.SHORT` enum maps cleanly with zero
+schema change (see the futures-only narrowing above for why this claim is
+now scoped precisely). Individual KR stocks/ETFs would have forced a
+`Side` schema change (cash equities are effectively BUY-only for a retail
 account) — sidestepped by this choice.
 
 *Why KIS, not Kiwoom/eBest/Toss* (researched, not assumed): KIS was the
@@ -155,29 +169,42 @@ records are already interface-typed / BingX-free, so writing
 `KisAdapter implements ExchangeAdapter` alone reuses all of them
 unmodified — no second `OrderExecutor` implementation needed, matching
 this section's own invariant. What's genuinely missing: (1)
-`ExchangeAdapter.setLeverage`/`setPositionMode` are perpetual-futures/
-margin-account-specific with no obvious 1:1 KRX equivalent (KRX futures
-margin is exchange-mandated, not a user-settable multiplier) — likely
-documented no-ops in `KisAdapter`, provisional pending real KIS docs; (2)
+`ExchangeAdapter.setLeverage` is perpetual-futures/margin-account-
+specific with no obvious 1:1 KRX equivalent (KRX futures margin is
+exchange-mandated, not a user-settable multiplier) — likely a documented
+no-op in `KisAdapter`, provisional pending real KIS docs. `setPositionMode`
+is different: **not a silent no-op** (tightened on real CodeRabbit
+review — a caller silently believing an unsupported mode was set is a
+real correctness risk, not a cosmetic gap) — `KisAdapter.setPositionMode`
+must throw or otherwise signal "unsupported here" explicitly; (2)
 `RiskDecision`/`Order`'s `approvedLeverage` field is structurally
 required end-to-end but functionally dead in the actual submit path
 today (`BingXAdapter.submitOrder` never reads it — leverage is only
 applied once, account-wide, by `VstPreflight`), so `KisAdapter` can
-satisfy it with a fixed placeholder, no schema change needed; (3)
-`engine.runtime.TradingLoop` is hard-typed to the concrete class
-`BingXPriceFeed`, not an interface — a real blocking prerequisite,
-structurally identical to the `OrderExecutor` extraction already done
-once for `PaperBroker`; (4) no market-hours/calendar concept exists
-anywhere — `TradingLoop.tick()` has exactly one production call site
-(`PaperTradingApp.runTick()`, a plain fixed-rate
-`ScheduledExecutorService`) with no internal scheduling assumptions of
-its own to fight, but KRX's real 09:00-15:30 KST weekday-only session
-(plus moving lunar-calendar holidays `java.time`'s built-in chronologies
-cannot express) needs new logic that does not need to touch `TradingLoop`
-itself; (5) `PaperTradingApp` hardcodes BingX-specific env vars and a
-`forBingXVst()` factory — adding KIS means an analogous new factory
-method and new KIS-named env vars, matching the project's existing,
-accepted pattern, not a regression to fix.
+satisfy it with a fixed placeholder, no schema change needed — **this
+placeholder satisfies the schema only; it is not itself a risk control,
+see the `RiskLimits` section below**; (3) `engine.runtime.TradingLoop`
+is hard-typed to the concrete class `BingXPriceFeed`, not an interface
+— a real blocking prerequisite, structurally identical to the
+`OrderExecutor` extraction already done once for `PaperBroker`; (4) no
+market-hours/calendar concept exists anywhere — `TradingLoop.tick()` has
+exactly one production call site (`PaperTradingApp.runTick()`, a plain
+fixed-rate `ScheduledExecutorService`) with no internal scheduling
+assumptions of its own to fight, but KOSPI200 futures' real regular
+session — **08:45-15:45 KST, not the cash-equities 09:00-15:30 this
+section originally and incorrectly stated** (corrected on real
+CodeRabbit review, sourced against KRX's own official trading-hours page)
+— needs new logic that does not need to touch `TradingLoop` itself.
+**KOSPI200 futures also has a night session (18:00-06:00 KST) that this
+phase's `KrxMarketCalendar` explicitly does not support** — Phase 1
+covers the regular session only, disclosed here rather than silently
+narrowed; night-session support (and the holiday/final-trading-day
+exceptions a real calendar needs) is future work. Moving lunar-calendar
+holidays are a separate, already-noted gap (`java.time`'s built-in
+chronologies cannot express them); (5) `PaperTradingApp` hardcodes
+BingX-specific env vars and a `forBingXVst()` factory — adding KIS means
+an analogous new factory method and new KIS-named env vars, matching the
+project's existing, accepted pattern, not a regression to fix.
 
 *Task breakdown* (own `.planning/kis-a/-b/-c/-d-*.md` doc per task, own
 PR each, **stop-and-ask merges** — Java runtime/exchange logic, same
@@ -220,29 +247,68 @@ with no env-var override — same no-config-surface security pattern as
 `VstPreflight`'s specific gating logic**, only its shape:
 `VstPreflight`'s core safety gate is "fail closed unless `balance.asset()`
 is exactly `VST`," which works because BingX's demo accounts have a
-textually distinct settlement asset; KIS's real/paper split is
-base-URL-driven instead, so `KisPreflight` needs its own real signal for
-"is this genuinely the paper account" — identified from real KIS docs
-during this task, treated with the same weight as a risk-limit change,
-not a cosmetic rename. Leverage enforcement is skipped entirely (not
-called as a no-op). Real verification against KIS's actual API is
-blocked on the user's own KIS 모의투자 registration + App Key/Secret
-generation (not yet done as of this writing) — everything else in Task 4
-(building/testing against a fake server) is not blocked by it.
+textually distinct settlement asset. KIS has **no single response field**
+that marks an account as paper — confirmed by real research (both KIS's
+own official repo and independent sources) during CodeRabbit review of
+the PR that added this section, replacing this item's original vague
+"confirm during this task" placeholder with a concrete, required Task 4
+acceptance contract instead:
+`KIS_PAPER_BASE_URL` fixed to `https://openapivts.koreainvestment.com:29443`
+with no live-URL or arbitrary-URL path possible; paper-only App Key, App
+Secret, account number, and domestic-futures/options product code
+(`ACNT_PRDT_CD`) used throughout; startup refuses to proceed on any
+missing/malformed credential, any auth failure, or any config that
+doesn't consistently point at the paper environment; `submitOrder` is
+never reachable before `KisPreflight` passes; any preflight failure trips
+`KillSwitch`; every one of these is covered by a `FakeKisServer` test
+(missing config, malformed config, auth failure, environment mismatch,
+order-call-blocked-pre-preflight) — real verification against KIS's
+actual paper API is a separate, later integration check, not a
+substitute for the fake-server coverage. Leverage enforcement is skipped
+entirely (not called as a no-op). Real verification against KIS's actual
+API is blocked on the user's own KIS 모의투자 registration + App
+Key/Secret generation (not yet done as of this writing) — everything
+else in Task 4 (building/testing against a fake server) is not blocked
+by it.
 
-`RiskLimits.canary()` is reused unmodified for this phase — same
-"known-good default while running against a dummy signal" precedent the
-original BTC bridge used. A KOSPI200-specific tier's real numbers are
+`RiskLimits.canary()`'s existing percentage-based limits are reused
+unmodified for this phase, but **only after a real contract-multiplier
+conversion is added — not as-is** (tightened on real CodeRabbit review,
+which sourced KRX's own official contract specification: a KOSPI200
+futures contract is valued at index points × ₩250,000, the exchange's
+own official multiplier). `RiskGateway` today computes notional as a
+plain `quantity × price`; applied to KOSPI200 futures without the real
+₩250,000 multiplier, that number is not the position's actual notional
+value, so `RiskLimits.canary()`'s percentage limits would be checked
+against a meaningless figure — "reused unmodified" was true for the
+*numbers* but glossed over needing this conversion to exist at all
+first. Task 2/4 must define and test the real quantity → notional
+conversion for KOSPI200 futures (contract count × index price ×
+₩250,000) before `RiskLimits.canary()`'s percentages mean anything for
+this loop, including fake-KIS-server tests for max-quantity, rounding,
+insufficient-margin, and limit-exceedance behavior. The fixed
+`approvedLeverage` placeholder noted above satisfies the schema only —
+it is not itself a risk control and must not be treated as one. A
+KOSPI200-specific `RiskLimits` *tier* (new percentage numbers) remains
 future, Strategy-Research-gated work per this file's own non-negotiable
 rule against weakening risk limits without approval — not decided or
-invented here.
+invented here; the contract-multiplier conversion above is a
+prerequisite for the existing canary numbers to be meaningful at all,
+which is different from, and needed regardless of, that future tier
+question.
 
-Explicitly out of scope this entire phase: any real KOSPI200 strategy or
-promotion off `DummySignalSource`; real contract-symbol/TR-code specifics
-(verified during implementation, not designed now); extending
+Explicitly out of scope this entire phase: **KOSPI200 options** (a
+canonical strike/expiry/multiplier-preserving symbol format is undesigned
+— see the futures-only narrowing above); the KOSPI200 futures night
+session (18:00-06:00 KST); any real KOSPI200 strategy or promotion off
+`DummySignalSource`; real contract-symbol/TR-code specifics (verified
+during implementation, not designed now); extending
 `scripts/paper-trading-watchdog.sh`/the dashboards/cron for a third loop;
-a new `RiskLimits` tier with real numbers; `.env`/credential provisioning
-(blocked on the user's own KIS registration).
+a new `RiskLimits` *tier* with new percentage numbers (the
+contract-multiplier conversion above is required regardless — that's a
+prerequisite for the existing canary numbers to mean anything, not a new
+tier); `.env`/credential provisioning (blocked on the user's own KIS
+registration).
 
 ## Non-negotiable Rules
 
