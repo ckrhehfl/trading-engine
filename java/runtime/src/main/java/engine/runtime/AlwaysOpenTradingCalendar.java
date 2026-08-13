@@ -1,6 +1,7 @@
 package engine.runtime;
 
 import java.time.Instant;
+import java.util.Objects;
 
 /**
  * Unconditionally open -- used by the {@code simulated}/{@code bingx-vst}
@@ -16,6 +17,7 @@ public final class AlwaysOpenTradingCalendar implements TradingCalendar {
 
     @Override
     public boolean isOpen(Instant now) {
+        Objects.requireNonNull(now, "now is required");
         return true;
     }
 }

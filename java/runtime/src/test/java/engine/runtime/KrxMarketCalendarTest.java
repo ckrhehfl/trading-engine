@@ -17,10 +17,11 @@ import org.junit.jupiter.api.Test;
 class KrxMarketCalendarTest {
 
     // Matches java/runtime/src/main/resources/krx-market-holidays.json --
-    // coveredYears=[2026], including 2026-01-01 (New Year's Day) and no
-    // June 2026 holidays.
+    // coveredYears=[2026], including 2026-01-01 (New Year's Day) and
+    // 2026-06-03 (지방선거일, a real KRX-wide market holiday -- see the
+    // bundled fixture's own citation).
     private static final KrxMarketCalendar.HolidayFixture FIXTURE_2026 = new KrxMarketCalendar.HolidayFixture(
-            List.of(2026), List.of(LocalDate.parse("2026-01-01")));
+            List.of(2026), List.of(LocalDate.parse("2026-01-01"), LocalDate.parse("2026-06-03")));
 
     @Test
     void openOnOrdinaryWeekdayWithinRegularHours() {
@@ -41,6 +42,16 @@ class KrxMarketCalendarTest {
         KrxMarketCalendar calendar = new KrxMarketCalendar(FIXTURE_2026);
         // 2026-01-01 (Thu) 10:00 KST -- New Year's Day, a listed holiday.
         assertFalse(calendar.isOpen(Instant.parse("2026-01-01T01:00:00Z")));
+    }
+
+    @Test
+    void closedOnElectionDayHoliday() {
+        KrxMarketCalendar calendar = new KrxMarketCalendar(FIXTURE_2026);
+        // 2026-06-03 (Wed) 10:00 KST -- 제9회 전국동시지방선거일, an ordinary-
+        // looking weekday that KRX closed for -- real CodeRabbit review
+        // finding that this date was missing from both the fixture and
+        // this test's own mirror of it.
+        assertFalse(calendar.isOpen(Instant.parse("2026-06-03T01:00:00Z")));
     }
 
     @Test
@@ -91,6 +102,79 @@ class KrxMarketCalendarTest {
         assertFalse(calendar.isOpen(Instant.parse("2026-06-11T06:21:00Z")));
     }
 
+    /**
+     * {@code KrxMarketCalendar.isOpen} uses {@code time.isBefore(open)}/
+     * {@code time.isBefore(close)} -- open is inclusive, close is
+     * exclusive. This system gates real order submission, so the exact
+     * boundary instants are pinned directly rather than only ever tested
+     * one minute away from them (a real CodeRabbit review finding: a
+     * one-minute margin would silently survive someone swapping {@code
+     * isBefore} for {@code !isAfter}, which would incorrectly treat the
+     * close instant itself as still open).
+     */
+    @Test
+    void openAtExactRegularOpenInstantClosedOneSecondBefore() {
+        KrxMarketCalendar calendar = new KrxMarketCalendar(FIXTURE_2026);
+        // 2026-06-10 (Wed) 08:45:00 KST exactly -- open is inclusive.
+        assertTrue(calendar.isOpen(Instant.parse("2026-06-09T23:45:00Z")));
+        // 08:44:59 KST -- one second before, still closed.
+        assertFalse(calendar.isOpen(Instant.parse("2026-06-09T23:44:59Z")));
+    }
+
+    @Test
+    void closedAtExactOrdinaryCloseInstantOpenOneSecondBefore() {
+        KrxMarketCalendar calendar = new KrxMarketCalendar(FIXTURE_2026);
+        // 2026-06-10 (Wed) 15:45:00 KST exactly -- close is exclusive.
+        assertFalse(calendar.isOpen(Instant.parse("2026-06-10T06:45:00Z")));
+        // 15:44:59 KST -- one second before, still open.
+        assertTrue(calendar.isOpen(Instant.parse("2026-06-10T06:44:59Z")));
+    }
+
+    @Test
+    void closedAtExactShortenedCloseInstantOpenOneSecondBeforeOnFinalTradingDay() {
+        KrxMarketCalendar calendar = new KrxMarketCalendar(FIXTURE_2026);
+        // 2026-06-11 (Thu, final trading day) 15:20:00 KST exactly.
+        assertFalse(calendar.isOpen(Instant.parse("2026-06-11T06:20:00Z")));
+        // 15:19:59 KST -- one second before, still open.
+        assertTrue(calendar.isOpen(Instant.parse("2026-06-11T06:19:59Z")));
+    }
+
+    /**
+     * Forces {@code isFinalTradingDay}'s preceding-business-day search to
+     * exceed {@code MAX_PRECEDING_BUSINESS_DAY_SEARCH_DAYS} (10) by marking
+     * March 2030's second Thursday (2030-03-14) and the 9 weekdays before
+     * it (2030-03-04 through 2030-03-13, skipping the real weekend at
+     * 03-09/03-10) all as holidays -- 11 consecutive weekend-or-holiday
+     * days, one more than the bound allows. The query date itself
+     * (2030-03-15, the Friday immediately after) is deliberately NOT one
+     * of the listed holidays, so {@code isOpen} reaches the final-trading-
+     * day check via the ordinary path rather than short-circuiting on its
+     * own {@code holidays.contains(date)} check -- this is what actually
+     * proves the {@code UNRESOLVED} fail-closed branch itself, not just
+     * "some other reason this date is closed" (a real CodeRabbit review
+     * finding: this branch had no test coverage at all before).
+     */
+    @Test
+    void failsClosedWhenFinalTradingDayCannotBeResolvedWithinTheSearchBound() {
+        KrxMarketCalendar.HolidayFixture fixture = new KrxMarketCalendar.HolidayFixture(
+                List.of(2030),
+                List.of(
+                        LocalDate.parse("2030-03-04"),
+                        LocalDate.parse("2030-03-05"),
+                        LocalDate.parse("2030-03-06"),
+                        LocalDate.parse("2030-03-07"),
+                        LocalDate.parse("2030-03-08"),
+                        LocalDate.parse("2030-03-11"),
+                        LocalDate.parse("2030-03-12"),
+                        LocalDate.parse("2030-03-13"),
+                        LocalDate.parse("2030-03-14")));
+        KrxMarketCalendar calendar = new KrxMarketCalendar(fixture);
+
+        // 2030-03-15 (Fri) 10:00 KST -- an ordinary, non-holiday weekday in
+        // the same quarterly month, during regular hours.
+        assertFalse(calendar.isOpen(Instant.parse("2030-03-15T01:00:00Z")));
+    }
+
     @Test
     void closedForEveryDateInAnUncoveredYear() {
         KrxMarketCalendar calendar = new KrxMarketCalendar(FIXTURE_2026);
@@ -126,5 +210,9 @@ class KrxMarketCalendarTest {
 
         assertTrue(calendar.isOpen(Instant.parse("2026-06-10T01:00:00Z")));
         assertFalse(calendar.isOpen(Instant.parse("2026-01-01T01:00:00Z")));
+        // 2026-06-10 (Wed) 20:00 KST -- night-session hours (18:00-06:00
+        // KST) are deliberately out of scope (see class Javadoc) and must
+        // be closed, not just untested.
+        assertFalse(calendar.isOpen(Instant.parse("2026-06-10T11:00:00Z")));
     }
 }

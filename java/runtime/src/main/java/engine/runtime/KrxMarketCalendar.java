@@ -46,6 +46,13 @@ import java.util.Set;
  *   <li>A date it cannot positively resolve as a final trading day or
  *   not (see {@link #isFinalTradingDay}) is treated as closed rather than
  *   falling back to the longer, ordinary close time.</li>
+ *   <li>{@link #loadBundledFixture} refuses to start (throws, does not
+ *   substitute an empty list) if the fixture declares {@code coveredYears}
+ *   with no {@code holidays} at all, or lists a holiday outside its own
+ *   {@code coveredYears} -- a real CodeRabbit review finding: silently
+ *   defaulting either to an empty list would fail <i>open</i> for every
+ *   weekday in a year with malformed/missing holiday data, the exact
+ *   opposite of this class's own stated policy.</li>
  * </ul>
  */
 public final class KrxMarketCalendar implements TradingCalendar {
@@ -157,11 +164,23 @@ public final class KrxMarketCalendar implements TradingCalendar {
                 throw new IllegalStateException("bundled resource not found: " + FIXTURE_RESOURCE_PATH);
             }
             RawFixture raw = new ObjectMapper().readValue(in, RawFixture.class);
-            return new HolidayFixture(
-                    raw.coveredYears == null ? List.of() : raw.coveredYears,
-                    raw.holidays == null
-                            ? List.of()
-                            : raw.holidays.stream().map(LocalDate::parse).toList());
+            List<Integer> coveredYears = raw.coveredYears == null ? List.of() : raw.coveredYears;
+            List<LocalDate> holidays =
+                    raw.holidays == null ? List.of() : raw.holidays.stream().map(LocalDate::parse).toList();
+            if (!coveredYears.isEmpty() && holidays.isEmpty()) {
+                throw new IllegalStateException(
+                        FIXTURE_RESOURCE_PATH + " declares coveredYears " + coveredYears
+                                + " but lists no holidays -- refusing to treat every weekday as open (fail-closed,"
+                                + " see class Javadoc)");
+            }
+            for (LocalDate holiday : holidays) {
+                if (!coveredYears.contains(holiday.getYear())) {
+                    throw new IllegalStateException(
+                            FIXTURE_RESOURCE_PATH + " lists holiday " + holiday + " outside coveredYears "
+                                    + coveredYears + " -- likely a year typo");
+                }
+            }
+            return new HolidayFixture(coveredYears, holidays);
         } catch (IOException e) {
             throw new UncheckedIOException("failed to load " + FIXTURE_RESOURCE_PATH, e);
         }
