@@ -117,19 +117,28 @@ import org.slf4j.LoggerFactory;
  *
  * <p><b>Real, disclosed-not-fixed gap: {@link #nextSignal()} marks a
  * signal delivered (updates {@link #lastDeliveredIntentId}, persists the
- * marker) before the caller has done anything with the returned {@code
- * OrderIntent} at all</b> (flagged on real CodeRabbit review of the PR
- * that added {@code kis-paper}, applies identically to the already-
- * running {@code bingx-vst} loop -- this is not new to that PR, just
- * newly surfaced by its review). If price lookup, risk evaluation, order
- * construction, or exchange submission fails anywhere downstream in
- * {@link TradingLoop#tick()} after this method returns, the signal is
- * already marked delivered -- a restart cannot recover it, and (with a
- * durable {@code deliveredMarkerPath} configured) neither can a retry
- * within the same process: a genuinely valid signal is permanently lost.
- * A real fix means giving {@link SignalSource} its own acknowledgment
- * contract (mark-delivered only after {@link OrderPipeline} successfully
- * hands off, not merely on being read) -- a real interface-level change
+ * marker if {@code deliveredMarkerPath} is configured) before the caller
+ * has done anything with the returned {@code OrderIntent} at all</b>
+ * (flagged on real CodeRabbit review of the PR that added {@code
+ * kis-paper}, applies identically to the already-running {@code
+ * bingx-vst} loop -- this is not new to that PR, just newly surfaced by
+ * its review). If price lookup, risk evaluation, order construction, or
+ * exchange submission fails anywhere downstream in {@link
+ * TradingLoop#tick()} after this method returns, the signal is already
+ * marked delivered within this process. <b>The severity depends on which
+ * constructor built this instance</b> (precision added on a second
+ * review pass of the same finding): with the marker-free one-arg
+ * constructor, {@link #lastDeliveredIntentId} is in-memory only, so a
+ * process restart forgets it and the same signal file content is read
+ * again as new -- lost only until the next restart, not permanently, and
+ * only within the current process's own uptime. With a durable {@code
+ * deliveredMarkerPath} configured (the two-arg constructor, what both
+ * {@code forBingXVst} and {@code forKisPaper} actually use), the marker
+ * survives a restart too, so the signal really is permanently lost --
+ * neither a restart nor a same-process retry can recover it. A real fix
+ * means giving {@link SignalSource} its own acknowledgment contract
+ * (mark-delivered only after {@link OrderPipeline} successfully hands
+ * off, not merely on being read) -- a real interface-level change
  * spanning this class, {@link DummySignalSource}, and {@link
  * TradingLoop#tick()}'s own control flow, not a local one-line fix.
  * Deliberately not attempted under review pressure on a wiring-only task

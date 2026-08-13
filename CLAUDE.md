@@ -453,28 +453,37 @@ calendar, and confirms the order still fills on `runTick()` while
 own new-signal path genuinely never ran).
 
 **A fourth Task 4 finding, disclosed and deliberately left deferred
-(unlike the third above, this one is not being fixed)**:
+(unlike the third above, this one is not being fixed) — precision
+corrected on a second review pass of the same finding**:
 `FileSignalSource.nextSignal()` marks a signal delivered — updates its
 own in-memory pointer, persists the durable marker if configured — the
 moment it reads a genuinely new signal, before the caller (`TradingLoop
 .tick()`) has done anything with it. If price lookup, risk evaluation,
 order construction, or exchange submission then fails anywhere
-downstream, the signal is already marked delivered — a restart cannot
-recover it, and with a durable marker configured, neither can a retry
-within the same process. A real fix means giving `SignalSource` its own
-acknowledgment contract (mark-delivered only after `OrderPipeline`
-successfully hands off, not merely on being read) — a genuine
-interface-level change spanning `SignalSource`, `FileSignalSource`,
-`DummySignalSource`, and `TradingLoop.tick()`'s own control flow itself,
-not a local fix. **This is not new to `kis-paper` or this PR** —
-`FileSignalSource` has carried this characteristic since Paper Trading
-Bridge Task H, and it applies identically, right now, to the real,
-currently-running `bingx-vst` production loop. Deliberately not
-attempted under review pressure here: a change to `FileSignalSource`'s
-own delivery semantics — a component already in continuous, real
-(if paper-account) operation — deserves its own `Discuss` pass and
-careful testing against the live loop, not a rushed fix bundled into a
-KIS wiring task. Full disclosure in `FileSignalSource`'s own Javadoc.
+downstream, the signal is already marked delivered within that process.
+**Severity depends on which constructor built the instance**: the
+marker-free one-arg constructor keeps this in-memory only, so a restart
+forgets it and the same signal is read again as new — lost only until
+the next restart, not permanently. The two-arg constructor with a
+durable `deliveredMarkerPath` — what both `forBingXVst` and
+`forKisPaper` actually use — persists across a restart too, so the
+signal really is permanently lost there; neither a restart nor a
+same-process retry recovers it. A real fix means giving `SignalSource`
+its own acknowledgment contract (mark-delivered only after
+`OrderPipeline` successfully hands off, not merely on being read) — a
+genuine interface-level change spanning `SignalSource`,
+`FileSignalSource`, `DummySignalSource`, and `TradingLoop.tick()`'s own
+control flow itself, not a local fix. **This is not new to `kis-paper`
+or this PR** — `FileSignalSource` has carried this characteristic since
+Paper Trading Bridge Task H, and it applies identically, right now, to
+the real, currently-running `bingx-vst` production loop (which uses the
+durable-marker constructor, so it has the permanent-loss version of this
+gap, not the milder one). Deliberately not attempted under review
+pressure here: a change to `FileSignalSource`'s own delivery semantics —
+a component already in continuous, real (if paper-account) operation —
+deserves its own `Discuss` pass and careful testing against the live
+loop, not a rushed fix bundled into a KIS wiring task. Full disclosure
+in `FileSignalSource`'s own Javadoc.
 
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
