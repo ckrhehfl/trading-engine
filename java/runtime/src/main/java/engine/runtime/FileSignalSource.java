@@ -114,6 +114,31 @@ import org.slf4j.LoggerFactory;
  * file's own read failures are (logged, never thrown) -- a marker file
  * this class doesn't fully control the lifecycle of should degrade to
  * "less protection," never to a crash.
+ *
+ * <p><b>Real, disclosed-not-fixed gap: {@link #nextSignal()} marks a
+ * signal delivered (updates {@link #lastDeliveredIntentId}, persists the
+ * marker) before the caller has done anything with the returned {@code
+ * OrderIntent} at all</b> (flagged on real CodeRabbit review of the PR
+ * that added {@code kis-paper}, applies identically to the already-
+ * running {@code bingx-vst} loop -- this is not new to that PR, just
+ * newly surfaced by its review). If price lookup, risk evaluation, order
+ * construction, or exchange submission fails anywhere downstream in
+ * {@link TradingLoop#tick()} after this method returns, the signal is
+ * already marked delivered -- a restart cannot recover it, and (with a
+ * durable {@code deliveredMarkerPath} configured) neither can a retry
+ * within the same process: a genuinely valid signal is permanently lost.
+ * A real fix means giving {@link SignalSource} its own acknowledgment
+ * contract (mark-delivered only after {@link OrderPipeline} successfully
+ * hands off, not merely on being read) -- a real interface-level change
+ * spanning this class, {@link DummySignalSource}, and {@link
+ * TradingLoop#tick()}'s own control flow, not a local one-line fix.
+ * Deliberately not attempted under review pressure on a wiring-only task
+ * (matching this project's established precedent elsewhere in the same
+ * PR for genuinely heavy-lift findings) -- especially since this class
+ * already backs the real, currently-running {@code bingx-vst} paper-
+ * trading loop, and a change to its delivery semantics deserves its own
+ * {@code Discuss} pass and careful testing, not a rushed fix touching a
+ * component already in continuous real-money-adjacent operation.
  */
 public final class FileSignalSource implements SignalSource {
 

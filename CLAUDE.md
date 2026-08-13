@@ -452,6 +452,30 @@ calendar, and confirms the order still fills on `runTick()` while
 `TradingLoop.lastTickAt()` stays `null` throughout (proving `tick()`'s
 own new-signal path genuinely never ran).
 
+**A fourth Task 4 finding, disclosed and deliberately left deferred
+(unlike the third above, this one is not being fixed)**:
+`FileSignalSource.nextSignal()` marks a signal delivered — updates its
+own in-memory pointer, persists the durable marker if configured — the
+moment it reads a genuinely new signal, before the caller (`TradingLoop
+.tick()`) has done anything with it. If price lookup, risk evaluation,
+order construction, or exchange submission then fails anywhere
+downstream, the signal is already marked delivered — a restart cannot
+recover it, and with a durable marker configured, neither can a retry
+within the same process. A real fix means giving `SignalSource` its own
+acknowledgment contract (mark-delivered only after `OrderPipeline`
+successfully hands off, not merely on being read) — a genuine
+interface-level change spanning `SignalSource`, `FileSignalSource`,
+`DummySignalSource`, and `TradingLoop.tick()`'s own control flow itself,
+not a local fix. **This is not new to `kis-paper` or this PR** —
+`FileSignalSource` has carried this characteristic since Paper Trading
+Bridge Task H, and it applies identically, right now, to the real,
+currently-running `bingx-vst` production loop. Deliberately not
+attempted under review pressure here: a change to `FileSignalSource`'s
+own delivery semantics — a component already in continuous, real
+(if paper-account) operation — deserves its own `Discuss` pass and
+careful testing against the live loop, not a rushed fix bundled into a
+KIS wiring task. Full disclosure in `FileSignalSource`'s own Javadoc.
+
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
 — see the futures-only narrowing above); the KOSPI200 futures night
