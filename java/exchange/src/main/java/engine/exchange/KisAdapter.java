@@ -105,6 +105,10 @@ public final class KisAdapter implements ExchangeAdapter {
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter ORDER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
+    // Bounded pagination for queryOrder's inquire-ccnl loop -- see that
+    // method's own comment for why this mirrors KIS's own official Python
+    // sample's max_depth=10 guard.
+    private static final int MAX_INQUIRE_CCNL_PAGES = 10;
 
     private final KisTokenProvider tokenProvider;
     private final String accountNo;
@@ -128,6 +132,28 @@ public final class KisAdapter implements ExchangeAdapter {
         this.httpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build();
     }
 
+    /**
+     * <b>Ambiguous-submission recovery is a real, disclosed gap, not yet
+     * closed for this adapter</b> (raised on real CodeRabbit review; deferred
+     * to Task 4, not fixed here, since Task 2 has zero live wiring and
+     * cannot itself exercise this path). KIS's real order request (below)
+     * has <b>no client-supplied idempotency key</b> -- unlike BingX's own
+     * {@code clientOrderID} field (confirmed, via this project's own real
+     * VST verification, to give BingX real server-side duplicate-submission
+     * rejection), nothing in KIS's official request parameters lets a
+     * resubmission be recognized as "the same order" by KIS itself. If a
+     * network failure happens after KIS has genuinely accepted an order but
+     * before this method observes the response, the resulting {@code Order}
+     * is left {@code SUBMITTED} with no {@code exchangeOrderId} -- and
+     * {@link #queryOrder} cannot resolve it (it searches {@code
+     * inquire-ccnl} by {@code exchangeOrderId}, which doesn't exist yet in
+     * this scenario). Before KIS is ever wired into a live-submitting
+     * {@code ExchangeOrderExecutor} (Task 4), a real resolution path must
+     * exist -- e.g. matching a pending {@code Order} against {@code
+     * inquire-ccnl}'s full result set by symbol/side/quantity/time rather
+     * than by ID, or an explicit manual-confirmation step -- and must never
+     * be "just resubmit and hope."
+     */
     @Override
     public void submitOrder(Order order) {
         Objects.requireNonNull(order, "order is required");
@@ -139,12 +165,23 @@ public final class KisAdapter implements ExchangeAdapter {
         body.put("ACNT_PRDT_CD", accountProductCode);
         body.put("SLL_BUY_DVSN_CD", kisSide(order.side()));
         body.put("SHTN_PDNO", order.symbol());
-        // KOSPI200 futures quantity is a contract count, never fractional --
-        // RiskGateway's own contract-multiplier conversion (CLAUDE.md's
-        // RiskLimits section) is what's actually responsible for enforcing
-        // this upstream; toBigInteger() here just guards against a stray
-        // trailing ".0" reaching the wire, not a substitute for that check.
-        body.put("ORD_QTY", order.approvedQuantity().toBigInteger().toString());
+        body.put("ORD_QTY", wholeContractCount(order.approvedQuantity()).toString());
+        // GUARDED_MARKET is sent as a real, wire-level UNPROTECTED market
+        // order (UNIT_PRICE="0") when limitPrice() is null -- flagged
+        // prominently on real CodeRabbit review as a Critical concern, not
+        // silently accepted: neither KIS's own order API nor this codebase's
+        // RiskGateway/ExchangeOrderExecutor enforce a fill-price bound at
+        // the wire level for this order type. This mirrors BingXAdapter's
+        // own already-shipped "MARKET" mapping exactly (see that class's own
+        // "no distinct guarded market order type" comment) -- so this is a
+        // pre-existing characteristic of this project's order-guard design
+        // as a whole, not something Task 2 introduces fresh for KIS
+        // specifically. It is exactly what CLAUDE.md's own Live Entry
+        // Criteria "market-order guard enabled" line exists to gate before
+        // any live (non-paper) order flow -- that verification has not
+        // happened for either adapter yet and must, as its own dedicated
+        // Discuss, before GUARDED_MARKET is ever used against a real account
+        // through this adapter.
         body.put("UNIT_PRICE", order.limitPrice() != null ? order.limitPrice().toPlainString() : "0");
         body.put("NMPR_TYPE_CD", kisQuoteTypeCode(order.orderType()));
         body.put("KRX_NMPR_CNDT_CD", "0");
@@ -154,7 +191,9 @@ public final class KisAdapter implements ExchangeAdapter {
 
         // A network/HTTP-level failure here leaves the order exactly where
         // submit() already put it (SUBMITTED) -- matches BingXAdapter's own
-        // reasoning: we genuinely don't know whether KIS received the order.
+        // reasoning: we genuinely don't know whether KIS received the
+        // order. See this method's own top-level Javadoc for why that
+        // ambiguity is harder to resolve for KIS than it is for BingX.
         JsonNode root = request("POST", ORDER_PATH, TR_ID_ORDER, body, Map.of());
 
         if (!isSuccess(root)) {
@@ -204,32 +243,57 @@ public final class KisAdapter implements ExchangeAdapter {
     public OrderStatus queryOrder(Order order) {
         Objects.requireNonNull(order, "order is required");
 
-        String today = java.time.LocalDate.now(KST).format(ORDER_DATE_FORMAT);
-        Map<String, String> query = new LinkedHashMap<>();
-        query.put("CANO", accountNo);
-        query.put("ACNT_PRDT_CD", accountProductCode);
-        query.put("STRT_ORD_DT", today);
-        query.put("END_ORD_DT", today);
-        query.put("SLL_BUY_DVSN_CD", "00");
-        query.put("CCLD_NCCS_DVSN", "00");
-        query.put("SORT_SQN", "DS");
-        query.put("PDNO", "");
-        query.put("STRT_ODNO", "");
-        query.put("MKET_ID_CD", "");
-        query.put("CTX_AREA_FK200", "");
-        query.put("CTX_AREA_NK200", "");
+        // Looks back to yesterday, not just today (tightened on real
+        // CodeRabbit review): a bare "today in KST" window misses an order
+        // placed shortly before local midnight when queried shortly after
+        // it -- a real, not hypothetical, boundary given this loop's tick
+        // cadence and KIS's own KST-local date semantics for this endpoint.
+        String startDate = java.time.LocalDate.now(KST).minusDays(1).format(ORDER_DATE_FORMAT);
+        String endDate = java.time.LocalDate.now(KST).format(ORDER_DATE_FORMAT);
 
-        // Pure read: order is never touched below, regardless of outcome.
-        JsonNode root = request("GET", INQUIRE_CCNL_PATH, TR_ID_INQUIRE_CCNL, Map.of(), query);
+        JsonNode matched = null;
+        String continuationKey = "";
+        boolean firstPage = true;
+        // Bounded, matching KIS's own official Python sample's own
+        // max_depth=10 recursive-continuation guard -- real pagination
+        // never legitimately runs this long for one account/day-range, so
+        // hitting the bound means stopping rather than looping unbounded.
+        for (int page = 0; page < MAX_INQUIRE_CCNL_PAGES && matched == null; page++) {
+            Map<String, String> query = new LinkedHashMap<>();
+            query.put("CANO", accountNo);
+            query.put("ACNT_PRDT_CD", accountProductCode);
+            query.put("STRT_ORD_DT", startDate);
+            query.put("END_ORD_DT", endDate);
+            query.put("SLL_BUY_DVSN_CD", "00");
+            query.put("CCLD_NCCS_DVSN", "00");
+            query.put("SORT_SQN", "DS");
+            query.put("PDNO", "");
+            query.put("STRT_ODNO", "");
+            query.put("MKET_ID_CD", "");
+            query.put("CTX_AREA_FK200", "");
+            query.put("CTX_AREA_NK200", continuationKey);
 
-        if (!isSuccess(root)) {
-            throw new ExchangeException(
-                    "KIS queryOrder failed for order " + order.clientOrderId() + ": " + errorMessage(root));
+            // Pure read: order is never touched below, regardless of outcome.
+            HttpResponse<String> response =
+                    sendRequest("GET", INQUIRE_CCNL_PATH, TR_ID_INQUIRE_CCNL, Map.of(), query, firstPage ? "" : "N");
+            JsonNode root = parseBody(INQUIRE_CCNL_PATH, response);
+
+            if (!isSuccess(root)) {
+                throw new ExchangeException(
+                        "KIS queryOrder failed for order " + order.clientOrderId() + ": " + errorMessage(root));
+            }
+            matched = findOrderInOutput1(root.path("output1"), order.exchangeOrderId());
+            String trCont = response.headers().firstValue("tr_cont").orElse("");
+            if (!"M".equals(trCont) && !"F".equals(trCont)) {
+                break; // no further pages
+            }
+            continuationKey = root.path("ctx_area_nk200").asText("");
+            firstPage = false;
         }
-        JsonNode matched = findOrderInOutput1(root.path("output1"), order.exchangeOrderId());
         if (matched == null) {
             throw new ExchangeException(
-                    "KIS queryOrder: order " + order.exchangeOrderId() + " not found in today's inquire-ccnl output1");
+                    "KIS queryOrder: order " + order.exchangeOrderId() + " not found in inquire-ccnl output1 for "
+                            + startDate + "-" + endDate);
         }
         return toOrderStatus(matched);
     }
@@ -326,14 +390,32 @@ public final class KisAdapter implements ExchangeAdapter {
      * request, returning the parsed JSON body. {@code jsonBody} is used for
      * POST requests (sent as the request body); {@code queryParams} for GET
      * requests (sent as the query string) -- a request uses exactly one of
-     * the two, matching the shape every real caller above already has.
-     * Throws {@link ExchangeException} for anything that isn't a clean HTTP
-     * 2xx with a parseable JSON body -- callers still need to separately
-     * check {@code rt_cd} via {@link #isSuccess} for exchange-level
-     * (business) errors, which arrive as a normal 200.
+     * the two, matching the shape every simple (non-paginated) caller above
+     * has. Convenience wrapper over {@link #sendRequest}/{@link #parseBody}
+     * for callers that don't need the raw {@link HttpResponse} itself (see
+     * {@link #queryOrder}, which does, for pagination's {@code tr_cont}
+     * response header).
      */
     private JsonNode request(
             String httpMethod, String path, String trId, Map<String, Object> jsonBody, Map<String, String> queryParams) {
+        return parseBody(path, sendRequest(httpMethod, path, trId, jsonBody, queryParams, ""));
+    }
+
+    /**
+     * Lower-level primitive: attaches every shared KIS header (bearer token,
+     * appkey/appsecret, tr_id, custtype, and tr_cont for pagination
+     * continuation) and sends the request, returning the raw {@link
+     * HttpResponse} so a caller that needs a response header (only {@link
+     * #queryOrder}, for {@code tr_cont}) can read it -- {@link #request}
+     * itself only ever needs the parsed body.
+     */
+    private HttpResponse<String> sendRequest(
+            String httpMethod,
+            String path,
+            String trId,
+            Map<String, Object> jsonBody,
+            Map<String, String> queryParams,
+            String trCont) {
         String token = tokenProvider.currentToken();
 
         HttpRequest.Builder builder = HttpRequest.newBuilder()
@@ -344,7 +426,8 @@ public final class KisAdapter implements ExchangeAdapter {
                 .header("appkey", tokenProvider.appKey())
                 .header("appsecret", tokenProvider.appSecret())
                 .header("tr_id", trId)
-                .header("custtype", "P");
+                .header("custtype", "P")
+                .header("tr_cont", trCont);
 
         HttpRequest httpRequest =
                 switch (httpMethod) {
@@ -357,28 +440,41 @@ public final class KisAdapter implements ExchangeAdapter {
                     default -> throw new IllegalArgumentException("unsupported HTTP method: " + httpMethod);
                 };
 
-        HttpResponse<String> response;
         try {
-            response = httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
+            return httpClient.send(httpRequest, HttpResponse.BodyHandlers.ofString());
         } catch (IOException e) {
             throw new ExchangeException("KIS request failed: I/O error calling " + path, e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new ExchangeException("KIS request interrupted calling " + path, e);
         }
+    }
 
-        log.debug("KIS response for {} {}: HTTP {} body={}", httpMethod, path, response.statusCode(), response.body());
-
+    /**
+     * Validates the HTTP status and parses the body -- deliberately does
+     * NOT log/embed {@code response.body()} anywhere (tightened on real
+     * CodeRabbit review): unlike BingX's own equivalent log line
+     * ({@code BingXAdapter}'s own Javadoc explains why it's safe there --
+     * BingX's response envelope never echoes request credentials or
+     * account-identifying data back), a real KIS response body can carry
+     * account numbers and balance/deposit amounts ({@code CANO}, {@code
+     * DNCA_TOT_AMT}, etc.) -- CLAUDE.md's own rule against logging account
+     * identifiers applies here even though this is a transient log line,
+     * not a committed file. {@code rt_cd}/{@code msg_cd} alone are enough
+     * to diagnose a failure without carrying that risk.
+     */
+    private JsonNode parseBody(String path, HttpResponse<String> response) {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new ExchangeException(
-                    "KIS request to " + path + " returned HTTP " + response.statusCode() + ": " + response.body());
+            throw new ExchangeException("KIS request to " + path + " returned HTTP " + response.statusCode());
         }
-
+        JsonNode root;
         try {
-            return objectMapper.readTree(response.body());
+            root = objectMapper.readTree(response.body());
         } catch (IOException e) {
-            throw new ExchangeException("KIS response body for " + path + " is not valid JSON: " + response.body(), e);
+            throw new ExchangeException("KIS response body for " + path + " is not valid JSON", e);
         }
+        log.debug("KIS response for {}: HTTP {} rt_cd={}", path, response.statusCode(), root.path("rt_cd").asText("?"));
+        return root;
     }
 
     private String toJson(Map<String, Object> body) {
@@ -400,6 +496,33 @@ public final class KisAdapter implements ExchangeAdapter {
                     .append(java.net.URLEncoder.encode(entry.getValue(), java.nio.charset.StandardCharsets.UTF_8));
         }
         return sb.toString();
+    }
+
+    /**
+     * KOSPI200 futures quantity is a contract count, never fractional.
+     * {@code RiskGateway}'s own contract-multiplier conversion (CLAUDE.md's
+     * {@code RiskLimits} section) is what's actually responsible for
+     * enforcing this upstream -- this is a defensive last check at the wire
+     * boundary, not a substitute for that. <b>Rejects, does not truncate</b>
+     * (tightened on real CodeRabbit review): {@link BigDecimal#toBigInteger()}
+     * silently discards any fractional part -- {@code 1.7} would have
+     * silently become {@code "1"} on the wire, a real quantity mismatch
+     * between what {@code RiskGateway} approved and what KIS actually
+     * receives, not merely a formatting nicety.
+     */
+    private static java.math.BigInteger wholeContractCount(BigDecimal approvedQuantity) {
+        java.math.BigInteger contracts;
+        try {
+            contracts = approvedQuantity.stripTrailingZeros().toBigIntegerExact();
+        } catch (ArithmeticException e) {
+            throw new ExchangeException(
+                    "KIS order quantity must be a whole contract count, got " + approvedQuantity.toPlainString(), e);
+        }
+        if (contracts.signum() <= 0) {
+            throw new ExchangeException(
+                    "KIS order quantity must be positive, got " + approvedQuantity.toPlainString());
+        }
+        return contracts;
     }
 
     /** {@code "01"} sell / {@code "02"} buy -- opening a SHORT is a sell, opening a LONG is a buy; KRX futures has no separate hedge-mode position-side field to also set (see class Javadoc). */

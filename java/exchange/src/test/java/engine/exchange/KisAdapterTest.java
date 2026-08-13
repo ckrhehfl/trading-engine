@@ -60,6 +60,22 @@ class KisAdapterTest {
         return Order.fromApprovedDecision(intent, decision);
     }
 
+    private Order limitOrder(Side side, String quantity, String limitPrice) {
+        UUID id = UUID.randomUUID();
+        OrderIntent intent = new OrderIntent(
+                id,
+                "101W09",
+                side,
+                OrderType.LIMIT,
+                new BigDecimal(quantity),
+                new BigDecimal(limitPrice),
+                null,
+                Instant.now());
+        RiskDecision decision = new RiskDecision(
+                id, Decision.APPROVED, null, new BigDecimal(quantity), new BigDecimal("1"), Instant.now());
+        return Order.fromApprovedDecision(intent, decision);
+    }
+
     @Test
     void submitOrderAcknowledgesOnSuccessfulResponseAndCapturesExchangeOrderId() {
         server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"0000123456\"}}");
@@ -87,6 +103,40 @@ class KisAdapterTest {
         assertTrue(body.contains("\"SLL_BUY_DVSN_CD\":\"02\""), "LONG must map to buy (02): " + body);
         assertTrue(body.contains("\"SHTN_PDNO\":\"101W09\""));
         assertTrue(body.contains("\"ORD_QTY\":\"2\""));
+    }
+
+    @Test
+    void submitOrderGuardedMarketSendsMarketTypeAndZeroPrice() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"1\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+
+        adapter.submitOrder(order);
+
+        String body = server.lastRequestBody();
+        assertTrue(body.contains("\"UNIT_PRICE\":\"0\""), body);
+        assertTrue(body.contains("\"NMPR_TYPE_CD\":\"02\""), body);
+        assertTrue(body.contains("\"ORD_DVSN_CD\":\"02\""), body);
+    }
+
+    @Test
+    void submitOrderLimitSendsLimitTypeAndRealPrice() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"1\"}}");
+        Order order = limitOrder(Side.LONG, "1", "350.5");
+
+        adapter.submitOrder(order);
+
+        String body = server.lastRequestBody();
+        assertTrue(body.contains("\"UNIT_PRICE\":\"350.5\""), body);
+        assertTrue(body.contains("\"NMPR_TYPE_CD\":\"01\""), body);
+        assertTrue(body.contains("\"ORD_DVSN_CD\":\"01\""), body);
+    }
+
+    @Test
+    void submitOrderRejectsFractionalQuantityRatherThanTruncating() {
+        Order order = guardedMarketOrder(Side.LONG, "1.7");
+
+        assertThrows(ExchangeException.class, () -> adapter.submitOrder(order));
+        assertNull(server.lastPath(), "a fractional quantity must be rejected before any request is sent");
     }
 
     @Test
@@ -218,6 +268,50 @@ class KisAdapterTest {
         server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[],\"output2\":{}}");
 
         assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
+    void queryOrderFollowsPaginationToFindOrderOnASecondPage() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"999\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+        adapter.submitOrder(order);
+
+        // First page: doesn't contain the target order, but tr_cont="M"
+        // response header says more pages exist -- queryOrder must follow
+        // ctx_area_nk200 into a second request rather than giving up.
+        server.queueResponse(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"ODNO\":\"111\",\"ORD_QTY\":\"1\","
+                        + "\"TOT_CCLD_QTY\":\"0\",\"AVG_PRC\":\"0\",\"CNCL_YN\":\"N\"}],\"ctx_area_nk200\":\"PAGE2KEY\"}",
+                "M");
+        // Second (final) page: contains the target order, tr_cont="F".
+        server.queueResponse(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"ODNO\":\"999\",\"ORD_QTY\":\"1\","
+                        + "\"TOT_CCLD_QTY\":\"1\",\"AVG_PRC\":\"351\",\"CNCL_YN\":\"N\"}],\"ctx_area_nk200\":\"\"}",
+                "F");
+
+        OrderStatus status = adapter.queryOrder(order);
+
+        assertEquals("999", status.exchangeOrderId());
+        assertEquals("FILLED", status.status());
+    }
+
+    @Test
+    void queryOrderSearchesFromYesterdayThroughToday() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+        adapter.submitOrder(order);
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"ODNO\":\"123\",\"ORD_QTY\":\"1\","
+                        + "\"TOT_CCLD_QTY\":\"0\",\"AVG_PRC\":\"0\",\"CNCL_YN\":\"N\"}],\"output2\":{}}");
+
+        adapter.queryOrder(order);
+
+        String startDate = server.lastQueryParams().get("STRT_ORD_DT");
+        String endDate = server.lastQueryParams().get("END_ORD_DT");
+        assertTrue(startDate.compareTo(endDate) < 0, "STRT_ORD_DT must be strictly before END_ORD_DT: " + startDate + " vs " + endDate);
     }
 
     @Test

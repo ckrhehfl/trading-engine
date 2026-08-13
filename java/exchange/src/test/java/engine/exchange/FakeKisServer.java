@@ -34,7 +34,11 @@ final class FakeKisServer implements AutoCloseable {
     private volatile String lastTrIdHeader;
     private volatile int responseStatus = 200;
     private volatile String responseBody = "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{}}";
+    private volatile String responseTrContHeader = "";
+    private volatile String lastTrContHeader;
+    private final java.util.Queue<String[]> queuedResponses = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private volatile String tokenResponseBody;
+    private volatile int tokenResponseStatus = 200;
 
     FakeKisServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -53,6 +57,27 @@ final class FakeKisServer implements AutoCloseable {
 
     void respondToTokenRequestWith(String body) {
         this.tokenResponseBody = body;
+        this.tokenResponseStatus = 200;
+    }
+
+    /** Lets a test exercise a real non-2xx token failure, not just a connection-level one. */
+    void respondToTokenRequestWith(int status, String body) {
+        this.tokenResponseStatus = status;
+        this.tokenResponseBody = body;
+    }
+
+    /**
+     * Queues a sequence of (non-token) responses to serve one per request,
+     * in order, each with its own {@code tr_cont} response header --
+     * for testing {@code queryOrder}'s multi-page pagination. Once
+     * exhausted, falls back to whatever {@link #respondWith} last set.
+     */
+    void queueResponse(int status, String body, String trContHeader) {
+        queuedResponses.add(new String[] {String.valueOf(status), body, trContHeader});
+    }
+
+    String lastTrContHeader() {
+        return lastTrContHeader;
     }
 
     void respondWith(int status, String body) {
@@ -102,7 +127,7 @@ final class FakeKisServer implements AutoCloseable {
         if ("/oauth2/tokenP".equals(path)) {
             byte[] body = tokenResponseBody.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(200, body.length);
+            exchange.sendResponseHeaders(tokenResponseStatus, body.length);
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(body);
             }
@@ -117,10 +142,17 @@ final class FakeKisServer implements AutoCloseable {
         lastAppKeyHeader = exchange.getRequestHeaders().getFirst("appkey");
         lastAppSecretHeader = exchange.getRequestHeaders().getFirst("appsecret");
         lastTrIdHeader = exchange.getRequestHeaders().getFirst("tr_id");
+        lastTrContHeader = exchange.getRequestHeaders().getFirst("tr_cont");
 
-        byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
+        String[] queued = queuedResponses.poll();
+        int status = queued != null ? Integer.parseInt(queued[0]) : responseStatus;
+        String bodyText = queued != null ? queued[1] : responseBody;
+        String trCont = queued != null ? queued[2] : responseTrContHeader;
+
+        byte[] body = bodyText.getBytes(StandardCharsets.UTF_8);
         exchange.getResponseHeaders().add("Content-Type", "application/json");
-        exchange.sendResponseHeaders(responseStatus, body.length);
+        exchange.getResponseHeaders().add("tr_cont", trCont);
+        exchange.sendResponseHeaders(status, body.length);
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(body);
         }

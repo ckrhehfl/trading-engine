@@ -44,6 +44,22 @@ import java.util.Objects;
  * convention for the equivalent stock-quote field) is this class's own
  * best-effort inference, not yet empirically verified against a real
  * response.
+ *
+ * <p><b>No staleness/execution-time signal</b> (raised on real CodeRabbit
+ * review): {@link #latestPrice} returns a bare price with no timestamp or
+ * market-open indicator, so a caller polling this outside KRX's real
+ * trading hours could keep receiving the same last-traded price
+ * indefinitely with no way to tell it apart from a genuinely fresh one.
+ * This is a deliberate separation of concerns, not an oversight: knowing
+ * *when* it's safe to act on a price at all is exactly {@code
+ * engine.runtime.TradingCalendar}'s job (see CLAUDE.md's KIS/KOSPI200
+ * Phase 1 design), which gates whether {@code TradingLoop.tick()} -- and
+ * therefore this method -- is ever called during closed-market hours in
+ * the first place, once wired into {@code PaperTradingApp} (Task 4). This
+ * class does not duplicate that gating itself. Whether KIS's real {@code
+ * inquire-price} response also carries its own execution-timestamp field
+ * (which could serve as an independent staleness check) is unconfirmed --
+ * a real Task 4 verification item, not assumed here either way.
  */
 public final class KisPriceFeed implements PriceFeed {
 

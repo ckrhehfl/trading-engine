@@ -12,6 +12,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -84,6 +85,23 @@ public final class KisTokenProvider {
      * Returns a currently-valid access token, issuing a fresh one if none is
      * cached yet or the cached one is within {@link #EXPIRY_SAFETY_MARGIN}
      * of its reported expiry. Never returns a stale/expired token silently.
+     *
+     * <p><b>Known, accepted limitation, not fixed here</b> (raised on real
+     * CodeRabbit review, deferred rather than fixed given its own severity
+     * there was rated trivial and Phase 1 is paper-only/dummy-signal, so
+     * the real-world blast radius today is small): this whole method is
+     * {@code synchronized}, so a token reissue (a real HTTP round trip, up
+     * to {@link #REQUEST_TIMEOUT}) blocks every other caller of this
+     * provider -- including {@link KisAdapter}'s order-submission path,
+     * since it shares this same provider instance with {@code
+     * engine.runtime.KisPriceFeed}'s quote polling (see this class's own
+     * "Shared between" Javadoc). A genuinely non-blocking design
+     * (background pre-emptive reissue before the safety margin is reached,
+     * or falling back to a still-technically-valid cached token if a
+     * reissue attempt itself fails) is real, worthwhile future work before
+     * this matters for anything beyond paper trading -- not attempted here
+     * to avoid introducing a real concurrency bug under review pressure for
+     * a Trivial-severity, not-yet-live-relevant concern.
      */
     public synchronized String currentToken() {
         if (cached == null || Instant.now().isAfter(cached.expiresAt().minus(EXPIRY_SAFETY_MARGIN))) {
@@ -109,8 +127,12 @@ public final class KisTokenProvider {
     }
 
     private CachedToken issueToken() {
-        String body = "{\"grant_type\":\"client_credentials\",\"appkey\":\"" + appKey + "\",\"appsecret\":\""
-                + appSecret + "\"}";
+        // Built via objectMapper, not string concatenation (tightened on
+        // real CodeRabbit review) -- a raw appKey/appSecret containing a
+        // quote or backslash would otherwise corrupt the JSON structure,
+        // turning an auth failure into a confusing parse error instead of a
+        // clear one.
+        String body = toJson(Map.of("grant_type", "client_credentials", "appkey", appKey, "appsecret", appSecret));
         URI uri = URI.create(baseUrl + TOKEN_PATH);
         HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(REQUEST_TIMEOUT)
@@ -128,37 +150,50 @@ public final class KisTokenProvider {
             throw new ExchangeException("KIS token request interrupted calling " + TOKEN_PATH, e);
         }
 
+        // None of the exception messages below embed response.body()/root
+        // (tightened on real CodeRabbit review) -- unlike KisAdapter's own
+        // trading-endpoint responses (which can carry account numbers/
+        // balances), a real token response body carries the access token
+        // itself, the single most sensitive value this whole class exists
+        // to protect. Leaking it into a log/exception message would defeat
+        // the point.
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new ExchangeException(
-                    "KIS token request returned HTTP " + response.statusCode() + ": " + response.body());
+            throw new ExchangeException("KIS token request returned HTTP " + response.statusCode());
         }
 
         JsonNode root;
         try {
             root = objectMapper.readTree(response.body());
         } catch (IOException e) {
-            throw new ExchangeException("KIS token response body is not valid JSON: " + response.body(), e);
+            throw new ExchangeException("KIS token response body is not valid JSON", e);
         }
 
         JsonNode tokenNode = root.get("access_token");
         if (tokenNode == null || tokenNode.isNull()) {
-            throw new ExchangeException("KIS token response missing 'access_token' field: " + root);
+            throw new ExchangeException("KIS token response missing 'access_token' field");
         }
         JsonNode expiryNode = root.get("access_token_token_expired");
         if (expiryNode == null || expiryNode.isNull()) {
-            throw new ExchangeException("KIS token response missing 'access_token_token_expired' field: " + root);
+            throw new ExchangeException("KIS token response missing 'access_token_token_expired' field");
         }
 
         Instant expiresAt;
         try {
             expiresAt = LocalDateTime.parse(expiryNode.asText(), EXPIRY_FORMAT).atZone(EXPIRY_ZONE).toInstant();
         } catch (java.time.format.DateTimeParseException e) {
-            throw new ExchangeException(
-                    "KIS token response 'access_token_token_expired' is not a valid timestamp: '"
-                            + expiryNode.asText() + "'", e);
+            throw new ExchangeException("KIS token response 'access_token_token_expired' is not a valid timestamp", e);
         }
 
         return new CachedToken(tokenNode.asText(), expiresAt);
+    }
+
+    private String toJson(Map<String, String> body) {
+        try {
+            return objectMapper.writeValueAsString(body);
+        } catch (IOException e) {
+            // Never embeds `body` itself -- it carries appKey/appSecret.
+            throw new ExchangeException("failed to serialize KIS token request body", e);
+        }
     }
 
     private record CachedToken(String token, Instant expiresAt) {}

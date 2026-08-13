@@ -78,15 +78,20 @@ class KisTokenProviderTest {
     }
 
     @Test
-    void currentTokenThrowsExchangeExceptionOnHttpError() {
-        server.respondToTokenRequestWith("{}"); // irrelevant, status below is what matters
-        FakeKisServer failingServer = server;
-        // respondWith affects the non-token route; simulate a token failure
-        // by pointing at a server that returns a non-2xx for the token path
-        // specifically -- achieved by closing this server and hitting a
-        // provider with no listener, which is simpler and just as valid a
-        // proof that HTTP-level failure surfaces as ExchangeException.
-        failingServer.close();
+    void currentTokenThrowsExchangeExceptionOnConnectionFailure() {
+        server.close();
+
+        assertThrows(ExchangeException.class, () -> provider.currentToken());
+    }
+
+    @Test
+    void currentTokenThrowsExchangeExceptionOnNon2xxTokenResponse() {
+        // Distinct from the connection-failure case above -- a real non-2xx
+        // HTTP response from a live token endpoint, not just an unreachable
+        // one (the fake server's own token route previously always returned
+        // 200 regardless of what a test asked for; fixed on real CodeRabbit
+        // review of the PR that added this test).
+        server.respondToTokenRequestWith(401, "{\"rt_cd\":\"1\",\"msg1\":\"invalid appkey\"}");
 
         assertThrows(ExchangeException.class, () -> provider.currentToken());
     }
