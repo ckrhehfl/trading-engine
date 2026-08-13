@@ -49,7 +49,7 @@ import java.util.Objects;
  * assumption in this class most worth re-verifying if BingX's behavior
  * here is ever in doubt.
  */
-public final class BingXPriceFeed {
+public final class BingXPriceFeed implements PriceFeed {
 
     private static final String TRADES_PATH = "/openApi/swap/v2/quote/trades";
     private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
@@ -63,6 +63,7 @@ public final class BingXPriceFeed {
         this.httpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build();
     }
 
+    @Override
     public BigDecimal latestPrice(String symbol) {
         Objects.requireNonNull(symbol, "symbol is required");
 
