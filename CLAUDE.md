@@ -382,29 +382,60 @@ rather than being improvised under review pressure on a wiring task. The
 practical consequence, stated plainly: **`RiskLimits.canary()`'s 2%
 order-notional limit does not meaningfully bound a real KIS order's
 exposure today** — it is checked against `quantity × price`, off from
-the real notional by the ₩250,000 contract multiplier. This is inert as
-of Task 4 (still `DummySignalSource`, and real submission is separately
-blocked on the account's own paper-credential setup), but must be
-resolved — as its own dedicated task, per the requirement above — before
-`kis-paper` mode is ever pointed at a real strategy signal or left
-running unattended with real (even paper-account) credentials.
+the real notional by the ₩250,000 contract multiplier.
 
-**A second, smaller Task 4 finding, same review, now fixed**:
-`FileSignalSource`'s delivered-marker file (see Task H's own "durable,
-cross-restart dedup" design) could have collided between `bingx-vst` and
-`kis-paper` if an operator ever explicitly overrode
-`PAPER_TRADING_SIGNAL_PATH` to the same value for both processes —
-`KIS_SUBMISSION_MARKERS_PATH` (Task 4's own separate submission-marker
-file) solves a different problem and never prevented this. Not a
-collision in practice even before this fix — `resolveSignalPath`'s
-default path is derived from `symbol`, and the two modes trade different
-symbols (a KOSPI200 futures contract vs. `BTC-USDT`), so their default
-paths never matched — but cheap enough to close outright rather than
-merely disclose: the `kis-paper` constructor now writes to a
-KIS-specific marker filename (`kis-delivered.marker`), not the shared
-`delivered.marker` name the `bingx-vst` path uses, so the two venues'
-delivery state can never collide even under a forced same-path
-misconfiguration.
+**Correction to this disclosure's own first version, caught on a second
+CodeRabbit review pass of the same PR**: it originally claimed this gap
+was "inert... because it still runs against `DummySignalSource`." That
+was simply false — `forKisPaper()` has always wired a real
+`FileSignalSource` pointed at a real `signalPath`, the same as
+`forBingXVst()` does, so this graph is fully order-submission-capable the
+moment *any* file resembling a signal appears at that path, accidentally
+or otherwise. **Real mitigation, not a full fix**: `forKisPaper()` now
+unconditionally trips `KillSwitch` at construction — not only on a
+preflight/marker problem as `forBingXVst()` does, but always, specifically
+because of this gap — so no signal can result in a submitted order
+without a deliberate human reset first, regardless of how clean preflight
+and marker state look. This bounds the risk to "a human must actively
+choose to enable trading," it does not fix the underlying gap; the
+contract-multiplier conversion must still be built — as its own dedicated
+task, per the requirement above — before that reset is ever performed
+against a `kis-paper` process pointed at a real strategy signal.
+
+**A second Task 4 finding, same review, now fixed**: `FileSignalSource`'s
+delivered-marker file (see Task H's own "durable, cross-restart dedup"
+design) could have collided between `bingx-vst` and `kis-paper` if an
+operator ever explicitly overrode `PAPER_TRADING_SIGNAL_PATH` to the same
+value for both processes — `KIS_SUBMISSION_MARKERS_PATH` (Task 4's own
+separate submission-marker file) solves a different problem and never
+prevented this. Not a collision in practice even before this fix —
+`resolveSignalPath`'s default path is derived from `symbol`, and the two
+modes trade different symbols (a KOSPI200 futures contract vs.
+`BTC-USDT`), so their default paths never matched — but cheap enough to
+close outright rather than merely disclose: the `kis-paper` constructor
+now writes to a KIS-specific marker filename (`kis-delivered.marker`),
+not the shared `delivered.marker` name the `bingx-vst` path uses, so the
+two venues' delivery state can never collide even under a forced
+same-path misconfiguration.
+
+**A third Task 4 finding, same review round as the correction above,
+disclosed and deferred**: `PaperTradingApp.runTick()`'s `TradingCalendar`
+gate skips `OrderExecutor.pollFills` along with everything else in
+`TradingLoop.tick()` while the market is closed — a real fill, cancel, or
+expiry at the exchange right at/after close would not be reflected in
+this process's own `OrderStore`/`OrderExecutor` state until the market
+reopens and a tick runs again. `reconcile()` still runs every tick
+regardless, but it only checks internal consistency between this
+process's own records, not against the exchange's live state, so it
+cannot catch this particular staleness either. This gap is new, not
+pre-existing — `simulated`/`bingx-vst` always use
+`AlwaysOpenTradingCalendar`, so their `tick()` (and therefore
+`pollFills`) always runs; `kis-paper` is the first mode whose calendar
+can actually report closed. A real fix means separating "poll pending
+fills" from "process a new signal" as independently-gateable concerns,
+most likely inside `TradingLoop` itself — shared by all three modes, real
+surgery on a core, heavily-tested class, not something to rush under
+review pressure on a wiring task.
 
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
