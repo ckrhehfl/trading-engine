@@ -524,10 +524,12 @@ public final class PaperTradingApp {
      * <ul>
      *   <li>{@code PAPER_TRADING_SYMBOL} (optional, default {@code
      *       BTC-USDT})
-     *   <li>{@code BINGX_BASE_URL} (required, no default -- matches the
-     *       existing java/python-wide convention of never hardcoding a
-     *       BingX host in source; fails fast with a clear message if
-     *       unset)
+     *   <li>{@code BINGX_BASE_URL} (required, no default, in {@code
+     *       simulated}/{@code bingx-vst} mode only -- matches the existing
+     *       java/python-wide convention of never hardcoding a BingX host in
+     *       source; fails fast with a clear message if unset. {@code
+     *       kis-paper} mode never reads this var at all -- see {@link
+     *       #forKisPaper})
      *   <li>{@code PAPER_TRADING_SIGNAL_PATH} (optional, default {@code
      *       var/live/signals/<symbol>/daily-tsmom-ensemble/latest.json},
      *       resolved relative to the JVM's working directory -- this
@@ -552,16 +554,21 @@ public final class PaperTradingApp {
      */
     public static PaperTradingApp fromEnvironment() {
         String symbol = firstNonBlank(System.getenv(ENV_SYMBOL), DEFAULT_SYMBOL);
-        String bingxBaseUrl = requireNonBlank(System.getenv(ENV_BINGX_BASE_URL), ENV_BINGX_BASE_URL);
         Path signalPath = resolveSignalPath(System.getenv(ENV_SIGNAL_PATH), symbol);
         long tickIntervalSeconds = resolveTickIntervalSeconds(System.getenv(ENV_TICK_INTERVAL_SECONDS));
         Path reportsDirectory = resolveReportsDirectory(System.getenv(ENV_REPORTS_DIRECTORY));
         String executionMode = resolveExecutionMode(System.getenv(ENV_EXECUTION_MODE));
+        if (EXECUTION_MODE_KIS_PAPER.equals(executionMode)) {
+            // kis-paper never touches BINGX_BASE_URL -- KisPriceFeed is built
+            // from KIS_PAPER_BASE_URL instead, so this mode must not require
+            // a BingX-only env var just to start (a real CodeRabbit review
+            // finding: requiring it unconditionally above this branch would
+            // have made kis-paper unstartable with only KIS credentials set).
+            return forKisPaper(symbol, signalPath, tickIntervalSeconds, reportsDirectory);
+        }
+        String bingxBaseUrl = requireNonBlank(System.getenv(ENV_BINGX_BASE_URL), ENV_BINGX_BASE_URL);
         if (EXECUTION_MODE_BINGX_VST.equals(executionMode)) {
             return forBingXVst(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
-        }
-        if (EXECUTION_MODE_KIS_PAPER.equals(executionMode)) {
-            return forKisPaper(symbol, signalPath, tickIntervalSeconds, reportsDirectory);
         }
         return new PaperTradingApp(symbol, bingxBaseUrl, signalPath, tickIntervalSeconds, reportsDirectory);
     }
