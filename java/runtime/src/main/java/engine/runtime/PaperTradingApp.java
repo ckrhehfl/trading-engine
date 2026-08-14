@@ -190,6 +190,25 @@ public final class PaperTradingApp {
     static final String DEFAULT_KIS_ACCOUNT_PRODUCT_CODE = "03";
 
     /**
+     * Optional, default {@code INDEX_FUTURES} -- matches {@link
+     * KisPriceFeed.MarketDivision}'s own enum constant names exactly (not
+     * KIS's raw {@code F}/{@code JF} wire values), so a misspelling fails
+     * fast via {@link Enum#valueOf} rather than silently falling through
+     * to a default the way {@code KIS_ACCOUNT_PRODUCT_CODE} does -- this
+     * value picks which real quote endpoint parameter {@link KisPriceFeed}
+     * sends, and a wrong choice risks a wrong or empty quote for a real
+     * symbol (see that enum's own Javadoc), so a typo here should be loud,
+     * not silently defaulted. Defaults to {@code INDEX_FUTURES} because
+     * that is this phase's original, only-ever-tested scope (KOSPI200) --
+     * {@code STOCK_FUTURES} is an explicit, deliberate opt-in for an
+     * individual-stock-futures symbol, never inferred from {@code
+     * PAPER_TRADING_SYMBOL} itself (index-futures and stock-futures short
+     * codes are the same shape -- a letter plus five digits -- so the
+     * symbol string alone cannot disambiguate them).
+     */
+    static final String ENV_KIS_MARKET_DIVISION = "KIS_MARKET_DIVISION";
+
+    /**
      * The KIS paper-trading (모의투자) host, as a Java constant -- <b>not</b>
      * an environment variable, same "no configuration surface" reasoning
      * and same {@code private} visibility as {@link #BINGX_VST_BASE_URL}
@@ -556,10 +575,13 @@ public final class PaperTradingApp {
      *       convention; see {@link #forBingXVst})
      *   <li>Only in {@code kis-paper} mode: {@code KIS_APP_KEY}/{@code
      *       KIS_APP_SECRET}/{@code KIS_ACCOUNT_NO} (all three required, no
-     *       default -- same credential convention as above) and {@code
+     *       default -- same credential convention as above), {@code
      *       KIS_ACCOUNT_PRODUCT_CODE} (optional, default {@link
-     *       #DEFAULT_KIS_ACCOUNT_PRODUCT_CODE}, {@code "03"}); see {@link
-     *       #forKisPaper}
+     *       #DEFAULT_KIS_ACCOUNT_PRODUCT_CODE}, {@code "03"}), and {@code
+     *       KIS_MARKET_DIVISION} (optional, default {@code INDEX_FUTURES}
+     *       -- see {@link #ENV_KIS_MARKET_DIVISION}'s own Javadoc for why
+     *       this exists and why it is never inferred from {@code
+     *       PAPER_TRADING_SYMBOL}); see {@link #forKisPaper}
      * </ul>
      */
     public static PaperTradingApp fromEnvironment() {
@@ -786,10 +808,11 @@ public final class PaperTradingApp {
         String accountNo = requireNonBlank(System.getenv(ENV_KIS_ACCOUNT_NO), ENV_KIS_ACCOUNT_NO);
         String accountProductCode =
                 firstNonBlank(System.getenv(ENV_KIS_ACCOUNT_PRODUCT_CODE), DEFAULT_KIS_ACCOUNT_PRODUCT_CODE);
+        KisPriceFeed.MarketDivision marketDivision = resolveKisMarketDivision(System.getenv(ENV_KIS_MARKET_DIVISION));
 
         KisTokenProvider tokenProvider = new KisTokenProvider(appKey, appSecret, KIS_PAPER_BASE_URL);
         KisAdapter adapter = new KisAdapter(tokenProvider, accountNo, accountProductCode, KIS_PAPER_BASE_URL);
-        KisPriceFeed priceFeed = new KisPriceFeed(tokenProvider, KIS_PAPER_BASE_URL);
+        KisPriceFeed priceFeed = new KisPriceFeed(tokenProvider, KIS_PAPER_BASE_URL, marketDivision);
 
         KisPreflight.Result preflight = KisPreflight.run(adapter);
 
@@ -911,6 +934,36 @@ public final class PaperTradingApp {
                             + "'");
         }
         return Path.of("var", "live", symbol + "-kis_submission_markers.json");
+    }
+
+    /**
+     * {@link KisPriceFeed.MarketDivision#INDEX_FUTURES} for {@code null}/
+     * blank (this phase's original, only-ever-tested default -- see {@link
+     * #ENV_KIS_MARKET_DIVISION}'s own Javadoc); an exact (case-sensitive,
+     * after trimming) match of an enum constant name for anything else;
+     * throws for anything that doesn't match either, rather than silently
+     * defaulting -- same "an unrecognized value must fail loud, not fall
+     * through to a possibly-wrong default" reasoning {@link
+     * #resolveExecutionMode} already applies, chosen deliberately over
+     * {@code Enum::valueOf}'s own uppercase-only exact-match behavior so a
+     * lowercase typo still gets this method's clearer error message
+     * instead of a bare {@code IllegalArgumentException} from the enum
+     * itself.
+     */
+    static KisPriceFeed.MarketDivision resolveKisMarketDivision(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return KisPriceFeed.MarketDivision.INDEX_FUTURES;
+        }
+        String trimmed = raw.trim();
+        for (KisPriceFeed.MarketDivision candidate : KisPriceFeed.MarketDivision.values()) {
+            if (candidate.name().equals(trimmed)) {
+                return candidate;
+            }
+        }
+        throw new IllegalStateException(
+                ENV_KIS_MARKET_DIVISION + " must be one of "
+                        + java.util.Arrays.toString(KisPriceFeed.MarketDivision.values()) + " (or unset/blank, which"
+                        + " defaults to INDEX_FUTURES) -- was '" + raw + "'");
     }
 
     /**

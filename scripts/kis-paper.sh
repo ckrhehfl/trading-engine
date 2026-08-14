@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Starts/stops/lists one independent kis-paper tmux session per KOSPI200
-# futures symbol -- this project's established one-process-per-symbol
-# pattern (see scripts/paper-trading-watchdog.sh's own simulated/bingx-vst
-# sessions), extended to however many KIS symbols an operator wants to run
-# side by side. Each session is its own real PaperTradingApp process with
-# its own KisAdapter/KisPreflight/TradingLoop -- see CLAUDE.md's
-# "KIS/KOSPI200 venue integration, Phase 1" section for the full design.
+# Starts/stops/lists one independent kis-paper tmux session per KIS
+# domestic-futures symbol (KOSPI200 index futures or an individual-stock
+# future -- see the --stock-futures flag below) -- this project's
+# established one-process-per-symbol pattern (see scripts/paper-trading-
+# watchdog.sh's own simulated/bingx-vst sessions), extended to however
+# many KIS symbols an operator wants to run side by side. Each session is
+# its own real PaperTradingApp process with its own KisAdapter/
+# KisPreflight/TradingLoop -- see CLAUDE.md's "KIS/KOSPI200 venue
+# integration, Phase 1" section for the full design.
 #
 # Deliberately a new, separate script rather than an extension of
 # scripts/paper-trading-watchdog.sh -- that script is BingX-specific
@@ -37,15 +39,31 @@
 # be reinterpreted as code.
 #
 # Usage:
-#   scripts/kis-paper.sh start <SYMBOL> [<SYMBOL> ...]
+#   scripts/kis-paper.sh start [--stock-futures] <SYMBOL> [<SYMBOL> ...]
 #   scripts/kis-paper.sh stop <SYMBOL> [<SYMBOL> ...]
 #   scripts/kis-paper.sh stop --all
 #   scripts/kis-paper.sh status
 #
-# <SYMBOL> is a real KOSPI200 futures contract code (e.g. "101W09") --
-# this script does not know or validate real KIS contract codes; check
-# KIS's own app/HTS futures quote screen for the current front-month/
-# next-month codes. PAPER_TRADING_REPORTS_DIR is derived per symbol
+# <SYMBOL> is a real KIS short code (e.g. "A01609" for a KOSPI200 index
+# futures contract, "A11609" for an individual-stock future) -- this
+# script does not know or validate real KIS contract codes; check KIS's
+# own app/HTS futures quote screen, or KIS's own publicly-downloadable
+# symbol master files (stocks_info/domestic_index_future_code.py and
+# domestic_stock_future_code.py in koreainvestment/open-trading-api on
+# GitHub), for current codes.
+#
+# --stock-futures applies to every SYMBOL in that one `start` invocation
+# (there is no per-symbol mixing within a single call -- run this script
+# twice, once per group, if you want both index-futures and stock-futures
+# symbols started together) -- sets KIS_MARKET_DIVISION=STOCK_FUTURES for
+# each session started, so KisPriceFeed queries KIS's stock-futures quote
+# parameter ("JF") instead of its own default (index futures, "F"). See
+# KisPriceFeed.MarketDivision's own Javadoc for why this is a required,
+# explicit choice this script will never infer from the symbol string
+# itself (index-futures and stock-futures short codes are the same shape).
+# Omit the flag for KOSPI200 index-futures symbols.
+#
+# PAPER_TRADING_REPORTS_DIR is derived per symbol
 # (var/live/reports/kis-<SYMBOL>) so concurrent symbols never share a
 # report directory -- PAPER_TRADING_SIGNAL_PATH is left at its own
 # symbol-derived default (PaperTradingApp.resolveSignalPath) rather than
@@ -83,6 +101,7 @@ get_env_var() {
 
 start_symbol() {
     local symbol="$1"
+    local market_division="${2:-}"
     # Explicit check, not a bare `validate_symbol "$symbol"` statement --
     # start_symbol is called as `start_symbol "$symbol" || status_code=1`
     # below, and bash's own `set -e` semantics do not propagate into a
@@ -126,6 +145,18 @@ start_symbol() {
     )
     if [[ -n "$account_product_code" ]]; then
         env_args+=("KIS_ACCOUNT_PRODUCT_CODE=$account_product_code")
+    fi
+    # market_division is per-invocation (the --stock-futures flag below),
+    # not read from .env -- unlike the KIS_* credential vars above, this
+    # is a property of the SYMBOL being started, not the account, and a
+    # single .env value couldn't correctly cover a run that starts both
+    # index-futures and stock-futures symbols. Left unset (letting
+    # PaperTradingApp apply its own INDEX_FUTURES default) unless
+    # --stock-futures was passed. See KisPriceFeed.MarketDivision's own
+    # Javadoc for why this must be explicit, never inferred from the
+    # symbol string.
+    if [[ -n "$market_division" ]]; then
+        env_args+=("KIS_MARKET_DIVISION=$market_division")
     fi
 
     tmux new-session -d -s "$session" -c "$REPO_ROOT/java" \
@@ -181,7 +212,7 @@ status() {
 usage() {
     cat <<EOF
 Usage:
-  $0 start <SYMBOL> [<SYMBOL> ...]
+  $0 start [--stock-futures] <SYMBOL> [<SYMBOL> ...]
   $0 stop <SYMBOL> [<SYMBOL> ...]
   $0 stop --all
   $0 status
@@ -193,6 +224,11 @@ cmd="${1:-}"
 
 case "$cmd" in
     start)
+        market_division=""
+        if [[ "${1:-}" == "--stock-futures" ]]; then
+            market_division="STOCK_FUTURES"
+            shift
+        fi
         if [[ "$#" -eq 0 ]]; then
             echo "ERROR: start requires at least one SYMBOL" >&2
             usage
@@ -200,7 +236,7 @@ case "$cmd" in
         fi
         status_code=0
         for symbol in "$@"; do
-            start_symbol "$symbol" || status_code=1
+            start_symbol "$symbol" "$market_division" || status_code=1
         done
         exit "$status_code"
         ;;

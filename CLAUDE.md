@@ -500,6 +500,70 @@ the path from `symbol` (`var/live/{symbol}-kis_submission_markers.json`,
 variable override, matching this path's established no-config-surface
 precedent.
 
+**Scope extension beyond KOSPI200 index futures: individual KRX stock
+futures (실제 개별주식선물), confirmed real and added — 계약승수/quote
+market-division handling still only partially verified.** Researched
+directly against KIS's own official `koreainvestment/open-trading-api`
+GitHub source (its real, publicly-downloadable symbol master files,
+`stocks_info/domestic_index_future_code.py` and
+`domestic_stock_future_code.py` — both fetched and parsed for real,
+2026-08-14) rather than assumed: KRX genuinely lists futures contracts on
+283 individual large-cap stocks (Samsung Electronics/삼성전자 front-month
+`A11609`, SK Hynix/SK하이닉스 front-month `A50609`, confirmed as real,
+current, live short codes as of that date — KOSPI200 index futures itself
+uses the same short-code shape, front-month `A01609`), not just the
+KOSPI200 index. KIS's own official `order`/`order_rvsecncl`/
+`inquire_ccnl`/`inquire_balance`/`inquire_deposit` example functions are
+**generic across every domestic futures/options product** — same
+endpoint, same `tr_id`, distinguished only by the `SHTN_PDNO`/`PDNO`
+symbol value, confirmed directly from KIS's own example docstrings (`선물
+6자리 (예: 101W09)` used identically regardless of underlying) — so
+`KisAdapter`'s order/cancel/query/balance/positions methods needed **no
+code change at all** to support an individual-stock-futures symbol; they
+were already venue-generic, not KOSPI200-specific, despite this class's
+own Javadoc historically saying "KOSPI200 index futures specifically."
+
+**What did need a real code change: `KisPriceFeed`'s quote lookup.** KIS's
+own official source documents a genuinely different
+`FID_COND_MRKT_DIV_CODE` value per instrument type on the sibling
+`inquire-asking-price` endpoint's own parameter comment — `F` for index
+futures, `JF` for individual-stock futures (confirmed, not inferred) —
+and `KisPriceFeed` used to hardcode `F` unconditionally. Fixed with a new
+`KisPriceFeed.MarketDivision` enum (`INDEX_FUTURES`/`STOCK_FUTURES`), now
+a **required** constructor argument (no default at that layer — an
+already-established project principle: never silently assume a
+possibly-wrong default for something this consequential). `PaperTradingApp`
+exposes this as a new optional env var, `KIS_MARKET_DIVISION` (default
+`INDEX_FUTURES`, matching this phase's original, only-ever-tested scope;
+must be typed exactly as the enum constant name or the process refuses to
+start, same "fail loud on an unrecognized value" discipline
+`resolveExecutionMode` already established) — and `scripts/kis-paper.sh`
+exposes it as a `--stock-futures` flag applying to every symbol in one
+`start` invocation (no per-symbol mixing within a single call; run the
+script twice for a mixed group). **Real, disclosed, still-open
+uncertainty, not silently assumed away**: KIS's own docs establish `F`
+vs `JF` for `inquire-asking-price` specifically, but `KisPriceFeed`
+actually calls the sibling `inquire-price` endpoint, whose own official
+docstring only ever mentions `F`/`O` (index futures/options), never `JF`
+— this could mean the omission is real (that specific endpoint doesn't
+need the distinction) or merely an incomplete doc comment in KIS's own
+examples repo. Not guessable from documentation alone; needs a real call
+against a real individual-stock-futures symbol (e.g. `A11609`) to settle,
+which is deliberately not asserted as already-confirmed anywhere in code
+or here.
+
+**Still fully unbuilt, unaffected by this extension**: the RiskGateway
+KOSPI200 contract-multiplier conversion disclosed earlier in this section
+remains disclosed-not-built, and does not yet distinguish index-futures
+(₩250,000/index point) from stock-futures (a real, different, per-stock
+contract multiplier — the symbol master file's own `한글종목명` field shows
+a `(  10)` suffix per stock-futures row, plausibly a 10-shares-per-
+contract multiplier, not yet independently confirmed against KIS's own
+contract-specification docs). `forKisPaper()`'s own unconditional
+`KillSwitch` trip (see above) already covers this extension too, for the
+identical reason — no code path in this extension is exempt from that
+mitigation.
+
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
 — see the futures-only narrowing above); the KOSPI200 futures night
