@@ -211,6 +211,15 @@ case "$cmd" in
             exit 1
         fi
         if [[ "$1" == "--all" ]]; then
+            # Real CodeRabbit review finding: `stop --all SYMBOL` used to
+            # silently ignore the trailing SYMBOL and stop everything --
+            # an operator typo could stop more sessions than intended
+            # without any error. --all must be the only argument.
+            if [[ "$#" -ne 1 ]]; then
+                echo "ERROR: --all takes no additional arguments (got: ${*:2})" >&2
+                usage
+                exit 1
+            fi
             stop_all
         else
             for symbol in "$@"; do
