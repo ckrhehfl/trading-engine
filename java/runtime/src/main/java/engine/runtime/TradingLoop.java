@@ -156,6 +156,7 @@ public final class TradingLoop {
     private final PriceFeed priceFeed;
     private final KillSwitch killSwitch;
     private final String symbol;
+    private final AccountStateProvider accountStateProvider;
 
     private BigDecimal equity = INITIAL_EQUITY;
     private boolean lastLoggedTripState = false;
@@ -179,6 +180,35 @@ public final class TradingLoop {
         this.priceFeed = Objects.requireNonNull(priceFeed, "priceFeed is required");
         this.killSwitch = Objects.requireNonNull(killSwitch, "killSwitch is required");
         this.symbol = Objects.requireNonNull(symbol, "symbol is required");
+        this.accountStateProvider = new SyntheticAccountStateProvider();
+    }
+
+    /**
+     * KIS shared account risk ledger, Task A (see {@code
+     * AccountStateProvider}'s own Javadoc): the same six parameters as the
+     * canonical constructor above, plus an explicit {@link
+     * AccountStateProvider} rather than always constructing the private
+     * {@code SyntheticAccountStateProvider} above -- lets a caller (a
+     * future {@code kis-paper} wiring, Task C, not built here) supply a
+     * real shared/durable implementation instead. {@code simulated}/{@code
+     * bingx-vst} keep calling the 6-arg constructor above and are
+     * unaffected by this overload's existence.
+     */
+    public TradingLoop(
+            OrderPipeline orderPipeline,
+            OrderExecutor orderExecutor,
+            SignalSource signalSource,
+            PriceFeed priceFeed,
+            KillSwitch killSwitch,
+            String symbol,
+            AccountStateProvider accountStateProvider) {
+        this.orderPipeline = Objects.requireNonNull(orderPipeline, "orderPipeline is required");
+        this.orderExecutor = Objects.requireNonNull(orderExecutor, "orderExecutor is required");
+        this.signalSource = Objects.requireNonNull(signalSource, "signalSource is required");
+        this.priceFeed = Objects.requireNonNull(priceFeed, "priceFeed is required");
+        this.killSwitch = Objects.requireNonNull(killSwitch, "killSwitch is required");
+        this.symbol = Objects.requireNonNull(symbol, "symbol is required");
+        this.accountStateProvider = Objects.requireNonNull(accountStateProvider, "accountStateProvider is required");
     }
 
     /**
@@ -237,7 +267,8 @@ public final class TradingLoop {
                                     intent.symbol(),
                                     symbol);
                         } else {
-                            Optional<Order> order = orderPipeline.submitIntent(intent, price, buildAccountState());
+                            AccountState reservedAccount = accountStateProvider.reserveForIntent(intent, price);
+                            Optional<Order> order = orderPipeline.submitIntent(intent, price, reservedAccount);
                             if (order.isPresent()) {
                                 // Recorded before submitToBroker() below, not
                                 // after -- see Reconciler's own Javadoc: a
@@ -247,7 +278,21 @@ public final class TradingLoop {
                                 // itself goes on to fail (e.g. PaperBroker's
                                 // own duplicate-id guard).
                                 submittedOrderIds.add(order.get().clientOrderId());
+                                // Shrinks the reservation above from its
+                                // pessimistic pre-clamp size down to the real
+                                // approved size -- see AccountStateProvider's
+                                // own Javadoc for why this is needed whenever
+                                // RiskGateway MODIFIED (clamped) rather than
+                                // fully APPROVED the request.
+                                accountStateProvider.confirmReservation(
+                                        intent.intentId(), order.get().approvedQuantity(), price);
                                 submitToBroker(order.get(), price);
+                            } else {
+                                // Risk Gateway rejected the intent -- no
+                                // Order was ever produced, so the pessimistic
+                                // reservation above must be released in full,
+                                // not left committed against nothing.
+                                accountStateProvider.releaseReservation(intent.intentId());
                             }
                         }
                     }
@@ -382,5 +427,37 @@ public final class TradingLoop {
         BigDecimal pnlPercent =
                 equity.subtract(INITIAL_EQUITY).divide(INITIAL_EQUITY, PNL_PERCENT_SCALE, RoundingMode.HALF_UP);
         return new AccountState(equity, pnlPercent, pnlPercent, pnlPercent);
+    }
+
+    /**
+     * The default {@link AccountStateProvider} -- synchronous, process-
+     * local, and exactly what this class always did inline before the KIS
+     * shared account risk ledger Task A extraction (see {@link
+     * AccountStateProvider}'s own Javadoc). Non-static so it can call the
+     * enclosing instance's {@link #buildAccountState()} directly, the
+     * exact same private method, completely unchanged.
+     *
+     * <p>{@link #confirmReservation}/{@link #releaseReservation} are
+     * no-ops: there is no shared reservation state to correct or release
+     * here -- {@link #reserveForIntent} always reads this process's own
+     * live equity figure fresh, on every call, so there is nothing left
+     * over from a prior call that would need shrinking or releasing.
+     */
+    private final class SyntheticAccountStateProvider implements AccountStateProvider {
+
+        @Override
+        public AccountState reserveForIntent(OrderIntent intent, BigDecimal referencePrice) {
+            return buildAccountState();
+        }
+
+        @Override
+        public void confirmReservation(UUID intentId, BigDecimal approvedQuantity, BigDecimal price) {
+            // No-op -- see class Javadoc.
+        }
+
+        @Override
+        public void releaseReservation(UUID intentId) {
+            // No-op -- see class Javadoc.
+        }
     }
 }

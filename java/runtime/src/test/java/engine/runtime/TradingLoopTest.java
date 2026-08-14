@@ -3,6 +3,7 @@ package engine.runtime;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import engine.execution.PaperBroker;
@@ -17,6 +18,7 @@ import engine.schemas.OrderType;
 import engine.schemas.Side;
 import java.io.IOException;
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
@@ -424,6 +426,204 @@ class TradingLoopTest {
             assertEquals(2, loop.submittedOrderIds().size());
             assertEquals(repeatedIntent.intentId(), loop.submittedOrderIds().get(0));
             assertEquals(repeatedIntent.intentId(), loop.submittedOrderIds().get(1));
+        }
+    }
+
+    /**
+     * KIS shared account risk ledger, Task A ({@code .planning/kis-ledger-a-
+     * account-state-provider.md}): the new 7-arg constructor overload's
+     * {@link AccountStateProvider} seam. This proves {@link TradingLoop
+     * #tick()} calls {@link AccountStateProvider#reserveForIntent} with the
+     * exact same {@code intent}/{@code referencePrice} it received itself --
+     * a plain lambda {@link SignalSource} (same technique the symbol-match
+     * tests above already use) so the intent's object identity can be
+     * asserted with {@code assertSame}, not just its field values.
+     */
+    @Test
+    void tickCallsReserveForIntentWithTheExactIntentAndReferencePriceItReceived() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(),
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        SignalSource signalSource = () -> Optional.of(intent);
+        KillSwitch killSwitch = new KillSwitch();
+        AccountState accountState =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeAccountStateProvider accountStateProvider = new FakeAccountStateProvider(accountState);
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // above the limit -> unmarketable, stays pending
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(
+                    pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL, accountStateProvider);
+
+            loop.tick();
+
+            assertEquals(1, accountStateProvider.reserveCallCount());
+            assertSame(intent, accountStateProvider.lastReservedIntent());
+            assertEquals(0, new BigDecimal("60000").compareTo(accountStateProvider.lastReservedReferencePrice()));
+        }
+    }
+
+    /**
+     * KIS shared account risk ledger, Task A: when Risk Gateway MODIFIES
+     * (clamps) an intent's requested quantity rather than fully approving
+     * it, {@link AccountStateProvider#confirmReservation} must fire exactly
+     * once, carrying the real approved quantity -- not the original,
+     * pre-clamp requested quantity -- and {@link AccountStateProvider
+     * #releaseReservation} must never fire. {@code RiskLimits.canary()}'s
+     * 2% max-order-notional clamp (equity 100000 -> max notional 2000) is
+     * used to force a real MODIFIED decision: 1 BTC at a 50000 limit price
+     * requests a 50000 notional, clamped down to 0.04 (2000 / 50000).
+     */
+    @Test
+    void tickConfirmsReservationWithApprovedQuantityWhenRiskGatewayModifiesTheIntent() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(),
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("1"), // requests far more than the 2% max-notional clamp allows
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        SignalSource signalSource = () -> Optional.of(intent);
+        KillSwitch killSwitch = new KillSwitch();
+        AccountState accountState =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeAccountStateProvider accountStateProvider = new FakeAccountStateProvider(accountState);
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // above the limit -> LONG stays pending, doesn't fill
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(
+                    pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL, accountStateProvider);
+
+            loop.tick();
+
+            assertEquals(1, broker.pendingOrders().size());
+            Order order = broker.pendingOrders().values().iterator().next();
+            assertEquals(0, new BigDecimal("0.04").compareTo(order.approvedQuantity()), "quantity should be clamped");
+
+            assertEquals(1, accountStateProvider.confirmCallCount());
+            assertEquals(intent.intentId(), accountStateProvider.lastConfirmedIntentId());
+            assertEquals(
+                    0,
+                    order.approvedQuantity().compareTo(accountStateProvider.lastConfirmedQuantity()),
+                    "confirmReservation must carry the real approved (clamped) quantity, not the requested one");
+            assertEquals(0, new BigDecimal("60000").compareTo(accountStateProvider.lastConfirmedPrice()));
+            assertEquals(
+                    0,
+                    accountStateProvider.releaseCallCount(),
+                    "releaseReservation must never fire for an approved/modified intent");
+        }
+    }
+
+    /**
+     * KIS shared account risk ledger, Task A: when Risk Gateway REJECTS an
+     * intent, {@link AccountStateProvider#releaseReservation} must fire
+     * exactly once and {@link AccountStateProvider#confirmReservation} must
+     * never fire, since no {@link Order} was ever produced. A deeply
+     * negative daily PnL forces {@code RiskGateway.checkLossLimits} to
+     * reject before notional is ever considered (canary's own daily loss
+     * limit is -0.5%; -10% breaches it outright).
+     */
+    @Test
+    void tickReleasesReservationAndNeverConfirmsWhenRiskGatewayRejects() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(),
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        SignalSource signalSource = () -> Optional.of(intent);
+        KillSwitch killSwitch = new KillSwitch();
+        AccountState accountState = new AccountState(
+                new BigDecimal("100000"), new BigDecimal("-0.10"), BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeAccountStateProvider accountStateProvider = new FakeAccountStateProvider(accountState);
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(
+                    pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL, accountStateProvider);
+
+            loop.tick();
+
+            assertTrue(broker.pendingOrders().isEmpty(), "a rejected intent must never reach the broker");
+            assertEquals(1, accountStateProvider.reserveCallCount());
+            assertEquals(1, accountStateProvider.releaseCallCount());
+            assertEquals(intent.intentId(), accountStateProvider.lastReleasedIntentId());
+            assertEquals(
+                    0,
+                    accountStateProvider.confirmCallCount(),
+                    "confirmReservation must never fire for a rejected intent");
+            assertNull(loop.lastError(), "a risk-gateway rejection is a defined skip, not a tick failure");
+        }
+    }
+
+    /**
+     * KIS shared account risk ledger, Task A: proves, not just asserts, the
+     * "zero behavior change" claim for the existing 6-arg constructor --
+     * its private {@code SyntheticAccountStateProvider}'s {@code
+     * reserveForIntent} must return a result {@code equals()}-identical to
+     * what the old inline {@code buildAccountState()} call would have
+     * produced for the same internal state. Uses reflection to reach both
+     * the private {@code buildAccountState()} method and the private
+     * {@code accountStateProvider} field, the same technique the equity-
+     * depletion test above already uses for {@code TradingLoop}'s private
+     * {@code equity} field. No fill/equity change happens between the two
+     * calls below, so any difference in the result would be a real
+     * behavior change introduced by this task's extraction, not test
+     * noise.
+     */
+    @Test
+    void syntheticAccountStateProviderReserveForIntentMatchesTheOldInlineBuildAccountStateCall() throws Exception {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        DummySignalSource signalSource = new DummySignalSource(
+                SYMBOL, Side.LONG, OrderType.LIMIT, new BigDecimal("0.001"), new BigDecimal("50000"), 1000); // never fires
+        KillSwitch killSwitch = new KillSwitch();
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000");
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL);
+
+            Method buildAccountState = TradingLoop.class.getDeclaredMethod("buildAccountState");
+            buildAccountState.setAccessible(true);
+            AccountState direct = (AccountState) buildAccountState.invoke(loop);
+
+            Field providerField = TradingLoop.class.getDeclaredField("accountStateProvider");
+            providerField.setAccessible(true);
+            AccountStateProvider provider = (AccountStateProvider) providerField.get(loop);
+
+            OrderIntent intent = new OrderIntent(
+                    UUID.randomUUID(),
+                    SYMBOL,
+                    Side.LONG,
+                    OrderType.LIMIT,
+                    new BigDecimal("0.001"),
+                    new BigDecimal("50000"),
+                    "1d",
+                    Instant.now());
+            AccountState viaProvider = provider.reserveForIntent(intent, new BigDecimal("60000"));
+
+            assertEquals(direct, viaProvider);
         }
     }
 }
