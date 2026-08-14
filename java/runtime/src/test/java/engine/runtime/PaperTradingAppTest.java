@@ -141,6 +141,24 @@ class PaperTradingAppTest {
         assertEquals(Path.of("/custom/path.json"), PaperTradingApp.resolveSignalPath("/custom/path.json", "BTC-USDT"));
     }
 
+    /**
+     * Real gap found and fixed after Task 4 merged: {@code
+     * KIS_SUBMISSION_MARKERS_PATH} used to be one hardcoded constant with
+     * no {@code symbol} in it, so two {@code kis-paper} processes trading
+     * two different KOSPI200 symbols would have collided on the same
+     * submission-marker file. Two different symbols must resolve to two
+     * different paths -- that difference is the entire point of this fix,
+     * so it's the direct assertion, not just "a path was returned".
+     */
+    @Test
+    void resolveKisSubmissionMarkersPathDiffersBySymbol() {
+        Path first = PaperTradingApp.resolveKisSubmissionMarkersPath("101W09");
+        Path second = PaperTradingApp.resolveKisSubmissionMarkersPath("101W12");
+
+        assertEquals(Path.of("var", "live", "101W09-kis_submission_markers.json"), first);
+        assertEquals(Path.of("var", "live", "101W12-kis_submission_markers.json"), second);
+    }
+
     @Test
     void resolveTickIntervalSecondsDefaultsTo300WhenRawIsNullOrBlank() {
         assertEquals(300L, PaperTradingApp.resolveTickIntervalSeconds(null));

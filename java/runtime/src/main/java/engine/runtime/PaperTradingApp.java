@@ -204,20 +204,6 @@ public final class PaperTradingApp {
     /** {@code var/live/} convention, matching {@code signals}/{@code reports/daily} -- see class Javadoc. */
     private static final Path SUBMISSION_MARKERS_PATH = Path.of("var", "live", "submission_markers.json");
 
-    /**
-     * A separate marker-file path from {@link #SUBMISSION_MARKERS_PATH}
-     * above -- deliberately, not an oversight: {@code bingx-vst} and {@code
-     * kis-paper} run as two independent processes (see class Javadoc,
-     * "Execution mode"), and both submit live orders through the same
-     * {@code ExchangeOrderExecutor}/{@code SubmissionMarkerStore} machinery.
-     * Sharing one marker file between them would let one venue's markers
-     * collide with the other's, corrupting both processes' {@code
-     * SUBMISSION_UNKNOWN} recovery state. {@link #SUBMISSION_MARKERS_PATH}
-     * itself is left untouched (not renamed/parameterized) so the
-     * already-running {@code bingx-vst} process's behavior is completely
-     * unaffected by this task.
-     */
-    private static final Path KIS_SUBMISSION_MARKERS_PATH = Path.of("var", "live", "kis_submission_markers.json");
 
     private final TradingLoop tradingLoop;
     private final DailyReportGenerator dailyReportGenerator;
@@ -734,8 +720,8 @@ public final class PaperTradingApp {
      *   <li><b>Fixed: {@code FileSignalSource}'s delivered-marker file
      *   could have collided with {@code bingx-vst}'s</b> if both processes
      *   were ever pointed at the same {@code signalPath} -- {@link
-     *   #KIS_SUBMISSION_MARKERS_PATH} solves a different problem (durable
-     *   {@code SUBMISSION_UNKNOWN} tracking), not this one. The {@link
+     *   #resolveKisSubmissionMarkersPath} solves a different problem
+     *   (durable {@code SUBMISSION_UNKNOWN} tracking), not this one. The {@link
      *   PriceFeed}-accepting constructor above now uses a KIS-specific
      *   marker filename ({@code kis-delivered.marker}) instead of the
      *   shared {@code delivered.marker} name, closing this for free even
@@ -807,7 +793,7 @@ public final class PaperTradingApp {
 
         KisPreflight.Result preflight = KisPreflight.run(adapter);
 
-        SubmissionMarkerStore markerStore = new SubmissionMarkerStore(KIS_SUBMISSION_MARKERS_PATH);
+        SubmissionMarkerStore markerStore = new SubmissionMarkerStore(resolveKisSubmissionMarkersPath(symbol));
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
         boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
 
@@ -883,6 +869,29 @@ public final class PaperTradingApp {
             return Path.of(raw);
         }
         return Path.of("var", "live", "signals", symbol, STRATEGY_ID, "latest.json");
+    }
+
+    /**
+     * {@code var/live/{symbol}-kis_submission_markers.json} -- real gap
+     * found and fixed after Task 4 merged: this path used to be a single
+     * hardcoded constant (no {@code symbol} in it at all), which was
+     * enough to keep {@code bingx-vst} and {@code kis-paper} from
+     * colliding with each other (see {@link #forKisPaper}'s own Javadoc),
+     * but did nothing to stop two {@code kis-paper} processes trading two
+     * different KOSPI200 symbols from colliding with <em>each other</em>
+     * -- a real scenario once a real operator runs more than one KIS
+     * symbol at a time, each as its own independent process (this
+     * project's established one-process-per-symbol pattern, matching how
+     * {@code bingx-vst}/{@code simulated} already run as separate
+     * processes today). No environment-variable override, matching this
+     * path's own established no-config-surface precedent -- {@code
+     * symbol} is already the one input that must differ between any two
+     * concurrent {@code kis-paper} processes, so deriving from it alone
+     * is sufficient, same reasoning as {@link #resolveSignalPath}'s own
+     * {@code symbol}-derived default.
+     */
+    static Path resolveKisSubmissionMarkersPath(String symbol) {
+        return Path.of("var", "live", symbol + "-kis_submission_markers.json");
     }
 
     /**

@@ -485,6 +485,21 @@ deserves its own `Discuss` pass and careful testing against the live
 loop, not a rushed fix bundled into a KIS wiring task. Full disclosure
 in `FileSignalSource`'s own Javadoc.
 
+**A fifth Task 4 gap, found after Task 4 merged (real operational
+discovery, not a CodeRabbit finding) — fixed**: `KIS_SUBMISSION_MARKERS_PATH`
+was a single hardcoded constant with no `symbol` in it at all. That was
+enough to keep `bingx-vst` and `kis-paper` from colliding with each other
+(they trade different symbols, so their marker files already differed),
+but did nothing to stop two `kis-paper` processes trading two different
+KOSPI200 symbols from colliding with *each other* — a real scenario once
+an operator actually runs more than one KIS symbol at a time (this
+project's established one-process-per-symbol pattern). Fixed by deriving
+the path from `symbol` (`var/live/{symbol}-kis_submission_markers.json`,
+`PaperTradingApp.resolveKisSubmissionMarkersPath`), same reasoning as
+`resolveSignalPath`'s own `symbol`-derived default — no environment-
+variable override, matching this path's established no-config-surface
+precedent.
+
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
 — see the futures-only narrowing above); the KOSPI200 futures night
