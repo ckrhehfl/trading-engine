@@ -701,6 +701,38 @@ class PaperTradingAppTest {
     }
 
     @Test
+    void resolveKisMarketDivisionDefaultsToIndexFuturesForNullOrBlank() {
+        assertEquals(KisPriceFeed.MarketDivision.INDEX_FUTURES, PaperTradingApp.resolveKisMarketDivision(null));
+        assertEquals(KisPriceFeed.MarketDivision.INDEX_FUTURES, PaperTradingApp.resolveKisMarketDivision(""));
+        assertEquals(KisPriceFeed.MarketDivision.INDEX_FUTURES, PaperTradingApp.resolveKisMarketDivision("   "));
+    }
+
+    @Test
+    void resolveKisMarketDivisionAcceptsBothEnumConstantNames() {
+        assertEquals(
+                KisPriceFeed.MarketDivision.INDEX_FUTURES, PaperTradingApp.resolveKisMarketDivision("INDEX_FUTURES"));
+        assertEquals(
+                KisPriceFeed.MarketDivision.STOCK_FUTURES, PaperTradingApp.resolveKisMarketDivision("STOCK_FUTURES"));
+    }
+
+    /**
+     * Same "fail loud, don't silently default" reasoning as {@link
+     * #resolveExecutionModeRejectsUnrecognizedValuesRatherThanDefaultingToSimulated}
+     * above -- a typo'd market division must not silently fall back to
+     * {@code INDEX_FUTURES} and risk a wrong or empty quote for a real
+     * individual-stock-futures symbol.
+     */
+    @Test
+    void resolveKisMarketDivisionRejectsUnrecognizedValues() {
+        assertThrows(IllegalStateException.class, () -> PaperTradingApp.resolveKisMarketDivision("garbage"));
+        assertThrows(
+                IllegalStateException.class,
+                () -> PaperTradingApp.resolveKisMarketDivision("index_futures"),
+                "case-sensitive by design, matching Enum::valueOf's own exact-match semantics");
+        assertThrows(IllegalStateException.class, () -> PaperTradingApp.resolveKisMarketDivision("JF"));
+    }
+
+    @Test
     void resolveExecutionModeReturnsBingxVstOnlyForAnExactMatch() {
         assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("bingx-vst"));
         assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("  bingx-vst  "));

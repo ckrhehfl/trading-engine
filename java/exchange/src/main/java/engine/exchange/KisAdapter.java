@@ -24,9 +24,21 @@ import org.slf4j.LoggerFactory;
 
 /**
  * {@link ExchangeAdapter} implementation for 한국투자증권(Korea Investment
- * & Securities, "KIS")'s domestic futures/options REST API -- KOSPI200
- * index futures specifically (see CLAUDE.md's "KIS/KOSPI200 venue
- * integration, Phase 1" section for the full design). Endpoint paths,
+ * & Securities, "KIS")'s domestic futures/options REST API -- originally
+ * built for KOSPI200 index futures specifically (see CLAUDE.md's
+ * "KIS/KOSPI200 venue integration, Phase 1" section for the full design),
+ * <b>confirmed venue-generic across KIS's own domestic futures/options
+ * product line, not KOSPI200-specific</b>: the order/cancel/query/balance/
+ * positions endpoints below are the exact same endpoints, same {@code
+ * tr_id}s, for any domestic futures/options symbol KIS lists (index
+ * futures, individual-stock futures, ...), distinguished only by the
+ * {@code SHTN_PDNO}/{@code PDNO} symbol value itself -- confirmed directly
+ * against KIS's own official example source (their {@code order}
+ * function's own docstring uses the identical parameter regardless of
+ * underlying). This class needed no change to support that extension; see
+ * CLAUDE.md's own "Scope extension beyond KOSPI200 index futures" for what
+ * did need one ({@code engine.runtime.KisPriceFeed}'s quote lookup, a
+ * different class). Endpoint paths,
  * request parameters, and the OAuth2 auth flow are taken directly from
  * KIS's own official {@code koreainvestment/open-trading-api} GitHub
  * repository (verified 2026-08 against the real, current source there,

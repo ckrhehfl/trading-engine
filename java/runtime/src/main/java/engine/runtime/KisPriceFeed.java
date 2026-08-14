@@ -15,8 +15,11 @@ import java.time.Duration;
 import java.util.Objects;
 
 /**
- * Polls KIS's KOSPI200 futures quote endpoint (`GET /uapi/domestic-
- * futureoption/v1/quotations/inquire-price`) for the latest price.
+ * Polls KIS's domestic futures quote endpoint (`GET /uapi/domestic-
+ * futureoption/v1/quotations/inquire-price`) for the latest price --
+ * KOSPI200 index futures or individual-stock futures, selected explicitly
+ * per instance via {@link MarketDivision} (see that enum's own Javadoc for
+ * why this is a required constructor argument, not inferred).
  *
  * <p><b>Why this is a separate class from {@code engine.exchange.
  * KisAdapter}, not folded together the way one might expect from {@code
@@ -63,6 +66,49 @@ import java.util.Objects;
  */
 public final class KisPriceFeed implements PriceFeed {
 
+    /**
+     * The KIS {@code FID_COND_MRKT_DIV_CODE} value this quote endpoint
+     * needs -- <b>confirmed different per instrument type, not a single
+     * constant</b> (real finding made while extending this class beyond
+     * its original KOSPI200-only scope): KIS's own official {@code
+     * koreainvestment/open-trading-api} source documents {@code "F"} for
+     * index futures and {@code "JF"} for individual-stock futures on the
+     * sibling {@code inquire-asking-price} endpoint's own parameter
+     * comment (`FID 조건 시장 분류 코드 (ex. F: 지수선물, JF: 주식선물)`).
+     * <b>Not yet independently confirmed for this class's own {@code
+     * inquire-price} endpoint specifically</b> -- its own docstring in the
+     * same official source only mentions {@code F}/{@code O} (index
+     * futures/options), never mentioning {@code JF} at all, which could
+     * mean either the omission is real (this endpoint doesn't need it) or
+     * merely an incomplete doc comment (KIS's own examples repo is not
+     * uniformly documented). Deliberately not guessed either way: a caller
+     * pointed at an individual-stock-futures symbol must explicitly pass
+     * {@link #STOCK_FUTURES} rather than this class silently assuming
+     * {@link #INDEX_FUTURES} and risking a wrong or empty quote for a real
+     * symbol -- exactly the same "state assumptions explicitly, don't
+     * infer a possibly-wrong default" principle {@code PaperTradingApp}'s
+     * own {@code kis-paper} symbol handling already applies elsewhere.
+     * Real empirical verification (does {@code inquire-price} actually
+     * need {@code JF} for a stock-futures symbol, and does {@code F} fail
+     * or silently return wrong data) is still outstanding as of this
+     * writing -- a real paper-account call, not something resolvable from
+     * documentation alone.
+     */
+    public enum MarketDivision {
+        INDEX_FUTURES("F"),
+        STOCK_FUTURES("JF");
+
+        private final String code;
+
+        MarketDivision(String code) {
+            this.code = code;
+        }
+
+        String code() {
+            return code;
+        }
+    }
+
     private static final String QUOTE_PATH = "/uapi/domestic-futureoption/v1/quotations/inquire-price";
     // Same tr_id for both real and demo trading per KIS's own real source
     // -- quote data isn't account-specific, unlike order/balance endpoints.
@@ -71,12 +117,14 @@ public final class KisPriceFeed implements PriceFeed {
 
     private final KisTokenProvider tokenProvider;
     private final String baseUrl;
+    private final MarketDivision marketDivision;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public KisPriceFeed(KisTokenProvider tokenProvider, String baseUrl) {
+    public KisPriceFeed(KisTokenProvider tokenProvider, String baseUrl, MarketDivision marketDivision) {
         this.tokenProvider = Objects.requireNonNull(tokenProvider, "tokenProvider is required");
         this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl is required");
+        this.marketDivision = Objects.requireNonNull(marketDivision, "marketDivision is required");
         this.httpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build();
     }
 
@@ -85,11 +133,10 @@ public final class KisPriceFeed implements PriceFeed {
         Objects.requireNonNull(symbol, "symbol is required");
         String token = tokenProvider.currentToken();
 
-        // FID_COND_MRKT_DIV_CODE=F selects the index-futures market
-        // (vs. O for index options) -- this class is scoped to KOSPI200
-        // futures only, matching this phase's own futures-only narrowing
-        // (see CLAUDE.md's KIS/KOSPI200 Phase 1 section).
-        String query = "FID_COND_MRKT_DIV_CODE=F&FID_INPUT_ISCD="
+        // FID_COND_MRKT_DIV_CODE is this instance's own fixed MarketDivision
+        // -- see that enum's Javadoc for why it's a required, explicit
+        // per-instance choice rather than inferred from symbol.
+        String query = "FID_COND_MRKT_DIV_CODE=" + marketDivision.code() + "&FID_INPUT_ISCD="
                 + java.net.URLEncoder.encode(symbol, StandardCharsets.UTF_8);
         URI uri = URI.create(baseUrl + QUOTE_PATH + "?" + query);
 

@@ -20,7 +20,7 @@ class KisPriceFeedTest {
     void setUp() throws IOException {
         server = new FakeKisQuoteServer();
         KisTokenProvider tokenProvider = new KisTokenProvider("test-app-key", "test-app-secret", server.baseUrl());
-        priceFeed = new KisPriceFeed(tokenProvider, server.baseUrl());
+        priceFeed = new KisPriceFeed(tokenProvider, server.baseUrl(), KisPriceFeed.MarketDivision.INDEX_FUTURES);
     }
 
     @AfterEach
@@ -40,6 +40,27 @@ class KisPriceFeedTest {
         assertEquals("/uapi/domestic-futureoption/v1/quotations/inquire-price", server.lastPath());
         assertEquals("F", server.lastQueryParams().get("FID_COND_MRKT_DIV_CODE"));
         assertEquals("101W09", server.lastQueryParams().get("FID_INPUT_ISCD"));
+    }
+
+    /**
+     * Real gap found and fixed while extending this class beyond its
+     * original KOSPI200-only scope: {@code MarketDivision} is a required
+     * constructor argument, and {@link KisPriceFeed.MarketDivision
+     * #STOCK_FUTURES} must send {@code "JF"}, not {@code "F"} -- see that
+     * enum's own Javadoc for the real KIS-documentation finding behind
+     * this and its own disclosed remaining uncertainty.
+     */
+    @Test
+    void latestPriceSendsStockFuturesMarketDivisionWhenConfigured() {
+        KisTokenProvider tokenProvider = new KisTokenProvider("test-app-key", "test-app-secret", server.baseUrl());
+        KisPriceFeed stockFuturesPriceFeed =
+                new KisPriceFeed(tokenProvider, server.baseUrl(), KisPriceFeed.MarketDivision.STOCK_FUTURES);
+        server.respondWithPrice("71000");
+
+        stockFuturesPriceFeed.latestPrice("A11609");
+
+        assertEquals("JF", server.lastQueryParams().get("FID_COND_MRKT_DIV_CODE"));
+        assertEquals("A11609", server.lastQueryParams().get("FID_INPUT_ISCD"));
     }
 
     @Test
