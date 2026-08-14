@@ -159,6 +159,23 @@ class PaperTradingAppTest {
         assertEquals(Path.of("var", "live", "101W12-kis_submission_markers.json"), second);
     }
 
+    /**
+     * Real CodeRabbit review finding on {@link
+     * #resolveKisSubmissionMarkersPathDiffersBySymbol}'s own PR: a {@code
+     * symbol} containing a path separator or traversal sequence could
+     * otherwise resolve the marker path outside {@code var/live/}.
+     */
+    @Test
+    void resolveKisSubmissionMarkersPathRejectsPathSeparatorsAndTraversalSegments() {
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveKisSubmissionMarkersPath("../evil"));
+        assertThrows(
+                IllegalArgumentException.class, () -> PaperTradingApp.resolveKisSubmissionMarkersPath("a/b"));
+        assertThrows(
+                IllegalArgumentException.class, () -> PaperTradingApp.resolveKisSubmissionMarkersPath("a\\b"));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveKisSubmissionMarkersPath(".."));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveKisSubmissionMarkersPath("."));
+    }
+
     @Test
     void resolveTickIntervalSecondsDefaultsTo300WhenRawIsNullOrBlank() {
         assertEquals(300L, PaperTradingApp.resolveTickIntervalSeconds(null));

@@ -889,8 +889,27 @@ public final class PaperTradingApp {
      * concurrent {@code kis-paper} processes, so deriving from it alone
      * is sufficient, same reasoning as {@link #resolveSignalPath}'s own
      * {@code symbol}-derived default.
+     *
+     * @throws IllegalArgumentException if {@code symbol} isn't a single
+     *     safe filename segment (contains a path separator, or is exactly
+     *     {@code "."}/{@code ".."}) -- real CodeRabbit review finding on
+     *     this method itself: a symbol containing a path separator or
+     *     traversal sequence could otherwise resolve outside {@code
+     *     var/live/}. {@code symbol} is operator-configured (an env var),
+     *     not attacker-controlled network input, so the practical exposure
+     *     here is low -- validated anyway, since the check is cheap and
+     *     removes the question entirely rather than relying on that
+     *     distinction. {@link #resolveSignalPath} above has the same
+     *     unvalidated raw-{@code symbol}-as-path-segment shape and was not
+     *     flagged; left as-is here since fixing it is outside the scope of
+     *     the marker-path collision this method exists to fix.
      */
     static Path resolveKisSubmissionMarkersPath(String symbol) {
+        if (symbol.contains("/") || symbol.contains("\\") || symbol.equals(".") || symbol.equals("..")) {
+            throw new IllegalArgumentException(
+                    "symbol must be a single safe filename segment (no path separators or '.'/'..'), was '" + symbol
+                            + "'");
+        }
         return Path.of("var", "live", symbol + "-kis_submission_markers.json");
     }
 
