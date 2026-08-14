@@ -321,6 +321,84 @@ fixed, this PR:
 Re-ran `./gradlew clean build` after both fixes: still green, now **405
 tests, 0 failures, 0 errors** (404 + 1 new regression test).
 
+### Round 2
+
+Against commit `e11d95f` (after round 1's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha): `CHANGES_REQUESTED`, 1 inline comment. Fixed, this PR:
+
+- **The round 1 idempotency-contract fix's own "must replace, not add to"
+  wording was itself unsafe.** A real, sharp, correctly-identified gap in
+  round 1's own fix, not a pre-existing issue: `reserveForIntent`
+  runs *before* `OrderPipeline#submitIntent` can determine whether a given
+  `intentId` is a genuine conflict. Concretely — order for `intentId` X is
+  registered and `confirmReservation`d at quantity `0.001`; a later
+  conflicting retry for the *same* `intentId` X requests a *smaller*
+  quantity, `0.0005`. Under round 1's unqualified "replace" wording,
+  `reserveForIntent` would shrink the already-confirmed `0.001`
+  reservation down to `0.0005` *before* `submitIntent` discovers the
+  conflict and throws — at which point round 1's own exception-handling
+  fix ("leave the reservation at its pessimistic size, don't release")
+  would preserve that already-shrunk `0.0005` value, not the real
+  `0.001` a still-live `Order` actually represents. A real, still-live
+  order's exposure would be under-recorded on the ledger, silently
+  weakening the exact risk limit this interface exists to help enforce —
+  the dangerous direction, and exactly the class of bug round 1's own fix
+  was trying to prevent, reintroduced by round 1's own new documentation.
+
+  **Verified this was purely a documentation defect, not a shipped
+  behavior defect**: nothing in this PR implements the unsafe "replace"
+  semantic — `SyntheticAccountStateProvider` (the only implementation
+  that exists) ignores `intentId` entirely and carries no reservation
+  state to shrink, confirmed by re-reading `TradingLoop.java` directly.
+  So no runtime behavior changed to fix this; only `AccountStateProvider
+  .java`'s own Javadoc did.
+
+  **Fix**: rewrote the "Idempotency contract, per `intentId`" paragraph.
+  The corrected rule: a real implementation must track, per `intentId`,
+  whether its current reservation is merely pessimistic-and-unconfirmed
+  or already `confirmReservation`d; a repeated `reserveForIntent` call may
+  freely replace an *unconfirmed* reservation (nothing real is backing it
+  yet), but against an already-*confirmed* one it must never record less
+  than what was last confirmed, until that confirmed reservation is
+  itself resolved via a subsequent `confirmReservation` or
+  `releaseReservation` call. This also makes the round 1 fix's own claim
+  ("the reservation is left at its pessimistic, already-conservative
+  size") actually true as stated, rather than true only by accident of
+  no implementation existing yet to violate it.
+
+  **Declined the reviewer's repeated specific suggestion to "add a retry
+  with lower quantity/price... verify through the stateful provider
+  double that exposure is not reduced"** — same reasoning as round 1's
+  analogous decline: `SyntheticAccountStateProvider` has no per-`intentId`
+  reservation state at all, so "exposure is not reduced" is vacuously,
+  trivially true for the one implementation this PR actually ships — there
+  is nothing a stateful test double would be verifying about *this PR's
+  own code* that isn't already proven by the existing "ignores `intentId`
+  entirely" design. Building a stateful fake that tracks per-`intentId`
+  confirmed-vs-unconfirmed state would mean designing and half-
+  implementing Task C's own reservation data structure now, against the
+  same "do not build any ledger, lock, or store class" scope boundary
+  round 1 already declined this exact category of ask under. The
+  corrected contract is real and will need real tests once a real
+  stateful implementation exists to test it against (Task C) — asserted
+  here as a forward-looking requirement, not proven against a fake built
+  only to satisfy this one review comment.
+- Confirmed no `TradingLoop.java`/`TradingLoopTest.java` change was
+  actually needed despite the review comment also flagging those files:
+  re-read `TradingLoop.java` lines 274-304 directly — its own code
+  comment's claim ("the reservation is left at its pessimistic,
+  already-conservative size") depends on `AccountStateProvider`'s
+  contract guaranteeing that, which the fix above now does; there is no
+  reservation-shrinking logic inside `TradingLoop.java` itself to correct
+  (it never manipulates reservation state directly, only calls the
+  interface's three methods).
+
+Re-ran `./gradlew :runtime:test` after this fix (Javadoc-only, no
+production code changed): still green, `TradingLoopTest` unchanged at
+**14 tests, 0 failures, 0 errors** — this round's fix added no new test
+because it changed no runtime behavior to test.
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `AccountLedger`/`LedgerReservation`/`AccountLedgerStore`/

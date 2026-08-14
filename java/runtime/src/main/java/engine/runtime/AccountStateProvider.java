@@ -64,28 +64,50 @@ import java.util.UUID;
  * simulated}/{@code bingx-vst} remain zero-behavior-change callers.
  *
  * <p><b>Idempotency contract, per {@code intentId}</b> (CodeRabbit review
- * finding on the PR that introduced this interface): a real implementation
- * must not let a repeated call for the same {@code intentId} duplicate
- * work. Concretely -- {@link #reserveForIntent} is keyed by {@code
- * intent.intentId()}; a second call for an {@code intentId} that already
- * has a live reservation must replace, not add to, that reservation (a
- * genuine repeat can happen -- see {@code TradingLoop}'s own
- * {@code submittedOrderIdsRecordsARepeatWhenTheSameIntentIsSubmittedOnTwoSeparateTicks}
- * test for a real, if rare, scenario). {@link #confirmReservation} and
- * {@link #releaseReservation} are each expected to be called at most once
- * per {@link #reserveForIntent} call in the normal (non-throwing) path --
- * see {@code TradingLoop.tick()}'s own call site for the exactly-one-of
- * pairing this depends on -- so an implementation does not need to
- * separately guard against being called twice for the same successful
- * reservation under ordinary operation. The default {@code
- * SyntheticAccountStateProvider} satisfies this trivially: {@link
- * #reserveForIntent} ignores {@code intentId} entirely (always returns a
- * fresh read of the loop's own live equity), and {@link
+ * finding on the PR that introduced this interface, <b>corrected on a
+ * second review pass of the same PR</b> -- the first version of this
+ * paragraph said a repeated {@link #reserveForIntent} call "must replace,
+ * not add to" an existing reservation, unqualified; that wording is
+ * unsafe and was never implemented by anything in this codebase, only
+ * documented, so no behavior change was needed to fix it, only the text):
+ * a real implementation must not let a repeated call for the same {@code
+ * intentId} duplicate work -- but a plain "replace" is exactly wrong once
+ * an existing reservation has already been {@link #confirmReservation
+ * confirmed} against a real, registered {@link engine.oms.Order}. {@link
+ * #reserveForIntent} runs <i>before</i> {@code OrderPipeline#submitIntent}
+ * can determine whether a given {@code intentId} is a genuine conflict
+ * (see {@code engine.oms.OrderStore#createOrder}'s own conflicting-retry
+ * guard) -- so a conflicting retry requesting a <i>smaller</i> quantity
+ * than an already-confirmed reservation must never be allowed to shrink
+ * that confirmed reservation before the conflict is even known. Doing so
+ * would leave a real, still-live {@code Order}'s exposure under-recorded
+ * on the ledger the moment {@code submitIntent} then throws (see the
+ * "real, disclosed gap" paragraph below) -- silently weakening the very
+ * risk limit this interface exists to help enforce. The actual rule: a
+ * real implementation must track, per {@code intentId}, whether its
+ * current reservation is merely pessimistic-and-unconfirmed or already
+ * {@link #confirmReservation confirmed}; a repeated {@link
+ * #reserveForIntent} call may freely replace an <i>unconfirmed</i>
+ * reservation (nothing real is backing it yet), but against an already-
+ * <i>confirmed</i> one it must never record less than what was last
+ * confirmed, until that confirmed reservation is itself resolved via a
+ * subsequent {@link #confirmReservation} or {@link #releaseReservation}
+ * call. (A genuine repeated-{@code intentId} call is real, not
+ * hypothetical -- see {@code TradingLoop}'s own {@code
+ * submittedOrderIdsRecordsARepeatWhenTheSameIntentIsSubmittedOnTwoSeparateTicks}
+ * test.) {@link #confirmReservation} and {@link #releaseReservation} are
+ * each expected to be called at most once per {@link #reserveForIntent}
+ * call in the normal (non-throwing) path -- see {@code
+ * TradingLoop.tick()}'s own call site for the exactly-one-of pairing this
+ * depends on. The default {@code SyntheticAccountStateProvider} satisfies
+ * all of this trivially: {@link #reserveForIntent} ignores {@code
+ * intentId} entirely (always returns a fresh read of the loop's own live
+ * equity, never a stale or shrunk figure), and {@link
  * #confirmReservation}/{@link #releaseReservation} are no-ops -- there is
- * no reservation state to duplicate. A real stateful implementation (Task
- * C) must design and test its own duplicate-{@code intentId} handling
- * against its actual reservation data structure -- not attempted here,
- * since none exists yet to test against.
+ * no reservation state to duplicate, shrink, or otherwise get wrong. A
+ * real stateful implementation (Task C) must design and test its own
+ * confirmed-vs-unconfirmed tracking against its actual reservation data
+ * structure -- not attempted here, since none exists yet to test against.
  *
  * <p><b>A real, disclosed gap, left open rather than fixed here</b>
  * (second CodeRabbit review finding, same PR): if {@code
