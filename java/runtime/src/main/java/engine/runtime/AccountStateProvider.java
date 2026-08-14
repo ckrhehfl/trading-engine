@@ -63,6 +63,44 @@ import java.util.UUID;
  * constructor overload except the new 7-arg one still gets, so {@code
  * simulated}/{@code bingx-vst} remain zero-behavior-change callers.
  *
+ * <p><b>Idempotency contract, per {@code intentId}</b> (CodeRabbit review
+ * finding on the PR that introduced this interface): a real implementation
+ * must not let a repeated call for the same {@code intentId} duplicate
+ * work. Concretely -- {@link #reserveForIntent} is keyed by {@code
+ * intent.intentId()}; a second call for an {@code intentId} that already
+ * has a live reservation must replace, not add to, that reservation (a
+ * genuine repeat can happen -- see {@code TradingLoop}'s own
+ * {@code submittedOrderIdsRecordsARepeatWhenTheSameIntentIsSubmittedOnTwoSeparateTicks}
+ * test for a real, if rare, scenario). {@link #confirmReservation} and
+ * {@link #releaseReservation} are each expected to be called at most once
+ * per {@link #reserveForIntent} call in the normal (non-throwing) path --
+ * see {@code TradingLoop.tick()}'s own call site for the exactly-one-of
+ * pairing this depends on -- so an implementation does not need to
+ * separately guard against being called twice for the same successful
+ * reservation under ordinary operation. The default {@code
+ * SyntheticAccountStateProvider} satisfies this trivially: {@link
+ * #reserveForIntent} ignores {@code intentId} entirely (always returns a
+ * fresh read of the loop's own live equity), and {@link
+ * #confirmReservation}/{@link #releaseReservation} are no-ops -- there is
+ * no reservation state to duplicate. A real stateful implementation (Task
+ * C) must design and test its own duplicate-{@code intentId} handling
+ * against its actual reservation data structure -- not attempted here,
+ * since none exists yet to test against.
+ *
+ * <p><b>A real, disclosed gap, left open rather than fixed here</b>
+ * (second CodeRabbit review finding, same PR): if {@code
+ * OrderPipeline#submitIntent} itself throws -- after {@link
+ * #reserveForIntent} already succeeded -- {@code TradingLoop.tick()}
+ * deliberately does <b>not</b> call {@link #releaseReservation}. See that
+ * call site's own code comment for the full reasoning: releasing would
+ * risk understating committed exposure if the order actually was
+ * registered before the throw, which is the dangerous direction: the
+ * reservation is left at its pessimistic (safe, over-, never under-
+ * committed) size instead, pending a future reconciliation pass (the
+ * governing plan's Task D) that can determine the real outcome. This is a
+ * real, known limitation of this interface's current contract, not a
+ * silent oversight.
+ *
  * <p>A real, shared/durable, cross-process implementation -- a file-backed
  * ledger multiple {@code kis-paper} OS processes trading against the same
  * real KIS account can all read/write safely -- is future work, not built

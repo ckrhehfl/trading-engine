@@ -23,6 +23,7 @@ import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 
 /**
@@ -624,6 +625,86 @@ class TradingLoopTest {
             AccountState viaProvider = provider.reserveForIntent(intent, new BigDecimal("60000"));
 
             assertEquals(direct, viaProvider);
+        }
+    }
+
+    /**
+     * KIS shared account risk ledger, Task A -- CodeRabbit review finding
+     * on PR #99: if {@link OrderPipeline#submitIntent} itself throws after
+     * {@link AccountStateProvider#reserveForIntent} already succeeded (a
+     * real, reachable case -- {@link engine.oms.OrderStore#createOrder}'s
+     * own conflicting-retry guard throws {@code IllegalStateException} for
+     * a reused {@code intentId} whose details don't match what's already
+     * stored), {@code releaseReservation} must NOT fire for that attempt --
+     * releasing would risk understating committed exposure if the order
+     * actually was registered before the throw. See {@code TradingLoop
+     * .tick()}'s own code comment at that call site for the full
+     * reasoning. The exception must still propagate to {@code tick()}'s
+     * own catch-all as {@code lastError}, exactly like any other tick
+     * failure.
+     */
+    @Test
+    void tickLeavesTheReservationUnresolvedWhenSubmitIntentThrowsAfterAReservationWasMade() throws IOException {
+        OrderPipeline pipeline = newPipeline();
+        PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+        UUID sharedIntentId = UUID.randomUUID();
+        OrderIntent firstIntent = new OrderIntent(
+                sharedIntentId,
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.001"),
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        // Same intentId, different requested quantity -- OrderStore
+        // #createOrder idempotently returns the already-stored Order for
+        // this id, then its own matches() check fails (requestedQuantity
+        // differs), throwing IllegalStateException. A real, if rare,
+        // scenario -- see OrderStore's own Javadoc on "conflicting retry".
+        OrderIntent conflictingIntent = new OrderIntent(
+                sharedIntentId,
+                SYMBOL,
+                Side.LONG,
+                OrderType.LIMIT,
+                new BigDecimal("0.002"),
+                new BigDecimal("50000"),
+                "1d",
+                Instant.now());
+        AtomicInteger tickCount = new AtomicInteger();
+        SignalSource signalSource =
+                () -> Optional.of(tickCount.incrementAndGet() == 1 ? firstIntent : conflictingIntent);
+        KillSwitch killSwitch = new KillSwitch();
+        AccountState accountState =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeAccountStateProvider accountStateProvider = new FakeAccountStateProvider(accountState);
+
+        try (FakeBingXTradesServer server = new FakeBingXTradesServer()) {
+            server.respondWithPrice("60000"); // above the limit -> unmarketable, stays pending
+            BingXPriceFeed priceFeed = new BingXPriceFeed(server.baseUrl());
+            TradingLoop loop = new TradingLoop(
+                    pipeline, broker, signalSource, priceFeed, killSwitch, SYMBOL, accountStateProvider);
+
+            loop.tick(); // firstIntent: registers cleanly
+            assertNull(loop.lastError());
+            assertEquals(1, accountStateProvider.confirmCallCount());
+            assertEquals(1, broker.pendingOrders().size());
+
+            loop.tick(); // conflictingIntent: OrderStore#createOrder throws
+
+            assertNotNull(
+                    loop.lastError(), "the conflicting retry's IllegalStateException must surface as lastError");
+            // The second reserveForIntent call happened (before the
+            // throw), but neither confirmReservation nor
+            // releaseReservation fired for it -- still exactly the one
+            // confirmReservation from the first, clean tick above.
+            assertEquals(2, accountStateProvider.reserveCallCount());
+            assertEquals(1, accountStateProvider.confirmCallCount());
+            assertEquals(
+                    0,
+                    accountStateProvider.releaseCallCount(),
+                    "releaseReservation must not fire for an ambiguous submitIntent failure");
+            assertEquals(1, broker.pendingOrders().size(), "the first order is unaffected by the failed retry");
         }
     }
 }

@@ -243,6 +243,84 @@ and/or reflection, per the governing brief's own required coverage list:
   the only implementation of `AccountStateProvider` that exists after
   this task.
 
+## CodeRabbit review findings
+
+One review round on PR #99 (`ASSERTIVE` profile) against commit `7a4a5c9`
+(the original commit): `CHANGES_REQUESTED`, 1 inline comment + 1 "outside
+diff range" comment. Both verified against the real current code and
+fixed, this PR:
+
+- **Ambiguous `submitIntent` failure left the reservation unresolved (Major,
+  "outside diff range" comment on `TradingLoop.java` lines 270-295).**
+  Verified genuinely reachable, not theoretical: `OrderStore#createOrder`'s
+  own conflicting-retry guard throws `IllegalStateException` for a reused
+  `intentId` whose details/decision don't match what's already stored
+  (`orders.computeIfAbsent` returns the existing `Order`, then `order
+  .matches(intent, decision)` fails) -- confirmed by reading `OrderStore
+  .java` directly. Before this fix, that exception propagated straight out
+  of the `if/else` block that calls `confirmReservation`/
+  `releaseReservation`, so neither ever fired for that attempt --
+  `tick()`'s own catch-all still recorded `lastError`, but the reservation
+  itself was silently left dangling.
+
+  CodeRabbit's own suggested fix ("release only if no order was
+  registered, otherwise look up order state via `intentId` or perform
+  reconciliation") would require either giving `TradingLoop`/
+  `AccountStateProvider` direct `OrderStore` query access (a real interface
+  shape decision belonging to Task C, not this task) or building real
+  reconciliation logic (explicitly Task D's job -- the governing plan
+  already defers the analogous "reservation doesn't perfectly track every
+  order-lifecycle edge case" problem to Task D's periodic reconciliation).
+  Building either now would be premature, undesigned R3-risk architecture
+  work under review pressure -- exactly what this project's Development
+  Methodology says needs its own `Discuss` pass instead.
+
+  **What was actually fixed, safely, without that infrastructure**: wrapped
+  the `orderPipeline.submitIntent(...)` call in a `try/catch
+  (RuntimeException)` that deliberately does **not** call
+  `releaseReservation` on catch -- releasing would risk *understating*
+  committed exposure if the order actually was registered before the
+  throw, the dangerous direction (the opposite of this interface's own
+  "reserve pessimistically" principle). The reservation is left at its
+  pessimistic, already-conservative size instead; a WARN log records the
+  ambiguity, and the exception is rethrown unchanged so `tick()`'s existing
+  catch-all/`lastError`/retry-next-tick behavior is completely unaffected.
+  This closes the gap in the safe direction with zero new surface area,
+  rather than declining it outright. Documented in `AccountStateProvider`'s
+  own Javadoc ("A real, disclosed gap, left open rather than fixed here")
+  so this is a stated contract limitation, not a silent one. New regression
+  test:
+  `tickLeavesTheReservationUnresolvedWhenSubmitIntentThrowsAfterAReservationWasMade`
+  -- forces the real `IllegalStateException` via a genuine conflicting
+  retry (same `intentId`, different requested quantity across two ticks),
+  asserts `releaseReservation` never fires for that attempt,
+  `confirmReservation`'s count stays at its prior value, and the exception
+  still surfaces as `lastError`.
+
+- **Idempotency contract undocumented (inline comment on
+  `AccountStateProvider.java` lines 73-96).** Real, valid: the original
+  Javadoc never stated what a real implementation must do if
+  `reserveForIntent`/`confirmReservation`/`releaseReservation` is somehow
+  called more than once for the same `intentId`. Fixed with a new Javadoc
+  paragraph ("Idempotency contract, per `intentId`") stating the
+  requirement explicitly: a repeated `reserveForIntent` for an `intentId`
+  with an already-live reservation must replace, not add to, it; the
+  default `SyntheticAccountStateProvider` satisfies this trivially since it
+  carries no reservation state at all. **Declined the reviewer's specific
+  suggestion to "add or update a stateful test double... verify net
+  reservation reflected once in resubmission scenarios"** -- building a
+  stateful fake that tracks cumulative per-`intentId` reservation amounts
+  would mean designing and half-implementing Task B/C's own reservation
+  data structure prematurely, against a governing plan that explicitly
+  scopes Task A to "do not build any ledger, lock, or store class." The
+  documented contract is real and testable once a real stateful
+  implementation exists to test it against (Task C); asserted here as a
+  contract requirement future implementations must satisfy, not proven
+  against a fake built only to satisfy this one review comment.
+
+Re-ran `./gradlew clean build` after both fixes: still green, now **405
+tests, 0 failures, 0 errors** (404 + 1 new regression test).
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `AccountLedger`/`LedgerReservation`/`AccountLedgerStore`/
@@ -260,14 +338,22 @@ and/or reflection, per the governing brief's own required coverage list:
 - `./gradlew :runtime:compileTestJava` (before implementing `TradingLoop`
   changes) — failed with exactly 3 compile errors, the expected red
   state (see "TDD" above).
-- `./gradlew :runtime:test` (after implementing `TradingLoop` changes) —
+- `./gradlew :runtime:test` (after implementing the original `TradingLoop`
+  changes, before the CodeRabbit-review fixes below) —
   **BUILD SUCCESSFUL**, all `:runtime` tests green, including
   `TradingLoopTest` at **13 tests, 0 failures, 0 errors** (9 pre-existing
   + 4 new).
-- `./gradlew clean build` (full multi-module suite, all six modules,
-  clean, not incremental) — **BUILD SUCCESSFUL**. Summed real JUnit XML
-  reports across every module (`schemas`, `oms`, `risk`, `execution`,
-  `exchange`, `runtime`): **404 tests, 0 failures, 0 errors**.
+- `./gradlew clean build` (same point, full multi-module suite, all six
+  modules, clean, not incremental) — **BUILD SUCCESSFUL**. Summed real
+  JUnit XML reports across every module (`schemas`, `oms`, `risk`,
+  `execution`, `exchange`, `runtime`): **404 tests, 0 failures, 0 errors**.
+- **After the CodeRabbit review round's two fixes** (see "CodeRabbit
+  review findings" below) — `./gradlew :runtime:test`: green,
+  `TradingLoopTest` now **14 tests, 0 failures, 0 errors** (9 pre-existing
+  + 4 original new + 1 new regression test for the ambiguous-`submitIntent`
+  -failure fix). `./gradlew clean build` (full multi-module suite, clean):
+  **BUILD SUCCESSFUL**, **405 tests, 0 failures, 0 errors** project-wide.
+  This is the final state of the PR.
 - PR opened, not merged — per the governing task brief and CLAUDE.md's
   Auto-merge Policy, this is Java runtime/OMS/Risk-Gateway-adjacent code
   and requires explicit human sign-off regardless of CI/CodeRabbit

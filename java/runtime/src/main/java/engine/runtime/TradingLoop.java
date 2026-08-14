@@ -268,7 +268,41 @@ public final class TradingLoop {
                                     symbol);
                         } else {
                             AccountState reservedAccount = accountStateProvider.reserveForIntent(intent, price);
-                            Optional<Order> order = orderPipeline.submitIntent(intent, price, reservedAccount);
+                            Optional<Order> order;
+                            try {
+                                order = orderPipeline.submitIntent(intent, price, reservedAccount);
+                            } catch (RuntimeException e) {
+                                // OrderPipeline.submitIntent can throw before
+                                // this loop can learn whether an Order was
+                                // actually registered in OrderStore (e.g.
+                                // OrderStore#createOrder's own conflicting-
+                                // retry guard, IllegalStateException on a
+                                // reused intentId whose details/decision
+                                // don't match what's already stored) --
+                                // deliberately do NOT release the reservation
+                                // in this ambiguous case: releasing would
+                                // understate committed exposure if the order
+                                // actually was registered, the dangerous
+                                // direction (see AccountStateProvider's own
+                                // "reserve pessimistically" principle). The
+                                // reservation is left at its pessimistic,
+                                // already-conservative size; tick()'s own
+                                // catch-all below still records lastError and
+                                // this attempt is retried next tick.
+                                // Resolving this for real needs order-state
+                                // reconciliation this class doesn't have --
+                                // see the governing plan's Task D, which
+                                // already handles the analogous "reservation
+                                // doesn't perfectly track every order-
+                                // lifecycle edge case" problem via periodic
+                                // reconciliation; not attempted here.
+                                log.warn(
+                                        "orderPipeline.submitIntent threw for intent {} after a reservation was"
+                                                + " already made; reservation is left at its pessimistic size, not"
+                                                + " released, until a future reconciliation pass can correct it",
+                                        intent.intentId());
+                                throw e;
+                            }
                             if (order.isPresent()) {
                                 // Recorded before submitToBroker() below, not
                                 // after -- see Reconciler's own Javadoc: a
