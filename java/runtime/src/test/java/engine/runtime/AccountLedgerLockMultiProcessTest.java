@@ -73,22 +73,38 @@ class AccountLedgerLockMultiProcessTest {
         long holdMillis = 20;
 
         List<Process> processes = new ArrayList<>();
-        for (int i = 0; i < processCount; i++) {
-            processes.add(launchContender(
-                    lockPath, counterPath, iterationsPerProcess, staleThresholdMillis, totalRetryBudgetMillis,
-                    holdMillis));
-        }
+        List<Path> outputs = new ArrayList<>();
+        try {
+            for (int i = 0; i < processCount; i++) {
+                Path outputPath = tempDir.resolve("contender-" + i + "-output.log");
+                outputs.add(outputPath);
+                processes.add(launchContender(
+                        lockPath, counterPath, iterationsPerProcess, staleThresholdMillis, totalRetryBudgetMillis,
+                        holdMillis, outputPath));
+            }
 
-        for (Process process : processes) {
-            boolean finished = process.waitFor(60, TimeUnit.SECONDS);
-            if (!finished) {
-                process.destroyForcibly();
-                fail("a real contender process did not finish within the test timeout");
+            for (int i = 0; i < processes.size(); i++) {
+                Process process = processes.get(i);
+                boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+                if (!finished) {
+                    fail("a real contender process did not finish within the test timeout. Output so far: "
+                            + readOutputOrPlaceholder(outputs.get(i)));
+                }
+                if (process.exitValue() != 0) {
+                    fail("a real contender process exited with code " + process.exitValue() + ": "
+                            + readOutputOrPlaceholder(outputs.get(i)));
+                }
             }
-            if (process.exitValue() != 0) {
-                String stderr = new String(process.getErrorStream().readAllBytes());
-                fail("a real contender process exited with code " + process.exitValue() + ": " + stderr);
-            }
+        } finally {
+            // Real Major finding, real CodeRabbit review of this PR: an
+            // early fail(...) above must not leave any still-running
+            // contender behind. An orphaned contender would keep creating
+            // and deleting the real, shared lock file (and appending to
+            // the shared counter file) completely unsupervised, corrupting
+            // both this test's own cleanup assertion below AND any later
+            // test that reuses a lock/counter path, well after this test
+            // method has already returned.
+            processes.forEach(Process::destroyForcibly);
         }
 
         int finalCount = Integer.parseInt(Files.readString(counterPath).trim());
@@ -101,13 +117,29 @@ class AccountLedgerLockMultiProcessTest {
         assertTrue(Files.notExists(lockPath), "the lock file must not be left behind once every contender is done");
     }
 
+    /**
+     * Real Major finding, real CodeRabbit review of this PR: {@link
+     * ProcessBuilder} pipes a child's stdout/stderr by default, and this
+     * test used to read the child's stderr only <i>after</i> {@code
+     * waitFor} returned. {@link AccountLedgerLock} logs at {@code ERROR}
+     * on every steal (routine under this test's own deliberately heavy
+     * contention) -- if a child fills the OS pipe buffer (commonly 64KB)
+     * before this test ever reads it, the child blocks forever on its own
+     * write, and {@code waitFor(60, TimeUnit.SECONDS)} times out for a
+     * reason that has nothing to do with the lock primitive itself,
+     * turning a real correctness signal into a misleading, undiagnosable
+     * test-plumbing failure. Fixed by redirecting each child's combined
+     * output straight to its own file on disk from the start -- nothing is
+     * ever left sitting in an in-memory pipe for this process to drain.
+     */
     private Process launchContender(
             Path lockPath,
             Path counterPath,
             int iterations,
             long staleThresholdMillis,
             long totalRetryBudgetMillis,
-            long holdMillis)
+            long holdMillis,
+            Path outputPath)
             throws IOException {
         String javaBin = System.getProperty("java.home") + File.separator + "bin" + File.separator + "java";
         String classpath = System.getProperty("java.class.path");
@@ -122,6 +154,16 @@ class AccountLedgerLockMultiProcessTest {
                 Long.toString(staleThresholdMillis),
                 Long.toString(totalRetryBudgetMillis),
                 Long.toString(holdMillis));
+        builder.redirectErrorStream(true);
+        builder.redirectOutput(outputPath.toFile());
         return builder.start();
+    }
+
+    private static String readOutputOrPlaceholder(Path outputPath) {
+        try {
+            return Files.readString(outputPath);
+        } catch (IOException e) {
+            return "<no output captured: " + e + ">";
+        }
     }
 }

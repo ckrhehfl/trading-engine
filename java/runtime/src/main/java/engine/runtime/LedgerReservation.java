@@ -27,6 +27,16 @@ import java.util.UUID;
  * <p>Package-private, like every other class in this file's "shared
  * ledger" group except the {@link AccountStateProvider} interface itself
  * -- see the governing plan's "2. The shared ledger" section header.
+ *
+ * <p><b>{@code notional} must be strictly positive</b> -- a real Major
+ * finding from this task's own real CodeRabbit review, fixed here.
+ * {@code SharedKisAccountLedger} (Task C, not built yet) is expected to
+ * derive available capital as {@code allocatedVirtualCapital -
+ * Σ(reservations.notional)}; a zero or negative reservation sneaking in
+ * (a corrupt/hand-edited ledger file, or a future caller bug) would
+ * <i>increase</i> that derived available capital rather than reduce it --
+ * a real risk-budget bypass, not merely a data-quality nit, for a record
+ * that exists specifically to bound a shared account's real exposure.
  */
 record LedgerReservation(
         UUID clientOrderId,
@@ -42,5 +52,8 @@ record LedgerReservation(
         Objects.requireNonNull(hostname, "hostname is required");
         Objects.requireNonNull(notional, "notional is required");
         Objects.requireNonNull(reservedAt, "reservedAt is required");
+        if (notional.signum() <= 0) {
+            throw new IllegalArgumentException("notional must be positive");
+        }
     }
 }

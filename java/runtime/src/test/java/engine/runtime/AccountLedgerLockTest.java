@@ -167,7 +167,16 @@ class AccountLedgerLockTest {
             assertTrue(thrown.getMessage().contains(lockPath.toString()), "exception must name the lock path");
             long elapsedMillis = Duration.ofNanos(elapsed).toMillis();
             assertTrue(
-                    elapsedMillis < retryBudget.toMillis() + 1000,
+                    // Slack must absorb the last backoff sleep (<=250ms)
+                    // plus one real createFile/readString round trip --
+                    // AccountLedgerLock's own Javadoc documents measured
+                    // 500ms+ single-operation latency under contention on
+                    // this repository's real drvfs mount (see "The real
+                    // finding" in .planning/kis-ledger-b-*.md). A tighter
+                    // bound here risks a real, environment-driven flake,
+                    // not just a theoretical one (Minor finding, real
+                    // CodeRabbit review of this PR).
+                    elapsedMillis < retryBudget.toMillis() + 3000,
                     "must fail close to the configured budget (" + retryBudget + "), not wildly exceed it; took "
                             + elapsedMillis + "ms");
             assertTrue(
@@ -179,6 +188,79 @@ class AccountLedgerLockTest {
             holder.join(TimeUnit.SECONDS.toMillis(10));
         }
         assertTrue(holderFailures.isEmpty(), "holder thread must not have failed: " + holderFailures);
+    }
+
+    /**
+     * Deterministic regression test for a Critical finding from this
+     * task's own real CodeRabbit review (see {@link AccountLedgerLock
+     * #close}'s own Javadoc for the full real scenario this closes):
+     * simulates a sibling process legitimately stealing this exact lock
+     * (e.g. because a real {@code staleThreshold} elapsed while this
+     * holder was stalled by a slow filesystem operation) and acquiring
+     * its own new generation, all before this instance ever gets around
+     * to closing. {@code close()} must never delete that sibling's lock.
+     */
+    @Test
+    void closeDoesNotDeleteADifferentLockGenerationThatHasSinceReplacedThisOnesOwnFile(@TempDir Path tempDir)
+            throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        AccountLedgerLock lock =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+
+        // Simulate a sibling stealing this lock and acquiring its own,
+        // different generation -- without ever going through this
+        // instance's own close().
+        Files.delete(lockPath);
+        Files.writeString(
+                lockPath,
+                "{\"pid\":999999999,\"hostname\":\"someone-else\",\"acquiredAt\":\"" + Instant.now() + "\"}");
+
+        lock.close();
+
+        assertTrue(Files.exists(lockPath), "close() must not delete a different holder's lock");
+        assertTrue(
+                Files.readString(lockPath).contains("someone-else"),
+                "the sibling's own lock content must be completely untouched");
+    }
+
+    /**
+     * A lock file that exists but is empty (e.g. {@code Files#createFile}
+     * succeeded but the metadata write hasn't landed yet, or crashed
+     * before completing) must never be treated as stale merely for being
+     * unparseable -- confirmed by using a short {@code totalRetryBudget}
+     * and asserting the caller genuinely exhausts it (rather than
+     * incorrectly, prematurely succeeding).
+     */
+    @Test
+    void acquireDoesNotStealAFreshEmptyLockFile(@TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        Files.writeString(lockPath, ""); // present, but empty -- simulates the create-then-write race window
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, Duration.ofMillis(300)));
+    }
+
+    /**
+     * Backstop path for a Critical finding from this task's own real
+     * CodeRabbit review: an empty lock file whose last-modified time is
+     * older than {@code staleThreshold} (simulating a holder that died
+     * between {@link Files#createFile} succeeding and ever writing its
+     * metadata -- e.g. a hard process kill) must still be reclaimable,
+     * not block every future waiter forever.
+     */
+    @Test
+    void acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold(@TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        Files.writeString(lockPath, "");
+        Duration staleThreshold = Duration.ofMillis(50);
+        Files.setLastModifiedTime(
+                lockPath, java.nio.file.attribute.FileTime.from(Instant.now().minus(Duration.ofSeconds(60))));
+
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, GENEROUS_RETRY_BUDGET)) {
+            assertTrue(Files.exists(lockPath), "a real lock must have been created after reclaiming the abandoned file");
+            assertTrue(Files.readString(lockPath).contains("\"pid\""), "the reclaimed file must hold this instance's real metadata now");
+        }
     }
 
     /** Finds a pid with no corresponding real process, verified rather than merely guessed. */

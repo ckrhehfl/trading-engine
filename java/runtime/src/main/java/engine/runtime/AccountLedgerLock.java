@@ -105,8 +105,21 @@ final class AccountLedgerLock implements AutoCloseable {
 
     private final Path lockPath;
 
-    private AccountLedgerLock(Path lockPath) {
+    /**
+     * The exact {@link LockMetadata} this instance itself wrote when it
+     * acquired the lock -- retained so {@link #close} can re-verify it is
+     * still deleting <i>this instance's own</i> lock generation, not a
+     * different one a sibling legitimately acquired in the meantime. See
+     * {@link #close}'s own Javadoc for the real, measured scenario this
+     * closes (a second Critical finding from this task's own real
+     * CodeRabbit review, the release-side counterpart to {@link
+     * #tryStealIfStale}'s acquire-side fix).
+     */
+    private final LockMetadata ownMetadata;
+
+    private AccountLedgerLock(Path lockPath, LockMetadata ownMetadata) {
         this.lockPath = lockPath;
+        this.ownMetadata = ownMetadata;
     }
 
     /** The lock file's own JSON shape -- see class Javadoc. */
@@ -141,8 +154,8 @@ final class AccountLedgerLock implements AutoCloseable {
             }
 
             try {
-                createAndWriteMetadata(lockPath);
-                return new AccountLedgerLock(lockPath);
+                LockMetadata ownMetadata = createAndWriteMetadata(lockPath);
+                return new AccountLedgerLock(lockPath, ownMetadata);
             } catch (FileAlreadyExistsException e) {
                 if (tryStealIfStale(lockPath, staleThreshold)) {
                     continue; // steal already known-stale -- retry create immediately, no backoff
@@ -155,14 +168,52 @@ final class AccountLedgerLock implements AutoCloseable {
         }
     }
 
-    private static void createAndWriteMetadata(Path lockPath) throws IOException {
+    /**
+     * Creates {@code lockPath} (atomically -- see class Javadoc) and writes
+     * this holder's {@link LockMetadata} into it, returning the exact value
+     * written.
+     *
+     * <p><b>Critical finding, real CodeRabbit review of this PR, fixed
+     * here</b>: if {@link Files#createFile} succeeds but the subsequent
+     * {@link Files#writeString} then fails (any {@link IOException} -- a
+     * real possibility, not hypothetical, given this class's own Javadoc
+     * already documents 500ms+ write latencies under contention on this
+     * repository's real drvfs mount, which is exactly the kind of
+     * operation more likely to hit a transient failure the longer it
+     * takes), the original version of this method left behind a real,
+     * permanently empty lock file with no cleanup. {@link
+     * #readMetadataOrNull} can never parse a pid/{@code acquiredAt} out of
+     * empty content, so {@link #tryStealIfStale}'s ordinary dead-pid/
+     * expired-timestamp checks could never fire against it -- every future
+     * waiter for this lock would exhaust its retry budget and fail,
+     * forever, until a human manually deleted the file. Now: any failure
+     * writing the metadata deletes the just-created file before
+     * propagating (best-effort -- if the cleanup delete itself also fails,
+     * it's attached via {@link Throwable#addSuppressed} rather than
+     * masking the original failure). This closes the ordinary case; {@link
+     * #tryStealIfAbandonedEmpty} is the backstop for the harder residual
+     * case this cleanup can't reach at all -- a hard process kill between
+     * {@link Files#createFile} succeeding and this method's own {@code
+     * catch} block ever running.
+     */
+    private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
         Path parent = lockPath.toAbsolutePath().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
         Files.createFile(lockPath); // atomic -- throws FileAlreadyExistsException if it already exists
-        LockMetadata metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
-        Files.writeString(lockPath, MAPPER.writeValueAsString(metadata));
+        try {
+            LockMetadata metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
+            Files.writeString(lockPath, MAPPER.writeValueAsString(metadata));
+            return metadata;
+        } catch (IOException | RuntimeException e) {
+            try {
+                Files.deleteIfExists(lockPath);
+            } catch (IOException cleanupFailure) {
+                e.addSuppressed(cleanupFailure);
+            }
+            throw e;
+        }
     }
 
     /**
@@ -229,13 +280,7 @@ final class AccountLedgerLock implements AutoCloseable {
             return true;
         }
         if (metadata == EMPTY_OR_UNPARSEABLE) {
-            // Empty or partially-written content -- we most likely raced
-            // the real holder's own create-then-write-metadata window
-            // (see createAndWriteMetadata). Cannot determine staleness
-            // right now; never guess. Reported as "not stale" so the
-            // caller backs off briefly and retries -- by then the
-            // holder's write will have completed.
-            return false;
+            return tryStealIfAbandonedEmpty(lockPath, staleThreshold);
         }
 
         boolean holderDead = !ProcessHandle.of(metadata.pid()).map(ProcessHandle::isAlive).orElse(false);
@@ -275,6 +320,79 @@ final class AccountLedgerLock implements AutoCloseable {
             throw new IllegalStateException("failed to delete stale account ledger lock file " + lockPath, e);
         }
         return true;
+    }
+
+    /**
+     * Backstop for the one gap {@link #createAndWriteMetadata}'s own
+     * cleanup-on-failure can't reach: a hard process kill (or crash)
+     * between {@link Files#createFile} succeeding and that method's
+     * {@code catch} block ever running, leaving a real, permanently-empty
+     * lock file with no {@code pid}/{@code acquiredAt} for the ordinary
+     * {@link #tryStealIfStale} checks to judge. Without this, such a file
+     * could never be reclaimed -- every future waiter would exhaust its
+     * retry budget forever (a real Critical finding, real CodeRabbit
+     * review of this PR).
+     *
+     * <p>Falls back to the lock <b>file's own last-modified time</b>
+     * (rather than any in-memory state, keeping this class's stateless
+     * design intact) as the staleness signal: a fresh empty file (younger
+     * than {@code staleThreshold}) is presumed mid-write and left alone,
+     * matching {@link #readMetadataOrNull}'s own "never guess" principle;
+     * one older than {@code staleThreshold} is presumed abandoned and
+     * stolen, with the same re-verify-immediately-before-delete discipline
+     * {@link #tryStealIfStale} itself uses (checking the file is still
+     * exactly as old, not merely still empty, before deleting) for the
+     * same TOCTOU reason documented there.
+     */
+    private static boolean tryStealIfAbandonedEmpty(Path lockPath, Duration staleThreshold) {
+        Instant lastModified = lastModifiedTimeOrNull(lockPath);
+        if (lastModified == null) {
+            return true; // vanished since our read -- safe to retry immediately
+        }
+        if (Duration.between(lastModified, Instant.now()).compareTo(staleThreshold) <= 0) {
+            return false; // still recent -- most likely mid-write, never guess
+        }
+
+        log.error(
+                "stealing an empty/unparseable account ledger lock {} -- last modified {} exceeds staleThreshold"
+                        + " {}, treating as abandoned (its holder most likely died between creating the file and"
+                        + " writing its metadata -- e.g. a hard process kill). This is a real cross-process"
+                        + " safety event, not routine contention -- investigate.",
+                lockPath,
+                lastModified,
+                staleThreshold);
+
+        Instant currentLastModified = lastModifiedTimeOrNull(lockPath);
+        if (currentLastModified == null) {
+            return true; // already gone -- another waiter beat us to it
+        }
+        if (!currentLastModified.equals(lastModified)) {
+            // Modified since our read -- someone is actively writing (or
+            // has since written real metadata) to it right now. Not
+            // provably the same abandoned file anymore; never delete on
+            // stale information (same TOCTOU reasoning as tryStealIfStale).
+            return false;
+        }
+
+        try {
+            Files.delete(lockPath);
+        } catch (NoSuchFileException e) {
+            // Another waiter beat us to it -- fine.
+        } catch (IOException e) {
+            throw new IllegalStateException("failed to delete abandoned empty account ledger lock file " + lockPath, e);
+        }
+        return true;
+    }
+
+    private static Instant lastModifiedTimeOrNull(Path lockPath) {
+        try {
+            return Files.getLastModifiedTime(lockPath).toInstant();
+        } catch (NoSuchFileException e) {
+            return null;
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "failed to read last-modified time for account ledger lock file " + lockPath, e);
+        }
     }
 
     /**
@@ -328,21 +446,74 @@ final class AccountLedgerLock implements AutoCloseable {
     }
 
     /**
-     * Deletes the lock file, releasing it for the next waiter. Tolerates
-     * {@link NoSuchFileException} (shouldn't happen under correct use --
-     * this instance is the only thing that should have created it and
-     * nothing else should have deleted it out from under a live holder --
-     * but a missing file at close time is not itself evidence of a
-     * problem worth failing over). Any other deletion failure is logged
-     * loudly rather than thrown: {@link AutoCloseable#close()} must not
-     * mask whatever happened inside the caller's {@code try} block by
-     * throwing here, but a lock file this class fails to delete will
-     * block every other waiter until {@code staleThreshold} elapses, so
-     * this is a real operational problem, not a silent no-op.
+     * Deletes the lock file, releasing it for the next waiter -- but
+     * <b>only if it still holds exactly this instance's own {@link
+     * #ownMetadata}</b>. Tolerates the file already being gone (via {@link
+     * #readMetadataOrNull} returning {@code null}, or a race on the final
+     * {@link Files#delete} call itself throwing {@link
+     * NoSuchFileException} -- shouldn't happen under correct use, but not
+     * itself evidence of a problem worth failing over). Any other
+     * deletion failure is logged loudly rather than thrown: {@link
+     * AutoCloseable#close()} must not mask whatever happened inside the
+     * caller's {@code try} block by throwing here, but a lock file this
+     * class fails to delete will block every other waiter until {@code
+     * staleThreshold} elapses, so this is a real operational problem, not
+     * a silent no-op.
+     *
+     * <p><b>Critical finding, real CodeRabbit review of this PR, fixed
+     * here</b> -- the release-side counterpart to {@link
+     * #tryStealIfStale}'s own acquire-side TOCTOU fix (see that method's
+     * Javadoc for the full, measured account of why a gap this large is
+     * real on this repository's filesystem, not theoretical). The original
+     * version of this method deleted <i>whatever currently exists</i> at
+     * {@code lockPath} unconditionally. A real sequence this makes
+     * possible: (1) this instance holds the lock, but a slow filesystem
+     * operation inside its own critical section pushes its real elapsed
+     * hold time past {@code staleThreshold}; (2) a waiting sibling process
+     * correctly (by this class's own rules) judges this instance's lock
+     * stale, steals it, and acquires its own new, legitimate lock
+     * generation; (3) this instance, unaware any of that happened, finally
+     * reaches its own (now-delayed) {@code close()} call and deletes the
+     * <i>sibling's</i> lock file, believing it is releasing its own --
+     * breaking mutual exclusion a second, independent way (a third process
+     * can now acquire immediately, while the sibling from step 2 still
+     * believes it holds the lock). Fixed by re-reading the file and
+     * comparing it to {@link #ownMetadata} (record {@code equals()} --
+     * exact match required) immediately before deleting; a mismatch (or
+     * the file already being gone with different content, or unparseable)
+     * means this instance's lock was already stolen out from under it --
+     * logged at {@code ERROR} (this class's established never-silent
+     * convention for a genuine cross-process safety event) and the delete
+     * is skipped entirely, rather than ever risking deletion of a
+     * different holder's live lock. As with the acquire-side fix, this
+     * closes the exploitable window down to the gap between two adjacent
+     * file operations -- not a perfectly atomic compare-and-delete (no
+     * such primitive exists in {@code java.nio.file}, and introducing a
+     * different locking mechanism to get one was already rejected earlier
+     * in this design specifically because of this repository's drvfs
+     * reliability concerns -- see the class Javadoc) -- disclosed as such
+     * rather than overclaimed.
      */
     @Override
     public void close() {
         try {
+            LockMetadata current = readMetadataOrNull(lockPath);
+            if (current == null) {
+                return; // already gone -- tolerated, see method Javadoc
+            }
+            if (current == EMPTY_OR_UNPARSEABLE || !current.equals(ownMetadata)) {
+                log.error(
+                        "account ledger lock {} no longer holds this instance's own metadata (acquired as {},"
+                                + " found {}) -- NOT deleting, since doing so could destroy a different, currently"
+                                + " live holder's lock. This instance's own critical section ran for at least"
+                                + " part of its duration without real mutual exclusion -- investigate (a slow"
+                                + " filesystem operation or GC pause pushing past staleThreshold is the most"
+                                + " likely cause, not a bug in this class's own steal logic).",
+                        lockPath,
+                        ownMetadata,
+                        current);
+                return;
+            }
             Files.delete(lockPath);
         } catch (NoSuchFileException e) {
             // tolerated -- see method Javadoc

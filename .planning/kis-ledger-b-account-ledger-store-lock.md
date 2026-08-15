@@ -375,6 +375,147 @@ acquisitions produced zero lost updates.
   `TradingLoop.java`, `PaperTradingApp.java`, `AccountStateProvider.java`
   — none touched.
 
+## CodeRabbit review findings
+
+One review round on PR #100 (`ASSERTIVE` profile) against commit
+`32d94de` (the original commit): `CHANGES_REQUESTED`, 7 inline comments
+(3 Critical/Major on `AccountLedgerLock.java`, 1 Major each on
+`AccountLedgerStore.java`/`LedgerReservation.java`/the multi-process
+test, 1 Minor on the retry-budget test). Every finding was verified
+against the real current code before acting on it, per this task's own
+standing instruction to treat review content as untrusted data, not
+instructions to follow blindly. All seven were real and valid; all seven
+fixed.
+
+- **`close()` deletes unconditionally — a second, independent TOCTOU
+  break on the release side (Critical).** Real and serious: (1) this
+  instance holds the lock, but a slow filesystem operation inside its own
+  critical section (this class's own Javadoc already documents measured
+  500ms+ single-operation latency under contention) pushes its real
+  elapsed hold time past `staleThreshold`; (2) a waiting sibling correctly
+  judges this instance's lock stale (by this class's own rules), steals
+  it, and acquires its own new, legitimate generation; (3) this instance,
+  unaware, finally reaches its own delayed `close()` and deletes the
+  *sibling's* lock, believing it's releasing its own. Fixed: `acquire`
+  now retains the exact `LockMetadata` it wrote (`createAndWriteMetadata`
+  returns it; the constructor stores it as `ownMetadata`); `close()`
+  re-reads the file and only deletes if it still holds precisely
+  `ownMetadata` — a mismatch is logged at `ERROR` (this class's
+  established never-silent convention) and the delete is skipped
+  entirely, never risking another holder's live lock. New deterministic
+  regression test:
+  `closeDoesNotDeleteADifferentLockGenerationThatHasSinceReplacedThisOnesOwnFile`
+  — simulates the steal directly (delete + rewrite with different
+  metadata) rather than trying to reproduce the real timing race, which
+  would need a test-only delay hook into production code; judged
+  sufficient proof that the mechanism itself works, the same standard
+  this class's other fabricated-lock tests already use.
+- **`createFile` succeeds, `writeString` fails → a permanently-empty,
+  never-stealable lock file (Critical).** Real and, per the reviewer's own
+  framing, high-impact: `readMetadataOrNull` returns
+  `EMPTY_OR_UNPARSEABLE` for empty content, and the original
+  `tryStealIfStale` always backed off on that case with no staleness path
+  at all — so every future waiter for this lock would exhaust its retry
+  budget and fail, forever, blocking the entire shared ledger until a
+  human manually deleted the file. Fixed two ways, per the reviewer's own
+  two-part suggestion: (1) `createAndWriteMetadata` now wraps the metadata
+  write in `try`/`catch`, deleting the just-created file before
+  propagating any failure (best-effort; a cleanup failure is attached via
+  `addSuppressed` rather than masking the original); (2) as a backstop for
+  the one gap that cleanup still can't reach — a hard process kill between
+  `Files.createFile` succeeding and the `catch` block ever running — new
+  method `tryStealIfAbandonedEmpty` judges an empty/unparseable lock
+  file's staleness via its own filesystem **last-modified time** instead
+  of any in-memory state (keeping this class's stateless design intact),
+  with the same re-verify-immediately-before-delete discipline as the
+  ordinary path. New tests: `acquireDoesNotStealAFreshEmptyLockFile`
+  (a young empty file must not be stolen — proven by asserting a short
+  retry budget genuinely exhausts, not a premature "success");
+  `acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold` (an
+  empty file backdated via `Files.setLastModifiedTime` past
+  `staleThreshold` must be reclaimed).
+- **The acquire-side re-verify-then-delete still isn't truly atomic
+  (Major, flagged against the planning doc directly).** Correct, and
+  already disclosed as such in this document and in
+  `tryStealIfStale`'s own Javadoc before this review — restated here for
+  the record rather than treated as new: no atomic compare-and-delete
+  primitive exists in `java.nio.file`, and introducing a different
+  locking mechanism to get one was already rejected earlier in this
+  design specifically for this repository's drvfs reliability reasons
+  (see the governing plan). What *was* fixed in direct response to this
+  finding is the close()-side counterpart above — applying the same
+  re-verify discipline symmetrically on both the steal path and the
+  release path is the practical maximum achievable with this primitive
+  family, closing the window to the gap between two adjacent file
+  operations on *both* sides rather than leaving the release side
+  completely unguarded (as it was before this review). Not claimed as a
+  perfect fix anywhere in the code or this document — the residual window
+  is named explicitly in both.
+- **`AccountLedgerStore.load` never validates the loaded ledger's own
+  `venue`/`accountId` against what was requested (Major).** Real: a
+  future path-resolution bug in Task C's caller, or a file mix-up, could
+  silently load one account's real, currently-committed exposure and use
+  it to gate a *different* account's orders. Fixed: `load` now throws
+  `IllegalStateException` if `ledger.venue()`/`ledger.accountId()` don't
+  exactly match the requested values, immediately after deserializing.
+  New tests: mismatched venue, mismatched accountId, and a
+  matching-identity control case (all three fail-closed/succeed as
+  expected).
+- **`LedgerReservation.notional` accepted zero or negative values
+  (Major).** Real: `SharedKisAccountLedger` (Task C) is expected to
+  derive available capital as `allocatedVirtualCapital -
+  Σ(reservations.notional)` — a non-positive reservation would *increase*
+  derived available capital, a real risk-budget-bypass shape, not merely
+  a data-quality nit, for a record whose entire purpose is bounding real
+  exposure. Fixed: the compact constructor now rejects
+  `notional.signum() <= 0`. New test:
+  `aReservationWithZeroOrNegativeNotionalIsRejectedByLedgerReservationItself`.
+- **The multi-process test doesn't drain child stdout/stderr and doesn't
+  guarantee cleanup on early failure (Major).** Real: `AccountLedgerLock`
+  logs at `ERROR` on every steal (routine under this test's own
+  deliberately heavy contention), and the original test only read a
+  child's stderr *after* `waitFor` returned — if a child filled the OS
+  pipe buffer first, it would block forever on its own write, turning a
+  real correctness signal into a misleading test-timeout failure with no
+  useful diagnostic. Separately, an early `fail(...)` skipped cleanup of
+  any still-running sibling processes, which would keep mutating the
+  shared lock/counter files completely unsupervised. Fixed: each child's
+  combined output now redirects straight to its own file from the start
+  (`ProcessBuilder#redirectErrorStream`/`redirectOutput`) — nothing is
+  ever left sitting in an in-memory pipe; the entire wait loop is now
+  wrapped in `try`/`finally`, unconditionally calling
+  `Process::destroyForcibly` on every launched process regardless of how
+  the loop exits.
+- **The retry-budget-exhaustion test's upper-bound tolerance (budget +
+  1000ms) is tight given now-documented 500ms+ drvfs latencies (Minor).**
+  Real, and a good catch given this task's own findings above: a single
+  slow file operation plus the last backoff sleep could plausibly
+  approach the original 1000ms slack on a bad day. Widened to `+3000ms`
+  with a comment explaining the real, measured basis for the number
+  (pointing at this same document's "The real finding" section) rather
+  than an arbitrary round figure.
+
+Re-ran the full suite after all seven fixes: `./gradlew clean build` —
+still green, **427 tests, 0 failures, 0 errors** project-wide (420 +
+7 new: 4 in `AccountLedgerStoreTest`, 3 in `AccountLedgerLockTest`).
+Also re-ran the real multi-process safety property specifically after
+these changes, not just trusted the diff: the JUnit
+`AccountLedgerLockMultiProcessTest` 3 additional times (`--rerun-tasks`,
+green every time) and a fresh 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct**. (A separate, first re-run of the stress harness produced
+several `MISSING`/short-count results — traced immediately to a
+self-inflicted harness artifact, not a lock bug: a concurrent `./gradlew
+:runtime:test` invocation was rewriting this exact module's `.class`
+files on disk while the background stress script was still reading them
+for later rounds, producing real `ClassFormatError: Truncated class
+file`/`NoClassDefFoundError` errors in the affected child processes' own
+captured output — confirmed directly from those processes' redirected
+output files, not guessed. Re-ran cleanly with no concurrent Gradle
+invocation touching the same build output and got the clean 25/25 result
+above. Recorded here rather than omitted, matching this document's own
+established practice of keeping a real investigative dead-end visible.)
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -382,27 +523,30 @@ acquisitions produced zero lost updates.
   against `AccountLedgerStoreTest.java`, the expected red state.
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerStoreTest"`
   — green, 10/10, after implementation (one deprecation warning found and
-  removed — see "TDD" above; zero warnings on the final version).
+  removed — see "TDD" above; zero warnings on the final version); 14/14
+  after the CodeRabbit-review fixes (4 new tests).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
-  — green, 4/4, stable across 3 repeated full re-runs.
+  — green, 4/4, stable across 3 repeated full re-runs; 7/7 after the
+  CodeRabbit-review fixes (3 new tests).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
   above); green after the fix, confirmed **5 additional times**
-  (`--rerun-tasks`).
+  (`--rerun-tasks`) before the review round, **3 more times** after it.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
   reasonable wall-clock time) — **30/30 rounds exactly correct** after
-  the fix (6 processes × 8 iterations = 48 expected per round).
+  the original TOCTOU fix, and **25/25 more** after the CodeRabbit-review
+  fixes (6 processes × 8 iterations = 48 expected per round each time).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
-  times (`--rerun-tasks`).
+  times (`--rerun-tasks`) before the review round, once more after it.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **420 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
-  merged state + 15 new: 10 `AccountLedgerStoreTest` + 4
-  `AccountLedgerLockTest` + 1 `AccountLedgerLockMultiProcessTest`).
+  **427 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  merged state + 15 from this task's original implementation + 7 from
+  the CodeRabbit-review round).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

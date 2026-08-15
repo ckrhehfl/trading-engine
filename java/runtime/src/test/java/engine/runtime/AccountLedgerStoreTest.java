@@ -142,6 +142,73 @@ class AccountLedgerStoreTest {
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
+    /**
+     * Real Major finding, real CodeRabbit review of this PR: nothing
+     * upstream of {@code load} validated that a loaded ledger file's own
+     * recorded identity actually matches the {@code (venue, accountId)}
+     * the caller requested -- a future path-resolution bug (Task C) or
+     * file mix-up could otherwise silently use one account's real,
+     * currently-committed exposure to gate a different account's orders.
+     */
+    @Test
+    void loadFailsClosedWhenTheLoadedLedgersVenueDoesNotMatchTheRequestedOne(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledgerForKis = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, ledgerForKis);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "BINGX", "acct-1", new BigDecimal("1000")));
+    }
+
+    @Test
+    void loadFailsClosedWhenTheLoadedLedgersAccountIdDoesNotMatchTheRequestedOne(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledgerForAcct1 = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, ledgerForAcct1);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-2", new BigDecimal("1000")));
+    }
+
+    @Test
+    void loadSucceedsWhenTheLoadedLedgersIdentityMatchesTheRequestedOneExactly(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, ledger);
+
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+
+        assertEquals(ledger, reloaded);
+    }
+
+    /**
+     * Real Major finding, real CodeRabbit review of this PR:
+     * {@link LedgerReservation}'s own compact constructor now rejects a
+     * non-positive {@code notional} -- exercised here through a real
+     * store round trip (a hand-built {@code LedgerReservation} is the
+     * more direct unit test, but this also proves the store itself never
+     * needs to special-case the rejection: the record's own constructor
+     * is the single enforcement point regardless of how it's constructed).
+     */
+    @Test
+    void aReservationWithZeroOrNegativeNotionalIsRejectedByLedgerReservationItself() {
+        UUID id = UUID.randomUUID();
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new LedgerReservation(id, "A11609", 1L, "host-a", BigDecimal.ZERO, Instant.now()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new LedgerReservation(id, "A11609", 1L, "host-a", new BigDecimal("-1"), Instant.now()));
+    }
+
     @Test
     void persistCreatesParentDirectoriesIfNeeded(@TempDir Path tempDir) {
         Path file = tempDir.resolve("nested").resolve("dir").resolve("ledger.json");

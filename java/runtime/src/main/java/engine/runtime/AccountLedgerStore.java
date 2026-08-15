@@ -101,6 +101,16 @@ final class AccountLedgerStore {
      * make every existing {@link LedgerReservation} -- another process's
      * real, currently-committed exposure -- invisible, undermining the
      * entire reason this shared ledger exists.
+     *
+     * <p><b>Also fails closed if the loaded file's own {@code venue}/{@code
+     * accountId} don't match the requested ones</b> -- a real Major finding
+     * from this task's own real CodeRabbit review. Nothing upstream of this
+     * method validates that {@code ledgerPath} actually corresponds to
+     * {@code (venue, accountId)}; a future path-resolution bug or file mix-
+     * up in Task C's caller would otherwise silently load one account's
+     * real, currently-committed exposure and virtual capital and use it to
+     * gate a <i>different</i> account's orders -- exactly backwards for a
+     * class whose entire purpose is bounding a shared account's real risk.
      */
     static AccountLedger load(Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital) {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
@@ -119,8 +129,9 @@ final class AccountLedgerStore {
                             + " committed-exposure state rather than silently treating it as freshly bootstrapped",
                     e);
         }
+        AccountLedger ledger;
         try {
-            return MAPPER.readValue(raw, AccountLedger.class);
+            ledger = MAPPER.readValue(raw, AccountLedger.class);
         } catch (IOException e) {
             throw new IllegalStateException(
                     "failed to parse account ledger file " + ledgerPath + " as an AccountLedger -- refusing to"
@@ -128,6 +139,14 @@ final class AccountLedgerStore {
                             + " freshly bootstrapped",
                     e);
         }
+        if (!venue.equals(ledger.venue()) || !accountId.equals(ledger.accountId())) {
+            throw new IllegalStateException(
+                    "account ledger file " + ledgerPath + " holds venue/accountId (" + ledger.venue() + ", "
+                            + ledger.accountId() + ") but (" + venue + ", " + accountId + ") was requested --"
+                            + " refusing to use a mismatched ledger for a risk decision rather than silently"
+                            + " proceeding with the wrong account's exposure");
+        }
+        return ledger;
     }
 
     private static AccountLedger freshLedger(String venue, String accountId, BigDecimal defaultAllocatedCapital) {
