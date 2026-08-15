@@ -471,10 +471,45 @@ Re-ran `./gradlew :runtime:test` after this fix (again Javadoc-only, no
 production code changed): still green, `TradingLoopTest` unchanged at
 **14 tests, 0 failures, 0 errors**.
 
+### Interim status after round 3's fix, commit `1259808` — corrected by "Round 4" below
+
+The round-3 fix was pushed and CodeRabbit's own **commit status** (the
+`CodeRabbit` GitHub check, a separate object from a **PR review**)
+transitioned to `success`/"Review completed" against this exact commit
+sha — confirmed directly via `GET /repos/.../commits/1259808.../status`.
+At the time, no new PR review object had been posted for this commit
+either (`GET /repos/.../pulls/99/reviews` showed the latest still
+targeting commit `2d18bdb`, round 3's own commit), and this was
+**incorrectly read as CodeRabbit having found zero actionable issues in
+the round-3 diff** — an inference this document stated here, and reported
+to this task's own coordinator, before it was actually verified against a
+real review object for that specific diff.
+
+**That inference was wrong, corrected on the same PR before merge, not
+after — flagged by this task's own coordinator, who checked `gh api
+repos/.../pulls/99/reviews` directly rather than trusting this document's
+prior claim, and found no review object existed for either `1259808` or
+the next commit at the time.** A commit-status `success` with no
+superseding review object is genuinely ambiguous between two different
+real situations — "reviewed, found nothing" (the correct reading for the
+Task F precedent this document originally cited) and "not yet
+(re-)reviewed at all" (what had actually happened here, confirmed once a
+real review of the cumulative diff finally landed and found a real,
+valid, new issue in code that had existed since round 1 — see "Round 4"
+below). **The commit-status check alone does not distinguish these two
+cases; only a review object whose `commit_id` matches the exact commit in
+question does.** This document's own stated verification discipline
+("verify via `gh api` that the latest review's `commit_id` matches `git
+rev-parse HEAD` exactly... and its `state` is `APPROVED`") already says
+this correctly — the error was in this section's own execution of that
+discipline, treating a green commit status as satisfying it when it does
+not. Left here, not deleted, as an accurate record of the mistake and its
+correction, not smoothed over.
+
 ### Round 4
 
 Against commit `079fe91` (a further, doc-only commit recording round 3's
-outcome — see "Interim status" below for why this section's original
+outcome — see "Interim status" above for why that section's original
 framing of that commit needed correcting) — a real review, confirmed via
 the GitHub reviews API to target this exact commit sha
 (`4942951453`, `submitted_at: 2026-08-15T05:24:21Z`), reviewing the full
@@ -536,40 +571,39 @@ turns visible, not just right answers.
 Re-ran `./gradlew clean build` after this fix: still green, **405 tests,
 0 failures, 0 errors** project-wide, `TradingLoopTest` unchanged at 14.
 
-### Interim status after round 3's fix, commit `1259808` — corrected below
+### Final CodeRabbit status (after round 4's fix, commit `a986ea6`) — genuinely verified, not inferred
 
-The round-3 fix was pushed and CodeRabbit's own **commit status** (the
-`CodeRabbit` GitHub check, a separate object from a **PR review**)
-transitioned to `success`/"Review completed" against this exact commit
-sha — confirmed directly via `GET /repos/.../commits/1259808.../status`.
-At the time, no new PR review object had been posted for this commit
-either (`GET /repos/.../pulls/99/reviews` showed the latest still
-targeting commit `2d18bdb`, round 3's own commit), and this was
-**incorrectly read as CodeRabbit having found zero actionable issues in
-the round-3 diff** — an inference this document stated here, and reported
-to this task's own coordinator, before it was actually verified against a
-real review object for that specific diff.
+Pushed round 4's fix as commit `a986ea6`. Learning directly from the
+"Interim status" mistake above, verification this time used **only** the
+reviews API (`GET /repos/.../pulls/99/reviews`), checking each result's
+own `commit_id` against `git rev-parse HEAD` exactly, and never treated
+the `CodeRabbit` commit-status check alone as sufficient — even though
+that check again turned green almost immediately, before any real review
+object existed for this commit (confirmed by polling the reviews API
+directly and seeing no entry for `a986ea6` yet at that point). Requested
+`@coderabbitai full review` explicitly and polled the reviews API every
+90 seconds rather than assuming completion.
 
-**That inference was wrong, corrected on the same PR before merge, not
-after — flagged by this task's own coordinator, who checked `gh api
-repos/.../pulls/99/reviews` directly rather than trusting this document's
-prior claim, and found no review object existed for either `1259808` or
-the next commit at the time.** A commit-status `success` with no
-superseding review object is genuinely ambiguous between two different
-real situations — "reviewed, found nothing" (the correct reading for the
-Task F precedent this document originally cited) and "not yet
-(re-)reviewed at all" (what had actually happened here, confirmed once a
-real review of the cumulative diff finally landed and found a real,
-valid, new issue in code that had existed since round 1 — see "Round 4"
-below). **The commit-status check alone does not distinguish these two
-cases; only a review object whose `commit_id` matches the exact commit in
-question does.** This document's own stated verification discipline
-("verify via `gh api` that the latest review's `commit_id` matches `git
-rev-parse HEAD` exactly... and its `state` is `APPROVED`") already says
-this correctly — the error was in this section's own execution of that
-discipline, treating a green commit status as satisfying it when it does
-not. Left here, not deleted, as an accurate record of the mistake and its
-correction, not smoothed over.
+**A real, new review object landed** (`id 4943415282`,
+`commit_id: a986ea6d358777e41d69540d2f6b7b92a5e32e2e` — matching `git
+rev-parse HEAD` exactly — `submitted_at: 2026-08-15T08:55:08Z`):
+**`APPROVED`**, empty body (no actionable comments). Confirmed no new
+inline comment was posted alongside it (`GET /repos/.../pulls/99/comments`
+— same 4 comments as before, all from rounds 1-4, all already addressed
+above). GitHub's own native PR state reflects this cleanly now too,
+checked directly rather than assumed: `reviewDecision: ""` (no longer
+`CHANGES_REQUESTED` — a genuine `APPROVED` review superseded the prior
+stale one, unlike the Task F precedent where no new review object ever
+did), `mergeStateStatus: "CLEAN"`, `mergeable: "MERGEABLE"`.
+
+This is the real, fully verified final state of this PR: CI green
+(`bingx-hostname-guard`, `gitleaks`, `java-tests` ×2 job matrix, all
+`pass`), CodeRabbit `APPROVED` against the exact current HEAD with zero
+outstanding actionable comments, `./gradlew clean build` green at 405
+tests / 0 failures / 0 errors. Not merged — per the governing task brief
+and CLAUDE.md's Auto-merge Policy, this remains Java runtime/OMS/Risk-
+Gateway-adjacent code requiring explicit human sign-off regardless of
+CI/CodeRabbit status.
 
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
