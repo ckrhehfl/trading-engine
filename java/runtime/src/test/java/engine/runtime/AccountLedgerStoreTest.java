@@ -526,6 +526,35 @@ class AccountLedgerStoreTest {
         assertEquals(new BigDecimal("42"), reloaded.allocatedVirtualCapital());
     }
 
+    /**
+     * Real Minor finding, real CodeRabbit review of this PR: {@code
+     * persist}'s non-atomic fallback is deliberately narrow -- only {@link
+     * AtomicMoveNotSupportedException}/{@link FileAlreadyExistsException}
+     * (the same class of failure {@code SubmissionMarkerStore}/{@code
+     * DailyReportGenerator} already fall back for) trigger the {@code
+     * REPLACE_EXISTING} fallback; every other {@link IOException} from
+     * {@code mover.move} must propagate as a real failure instead. Nothing
+     * previously pinned this boundary with a test -- a future change
+     * accidentally widening the fallback's {@code catch} clause to plain
+     * {@link IOException} would have made this class perform a non-atomic
+     * replace after an arbitrary I/O failure (risking another process's
+     * committed reservation being lost) while every existing test still
+     * passed.
+     */
+    @Test
+    void anUnrelatedIoFailureDuringTheMovePropagatesInsteadOfFallingBack(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedgerStore.AtomicMover brokenMover = (source, target) -> {
+            throw new IOException("test-forced unrelated I/O failure");
+        };
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, brokenMover));
+        assertFalse(Files.exists(file), "the ledger must not be replaced by a non-atomic fallback here");
+    }
+
     @Test
     void defaultAtomicMoverPersistsWithoutTheTestSeam(@TempDir Path tempDir) {
         // Mirrors SubmissionMarkerStoreTest's own

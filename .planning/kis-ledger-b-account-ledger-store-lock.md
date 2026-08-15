@@ -1761,6 +1761,50 @@ control flow): `AccountLedgerLockMultiProcessTest` green 2 more times
 (`--rerun-tasks`, on top of the one run already part of the full `clean
 build` above).
 
+### Round 15
+
+Against commit `ac756a3` (after round 14's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T23:12:10Z`): `CHANGES_REQUESTED`, 1
+actionable comment (Minor), real, fixed. This review's own footer also
+surfaced a new, useful signal not seen in any prior round's response:
+"Included review availability: 0 reviews are currently available...
+included reviews refill at 1 per hour" — consistent with, and a more
+precise explanation for, the ~40-47 minute ETAs this task has been
+seeing on its last several rate-limit checks.
+
+- **`persist`'s non-atomic `REPLACE_EXISTING` fallback is deliberately
+  narrow — only `AtomicMoveNotSupportedException`/
+  `FileAlreadyExistsException` trigger it, per its own existing `catch`
+  clause (`AccountLedgerStore.java`, the `mover.move` call inside
+  `persist`) — but nothing pinned that boundary with a test.** Real,
+  and a legitimate test-coverage gap, not a production-code bug:
+  verified directly against the actual implementation before writing
+  anything — the `catch` clause is already correctly narrow, and any
+  other `IOException` already propagates to the method's outer `catch
+  (IOException e)`, which wraps it in `IllegalStateException` exactly as
+  the finding wants. Without a test pinning this, a future change that
+  accidentally widened the fallback's `catch` clause to plain `
+  IOException` would make this class perform a non-atomic replace after
+  an arbitrary I/O failure — risking another process's committed
+  reservation being silently lost — while every existing test kept
+  passing. Fixed by adding
+  `anUnrelatedIoFailureDuringTheMovePropagatesInsteadOfFallingBack`,
+  using a test `AtomicMover` that throws a generic `IOException` (not
+  `AtomicMoveNotSupportedException`), asserting `persist` throws
+  `IllegalStateException` and that `ledgerPath` is never created —
+  proving the distinction between the two failure classes is real
+  behavior, not merely an implementation detail nobody happens to have
+  broken yet. No production code change — the review's own suggested
+  test matched the actual implementation exactly.
+
+Re-ran after the round-15 fix: `./gradlew clean build` — still green,
+**443 tests, 0 failures, 0 errors** project-wide (442 + 1 new test, in
+`AccountLedgerStoreTest`). A pure test-addition round with no production
+code change, so no further multi-process/stress re-verification was
+independently warranted beyond the full `clean build`'s own real
+multi-process test run.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1785,7 +1829,7 @@ build` above).
   exceptions' cause, confirmed by grep first); 25/25 after round 14's (3
   more new tests, plus one pre-existing test's `defaultAllocatedCapital`
   values repaired to avoid a real conflict with the new fail-closed
-  check).
+  check); 26/26 after round 15's (1 more new test).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1806,7 +1850,9 @@ build` above).
   this file were a log-statement repositioning in existing methods, not
   new behavior needing a new test -- both existing steal-path tests
   still fully exercise the delete/no-delete decision itself, which is
-  unchanged).
+  unchanged); 11/11 after round 15's (no `AccountLedgerLock`-level
+  changes that round -- the one real fix was a store-level test
+  addition).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1822,7 +1868,8 @@ build` above).
   after round 13, **3 more times** after round 14 (1 part of the full
   `clean build`, plus 2 further explicit `--rerun-tasks` runs, given
   round 14's log-repositioning change touches this file's own steal
-  paths even though it changes no branching/timing).
+  paths even though it changes no branching/timing), once more (part of
+  the full `clean build`) after round 15.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1858,21 +1905,25 @@ build` above).
   delete/no-delete control flow -- no new branching or timing for the
   raw harness to exercise differently, so the `AccountLedgerLockMultiProcessTest`
   reruns above were judged sufficient re-verification without a further
-  raw stress-harness round on top of them).
+  raw stress-harness round on top of them; round 15's one real fix was a
+  new `AccountLedgerStore` test with no `AccountLedgerLock` involvement
+  at all, so it likewise did not independently warrant a further raw
+  stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, and 14.
+  8, 9, 10, 11, 12, 13, 14, and 15.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **442 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **443 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
-  12's + 0 net-new from round 13's + 3 from round 14's).
+  12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
+  15's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
