@@ -17,7 +17,12 @@ import java.util.concurrent.atomic.AtomicInteger;
  * AccountStateProvider}'s own Javadoc says it must -- one {@link
  * #reserveForIntent} per new signal, paired with exactly one of {@link
  * #confirmReservation} (approved/modified) or {@link #releaseReservation}
- * (rejected).
+ * (rejected) <b>when {@code OrderPipeline#submitIntent} returns normally</b>.
+ * If that call instead throws, neither fires and the reservation is
+ * deliberately left unresolved -- {@code
+ * TradingLoopTest#tickLeavesTheReservationUnresolvedWhenSubmitIntentThrowsAfterAReservationWasMade}
+ * asserts exactly this against this fake's own recorded call counts, not
+ * just against the class-level contract description.
  */
 final class FakeAccountStateProvider implements AccountStateProvider {
 

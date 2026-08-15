@@ -64,10 +64,14 @@ methods, zero modifications to existing ones):
   more than requested — so a reservation must be sized pessimistically to
   the full pre-clamp `intent.quantity()` up front, then corrected down or
   released once the real outcome is known), the exactly-one-of-
-  `confirmReservation`-or-`releaseReservation` pairing contract, and that
-  the default implementation (`TradingLoop`'s own private
-  `SyntheticAccountStateProvider`) is synchronous/process-local/mostly-
-  no-op, with a real shared/durable implementation being future work
+  `confirmReservation`-or-`releaseReservation` pairing contract — **scoped
+  precisely to the normal, non-throwing `OrderPipeline#submitIntent` path**
+  (fourth CodeRabbit review round, see below: a thrown `submitIntent`
+  deliberately calls neither, leaving the reservation unresolved, which is
+  not a violation of the pairing rule but the one case it excludes by
+  design) — and that the default implementation (`TradingLoop`'s own
+  private `SyntheticAccountStateProvider`) is synchronous/process-local/
+  mostly-no-op, with a real shared/durable implementation being future work
   (Task C, explicitly not built here).
 - **`TradingLoop`** (`java/runtime/src/main/java/engine/runtime/
   TradingLoop.java`):
@@ -467,36 +471,105 @@ Re-ran `./gradlew :runtime:test` after this fix (again Javadoc-only, no
 production code changed): still green, `TradingLoopTest` unchanged at
 **14 tests, 0 failures, 0 errors**.
 
-### Final CodeRabbit status (after round 3's fix, commit `1259808`)
+### Round 4
 
-The round-3 fix was pushed and CodeRabbit's own commit status transitioned
-to `success`/"Review completed" against this exact commit sha — confirmed
-directly via `GET /repos/.../commits/1259808.../status` (not just the
-cached `gh pr checks` display, per this project's own established
-verification discipline). No new PR review object and no new inline
-comments were posted for this commit (`GET /repos/.../pulls/99/reviews`
-and `.../pulls/99/comments` both confirmed — the latest of each still
-targets commit `2d18bdb`, round 3's own commit) — read, per this
-project's own established precedent for the identical situation
-(`.planning/paper-trading-f-order-executor.md`'s "Final CodeRabbit
-status" section), as CodeRabbit finding zero actionable issues in the
-round-3 diff, not as the review having silently failed to run (the
-commit status genuinely flipped to `success` at the time the push
-completed, and an explicit `@coderabbitai review` request afterward
-returned "Already reviewed").
+Against commit `079fe91` (a further, doc-only commit recording round 3's
+outcome — see "Interim status" below for why this section's original
+framing of that commit needed correcting) — a real review, confirmed via
+the GitHub reviews API to target this exact commit sha
+(`4942951453`, `submitted_at: 2026-08-15T05:24:21Z`), reviewing the full
+cumulative diff from the PR's base: `CHANGES_REQUESTED`, 1 inline
+comment, labeled by CodeRabbit itself `⚡ Quick win` (unlike rounds 1-3's
+`🏗️ Heavy lift`). Fixed, this PR:
 
-**Same real, disclosed consequence as that precedent, for the same
-reason**: because no new review object was submitted to formally
-supersede round 3's own `CHANGES_REQUESTED` review, GitHub's native
-`reviewDecision` and `mergeStateStatus` continue to read
-`CHANGES_REQUESTED`/`BLOCKED` (`mergeable: MERGEABLE` — no merge
-conflict, just the stale review decision), even though the CodeRabbit
-commit-status check itself is genuinely green against the current HEAD
-and every actual finding across all three review rounds has been fixed
-or explicitly, reasonedly declined above. Not force-resolved here (e.g.
-by dismissing the stale review via the API) — that is exactly the kind
-of PR-state action reserved for the human reviewer at merge time, not
-something this session should do on its own authority.
+- **The class-level "exactly one of `confirmReservation`/
+  `releaseReservation` must follow" bullet, and `reserveForIntent`'s own
+  method Javadoc, stated an unqualified rule that the rest of this same
+  file's "real, disclosed gap" paragraph already contradicted.** Real and
+  correctly identified: since round 1, this Javadoc has documented that
+  `TradingLoop.tick()` deliberately calls *neither* method when {@code
+  OrderPipeline#submitIntent} throws — but the interface's own foundational
+  contract statement (the bullet list right after "Why three methods") and
+  `reserveForIntent`'s per-method Javadoc both still read as an absolute,
+  unconditional "exactly one must follow," with no pointer to the
+  exception it doesn't actually cover. A reader implementing this
+  interface from the normative contract section alone (not the later,
+  separately-titled disclosure paragraph) could reasonably conclude the
+  exception case doesn't exist, then build a stateful implementation that
+  incorrectly treats a `submitIntent` throw as "one of the two must still
+  have happened" — silently clearing or shrinking a real, still-live
+  order's exposure.
+
+  **Fix**: qualified both spots explicitly. The class-level bullet now
+  reads "must follow, for every call to `reserveForIntent` that returns
+  normally **and** whose corresponding `submitIntent` call also returns
+  normally," with an explicit pointer to the "real, disclosed gap"
+  paragraph for the excluded case. `reserveForIntent`'s own Javadoc gained
+  the same qualification plus an explicit statement that the excluded case
+  "is not a violation of the pairing rule, it is the one case the rule
+  excludes by design." Also fixed, per the reviewer's own specific file
+  list: `FakeAccountStateProvider`'s class Javadoc (added the same
+  qualification, plus a pointer to
+  `tickLeavesTheReservationUnresolvedWhenSubmitIntentThrowsAfterAReservationWasMade`
+  as the test that already proves this against real recorded call counts,
+  not just against a documentation claim) and this planning document's own
+  "What was built" section (added the same qualification where it first
+  describes the pairing contract).
+- **No runtime behavior changed** — same as rounds 2 and 3, this is a
+  precision fix to documentation that was already inconsistent with
+  `TradingLoop.java`'s actual, already-correct, already-tested behavior;
+  `TradingLoop.java` itself was not touched by this round.
+
+**A correction to this document's own process, not just the code**: the
+"Interim status" section immediately above originally claimed round 3's
+commit (`1259808`) had been reviewed clean based on a green CodeRabbit
+*commit status* with no new review object yet posted. Round 4's own
+review — landing later, against a subsequent commit, but covering the
+full cumulative diff including everything in `1259808` — found a real
+issue that had existed since round 1, proving that inference wrong: a
+green commit status is not equivalent to "reviewed and found nothing,"
+and this document (and a status report to this task's own coordinator)
+stated it as if it were. Corrected in place above rather than silently
+rewritten, per this document's own established practice of keeping wrong
+turns visible, not just right answers.
+
+Re-ran `./gradlew clean build` after this fix: still green, **405 tests,
+0 failures, 0 errors** project-wide, `TradingLoopTest` unchanged at 14.
+
+### Interim status after round 3's fix, commit `1259808` — corrected below
+
+The round-3 fix was pushed and CodeRabbit's own **commit status** (the
+`CodeRabbit` GitHub check, a separate object from a **PR review**)
+transitioned to `success`/"Review completed" against this exact commit
+sha — confirmed directly via `GET /repos/.../commits/1259808.../status`.
+At the time, no new PR review object had been posted for this commit
+either (`GET /repos/.../pulls/99/reviews` showed the latest still
+targeting commit `2d18bdb`, round 3's own commit), and this was
+**incorrectly read as CodeRabbit having found zero actionable issues in
+the round-3 diff** — an inference this document stated here, and reported
+to this task's own coordinator, before it was actually verified against a
+real review object for that specific diff.
+
+**That inference was wrong, corrected on the same PR before merge, not
+after — flagged by this task's own coordinator, who checked `gh api
+repos/.../pulls/99/reviews` directly rather than trusting this document's
+prior claim, and found no review object existed for either `1259808` or
+the next commit at the time.** A commit-status `success` with no
+superseding review object is genuinely ambiguous between two different
+real situations — "reviewed, found nothing" (the correct reading for the
+Task F precedent this document originally cited) and "not yet
+(re-)reviewed at all" (what had actually happened here, confirmed once a
+real review of the cumulative diff finally landed and found a real,
+valid, new issue in code that had existed since round 1 — see "Round 4"
+below). **The commit-status check alone does not distinguish these two
+cases; only a review object whose `commit_id` matches the exact commit in
+question does.** This document's own stated verification discipline
+("verify via `gh api` that the latest review's `commit_id` matches `git
+rev-parse HEAD` exactly... and its `state` is `APPROVED`") already says
+this correctly — the error was in this section's own execution of that
+discipline, treating a green commit status as satisfying it when it does
+not. Left here, not deleted, as an accurate record of the mistake and its
+correction, not smoothed over.
 
 ## Explicitly out of scope (per the governing brief, not attempted here)
 

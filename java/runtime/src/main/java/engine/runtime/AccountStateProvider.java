@@ -36,7 +36,12 @@ import java.util.UUID;
  *       to {@code intent.quantity()} -- the full requested quantity, not
  *       any anticipated clamp.
  *   <li>Exactly one of the two calls below must follow, for every call to
- *       {@link #reserveForIntent}:
+ *       {@link #reserveForIntent} that returns normally <b>and</b> whose
+ *       corresponding {@code OrderPipeline#submitIntent} call also returns
+ *       normally (does not throw) -- see the "real, disclosed gap"
+ *       paragraph below for the one case this excludes on purpose: a
+ *       thrown {@code submitIntent} leaves the reservation
+ *       <b>unresolved</b>, deliberately calling neither of the two:
  *       <ul>
  *         <li>{@link #confirmReservation} -- called when {@code
  *             OrderPipeline#submitIntent} returns a real {@link
@@ -157,7 +162,12 @@ public interface AccountStateProvider {
      * pessimistically to {@code intent.quantity()} (see class Javadoc) --
      * called once per new signal, before {@link RiskGateway#evaluate}
      * runs. Must be paired with exactly one of {@link #confirmReservation}
-     * or {@link #releaseReservation}.
+     * or {@link #releaseReservation} <b>if the subsequent {@code
+     * OrderPipeline#submitIntent} call returns normally</b> -- if that call
+     * instead throws, neither follows and the reservation is deliberately
+     * left unresolved (see the class Javadoc's "real, disclosed gap"
+     * paragraph); this is not a violation of the pairing rule, it is the
+     * one case the rule excludes by design.
      */
     AccountState reserveForIntent(OrderIntent intent, BigDecimal referencePrice);
 
