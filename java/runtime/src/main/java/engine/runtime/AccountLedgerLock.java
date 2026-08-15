@@ -31,11 +31,14 @@ import org.slf4j.LoggerFactory;
  * calls {@link #acquire} yet; {@code SharedKisAccountLedger} (Task C) is
  * the first real caller.
  *
+ * <p>Full design history, every empirical finding, and the real
+ * multi-process/CodeRabbit-review record behind the decisions below live
+ * in {@code .planning/kis-ledger-b-account-ledger-store-lock.md}, not
+ * here -- this Javadoc documents this class's current behavioral
+ * contract only.
+ *
  * <p><b>Primitive: atomic file creation, not {@link
- * java.nio.channels.FileLock}.</b> This decision was made and reasoned
- * through before this class was written (see the governing plan), not
- * re-derived here -- restated briefly because it is the single most
- * load-bearing choice in this file: this repository lives on a
+ * java.nio.channels.FileLock}.</b> This repository lives on a
  * Windows-mounted drive inside WSL2 ({@code /mnt/c/...}), a 9p/drvfs
  * mount, not native ext4 (confirmed directly: {@code mount | grep
  * /mnt/c} reports {@code type 9p ... aname=drvfs}) -- {@code FileLock}'s
@@ -45,25 +48,15 @@ import org.slf4j.LoggerFactory;
  * ({@link AccountLedgerStore}, {@code SubmissionMarkerStore}, {@code
  * DailyReportGenerator}, {@code FileSignalSource}) -- {@link
  * #acquire}/{@link #close} extends that proven pattern to mutual
- * exclusion rather than introducing a new primitive family. {@link
+ * exclusion rather than introducing a new primitive family. The atomic
+ * create-and-write step is a single {@link Files#newByteChannel} call
+ * with {@link java.nio.file.StandardOpenOption#CREATE_NEW}, with the
+ * metadata written through that same open handle -- not two separate,
+ * path-based operations (see {@link #createAndWriteMetadata}'s own
+ * Javadoc for why that distinction matters). {@link
  * AccountLedgerLockMultiProcessTest} is the real, second-JVM proof this
  * actually holds on this repository's real filesystem, not merely an
  * assumption -- see that test's own Javadoc.
- *
- * <p><b>Documentation-accuracy correction, real Minor finding, a further
- * real CodeRabbit review round on this PR</b>: this section (and the
- * "Deviation" paragraph below) used to describe {@code
- * Files.createFile(lockPath)} followed by a separate {@code
- * Files.writeString} call as the current mechanism -- accurate for this
- * class's original version, but stale after round 2's own fix (see
- * {@link #createAndWriteMetadata}'s Javadoc for the real bug that fix
- * closed): the actual, current create-and-write step is a single atomic
- * {@link Files#newByteChannel} call with {@link
- * java.nio.file.StandardOpenOption#CREATE_NEW}, with the metadata written
- * through that same open handle -- not two separate, path-based
- * operations. Both places are corrected here rather than left
- * inconsistent with {@link #createAndWriteMetadata}'s own (already
- * accurate) Javadoc.
  *
  * <p><b>Lock file content</b>: JSON {@code {"pid": <long>, "hostname":
  * <string>, "acquiredAt": <ISO-8601 instant>}} -- written through the
@@ -90,43 +83,37 @@ import org.slf4j.LoggerFactory;
  * SubmissionMarkerResolver}'s Javadoc for the same principle applied to
  * an unresolved order-submission marker) -- then the file is re-verified
  * to still hold the exact metadata just judged stale (see {@link
- * #tryStealIfStale}'s own Javadoc for a real, measured race this closes,
- * found by this task's own required real-process test) and, only if so,
- * deleted; {@link #acquire} then retries the atomic create immediately,
- * without backing off (the staleness is already known, no reason to
- * wait). A non-stale (live, recent) holder instead makes {@link
- * #acquire} back off with short, bounded exponential retry (~25ms
+ * #tryStealIfStale}'s own Javadoc for the race this closes) and, only if
+ * so, deleted; {@link #acquire} then retries the atomic create
+ * immediately, without backing off (the staleness is already known, no
+ * reason to wait). A non-stale (live, recent) holder instead makes
+ * {@link #acquire} back off with short, bounded exponential retry (~25ms
  * &rarr; 250ms per attempt) until {@code totalRetryBudget} is exhausted,
  * at which point it throws {@link IllegalStateException} -- this class
  * never hangs indefinitely.
  *
- * <p><b>Real caller contract, a further real CodeRabbit review round on
- * this PR: {@code staleThreshold} must be chosen comfortably larger than
- * the longest legitimate critical section this lock will ever protect.</b>
- * This is not a hypothetical -- empirically demonstrated, not just
- * reasoned about, by a real raw multi-process stress run
- * ({@code staleThreshold=1ms} against a real ~15ms hold time) that
- * reliably lost real increments every time it ran, and reproduced
- * deterministically by {@link
- * AccountLedgerLockTest#aStaleThresholdShorterThanARealHoldersOwnCriticalSectionCausesARealMutualExclusionViolation}.
- * The mechanism: {@link #acquire}'s own steal logic does exactly what its
- * documented contract above says -- steal a lock whose {@code
- * acquiredAt} exceeds {@code staleThreshold}, regardless of whether the
- * holder is provably dead or merely still legitimately working. If a
- * real holder's own critical section legitimately takes longer than
- * {@code staleThreshold}, a waiter will steal its still-live lock out
- * from under it, and both processes end up concurrently "inside the
- * lock" from their own perspective -- a real mutual-exclusion violation,
- * not a bug in this class's own logic. Deliberately <b>not</b> guarded by
- * an enforced minimum {@code staleThreshold} inside this class: the real
- * minimum any given deployment needs depends entirely on how long
- * <i>that deployment's own real critical sections</i> can legitimately
- * run, a property only a caller (this class's own Task C, not yet built)
- * can know -- inventing an arbitrary constant here, unmoored from any
- * real caller's actual usage, would be worse than stating the real
- * requirement plainly. This project's own proposed real default
- * (~30s, per the governing plan) already has enormous headroom over any
- * critical section this lock is actually expected to protect.
+ * <p><b>Caller contract: {@code staleThreshold} must be chosen
+ * comfortably larger than the longest legitimate critical section this
+ * lock will ever protect.</b> {@link #acquire}'s own steal logic steals a
+ * lock whose {@code acquiredAt} exceeds {@code staleThreshold}, regardless
+ * of whether the holder is provably dead or merely still legitimately
+ * working. If a real holder's own critical section legitimately takes
+ * longer than {@code staleThreshold}, a waiter will steal its still-live
+ * lock out from under it, and both processes end up concurrently "inside
+ * the lock" from their own perspective -- a real mutual-exclusion
+ * violation, not a bug in this class's own logic (empirically
+ * demonstrated and reproduced deterministically by {@link
+ * AccountLedgerLockTest#aStaleThresholdShorterThanARealHoldersOwnCriticalSectionCausesARealMutualExclusionViolation}).
+ * Deliberately <b>not</b> guarded by an enforced minimum {@code
+ * staleThreshold} inside this class: the real minimum any given
+ * deployment needs depends entirely on how long <i>that deployment's own
+ * real critical sections</i> can legitimately run, a property only a
+ * caller (this class's own Task C, not yet built) can know -- inventing
+ * an arbitrary constant here, unmoored from any real caller's actual
+ * usage, would be worse than stating the real requirement plainly. This
+ * project's own proposed real default (~30s, per the governing plan)
+ * already has enormous headroom over any critical section this lock is
+ * actually expected to protect.
  *
  * <p><b>Deviation from the governing plan's own literal code sketch</b>:
  * the plan's summary writes {@code Files.createFile(path,
@@ -134,12 +121,9 @@ import org.slf4j.LoggerFactory;
  * actually accept a {@link java.nio.file.StandardOpenOption} argument (it
  * takes {@link java.nio.file.attribute.FileAttribute} varargs instead).
  * This class instead uses {@link Files#newByteChannel} with {@code
- * CREATE_NEW} (see {@link #createAndWriteMetadata}'s own Javadoc for why
- * a plain {@code Files.createFile} + separate write, this class's
- * original approach, was itself later found insufficient and replaced) --
- * both get the identical atomic-create-fails-if-exists semantics the
- * plan's sketch intended, so this remains a deviation in API choice only,
- * not in the semantics the plan actually asked for.
+ * CREATE_NEW}, which gets the identical atomic-create-fails-if-exists
+ * semantics the plan's sketch intended, so this remains a deviation in
+ * API choice only, not in the semantics the plan actually asked for.
  */
 final class AccountLedgerLock implements AutoCloseable {
 
@@ -301,119 +285,78 @@ final class AccountLedgerLock implements AutoCloseable {
     /**
      * Creates {@code lockPath} (atomically -- see class Javadoc) and writes
      * this holder's {@link LockMetadata} into it, returning the exact value
-     * written.
+     * written, or {@code null} if this holder lost a race for the path (see
+     * below) -- {@link #acquire} treats a {@code null} return as ordinary
+     * contention (back off and retry), not success or a hard failure.
      *
-     * <p><b>Critical finding, real CodeRabbit review of this PR, fixed
-     * here</b>: if {@link Files#createFile} succeeds but the subsequent
-     * {@link Files#writeString} then fails (any {@link IOException} -- a
-     * real possibility, not hypothetical, given this class's own Javadoc
-     * already documents 500ms+ write latencies under contention on this
-     * repository's real drvfs mount, which is exactly the kind of
-     * operation more likely to hit a transient failure the longer it
-     * takes), the original version of this method left behind a real,
-     * permanently empty lock file with no cleanup. {@link
-     * #readMetadataOrNull} can never parse a pid/{@code acquiredAt} out of
-     * empty content, so {@link #tryStealIfStale}'s ordinary dead-pid/
-     * expired-timestamp checks could never fire against it -- every future
-     * waiter for this lock would exhaust its retry budget and fail,
-     * forever, until a human manually deleted the file. Now: any failure
-     * writing the metadata deletes the just-created file before
-     * propagating (best-effort -- if the cleanup delete itself also fails,
-     * it's attached via {@link Throwable#addSuppressed} rather than
-     * masking the original failure). This closes the ordinary case; {@link
-     * #tryStealIfAbandonedEmpty} is the backstop for the harder residual
-     * case this cleanup can't reach at all -- a hard process kill between
-     * {@link Files#createFile} succeeding and this method's own {@code
-     * catch} block ever running.
-     *
-     * <p><b>Second, deeper Major finding on the same PR, same real
-     * CodeRabbit review round, also fixed here</b>: creating the file
-     * ({@link Files#createFile}) and writing its content ({@link
-     * Files#writeString}) used to be two separate, path-based operations.
-     * If <i>this</i> holder's own write is slow enough (the same real,
-     * measured drvfs latency named above) for a sibling to legitimately
-     * judge the file abandoned via {@link #tryStealIfAbandonedEmpty},
-     * delete it, and create its own new, live generation at the same
-     * path -- and only <i>then</i> does this (stale, orphaned, but not
-     * yet aware of any of that) holder's original {@code
-     * Files.writeString} call finally run -- that call is purely
-     * path-based, so it would silently overwrite the sibling's real, live
-     * metadata with this holder's own stale content. Two independent,
-     * legitimate holders would then both believe they own the lock, with
-     * the file's actual content reflecting neither reliably. Fixed by
-     * opening a single {@link java.nio.channels.SeekableByteChannel} atomically
-     * ({@link java.nio.file.StandardOpenOption#CREATE_NEW}) and writing
-     * the metadata through <i>that same handle</i>, rather than
-     * re-resolving {@code lockPath} for a second, separate operation.
-     * Empirically confirmed, not merely assumed, that this closes the gap
-     * on this repository's real drvfs mount: a real handle-survives-
-     * concurrent-delete-and-recreate probe was run directly against
-     * {@code /mnt/c/Dev/trading-engine} before writing this fix --
-     * deleting a path out from under an already-open {@code CREATE_NEW}
-     * channel succeeds (POSIX-style unlink semantics, not Windows'
-     * traditional delete-blocked-while-open behavior), a new file can
+     * <p><b>Single atomic handle, not two separate operations.</b> The file
+     * is created and its content written through one {@link
+     * java.nio.channels.SeekableByteChannel}, opened atomically ({@link
+     * java.nio.file.StandardOpenOption#CREATE_NEW}), rather than a
+     * path-based create followed by a separate path-based write. This
+     * repository's drvfs mount exhibits real, measured 500ms+ write
+     * latency under contention, and a two-step approach leaves a real
+     * window in which a sibling could legitimately judge the
+     * still-being-written file abandoned (via {@link
+     * #tryStealIfAbandonedEmpty}), delete it, and create its own new, live
+     * generation at the same path -- after which this holder's own
+     * still-pending write, being purely path-based, would silently
+     * overwrite the sibling's real, live metadata with this holder's own
+     * stale content, leaving two holders both believing they own the lock.
+     * Writing through the single open handle instead means a concurrent
+     * delete-and-recreate at the same path cannot corrupt this holder's
+     * write: this repository's drvfs mount exhibits POSIX-style unlink
+     * semantics (confirmed directly against {@code
+     * /mnt/c/Dev/trading-engine} -- deleting a path out from under an
+     * already-open {@code CREATE_NEW} channel succeeds, a new file can
      * then be created at that same path, and a subsequent write through
-     * the original (now-orphaned, unreachable-via-the-path) channel lands
-     * on that original, now-invisible file rather than corrupting the new
-     * one. {@link
+     * the original, now-path-invisible channel lands on that original file
+     * rather than the new one), not Windows' traditional
+     * delete-blocked-while-open behavior. {@link
      * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
-     * proves this holds through the real production code path, not just
-     * the standalone probe.
+     * proves this holds through the real production code path.
      *
-     * <p><b>Third, still deeper Major finding, a further real CodeRabbit
-     * review round on this same PR, also fixed here.</b> The previous fix
-     * protects the <i>file's content</i> from corruption, but not
-     * {@link #acquire}'s own <i>success signal</i>: an orphaned channel's
-     * write still returns normally (it succeeds against its own, now
-     * path-invisible file -- that's the whole point of the previous fix),
-     * so this method would still return a real, non-null {@link
-     * LockMetadata} and {@link #acquire} would still hand the caller a
-     * live {@link AccountLedgerLock} -- even though a sibling had already
-     * reclaimed the path via {@link #tryStealIfAbandonedEmpty} and is
-     * holding a real, different generation there right now. Both this
-     * holder and the sibling would then believe, independently and
-     * wrongly, that they hold the lock -- a genuine loss of mutual
-     * exclusion, distinct from (and not fixed by) the content-corruption
-     * fix above. Fixed by re-reading {@code lockPath} immediately after
-     * the write completes and confirming it still holds exactly the
-     * {@link LockMetadata} just written; if not, this method returns
-     * {@code null} rather than the metadata -- a defined "lost the race"
-     * signal {@link #acquire} treats as ordinary contention (back off and
-     * retry the whole loop) rather than success or a hard failure. Never
-     * deletes anything in this path: unlike the steal/close paths, there
-     * is nothing stale to reclaim here -- the path now legitimately
-     * belongs to whoever's generation the re-read found, and this method
-     * has no business touching it.
+     * <p><b>Cleanup on write failure.</b> If writing the metadata fails
+     * (any {@link IOException} after the file was successfully created),
+     * the just-created file is deleted before the failure propagates
+     * (best-effort -- if the cleanup delete itself also fails, it is
+     * attached via {@link Throwable#addSuppressed} rather than masking the
+     * original failure). Without this, a permanently empty lock file would
+     * be left behind: {@link #readMetadataOrNull} can never parse a
+     * pid/{@code acquiredAt} out of empty content, so {@link
+     * #tryStealIfStale}'s ordinary dead-pid/expired-timestamp checks could
+     * never fire against it, and every future waiter would exhaust its
+     * retry budget and fail until a human manually deleted the file.
+     * {@link #tryStealIfAbandonedEmpty} is the backstop for the narrower
+     * residual case this cleanup cannot reach at all -- a hard process
+     * kill between file creation and this method's own {@code catch} block
+     * ever running.
      *
-     * <p><b>Fourth finding, on this exact fix, a further real CodeRabbit
-     * review round on this same PR -- a real, self-introduced regression,
-     * fixed here.</b> The re-verify above compared {@code current}
-     * against {@code metadata} with a single {@code equals()} check --
-     * but {@link #readMetadataOrNull} can also return {@link
-     * #READ_FAILED} (a transient {@link Files#readString} failure),
-     * which is not equal to {@code metadata} either, so it fell into the
-     * exact same "lost the race, don't delete" branch as a genuine
-     * generation mismatch. That is wrong for this specific outcome: a
-     * transient read failure proves nothing about who owns the path --
-     * most likely <i>this</i> holder still does, since it just created
-     * and wrote the file inside this very method call. Treating it as
-     * "lost the race" (never deleting) would leave this holder's own
-     * real, live lock file behind while reporting failure to its own
-     * caller -- and because the file genuinely holds this holder's own
-     * live pid and a just-recorded {@code acquiredAt}, the <i>next</i>
-     * {@link #acquire} attempt's own {@link #tryStealIfStale} call would
-     * correctly judge it not stale (it isn't -- from the outside, it's a
-     * perfectly healthy, fresh lock), self-blocking this process behind
-     * its own abandoned-in-place file until {@code staleThreshold}
-     * elapses -- and blocking every <i>other</i> waiter for the same
-     * {@code staleThreshold} window, on a shared risk-ledger lock, for no
-     * real reason. Fixed: {@code READ_FAILED} is now handled separately
-     * from a genuine mismatch -- cleans up only this holder's own,
-     * re-verified generation (via {@link #deleteIfStillOwnGeneration},
-     * the same delete-only-if-content-still-matches-exactly discipline
-     * {@link #tryStealIfStale} itself uses) before reporting the lost
-     * race, so the next attempt starts from a genuinely clean path
-     * instead of contending with its own ghost.
+     * <p><b>Re-verification after write, and why a lost race is not an
+     * error.</b> A successful write through the single open handle above
+     * only protects the file's <i>content</i> -- it does not, by itself,
+     * guarantee this holder's own {@link #acquire} call should report
+     * success, because an orphaned channel's write still returns normally
+     * against its own now-path-invisible file even when a sibling has
+     * already reclaimed the path via {@link #tryStealIfAbandonedEmpty} and
+     * holds a real, different generation there. To close that gap, this
+     * method re-reads {@code lockPath} immediately after the write
+     * completes and confirms it still holds exactly the {@link
+     * LockMetadata} just written; if not, it returns {@code null} rather
+     * than the metadata. This method never deletes anything on that path:
+     * the path now legitimately belongs to whoever's generation the
+     * re-read found, and this method has no business touching it. The
+     * comparison treats a transient read failure ({@link #readMetadataOrNull}
+     * returning {@link #READ_FAILED}) differently from a genuine
+     * generation mismatch: a transient read failure proves nothing about
+     * ownership -- most likely this holder still owns the path, since it
+     * just created and wrote the file in this same call -- so that case
+     * cleans up only this holder's own, re-verified generation (via {@link
+     * #deleteIfStillOwnGeneration}, the same delete-only-if-content-still-
+     * matches-exactly discipline {@link #tryStealIfStale} itself uses)
+     * before reporting the lost race, rather than leaving this holder's
+     * own live lock file behind to self-block it (and every other waiter)
+     * until {@code staleThreshold} elapses.
      */
     private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
         Path parent = lockPath.toAbsolutePath().getParent();

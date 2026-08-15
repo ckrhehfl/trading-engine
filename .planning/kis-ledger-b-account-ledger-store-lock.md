@@ -1495,6 +1495,78 @@ property specifically: `AccountLedgerLockTest` (11/11, including the
 retimed test) and `AccountLedgerLockMultiProcessTest` both green as part
 of the same `clean build` run.
 
+### A real gh api pagination mistake, again — this time caught by the
+governing coordinator's own independent check, not by me
+
+After round 11's fixes were pushed (commit `4a78e63`), I checked the
+rate limit, saw a 47-minute ETA, and reported that back per the standing
+"report a long ETA and stop" instruction. The coordinator independently
+re-checked and found both my rate-limit queries had gotten real, fast
+replies — the same class of mistake as the one disclosed above, not a
+new one. This time the report itself was correct (the reported ETA and
+ETA-derived ready time were accurate), so no correction to a false
+"CodeRabbit went silent" claim was needed — but it's worth noting here
+that the coordinator's own independent verification, not my own
+process, is what has caught both pagination-related issues on this task
+so far. The `--paginate` fix from the previous disclosure was already
+in place for the actual round-12 rate-limit check below and worked
+correctly (see its own entry).
+
+### Round 12
+
+Against commit `4a78e63` (after round 11's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T19:58:47Z`): `CHANGES_REQUESTED`, 1
+actionable comment, real, fixed:
+
+- **The class-level Javadoc and `createAndWriteMetadata`'s own Javadoc
+  had accumulated substantial review-round narrative ("a further real
+  CodeRabbit review round on this PR", "Critical finding, real
+  CodeRabbit review of this PR, fixed here", etc.) baked directly into
+  permanent production code documentation (Major, by CodeRabbit's own
+  classification, though scoped as a documentation-only change).** Real,
+  and a legitimate concern distinct from every previous round's fixes:
+  this task's own established, disclosed convention of narrating each
+  review round's findings directly in Javadoc (see essentially every
+  method in this file) is genuinely useful for a reader of *this specific
+  PR's history*, but is process meta-commentary, not part of the class's
+  permanent behavioral contract — a future maintainer trying to
+  understand what `AccountLedgerLock` actually does and why has to wade
+  through "further real CodeRabbit review round on this PR" framing to
+  extract the technical substance underneath it. This document
+  (`.planning/kis-ledger-b-account-ledger-store-lock.md`) already carries
+  the full round-by-round history in far more detail than the Javadoc's
+  compressed version ever did, so nothing is lost by removing it from
+  the class file specifically.
+
+  Fixed, scoped exactly to what the finding named (the class Javadoc and
+  `createAndWriteMetadata`'s own Javadoc only — deliberately **not** a
+  file-wide pass over every other method's own similar narrative, per
+  this project's own "touch only what the task requires" rule; the same
+  pattern still exists elsewhere in this file, e.g. `tryStealIfStale`,
+  `close`, `readMetadataOrNull` — left alone unless a future review
+  round asks for those specifically too, rather than guessed at
+  preemptively here): rewrote both Javadoc blocks to describe only the
+  current behavioral contract, safety guarantees, and invariants, in
+  plain present-tense technical prose, with zero runtime-behavior change.
+  Every substantive technical fact was preserved, not merely
+  deleted — including the real drvfs POSIX-unlink-semantics finding, the
+  single-atomic-handle-vs-two-separate-operations reasoning, the
+  re-verification-after-write mechanism, the `READ_FAILED`-vs-genuine-
+  mismatch distinction, and the `staleThreshold`/critical-section-
+  duration caller contract with its empirical backing and test pointer.
+  Added one new sentence to the class Javadoc pointing future readers at
+  this planning document for the full historical record, so the
+  round-by-round detail is not lost, only relocated to where it
+  belongs.
+
+Re-ran after the round-12 fix: `./gradlew clean build` — still green,
+**439 tests, 0 failures, 0 errors** project-wide (a documentation-only
+change, zero new or modified test methods, exact count unchanged from
+round 11). `./gradlew :runtime:compileJava` confirmed the rewritten
+Javadoc's `{@link}`/`{@code}` cross-references all still resolve
+correctly (no javadoc/compile errors).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1511,7 +1583,9 @@ of the same `clean build` run.
   changes that round); 21/21 after round 8's (no store-level changes that
   round either); 21/21 after round 9's (no store-level changes that round
   either); 22/22 after round 10's (1 more new test); 22/22 after round
-  11's (no store-level changes that round either).
+  11's (no store-level changes that round either); 22/22 after round
+  12's (a Javadoc-only change to `AccountLedgerLock`, no store-level
+  changes).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1525,7 +1599,8 @@ of the same `clean build` run.
   signature/propagation refactor plus a strengthened existing assertion,
   no new methods); 11/11 after round 10's (2 more new tests); 11/11 after
   round 11's (a Javadoc reference fix and a timing-constant change to an
-  existing test, no new methods).
+  existing test, no new methods); 11/11 after round 12's (a Javadoc-only
+  rewrite of two doc blocks, no test changes).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1536,7 +1611,8 @@ of the same `clean build` run.
   more (part of the full `clean build`) after round 6, **3 more times**
   after round 7, **3 more times** after round 8, **3 more times** after
   round 9, **3 more times** after round 10, once more (part of the full
-  `clean build`) after round 11.
+  `clean build`) after round 11, once more (part of the full `clean
+  build`) after round 12.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1561,11 +1637,13 @@ of the same `clean build` run.
   control-flow change to `AccountLedgerLock`'s acquisition logic (a
   Javadoc reference fix and a timing-constant change to an existing test
   only), so it did not independently warrant a further raw stress-harness
-  round beyond the full `clean build`'s own real multi-process test run).
+  round beyond the full `clean build`'s own real multi-process test run;
+  round 12 was a Javadoc-only rewrite with zero runtime-behavior change,
+  for the same reason).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, and 11.
+  8, 9, 10, 11, and 12.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -1574,7 +1652,8 @@ of the same `clean build` run.
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
-  3 from round 10's + 0 net-new from round 11's).
+  3 from round 10's + 0 net-new from round 11's + 0 net-new from round
+  12's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
