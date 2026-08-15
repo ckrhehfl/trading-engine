@@ -467,6 +467,37 @@ Re-ran `./gradlew :runtime:test` after this fix (again Javadoc-only, no
 production code changed): still green, `TradingLoopTest` unchanged at
 **14 tests, 0 failures, 0 errors**.
 
+### Final CodeRabbit status (after round 3's fix, commit `1259808`)
+
+The round-3 fix was pushed and CodeRabbit's own commit status transitioned
+to `success`/"Review completed" against this exact commit sha — confirmed
+directly via `GET /repos/.../commits/1259808.../status` (not just the
+cached `gh pr checks` display, per this project's own established
+verification discipline). No new PR review object and no new inline
+comments were posted for this commit (`GET /repos/.../pulls/99/reviews`
+and `.../pulls/99/comments` both confirmed — the latest of each still
+targets commit `2d18bdb`, round 3's own commit) — read, per this
+project's own established precedent for the identical situation
+(`.planning/paper-trading-f-order-executor.md`'s "Final CodeRabbit
+status" section), as CodeRabbit finding zero actionable issues in the
+round-3 diff, not as the review having silently failed to run (the
+commit status genuinely flipped to `success` at the time the push
+completed, and an explicit `@coderabbitai review` request afterward
+returned "Already reviewed").
+
+**Same real, disclosed consequence as that precedent, for the same
+reason**: because no new review object was submitted to formally
+supersede round 3's own `CHANGES_REQUESTED` review, GitHub's native
+`reviewDecision` and `mergeStateStatus` continue to read
+`CHANGES_REQUESTED`/`BLOCKED` (`mergeable: MERGEABLE` — no merge
+conflict, just the stale review decision), even though the CodeRabbit
+commit-status check itself is genuinely green against the current HEAD
+and every actual finding across all three review rounds has been fixed
+or explicitly, reasonedly declined above. Not force-resolved here (e.g.
+by dismissing the stale review via the API) — that is exactly the kind
+of PR-state action reserved for the human reviewer at merge time, not
+something this session should do on its own authority.
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `AccountLedger`/`LedgerReservation`/`AccountLedgerStore`/
