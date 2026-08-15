@@ -1,5 +1,6 @@
 package engine.runtime;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -64,10 +65,21 @@ final class AccountLedgerStore {
      * module's established "each durable-store-adjacent class keeps its
      * own copy" convention (see this class's own {@link AtomicMover}
      * Javadoc for the same convention applied to that interface).
+     *
+     * <p>{@code FAIL_ON_TRAILING_TOKENS} is enabled -- a real Major
+     * finding, real CodeRabbit review of this PR: it's disabled by
+     * default in Jackson (confirmed against 2.18.9's own documented
+     * behavior, not assumed), which means {@code readValue} silently
+     * ignores anything after the first complete JSON value -- a corrupted
+     * ledger file holding a valid {@code AccountLedger} object followed by
+     * trailing garbage (or a second, different value) would otherwise
+     * parse "successfully," directly undermining this class's own
+     * fail-closed contract on corrupt input.
      */
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     private AccountLedgerStore() {}
 

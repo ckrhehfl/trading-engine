@@ -857,6 +857,104 @@ processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
 correct** (130 clean stress rounds / 6,240 individual lock acquisitions
 across the whole task, zero lost updates in any of them).
 
+### Round 5
+
+CodeRabbit rate-limited a first request after round 4's push; the
+governing coordinator directly checked in on this wait partway through
+(the real ETA, ~39 minutes, was reported back rather than assumed clear
+after time passed) — re-checked `@coderabbitai rate limit` on request,
+confirmed genuinely clear ("Reviews are available now"), then requested
+`full review` for real.
+
+Against commit `aa2f171` (after round 4's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T12:31:15Z`): `CHANGES_REQUESTED`, 3
+actionable inline comments. All three verified against the real current
+code and fixed — including a real, self-introduced regression in round
+4's own fix, caught here rather than shipped:
+
+- **Round 4's own re-verify fix conflated `READ_FAILED` with a genuine
+  generation mismatch, and that specific conflation is a real
+  regression, not just an incompleteness (Major, "Heavy lift").** Traced
+  through concretely: round 4 made `createAndWriteMetadata` return
+  `null` ("lost the race") whenever the post-write re-read didn't
+  `equals()` the metadata just written — but `readMetadataOrNull` can
+  also return `READ_FAILED` for a transient read failure, which is
+  never `equals()` to real metadata either, so it fell into the exact
+  same branch. A transient read failure proves nothing about who owns
+  the path -- most likely *this* holder still does, having just created
+  and written the file inside the very same method call. Treating it as
+  "lost the race" (the round-4 fix's own behavior) left this holder's
+  own real, live lock file behind on disk while reporting failure to its
+  own caller. Because that file genuinely holds this holder's own live
+  pid and a just-recorded `acquiredAt`, the *next* `acquire` attempt's
+  own `tryStealIfStale` call would correctly (by this class's own rules)
+  judge it *not* stale — from the outside it looks like a perfectly
+  healthy, fresh lock — so this process ends up self-blocked behind its
+  own abandoned-in-place file until `staleThreshold` elapses, and every
+  *other* waiter is blocked for that same window on a lock protecting a
+  shared risk ledger, for no real reason. **Fixed**: `READ_FAILED` is now
+  handled in its own branch, separate from a genuine mismatch — cleans
+  up only this holder's own, re-verified generation (a new helper,
+  `deleteIfStillOwnGeneration`, reusing the exact delete-only-if-content-
+  still-matches-exactly discipline `tryStealIfStale` already established)
+  before reporting the lost race, so the next attempt starts from a
+  genuinely clean path rather than contending with its own ghost. No new
+  dedicated test added for this exact interleaving, for the same reason
+  given in round 4's own entry (the existing generation-safety test
+  already exercises the real code path end to end, and reproducing this
+  specific transient-read-failure timing deterministically would need a
+  fault-injection seam this class doesn't have and this task didn't add
+  elsewhere either) — the stress-harness re-run below is the load-bearing
+  proof this fix doesn't regress anything, not a unit test claim alone.
+- **`FAIL_ON_TRAILING_TOKENS` is disabled by default in Jackson, and
+  `AccountLedgerStore`'s `MAPPER` never enabled it (Major).** Real,
+  confirmed against Jackson 2.18.9's own documented default (disabled
+  for backward compatibility across the whole 2.x line) rather than
+  assumed: a corrupted ledger file holding a valid `AccountLedger` object
+  followed by trailing garbage (or a second, different JSON value) would
+  otherwise parse "successfully," silently ignoring everything after the
+  first complete value — directly undermining this class's own
+  fail-closed contract on corrupt input. Fixed: enabled `
+  DeserializationFeature.FAIL_ON_TRAILING_TOKENS` on `AccountLedgerStore`'s
+  `MAPPER`. **Proactively extended to `AccountLedgerLock`'s own,
+  separately-configured `MAPPER` too** — not itself flagged by
+  CodeRabbit this round, but the identical Jackson-default reasoning
+  applies equally to `LockMetadata` parsing, and leaving it unfixed there
+  after fixing it in the sibling class would have been a real,
+  undisclosed inconsistency of exactly the kind this task's own review
+  rounds keep finding and closing. New tests in
+  `AccountLedgerStoreTest`: a valid ledger followed by trailing JSON
+  `null`, and two concatenated valid ledger objects — both must fail
+  closed.
+- **The `build.gradle.kts` comment explaining the 2.18.9 version bump
+  claimed this module "never calls readValue()," which Task B's own new
+  code made false (Minor).** Real, and a genuine documentation-accuracy
+  regression this task itself introduced without noticing: the comment's
+  original claim was accurate when written (about `BingXPriceFeed`'s own
+  parsing of untrusted external BingX JSON specifically, which still
+  only ever calls `readTree()`, unchanged) but `AccountLedgerStore`/
+  `AccountLedgerLock` do now call `readValue()` -- just never on
+  untrusted external network input, only on this module's own internally
+  -written JSON files, so the CVE-2026-54515 reasoning the comment exists
+  to explain is unaffected; only the specific "never readValue()"
+  sentence needed correcting. Fixed by narrowing that claim to
+  `BingXPriceFeed` specifically and stating the correction explicitly
+  (not silently rewritten) so a future reader isn't misled about this
+  module's real Jackson call surface during some future security review
+  — precisely the risk the reviewer named.
+
+Re-ran after all three round-5 fixes: `./gradlew clean build` — still
+green, **433 tests, 0 failures, 0 errors** project-wide (431 + 2 new: 2
+in `AccountLedgerStoreTest`). Re-verified the real safety property
+specifically, again given this round's fix touches `acquire()`'s own
+control flow: `AccountLedgerLockMultiProcessTest` 3 more times
+(`--rerun-tasks`, green every time) and a further clean 25-round raw
+stress harness run (6 processes × 8 iterations, 48 expected per round) —
+**25/25 rounds exactly correct** (155 clean stress rounds / 7,440
+individual lock acquisitions across the whole task, zero lost updates in
+any of them).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -868,40 +966,41 @@ across the whole task, zero lost updates in any of them).
   after round 1's CodeRabbit fixes (4 new tests); 16/16 after round 2's
   (2 more new tests); 16/16 after round 3's (no new test methods, existing
   ones' production-code dependencies changed); 17/17 after round 4's (1
-  more new test).
+  more new test); 19/19 after round 5's (2 more new tests).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
   test); 8/8 after round 3's (existing tests modified, no new methods);
   8/8 after round 4's (existing production code changed, no new test
-  methods — see round 4's own entry for why).
+  methods — see round 4's own entry for why); 8/8 after round 5's (same
+  reasoning, see round 5's own entry).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
   above); green after the fix, confirmed **5 additional times**
   (`--rerun-tasks`) before round 1's review, **3 more times** after round
   1, **3 more times** after round 2, **3 more times** after round 3,
-  **3 more times** after round 4.
+  **3 more times** after round 4, **3 more times** after round 5.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
   reasonable wall-clock time) — **30/30 rounds exactly correct** after the
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
   fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
-  and **25/25 more** after round 4's (6 processes × 8 iterations = 48
-  expected per round every time: **130 clean rounds total, 6,240
-  individual lock acquisitions, zero lost updates** across the whole
-  task's real, non-Gradle stress testing).
+  **25/25 more** after round 4's, and **25/25 more** after round 5's (6
+  processes × 8 iterations = 48 expected per round every time: **155
+  clean rounds total, 7,440 individual lock acquisitions, zero lost
+  updates** across the whole task's real, non-Gradle stress testing).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
-  1, part of the full `clean build` runs after rounds 2, 3, and 4.
+  1, part of the full `clean build` runs after rounds 2, 3, 4, and 5.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **431 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **433 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
-  round 3's + 1 from round 4's).
+  round 3's + 1 from round 4's + 2 from round 5's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

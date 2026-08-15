@@ -1,5 +1,6 @@
 package engine.runtime;
 
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
@@ -98,10 +99,19 @@ final class AccountLedgerLock implements AutoCloseable {
 
     private static final Logger log = LoggerFactory.getLogger(AccountLedgerLock.class);
 
-    /** Own copy, not shared with {@link AccountLedgerStore} -- see that class's Javadoc for why. */
+    /**
+     * Own copy, not shared with {@link AccountLedgerStore} -- see that
+     * class's Javadoc for why. {@code FAIL_ON_TRAILING_TOKENS} enabled
+     * here too -- proactively, not itself flagged by CodeRabbit this
+     * round, but the identical reasoning behind {@code
+     * AccountLedgerStore}'s own real Major finding (Jackson silently
+     * ignores anything after the first complete JSON value by default)
+     * applies equally to this class's own {@link LockMetadata} parsing.
+     */
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
-            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
 
     private static final long INITIAL_BACKOFF_MILLIS = 25;
     private static final long MAX_BACKOFF_MILLIS = 250;
@@ -271,6 +281,36 @@ final class AccountLedgerLock implements AutoCloseable {
      * is nothing stale to reclaim here -- the path now legitimately
      * belongs to whoever's generation the re-read found, and this method
      * has no business touching it.
+     *
+     * <p><b>Fourth finding, on this exact fix, a further real CodeRabbit
+     * review round on this same PR -- a real, self-introduced regression,
+     * fixed here.</b> The re-verify above compared {@code current}
+     * against {@code metadata} with a single {@code equals()} check --
+     * but {@link #readMetadataOrNull} can also return {@link
+     * #READ_FAILED} (a transient {@link Files#readString} failure),
+     * which is not equal to {@code metadata} either, so it fell into the
+     * exact same "lost the race, don't delete" branch as a genuine
+     * generation mismatch. That is wrong for this specific outcome: a
+     * transient read failure proves nothing about who owns the path --
+     * most likely <i>this</i> holder still does, since it just created
+     * and wrote the file inside this very method call. Treating it as
+     * "lost the race" (never deleting) would leave this holder's own
+     * real, live lock file behind while reporting failure to its own
+     * caller -- and because the file genuinely holds this holder's own
+     * live pid and a just-recorded {@code acquiredAt}, the <i>next</i>
+     * {@link #acquire} attempt's own {@link #tryStealIfStale} call would
+     * correctly judge it not stale (it isn't -- from the outside, it's a
+     * perfectly healthy, fresh lock), self-blocking this process behind
+     * its own abandoned-in-place file until {@code staleThreshold}
+     * elapses -- and blocking every <i>other</i> waiter for the same
+     * {@code staleThreshold} window, on a shared risk-ledger lock, for no
+     * real reason. Fixed: {@code READ_FAILED} is now handled separately
+     * from a genuine mismatch -- cleans up only this holder's own,
+     * re-verified generation (via {@link #deleteIfStillOwnGeneration},
+     * the same delete-only-if-content-still-matches-exactly discipline
+     * {@link #tryStealIfStale} itself uses) before reporting the lost
+     * race, so the next attempt starts from a genuinely clean path
+     * instead of contending with its own ghost.
      */
     private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
         Path parent = lockPath.toAbsolutePath().getParent();
@@ -306,7 +346,24 @@ final class AccountLedgerLock implements AutoCloseable {
             // method's own "Third, still deeper Major finding" Javadoc
             // above for why a successful write alone does not prove this.
             LockMetadata current = readMetadataOrNull(lockPath);
-            return metadata.equals(current) ? metadata : null;
+            if (metadata.equals(current)) {
+                return metadata;
+            }
+            if (current == READ_FAILED) {
+                // A transient read failure proves nothing about the
+                // file's real content -- see this method's own "Fourth
+                // finding" Javadoc for why this must not be treated the
+                // same as a genuine mismatch.
+                log.error(
+                        "account ledger lock {} could not be re-read immediately after this holder wrote its own"
+                                + " metadata ({}) -- cannot prove ownership from this read alone; cleaning up only"
+                                + " this holder's own verified generation (if it's still there) and reporting lost"
+                                + " contention rather than leaving a live-looking file behind.",
+                        lockPath,
+                        metadata);
+                deleteIfStillOwnGeneration(lockPath, metadata);
+            }
+            return null;
         } catch (IOException | RuntimeException e) {
             // Best-effort, path-based cleanup -- not itself re-verified
             // against a specific generation the way the steal and close
@@ -440,6 +497,34 @@ final class AccountLedgerLock implements AutoCloseable {
             throw new IllegalStateException("failed to delete stale account ledger lock file " + lockPath, e);
         }
         return true;
+    }
+
+    /**
+     * Deletes {@code lockPath} only if it still holds exactly {@code
+     * metadata} -- the same re-verify-immediately-before-delete
+     * discipline {@link #tryStealIfStale} itself uses, reused here for
+     * {@link #createAndWriteMetadata}'s own "clean up only my own,
+     * provably-still-mine generation" case (see that method's own
+     * "Fourth finding" Javadoc). Never guesses: if the current content
+     * can't be confirmed to still be exactly {@code metadata} -- a
+     * genuine mismatch, or even another {@link #READ_FAILED} on this
+     * verification read itself -- this method does nothing rather than
+     * risk deleting a different, currently-live holder's lock. Tolerates
+     * {@link NoSuchFileException} (already gone -- fine, nothing to do).
+     */
+    private static void deleteIfStillOwnGeneration(Path lockPath, LockMetadata metadata) {
+        LockMetadata current = readMetadataOrNull(lockPath);
+        if (!metadata.equals(current)) {
+            return;
+        }
+        try {
+            Files.delete(lockPath);
+        } catch (NoSuchFileException e) {
+            // Already gone -- fine.
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                    "failed to delete this holder's own account ledger lock file " + lockPath, e);
+        }
     }
 
     /**

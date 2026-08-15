@@ -146,6 +146,48 @@ class AccountLedgerStoreTest {
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
+    /**
+     * Real Major finding, real CodeRabbit review of this PR:
+     * {@code DeserializationFeature.FAIL_ON_TRAILING_TOKENS} is disabled
+     * by default in Jackson, meaning {@code readValue} would otherwise
+     * silently ignore anything after the first complete JSON value --
+     * undermining this method's own fail-closed contract for a corrupted
+     * file that happens to hold a valid ledger object followed by
+     * trailing garbage.
+     */
+    @Test
+    void aFileWithAValidLedgerFollowedByTrailingJsonNullFailsClosed(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        ObjectMapper mapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        Files.writeString(file, mapper.writeValueAsString(ledger) + "null");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000")));
+    }
+
+    @Test
+    void aFileWithTwoConcatenatedValidLedgerObjectsFailsClosed(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        ObjectMapper mapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        String single = mapper.writeValueAsString(ledger);
+        Files.writeString(file, single + single);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000")));
+    }
+
     @Test
     void aWellFormedJsonFileMissingARequiredFieldFailsClosed(@TempDir Path tempDir) throws IOException {
         Path file = tempDir.resolve("ledger.json");
