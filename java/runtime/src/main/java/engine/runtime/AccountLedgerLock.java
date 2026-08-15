@@ -359,21 +359,21 @@ final class AccountLedgerLock implements AutoCloseable {
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        SeekableByteChannel channel;
-        try {
-            // Atomic create-and-open in one call -- throws
-            // FileAlreadyExistsException if it already exists, same as
-            // Files.createFile did, and deliberately NOT caught here:
-            // nothing was created in that case, so there is nothing for
-            // this method's own cleanup-on-failure logic below to clean
-            // up: acquire()'s existing FileAlreadyExistsException handling
-            // is exactly the right, unchanged path for it.
-            channel = Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
-        } catch (FileAlreadyExistsException e) {
-            throw e;
-        }
+        // Atomic create-and-open in one call -- throws
+        // FileAlreadyExistsException if it already exists, same as
+        // Files.createFile did, and deliberately left to propagate
+        // straight to acquire() (a real Trivial finding, a further real
+        // CodeRabbit review round: a try/catch here that only rethrows
+        // the exact same exception has no behavioral effect and was
+        // simplified away) -- nothing was created in that case, so there
+        // is nothing for this method's own cleanup-on-failure logic below
+        // to clean up; acquire()'s existing FileAlreadyExistsException
+        // handling is exactly the right path for it.
+        SeekableByteChannel channel =
+                Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        LockMetadata metadata = null;
         try (channel) {
-            LockMetadata metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
+            metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
             // WritableByteChannel#write is not guaranteed to consume the
             // whole buffer in one call (real Major finding, real
             // CodeRabbit review of this PR -- confirmed against the JDK's
@@ -407,22 +407,39 @@ final class AccountLedgerLock implements AutoCloseable {
             }
             return null;
         } catch (IOException | RuntimeException e) {
-            // Best-effort, path-based cleanup -- not itself re-verified
-            // against a specific generation the way the steal and close
-            // paths are. A known, narrow, disclosed residual gap rather
-            // than a silent one: if this write failure itself takes long
-            // enough for a sibling to independently judge this file
-            // abandoned and steal it in the interim, this cleanup could
-            // delete that sibling's new file instead of this (failed)
-            // one. Judged acceptable to leave unguarded for now -- unlike
-            // the slow-but-eventually-successful cases this file's other
-            // fixes address (real, measured, and readily triggered by
-            // ordinary contention), this requires a genuine I/O failure
-            // during the write itself, a materially rarer precondition.
-            try {
-                Files.deleteIfExists(lockPath);
-            } catch (IOException cleanupFailure) {
-                e.addSuppressed(cleanupFailure);
+            // Generation-safe cleanup -- a real Major finding, a further
+            // real CodeRabbit review round, re-flagged as a duplicate of
+            // an earlier disclosed-and-declined residual gap in this same
+            // spot: the original version of this catch unconditionally
+            // called Files.deleteIfExists(lockPath), never verifying the
+            // delete target was still this holder's own generation. The
+            // real sequence this makes possible: (1) this holder creates
+            // the file via CREATE_NEW; (2) the write fails slowly enough
+            // for (3) a sibling to legitimately reclaim the still-empty
+            // file via tryStealIfAbandonedEmpty and create its own real
+            // generation there; (4) this catch then deletes the
+            // sibling's real, live lock file; (5) a third process
+            // acquires immediately, and two processes are now inside the
+            // critical section at once -- a real lost update on the
+            // shared risk ledger. Originally judged an acceptable,
+            // disclosed residual gap (this precondition -- a genuine I/O
+            // failure during the write itself, not just slowness -- is
+            // materially rarer than the cases this file's other fixes
+            // address) on the reasoning that closing it would need new
+            // machinery; that reasoning no longer holds now that {@link
+            // #deleteIfStillOwnGeneration} already exists for exactly
+            // this purpose (built for the READ_FAILED case in an earlier
+            // round) -- reusing it here costs nothing new, so there is no
+            // remaining reason to leave this gap open. metadata may still
+            // be null here (e.g. if constructing the LockMetadata record
+            // itself somehow threw, though nothing in its own construction
+            // can) -- guarded rather than assumed.
+            if (metadata != null) {
+                try {
+                    deleteIfStillOwnGeneration(lockPath, metadata);
+                } catch (RuntimeException cleanupFailure) {
+                    e.addSuppressed(cleanupFailure);
+                }
             }
             throw e;
         }

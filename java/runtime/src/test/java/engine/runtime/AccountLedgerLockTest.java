@@ -39,17 +39,6 @@ class AccountLedgerLockTest {
     private static final Duration GENEROUS_RETRY_BUDGET = Duration.ofSeconds(5);
 
     /**
-     * Many real OS threads race {@link AccountLedgerLock#acquire} against
-     * the same lock path. Mutual exclusion is proven the same way the
-     * governing plan itself suggests: a critical section that performs a
-     * deliberately non-atomic read-sleep-increment-write on an unguarded
-     * shared counter. If two threads were ever inside the lock at once, at
-     * least one increment is lost and the final count falls short of the
-     * expected total -- a real data race would be caught, not just
-     * asserted away. All threads are also proven to have eventually
-     * succeeded (no thread swallowed an exception).
-     */
-    /**
      * Real Minor finding, real CodeRabbit review of this PR: 12 threads x
      * 10 acquisitions, each waiter backing off up to 250ms per failed
      * attempt, can plausibly accumulate close to (or past)
@@ -66,6 +55,27 @@ class AccountLedgerLockTest {
      */
     private static final Duration CONTENTION_RETRY_BUDGET = Duration.ofSeconds(60);
 
+    /**
+     * Real Trivial finding, a further real CodeRabbit review round on
+     * this PR: this method's own Javadoc used to sit directly above
+     * {@link #CONTENTION_RETRY_BUDGET}'s field declaration rather than
+     * this method itself (two back-to-back Javadoc blocks in a row both
+     * end up attached to whichever declaration immediately follows the
+     * second one -- the first block is silently discarded by Javadoc
+     * tooling, leaving this method with no rendered documentation at
+     * all). Moved to sit immediately above this method, matching every
+     * other test method's own convention in this file.
+     *
+     * <p>Many real OS threads race {@link AccountLedgerLock#acquire}
+     * against the same lock path. Mutual exclusion is proven the same
+     * way the governing plan itself suggests: a critical section that
+     * performs a deliberately non-atomic read-sleep-increment-write on an
+     * unguarded shared counter. If two threads were ever inside the lock
+     * at once, at least one increment is lost and the final count falls
+     * short of the expected total -- a real data race would be caught,
+     * not just asserted away. All threads are also proven to have
+     * eventually succeeded (no thread swallowed an exception).
+     */
     @Test
     void acquireProvidesRealMutualExclusionAcrossManyThreads(@TempDir Path tempDir) throws InterruptedException {
         Path lockPath = tempDir.resolve("ledger.json.lock");

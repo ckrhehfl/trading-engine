@@ -1113,6 +1113,88 @@ processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
 correct** (180 clean stress rounds / 8,640 individual lock acquisitions
 across the whole task, zero lost updates in any of them).
 
+### Round 8
+
+One more rate-limit wait between round 7 and round 8 (checked
+`@coderabbitai rate limit` for real, found genuinely still limited,
+reported the real ETA back and stopped, then confirmed genuinely clear
+before re-requesting — the same, by-now-established discipline).
+
+Against commit `056e684` (after round 7's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T15:44:41Z`): `CHANGES_REQUESTED`, 2 fresh
+actionable comments plus 1 **duplicate** comment (CodeRabbit's own label
+for re-flagging a previously-raised, still-unresolved concern) — all
+three real, all three addressed:
+
+- **The duplicate: `createAndWriteMetadata`'s write-failure cleanup path
+  still deleted by bare path, not by verified generation (Major) — a
+  real, previously-disclosed-and-deliberately-declined residual gap,
+  revisited and closed rather than declined again.** Round 2 disclosed
+  this exact gap when it first built the cleanup-on-write-failure logic
+  (`Files.deleteIfExists(lockPath)` unconditionally) and explicitly
+  judged it acceptable to leave unguarded: closing it would have meant
+  building new generation-verification machinery for a precondition (a
+  genuine I/O failure during the write itself, not just slowness)
+  materially rarer than the cases this file's other fixes address.
+  CodeRabbit re-raised the identical concern this round, tracing the same
+  real sequence round 2's own disclosure already named (a slow write
+  fails, a sibling reclaims the still-empty file via
+  `tryStealIfAbandonedEmpty`, this cleanup then deletes the sibling's
+  real, live lock, a third process acquires immediately, two processes
+  end up in the critical section at once — a real lost update on the
+  shared risk ledger). **What changed the calculus, and what makes this
+  a real re-evaluation rather than reflexive compliance**: round 5 built
+  `deleteIfStillOwnGeneration` for an unrelated purpose (the `READ_FAILED`
+  case in `createAndWriteMetadata`'s own post-write re-verify). That
+  helper already implements exactly the "delete only if content still
+  matches my own metadata exactly" rule this cleanup path needs — so the
+  "would need new machinery" half of round 2's original reasoning no
+  longer holds; reusing an already-built, already-tested helper costs
+  essentially nothing, which is a materially different cost/benefit
+  calculus than round 2 faced. Fixed: `metadata` is now declared outside
+  the `try` block (assigned as soon as it's constructed, before the write
+  even starts) so the `catch` block can see it; cleanup now calls
+  `deleteIfStillOwnGeneration(lockPath, metadata)` instead of the bare
+  `Files.deleteIfExists`, guarded by a `metadata != null` null check for
+  the (currently unreachable, since nothing in `LockMetadata`'s own
+  construction can throw) case where the exception happened before
+  `metadata` was ever assigned.
+- **A `try`/`catch` around `Files.newByteChannel` that only rethrows the
+  exact same exception has no behavioral effect (Trivial).** Real and
+  simple: the `catch (FileAlreadyExistsException e) { throw e; }` block
+  added when this method's create step first moved to
+  `Files.newByteChannel` (round 2) was never anything but a no-op wrapper
+  — removed, with the same explanatory comment (why
+  `FileAlreadyExistsException` is deliberately left to propagate
+  unhandled here) preserved directly above the now-unwrapped call.
+- **Two back-to-back Javadoc blocks in `AccountLedgerLockTest` both ended
+  up attached to a field declaration, silently discarding the first
+  one — leaving a test method with no rendered documentation at all
+  (Trivial).** Real: round 7's own new `CONTENTION_RETRY_BUDGET` field
+  Javadoc was inserted directly above the pre-existing method Javadoc for
+  `acquireProvidesRealMutualExclusionAcrossManyThreads`, and Javadoc
+  tooling attaches a run of consecutive comment blocks only to whichever
+  declaration immediately follows the *last* one — so both blocks ended
+  up documenting the field, and the method's own original Javadoc was
+  silently orphaned. Fixed by moving the method's own Javadoc back to sit
+  directly above the method (merged into one block with a note explaining
+  the reordering, rather than left ambiguous about which paragraph
+  belongs to which declaration).
+
+Re-ran after all three round-8 fixes: `./gradlew clean build` — still
+green, **436 tests, 0 failures, 0 errors** project-wide (unchanged from
+round 7's count — this round's fixes were a refactor reusing an existing,
+already-tested helper and two documentation/dead-code cleanups, not new
+behavior needing new test coverage). Re-verified the real safety property
+specifically, given the first fix directly changes
+`createAndWriteMetadata`'s own cleanup behavior:
+`AccountLedgerLockMultiProcessTest` 3 more times (`--rerun-tasks`, green
+every time) and a further clean 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct** (205 clean stress rounds / 9,840 individual lock acquisitions
+across the whole task, zero lost updates in any of them).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1126,7 +1208,8 @@ across the whole task, zero lost updates in any of them).
   ones' production-code dependencies changed); 17/17 after round 4's (1
   more new test); 19/19 after round 5's (2 more new tests); 21/21 after
   round 6's (2 more new tests); 21/21 after round 7's (no store-level
-  changes that round).
+  changes that round); 21/21 after round 8's (no store-level changes that
+  round either).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1134,7 +1217,9 @@ across the whole task, zero lost updates in any of them).
   8/8 after round 4's (existing production code changed, no new test
   methods — see round 4's own entry for why); 8/8 after round 5's (same
   reasoning, see round 5's own entry); 8/8 after round 6's (documentation
-  only, no test changes); 9/9 after round 7's (1 more new test).
+  only, no test changes); 9/9 after round 7's (1 more new test); 9/9
+  after round 8's (a refactor reusing existing test coverage plus two
+  doc/dead-code cleanups, no new methods).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1143,26 +1228,26 @@ across the whole task, zero lost updates in any of them).
   1, **3 more times** after round 2, **3 more times** after round 3,
   **3 more times** after round 4, **3 more times** after round 5, once
   more (part of the full `clean build`) after round 6, **3 more times**
-  after round 7.
+  after round 7, **3 more times** after round 8.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
   reasonable wall-clock time) — **30/30 rounds exactly correct** after the
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
   fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
-  **25/25 more** after round 4's, **25/25 more** after round 5's, and
-  **25/25 more** after round 7's (6 processes × 8 iterations = 48
-  expected per round every time: **180 clean rounds total, 8,640
-  individual lock acquisitions, zero lost updates** across the whole
-  task's real, non-Gradle stress testing — round 6 was documentation/
-  record-validation only and did not touch `AccountLedgerLock`'s own
-  acquisition control flow, so it did not independently warrant a further
-  raw stress-harness round on top of the full `clean build`'s own real
-  multi-process test run).
+  **25/25 more** after round 4's, **25/25 more** after round 5's,
+  **25/25 more** after round 7's, and **25/25 more** after round 8's (6
+  processes × 8 iterations = 48 expected per round every time: **205
+  clean rounds total, 9,840 individual lock acquisitions, zero lost
+  updates** across the whole task's real, non-Gradle stress testing —
+  round 6 was documentation/record-validation only and did not touch
+  `AccountLedgerLock`'s own acquisition control flow, so it did not
+  independently warrant a further raw stress-harness round on top of the
+  full `clean build`'s own real multi-process test run).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
-  1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, and
-  7.
+  1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
+  and 8.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -1170,7 +1255,7 @@ across the whole task, zero lost updates in any of them).
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
-  from round 7's).
+  from round 7's + 0 net-new from round 8's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
