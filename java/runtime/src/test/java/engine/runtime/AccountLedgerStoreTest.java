@@ -6,6 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.AtomicMoveNotSupportedException;
@@ -140,6 +143,51 @@ class AccountLedgerStoreTest {
         assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    /**
+     * Real Major finding ("Heavy lift"), real CodeRabbit review of this
+     * PR: {@code persist}'s non-atomic fallback path is not a single
+     * atomic operation -- a crash mid-replace could plausibly leave
+     * {@code ledgerPath} missing while its {@code .tmp} source still
+     * lingers. Without this check, {@code load} would silently bootstrap
+     * a fresh, empty ledger, discarding every other process's real,
+     * previously-committed reservations. This is a partial mitigation
+     * (detects the specific, plausible "stray .tmp, no ledger" evidence),
+     * not a claim that every possible interrupted-fallback timing is
+     * covered -- see {@code load}'s own Javadoc.
+     */
+    @Test
+    void loadFailsClosedWhenTheLedgerIsMissingButALeftoverTmpFileExists(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Path tmp = tempDir.resolve("ledger.json.tmp");
+        AccountLedger orphaned = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("500000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        ObjectMapper mapper = new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        Files.writeString(tmp, mapper.writeValueAsString(orphaned));
+        // ledgerPath itself deliberately never created -- simulates a
+        // crash after the old file was replaced but before (or during) the
+        // new content becoming durable at ledgerPath in the non-atomic
+        // REPLACE_EXISTING fallback.
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    @Test
+    void loadStillBootstrapsFreshWhenTheLedgerIsMissingAndNoTmpFileExists(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        // No .tmp sibling at all -- the ordinary, expected "never
+        // persisted yet" case must still bootstrap fresh, not fail
+        // closed just because a file happens to be missing.
+
+        AccountLedger ledger = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
+
+        assertEquals(new BigDecimal("100000"), ledger.allocatedVirtualCapital());
     }
 
     /**

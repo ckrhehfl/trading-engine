@@ -6,10 +6,13 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
@@ -195,18 +198,76 @@ final class AccountLedgerLock implements AutoCloseable {
      * case this cleanup can't reach at all -- a hard process kill between
      * {@link Files#createFile} succeeding and this method's own {@code
      * catch} block ever running.
+     *
+     * <p><b>Second, deeper Major finding on the same PR, same real
+     * CodeRabbit review round, also fixed here</b>: creating the file
+     * ({@link Files#createFile}) and writing its content ({@link
+     * Files#writeString}) used to be two separate, path-based operations.
+     * If <i>this</i> holder's own write is slow enough (the same real,
+     * measured drvfs latency named above) for a sibling to legitimately
+     * judge the file abandoned via {@link #tryStealIfAbandonedEmpty},
+     * delete it, and create its own new, live generation at the same
+     * path -- and only <i>then</i> does this (stale, orphaned, but not
+     * yet aware of any of that) holder's original {@code
+     * Files.writeString} call finally run -- that call is purely
+     * path-based, so it would silently overwrite the sibling's real, live
+     * metadata with this holder's own stale content. Two independent,
+     * legitimate holders would then both believe they own the lock, with
+     * the file's actual content reflecting neither reliably. Fixed by
+     * opening a single {@link java.nio.channels.SeekableByteChannel} atomically
+     * ({@link java.nio.file.StandardOpenOption#CREATE_NEW}) and writing
+     * the metadata through <i>that same handle</i>, rather than
+     * re-resolving {@code lockPath} for a second, separate operation.
+     * Empirically confirmed, not merely assumed, that this closes the gap
+     * on this repository's real drvfs mount: a real handle-survives-
+     * concurrent-delete-and-recreate probe was run directly against
+     * {@code /mnt/c/Dev/trading-engine} before writing this fix --
+     * deleting a path out from under an already-open {@code CREATE_NEW}
+     * channel succeeds (POSIX-style unlink semantics, not Windows'
+     * traditional delete-blocked-while-open behavior), a new file can
+     * then be created at that same path, and a subsequent write through
+     * the original (now-orphaned, unreachable-via-the-path) channel lands
+     * on that original, now-invisible file rather than corrupting the new
+     * one. {@link
+     * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
+     * proves this holds through the real production code path, not just
+     * the standalone probe.
      */
     private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
         Path parent = lockPath.toAbsolutePath().getParent();
         if (parent != null) {
             Files.createDirectories(parent);
         }
-        Files.createFile(lockPath); // atomic -- throws FileAlreadyExistsException if it already exists
+        SeekableByteChannel channel;
         try {
+            // Atomic create-and-open in one call -- throws
+            // FileAlreadyExistsException if it already exists, same as
+            // Files.createFile did, and deliberately NOT caught here:
+            // nothing was created in that case, so there is nothing for
+            // this method's own cleanup-on-failure logic below to clean
+            // up: acquire()'s existing FileAlreadyExistsException handling
+            // is exactly the right, unchanged path for it.
+            channel = Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        } catch (FileAlreadyExistsException e) {
+            throw e;
+        }
+        try (channel) {
             LockMetadata metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
-            Files.writeString(lockPath, MAPPER.writeValueAsString(metadata));
+            channel.write(ByteBuffer.wrap(MAPPER.writeValueAsBytes(metadata)));
             return metadata;
         } catch (IOException | RuntimeException e) {
+            // Best-effort, path-based cleanup -- not itself re-verified
+            // against a specific generation the way the steal and close
+            // paths are. A known, narrow, disclosed residual gap rather
+            // than a silent one: if this write failure itself takes long
+            // enough for a sibling to independently judge this file
+            // abandoned and steal it in the interim, this cleanup could
+            // delete that sibling's new file instead of this (failed)
+            // one. Judged acceptable to leave unguarded for now -- unlike
+            // the slow-but-eventually-successful cases this file's other
+            // fixes address (real, measured, and readily triggered by
+            // ordinary contention), this requires a genuine I/O failure
+            // during the write itself, a materially rarer precondition.
             try {
                 Files.deleteIfExists(lockPath);
             } catch (IOException cleanupFailure) {
@@ -279,6 +340,13 @@ final class AccountLedgerLock implements AutoCloseable {
             // holder that's already gone.
             return true;
         }
+        if (metadata == READ_FAILED) {
+            // A transient read failure says nothing about the file's real
+            // content or age -- never route this into the mtime-based
+            // abandonment check below, which needs a confirmed-empty read
+            // to mean anything. Never guess; back off and retry.
+            return false;
+        }
         if (metadata == EMPTY_OR_UNPARSEABLE) {
             return tryStealIfAbandonedEmpty(lockPath, staleThreshold);
         }
@@ -306,7 +374,7 @@ final class AccountLedgerLock implements AutoCloseable {
         // "Real TOCTOU finding" for why this re-check is load-bearing, not
         // defensive-programming boilerplate.
         LockMetadata current = readMetadataOrNull(lockPath);
-        if (current == null || current == EMPTY_OR_UNPARSEABLE || !current.equals(metadata)) {
+        if (current == null || current == READ_FAILED || current == EMPTY_OR_UNPARSEABLE || !current.equals(metadata)) {
             return false;
         }
 
@@ -396,18 +464,31 @@ final class AccountLedgerLock implements AutoCloseable {
     }
 
     /**
-     * Sentinel distinguishing "file present but empty/unparseable right
-     * now" from a genuine {@code null} ("file absent") -- see {@link
-     * #readMetadataOrNull}.
+     * Sentinel: the file is present and was read successfully, but its
+     * content is empty or unparseable right now -- see {@link
+     * #readMetadataOrNull}. Distinguished from {@link #READ_FAILED} (a
+     * real Minor finding, real CodeRabbit review of this PR): the two
+     * used to share one sentinel, which made {@link #close}'s own log
+     * message assert "no longer holds this instance's own metadata" even
+     * for a transient {@link Files#readString} failure that says nothing
+     * at all about the file's actual current content -- misleading an
+     * operator investigating a real incident in the wrong direction. Both
+     * are still treated identically everywhere <i>behavior</i> is
+     * concerned (never delete, never guess) -- only the two sentinels'
+     * own distinctness, and the messages built from them, differ.
      */
     private static final LockMetadata EMPTY_OR_UNPARSEABLE = new LockMetadata(-1, "", Instant.EPOCH);
 
+    /** Sentinel: {@link Files#readString} itself failed (a transient {@link IOException}) -- see {@link #EMPTY_OR_UNPARSEABLE}'s Javadoc. */
+    private static final LockMetadata READ_FAILED = new LockMetadata(-2, "", Instant.EPOCH);
+
     /**
      * @return the lock file's parsed metadata; {@code null} if the file
-     *     does not exist; {@link #EMPTY_OR_UNPARSEABLE} if it exists but its
-     *     content can't be read/parsed right now (see {@link
-     *     #tryStealIfStale}'s Javadoc for why this is treated as "cannot
-     *     determine, don't guess" rather than either extreme).
+     *     does not exist; {@link #READ_FAILED} if {@link Files#readString}
+     *     itself threw; {@link #EMPTY_OR_UNPARSEABLE} if the read succeeded
+     *     but the content can't be parsed (see {@link #tryStealIfStale}'s
+     *     Javadoc for why both non-null/non-metadata outcomes are treated
+     *     as "cannot determine, don't guess" rather than either extreme).
      */
     private static LockMetadata readMetadataOrNull(Path lockPath) {
         String raw;
@@ -416,7 +497,7 @@ final class AccountLedgerLock implements AutoCloseable {
         } catch (NoSuchFileException e) {
             return null;
         } catch (IOException e) {
-            return EMPTY_OR_UNPARSEABLE;
+            return READ_FAILED;
         }
         try {
             return MAPPER.readValue(raw, LockMetadata.class);
@@ -493,6 +574,21 @@ final class AccountLedgerLock implements AutoCloseable {
      * in this design specifically because of this repository's drvfs
      * reliability concerns -- see the class Javadoc) -- disclosed as such
      * rather than overclaimed.
+     *
+     * <p><b>Minor finding, same real CodeRabbit review round, also fixed
+     * here</b>: the re-verification read above can itself come back as
+     * {@link #READ_FAILED} (a transient {@link Files#readString} failure)
+     * as well as {@link #EMPTY_OR_UNPARSEABLE} or a genuine mismatch --
+     * the original version of this method logged all three identically as
+     * "no longer holds this instance's own metadata... found {@code
+     * current}", which is simply false for a read failure (this instance
+     * may well still be the legitimate holder; the file just couldn't be
+     * read this one time) and prints a meaningless sentinel value for
+     * {@code current} in both non-mismatch cases. Skipping the delete is
+     * still the correct, safe behavior in all three cases (never guess),
+     * but each now gets its own honest log message so an operator
+     * investigating isn't pointed at "mutual exclusion was lost" for a
+     * transient filesystem hiccup.
      */
     @Override
     public void close() {
@@ -501,7 +597,29 @@ final class AccountLedgerLock implements AutoCloseable {
             if (current == null) {
                 return; // already gone -- tolerated, see method Javadoc
             }
-            if (current == EMPTY_OR_UNPARSEABLE || !current.equals(ownMetadata)) {
+            if (current == READ_FAILED) {
+                log.error(
+                        "account ledger lock {} could not be read on close (transient failure, acquired as {}) --"
+                                + " NOT deleting, since this instance cannot prove the file is still its own"
+                                + " generation. The file will block other waiters until its staleThreshold"
+                                + " elapses. This is most likely a transient filesystem read failure, not proof"
+                                + " that mutual exclusion was lost.",
+                        lockPath,
+                        ownMetadata);
+                return;
+            }
+            if (current == EMPTY_OR_UNPARSEABLE) {
+                log.error(
+                        "account ledger lock {} exists but its content is empty or unparseable on close"
+                                + " (acquired as {}) -- NOT deleting, since this instance cannot prove the file is"
+                                + " still its own generation (most likely raced a concurrent writer's own brief"
+                                + " create-to-write window). The file will block other waiters until its"
+                                + " staleThreshold elapses.",
+                        lockPath,
+                        ownMetadata);
+                return;
+            }
+            if (!current.equals(ownMetadata)) {
                 log.error(
                         "account ledger lock {} no longer holds this instance's own metadata (acquired as {},"
                                 + " found {}) -- NOT deleting, since doing so could destroy a different, currently"

@@ -111,6 +111,36 @@ final class AccountLedgerStore {
      * real, currently-committed exposure and virtual capital and use it to
      * gate a <i>different</i> account's orders -- exactly backwards for a
      * class whose entire purpose is bounding a shared account's real risk.
+     *
+     * <p><b>Also fails closed if {@code ledgerPath} is missing but a
+     * leftover {@code .tmp} sibling exists</b> -- a real Major finding
+     * from this task's own real CodeRabbit review (labeled "Heavy lift" by
+     * the reviewer itself; this is a real, disclosed <i>partial</i>
+     * mitigation, not a claim of a complete fix -- see below). {@link
+     * #persist}'s non-atomic fallback path ({@link
+     * AtomicMoveNotSupportedException}/{@link FileAlreadyExistsException})
+     * is not a single atomic operation; a process or host crash during
+     * that specific fallback's {@link Files#move} could plausibly leave
+     * {@code ledgerPath} genuinely missing (the old file already replaced,
+     * the new content not durably in place) while its {@code .tmp} source
+     * still lingers. Without this check, that state is indistinguishable
+     * from "nothing has ever been persisted for this venue/account" --
+     * {@code load} would silently return a <b>fresh, empty</b> ledger,
+     * discarding every other process's real, previously-committed
+     * reservation. A stray {@code .tmp} file next to a missing {@code
+     * ledgerPath} is strong circumstantial evidence that isn't what
+     * happened, so this fails closed instead of guessing. <b>Deliberately
+     * not attempted here</b>: automatically recovering the ledger from the
+     * {@code .tmp} file's own content, or maintaining a full backup/
+     * generation history across every persist -- either would be real,
+     * additional, undesigned scope (the reviewer's own "Heavy lift" label)
+     * appropriate for a dedicated follow-up if this fallback path is ever
+     * actually exercised in practice, not something to improvise under
+     * review pressure on a task whose own scope is the storage/locking
+     * primitives, not a full recovery system. This also does not, and
+     * cannot, cover every possible crash timing in the non-atomic
+     * fallback (e.g. one where the {@code .tmp} file itself is also lost)
+     * -- named honestly as a partial mitigation for the same reason.
      */
     static AccountLedger load(Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital) {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
@@ -122,6 +152,18 @@ final class AccountLedgerStore {
         try {
             raw = Files.readString(ledgerPath);
         } catch (NoSuchFileException e) {
+            Path tmp = tmpPathFor(ledgerPath);
+            if (Files.exists(tmp)) {
+                throw new IllegalStateException(
+                        "account ledger file " + ledgerPath + " is missing but a leftover " + tmp + " exists --"
+                                + " this strongly suggests a persist() was interrupted mid-replace (most likely"
+                                + " the non-atomic REPLACE_EXISTING fallback -- see persist()'s own Javadoc),"
+                                + " which could mean a real, previously-persisted ledger (including other"
+                                + " processes' committed reservations) was lost. Refusing to silently bootstrap a"
+                                + " fresh, empty ledger in this ambiguous case -- a human must investigate and"
+                                + " manually resolve (e.g. recover from the .tmp file's content if it's valid, or"
+                                + " confirm no real ledger ever existed for this venue/account) before proceeding.");
+            }
             return freshLedger(venue, accountId, defaultAllocatedCapital);
         } catch (IOException e) {
             throw new IllegalStateException(
@@ -191,7 +233,7 @@ final class AccountLedgerStore {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Path tmp = ledgerPath.resolveSibling(ledgerPath.getFileName() + ".tmp");
+            Path tmp = tmpPathFor(ledgerPath);
             Files.writeString(tmp, MAPPER.writeValueAsString(ledger));
             try {
                 mover.move(tmp, ledgerPath);
@@ -223,5 +265,9 @@ final class AccountLedgerStore {
 
     private static void defaultAtomicMove(Path source, Path target) throws IOException {
         Files.move(source, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+    }
+
+    private static Path tmpPathFor(Path ledgerPath) {
+        return ledgerPath.resolveSibling(ledgerPath.getFileName() + ".tmp");
     }
 }

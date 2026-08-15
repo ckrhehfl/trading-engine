@@ -516,6 +516,124 @@ invocation touching the same build output and got the clean 25/25 result
 above. Recorded here rather than omitted, matching this document's own
 established practice of keeping a real investigative dead-end visible.)
 
+### Round 2
+
+Against commit `21ea2b1` (after round 1's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T10:27:37Z`): `CHANGES_REQUESTED`, 4
+actionable inline comments. All four verified against the real current
+code and fixed:
+
+- **A second, deeper Major finding on the exact same acquire-side
+  mechanism round 1 already touched (labeled "Heavy lift"):
+  `createFile`-then-`writeString` were still two separate,
+  <i>path</i>-based operations, even after round 1's cleanup-on-failure
+  fix.** Real and correctly identified: if a holder's own metadata write
+  is slow enough (this class's own Javadoc already documents 500ms+
+  measured latency under contention) for a sibling to legitimately judge
+  the file abandoned via `tryStealIfAbandonedEmpty`, delete it, and
+  acquire its own new generation — and only *then* does the original,
+  now-orphaned holder's `Files.writeString` call finally run — that call
+  re-resolves the path fresh and would silently overwrite the sibling's
+  real, live metadata with the original holder's stale content. Two
+  legitimate holders would both believe they own the lock.
+
+  **Fixed at the root, not patched around**: `createAndWriteMetadata` now
+  opens a single `SeekableByteChannel` atomically (`Files.newByteChannel`
+  with `StandardOpenOption.CREATE_NEW`) and writes the metadata through
+  *that same handle*, rather than reopening the path for a second
+  operation. **Verified empirically before writing the fix, not assumed**:
+  this repository's specific concern throughout (a Windows-mounted drvfs
+  mount, where "delete an open file" has historically meant something
+  different than POSIX unlink semantics) made this worth checking for
+  real rather than trusting general Java portability claims. A standalone
+  probe (`HandleTest.java`, run directly against
+  `/mnt/c/Dev/trading-engine`) confirmed: deleting a path out from under
+  an already-open `CREATE_NEW` channel succeeds on this real mount, a new
+  file can then be created at that same path, and a subsequent write
+  through the original (now-orphaned) channel lands on the original,
+  now-path-invisible file rather than corrupting the new one — real,
+  observed POSIX-style behavior on this specific drvfs mount, not a
+  general Java guarantee taken on faith. New regression test,
+  `AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen`,
+  reproduces the exact mechanism through the real production code path
+  (opens a `CREATE_NEW` channel the same way `createAndWriteMetadata`
+  does, has a real sibling steal-and-reacquire through
+  `AccountLedgerLock.acquire`, then completes the original write through
+  the old handle) and asserts the sibling's content is untouched.
+
+  **One narrow residual gap disclosed, not fixed**: the cleanup-on-write-
+  failure path (round 1's own fix) still deletes by path, not by
+  verified generation — if the write itself throws (not merely runs
+  slowly) and a sibling independently reclaims the file in that same
+  narrow window, this cleanup could delete the sibling's new file.
+  Judged acceptable to leave unguarded: this requires a genuine I/O
+  failure during the write, not just slowness, a materially rarer
+  precondition than every other case this task's review rounds have
+  found and fixed. Documented directly in `createAndWriteMetadata`'s own
+  Javadoc rather than silently left unmentioned.
+
+- **`close()`'s re-verification conflated a transient read failure with a
+  genuine "stolen by another holder" (Minor).** Real: `readMetadataOrNull`
+  used to return the same `EMPTY_OR_UNPARSEABLE` sentinel both when
+  `Files.readString` itself threw (says nothing about the file's actual
+  content) and when the content was genuinely empty/unparseable — `close()`
+  logged both identically as "no longer holds this instance's own
+  metadata... mutual exclusion was lost," which is simply false for a
+  transient read hiccup and points an investigating operator in the wrong
+  direction. **Fixed with a real second sentinel** (`READ_FAILED`,
+  distinct from `EMPTY_OR_UNPARSEABLE`), threaded through both
+  `tryStealIfStale` (a transient read failure never routes into the
+  mtime-based abandonment check, which needs a confirmed-empty read to
+  mean anything) and `close()` (three distinct branches now: read-failure,
+  empty/unparseable, genuine mismatch — each with its own honest message).
+  Skipping the delete stays identical (safe) in all three cases; only the
+  diagnostics differ.
+- **`AccountLedgerStore.persist`'s non-atomic fallback isn't a single
+  atomic operation — an interrupted replace could make a missing
+  `ledgerPath` indistinguishable from "never persisted" (Major, "Heavy
+  lift").** Real: a crash mid-`REPLACE_EXISTING` could leave `ledgerPath`
+  genuinely missing while its `.tmp` source lingers; `load` would
+  silently bootstrap a fresh, empty ledger, discarding every other
+  process's real committed reservations. **Fixed as a real, explicitly
+  partial mitigation, not a full solution** (matching the reviewer's own
+  "Heavy lift" label — a complete backup/generation/recovery system is
+  real, additional, undesigned scope, appropriately out of bounds for a
+  storage/locking-primitives task under review pressure): `load` now
+  fails closed (`IllegalStateException`) if `ledgerPath` is missing but a
+  `.tmp` sibling exists — strong circumstantial evidence of an
+  interrupted replace, not proof, but enough to refuse guessing rather
+  than silently discarding real state. Explicitly does **not** attempt
+  automatic recovery from the `.tmp` content, and explicitly does not
+  cover every possible interrupted-fallback timing (e.g. the `.tmp` file
+  itself also being lost) — both named directly in the method's own
+  Javadoc. New tests: a leftover `.tmp` with no `ledgerPath` fails closed;
+  the ordinary "genuinely never persisted, no `.tmp` either" case still
+  bootstraps fresh (a control case, confirming this fix doesn't overreach
+  into failing the common path).
+- **The empty-lock reclamation tests didn't cover the sequence the Major
+  finding above is about (Trivial).** Real, and superseded by something
+  stronger rather than the reviewer's own literal suggestion: their
+  suggested test used a plain, unguarded `Files.writeString` to "simulate"
+  the original creator's delayed write — but that would not have actually
+  exercised the fixed mechanism (an ordinary path-based write was never
+  the vulnerable operation once creation moved to an open handle; the
+  real question is whether a write through the *original* handle survives
+  a concurrent delete-and-recreate). Declined the literal suggestion,
+  replaced with the more precise
+  `aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen`
+  test described above, which does exercise the real mechanism end to
+  end.
+
+Re-ran after all four round-2 fixes: `./gradlew clean build` — still
+green, **430 tests, 0 failures, 0 errors** project-wide (427 + 3 new: 2
+in `AccountLedgerStoreTest`, 1 in `AccountLedgerLockTest`). Re-verified
+the real safety property specifically, again, not just trusted the diff:
+`AccountLedgerLockMultiProcessTest` 3 more times (`--rerun-tasks`, green
+every time) and a fresh, clean 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -524,29 +642,36 @@ established practice of keeping a real investigative dead-end visible.)
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerStoreTest"`
   — green, 10/10, after implementation (one deprecation warning found and
   removed — see "TDD" above; zero warnings on the final version); 14/14
-  after the CodeRabbit-review fixes (4 new tests).
+  after round 1's CodeRabbit fixes (4 new tests); 16/16 after round 2's
+  (2 more new tests).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
-  — green, 4/4, stable across 3 repeated full re-runs; 7/7 after the
-  CodeRabbit-review fixes (3 new tests).
+  — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
+  1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
+  test).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
   above); green after the fix, confirmed **5 additional times**
-  (`--rerun-tasks`) before the review round, **3 more times** after it.
+  (`--rerun-tasks`) before round 1's review, **3 more times** after round
+  1, **3 more times** after round 2.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
-  reasonable wall-clock time) — **30/30 rounds exactly correct** after
-  the original TOCTOU fix, and **25/25 more** after the CodeRabbit-review
-  fixes (6 processes × 8 iterations = 48 expected per round each time).
+  reasonable wall-clock time) — **30/30 rounds exactly correct** after the
+  original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
+  fixes, and **25/25 more** after round 2's (6 processes × 8 iterations =
+  48 expected per round every time: **80 clean rounds total, 3,840
+  individual lock acquisitions, zero lost updates** across the whole
+  task's real, non-Gradle stress testing).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
-  times (`--rerun-tasks`) before the review round, once more after it.
+  times (`--rerun-tasks`) before round 1's review, once more after round
+  1, part of the full `clean build` runs after round 2.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **427 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **430 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
-  the CodeRabbit-review round).
+  round 1's CodeRabbit review + 3 from round 2's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

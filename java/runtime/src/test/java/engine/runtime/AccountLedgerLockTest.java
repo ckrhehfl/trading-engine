@@ -7,8 +7,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -260,6 +263,65 @@ class AccountLedgerLockTest {
         try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, GENEROUS_RETRY_BUDGET)) {
             assertTrue(Files.exists(lockPath), "a real lock must have been created after reclaiming the abandoned file");
             assertTrue(Files.readString(lockPath).contains("\"pid\""), "the reclaimed file must hold this instance's real metadata now");
+        }
+    }
+
+    /**
+     * Real Major finding, real CodeRabbit review of this PR, on top of the
+     * two Critical findings above: the original {@code createAndWriteMetadata}
+     * created the lock file and wrote its content as two separate,
+     * <b>path</b>-based operations. If a holder's own write was slow
+     * enough for a sibling to legitimately judge the file abandoned,
+     * steal it, and acquire its own new generation, the original slow
+     * writer's <i>own, now-orphaned</i> write would still land -- since
+     * {@code Files.writeString} re-resolves the path fresh each time -- and
+     * silently clobber the sibling's real, live metadata with the
+     * original holder's stale content.
+     *
+     * <p>This test exercises the fixed mechanism directly, more precisely
+     * than the reviewer's own suggested pseudocode (a plain, unguarded
+     * {@code Files.writeString} "simulating" the delayed write -- which
+     * would not actually prove anything, since an ordinary path-based
+     * write was never the vulnerable operation once created via an open
+     * handle; the real question is whether a write through the
+     * <i>original, already-open creation handle</i> survives a concurrent
+     * delete-and-recreate at the same path, which is exactly what {@code
+     * createAndWriteMetadata} now relies on). Opens a {@code CREATE_NEW}
+     * channel exactly the way {@code createAndWriteMetadata} itself does,
+     * without yet writing through it -- reproducing the real slow-write
+     * window -- then has a sibling steal and reacquire through the real
+     * production path, and only then completes the original, now-orphaned
+     * write through the old handle.
+     */
+    @Test
+    void aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen(
+            @TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+
+        // Mirrors createAndWriteMetadata's own atomic create-and-open step
+        // directly, without completing the write -- reproducing the real
+        // slow-write window that Critical finding above is about.
+        SeekableByteChannel staleWritersChannel =
+                Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+
+        // A sibling judges this (from its perspective, abandoned) lock
+        // stale and acquires its own real, new generation through the
+        // real production path.
+        Files.delete(lockPath);
+        try (AccountLedgerLock sibling =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
+            String siblingContent = Files.readString(lockPath);
+
+            // The original, now-orphaned writer finally completes its own
+            // delayed write through its OLD, already-open handle.
+            staleWritersChannel.write(ByteBuffer.wrap("STALE-CONTENT-FROM-ORIGINAL-CREATOR".getBytes()));
+            staleWritersChannel.close();
+
+            assertEquals(
+                    siblingContent,
+                    Files.readString(lockPath),
+                    "a delayed write through an old, already-orphaned creation handle must never corrupt a"
+                            + " different, currently-live lock generation at the same path");
         }
     }
 
