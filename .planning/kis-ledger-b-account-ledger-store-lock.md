@@ -1389,6 +1389,52 @@ whole task, zero lost updates in any of them, at every realistic
 threshold this task has ever actually configured for correctness
 testing).
 
+### A real tooling mistake after round 10, caught by the governing
+coordinator, not by me
+
+After pushing round 10's fixes (commit `ee7c8c4`), I posted
+`@coderabbitai rate limit` twice (18:18:41Z and 18:28:27Z) and, both
+times, concluded from my own polling that CodeRabbit had gone silent --
+no reply after several minutes of checking. That conclusion was wrong,
+and I reported it as a real finding ("CodeRabbit did not respond") when
+it was actually my own tooling error. The coordinator checked
+independently and found both queries had gotten real replies within
+single-digit seconds (18:18:47Z and 18:28:31Z), exactly as every prior
+round in this task had behaved.
+
+**Root cause, confirmed by direct inspection, not guessed**: my polling
+calls used `gh api repos/{owner}/{repo}/issues/100/comments` without
+`--paginate`. That endpoint paginates at 30 items per page, oldest
+first, and by this point in the task PR #100 had accumulated **69**
+comments total across 10 review rounds. An unpaginated call therefore
+returns only the **oldest** 30 -- the newest comments (including every
+comment I had just posted, and every reply to them) were never in the
+page I fetched at all. My `select(.id > X)` filter had nothing to search
+against; it wasn't that the filter was wrong, it's that the reply I was
+filtering for wasn't in the dataset to begin with. Verified directly:
+`gh api repos/ckrhehfl/trading-engine/issues/100/comments --paginate --jq
+'length'` returns 69; the same call without `--paginate` returns (at
+most) 30, all older than both of my post-round-10 queries and their
+replies.
+
+This is a genuinely different failure mode from the earlier, already-
+disclosed commit-status-badge unreliability (round 7's entry above) --
+that was the *data source itself* (the badge) being unreliable evidence.
+This is a case where I asked the *right* source (the reviews/comments
+API, not the badge) and still missed the real answer, because of how I
+queried it, not because the API lied. Both are now disclosed, for the same reason:
+a future session reading this file should know both failure modes are
+real and have actually happened on this task, not just be warned about
+one of them in the abstract.
+
+**Fix, applied going forward for the rest of this task**: every
+`issues/.../comments` poll now uses `--paginate` (or otherwise confirms
+it is reading the newest page, not assuming an unpaginated call is
+sufficient) -- confirmed working immediately after this fix by
+correctly finding a genuine, real rate-limit reply
+(id=5303659046, 18:35:07Z, "next review available in 12 minutes") that
+an unpaginated call would again have missed.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
