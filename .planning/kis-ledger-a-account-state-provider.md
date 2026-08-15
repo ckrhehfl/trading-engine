@@ -399,6 +399,74 @@ production code changed): still green, `TradingLoopTest` unchanged at
 **14 tests, 0 failures, 0 errors** — this round's fix added no new test
 because it changed no runtime behavior to test.
 
+### Round 3
+
+Against commit `2d18bdb` (after round 2's fix was pushed — a real review
+confirmed via the GitHub reviews API to target this exact commit sha):
+`CHANGES_REQUESTED`, 1 inline comment. Fixed, this PR — this time by
+simplifying the rule rather than patching another edge case into it:
+
+- **Round 2's own "confirmed vs. unconfirmed" distinction had exactly the
+  gap its own name suggests.** A real, correctly-identified third-round
+  finding: `TradingLoop.tick()`'s ambiguous-`submitIntent`-failure path
+  (round 1's fix) deliberately never calls `confirmReservation` — so
+  under round 2's rule, a reservation left in that ambiguous state is
+  classified as merely "unconfirmed," *even when a real `Order` genuinely
+  was registered before the throw*. A **later**, independent conflicting
+  retry for the same `intentId` then hits round 2's "may freely replace an
+  unconfirmed reservation" clause and can shrink it — reproducing round
+  1's original understatement bug one exception-path hop later, this time
+  hiding behind round 2's own new vocabulary rather than being fixed by
+  it. Verified real, not hypothetical, by tracing the exact 3-tick
+  sequence: tick 1 confirms a real order at `0.001`; tick 2 (a conflicting
+  retry) calls `reserveForIntent` again, which — because tick 1's
+  reservation is genuinely `confirmReservation`d — cannot shrink below
+  `0.001` per round 2's rule, but then `submitIntent` throws and
+  `confirmReservation` never re-fires for *this* attempt, leaving the
+  reservation newly "unconfirmed" again; tick 3 (a second, smaller
+  conflicting retry) then legally shrinks it under round 2's own rule,
+  even though the real order from tick 1 is still live at `0.001`.
+
+  **Fix, this time structural rather than another patch**: rewrote the
+  idempotency paragraph a third time, dropping the confirmed/unconfirmed
+  distinction entirely in favor of one single monotonic rule: a repeated
+  `reserveForIntent` call for an `intentId` that already has **any**
+  recorded reservation — confirmed, unconfirmed, or left unresolved after
+  an ambiguous failure, no exceptions — must never *reduce* the recorded
+  exposure; it may only hold it steady or raise it. Only
+  `confirmReservation` or `releaseReservation` — each tied to a
+  definitively known outcome — may ever reduce what's recorded for a
+  given `intentId`. This needs no notion of "which state was this
+  reservation in," which is exactly the missing piece that let both prior
+  versions' edge cases through. The full three-version history (including
+  *why* each earlier version failed, not just the final rule) was kept in
+  the Javadoc itself rather than silently overwritten, on the theory that
+  a future reader extending this contract benefits more from seeing why
+  the simpler rule was chosen than from a clean-looking paragraph that
+  hides two real, already-found failure modes.
+  - Kept the flagged planning-doc language honest here too: this document
+    itself (round 2's write-up above) still describes the now-superseded
+    "unconfirmed reservation ... nothing real is backing it yet" framing
+    as what was built *at that time* — left as an accurate historical
+    record of round 2's real fix, not rewritten, since this "Round 3"
+    entry is what supersedes it; the current, load-bearing contract is
+    whatever `AccountStateProvider.java` says today, not any prior
+    round's write-up here.
+  - **Declined the reviewer's repeated suggestion to add a Task C test
+    plan / stateful test double for this** — consistent with rounds 1 and
+    2's own reasoning: `SyntheticAccountStateProvider` has no per-
+    `intentId` reservation state to exhibit this bug in the first place,
+    so there is nothing in *this PR's shipped code* for a stateful fake to
+    verify. The Javadoc's own closing sentence now explicitly names the
+    round-2 failure scenario as a required test case for whatever Task C's
+    real stateful implementation turns out to be, which is judged
+    sufficient forward-looking documentation without building that
+    implementation's test infrastructure prematurely here.
+
+Re-ran `./gradlew :runtime:test` after this fix (again Javadoc-only, no
+production code changed): still green, `TradingLoopTest` unchanged at
+**14 tests, 0 failures, 0 errors**.
+
 ## Explicitly out of scope (per the governing brief, not attempted here)
 
 - `AccountLedger`/`LedgerReservation`/`AccountLedgerStore`/

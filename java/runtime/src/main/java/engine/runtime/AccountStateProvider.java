@@ -64,36 +64,54 @@ import java.util.UUID;
  * simulated}/{@code bingx-vst} remain zero-behavior-change callers.
  *
  * <p><b>Idempotency contract, per {@code intentId}</b> (CodeRabbit review
- * finding on the PR that introduced this interface, <b>corrected on a
- * second review pass of the same PR</b> -- the first version of this
- * paragraph said a repeated {@link #reserveForIntent} call "must replace,
- * not add to" an existing reservation, unqualified; that wording is
- * unsafe and was never implemented by anything in this codebase, only
- * documented, so no behavior change was needed to fix it, only the text):
- * a real implementation must not let a repeated call for the same {@code
- * intentId} duplicate work -- but a plain "replace" is exactly wrong once
- * an existing reservation has already been {@link #confirmReservation
- * confirmed} against a real, registered {@link engine.oms.Order}. {@link
- * #reserveForIntent} runs <i>before</i> {@code OrderPipeline#submitIntent}
- * can determine whether a given {@code intentId} is a genuine conflict
- * (see {@code engine.oms.OrderStore#createOrder}'s own conflicting-retry
- * guard) -- so a conflicting retry requesting a <i>smaller</i> quantity
- * than an already-confirmed reservation must never be allowed to shrink
- * that confirmed reservation before the conflict is even known. Doing so
- * would leave a real, still-live {@code Order}'s exposure under-recorded
- * on the ledger the moment {@code submitIntent} then throws (see the
- * "real, disclosed gap" paragraph below) -- silently weakening the very
- * risk limit this interface exists to help enforce. The actual rule: a
- * real implementation must track, per {@code intentId}, whether its
- * current reservation is merely pessimistic-and-unconfirmed or already
- * {@link #confirmReservation confirmed}; a repeated {@link
- * #reserveForIntent} call may freely replace an <i>unconfirmed</i>
- * reservation (nothing real is backing it yet), but against an already-
- * <i>confirmed</i> one it must never record less than what was last
- * confirmed, until that confirmed reservation is itself resolved via a
- * subsequent {@link #confirmReservation} or {@link #releaseReservation}
- * call. (A genuine repeated-{@code intentId} call is real, not
- * hypothetical -- see {@code TradingLoop}'s own {@code
+ * findings on the PR that introduced this interface -- <b>corrected twice
+ * more on two further review passes of the same PR</b>, converging on the
+ * simplest safe rule rather than continuing to patch edge cases into a
+ * more complicated one; the history is kept here, not trimmed, because
+ * each earlier version's own failure mode is exactly why the final rule
+ * is shaped the way it is):
+ * <ul>
+ *   <li><i>First version</i> said a repeated {@link #reserveForIntent}
+ *       call "must replace, not add to" an existing reservation,
+ *       unqualified. Unsafe: a smaller conflicting retry could shrink an
+ *       already-{@link #confirmReservation confirmed} reservation before
+ *       {@code OrderPipeline#submitIntent} even discovers the conflict
+ *       (see {@code engine.oms.OrderStore#createOrder}'s own conflicting-
+ *       retry guard) -- understating a real, still-live {@link
+ *       engine.oms.Order}'s exposure the moment {@code submitIntent} then
+ *       throws (see the "real, disclosed gap" paragraph below).
+ *   <li><i>Second version</i> fixed that by flooring a replacement at
+ *       "whatever was last <i>confirmed</i>" -- but that still let a
+ *       reservation left <b>unresolved</b> by an ambiguous {@code
+ *       submitIntent} failure (the exception path never calls {@link
+ *       #confirmReservation}, so the second version's rule classified
+ *       that reservation as merely "unconfirmed," not "confirmed," even
+ *       when a real {@code Order} genuinely had been registered) get
+ *       freely shrunk by a <i>later</i> conflicting retry's {@link
+ *       #reserveForIntent} call, reproducing the exact same understatement
+ *       one exception-path hop later.
+ *   <li><i>Final rule, dropping the confirmed/unconfirmed distinction
+ *       entirely rather than adding a third state to patch this</i>: a
+ *       repeated {@link #reserveForIntent} call for an {@code intentId}
+ *       that already has <b>any</b> recorded reservation -- confirmed,
+ *       unconfirmed, or left unresolved after an ambiguous failure, no
+ *       exceptions -- must never <i>reduce</i> the exposure currently
+ *       recorded for it. It may only leave that exposure unchanged or
+ *       raise it (e.g. to {@code max(existing, new pessimistic request)}).
+ *       <b>Only {@link #confirmReservation} (down to the real approved
+ *       size) or {@link #releaseReservation} (to zero) may ever reduce
+ *       what is recorded for a given {@code intentId}</b> -- both are
+ *       tied to a definitively known outcome (a real {@code Order} was
+ *       registered at a known approved size, or Risk Gateway rejected the
+ *       intent outright); {@link #reserveForIntent} alone never is, since
+ *       it runs before {@code RiskGateway.evaluate()} and therefore before
+ *       any outcome -- ambiguous or otherwise -- is known. This single
+ *       monotonic rule needs no notion of "which state was this
+ *       reservation in" at all, which is exactly what let the first two
+ *       versions' edge cases slip through.
+ * </ul>
+ * (A genuine repeated-{@code intentId} call is real, not hypothetical --
+ * see {@code TradingLoop}'s own {@code
  * submittedOrderIdsRecordsARepeatWhenTheSameIntentIsSubmittedOnTwoSeparateTicks}
  * test.) {@link #confirmReservation} and {@link #releaseReservation} are
  * each expected to be called at most once per {@link #reserveForIntent}
@@ -106,8 +124,12 @@ import java.util.UUID;
  * #confirmReservation}/{@link #releaseReservation} are no-ops -- there is
  * no reservation state to duplicate, shrink, or otherwise get wrong. A
  * real stateful implementation (Task C) must design and test its own
- * confirmed-vs-unconfirmed tracking against its actual reservation data
- * structure -- not attempted here, since none exists yet to test against.
+ * per-{@code intentId} reservation data structure against this exact
+ * monotonic rule -- including a case that mirrors the second version's
+ * own failure above (a smaller retry arriving after an ambiguous
+ * {@code submitIntent} failure must not shrink the still-recorded
+ * exposure) -- not attempted here, since no stateful implementation
+ * exists yet to test against.
  *
  * <p><b>A real, disclosed gap, left open rather than fixed here</b>
  * (second CodeRabbit review finding, same PR): if {@code
