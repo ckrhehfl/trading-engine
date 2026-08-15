@@ -274,7 +274,15 @@ class AccountLedgerLockTest {
             @TempDir Path tempDir) throws Exception {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         Duration pathologicallySmallStaleThreshold = Duration.ofMillis(10);
-        long holderRealHoldMillis = 150;
+        // Deliberately generous relative to pathologicallySmallStaleThreshold + the
+        // 30ms pre-steal wait below (a ~960ms margin) -- this class's own Javadoc
+        // documents real, measured 500ms+ transient write latency on this
+        // project's actual drvfs mount under contention, so the steal attempt
+        // itself (read + stale judgment + delete + create/write + re-verify) needs
+        // real headroom to finish before the holder legitimately releases, or this
+        // test would be flaky on a slow/loaded machine for a reason that has
+        // nothing to do with the real bug it exists to prove.
+        long holderRealHoldMillis = 1_000;
 
         CountDownLatch holderAcquired = new CountDownLatch(1);
         AtomicLong holderReleasedAtNanos = new AtomicLong(-1);

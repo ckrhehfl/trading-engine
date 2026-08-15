@@ -508,9 +508,9 @@ final class AccountLedgerLock implements AutoCloseable {
 
     /**
      * Returns {@code true} if a stale lock was found and deleted (caller
-     * should retry {@link Files#createFile} immediately), {@code false} if
-     * the lock is live/recent (caller should back off) or its metadata
-     * could not be read right now.
+     * should retry {@link #createAndWriteMetadata} immediately), {@code
+     * false} if the lock is live/recent (caller should back off) or its
+     * metadata could not be read right now.
      *
      * <p><b>Real TOCTOU finding from this task's own required real-second-
      * JVM test, fixed here rather than merely disclosed</b> (see {@link

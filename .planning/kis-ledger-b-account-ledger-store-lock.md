@@ -1389,8 +1389,7 @@ whole task, zero lost updates in any of them, at every realistic
 threshold this task has ever actually configured for correctness
 testing).
 
-### A real tooling mistake after round 10, caught by the governing
-coordinator, not by me
+### A real tooling mistake after round 10, caught by the governing coordinator, not by me
 
 After pushing round 10's fixes (commit `ee7c8c4`), I posted
 `@coderabbitai rate limit` twice (18:18:41Z and 18:28:27Z) and, both
@@ -1435,6 +1434,67 @@ correctly finding a genuine, real rate-limit reply
 (id=5303659046, 18:35:07Z, "next review available in 12 minutes") that
 an unpaginated call would again have missed.
 
+### Round 11
+
+Against commit `1b3eda3` (after round 10's fixes plus the pagination-
+mistake disclosure above were both pushed — a real review confirmed via
+the GitHub reviews API to target this exact commit sha, `submitted_at:
+2026-08-15T18:53:46Z`): `CHANGES_REQUESTED`, 3 actionable comments, all
+three real, all three fixed:
+
+- **A markdown heading in this very document broke MD022 (Trivial) —
+  and, worse than the lint violation alone, the heading text itself was
+  silently truncated.** Real, and a genuine self-inflicted mistake, not
+  just a style nit: the round-10 pagination-mistake heading above
+  (`### A real tooling mistake after round 10, caught by the governing
+  coordinator, not by me`) had been wrapped across two source lines when
+  written. Markdown headings are single-line constructs — only the first
+  line (`### A real tooling mistake after round 10, caught by the
+  governing`) was actually parsed as the heading; the second line
+  (`coordinator, not by me`) silently became an ordinary paragraph
+  immediately following it with no blank line, which is what MD022
+  actually caught. Fixed by joining the heading onto one physical line
+  with a blank line after it, matching every other heading in this
+  document.
+- **`tryStealIfStale`'s own Javadoc (around line 511) told callers to
+  retry `Files#createFile` — a method this class stopped calling
+  entirely when it moved to `Files.newByteChannel(lockPath, CREATE_NEW,
+  WRITE)` (documented in this class's own Javadoc, lines 56/132-138).**
+  Real: confirmed by grep that `createAndWriteMetadata` (the actual
+  retry target) calls `Files.newByteChannel`, not `Files.createFile`,
+  anywhere in this file. This specific reference was describing *current*
+  retry behavior (what a caller should do right now), not — unlike the
+  file's many other `Files#createFile` mentions — narrating past bug
+  history from before that refactor, so it was a real, live inaccuracy
+  and needed fixing; those other historical mentions were checked and
+  left alone, since changing them would misrepresent what was actually
+  investigated at the time. Fixed by pointing the Javadoc at
+  `{@link #createAndWriteMetadata}` instead.
+- **The round-10 deterministic mutual-exclusion test had a thin real
+  timing margin (Minor, but a legitimate flakiness risk, not just
+  style).** Real: `holderRealHoldMillis = 150` combined with the
+  waiter's own 40ms wait before attempting to steal
+  (`pathologicallySmallStaleThreshold` 10ms + a 30ms buffer) left only
+  ~110ms for the entire steal operation — read metadata, judge
+  staleness, delete, create + write new metadata, re-verify — to finish
+  before the holder legitimately released. This class's own Javadoc
+  already documents real, measured 500ms+ transient write latency on
+  this project's actual drvfs mount under contention; a 110ms margin
+  could plausibly be too thin on a slow or loaded machine, which would
+  fail this test for a reason unrelated to the real bug it exists to
+  prove. Fixed by raising `holderRealHoldMillis` to 1,000ms (a ~960ms
+  margin), with a comment explaining why, rather than shortening the
+  waiter's own wait (which would weaken the "holder is still genuinely,
+  legitimately active" guarantee the test's whole premise depends on).
+
+Re-ran after all three round-11 fixes: `./gradlew clean build` — still
+green, **439 tests, 0 failures, 0 errors** project-wide (no new test
+methods this round — a doc heading fix, a Javadoc reference fix, and a
+timing-constant change to an existing test). Re-verified the real safety
+property specifically: `AccountLedgerLockTest` (11/11, including the
+retimed test) and `AccountLedgerLockMultiProcessTest` both green as part
+of the same `clean build` run.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1450,7 +1510,8 @@ an unpaginated call would again have missed.
   round 6's (2 more new tests); 21/21 after round 7's (no store-level
   changes that round); 21/21 after round 8's (no store-level changes that
   round either); 21/21 after round 9's (no store-level changes that round
-  either); 22/22 after round 10's (1 more new test).
+  either); 22/22 after round 10's (1 more new test); 22/22 after round
+  11's (no store-level changes that round either).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1462,7 +1523,9 @@ an unpaginated call would again have missed.
   after round 8's (a refactor reusing existing test coverage plus two
   doc/dead-code cleanups, no new methods); 9/9 after round 9's (a
   signature/propagation refactor plus a strengthened existing assertion,
-  no new methods); 11/11 after round 10's (2 more new tests).
+  no new methods); 11/11 after round 10's (2 more new tests); 11/11 after
+  round 11's (a Javadoc reference fix and a timing-constant change to an
+  existing test, no new methods).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1472,7 +1535,8 @@ an unpaginated call would again have missed.
   **3 more times** after round 4, **3 more times** after round 5, once
   more (part of the full `clean build`) after round 6, **3 more times**
   after round 7, **3 more times** after round 8, **3 more times** after
-  round 9, **3 more times** after round 10.
+  round 9, **3 more times** after round 10, once more (part of the full
+  `clean build`) after round 11.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1493,11 +1557,15 @@ an unpaginated call would again have missed.
   10 *separately* also produced a real, reproducible, deliberately
   pathological-configuration failure — see that round's own entry — which
   is the point of that round's new dedicated deterministic test, not a
-  regression in this realistic-configuration count).
+  regression in this realistic-configuration count; round 11 made no
+  control-flow change to `AccountLedgerLock`'s acquisition logic (a
+  Javadoc reference fix and a timing-constant change to an existing test
+  only), so it did not independently warrant a further raw stress-harness
+  round beyond the full `clean build`'s own real multi-process test run).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, and 10.
+  8, 9, 10, and 11.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -1506,7 +1574,7 @@ an unpaginated call would again have missed.
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
-  3 from round 10's).
+  3 from round 10's + 0 net-new from round 11's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
