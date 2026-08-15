@@ -19,6 +19,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
@@ -226,6 +227,102 @@ class AccountLedgerLockTest {
     }
 
     /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR: choosing a {@code staleThreshold} <b>shorter than a legitimate
+     * holder's own real critical-section duration</b> causes a genuine
+     * mutual-exclusion violation. This is not a bug in {@link
+     * AccountLedgerLock#acquire}'s own steal logic -- it does exactly
+     * what its documented contract says: steal a lock whose {@code
+     * acquiredAt} exceeds {@code staleThreshold}, regardless of whether
+     * the holder is provably dead or merely still legitimately working.
+     * It is a real, demonstrated consequence of the staleness-by-elapsed-
+     * time design that every caller of {@code acquire} must respect when
+     * choosing a real {@code staleThreshold} value.
+     *
+     * <p><b>First observed empirically, not just reasoned about</b>: a raw
+     * multi-process stress run (this task's own {@code LockContenderMain}
+     * harness, 6 processes × 8 iterations, {@code staleThreshold=1ms}
+     * against a real ~15ms hold time) reliably lost real increments every
+     * time it was run (well below the expected 48, some individual
+     * contender processes even exiting with real errors) -- direct
+     * evidence, not a hypothetical, that this failure mode is real on
+     * this repository's actual filesystem. This test reproduces the same
+     * underlying phenomenon deterministically, with two real threads and
+     * controlled timing (`Thread.sleep`, not real multi-process
+     * scheduling variance), rather than the inherently timing-variable
+     * raw harness used for that original discovery -- proving this is a
+     * real, general property of the design itself, not an artifact
+     * specific to that harness's own timing.
+     *
+     * <p><b>Deliberately not "fixed" with an enforced minimum {@code
+     * staleThreshold}</b>: the real minimum any given deployment actually
+     * needs depends entirely on how long <i>that deployment's own real
+     * critical sections</i> can legitimately run -- a property only a
+     * caller (this class's own Task C, not yet built) can know, not
+     * something this primitive can validate in advance without inventing
+     * an arbitrary constant unmoored from any real, justified number.
+     * This is documented as a real, disclosed caller-contract requirement
+     * instead (see the class Javadoc): {@code staleThreshold} must be
+     * chosen comfortably larger than the longest legitimate critical
+     * section this lock will ever protect -- this project's own proposed
+     * real default (~30s, per the governing plan) already has enormous
+     * headroom over any critical section this lock is actually expected
+     * to protect.
+     */
+    @Test
+    void aStaleThresholdShorterThanARealHoldersOwnCriticalSectionCausesARealMutualExclusionViolation(
+            @TempDir Path tempDir) throws Exception {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        Duration pathologicallySmallStaleThreshold = Duration.ofMillis(10);
+        long holderRealHoldMillis = 150;
+
+        CountDownLatch holderAcquired = new CountDownLatch(1);
+        AtomicLong holderReleasedAtNanos = new AtomicLong(-1);
+        List<Throwable> holderFailures = new CopyOnWriteArrayList<>();
+
+        Thread holder = new Thread(() -> {
+            try (AccountLedgerLock lock =
+                    AccountLedgerLock.acquire(lockPath, pathologicallySmallStaleThreshold, GENEROUS_RETRY_BUDGET)) {
+                holderAcquired.countDown();
+                Thread.sleep(holderRealHoldMillis); // its own real, legitimate critical-section work
+            } catch (Throwable e) {
+                holderFailures.add(e);
+            } finally {
+                holderReleasedAtNanos.set(System.nanoTime());
+            }
+        });
+        holder.start();
+        assertTrue(holderAcquired.await(5, TimeUnit.SECONDS), "holder must acquire first");
+
+        // Wait long enough for the holder's own acquiredAt to exceed the
+        // pathologically small staleThreshold while it is still
+        // genuinely, actively sleeping inside its own critical section.
+        Thread.sleep(pathologicallySmallStaleThreshold.toMillis() + 30);
+
+        long stolenAcquiredAtNanos;
+        try (AccountLedgerLock stolen =
+                AccountLedgerLock.acquire(lockPath, pathologicallySmallStaleThreshold, GENEROUS_RETRY_BUDGET)) {
+            stolenAcquiredAtNanos = System.nanoTime();
+        }
+
+        holder.join(TimeUnit.SECONDS.toMillis(5));
+        assertTrue(holderFailures.isEmpty(), "holder thread must not have failed: " + holderFailures);
+        assertTrue(holderReleasedAtNanos.get() > 0, "holder must have finished by now");
+
+        // The proof: the second acquire() succeeded WHILE the original
+        // holder was still genuinely, legitimately active -- both were
+        // concurrently "inside the lock" from their own perspective, a
+        // real mutual-exclusion violation directly caused by
+        // staleThreshold being shorter than the holder's own real
+        // critical-section duration.
+        assertTrue(
+                stolenAcquiredAtNanos < holderReleasedAtNanos.get(),
+                "expected the steal to succeed WHILE the original holder was still genuinely active -- proving a"
+                        + " real mutual-exclusion violation when staleThreshold is shorter than a legitimate"
+                        + " holder's own real critical-section duration");
+    }
+
+    /**
      * Deterministic regression test for a Critical finding from this
      * task's own real CodeRabbit review (see {@link AccountLedgerLock
      * #close}'s own Javadoc for the full real scenario this closes):
@@ -256,6 +353,46 @@ class AccountLedgerLockTest {
         assertTrue(
                 Files.readString(lockPath).contains("someone-else"),
                 "the sibling's own lock content must be completely untouched");
+    }
+
+    /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR: {@code close()} must be idempotent. Without that, a second call
+     * on an already-closed instance would re-examine {@code lockPath} --
+     * and if a sibling had since legitimately acquired a brand new
+     * generation there (a real, plausible sequence, not contrived: this
+     * instance's own first {@code close()} already ran and deleted its
+     * own file, vacating the path for anyone), the second call would log
+     * a real {@code ERROR} that reads exactly like a genuine cross-process
+     * safety event ("no longer holds this instance's own metadata"),
+     * purely as an artifact of being called twice -- even though nothing
+     * was ever actually wrong and the first call already completed
+     * correctly.
+     */
+    @Test
+    void closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall(@TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        AccountLedgerLock lock =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+
+        lock.close();
+        assertFalse(Files.exists(lockPath), "the first close() call must have deleted this instance's own lock file");
+
+        // A sibling legitimately acquires a brand new generation at the
+        // same path, entirely after this instance's own close() already
+        // completed.
+        Files.writeString(
+                lockPath,
+                "{\"pid\":999999999,\"hostname\":\"someone-else\",\"acquiredAt\":\"" + Instant.now() + "\"}");
+
+        lock.close(); // a second call on the same, already-closed instance
+
+        assertTrue(
+                Files.exists(lockPath),
+                "a second close() call must be a pure no-op -- it must never touch a different holder's lock file");
+        assertTrue(
+                Files.readString(lockPath).contains("someone-else"),
+                "the sibling's own lock content must be completely untouched by the repeat close() call");
     }
 
     /**

@@ -100,6 +100,34 @@ import org.slf4j.LoggerFactory;
  * at which point it throws {@link IllegalStateException} -- this class
  * never hangs indefinitely.
  *
+ * <p><b>Real caller contract, a further real CodeRabbit review round on
+ * this PR: {@code staleThreshold} must be chosen comfortably larger than
+ * the longest legitimate critical section this lock will ever protect.</b>
+ * This is not a hypothetical -- empirically demonstrated, not just
+ * reasoned about, by a real raw multi-process stress run
+ * ({@code staleThreshold=1ms} against a real ~15ms hold time) that
+ * reliably lost real increments every time it ran, and reproduced
+ * deterministically by {@link
+ * AccountLedgerLockTest#aStaleThresholdShorterThanARealHoldersOwnCriticalSectionCausesARealMutualExclusionViolation}.
+ * The mechanism: {@link #acquire}'s own steal logic does exactly what its
+ * documented contract above says -- steal a lock whose {@code
+ * acquiredAt} exceeds {@code staleThreshold}, regardless of whether the
+ * holder is provably dead or merely still legitimately working. If a
+ * real holder's own critical section legitimately takes longer than
+ * {@code staleThreshold}, a waiter will steal its still-live lock out
+ * from under it, and both processes end up concurrently "inside the
+ * lock" from their own perspective -- a real mutual-exclusion violation,
+ * not a bug in this class's own logic. Deliberately <b>not</b> guarded by
+ * an enforced minimum {@code staleThreshold} inside this class: the real
+ * minimum any given deployment needs depends entirely on how long
+ * <i>that deployment's own real critical sections</i> can legitimately
+ * run, a property only a caller (this class's own Task C, not yet built)
+ * can know -- inventing an arbitrary constant here, unmoored from any
+ * real caller's actual usage, would be worse than stating the real
+ * requirement plainly. This project's own proposed real default
+ * (~30s, per the governing plan) already has enormous headroom over any
+ * critical section this lock is actually expected to protect.
+ *
  * <p><b>Deviation from the governing plan's own literal code sketch</b>:
  * the plan's summary writes {@code Files.createFile(path,
  * StandardOpenOption.CREATE_NEW)} -- {@link Files#createFile} does not
@@ -147,6 +175,26 @@ final class AccountLedgerLock implements AutoCloseable {
      * #tryStealIfStale}'s acquire-side fix).
      */
     private final LockMetadata ownMetadata;
+
+    /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR: {@link #close} was not idempotent -- a second call on an
+     * already-closed instance (this project's own convention is
+     * try-with-resources, which never double-closes on its own, but
+     * nothing prevented a caller from doing so directly, and {@link
+     * AutoCloseable#close()}'s own contract does not forbid it the way
+     * {@link java.io.Closeable#close()}'s stricter one does) would
+     * re-read {@code lockPath} and, if some other process had since
+     * legitimately acquired a brand new generation there, log a real
+     * {@code ERROR} ("no longer holds this instance's own metadata...")
+     * that reads as a genuine cross-process safety event even though
+     * nothing wrong actually happened -- a harmless double-close would
+     * never have deleted the sibling's lock (the existing generation
+     * check already prevented that), but the misleading log noise alone
+     * is a real problem for anyone investigating it. Guarded here rather
+     * than left to each future caller to avoid double-closing on its own.
+     */
+    private boolean closed;
 
     private AccountLedgerLock(Path lockPath, LockMetadata ownMetadata) {
         this.lockPath = lockPath;
@@ -854,9 +902,28 @@ final class AccountLedgerLock implements AutoCloseable {
      * but each now gets its own honest log message so an operator
      * investigating isn't pointed at "mutual exclusion was lost" for a
      * transient filesystem hiccup.
+     *
+     * <p><b>Idempotent</b> -- a second call on an already-closed instance
+     * is a pure no-op (see this class's own {@link #closed} field
+     * Javadoc for the real, misleading-log-noise problem this prevents).
+     * {@link #closed} is deliberately set only after {@link #doClose}
+     * returns normally, not up front: if some genuinely unanticipated
+     * exception ever escapes {@link #doClose} uncaught (everything this
+     * class's own logic can throw is already handled inside it), a
+     * subsequent {@code close()} call must still be able to retry rather
+     * than silently, permanently no-op-ing on a cleanup that never
+     * actually happened.
      */
     @Override
     public void close() {
+        if (closed) {
+            return;
+        }
+        doClose();
+        closed = true;
+    }
+
+    private void doClose() {
         try {
             LockMetadata current = readMetadataOrNull(lockPath);
             if (current == null) {

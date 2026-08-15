@@ -397,6 +397,36 @@ class AccountLedgerStoreTest {
     }
 
     /**
+     * Real Trivial finding, a further real CodeRabbit review round on
+     * this PR: round 3's own fix (switching the temp-file open options
+     * from a naive {@code CREATE_NEW} to {@code CREATE,
+     * TRUNCATE_EXISTING, WRITE}, matching {@code Files.writeString}'s own
+     * documented defaults) was never exercised by a dedicated test proving
+     * its own stated reason for existing -- that a leftover {@code .tmp}
+     * file from an earlier interrupted {@code persist()} must still be
+     * overwritable on retry, not rejected with {@code
+     * FileAlreadyExistsException}. Proven directly here: a stale, garbage
+     * {@code .tmp} file is written by hand first, then {@code persist} is
+     * called normally and must still succeed, consuming/replacing it.
+     */
+    @Test
+    void persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Path tmp = tempDir.resolve("ledger.json.tmp");
+        Files.writeString(tmp, "stale garbage from an earlier interrupted persist() call");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        AccountLedgerStore.persist(file, ledger);
+
+        assertTrue(Files.exists(file), "persist must succeed despite the leftover .tmp file, not throw");
+        assertFalse(Files.exists(tmp), "the stale .tmp file must be consumed/replaced, not left behind");
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+        assertEquals(ledger, reloaded);
+    }
+
+    /**
      * Test-only seam (package-private {@code AtomicMover} overload,
      * mirroring {@code SubmissionMarkerStore}'s own identical testability
      * pattern -- this codebase's established convention is that each

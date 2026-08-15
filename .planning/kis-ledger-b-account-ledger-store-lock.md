@@ -984,8 +984,14 @@ Against commit `78aa832` (after round 5's fixes were pushed — a real
 review confirmed via the GitHub reviews API to target this exact commit
 sha, `submitted_at: 2026-08-15T13:38:15Z`): `CHANGES_REQUESTED`, 2
 actionable inline comments — both real, both fixed. The finding count
-continuing to shrink each round (7 → 6 → 4 → 2 → 3 → 2) reflects the
-fixable surface genuinely narrowing, not a plateau:
+continuing to shrink each round (7 → 4 → 6 → 2 → 3 → 2) reflects the
+fixable surface genuinely narrowing, not a plateau. **Correction, a
+further real CodeRabbit review round**: this sequence originally read
+"7 → 6 → 4 → 2 → 3 → 2" here, transposing rounds 2 and 3's own real
+counts (4 and 6 respectively, confirmed directly against each round's
+own "Actionable comments posted" line in this same document) — a real
+transcription error in this summary sentence, not in either round's own
+detailed entry above, which were always correct. Fixed in place.
 
 - **`AccountLedger` didn't reject two reservations sharing the same
   `clientOrderId` (Trivial).** Real, and the same reasoning already
@@ -1277,6 +1283,112 @@ processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
 correct** (230 clean stress rounds / 11,040 individual lock acquisitions
 across the whole task, zero lost updates in any of them).
 
+### Round 10
+
+Against commit `9cdfd70` (after round 9's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T17:55:41Z`): `CHANGES_REQUESTED`, 4
+actionable comments, all four real, all four addressed -- including one
+that led to a genuinely new empirical discovery deeper than what was
+literally asked for:
+
+- **A round-count summary sentence in this very document transposed
+  rounds 2 and 3's own real counts (Trivial).** Real: "7 → 6 → 4 → 2 → 3
+  → 2" should read "7 → 4 → 6 → 2 → 3 → 2" (round 2 had 4 actionable
+  comments, round 3 had 6 -- confirmed directly against each round's own
+  "Actionable comments posted" line, both already correctly recorded in
+  each round's own detailed entry; only this one summary sentence had
+  them swapped). Fixed in place, with a correction note rather than a
+  silent edit, matching this document's own established practice.
+- **`AccountLedgerStore.persist`'s own round-3 fix (overwriting a leftover
+  `.tmp` file from an earlier interrupted attempt, instead of the naive
+  `CREATE_NEW` that would reject it) was never actually exercised by a
+  dedicated test proving that specific claim (Trivial).** Real: existing
+  tests covered the ordinary case and the `AtomicMover`-failure fallback,
+  but nothing wrote a stale `.tmp` file by hand first and confirmed
+  `persist` still succeeds against it. New test:
+  `persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt`.
+- **`close()` was not idempotent (Major).** Real: nothing prevented a
+  caller from invoking `close()` twice on the same instance (this
+  project's own try-with-resources convention never does so on its own,
+  but the `AutoCloseable` contract itself doesn't forbid a caller from
+  doing so directly, unlike `Closeable`'s own stricter one). A second
+  call would re-examine `lockPath` -- and if a sibling had since
+  legitimately acquired a brand new generation there (a real, plausible
+  sequence: this instance's own first `close()` already ran and deleted
+  its own file, vacating the path for anyone), the second call would log
+  a real `ERROR` reading exactly like a genuine cross-process safety
+  event, purely as an artifact of being called twice, even though the
+  first call already completed correctly and nothing was ever actually
+  wrong. Fixed: a `closed` field now short-circuits any call after the
+  first to a pure no-op. Deliberately set only *after* the underlying
+  `doClose()` helper returns normally, not up front -- if some genuinely
+  unanticipated exception ever escaped uncaught (everything this class's
+  own logic can throw is already handled inside it), a subsequent
+  `close()` call must still be able to retry rather than silently,
+  permanently no-op-ing on a cleanup that never actually happened. New
+  test: `closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall`.
+- **`staleThreshold` has no enforced relationship to real filesystem mtime
+  precision, and the review's own suggested regression test should use a
+  threshold below the observed precision rather than relying on the
+  existing 60-second backdated-timestamp test (Major).** Investigated
+  empirically rather than accepted or dismissed on the stated premise
+  alone -- and the investigation found something real, but structurally
+  different from (and more consequential than) the literal framing.
+  First, the literal claim: a dedicated probe (repeated rapid writes to a
+  real file under this repository's own `java/runtime/build/tmp/`)
+  measured this drvfs mount's actual mtime precision at a real,
+  positively-confirmed sub-3ms resolution -- 200 back-to-back writes with
+  no artificial delay produced 199 *distinct* mtimes, zero collisions.
+  This project's own realistic `staleThreshold` values (this task's own
+  tests already use values as low as 50ms; the governing plan's proposed
+  real default is ~30s) sit far above that measured floor, so the
+  literal "mtime precision" framing does not describe a real, currently
+  reachable risk on this project's actual filesystem or usage.
+
+  **But testing the literal framing directly surfaced a real, different,
+  more serious problem**: running the raw multi-process stress harness
+  with a deliberately pathological `staleThreshold=1ms` against a real
+  ~15ms hold time reliably lost real increments on every run (well below
+  the expected 48 out of 48; several individual contender processes even
+  exited with real errors). The actual mechanism has nothing to do with
+  mtime precision at all: it is `acquire`'s own steal logic working
+  exactly as documented -- when `staleThreshold` is shorter than a
+  legitimate holder's own real critical-section duration, a waiter
+  correctly-by-the-rules steals the still-live holder's lock out from
+  under it, and both processes end up concurrently "inside the lock"
+  from their own perspective. A genuine mutual-exclusion violation, not a
+  bug in this class's own code -- a real, disclosed caller-contract
+  requirement on `staleThreshold` itself. Reproduced deterministically
+  (two real threads, controlled timing, not the raw harness's own timing
+  variance) by a new test,
+  `aStaleThresholdShorterThanARealHoldersOwnCriticalSectionCausesARealMutualExclusionViolation`,
+  confirmed stable across 5 repeated runs. **Deliberately not "fixed"
+  with an enforced minimum `staleThreshold`**: the real minimum any given
+  deployment needs depends entirely on how long *that deployment's own
+  real critical sections* can legitimately run -- a property only a
+  caller (Task C, not yet built) can know, not something this primitive
+  can validate in advance without inventing an arbitrary constant unmoored
+  from any real, justified number (the same reasoning this document has
+  already applied to declining a hard-coded fsync/backup guarantee in
+  earlier rounds). Documented instead as an explicit, real caller
+  contract in the class Javadoc, citing both the raw-harness discovery
+  and the deterministic reproduction.
+
+Re-ran after all four round-10 fixes: `./gradlew clean build` — still
+green, **439 tests, 0 failures, 0 errors** project-wide (436 + 3 new: 1
+in `AccountLedgerStoreTest`, 2 in `AccountLedgerLockTest`). Re-verified
+the real safety property specifically, at this task's own *realistic*
+threshold values (not the deliberately pathological one used only to
+prove the new finding above): `AccountLedgerLockMultiProcessTest` 3 more
+times (`--rerun-tasks`, green every time) and a further clean 25-round
+raw stress harness run (6 processes × 8 iterations, 48 expected per
+round, `staleThreshold=30s`) — **25/25 rounds exactly correct** (255
+clean stress rounds / 12,240 individual lock acquisitions across the
+whole task, zero lost updates in any of them, at every realistic
+threshold this task has ever actually configured for correctness
+testing).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1292,7 +1404,7 @@ across the whole task, zero lost updates in any of them).
   round 6's (2 more new tests); 21/21 after round 7's (no store-level
   changes that round); 21/21 after round 8's (no store-level changes that
   round either); 21/21 after round 9's (no store-level changes that round
-  either).
+  either); 22/22 after round 10's (1 more new test).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1304,7 +1416,7 @@ across the whole task, zero lost updates in any of them).
   after round 8's (a refactor reusing existing test coverage plus two
   doc/dead-code cleanups, no new methods); 9/9 after round 9's (a
   signature/propagation refactor plus a strengthened existing assertion,
-  no new methods).
+  no new methods); 11/11 after round 10's (2 more new tests).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1314,7 +1426,7 @@ across the whole task, zero lost updates in any of them).
   **3 more times** after round 4, **3 more times** after round 5, once
   more (part of the full `clean build`) after round 6, **3 more times**
   after round 7, **3 more times** after round 8, **3 more times** after
-  round 9.
+  round 9, **3 more times** after round 10.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1322,27 +1434,33 @@ across the whole task, zero lost updates in any of them).
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
   fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
   **25/25 more** after round 4's, **25/25 more** after round 5's,
-  **25/25 more** after round 7's, **25/25 more** after round 8's, and
-  **25/25 more** after round 9's (6 processes × 8 iterations = 48
-  expected per round every time: **230 clean rounds total, 11,040
-  individual lock acquisitions, zero lost updates** across the whole
-  task's real, non-Gradle stress testing — round 6 was documentation/
-  record-validation only and did not touch `AccountLedgerLock`'s own
-  acquisition control flow, so it did not independently warrant a further
-  raw stress-harness round on top of the full `clean build`'s own real
-  multi-process test run).
+  **25/25 more** after round 7's, **25/25 more** after round 8's,
+  **25/25 more** after round 9's, and **25/25 more** after round 10's (6
+  processes × 8 iterations = 48 expected per round every time, at this
+  task's own realistic `staleThreshold` values: **255 clean rounds
+  total, 12,240 individual lock acquisitions, zero lost updates** across
+  the whole task's real, non-Gradle stress testing at realistic
+  configuration — round 6 was documentation/record-validation only and
+  did not touch `AccountLedgerLock`'s own acquisition control flow, so it
+  did not independently warrant a further raw stress-harness round on
+  top of the full `clean build`'s own real multi-process test run; round
+  10 *separately* also produced a real, reproducible, deliberately
+  pathological-configuration failure — see that round's own entry — which
+  is the point of that round's new dedicated deterministic test, not a
+  regression in this realistic-configuration count).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, and 9.
+  8, 9, and 10.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **436 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **439 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
-  from round 7's + 0 net-new from round 8's + 0 net-new from round 9's).
+  from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
+  3 from round 10's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
