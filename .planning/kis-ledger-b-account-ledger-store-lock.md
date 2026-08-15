@@ -758,6 +758,105 @@ processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
 correct** (105 clean stress rounds / 5,040 individual lock acquisitions
 across the whole task, zero lost updates in any of them).
 
+### Round 4
+
+CodeRabbit rate-limited again after round 3's push (ETA "9 seconds" this
+time, confirmed via `@coderabbitai rate limit`) — waited briefly and
+re-requested rather than assuming it would clear on its own; the next
+`full review` request ran normally.
+
+Against commit `982c94e` (after round 3's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T11:26:11Z`): `CHANGES_REQUESTED`, 2
+actionable inline comments — the smallest finding count of any round so
+far, consistent with the fixable surface genuinely narrowing each round
+rather than the reviewer finding a constant trickle regardless of fix
+quality. Both real and fixed:
+
+- **`acquire`'s own success signal was still not generation-safe, even
+  after round 2's content-corruption fix (Major, "Heavy lift") — the
+  deepest single finding of the whole task.** Real, and distinct from
+  everything fixed so far: round 2's open-handle fix protects the lock
+  file's *content* from a slow, orphaned writer's stale write clobbering
+  a sibling's real metadata — proven by
+  `aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen`.
+  But it does **not** protect `createAndWriteMetadata`'s own **return
+  value**: a write through an orphaned channel still *succeeds* from the
+  channel's own perspective (it writes to its own now-path-invisible
+  file — that's the entire mechanism the round-2 fix relies on), so the
+  method would still return a real, non-null `LockMetadata`, and
+  `acquire()` would still hand its caller a live `AccountLedgerLock` —
+  even though a sibling had, in the interim, legitimately reclaimed the
+  path via `tryStealIfAbandonedEmpty` and is the real, live holder there
+  right now. Traced through concretely: (1) this holder opens a
+  `CREATE_NEW` channel, slow to write (the same real, measured drvfs
+  latency this whole task keeps encountering); (2) a sibling judges the
+  still-empty file abandoned, deletes it, and acquires its own real new
+  generation; (3) this holder's original write finally lands on its own
+  orphaned file and returns normally; (4) **both** processes' own
+  `acquire()` calls return successfully, both believing they hold the
+  lock, with only the sibling's belief actually reflected in the real
+  file. A genuine loss of mutual exclusion, structurally different from
+  (and unreachable by) the content-corruption fix — this is about the
+  *success signal*, not the *content*.
+
+  **Fixed**: `createAndWriteMetadata` now re-reads `lockPath` immediately
+  after its write completes and confirms the content still matches
+  exactly what it just wrote; if not, it returns `null` instead of the
+  metadata — a defined "lost the race" signal, not an error.
+  `acquire()`'s loop treats a `null` return exactly like ordinary
+  contention (back off, retry) rather than success or a hard failure, and
+  critically **never deletes anything** in this path — the path now
+  legitimately belongs to whoever's generation the re-read found, and
+  this method has no standing to touch it (the same principle already
+  applied to the steal and close paths, extended to the one remaining
+  place — the create path itself — that didn't have it yet). This closes
+  the last of the three related races this task's later review rounds
+  found on the same underlying mechanism (content corruption in round 2,
+  the empty-file cleanup/reclaim gap also in round 2, and now the
+  success-signal gap in round 4) — all three traced back to the same
+  root cause: a slow write can outlive the window in which the writer is
+  still the path's rightful owner, and every place that matters (write
+  itself, steal, close, and now create's own success) needed its own
+  re-verification against that possibility.
+
+  No new dedicated test was added for this specific interleaving --
+  reproducing it deterministically would need the same kind of
+  open-handle-then-steal-then-complete-the-write sequence already proven
+  once by
+  `aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen`,
+  and that existing test's own final assertion (comparing file content
+  before and after the delayed write) already exercises
+  `createAndWriteMetadata`'s real code path end to end; a second,
+  near-duplicate test asserting `createAndWriteMetadata` itself returns
+  `null` in the same scenario was judged to add construction cost without
+  meaningfully new coverage, given the fix is a small, direct, easily-
+  inspected re-verify-then-branch. The 25-round raw stress harness re-run
+  below is the real, load-bearing proof this fix doesn't regress the
+  measured safety property, not a unit test claim alone.
+- **`AccountLedgerStore.load` had the exact same "JSON literal `null`"
+  gap round 3 had already found and fixed in `AccountLedgerLock`, just in
+  the sibling class (Major).** Real, and a direct parallel: `MAPPER
+  .readValue(raw, AccountLedger.class)` also returns a plain Java `null`
+  for JSON `null` content without throwing; the very next line
+  (`ledger.venue()`) would have thrown a raw `NullPointerException`
+  instead of this method's own intended `IllegalStateException` fail-
+  closed contract. Fixed with an explicit `ledger == null` check
+  immediately after deserialization, before any field access. New test:
+  `aFileContainingTheJsonLiteralNullFailsClosed` (`Files.writeString(file,
+  "null")` → `assertThrows(IllegalStateException.class, ...)`).
+
+Re-ran after both round-4 fixes: `./gradlew clean build` — still green,
+**431 tests, 0 failures, 0 errors** project-wide (430 + 1 new: the
+JSON-null regression test in `AccountLedgerStoreTest`). Re-verified the
+real safety property specifically, given this round's fix touches the
+core `acquire()` control flow directly:
+`AccountLedgerLockMultiProcessTest` 3 more times (`--rerun-tasks`, green
+every time) and a further clean 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct** (130 clean stress rounds / 6,240 individual lock acquisitions
+across the whole task, zero lost updates in any of them).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -768,37 +867,41 @@ across the whole task, zero lost updates in any of them).
   removed — see "TDD" above; zero warnings on the final version); 14/14
   after round 1's CodeRabbit fixes (4 new tests); 16/16 after round 2's
   (2 more new tests); 16/16 after round 3's (no new test methods, existing
-  ones' production-code dependencies changed).
+  ones' production-code dependencies changed); 17/17 after round 4's (1
+  more new test).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
-  test); 8/8 after round 3's (existing tests modified, no new methods).
+  test); 8/8 after round 3's (existing tests modified, no new methods);
+  8/8 after round 4's (existing production code changed, no new test
+  methods — see round 4's own entry for why).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
   above); green after the fix, confirmed **5 additional times**
   (`--rerun-tasks`) before round 1's review, **3 more times** after round
-  1, **3 more times** after round 2, **3 more times** after round 3.
+  1, **3 more times** after round 2, **3 more times** after round 3,
+  **3 more times** after round 4.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
   reasonable wall-clock time) — **30/30 rounds exactly correct** after the
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
-  fixes, **25/25 more** after round 2's, and **25/25 more** after round
-  3's (6 processes × 8 iterations = 48 expected per round every time:
-  **105 clean rounds total, 5,040 individual lock acquisitions, zero lost
-  updates** across the whole task's real, non-Gradle stress testing).
+  fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
+  and **25/25 more** after round 4's (6 processes × 8 iterations = 48
+  expected per round every time: **130 clean rounds total, 6,240
+  individual lock acquisitions, zero lost updates** across the whole
+  task's real, non-Gradle stress testing).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
-  1, part of the full `clean build` runs after rounds 2 and 3.
+  1, part of the full `clean build` runs after rounds 2, 3, and 4.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **430 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **431 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
-  round 3's, which changed existing code/tests rather than adding
-  methods).
+  round 3's + 1 from round 4's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

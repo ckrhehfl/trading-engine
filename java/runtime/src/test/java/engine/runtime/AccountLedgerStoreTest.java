@@ -127,6 +127,25 @@ class AccountLedgerStoreTest {
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
+    /**
+     * Real Major finding, real CodeRabbit review of this PR: the JSON
+     * literal {@code null} is valid JSON, so {@code
+     * MAPPER.readValue(raw, AccountLedger.class)} returns a plain Java
+     * {@code null} without throwing -- left unchecked, the very next
+     * access ({@code ledger.venue()}) would have thrown a raw {@code
+     * NullPointerException} instead of this method's own intended
+     * {@code IllegalStateException} fail-closed contract.
+     */
+    @Test
+    void aFileContainingTheJsonLiteralNullFailsClosed(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Files.writeString(file, "null");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
     @Test
     void aWellFormedJsonFileMissingARequiredFieldFailsClosed(@TempDir Path tempDir) throws IOException {
         Path file = tempDir.resolve("ledger.json");

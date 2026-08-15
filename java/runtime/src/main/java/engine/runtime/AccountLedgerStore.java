@@ -201,6 +201,19 @@ final class AccountLedgerStore {
                             + " freshly bootstrapped",
                     e);
         }
+        if (ledger == null) {
+            // A real Major finding, real CodeRabbit review of this PR:
+            // the JSON literal "null" is valid JSON, so Jackson returns a
+            // plain Java null here without throwing (not an error
+            // condition from its own perspective) -- left unchecked, the
+            // very next line's ledger.venue() would throw a raw
+            // NullPointerException instead of this class's own intended
+            // IllegalStateException fail-closed contract.
+            throw new IllegalStateException(
+                    "account ledger file " + ledgerPath + " parsed as the JSON literal null, not a real"
+                            + " AccountLedger -- refusing to start with unknown committed-exposure state rather"
+                            + " than silently treating it as freshly bootstrapped");
+        }
         if (!venue.equals(ledger.venue()) || !accountId.equals(ledger.accountId())) {
             throw new IllegalStateException(
                     "account ledger file " + ledgerPath + " holds venue/accountId (" + ledger.venue() + ", "

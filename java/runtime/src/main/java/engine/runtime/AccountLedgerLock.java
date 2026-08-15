@@ -158,6 +158,20 @@ final class AccountLedgerLock implements AutoCloseable {
 
             try {
                 LockMetadata ownMetadata = createAndWriteMetadata(lockPath);
+                if (ownMetadata == null) {
+                    // Our own write landed on an orphaned file -- a
+                    // sibling reclaimed lockPath (via
+                    // tryStealIfAbandonedEmpty) while we were still
+                    // writing to it, and is the real, live holder now.
+                    // We do not hold the lock. Treat exactly like
+                    // ordinary lost contention: back off and retry the
+                    // whole loop, never returning a lock we don't
+                    // actually have and never touching the sibling's
+                    // real file.
+                    sleepQuietly(backoffMillis);
+                    backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
+                    continue;
+                }
                 return new AccountLedgerLock(lockPath, ownMetadata);
             } catch (FileAlreadyExistsException e) {
                 if (tryStealIfStale(lockPath, staleThreshold)) {
@@ -232,6 +246,31 @@ final class AccountLedgerLock implements AutoCloseable {
      * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
      * proves this holds through the real production code path, not just
      * the standalone probe.
+     *
+     * <p><b>Third, still deeper Major finding, a further real CodeRabbit
+     * review round on this same PR, also fixed here.</b> The previous fix
+     * protects the <i>file's content</i> from corruption, but not
+     * {@link #acquire}'s own <i>success signal</i>: an orphaned channel's
+     * write still returns normally (it succeeds against its own, now
+     * path-invisible file -- that's the whole point of the previous fix),
+     * so this method would still return a real, non-null {@link
+     * LockMetadata} and {@link #acquire} would still hand the caller a
+     * live {@link AccountLedgerLock} -- even though a sibling had already
+     * reclaimed the path via {@link #tryStealIfAbandonedEmpty} and is
+     * holding a real, different generation there right now. Both this
+     * holder and the sibling would then believe, independently and
+     * wrongly, that they hold the lock -- a genuine loss of mutual
+     * exclusion, distinct from (and not fixed by) the content-corruption
+     * fix above. Fixed by re-reading {@code lockPath} immediately after
+     * the write completes and confirming it still holds exactly the
+     * {@link LockMetadata} just written; if not, this method returns
+     * {@code null} rather than the metadata -- a defined "lost the race"
+     * signal {@link #acquire} treats as ordinary contention (back off and
+     * retry the whole loop) rather than success or a hard failure. Never
+     * deletes anything in this path: unlike the steal/close paths, there
+     * is nothing stale to reclaim here -- the path now legitimately
+     * belongs to whoever's generation the re-read found, and this method
+     * has no business touching it.
      */
     private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
         Path parent = lockPath.toAbsolutePath().getParent();
@@ -263,7 +302,11 @@ final class AccountLedgerLock implements AutoCloseable {
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
             }
-            return metadata;
+            // Re-verify we still actually own lockPath -- see this
+            // method's own "Third, still deeper Major finding" Javadoc
+            // above for why a successful write alone does not prove this.
+            LockMetadata current = readMetadataOrNull(lockPath);
+            return metadata.equals(current) ? metadata : null;
         } catch (IOException | RuntimeException e) {
             // Best-effort, path-based cleanup -- not itself re-verified
             // against a specific generation the way the steal and close
