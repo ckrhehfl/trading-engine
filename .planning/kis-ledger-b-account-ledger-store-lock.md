@@ -1676,6 +1676,91 @@ and exception-cause-chaining changes only, zero new or modified test
 methods — no existing test asserts on the cause of either affected
 `IllegalStateException`, confirmed by grep before making the change).
 
+### Round 14
+
+Against commit `76ef2a9` (after round 13's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T22:09:38Z`): `CHANGES_REQUESTED`, 2
+actionable comments (both tagged Minor), both real, both fixed —
+identified via `pull_request_review_id` filtering per the gotcha
+disclosed above, not the unreliable `commit_id` filter:
+
+- **Both steal paths (`tryStealIfStale`, `tryStealIfAbandonedEmpty`)
+  logged their `ERROR` "stealing..." message *before* the
+  re-verify-immediately-before-delete check that this task's own real
+  TOCTOU finding put in place, not after.** Real: on the common, benign
+  path where re-verification finds the lock no longer matches (a
+  legitimate new holder already took it, or a sibling already stole it
+  first) and the method correctly returns `false` without deleting
+  anything, the `ERROR` log had *already* fired, falsely claiming "This
+  is a real cross-process safety event" for something that never
+  actually happened. This class's own Javadoc defines `ERROR` logging as
+  the primary diagnostic signal for a real steal — a false positive here
+  would send an operator investigating a "crash" that didn't occur, or
+  worse, desensitize them to the real signal over time. Fixed in both
+  methods by moving the `log.error(...)` call to after the re-verify
+  passes, immediately before the actual `Files.delete` call — so it only
+  ever fires when a delete is genuinely about to happen. No behavior
+  change to the actual steal/no-steal decision itself, only to when the
+  log line fires relative to it.
+- **`AccountLedgerStore.load()` never validated `defaultAllocatedCapital`
+  as positive, and never compared an existing ledger's stored `
+  allocatedVirtualCapital` against the currently-configured default at
+  all — only ever consulting it when bootstrapping a brand new ledger.**
+  Real, and directly grounded in CLAUDE.md's own "never weaken risk
+  limits... without explicit human approval" rule, cited explicitly in
+  the review comment itself: an operator lowering `defaultAllocatedCapital`
+  in configuration to reduce a risk budget would have that reduction
+  silently ignored for as long as a larger, previously-persisted value
+  remained on disk — the stored value would simply keep being used
+  as-is, forever. Initially considered declining this one (like the
+  Jackson BOM finding) as real reconciliation-policy work belonging to
+  Task C/D rather than Task B's own storage-primitives scope — but on
+  reading the review's own suggested fix, it turned out to be a much
+  narrower, purely defensive change than that: a positivity check on
+  `defaultAllocatedCapital` (`IllegalArgumentException` if
+  non-positive), plus a **fail-closed** check, symmetric with the
+  existing venue/accountId identity-mismatch check right next to it in
+  the same method, that throws `IllegalStateException` if a loaded
+  ledger's `allocatedVirtualCapital` exceeds the configured default.
+  Deliberately **not** an auto-reduction (which would silently mutate
+  stored state on this process's own initiative) — a human must resolve
+  the mismatch explicitly, the same discipline already established for
+  every other fail-closed case in this method. Deliberately says nothing
+  about whether a *smaller* stored allocation should ever be raised back
+  up to a larger configured default — that remains real reconciliation
+  policy this class's own Javadoc already defers to Task C/D, untouched
+  here. Documented in both the class-adjacent `load` Javadoc and inline;
+  three new regression tests added
+  (`loadRejectsAZeroOrNegativeDefaultAllocatedCapital`,
+  `loadFailsClosedWhenAnExistingLedgersAllocatedCapitalExceedsTheConfiguredDefault`,
+  `loadSucceedsWhenAnExistingLedgersAllocatedCapitalExactlyEqualsTheConfiguredDefault`
+  — the last one proving the check is strictly "greater than," not
+  "greater than or equal to," at the exact boundary). Fixing this also
+  required repairing one **pre-existing** test
+  (`loadReflectsTheLatestPersistedStateNotAStaleCachedOne`) that
+  persisted `2000` then reloaded with a default of `1000` — a real
+  conflict with the new check, unrelated to that test's own actual
+  subject (proving `load` has no in-memory caching, not capital-
+  reduction semantics); fixed by holding `defaultAllocatedCapital` fixed
+  at `2000` (≥ both persisted values) throughout, preserving the test's
+  original intent. Checked every other `load` call site in the test file
+  by hand before concluding this was the only real conflict — every
+  other site either uses matching/equal values, or expects an
+  `IllegalStateException` from an earlier-checked, unrelated cause
+  (missing file, corrupted JSON, identity mismatch, duplicate
+  `clientOrderId`) that fires before this new check is ever reached.
+
+Re-ran after both round-14 fixes: `./gradlew clean build` — still green,
+**442 tests, 0 failures, 0 errors** project-wide (439 + 3 new tests, all
+in `AccountLedgerStoreTest`). Re-verified the real safety property
+specifically, given the log-repositioning change touches
+`AccountLedgerLock`'s own steal paths (even though it changes no actual
+branching/timing, only where a log statement sits relative to unchanged
+control flow): `AccountLedgerLockMultiProcessTest` green 2 more times
+(`--rerun-tasks`, on top of the one run already part of the full `clean
+build` above).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1697,7 +1782,10 @@ methods — no existing test asserts on the cause of either affected
   changes); 22/22 after round 13's (a cause-chaining fix and a Javadoc
   contract clarification in `AccountLedgerStore` itself, but no new or
   modified test methods -- no existing test asserted on the affected
-  exceptions' cause, confirmed by grep first).
+  exceptions' cause, confirmed by grep first); 25/25 after round 14's (3
+  more new tests, plus one pre-existing test's `defaultAllocatedCapital`
+  values repaired to avoid a real conflict with the new fail-closed
+  check).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1714,7 +1802,11 @@ methods — no existing test asserts on the cause of either affected
   existing test, no new methods); 11/11 after round 12's (a Javadoc-only
   rewrite of two doc blocks, no test changes); 11/11 after round 13's (no
   `AccountLedgerLock`-level changes that round -- both real fixes were in
-  `AccountLedgerStore`).
+  `AccountLedgerStore`); 11/11 after round 14's (the two real fixes in
+  this file were a log-statement repositioning in existing methods, not
+  new behavior needing a new test -- both existing steal-path tests
+  still fully exercise the delete/no-delete decision itself, which is
+  unchanged).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1727,7 +1819,10 @@ methods — no existing test asserts on the cause of either affected
   round 9, **3 more times** after round 10, once more (part of the full
   `clean build`) after round 11, once more (part of the full `clean
   build`) after round 12, once more (part of the full `clean build`)
-  after round 13.
+  after round 13, **3 more times** after round 14 (1 part of the full
+  `clean build`, plus 2 further explicit `--rerun-tasks` runs, given
+  round 14's log-repositioning change touches this file's own steal
+  paths even though it changes no branching/timing).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1758,21 +1853,26 @@ methods — no existing test asserts on the cause of either affected
   `AccountLedgerStore` (an exception-cause-chaining fix and a Javadoc
   contract clarification), not `AccountLedgerLock`'s own acquisition
   control flow, so it likewise did not independently warrant a further
-  raw stress-harness round).
+  raw stress-harness round; round 14's `AccountLedgerLock` fix
+  repositioned two `log.error` statements relative to unchanged
+  delete/no-delete control flow -- no new branching or timing for the
+  raw harness to exercise differently, so the `AccountLedgerLockMultiProcessTest`
+  reruns above were judged sufficient re-verification without a further
+  raw stress-harness round on top of them).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, and 13.
+  8, 9, 10, 11, 12, 13, and 14.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **439 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **442 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
-  12's + 0 net-new from round 13's).
+  12's + 0 net-new from round 13's + 3 from round 14's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

@@ -98,18 +98,26 @@ class AccountLedgerStoreTest {
     @Test
     void loadReflectsTheLatestPersistedStateNotAStaleCachedOne(@TempDir Path tempDir) {
         Path file = tempDir.resolve("ledger.json");
+        // defaultAllocatedCapital held fixed at 2000 (>= both persisted
+        // values below) throughout this test -- deliberately, so the new
+        // stored-exceeds-configured-default fail-closed check (real Minor
+        // finding, real CodeRabbit review of this PR) never trips here;
+        // this test's own subject is the "no caching" property, not that
+        // check, and 1000 -> 2000 already proves a real state change is
+        // observed either direction.
+        BigDecimal defaultAllocatedCapital = new BigDecimal("2000");
         AccountLedger first = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
         AccountLedgerStore.persist(file, first);
-        AccountLedger loadedFirst = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+        AccountLedger loadedFirst = AccountLedgerStore.load(file, "KIS", "acct-1", defaultAllocatedCapital);
         assertEquals(new BigDecimal("1000"), loadedFirst.allocatedVirtualCapital());
 
         AccountLedger second = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("2000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
         AccountLedgerStore.persist(file, second);
-        AccountLedger loadedSecond = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+        AccountLedger loadedSecond = AccountLedgerStore.load(file, "KIS", "acct-1", defaultAllocatedCapital);
 
         // Static, stateless methods -- no instance to have cached the
         // first value; this proves it, not merely asserts it by
@@ -296,6 +304,72 @@ class AccountLedgerStoreTest {
         AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
 
         assertEquals(ledger, reloaded);
+    }
+
+    /**
+     * Real Minor finding, real CodeRabbit review of this PR: {@code
+     * defaultAllocatedCapital} previously had no positivity check at all --
+     * a zero or negative value is meaningless for a risk budget and would
+     * otherwise flow straight into a freshly-bootstrapped ledger.
+     */
+    @Test
+    void loadRejectsAZeroOrNegativeDefaultAllocatedCapital(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", BigDecimal.ZERO));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("-1")));
+    }
+
+    /**
+     * Real Minor finding, real CodeRabbit review of this PR, grounded
+     * directly in CLAUDE.md's own "never weaken risk limits... without
+     * explicit human approval" rule: previously, {@code
+     * defaultAllocatedCapital} was only ever consulted when bootstrapping a
+     * brand new ledger -- for an existing one, the stored {@code
+     * allocatedVirtualCapital} was returned as-is with no comparison
+     * against the currently-configured default at all. That would silently
+     * defeat an operator's own attempt to reduce a risk budget: lowering
+     * {@code defaultAllocatedCapital} in configuration would have no effect
+     * for as long as a larger, previously-persisted value remained on disk.
+     * This proves the fail-closed fix directly, not merely by absence of a
+     * counter-example.
+     */
+    @Test
+    void loadFailsClosedWhenAnExistingLedgersAllocatedCapitalExceedsTheConfiguredDefault(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledgerWithALargeStoredAllocation = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("500000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, ledgerWithALargeStoredAllocation);
+
+        // An operator reducing the configured default below what's already
+        // on disk must not have that reduction silently ignored.
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    /**
+     * The boundary case immediately adjacent to the fail-closed check
+     * above: a stored allocation exactly equal to (not merely less than)
+     * the configured default must still load successfully -- the check is
+     * "greater than", not "greater than or equal to".
+     */
+    @Test
+    void loadSucceedsWhenAnExistingLedgersAllocatedCapitalExactlyEqualsTheConfiguredDefault(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("500000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, ledger);
+
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("500000"));
+
+        assertEquals(new BigDecimal("500000"), reloaded.allocatedVirtualCapital());
     }
 
     /**

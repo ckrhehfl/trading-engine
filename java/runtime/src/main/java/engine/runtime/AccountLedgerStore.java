@@ -167,12 +167,45 @@ final class AccountLedgerStore {
      * cannot, cover every possible crash timing in the non-atomic
      * fallback (e.g. one where the {@code .tmp} file itself is also lost)
      * -- named honestly as a partial mitigation for the same reason.
+     *
+     * <p><b>{@code defaultAllocatedCapital} must be strictly positive, and
+     * also fails closed if an existing ledger's stored {@code
+     * allocatedVirtualCapital} exceeds it</b> -- a real Minor finding from
+     * this task's own real CodeRabbit review, grounded directly in
+     * CLAUDE.md's own "never weaken risk limits... without explicit human
+     * approval" rule. {@code defaultAllocatedCapital} is otherwise only
+     * ever consulted when bootstrapping a brand new ledger (see {@link
+     * #freshLedger}) -- for an existing one, nothing previously compared
+     * the stored value against the currently-configured default at all,
+     * which would silently defeat an operator's own attempt to reduce a
+     * risk budget: lowering {@code defaultAllocatedCapital} in
+     * configuration would have no effect for as long as a larger,
+     * previously-persisted value remains on disk. This method now throws
+     * {@link IllegalArgumentException} for a non-positive {@code
+     * defaultAllocatedCapital}, and {@link IllegalStateException} (the
+     * same fail-closed treatment as the identity-mismatch case above,
+     * <b>not</b> a silent auto-reduction) if a loaded ledger's {@code
+     * allocatedVirtualCapital} is greater. Deliberately silent on whether
+     * a <i>smaller</i> stored allocation should ever be raised back up to
+     * a larger configured default -- that is real reconciliation policy
+     * this class's own Javadoc already defers to {@code
+     * SharedKisAccountLedger}/{@code AccountLedgerReconciler} (Task C/D),
+     * not decided here.
      */
     static AccountLedger load(Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital) {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
         Objects.requireNonNull(venue, "venue is required");
         Objects.requireNonNull(accountId, "accountId is required");
         Objects.requireNonNull(defaultAllocatedCapital, "defaultAllocatedCapital is required");
+        // Real Minor finding, real CodeRabbit review of this PR: nothing
+        // previously stopped a caller from seeding a fresh ledger with a
+        // zero or negative allocated capital, which is meaningless for a
+        // risk budget. Same "the record/method itself is the structural
+        // enforcement point" reasoning already applied to
+        // LedgerReservation#notional.
+        if (defaultAllocatedCapital.signum() <= 0) {
+            throw new IllegalArgumentException("defaultAllocatedCapital must be positive");
+        }
 
         String raw;
         try {
@@ -250,6 +283,33 @@ final class AccountLedgerStore {
                             + ledger.accountId() + ") but (" + venue + ", " + accountId + ") was requested --"
                             + " refusing to use a mismatched ledger for a risk decision rather than silently"
                             + " proceeding with the wrong account's exposure");
+        }
+        // Real Minor finding, real CodeRabbit review of this PR, grounded
+        // directly in CLAUDE.md's own "never weaken risk limits... without
+        // explicit human approval" rule: defaultAllocatedCapital is
+        // otherwise only ever consulted when bootstrapping a brand new
+        // ledger (see freshLedger below) -- for an existing one, the
+        // stored allocatedVirtualCapital was previously used as-is with no
+        // comparison against the currently-configured default at all. That
+        // silently defeats an operator's own attempt to reduce a risk
+        // budget: lowering defaultAllocatedCapital in configuration would
+        // have no effect for as long as a larger, previously-persisted
+        // value remains on disk. Fails closed instead, the same discipline
+        // already applied to the identity mismatch just above -- not an
+        // auto-reduce (which would silently mutate stored state on this
+        // process's own initiative) and not a silent pass-through
+        // (which is the exact bug this closes); a human must resolve it
+        // explicitly. This deliberately says nothing about whether a
+        // *smaller* stored allocation should ever be raised back up to a
+        // larger configured default -- that is real reconciliation policy
+        // this class's own Javadoc already defers to Task C/D, untouched
+        // here.
+        if (ledger.allocatedVirtualCapital().compareTo(defaultAllocatedCapital) > 0) {
+            throw new IllegalStateException(
+                    "account ledger file " + ledgerPath + " holds allocatedVirtualCapital "
+                            + ledger.allocatedVirtualCapital() + " but only " + defaultAllocatedCapital
+                            + " is configured -- refusing to keep the larger persisted risk budget, which would"
+                            + " silently ignore a configured reduction. A human must resolve this explicitly.");
         }
         return ledger;
     }

@@ -547,6 +547,22 @@ final class AccountLedgerLock implements AutoCloseable {
             return false; // live, recent holder -- not stale
         }
 
+        // Re-verify immediately before deleting -- see method Javadoc's
+        // "Real TOCTOU finding" for why this re-check is load-bearing, not
+        // defensive-programming boilerplate.
+        LockMetadata current = readMetadataOrNull(lockPath);
+        if (current == null || current == READ_FAILED || current == EMPTY_OR_UNPARSEABLE || !current.equals(metadata)) {
+            return false;
+        }
+
+        // Logged only now, after re-verification confirms a delete is
+        // actually about to happen (real Trivial finding, real CodeRabbit
+        // review of this PR) -- logging any earlier (e.g. right after the
+        // initial staleness judgment, before re-verification) would produce
+        // a false-positive "stealing" ERROR even on the common, benign path
+        // where re-verification finds the lock no longer matches (a
+        // legitimate new holder already took it, or a sibling already stole
+        // it) and this method returns false without deleting anything.
         log.error(
                 "stealing account ledger lock {} -- recorded holder pid={} hostname={} acquiredAt={}"
                         + " (holderProvablyDead={}, acquiredAtOlderThanStaleThreshold={}, staleThreshold={})."
@@ -559,14 +575,6 @@ final class AccountLedgerLock implements AutoCloseable {
                 holderDead,
                 expired,
                 staleThreshold);
-
-        // Re-verify immediately before deleting -- see method Javadoc's
-        // "Real TOCTOU finding" for why this re-check is load-bearing, not
-        // defensive-programming boilerplate.
-        LockMetadata current = readMetadataOrNull(lockPath);
-        if (current == null || current == READ_FAILED || current == EMPTY_OR_UNPARSEABLE || !current.equals(metadata)) {
-            return false;
-        }
 
         try {
             Files.delete(lockPath);
@@ -651,15 +659,6 @@ final class AccountLedgerLock implements AutoCloseable {
             return false; // still recent -- most likely mid-write, never guess
         }
 
-        log.error(
-                "stealing an empty/unparseable account ledger lock {} -- last modified {} exceeds staleThreshold"
-                        + " {}, treating as abandoned (its holder most likely died between creating the file and"
-                        + " writing its metadata -- e.g. a hard process kill). This is a real cross-process"
-                        + " safety event, not routine contention -- investigate.",
-                lockPath,
-                lastModified,
-                staleThreshold);
-
         Instant currentLastModified = lastModifiedTimeOrNull(lockPath);
         if (currentLastModified == null) {
             return true; // already gone -- another waiter beat us to it
@@ -671,6 +670,22 @@ final class AccountLedgerLock implements AutoCloseable {
             // stale information (same TOCTOU reasoning as tryStealIfStale).
             return false;
         }
+
+        // Logged only now, after re-verification confirms a delete is
+        // actually about to happen -- same reasoning as tryStealIfStale's
+        // own log placement (real Trivial finding, real CodeRabbit review
+        // of this PR): logging any earlier would produce a false-positive
+        // "stealing" ERROR on the benign path above where the file was
+        // modified since our first read and this method returns false
+        // without deleting anything.
+        log.error(
+                "stealing an empty/unparseable account ledger lock {} -- last modified {} exceeds staleThreshold"
+                        + " {}, treating as abandoned (its holder most likely died between creating the file and"
+                        + " writing its metadata -- e.g. a hard process kill). This is a real cross-process"
+                        + " safety event, not routine contention -- investigate.",
+                lockPath,
+                lastModified,
+                staleThreshold);
 
         try {
             Files.delete(lockPath);
