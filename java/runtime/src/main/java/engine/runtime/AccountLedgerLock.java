@@ -31,11 +31,11 @@ import org.slf4j.LoggerFactory;
  * calls {@link #acquire} yet; {@code SharedKisAccountLedger} (Task C) is
  * the first real caller.
  *
- * <p><b>Primitive: atomic file creation ({@link Files#createFile}), not
- * {@link java.nio.channels.FileLock}.</b> This decision was made and
- * reasoned through before this class was written (see the governing
- * plan), not re-derived here -- restated briefly because it is the single
- * most load-bearing choice in this file: this repository lives on a
+ * <p><b>Primitive: atomic file creation, not {@link
+ * java.nio.channels.FileLock}.</b> This decision was made and reasoned
+ * through before this class was written (see the governing plan), not
+ * re-derived here -- restated briefly because it is the single most
+ * load-bearing choice in this file: this repository lives on a
  * Windows-mounted drive inside WSL2 ({@code /mnt/c/...}), a 9p/drvfs
  * mount, not native ext4 (confirmed directly: {@code mount | grep
  * /mnt/c} reports {@code type 9p ... aname=drvfs}) -- {@code FileLock}'s
@@ -50,17 +50,34 @@ import org.slf4j.LoggerFactory;
  * actually holds on this repository's real filesystem, not merely an
  * assumption -- see that test's own Javadoc.
  *
+ * <p><b>Documentation-accuracy correction, real Minor finding, a further
+ * real CodeRabbit review round on this PR</b>: this section (and the
+ * "Deviation" paragraph below) used to describe {@code
+ * Files.createFile(lockPath)} followed by a separate {@code
+ * Files.writeString} call as the current mechanism -- accurate for this
+ * class's original version, but stale after round 2's own fix (see
+ * {@link #createAndWriteMetadata}'s Javadoc for the real bug that fix
+ * closed): the actual, current create-and-write step is a single atomic
+ * {@link Files#newByteChannel} call with {@link
+ * java.nio.file.StandardOpenOption#CREATE_NEW}, with the metadata written
+ * through that same open handle -- not two separate, path-based
+ * operations. Both places are corrected here rather than left
+ * inconsistent with {@link #createAndWriteMetadata}'s own (already
+ * accurate) Javadoc.
+ *
  * <p><b>Lock file content</b>: JSON {@code {"pid": <long>, "hostname":
- * <string>, "acquiredAt": <ISO-8601 instant>}} -- written immediately
- * after the atomic create succeeds. {@code pid}/{@code hostname} exist
- * only to support the staleness check below (attribution/debugging), not
- * as a correctness input to mutual exclusion itself -- exclusivity comes
- * entirely from {@link Files#createFile}'s own atomicity.
+ * <string>, "acquiredAt": <ISO-8601 instant>}} -- written through the
+ * same open handle the atomic create itself returns. {@code pid}/{@code
+ * hostname} exist only to support the staleness check below
+ * (attribution/debugging), not as a correctness input to mutual exclusion
+ * itself -- exclusivity comes entirely from the atomic create's own
+ * exclusivity ({@link FileAlreadyExistsException} if the target already
+ * exists).
  *
  * <p><b>Contention and staleness</b>: on {@link FileAlreadyExistsException}
- * from {@link Files#createFile}, this class reads the existing lock
- * file's metadata and checks whether it is <i>stale</i> -- either
- * condition is sufficient: (1) {@code
+ * from the atomic create, this class reads the existing lock file's
+ * metadata and checks whether it is <i>stale</i> -- either condition is
+ * sufficient: (1) {@code
  * ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)} is
  * {@code false} (the holder is provably dead -- meaningful because every
  * process sharing this lock runs on the same host, per this project's
@@ -75,9 +92,9 @@ import org.slf4j.LoggerFactory;
  * to still hold the exact metadata just judged stale (see {@link
  * #tryStealIfStale}'s own Javadoc for a real, measured race this closes,
  * found by this task's own required real-process test) and, only if so,
- * deleted; {@link #acquire} then retries {@link Files#createFile}
- * immediately, without backing off (the staleness is already known, no
- * reason to wait). A non-stale (live, recent) holder instead makes {@link
+ * deleted; {@link #acquire} then retries the atomic create immediately,
+ * without backing off (the staleness is already known, no reason to
+ * wait). A non-stale (live, recent) holder instead makes {@link
  * #acquire} back off with short, bounded exponential retry (~25ms
  * &rarr; 250ms per attempt) until {@code totalRetryBudget} is exhausted,
  * at which point it throws {@link IllegalStateException} -- this class
@@ -87,13 +104,14 @@ import org.slf4j.LoggerFactory;
  * the plan's summary writes {@code Files.createFile(path,
  * StandardOpenOption.CREATE_NEW)} -- {@link Files#createFile} does not
  * actually accept a {@link java.nio.file.StandardOpenOption} argument (it
- * takes {@link java.nio.file.attribute.FileAttribute} varargs instead,
- * and is already atomic/exclusive-create by itself, throwing {@link
- * FileAlreadyExistsException} if the target exists -- no {@code
- * CREATE_NEW} option is needed or accepted for that specific call). This
- * class uses the real, correct API ({@code Files.createFile(lockPath)})
- * to get the identical atomic-create-fails-if-exists semantics the plan's
- * sketch intended.
+ * takes {@link java.nio.file.attribute.FileAttribute} varargs instead).
+ * This class instead uses {@link Files#newByteChannel} with {@code
+ * CREATE_NEW} (see {@link #createAndWriteMetadata}'s own Javadoc for why
+ * a plain {@code Files.createFile} + separate write, this class's
+ * original approach, was itself later found insufficient and replaced) --
+ * both get the identical atomic-create-fails-if-exists semantics the
+ * plan's sketch intended, so this remains a deviation in API choice only,
+ * not in the semantics the plan actually asked for.
  */
 final class AccountLedgerLock implements AutoCloseable {
 

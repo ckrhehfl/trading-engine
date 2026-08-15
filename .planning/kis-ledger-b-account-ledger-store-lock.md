@@ -289,7 +289,22 @@ acquisitions produced zero lost updates.
   Used the real, correct API, `Files.createFile(lockPath)`, to get the
   identical semantics the sketch intended. Documented directly in
   `AccountLedgerLock`'s own class Javadoc as a named deviation from the
-  brief's literal text, not silently corrected.
+  brief's literal text, not silently corrected. **Superseded by round 2**
+  (see that round's own entry below): `Files.createFile` plus a separate
+  `Files.writeString` turned out to have a real correctness gap of its
+  own (a slow writer's own stale, path-based write could clobber a
+  sibling's real metadata) — replaced with a single atomic {@code
+  Files.newByteChannel(..., CREATE_NEW, WRITE)} call, metadata written
+  through that same handle. Left here as an accurate record of the
+  original judgment call and why it was made, not rewritten to pretend
+  `Files.createFile` was never used — a real Minor finding, a further
+  real CodeRabbit review round, flagged this bullet (and
+  `AccountLedgerLock`'s own class Javadoc, separately corrected there) as
+  having drifted out of sync with round 2's real code change; the class
+  Javadoc is now corrected to describe the current mechanism accurately
+  (a single atomic `Files.newByteChannel(..., CREATE_NEW, WRITE)` call,
+  metadata written through that same handle), and this bullet gets this
+  pointer rather than a silent rewrite.
 - **`jackson-datatype-jsr310` needed adding to `:runtime`'s
   `build.gradle.kts` — verified, not assumed.** The brief's own
   instruction ("check ... before assuming you need to add a dependency")
@@ -955,6 +970,68 @@ stress harness run (6 processes × 8 iterations, 48 expected per round) —
 individual lock acquisitions across the whole task, zero lost updates in
 any of them).
 
+### Round 6
+
+Two rate-limit waits happened between round 5 and round 6, both handled
+per this task's own established discipline: checked `@coderabbitai rate
+limit` for real rather than assuming clear from elapsed time (twice this
+found it genuinely still limited with an ETA — reported back and
+stopped, per the governing coordinator's own explicit instruction on
+both occasions, rather than sleeping through a long wait), and twice
+confirmed genuinely clear before re-requesting.
+
+Against commit `78aa832` (after round 5's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T13:38:15Z`): `CHANGES_REQUESTED`, 2
+actionable inline comments — both real, both fixed. The finding count
+continuing to shrink each round (7 → 6 → 4 → 2 → 3 → 2) reflects the
+fixable surface genuinely narrowing, not a plateau:
+
+- **`AccountLedger` didn't reject two reservations sharing the same
+  `clientOrderId` (Trivial).** Real, and the same reasoning already
+  applied to `LedgerReservation.notional`'s own positivity check: this
+  record is the single structural enforcement point regardless of which
+  identifier Task C eventually keys reservations by, and a duplicate is
+  dangerous in either direction -- double-counted in
+  `Σ(reservations.notional)` (understating available capital, blocking
+  legitimate orders) if never resolved, or under-released (understating
+  real committed exposure, the more dangerous direction) if only one of
+  the two duplicate entries is removed on release. Fixed: the compact
+  constructor now rejects a `reservations` list whose distinct-by-
+  `clientOrderId` count doesn't match its size. New tests: a direct
+  `AccountLedger` construction with two same-`clientOrderId` reservations
+  throws `IllegalArgumentException`; a hand-written ledger *file* holding
+  the same duplicate fails closed via `AccountLedgerStore.load` (proving
+  the store needs no special-case duplicate-detection logic of its own,
+  same pattern already proven for the notional check).
+- **Two places' documentation still described the pre-round-2
+  `Files.createFile` + separate `Files.writeString` mechanism as current,
+  after round 2 replaced it with a single atomic `Files.newByteChannel`
+  call (Minor).** Real: `AccountLedgerLock`'s own class-level Javadoc
+  ("Primitive," "Lock file content," "Contention and staleness," and
+  "Deviation" sections) was written in round 1 and never updated when
+  round 2 changed the actual mechanism -- `createAndWriteMetadata`'s own
+  (later-added) Javadoc was accurate, but the class-level doc a reader
+  would see first was not, a real internal inconsistency. This document's
+  own "Judgment calls" section had the identical staleness. Fixed: the
+  class Javadoc's four affected sections now describe the real, current
+  mechanism; this document's own affected bullet is deliberately **not**
+  silently rewritten to pretend `Files.createFile` was never used (it
+  really was, in round 1) -- it keeps its original text as an accurate
+  historical record and gains a pointer to round 2's real supersession,
+  matching this document's own established practice elsewhere (e.g. round
+  2's own entry for round 1's original TOCTOU fix) of keeping superseded
+  reasoning visible rather than erasing it.
+
+Re-ran after both round-6 fixes: `./gradlew clean build` — still green,
+**435 tests, 0 failures, 0 errors** project-wide (433 + 2 new, both in
+`AccountLedgerStoreTest`). This round's changes were a record-level
+validation and pure documentation, not a change to `AccountLedgerLock`'s
+own lock-acquisition control flow, but the real safety property was
+re-verified anyway rather than assumed unaffected:
+`AccountLedgerLockMultiProcessTest` green (`--rerun-tasks`), part of the
+full `clean build` run above.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -966,21 +1043,24 @@ any of them).
   after round 1's CodeRabbit fixes (4 new tests); 16/16 after round 2's
   (2 more new tests); 16/16 after round 3's (no new test methods, existing
   ones' production-code dependencies changed); 17/17 after round 4's (1
-  more new test); 19/19 after round 5's (2 more new tests).
+  more new test); 19/19 after round 5's (2 more new tests); 21/21 after
+  round 6's (2 more new tests).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
   test); 8/8 after round 3's (existing tests modified, no new methods);
   8/8 after round 4's (existing production code changed, no new test
   methods — see round 4's own entry for why); 8/8 after round 5's (same
-  reasoning, see round 5's own entry).
+  reasoning, see round 5's own entry); 8/8 after round 6's (documentation
+  only, no test changes).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
   above); green after the fix, confirmed **5 additional times**
   (`--rerun-tasks`) before round 1's review, **3 more times** after round
   1, **3 more times** after round 2, **3 more times** after round 3,
-  **3 more times** after round 4, **3 more times** after round 5.
+  **3 more times** after round 4, **3 more times** after round 5, once
+  more (part of the full `clean build`) after round 6.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -990,17 +1070,21 @@ any of them).
   **25/25 more** after round 4's, and **25/25 more** after round 5's (6
   processes × 8 iterations = 48 expected per round every time: **155
   clean rounds total, 7,440 individual lock acquisitions, zero lost
-  updates** across the whole task's real, non-Gradle stress testing).
+  updates** across the whole task's real, non-Gradle stress testing —
+  round 6 was documentation/record-validation only and did not touch
+  `AccountLedgerLock`'s own acquisition control flow, so it did not
+  independently warrant a further raw stress-harness round on top of the
+  full `clean build`'s own real multi-process test run).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
-  1, part of the full `clean build` runs after rounds 2, 3, 4, and 5.
+  1, part of the full `clean build` runs after rounds 2, 3, 4, 5, and 6.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **433 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **435 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
-  round 3's + 1 from round 4's + 2 from round 5's).
+  round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

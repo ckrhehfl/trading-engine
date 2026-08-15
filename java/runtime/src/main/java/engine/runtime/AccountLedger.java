@@ -53,6 +53,23 @@ import java.util.Objects;
  * own established "return/store an immutable snapshot, not the live
  * mutable list" convention elsewhere in this codebase.
  *
+ * <p><b>{@code reservations} must not contain two entries with the same
+ * {@code clientOrderId}</b> -- a real Trivial finding, real CodeRabbit
+ * review of this PR, fixed here for the same reason {@link
+ * LedgerReservation#notional} is validated in that record itself rather
+ * than left to a caller: this record is the single structural
+ * enforcement point, and a duplicate is dangerous in either direction. A
+ * corrupted/hand-edited ledger file, or a future retry path in Task C,
+ * recording the same order twice would double-count that reservation's
+ * notional in {@code Σ(reservations.notional)} (understating available
+ * capital, blocking legitimate orders) -- or, on release, remove only one
+ * of the two entries (understating real committed exposure, the more
+ * dangerous direction). This does not conflict with this class's own
+ * "Task C decides which identifier it actually keys by" deferral in
+ * {@link LedgerReservation}'s Javadoc -- whatever identifier Task C
+ * chooses, two live reservations for the same one can never be a valid
+ * state to begin with.
+ *
  * <p>Package-private, like every other class in this file's "shared
  * ledger" group except the {@link AccountStateProvider} interface itself
  * -- see the governing plan's "2. The shared ledger" section header.
@@ -78,5 +95,10 @@ record AccountLedger(
         Objects.requireNonNull(lastReconciledMonthlyPnlPercent, "lastReconciledMonthlyPnlPercent is required");
         Objects.requireNonNull(reservations, "reservations is required");
         reservations = List.copyOf(reservations);
+        long distinctClientOrderIds =
+                reservations.stream().map(LedgerReservation::clientOrderId).distinct().count();
+        if (distinctClientOrderIds != reservations.size()) {
+            throw new IllegalArgumentException("reservations must not contain duplicate clientOrderId values");
+        }
     }
 }

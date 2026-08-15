@@ -318,6 +318,59 @@ class AccountLedgerStoreTest {
                 () -> new LedgerReservation(id, "A11609", 1L, "host-a", new BigDecimal("-1"), Instant.now()));
     }
 
+    /**
+     * Real Trivial finding, real CodeRabbit review of this PR: {@link
+     * AccountLedger}'s own compact constructor now rejects two
+     * reservations sharing the same {@code clientOrderId} -- a duplicate
+     * would double-count that reservation's notional against available
+     * capital, or (on release) leave one of the two still recorded,
+     * understating real committed exposure.
+     */
+    @Test
+    void twoReservationsWithTheSameClientOrderIdAreRejectedByAccountLedgerItself() {
+        UUID sharedId = UUID.randomUUID();
+        LedgerReservation first =
+                new LedgerReservation(sharedId, "A11609", 1L, "host-a", new BigDecimal("100"), Instant.now());
+        LedgerReservation second =
+                new LedgerReservation(sharedId, "A50609", 2L, "host-b", new BigDecimal("200"), Instant.now());
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AccountLedger(
+                        "KIS", "acct-1", new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO,
+                        BigDecimal.ZERO, null, null, null, List.of(first, second)));
+    }
+
+    /**
+     * Same invariant, exercised through a real ledger file on disk (a
+     * corrupted or hand-edited file is exactly the scenario this record-
+     * level validation exists to catch) -- proves {@code
+     * AccountLedgerStore.load} fails closed rather than needing any
+     * special-case duplicate-detection logic of its own, the same
+     * reasoning already proven for the notional-positivity check above.
+     */
+    @Test
+    void loadFailsClosedWhenTheLedgerFileHoldsTwoReservationsWithTheSameClientOrderId(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        String sharedId = UUID.randomUUID().toString();
+        Instant now = Instant.now();
+        Files.writeString(
+                file,
+                "{\"venue\":\"KIS\",\"accountId\":\"acct-1\",\"allocatedVirtualCapital\":100000,"
+                        + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
+                        + "\"lastReconciledMonthlyPnlPercent\":0,\"reservations\":["
+                        + "{\"clientOrderId\":\"" + sharedId + "\",\"symbol\":\"A11609\",\"processId\":1,"
+                        + "\"hostname\":\"host-a\",\"notional\":100,\"reservedAt\":\"" + now + "\"},"
+                        + "{\"clientOrderId\":\"" + sharedId + "\",\"symbol\":\"A50609\",\"processId\":2,"
+                        + "\"hostname\":\"host-b\",\"notional\":200,\"reservedAt\":\"" + now + "\"}"
+                        + "]}");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
     @Test
     void persistCreatesParentDirectoriesIfNeeded(@TempDir Path tempDir) {
         Path file = tempDir.resolve("nested").resolve("dir").resolve("ledger.json");
