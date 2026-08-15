@@ -218,8 +218,21 @@ final class AccountLedgerLock implements AutoCloseable {
                 }
                 return new AccountLedgerLock(lockPath, ownMetadata);
             } catch (FileAlreadyExistsException e) {
-                if (tryStealIfStale(lockPath, staleThreshold)) {
-                    continue; // steal already known-stale -- retry create immediately, no backoff
+                // tryStealIfStale can itself throw IOException (a real
+                // Major finding, a further real CodeRabbit review round):
+                // its own delete/read-path failures used to be wrapped in
+                // IllegalStateException and thrown directly, bypassing
+                // this loop's retry budget entirely (this catch block is a
+                // sibling of, not nested inside, the catch (IOException e)
+                // block below, so it was never caught there either). Now
+                // handled inline, folded into the exact same
+                // lastTransientFailure-tracking backoff-and-retry path.
+                try {
+                    if (tryStealIfStale(lockPath, staleThreshold)) {
+                        continue; // steal already known-stale -- retry create immediately, no backoff
+                    }
+                } catch (IOException stealFailure) {
+                    lastTransientFailure = stealFailure;
                 }
                 sleepQuietly(backoffMillis);
                 backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
@@ -437,7 +450,7 @@ final class AccountLedgerLock implements AutoCloseable {
             if (metadata != null) {
                 try {
                     deleteIfStillOwnGeneration(lockPath, metadata);
-                } catch (RuntimeException cleanupFailure) {
+                } catch (IOException cleanupFailure) {
                     e.addSuppressed(cleanupFailure);
                 }
             }
@@ -497,8 +510,26 @@ final class AccountLedgerLock implements AutoCloseable {
      * backoff-and-recheck loop handle it is simpler and equally safe) so
      * the caller re-evaluates fresh on its next attempt rather than ever
      * acting on stale information about what the file currently holds.
+     *
+     * <p><b>Declares {@code throws IOException}, a real Major finding, a
+     * further real CodeRabbit review round on this PR.</b> This method
+     * (and the delete-path helpers it calls, {@link
+     * #tryStealIfAbandonedEmpty}/{@link #lastModifiedTimeOrNull}) used to
+     * wrap a genuine delete/read failure in {@link IllegalStateException}
+     * and throw it directly -- but this method is called from {@link
+     * #acquire}'s {@code catch (FileAlreadyExistsException e)} block, a
+     * sibling of {@code acquire}'s own {@code catch (IOException e)}
+     * handler, not nested inside it -- so that {@code IllegalStateException}
+     * propagated straight out of {@code acquire()} entirely, consuming
+     * none of {@code totalRetryBudget}, inconsistent with round 7's own
+     * fix giving every other transient-I/O-failure path in this class a
+     * bounded retry instead of an immediate hard failure. Now propagates
+     * the real {@link IOException} instead; {@code acquire()} catches it
+     * at the steal call site and folds it into the same
+     * {@code lastTransientFailure}-tracking backoff-and-retry path its own
+     * direct {@link #createAndWriteMetadata} failures already use.
      */
-    private static boolean tryStealIfStale(Path lockPath, Duration staleThreshold) {
+    private static boolean tryStealIfStale(Path lockPath, Duration staleThreshold) throws IOException {
         LockMetadata metadata = readMetadataOrNull(lockPath);
         if (metadata == null) {
             // Vanished between our failed create and this read -- another
@@ -552,9 +583,11 @@ final class AccountLedgerLock implements AutoCloseable {
             // Another waiter beat us to stealing it -- fine, we'll simply
             // contend for the now-vacant (or newly-recreated) file
             // normally on the next loop iteration.
-        } catch (IOException e) {
-            throw new IllegalStateException("failed to delete stale account ledger lock file " + lockPath, e);
         }
+        // Any other IOException propagates -- see this method's own
+        // Javadoc for why (real Major finding, a further real CodeRabbit
+        // review round: must reach acquire()'s retry-budget handling, not
+        // be wrapped into an immediately-propagating IllegalStateException).
         return true;
     }
 
@@ -570,8 +603,15 @@ final class AccountLedgerLock implements AutoCloseable {
      * verification read itself -- this method does nothing rather than
      * risk deleting a different, currently-live holder's lock. Tolerates
      * {@link NoSuchFileException} (already gone -- fine, nothing to do).
+     *
+     * <p>Declares {@code throws IOException} for any other delete failure
+     * rather than wrapping it -- see {@link #tryStealIfStale}'s own
+     * Javadoc for why (a real Major finding, a further real CodeRabbit
+     * review round: this must propagate as a real {@link IOException} so
+     * it can reach {@link #acquire}'s own retry-budget handling, whichever
+     * of this method's two call sites it originates from).
      */
-    private static void deleteIfStillOwnGeneration(Path lockPath, LockMetadata metadata) {
+    private static void deleteIfStillOwnGeneration(Path lockPath, LockMetadata metadata) throws IOException {
         LockMetadata current = readMetadataOrNull(lockPath);
         if (!metadata.equals(current)) {
             return;
@@ -580,9 +620,6 @@ final class AccountLedgerLock implements AutoCloseable {
             Files.delete(lockPath);
         } catch (NoSuchFileException e) {
             // Already gone -- fine.
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                    "failed to delete this holder's own account ledger lock file " + lockPath, e);
         }
     }
 
@@ -607,8 +644,14 @@ final class AccountLedgerLock implements AutoCloseable {
      * {@link #tryStealIfStale} itself uses (checking the file is still
      * exactly as old, not merely still empty, before deleting) for the
      * same TOCTOU reason documented there.
+     *
+     * <p>Declares {@code throws IOException} -- see {@link
+     * #tryStealIfStale}'s own Javadoc for why (a real Major finding, a
+     * further real CodeRabbit review round: a genuine delete/read failure
+     * here must reach {@link #acquire}'s retry-budget handling, not be
+     * wrapped into an immediately-propagating {@link IllegalStateException}).
      */
-    private static boolean tryStealIfAbandonedEmpty(Path lockPath, Duration staleThreshold) {
+    private static boolean tryStealIfAbandonedEmpty(Path lockPath, Duration staleThreshold) throws IOException {
         Instant lastModified = lastModifiedTimeOrNull(lockPath);
         if (lastModified == null) {
             return true; // vanished since our read -- safe to retry immediately
@@ -642,20 +685,21 @@ final class AccountLedgerLock implements AutoCloseable {
             Files.delete(lockPath);
         } catch (NoSuchFileException e) {
             // Another waiter beat us to it -- fine.
-        } catch (IOException e) {
-            throw new IllegalStateException("failed to delete abandoned empty account ledger lock file " + lockPath, e);
         }
+        // Any other IOException propagates -- see this method's own Javadoc.
         return true;
     }
 
-    private static Instant lastModifiedTimeOrNull(Path lockPath) {
+    /**
+     * Declares {@code throws IOException} rather than wrapping a real
+     * failure -- see {@link #tryStealIfStale}'s own Javadoc for why (a
+     * real Major finding, a further real CodeRabbit review round).
+     */
+    private static Instant lastModifiedTimeOrNull(Path lockPath) throws IOException {
         try {
             return Files.getLastModifiedTime(lockPath).toInstant();
         } catch (NoSuchFileException e) {
             return null;
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                    "failed to read last-modified time for account ledger lock file " + lockPath, e);
         }
     }
 

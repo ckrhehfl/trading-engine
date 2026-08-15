@@ -1195,6 +1195,88 @@ processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
 correct** (205 clean stress rounds / 9,840 individual lock acquisitions
 across the whole task, zero lost updates in any of them).
 
+### Round 9
+
+One more rate-limit wait between round 8 and round 9, same by-now-
+established discipline (checked `@coderabbitai rate limit` for real,
+found genuinely still limited, reported the real ETA back and stopped
+per the governing coordinator's own standing instruction, confirmed
+genuinely clear before re-requesting).
+
+Against commit `edfd4aa` (after round 8's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T16:48:58Z`): `CHANGES_REQUESTED`, 2
+actionable comments, both real, both fixed:
+
+- **The delete/read-path helper methods (`tryStealIfStale`,
+  `tryStealIfAbandonedEmpty`, `lastModifiedTimeOrNull`,
+  `deleteIfStillOwnGeneration`) still wrapped a genuine I/O failure in
+  `IllegalStateException` and threw it directly, bypassing `acquire`'s
+  own retry budget entirely (Major) — the exact same class of bug round
+  7 already fixed for the *creation* path, now found (correctly) to
+  still be present on the *steal/cleanup* path.** Real, and a precise,
+  consistent extension of round 7's own reasoning: `tryStealIfStale` is
+  called from `acquire`'s `catch (FileAlreadyExistsException e)` block,
+  a *sibling* of `acquire`'s own `catch (IOException e)` handler, not
+  nested inside it -- so an `IllegalStateException` thrown from inside
+  `tryStealIfStale` (or the helpers it calls) propagated straight out of
+  `acquire()` on its very first occurrence, consuming none of
+  `totalRetryBudget`, even though this class's own Javadoc already
+  documents the exact same measured 500ms+ transient I/O latency on this
+  repository's real drvfs mount that motivated round 7's fix for the
+  creation path. Fixed: all four helper methods now declare
+  `throws IOException` and let a genuine (non-`NoSuchFileException`)
+  delete/read failure propagate as a real `IOException` instead of
+  wrapping it; `acquire()`'s own `catch (FileAlreadyExistsException e)`
+  block now wraps its `tryStealIfStale` call in its own
+  `catch (IOException stealFailure)`, folding a caught failure into the
+  exact same `lastTransientFailure`-tracking backoff-and-retry path
+  round 7 already built for the creation side -- one shared mechanism
+  for both halves of `acquire`'s own retry loop, not two divergent ones.
+  `deleteIfStillOwnGeneration`'s two call sites inside
+  `createAndWriteMetadata` needed no new handling of their own: one is
+  already inside that method's own `try` block (so a propagated
+  `IOException` is naturally caught by its existing enclosing `catch`),
+  and the other (the cleanup-on-failure path itself) had its inner
+  `catch (RuntimeException cleanupFailure)` narrowed to
+  `catch (IOException cleanupFailure)` to match the helper's new,
+  precise `throws` clause. No dedicated new test added, for the same
+  reason already given for the structurally identical gap round 7 left
+  undocumented by a dedicated test: reliably forcing a genuine
+  (non-`NoSuchFileException`) delete/read failure from a real filesystem
+  operation deterministically would need a fault-injection seam this
+  class doesn't have anywhere; the 25-round raw stress harness re-run
+  below is the real, load-bearing proof this refactor doesn't regress
+  the measured safety property.
+- **`acquireDoesNotStealAFreshEmptyLockFile` asserted only the thrown
+  exception's *type*, not that it actually represented genuine retry-
+  budget exhaustion specifically (Trivial).** Real: given
+  `AccountLedgerLock`'s own helper methods could (before this same
+  round's first fix) throw `IllegalStateException` from several
+  genuinely different failure paths, asserting only
+  `IllegalStateException.class` didn't actually prove this test's own
+  named premise -- that this scenario correctly exhausts its retry
+  budget without ever stealing, rather than failing for some unrelated
+  reason that happens to also throw the same exception type. Fixed:
+  now captures the thrown exception and asserts its message contains
+  the real retry-budget-exhaustion wording and names the lock path --
+  the same message-validation pattern
+  `acquireThrowsRatherThanHangingWhenTheRetryBudgetIsExhausted` already
+  uses.
+
+Re-ran after both round-9 fixes: `./gradlew clean build` — still green,
+**436 tests, 0 failures, 0 errors** project-wide (unchanged from round
+8's count — this round's fixes were a signature/propagation refactor
+across four existing helper methods plus a strengthened assertion on an
+existing test, not new behavior needing a new test method). Re-verified
+the real safety property specifically, given the first fix directly
+changes `acquire()`'s own steal-path control flow:
+`AccountLedgerLockMultiProcessTest` 3 more times (`--rerun-tasks`, green
+every time) and a further clean 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct** (230 clean stress rounds / 11,040 individual lock acquisitions
+across the whole task, zero lost updates in any of them).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1209,7 +1291,8 @@ across the whole task, zero lost updates in any of them).
   more new test); 19/19 after round 5's (2 more new tests); 21/21 after
   round 6's (2 more new tests); 21/21 after round 7's (no store-level
   changes that round); 21/21 after round 8's (no store-level changes that
-  round either).
+  round either); 21/21 after round 9's (no store-level changes that round
+  either).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1219,7 +1302,9 @@ across the whole task, zero lost updates in any of them).
   reasoning, see round 5's own entry); 8/8 after round 6's (documentation
   only, no test changes); 9/9 after round 7's (1 more new test); 9/9
   after round 8's (a refactor reusing existing test coverage plus two
-  doc/dead-code cleanups, no new methods).
+  doc/dead-code cleanups, no new methods); 9/9 after round 9's (a
+  signature/propagation refactor plus a strengthened existing assertion,
+  no new methods).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1228,7 +1313,8 @@ across the whole task, zero lost updates in any of them).
   1, **3 more times** after round 2, **3 more times** after round 3,
   **3 more times** after round 4, **3 more times** after round 5, once
   more (part of the full `clean build`) after round 6, **3 more times**
-  after round 7, **3 more times** after round 8.
+  after round 7, **3 more times** after round 8, **3 more times** after
+  round 9.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1236,18 +1322,19 @@ across the whole task, zero lost updates in any of them).
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
   fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
   **25/25 more** after round 4's, **25/25 more** after round 5's,
-  **25/25 more** after round 7's, and **25/25 more** after round 8's (6
-  processes × 8 iterations = 48 expected per round every time: **205
-  clean rounds total, 9,840 individual lock acquisitions, zero lost
-  updates** across the whole task's real, non-Gradle stress testing —
-  round 6 was documentation/record-validation only and did not touch
-  `AccountLedgerLock`'s own acquisition control flow, so it did not
-  independently warrant a further raw stress-harness round on top of the
-  full `clean build`'s own real multi-process test run).
+  **25/25 more** after round 7's, **25/25 more** after round 8's, and
+  **25/25 more** after round 9's (6 processes × 8 iterations = 48
+  expected per round every time: **230 clean rounds total, 11,040
+  individual lock acquisitions, zero lost updates** across the whole
+  task's real, non-Gradle stress testing — round 6 was documentation/
+  record-validation only and did not touch `AccountLedgerLock`'s own
+  acquisition control flow, so it did not independently warrant a further
+  raw stress-harness round on top of the full `clean build`'s own real
+  multi-process test run).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  and 8.
+  8, and 9.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -1255,7 +1342,7 @@ across the whole task, zero lost updates in any of them).
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
-  from round 7's + 0 net-new from round 8's).
+  from round 7's + 0 net-new from round 8's + 0 net-new from round 9's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

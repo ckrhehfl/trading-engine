@@ -265,15 +265,36 @@ class AccountLedgerLockTest {
      * unparseable -- confirmed by using a short {@code totalRetryBudget}
      * and asserting the caller genuinely exhausts it (rather than
      * incorrectly, prematurely succeeding).
+     *
+     * <p>Real Trivial finding, a further real CodeRabbit review round on
+     * this PR: this test used to assert only the exception's <i>type</i>
+     * ({@code IllegalStateException}), which -- given {@code
+     * AccountLedgerLock}'s own internal helper methods, until this same
+     * review round, could throw {@code IllegalStateException} from several
+     * different real failure paths (a genuine delete/read failure, not
+     * just ordinary retry-budget exhaustion) -- did not actually prove
+     * this test's own named premise (that this scenario correctly runs
+     * out its retry budget without ever stealing). Now asserts the
+     * thrown exception's message specifically matches the real retry-
+     * budget-exhaustion wording, the same message-validation pattern
+     * {@code acquireThrowsRatherThanHangingWhenTheRetryBudgetIsExhausted}
+     * already uses.
      */
     @Test
     void acquireDoesNotStealAFreshEmptyLockFile(@TempDir Path tempDir) throws IOException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         Files.writeString(lockPath, ""); // present, but empty -- simulates the create-then-write race window
+        Duration retryBudget = Duration.ofMillis(300);
 
-        assertThrows(
+        IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, Duration.ofMillis(300)));
+                () -> AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, retryBudget));
+
+        assertTrue(
+                thrown.getMessage().contains("within retry budget"),
+                "must genuinely exhaust the retry budget (not steal, and not fail for some other reason); was: "
+                        + thrown.getMessage());
+        assertTrue(thrown.getMessage().contains(lockPath.toString()), "exception must name the lock path");
     }
 
     /**
