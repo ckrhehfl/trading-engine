@@ -293,8 +293,8 @@ acquisitions produced zero lost updates.
   (see that round's own entry below): `Files.createFile` plus a separate
   `Files.writeString` turned out to have a real correctness gap of its
   own (a slow writer's own stale, path-based write could clobber a
-  sibling's real metadata) — replaced with a single atomic {@code
-  Files.newByteChannel(..., CREATE_NEW, WRITE)} call, metadata written
+  sibling's real metadata) — replaced with a single atomic
+  `Files.newByteChannel(..., CREATE_NEW, WRITE)` call, metadata written
   through that same handle. Left here as an accurate record of the
   original judgment call and why it was made, not rewritten to pretend
   `Files.createFile` was never used — a real Minor finding, a further
@@ -1032,6 +1032,87 @@ re-verified anyway rather than assumed unaffected:
 `AccountLedgerLockMultiProcessTest` green (`--rerun-tasks`), part of the
 full `clean build` run above.
 
+### Round 7
+
+One more rate-limit wait between round 6 and round 7, handled the same
+way as the previous ones: checked `@coderabbitai rate limit` for real
+(found genuinely still limited, reported the real ETA back and stopped
+per the governing coordinator's own standing instruction), then
+confirmed genuinely clear before re-requesting. Also directly observed,
+this round, the exact failure mode this task's own verification
+discipline exists to catch: right after requesting review of commit
+`b53fc85`, the `CodeRabbit` commit-status check flipped to "Review
+completed" within seconds, while the reviews API still showed no review
+object for that commit at all -- confirming the commit-status badge is
+not reliable evidence by itself, not just as a documented risk but as a
+real, observed event during this task.
+
+Against commit `b53fc85` (after round 6's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T14:40:37Z`): `CHANGES_REQUESTED`, 2
+actionable inline comments, both real, both fixed:
+
+- **A transient (non-`FileAlreadyExistsException`) `IOException` during
+  lock creation used to be promoted straight to `IllegalStateException`
+  on its very first occurrence, consuming none of `totalRetryBudget`
+  (Trivial).** Real: this class's own Javadoc already documents measured
+  500ms+ transient I/O latency on this repository's real drvfs mount
+  under contention -- exactly the kind of environment characteristic a
+  bounded retry, not an immediate hard failure, exists to absorb, and
+  every *other* failure mode in this class's `acquire` loop (ordinary
+  contention, a lost race, an abandoned-empty reclaim) already retries
+  within budget rather than failing on the first occurrence. Fixed: a
+  transient `IOException` now backs off and retries exactly like ordinary
+  contention, consuming `totalRetryBudget` normally; only once the budget
+  is genuinely exhausted does `acquire` throw, with the *real* last
+  transient failure attached as the thrown `IllegalStateException`'s
+  cause (via `initCause`) rather than a generic timeout message with no
+  underlying reason. No dedicated new test added -- the existing
+  retry-budget-exhaustion test already proves the budget-exhaustion path
+  itself; reliably forcing a *transient* (not permanent, not
+  `FileAlreadyExistsException`) `IOException` from a real filesystem
+  operation deterministically would need a fault-injection seam this
+  class doesn't have, and did not gain one elsewhere in this task either,
+  for the same reasons already given for the narrower, similarly-shaped
+  gap disclosed in `createAndWriteMetadata`'s own cleanup-on-failure path.
+- **`readMetadataOrNull` never validated that a successfully-parsed
+  `LockMetadata` was actually complete (Major).** Real, and a genuine gap
+  in the same family as round 5's JSON-`null` fix: Jackson can silently
+  fill a missing record component with its default/null instead of
+  throwing -- `{"pid":123}` alone deserializes "successfully" to a
+  `LockMetadata` with a `null` `hostname()`/`acquiredAt()`. Traced
+  through concretely: `tryStealIfStale`'s own `Duration.between(metadata
+  .acquiredAt(), Instant.now())` call would then throw a raw
+  `NullPointerException` that -- unlike every deliberately-handled outcome
+  in this file -- does not flow back through `acquire`'s own retry loop
+  at all; it propagates straight out, crashing the whole acquisition
+  attempt hard. Fixed: `readMetadataOrNull` now checks completeness
+  immediately after a successful parse (`hostname()`/`acquiredAt()`
+  non-null, and, defensively, `pid() > 0` -- a real PID is never zero or
+  negative on Linux, and while `pid` is a primitive `long` so it can
+  never literally be "null" the way the reference-typed fields can, a
+  missing JSON field still silently defaults it to `0`, which this check
+  also now catches) -- an incomplete result is treated as
+  `EMPTY_OR_UNPARSEABLE` and routed through the exact same mtime-based
+  `tryStealIfAbandonedEmpty` reclaim path a genuinely empty file already
+  uses, rather than ever being treated as trustworthy metadata. New test:
+  `acquireStealsAnAgedLockFileWithIncompleteMetadataRatherThanThrowingAnNpe`
+  -- fabricates `{"pid":123}` (valid JSON, missing `hostname`/
+  `acquiredAt` entirely), backdates it past `staleThreshold`, and confirms
+  it's reclaimed cleanly (the point of the fix is precisely that this
+  does *not* throw).
+
+Re-ran after both round-7 fixes: `./gradlew clean build` — still green,
+**436 tests, 0 failures, 0 errors** project-wide (435 + 1 new, in
+`AccountLedgerLockTest`). Re-verified the real safety property
+specifically, given this round's first fix touches `acquire()`'s own
+retry-budget control flow directly:
+`AccountLedgerLockMultiProcessTest` 3 more times (`--rerun-tasks`, green
+every time) and a further clean 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct** (180 clean stress rounds / 8,640 individual lock acquisitions
+across the whole task, zero lost updates in any of them).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1044,7 +1125,8 @@ full `clean build` run above.
   (2 more new tests); 16/16 after round 3's (no new test methods, existing
   ones' production-code dependencies changed); 17/17 after round 4's (1
   more new test); 19/19 after round 5's (2 more new tests); 21/21 after
-  round 6's (2 more new tests).
+  round 6's (2 more new tests); 21/21 after round 7's (no store-level
+  changes that round).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1052,7 +1134,7 @@ full `clean build` run above.
   8/8 after round 4's (existing production code changed, no new test
   methods — see round 4's own entry for why); 8/8 after round 5's (same
   reasoning, see round 5's own entry); 8/8 after round 6's (documentation
-  only, no test changes).
+  only, no test changes); 9/9 after round 7's (1 more new test).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1060,31 +1142,35 @@ full `clean build` run above.
   (`--rerun-tasks`) before round 1's review, **3 more times** after round
   1, **3 more times** after round 2, **3 more times** after round 3,
   **3 more times** after round 4, **3 more times** after round 5, once
-  more (part of the full `clean build`) after round 6.
+  more (part of the full `clean build`) after round 6, **3 more times**
+  after round 7.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
   reasonable wall-clock time) — **30/30 rounds exactly correct** after the
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
   fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
-  **25/25 more** after round 4's, and **25/25 more** after round 5's (6
-  processes × 8 iterations = 48 expected per round every time: **155
-  clean rounds total, 7,440 individual lock acquisitions, zero lost
-  updates** across the whole task's real, non-Gradle stress testing —
-  round 6 was documentation/record-validation only and did not touch
-  `AccountLedgerLock`'s own acquisition control flow, so it did not
-  independently warrant a further raw stress-harness round on top of the
-  full `clean build`'s own real multi-process test run).
+  **25/25 more** after round 4's, **25/25 more** after round 5's, and
+  **25/25 more** after round 7's (6 processes × 8 iterations = 48
+  expected per round every time: **180 clean rounds total, 8,640
+  individual lock acquisitions, zero lost updates** across the whole
+  task's real, non-Gradle stress testing — round 6 was documentation/
+  record-validation only and did not touch `AccountLedgerLock`'s own
+  acquisition control flow, so it did not independently warrant a further
+  raw stress-harness round on top of the full `clean build`'s own real
+  multi-process test run).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
-  1, part of the full `clean build` runs after rounds 2, 3, 4, 5, and 6.
+  1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, and
+  7.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **435 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **436 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
-  round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's).
+  round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
+  from round 7's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

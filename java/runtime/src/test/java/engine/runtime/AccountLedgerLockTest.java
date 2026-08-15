@@ -267,6 +267,42 @@ class AccountLedgerLockTest {
     }
 
     /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR: Jackson can silently fill a missing record component with its
+     * default/null rather than throwing -- {@code {"pid":123}} alone
+     * would otherwise deserialize "successfully" to a real, trusted-
+     * looking {@link AccountLedgerLock.LockMetadata} whose {@code
+     * hostname()}/{@code acquiredAt()} are {@code null}, and {@code
+     * tryStealIfStale}'s own {@code Duration.between(metadata
+     * .acquiredAt(), ...)} call would then throw a raw {@code
+     * NullPointerException} that never flows back through {@code
+     * acquire}'s own retry loop the way every other failure mode here
+     * does. {@code readMetadataOrNull} now validates completeness
+     * immediately after parsing, routing an incomplete result through the
+     * exact same mtime-based {@code tryStealIfAbandonedEmpty} path a
+     * genuinely empty file already uses -- proven here by fabricating a
+     * structurally-incomplete-but-parseable, aged lock file and confirming
+     * it's still reclaimed (not that it throws -- the whole point of this
+     * fix is that it must not).
+     */
+    @Test
+    void acquireStealsAnAgedLockFileWithIncompleteMetadataRatherThanThrowingAnNpe(@TempDir Path tempDir)
+            throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        Files.writeString(lockPath, "{\"pid\":123}"); // valid JSON, but missing hostname/acquiredAt entirely
+        Duration staleThreshold = Duration.ofMillis(50);
+        Files.setLastModifiedTime(
+                lockPath, java.nio.file.attribute.FileTime.from(Instant.now().minus(Duration.ofSeconds(60))));
+
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, GENEROUS_RETRY_BUDGET)) {
+            assertTrue(Files.exists(lockPath), "a real lock must have been created after reclaiming the incomplete file");
+            assertTrue(
+                    Files.readString(lockPath).contains("hostname"),
+                    "the reclaimed file must hold this instance's own real, complete metadata now");
+        }
+    }
+
+    /**
      * Backstop path for a Critical finding from this task's own real
      * CodeRabbit review: an empty lock file whose last-modified time is
      * older than {@code staleThreshold} (simulating a holder that died

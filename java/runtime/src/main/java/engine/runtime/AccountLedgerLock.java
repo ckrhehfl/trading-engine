@@ -175,13 +175,29 @@ final class AccountLedgerLock implements AutoCloseable {
         long startNanos = System.nanoTime();
         long budgetNanos = totalRetryBudget.toNanos();
         long backoffMillis = INITIAL_BACKOFF_MILLIS;
+        // Real Trivial finding, a further real CodeRabbit review round on
+        // this PR: a transient (non-FileAlreadyExistsException) IOException
+        // during creation used to be promoted straight to
+        // IllegalStateException on its very first occurrence, consuming
+        // none of totalRetryBudget -- inconsistent with this class's own
+        // documented, measured 500ms+ transient I/O latency on this
+        // repository's real drvfs mount, which is exactly the kind of
+        // environment characteristic a single retry, not zero, should be
+        // able to ride out. Tracked here so a real, final failure still
+        // reports its actual root cause once the budget is genuinely
+        // exhausted, rather than a generic timeout message with no cause.
+        IOException lastTransientFailure = null;
 
         while (true) {
             long elapsedNanos = System.nanoTime() - startNanos;
             if (elapsedNanos >= budgetNanos) {
-                throw new IllegalStateException(
+                IllegalStateException budgetExhausted = new IllegalStateException(
                         "failed to acquire account ledger lock " + lockPath + " within retry budget "
                                 + totalRetryBudget + " (elapsed " + Duration.ofNanos(elapsedNanos) + ")");
+                if (lastTransientFailure != null) {
+                    budgetExhausted.initCause(lastTransientFailure);
+                }
+                throw budgetExhausted;
             }
 
             try {
@@ -208,7 +224,15 @@ final class AccountLedgerLock implements AutoCloseable {
                 sleepQuietly(backoffMillis);
                 backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
             } catch (IOException e) {
-                throw new IllegalStateException("failed to create account ledger lock file " + lockPath, e);
+                // Transient (e.g. a real, measured slow/flaky drvfs I/O
+                // operation, not "the file already exists") -- consume
+                // retry budget like ordinary contention rather than
+                // failing on the very first occurrence; see this loop's
+                // own lastTransientFailure comment above for why the
+                // budget-exhausted branch still reports this as the cause.
+                lastTransientFailure = e;
+                sleepQuietly(backoffMillis);
+                backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
             }
         }
     }
@@ -641,7 +665,7 @@ final class AccountLedgerLock implements AutoCloseable {
      * @return the lock file's parsed metadata; {@code null} if the file
      *     does not exist; {@link #READ_FAILED} if {@link Files#readString}
      *     itself threw; {@link #EMPTY_OR_UNPARSEABLE} if the read succeeded
-     *     but the content can't be parsed, <b>or parses successfully as the
+     *     but the content can't be parsed, <b>parses successfully as the
      *     JSON literal {@code null}</b> (a real Minor finding, real
      *     CodeRabbit review of this PR -- Jackson maps a bare {@code null}
      *     token to a Java {@code null} without throwing, since it's valid
@@ -649,9 +673,22 @@ final class AccountLedgerLock implements AutoCloseable {
      *     indistinguishable from this method's own "file does not exist"
      *     {@code null}, wrongly telling {@link #tryStealIfStale} to retry
      *     immediately with no backoff and wrongly telling {@link #close}
-     *     the file is already gone) (see {@link #tryStealIfStale}'s
-     *     Javadoc for why both non-null/non-metadata outcomes are treated
-     *     as "cannot determine, don't guess" rather than either extreme).
+     *     the file is already gone), <b>or parses to a structurally
+     *     incomplete {@link LockMetadata}</b> (a real further Major
+     *     finding, a further real CodeRabbit review round: Jackson can
+     *     silently fill a missing record component with its default/null
+     *     rather than throwing -- {@code {"pid":123}} alone deserializes
+     *     "successfully" to a {@code LockMetadata} with a {@code null}
+     *     {@code hostname}/{@code acquiredAt} -- and {@link
+     *     #tryStealIfStale}'s own {@code Duration.between(metadata
+     *     .acquiredAt(), ...)} call would then throw a raw {@code
+     *     NullPointerException} that does not flow back through {@link
+     *     #acquire}'s retry loop the way every other failure mode here
+     *     does. Checked immediately after parsing, before this method
+     *     ever returns a value the rest of this class treats as trustworthy
+     *     metadata) (see {@link #tryStealIfStale}'s Javadoc for why all of
+     *     these non-null/non-metadata outcomes are treated as "cannot
+     *     determine, don't guess" rather than either extreme).
      */
     private static LockMetadata readMetadataOrNull(Path lockPath) {
         String raw;
@@ -664,7 +701,10 @@ final class AccountLedgerLock implements AutoCloseable {
         }
         try {
             LockMetadata parsed = MAPPER.readValue(raw, LockMetadata.class);
-            return parsed == null ? EMPTY_OR_UNPARSEABLE : parsed;
+            if (parsed == null || parsed.hostname() == null || parsed.acquiredAt() == null || parsed.pid() <= 0) {
+                return EMPTY_OR_UNPARSEABLE;
+            }
+            return parsed;
         } catch (IOException e) {
             return EMPTY_OR_UNPARSEABLE;
         }
