@@ -43,10 +43,20 @@ import org.slf4j.LoggerFactory;
  * state whatsoever, precisely to make that class of bug structurally
  * impossible to introduce later rather than merely a documented rule to
  * remember: every call re-reads (or re-writes) the file on disk, full
- * stop. Callers needing a consistent read-modify-write cycle across
- * multiple processes must hold {@link AccountLedgerLock} around the whole
- * {@code load} + mutate + {@code persist} sequence themselves -- this
- * class provides no locking of its own.
+ * stop.
+ *
+ * <p><b>Caller contract: every {@link #persist} call, not only a
+ * read-modify-write cycle, must be made while holding {@link
+ * AccountLedgerLock}</b> -- this class provides no locking of its own.
+ * {@link #tmpPathFor} returns a fixed path ({@code
+ * <ledgerPath>.json.tmp}), not one unique per process or per call; two
+ * processes calling {@link #persist} on the same {@code ledgerPath}
+ * without holding the lock (even a standalone {@code persist} call
+ * outside any {@code load} + mutate sequence) can race on that shared
+ * temp file -- one process's write/rename can interleave with another's,
+ * risking a partial or wrong write landing at {@code ledgerPath} and a
+ * real loss of another process's already-committed reservations. See
+ * {@link #persist}'s own Javadoc for the full mechanism.
  */
 final class AccountLedgerStore {
 
@@ -182,6 +192,13 @@ final class AccountLedgerStore {
             } catch (NoSuchFileException tmpAbsent) {
                 return freshLedger(venue, accountId, defaultAllocatedCapital);
             } catch (IOException tmpCheckFailure) {
+                // e (the NoSuchFileException that sent us down this branch in the
+                // first place) is the only stack trace showing which path was
+                // actually judged missing -- preserved as suppressed rather than
+                // discarded, real Trivial finding, real CodeRabbit review of this
+                // PR (PMD's PreserveStackTrace). tmpCheckFailure remains the
+                // primary cause; behavior is unchanged.
+                tmpCheckFailure.addSuppressed(e);
                 throw new IllegalStateException(
                         "failed to determine whether a leftover account ledger temp file " + tmp + " exists"
                                 + " alongside missing " + ledgerPath + " -- refusing to silently bootstrap a fresh"
@@ -196,7 +213,8 @@ final class AccountLedgerStore {
                             + " processes' committed reservations) was lost. Refusing to silently bootstrap a"
                             + " fresh, empty ledger in this ambiguous case -- a human must investigate and"
                             + " manually resolve (e.g. recover from the .tmp file's content if it's valid, or"
-                            + " confirm no real ledger ever existed for this venue/account) before proceeding.");
+                            + " confirm no real ledger ever existed for this venue/account) before proceeding.",
+                    e);
         } catch (IOException e) {
             throw new IllegalStateException(
                     "failed to read account ledger file " + ledgerPath + " -- refusing to start with unknown"
@@ -268,6 +286,23 @@ final class AccountLedgerStore {
      * AtomicMover} testability seam -- this codebase's established,
      * deliberate convention is that each durable-store class keeps its own
      * copy of this interface rather than sharing one across classes.
+     *
+     * <p><b>Caller contract: this method must only ever be called while
+     * holding {@link AccountLedgerLock}, including a standalone call not
+     * part of a {@code load} + mutate + {@code persist} cycle.</b> {@link
+     * #tmpPathFor} deliberately keeps a fixed, non-process-unique temp
+     * path (the interrupted-persist detection in {@link #load} depends on
+     * that fixed name to recognize a leftover {@code .tmp} from a crashed
+     * prior attempt) -- but that same fixed path means two unsynchronized
+     * concurrent {@code persist} calls against the same {@code
+     * ledgerPath} share one temp file. One call's {@code
+     * TRUNCATE_EXISTING} open, write, and rename can interleave with
+     * another's, risking a partial or otherwise wrong write landing at
+     * {@code ledgerPath} -- a real loss of another process's already-
+     * committed reservations, not merely a hypothetical. This is stated
+     * as an unconditional caller contract now, before {@code
+     * SharedKisAccountLedger} (Task C) becomes the first real caller, so
+     * that wiring has no ambiguity to resolve incorrectly.
      *
      * <p><b>Partial durability improvement, real Major finding ("Heavy
      * lift"), real CodeRabbit review of this PR -- disclosed as partial,

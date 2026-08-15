@@ -1567,6 +1567,115 @@ round 11). `./gradlew :runtime:compileJava` confirmed the rewritten
 Javadoc's `{@link}`/`{@code}` cross-references all still resolve
 correctly (no javadoc/compile errors).
 
+### A real `gh api` comment-identity gotcha, caught myself before acting on it
+
+While triaging round 13's findings, `gh api repos/.../pulls/100/comments`
+(filtered by `commit_id` matching current HEAD) returned a batch of
+**Korean-language** review comments describing findings already fixed in
+much earlier rounds (e.g. `close()`'s unconditional-delete TOCTOU, fixed
+in round 8; the `READ_FAILED`-vs-genuine-mismatch conflation, fixed in
+round 5). Before treating any of this as a new round-13 finding, I
+cross-checked each comment's `pull_request_review_id` against the actual
+round-13 review's own id (`4944718393`) and found every one of the
+Korean comments belonged to `pull_request_review_id` values from rounds
+1-9 (`created_at` between 09:59Z and 16:48Z on 2026-08-15, all well
+before round 13's real `submitted_at: 2026-08-15T21:04:47Z`). **Root
+cause**: a review comment's `commit_id` field is not fixed at creation —
+GitHub updates it to reflect the latest commit still containing the
+comment's original diff context unchanged, so an old, already-resolved
+comment anchored to code nobody has touched since can show a `commit_id`
+matching current HEAD indefinitely. Filtering on `commit_id` alone is
+therefore **not** a reliable way to find "what's new this round" — a
+different failure mode from the earlier disclosed pagination mistake
+(that one hid real new data; this one would have surfaced real old data
+mislabeled as new). Recovered by filtering on `pull_request_review_id`
+matching the specific review object instead, which is fixed and
+reliable, and by treating the review's own `body` (its structured
+"Actionable comments posted: N" summary) as the authoritative source for
+what a given round's real findings are. No incorrect fix was made off
+the Korean comments -- caught before acting, not after.
+
+### Round 13
+
+Against commit `0844e51` (after round 12's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T21:04:47Z`): `CHANGES_REQUESTED`, 3
+actionable comments (all three tagged Trivial/nitpick by CodeRabbit's
+own classification), two real and fixed, one real but declined with
+reasoning:
+
+- **Fixed: the two fail-closed `IllegalStateException`s in the missing-
+  ledger-but-leftover-`.tmp`-exists branch of `load` discarded the
+  original `NoSuchFileException`'s stack trace (PMD's PreserveStackTrace
+  finding).** Real: `e` (the exception that routed execution into this
+  branch in the first place) is the only record of which path was judged
+  missing, and this exception only ever surfaces when a human must
+  manually investigate the ledger — exactly the situation where
+  preserving full diagnostic context matters most. Fixed by attaching
+  `e` as a suppressed exception on the inner `tmpCheckFailure`-caused
+  `IllegalStateException` (which already has its own, more specific
+  cause), and as the direct cause on the outer "leftover .tmp exists"
+  `IllegalStateException` (which previously had none at all). Behavior
+  unchanged — same messages, same control flow, only the exception chain
+  is richer.
+- **Fixed: `AccountLedgerStore`'s class Javadoc and `persist`'s own
+  Javadoc stated the `AccountLedgerLock` requirement as covering only a
+  "read-modify-write cycle," not a standalone `persist` call.** Real, and
+  worth closing before `SharedKisAccountLedger` (Task C, a different
+  agent, not yet built) has to interpret this contract for real:
+  `tmpPathFor` deliberately keeps a fixed, non-process-unique temp path
+  (`<ledgerPath>.json.tmp`) — the interrupted-persist detection in `load`
+  depends on that exact fixed name to recognize a crashed prior attempt's
+  leftover file — but that same fixed path means two processes calling
+  `persist` on the same `ledgerPath` **without** holding the lock, even a
+  standalone call outside any `load` + mutate sequence, share one temp
+  file and can race on it: one call's `TRUNCATE_EXISTING` open, write,
+  and atomic-move sequence can interleave with another's, risking a
+  partial or wrong write landing at `ledgerPath` and a real loss of
+  another process's already-committed reservations. Fixed by stating the
+  contract unconditionally ("every `persist` call, not only a
+  read-modify-write cycle") in both the class Javadoc and `persist`'s own
+  Javadoc, with the mechanism spelled out in `persist`'s copy so Task C
+  has no ambiguity to resolve incorrectly. Documentation-only — the fixed
+  `.tmp` naming itself is correct and deliberately preserved (the finding
+  itself agreed, matching this document's own earlier round-3 reasoning
+  for why that naming is fixed rather than per-process).
+- **Declined, with reasoning, rather than fixed: consolidate Jackson
+  versions onto a repo-wide BOM so `java/runtime` (2.18.9) and `java/
+  schemas`/`java/exchange`/`java/risk` (2.18.2) stop drifting.** Real
+  observation, but not actioned in this PR, for reasons independent of
+  whether it's a good idea in the abstract: (1) CodeRabbit's own comment
+  text explicitly frames this as belonging in "a separate follow-up
+  task" ("별도 후속 작업에서 Jackson BOM을 적용해 모듈 간 버전 드리프트를
+  방지하십시오"), not as something this PR itself must resolve, and the
+  finding is tagged Trivial/nitpick, not Major/Critical; (2) fixing it
+  for real means touching `java/exchange` and `java/risk`'s own
+  `build.gradle.kts` files, both **explicitly named as out-of-scope** in
+  this task's own governing brief ("explicitly told NOT to touch...
+  `java/risk`, `java/oms`, `java/execution`, `java/exchange`"); (3) this
+  exact 2.18.9-vs-2.18.2 split, and the reasoning for leaving it, is
+  **already a deliberate, previously-reviewed decision** from a prior PR
+  (#27) — the very comment block CodeRabbit's finding points at
+  (`java/runtime/build.gradle.kts` lines 21-47) already documents this in
+  full, including the line "a repo-wide, cross-module version bump...
+  is a separate, dedicated follow-up rather than folded into this task's
+  diff"; (4) no Jackson BOM exists anywhere in this repository today
+  (confirmed by grep across every `build.gradle.kts` — the only
+  `platform(...)` usage anywhere is `junit-bom` for tests) — introducing
+  one would be a genuine, first-of-its-kind architectural change to this
+  project's dependency-management approach, not a one-line version bump,
+  and deserves its own dedicated task and its own review, not something
+  folded into a lock/store-focused PR under review-cycle pressure.
+  Matching this project's own "document declined suggestions with real
+  reasoning" convention rather than silently ignoring a real review
+  comment.
+
+Re-ran after round 13's two real fixes: `./gradlew clean build` — still
+green, **439 tests, 0 failures, 0 errors** project-wide (documentation
+and exception-cause-chaining changes only, zero new or modified test
+methods — no existing test asserts on the cause of either affected
+`IllegalStateException`, confirmed by grep before making the change).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1585,7 +1694,10 @@ correctly (no javadoc/compile errors).
   either); 22/22 after round 10's (1 more new test); 22/22 after round
   11's (no store-level changes that round either); 22/22 after round
   12's (a Javadoc-only change to `AccountLedgerLock`, no store-level
-  changes).
+  changes); 22/22 after round 13's (a cause-chaining fix and a Javadoc
+  contract clarification in `AccountLedgerStore` itself, but no new or
+  modified test methods -- no existing test asserted on the affected
+  exceptions' cause, confirmed by grep first).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1600,7 +1712,9 @@ correctly (no javadoc/compile errors).
   no new methods); 11/11 after round 10's (2 more new tests); 11/11 after
   round 11's (a Javadoc reference fix and a timing-constant change to an
   existing test, no new methods); 11/11 after round 12's (a Javadoc-only
-  rewrite of two doc blocks, no test changes).
+  rewrite of two doc blocks, no test changes); 11/11 after round 13's (no
+  `AccountLedgerLock`-level changes that round -- both real fixes were in
+  `AccountLedgerStore`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1612,7 +1726,8 @@ correctly (no javadoc/compile errors).
   after round 7, **3 more times** after round 8, **3 more times** after
   round 9, **3 more times** after round 10, once more (part of the full
   `clean build`) after round 11, once more (part of the full `clean
-  build`) after round 12.
+  build`) after round 12, once more (part of the full `clean build`)
+  after round 13.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1639,11 +1754,15 @@ correctly (no javadoc/compile errors).
   only), so it did not independently warrant a further raw stress-harness
   round beyond the full `clean build`'s own real multi-process test run;
   round 12 was a Javadoc-only rewrite with zero runtime-behavior change,
-  for the same reason).
+  for the same reason; round 13's two real fixes were both in
+  `AccountLedgerStore` (an exception-cause-chaining fix and a Javadoc
+  contract clarification), not `AccountLedgerLock`'s own acquisition
+  control flow, so it likewise did not independently warrant a further
+  raw stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, and 12.
+  8, 9, 10, 11, 12, and 13.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -1653,7 +1772,7 @@ correctly (no javadoc/compile errors).
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
-  12's).
+  12's + 0 net-new from round 13's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
