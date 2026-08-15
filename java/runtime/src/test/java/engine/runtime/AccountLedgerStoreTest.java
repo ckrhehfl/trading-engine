@@ -1,0 +1,212 @@
+package engine.runtime;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * {@link AccountLedgerStore} is the durable JSON read/write layer behind
+ * the shared, cross-process {@link AccountLedger} -- see that class's
+ * Javadoc and the governing plan's "2. The shared ledger" section. Unlike
+ * {@code SubmissionMarkerStore} (this module's closest precedent, loads
+ * once at construction and caches), every method here is {@code static}
+ * and reloads from disk on every call -- deliberate, since multiple
+ * independent OS processes mutate the same file (see {@link
+ * AccountLedgerStore}'s own class Javadoc for the full reasoning).
+ */
+class AccountLedgerStoreTest {
+
+    @Test
+    void loadWithNoFileOnDiskReturnsAFreshlyBootstrappedLedger(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+
+        AccountLedger ledger = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
+
+        assertEquals("KIS", ledger.venue());
+        assertEquals("acct-1", ledger.accountId());
+        assertEquals(new BigDecimal("100000"), ledger.allocatedVirtualCapital());
+        assertEquals(BigDecimal.ZERO, ledger.lastReconciledDailyPnlPercent());
+        assertEquals(BigDecimal.ZERO, ledger.lastReconciledWeeklyPnlPercent());
+        assertEquals(BigDecimal.ZERO, ledger.lastReconciledMonthlyPnlPercent());
+        assertNull(ledger.lastReconciledAt());
+        assertNull(ledger.reconciliationAlarmTrippedAt());
+        assertNull(ledger.reconciliationAlarmReason());
+        assertTrue(ledger.reservations().isEmpty());
+    }
+
+    @Test
+    void persistThenLoadRoundTripsARealLedgerIncludingReservations(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        LedgerReservation reservation = new LedgerReservation(
+                UUID.randomUUID(), "A11609", 12345L, "host-a", new BigDecimal("1500000.50"), Instant.now());
+        AccountLedger original = new AccountLedger(
+                "KIS",
+                "acct-1",
+                new BigDecimal("100000000"),
+                new BigDecimal("-0.01"),
+                new BigDecimal("-0.02"),
+                new BigDecimal("-0.03"),
+                Instant.now(),
+                null,
+                null,
+                List.of(reservation));
+
+        AccountLedgerStore.persist(file, original);
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000000"));
+
+        assertEquals(original, reloaded);
+    }
+
+    @Test
+    void persistThenLoadRoundTripsATrippedAlarm(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger withAlarm = new AccountLedger(
+                "KIS",
+                "acct-1",
+                new BigDecimal("100000000"),
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                BigDecimal.ZERO,
+                Instant.now(),
+                Instant.now(),
+                "ledger exposure diverged from real account by more than 10%",
+                List.of());
+
+        AccountLedgerStore.persist(file, withAlarm);
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000000"));
+
+        assertEquals(withAlarm.reconciliationAlarmTrippedAt(), reloaded.reconciliationAlarmTrippedAt());
+        assertEquals(withAlarm.reconciliationAlarmReason(), reloaded.reconciliationAlarmReason());
+    }
+
+    @Test
+    void loadReflectsTheLatestPersistedStateNotAStaleCachedOne(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger first = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, first);
+        AccountLedger loadedFirst = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+        assertEquals(new BigDecimal("1000"), loadedFirst.allocatedVirtualCapital());
+
+        AccountLedger second = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("2000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, second);
+        AccountLedger loadedSecond = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+
+        // Static, stateless methods -- no instance to have cached the
+        // first value; this proves it, not merely asserts it by
+        // construction.
+        assertEquals(new BigDecimal("2000"), loadedSecond.allocatedVirtualCapital());
+    }
+
+    @Test
+    void aCorruptFileFailsClosedRatherThanReturningAFreshLedger(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Files.writeString(file, "this is not valid JSON {{{");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    @Test
+    void aWellFormedJsonFileMissingARequiredFieldFailsClosed(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        // Valid JSON, but missing "venue" -- AccountLedger's own compact
+        // constructor requires it non-null. Proves the fail-closed
+        // behavior covers a structurally-plausible-but-invalid file, not
+        // just outright unparseable garbage.
+        Files.writeString(
+                file,
+                "{\"accountId\":\"acct-1\",\"allocatedVirtualCapital\":100000,"
+                        + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
+                        + "\"lastReconciledMonthlyPnlPercent\":0,\"reservations\":[]}");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    @Test
+    void persistCreatesParentDirectoriesIfNeeded(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("nested").resolve("dir").resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        AccountLedgerStore.persist(file, ledger);
+
+        assertTrue(Files.exists(file));
+    }
+
+    @Test
+    void writesAreAtomicNoTempFileLeftBehindAfterASuccessfulPersist(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        AccountLedgerStore.persist(file, ledger);
+
+        assertTrue(Files.exists(file));
+        assertFalse(Files.exists(tempDir.resolve("ledger.json.tmp")), "the temp file must be renamed away, not left behind");
+    }
+
+    /**
+     * Test-only seam (package-private {@code AtomicMover} overload,
+     * mirroring {@code SubmissionMarkerStore}'s own identical testability
+     * pattern -- this codebase's established convention is that each
+     * durable-store class keeps its own copy of this interface rather than
+     * sharing one, see {@link AccountLedgerStore}'s own Javadoc for why):
+     * forces the atomic-move step to fail, proving the fallback still
+     * leaves the store durably correct rather than losing the just-
+     * persisted ledger.
+     */
+    @Test
+    void aNonAtomicMoveFallbackStillPersistsTheLedgerWhenAtomicMoveFails(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedgerStore.AtomicMover flakyMover = (source, target) -> {
+            throw new AtomicMoveNotSupportedException(source.toString(), target.toString(), "test-forced failure");
+        };
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        AccountLedgerStore.persist(file, ledger, flakyMover);
+
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"));
+        assertEquals(new BigDecimal("42"), reloaded.allocatedVirtualCapital());
+    }
+
+    @Test
+    void defaultAtomicMoverPersistsWithoutTheTestSeam(@TempDir Path tempDir) {
+        // Mirrors SubmissionMarkerStoreTest's own
+        // defaultAtomicMoverPersistsWithoutTheTestSeam -- exercises the
+        // real production default (the 2-arg persist overload) directly,
+        // rather than only ever going through the AtomicMover seam.
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        AccountLedgerStore.persist(file, ledger);
+
+        assertTrue(Files.exists(file));
+        assertFalse(Files.exists(tempDir.resolve("ledger.json.tmp")));
+    }
+}
