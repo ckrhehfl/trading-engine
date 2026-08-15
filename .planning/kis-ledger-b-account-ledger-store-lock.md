@@ -634,6 +634,130 @@ every time) and a fresh, clean 25-round raw stress harness run (6
 processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
 correct**.
 
+### Round 3
+
+CodeRabbit rate-limited the first `@coderabbitai full review` request
+after round 2's push ("next review available in ~5-7 minutes," confirmed
+via `@coderabbitai rate limit` per this task's own required check-before-
+retry procedure, not guessed) — actively re-polled the reviews API every
+60-90s per the governing task brief's own explicit instruction, rather
+than sleeping through it blind; a second `full review` request once the
+ETA passed picked it up normally.
+
+Against commit `0008a6d` (after round 2's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-15T11:02:16Z`): `CHANGES_REQUESTED`, 6
+actionable inline comments. All six verified against the real current
+code and fixed:
+
+- **`WritableByteChannel#write` is not guaranteed to write the whole
+  buffer in one call (Major).** Real and correctly sourced against the
+  JDK's own documented contract (the reviewer's own web-verified
+  citation, independently consistent with the actual Javadoc): a partial
+  write would leave truncated JSON, which `readMetadataOrNull` would
+  treat as `EMPTY_OR_UNPARSEABLE` — safe (never a false "steal"), but a
+  real correctness gap regardless (this holder's own lock would end up
+  permanently unparseable by anyone, including its own eventual `close()`,
+  until `staleThreshold` reclaims it). Fixed: `createAndWriteMetadata` now
+  loops on `channel.write(buffer)` until `!buffer.hasRemaining()`, instead
+  of trusting a single call to drain it.
+- **A JSON literal `null` parses successfully to Java `null`, colliding
+  with `readMetadataOrNull`'s own "file absent" sentinel (Minor).** Real:
+  Jackson maps a bare `null` token to `null` without throwing (valid
+  JSON, not an error) — the original code returned that `null` directly,
+  indistinguishable from "file does not exist." A lock file that somehow
+  held literal `null` content would have made `tryStealIfStale` retry
+  immediately with no backoff (wrongly treating a present file as gone)
+  and `close()` return early believing nothing needed releasing (wrongly
+  treating a present file as already gone). Fixed: `parsed == null ?
+  EMPTY_OR_UNPARSEABLE : parsed`, normalizing this one specific case the
+  same way every other unparseable/unexpected content already is.
+- **`Files.exists(tmp)` collapses a real I/O error into a plain `false`
+  (Major).** Real, and the same fail-closed principle this whole file
+  already applies everywhere else, missed in round 2's own new code: an
+  access/permission error checking for the leftover `.tmp` file would
+  have been silently read as "no `.tmp` file," defeating the entire
+  point of round 2's mitigation by falling through to a fresh, empty
+  ledger anyway. Fixed: replaced with `Files.readAttributes(tmp,
+  BasicFileAttributes.class)`, explicitly separating `NoSuchFileException`
+  ("genuinely absent" — safe to bootstrap fresh) from any other
+  `IOException` (fails closed with its own explicit message, distinct
+  from the "leftover `.tmp` found" case).
+- **`persist` gives no durability guarantee beyond the OS's own write-back
+  timing (Major, "Heavy lift").** Real, and disclosed as a *partial*
+  fix, not a complete one, matching this same task's own established
+  practice for the closely related round-2 finding. The temp file is now
+  written via a real `FileChannel` and `force(true)`d before the rename —
+  **verified empirically first**, not assumed: a standalone probe
+  (writing and forcing a real file under this repository's own
+  `java/runtime/build/tmp/`) confirmed `force(true)` does not throw on
+  this drvfs mount before this fix was written. **Explicitly declined**:
+  fsyncing the parent directory itself (no portable `java.nio.file` way
+  to do it, and doing so via platform-specific APIs is real, additional,
+  undesigned scope matching the reviewer's own "Heavy lift" label), and
+  retrofitting the identical durability guarantee onto this codebase's
+  three other existing, structurally-identical durable stores
+  (`SubmissionMarkerStore`, `DailyReportGenerator`, `FileSignalSource`,
+  none of which fsync either) — applying a stronger guarantee to only the
+  newest of four twin stores without a deliberate decision to revisit the
+  other three would itself be a new, undisclosed inconsistency, so it's
+  named directly in `persist`'s own Javadoc instead. **A real regression
+  caught and fixed while implementing this**: the naive translation to
+  `FileChannel.open` would have used `StandardOpenOption.CREATE_NEW`,
+  which throws `FileAlreadyExistsException` if the temp file already
+  exists — breaking retry-after-a-previous-interrupted-persist, since the
+  original `Files.writeString` always overwrites via its own documented
+  default options (`CREATE, TRUNCATE_EXISTING, WRITE`). Caught by
+  checking `Files.writeString`'s actual Javadoc before assuming
+  `CREATE_NEW` was a safe drop-in, not discovered via a failing test —
+  used `CREATE, TRUNCATE_EXISTING, WRITE` explicitly instead, preserving
+  the original overwrite semantics exactly.
+- **The 12-thread contention test's shared 5s retry budget is tight given
+  this task's own documented drvfs latencies (Minor).** Real: ordinary
+  queuing among 12 threads × 10 acquisitions, each backing off up to
+  250ms per attempt, could plausibly approach or exceed 5s with no actual
+  mutual-exclusion defect involved — a budget-exhaustion failure there
+  would misattribute a test-harness impatience issue to the lock
+  primitive itself. Fixed: this test now uses its own dedicated 60s
+  budget (`CONTENTION_RETRY_BUDGET`), not the smaller, deliberately tight
+  `GENEROUS_RETRY_BUDGET` other tests share; the test's own outer
+  `done.await` timeout was raised from 30s to 90s to comfortably exceed
+  the new per-thread budget rather than becoming the new, tighter
+  bottleneck.
+- **The new generation-safety test's platform assumption and resource
+  lifecycle weren't made explicit (Trivial).** Real, both parts: (1) the
+  test's own premise (an open file surviving a concurrent delete-and-
+  recreate at the same path) is real, verified, POSIX-style behavior on
+  this project's actual environments (WSL2 dev, `ubuntu-latest` CI) but
+  is documented to differ on traditional Windows semantics — annotated
+  `@EnabledOnOs(OS.LINUX)`, a precise statement of the tested premise
+  rather than a behavior change. (2) `staleWritersChannel` is now opened
+  inside its own try-with-resources so it can't leak if `Files.delete` or
+  `AccountLedgerLock.acquire` throws before the test's own explicit,
+  mid-body `close()` call runs (that explicit close still has to stay —
+  it's what makes the delayed write happen at the right point in the
+  sequence — the try-with-resources is a safety net for the failure
+  path, and a redundant second close is a documented no-op).
+
+**One finding's own suggested fix was evaluated and only partially
+applied, with the remainder explicitly declined and disclosed** (the
+durability finding above) — consistent with this document's own standing
+practice (see round 1/round 2's own declined-suggestion entries) of
+fixing what's genuinely in scope and naming what isn't, rather than
+either rubber-stamping every suggested diff or dismissing findings
+without a real, checked reason.
+
+Re-ran after all six round-3 fixes: `./gradlew clean build` — still
+green, **430 tests, 0 failures, 0 errors** project-wide (unchanged from
+round 2's count — round 3's fixes modified existing production/test code
+rather than adding net-new test methods, except where noted above).
+Re-verified the real safety property specifically, a further time:
+`AccountLedgerLockMultiProcessTest` 3 more times (`--rerun-tasks`, green
+every time) and a further clean 25-round raw stress harness run (6
+processes × 8 iterations, 48 expected per round) — **25/25 rounds exactly
+correct** (105 clean stress rounds / 5,040 individual lock acquisitions
+across the whole task, zero lost updates in any of them).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -643,35 +767,38 @@ correct**.
   — green, 10/10, after implementation (one deprecation warning found and
   removed — see "TDD" above; zero warnings on the final version); 14/14
   after round 1's CodeRabbit fixes (4 new tests); 16/16 after round 2's
-  (2 more new tests).
+  (2 more new tests); 16/16 after round 3's (no new test methods, existing
+  ones' production-code dependencies changed).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
-  test).
+  test); 8/8 after round 3's (existing tests modified, no new methods).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
   above); green after the fix, confirmed **5 additional times**
   (`--rerun-tasks`) before round 1's review, **3 more times** after round
-  1, **3 more times** after round 2.
+  1, **3 more times** after round 2, **3 more times** after round 3.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
   reasonable wall-clock time) — **30/30 rounds exactly correct** after the
   original TOCTOU fix, **25/25 more (clean)** after round 1's CodeRabbit
-  fixes, and **25/25 more** after round 2's (6 processes × 8 iterations =
-  48 expected per round every time: **80 clean rounds total, 3,840
-  individual lock acquisitions, zero lost updates** across the whole
-  task's real, non-Gradle stress testing).
+  fixes, **25/25 more** after round 2's, and **25/25 more** after round
+  3's (6 processes × 8 iterations = 48 expected per round every time:
+  **105 clean rounds total, 5,040 individual lock acquisitions, zero lost
+  updates** across the whole task's real, non-Gradle stress testing).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
-  1, part of the full `clean build` runs after round 2.
+  1, part of the full `clean build` runs after rounds 2 and 3.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
   **430 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
-  round 1's CodeRabbit review + 3 from round 2's).
+  round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
+  round 3's, which changed existing code/tests rather than adding
+  methods).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

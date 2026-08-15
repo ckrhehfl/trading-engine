@@ -253,7 +253,16 @@ final class AccountLedgerLock implements AutoCloseable {
         }
         try (channel) {
             LockMetadata metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
-            channel.write(ByteBuffer.wrap(MAPPER.writeValueAsBytes(metadata)));
+            // WritableByteChannel#write is not guaranteed to consume the
+            // whole buffer in one call (real Major finding, real
+            // CodeRabbit review of this PR -- confirmed against the JDK's
+            // own documented contract, not assumed) -- loop until fully
+            // written, matching this class's own careful, don't-assume
+            // discipline everywhere else in this file.
+            ByteBuffer buffer = ByteBuffer.wrap(MAPPER.writeValueAsBytes(metadata));
+            while (buffer.hasRemaining()) {
+                channel.write(buffer);
+            }
             return metadata;
         } catch (IOException | RuntimeException e) {
             // Best-effort, path-based cleanup -- not itself re-verified
@@ -486,7 +495,15 @@ final class AccountLedgerLock implements AutoCloseable {
      * @return the lock file's parsed metadata; {@code null} if the file
      *     does not exist; {@link #READ_FAILED} if {@link Files#readString}
      *     itself threw; {@link #EMPTY_OR_UNPARSEABLE} if the read succeeded
-     *     but the content can't be parsed (see {@link #tryStealIfStale}'s
+     *     but the content can't be parsed, <b>or parses successfully as the
+     *     JSON literal {@code null}</b> (a real Minor finding, real
+     *     CodeRabbit review of this PR -- Jackson maps a bare {@code null}
+     *     token to a Java {@code null} without throwing, since it's valid
+     *     JSON; left unnormalized, that {@code null} would have been
+     *     indistinguishable from this method's own "file does not exist"
+     *     {@code null}, wrongly telling {@link #tryStealIfStale} to retry
+     *     immediately with no backoff and wrongly telling {@link #close}
+     *     the file is already gone) (see {@link #tryStealIfStale}'s
      *     Javadoc for why both non-null/non-metadata outcomes are treated
      *     as "cannot determine, don't guess" rather than either extreme).
      */
@@ -500,7 +517,8 @@ final class AccountLedgerLock implements AutoCloseable {
             return READ_FAILED;
         }
         try {
-            return MAPPER.readValue(raw, LockMetadata.class);
+            LockMetadata parsed = MAPPER.readValue(raw, LockMetadata.class);
+            return parsed == null ? EMPTY_OR_UNPARSEABLE : parsed;
         } catch (IOException e) {
             return EMPTY_OR_UNPARSEABLE;
         }

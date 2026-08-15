@@ -20,6 +20,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -47,6 +49,23 @@ class AccountLedgerLockTest {
      * asserted away. All threads are also proven to have eventually
      * succeeded (no thread swallowed an exception).
      */
+    /**
+     * Real Minor finding, real CodeRabbit review of this PR: 12 threads x
+     * 10 acquisitions, each waiter backing off up to 250ms per failed
+     * attempt, can plausibly accumulate close to (or past)
+     * {@link #GENEROUS_RETRY_BUDGET}'s shared 5s budget under ordinary
+     * queuing alone -- not a mutual-exclusion bug, just real contention --
+     * especially combined with this class's own documented 500ms+ single-
+     * operation latency under load on this repository's real drvfs mount.
+     * A budget exhaustion there would fail this test for the wrong reason
+     * (test-harness impatience, not a lock defect), misleading whoever
+     * reads the failure. This test gets its own, much more generous,
+     * dedicated budget instead of sharing the smaller one other tests use
+     * deliberately (to keep {@code acquireThrowsRatherThanHangingWhenTheRetryBudgetIsExhausted}
+     * fast).
+     */
+    private static final Duration CONTENTION_RETRY_BUDGET = Duration.ofSeconds(60);
+
     @Test
     void acquireProvidesRealMutualExclusionAcrossManyThreads(@TempDir Path tempDir) throws InterruptedException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
@@ -61,7 +80,7 @@ class AccountLedgerLockTest {
                 try {
                     for (int i = 0; i < iterationsPerThread; i++) {
                         try (AccountLedgerLock lock =
-                                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
+                                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, CONTENTION_RETRY_BUDGET)) {
                             int current = counter[0];
                             Thread.sleep(2); // widen the race window
                             counter[0] = current + 1;
@@ -76,7 +95,10 @@ class AccountLedgerLockTest {
             thread.start();
         }
 
-        assertTrue(done.await(30, TimeUnit.SECONDS), "all threads must finish within the test timeout");
+        // Comfortably exceeds CONTENTION_RETRY_BUDGET itself -- must never
+        // be the thing that times this test out before a real per-thread
+        // budget exhaustion would.
+        assertTrue(done.await(90, TimeUnit.SECONDS), "all threads must finish within the test timeout");
         assertTrue(failures.isEmpty(), "no thread should have failed to acquire: " + failures);
         assertEquals(
                 threadCount * iterationsPerThread,
@@ -292,8 +314,30 @@ class AccountLedgerLockTest {
      * window -- then has a sibling steal and reacquire through the real
      * production path, and only then completes the original, now-orphaned
      * write through the old handle.
+     *
+     * <p><b>Two real, Trivial/Minor findings from a further real
+     * CodeRabbit review round, both addressed</b>: (1) this test's own
+     * premise -- an open file surviving a concurrent delete-and-recreate
+     * at the same path -- is real, observed, POSIX-style behavior
+     * (confirmed by this task's own standalone probe against this
+     * repository's real filesystem, see {@code createAndWriteMetadata}'s
+     * own Javadoc), but is documented to be platform-dependent in
+     * general (traditional Windows semantics differ). Annotated {@code
+     * @EnabledOnOs(OS.LINUX)} accordingly -- true both in this project's
+     * real dev environment (WSL2, a real Linux kernel under the drvfs
+     * mount) and its CI (`ubuntu-latest`), so this is a precise
+     * statement of the tested premise, not a behavior change. (2) {@code
+     * staleWritersChannel} is now opened inside its own try-with-resources
+     * so it cannot leak if {@code Files.delete} or {@code
+     * AccountLedgerLock.acquire} throws before this test's own explicit,
+     * mid-body {@code close()} call -- that explicit close (needed to
+     * make the delayed write actually happen at the right point in the
+     * sequence) stays; a redundant second close from the try-with-
+     * resources block once that already ran is a documented no-op per
+     * {@link SeekableByteChannel#close()}'s own contract, not a bug.
      */
     @Test
+    @EnabledOnOs(OS.LINUX)
     void aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen(
             @TempDir Path tempDir) throws IOException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
@@ -301,27 +345,28 @@ class AccountLedgerLockTest {
         // Mirrors createAndWriteMetadata's own atomic create-and-open step
         // directly, without completing the write -- reproducing the real
         // slow-write window that Critical finding above is about.
-        SeekableByteChannel staleWritersChannel =
-                Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+        try (SeekableByteChannel staleWritersChannel =
+                Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
 
-        // A sibling judges this (from its perspective, abandoned) lock
-        // stale and acquires its own real, new generation through the
-        // real production path.
-        Files.delete(lockPath);
-        try (AccountLedgerLock sibling =
-                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
-            String siblingContent = Files.readString(lockPath);
+            // A sibling judges this (from its perspective, abandoned) lock
+            // stale and acquires its own real, new generation through the
+            // real production path.
+            Files.delete(lockPath);
+            try (AccountLedgerLock sibling =
+                    AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
+                String siblingContent = Files.readString(lockPath);
 
-            // The original, now-orphaned writer finally completes its own
-            // delayed write through its OLD, already-open handle.
-            staleWritersChannel.write(ByteBuffer.wrap("STALE-CONTENT-FROM-ORIGINAL-CREATOR".getBytes()));
-            staleWritersChannel.close();
+                // The original, now-orphaned writer finally completes its
+                // own delayed write through its OLD, already-open handle.
+                staleWritersChannel.write(ByteBuffer.wrap("STALE-CONTENT-FROM-ORIGINAL-CREATOR".getBytes()));
+                staleWritersChannel.close();
 
-            assertEquals(
-                    siblingContent,
-                    Files.readString(lockPath),
-                    "a delayed write through an old, already-orphaned creation handle must never corrupt a"
-                            + " different, currently-live lock generation at the same path");
+                assertEquals(
+                        siblingContent,
+                        Files.readString(lockPath),
+                        "a delayed write through an old, already-orphaned creation handle must never corrupt a"
+                                + " different, currently-live lock generation at the same path");
+            }
         }
     }
 
