@@ -151,6 +151,22 @@ class AccountLedgerLockTest {
         try (AccountLedgerLock lock =
                 AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
             assertTrue(Files.exists(lockPath), "a real lock must have been created after the steal");
+            // Strengthened per a further real CodeRabbit review round on
+            // this PR: a fabricated lock file already exists at lockPath
+            // before acquire() is ever called, so file existence alone
+            // does not distinguish a real steal from acquire() simply
+            // never running at all. Verifying the content actually
+            // changed to this process's own real metadata (and the
+            // fabricated stale-host value is gone) proves the steal
+            // itself happened, matching the same discipline already
+            // applied to acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold.
+            String content = Files.readString(lockPath);
+            assertFalse(
+                    content.contains("stale-host"),
+                    "the fabricated stale generation must have been replaced, not merely left in place");
+            assertTrue(
+                    content.contains("\"pid\":" + ProcessHandle.current().pid()),
+                    "the reclaimed file must hold this process's own real metadata now");
         }
     }
 
@@ -177,6 +193,20 @@ class AccountLedgerLockTest {
 
         try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, GENEROUS_RETRY_BUDGET)) {
             assertTrue(Files.exists(lockPath), "a real lock must have been created after the steal");
+            // Strengthened per a further real CodeRabbit review round on
+            // this PR, same reasoning as
+            // acquireStealsAFabricatedLockWithADeadPid's own identical
+            // fix above -- file existence alone doesn't prove a steal
+            // happened here either. The fabricated pid is deliberately
+            // this process's own real pid (so the dead-pid path cannot
+            // fire and only the expired-timestamp path is exercised), so
+            // checking pid again would not distinguish a real steal from
+            // a no-op; checking that the fabricated stale-host value is
+            // gone is the real differentiator here.
+            String content = Files.readString(lockPath);
+            assertFalse(
+                    content.contains("stale-host"),
+                    "the fabricated stale generation must have been replaced, not merely left in place");
         }
     }
 

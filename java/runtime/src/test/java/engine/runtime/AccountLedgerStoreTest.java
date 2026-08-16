@@ -608,6 +608,76 @@ class AccountLedgerStoreTest {
         assertTrue(reloaded.reservations().isEmpty());
     }
 
+    /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR -- catching a real regression in the round-18 fix directly above
+     * this test: the round-18 cleanup deleted {@code tmp} unconditionally
+     * on any {@link IOException} reaching {@code persist}'s outer catch,
+     * including one thrown by the non-atomic {@code REPLACE_EXISTING}
+     * fallback itself. That fallback is not atomic and can fail after it
+     * has already altered (or removed) the real, existing {@code
+     * ledgerPath} it was replacing -- in that specific sequence, {@code
+     * tmp} is the only remaining copy of valid data, and deleting it
+     * turns a safe fail-closed outcome into <b>silent loss of every other
+     * process's real, committed reservations</b> the next time {@code
+     * load} runs. Fixed by setting {@code tmp} to {@code null} inside a
+     * new, dedicated catch around the fallback {@code Files.move} call
+     * specifically, before rethrowing -- opting that one failure class
+     * out of the outer cleanup, while leaving the originally-intended
+     * cleanup case ({@code mover.move} itself failing, before any
+     * fallback and before {@code ledgerPath} is ever touched) unaffected.
+     *
+     * <p>Proven here at the level that is actually deterministic and
+     * portable to reproduce via public {@code java.nio.file} APIs: a real
+     * {@code ledgerPath} that is a non-empty directory reliably makes the
+     * fallback {@code Files.move(..., REPLACE_EXISTING)} throw a real
+     * {@link java.nio.file.DirectoryNotEmptyException} (confirmed via a
+     * standalone probe before writing this test, not assumed) --
+     * <b>without</b> altering either the source ({@code tmp} survives
+     * intact) or the target first, so this specific setup does not
+     * reproduce the harder, timing-dependent "target already removed
+     * mid-move" sub-case verbatim. It does exercise the exact same code
+     * path (the fallback {@code Files.move} call and this test's own
+     * fix's {@code catch} block around it) and prove the same real
+     * consequence that actually matters: {@code tmp} is preserved, not
+     * deleted, when that call fails -- and a subsequent {@code load} call
+     * still fails closed (via its own generic read-failure branch here,
+     * since {@code ledgerPath} being a directory is itself unreadable as
+     * a file -- a different one of {@code load}'s several fail-closed
+     * branches than the missing-ledger-plus-leftover-{@code .tmp} one,
+     * but the same overall safety property) rather than silently
+     * bootstrapping an empty ledger.
+     */
+    @Test
+    void persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        // A non-empty directory at ledgerPath's own path forces a real,
+        // deterministic DirectoryNotEmptyException from the fallback
+        // Files.move(..., REPLACE_EXISTING) call -- confirmed via a
+        // standalone probe (not assumed) that this leaves both the
+        // source and the target directory's own content untouched.
+        Files.createDirectory(file);
+        Files.writeString(file.resolve("occupies-the-directory.txt"), "not a real ledger, just occupies the path");
+        AccountLedgerStore.AtomicMover atomicMoveNotSupportedMover = (source, target) -> {
+            throw new AtomicMoveNotSupportedException(source.toString(), target.toString(), "test-forced fallback");
+        };
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.persist(file, ledger, atomicMoveNotSupportedMover));
+
+        assertTrue(
+                Files.exists(tempDir.resolve("ledger.json.tmp")),
+                "tmp must survive a fallback-move failure -- it may be the only remaining copy of valid data");
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                "load must still fail closed after a fallback-move failure, never silently bootstrap empty");
+    }
+
     @Test
     void defaultAtomicMoverPersistsWithoutTheTestSeam(@TempDir Path tempDir) {
         // Mirrors SubmissionMarkerStoreTest's own

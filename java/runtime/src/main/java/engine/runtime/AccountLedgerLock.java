@@ -342,19 +342,29 @@ final class AccountLedgerLock implements AutoCloseable {
      *
      * <p><b>Cleanup on write failure.</b> If writing the metadata fails
      * (any {@link IOException} after the file was successfully created),
-     * the just-created file is deleted before the failure propagates
-     * (best-effort -- if the cleanup delete itself also fails, it is
-     * attached via {@link Throwable#addSuppressed} rather than masking the
-     * original failure). Without this, a permanently empty lock file would
-     * be left behind: {@link #readMetadataOrNull} can never parse a
-     * pid/{@code acquiredAt} out of empty content, so {@link
-     * #tryStealIfStale}'s ordinary dead-pid/expired-timestamp checks could
-     * never fire against it, and every future waiter would exhaust its
-     * retry budget and fail until a human manually deleted the file.
-     * {@link #tryStealIfAbandonedEmpty} is the backstop for the narrower
-     * residual case this cleanup cannot reach at all -- a hard process
-     * kill between file creation and this method's own {@code catch} block
-     * ever running.
+     * the just-created file is deleted before the failure propagates --
+     * but only if it still holds exactly this holder's own metadata (via
+     * {@link #deleteIfStillOwnGeneration}, so a sibling's newly acquired
+     * generation at the same path is never destroyed). A partial write is
+     * the most common real shape this failure takes, and a partially
+     * written file's content is truncated JSON -- {@link
+     * #readMetadataOrNull} returns {@link #EMPTY_OR_UNPARSEABLE} for it,
+     * which does not {@code equals()} this holder's own metadata, so this
+     * cleanup does <b>not</b> delete it. Best-effort where it does apply --
+     * if the cleanup delete itself also fails, it is attached via {@link
+     * Throwable#addSuppressed} rather than masking the original failure.
+     * Without any cleanup at all, a permanently empty (or partially
+     * written) lock file would be left behind: {@link #readMetadataOrNull}
+     * can never parse a pid/{@code acquiredAt} out of empty or truncated
+     * content, so {@link #tryStealIfStale}'s ordinary dead-pid/expired-
+     * timestamp checks could never fire against it, and every future
+     * waiter would exhaust its retry budget and fail until a human
+     * manually deleted the file (or, in the always-real partial-write
+     * case above, until {@code staleThreshold} elapses). {@link
+     * #tryStealIfAbandonedEmpty} is the actual backstop for that residual
+     * window -- not merely the narrower hard-crash case originally
+     * documented here, but the ordinary partial-write case too, since this
+     * method's own cleanup cannot reach either.
      *
      * <p><b>Re-verification after write, and why a lost race is not an
      * error.</b> A successful write through the single open handle above

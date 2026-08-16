@@ -440,7 +440,40 @@ final class AccountLedgerStore {
                         tmp,
                         ledgerPath,
                         e.toString());
-                Files.move(tmp, ledgerPath, StandardCopyOption.REPLACE_EXISTING);
+                try {
+                    Files.move(tmp, ledgerPath, StandardCopyOption.REPLACE_EXISTING);
+                } catch (IOException fallbackFailure) {
+                    // Real Major finding, a further real CodeRabbit review
+                    // round on this PR, catching a real regression in the
+                    // round-18 cleanup fix below: this non-atomic
+                    // REPLACE_EXISTING move is not a single atomic
+                    // operation, and can fail partway through -- possibly
+                    // after it has already removed the old, real
+                    // ledgerPath (which may hold other processes' genuine
+                    // committed reservations) but before tmp's own content
+                    // has actually landed at that path. In that specific
+                    // sequence, tmp is the *only* remaining copy of valid
+                    // data, and the outer catch's own cleanup (see its
+                    // comment) would delete the one piece of evidence
+                    // load()'s own missing-ledger-plus-leftover-.tmp
+                    // fail-closed check needs to avoid silently
+                    // bootstrapping an empty ledger over real, lost
+                    // reservations -- turning a safe fail-closed outcome
+                    // into silent data loss, exactly backwards. Setting
+                    // tmp to null here (a plain local variable
+                    // reassignment, not a lambda capture, so this is valid
+                    // Java) opts this specific failure out of that
+                    // cleanup -- tmp survives on disk, matching this same
+                    // class's existing "a stray .tmp is treated as strong
+                    // circumstantial evidence of an interrupted persist()"
+                    // convention. The narrower, originally-intended
+                    // cleanup case (mover.move itself failing, before any
+                    // fallback and before ledgerPath is ever touched) is
+                    // unaffected -- tmp there is genuinely this process's
+                    // own unpublished, orphaned write, safe to remove.
+                    tmp = null;
+                    throw fallbackFailure;
+                }
             }
         } catch (IOException e) {
             // Real Major finding, real CodeRabbit review of this PR: without
@@ -462,6 +495,10 @@ final class AccountLedgerStore {
             // weaken it -- a tmp file surviving a real crash (no Java
             // exception ever thrown to reach this catch block at all) is
             // untouched by this cleanup and still correctly fails closed.
+            // Also deliberately does NOT run when tmp was set to null
+            // above -- see that catch block's own comment for the real,
+            // separate reason a fallback-move failure must preserve tmp
+            // rather than clean it up.
             if (tmp != null) {
                 try {
                     Files.deleteIfExists(tmp);

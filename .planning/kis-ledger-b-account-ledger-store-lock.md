@@ -2037,6 +2037,103 @@ raw stress-harness round was not independently warranted this round,
 matching the pattern already established for store-only/test-only
 rounds.
 
+### Round 19
+
+Against commit `619dd42` (after round 18's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T03:28:06Z`): `CHANGES_REQUESTED`, 2
+"Actionable comments" plus 1 shown separately as a **"Duplicate
+comment"** — the duplicate label notwithstanding, it was the most
+serious finding of the three, catching a real regression in round 18's
+own fix. All three real, all three fixed:
+
+- **(Major, shown as a "duplicate" but genuinely new and serious: a
+  real regression in round 18's own tmp-cleanup fix) `persist`'s new
+  cleanup unconditionally deleted `tmp` on any `IOException`, including
+  one thrown by the non-atomic `REPLACE_EXISTING` fallback move
+  itself — and that specific case can turn a safe fail-closed outcome
+  into silent, permanent loss of every other process's real committed
+  reservations.** Real, and directly grounded in CLAUDE.md's own "never
+  weaken risk limits" principle (cited explicitly in the review): the
+  round-18 fix correctly handled the case where `mover.move` itself
+  fails before `ledgerPath` is ever touched (safe to delete `tmp`
+  there — it's this process's own unpublished, orphaned write), but
+  did not distinguish that from the fallback `Files.move(...,
+  REPLACE_EXISTING)` failing. That fallback is **not** a single atomic
+  operation and can fail partway through — possibly after it has
+  already altered or removed a real, pre-existing `ledgerPath` (which
+  could hold other processes' genuine committed reservations) but
+  before `tmp`'s own content has actually landed at that path. In that
+  specific sequence, `tmp` is the *only* remaining copy of valid data,
+  and round 18's own cleanup would delete exactly the evidence `load`'s
+  own missing-ledger-plus-leftover-`.tmp` fail-closed check needs to
+  avoid silently bootstrapping an empty ledger over real, lost
+  reservations. Fixed by wrapping the fallback `Files.move` call in its
+  own `catch (IOException fallbackFailure)`, setting `tmp = null`
+  (opting that failure class out of the outer cleanup — a plain local
+  variable reassignment, not a lambda capture, so straightforwardly
+  valid) before rethrowing. The originally-intended, narrower cleanup
+  case (`mover.move` itself failing, before any fallback) is unaffected.
+
+  Proven with a new test
+  (`persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails`)
+  at the level that is actually deterministic and portable to reproduce
+  via public `java.nio.file` APIs, disclosed honestly rather than
+  overclaimed: a real, non-empty directory at `ledgerPath`'s own path
+  reliably makes the fallback `Files.move` throw a real
+  `DirectoryNotEmptyException` — confirmed via a standalone probe
+  *before* writing the test (not assumed) that this leaves both the
+  source (`tmp`) and the target directory's own content untouched, so
+  this specific setup does not reproduce the harder, genuinely timing-
+  dependent "target already removed mid-move" sub-case verbatim. It
+  does exercise the exact same code path (the fallback `Files.move`
+  call and the new `catch` block around it) and prove the real
+  consequence that actually matters: `tmp` is preserved, not deleted,
+  when that call fails, and a subsequent `load` call still fails closed
+  (via a different one of `load`'s several fail-closed branches here,
+  since a directory at `ledgerPath` is itself unreadable as a file —
+  but the same overall safety property) rather than silently
+  bootstrapping an empty ledger.
+- **(Minor) `createAndWriteMetadata`'s "Cleanup on write failure"
+  Javadoc paragraph claimed unconditional deletion on write failure —
+  the real mechanism (`deleteIfStillOwnGeneration`) only deletes if the
+  file still holds exactly this holder's own metadata.** Real: the most
+  common real shape a write failure takes is a partial write, which
+  leaves truncated JSON that `readMetadataOrNull` reports as `
+  EMPTY_OR_UNPARSEABLE` — that never `equals()` this holder's own
+  metadata, so this cleanup does **not** delete it in that case, contrary
+  to what the Javadoc claimed. Fixed by correcting the Javadoc to state
+  the real, conditional guarantee, naming the partial-write case
+  explicitly, and clarifying that `tryStealIfAbandonedEmpty` is the real
+  backstop for that residual window (until `staleThreshold` elapses),
+  not merely the narrower hard-crash case the Javadoc previously singled
+  out. Documentation-only, zero behavior change — verified directly
+  against `deleteIfStillOwnGeneration`'s own real implementation before
+  rewriting the claim, not merely rephrased on the review's say-so.
+- **(Trivial) Two steal tests (`acquireStealsAFabricatedLockWithADeadPid`,
+  `acquireStealsAFabricatedLockWithAnExpiredTimestampEvenIfTheHolderIsAlive`)
+  only asserted the lock file still existed after `acquire`, which
+  cannot distinguish a real steal from `acquire` never having run at
+  all** (the fabricated file already exists before `acquire` is ever
+  called). Fixed by verifying the file's actual content changed —
+  matching the discipline the file's own
+  `acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold` test
+  already applied: the dead-PID test now confirms the fabricated
+  `stale-host` value is gone and the real process's own pid is present;
+  the expired-timestamp test (whose fabricated pid is deliberately this
+  same process's own real pid, so a pid check alone wouldn't
+  differentiate) confirms only that `stale-host` is gone.
+
+Re-ran after all three round-19 fixes: `./gradlew clean build` — still
+green, **445 tests, 0 failures, 0 errors** project-wide (444 + 1 new
+test, in `AccountLedgerStoreTest`; the two `AccountLedgerLockTest`
+strengthenings modified existing methods rather than adding new ones).
+None of round 19's fixes touch `AccountLedgerLock`'s own acquire/steal
+mutual-exclusion control flow (the serious fix was entirely in
+`AccountLedgerStore.persist`; the other two are Javadoc/test-only), so
+a further raw stress-harness round was not independently warranted
+this round.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2065,7 +2162,7 @@ rounds.
   16's (no store-level changes that round); 26/26 after round 17's (no
   store-level changes that round either); 27/27 after round 18's (1
   more new test, plus one existing test strengthened with an additional
-  assertion).
+  assertion); 28/28 after round 19's (1 more new test).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2096,7 +2193,10 @@ rounds.
   changes); 11/11 after round 18's (a test-only visibility fix to an
   existing test, no new methods here -- the new test this round was in
   `AccountLedgerStoreTest`), stable across 4 repeated runs (1 + 3 more
-  explicit reruns) of the retimed contention test.
+  explicit reruns) of the retimed contention test; 11/11 after round
+  19's (two existing steal tests strengthened with content assertions,
+  no new methods here -- the new test this round was in
+  `AccountLedgerStoreTest`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2118,7 +2218,8 @@ rounds.
   `--rerun-tasks` runs, given round 16's `close()`/`doClose()` fix is a
   real behavioral change, not merely cosmetic), once more (part of the
   full `clean build`) after round 17, once more (part of the full
-  `clean build`) after round 18.
+  `clean build`) after round 18, once more (part of the full `clean
+  build`) after round 19.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2168,15 +2269,19 @@ rounds.
   two real fixes were entirely in `AccountLedgerStore.persist` and a
   test-only visibility fix, neither touching `AccountLedgerLock`'s own
   acquire/steal control flow, so it likewise did not independently
-  warrant a further raw stress-harness round).
+  warrant a further raw stress-harness round; round 19's most serious
+  fix was also entirely in `AccountLedgerStore.persist` (the tmp-
+  cleanup regression), with the other two being Javadoc/test-only, so
+  it likewise did not independently warrant a further raw
+  stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 18.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, and 19.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **444 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **445 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -2184,7 +2289,7 @@ rounds.
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
-  round 18's).
+  round 18's + 1 from round 19's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
