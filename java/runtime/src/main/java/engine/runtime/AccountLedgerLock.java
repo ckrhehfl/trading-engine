@@ -115,6 +115,30 @@ import org.slf4j.LoggerFactory;
  * already has enormous headroom over any critical section this lock is
  * actually expected to protect.
  *
+ * <p><b>A second, separate part of the same caller contract: {@code
+ * staleThreshold} must also be chosen comfortably larger than the real,
+ * measured mtime precision of the mount hosting the lock file.</b>
+ * {@link #tryStealIfAbandonedEmpty}'s own re-verify-immediately-before-
+ * delete check relies on a stolen generation's file having a
+ * <i>different</i> last-modified time than the abandoned one it replaced
+ * -- if the mount's mtime precision is coarser than {@code
+ * staleThreshold}, a deleted-then-recreated file could resolve to the
+ * same mtime as the generation it replaced, defeating that
+ * re-verification. This is a genuinely separate condition from the
+ * critical-section-duration contract above -- satisfying one does not
+ * automatically satisfy the other (e.g. a 100ms critical section and a
+ * 500ms {@code staleThreshold} clears the first contract comfortably
+ * while still being smaller than a coarse, e.g. 1-second, mtime
+ * precision). Measured directly against this repository's own real
+ * drvfs mount before this class was written (200 real writes in a tight
+ * loop, 200/200 distinct mtimes, sub-3ms precision observed) -- not a
+ * real risk at this project's own realistic {@code staleThreshold}
+ * values, but a real, general requirement worth stating explicitly for
+ * any future deployment on a different, coarser-mtime-precision mount.
+ * This project's own proposed real default (~30s) already satisfies
+ * this requirement by a wide margin on any filesystem with second-level
+ * or finer mtime precision.
+ *
  * <p><b>Deviation from the governing plan's own literal code sketch</b>:
  * the plan's summary writes {@code Files.createFile(path,
  * StandardOpenOption.CREATE_NEW)} -- {@link Files#createFile} does not

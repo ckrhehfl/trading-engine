@@ -1911,6 +1911,57 @@ specifically because this round's `close()`/`doClose()` fix is a real
 change to the release-path's own retry-ability contract, not a
 log-statement move or test-only change.
 
+### Round 17
+
+Against commit `136ae5e` (after round 16's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T01:23:18Z`): **`COMMENTED`, not
+`CHANGES_REQUESTED`** -- the first review this whole task that did not
+request changes -- with exactly one item, explicitly labeled by
+CodeRabbit itself as a **"Duplicate comment"** (re-raising a point
+already substantively discussed, not a fresh actionable finding), real
+and fixed anyway:
+
+- **The class Javadoc's caller-contract paragraph only documented
+  `staleThreshold` needing to exceed the critical-section duration --
+  never separately documented that it must also exceed the lock file's
+  mount's own real mtime precision.** Real, and directly related to
+  (but genuinely distinct from) round 10's own mtime-precision
+  investigation: round 10 measured this repository's actual drvfs
+  mount's mtime precision (sub-3ms, 200/200 distinct in a tight loop)
+  and correctly concluded that specific number isn't a real risk at
+  this project's own realistic `staleThreshold` values -- but the
+  caller-contract *documentation* itself never stated mtime precision
+  as its own separate requirement, only the critical-section-duration
+  one. The two conditions are genuinely independent: a caller could
+  satisfy "`staleThreshold` > critical section duration" (e.g. a 100ms
+  critical section against a 500ms `staleThreshold`) while still
+  failing "`staleThreshold` > mtime precision" on some future,
+  coarser-precision mount (e.g. a 1-second mtime granularity) -- and
+  `tryStealIfAbandonedEmpty`'s own re-verify-before-delete check relies
+  specifically on a stolen generation's mtime differing from the
+  abandoned one it replaced, so a too-coarse mtime precision relative to
+  `staleThreshold` could defeat that re-verification. Fixed by adding a
+  second, explicitly separate caller-contract paragraph documenting this
+  requirement directly in the class Javadoc, citing round 10's own real
+  measurement as evidence this project's actual mount and default
+  (~30s) already clear it by a wide margin, while stating the general
+  requirement plainly for any future deployment on a different mount.
+  Documentation-only, zero behavior change.
+
+  Treated as worth fixing despite being both a "duplicate" and posted
+  under a non-blocking `COMMENTED` review, matching this task's own
+  established discipline of evaluating every real finding on its merits
+  rather than by how CodeRabbit classified it -- the point itself is
+  correct and cheap to address, so declining it purely because the
+  review didn't formally require action would have been declining for
+  the wrong reason.
+
+Re-ran after the round-17 fix: `./gradlew clean build` — still green,
+**443 tests, 0 failures, 0 errors** project-wide (documentation-only
+change, zero new or modified test methods, exact count unchanged from
+round 16).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1936,7 +1987,8 @@ log-statement move or test-only change.
   more new tests, plus one pre-existing test's `defaultAllocatedCapital`
   values repaired to avoid a real conflict with the new fail-closed
   check); 26/26 after round 15's (1 more new test); 26/26 after round
-  16's (no store-level changes that round).
+  16's (no store-level changes that round); 26/26 after round 17's (no
+  store-level changes that round either).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1962,7 +2014,9 @@ log-statement move or test-only change.
   addition); 11/11 after round 16's (four real fixes -- a Javadoc
   reference, a real `close()`/`doClose()` behavioral fix, and two
   existing-test repairs -- but no new test methods, stable across 5
-  repeated runs of the retimed deterministic test specifically).
+  repeated runs of the retimed deterministic test specifically); 11/11
+  after round 17's (a Javadoc-only caller-contract addition, no test
+  changes).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1982,7 +2036,8 @@ log-statement move or test-only change.
   the full `clean build`) after round 15, **3 more times** after round
   16 (1 part of the full `clean build`, plus 2 further explicit
   `--rerun-tasks` runs, given round 16's `close()`/`doClose()` fix is a
-  real behavioral change, not merely cosmetic).
+  real behavioral change, not merely cosmetic), once more (part of the
+  full `clean build`) after round 17.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2025,11 +2080,14 @@ log-statement move or test-only change.
   stress-harness round; round 16's `close()`/`doClose()` fix, by
   contrast, is a real change to the release-path's own retry-ability
   contract -- extra rigor judged warranted here, so the raw harness was
-  re-run for the first time since round 10).
+  re-run for the first time since round 10; round 17 was Javadoc-only
+  with zero behavior change, so it did not independently warrant a
+  further raw stress-harness round, matching the pattern already
+  established for every other purely-documentation round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, and 16.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, and 17.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -2040,7 +2098,7 @@ log-statement move or test-only change.
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
-  15's + 0 net-new from round 16's).
+  15's + 0 net-new from round 16's + 0 net-new from round 17's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
