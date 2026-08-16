@@ -375,11 +375,27 @@ class AccountLedgerStoreTest {
     /**
      * Real Major finding, real CodeRabbit review of this PR:
      * {@link LedgerReservation}'s own compact constructor now rejects a
-     * non-positive {@code notional} -- exercised here through a real
-     * store round trip (a hand-built {@code LedgerReservation} is the
-     * more direct unit test, but this also proves the store itself never
-     * needs to special-case the rejection: the record's own constructor
-     * is the single enforcement point regardless of how it's constructed).
+     * non-positive {@code notional}.
+     *
+     * <p><b>Javadoc corrected, a further real CodeRabbit review round on
+     * this PR</b>: this method's own Javadoc used to claim the check was
+     * "exercised here through a real store round trip" -- inaccurate; this
+     * test calls {@link LedgerReservation}'s constructor directly and
+     * never touches {@link AccountLedgerStore} at all. That inaccuracy
+     * masked a real coverage gap, unlike the duplicate-{@code
+     * clientOrderId} invariant just below, which has both this direct
+     * unit test *and* a file-based one
+     * ({@link #loadFailsClosedWhenTheLedgerFileHoldsTwoReservationsWithTheSameClientOrderId}):
+     * nothing here proved {@link AccountLedgerStore#load} itself fails
+     * closed on a corrupted or hand-edited ledger *file* holding a
+     * negative {@code notional} -- a real, dangerous case, since a
+     * negative {@code notional} would *increase* the derived {@code
+     * allocatedVirtualCapital - Σ(reservations.notional)} available
+     * capital, the exact direction CLAUDE.md's own "never weaken risk
+     * limits" rule exists to prevent. Closed by
+     * {@link #loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional}
+     * below, matching the file-based pattern already established for the
+     * duplicate-{@code clientOrderId} case.
      */
     @Test
     void aReservationWithZeroOrNegativeNotionalIsRejectedByLedgerReservationItself() {
@@ -390,6 +406,35 @@ class AccountLedgerStoreTest {
         assertThrows(
                 IllegalArgumentException.class,
                 () -> new LedgerReservation(id, "A11609", 1L, "host-a", new BigDecimal("-1"), Instant.now()));
+    }
+
+    /**
+     * The same invariant proven through a real ledger file on disk (a
+     * corrupted or hand-edited file is exactly the scenario this record-
+     * level validation exists to catch) -- proves {@link
+     * AccountLedgerStore#load} fails closed rather than needing any
+     * special-case notional-validation logic of its own. A negative
+     * {@code notional} would increase the derived available capital, so
+     * this is a real risk-limit-bypass direction, not merely a data-
+     * integrity nicety -- see this test's sibling directly above for the
+     * full reasoning.
+     */
+    @Test
+    void loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Instant now = Instant.now();
+        Files.writeString(
+                file,
+                "{\"venue\":\"KIS\",\"accountId\":\"acct-1\",\"allocatedVirtualCapital\":100000,"
+                        + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
+                        + "\"lastReconciledMonthlyPnlPercent\":0,\"reservations\":["
+                        + "{\"clientOrderId\":\"" + UUID.randomUUID() + "\",\"symbol\":\"A11609\","
+                        + "\"processId\":1,\"hostname\":\"host-a\",\"notional\":-500,"
+                        + "\"reservedAt\":\"" + now + "\"}]}");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
     /**

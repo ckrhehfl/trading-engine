@@ -2134,6 +2134,65 @@ mutual-exclusion control flow (the serious fix was entirely in
 a further raw stress-harness round was not independently warranted
 this round.
 
+### A real ~8-hour coordinator-side gap, not a task-side stall
+
+Round 19's report was filed at a rate-limit ETA of 03:36 UTC (2026-08-16,
+clearing ~04:19 UTC). The next real instruction did not arrive until
+11:24 UTC the same day -- the governing coordinator's own scheduled
+check-ins had stopped firing after a session reset on its side, not
+because of anything wrong on this task's own end. Independently
+confirmed before resuming (not assumed): HEAD was still exactly
+`e95524e` (round 19's own commit, untouched for the entire gap), PR #100
+still `OPEN`/`mergeStateStatus BLOCKED`, and the most recent real review
+on record was still round 19's own `CHANGES_REQUESTED` against the
+*prior* commit `619dd42` -- i.e. nothing had drifted, nothing needed to
+be reconciled, and no review had silently landed and gone unread during
+the gap. Resumed exactly where round 19 left off per the coordinator's
+own explicit instruction, following the identical rate-limit-check
+procedure as every prior round.
+
+### Round 20
+
+Against commit `e95524e` (after round 19's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T11:41:52Z`): `CHANGES_REQUESTED`, 1
+actionable comment (Minor), real, fixed:
+
+- **`aReservationWithZeroOrNegativeNotionalIsRejectedByLedgerReservationItself`'s
+  own Javadoc claimed the non-positive-`notional` check was "exercised
+  here through a real store round trip" -- it wasn't; the test calls
+  `LedgerReservation`'s constructor directly and never touches
+  `AccountLedgerStore` at all.** Real, and the inaccuracy masked a real
+  coverage gap, not just a documentation slip: verified directly against
+  the test's own code before touching anything, exactly as this
+  inaccuracy claimed. The duplicate-`clientOrderId` invariant just below
+  it in the same file has *both* a direct-constructor unit test and a
+  file-based one
+  (`loadFailsClosedWhenTheLedgerFileHoldsTwoReservationsWithTheSameClientOrderId`)
+  proving `AccountLedgerStore.load` itself fails closed on a corrupted
+  ledger file -- but the negative-`notional` invariant only ever had the
+  direct-constructor test, with a Javadoc that incorrectly implied the
+  file-level path was already covered. Real risk-limit relevance, not
+  merely a data-integrity nicety: a negative `notional` would *increase*
+  the derived `allocatedVirtualCapital - Σ(reservations.notional)`
+  available capital -- exactly the direction CLAUDE.md's own "never
+  weaken risk limits" rule exists to prevent, on a path (a corrupted or
+  hand-edited ledger file) this record-level validation exists
+  specifically to catch. Fixed by correcting the Javadoc and adding
+  `loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional`, matching the
+  file-based pattern already established for the duplicate-`clientOrderId`
+  case exactly. No production code change -- `AccountLedgerStore.load`
+  already fails closed correctly via `MAPPER.readValue`'s own
+  construction of `AccountLedger`/`LedgerReservation`, which already
+  rejects the non-positive `notional` at the record level; this closes a
+  real test-coverage gap around that existing, correct behavior.
+
+Re-ran after the round-20 fix: `./gradlew clean build` — still green,
+**446 tests, 0 failures, 0 errors** project-wide (445 + 1 new test, in
+`AccountLedgerStoreTest`). Test-only, no production code change at all
+this round, and no `AccountLedgerLock` involvement, so a further raw
+stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2162,7 +2221,9 @@ this round.
   16's (no store-level changes that round); 26/26 after round 17's (no
   store-level changes that round either); 27/27 after round 18's (1
   more new test, plus one existing test strengthened with an additional
-  assertion); 28/28 after round 19's (1 more new test).
+  assertion); 28/28 after round 19's (1 more new test); 29/29 after
+  round 20's (1 more new test, plus a Javadoc correction on an existing
+  one).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2196,7 +2257,9 @@ this round.
   explicit reruns) of the retimed contention test; 11/11 after round
   19's (two existing steal tests strengthened with content assertions,
   no new methods here -- the new test this round was in
-  `AccountLedgerStoreTest`).
+  `AccountLedgerStoreTest`); 11/11 after round 20's (no
+  `AccountLedgerLock`-level changes that round -- the one real fix was a
+  store-level test addition and Javadoc correction).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2219,7 +2282,8 @@ this round.
   real behavioral change, not merely cosmetic), once more (part of the
   full `clean build`) after round 17, once more (part of the full
   `clean build`) after round 18, once more (part of the full `clean
-  build`) after round 19.
+  build`) after round 19, once more (part of the full `clean build`)
+  after round 20.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2273,15 +2337,18 @@ this round.
   fix was also entirely in `AccountLedgerStore.persist` (the tmp-
   cleanup regression), with the other two being Javadoc/test-only, so
   it likewise did not independently warrant a further raw
-  stress-harness round).
+  stress-harness round; round 20 was a single test-only fix (plus a
+  Javadoc correction) with zero production code change at all, and no
+  `AccountLedgerLock` involvement, so it likewise did not independently
+  warrant a further raw stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, and 19.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, and 20.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **445 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **446 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -2289,7 +2356,7 @@ this round.
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
-  round 18's + 1 from round 19's).
+  round 18's + 1 from round 19's + 1 from round 20's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
