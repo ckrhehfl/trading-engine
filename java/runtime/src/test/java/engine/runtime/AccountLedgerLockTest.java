@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
@@ -81,7 +82,20 @@ class AccountLedgerLockTest {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         int threadCount = 12;
         int iterationsPerThread = 10;
-        int[] counter = {0}; // unguarded on purpose -- see method Javadoc
+        // Real Minor finding, real CodeRabbit review of this PR: a plain
+        // int[] gives no cross-thread visibility guarantee at all -- this
+        // class's own mutual exclusion is enforced entirely through file
+        // I/O (AccountLedgerLock.acquire/close), and file I/O establishes
+        // no happens-before edge in the Java Memory Model between threads.
+        // Even with perfect mutual exclusion, one thread could fail to
+        // observe another's latest increment, and the final assertion
+        // below would then fail for a reason unrelated to the lock itself.
+        // AtomicInteger's plain get()/set() (deliberately NOT
+        // incrementAndGet(), which would make the increment itself atomic
+        // and defeat this test's whole point) fixes the visibility gap
+        // while keeping the exact same non-atomic read-sleep-increment-
+        // write race this test exists to detect.
+        AtomicInteger counter = new AtomicInteger();
         List<Throwable> failures = new CopyOnWriteArrayList<>();
         CountDownLatch done = new CountDownLatch(threadCount);
 
@@ -91,9 +105,9 @@ class AccountLedgerLockTest {
                     for (int i = 0; i < iterationsPerThread; i++) {
                         try (AccountLedgerLock lock =
                                 AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, CONTENTION_RETRY_BUDGET)) {
-                            int current = counter[0];
+                            int current = counter.get();
                             Thread.sleep(2); // widen the race window
-                            counter[0] = current + 1;
+                            counter.set(current + 1);
                         }
                     }
                 } catch (Throwable e) {
@@ -112,7 +126,7 @@ class AccountLedgerLockTest {
         assertTrue(failures.isEmpty(), "no thread should have failed to acquire: " + failures);
         assertEquals(
                 threadCount * iterationsPerThread,
-                counter[0],
+                counter.get(),
                 "a lower-than-expected count means two threads were inside the lock-protected section at once");
         assertFalse(Files.exists(lockPath), "the lock file must not be left behind once every holder has released it");
     }

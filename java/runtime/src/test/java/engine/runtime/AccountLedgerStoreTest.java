@@ -553,6 +553,59 @@ class AccountLedgerStoreTest {
 
         assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, brokenMover));
         assertFalse(Files.exists(file), "the ledger must not be replaced by a non-atomic fallback here");
+        // Strengthened per a further real CodeRabbit review round on this
+        // PR: the original version of this test stopped at confirming
+        // ledgerPath was never created, which does not prove the tmp file
+        // this same persist() call created was cleaned up too -- see
+        // persistCleansUpItsOwnTmpFileOnFailureSoASubsequentLoadStillBootstrapsFresh
+        // below for why a leftover tmp here is a real availability bug on
+        // its own, not merely untidy.
+        assertFalse(
+                Files.exists(tempDir.resolve("ledger.json.tmp")),
+                "persist must clean up its own tmp file on failure, not leave it behind");
+    }
+
+    /**
+     * Real Major finding, real CodeRabbit review of this PR: without this
+     * fix, a tmp file {@code persist} created but then failed to move (e.g.
+     * {@code mover.move} throwing something other than {@link
+     * AtomicMoveNotSupportedException}/{@link FileAlreadyExistsException})
+     * was left behind on disk. For a ledger that had never successfully
+     * persisted before ({@code ledgerPath} still doesn't exist), that
+     * leftover tmp then made every future {@link AccountLedgerStore#load}
+     * call fail closed <b>permanently</b> via its own missing-ledger-plus-
+     * leftover-{@code .tmp} check ({@link
+     * #loadFailsClosedWhenTheLedgerIsMissingButALeftoverTmpFileExists}) --
+     * indistinguishable from a genuinely interrupted {@code persist()},
+     * until a human manually deleted the file. Capital safety was never at
+     * risk (fail-closed is the correct direction for a real interrupted
+     * persist), but availability was needlessly and permanently lost for a
+     * ledger that had simply never succeeded even once. Proven directly
+     * here, not just by the absence of a leftover tmp file: a real failed
+     * {@code persist} is immediately followed by a real {@code load} call,
+     * which must succeed as an ordinary fresh bootstrap rather than fail
+     * closed.
+     */
+    @Test
+    void persistCleansUpItsOwnTmpFileOnFailureSoASubsequentLoadStillBootstrapsFresh(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedgerStore.AtomicMover brokenMover = (source, target) -> {
+            throw new IOException("test-forced unrelated I/O failure");
+        };
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, brokenMover));
+
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
+
+        assertEquals(
+                new BigDecimal("100000"),
+                reloaded.allocatedVirtualCapital(),
+                "a ledger that never successfully persisted must still bootstrap fresh after a failed persist(),"
+                        + " not fail closed forever because of a leftover tmp file");
+        assertTrue(reloaded.reservations().isEmpty());
     }
 
     @Test

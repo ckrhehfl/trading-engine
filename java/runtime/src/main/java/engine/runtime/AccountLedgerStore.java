@@ -400,12 +400,16 @@ final class AccountLedgerStore {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
         Objects.requireNonNull(ledger, "ledger is required");
         Objects.requireNonNull(mover, "mover is required");
+        // Hoisted outside the try block (rather than declared inside, as
+        // originally written) so the outer catch below can clean it up --
+        // see that catch's own comment for why.
+        Path tmp = null;
         try {
             Path parent = ledgerPath.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Path tmp = tmpPathFor(ledgerPath);
+            tmp = tmpPathFor(ledgerPath);
             byte[] content = MAPPER.writeValueAsBytes(ledger);
             // CREATE + TRUNCATE_EXISTING + WRITE, matching Files.writeString's
             // own documented default options exactly (not CREATE_NEW) --
@@ -439,6 +443,32 @@ final class AccountLedgerStore {
                 Files.move(tmp, ledgerPath, StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException e) {
+            // Real Major finding, real CodeRabbit review of this PR: without
+            // this cleanup, a tmp file this same persist() call just created
+            // -- e.g. mover.move throwing something other than
+            // AtomicMoveNotSupportedException/FileAlreadyExistsException --
+            // was left behind on disk. For a ledger that had never
+            // successfully persisted before (ledgerPath still doesn't
+            // exist), that leftover tmp then makes every future load() call
+            // fail closed permanently via its own missing-ledger-plus-
+            // leftover-.tmp check, indistinguishable from a genuinely
+            // interrupted persist() -- until a human manually deletes the
+            // file. Capital safety was never at risk (fail-closed is the
+            // correct direction), but availability was needlessly lost for
+            // a ledger that had simply never succeeded even once. Cleaned
+            // up here, best-effort: a cleanup failure is attached via
+            // addSuppressed rather than masking the original failure.
+            // Deliberately does NOT change load()'s own detection logic or
+            // weaken it -- a tmp file surviving a real crash (no Java
+            // exception ever thrown to reach this catch block at all) is
+            // untouched by this cleanup and still correctly fails closed.
+            if (tmp != null) {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException cleanupFailure) {
+                    e.addSuppressed(cleanupFailure);
+                }
+            }
             // Deliberately propagates, matching SubmissionMarkerStore's own
             // write-failure convention -- a failed write means the
             // caller's just-persisted ledger state may not actually be

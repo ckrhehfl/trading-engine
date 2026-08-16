@@ -1962,6 +1962,81 @@ Re-ran after the round-17 fix: `./gradlew clean build` — still green,
 change, zero new or modified test methods, exact count unchanged from
 round 16).
 
+### Round 18
+
+Against commit `8ab7a0b` (after round 17's fix was pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T02:25:19Z`): `CHANGES_REQUESTED` (back
+from round 17's `COMMENTED`), 2 actionable comments, both real, both
+fixed:
+
+- **(Major) `persist` never cleaned up its own just-created `.tmp` file
+  on a failure other than the supported fallback exceptions -- and a
+  leftover `.tmp` alongside a never-successfully-persisted ledger
+  permanently fails closed every future `load` call for that
+  `(venue, accountId)`, not merely the interrupted one.** Real, and the
+  most consequential finding since round 16's `close()` regression: the
+  exact sequence is (1) `ledgerPath` doesn't exist yet (never
+  successfully persisted), (2) `persist` creates its `.tmp` file and
+  writes to it successfully, (3) `mover.move` throws something other
+  than `AtomicMoveNotSupportedException`/`FileAlreadyExistsException`
+  (propagates as `IllegalStateException`, per this method's own existing
+  behavior, correctly pinned by round 15's own test), (4) the `.tmp`
+  file is left on disk. The very next `load` call for that ledger then
+  hits its own missing-ledger-plus-leftover-`.tmp` fail-closed check
+  (round 3's own fix) -- indistinguishable from a genuinely interrupted
+  `persist()`, even though nothing had ever actually succeeded for this
+  ledger. Capital safety was never at risk (fail-closed is the correct
+  direction for a real interrupted persist), but availability was
+  needlessly and *permanently* lost -- every future `load` for that
+  ledger fails until a human manually deletes the `.tmp` file. Fixed by
+  hoisting the `tmp` variable outside the try block and cleaning it up
+  (best-effort, `Files.deleteIfExists`, cleanup failure attached via
+  `addSuppressed` rather than masking the original failure) in the outer
+  `catch (IOException e)` block before re-throwing. Deliberately does
+  **not** touch `load`'s own detection logic or weaken it: a `.tmp` file
+  surviving a genuine crash (no Java exception ever thrown, so this
+  `catch` block never runs at all) is completely untouched by this
+  cleanup and still correctly fails closed -- this fix only prevents
+  *this same process's own, already-caught* failure from leaving a
+  leftover file behind, it does not and cannot address the harder crash
+  case round 3's own check exists for.
+
+  The existing test pinning the narrow-fallback boundary
+  (`anUnrelatedIoFailureDuringTheMovePropagatesInsteadOfFallingBack`,
+  from round 15) only checked that `ledgerPath` was never created --
+  never checked the `.tmp` file itself, so it could not have caught this
+  gap. Strengthened with an added assertion that the `.tmp` file is also
+  gone, and a new, dedicated test
+  (`persistCleansUpItsOwnTmpFileOnFailureSoASubsequentLoadStillBootstrapsFresh`)
+  proving the actual practical consequence directly: a real failed
+  `persist()` immediately followed by a real `load()` call, which must
+  succeed as an ordinary fresh bootstrap rather than fail closed.
+- **(Minor) The 12-thread mutual-exclusion test's shared counter was a
+  plain, unguarded `int[]`, which gives no cross-thread visibility
+  guarantee in the Java Memory Model.** Real: this test's own mutual
+  exclusion is enforced entirely through file I/O
+  (`AccountLedgerLock.acquire`/`close`), and file I/O establishes no
+  happens-before edge between threads -- even with perfect mutual
+  exclusion, one thread could fail to *observe* another thread's latest
+  increment, which would fail the test's final count assertion for a
+  reason having nothing to do with the lock's own correctness. Fixed by
+  switching to `AtomicInteger`, using its plain `get()`/`set()`
+  (deliberately **not** `incrementAndGet()`, which would make the
+  increment itself atomic and defeat this test's whole point of
+  detecting a non-atomic read-sleep-increment-write race) -- fixes the
+  visibility gap while keeping the exact same race the test exists to
+  catch. Re-ran 3 more times to confirm stability.
+
+Re-ran after both round-18 fixes: `./gradlew clean build` — still
+green, **444 tests, 0 failures, 0 errors** project-wide (443 + 1 new
+test, in `AccountLedgerStoreTest`). Neither fix touches
+`AccountLedgerLock`'s own acquire/steal control flow (one is entirely
+in `AccountLedgerStore.persist`, the other is test-only), so a further
+raw stress-harness round was not independently warranted this round,
+matching the pattern already established for store-only/test-only
+rounds.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1988,7 +2063,9 @@ round 16).
   values repaired to avoid a real conflict with the new fail-closed
   check); 26/26 after round 15's (1 more new test); 26/26 after round
   16's (no store-level changes that round); 26/26 after round 17's (no
-  store-level changes that round either).
+  store-level changes that round either); 27/27 after round 18's (1
+  more new test, plus one existing test strengthened with an additional
+  assertion).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2016,7 +2093,10 @@ round 16).
   existing-test repairs -- but no new test methods, stable across 5
   repeated runs of the retimed deterministic test specifically); 11/11
   after round 17's (a Javadoc-only caller-contract addition, no test
-  changes).
+  changes); 11/11 after round 18's (a test-only visibility fix to an
+  existing test, no new methods here -- the new test this round was in
+  `AccountLedgerStoreTest`), stable across 4 repeated runs (1 + 3 more
+  explicit reruns) of the retimed contention test.
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2037,7 +2117,8 @@ round 16).
   16 (1 part of the full `clean build`, plus 2 further explicit
   `--rerun-tasks` runs, given round 16's `close()`/`doClose()` fix is a
   real behavioral change, not merely cosmetic), once more (part of the
-  full `clean build`) after round 17.
+  full `clean build`) after round 17, once more (part of the full
+  `clean build`) after round 18.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2083,22 +2164,27 @@ round 16).
   re-run for the first time since round 10; round 17 was Javadoc-only
   with zero behavior change, so it did not independently warrant a
   further raw stress-harness round, matching the pattern already
-  established for every other purely-documentation round).
+  established for every other purely-documentation round; round 18's
+  two real fixes were entirely in `AccountLedgerStore.persist` and a
+  test-only visibility fix, neither touching `AccountLedgerLock`'s own
+  acquire/steal control flow, so it likewise did not independently
+  warrant a further raw stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, and 17.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, and 18.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **443 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **444 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
-  15's + 0 net-new from round 16's + 0 net-new from round 17's).
+  15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
+  round 18's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
