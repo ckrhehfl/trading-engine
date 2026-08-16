@@ -2227,6 +2227,64 @@ thrown and `tmp` surviving, neither of which this fix touches). No
 `AccountLedgerLock` involvement, so a further raw stress-harness round
 was not independently warranted.
 
+### Round 22
+
+Against commit `78165d0` (after round 21's fix was pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T15:19:11Z`): `CHANGES_REQUESTED`, 2
+actionable comments (both Minor), both real, both fixed -- the fourth
+consecutive round finding a real, narrower variant of the same
+`persist()`-cleanup-scope theme rounds 18/19/21 already worked through:
+
+- **`persist` assigned `tmp` (`tmpPathFor(ledgerPath)`) before calling
+  `MAPPER.writeValueAsBytes(ledger)` -- if serialization itself failed
+  (a real `JsonProcessingException`, an `IOException` subtype, is a
+  real possibility, not hypothetical), the outer catch's cleanup would
+  see a non-null `tmp` and delete whatever file existed at that path,
+  even though this call never created or opened it via `FileChannel.open`.**
+  Real, and the same silent-data-loss shape as round 19's own finding,
+  one step earlier in the method: if a genuine crash from a different,
+  earlier `persist()` attempt had left a real leftover `.tmp` at that
+  exact path -- the exact evidence `load`'s own missing-ledger-plus-
+  leftover-`.tmp` fail-closed check depends on -- a serialization
+  failure on *this* call would incorrectly delete it. Fixed by
+  reordering: serialization now completes before `tmp` is ever
+  assigned, so the cleanup logic's scope is always exactly "a file this
+  call itself opened," never a stray survivor from an earlier crash.
+  No new test needed -- this is a pure statement-reordering fix with no
+  new branch or observable behavior difference to pin; the existing
+  fallback/cleanup tests from rounds 18-19 continue to prove the
+  cleanup logic itself is correct, and the reordering doesn't change
+  what that logic does, only when `tmp` becomes non-null relative to a
+  failure that was already impossible to reach this specific way before
+  (serialization of a real, already-validated `AccountLedger` record
+  practically never fails in this codebase's own real usage -- this is
+  defense-in-depth against a failure mode that hasn't been observed,
+  matching this method's own established pattern of guarding against
+  every theoretically-reachable failure point regardless of how
+  unlikely, not just observed ones).
+- **The round-10 deterministic mutual-exclusion test's
+  `holderReleasedAtNanos.get() > 0` completion check used the wrong
+  comparison against its own `-1` sentinel.** Real, though narrow:
+  `System.nanoTime()`'s own documented contract guarantees only
+  monotonicity from an arbitrary origin, not a positive value -- unlike
+  epoch-millis-based timestamps, a real, legitimately-recorded
+  `System.nanoTime()` result is not guaranteed to be `> 0`, so this
+  check could in principle spuriously fail on an otherwise correctly-
+  recorded timestamp. Fixed by checking `!= -1` against the test's own
+  actual sentinel value directly, the semantically correct completion
+  check rather than a coincidentally-similar positivity check. Re-ran
+  the retimed test 3 more times to confirm continued stability.
+
+Re-ran after both round-22 fixes: `./gradlew clean build` — still
+green, **446 tests, 0 failures, 0 errors** project-wide (unchanged
+count -- a reordering fix and an assertion correction, no new test
+methods). Neither fix touches `AccountLedgerLock`'s own mutual-
+exclusion control flow in a way that changes observable behavior (the
+`persist` reordering is entirely in `AccountLedgerStore`; the
+`nanoTime` fix is purely test-assertion-level), so a further raw
+stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2258,7 +2316,10 @@ was not independently warranted.
   assertion); 28/28 after round 19's (1 more new test); 29/29 after
   round 20's (1 more new test, plus a Javadoc correction on an existing
   one); 29/29 after round 21's (no new or modified test methods -- a
-  single `addSuppressed` line, no test-level change needed).
+  single `addSuppressed` line, no test-level change needed); 29/29
+  after round 22's (no store-level test methods changed -- the
+  `persist` reordering fix needed no new test, per that round's own
+  reasoning).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2296,7 +2357,12 @@ was not independently warranted.
   `AccountLedgerLock`-level changes that round -- the one real fix was a
   store-level test addition and Javadoc correction); 11/11 after round
   21's (no `AccountLedgerLock`-level changes that round either -- the
-  one real fix was entirely in `AccountLedgerStore.persist`).
+  one real fix was entirely in `AccountLedgerStore.persist`); 11/11
+  after round 22's (one real fix in this file -- the `nanoTime`
+  sentinel-check correction on an existing test, no new methods --
+  plus one more, unrelated real fix in `AccountLedgerStore.persist`),
+  stable across 4 repeated runs (1 + 3 more explicit reruns) of the
+  retimed deterministic test.
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2321,7 +2387,7 @@ was not independently warranted.
   `clean build`) after round 18, once more (part of the full `clean
   build`) after round 19, once more (part of the full `clean build`)
   after round 20, once more (part of the full `clean build`) after
-  round 21.
+  round 21, once more (part of the full `clean build`) after round 22.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2382,11 +2448,16 @@ was not independently warranted.
   was also entirely in `AccountLedgerStore.persist` (an
   `addSuppressed` addition, purely additive to the exception chain, no
   control-flow change), so it likewise did not independently warrant a
-  further raw stress-harness round).
+  further raw stress-harness round; round 22's two real fixes were a
+  statement-reordering fix in `AccountLedgerStore.persist` (no new
+  branch, no observable behavior change) and a test-assertion
+  correction in `AccountLedgerLockTest` (no production code touched at
+  all), so it likewise did not independently warrant a further raw
+  stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, and 21.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, and 22.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -2399,7 +2470,7 @@ was not independently warranted.
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
-  round 21's).
+  round 21's + 0 net-new from round 22's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

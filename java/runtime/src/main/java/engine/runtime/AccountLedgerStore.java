@@ -409,8 +409,27 @@ final class AccountLedgerStore {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            tmp = tmpPathFor(ledgerPath);
+            // Real Minor finding, a further real CodeRabbit review round
+            // on this same PR: serialization (MAPPER.writeValueAsBytes)
+            // must complete BEFORE tmp is assigned, not after. If tmp were
+            // assigned first and writeValueAsBytes then threw (a real
+            // JsonProcessingException, an IOException subtype, is a real
+            // possibility, not hypothetical), the outer catch's own
+            // cleanup (see its own comment) would see a non-null tmp and
+            // delete whatever file exists at that path -- but this call
+            // never created or opened it via FileChannel.open below. If a
+            // genuine crash from a different, earlier persist() attempt
+            // had left a real leftover .tmp at that exact path -- the
+            // exact evidence load()'s own missing-ledger-plus-leftover-
+            // .tmp fail-closed check depends on -- this serialization
+            // failure would incorrectly delete it, the same class of
+            // silent-data-loss risk round 19's own fix closed for the
+            // fallback-move-failure case. Assigning tmp only after
+            // serialization succeeds means the cleanup logic's scope is
+            // always exactly "a file this call itself opened," never a
+            // stray survivor from elsewhere.
             byte[] content = MAPPER.writeValueAsBytes(ledger);
+            tmp = tmpPathFor(ledgerPath);
             // CREATE + TRUNCATE_EXISTING + WRITE, matching Files.writeString's
             // own documented default options exactly (not CREATE_NEW) --
             // a leftover tmp file from an earlier interrupted persist()

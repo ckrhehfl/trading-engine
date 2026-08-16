@@ -380,7 +380,16 @@ class AccountLedgerLockTest {
 
         holder.join(TimeUnit.SECONDS.toMillis(5));
         assertTrue(holderFailures.isEmpty(), "holder thread must not have failed: " + holderFailures);
-        assertTrue(holderReleasedAtNanos.get() > 0, "holder must have finished by now");
+        // Real Minor finding, a further real CodeRabbit review round on
+        // this PR: System.nanoTime()'s own documented contract is only
+        // "monotonic, arbitrary origin" -- unlike epoch millis, a real
+        // return value is not guaranteed positive, so a "> 0" check could
+        // spuriously fail on an otherwise legitimate, correctly-recorded
+        // timestamp. -1 is this test's own real sentinel (initial value
+        // above); checking against it specifically is the semantically
+        // correct completion check, not merely a coincidentally-similar
+        // positivity check.
+        assertTrue(holderReleasedAtNanos.get() != -1, "holder must have finished by now");
 
         // The proof: the second acquire() succeeded WHILE the original
         // holder was still genuinely, legitimately active -- both were
