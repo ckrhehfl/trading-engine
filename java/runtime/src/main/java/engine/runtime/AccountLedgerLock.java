@@ -625,8 +625,9 @@ final class AccountLedgerLock implements AutoCloseable {
     /**
      * Backstop for the one gap {@link #createAndWriteMetadata}'s own
      * cleanup-on-failure can't reach: a hard process kill (or crash)
-     * between {@link Files#createFile} succeeding and that method's
-     * {@code catch} block ever running, leaving a real, permanently-empty
+     * between the atomic {@link Files#newByteChannel} create with {@link
+     * java.nio.file.StandardOpenOption#CREATE_NEW} succeeding and that
+     * method's {@code catch} block ever running, leaving a real, permanently-empty
      * lock file with no {@code pid}/{@code acquiredAt} for the ordinary
      * {@link #tryStealIfStale} checks to judge. Without this, such a file
      * could never be reclaimed -- every future waiter would exhaust its
@@ -864,28 +865,54 @@ final class AccountLedgerLock implements AutoCloseable {
      * <p><b>Idempotent</b> -- a second call on an already-closed instance
      * is a pure no-op (see this class's own {@link #closed} field
      * Javadoc for the real, misleading-log-noise problem this prevents).
-     * {@link #closed} is deliberately set only after {@link #doClose}
-     * returns normally, not up front: if some genuinely unanticipated
-     * exception ever escapes {@link #doClose} uncaught (everything this
-     * class's own logic can throw is already handled inside it), a
-     * subsequent {@code close()} call must still be able to retry rather
-     * than silently, permanently no-op-ing on a cleanup that never
-     * actually happened.
+     *
+     * <p><b>{@link #closed} is only ever set on a genuinely final
+     * outcome, not merely whenever {@link #doClose} returns without
+     * throwing</b> -- corrected on a further real CodeRabbit review round
+     * on this PR from an earlier version of this idempotency fix that got
+     * this distinction wrong. {@link #doClose} now returns {@code
+     * boolean}: {@code true} for an outcome no future retry could ever
+     * improve on (the file is genuinely gone or already deleted by this
+     * call, or the re-verification found {@link #EMPTY_OR_UNPARSEABLE}
+     * content or a genuine generation mismatch -- both confirmed
+     * alternate states a retry would simply re-observe, not something a
+     * later attempt could resolve differently), {@code false} for a
+     * transient, recoverable outcome a later {@code close()} call might
+     * still resolve better (a {@link #READ_FAILED} re-verification read,
+     * or any {@link IOException} other than {@link NoSuchFileException}
+     * from the delete itself). Without this distinction, an earlier
+     * version of this fix set {@link #closed} unconditionally after
+     * {@link #doClose} returned normally -- but {@code doClose} returns
+     * normally (no exception) even on its own transient-failure paths, so
+     * a single transient {@link #READ_FAILED} on close would have
+     * permanently marked this instance closed with no way to ever retry
+     * releasing the still-live lock file, blocking every other waiter for
+     * a shared KIS account risk ledger lock until {@code staleThreshold}
+     * elapses regardless of how many times a caller called {@code
+     * close()} again. If some genuinely unanticipated exception ever
+     * escapes {@link #doClose} uncaught (everything this class's own
+     * logic can throw is already handled inside it), {@link #closed} is
+     * correctly never set at all, for the same retry-ability reason.
      */
     @Override
     public void close() {
         if (closed) {
             return;
         }
-        doClose();
-        closed = true;
+        closed = doClose();
     }
 
-    private void doClose() {
+    /**
+     * Returns {@code true} if this call reached a final outcome (deleted,
+     * confirmed already gone, or confirmed a state no retry could improve
+     * on) -- see {@link #close}'s own Javadoc for why the caller must not
+     * treat every normal return the same way.
+     */
+    private boolean doClose() {
         try {
             LockMetadata current = readMetadataOrNull(lockPath);
             if (current == null) {
-                return; // already gone -- tolerated, see method Javadoc
+                return true; // already gone -- tolerated, see method Javadoc
             }
             if (current == READ_FAILED) {
                 log.error(
@@ -896,7 +923,7 @@ final class AccountLedgerLock implements AutoCloseable {
                                 + " that mutual exclusion was lost.",
                         lockPath,
                         ownMetadata);
-                return;
+                return false; // transient -- a later close() call may still resolve this
             }
             if (current == EMPTY_OR_UNPARSEABLE) {
                 log.error(
@@ -907,7 +934,7 @@ final class AccountLedgerLock implements AutoCloseable {
                                 + " staleThreshold elapses.",
                         lockPath,
                         ownMetadata);
-                return;
+                return true; // confirmed alternate state -- a retry would just re-observe it
             }
             if (!current.equals(ownMetadata)) {
                 log.error(
@@ -920,17 +947,20 @@ final class AccountLedgerLock implements AutoCloseable {
                         lockPath,
                         ownMetadata,
                         current);
-                return;
+                return true; // a different, live holder genuinely owns this path now -- final
             }
             Files.delete(lockPath);
+            return true;
         } catch (NoSuchFileException e) {
             // tolerated -- see method Javadoc
+            return true;
         } catch (IOException e) {
             log.error(
                     "failed to delete account ledger lock file {} on close -- it will block other waiters until"
                             + " its staleThreshold elapses: {}",
                     lockPath,
                     e.toString());
+            return false; // transient -- a later close() call may still succeed
         }
     }
 }

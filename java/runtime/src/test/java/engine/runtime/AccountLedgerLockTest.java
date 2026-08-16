@@ -14,7 +14,6 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -179,7 +178,13 @@ class AccountLedgerLockTest {
         Duration retryBudget = Duration.ofMillis(500);
         CountDownLatch holderReady = new CountDownLatch(1);
         CountDownLatch releaseHolder = new CountDownLatch(1);
-        List<Throwable> holderFailures = new ArrayList<>();
+        // CopyOnWriteArrayList, not a plain ArrayList -- real Trivial finding,
+        // real CodeRabbit review of this PR: the holder thread writes to this
+        // list while the main thread reads it after only a bounded join()
+        // wait (not a guaranteed-finished join), an unsynchronized data race
+        // if the holder thread hasn't actually finished yet. Matches the same
+        // type already used for this exact purpose elsewhere in this file.
+        List<Throwable> holderFailures = new CopyOnWriteArrayList<>();
 
         Thread holder = new Thread(() -> {
             try (AccountLedgerLock lock =
@@ -293,10 +298,26 @@ class AccountLedgerLockTest {
                     AccountLedgerLock.acquire(lockPath, pathologicallySmallStaleThreshold, GENEROUS_RETRY_BUDGET)) {
                 holderAcquired.countDown();
                 Thread.sleep(holderRealHoldMillis); // its own real, legitimate critical-section work
+                // Recorded here, INSIDE the critical section, not in a
+                // finally block below -- a finally block runs only after
+                // try-with-resources has already called close() on the way
+                // out, and by the time this test's own steal has happened,
+                // close() is not the fast path: it re-reads the (by-then-
+                // stolen) lock file, finds a generation mismatch, and logs
+                // ERROR, all subject to this repository's own documented
+                // 500ms+ single-operation drvfs latency. Recording the
+                // "released" timestamp after that would let this test pass
+                // even when the steal actually completed after the holder's
+                // own real work had already finished -- weakening the exact
+                // claim this test exists to prove (real CodeRabbit review of
+                // this PR).
+                holderReleasedAtNanos.set(System.nanoTime());
             } catch (Throwable e) {
                 holderFailures.add(e);
-            } finally {
-                holderReleasedAtNanos.set(System.nanoTime());
+                // Fallback only -- does not overwrite a timestamp the try
+                // block above already recorded; covers the case where the
+                // exception happened before reaching that line.
+                holderReleasedAtNanos.compareAndSet(-1, System.nanoTime());
             }
         });
         holder.start();

@@ -1805,6 +1805,112 @@ code change, so no further multi-process/stress re-verification was
 independently warranted beyond the full `clean build`'s own real
 multi-process test run.
 
+### Round 16
+
+Against commit `ba363a6` (after round 15's fix was pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T00:17:57Z`): `CHANGES_REQUESTED`, 4
+actionable comments, all four real, all four fixed — one of them a
+genuine regression in round 10's own `close()` idempotency fix, not
+merely a documentation nit:
+
+- **(Trivial) `tryStealIfAbandonedEmpty`'s backstop Javadoc still
+  referenced `Files#createFile`, a method this class stopped calling
+  when it moved to `Files.newByteChannel(..., CREATE_NEW, WRITE)`** —
+  the same class of stale reference already fixed for the class Javadoc
+  and `tryStealIfStale` in round 12, missed for this one remaining spot.
+  Fixed by pointing at the real creation path. The review's own comment
+  also named a second location ("line 485") as needing the same fix;
+  checked directly by grep before touching anything and found no
+  `Files#createFile`/`Files.createFile` reference anywhere near that
+  line in the current file (the only two other occurrences in the whole
+  file are a legitimate historical comparison in `createAndWriteMetadata`'s
+  own comment, and the class Javadoc's "Deviation from the governing
+  plan's own literal code sketch" paragraph, which is correctly
+  describing what the *plan's sketch* wrote, not this class's own
+  implementation) — treated as a stale/incorrect line reference within
+  the same comment rather than a second real issue, and only the one
+  confirmed instance was fixed.
+- **(Minor) A real regression in round 10's own `close()` idempotency
+  fix: `doClose()` treated every "don't delete" outcome as final,
+  including the genuinely transient ones.** Real, and the most
+  consequential finding this round: round 10 made `close()` idempotent
+  by setting `closed = true` unconditionally after `doClose()` returned
+  without throwing — but `doClose()` returns normally (no exception) on
+  *all* of its outcomes, including a transient `READ_FAILED`
+  re-verification read and any non-`NoSuchFileException` `IOException`
+  from the delete itself, neither of which round 10's own stated intent
+  ("preserving retry-ability on a genuinely unexpected exception") was
+  ever meant to make permanent. The practical consequence: a single
+  transient filesystem read hiccup on `close()` would permanently mark
+  this instance closed, with no way to ever retry releasing the still-
+  live lock file — blocking every other waiter for a shared KIS account
+  risk ledger lock until `staleThreshold` elapsed, regardless of how many
+  times a caller called `close()` again. Fixed by changing `doClose()`'s
+  signature to return `boolean`: `true` for a genuinely final outcome
+  (deleted, confirmed already gone, or a confirmed alternate state --
+  `EMPTY_OR_UNPARSEABLE` or a genuine generation mismatch -- that a retry
+  could only re-observe, never resolve differently), `false` for a
+  transient, recoverable outcome (`READ_FAILED`, or any other
+  `IOException` from the delete) a later `close()` call might still
+  resolve. `close()` itself is now `closed = doClose();` rather than
+  `doClose(); closed = true;`. The uncaught-exception case (an
+  exception that escapes `doClose` entirely) is unaffected and still
+  correctly leaves `closed` unset, for the identical reason as before.
+- **(Trivial) `acquireThrowsRatherThanHangingWhenTheRetryBudgetIsExhausted`
+  used a plain, unsynchronized `ArrayList` for `holderFailures`, unlike
+  every other test in this file using the same pattern.** Real: the
+  holder thread writes to this list while the main thread reads it after
+  only a *bounded* `join(10s)` wait, not a guaranteed-finished join --
+  an unsynchronized data race if the holder thread hadn't actually
+  finished within that window. Fixed by switching to
+  `CopyOnWriteArrayList`, matching this file's own established
+  convention (two other tests already use it for the identical purpose).
+  The now-unused `java.util.ArrayList` import was removed.
+- **(Minor) The round-10 deterministic mutual-exclusion test recorded
+  `holderReleasedAtNanos` in a `finally` block, which runs only *after*
+  try-with-resources has already invoked `close()` on the way out --
+  not at the moment the holder's real critical section actually
+  finished.** Real, and a genuine weakening of the test's own central
+  claim, not merely a style issue: by the time this test's own steal has
+  happened, the holder's `close()` call is not the fast path -- it
+  re-reads the by-then-stolen lock file, finds a real generation
+  mismatch, and logs `ERROR`, all subject to this repository's own
+  documented 500ms+ single-operation drvfs latency. Including that time
+  inside the "holder was still active" window meant the test's own
+  assertion (`stolenAcquiredAtNanos < holderReleasedAtNanos`) could still
+  pass even if the steal actually completed *after* the holder's real
+  work had already finished -- exactly the failure mode this test exists
+  to rule out. Fixed by recording `holderReleasedAtNanos` immediately
+  after `Thread.sleep(holderRealHoldMillis)` inside the try block itself
+  (i.e. genuinely at the moment the critical section ends, before
+  `close()` ever runs), with a `compareAndSet(-1, ...)` fallback in the
+  `catch` block covering only the case where an exception occurred
+  before reaching that line (never overwriting a timestamp the try block
+  already recorded). Re-ran the retimed test 5 times total (1 + 4 more
+  explicit reruns) to confirm it remains stable, matching this task's own
+  established discipline for timing-sensitive tests.
+
+Re-ran after all four round-16 fixes: `./gradlew clean build` — still
+green, **443 tests, 0 failures, 0 errors** project-wide (no new test
+methods this round -- a Javadoc reference fix, a real behavioral fix to
+`close()`/`doClose()`'s return-value contract, and two existing-test
+repairs). Given the `close()`/`doClose()` change is a real behavioral
+fix (not merely cosmetic, unlike rounds 11/12), re-verified the real
+multi-process safety property specifically:
+`AccountLedgerLockMultiProcessTest` green 2 more explicit reruns
+(`--rerun-tasks`, on top of the one run already part of the full `clean
+build` above) -- 3 total. Also re-ran the raw, non-Gradle stress
+harness (unlike rounds 11-15, which judged the Gradle multi-process
+test reruns sufficient on their own for a purely cosmetic/test-only
+change) -- **25/25 rounds exactly correct** at this task's own
+realistic `staleThreshold=30s` configuration (6 processes × 8
+iterations = 48 expected per round, zero errors in any process's own
+output across all 25 rounds), the extra rigor judged warranted here
+specifically because this round's `close()`/`doClose()` fix is a real
+change to the release-path's own retry-ability contract, not a
+log-statement move or test-only change.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -1829,7 +1935,8 @@ multi-process test run.
   exceptions' cause, confirmed by grep first); 25/25 after round 14's (3
   more new tests, plus one pre-existing test's `defaultAllocatedCapital`
   values repaired to avoid a real conflict with the new fail-closed
-  check); 26/26 after round 15's (1 more new test).
+  check); 26/26 after round 15's (1 more new test); 26/26 after round
+  16's (no store-level changes that round).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -1852,7 +1959,10 @@ multi-process test run.
   still fully exercise the delete/no-delete decision itself, which is
   unchanged); 11/11 after round 15's (no `AccountLedgerLock`-level
   changes that round -- the one real fix was a store-level test
-  addition).
+  addition); 11/11 after round 16's (four real fixes -- a Javadoc
+  reference, a real `close()`/`doClose()` behavioral fix, and two
+  existing-test repairs -- but no new test methods, stable across 5
+  repeated runs of the retimed deterministic test specifically).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -1869,7 +1979,10 @@ multi-process test run.
   `clean build`, plus 2 further explicit `--rerun-tasks` runs, given
   round 14's log-repositioning change touches this file's own steal
   paths even though it changes no branching/timing), once more (part of
-  the full `clean build`) after round 15.
+  the full `clean build`) after round 15, **3 more times** after round
+  16 (1 part of the full `clean build`, plus 2 further explicit
+  `--rerun-tasks` runs, given round 16's `close()`/`doClose()` fix is a
+  real behavioral change, not merely cosmetic).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -1878,10 +1991,11 @@ multi-process test run.
   fixes, **25/25 more** after round 2's, **25/25 more** after round 3's,
   **25/25 more** after round 4's, **25/25 more** after round 5's,
   **25/25 more** after round 7's, **25/25 more** after round 8's,
-  **25/25 more** after round 9's, and **25/25 more** after round 10's (6
+  **25/25 more** after round 9's, **25/25 more** after round 10's, and
+  **25/25 more** after round 16's (6
   processes × 8 iterations = 48 expected per round every time, at this
-  task's own realistic `staleThreshold` values: **255 clean rounds
-  total, 12,240 individual lock acquisitions, zero lost updates** across
+  task's own realistic `staleThreshold` values: **280 clean rounds
+  total, 13,440 individual lock acquisitions, zero lost updates** across
   the whole task's real, non-Gradle stress testing at realistic
   configuration — round 6 was documentation/record-validation only and
   did not touch `AccountLedgerLock`'s own acquisition control flow, so it
@@ -1908,11 +2022,14 @@ multi-process test run.
   raw stress-harness round on top of them; round 15's one real fix was a
   new `AccountLedgerStore` test with no `AccountLedgerLock` involvement
   at all, so it likewise did not independently warrant a further raw
-  stress-harness round).
+  stress-harness round; round 16's `close()`/`doClose()` fix, by
+  contrast, is a real change to the release-path's own retry-ability
+  contract -- extra rigor judged warranted here, so the raw harness was
+  re-run for the first time since round 10).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, and 15.
+  8, 9, 10, 11, 12, 13, 14, 15, and 16.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -1923,7 +2040,7 @@ multi-process test run.
   from round 7's + 0 net-new from round 8's + 0 net-new from round 9's +
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
-  15's).
+  15's + 0 net-new from round 16's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
