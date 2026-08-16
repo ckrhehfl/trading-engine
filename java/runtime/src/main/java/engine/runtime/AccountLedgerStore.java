@@ -471,6 +471,21 @@ final class AccountLedgerStore {
                     // fallback and before ledgerPath is ever touched) is
                     // unaffected -- tmp there is genuinely this process's
                     // own unpublished, orphaned write, safe to remove.
+                    //
+                    // Real Minor finding, a further real CodeRabbit review
+                    // round on this same PR (PMD's PreserveStackTrace):
+                    // without this line, the original e (the
+                    // AtomicMoveNotSupportedException/
+                    // FileAlreadyExistsException that triggered entry into
+                    // this fallback in the first place) was only ever
+                    // logged as a plain e.toString() above -- its own
+                    // stack trace was lost once fallbackFailure propagated
+                    // alone. This path already means ledgerPath may have
+                    // been altered and a human must investigate directly;
+                    // preserving e's full stack (not just its message)
+                    // alongside fallbackFailure's own is real diagnostic
+                    // value for that investigation. Behavior unchanged.
+                    fallbackFailure.addSuppressed(e);
                     tmp = null;
                     throw fallbackFailure;
                 }

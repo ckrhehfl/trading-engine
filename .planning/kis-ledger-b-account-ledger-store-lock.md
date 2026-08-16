@@ -2193,6 +2193,40 @@ Re-ran after the round-20 fix: `./gradlew clean build` — still green,
 this round, and no `AccountLedgerLock` involvement, so a further raw
 stress-harness round was not independently warranted.
 
+### Round 21
+
+Against commit `c164c14` (after round 20's fix was pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-16T12:37:34Z`): `CHANGES_REQUESTED`, 1
+actionable comment (Minor), real, fixed:
+
+- **Round 19's own fallback-failure fix (`tmp = null; throw
+  fallbackFailure;`) discarded the original `e`
+  (`AtomicMoveNotSupportedException`/`FileAlreadyExistsException`, the
+  exception that triggered entry into the fallback in the first place)
+  -- only ever logged as a plain `e.toString()`, its real stack trace
+  was lost once `fallbackFailure` propagated alone.** Real, and a
+  legitimate PreserveStackTrace-class finding (PMD): this exact failure
+  path already means `ledgerPath` may have been altered and a human
+  must investigate directly, so losing `e`'s own stack trace loses real
+  diagnostic value at precisely the moment it matters most. Fixed with
+  a single `fallbackFailure.addSuppressed(e);` before the `tmp = null;`
+  reassignment and rethrow, matching this same file's own established
+  `addSuppressed`-not-swallowed convention (rounds 13 and 18 both
+  applied the identical pattern elsewhere in this class). Behavior
+  unchanged -- purely additive to the exception chain, no control-flow
+  change.
+
+Re-ran after the round-21 fix: `./gradlew clean build` — still green,
+**446 tests, 0 failures, 0 errors** project-wide (unchanged count -- a
+single `addSuppressed` line, no new or modified test methods; the
+existing `persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails`
+test from round 19 already exercises this exact code path and continues
+to pass unchanged, since it asserts on `IllegalStateException` being
+thrown and `tmp` surviving, neither of which this fix touches). No
+`AccountLedgerLock` involvement, so a further raw stress-harness round
+was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2223,7 +2257,8 @@ stress-harness round was not independently warranted.
   more new test, plus one existing test strengthened with an additional
   assertion); 28/28 after round 19's (1 more new test); 29/29 after
   round 20's (1 more new test, plus a Javadoc correction on an existing
-  one).
+  one); 29/29 after round 21's (no new or modified test methods -- a
+  single `addSuppressed` line, no test-level change needed).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2259,7 +2294,9 @@ stress-harness round was not independently warranted.
   no new methods here -- the new test this round was in
   `AccountLedgerStoreTest`); 11/11 after round 20's (no
   `AccountLedgerLock`-level changes that round -- the one real fix was a
-  store-level test addition and Javadoc correction).
+  store-level test addition and Javadoc correction); 11/11 after round
+  21's (no `AccountLedgerLock`-level changes that round either -- the
+  one real fix was entirely in `AccountLedgerStore.persist`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2283,7 +2320,8 @@ stress-harness round was not independently warranted.
   full `clean build`) after round 17, once more (part of the full
   `clean build`) after round 18, once more (part of the full `clean
   build`) after round 19, once more (part of the full `clean build`)
-  after round 20.
+  after round 20, once more (part of the full `clean build`) after
+  round 21.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2340,11 +2378,15 @@ stress-harness round was not independently warranted.
   stress-harness round; round 20 was a single test-only fix (plus a
   Javadoc correction) with zero production code change at all, and no
   `AccountLedgerLock` involvement, so it likewise did not independently
-  warrant a further raw stress-harness round).
+  warrant a further raw stress-harness round; round 21's one real fix
+  was also entirely in `AccountLedgerStore.persist` (an
+  `addSuppressed` addition, purely additive to the exception chain, no
+  control-flow change), so it likewise did not independently warrant a
+  further raw stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, and 20.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, and 21.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -2356,7 +2398,8 @@ stress-harness round was not independently warranted.
   3 from round 10's + 0 net-new from round 11's + 0 net-new from round
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
-  round 18's + 1 from round 19's + 1 from round 20's).
+  round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
+  round 21's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
