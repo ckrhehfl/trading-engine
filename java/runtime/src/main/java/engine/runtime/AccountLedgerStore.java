@@ -441,6 +441,24 @@ final class AccountLedgerStore {
             // touched by any failure-cleanup path in this method,
             // regardless of which step fails afterward.
             boolean tmpPreexisted = Files.exists(candidateTmp);
+            // Ownership is decided BEFORE open, not after -- a further real
+            // CodeRabbit review round on this same PR: the previous version
+            // of this fix assigned tmp only inside the try-with-resources
+            // body, after FileChannel.open had already succeeded. If open
+            // itself created the file (CREATE semantics) but then failed
+            // for some other reason before the channel was usable, tmp
+            // would stay null even though this call was genuinely the one
+            // that just created an empty file -- leaving it uncleaned,
+            // exactly the availability loss this whole cleanup exists to
+            // prevent. Deciding ownership up front from tmpPreexisted alone
+            // (already captured above, before any of this call's own
+            // filesystem mutations) keeps the same invariant intact
+            // (a pre-existing file is never assigned to tmp, so it is
+            // never a cleanup candidate) while also covering an open()
+            // failure, not just a later write/force failure.
+            if (!tmpPreexisted) {
+                tmp = candidateTmp;
+            }
             // CREATE + TRUNCATE_EXISTING + WRITE, matching Files.writeString's
             // own documented default options exactly (not CREATE_NEW) --
             // a leftover tmp file from an earlier interrupted persist()
@@ -452,9 +470,6 @@ final class AccountLedgerStore {
                     StandardOpenOption.CREATE,
                     StandardOpenOption.TRUNCATE_EXISTING,
                     StandardOpenOption.WRITE)) {
-                if (!tmpPreexisted) {
-                    tmp = candidateTmp;
-                }
                 ByteBuffer buffer = ByteBuffer.wrap(content);
                 while (buffer.hasRemaining()) {
                     channel.write(buffer);

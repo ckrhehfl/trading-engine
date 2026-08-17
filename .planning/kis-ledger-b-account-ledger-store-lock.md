@@ -2552,6 +2552,71 @@ tmp-cleanup-scope fix) is entirely within `AccountLedgerStore.persist`,
 not `AccountLedgerLock`'s own mutual-exclusion control flow, so a
 further raw stress-harness round was not independently warranted.
 
+### Round 26
+
+Against commit `df7e71a` (after round 25's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-17T12:32:32Z`): `CHANGES_REQUESTED`, 2
+"Actionable comments" plus 1 shown separately as a **"Duplicate
+comment"** -- a genuine re-raise of round 25's own declined "Heavy lift"
+finding, not a new issue. Two real fixes, one decline reaffirmed
+explicitly rather than left to look like an oversight:
+
+- **(Reaffirmed decline, not a new finding) `createAndWriteMetadata`'s
+  null-return branch still has no dedicated test exercising it through a
+  real `acquire()` call.** This is the identical finding round 25's own
+  entry above already evaluated in full and declined with real,
+  documented reasoning (no externally observable yield point in the
+  method's own internal write-close-to-reread window, no injectable test
+  seam, every mechanism considered reduces to an unguaranteeable real
+  race, the reviewer's own "Heavy lift" tag, no concrete suggestion
+  offered either round). CodeRabbit's own re-raise here does not engage
+  with or rebut that reasoning -- it restates the same request verbatim,
+  consistent with its dup-detection tracking code changes, not
+  planning-doc entries explaining a deliberate non-code decision. Re-
+  examined once more before reaffirming (not simply repeated by default):
+  reconsidered whether `channel.force(true)`'s own documented real
+  latency on this drvfs mount under contention could be exploited to
+  widen the window enough for a real sibling thread to reliably win the
+  race, and concluded this still only shifts the *odds*, not the
+  fundamental guarantee -- the window remains a genuine race with no way
+  to force a deterministic outcome without either accepting real test
+  flakiness or adding a production-code test-only hook, neither of which
+  this task's own TDD discipline or scope permits unilaterally. The
+  decline, and its full reasoning, stand unchanged from round 25.
+- **(Minor) The tmp-ownership assignment (`tmp = candidateTmp`) sat
+  inside the `FileChannel.open` try-with-resources body, only after
+  `open` had already succeeded -- if `open` itself created the file
+  (`CREATE` semantics) but then failed before the channel became usable,
+  the just-created empty `.tmp` would be left uncleaned, since `tmp`
+  never got assigned.** Real, and the same availability-loss shape as
+  every prior round in this theme: for a ledger that had never
+  successfully persisted before, that leftover would make every future
+  `load` call fail closed permanently. Fixed by deciding ownership
+  (`if (!tmpPreexisted) { tmp = candidateTmp; }`) *before* calling `open`,
+  not after -- the same `tmpPreexisted` gate from round 25, now covering
+  an `open()` failure itself, not only a later write/force failure. The
+  core invariant (a pre-existing file is never assigned to `tmp`, so
+  it's never a cleanup candidate) is unchanged; only the timing of the
+  assignment moved earlier. No new test needed -- round 25's own
+  `persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall` already
+  exercises the `tmpPreexisted` branch this fix touches, and continues
+  to pass unchanged.
+- **(Minor) My own round-25 test Javadoc referenced `CREATE_EXISTING` --
+  not a real `StandardOpenOption` constant.** Real, a genuine typo on my
+  own part (not present in the reviewer's own round-25 suggested text,
+  which I had adapted rather than copied verbatim): the actual option
+  combination `AccountLedgerStore.persist` uses is `CREATE` + `
+  TRUNCATE_EXISTING` + `WRITE`. Corrected directly. Documentation-only.
+
+Re-ran after both round-26 fixes: `./gradlew clean build` — still green,
+**448 tests, 0 failures, 0 errors** project-wide (unchanged count -- the
+tmp-ownership-timing fix needed no new test, and the Javadoc fix was
+documentation-only). The real behavior change this round is entirely
+within `AccountLedgerStore.persist`, not `AccountLedgerLock`'s own
+mutual-exclusion control flow, so a further raw stress-harness round was
+not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2593,7 +2658,9 @@ further raw stress-harness round was not independently warranted.
   -- a Javadoc-only addition to `load`'s own contract, no test-level
   change needed); 31/31 after round 25's (1 more new test -- the deeper
   tmp-cleanup-scope fix -- the "Heavy lift" test was declined, see that
-  round's own entry).
+  round's own entry); 31/31 after round 26's (no new or modified test
+  methods -- the tmp-ownership-timing fix reused round 25's own test;
+  the reaffirmed "Heavy lift" decline still needed no test).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2644,7 +2711,10 @@ further raw stress-harness round was not independently warranted.
   `AccountLedgerStore`); 11/11 after round 25's (a thread-confinement
   Javadoc addition to this file, and a declined test-coverage finding --
   see that round's own entry -- but no new methods here; the new test
-  this round was in `AccountLedgerStoreTest`).
+  this round was in `AccountLedgerStoreTest`); 11/11 after round 26's
+  (the "Heavy lift" decline reaffirmed, no `AccountLedgerLock`-level
+  code change that round -- both real fixes were in
+  `AccountLedgerStore`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2672,7 +2742,8 @@ further raw stress-harness round was not independently warranted.
   round 21, once more (part of the full `clean build`) after round 22,
   once more (part of the full `clean build`) after round 23, once more
   (part of the full `clean build`) after round 24, once more (part of
-  the full `clean build`) after round 25.
+  the full `clean build`) after round 25, once more (part of the full
+  `clean build`) after round 26.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2750,12 +2821,15 @@ further raw stress-harness round was not independently warranted.
   scope fix) is entirely within `AccountLedgerStore.persist`, not
   `AccountLedgerLock`'s own mutual-exclusion control flow, so it
   likewise did not independently warrant a further raw stress-harness
+  round; round 26's one real code change (the tmp-ownership-timing fix)
+  is likewise entirely within `AccountLedgerStore.persist`, so it
+  likewise did not independently warrant a further raw stress-harness
   round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, and
-  25.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+  and 26.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -2769,7 +2843,8 @@ further raw stress-harness round was not independently warranted.
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
-  net-new from round 24's + 1 from round 25's).
+  net-new from round 24's + 1 from round 25's + 0 net-new from round
+  26's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

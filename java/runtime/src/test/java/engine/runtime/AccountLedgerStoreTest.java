@@ -766,8 +766,9 @@ class AccountLedgerStoreTest {
      * portable to reproduce via public {@code java.nio.file} APIs,
      * disclosed honestly rather than overclaimed: an <b>empty directory</b>
      * standing in for a real pre-existing {@code .tmp} regular file
-     * reliably makes {@code FileChannel.open(..., CREATE_EXISTING,
-     * WRITE)} throw a real {@link java.nio.file.FileSystemException}
+     * reliably makes {@code FileChannel.open(..., CREATE,
+     * TRUNCATE_EXISTING, WRITE)} throw a real {@link
+     * java.nio.file.FileSystemException}
      * ("Is a directory") -- confirmed via a standalone probe before
      * writing this test, not assumed -- while leaving the directory
      * itself both existing and, critically, still <i>deletable</i>
