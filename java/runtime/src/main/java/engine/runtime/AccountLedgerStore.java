@@ -164,6 +164,33 @@ final class AccountLedgerStore {
      * also lost) -- named honestly as a partial mitigation for the same
      * reason.
      *
+     * <p><b>Manual resolution procedure for a human hitting this
+     * exception</b>: (1) read the {@code .tmp} file's own content and
+     * confirm it parses as a well-formed {@link AccountLedger} (the same
+     * validation this class applies on an ordinary {@code load} -- venue/
+     * accountId match, no duplicate {@code clientOrderId}, no negative
+     * {@code notional}, no half-populated reconciliation alarm pair); (2)
+     * confirm its {@code venue}/{@code accountId} match what this ledger
+     * is actually for; (3) if both check out, it is very likely the real,
+     * intended content of the interrupted {@code persist()} -- rename it
+     * to replace the (missing) {@code ledgerPath} directly, then retry
+     * {@code load}; (4) if it doesn't parse, or the identity doesn't
+     * match, do not guess -- this is exactly the ambiguous case this
+     * method refuses to resolve automatically, and needs a human decision
+     * informed by whatever else is known about the process history (e.g.
+     * this venue/account's own last known real state from other
+     * processes' logs) before either recovering or discarding it.
+     * <b>Wiring an automated alert for this condition is deliberately not
+     * done here</b> -- this project's own tooling roadmap defers
+     * monitoring/alerting infrastructure to Priority #8 (24/7 unattended
+     * operation) specifically because nothing runs unattended yet to
+     * monitor, and this class is itself still standalone and unwired
+     * (Task B) -- there is no running process yet for an alert to reach a
+     * human through. The {@link IllegalStateException} message itself is
+     * this task's own real, load-bearing signal in the meantime: it is
+     * not swallowed, and propagates to whatever caller Task C eventually
+     * wires in.
+     *
      * <p><b>{@code defaultAllocatedCapital} must be strictly positive, and
      * also fails closed if an existing ledger's stored {@code
      * allocatedVirtualCapital} exceeds it</b> -- grounded directly in

@@ -2379,6 +2379,70 @@ invariant) touches neither `AccountLedgerLock`'s own mutual-exclusion
 control flow nor anything the raw stress harness exercises, so a further
 raw stress-harness round was not independently warranted.
 
+### Round 24
+
+Against commit `31d4a21` (after round 23's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-17T07:58:07Z`): `CHANGES_REQUESTED`, 1
+actionable comment (Trivial), a two-part finding -- one part implemented,
+one part declined with reasoning:
+
+- **Implemented: add operational documentation for a human who actually
+  hits the missing-ledger-plus-leftover-`.tmp` fail-closed exception,
+  describing how to inspect the `.tmp` file and decide whether to
+  recover or discard it.** Real, and cheap to address: the exception
+  message itself already says "a human must investigate and manually
+  resolve," but never spelled out what that investigation concretely
+  looks like. Added a new Javadoc paragraph to `load`'s own contract
+  documenting the actual procedure: (1) confirm the `.tmp` file's content
+  parses as a well-formed `AccountLedger` (the same validation `load`
+  itself would apply -- venue/accountId match, no duplicate `
+  clientOrderId`, no negative `notional`, no half-populated
+  reconciliation alarm pair, all from earlier rounds' own record-level
+  invariants); (2) confirm venue/accountId actually match; (3) if both
+  check out, it's very likely the real interrupted-persist content --
+  rename it over the missing `ledgerPath` and retry; (4) if either check
+  fails, don't guess -- exactly the ambiguous case this method already
+  refuses to resolve automatically. Documentation-only, zero behavior
+  change; automatic recovery remains explicitly out of scope, matching
+  the review's own explicit "do not implement automatic recovery"
+  instruction.
+- **Declined, with reasoning: "emit an alert suitable for operational
+  monitoring" for this same fail-closed path.** Real observation in the
+  abstract (a permanently-failing ledger really would benefit from
+  active alerting in a real deployment), but out of scope for this task
+  for reasons grounded directly in this project's own already-committed
+  documentation, not merely local judgment: (1) CLAUDE.md's own Tooling
+  Stack "Future Tooling Watchlist" already lists "Monitoring/alerting
+  (health checks, kill-switch alerts)" with an explicit revisit
+  condition -- "Priority #8 (24/7 unattended operation)" -- and an
+  explicit reason it isn't done now -- "Nothing runs unattended yet to
+  monitor." That reasoning applies to this exact class precisely: `
+  AccountLedgerStore` is itself still standalone and unwired (Task B's
+  own explicit scope), so there is no running, unattended process yet
+  for an alert to reach a human through, and no alerting mechanism
+  exists anywhere in this codebase to hook into. (2) The finding's own
+  severity (Trivial) and the absence of any committable suggestion --
+  unlike essentially every other finding across 23 prior rounds -- is
+  itself a signal that even the reviewer could not concretely specify
+  what "an alert suitable for operational monitoring" should look like
+  in a codebase with no alerting infrastructure yet; inventing one from
+  scratch here would be real, undesigned, cross-cutting scope, not a
+  local fix to a fail-closed exception message. Documented in the same
+  new Javadoc paragraph as the implemented half, rather than silently
+  dropped: the `IllegalStateException` message itself is named as this
+  task's own real, load-bearing signal in the meantime -- not swallowed,
+  and propagates to whatever caller Task C eventually wires in. Matching
+  this project's own "document declined suggestions with real reasoning"
+  convention, the same standard already applied to the Jackson-BOM
+  finding in round 13.
+
+Re-ran after the round-24 fix: `./gradlew clean build` — still green,
+**447 tests, 0 failures, 0 errors** project-wide (documentation-only
+change, zero new or modified test methods, exact count unchanged from
+round 23). No `AccountLedgerLock` involvement, so a further raw
+stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2416,7 +2480,9 @@ raw stress-harness round was not independently warranted.
   reasoning); 30/30 after round 23's (1 more new test -- the new
   reconciliation-alarm-pair invariant -- plus a Javadoc-stripping sweep
   across three existing test-method Javadoc blocks, no other new
-  methods).
+  methods); 30/30 after round 24's (no store-level test methods changed
+  -- a Javadoc-only addition to `load`'s own contract, no test-level
+  change needed).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2462,7 +2528,9 @@ raw stress-harness round was not independently warranted.
   retimed deterministic test; 11/11 after round 23's (two stale
   `Files#createFile` Javadoc references corrected in this file --
   three more in `AccountLedgerLock.java` itself -- no new methods, no
-  behavior change).
+  behavior change); 11/11 after round 24's (no `AccountLedgerLock`-level
+  changes that round -- the one real change was a Javadoc addition in
+  `AccountLedgerStore`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2488,7 +2556,8 @@ raw stress-harness round was not independently warranted.
   build`) after round 19, once more (part of the full `clean build`)
   after round 20, once more (part of the full `clean build`) after
   round 21, once more (part of the full `clean build`) after round 22,
-  once more (part of the full `clean build`) after round 23.
+  once more (part of the full `clean build`) after round 23, once more
+  (part of the full `clean build`) after round 24.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2559,11 +2628,14 @@ raw stress-harness round was not independently warranted.
   `AccountLedgerLock`'s own mutual-exclusion control flow nor anything
   the raw harness exercises, and the Javadoc-sweep findings changed no
   behavior at all, so it likewise did not independently warrant a
-  further raw stress-harness round).
+  further raw stress-harness round; round 24 was Javadoc-only with zero
+  behavior change and no `AccountLedgerLock` involvement, so it
+  likewise did not independently warrant a further raw stress-harness
+  round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, and 23.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, and 24.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -2576,7 +2648,8 @@ raw stress-harness round was not independently warranted.
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
-  round 21's + 0 net-new from round 22's + 1 from round 23's).
+  round 21's + 0 net-new from round 22's + 1 from round 23's + 0
+  net-new from round 24's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
