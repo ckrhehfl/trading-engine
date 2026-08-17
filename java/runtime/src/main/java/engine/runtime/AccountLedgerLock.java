@@ -423,17 +423,18 @@ final class AccountLedgerLock implements AutoCloseable {
                 channel.write(buffer);
             }
             // Re-verify we still actually own lockPath -- see this
-            // method's own "Third, still deeper Major finding" Javadoc
-            // above for why a successful write alone does not prove this.
+            // method's own "Re-verification after write, and why a lost
+            // race is not an error" Javadoc above for why a successful
+            // write alone does not prove this.
             LockMetadata current = readMetadataOrNull(lockPath);
             if (metadata.equals(current)) {
                 return metadata;
             }
             if (current == READ_FAILED) {
                 // A transient read failure proves nothing about the
-                // file's real content -- see this method's own "Fourth
-                // finding" Javadoc for why this must not be treated the
-                // same as a genuine mismatch.
+                // file's real content -- see this method's own
+                // "Re-verification after write" Javadoc for why this must
+                // not be treated the same as a genuine mismatch.
                 log.error(
                         "account ledger lock {} could not be re-read immediately after this holder wrote its own"
                                 + " metadata ({}) -- cannot prove ownership from this read alone; cleaning up only"
@@ -630,12 +631,13 @@ final class AccountLedgerLock implements AutoCloseable {
      * discipline {@link #tryStealIfStale} itself uses, reused here for
      * {@link #createAndWriteMetadata}'s own "clean up only my own,
      * provably-still-mine generation" case (see that method's own
-     * "Fourth finding" Javadoc). Never guesses: if the current content
-     * can't be confirmed to still be exactly {@code metadata} -- a
-     * genuine mismatch, or even another {@link #READ_FAILED} on this
-     * verification read itself -- this method does nothing rather than
-     * risk deleting a different, currently-live holder's lock. Tolerates
-     * {@link NoSuchFileException} (already gone -- fine, nothing to do).
+     * "Re-verification after write" Javadoc). Never guesses: if the
+     * current content can't be confirmed to still be exactly {@code
+     * metadata} -- a genuine mismatch, or even another {@link
+     * #READ_FAILED} on this verification read itself -- this method does
+     * nothing rather than risk deleting a different, currently-live
+     * holder's lock. Tolerates {@link NoSuchFileException} (already gone
+     * -- fine, nothing to do).
      *
      * <p>Declares {@code throws IOException} for any other delete failure
      * rather than wrapping it -- see {@link #tryStealIfStale}'s own

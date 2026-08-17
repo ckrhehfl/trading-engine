@@ -373,29 +373,10 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding, real CodeRabbit review of this PR:
-     * {@link LedgerReservation}'s own compact constructor now rejects a
-     * non-positive {@code notional}.
-     *
-     * <p><b>Javadoc corrected, a further real CodeRabbit review round on
-     * this PR</b>: this method's own Javadoc used to claim the check was
-     * "exercised here through a real store round trip" -- inaccurate; this
-     * test calls {@link LedgerReservation}'s constructor directly and
-     * never touches {@link AccountLedgerStore} at all. That inaccuracy
-     * masked a real coverage gap, unlike the duplicate-{@code
-     * clientOrderId} invariant just below, which has both this direct
-     * unit test *and* a file-based one
-     * ({@link #loadFailsClosedWhenTheLedgerFileHoldsTwoReservationsWithTheSameClientOrderId}):
-     * nothing here proved {@link AccountLedgerStore#load} itself fails
-     * closed on a corrupted or hand-edited ledger *file* holding a
-     * negative {@code notional} -- a real, dangerous case, since a
-     * negative {@code notional} would *increase* the derived {@code
-     * allocatedVirtualCapital - Σ(reservations.notional)} available
-     * capital, the exact direction CLAUDE.md's own "never weaken risk
-     * limits" rule exists to prevent. Closed by
-     * {@link #loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional}
-     * below, matching the file-based pattern already established for the
-     * duplicate-{@code clientOrderId} case.
+     * {@link LedgerReservation}'s own compact constructor rejects a
+     * non-positive {@code notional} -- exercised directly here; the
+     * file-based path is pinned separately by {@link
+     * #loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional}.
      */
     @Test
     void aReservationWithZeroOrNegativeNotionalIsRejectedByLedgerReservationItself() {
@@ -435,6 +416,54 @@ class AccountLedgerStoreTest {
         assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    /**
+     * Real Minor finding, real CodeRabbit review of this PR: {@link
+     * AccountLedger}'s own compact constructor now rejects a
+     * half-populated {@code reconciliationAlarmTrippedAt}/{@code
+     * reconciliationAlarmReason} pair -- see that record's own Javadoc
+     * for the full reasoning (a pure structural invariant, not an alarm
+     * policy choice; either half-populated direction is dangerous, and
+     * {@code reconciliationAlarmReason} alone is the more dangerous one,
+     * since it would be read as "no alarm tripped" per this record's own
+     * {@code null}-means-no-alarm contract -- a real kill-switch-adjacent
+     * weakening). Proven here through a real ledger file on disk, the
+     * same file-based pattern already established for the duplicate-
+     * {@code clientOrderId} and negative-{@code notional} cases above:
+     * proves {@link AccountLedgerStore#load} fails closed on a corrupted
+     * or hand-edited file holding either half-populated direction.
+     */
+    @Test
+    void loadFailsClosedWhenTheLedgerFileHoldsAHalfPopulatedReconciliationAlarmPair(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Instant now = Instant.now();
+
+        Files.writeString(
+                file,
+                "{\"venue\":\"KIS\",\"accountId\":\"acct-1\",\"allocatedVirtualCapital\":100000,"
+                        + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
+                        + "\"lastReconciledMonthlyPnlPercent\":0,"
+                        + "\"reconciliationAlarmTrippedAt\":\"" + now + "\","
+                        + "\"reservations\":[]}");
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                "trippedAt alone (no reason) must fail closed");
+
+        Files.writeString(
+                file,
+                "{\"venue\":\"KIS\",\"accountId\":\"acct-1\",\"allocatedVirtualCapital\":100000,"
+                        + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
+                        + "\"lastReconciledMonthlyPnlPercent\":0,"
+                        + "\"reconciliationAlarmReason\":\"ledger exposure diverged from real account\","
+                        + "\"reservations\":[]}");
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                "reason alone (no trippedAt) must fail closed -- the more dangerous direction, since it would"
+                        + " otherwise be read as no alarm tripped at all");
     }
 
     /**
@@ -611,25 +640,20 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding, real CodeRabbit review of this PR: without this
-     * fix, a tmp file {@code persist} created but then failed to move (e.g.
+     * A tmp file {@code persist} created but then failed to move (e.g.
      * {@code mover.move} throwing something other than {@link
      * AtomicMoveNotSupportedException}/{@link FileAlreadyExistsException})
-     * was left behind on disk. For a ledger that had never successfully
-     * persisted before ({@code ledgerPath} still doesn't exist), that
-     * leftover tmp then made every future {@link AccountLedgerStore#load}
-     * call fail closed <b>permanently</b> via its own missing-ledger-plus-
-     * leftover-{@code .tmp} check ({@link
+     * must not be left behind: for a ledger that had never successfully
+     * persisted before, a leftover tmp would otherwise make every future
+     * {@link AccountLedgerStore#load} call fail closed <b>permanently</b>
+     * via its own missing-ledger-plus-leftover-{@code .tmp} check ({@link
      * #loadFailsClosedWhenTheLedgerIsMissingButALeftoverTmpFileExists}) --
      * indistinguishable from a genuinely interrupted {@code persist()},
-     * until a human manually deleted the file. Capital safety was never at
-     * risk (fail-closed is the correct direction for a real interrupted
-     * persist), but availability was needlessly and permanently lost for a
-     * ledger that had simply never succeeded even once. Proven directly
-     * here, not just by the absence of a leftover tmp file: a real failed
-     * {@code persist} is immediately followed by a real {@code load} call,
-     * which must succeed as an ordinary fresh bootstrap rather than fail
-     * closed.
+     * needlessly losing availability for a ledger that had simply never
+     * succeeded even once. Proven directly here, not just by the absence
+     * of a leftover tmp file: a real failed {@code persist} is
+     * immediately followed by a real {@code load} call, which must
+     * succeed as an ordinary fresh bootstrap rather than fail closed.
      */
     @Test
     void persistCleansUpItsOwnTmpFileOnFailureSoASubsequentLoadStillBootstrapsFresh(@TempDir Path tempDir) {
@@ -654,23 +678,22 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding, a further real CodeRabbit review round on this
-     * PR -- catching a real regression in the round-18 fix directly above
-     * this test: the round-18 cleanup deleted {@code tmp} unconditionally
-     * on any {@link IOException} reaching {@code persist}'s outer catch,
-     * including one thrown by the non-atomic {@code REPLACE_EXISTING}
-     * fallback itself. That fallback is not atomic and can fail after it
-     * has already altered (or removed) the real, existing {@code
-     * ledgerPath} it was replacing -- in that specific sequence, {@code
-     * tmp} is the only remaining copy of valid data, and deleting it
-     * turns a safe fail-closed outcome into <b>silent loss of every other
-     * process's real, committed reservations</b> the next time {@code
-     * load} runs. Fixed by setting {@code tmp} to {@code null} inside a
-     * new, dedicated catch around the fallback {@code Files.move} call
-     * specifically, before rethrowing -- opting that one failure class
-     * out of the outer cleanup, while leaving the originally-intended
-     * cleanup case ({@code mover.move} itself failing, before any
-     * fallback and before {@code ledgerPath} is ever touched) unaffected.
+     * The outer cleanup in {@code persist}'s catch block must never delete
+     * {@code tmp} unconditionally on any {@link IOException} -- in
+     * particular not one thrown by the non-atomic {@code
+     * REPLACE_EXISTING} fallback itself. That fallback is not atomic and
+     * can fail after it has already altered (or removed) the real,
+     * existing {@code ledgerPath} it was replacing -- in that specific
+     * sequence, {@code tmp} is the only remaining copy of valid data, and
+     * deleting it turns a safe fail-closed outcome into <b>silent loss of
+     * every other process's real, committed reservations</b> the next
+     * time {@code load} runs. {@code persist} sets {@code tmp} to {@code
+     * null} inside a dedicated catch around the fallback {@code
+     * Files.move} call specifically, before rethrowing -- opting that one
+     * failure class out of the outer cleanup, while leaving the
+     * originally-intended cleanup case ({@code mover.move} itself
+     * failing, before any fallback and before {@code ledgerPath} is ever
+     * touched) unaffected.
      *
      * <p>Proven here at the level that is actually deterministic and
      * portable to reproduce via public {@code java.nio.file} APIs: a real

@@ -19,32 +19,17 @@ dependencies {
     // calls a public, unauthenticated one). See BingXPriceFeed's Javadoc.
     implementation(project(":exchange"))
     // 2.18.9, not the 2.18.2 used elsewhere in this repo (schemas/risk/
-    // exchange) -- 2.18.2 is in the CVE-2026-54515 range (case-insensitive
-    // deserialization can restore properties @JsonIgnoreProperties should
-    // have excluded), fixed in 2.18.9. Nothing in this codebase actually
-    // uses the vulnerable combination (ACCEPT_CASE_INSENSITIVE_PROPERTIES
-    // + @JsonIgnoreProperties -- verified via repo-wide grep, zero hits).
-    // BingXPriceFeed (the original reason this module got the 2.18.9 bump
-    // ahead of the other three) only ever calls readTree() (untyped tree
-    // walking) on untrusted external (BingX) JSON over the network, never
-    // readValue() -- that half of this comment is still accurate.
-    // **Correction, real Minor finding, real CodeRabbit review of the PR
-    // that added AccountLedgerStore/AccountLedgerLock (Shared KIS account
-    // risk ledger, Task B)**: this comment used to claim this module
-    // "never calls readValue()" as a blanket statement -- no longer true.
-    // AccountLedgerStore.load and AccountLedgerLock's own lock-metadata
-    // parsing both now call MAPPER.readValue() -- but only ever on this
-    // module's own internally-written JSON files (the ledger/lock files
-    // this same process family creates), never on untrusted external
-    // network input, so the surrounding CVE-2026-54515 reasoning above is
-    // unaffected; only the specific "never readValue()" claim needed
-    // correcting. Patching to 2.18.9 costs nothing and is worth doing
-    // here regardless. Left at 2.18.2 in the other three modules
-    // deliberately, not bumped here -- see PR #27 review discussion for
-    // why a repo-wide, cross-module version bump (all four
-    // build.gradle.kts, including java/exchange, which this task was
-    // explicitly told not to touch) is a separate, dedicated follow-up
-    // rather than folded into this task's diff.
+    // exchange) -- left at 2.18.2 there deliberately; a repo-wide bump is
+    // a separate follow-up. 2.18.2 is in the CVE-2026-54515 range
+    // (case-insensitive deserialization can restore properties
+    // @JsonIgnoreProperties should have excluded), fixed in 2.18.9.
+    // Nothing in this codebase uses the vulnerable combination
+    // (ACCEPT_CASE_INSENSITIVE_PROPERTIES + @JsonIgnoreProperties --
+    // verified via repo-wide grep, zero hits); this module's own
+    // MAPPER.readValue() calls (AccountLedgerStore.load,
+    // AccountLedgerLock's lock-metadata parsing) are only ever on
+    // internally-written JSON files, never on untrusted external network
+    // input.
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.9")
     // Needed for AccountLedger/LedgerReservation/AccountLedgerLock's own
     // lock-metadata record (Shared KIS account risk ledger, Task B) to

@@ -478,12 +478,13 @@ class AccountLedgerLockTest {
     }
 
     /**
-     * A lock file that exists but is empty (e.g. {@code Files#createFile}
-     * succeeded but the metadata write hasn't landed yet, or crashed
-     * before completing) must never be treated as stale merely for being
-     * unparseable -- confirmed by using a short {@code totalRetryBudget}
-     * and asserting the caller genuinely exhausts it (rather than
-     * incorrectly, prematurely succeeding).
+     * A lock file that exists but is empty (e.g. the atomic {@link
+     * Files#newByteChannel} create with {@code CREATE_NEW} succeeded but
+     * the metadata write hasn't landed yet, or crashed before completing)
+     * must never be treated as stale merely for being unparseable --
+     * confirmed by using a short {@code totalRetryBudget} and asserting
+     * the caller genuinely exhausts it (rather than incorrectly,
+     * prematurely succeeding).
      *
      * <p>Real Trivial finding, a further real CodeRabbit review round on
      * this PR: this test used to assert only the exception's <i>type</i>
@@ -556,9 +557,10 @@ class AccountLedgerLockTest {
      * Backstop path for a Critical finding from this task's own real
      * CodeRabbit review: an empty lock file whose last-modified time is
      * older than {@code staleThreshold} (simulating a holder that died
-     * between {@link Files#createFile} succeeding and ever writing its
-     * metadata -- e.g. a hard process kill) must still be reclaimable,
-     * not block every future waiter forever.
+     * between the atomic {@link Files#newByteChannel} create with {@code
+     * CREATE_NEW} succeeding and ever writing its metadata -- e.g. a hard
+     * process kill) must still be reclaimable, not block every future
+     * waiter forever.
      */
     @Test
     void acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold(@TempDir Path tempDir) throws IOException {

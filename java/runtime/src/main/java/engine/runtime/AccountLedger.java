@@ -43,10 +43,23 @@ import java.util.Objects;
  * <p>{@code reconciliationAlarmTrippedAt}/{@code
  * reconciliationAlarmReason} are nullable -- {@code null} for both means
  * no alarm is currently tripped; a real, unresolved reconciliation
- * mismatch (Task D) sets both together. This record is a plain data
- * holder and does not itself enforce that the two are only ever both-null
- * or both-non-null -- callers (Task D's {@code AccountLedgerReconciler})
- * are responsible for that invariant.
+ * mismatch (Task D) sets both together. <b>This record's own compact
+ * constructor enforces that the two are only ever both-null or both-non-
+ * null</b> -- a real Minor finding, real CodeRabbit review of this PR,
+ * corrected from an earlier version of this Javadoc that deferred this
+ * specific invariant to Task D's {@code AccountLedgerReconciler} as a
+ * caller responsibility. That deferral was wrong: this is a pure
+ * structural invariant, not an alarm *policy* choice -- whatever alarm
+ * policy Task D ends up implementing, a half-populated pair can never be
+ * a valid state, for the same reason the duplicate-{@code clientOrderId}
+ * check just below is enforced here rather than left to a caller. A
+ * corrupted or hand-edited ledger file can produce exactly this state,
+ * and either half-populated direction is dangerous: {@code
+ * reconciliationAlarmTrippedAt} alone leaves an alarm's cause unknown;
+ * {@code reconciliationAlarmReason} alone means a real, unresolved
+ * reconciliation mismatch would be read as "no alarm tripped" per this
+ * very paragraph's own {@code null}-means-no-alarm contract -- a real
+ * weakening of kill-switch-adjacent behavior.
  *
  * <p>{@code reservations} is defensively copied to an immutable list in
  * the compact constructor, matching {@code TradingLoop.fillHistory()}'s
@@ -99,6 +112,11 @@ record AccountLedger(
                 reservations.stream().map(LedgerReservation::clientOrderId).distinct().count();
         if (distinctClientOrderIds != reservations.size()) {
             throw new IllegalArgumentException("reservations must not contain duplicate clientOrderId values");
+        }
+        if ((reconciliationAlarmTrippedAt == null) != (reconciliationAlarmReason == null)) {
+            throw new IllegalArgumentException(
+                    "reconciliationAlarmTrippedAt and reconciliationAlarmReason must both be null or both be"
+                            + " non-null -- a half-populated alarm cannot represent a valid state");
         }
     }
 }

@@ -2285,6 +2285,100 @@ exclusion control flow in a way that changes observable behavior (the
 `nanoTime` fix is purely test-assertion-level), so a further raw
 stress-harness round was not independently warranted.
 
+### Round 23
+
+Against commit `f78858e` (after round 22's fixes were pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-17T03:43:33Z`): `CHANGES_REQUESTED`, 4
+actionable comments across four different files, all four real, all four
+fixed. The largest round by diff size since the original implementation:
+
+- **(Minor, a real behavior change) `AccountLedger`'s compact constructor
+  never enforced that `reconciliationAlarmTrippedAt`/`reconciliationAlarmReason`
+  are only ever both-null or both-non-null -- the class's own Javadoc
+  explicitly deferred this to Task D's `AccountLedgerReconciler` as a
+  caller responsibility.** Initially
+  weighed carefully against declining, the same way the Jackson-BOM
+  finding was declined in round 13 -- but on reading the review's own
+  reasoning, this is a pure structural invariant, not an alarm *policy*
+  choice: whatever alarm policy Task D ends up implementing, a
+  half-populated pair can never be a valid state, the identical logic
+  already used to justify enforcing the duplicate-`clientOrderId` check
+  in this same record. Real danger in both directions: `
+  reconciliationAlarmTrippedAt` alone leaves an alarm's cause unknown on
+  disk; `reconciliationAlarmReason` alone is the more dangerous
+  direction, since a real, unresolved reconciliation mismatch would be
+  read as "no alarm tripped" per this record's own `null`-means-no-alarm
+  contract -- a real kill-switch-adjacent weakening. Fixed by adding the
+  XOR-null check to the compact constructor and correcting the Javadoc's
+  own "does not itself enforce" claim. Checked every existing `new
+  AccountLedger(...)` call site in both main and test code by hand before
+  applying the fix (all either populate both alarm fields together or
+  leave both null) -- confirmed zero conflicts, unlike round 14's
+  `defaultAllocatedCapital` finding which needed one existing test
+  repaired. Proven with a new file-based regression test
+  (`loadFailsClosedWhenTheLedgerFileHoldsAHalfPopulatedReconciliationAlarmPair`,
+  covering both half-populated directions in one method), matching the
+  file-based pattern already established for the duplicate-`clientOrderId`
+  and negative-`notional` cases.
+- **(Trivial) Three more stale Javadoc heading/API references, the same
+  class of issue already fixed multiple times in earlier rounds (12, 16,
+  17), found in spots those rounds missed.** `createAndWriteMetadata`'s
+  own inline comments (and a cross-reference in `deleteIfStillOwnGeneration`)
+  still pointed at old, round-history-named heading labels ("Third, still
+  deeper Major finding" Javadoc, "Fourth finding" Javadoc) that no longer
+  exist after round 12's rewrite consolidated them into
+  "Re-verification after write, and why a lost race is not an error."
+  `AccountLedgerLockTest.java` had two more `Files#createFile` references
+  (in `acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold`'s
+  own Javadoc pair) pointing at a creation API this class stopped using
+  before this task began. Fixed by pointing all five at the real,
+  current API/heading. Documentation-only, zero behavior change.
+- **(Trivial, the largest-scope finding this round) The same review-
+  process-narrative-in-Javadoc pattern round 12 first flagged for
+  `AccountLedgerLock.java` was still present throughout
+  `AccountLedgerStore.java`, `AccountLedgerStoreTest.java`, and
+  `build.gradle.kts` -- three files, most of their substantive Javadoc.**
+  Unlike round 12's narrowly-scoped two-block fix, this finding named
+  three explicit ranges spanning nearly the entire main body of
+  `AccountLedgerStore.java` (the class Javadoc, `load`'s own Javadoc and
+  inline comments throughout, `persist`'s own Javadoc and every inline
+  comment added across rounds 18/19/21/22), plus three ranges in the test
+  file, plus the Jackson-version comment block in `build.gradle.kts` --
+  effectively "clean up this whole file's worth of review narrative,"
+  not a narrow subset. Honored at that scope, not expanded further (no
+  changes to `AccountLedgerLock.java`/`AccountLedgerLockTest.java` beyond
+  the separate stale-reference fixes above, matching this project's own
+  "touch only what the task requires" rule): every "real Major/Minor/
+  Trivial finding, real CodeRabbit review of this PR" / "a further real
+  CodeRabbit review round" annotation in all three files was rewritten to
+  plain, present-tense technical prose, preserving every substantive
+  design fact (the drvfs empirical durability probe, the CVE-2026-54515
+  applicability reasoning, the PMD PreserveStackTrace attribution, the
+  exact failure sequences each fix closes) while dropping the round/
+  severity/PR-review meta-commentary. For the test file specifically, the
+  review's own instruction to preserve each test's "prevented outcome"
+  description and (for the fallback-preservation test) its own honest
+  reproduction-limit disclosure was followed precisely -- that paragraph
+  was left completely untouched. For `build.gradle.kts`, shrunk a
+  27-line comment to the two real facts that matter (the 2.18.9-vs-2.18.2
+  version split, and why the CVE-2026-54515 range doesn't apply here),
+  dropping the "PR #27 review discussion" pointer per the review's own
+  explicit instruction that such pointers belong in commit history, not
+  code. Verified via grep after editing that zero "CodeRabbit"/"real ...
+  finding"/"further real" occurrences remain in any of the three files.
+  Documentation-only, zero behavior change.
+
+Re-ran after all four round-23 fixes: `./gradlew clean build` — still
+green, **447 tests, 0 failures, 0 errors** project-wide (446 + 1 new
+test, in `AccountLedgerStoreTest`). Checked individual file counts:
+`AccountLedgerStoreTest` 30/30, `AccountLedgerLockTest` 11/11 (unchanged
+-- Javadoc-only), `AccountLedgerLockMultiProcessTest` 1/1 (unchanged).
+The one real behavior change this round (`AccountLedger`'s alarm-pair
+invariant) touches neither `AccountLedgerLock`'s own mutual-exclusion
+control flow nor anything the raw stress harness exercises, so a further
+raw stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2319,7 +2413,10 @@ stress-harness round was not independently warranted.
   single `addSuppressed` line, no test-level change needed); 29/29
   after round 22's (no store-level test methods changed -- the
   `persist` reordering fix needed no new test, per that round's own
-  reasoning).
+  reasoning); 30/30 after round 23's (1 more new test -- the new
+  reconciliation-alarm-pair invariant -- plus a Javadoc-stripping sweep
+  across three existing test-method Javadoc blocks, no other new
+  methods).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2362,7 +2459,10 @@ stress-harness round was not independently warranted.
   sentinel-check correction on an existing test, no new methods --
   plus one more, unrelated real fix in `AccountLedgerStore.persist`),
   stable across 4 repeated runs (1 + 3 more explicit reruns) of the
-  retimed deterministic test.
+  retimed deterministic test; 11/11 after round 23's (two stale
+  `Files#createFile` Javadoc references corrected in this file --
+  three more in `AccountLedgerLock.java` itself -- no new methods, no
+  behavior change).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2387,7 +2487,8 @@ stress-harness round was not independently warranted.
   `clean build`) after round 18, once more (part of the full `clean
   build`) after round 19, once more (part of the full `clean build`)
   after round 20, once more (part of the full `clean build`) after
-  round 21, once more (part of the full `clean build`) after round 22.
+  round 21, once more (part of the full `clean build`) after round 22,
+  once more (part of the full `clean build`) after round 23.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2453,15 +2554,20 @@ stress-harness round was not independently warranted.
   branch, no observable behavior change) and a test-assertion
   correction in `AccountLedgerLockTest` (no production code touched at
   all), so it likewise did not independently warrant a further raw
-  stress-harness round).
+  stress-harness round; round 23's one real behavior change (the
+  `AccountLedger` alarm-pair invariant) touches neither
+  `AccountLedgerLock`'s own mutual-exclusion control flow nor anything
+  the raw harness exercises, and the Javadoc-sweep findings changed no
+  behavior at all, so it likewise did not independently warrant a
+  further raw stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, and 22.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, and 23.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **446 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **447 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -2470,7 +2576,7 @@ stress-harness round was not independently warranted.
   12's + 0 net-new from round 13's + 3 from round 14's + 1 from round
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
-  round 21's + 0 net-new from round 22's).
+  round 21's + 0 net-new from round 22's + 1 from round 23's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
