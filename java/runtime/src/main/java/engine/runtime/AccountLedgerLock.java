@@ -139,6 +139,23 @@ import org.slf4j.LoggerFactory;
  * this requirement by a wide margin on any filesystem with second-level
  * or finer mtime precision.
  *
+ * <p><b>A third, separate part of the same caller contract: a single
+ * instance must only ever be used and closed by the thread that acquired
+ * it.</b> {@link #closed} is a plain, non-volatile field, mutated only in
+ * {@link #close}. If a single instance were shared across threads (this
+ * codebase has no such caller today -- confirmed, not merely assumed),
+ * one thread could fail to observe another thread's already-{@code true}
+ * {@link #closed} value under the Java Memory Model, letting {@link
+ * #close}'s own idempotency guard run twice for real. A second,
+ * genuinely-executed {@code doClose} could then observe a sibling
+ * process's own, legitimately-since-acquired generation at {@code
+ * lockPath} and log a false "mutual exclusion was lost" {@code ERROR} --
+ * precisely the misleading-log-noise problem {@link #closed}'s own
+ * idempotency guard exists to prevent in the first place. Not a defect in
+ * this class as currently used; stated explicitly so a future caller
+ * (Task C) never introduces cross-thread sharing without knowing this
+ * contract exists.
+ *
  * <p><b>Deviation from the governing plan's own literal code sketch</b>:
  * the plan's summary writes {@code Files.createFile(path,
  * StandardOpenOption.CREATE_NEW)} -- {@link Files#createFile} does not

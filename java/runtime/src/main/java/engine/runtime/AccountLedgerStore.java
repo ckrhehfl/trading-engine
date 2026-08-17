@@ -414,7 +414,33 @@ final class AccountLedgerStore {
             // always exactly "a file this call itself opened," never a
             // stray survivor from elsewhere.
             byte[] content = MAPPER.writeValueAsBytes(ledger);
-            tmp = tmpPathFor(ledgerPath);
+            Path candidateTmp = tmpPathFor(ledgerPath);
+            // A further real regression in this same cleanup logic, a
+            // further real CodeRabbit review round: the previous fix
+            // above (assigning tmp only after serialization succeeds)
+            // closed the serialization-failure case, but not this one.
+            // tmpPathFor's own path is fixed and CREATE + TRUNCATE_EXISTING
+            // below will happily open (and truncate) a genuine crash-
+            // leftover .tmp from an earlier, different persist() attempt
+            // -- exactly the evidence load()'s own missing-ledger-plus-
+            // leftover-.tmp fail-closed check depends on. If THIS call's
+            // own write/force then fails (disk full, permission change,
+            // filesystem error -- all real, not hypothetical), the outer
+            // catch's cleanup would delete that file, even though this
+            // call did not create it and its content may already be
+            // unrecoverably destroyed by the truncate. Deleting it would
+            // still be strictly worse than leaving it: load()'s fail-
+            // closed detection depends only on the file's existence, not
+            // its content being intact, so preserving even a truncated
+            // leftover keeps a human in the loop instead of letting load()
+            // silently bootstrap an empty ledger over another process's
+            // real, lost reservations. Checking existence first and only
+            // enabling cleanup (assigning tmp) when this call is
+            // genuinely the one creating the file closes this precisely:
+            // a pre-existing file, crash-leftover or otherwise, is never
+            // touched by any failure-cleanup path in this method,
+            // regardless of which step fails afterward.
+            boolean tmpPreexisted = Files.exists(candidateTmp);
             // CREATE + TRUNCATE_EXISTING + WRITE, matching Files.writeString's
             // own documented default options exactly (not CREATE_NEW) --
             // a leftover tmp file from an earlier interrupted persist()
@@ -422,7 +448,13 @@ final class AccountLedgerStore {
             // was; CREATE_NEW would instead throw
             // FileAlreadyExistsException and break that retry.
             try (FileChannel channel = FileChannel.open(
-                    tmp, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+                    candidateTmp,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE)) {
+                if (!tmpPreexisted) {
+                    tmp = candidateTmp;
+                }
                 ByteBuffer buffer = ByteBuffer.wrap(content);
                 while (buffer.hasRemaining()) {
                     channel.write(buffer);
@@ -430,7 +462,7 @@ final class AccountLedgerStore {
                 channel.force(true);
             }
             try {
-                mover.move(tmp, ledgerPath);
+                mover.move(candidateTmp, ledgerPath);
             } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
                 // Same fallback SubmissionMarkerStore/DailyReportGenerator
                 // already established for the identical class of failure
@@ -441,11 +473,11 @@ final class AccountLedgerStore {
                 // loop.
                 log.warn(
                         "atomic move not usable for {} -> {}, falling back to a non-atomic replace: {}",
-                        tmp,
+                        candidateTmp,
                         ledgerPath,
                         e.toString());
                 try {
-                    Files.move(tmp, ledgerPath, StandardCopyOption.REPLACE_EXISTING);
+                    Files.move(candidateTmp, ledgerPath, StandardCopyOption.REPLACE_EXISTING);
                 } catch (IOException fallbackFailure) {
                     // This non-atomic REPLACE_EXISTING move is not a single
                     // atomic operation, and can fail partway through --
@@ -480,6 +512,13 @@ final class AccountLedgerStore {
                     // already means ledgerPath may have been altered and a
                     // human must investigate directly, so e's full stack
                     // is real diagnostic value here. Behavior unchanged.
+                    // This unconditional reassignment composes correctly
+                    // with tmpPreexisted above regardless of which value
+                    // tmp already held: null if candidateTmp pre-existed
+                    // (already excluded from cleanup), or the real,
+                    // freshly-created path otherwise -- either way, this
+                    // failure now leaves tmp null, so candidateTmp is never
+                    // touched by the outer cleanup below.
                     fallbackFailure.addSuppressed(e);
                     tmp = null;
                     throw fallbackFailure;
@@ -505,9 +544,13 @@ final class AccountLedgerStore {
             // exception ever thrown to reach this catch block at all) is
             // untouched by this cleanup and still correctly fails closed.
             // Also deliberately does NOT run when tmp was set to null
-            // above -- see that catch block's own comment for the real,
-            // separate reason a fallback-move failure must preserve tmp
-            // rather than clean it up.
+            // above -- either because a fallback-move failure explicitly
+            // cleared it (see that catch block's own comment), or because
+            // tmpPreexisted was true and tmp was therefore never assigned
+            // in the first place: a leftover from an earlier, different
+            // persist() attempt (crashed, or itself failed with an
+            // IOException) is never this call's own to clean up, no
+            // matter which step of this call then fails.
             if (tmp != null) {
                 try {
                     Files.deleteIfExists(tmp);

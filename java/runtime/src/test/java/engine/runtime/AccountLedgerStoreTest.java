@@ -746,6 +746,58 @@ class AccountLedgerStoreTest {
                 "load must still fail closed after a fallback-move failure, never silently bootstrap empty");
     }
 
+    /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR -- catching a deeper variant of the same tmp-cleanup-scope gap
+     * round 19's own fix (directly above) closed only partially: that fix
+     * protects the fallback-move-failure case, but a genuine, pre-existing
+     * {@code .tmp} left by an earlier, different {@code persist()} attempt
+     * (crashed, or itself failed with an {@code IOException}) was still
+     * unconditionally eligible for this call's own cleanup if <i>this</i>
+     * call's {@link java.nio.channels.FileChannel#open}/write/force step
+     * then failed -- exactly the evidence {@link AccountLedgerStore#load}'s
+     * own missing-ledger-plus-leftover-{@code .tmp} fail-closed check
+     * depends on, deleted by a completely unrelated, later persist()
+     * attempt's own failure. Fixed by checking whether the tmp path
+     * already existed <i>before</i> this call ever touches it, and only
+     * enabling cleanup when this call is genuinely the one creating it.
+     *
+     * <p>Proven here at the level that is actually deterministic and
+     * portable to reproduce via public {@code java.nio.file} APIs,
+     * disclosed honestly rather than overclaimed: an <b>empty directory</b>
+     * standing in for a real pre-existing {@code .tmp} regular file
+     * reliably makes {@code FileChannel.open(..., CREATE_EXISTING,
+     * WRITE)} throw a real {@link java.nio.file.FileSystemException}
+     * ("Is a directory") -- confirmed via a standalone probe before
+     * writing this test, not assumed -- while leaving the directory
+     * itself both existing and, critically, still <i>deletable</i>
+     * (unlike a non-empty directory, which {@link Files#deleteIfExists}
+     * would refuse regardless of this fix, masking the real property
+     * being tested here). That combination is exactly what makes this a
+     * real test of the new ownership-tracking logic specifically, not
+     * merely a re-confirmation that some deletion attempt happens to fail:
+     * the old code would have called {@code Files.deleteIfExists} on this
+     * exact path and it would have <i>succeeded</i>, silently destroying
+     * the "leftover" -- this test proves the new code never attempts the
+     * delete at all.
+     */
+    @Test
+    void persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Path candidateTmp = tempDir.resolve("ledger.json.tmp");
+        Files.createDirectory(candidateTmp);
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        assertTrue(
+                Files.exists(candidateTmp),
+                "a tmp path that already existed before this persist() call must never be cleaned up by it,"
+                        + " regardless of which step of this call then fails");
+    }
+
     @Test
     void defaultAtomicMoverPersistsWithoutTheTestSeam(@TempDir Path tempDir) {
         // Mirrors SubmissionMarkerStoreTest's own

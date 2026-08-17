@@ -2443,6 +2443,115 @@ change, zero new or modified test methods, exact count unchanged from
 round 23). No `AccountLedgerLock` involvement, so a further raw
 stress-harness round was not independently warranted.
 
+### Round 25
+
+Against commit `1f4d5a5` (after round 24's fix was pushed — a real
+review confirmed via the GitHub reviews API to target this exact commit
+sha, `submitted_at: 2026-08-17T09:06:38Z`): `CHANGES_REQUESTED`, 2
+"Actionable comments" plus 1 shown separately as a **"Duplicate
+comment"** that was in fact the most consequential finding of the
+three -- the fifth consecutive round to find a real, narrower variant of
+the same `persist()`-tmp-cleanup-scope theme running since round 18. Two
+fixed, one declined with reasoning:
+
+- **(Major, shown as "duplicate" but a real, deeper gap rounds 19/21/22
+  left open) `persist`'s tmp-cleanup scope was still not actually
+  limited to "a file this call created" -- round 22's own fix (assigning
+  `tmp` only after serialization succeeds) closed the serialization-
+  failure case specifically, but not this one.** Real: `tmpPathFor`'s
+  own fixed path means `FileChannel.open(..., CREATE, TRUNCATE_EXISTING,
+  WRITE)` will happily open (and truncate) a genuine crash-leftover
+  `.tmp` from an earlier, different `persist()` attempt -- exactly the
+  evidence `load`'s own missing-ledger-plus-leftover-`.tmp` fail-closed
+  check depends on. If *this* call's own `open`/`write`/`force` step
+  then failed (disk full, permission change, filesystem error -- all
+  real, not hypothetical), the outer catch's cleanup would delete that
+  file, even though this call never created it and its content may
+  already be unrecoverably destroyed by the truncate. Fixed by checking
+  `Files.exists` on the candidate tmp path *before* ever opening it, and
+  only enabling cleanup (assigning the actual `tmp` variable) when this
+  call is genuinely the one creating the file fresh -- a pre-existing
+  file, crash-leftover or otherwise, is now never touched by any
+  failure-cleanup path in this method, regardless of which step fails
+  afterward. Proven with a new test
+  (`persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall`) at a
+  level confirmed empirically deterministic and portable via public
+  `java.nio.file` APIs: an *empty* pre-existing directory (not a
+  non-empty one, per a standalone probe run before writing the test --
+  `Files.deleteIfExists` refuses a non-empty directory regardless of
+  this fix, which would have masked the exact property being tested)
+  reliably makes `FileChannel.open` throw a real `FileSystemException`
+  ("Is a directory") while remaining genuinely deletable -- proving the
+  new code never even *attempts* the delete, not merely that some
+  deletion attempt happens to fail for an unrelated reason.
+- **(Trivial) `AccountLedgerLock`'s `closed` field had no documented
+  thread-confinement contract.** Real, though explicitly not a current
+  defect (confirmed no caller in this codebase shares an instance across
+  threads): `closed` is a plain, non-volatile field mutated only in
+  `close()`, so a hypothetical cross-thread sharing could let one thread
+  fail to observe another's already-`true` value under the Java Memory
+  Model, letting `close()`'s own idempotency guard run twice for real --
+  precisely the misleading-log-noise problem that guard exists to
+  prevent. Fixed by adding a third caller-contract paragraph to the class
+  Javadoc (matching the existing `staleThreshold`-related caller-contract
+  paragraphs' own established pattern) stating explicitly that an
+  instance must only be used and closed by the thread that acquired it,
+  so Task C never introduces cross-thread sharing without knowing this
+  contract exists. Documentation-only, zero behavior change -- matching
+  the review's own explicit "leave `close()` and `closed` unchanged"
+  instruction.
+- **(Trivial, "Heavy lift" per the reviewer's own tag) Declined, with
+  reasoning: a dedicated test directly exercising `createAndWriteMetadata`'s
+  own null-return (lost-race) branch through a real `acquire()` call,
+  confirming the *original* caller retries rather than returning a bad
+  lock.** Real gap in direct, isolated coverage -- the existing test
+  covering the adjacent scenario
+  (`aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen`)
+  only proves a sibling's content survives a delayed, orphaned write; it
+  never routes the *original* holder's own action through a real
+  `acquire()` call at all, so it cannot observe that call's own retry
+  behavior. Investigated seriously, not dismissed on sight: the specific
+  internal window this branch needs (between `createAndWriteMetadata`'s
+  own write-close and its own immediately-following re-verification
+  read) is a single synchronous method call with no externally
+  observable yield point and no injectable test seam (unlike
+  `AccountLedgerStore`'s own `AtomicMover`, this class has no comparable
+  fault/delay-injection hook for its internal write step). Every
+  mechanism considered to hit this window deterministically from outside
+  -- racing a second real thread against it, using a pathologically small
+  `staleThreshold`, exploiting this mount's own documented 500ms+
+  operation latency under contention -- reduces to a genuine race with no
+  way to guarantee a single-shot result, the same "Heavy lift" the
+  reviewer's own tag names, and the reviewer itself offered no concrete
+  committable suggestion for this one, a recurring signal (already
+  observed for the round-24 alerting-mechanism decline) that even the
+  reviewer could not produce a concrete implementation. Deliberately not
+  shipped as a probabilistic/flaky test, which this project's own TDD
+  discipline does not accept as a substitute for a real, reliable one --
+  and not addressed by adding a production-code test-only hook to
+  `AccountLedgerLock` unilaterally, a real design decision affecting
+  R3-risk-adjacent code that deserves its own deliberate consideration,
+  not one improvised under review pressure on what was flagged as a
+  nitpick. This exact mechanism already receives real, if indirect,
+  evidence from this file's own extensive existing coverage --
+  `acquireProvidesRealMutualExclusionAcrossManyThreads`'s real 12-thread
+  contention, the raw stress harness's 255+ clean rounds, and
+  `AccountLedgerLockMultiProcessTest`'s real second-JVM proof -- all of
+  which exercise many real `acquire()` cycles under genuine contention on
+  the real filesystem and would very likely surface a real defect in
+  this branch (a wrong lock returned, or lost mutual exclusion) if one
+  existed. Matching this project's own "document declined suggestions
+  with real reasoning" convention, the same standard already applied to
+  the Jackson-BOM finding (round 13) and the alerting-mechanism finding
+  (round 24).
+
+Re-ran after both round-25 fixes: `./gradlew clean build` — still green,
+**448 tests, 0 failures, 0 errors** project-wide (447 + 1 new test, in
+`AccountLedgerStoreTest`). The real behavior change this round (the
+tmp-cleanup-scope fix) is entirely within `AccountLedgerStore.persist`,
+not `AccountLedgerLock`'s own mutual-exclusion control flow, so a
+further raw stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2482,7 +2591,9 @@ stress-harness round was not independently warranted.
   across three existing test-method Javadoc blocks, no other new
   methods); 30/30 after round 24's (no store-level test methods changed
   -- a Javadoc-only addition to `load`'s own contract, no test-level
-  change needed).
+  change needed); 31/31 after round 25's (1 more new test -- the deeper
+  tmp-cleanup-scope fix -- the "Heavy lift" test was declined, see that
+  round's own entry).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2530,7 +2641,10 @@ stress-harness round was not independently warranted.
   three more in `AccountLedgerLock.java` itself -- no new methods, no
   behavior change); 11/11 after round 24's (no `AccountLedgerLock`-level
   changes that round -- the one real change was a Javadoc addition in
-  `AccountLedgerStore`).
+  `AccountLedgerStore`); 11/11 after round 25's (a thread-confinement
+  Javadoc addition to this file, and a declined test-coverage finding --
+  see that round's own entry -- but no new methods here; the new test
+  this round was in `AccountLedgerStoreTest`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2557,7 +2671,8 @@ stress-harness round was not independently warranted.
   after round 20, once more (part of the full `clean build`) after
   round 21, once more (part of the full `clean build`) after round 22,
   once more (part of the full `clean build`) after round 23, once more
-  (part of the full `clean build`) after round 24.
+  (part of the full `clean build`) after round 24, once more (part of
+  the full `clean build`) after round 25.
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2631,15 +2746,20 @@ stress-harness round was not independently warranted.
   further raw stress-harness round; round 24 was Javadoc-only with zero
   behavior change and no `AccountLedgerLock` involvement, so it
   likewise did not independently warrant a further raw stress-harness
+  round; round 25's one real behavior change (the deeper tmp-cleanup-
+  scope fix) is entirely within `AccountLedgerStore.persist`, not
+  `AccountLedgerLock`'s own mutual-exclusion control flow, so it
+  likewise did not independently warrant a further raw stress-harness
   round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
-  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, and 24.
+  8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, and
+  25.
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **447 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **448 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -2649,7 +2769,7 @@ stress-harness round was not independently warranted.
   15's + 0 net-new from round 16's + 0 net-new from round 17's + 1 from
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
-  net-new from round 24's).
+  net-new from round 24's + 1 from round 25's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
