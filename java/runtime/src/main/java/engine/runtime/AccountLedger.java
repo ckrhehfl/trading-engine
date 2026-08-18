@@ -78,6 +78,19 @@ import java.util.Objects;
  * chooses, two live reservations for the same one can never be a valid
  * state to begin with.
  *
+ * <p><b>{@code allocatedVirtualCapital} must be strictly positive</b> --
+ * the same "this record is the single structural enforcement point"
+ * principle as the two invariants above, grounded directly in CLAUDE.md's
+ * own "never weaken risk limits... without explicit human approval"
+ * rule. {@link AccountLedgerStore#load}'s own two checks on this field
+ * (that a caller-supplied {@code defaultAllocatedCapital} is itself
+ * positive, and that a stored value doesn't <i>exceed</i> the configured
+ * default) do not by themselves reject a stored zero or negative value --
+ * either is always less than a positive default, so both checks pass. A
+ * corrupted or hand-edited ledger file can produce exactly this state;
+ * enforcing it here closes that gap structurally rather than adding a
+ * further special case to {@code load}.
+ *
  * <p>Package-private, like every other class in this file's "shared
  * ledger" group except the {@link AccountStateProvider} interface itself
  * -- see the governing plan's "2. The shared ledger" section header.
@@ -102,6 +115,9 @@ record AccountLedger(
         Objects.requireNonNull(lastReconciledWeeklyPnlPercent, "lastReconciledWeeklyPnlPercent is required");
         Objects.requireNonNull(lastReconciledMonthlyPnlPercent, "lastReconciledMonthlyPnlPercent is required");
         Objects.requireNonNull(reservations, "reservations is required");
+        if (allocatedVirtualCapital.signum() <= 0) {
+            throw new IllegalArgumentException("allocatedVirtualCapital must be positive");
+        }
         reservations = List.copyOf(reservations);
         long distinctClientOrderIds =
                 reservations.stream().map(LedgerReservation::clientOrderId).distinct().count();

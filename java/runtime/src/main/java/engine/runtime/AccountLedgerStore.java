@@ -485,6 +485,36 @@ final class AccountLedgerStore {
             }
             if (!tmpPreexisted) {
                 tmp = candidateTmp;
+            } else {
+                // A pre-existing candidateTmp AND a missing ledgerPath is
+                // exactly the state load()'s own missing-ledger-plus-
+                // leftover-.tmp fail-closed check treats as evidence of an
+                // interrupted persist() requiring human resolution -- see
+                // that check's own Javadoc for the full reasoning and the
+                // manual resolution procedure. Without this check, this
+                // call's own ordinary CREATE + TRUNCATE_EXISTING write
+                // below would silently consume that evidence, even though
+                // it may be the only surviving copy of another process's
+                // real, committed reservations -- a real, reachable
+                // sequence given this class's own documented standalone-
+                // persist-call use case (not only a load + mutate +
+                // persist cycle). Only a confirmed-absent ledgerPath
+                // (NoSuchFileException) triggers this -- any other outcome
+                // (ledgerPath exists, or its own existence can't be
+                // determined either) proceeds to the write path below,
+                // which is the ordinary retry case this method's own
+                // leftover-tmp-overwrite behavior otherwise exists to
+                // support.
+                try {
+                    Files.readAttributes(ledgerPath, BasicFileAttributes.class);
+                } catch (NoSuchFileException ledgerAbsent) {
+                    throw new IllegalStateException(
+                            "refusing to persist to missing " + ledgerPath + " while a leftover " + candidateTmp
+                                    + " exists -- that temp file may be the only evidence of another process's"
+                                    + " real, committed reservations. A human must resolve it first (see load()'s"
+                                    + " own Javadoc for the manual resolution procedure).",
+                            ledgerAbsent);
+                }
             }
             // CREATE + TRUNCATE_EXISTING + WRITE, matching Files.writeString's
             // own documented default options exactly (not CREATE_NEW) --

@@ -3101,6 +3101,110 @@ methods). `AccountLedgerStoreTest` reran 3 additional explicit times
 addition is documentation-only), so a further raw stress-harness round
 was not independently warranted.
 
+### Round 31
+
+Against commit `3697c24` (after round 30's fixes were pushed), landed at
+`2026-08-18T08:34:51Z` UTC, `commit_id` verified via the REST reviews API
+to match HEAD exactly -- `CHANGES_REQUESTED`, 3 actionable comments, no
+duplicate-comment re-raises. All three real, all three fixed with TDD:
+
+- **(Minor) `AccountLedger`'s compact constructor validated `allocatedVirtualCapital`
+  for null but not sign -- a zero or negative stored value could pass
+  straight through, including via `AccountLedgerStore.load`, whose two
+  separate checks on this field (that a caller-supplied `defaultAllocatedCapital`
+  is itself positive, and that a stored value doesn't exceed the
+  configured default) do not by themselves reject it: either a zero or a
+  negative stored value is always less than a positive default, so both
+  checks pass.** Real, grounded directly in CLAUDE.md's own "never
+  weaken risk limits... without explicit human approval" rule, and a
+  genuine gap in this record's own Javadoc claim (already made for the
+  duplicate-`clientOrderId` and alarm-pair invariants) of being "the
+  single structural enforcement point" for exactly this class of
+  invariant -- `LedgerReservation#notional` already enforces the
+  analogous positivity requirement on itself for the identical reason. A
+  corrupted or hand-edited ledger file can produce exactly this state.
+  Fixed by adding the same `signum() <= 0` check `LedgerReservation`
+  already uses, directly in `AccountLedger`'s own compact constructor --
+  closing the gap structurally rather than adding a further special case
+  to `load`. A new Javadoc paragraph documents the invariant, mirroring
+  the existing duplicate-`clientOrderId`/alarm-pair paragraphs' own
+  style. Proven with two new tests, mirroring the existing negative-
+  `notional` test pair exactly:
+  `anAllocatedVirtualCapitalOfZeroOrNegativeIsRejectedByAccountLedgerItself`
+  (direct constructor test, zero and negative) and
+  `loadFailsClosedWhenTheLedgerFileHoldsANegativeAllocatedVirtualCapital`
+  (the same invariant proven through a real ledger file on disk). Both
+  confirmed failing (red) against the pre-fix code first, then green
+  after the fix. Checked every existing `new AccountLedger(...)` call
+  site in the test suite by hand before applying (`grep` for all
+  `allocatedVirtualCapital` argument values) -- zero conflicts; every
+  other call site already uses a real positive value.
+- **(Minor) `persist`'s own `tmpPreexisted` check tracks whether a
+  pre-existing `.tmp` should be excluded from failure-cleanup, but does
+  nothing to stop this call's own ordinary, successful write path from
+  silently consuming that same pre-existing `.tmp` when `ledgerPath`
+  itself is also missing** -- exactly the "missing ledger + leftover
+  `.tmp`" state `load`'s own fail-closed check treats as evidence of an
+  interrupted `persist()` requiring human resolution. Real, and a
+  genuinely serious finding, not a nitpick: a real, reachable sequence
+  given this class's own documented standalone-`persist`-call use case
+  (this class's own Javadoc explicitly describes a caller invoking
+  `persist` alone, not only as part of a `load` + mutate cycle) -- a
+  host crash mid non-atomic-fallback-move can leave `ledgerPath`
+  genuinely missing with its `.tmp` source still lingering, and a
+  caller retrying `persist` alone after restart (without calling `load`
+  first, which would have caught this) would silently destroy the one
+  remaining copy of another process's real, committed reservations via
+  the ordinary `CREATE + TRUNCATE_EXISTING` write. Fixed: when
+  `tmpPreexisted` is `true`, a further `Files.readAttributes(ledgerPath,
+  ...)` check now fails closed (throws `IllegalStateException`, before
+  ever opening `candidateTmp` for writing) specifically when `ledgerPath`
+  is confirmed absent (`NoSuchFileException`) -- any other outcome
+  (`ledgerPath` exists, or its own existence can't be determined either)
+  proceeds to the ordinary write path unchanged, preserving the normal
+  retry case (`.tmp` pre-existing, `ledgerPath` also pre-existing) this
+  method's own leftover-tmp-overwrite behavior exists to support. Proven
+  with a new test,
+  `persistFailsClosedWhenLedgerPathIsMissingButALeftoverTmpFileExists`
+  (confirmed failing (red) against the pre-fix code first, then green
+  after the fix) -- and, per the finding's own explicit instruction, the
+  existing `persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt`
+  test (which never created `ledgerPath`, and would otherwise have
+  newly collided with this fix) now seeds a real, valid prior ledger at
+  `ledgerPath` first, so it continues to exercise the *normal* retry
+  scenario the fix is careful not to disturb, not the new fail-closed
+  one.
+- **(Trivial) `verifyIdentityConsistency` distinguishes four failure
+  directions for an existing file (determination failure, read failure,
+  parse failure, and the JSON literal `null`), but only the parse-
+  failure and determination-failure branches had dedicated write-side
+  tests** -- the JSON-literal-`null` branch (round 28's own addition,
+  where `MAPPER.readValue("null", ...)` returns a plain Java `null`
+  without throwing) had no test proving it, even though the read-side
+  analogue (`aFileContainingTheJsonLiteralNullFailsClosed`) already
+  covers `load`'s own identical branch. Real, previously-uncovered gap
+  with a real consequence if regressed: removing that branch's own null
+  check would let `existing.venue()` throw a raw `NullPointerException`
+  instead of this class's own `IllegalStateException` fail-closed
+  contract, and every existing test would still pass. Fixed with a new
+  test, `persistRefusesToOverwriteAnExistingFileHoldingTheJsonLiteralNull`,
+  the write-side symmetric counterpart to the existing read-side test.
+  This test passed immediately against the *existing* production code
+  (confirming the underlying behavior was already correct, only
+  previously uncovered) -- the same "real gap closed, not a red-then-
+  green fix" shape as rounds 29/30's own analogous coverage tests.
+
+Re-ran after all three round-31 fixes: `./gradlew clean build` -- still
+green, **458 tests, 0 failures, 0 errors** project-wide (+4 from the four
+new tests -- two for the `allocatedVirtualCapital` positivity invariant,
+one for the missing-ledger-plus-leftover-`.tmp` write-side fail-closed
+fix, one for the write-side JSON-literal-`null` coverage gap).
+`AccountLedgerStoreTest` reran 3 additional explicit times
+(`--rerun-tasks`), stable. None of this round's three changes touch
+`AccountLedgerLock`'s own acquire/steal control flow at all (all three
+are confined to `AccountLedger`/`AccountLedgerStore`/`AccountLedgerStoreTest`),
+so a further raw stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3158,7 +3262,11 @@ was not independently warranted.
   36/36 after round 30's (1 more new test --
   `persistFailsClosedBeforeWritingWhenTheLedgerPathsExistenceCannotBeDetermined`,
   closing the write-side analogue of round 29's `load`-side gap -- plus
-  the comment-stripping sweep, documentation-only).
+  the comment-stripping sweep, documentation-only); 40/40 after round
+  31's (4 more new tests -- two for the `allocatedVirtualCapital`
+  positivity invariant, one for the missing-ledger-plus-leftover-`.tmp`
+  write-side fail-closed fix, one for the write-side JSON-literal-`null`
+  coverage gap).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3222,7 +3330,9 @@ was not independently warranted.
   -- plus the `System.nanoTime()` subtraction-comparison fix to an
   existing assertion, no new method for that one); 12/12 after round
   30's (a class-Javadoc-only fourth caller-contract addition, no
-  test-level change).
+  test-level change); 12/12 after round 31's (no `AccountLedgerLock`-
+  level changes that round either -- all three real fixes were in
+  `AccountLedger`/`AccountLedgerStore`/`AccountLedgerStoreTest`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3365,23 +3475,30 @@ was not independently warranted.
   addition to `AccountLedgerLock`, and a new `AccountLedgerStore`-level
   test -- likewise touch no `AccountLedgerLock` acquire/steal control
   flow, so it likewise did not independently warrant a further raw
-  stress-harness round).
+  stress-harness round; round 31's three fixes (the `AccountLedger`
+  `allocatedVirtualCapital` positivity check, the `persist`-side missing-
+  ledger-plus-leftover-`.tmp` fail-closed fix, and the write-side
+  JSON-literal-`null` coverage test) are all confined to `AccountLedger`/
+  `AccountLedgerStore`/`AccountLedgerStoreTest`, with zero touch on
+  `AccountLedgerLock` at all, so it likewise did not independently
+  warrant a further raw stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, and 30 (plus round 27's own 4 additional explicit
+  26, 27, 28, 29, 30, and 31 (plus round 27's own 4 additional explicit
   `AccountLedgerLockMultiProcessTest` reruns and 3 additional explicit
   `AccountLedgerStoreTest`-new-test reruns; round 28's own 3 additional
   explicit `AccountLedgerStoreTest` reruns; round 29's own 3 additional
   explicit combined reruns of `AccountLedgerLockMultiProcessTest`,
   `AccountLedgerLockTest`, and `AccountLedgerStoreTest` together; round
-  30's own 3 additional explicit `AccountLedgerStoreTest` reruns, all
+  30's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
+  31's own 3 additional explicit `AccountLedgerStoreTest` reruns, all
   noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **454 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **458 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -3393,7 +3510,7 @@ was not independently warranted.
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
-  from round 30's).
+  from round 30's + 4 from round 31's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

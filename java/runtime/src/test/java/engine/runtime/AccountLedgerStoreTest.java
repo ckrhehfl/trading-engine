@@ -456,6 +456,62 @@ class AccountLedgerStoreTest {
     }
 
     /**
+     * {@link AccountLedger}'s own compact constructor rejects a
+     * non-positive {@code allocatedVirtualCapital} -- exercised directly
+     * here; the file-based path is pinned separately by {@link
+     * #loadFailsClosedWhenTheLedgerFileHoldsANegativeAllocatedVirtualCapital}.
+     * Previously only {@code load}'s two separate checks constrained this
+     * field (that {@code defaultAllocatedCapital} itself is positive, and
+     * that a stored value doesn't <i>exceed</i> the configured default) --
+     * neither actually rejects a stored zero or negative value, since
+     * either is always less than a positive default and so passes both
+     * checks. This record's own Javadoc already declares it "the single
+     * structural enforcement point" for exactly this class of invariant
+     * (the same principle {@link LedgerReservation#notional} and the
+     * duplicate-{@code clientOrderId}/reconciliation-alarm-pair checks
+     * above already apply) -- a corrupted or hand-edited ledger file can
+     * produce exactly this state, so the fix belongs on the record itself,
+     * not as a further special case inside {@code load}.
+     */
+    @Test
+    void anAllocatedVirtualCapitalOfZeroOrNegativeIsRejectedByAccountLedgerItself() {
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AccountLedger(
+                        "KIS", "acct-1", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, null, null, List.of()));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new AccountLedger(
+                        "KIS", "acct-1", new BigDecimal("-1"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                        null, null, null, List.of()));
+    }
+
+    /**
+     * The same invariant proven through a real ledger file on disk (a
+     * corrupted or hand-edited file is exactly the scenario this record-
+     * level validation exists to catch) -- proves {@link
+     * AccountLedgerStore#load} fails closed rather than needing any
+     * special-case allocated-capital-sign validation logic of its own,
+     * the same reasoning already applied to the negative-{@code notional}
+     * case above.
+     */
+    @Test
+    void loadFailsClosedWhenTheLedgerFileHoldsANegativeAllocatedVirtualCapital(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Files.writeString(
+                file,
+                "{\"venue\":\"KIS\",\"accountId\":\"acct-1\",\"allocatedVirtualCapital\":-500,"
+                        + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
+                        + "\"lastReconciledMonthlyPnlPercent\":0,\"reservations\":[]}");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+    }
+
+    /**
      * Real Minor finding, real CodeRabbit review of this PR: {@link
      * AccountLedger}'s own compact constructor now rejects a
      * half-populated {@code reconciliationAlarmTrippedAt}/{@code
@@ -610,6 +666,30 @@ class AccountLedgerStoreTest {
                 "the existing unparseable file must be preserved, not overwritten");
     }
 
+    /**
+     * The write-side counterpart to {@link #aFileContainingTheJsonLiteralNullFailsClosed}:
+     * the JSON literal {@code null} parses without throwing, so {@code
+     * verifyIdentityConsistency} must reject it explicitly rather than
+     * dereference a Java {@code null} and leak a raw {@link
+     * NullPointerException} past this class's own {@link
+     * IllegalStateException} fail-closed contract.
+     */
+    @Test
+    void persistRefusesToOverwriteAnExistingFileHoldingTheJsonLiteralNull(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Files.writeString(file, "null");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        assertEquals("null", Files.readString(file), "the existing file must be preserved, not overwritten");
+        assertFalse(
+                Files.exists(tempDir.resolve("ledger.json.tmp")),
+                "persist must fail closed before ever creating its tmp file");
+    }
+
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
     void persistFailsClosedBeforeWritingWhenTheLedgerPathsExistenceCannotBeDetermined(@TempDir Path tempDir)
@@ -664,17 +744,62 @@ class AccountLedgerStoreTest {
     }
 
     /**
+     * {@code ledgerPath} missing while a leftover {@code .tmp} sibling
+     * exists is exactly the state {@link AccountLedgerStore#load}'s own
+     * missing-ledger-plus-leftover-{@code .tmp} check treats as evidence
+     * of an interrupted {@code persist()} requiring human resolution --
+     * the {@code .tmp} may be the only surviving copy of another
+     * process's real, committed reservations. {@code persist} must honor
+     * that same evidence rather than silently consume it via its own
+     * ordinary {@code TRUNCATE_EXISTING} write path: a real, reachable
+     * sequence given this class's own documented standalone-{@code
+     * persist}-call use case (not only a {@code load} + mutate + {@code
+     * persist} cycle) -- a host crash mid non-atomic-fallback-move can
+     * leave {@code ledgerPath} genuinely missing with its {@code .tmp}
+     * source still lingering, and a caller invoking {@code persist} alone
+     * after restart (without ever calling {@code load} first) would
+     * otherwise reach this exact state.
+     */
+    @Test
+    void persistFailsClosedWhenLedgerPathIsMissingButALeftoverTmpFileExists(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Path tmp = tempDir.resolve("ledger.json.tmp");
+        Files.writeString(tmp, "a real ledger another process may still need -- not this call's to touch");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        assertEquals(
+                "a real ledger another process may still need -- not this call's to touch",
+                Files.readString(tmp),
+                "persist() must never overwrite a leftover .tmp when ledgerPath is also missing");
+        assertFalse(Files.exists(file), "persist() must not create ledgerPath either when refusing to proceed");
+    }
+
+    /**
      * A leftover {@code .tmp} file from an earlier interrupted {@code
      * persist()} must still be overwritable on retry, not rejected with
      * {@link FileAlreadyExistsException} -- proven directly here: a
      * stale, garbage {@code .tmp} file is written by hand first, then
      * {@code persist} is called normally and must still succeed,
-     * consuming/replacing it.
+     * consuming/replacing it. {@code ledgerPath} itself is seeded with a
+     * prior, valid ledger first -- the ordinary retry scenario this test
+     * covers requires {@code ledgerPath} to already exist (see {@link
+     * #persistFailsClosedWhenLedgerPathIsMissingButALeftoverTmpFileExists}
+     * immediately above for the different, fail-closed scenario when it
+     * does not).
      */
     @Test
     void persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt(@TempDir Path tempDir) throws IOException {
         Path file = tempDir.resolve("ledger.json");
         Path tmp = tempDir.resolve("ledger.json.tmp");
+        AccountLedger priorLedger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("500"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, priorLedger);
         Files.writeString(tmp, "stale garbage from an earlier interrupted persist() call");
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
