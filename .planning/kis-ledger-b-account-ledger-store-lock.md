@@ -4089,6 +4089,99 @@ the outside: the planning-doc entry, commit, and push for round 39 had
 not happened yet, all completed fresh on resumption before this round's
 own review cycle began.
 
+### Round 41
+
+Review id `4965515674`, against commit `94bdf0c` (round 40's fix
+commit, already pushed), landed at `2026-08-18T20:34:26Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 3 actionable comments. All three real, all three
+fixed:
+
+- **(Trivial, quick win) `hostname()` re-resolved `InetAddress
+  .getLocalHost()` on every call, including from inside
+  `createAndWriteMetadata`/`tryStealIfStale`, both themselves
+  inside `acquire`'s own contended retry loop** -- a real,
+  avoidable name-service call on every retry attempt, stacking on top
+  of this class's own already-documented drvfs latency. The host a
+  process runs on cannot change during its own lifetime, so caching is
+  exact, not an approximation. Fixed by resolving once into a new
+  `private static final String HOSTNAME` field (via a new
+  `resolveHostname()` helper), with `hostname()` now a trivial
+  accessor -- the `"unknown-host"` fallback on a resolution failure is
+  preserved exactly, now fixed for the process's entire lifetime rather
+  than re-attempted per call (disclosed in the new field's own Javadoc
+  as an acceptable trade -- a resolution failure was already treated as
+  "not provably dead" via the existing hostname-mismatch path, the same
+  safe direction a fresh per-call failure would have taken anyway).
+  Behavior-preserving (the return value for a fixed process is
+  identical, only the call cost changes), so no new test -- existing
+  hostname-dependent tests (the dead-PID/hostname-mismatch pairs)
+  continue to cover the actual logic that consumes this value.
+- **(Major, quick win -- a real, genuine gap in round 39's own design,
+  not a hypothetical) `requireHeld()` checked `closed`, which a
+  retryable, non-final `close()` outcome (`READ_FAILED`,
+  `EMPTY_OR_UNPARSEABLE`, or a delete failure) deliberately leaves
+  `false` -- so a caller that called `close()` once, hit exactly
+  one of those transient outcomes, and then (incorrectly) kept using
+  the instance as proof of holding the lock would sail straight past
+  `requireHeld()`.** This is precisely backwards from what round 39's
+  own `requireHeld()` was built to prevent, and the
+  `EMPTY_OR_UNPARSEABLE` case specifically is the worst version of it:
+  this class's own Javadoc already documents that outcome as "this
+  instance cannot prove it is still the sole holder," meaning a
+  sibling may already hold a live, different generation -- exactly the
+  state a caller-mistake `persist()` call through `requireHeld()`
+  would silently corrupt. **Proven as a real bug before being fixed,
+  not merely reasoned about**: a new test,
+  `requireHeldThrowsAfterCloseIsCalledEvenWhenDoCloseTakesARetryableNonFinalPath`
+  (reusing `closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`'s
+  own fabricated-empty-content fixture), failed red against the
+  pre-fix code -- confirmed by actually running it, not assumed.
+  Fixed exactly as the reviewer's own suggested diff: a new `private
+  boolean releaseRequested` field, set unconditionally the first time
+  `close()` is ever called (regardless of what `doClose()` then
+  returns), with `requireHeld()` now checking `releaseRequested`
+  instead of `closed`. `closed` itself is untouched -- `close()`'s own
+  retry-idempotency contract (round 16/29/34's own established
+  behavior) is unaffected, since the early-return `if (closed) return;`
+  check at the top of `close()` still gates on `closed`, not
+  `releaseRequested`. The new test passed green immediately after the
+  fix, with zero other test regressions.
+- **(Minor, quick win) `AccountLedgerLockTest`'s own
+  `closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall` asserted
+  file-absence immediately after a single, unretried `close()` call --
+  the same class of flakiness risk round 38's own findings 3 already
+  fixed in two other files, missed here.** Fixed by routing the first
+  `close()` call through the file's own existing `closeUntilReleased`
+  helper, matching the reviewer's own suggested diff exactly. The
+  second `assertTrue(Files.exists(lockPath), ...)` (right after a
+  second, no-op `close()` call) was evaluated and left as a plain,
+  unretried call rather than also wrapped -- disclosed via an inline
+  comment rather than silently left unaddressed: by the time that
+  second call runs, `closeUntilReleased` above has already confirmed
+  `closed` is `true`, so the second call is provably a genuine
+  early-return no-op that performs zero I/O, meaning it carries none of
+  the retryable-`doClose()` flakiness risk the first call did. Fixing
+  the first call closes the entire risk this test faced, not just half
+  of it.
+
+Re-ran after all of round 41's fixes: `./gradlew clean build` -- green,
+**466 tests, 0 failures, 0 errors** project-wide (+1 net-new: the
+`requireHeld`-after-retryable-close regression test; the flakiness fix
+and the hostname-caching fix both needed no new/modified test method
+beyond that). `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`,
+and `AccountLedgerStoreTest` all reran 3 additional explicit times
+together, stable. **Two real production changes to `AccountLedgerLock`'s
+own code this round** (the `hostname()` caching, exercised by
+`acquire`'s own contended retry path; and `close()`'s new
+`releaseRequested` field write, exercised by every real `close()` call
+the raw harness's own contenders make) -- both real enough to warrant
+re-running the raw, non-Gradle stress harness rather than skip it:
+**25/25 rounds exactly correct** (1,200 more individual lock
+acquisitions, zero lost updates), bringing the task-wide raw-harness
+total to **430 clean rounds, 20,640 individual lock acquisitions, zero
+lost updates**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4179,7 +4272,10 @@ own review cycle began.
   supply the newly-required `AccountLedgerLock` argument without any
   test method's own asserted behavior changing); 43/43 after round 40's
   (no `AccountLedgerStore`-level test changes that round -- a
-  Javadoc-only `{@link}` signature correction, no behavior/test change).
+  Javadoc-only `{@link}` signature correction, no behavior/test change);
+  43/43 after round 41's (no `AccountLedgerStore`-level test changes
+  that round -- all three real fixes were in `AccountLedgerLock.java`/
+  `AccountLedgerLockTest.java`).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -4271,7 +4367,14 @@ own review cycle began.
   `requireHeldSucceedsWhileTheLockIsStillHeld`,
   `requireHeldThrowsAfterTheLockIsGenuinelyClosed`, proving the new
   `AccountLedgerLock.requireHeld()` method -- plus a comment-only
-  narrative-cleanup sweep across five separate Javadoc blocks).
+  narrative-cleanup sweep across five separate Javadoc blocks); 16/16
+  after round 40's (no `AccountLedgerLock`-level changes that round --
+  the one real fix was a Javadoc-only correction in
+  `AccountLedgerStore.java`); 17/17 after round 41's (1 more new test --
+  `requireHeldThrowsAfterCloseIsCalledEvenWhenDoCloseTakesARetryableNonFinalPath`,
+  proving the real `requireHeld()`-vs-`closed` gap the round's own Major
+  finding identified -- plus the hostname-caching fix, which needed no
+  new test of its own, and the flakiness fix to an existing test).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -4517,12 +4620,23 @@ own review cycle began.
   a Javadoc trim (no logic change), so it did not independently warrant
   a further raw stress-harness round; the task-wide total remains
   **405 clean rounds, 19,440 individual lock acquisitions, zero lost
-  updates** after round 39.
+  updates** after round 39. Round 40 was Javadoc-only (a stale `{@link}`
+  signature correction), zero behavior change, so it likewise did not
+  independently warrant a further raw stress-harness round. Round 41's
+  two real production changes to `AccountLedgerLock` itself (`hostname()`
+  caching, exercised directly by `acquire`'s own contended retry path;
+  and `close()`'s new `releaseRequested` field write, exercised by every
+  real `close()` call the raw harness's own contenders make), by
+  contrast, DID warrant re-running the raw harness -- **25/25 rounds
+  exactly correct** (1,200 more individual lock acquisitions, zero lost
+  updates), bringing the task-wide raw-harness total to **430 clean
+  rounds, 20,640 individual lock acquisitions, zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, and 40 (plus round 27's own
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, and 41
+  (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -4555,12 +4669,15 @@ own review cycle began.
   bullet's own reasoning above); round 40's own 3 additional explicit
   `AccountLedgerStoreTest` reruns (a Javadoc-only fix confined to
   `AccountLedgerStore.java`, no `AccountLedgerLock`-level change, so no
-  combined rerun or raw harness re-run was warranted that round), all
-  noted above).
+  combined rerun or raw harness re-run was warranted that round);
+  round 41's own 3 additional explicit combined reruns of
+  `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`, and
+  `AccountLedgerStoreTest` together, plus its own 25-round raw stress
+  harness re-run, all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **465 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **466 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -4575,7 +4692,8 @@ own review cycle began.
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
   net-new from round 36's + 0 net-new from round 37's + 0 net-new from
-  round 38's + 4 from round 39's + 0 net-new from round 40's).
+  round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
+  round 41's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

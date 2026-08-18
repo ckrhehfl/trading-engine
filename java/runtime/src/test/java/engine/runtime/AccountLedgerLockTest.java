@@ -606,12 +606,20 @@ class AccountLedgerLockTest {
      * correctly.
      */
     @Test
-    void closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall(@TempDir Path tempDir) throws IOException {
+    void closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall(@TempDir Path tempDir)
+            throws IOException, InterruptedException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         AccountLedgerLock lock =
                 AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
 
-        lock.close();
+        // close() does not itself signal success/failure and can take a
+        // retryable, non-final path on this project's own drvfs mount (see
+        // AccountLedgerLock's own class Javadoc, fourth caller-contract
+        // point) -- a single call is not sufficient proof of release, so
+        // this test's own real subject (idempotency on a REPEAT call)
+        // relies on the same closeUntilReleased helper every other real
+        // caller in this file uses to get there first.
+        closeUntilReleased(lock, lockPath);
         assertFalse(Files.exists(lockPath), "the first close() call must have deleted this instance's own lock file");
 
         // A sibling legitimately acquires a brand new generation at the
@@ -621,7 +629,9 @@ class AccountLedgerLockTest {
                 lockPath,
                 "{\"pid\":999999999,\"hostname\":\"someone-else\",\"acquiredAt\":\"" + Instant.now() + "\"}");
 
-        lock.close(); // a second call on the same, already-closed instance
+        lock.close(); // a second call on the same, already-closed instance -- closeUntilReleased above already
+        // confirmed closed is true, so this is a genuine, pure no-op (early return, zero I/O) -- unlike the first
+        // close() above, there is no retryable outcome here for a bounded retry to guard against.
 
         assertTrue(
                 Files.exists(lockPath),
@@ -678,6 +688,40 @@ class AccountLedgerLockTest {
                 Files.exists(lockPath),
                 "a later close() call must still be able to delete this instance's own lock once its content is"
                         + " confirmable again -- EMPTY_OR_UNPARSEABLE must be retryable, not final");
+    }
+
+    /**
+     * {@link AccountLedgerLock#requireHeld()} must reject this instance
+     * once {@link AccountLedgerLock#close()} has been called at all --
+     * even when that call took a retryable, non-final {@code doClose()}
+     * path (here, {@code EMPTY_OR_UNPARSEABLE}, the same fixture {@link
+     * #closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt}
+     * uses) and this instance's own {@code closed} field is therefore
+     * still {@code false}. A caller that called {@code close()} once,
+     * hit exactly this transient outcome, and then (incorrectly) treated
+     * the instance as still valid proof of holding the lock is exactly
+     * the mistake {@code requireHeld()} exists to reject -- and the
+     * {@code EMPTY_OR_UNPARSEABLE} case specifically means this instance
+     * cannot prove it is still the sole holder, so a sibling may already
+     * hold a live, different generation underneath it.
+     */
+    @Test
+    void requireHeldThrowsAfterCloseIsCalledEvenWhenDoCloseTakesARetryableNonFinalPath(@TempDir Path tempDir)
+            throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        AccountLedgerLock lock =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+        Files.writeString(lockPath, ""); // fabricates the EMPTY_OR_UNPARSEABLE state on this instance's own path
+
+        lock.close(); // takes the retryable, non-final path -- closed stays false
+
+        assertTrue(
+                Files.exists(lockPath),
+                "test setup: close() must not have deleted the file on this retryable outcome");
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, lock::requireHeld);
+        assertTrue(
+                thrown.getMessage().contains(lockPath.toString()),
+                "exception must name the lock path; was: " + thrown.getMessage());
     }
 
     /**

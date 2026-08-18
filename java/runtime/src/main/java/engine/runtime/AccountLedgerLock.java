@@ -258,6 +258,28 @@ final class AccountLedgerLock implements AutoCloseable {
      */
     private boolean closed;
 
+    /**
+     * Whether a caller has ever called {@link #close} on this instance,
+     * regardless of whether that call (or any retry since) actually
+     * reached {@link #closed}'s own final-outcome state -- deliberately
+     * separate from {@link #closed} itself. {@link #requireHeld()} checks
+     * this field, not {@link #closed}: once a caller has called {@code
+     * close()} at all, this instance must never again be accepted as
+     * proof of holding the lock, even while a retryable ({@link
+     * #READ_FAILED}/{@link #EMPTY_OR_UNPARSEABLE}/deletion-failure)
+     * {@code doClose()} outcome legitimately leaves {@link #closed} still
+     * {@code false} so a later {@code close()} call can keep retrying.
+     * Conflating the two would let a caller that already called {@code
+     * close()} once, but hit a transient, retryable failure, still pass
+     * {@link AccountLedgerStore#load}/{@link AccountLedgerStore#persist}'s
+     * {@code requireHeld()} check -- exactly the class of caller mistake
+     * that check exists to reject, including the specific, real risk the
+     * {@code EMPTY_OR_UNPARSEABLE} case represents: this instance cannot
+     * prove it is still the sole holder, so a sibling may already hold a
+     * live, different generation.
+     */
+    private boolean releaseRequested;
+
     private AccountLedgerLock(Path lockPath, LockMetadata ownMetadata) {
         this.lockPath = lockPath;
         this.ownMetadata = ownMetadata;
@@ -994,13 +1016,34 @@ final class AccountLedgerLock implements AutoCloseable {
         }
     }
 
+    /**
+     * Resolved once, not on every {@link #createAndWriteMetadata}/{@link
+     * #tryStealIfStale} call -- both run inside {@link #acquire}'s own
+     * retry loop, so under real contention {@link InetAddress#getLocalHost()}
+     * (a name-service call) would otherwise be re-resolved on every
+     * attempt, adding avoidable latency on top of this class's own
+     * documented drvfs delays. The host this process runs on cannot
+     * change during its own lifetime, so caching is exact, not an
+     * approximation.
+     */
+    private static final String HOSTNAME = resolveHostname();
+
     private static String hostname() {
+        return HOSTNAME;
+    }
+
+    private static String resolveHostname() {
         try {
             return InetAddress.getLocalHost().getHostName();
         } catch (UnknownHostException e) {
             // hostname is attribution/debugging only, never a correctness
             // input (see class Javadoc) -- not worth failing acquisition
-            // over.
+            // over. Resolved once here, so a transient resolution failure
+            // at class-load time fixes "unknown-host" for this process's
+            // entire lifetime rather than retrying later -- acceptable
+            // since holderDead already treats an "unknown-host" mismatch
+            // as not provably dead, the same safe direction a genuine
+            // per-call resolution failure would have taken anyway.
             return "unknown-host";
         }
     }
@@ -1117,14 +1160,16 @@ final class AccountLedgerLock implements AutoCloseable {
         if (closed) {
             return;
         }
+        releaseRequested = true;
         closed = doClose();
     }
 
     /**
-     * Throws {@link IllegalStateException} if this instance has already
-     * reached a final, closed state (see {@link #closed}'s own Javadoc for
-     * exactly when that happens -- a retryable, non-final {@link #close}
-     * outcome does <b>not</b> trip this check). {@link
+     * Throws {@link IllegalStateException} if a caller has ever called
+     * {@link #close} on this instance (see {@link #releaseRequested}'s own
+     * Javadoc for exactly why this is deliberately <b>not</b> the same
+     * check as {@link #closed} -- a retryable, non-final {@link #close}
+     * outcome still trips this check, unlike {@link #closed}). {@link
      * AccountLedgerStore#load}/{@link AccountLedgerStore#persist} call
      * this as part of enforcing their own documented caller contract: an
      * already-released lock is worse to accept as proof of holding one
@@ -1133,7 +1178,7 @@ final class AccountLedgerLock implements AutoCloseable {
      * project's own {@code AccountLedgerStore} callers, not a public API.
      */
     void requireHeld() {
-        if (closed) {
+        if (releaseRequested) {
             throw new IllegalStateException(
                     "AccountLedgerLock for " + lockPath + " has already been released -- it cannot be used as"
                             + " proof of currently holding it");
