@@ -2617,6 +2617,111 @@ within `AccountLedgerStore.persist`, not `AccountLedgerLock`'s own
 mutual-exclusion control flow, so a further raw stress-harness round was
 not independently warranted.
 
+### Round 27
+
+Against commit `ae6889a` (after round 26's fixes were pushed). This
+round's own verification hit a real, disclosed, non-PR-related anomaly
+before the review result could even be checked: a full review request
+made at `2026-08-17T13:41:20Z` UTC came back with an explicit `❌ Action
+failed / Review failed` acknowledgment, and the primary review-
+verification endpoint (`GET /repos/.../pulls/100/reviews`) then started
+returning a real, reproducible `HTTP 500` -- confirmed by bypassing the
+`gh` CLI entirely with a direct `curl` call, and confirmed independently
+by the coordinator against GitHub's own status page, which showed
+`API Requests`/`Pull Requests`/`Webhooks`/`Issues`/`Actions` all degraded
+at the time, plus an unrelated small PR (#99) failing identically -- a
+real GitHub-side outage, not anything caused by this PR's own review
+volume or by anything done wrong here. Once the outage cleared (GitHub's
+status page back to "All Systems Operational", the REST endpoint back to
+`200`), the rate limit was re-confirmed clear via `@coderabbitai rate
+limit` and a genuine fresh full review was requested and confirmed
+triggered at `2026-08-18T04:12:46Z` UTC -- landing for real at
+`2026-08-18T04:23:15Z` UTC, `commit_id` verified via the REST reviews API
+to match current HEAD `ae6889a` exactly: `CHANGES_REQUESTED`, 2
+actionable comments, no duplicate-comment re-raises this round. Both
+addressed with real fixes and real tests:
+
+- **(Minor) `persist()`'s own `tmpPreexisted` ownership check used
+  `Files.exists(candidateTmp)`, which conflates "genuinely absent" with
+  "existence could not be determined" (an I/O or permission error) into
+  the same plain `false`.** Real, and the same class of bug `load()`'s
+  own missing-ledger-plus-leftover-`.tmp` check was already hardened
+  against in an earlier round -- this was the one remaining place in the
+  file still using the weaker `Files.exists` check instead of `load()`'s
+  own `Files.readAttributes` + `NoSuchFileException` convention. The
+  practical consequence: if `Files.exists` returned `false` because of a
+  transient I/O/permission failure rather than a genuinely absent file,
+  `tmpPreexisted` would be wrongly recorded as `false`, `tmp` would be
+  assigned to `candidateTmp`, and if this same call's own
+  `FileChannel.open`/write/move then failed for any reason, the outer
+  catch's cleanup would delete a file this call never actually created --
+  potentially another process's real, undetermined leftover. Fixed by
+  replacing the check with `Files.readAttributes(candidateTmp,
+  BasicFileAttributes.class)`, treating only a genuine
+  `NoSuchFileException` as "absent" (not pre-existing, this call owns
+  it), and any *other* `IOException` as "pre-existing" -- deliberately
+  the opposite fail-closed shape from `load()`'s own handling of the same
+  ambiguity: `load()` aborts the whole call on a determination failure
+  (it has nothing safe to fall back to), while `persist()` here lets the
+  call proceed (the imports/`BasicFileAttributes`/`NoSuchFileException`
+  it needs were already present in the file from `load()`'s own use) but
+  simply refuses to treat the file as eligible for cleanup -- the
+  narrower guarantee this specific check exists to provide, "never
+  delete a file this call didn't create," without also aborting a
+  persist attempt that might otherwise still succeed. Proven with a real,
+  deterministic regression test, not asserted: a self-referential symlink
+  (`Files.createSymbolicLink(candidateTmp, candidateTmp)`) is a real,
+  reproducible way to force exactly this "exists but can't be resolved"
+  state -- empirically confirmed via a standalone probe in the scratchpad
+  *before* writing the test (this file's own established discipline):
+  `Files.readAttributes` on such a path throws a genuine
+  `FileSystemException` ("too many levels of symbolic links"), not
+  `NoSuchFileException`, and `FileChannel.open` on the same path fails
+  identically -- so `persist()` reliably reaches its outer cleanup catch
+  with this as the active failure, letting the new test
+  (`persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`)
+  assert the symlink is still present afterward
+  (`Files.exists(candidateTmp, LinkOption.NOFOLLOW_LINKS)`), i.e. never
+  touched by cleanup. Confirmed failing (red) against the pre-fix code
+  first, then green after the fix; stable across 3 additional explicit
+  reruns.
+- **(Trivial) `AccountLedgerLockMultiProcessTest`'s own cleanup `finally`
+  block called `Process::destroyForcibly` without ever waiting for the
+  process to actually exit.** Real, though narrower than the fixes above
+  -- this is a test-only reliability gap, not a production control-flow
+  change. `destroyForcibly()` is documented as asynchronous: it requests
+  termination and returns immediately, with no guarantee the process has
+  actually died by the time the `finally` block (and therefore the test
+  method) returns. If an early `fail(...)` fired above and a still-alive
+  contender then recreated `lockPath`/`counterPath` after this method
+  returned, it would race JUnit's own `@TempDir` cleanup -- a resulting
+  directory-not-empty failure would mask this test's real result (its own
+  assertions, or a genuine mutual-exclusion failure already reported)
+  behind an unrelated secondary exception, defeating the exact "leave a
+  precise, undisguised signal" purpose this `finally` block's own
+  existing comment (from an earlier round) already describes. Fixed by
+  waiting up to 10 seconds for each process's actual exit
+  (`process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)`), preserving
+  the original per-process cleanup guarantee (every process is still
+  destroyed and waited on regardless of whether an earlier `fail(...)`
+  already fired) while closing the race window. No new test method --
+  this is a change to the test's own cleanup reliability, not to
+  `AccountLedgerLock`'s production behavior, so the existing
+  `acquireProvidesRealMutualExclusionAcrossGenuinelySeparateOsProcesses`
+  test (unchanged) continues to be the coverage; re-run 3 additional
+  explicit times (`--rerun-tasks`) after the fix, all green, to confirm
+  the added `waitFor` introduces no new flakiness or timeout risk under
+  this task's own realistic configuration.
+
+Re-ran after both round-27 fixes: `./gradlew clean build` -- still green,
+**449 tests, 0 failures, 0 errors** project-wide (+1 from the new
+`AccountLedgerStoreTest` regression test; the multi-process test fix
+needed no new test method). The real production-code behavior change
+this round (`persist()`'s ownership check) is entirely within
+`AccountLedgerStore.persist`, not `AccountLedgerLock`'s own
+mutual-exclusion control flow, so a further raw stress-harness round was
+not independently warranted; the other fix is test-support-code-only.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2660,7 +2765,10 @@ not independently warranted.
   tmp-cleanup-scope fix -- the "Heavy lift" test was declined, see that
   round's own entry); 31/31 after round 26's (no new or modified test
   methods -- the tmp-ownership-timing fix reused round 25's own test;
-  the reaffirmed "Heavy lift" decline still needed no test).
+  the reaffirmed "Heavy lift" decline still needed no test); 32/32 after
+  round 27's (1 more new test -- the `Files.readAttributes`
+  determination-failure fix, proven via a self-referential-symlink
+  regression test).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2714,7 +2822,9 @@ not independently warranted.
   this round was in `AccountLedgerStoreTest`); 11/11 after round 26's
   (the "Heavy lift" decline reaffirmed, no `AccountLedgerLock`-level
   code change that round -- both real fixes were in
-  `AccountLedgerStore`).
+  `AccountLedgerStore`); 11/11 after round 27's (no changes to this file
+  that round -- the two real fixes were in `AccountLedgerStore.java` and
+  `AccountLedgerLockMultiProcessTest.java`, not this file).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2743,7 +2853,10 @@ not independently warranted.
   once more (part of the full `clean build`) after round 23, once more
   (part of the full `clean build`) after round 24, once more (part of
   the full `clean build`) after round 25, once more (part of the full
-  `clean build`) after round 26.
+  `clean build`) after round 26, **4 more times** after round 27 (1 part
+  of the full `clean build`, plus 3 further explicit `--rerun-tasks`
+  runs, given round 27's own real change to this test file's own
+  `finally`-block cleanup timing).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -2824,16 +2937,26 @@ not independently warranted.
   round; round 26's one real code change (the tmp-ownership-timing fix)
   is likewise entirely within `AccountLedgerStore.persist`, so it
   likewise did not independently warrant a further raw stress-harness
-  round).
+  round; round 27's two real fixes were the `Files.readAttributes`
+  determination-failure fix (also entirely within
+  `AccountLedgerStore.persist`) and a cleanup-timing fix confined to
+  `AccountLedgerLockMultiProcessTest`'s own test code, neither touching
+  `AccountLedgerLock`'s own acquire/steal control flow, so it likewise
+  did not independently warrant a further raw stress-harness round --
+  the 4 additional `AccountLedgerLockMultiProcessTest` reruns above were
+  judged sufficient re-verification for that round's own test-cleanup
+  change instead).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  and 26.
+  26, and 27 (plus round 27's own 4 additional explicit
+  `AccountLedgerLockMultiProcessTest` reruns and 3 additional explicit
+  `AccountLedgerStoreTest`-new-test reruns, both noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **448 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **449 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -2844,7 +2967,7 @@ not independently warranted.
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
-  26's).
+  26's + 1 from round 27's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

@@ -13,6 +13,7 @@ import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
@@ -797,6 +798,43 @@ class AccountLedgerStoreTest {
                 Files.exists(candidateTmp),
                 "a tmp path that already existed before this persist() call must never be cleaned up by it,"
                         + " regardless of which step of this call then fails");
+    }
+
+    @Test
+    void persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt(@TempDir Path tempDir)
+            throws IOException {
+        // Round-25/26's own tmpPreexisted check used Files.exists(candidateTmp),
+        // which swallows an I/O/permission error into a plain false --
+        // indistinguishable from "genuinely absent." That misreads an
+        // undetermined existence as "this call is creating a new file,"
+        // making it eligible for the failure-cleanup path below even
+        // though it may really be another process's own leftover. A
+        // self-referential symlink is a real, reproducible way to force
+        // that exact undetermined state: Files.readAttributes(...) throws
+        // a genuine FileSystemException ("too many levels of symbolic
+        // links"), not a NoSuchFileException -- the entry is not absent,
+        // its status just can't be positively resolved. FileChannel.open
+        // on the same path fails identically, so persist() reaches its
+        // outer cleanup catch with this as the active failure. Both
+        // behaviors were confirmed empirically against this project's own
+        // JDK/filesystem in a standalone probe before writing this test,
+        // matching this file's own established discipline for OS-specific
+        // behavior.
+        Path file = tempDir.resolve("ledger.json");
+        Path candidateTmp = tempDir.resolve("ledger.json.tmp");
+        Files.createSymbolicLink(candidateTmp, candidateTmp);
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        assertTrue(
+                Files.exists(candidateTmp, LinkOption.NOFOLLOW_LINKS),
+                "a tmp path whose existence this persist() call could not positively determine must never be"
+                        + " cleaned up by it -- treating a determination failure as \"pre-existing\" is the"
+                        + " fail-safe direction, since deleting a file this call may not actually own is strictly"
+                        + " worse than leaving it");
     }
 
     @Test

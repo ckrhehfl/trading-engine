@@ -440,7 +440,33 @@ final class AccountLedgerStore {
             // a pre-existing file, crash-leftover or otherwise, is never
             // touched by any failure-cleanup path in this method,
             // regardless of which step fails afterward.
-            boolean tmpPreexisted = Files.exists(candidateTmp);
+            // Files.exists(...) swallows an I/O/access error into a plain
+            // false -- indistinguishable from "genuinely absent." That
+            // misreads an undetermined existence as "this call is creating
+            // a new file," making it eligible for the failure-cleanup path
+            // below even though the file may really be another process's
+            // own leftover this call simply failed to positively confirm.
+            // Only a genuine NoSuchFileException means "no candidateTmp"
+            // here -- matching load()'s own established convention above.
+            // Unlike load() (which fails the whole call closed on a
+            // determination failure, since load() has nothing useful to
+            // fall back to), any OTHER determination failure here fails
+            // safe by treating candidateTmp as pre-existing: tmp stays
+            // unassigned, so it is never a cleanup candidate, but this
+            // persist() attempt itself is not aborted -- the subsequent
+            // FileChannel.open below may still succeed, or fail
+            // independently and be reported on its own terms. The failure
+            // mode this guards against is specifically "wrongly delete a
+            // file this call never created," not "can this call proceed."
+            boolean tmpPreexisted;
+            try {
+                Files.readAttributes(candidateTmp, BasicFileAttributes.class);
+                tmpPreexisted = true;
+            } catch (NoSuchFileException absent) {
+                tmpPreexisted = false;
+            } catch (IOException determinationFailure) {
+                tmpPreexisted = true;
+            }
             // Ownership is decided BEFORE open, not after -- a further real
             // CodeRabbit review round on this same PR: the previous version
             // of this fix assigned tmp only inside the try-with-resources

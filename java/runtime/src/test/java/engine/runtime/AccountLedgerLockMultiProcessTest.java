@@ -104,7 +104,24 @@ class AccountLedgerLockMultiProcessTest {
             // both this test's own cleanup assertion below AND any later
             // test that reuses a lock/counter path, well after this test
             // method has already returned.
-            processes.forEach(Process::destroyForcibly);
+            //
+            // destroyForcibly() itself is asynchronous -- a further real
+            // finding on a later review round of this same PR: it only
+            // requests termination and returns immediately, without
+            // confirming the process actually exited. If a still-alive
+            // child recreates lockPath/counterPath after this finally
+            // block returns, it races @TempDir's own directory cleanup --
+            // a resulting directory-not-empty failure would mask this
+            // test's real result (its own assertions above, or a genuine
+            // mutual-exclusion failure already reported) behind an
+            // unrelated secondary exception. Waiting briefly for each
+            // process's actual exit closes that window without weakening
+            // the original cleanup -- every process is still destroyed and
+            // waited on regardless of whether an earlier fail(...) already
+            // fired.
+            for (Process process : processes) {
+                process.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+            }
         }
 
         int finalCount = Integer.parseInt(Files.readString(counterPath).trim());
