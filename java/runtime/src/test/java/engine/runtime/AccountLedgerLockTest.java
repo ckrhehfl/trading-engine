@@ -105,11 +105,14 @@ class AccountLedgerLockTest {
             Thread thread = new Thread(() -> {
                 try {
                     for (int i = 0; i < iterationsPerThread; i++) {
-                        try (AccountLedgerLock lock =
-                                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, CONTENTION_RETRY_BUDGET)) {
+                        AccountLedgerLock lock =
+                                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, CONTENTION_RETRY_BUDGET);
+                        try {
                             int current = counter.get();
                             Thread.sleep(2); // widen the race window
                             counter.set(current + 1);
+                        } finally {
+                            closeUntilReleased(lock, lockPath);
                         }
                     }
                 } catch (Throwable e) {
@@ -131,6 +134,41 @@ class AccountLedgerLockTest {
                 counter.get(),
                 "a lower-than-expected count means two threads were inside the lock-protected section at once");
         assertFalse(Files.exists(lockPath), "the lock file must not be left behind once every holder has released it");
+    }
+
+    /**
+     * Real Minor finding, a further real CodeRabbit review round on this
+     * PR: a single, unretried {@code lock.close()} (the previous, plain
+     * try-with-resources form of the loop above) is inconsistent with
+     * {@link AccountLedgerLock}'s own documented caller contract -- its
+     * class Javadoc's own fourth caller-contract point states that {@code
+     * close()} does not itself signal success or failure, and a caller
+     * wanting the lock file genuinely released must call {@code close()}
+     * again when a first call took one of its retryable paths (a
+     * transient read/visibility gap on this project's own drvfs mount,
+     * which that same Javadoc separately measures at 500ms+ under
+     * contention). This test deliberately creates exactly that kind of
+     * real, sustained contention (12 threads, 10 iterations each), so a
+     * single close() call occasionally leaving the lock file behind is a
+     * real, reachable risk to this test's own final assertion, not
+     * theoretical -- retried here a few times with a short delay,
+     * matching the bounded-retry shape {@link AccountLedgerLock}'s own
+     * {@code deleteIfStillOwnGeneration} already uses for the identical
+     * underlying condition.
+     */
+    private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            lock.close();
+            if (Files.notExists(lockPath)) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        // Not treated as a hard failure here -- if the lock file is
+        // genuinely still present after this many attempts, this test's
+        // own final assertFalse(Files.exists(lockPath)) below is what
+        // actually judges it, with a real, meaningful signal rather than
+        // a single-shot race against a known transient condition.
     }
 
     /**

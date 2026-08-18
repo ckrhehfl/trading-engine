@@ -298,28 +298,14 @@ final class AccountLedgerStore {
                             + " committed-exposure state rather than silently treating it as freshly bootstrapped",
                     e);
         }
-        AccountLedger ledger;
-        try {
-            ledger = MAPPER.readValue(raw, AccountLedger.class);
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                    "failed to parse account ledger file " + ledgerPath + " as an AccountLedger -- refusing to"
-                            + " start with unknown committed-exposure state rather than silently treating it as"
-                            + " freshly bootstrapped",
-                    e);
-        }
-        if (ledger == null) {
-            // The JSON literal "null" is valid JSON, so Jackson returns a
-            // plain Java null here without throwing (not an error
-            // condition from its own perspective) -- left unchecked, the
-            // very next line's ledger.venue() would throw a raw
-            // NullPointerException instead of this class's own intended
-            // IllegalStateException fail-closed contract.
-            throw new IllegalStateException(
-                    "account ledger file " + ledgerPath + " parsed as the JSON literal null, not a real"
-                            + " AccountLedger -- refusing to start with unknown committed-exposure state rather"
-                            + " than silently treating it as freshly bootstrapped");
-        }
+        AccountLedger ledger = parseOrThrow(
+                raw,
+                "failed to parse account ledger file " + ledgerPath + " as an AccountLedger -- refusing to"
+                        + " start with unknown committed-exposure state rather than silently treating it as"
+                        + " freshly bootstrapped",
+                "account ledger file " + ledgerPath + " parsed as the JSON literal null, not a real"
+                        + " AccountLedger -- refusing to start with unknown committed-exposure state rather"
+                        + " than silently treating it as freshly bootstrapped");
         if (!venue.equals(ledger.venue()) || !accountId.equals(ledger.accountId())) {
             throw new IllegalStateException(
                     "account ledger file " + ledgerPath + " holds venue/accountId (" + ledger.venue() + ", "
@@ -438,9 +424,8 @@ final class AccountLedgerStore {
         Objects.requireNonNull(ledger, "ledger is required");
         Objects.requireNonNull(mover, "mover is required");
         verifyIdentityConsistency(ledgerPath, ledger);
-        // Hoisted outside the try block (rather than declared inside, as
-        // originally written) so the outer catch below can clean it up --
-        // see that catch's own comment for why.
+        // Hoisted outside the try block so the outer catch below can clean
+        // it up -- see that catch's own comment for why.
         Path tmp = null;
         try {
             Path parent = ledgerPath.toAbsolutePath().getParent();
@@ -490,46 +475,19 @@ final class AccountLedgerStore {
                 // exactly the state load()'s own missing-ledger-plus-
                 // leftover-.tmp fail-closed check treats as evidence of an
                 // interrupted persist() requiring human resolution -- see
-                // that check's own Javadoc for the full reasoning and the
-                // manual resolution procedure. Without this check, this
-                // call's own ordinary CREATE + TRUNCATE_EXISTING write
-                // below would silently consume that evidence, even though
-                // it may be the only surviving copy of another process's
-                // real, committed reservations -- a real, reachable
-                // sequence given this class's own documented standalone-
-                // persist-call use case (not only a load + mutate +
-                // persist cycle). A confirmed-absent ledgerPath
-                // (NoSuchFileException) triggers this check. A
+                // that check's own Javadoc for the manual resolution
+                // procedure. Without this check, this call's own ordinary
+                // CREATE + TRUNCATE_EXISTING write below would silently
+                // consume that evidence. A confirmed-absent ledgerPath
+                // (NoSuchFileException) triggers this check; a
                 // confirmed-present ledgerPath proceeds to the write path
-                // below -- the ordinary retry case this method's own
-                // leftover-tmp-overwrite behavior exists to support. A
-                // ledgerPath whose own existence cannot be positively
-                // determined propagates that IOException to this method's
-                // outer catch instead, failing the whole call closed: this
-                // method cannot rule out the missing-ledger-plus-leftover-
-                // .tmp state, so it must not consume that evidence.
-                // In practice, on any real (non-racing) filesystem state,
-                // this specific branch's own IOException-from-readAttributes
-                // case is not reachable via this call alone:
-                // verifyIdentityConsistency already performs its own,
-                // earlier Files.readAttributes check against this exact
-                // same ledgerPath at the very top of persist(), before this
-                // try/catch is ever reached, and that earlier check already
-                // throws its own IllegalStateException for the identical
-                // determination failure -- confirmed directly, not assumed,
-                // by a real test attempting to reach this branch via a
-                // self-referential symlink at ledgerPath, which observed
-                // verifyIdentityConsistency's own message instead (see
-                // AccountLedgerStoreTest#persistFailsClosedWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileAlsoExists).
-                // This try/catch's own NoSuchFileException-only handling
-                // remains correct as written -- it is a defensive
-                // redundancy against a genuine TOCTOU race between these
-                // two checks (ledgerPath's own state changing between
-                // them), not dead code to be removed, and this project's
-                // own "re-verify immediately before trusting" convention
-                // (see AccountLedgerLock's own tryStealIfStale) already
-                // establishes that such redundant re-checks are a
-                // deliberate pattern here, not accidental duplication.
+                // below (the ordinary retry case this method's own
+                // leftover-tmp-overwrite behavior exists to support); a
+                // ledgerPath whose existence cannot be determined
+                // propagates to this method's outer catch, failing the
+                // whole call closed. This duplicates verifyIdentityConsistency's
+                // own earlier, equivalent check as a defensive redundancy
+                // against a TOCTOU race between the two -- not dead code.
                 try {
                     Files.readAttributes(ledgerPath, BasicFileAttributes.class);
                 } catch (NoSuchFileException ledgerAbsent) {
@@ -710,24 +668,16 @@ final class AccountLedgerStore {
                             + " real, committed reservations. A human must resolve the existing file first.",
                     readFailure);
         }
-        AccountLedger existing;
-        try {
-            existing = MAPPER.readValue(existingRaw, AccountLedger.class);
-        } catch (IOException parseFailure) {
-            throw new IllegalStateException(
-                    "refusing to persist over " + ledgerPath + " -- its existing content could not be parsed as"
-                            + " an AccountLedger, so this call cannot confirm it is not silently destroying a"
-                            + " different account's real, committed reservations. A human must resolve the"
-                            + " existing file first.",
-                    parseFailure);
-        }
-        if (existing == null) {
-            throw new IllegalStateException(
-                    "refusing to persist over " + ledgerPath + " -- its existing content parsed as the JSON"
-                            + " literal null, not a real AccountLedger, so this call cannot confirm it is not"
-                            + " silently destroying a different account's real, committed reservations. A human"
-                            + " must resolve the existing file first.");
-        }
+        AccountLedger existing = parseOrThrow(
+                existingRaw,
+                "refusing to persist over " + ledgerPath + " -- its existing content could not be parsed as"
+                        + " an AccountLedger, so this call cannot confirm it is not silently destroying a"
+                        + " different account's real, committed reservations. A human must resolve the"
+                        + " existing file first.",
+                "refusing to persist over " + ledgerPath + " -- its existing content parsed as the JSON"
+                        + " literal null, not a real AccountLedger, so this call cannot confirm it is not"
+                        + " silently destroying a different account's real, committed reservations. A human"
+                        + " must resolve the existing file first.");
         if (!existing.venue().equals(ledger.venue()) || !existing.accountId().equals(ledger.accountId())) {
             throw new IllegalStateException(
                     "refusing to persist ledger for (" + ledger.venue() + ", " + ledger.accountId() + ") over "
@@ -735,6 +685,34 @@ final class AccountLedgerStore {
                             + existing.venue() + ", " + existing.accountId() + ") -- this would silently destroy"
                             + " that account's committed reservations");
         }
+    }
+
+    /**
+     * Shared by {@link #load} and {@link #verifyIdentityConsistency}:
+     * both parse already-read ledger file content into an {@link
+     * AccountLedger} and must fail closed identically on a genuine parse
+     * failure or on a valid-JSON-but-null literal (the JSON literal
+     * {@code "null"} is valid JSON, so Jackson returns a plain Java
+     * {@code null} here without throwing rather than an error condition
+     * from its own perspective -- left unchecked, a caller's very next
+     * field access would throw a raw {@link NullPointerException}
+     * instead of this class's own intended {@link IllegalStateException}
+     * fail-closed contract). Each caller supplies its own exact,
+     * pre-existing message text, unchanged by this extraction, since
+     * both messages are referenced by this class's own manual-
+     * resolution-procedure documentation.
+     */
+    private static AccountLedger parseOrThrow(String raw, String parseFailureMessage, String nullLiteralMessage) {
+        AccountLedger parsed;
+        try {
+            parsed = MAPPER.readValue(raw, AccountLedger.class);
+        } catch (IOException e) {
+            throw new IllegalStateException(parseFailureMessage, e);
+        }
+        if (parsed == null) {
+            throw new IllegalStateException(nullLiteralMessage);
+        }
+        return parsed;
     }
 
     private static void defaultAtomicMove(Path source, Path target) throws IOException {

@@ -31,27 +31,12 @@ dependencies {
     // internally-written JSON files, never on untrusted external network
     // input.
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.9")
-    // Needed for AccountLedger/LedgerReservation/AccountLedgerLock's own
-    // lock-metadata record (Shared KIS account risk ledger, Task B) to
-    // serialize java.time.Instant fields directly -- plain jackson-databind
-    // has no built-in Instant support. This module's own SubmissionMarker
-    // deliberately avoided adding this dependency for one ISO-8601 String
-    // field (see its Javadoc); AccountLedger/LedgerReservation have three
-    // real Instant-typed fields each carrying real meaning (reservedAt,
-    // lastReconciledAt, reconciliationAlarmTrippedAt), so a String-only
-    // workaround would mean hand-rolling parse/format at every read/write
-    // site instead of trusting Jackson to do it once. Confirmed this was
-    // actually missing, not assumed: a same-version bump for jackson-
-    // databind above already pulled jackson-datatype-jsr310 onto this
-    // module's *runtime*/test classpath transitively (via :schemas's own
-    // `implementation` dependency on it), but NOT onto this module's own
-    // *compile* classpath (verified directly: a throwaway class importing
-    // `com.fasterxml.jackson.datatype.jsr310.JavaTimeModule` failed
-    // `:runtime:compileJava` with "package ... does not exist" before this
-    // line was added) -- Gradle's implementation/api separation does not
-    // leak a dependency's own compile-time types to a consumer by design,
-    // so relying on the transitive leak for compilation would be fragile
-    // and incidental, not a real guarantee.
+    // Needed for AccountLedger/LedgerReservation/AccountLedgerLock's
+    // Instant-typed fields to serialize directly -- plain jackson-databind
+    // has no built-in Instant support. This is pulled in transitively on
+    // this module's runtime/test classpath via :schemas, but Gradle's
+    // implementation/api separation does not expose it on this module's
+    // own compile classpath, so it must be declared here explicitly too.
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.9")
     implementation("org.slf4j:slf4j-api:2.0.16")
     // A real SLF4J binding for actual (non-test) execution -- every other

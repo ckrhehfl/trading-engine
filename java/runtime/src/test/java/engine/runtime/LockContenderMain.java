@@ -67,10 +67,13 @@ final class LockContenderMain {
         Duration totalRetryBudget = Duration.ofMillis(totalRetryBudgetMillis);
 
         for (int i = 0; i < iterations; i++) {
-            try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, totalRetryBudget)) {
+            AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, totalRetryBudget);
+            try {
                 int current = readCounter(counterPath);
                 Thread.sleep(holdMillis);
                 Files.writeString(counterPath, Integer.toString(current + 1));
+            } finally {
+                closeUntilReleased(lock, lockPath);
             }
         }
     }
@@ -81,5 +84,40 @@ final class LockContenderMain {
         } catch (NoSuchFileException e) {
             return 0;
         }
+    }
+
+    /**
+     * Real Minor finding, a further real CodeRabbit review round on this
+     * PR: a single, unretried {@code lock.close()} (the previous, plain
+     * try-with-resources form of the loop above) is inconsistent with
+     * {@link AccountLedgerLock}'s own documented caller contract -- its
+     * class Javadoc's own fourth caller-contract point states that {@code
+     * close()} does not itself signal success or failure, and a caller
+     * wanting the lock file genuinely released must call {@code close()}
+     * again when a first call took one of its retryable paths (a
+     * transient read/visibility gap on this project's own drvfs mount,
+     * which that same Javadoc separately measures at 500ms+ under
+     * contention). This launcher deliberately creates exactly that kind
+     * of real, sustained multi-process contention (it is the whole point
+     * of {@link AccountLedgerLockMultiProcessTest}), so a single close()
+     * call occasionally leaving this contender's own lock file behind is
+     * a real, reachable risk, not theoretical -- retried here a few times
+     * with a short delay, matching the bounded-retry shape {@link
+     * AccountLedgerLock}'s own {@code deleteIfStillOwnGeneration} already
+     * uses for the identical underlying condition.
+     */
+    private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            lock.close();
+            if (Files.notExists(lockPath)) {
+                return;
+            }
+            Thread.sleep(50);
+        }
+        // Not treated as a hard failure here -- if the lock file is
+        // genuinely still present after this many attempts, the launching
+        // test's own final assertions (the counter total, and its own
+        // lock-file-absence check) are what actually judge this run, not
+        // this launcher itself.
     }
 }

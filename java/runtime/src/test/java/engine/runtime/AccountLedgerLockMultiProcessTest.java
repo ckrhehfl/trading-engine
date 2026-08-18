@@ -131,7 +131,41 @@ class AccountLedgerLockMultiProcessTest {
                 "final counter must equal the total attempted increments -- a shortfall means two real,"
                         + " separate OS processes were inside the AccountLedgerLock-protected critical section at"
                         + " the same time, i.e. the atomic-file-creation mutex does not hold on this filesystem");
-        assertTrue(Files.notExists(lockPath), "the lock file must not be left behind once every contender is done");
+        assertTrue(
+                waitForLockFileAbsence(lockPath),
+                "the lock file must not be left behind once every contender is done (each contender already"
+                        + " retries its own close() internally -- see LockContenderMain#closeUntilReleased -- so a"
+                        + " failure here after that retry budget, plus this test's own brief recheck, indicates a"
+                        + " real leftover file rather than an ordinary transient drvfs visibility lag between"
+                        + " this JVM and the process that deleted it)");
+    }
+
+    /**
+     * Real Minor finding, a further real CodeRabbit review round on this
+     * PR: {@link AccountLedgerLock#close()}'s own documented contract
+     * (round 34's retryable-vs-final distinction, see its class Javadoc)
+     * means a contender process's own internal close retry
+     * ({@link LockContenderMain}'s {@code closeUntilReleased}) can still
+     * exit 0 without the lock file being gone from *this* process's own
+     * point of view the instant {@code waitFor} returns -- this project's
+     * real, measured drvfs visibility lag (500ms+ under contention, per
+     * {@link AccountLedgerLock}'s own class Javadoc) is a lag between
+     * real OS processes/handles, not only within one. A single immediate
+     * {@code Files.notExists} check right after four separate child
+     * processes exit is exactly the shape that lag can hit. This does not
+     * touch the counter assertion above (the correctness signal this test
+     * exists for) -- it only gives the lock-file-absence check the same
+     * brief, bounded grace period {@link AccountLedgerLockTest}'s own
+     * {@code closeUntilReleased} already applies from the closing side.
+     */
+    private static boolean waitForLockFileAbsence(Path lockPath) throws InterruptedException {
+        for (int attempt = 0; attempt < 5; attempt++) {
+            if (Files.notExists(lockPath)) {
+                return true;
+            }
+            Thread.sleep(50);
+        }
+        return Files.notExists(lockPath);
     }
 
     /**

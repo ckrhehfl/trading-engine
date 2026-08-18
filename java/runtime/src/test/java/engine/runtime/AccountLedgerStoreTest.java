@@ -829,36 +829,13 @@ class AccountLedgerStoreTest {
     /**
      * The different-outcome sibling of {@link
      * #persistFailsClosedWhenLedgerPathIsMissingButALeftoverTmpFileExists}
-     * immediately above -- pins down a real Minor finding, a further real
-     * CodeRabbit review round: that method's own inline comment (before
-     * this fix) claimed "any other outcome (ledgerPath exists, or its own
-     * existence can't be determined either) proceeds to the write path
-     * below" -- but the code that {@code tmpPreexisted}-branch try/catch
-     * only special-cases {@link java.nio.file.NoSuchFileException}; a
-     * genuinely undetermined {@code ledgerPath} was never described
-     * accurately.
-     *
-     * <p><b>A real, second finding surfaced while writing this exact
-     * test, not merely accepting the reviewer's own suggested fix
-     * verbatim</b>: this test originally asserted the *that* branch's own
-     * `catch (IOException e)`-to-outer-catch propagation fires --
-     * modeled directly on the reviewer's own suggested wording. It
-     * doesn't. {@code verifyIdentityConsistency} already performs its
-     * own, stricter {@code Files.readAttributes} check against this exact
-     * same {@code ledgerPath} at the very top of {@code persist()},
-     * *before* the {@code tmpPreexisted} try/catch this finding is about
-     * is ever reached -- so a self-referential symlink at {@code
-     * ledgerPath} is intercepted there first, with a different message,
-     * every time. Confirmed empirically, not assumed: this test failed on
-     * its first run with exactly that message instead of the one
-     * originally expected. Rewritten to assert the behavior actually
-     * observed, and the production Javadoc corrected to disclose this
-     * -- the {@code tmpPreexisted} branch's own {@code NoSuchFileException}-
-     * only handling is real, correctly-described code, but in practice
-     * unreachable via any non-racing filesystem state for its own
-     * non-{@code NoSuchFileException} case, since {@code
-     * verifyIdentityConsistency}'s earlier check on the identical path
-     * already closes off every such state before this branch runs.
+     * immediately above: when {@code ledgerPath}'s own existence cannot be
+     * determined (here, a self-referential symlink) while a leftover
+     * {@code .tmp} exists, {@code persist()} fails closed via {@code
+     * verifyIdentityConsistency}'s own earlier {@code Files.readAttributes}
+     * check, not the {@code tmpPreexisted} branch's own {@code
+     * NoSuchFileException}-only handling. Linux/macOS only -- reliable
+     * self-referential symlink creation is not reproducible on Windows.
      */
     @Test
     @EnabledOnOs({OS.LINUX, OS.MAC})
@@ -1129,27 +1106,17 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        // ledgerPath is seeded with a real, matching-identity ledger FIRST
-        // -- a further real CodeRabbit review round on this PR: without
-        // this, round 31's own missing-ledger-plus-leftover-.tmp
-        // fail-closed check (persist()'s own tmpPreexisted branch) fires
-        // first and throws before ever reaching FileChannel.open, so this
-        // test would still pass on an IllegalStateException but for the
-        // wrong reason -- no longer proving the ownership-tracking logic
-        // this test actually targets. Seeding ledgerPath keeps this test
-        // on the real FileChannel.open/outer-catch-cleanup path it was
-        // written to exercise.
+        // ledgerPath is seeded with a real, matching-identity ledger first
+        // so persist()'s own missing-ledger-plus-leftover-.tmp fail-closed
+        // check (the tmpPreexisted branch) does not fire before
+        // FileChannel.open -- this keeps the test on the real
+        // ownership-tracking/outer-catch-cleanup path it targets.
         AccountLedgerStore.persist(file, ledger);
         Files.createDirectory(candidateTmp);
 
         IllegalStateException thrown =
                 assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
 
-        // Confirms this test genuinely exercises the ownership-tracking/
-        // FileChannel.open failure path it targets, not round 31's own,
-        // different missing-ledger-plus-leftover-.tmp check (which would
-        // have fired first, and masked a regression in this test's own
-        // real subject, had ledgerPath not been seeded above).
         assertTrue(
                 thrown.getMessage().contains("failed to persist account ledger file"),
                 "expected the FileChannel.open/outer-catch failure message, not a different fail-closed check's"
@@ -1194,26 +1161,16 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        // ledgerPath is seeded with a real, matching-identity ledger FIRST
-        // -- a further real CodeRabbit review round on this PR: without
-        // this, round 31's own missing-ledger-plus-leftover-.tmp
-        // fail-closed check fires before this test's own subject
-        // (candidateTmp's determination-failure state) is ever reached by
-        // FileChannel.open, so this test would still pass on an
-        // IllegalStateException but for the wrong reason. With ledgerPath
-        // present, FileChannel.open on the self-referential symlink fails
-        // the same way as originally documented, and persist() reaches
-        // its outer cleanup catch with THAT as the active failure.
+        // ledgerPath is seeded with a real, matching-identity ledger first
+        // so persist()'s own missing-ledger-plus-leftover-.tmp fail-closed
+        // check does not fire before FileChannel.open reaches candidateTmp's
+        // own determination-failure state.
         AccountLedgerStore.persist(file, ledger);
         Files.createSymbolicLink(candidateTmp, candidateTmp);
 
         IllegalStateException thrown =
                 assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
 
-        // Confirms this test genuinely exercises the FileChannel.open
-        // failure path it targets, not round 31's own, different
-        // missing-ledger-plus-leftover-.tmp check (see the seeding
-        // comment above for why that would otherwise fire first).
         assertTrue(
                 thrown.getMessage().contains("failed to persist account ledger file"),
                 "expected the FileChannel.open/outer-catch failure message, not a different fail-closed check's"

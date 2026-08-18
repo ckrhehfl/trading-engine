@@ -3718,6 +3718,139 @@ in the code under test), bringing the task-wide raw-harness total to
 **380 clean rounds, 18,240 individual lock acquisitions, zero lost
 updates**.
 
+### Round 38
+
+Review id `4963030382`, against commit `23397fa` (round 37's fix
+commit, already pushed), landed at `2026-08-18T15:49:43Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 2 actionable comments plus 1 shown separately as a
+**"Duplicate comment"** spanning 3 files. All three addressed:
+
+- **(Duplicate, the same narrative-cleanup pattern as rounds
+  12/16/17/23/30/35) -- 3 files.** `AccountLedgerStore.java`: the
+  `persist()`-opening "Hoisted outside the try block (rather than
+  declared inside, as originally written)" comment dropped its
+  history reference down to the plain technical fact; the
+  `tmpPreexisted`-branch `else` comment (previously ~45 lines,
+  including a "confirmed directly, not assumed, by a real test... (see
+  `AccountLedgerStoreTest#persistFailsClosedWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileAlsoExists`)"
+  narrative) cut down to the tmp-ownership rule and the three-way
+  fail-closed condition (absent / present / undetermined) only.
+  `AccountLedgerStoreTest.java`: the symlink-based fail-closed test's
+  own two-paragraph Javadoc (recounting a self-correction mid-test-
+  writing, full method names included) reduced to one invariant
+  sentence plus its Linux/macOS reproduction-limit note; the two
+  "ledgerPath is seeded with a real, matching-identity ledger FIRST --
+  a further real CodeRabbit review round..." comments (in
+  `persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall` and
+  `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`)
+  each cut to one sentence stating why the seeding is needed, with
+  their redundant trailing "Confirms this test genuinely exercises..."
+  comments removed outright (restating the same fact a second time).
+  `build.gradle.kts`: the 22-line `jackson-datatype-jsr310` comment
+  reduced to two sentences -- why `Instant` serialization needs it, and
+  why Gradle's implementation/api separation means the transitive pull
+  from `:schemas` doesn't reach this module's own compile classpath.
+- **`AccountLedgerStore.java` (~703-730): extracted the duplicated
+  parse + null-rejection logic shared by `load()` and
+  `verifyIdentityConsistency()` into one private helper.** Used a
+  narrower extraction than the reviewer's own illustrative diff, which
+  bundled the file-read step in too: `load()`'s own `Files.readString`
+  call has a `catch (NoSuchFileException e)` branch (the missing-
+  ledger-plus-leftover-`.tmp` fail-closed check) that
+  `verifyIdentityConsistency` does not share -- it already rules out
+  absence earlier via its own `Files.readAttributes` check -- so
+  bundling the read in would have forced an awkward shared shape for
+  two callers whose read-failure handling genuinely differs. The new
+  `parseOrThrow(String raw, String parseFailureMessage, String
+  nullLiteralMessage)` shares only the truly-identical part --
+  `MAPPER.readValue` plus the JSON-literal-`null` rejection -- with
+  each caller supplying its own exact, pre-existing message text via
+  parameters. Both call sites' message content and fail-closed
+  behavior are unchanged, confirmed by diff (only the call shape
+  changed, not the string literals).
+- **`AccountLedgerLockTest.java` (~127-133) and
+  `AccountLedgerLockMultiProcessTest.java` (~127-134): lock-file
+  cleanup assertions now account for `close()`'s retry semantics
+  (round 34's retryable-vs-final contract).** Two genuinely different
+  fixes, because the two tests' own `close()` calls happen in two
+  different places:
+  - `LockContenderMain.java` (the real second/third/... OS process
+    `AccountLedgerLockMultiProcessTest` launches): its per-iteration
+    loop converted from plain try-with-resources to an explicit
+    `try { ... } finally { closeUntilReleased(lock, lockPath); }`,
+    with a new `closeUntilReleased` helper retrying `close()` up to 5
+    times (50ms apart) until the lock file is confirmed gone --
+    matching the bounded-retry shape `deleteIfStillOwnGeneration`
+    (round 36) already established for the identical underlying
+    condition. This launcher creates real, sustained multi-process
+    contention by design, so a single unretried `close()` occasionally
+    leaving its own lock file behind was a real, reachable risk, not
+    theoretical.
+  - `AccountLedgerLockTest.java`'s own 12-thread contention test: its
+    close() calls happen in-process, so the identical
+    `closeUntilReleased` pattern was applied directly to its own
+    per-iteration loop (try-with-resources converted to explicit
+    try/finally plus a local, private helper of the same shape).
+  - `AccountLedgerLockMultiProcessTest.java` itself needed a different
+    fix: its own final `assertTrue(Files.notExists(lockPath), ...)`
+    runs in the *parent* test JVM, after four *child* processes (each
+    already retrying their own `close()` internally, per the
+    `LockContenderMain` fix above) have exited. The real residual risk
+    here is not an unretried `close()` -- it is this project's own
+    measured 500ms+ drvfs visibility lag *between* real OS
+    processes/handles, which could still let this JVM observe the
+    lock file as present for a brief window after a child has already
+    deleted it and exited 0. Added a `waitForLockFileAbsence` helper
+    (the same 5-attempts/50ms shape) polled before the assertion, with
+    the failure message naming the possible-transient-state
+    explanation (the reviewer's own offered alternative to a bare
+    recheck) rather than a bare boolean. The counter assertion
+    immediately above is untouched, per the reviewer's own explicit
+    instruction to leave it alone.
+
+**Real, disclosed tooling incident during this round's own raw-harness
+re-verification, root-caused precisely rather than assumed to be a
+repeat of round 37's own separately-diagnosed cause.** Reconstructing
+the raw-harness classpath this round, the first 25-round batch failed
+25/25 with `ClassNotFoundException: engine.runtime.LockContenderMain`
+-- superficially the same symptom round 37 hit. This round's actual
+root cause was different, and confirmed to be different rather than
+assumed: this round's own freshly-built classpath file used *relative*
+build-output paths (`runtime/build/classes/java/main`, etc.), which
+only resolve when the `java` process's own working directory is
+`java/`'s parent -- but this task's tool environment resets its
+working directory between every shell invocation, so by the time
+`run_round.sh` actually launched the six contender processes in a
+later, separate invocation, the relative paths no longer resolved.
+Confirmed by direct comparison against round 37's own still-present
+classpath file (`cp_absolute.txt`), which used absolute paths
+throughout and, re-tested here, still works correctly -- proving round
+37's own diagnosis (a stale/mid-write snapshot file) and this round's
+cause are two distinct tooling mistakes, not a recurrence. Fixed by
+rebuilding the classpath with an absolute path for every module's
+build-output directory, verified by invoking it from a deliberately
+different working directory (`/tmp`, not the repo) before trusting it,
+then a full, clean 25-round run passed 25/25 outright.
+
+Re-ran after all of round 38's fixes: `./gradlew clean build` -- still
+green, **461 tests, 0 failures, 0 errors** project-wide (unchanged
+count -- every change this round was either a comment/Javadoc
+reduction, a private-helper extraction with no behavior change, or a
+retry-loop addition around existing `close()`/assertion calls; no new
+test methods, none removed). `AccountLedgerLockTest`,
+`AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest` all
+reran 3 additional explicit times together, stable. Because
+`LockContenderMain`'s own control flow genuinely changed (the new
+`closeUntilReleased` retry loop, exercised for real by every contender
+process `AccountLedgerLockMultiProcessTest` launches), the raw,
+non-Gradle stress harness was re-run for real: **25/25 rounds exactly
+correct** (1,200 more individual lock acquisitions, zero lost updates
+-- the first batch's 25/25 failure was the tooling incident described
+above, not a code problem), bringing the task-wide raw-harness total to
+**405 clean rounds, 19,440 individual lock acquisitions, zero lost
+updates**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3793,7 +3926,13 @@ updates**.
   41/41 after round 36's (no `AccountLedgerStore`-level changes that
   round -- the one real fix was in `AccountLedgerLock`); 41/41 after
   round 37's (no new test methods -- the four existing fail-closed
-  tests strengthened in place with cause-message assertions).
+  tests strengthened in place with cause-message assertions); 41/41
+  after round 38's (a comment/Javadoc reduction sweep plus the new
+  `parseOrThrow` private-helper extraction, no behavior change and no
+  new/modified test methods -- the two seeding-comment reductions and
+  the removed redundant "Confirms..." comments in
+  `AccountLedgerStoreTest.java` are comment-only, no test-method
+  change).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3877,7 +4016,10 @@ updates**.
   reasoning above); 14/14 after round 37's (a real, narrow production-
   code fix -- the cleanup catch's `RuntimeException` widening -- but no
   new/modified test methods, per that fix's own disclosed reasoning
-  above).
+  above); 14/14 after round 38's (a test-only fix -- the existing
+  12-thread contention test's per-iteration close() call converted to
+  the new `closeUntilReleased` bounded-retry pattern, plus a new
+  private, non-`@Test` helper method -- no new/modified test method).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3928,9 +4070,15 @@ updates**.
   change to this file), **4 more times** after round 36 (1 part of
   the full `clean build`, plus 3 further explicit `--rerun-tasks` runs,
   given round 36's own real fix to `deleteIfStillOwnGeneration`'s own
-  retry logic), and **4 more times** after round 37 (1 part of the full
+  retry logic), **4 more times** after round 37 (1 part of the full
   `clean build`, plus 3 further explicit `--rerun-tasks` runs, given
-  round 37's own real fix to `createAndWriteMetadata`'s cleanup catch).
+  round 37's own real fix to `createAndWriteMetadata`'s cleanup catch),
+  and **4 more times** after round 38 (1 part of the full `clean
+  build`, plus 3 further explicit `--rerun-tasks` runs, given round
+  38's own real change to this test file's own final assertion -- the
+  new `waitForLockFileAbsence` bounded poll -- plus its real child-
+  process-side counterpart in `LockContenderMain`'s own
+  `closeUntilReleased`).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -4091,11 +4239,24 @@ updates**.
   code problem, per that round's own entry above; a clean re-run passed
   outright), bringing the task-wide raw-harness total to **380 clean
   rounds, 18,240 individual lock acquisitions, zero lost updates**.
+  Round 38's own real fix to `LockContenderMain`'s own control flow
+  (the new `closeUntilReleased` retry loop, exercised by every real
+  contender process `AccountLedgerLockMultiProcessTest` launches) also
+  touches real control flow the raw harness exercises directly, so the
+  raw harness was re-run for real again that round too -- **25/25
+  rounds exactly correct** (a first batch hit a real, disclosed tooling
+  problem -- a relative-path classpath that stopped resolving once the
+  task's own tool environment reset its working directory between
+  invocations, distinct from round 37's own separately-diagnosed
+  stale-snapshot cause, per that round's own entry above; a clean
+  re-run with an absolute-path classpath passed outright), bringing the
+  task-wide raw-harness total to **405 clean rounds, 19,440 individual
+  lock acquisitions, zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, and 37 (plus round 27's own
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, and 38 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -4118,6 +4279,9 @@ updates**.
   together, plus its own 25-round raw stress harness re-run; round 37's
   own 3 additional explicit combined reruns of `AccountLedgerLockTest`,
   `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
+  together, plus its own 25-round raw stress harness re-run; round 38's
+  own 3 additional explicit combined reruns of `AccountLedgerLockTest`,
+  `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
   together, plus its own 25-round raw stress harness re-run, all noted
   above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
@@ -4137,7 +4301,8 @@ updates**.
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
-  net-new from round 36's + 0 net-new from round 37's).
+  net-new from round 36's + 0 net-new from round 37's + 0 net-new from
+  round 38's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
