@@ -787,14 +787,15 @@ class AccountLedgerLockTest {
      * it proves data is never corrupted, but bypasses {@code
      * createAndWriteMetadata} itself (opening its own raw channel rather
      * than calling that method), so it does not exercise that method's
-     * own {@code null}-return statement or {@code acquire}'s handling of
-     * losing that exact race through the real production call path. See
-     * {@code createAndWriteMetadata}'s own Javadoc, "Known, permanent
-     * test-coverage gap," for the full reasoning -- reconsidered on four
-     * separate real code-review passes on this same PR and declined each
-     * time as requiring either accepted test flakiness or an unrequested
-     * production-only test hook, neither of which this task makes
-     * unilaterally.
+     * own {@code null}-return statement, its {@code
+     * READ_FAILED}/{@code EMPTY_OR_UNPARSEABLE} cleanup call, or {@code
+     * acquire}'s handling of losing either race through the real
+     * production call path. See {@code createAndWriteMetadata}'s own
+     * Javadoc, "Known, permanent test-coverage gap," for the full
+     * reasoning -- reconsidered on five separate real code-review passes
+     * on this same PR and declined each time as requiring either accepted
+     * test flakiness or an unrequested production-only test hook, neither
+     * of which this task makes unilaterally.
      */
     @Test
     @EnabledOnOs(OS.LINUX)

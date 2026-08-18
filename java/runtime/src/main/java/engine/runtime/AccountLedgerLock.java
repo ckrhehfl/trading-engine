@@ -418,54 +418,80 @@ final class AccountLedgerLock implements AutoCloseable {
      * method re-reads {@code lockPath} immediately after the write
      * completes and confirms it still holds exactly the {@link
      * LockMetadata} just written; if not, it returns {@code null} rather
-     * than the metadata. This method never deletes anything on that path:
-     * the path now legitimately belongs to whoever's generation the
-     * re-read found, and this method has no business touching it. The
-     * comparison treats a transient read failure ({@link #readMetadataOrNull}
-     * returning {@link #READ_FAILED}) differently from a genuine
-     * generation mismatch: a transient read failure proves nothing about
-     * ownership -- most likely this holder still owns the path, since it
-     * just created and wrote the file in this same call -- so that case
-     * cleans up only this holder's own, re-verified generation (via {@link
-     * #deleteIfStillOwnGeneration}, the same delete-only-if-content-still-
-     * matches-exactly discipline {@link #tryStealIfStale} itself uses)
-     * before reporting the lost race, rather than leaving this holder's
-     * own live lock file behind to self-block it (and every other waiter)
-     * until {@code staleThreshold} elapses.
+     * than the metadata. This method never deletes anything on that path
+     * for a genuine generation mismatch (real, different metadata read
+     * back): the path now legitimately belongs to whoever's generation
+     * the re-read found, and this method has no business touching it. The
+     * comparison treats two <i>transient</i> outcomes differently from
+     * that genuine mismatch -- a read failure ({@link #readMetadataOrNull}
+     * returning {@link #READ_FAILED}) <b>and</b>, since a further real
+     * CodeRabbit review round, empty or unparseable content ({@link
+     * #EMPTY_OR_UNPARSEABLE}) as well, grouped together for the identical
+     * reason {@link #close}'s own {@code doClose} already groups them:
+     * neither proves ownership was actually lost, since this holder just
+     * created and wrote the file in this same call, and this project's
+     * own drvfs mount has a real, previously-measured susceptibility to
+     * transient read/visibility gaps on a process's own still-valid
+     * content. Both transient cases clean up only this holder's own,
+     * re-verified generation (via {@link #deleteIfStillOwnGeneration}, the
+     * same delete-only-if-content-still-matches-exactly discipline {@link
+     * #tryStealIfStale} itself uses) before reporting the lost race,
+     * rather than leaving this holder's own live lock file behind to
+     * self-block it (and every other waiter) until {@code staleThreshold}
+     * elapses -- exactly the availability gap leaving {@link
+     * #EMPTY_OR_UNPARSEABLE} out of this grouping used to cause.
      *
-     * <p><b>Known, permanent test-coverage gap on this method's own {@code
-     * null}-return branch (the genuine-generation-mismatch path
-     * immediately above) -- deliberately left untested, reconsidered on
-     * four separate real code-review passes on this same PR and declined
-     * each time, not an oversight.</b> Proving this branch directly would
-     * require a real, second thread or process to reclaim {@code
-     * lockPath} via {@link #tryStealIfAbandonedEmpty} in the exact,
-     * unobservable window between this method's own write completing
-     * (just above) and its immediately-following re-read -- two
-     * sequential lines inside one method call, with no yield point either
-     * line could be paused at from outside. {@link
+     * <p><b>Known, permanent test-coverage gap on this method's own
+     * post-write re-verification branches -- both the genuine-generation-
+     * mismatch {@code null}-return path above, and, since a further real
+     * CodeRabbit review round, the {@link #READ_FAILED}/{@link
+     * #EMPTY_OR_UNPARSEABLE} cleanup-then-{@code null} path immediately
+     * above that -- deliberately left untested, reconsidered on five
+     * separate real code-review passes on this same PR and declined each
+     * time, not an oversight.</b> Proving any of these branches directly
+     * would require a real, second thread or process to interfere with
+     * {@code lockPath} in the exact, unobservable window between this
+     * method's own write completing and its immediately-following
+     * re-read -- two sequential lines inside one method call, with no
+     * yield point either line could be paused at from outside. This is
+     * true of the {@code EMPTY_OR_UNPARSEABLE} branch specifically as
+     * much as the genuine-mismatch one: even though {@code
+     * READ_FAILED}/{@code EMPTY_OR_UNPARSEABLE} were reasoned about above
+     * as more likely a same-process transient read/visibility gap than an
+     * actual competing holder, reproducing that transient condition on
+     * demand is no more achievable than reproducing a genuine competing
+     * write -- both require interfering with this exact internal window
+     * from outside, which no seam here allows. {@link
      * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
      * proves the closely related, and arguably more important, real-world
      * property this design exists to protect -- that a delayed write
      * through an orphaned handle can never corrupt a sibling's new
      * generation -- but does so by bypassing this method entirely (opening
      * its own raw channel), so it does not exercise this method's own
-     * {@code null}-return statement or {@code acquire}'s handling of it.
-     * The two ways to close this gap for real were both rejected as out of
-     * this task's own scope, not merely inconvenient: (1) accept genuine
-     * timing-dependent test flakiness by racing real threads against this
-     * exact window and hoping to win it reliably, which this codebase's
-     * own no-flaky-tests discipline does not allow; or (2) add a
-     * production-code, test-only synchronization hook (e.g. a callback or
-     * latch invoked between the write and the re-read) purely so a test
-     * could pause execution there, which is real, unrequested production
-     * surface area added solely to serve one test -- a design compromise
-     * this task was never asked to make and does not make unilaterally.
-     * This branch's only coverage today is indirect: the multi-thread
-     * ({@code AccountLedgerLockTest#acquireProvidesRealMutualExclusionAcrossManyThreads})
+     * {@code null}-return statement, its cleanup call, or {@code
+     * acquire}'s handling of either. The two ways to close this gap for
+     * real were both rejected as out of this task's own scope, not merely
+     * inconvenient: (1) accept genuine timing-dependent test flakiness by
+     * racing real threads against this exact window and hoping to win it
+     * reliably, which this codebase's own no-flaky-tests discipline does
+     * not allow; or (2) add a production-code, test-only synchronization
+     * hook (e.g. a callback or latch invoked between the write and the
+     * re-read) purely so a test could pause execution there, which is
+     * real, unrequested production surface area added solely to serve one
+     * test -- a design compromise this task was never asked to make and
+     * does not make unilaterally. Unlike those two coverage gaps, the
+     * {@code EMPTY_OR_UNPARSEABLE} grouping fix itself was still made
+     * (not declined) despite this -- its correctness rests on matching an
+     * already-independently-validated principle ({@code doClose}'s own
+     * identical grouping, accepted on an earlier review round) applied to
+     * a structurally analogous call site, and on {@link
+     * #deleteIfStillOwnGeneration}'s own already-proven safety property,
+     * not on a fresh, untested claim of its own. These branches' only
+     * coverage today is indirect: the multi-thread ({@code
+     * AccountLedgerLockTest#acquireProvidesRealMutualExclusionAcrossManyThreads})
      * and multi-process ({@code AccountLedgerLockMultiProcessTest}) tests
-     * exercise {@code acquire} under enough real contention that this
-     * exact race is structurally possible on every run, without ever
+     * exercise {@code acquire} under enough real contention that these
+     * exact races are structurally possible on every run, without ever
      * being provable to have actually occurred on any given run.
      */
     private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
@@ -506,16 +532,39 @@ final class AccountLedgerLock implements AutoCloseable {
             if (metadata.equals(current)) {
                 return metadata;
             }
-            if (current == READ_FAILED) {
+            if (current == READ_FAILED || current == EMPTY_OR_UNPARSEABLE) {
                 // A transient read failure proves nothing about the
                 // file's real content -- see this method's own
                 // "Re-verification after write" Javadoc for why this must
-                // not be treated the same as a genuine mismatch.
+                // not be treated the same as a genuine mismatch. Real
+                // Major finding, a further real CodeRabbit review round:
+                // EMPTY_OR_UNPARSEABLE used to fall through to the
+                // genuine-mismatch branch below (no cleanup) instead of
+                // being grouped here -- inconsistent with this same
+                // sentinel's own treatment in doClose(), which already
+                // treats it as a transient read/visibility gap on this
+                // instance's own still-valid content (a real,
+                // previously-measured characteristic of this project's
+                // own drvfs mount), not proof of a different holder. Left
+                // ungrouped, a holder whose own re-verification read hit
+                // this sentinel would return null without deleting its
+                // own real, just-written, live-looking file -- acquire()
+                // would then retry, find that same file via
+                // FileAlreadyExistsException, and tryStealIfStale would
+                // correctly judge it not stale (its own live pid, its own
+                // fresh acquiredAt), exhausting the retry budget and
+                // self-blocking on its own lock file until staleThreshold
+                // elapses, blocking every other waiter too.
+                // deleteIfStillOwnGeneration only ever deletes when the
+                // content still exactly matches this holder's own
+                // metadata, so a sibling's genuine new generation is
+                // never at risk from this grouping.
                 log.error(
-                        "account ledger lock {} could not be re-read immediately after this holder wrote its own"
-                                + " metadata ({}) -- cannot prove ownership from this read alone; cleaning up only"
-                                + " this holder's own verified generation (if it's still there) and reporting lost"
-                                + " contention rather than leaving a live-looking file behind.",
+                        "account ledger lock {} could not be confirmed immediately after this holder wrote its own"
+                                + " metadata ({}) -- read failed, or the content read back empty/unparseable."
+                                + " Cannot prove ownership from this read alone; cleaning up only this holder's own"
+                                + " verified generation (if it's still there) and reporting lost contention rather"
+                                + " than leaving a live-looking file behind.",
                         lockPath,
                         metadata);
                 deleteIfStillOwnGeneration(lockPath, metadata);

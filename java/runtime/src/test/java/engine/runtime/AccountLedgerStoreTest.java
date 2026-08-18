@@ -780,6 +780,70 @@ class AccountLedgerStoreTest {
     }
 
     /**
+     * The different-outcome sibling of {@link
+     * #persistFailsClosedWhenLedgerPathIsMissingButALeftoverTmpFileExists}
+     * immediately above -- pins down a real Minor finding, a further real
+     * CodeRabbit review round: that method's own inline comment (before
+     * this fix) claimed "any other outcome (ledgerPath exists, or its own
+     * existence can't be determined either) proceeds to the write path
+     * below" -- but the code that {@code tmpPreexisted}-branch try/catch
+     * only special-cases {@link java.nio.file.NoSuchFileException}; a
+     * genuinely undetermined {@code ledgerPath} was never described
+     * accurately.
+     *
+     * <p><b>A real, second finding surfaced while writing this exact
+     * test, not merely accepting the reviewer's own suggested fix
+     * verbatim</b>: this test originally asserted the *that* branch's own
+     * `catch (IOException e)`-to-outer-catch propagation fires --
+     * modeled directly on the reviewer's own suggested wording. It
+     * doesn't. {@code verifyIdentityConsistency} already performs its
+     * own, stricter {@code Files.readAttributes} check against this exact
+     * same {@code ledgerPath} at the very top of {@code persist()},
+     * *before* the {@code tmpPreexisted} try/catch this finding is about
+     * is ever reached -- so a self-referential symlink at {@code
+     * ledgerPath} is intercepted there first, with a different message,
+     * every time. Confirmed empirically, not assumed: this test failed on
+     * its first run with exactly that message instead of the one
+     * originally expected. Rewritten to assert the behavior actually
+     * observed, and the production Javadoc corrected to disclose this
+     * -- the {@code tmpPreexisted} branch's own {@code NoSuchFileException}-
+     * only handling is real, correctly-described code, but in practice
+     * unreachable via any non-racing filesystem state for its own
+     * non-{@code NoSuchFileException} case, since {@code
+     * verifyIdentityConsistency}'s earlier check on the identical path
+     * already closes off every such state before this branch runs.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void persistFailsClosedWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileAlsoExists(@TempDir Path tempDir)
+            throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Path tmp = tempDir.resolve("ledger.json.tmp");
+        Files.writeString(tmp, "a real ledger another process may still need -- not this call's to touch");
+        Files.createSymbolicLink(file, file);
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        IllegalStateException thrown =
+                assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        // verifyIdentityConsistency's own, earlier determination-failure
+        // check on this same ledgerPath fires first -- see this test's
+        // own Javadoc for why the tmpPreexisted branch's own analogous
+        // check is never actually reached here.
+        assertTrue(
+                thrown.getMessage().contains("its existing state could not be determined"),
+                "expected verifyIdentityConsistency's own determination-failure message, since it runs before"
+                        + " and independently of the tmpPreexisted branch this test originally targeted; was: "
+                        + thrown.getMessage());
+        assertEquals(
+                "a real ledger another process may still need -- not this call's to touch",
+                Files.readString(tmp),
+                "the leftover .tmp must still be untouched regardless of which fail-closed check fired");
+    }
+
+    /**
      * A leftover {@code .tmp} file from an earlier interrupted {@code
      * persist()} must still be overwritable on retry, not rejected with
      * {@link FileAlreadyExistsException} -- proven directly here: a

@@ -498,13 +498,43 @@ final class AccountLedgerStore {
                 // real, committed reservations -- a real, reachable
                 // sequence given this class's own documented standalone-
                 // persist-call use case (not only a load + mutate +
-                // persist cycle). Only a confirmed-absent ledgerPath
-                // (NoSuchFileException) triggers this -- any other outcome
-                // (ledgerPath exists, or its own existence can't be
-                // determined either) proceeds to the write path below,
-                // which is the ordinary retry case this method's own
-                // leftover-tmp-overwrite behavior otherwise exists to
-                // support.
+                // persist cycle). A confirmed-absent ledgerPath
+                // (NoSuchFileException) triggers this check. A
+                // confirmed-present ledgerPath proceeds to the write path
+                // below -- the ordinary retry case this method's own
+                // leftover-tmp-overwrite behavior exists to support. A
+                // ledgerPath whose own existence cannot be positively
+                // determined propagates that IOException to this method's
+                // outer catch instead, failing the whole call closed: this
+                // method cannot rule out the missing-ledger-plus-leftover-
+                // .tmp state, so it must not consume that evidence.
+                // Real Minor finding, a further real CodeRabbit review
+                // round: this paragraph previously (incorrectly) claimed
+                // an undetermined ledgerPath also proceeded to the write
+                // path -- corrected here to match what this isolated
+                // try/catch actually does. In practice, on any real
+                // (non-racing) filesystem state, this specific branch's
+                // own IOException-from-readAttributes case is not
+                // reachable via this call alone: verifyIdentityConsistency
+                // already performs its own, earlier Files.readAttributes
+                // check against this exact same ledgerPath at the very top
+                // of persist(), before this try/catch is ever reached, and
+                // that earlier check already throws its own
+                // IllegalStateException for the identical determination
+                // failure -- confirmed directly, not assumed, by a real
+                // test attempting to reach this branch via a
+                // self-referential symlink at ledgerPath, which observed
+                // verifyIdentityConsistency's own message instead (see
+                // AccountLedgerStoreTest#persistFailsClosedThroughTheOuterCatchWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileExists).
+                // This try/catch's own NoSuchFileException-only handling
+                // remains correct as written -- it is a defensive
+                // redundancy against a genuine TOCTOU race between these
+                // two checks (ledgerPath's own state changing between
+                // them), not dead code to be removed, and this project's
+                // own "re-verify immediately before trusting" convention
+                // (see AccountLedgerLock's own tryStealIfStale) already
+                // establishes that such redundant re-checks are a
+                // deliberate pattern here, not accidental duplication.
                 try {
                     Files.readAttributes(ledgerPath, BasicFileAttributes.class);
                 } catch (NoSuchFileException ledgerAbsent) {

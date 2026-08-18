@@ -3359,6 +3359,107 @@ fixes modified existing test bodies in place, no new test methods).
 change and zero touch on `AccountLedgerLock` at all, so a further raw
 stress-harness round was not independently warranted.
 
+### Round 34
+
+Against commit `ad00dac` (after round 33's fixes were pushed), landed at
+`2026-08-18T11:41:10Z` UTC, `commit_id` verified via the REST reviews
+API to match HEAD exactly -- `CHANGES_REQUESTED`, 2 actionable comments.
+Both real; the first a genuine Major-severity availability bug, the
+second a documentation-accuracy fix that, while fixing it, surfaced a
+further real correction of its own -- disclosed honestly below rather
+than silently absorbed:
+
+- **(Major) `createAndWriteMetadata`'s post-write re-verification
+  treated `EMPTY_OR_UNPARSEABLE` the same as a genuine generation
+  mismatch (no cleanup, plain `return null`), inconsistent with this
+  same sentinel's own treatment in `doClose` (round 29), which already
+  established -- for this exact sentinel, on this exact drvfs mount --
+  that it more plausibly represents a transient read/visibility gap on
+  this instance's own still-valid content than proof of a real,
+  different holder.** Real, and a genuine, disclosed self-blocking
+  availability gap, not a nitpick: if this holder's own re-verification
+  read hit this sentinel right after a real, complete write, the holder
+  would return `null` (lost race) without deleting its own real,
+  live-looking file; `acquire()` would then retry, hit
+  `FileAlreadyExistsException` against that same file, and
+  `tryStealIfStale` would correctly judge it *not* stale (its own live
+  pid, its own fresh `acquiredAt`) -- exhausting the retry budget and
+  self-blocking on its own lock file until `staleThreshold` elapses,
+  blocking every other waiter too. Fixed by grouping
+  `EMPTY_OR_UNPARSEABLE` with `READ_FAILED` in this branch, exactly
+  matching the reviewer's own suggested diff: both now log and call
+  `deleteIfStillOwnGeneration` (safe regardless -- it only ever deletes
+  when content still exactly matches this holder's own metadata, so a
+  sibling's genuine new generation is never at risk) before returning
+  `null`. The class's own "Re-verification after write" and "Known,
+  permanent test-coverage gap" Javadoc paragraphs updated to match --
+  the latter now explicitly extends its own already-established
+  reasoning (five separate review passes, not four, reconsidered and
+  declined each time) to this branch too, since it has the identical
+  "no observable yield point inside one sequential method call"
+  untestability shape as the already-declined genuine-mismatch branch.
+  **No red-then-green test accompanies this fix** -- extensively
+  reconsidered before concluding that, not reflexively skipped: unlike
+  the already-declined coverage gap (new coverage for an existing,
+  correct branch, where declining costs nothing but a slightly-narrower
+  safety net), this is a real bug fix whose correctness rests on
+  reasoning already independently validated for the identical sentinel
+  on the identical mount (`doClose`'s own round-29 fix) and on
+  `deleteIfStillOwnGeneration`'s own already-proven safety property, not
+  a fresh, untested claim -- declining to ship a well-reasoned, low-risk
+  fix to a real Major-severity gap solely because the exact race can't
+  be deterministically reproduced would be a worse outcome than shipping
+  it honestly disclosed as indirectly-covered-only. Re-ran the raw,
+  non-Gradle stress harness for real given this touches
+  `createAndWriteMetadata`'s own real logic (even though the specific
+  branch isn't unit-testable, the method's overall correctness under
+  real contention is exactly what that harness exists to check): **25/25
+  rounds exactly correct, 1,200 more individual lock acquisitions, zero
+  lost updates** (task-wide raw-harness total now **330 clean rounds,
+  15,840 individual lock acquisitions, zero lost updates**).
+- **(Minor, with a real second finding surfaced while fixing it)
+  `persist`'s own inline comment claimed "any other outcome (ledgerPath
+  exists, or its own existence can't be determined either) proceeds to
+  the write path below" for the `tmpPreexisted`-branch's own
+  `ledgerPath` check -- but the actual code only special-cases
+  `NoSuchFileException` there; any other `IOException` was never
+  described accurately (it was always going to propagate to the outer
+  catch, not proceed to the write path).** Corrected the comment to
+  match the reviewer's own suggested wording. **While writing the
+  regression test the reviewer's own finding asked for, a further real,
+  disclosed correction surfaced**: the test as first written (modeled
+  directly on the reviewer's own suggested fix, asserting the
+  `tmpPreexisted` branch's own propagation) failed on its very first
+  run -- not because the fix was wrong, but because
+  `verifyIdentityConsistency` (round 28) already performs its own,
+  stricter `Files.readAttributes` check against the identical
+  `ledgerPath`, at the very top of `persist()`, *before* the
+  `tmpPreexisted` branch this finding is about is ever reached. A
+  self-referential symlink at `ledgerPath` is intercepted there first,
+  every time, with a different message -- confirmed empirically by the
+  test's own first, failing run, not assumed. The `tmpPreexisted`
+  branch's own `NoSuchFileException`-only handling remains correct code
+  (a deliberate, defensive re-verification against a genuine TOCTOU race
+  between the two checks, matching this project's own established
+  "re-verify immediately before trusting" convention elsewhere), but its
+  own non-`NoSuchFileException` case is, in practice, unreachable via any
+  non-racing filesystem state -- disclosed as such directly in the
+  production Javadoc, not left implicit. The test itself was rewritten
+  to assert the behavior actually observed (proving the *combined*
+  undetermined-`ledgerPath`-plus-leftover-`.tmp` scenario still fails
+  closed, and that the leftover `.tmp` survives, regardless of which of
+  the two checks fires) rather than a scenario that turned out not to be
+  reachable.
+
+Re-ran after both round-34 fixes: `./gradlew clean build` -- still
+green, **461 tests, 0 failures, 0 errors** project-wide (+1 from the new
+`AccountLedgerStoreTest` regression test; the `AccountLedgerLock` fix has
+no accompanying test, per its own extensively-reconsidered and disclosed
+reasoning above). `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`,
+and `AccountLedgerStoreTest` all reran 3 additional explicit times
+together, stable, plus the 25-round raw stress harness re-run detailed
+above.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3425,7 +3526,10 @@ stress-harness round was not independently warranted.
   `AccountLedgerLockTest`); 40/40 after round 33's (no new test methods
   -- two existing tests' fixtures corrected to re-seed `ledgerPath`
   first, restoring their own coverage of the ownership-tracking path
-  round 31's new check had started shadowing).
+  round 31's new check had started shadowing); 41/41 after round 34's (1
+  more new test -- the combined undetermined-`ledgerPath`-plus-leftover-
+  `.tmp` fail-closed test, rewritten mid-round to assert the behavior
+  actually observed rather than the scenario originally assumed).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3497,7 +3601,11 @@ stress-harness round was not independently warranted.
   meaningful under the new gate, and the permanent test-coverage-gap
   disclosure, documentation-only); 14/14 after round 33's (no
   `AccountLedgerLock`-level changes that round -- both real fixes were
-  in `AccountLedgerStoreTest.java`).
+  in `AccountLedgerStoreTest.java`); 14/14 after round 34's (a real
+  production-code fix -- the `EMPTY_OR_UNPARSEABLE` grouping -- and two
+  Javadoc updates, but no new/modified test methods in this file; that
+  fix's own extensively-reconsidered no-test-coverage reasoning lives in
+  its own round-34 entry above).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3537,9 +3645,12 @@ stress-harness round was not independently warranted.
   build`) after round 31, **4 more times** after round 32 (1 part of
   the full `clean build`, plus 3 further explicit `--rerun-tasks` runs,
   given round 32's own real change to `AccountLedgerLock`'s acquire/steal
-  control flow), and once more (part of the full `clean build`) after
+  control flow), once more (part of the full `clean build`) after
   round 33 (no `AccountLedgerLockMultiProcessTest`-level change that
-  round -- both real fixes were in `AccountLedgerStoreTest.java`).
+  round -- both real fixes were in `AccountLedgerStoreTest.java`), and
+  **4 more times** after round 34 (1 part of the full `clean build`,
+  plus 3 further explicit `--rerun-tasks` runs, given round 34's own
+  real fix to `createAndWriteMetadata`'s re-verification logic).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -3671,28 +3782,41 @@ stress-harness round was not independently warranted.
   further raw-harness verification on its own. Round 33's two fixes are
   both confined to `AccountLedgerStoreTest`'s own test fixtures (no
   production-code change at all), so it likewise did not independently
-  warrant a further raw stress-harness round.
+  warrant a further raw stress-harness round. Round 34's real
+  `AccountLedgerLock` fix (the `EMPTY_OR_UNPARSEABLE` grouping in
+  `createAndWriteMetadata`), by contrast, touches that method's own real
+  logic, so the raw harness WAS re-run for real again this round:
+  **25/25 rounds exactly correct** (1,200 more individual lock
+  acquisitions, zero lost updates), bringing the task-wide raw-harness
+  total to **330 clean rounds, 15,840 individual lock acquisitions, zero
+  lost updates**. The round's other fix (the `AccountLedgerStore`
+  Javadoc/test correction) touches no `AccountLedgerLock` code at all
+  and needed no raw-harness verification of its own.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, and 33 (plus round 27's own 4 additional
-  explicit `AccountLedgerLockMultiProcessTest` reruns and 3 additional
-  explicit `AccountLedgerStoreTest`-new-test reruns; round 28's own 3
-  additional explicit `AccountLedgerStoreTest` reruns; round 29's own 3
-  additional explicit combined reruns of `AccountLedgerLockMultiProcessTest`,
-  `AccountLedgerLockTest`, and `AccountLedgerStoreTest` together; round
-  30's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
-  31's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
-  32's own 3 additional explicit combined reruns of
-  `AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest`
-  together, plus the 25-round raw stress harness re-run; round 33's own
-  3 additional explicit `AccountLedgerStoreTest` reruns, all noted
+  26, 27, 28, 29, 30, 31, 32, 33, and 34 (plus round 27's own 4
+  additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
+  additional explicit `AccountLedgerStoreTest`-new-test reruns; round
+  28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
+  29's own 3 additional explicit combined reruns of
+  `AccountLedgerLockMultiProcessTest`, `AccountLedgerLockTest`, and
+  `AccountLedgerStoreTest` together; round 30's own 3 additional
+  explicit `AccountLedgerStoreTest` reruns; round 31's own 3 additional
+  explicit `AccountLedgerStoreTest` reruns; round 32's own 3 additional
+  explicit combined reruns of `AccountLedgerLockTest` and
+  `AccountLedgerLockMultiProcessTest` together, plus the 25-round raw
+  stress harness re-run; round 33's own 3 additional explicit
+  `AccountLedgerStoreTest` reruns; round 34's own 3 additional explicit
+  combined reruns of `AccountLedgerLockTest`,
+  `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
+  together, plus its own 25-round raw stress harness re-run, all noted
   above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **460 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **461 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -3705,7 +3829,7 @@ stress-harness round was not independently warranted.
   net-new from round 24's + 1 from round 25's + 0 net-new from round
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
-  from round 33's).
+  from round 33's + 1 from round 34's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
