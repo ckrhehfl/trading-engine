@@ -611,6 +611,34 @@ class AccountLedgerStoreTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void persistFailsClosedBeforeWritingWhenTheLedgerPathsExistenceCannotBeDetermined(@TempDir Path tempDir)
+            throws IOException {
+        // verifyIdentityConsistency's own determination-failure branch,
+        // exercised at ledgerPath itself rather than the .tmp path -- a
+        // real, previously-untested branch of round 28's new write-side
+        // identity check. A self-referential symlink at ledgerPath forces
+        // the same real FileSystemException (not NoSuchFileException)
+        // this file's other symlink-based tests already rely on, so
+        // persist() cannot positively confirm ledgerPath is either absent
+        // or a matching-identity ledger -- it must fail closed, and must
+        // do so BEFORE ever creating the candidate tmp file (verified
+        // directly here, not just that the call throws).
+        Path file = tempDir.resolve("ledger.json");
+        Files.createSymbolicLink(file, file);
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        assertFalse(
+                Files.exists(tempDir.resolve("ledger.json.tmp"), LinkOption.NOFOLLOW_LINKS),
+                "persist() must fail closed before ever creating a tmp file when it cannot determine ledgerPath's"
+                        + " own existing state");
+    }
+
+    @Test
     void persistCreatesParentDirectoriesIfNeeded(@TempDir Path tempDir) {
         Path file = tempDir.resolve("nested").resolve("dir").resolve("ledger.json");
         AccountLedger ledger = new AccountLedger(
@@ -636,17 +664,12 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Trivial finding, a further real CodeRabbit review round on
-     * this PR: round 3's own fix (switching the temp-file open options
-     * from a naive {@code CREATE_NEW} to {@code CREATE,
-     * TRUNCATE_EXISTING, WRITE}, matching {@code Files.writeString}'s own
-     * documented defaults) was never exercised by a dedicated test proving
-     * its own stated reason for existing -- that a leftover {@code .tmp}
-     * file from an earlier interrupted {@code persist()} must still be
-     * overwritable on retry, not rejected with {@code
-     * FileAlreadyExistsException}. Proven directly here: a stale, garbage
-     * {@code .tmp} file is written by hand first, then {@code persist} is
-     * called normally and must still succeed, consuming/replacing it.
+     * A leftover {@code .tmp} file from an earlier interrupted {@code
+     * persist()} must still be overwritable on retry, not rejected with
+     * {@link FileAlreadyExistsException} -- proven directly here: a
+     * stale, garbage {@code .tmp} file is written by hand first, then
+     * {@code persist} is called normally and must still succeed,
+     * consuming/replacing it.
      */
     @Test
     void persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt(@TempDir Path tempDir) throws IOException {
@@ -838,40 +861,30 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding, a further real CodeRabbit review round on this
-     * PR -- catching a deeper variant of the same tmp-cleanup-scope gap
-     * round 19's own fix (directly above) closed only partially: that fix
-     * protects the fallback-move-failure case, but a genuine, pre-existing
-     * {@code .tmp} left by an earlier, different {@code persist()} attempt
-     * (crashed, or itself failed with an {@code IOException}) was still
-     * unconditionally eligible for this call's own cleanup if <i>this</i>
-     * call's {@link java.nio.channels.FileChannel#open}/write/force step
-     * then failed -- exactly the evidence {@link AccountLedgerStore#load}'s
+     * A genuine, pre-existing {@code .tmp} left by an earlier, different
+     * {@code persist()} attempt (crashed, or itself failed with an {@code
+     * IOException}) -- exactly the evidence {@link AccountLedgerStore#load}'s
      * own missing-ledger-plus-leftover-{@code .tmp} fail-closed check
-     * depends on, deleted by a completely unrelated, later persist()
-     * attempt's own failure. Fixed by checking whether the tmp path
-     * already existed <i>before</i> this call ever touches it, and only
-     * enabling cleanup when this call is genuinely the one creating it.
+     * depends on -- must never be cleaned up by a later, unrelated {@code
+     * persist()} call's own failure, regardless of which step of that
+     * later call fails.
      *
      * <p>Proven here at the level that is actually deterministic and
-     * portable to reproduce via public {@code java.nio.file} APIs,
-     * disclosed honestly rather than overclaimed: an <b>empty directory</b>
-     * standing in for a real pre-existing {@code .tmp} regular file
-     * reliably makes {@code FileChannel.open(..., CREATE,
-     * TRUNCATE_EXISTING, WRITE)} throw a real {@link
-     * java.nio.file.FileSystemException}
-     * ("Is a directory") -- confirmed via a standalone probe before
-     * writing this test, not assumed -- while leaving the directory
-     * itself both existing and, critically, still <i>deletable</i>
-     * (unlike a non-empty directory, which {@link Files#deleteIfExists}
-     * would refuse regardless of this fix, masking the real property
-     * being tested here). That combination is exactly what makes this a
-     * real test of the new ownership-tracking logic specifically, not
-     * merely a re-confirmation that some deletion attempt happens to fail:
-     * the old code would have called {@code Files.deleteIfExists} on this
-     * exact path and it would have <i>succeeded</i>, silently destroying
-     * the "leftover" -- this test proves the new code never attempts the
-     * delete at all.
+     * portable to reproduce via public {@code java.nio.file} APIs: an
+     * <b>empty directory</b> standing in for a real pre-existing {@code
+     * .tmp} regular file reliably makes {@code FileChannel.open(...,
+     * CREATE, TRUNCATE_EXISTING, WRITE)} throw a real {@link
+     * java.nio.file.FileSystemException} ("Is a directory") -- confirmed
+     * via a standalone probe before writing this test, not assumed --
+     * while leaving the directory itself both existing and, critically,
+     * still <i>deletable</i> (unlike a non-empty directory, which {@link
+     * Files#deleteIfExists} would refuse regardless of this invariant,
+     * masking the real property being tested here). That combination is
+     * exactly what makes this a real test of the ownership-tracking logic
+     * specifically, not merely a re-confirmation that some deletion
+     * attempt happens to fail: code that unconditionally called {@code
+     * Files.deleteIfExists} on this exact path would succeed, silently
+     * destroying the "leftover" -- this test proves that never happens.
      */
     @Test
     void persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall(@TempDir Path tempDir) throws IOException {

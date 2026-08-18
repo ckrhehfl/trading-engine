@@ -156,6 +156,23 @@ import org.slf4j.LoggerFactory;
  * (Task C) never introduces cross-thread sharing without knowing this
  * contract exists.
  *
+ * <p><b>A fourth, separate part of the same caller contract: {@link
+ * #close} does not itself signal success or failure, so a caller wanting
+ * the lock file genuinely released must call {@code close()} again when
+ * that has not yet happened.</b> {@code close()} returns {@code void};
+ * whether a given call actually deleted {@code lockPath} or instead took
+ * one of {@link #doClose}'s retryable paths (a {@link #READ_FAILED}
+ * re-verification read, {@link #EMPTY_OR_UNPARSEABLE} content, or any
+ * {@link IOException} other than {@link NoSuchFileException} from the
+ * delete itself -- see {@link #close}'s own Javadoc for the full
+ * final-vs-retryable distinction) is currently observable only via this
+ * class's own {@code ERROR}-level logging, not any return value or
+ * exception. A caller with a real reason to confirm release (rather than
+ * simply moving on, which is safe -- an un-released lock only delays a
+ * future waiter until {@code staleThreshold}, it never causes incorrect
+ * behavior) must call {@code close()} again rather than assume the first
+ * call was final.
+ *
  * <p><b>Deviation from the governing plan's own literal code sketch</b>:
  * the plan's summary writes {@code Files.createFile(path,
  * StandardOpenOption.CREATE_NEW)} -- {@link Files#createFile} does not

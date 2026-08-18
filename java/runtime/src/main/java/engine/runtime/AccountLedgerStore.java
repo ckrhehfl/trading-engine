@@ -129,13 +129,12 @@ final class AccountLedgerStore {
      *
      * <p><b>Manual resolution procedure for a human hitting this exception
      * because an <i>existing</i> {@code ledgerPath} file cannot be parsed
-     * or fails one of its own structural checks</b> -- documented here
-     * (real Trivial finding, a further real CodeRabbit review round on
-     * this PR) because it is a genuinely different scenario from the
-     * missing-ledger-plus-leftover-{@code .tmp} procedure below: there,
-     * {@code ledgerPath} itself does not exist at all; here, it exists but
-     * this call cannot trust its content. The same fail-closed reasoning
-     * now also gates {@link #persist}'s own {@code
+     * or fails one of its own structural checks</b> -- a genuinely
+     * different scenario from the missing-ledger-plus-leftover-{@code
+     * .tmp} procedure below: there, {@code ledgerPath} itself does not
+     * exist at all; here, it exists but this call cannot trust its
+     * content. The same fail-closed reasoning now also gates {@link
+     * #persist}'s own {@code
      * verifyIdentityConsistency} check on the write side, for the
      * identical reason. (1) move the unparseable file to a backup path
      * (never delete it outright -- it may still hold real, recoverable
@@ -448,67 +447,33 @@ final class AccountLedgerStore {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            // Serialization (MAPPER.writeValueAsBytes) must complete
-            // BEFORE tmp is assigned, not after. If tmp were assigned
-            // first and writeValueAsBytes then threw (a real
-            // JsonProcessingException, an IOException subtype), the outer
-            // catch's own cleanup (see its own comment) would see a
-            // non-null tmp and delete whatever file exists at that path --
-            // but this call never created or opened it via
-            // FileChannel.open below. If a genuine crash from a
-            // different, earlier persist() attempt had left a real
-            // leftover .tmp at that exact path -- the exact evidence
-            // load()'s own missing-ledger-plus-leftover-.tmp fail-closed
-            // check depends on -- this serialization failure would
-            // incorrectly delete it. Assigning tmp only after
-            // serialization succeeds means the cleanup logic's scope is
-            // always exactly "a file this call itself opened," never a
-            // stray survivor from elsewhere.
+            // tmp is assigned only to a file this call itself creates --
+            // never to a pre-existing file, whether a genuine crash
+            // leftover from an earlier persist() attempt (the exact
+            // evidence load()'s own missing-ledger-plus-leftover-.tmp
+            // fail-closed check depends on) or one this call simply
+            // couldn't positively rule out. Serialization
+            // (MAPPER.writeValueAsBytes) happens before tmp is ever
+            // assigned, so a serialization failure never triggers cleanup
+            // of a file this call didn't touch. Ownership of candidateTmp
+            // is then decided before FileChannel.open is called at all
+            // (not after), so an open() failure is covered by the same
+            // ownership decision as a later write/force failure.
             byte[] content = MAPPER.writeValueAsBytes(ledger);
             Path candidateTmp = tmpPathFor(ledgerPath);
-            // A further real regression in this same cleanup logic, a
-            // further real CodeRabbit review round: the previous fix
-            // above (assigning tmp only after serialization succeeds)
-            // closed the serialization-failure case, but not this one.
-            // tmpPathFor's own path is fixed and CREATE + TRUNCATE_EXISTING
-            // below will happily open (and truncate) a genuine crash-
-            // leftover .tmp from an earlier, different persist() attempt
-            // -- exactly the evidence load()'s own missing-ledger-plus-
-            // leftover-.tmp fail-closed check depends on. If THIS call's
-            // own write/force then fails (disk full, permission change,
-            // filesystem error -- all real, not hypothetical), the outer
-            // catch's cleanup would delete that file, even though this
-            // call did not create it and its content may already be
-            // unrecoverably destroyed by the truncate. Deleting it would
-            // still be strictly worse than leaving it: load()'s fail-
-            // closed detection depends only on the file's existence, not
-            // its content being intact, so preserving even a truncated
-            // leftover keeps a human in the loop instead of letting load()
-            // silently bootstrap an empty ledger over another process's
-            // real, lost reservations. Checking existence first and only
-            // enabling cleanup (assigning tmp) when this call is
-            // genuinely the one creating the file closes this precisely:
-            // a pre-existing file, crash-leftover or otherwise, is never
-            // touched by any failure-cleanup path in this method,
-            // regardless of which step fails afterward.
-            // Files.exists(...) swallows an I/O/access error into a plain
-            // false -- indistinguishable from "genuinely absent." That
-            // misreads an undetermined existence as "this call is creating
-            // a new file," making it eligible for the failure-cleanup path
-            // below even though the file may really be another process's
-            // own leftover this call simply failed to positively confirm.
-            // Only a genuine NoSuchFileException means "no candidateTmp"
-            // here -- matching load()'s own established convention above.
+            // Only a genuine NoSuchFileException from
+            // Files.readAttributes means "candidateTmp is absent" --
+            // matching load()'s own convention above, and deliberately
+            // not Files.exists, which swallows an I/O/access error into a
+            // plain false indistinguishable from "genuinely absent."
             // Unlike load() (which fails the whole call closed on a
-            // determination failure, since load() has nothing useful to
-            // fall back to), any OTHER determination failure here fails
-            // safe by treating candidateTmp as pre-existing: tmp stays
-            // unassigned, so it is never a cleanup candidate, but this
-            // persist() attempt itself is not aborted -- the subsequent
-            // FileChannel.open below may still succeed, or fail
-            // independently and be reported on its own terms. The failure
-            // mode this guards against is specifically "wrongly delete a
-            // file this call never created," not "can this call proceed."
+            // determination failure, since it has nothing useful to fall
+            // back to), any other determination failure here treats
+            // candidateTmp as pre-existing instead: tmp stays unassigned,
+            // so it is never a cleanup candidate, but this persist()
+            // attempt itself is not aborted -- the subsequent
+            // FileChannel.open below may still succeed or fail
+            // independently on its own terms.
             boolean tmpPreexisted;
             try {
                 Files.readAttributes(candidateTmp, BasicFileAttributes.class);
@@ -518,21 +483,6 @@ final class AccountLedgerStore {
             } catch (IOException determinationFailure) {
                 tmpPreexisted = true;
             }
-            // Ownership is decided BEFORE open, not after -- a further real
-            // CodeRabbit review round on this same PR: the previous version
-            // of this fix assigned tmp only inside the try-with-resources
-            // body, after FileChannel.open had already succeeded. If open
-            // itself created the file (CREATE semantics) but then failed
-            // for some other reason before the channel was usable, tmp
-            // would stay null even though this call was genuinely the one
-            // that just created an empty file -- leaving it uncleaned,
-            // exactly the availability loss this whole cleanup exists to
-            // prevent. Deciding ownership up front from tmpPreexisted alone
-            // (already captured above, before any of this call's own
-            // filesystem mutations) keeps the same invariant intact
-            // (a pre-existing file is never assigned to tmp, so it is
-            // never a cleanup candidate) while also covering an open()
-            // failure, not just a later write/force failure.
             if (!tmpPreexisted) {
                 tmp = candidateTmp;
             }
@@ -672,13 +622,12 @@ final class AccountLedgerStore {
      * begin with, see {@link #persist}'s own Javadoc), and "exists as a
      * regular file" (must parse as a matching-identity {@link
      * AccountLedger}). Any other determination, read, or parse failure
-     * fails closed by throwing -- unlike round 27's own {@code
-     * tmpPreexisted} check in {@link #persist} itself, which deliberately
-     * fails toward "treat as pre-existing, don't delete" on an
-     * undetermined state, this check's own risk is the opposite direction
-     * (silently overwriting real data, not wrongly deleting it), so an
-     * undetermined state here must abort the call rather than let it
-     * proceed.
+     * fails closed by throwing -- unlike the {@code tmpPreexisted} check
+     * in {@link #persist} itself (above), which deliberately fails toward
+     * "treat as pre-existing, don't delete" on an undetermined state,
+     * this check's own risk is the opposite direction (silently
+     * overwriting real data, not wrongly deleting it), so an undetermined
+     * state here must abort the call rather than let it proceed.
      */
     private static void verifyIdentityConsistency(Path ledgerPath, AccountLedger ledger) {
         BasicFileAttributes attrs;

@@ -45,21 +45,17 @@ import java.util.Objects;
  * no alarm is currently tripped; a real, unresolved reconciliation
  * mismatch (Task D) sets both together. <b>This record's own compact
  * constructor enforces that the two are only ever both-null or both-non-
- * null</b> -- a real Minor finding, real CodeRabbit review of this PR,
- * corrected from an earlier version of this Javadoc that deferred this
- * specific invariant to Task D's {@code AccountLedgerReconciler} as a
- * caller responsibility. That deferral was wrong: this is a pure
- * structural invariant, not an alarm *policy* choice -- whatever alarm
- * policy Task D ends up implementing, a half-populated pair can never be
- * a valid state, for the same reason the duplicate-{@code clientOrderId}
- * check just below is enforced here rather than left to a caller. A
- * corrupted or hand-edited ledger file can produce exactly this state,
- * and either half-populated direction is dangerous: {@code
- * reconciliationAlarmTrippedAt} alone leaves an alarm's cause unknown;
- * {@code reconciliationAlarmReason} alone means a real, unresolved
- * reconciliation mismatch would be read as "no alarm tripped" per this
- * very paragraph's own {@code null}-means-no-alarm contract -- a real
- * weakening of kill-switch-adjacent behavior.
+ * null</b> -- a pure structural invariant, not an alarm *policy* choice:
+ * whatever alarm policy Task D ends up implementing, a half-populated
+ * pair can never be a valid state, for the same reason the duplicate-
+ * {@code clientOrderId} check just below is enforced here rather than
+ * left to a caller. A corrupted or hand-edited ledger file can produce
+ * exactly this state, and either half-populated direction is dangerous:
+ * {@code reconciliationAlarmTrippedAt} alone leaves an alarm's cause
+ * unknown; {@code reconciliationAlarmReason} alone means a real,
+ * unresolved reconciliation mismatch would be read as "no alarm tripped"
+ * per this very paragraph's own {@code null}-means-no-alarm contract --
+ * a real weakening of kill-switch-adjacent behavior.
  *
  * <p>{@code reservations} is defensively copied to an immutable list in
  * the compact constructor, matching {@code TradingLoop.fillHistory()}'s
@@ -67,8 +63,7 @@ import java.util.Objects;
  * mutable list" convention elsewhere in this codebase.
  *
  * <p><b>{@code reservations} must not contain two entries with the same
- * {@code clientOrderId}</b> -- a real Trivial finding, real CodeRabbit
- * review of this PR, fixed here for the same reason {@link
+ * {@code clientOrderId}</b> -- enforced here for the same reason {@link
  * LedgerReservation#notional} is validated in that record itself rather
  * than left to a caller: this record is the single structural
  * enforcement point, and a duplicate is dangerous in either direction. A

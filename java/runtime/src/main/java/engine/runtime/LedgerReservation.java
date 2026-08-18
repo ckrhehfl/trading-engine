@@ -28,8 +28,7 @@ import java.util.UUID;
  * ledger" group except the {@link AccountStateProvider} interface itself
  * -- see the governing plan's "2. The shared ledger" section header.
  *
- * <p><b>{@code notional} must be strictly positive</b> -- a real Major
- * finding from this task's own real CodeRabbit review, fixed here.
+ * <p><b>{@code notional} must be strictly positive</b>.
  * {@code SharedKisAccountLedger} (Task C, not built yet) is expected to
  * derive available capital as {@code allocatedVirtualCapital -
  * Σ(reservations.notional)}; a zero or negative reservation sneaking in

@@ -3013,6 +3013,94 @@ path -- it never fabricates the fail-closed states `close()`'s branches
 distinguish); `AccountLedgerLockTest`'s own new, deterministic test is
 judged sufficient re-verification for this specific change instead.
 
+### Round 30
+
+Against commit `63a48f5` (after round 29's fixes were pushed), landed at
+`2026-08-18T07:32:27Z` UTC, `commit_id` verified via the REST reviews
+API to match HEAD exactly -- `CHANGES_REQUESTED`, 2 actionable comments
+plus 1 shown separately as a **"Duplicate comment"** -- a genuine,
+recurring re-raise of the same review-history-in-comments pattern rounds
+12/23 already swept (see those rounds' own entries), not a new finding
+class. All three addressed:
+
+- **(Duplicate comment, same recurring pattern as rounds 12/23) Review-
+  process narrative ("a real X finding, real CodeRabbit review of this
+  PR, round N's own fix...") had re-accumulated in code comments across
+  four files since the last sweep** -- specifically in the tmp-ownership
+  region of `AccountLedgerStore.persist` (round 27/28's own additions),
+  `AccountLedger`'s alarm-pair-invariant and duplicate-`clientOrderId`
+  paragraphs, `LedgerReservation`'s positive-`notional` paragraph, and
+  two `AccountLedgerStoreTest` method Javadocs (the leftover-`.tmp`-
+  overwrite test and the empty-directory-fixture test). Real, and the
+  reviewer's own stated reasoning is sound and consistent with this
+  project's own established practice for exactly this pattern: round
+  numbers become impossible to cross-reference over time, design
+  rationale belongs in the code, review history belongs in this
+  planning doc or commit messages. Stripped from all four files,
+  preserving every substantive invariant/rationale named explicitly in
+  the finding (the two ownership/`NoSuchFileException` contracts in
+  `AccountLedgerStore`, the alarm-pair invariant and duplicate-
+  `clientOrderId` rationale in `AccountLedger`, why `notional` must be
+  positive in `LedgerReservation`, and each test's own invariant
+  including why the empty-directory fixture must specifically be
+  deletable). **Two further instances found and swept during this same
+  fix, not named in the finding's own cited line ranges**: the round-29
+  manual-recovery-procedure Javadoc addition on `load` and the round-28
+  `verifyIdentityConsistency` Javadoc's own "unlike round 27's own
+  `tmpPreexisted` check" cross-reference -- both added earlier in this
+  same review cycle, before this specific duplicate-comment finding's
+  own cited ranges were computed, so CodeRabbit's dup-detection hadn't
+  caught them yet; cleaned proactively rather than left for a future
+  round to re-flag, since they are the identical pattern this finding is
+  about. The `tmpPreexisted`-check cross-reference was kept (it is
+  substantive design reasoning, not review-history noise) but reworded
+  to drop the round-number reference specifically, replaced with a
+  direct "(above)" pointer -- consistent with the reviewer's own stated
+  reason for objecting to round numbers in the first place.
+  Documentation-only; no behavior change in any of the four files.
+- **(New) `AccountLedgerLock`'s own class Javadoc had three "separate
+  parts" of its caller contract but was missing a fourth: that `close()`
+  returns `void` and therefore signals neither success nor failure, so a
+  caller with a real reason to confirm release must call `close()`
+  again when a first call took one of `doClose`'s retryable paths.**
+  Real, and a natural companion to round 29's own `EMPTY_OR_UNPARSEABLE`
+  retry-ability fix earlier this same review cycle -- that fix made
+  retrying meaningful, but nothing in this class's own public contract
+  told a caller it might ever need to. Fixed with a new fourth
+  caller-contract paragraph, explicitly naming that an un-released lock
+  is safe to leave alone (it only delays a future waiter until
+  `staleThreshold`, never causes incorrect behavior) -- a caller only
+  needs to retry `close()` if it has a real reason to confirm release,
+  not as a blanket requirement. Documentation-only.
+- **(New) `AccountLedgerStoreTest` had a write-path test for `persist`'s
+  own `verifyIdentityConsistency` determination-failure branch at the
+  `.tmp` path (round 27's own symlink test, reused by round 28's finding
+  4/5) but none at `ledgerPath` itself** -- round 28's own new check
+  reads `ledgerPath`, not the `.tmp` path, so its own determination-
+  failure branch had no dedicated coverage at the path it actually
+  reads. Real, genuine coverage gap. Fixed with a new test,
+  `persistFailsClosedBeforeWritingWhenTheLedgerPathsExistenceCannotBeDetermined`,
+  reusing the same self-referential-symlink technique at `ledgerPath`
+  itself rather than the `.tmp` sibling, and additionally asserting the
+  candidate `.tmp` file is never created at all -- proving `persist`
+  fails closed *before* any write-side machinery runs, not merely that
+  it eventually throws. This test passed immediately against the
+  *existing* production code (confirming the underlying behavior was
+  already correct -- `verifyIdentityConsistency` runs before `Path tmp =
+  null` is even declared -- only previously uncovered), the same "real
+  gap closed, not a red-then-green fix" shape as round 29's analogous
+  `load`-side coverage test.
+
+Re-ran after all three round-30 fixes: `./gradlew clean build` -- still
+green, **454 tests, 0 failures, 0 errors** project-wide (+1 from the new
+`AccountLedgerStoreTest` regression test; the comment-stripping and
+`AccountLedgerLock` Javadoc fixes were documentation-only, no new test
+methods). `AccountLedgerStoreTest` reran 3 additional explicit times
+(`--rerun-tasks`), stable. None of this round's three changes touch
+`AccountLedgerLock`'s own acquire/steal control flow (the class Javadoc
+addition is documentation-only), so a further raw stress-harness round
+was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3066,7 +3154,11 @@ judged sufficient re-verification for this specific change instead.
   35/35 after round 29's (1 more new test --
   `loadFailsClosedWhenTheTmpFilesExistenceCannotBeDetermined`, closing a
   real, previously-uncovered gap on `load`'s own third missing-`.tmp`-
-  determination branch -- plus a missing-import fix, documentation-only).
+  determination branch -- plus a missing-import fix, documentation-only);
+  36/36 after round 30's (1 more new test --
+  `persistFailsClosedBeforeWritingWhenTheLedgerPathsExistenceCannotBeDetermined`,
+  closing the write-side analogue of round 29's `load`-side gap -- plus
+  the comment-stripping sweep, documentation-only).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3128,7 +3220,9 @@ judged sufficient re-verification for this specific change instead.
   `AccountLedgerStoreTest.java`); 12/12 after round 29's (1 more new test
   -- `closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`
   -- plus the `System.nanoTime()` subtraction-comparison fix to an
-  existing assertion, no new method for that one).
+  existing assertion, no new method for that one); 12/12 after round
+  30's (a class-Javadoc-only fourth caller-contract addition, no
+  test-level change).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3266,22 +3360,28 @@ judged sufficient re-verification for this specific change instead.
   operator fix, a doc-only Javadoc addition, a new `AccountLedgerStore`-
   level test, a missing test import, and `LockContenderMain`'s own
   argument validation) touch no `AccountLedgerLock` control flow at
-  all).
+  all; round 30's three fixes -- a comment-stripping sweep (documentation
+  only, across four files), a class-Javadoc-only fourth caller-contract
+  addition to `AccountLedgerLock`, and a new `AccountLedgerStore`-level
+  test -- likewise touch no `AccountLedgerLock` acquire/steal control
+  flow, so it likewise did not independently warrant a further raw
+  stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, and 29 (plus round 27's own 4 additional explicit
+  26, 27, 28, 29, and 30 (plus round 27's own 4 additional explicit
   `AccountLedgerLockMultiProcessTest` reruns and 3 additional explicit
   `AccountLedgerStoreTest`-new-test reruns; round 28's own 3 additional
   explicit `AccountLedgerStoreTest` reruns; round 29's own 3 additional
   explicit combined reruns of `AccountLedgerLockMultiProcessTest`,
-  `AccountLedgerLockTest`, and `AccountLedgerStoreTest` together, all
+  `AccountLedgerLockTest`, and `AccountLedgerStoreTest` together; round
+  30's own 3 additional explicit `AccountLedgerStoreTest` reruns, all
   noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **453 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **454 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -3292,7 +3392,8 @@ judged sufficient re-verification for this specific change instead.
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
-  26's + 1 from round 27's + 2 from round 28's + 2 from round 29's).
+  26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
+  from round 30's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
