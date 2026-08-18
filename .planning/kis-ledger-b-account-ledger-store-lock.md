@@ -3460,6 +3460,75 @@ and `AccountLedgerStoreTest` all reran 3 additional explicit times
 together, stable, plus the 25-round raw stress harness re-run detailed
 above.
 
+### Round 35
+
+Against commit `4942a37` (after round 34's fixes were pushed), landed at
+`2026-08-18T12:42:53Z` UTC, `commit_id` verified via the REST reviews
+API to match HEAD exactly -- `CHANGES_REQUESTED`, 1 actionable comment,
+tagged **"Heavy lift"** by the reviewer itself. The same recurring
+review-history-in-comments pattern already swept in rounds 12, 23, and
+30 -- but this time genuinely large in scope, not a narrow follow-up:
+
+- **(Minor, "Heavy lift") `AccountLedgerLock.java`'s own class Javadoc
+  declares "this Javadoc documents this class's current behavioral
+  contract only," with review history deferred to this planning doc --
+  but that declared policy had been quietly violated in roughly twenty
+  separate locations across the file, accumulated one round at a time
+  since round 12's own last full sweep of this class specifically (round
+  16's `close()`/`doClose()` fix, round 22's `nanoTime` fix, round 25's
+  thread-confinement paragraph, round 29's `EMPTY_OR_UNPARSEABLE` retry
+  fix, round 32's hostname gate, round 34's `EMPTY_OR_UNPARSEABLE`
+  grouping fix, and others, each adding its own "a real X finding, a
+  further real CodeRabbit review round" phrase in the moment without a
+  follow-up sweep). Verified directly by grep before starting, not
+  assumed from the finding's own prose alone -- confirmed roughly twenty
+  real occurrences in `AccountLedgerLock.java` and one in
+  `AccountLedgerStore.java` (this file's own round-30 sweep had already
+  caught everything else there; the one remaining instance was round
+  34's own very recent addition, not yet swept). Given the reviewer's own
+  "Heavy lift" tag and the confirmed scope, this round did the genuinely
+  thorough sweep rather than another narrow, soon-to-be-re-flagged partial
+  fix: every "a real X finding, [a further] real CodeRabbit review round
+  [on this PR]" phrase and bare round-number reference removed from both
+  files, in roughly twenty separate edits, while preserving every real
+  design rationale, empirical measurement (the real 500ms+ drvfs
+  latency figures, the real 4-process/19-vs-20 lost-update reproduction,
+  the real 200-write/sub-3ms mtime-precision probe), and current
+  behavioral invariant the surrounding prose actually described --
+  several paragraphs with substantial, still-load-bearing technical
+  content (e.g. `tryStealIfStale`'s own TOCTOU-window Javadoc, the
+  generation-safe-cleanup catch-block comment in
+  `createAndWriteMetadata`, the `doClose`'s `closed`-boolean-return
+  contract) were reworded to state the current contract and reasoning
+  directly, in present tense, rather than as a narrative of what an
+  earlier, wrong version used to do. **One further, real, disclosed bug
+  found and fixed while doing this sweep, not merely the requested
+  cleanup**: the one remaining `AccountLedgerStore.java` comment (round
+  34's own) referenced a test method by its old name,
+  `persistFailsClosedThroughTheOuterCatchWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileExists`
+  -- but round 34's own later fix, applied within the same round, had
+  already renamed that test to
+  `persistFailsClosedWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileAlsoExists`
+  after discovering the original name described a scenario that turned
+  out not to be reachable (see round 34's own entry above). The stale
+  cross-reference was never caught because it lives in a plain code
+  comment, not a Javadoc `{@link}` the compiler would have flagged --
+  corrected to the real, current test name as part of this same sweep.
+
+Re-ran after the round-35 sweep: `./gradlew clean build` -- still green,
+**461 tests, 0 failures, 0 errors** project-wide (unchanged count --
+documentation/comment-only, no behavioral change in either file, no new
+or modified test methods). `AccountLedgerLockTest`,
+`AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest` all
+reran 3 additional explicit times together, stable. The raw,
+non-Gradle stress harness was **not** independently re-run this round --
+despite touching essentially every method in `AccountLedgerLock.java`,
+every change is comment/Javadoc text only (verified directly: the test
+count and every test's own pass/fail outcome are byte-for-byte unchanged
+from before this round), matching this task's own established pattern
+for documentation-only rounds (rounds 12, 17, 24, 28's `@EnabledOnOs`
+addition, and 30 all skipped the raw harness for the identical reason).
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3529,7 +3598,9 @@ above.
   round 31's new check had started shadowing); 41/41 after round 34's (1
   more new test -- the combined undetermined-`ledgerPath`-plus-leftover-
   `.tmp` fail-closed test, rewritten mid-round to assert the behavior
-  actually observed rather than the scenario originally assumed).
+  actually observed rather than the scenario originally assumed); 41/41
+  after round 35's (comment-only sweep -- one stale test-name
+  cross-reference corrected inside a comment, no test-level change).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3605,7 +3676,9 @@ above.
   production-code fix -- the `EMPTY_OR_UNPARSEABLE` grouping -- and two
   Javadoc updates, but no new/modified test methods in this file; that
   fix's own extensively-reconsidered no-test-coverage reasoning lives in
-  its own round-34 entry above).
+  its own round-34 entry above); 14/14 after round 35's (a large
+  comment/Javadoc-only sweep touching most of this file's methods, zero
+  behavioral change, no test-level change).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3647,10 +3720,13 @@ above.
   given round 32's own real change to `AccountLedgerLock`'s acquire/steal
   control flow), once more (part of the full `clean build`) after
   round 33 (no `AccountLedgerLockMultiProcessTest`-level change that
-  round -- both real fixes were in `AccountLedgerStoreTest.java`), and
+  round -- both real fixes were in `AccountLedgerStoreTest.java`),
   **4 more times** after round 34 (1 part of the full `clean build`,
   plus 3 further explicit `--rerun-tasks` runs, given round 34's own
-  real fix to `createAndWriteMetadata`'s re-verification logic).
+  real fix to `createAndWriteMetadata`'s re-verification logic), and
+  once more (part of the full `clean build`) after round 35 (a
+  comment/Javadoc-only sweep, zero behavioral change, no test-level
+  change to this file).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -3791,12 +3867,17 @@ above.
   total to **330 clean rounds, 15,840 individual lock acquisitions, zero
   lost updates**. The round's other fix (the `AccountLedgerStore`
   Javadoc/test correction) touches no `AccountLedgerLock` code at all
-  and needed no raw-harness verification of its own.
+  and needed no raw-harness verification of its own. Round 35's own
+  large sweep is comment/Javadoc-only in both files, with zero
+  behavioral change (verified directly, not merely asserted -- test
+  count and every individual test's own pass/fail outcome are
+  byte-for-byte unchanged from round 34), so it likewise did not
+  independently warrant a further raw stress-harness round.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, and 34 (plus round 27's own 4
+  26, 27, 28, 29, 30, 31, 32, 33, 34, and 35 (plus round 27's own 4
   additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -3811,8 +3892,10 @@ above.
   `AccountLedgerStoreTest` reruns; round 34's own 3 additional explicit
   combined reruns of `AccountLedgerLockTest`,
   `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
-  together, plus its own 25-round raw stress harness re-run, all noted
-  above).
+  together, plus its own 25-round raw stress harness re-run; round 35's
+  own 3 additional explicit combined reruns of `AccountLedgerLockTest`,
+  `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
+  together, all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -3829,7 +3912,7 @@ above.
   net-new from round 24's + 1 from round 25's + 0 net-new from round
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
-  from round 33's + 1 from round 34's).
+  from round 33's + 1 from round 34's + 0 net-new from round 35's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

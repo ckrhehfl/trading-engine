@@ -508,24 +508,19 @@ final class AccountLedgerStore {
                 // outer catch instead, failing the whole call closed: this
                 // method cannot rule out the missing-ledger-plus-leftover-
                 // .tmp state, so it must not consume that evidence.
-                // Real Minor finding, a further real CodeRabbit review
-                // round: this paragraph previously (incorrectly) claimed
-                // an undetermined ledgerPath also proceeded to the write
-                // path -- corrected here to match what this isolated
-                // try/catch actually does. In practice, on any real
-                // (non-racing) filesystem state, this specific branch's
-                // own IOException-from-readAttributes case is not
-                // reachable via this call alone: verifyIdentityConsistency
-                // already performs its own, earlier Files.readAttributes
-                // check against this exact same ledgerPath at the very top
-                // of persist(), before this try/catch is ever reached, and
-                // that earlier check already throws its own
-                // IllegalStateException for the identical determination
-                // failure -- confirmed directly, not assumed, by a real
-                // test attempting to reach this branch via a
+                // In practice, on any real (non-racing) filesystem state,
+                // this specific branch's own IOException-from-readAttributes
+                // case is not reachable via this call alone:
+                // verifyIdentityConsistency already performs its own,
+                // earlier Files.readAttributes check against this exact
+                // same ledgerPath at the very top of persist(), before this
+                // try/catch is ever reached, and that earlier check already
+                // throws its own IllegalStateException for the identical
+                // determination failure -- confirmed directly, not assumed,
+                // by a real test attempting to reach this branch via a
                 // self-referential symlink at ledgerPath, which observed
                 // verifyIdentityConsistency's own message instead (see
-                // AccountLedgerStoreTest#persistFailsClosedThroughTheOuterCatchWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileExists).
+                // AccountLedgerStoreTest#persistFailsClosedWhenLedgerPathsExistenceCannotBeDeterminedAndATmpFileAlsoExists).
                 // This try/catch's own NoSuchFileException-only handling
                 // remains correct as written -- it is a defensive
                 // redundancy against a genuine TOCTOU race between these

@@ -197,11 +197,10 @@ final class AccountLedgerLock implements AutoCloseable {
     /**
      * Own copy, not shared with {@link AccountLedgerStore} -- see that
      * class's Javadoc for why. {@code FAIL_ON_TRAILING_TOKENS} enabled
-     * here too -- proactively, not itself flagged by CodeRabbit this
-     * round, but the identical reasoning behind {@code
-     * AccountLedgerStore}'s own real Major finding (Jackson silently
-     * ignores anything after the first complete JSON value by default)
-     * applies equally to this class's own {@link LockMetadata} parsing.
+     * here too, proactively, applying the identical reasoning {@code
+     * AccountLedgerStore} already applies to its own JSON parsing
+     * (Jackson silently ignores anything after the first complete JSON
+     * value by default) to this class's own {@link LockMetadata} parsing.
      */
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
@@ -219,29 +218,27 @@ final class AccountLedgerLock implements AutoCloseable {
      * still deleting <i>this instance's own</i> lock generation, not a
      * different one a sibling legitimately acquired in the meantime. See
      * {@link #close}'s own Javadoc for the real, measured scenario this
-     * closes (a second Critical finding from this task's own real
-     * CodeRabbit review, the release-side counterpart to {@link
-     * #tryStealIfStale}'s acquire-side fix).
+     * closes -- the release-side counterpart to {@link
+     * #tryStealIfStale}'s acquire-side fix.
      */
     private final LockMetadata ownMetadata;
 
     /**
-     * Real Major finding, a further real CodeRabbit review round on this
-     * PR: {@link #close} was not idempotent -- a second call on an
+     * {@link #close} must be idempotent -- a second call on an
      * already-closed instance (this project's own convention is
      * try-with-resources, which never double-closes on its own, but
-     * nothing prevented a caller from doing so directly, and {@link
+     * nothing prevents a caller from doing so directly, and {@link
      * AutoCloseable#close()}'s own contract does not forbid it the way
-     * {@link java.io.Closeable#close()}'s stricter one does) would
-     * re-read {@code lockPath} and, if some other process had since
+     * {@link java.io.Closeable#close()}'s stricter one does) must not
+     * re-read {@code lockPath} and, if some other process has since
      * legitimately acquired a brand new generation there, log a real
      * {@code ERROR} ("no longer holds this instance's own metadata...")
-     * that reads as a genuine cross-process safety event even though
+     * that would read as a genuine cross-process safety event even though
      * nothing wrong actually happened -- a harmless double-close would
-     * never have deleted the sibling's lock (the existing generation
-     * check already prevented that), but the misleading log noise alone
-     * is a real problem for anyone investigating it. Guarded here rather
-     * than left to each future caller to avoid double-closing on its own.
+     * never delete the sibling's lock (the existing generation check
+     * already prevents that), but the misleading log noise alone is a
+     * real problem for anyone investigating it. Guarded here rather than
+     * left to each future caller to avoid double-closing on its own.
      */
     private boolean closed;
 
@@ -272,17 +269,16 @@ final class AccountLedgerLock implements AutoCloseable {
         long startNanos = System.nanoTime();
         long budgetNanos = totalRetryBudget.toNanos();
         long backoffMillis = INITIAL_BACKOFF_MILLIS;
-        // Real Trivial finding, a further real CodeRabbit review round on
-        // this PR: a transient (non-FileAlreadyExistsException) IOException
-        // during creation used to be promoted straight to
-        // IllegalStateException on its very first occurrence, consuming
-        // none of totalRetryBudget -- inconsistent with this class's own
-        // documented, measured 500ms+ transient I/O latency on this
-        // repository's real drvfs mount, which is exactly the kind of
-        // environment characteristic a single retry, not zero, should be
-        // able to ride out. Tracked here so a real, final failure still
-        // reports its actual root cause once the budget is genuinely
-        // exhausted, rather than a generic timeout message with no cause.
+        // A transient (non-FileAlreadyExistsException) IOException during
+        // creation must consume retry budget like ordinary contention, not
+        // be promoted straight to IllegalStateException on its very first
+        // occurrence -- this class's own documented, measured 500ms+
+        // transient I/O latency on this repository's real drvfs mount is
+        // exactly the kind of environment characteristic a single retry,
+        // not zero, should be able to ride out. Tracked here so a real,
+        // final failure still reports its actual root cause once the
+        // budget is genuinely exhausted, rather than a generic timeout
+        // message with no cause.
         IOException lastTransientFailure = null;
 
         while (true) {
@@ -315,15 +311,15 @@ final class AccountLedgerLock implements AutoCloseable {
                 }
                 return new AccountLedgerLock(lockPath, ownMetadata);
             } catch (FileAlreadyExistsException e) {
-                // tryStealIfStale can itself throw IOException (a real
-                // Major finding, a further real CodeRabbit review round):
-                // its own delete/read-path failures used to be wrapped in
-                // IllegalStateException and thrown directly, bypassing
-                // this loop's retry budget entirely (this catch block is a
-                // sibling of, not nested inside, the catch (IOException e)
-                // block below, so it was never caught there either). Now
-                // handled inline, folded into the exact same
-                // lastTransientFailure-tracking backoff-and-retry path.
+                // tryStealIfStale can itself throw IOException -- its own
+                // delete/read-path failures must not be wrapped in
+                // IllegalStateException and thrown directly, which would
+                // bypass this loop's retry budget entirely (this catch
+                // block is a sibling of, not nested inside, the catch
+                // (IOException e) block below, so it would never be caught
+                // there either). Handled inline instead, folded into the
+                // same lastTransientFailure-tracking backoff-and-retry
+                // path.
                 try {
                     if (tryStealIfStale(lockPath, staleThreshold)) {
                         continue; // steal already known-stale -- retry create immediately, no backoff
@@ -424,9 +420,9 @@ final class AccountLedgerLock implements AutoCloseable {
      * the re-read found, and this method has no business touching it. The
      * comparison treats two <i>transient</i> outcomes differently from
      * that genuine mismatch -- a read failure ({@link #readMetadataOrNull}
-     * returning {@link #READ_FAILED}) <b>and</b>, since a further real
-     * CodeRabbit review round, empty or unparseable content ({@link
-     * #EMPTY_OR_UNPARSEABLE}) as well, grouped together for the identical
+     * returning {@link #READ_FAILED}) <b>and</b> empty or unparseable
+     * content ({@link #EMPTY_OR_UNPARSEABLE}) as well, grouped together
+     * for the identical
      * reason {@link #close}'s own {@code doClose} already groups them:
      * neither proves ownership was actually lost, since this holder just
      * created and wrote the file in this same call, and this project's
@@ -443,12 +439,11 @@ final class AccountLedgerLock implements AutoCloseable {
      *
      * <p><b>Known, permanent test-coverage gap on this method's own
      * post-write re-verification branches -- both the genuine-generation-
-     * mismatch {@code null}-return path above, and, since a further real
-     * CodeRabbit review round, the {@link #READ_FAILED}/{@link
-     * #EMPTY_OR_UNPARSEABLE} cleanup-then-{@code null} path immediately
-     * above that -- deliberately left untested, reconsidered on five
-     * separate real code-review passes on this same PR and declined each
-     * time, not an oversight.</b> Proving any of these branches directly
+     * mismatch {@code null}-return path above, and the {@link
+     * #READ_FAILED}/{@link #EMPTY_OR_UNPARSEABLE} cleanup-then-{@code
+     * null} path immediately above that -- deliberately left untested,
+     * reconsidered repeatedly and declined each time, not an
+     * oversight.</b> Proving any of these branches directly
      * would require a real, second thread or process to interfere with
      * {@code lockPath} in the exact, unobservable window between this
      * method's own write completing and its immediately-following
@@ -483,8 +478,8 @@ final class AccountLedgerLock implements AutoCloseable {
      * {@code EMPTY_OR_UNPARSEABLE} grouping fix itself was still made
      * (not declined) despite this -- its correctness rests on matching an
      * already-independently-validated principle ({@code doClose}'s own
-     * identical grouping, accepted on an earlier review round) applied to
-     * a structurally analogous call site, and on {@link
+     * identical grouping) applied to a structurally analogous call site,
+     * and on {@link
      * #deleteIfStillOwnGeneration}'s own already-proven safety property,
      * not on a fresh, untested claim of its own. These branches' only
      * coverage today is indirect: the multi-thread ({@code
@@ -501,13 +496,12 @@ final class AccountLedgerLock implements AutoCloseable {
         }
         // Atomic create-and-open in one call -- throws
         // FileAlreadyExistsException if it already exists, same as
-        // Files.createFile did, and deliberately left to propagate
-        // straight to acquire() (a real Trivial finding, a further real
-        // CodeRabbit review round: a try/catch here that only rethrows
-        // the exact same exception has no behavioral effect and was
-        // simplified away) -- nothing was created in that case, so there
-        // is nothing for this method's own cleanup-on-failure logic below
-        // to clean up; acquire()'s existing FileAlreadyExistsException
+        // Files.createFile does, and deliberately left to propagate
+        // straight to acquire() (a try/catch here that only rethrows the
+        // exact same exception would have no behavioral effect, so none
+        // exists here) -- nothing was created in that case, so there is
+        // nothing for this method's own cleanup-on-failure logic below to
+        // clean up; acquire()'s existing FileAlreadyExistsException
         // handling is exactly the right path for it.
         SeekableByteChannel channel =
                 Files.newByteChannel(lockPath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
@@ -515,9 +509,8 @@ final class AccountLedgerLock implements AutoCloseable {
         try (channel) {
             metadata = new LockMetadata(ProcessHandle.current().pid(), hostname(), Instant.now());
             // WritableByteChannel#write is not guaranteed to consume the
-            // whole buffer in one call (real Major finding, real
-            // CodeRabbit review of this PR -- confirmed against the JDK's
-            // own documented contract, not assumed) -- loop until fully
+            // whole buffer in one call (confirmed against the JDK's own
+            // documented contract, not assumed) -- loop until fully
             // written, matching this class's own careful, don't-assume
             // discipline everywhere else in this file.
             ByteBuffer buffer = ByteBuffer.wrap(MAPPER.writeValueAsBytes(metadata));
@@ -536,17 +529,16 @@ final class AccountLedgerLock implements AutoCloseable {
                 // A transient read failure proves nothing about the
                 // file's real content -- see this method's own
                 // "Re-verification after write" Javadoc for why this must
-                // not be treated the same as a genuine mismatch. Real
-                // Major finding, a further real CodeRabbit review round:
-                // EMPTY_OR_UNPARSEABLE used to fall through to the
-                // genuine-mismatch branch below (no cleanup) instead of
-                // being grouped here -- inconsistent with this same
-                // sentinel's own treatment in doClose(), which already
-                // treats it as a transient read/visibility gap on this
-                // instance's own still-valid content (a real,
-                // previously-measured characteristic of this project's
-                // own drvfs mount), not proof of a different holder. Left
-                // ungrouped, a holder whose own re-verification read hit
+                // not be treated the same as a genuine mismatch.
+                // EMPTY_OR_UNPARSEABLE must be grouped here too, not left
+                // to fall through to the genuine-mismatch branch below (no
+                // cleanup) -- consistent with this same sentinel's own
+                // treatment in doClose(), which already treats it as a
+                // transient read/visibility gap on this instance's own
+                // still-valid content (a real, previously-measured
+                // characteristic of this project's own drvfs mount), not
+                // proof of a different holder. Left ungrouped, a holder
+                // whose own re-verification read hit
                 // this sentinel would return null without deleting its
                 // own real, just-written, live-looking file -- acquire()
                 // would then retry, find that same file via
@@ -571,33 +563,25 @@ final class AccountLedgerLock implements AutoCloseable {
             }
             return null;
         } catch (IOException | RuntimeException e) {
-            // Generation-safe cleanup -- a real Major finding, a further
-            // real CodeRabbit review round, re-flagged as a duplicate of
-            // an earlier disclosed-and-declined residual gap in this same
-            // spot: the original version of this catch unconditionally
-            // called Files.deleteIfExists(lockPath), never verifying the
-            // delete target was still this holder's own generation. The
-            // real sequence this makes possible: (1) this holder creates
-            // the file via CREATE_NEW; (2) the write fails slowly enough
-            // for (3) a sibling to legitimately reclaim the still-empty
-            // file via tryStealIfAbandonedEmpty and create its own real
-            // generation there; (4) this catch then deletes the
-            // sibling's real, live lock file; (5) a third process
-            // acquires immediately, and two processes are now inside the
-            // critical section at once -- a real lost update on the
-            // shared risk ledger. Originally judged an acceptable,
-            // disclosed residual gap (this precondition -- a genuine I/O
-            // failure during the write itself, not just slowness -- is
-            // materially rarer than the cases this file's other fixes
-            // address) on the reasoning that closing it would need new
-            // machinery; that reasoning no longer holds now that {@link
-            // #deleteIfStillOwnGeneration} already exists for exactly
-            // this purpose (built for the READ_FAILED case in an earlier
-            // round) -- reusing it here costs nothing new, so there is no
-            // remaining reason to leave this gap open. metadata may still
-            // be null here (e.g. if constructing the LockMetadata record
-            // itself somehow threw, though nothing in its own construction
-            // can) -- guarded rather than assumed.
+            // Generation-safe cleanup: this catch must verify the delete
+            // target is still this holder's own generation before
+            // deleting, not unconditionally call
+            // Files.deleteIfExists(lockPath). The real sequence an
+            // unconditional delete would make possible: (1) this holder
+            // creates the file via CREATE_NEW; (2) the write fails slowly
+            // enough for (3) a sibling to legitimately reclaim the
+            // still-empty file via tryStealIfAbandonedEmpty and create its
+            // own real generation there; (4) this catch then deletes the
+            // sibling's real, live lock file; (5) a third process acquires
+            // immediately, and two processes are now inside the critical
+            // section at once -- a real lost update on the shared risk
+            // ledger. {@link #deleteIfStillOwnGeneration} (built for the
+            // READ_FAILED case elsewhere in this class) already provides
+            // exactly the needed generation-safe delete, reused here at no
+            // extra cost. metadata may still be null here (e.g. if
+            // constructing the LockMetadata record itself somehow threw,
+            // though nothing in its own construction can) -- guarded
+            // rather than assumed.
             if (metadata != null) {
                 try {
                     deleteIfStillOwnGeneration(lockPath, metadata);
@@ -615,11 +599,11 @@ final class AccountLedgerLock implements AutoCloseable {
      * false} if the lock is live/recent (caller should back off) or its
      * metadata could not be read right now.
      *
-     * <p><b>Real TOCTOU finding from this task's own required real-second-
-     * JVM test, fixed here rather than merely disclosed</b> (see {@link
-     * AccountLedgerLockMultiProcessTest}'s Javadoc for the full account of
-     * how this was found): reading this lock's metadata and judging it
-     * stale is <b>not instantaneous</b> -- real, repeatable measurements
+     * <p><b>A real TOCTOU window this method's own re-verification step
+     * exists to close</b> (see {@link AccountLedgerLockMultiProcessTest}'s
+     * Javadoc for the real multi-JVM test that found it): reading this
+     * lock's metadata and judging it stale is <b>not instantaneous</b> --
+     * real, repeatable measurements
      * on this project's actual drvfs mount under genuine multi-process
      * contention showed gaps of 500ms or more between a successful {@link
      * Files#readString} and this method's own staleness verdict (traced
@@ -662,23 +646,23 @@ final class AccountLedgerLock implements AutoCloseable {
      * the caller re-evaluates fresh on its next attempt rather than ever
      * acting on stale information about what the file currently holds.
      *
-     * <p><b>Declares {@code throws IOException}, a real Major finding, a
-     * further real CodeRabbit review round on this PR.</b> This method
-     * (and the delete-path helpers it calls, {@link
-     * #tryStealIfAbandonedEmpty}/{@link #lastModifiedTimeOrNull}) used to
-     * wrap a genuine delete/read failure in {@link IllegalStateException}
-     * and throw it directly -- but this method is called from {@link
-     * #acquire}'s {@code catch (FileAlreadyExistsException e)} block, a
-     * sibling of {@code acquire}'s own {@code catch (IOException e)}
-     * handler, not nested inside it -- so that {@code IllegalStateException}
-     * propagated straight out of {@code acquire()} entirely, consuming
-     * none of {@code totalRetryBudget}, inconsistent with round 7's own
-     * fix giving every other transient-I/O-failure path in this class a
-     * bounded retry instead of an immediate hard failure. Now propagates
-     * the real {@link IOException} instead; {@code acquire()} catches it
-     * at the steal call site and folds it into the same
-     * {@code lastTransientFailure}-tracking backoff-and-retry path its own
-     * direct {@link #createAndWriteMetadata} failures already use.
+     * <p><b>Declares {@code throws IOException} rather than wrapping a
+     * genuine delete/read failure in {@link IllegalStateException} and
+     * throwing it directly.</b> This method (and the delete-path helpers
+     * it calls, {@link #tryStealIfAbandonedEmpty}/{@link
+     * #lastModifiedTimeOrNull}) is called from {@link #acquire}'s {@code
+     * catch (FileAlreadyExistsException e)} block, a sibling of {@code
+     * acquire}'s own {@code catch (IOException e)} handler, not nested
+     * inside it -- so an {@code IllegalStateException} thrown directly
+     * here would propagate straight out of {@code acquire()} entirely,
+     * consuming none of {@code totalRetryBudget}, inconsistent with this
+     * class's own established pattern of giving every other transient-
+     * I/O-failure path a bounded retry instead of an immediate hard
+     * failure. Propagating the real {@link IOException} instead lets
+     * {@code acquire()} catch it at the steal call site and fold it into
+     * the same {@code lastTransientFailure}-tracking backoff-and-retry
+     * path its own direct {@link #createAndWriteMetadata} failures already
+     * use.
      */
     private static boolean tryStealIfStale(Path lockPath, Duration staleThreshold) throws IOException {
         LockMetadata metadata = readMetadataOrNull(lockPath);
@@ -730,13 +714,13 @@ final class AccountLedgerLock implements AutoCloseable {
         }
 
         // Logged only now, after re-verification confirms a delete is
-        // actually about to happen (real Trivial finding, real CodeRabbit
-        // review of this PR) -- logging any earlier (e.g. right after the
-        // initial staleness judgment, before re-verification) would produce
-        // a false-positive "stealing" ERROR even on the common, benign path
-        // where re-verification finds the lock no longer matches (a
-        // legitimate new holder already took it, or a sibling already stole
-        // it) and this method returns false without deleting anything.
+        // actually about to happen -- logging any earlier (e.g. right
+        // after the initial staleness judgment, before re-verification)
+        // would produce a false-positive "stealing" ERROR even on the
+        // common, benign path where re-verification finds the lock no
+        // longer matches (a legitimate new holder already took it, or a
+        // sibling already stole it) and this method returns false without
+        // deleting anything.
         log.error(
                 "stealing account ledger lock {} -- recorded holder pid={} hostname={} acquiredAt={}"
                         + " (holderProvablyDead={}, acquiredAtOlderThanStaleThreshold={}, staleThreshold={})."
@@ -757,10 +741,9 @@ final class AccountLedgerLock implements AutoCloseable {
             // contend for the now-vacant (or newly-recreated) file
             // normally on the next loop iteration.
         }
-        // Any other IOException propagates -- see this method's own
-        // Javadoc for why (real Major finding, a further real CodeRabbit
-        // review round: must reach acquire()'s retry-budget handling, not
-        // be wrapped into an immediately-propagating IllegalStateException).
+        // Any other IOException propagates -- must reach acquire()'s
+        // retry-budget handling, not be wrapped into an
+        // immediately-propagating IllegalStateException.
         return true;
     }
 
@@ -779,11 +762,10 @@ final class AccountLedgerLock implements AutoCloseable {
      * -- fine, nothing to do).
      *
      * <p>Declares {@code throws IOException} for any other delete failure
-     * rather than wrapping it -- see {@link #tryStealIfStale}'s own
-     * Javadoc for why (a real Major finding, a further real CodeRabbit
-     * review round: this must propagate as a real {@link IOException} so
-     * it can reach {@link #acquire}'s own retry-budget handling, whichever
-     * of this method's two call sites it originates from).
+     * rather than wrapping it -- must propagate as a real {@link
+     * IOException} so it can reach {@link #acquire}'s own retry-budget
+     * handling, whichever of this method's two call sites it originates
+     * from.
      */
     private static void deleteIfStillOwnGeneration(Path lockPath, LockMetadata metadata) throws IOException {
         LockMetadata current = readMetadataOrNull(lockPath);
@@ -806,8 +788,7 @@ final class AccountLedgerLock implements AutoCloseable {
      * lock file with no {@code pid}/{@code acquiredAt} for the ordinary
      * {@link #tryStealIfStale} checks to judge. Without this, such a file
      * could never be reclaimed -- every future waiter would exhaust its
-     * retry budget forever (a real Critical finding, real CodeRabbit
-     * review of this PR).
+     * retry budget forever.
      *
      * <p>Falls back to the lock <b>file's own last-modified time</b>
      * (rather than any in-memory state, keeping this class's stateless
@@ -820,11 +801,10 @@ final class AccountLedgerLock implements AutoCloseable {
      * exactly as old, not merely still empty, before deleting) for the
      * same TOCTOU reason documented there.
      *
-     * <p>Declares {@code throws IOException} -- see {@link
-     * #tryStealIfStale}'s own Javadoc for why (a real Major finding, a
-     * further real CodeRabbit review round: a genuine delete/read failure
-     * here must reach {@link #acquire}'s retry-budget handling, not be
-     * wrapped into an immediately-propagating {@link IllegalStateException}).
+     * <p>Declares {@code throws IOException} -- a genuine delete/read
+     * failure here must reach {@link #acquire}'s retry-budget handling,
+     * not be wrapped into an immediately-propagating {@link
+     * IllegalStateException}.
      */
     private static boolean tryStealIfAbandonedEmpty(Path lockPath, Duration staleThreshold) throws IOException {
         Instant lastModified = lastModifiedTimeOrNull(lockPath);
@@ -849,10 +829,10 @@ final class AccountLedgerLock implements AutoCloseable {
 
         // Logged only now, after re-verification confirms a delete is
         // actually about to happen -- same reasoning as tryStealIfStale's
-        // own log placement (real Trivial finding, real CodeRabbit review
-        // of this PR): logging any earlier would produce a false-positive
-        // "stealing" ERROR on the benign path above where the file was
-        // modified since our first read and this method returns false
+        // own log placement: logging any earlier would produce a
+        // false-positive "stealing" ERROR on the benign path above where
+        // the file was modified since our first read and this method
+        // returns false
         // without deleting anything.
         log.error(
                 "stealing an empty/unparseable account ledger lock {} -- last modified {} exceeds staleThreshold"
@@ -874,8 +854,7 @@ final class AccountLedgerLock implements AutoCloseable {
 
     /**
      * Declares {@code throws IOException} rather than wrapping a real
-     * failure -- see {@link #tryStealIfStale}'s own Javadoc for why (a
-     * real Major finding, a further real CodeRabbit review round).
+     * failure -- see {@link #tryStealIfStale}'s own Javadoc for why.
      */
     private static Instant lastModifiedTimeOrNull(Path lockPath) throws IOException {
         try {
@@ -888,16 +867,16 @@ final class AccountLedgerLock implements AutoCloseable {
     /**
      * Sentinel: the file is present and was read successfully, but its
      * content is empty or unparseable right now -- see {@link
-     * #readMetadataOrNull}. Distinguished from {@link #READ_FAILED} (a
-     * real Minor finding, real CodeRabbit review of this PR): the two
-     * used to share one sentinel, which made {@link #close}'s own log
-     * message assert "no longer holds this instance's own metadata" even
-     * for a transient {@link Files#readString} failure that says nothing
-     * at all about the file's actual current content -- misleading an
-     * operator investigating a real incident in the wrong direction. Both
-     * are still treated identically everywhere <i>behavior</i> is
-     * concerned (never delete, never guess) -- only the two sentinels'
-     * own distinctness, and the messages built from them, differ.
+     * #readMetadataOrNull}. Distinguished from {@link #READ_FAILED}: the
+     * two are never merged into one sentinel, so {@link #close}'s own log
+     * message never asserts "no longer holds this instance's own
+     * metadata" for a transient {@link Files#readString} failure that says
+     * nothing at all about the file's actual current content -- which
+     * would mislead an operator investigating a real incident in the
+     * wrong direction. Both are still treated identically everywhere
+     * <i>behavior</i> is concerned (never delete, never guess) -- only the
+     * two sentinels' own distinctness, and the messages built from them,
+     * differ.
      */
     private static final LockMetadata EMPTY_OR_UNPARSEABLE = new LockMetadata(-1, "", Instant.EPOCH);
 
@@ -909,20 +888,18 @@ final class AccountLedgerLock implements AutoCloseable {
      *     does not exist; {@link #READ_FAILED} if {@link Files#readString}
      *     itself threw; {@link #EMPTY_OR_UNPARSEABLE} if the read succeeded
      *     but the content can't be parsed, <b>parses successfully as the
-     *     JSON literal {@code null}</b> (a real Minor finding, real
-     *     CodeRabbit review of this PR -- Jackson maps a bare {@code null}
+     *     JSON literal {@code null}</b> (Jackson maps a bare {@code null}
      *     token to a Java {@code null} without throwing, since it's valid
-     *     JSON; left unnormalized, that {@code null} would have been
+     *     JSON; left unnormalized, that {@code null} would be
      *     indistinguishable from this method's own "file does not exist"
      *     {@code null}, wrongly telling {@link #tryStealIfStale} to retry
      *     immediately with no backoff and wrongly telling {@link #close}
      *     the file is already gone), <b>or parses to a structurally
-     *     incomplete {@link LockMetadata}</b> (a real further Major
-     *     finding, a further real CodeRabbit review round: Jackson can
-     *     silently fill a missing record component with its default/null
-     *     rather than throwing -- {@code {"pid":123}} alone deserializes
-     *     "successfully" to a {@code LockMetadata} with a {@code null}
-     *     {@code hostname}/{@code acquiredAt} -- and {@link
+     *     incomplete {@link LockMetadata}</b> (Jackson can silently fill a
+     *     missing record component with its default/null rather than
+     *     throwing -- {@code {"pid":123}} alone deserializes "successfully"
+     *     to a {@code LockMetadata} with a {@code null} {@code
+     *     hostname}/{@code acquiredAt} -- and {@link
      *     #tryStealIfStale}'s own {@code Duration.between(metadata
      *     .acquiredAt(), ...)} call would then throw a raw {@code
      *     NullPointerException} that does not flow back through {@link
@@ -988,14 +965,13 @@ final class AccountLedgerLock implements AutoCloseable {
      * staleThreshold} elapses, so this is a real operational problem, not
      * a silent no-op.
      *
-     * <p><b>Critical finding, real CodeRabbit review of this PR, fixed
-     * here</b> -- the release-side counterpart to {@link
-     * #tryStealIfStale}'s own acquire-side TOCTOU fix (see that method's
-     * Javadoc for the full, measured account of why a gap this large is
-     * real on this repository's filesystem, not theoretical). The original
-     * version of this method deleted <i>whatever currently exists</i> at
-     * {@code lockPath} unconditionally. A real sequence this makes
-     * possible: (1) this instance holds the lock, but a slow filesystem
+     * <p><b>The release-side counterpart to {@link #tryStealIfStale}'s own
+     * acquire-side TOCTOU fix</b> (see that method's Javadoc for the full,
+     * measured account of why a gap this large is real on this
+     * repository's filesystem, not theoretical). This method must not
+     * delete <i>whatever currently exists</i> at {@code lockPath}
+     * unconditionally -- a real sequence that would make possible: (1)
+     * this instance holds the lock, but a slow filesystem
      * operation inside its own critical section pushes its real elapsed
      * hold time past {@code staleThreshold}; (2) a waiting sibling process
      * correctly (by this class's own rules) judges this instance's lock
@@ -1005,69 +981,65 @@ final class AccountLedgerLock implements AutoCloseable {
      * <i>sibling's</i> lock file, believing it is releasing its own --
      * breaking mutual exclusion a second, independent way (a third process
      * can now acquire immediately, while the sibling from step 2 still
-     * believes it holds the lock). Fixed by re-reading the file and
-     * comparing it to {@link #ownMetadata} (record {@code equals()} --
+     * believes it holds the lock). Guarded against by re-reading the file
+     * and comparing it to {@link #ownMetadata} (record {@code equals()} --
      * exact match required) immediately before deleting; a mismatch (or
      * the file already being gone with different content, or unparseable)
      * means this instance's lock was already stolen out from under it --
      * logged at {@code ERROR} (this class's established never-silent
      * convention for a genuine cross-process safety event) and the delete
      * is skipped entirely, rather than ever risking deletion of a
-     * different holder's live lock. As with the acquire-side fix, this
+     * different holder's live lock. As with the acquire-side check, this
      * closes the exploitable window down to the gap between two adjacent
      * file operations -- not a perfectly atomic compare-and-delete (no
      * such primitive exists in {@code java.nio.file}, and introducing a
-     * different locking mechanism to get one was already rejected earlier
-     * in this design specifically because of this repository's drvfs
-     * reliability concerns -- see the class Javadoc) -- disclosed as such
-     * rather than overclaimed.
+     * different locking mechanism to get one was already rejected
+     * elsewhere in this design specifically because of this repository's
+     * drvfs reliability concerns -- see the class Javadoc) -- disclosed as
+     * such rather than overclaimed.
      *
-     * <p><b>Minor finding, same real CodeRabbit review round, also fixed
-     * here</b>: the re-verification read above can itself come back as
-     * {@link #READ_FAILED} (a transient {@link Files#readString} failure)
-     * as well as {@link #EMPTY_OR_UNPARSEABLE} or a genuine mismatch --
-     * the original version of this method logged all three identically as
-     * "no longer holds this instance's own metadata... found {@code
-     * current}", which is simply false for a read failure (this instance
-     * may well still be the legitimate holder; the file just couldn't be
-     * read this one time) and prints a meaningless sentinel value for
-     * {@code current} in both non-mismatch cases. Skipping the delete is
-     * still the correct, safe behavior in all three cases (never guess),
-     * but each now gets its own honest log message so an operator
-     * investigating isn't pointed at "mutual exclusion was lost" for a
-     * transient filesystem hiccup.
+     * <p><b>The re-verification read above can itself come back as three
+     * distinct outcomes, each needing its own honest log message.</b>
+     * {@link #READ_FAILED} (a transient {@link Files#readString} failure),
+     * {@link #EMPTY_OR_UNPARSEABLE}, and a genuine mismatch must never be
+     * logged identically as "no longer holds this instance's own
+     * metadata... found {@code current}" -- that would be simply false for
+     * a read failure (this instance may well still be the legitimate
+     * holder; the file just couldn't be read this one time) and would
+     * print a meaningless sentinel value for {@code current} in both
+     * non-mismatch cases. Skipping the delete is still the correct, safe
+     * behavior in all three cases (never guess), but each gets its own
+     * honest log message so an operator investigating isn't pointed at
+     * "mutual exclusion was lost" for a transient filesystem hiccup.
      *
      * <p><b>Idempotent</b> -- a second call on an already-closed instance
      * is a pure no-op (see this class's own {@link #closed} field
      * Javadoc for the real, misleading-log-noise problem this prevents).
      *
-     * <p><b>{@link #closed} is only ever set on a genuinely final
+     * <p><b>{@link #closed} must only ever be set on a genuinely final
      * outcome, not merely whenever {@link #doClose} returns without
-     * throwing</b> -- corrected on a further real CodeRabbit review round
-     * on this PR from an earlier version of this idempotency fix that got
-     * this distinction wrong. {@link #doClose} now returns {@code
-     * boolean}: {@code true} for an outcome no future retry could ever
-     * improve on (the file is genuinely gone or already deleted by this
-     * call, or the re-verification found a genuine generation mismatch --
-     * a real, live different holder provably owns the path now, so no
-     * retry could ever change that), {@code false} for a transient,
-     * recoverable outcome a later {@code close()} call might still resolve
-     * better (a {@link #READ_FAILED} re-verification read, {@link
-     * #EMPTY_OR_UNPARSEABLE} content -- corrected on a still further real
-     * CodeRabbit review round: unlike a genuine different-holder mismatch,
-     * this state cannot actually be distinguished from a transient
-     * filesystem read/visibility gap on this instance's own still-valid
-     * content, a real, previously-measured characteristic of this
-     * project's own drvfs mount (see this class's own class Javadoc), so
-     * it is now treated the same retryable way {@code READ_FAILED} already
-     * is -- or any {@link IOException} other than {@link
-     * NoSuchFileException} from the delete itself). Without this
-     * distinction, an earlier
-     * version of this fix set {@link #closed} unconditionally after
-     * {@link #doClose} returned normally -- but {@code doClose} returns
-     * normally (no exception) even on its own transient-failure paths, so
-     * a single transient {@link #READ_FAILED} on close would have
-     * permanently marked this instance closed with no way to ever retry
+     * throwing.</b> {@link #doClose} returns {@code boolean}: {@code true}
+     * for an outcome no future retry could ever improve on (the file is
+     * genuinely gone or already deleted by this call, or the
+     * re-verification found a genuine generation mismatch -- a real, live
+     * different holder provably owns the path now, so no retry could ever
+     * change that), {@code false} for a transient, recoverable outcome a
+     * later {@code close()} call might still resolve better (a {@link
+     * #READ_FAILED} re-verification read, {@link #EMPTY_OR_UNPARSEABLE}
+     * content -- unlike a genuine different-holder mismatch, this state
+     * cannot actually be distinguished from a transient filesystem
+     * read/visibility gap on this instance's own still-valid content, a
+     * real, previously-measured characteristic of this project's own
+     * drvfs mount (see this class's own class Javadoc), so it is treated
+     * the same retryable way {@code READ_FAILED} already is -- or any
+     * {@link IOException} other than {@link NoSuchFileException} from the
+     * delete itself). Getting this distinction wrong would be a real
+     * availability bug, not merely untidy: setting {@link #closed}
+     * unconditionally whenever {@link #doClose} returns without an
+     * exception would be wrong, because {@code doClose} also returns
+     * normally (no exception) on its own transient-failure paths -- a
+     * single transient {@link #READ_FAILED} on close would then
+     * permanently mark this instance closed with no way to ever retry
      * releasing the still-live lock file, blocking every other waiter for
      * a shared KIS account risk ledger lock until {@code staleThreshold}
      * elapses regardless of how many times a caller called {@code
@@ -1117,8 +1089,7 @@ final class AccountLedgerLock implements AutoCloseable {
                                 + " its staleThreshold elapses.",
                         lockPath,
                         ownMetadata);
-                // Retryable, not final -- a further real CodeRabbit review
-                // round on this PR. Unlike the genuine different-holder
+                // Retryable, not final. Unlike the genuine different-holder
                 // mismatch below (where a real, live new holder provably
                 // owns the path now, so no retry could ever help), this
                 // branch cannot actually distinguish that same situation
