@@ -45,18 +45,26 @@ import org.slf4j.LoggerFactory;
  * remember: every call re-reads (or re-writes) the file on disk, full
  * stop.
  *
- * <p><b>Caller contract: every {@link #persist} call, not only a
- * read-modify-write cycle, must be made while holding {@link
+ * <p><b>Caller contract: every {@link #load}/{@link #persist} call, not
+ * only a read-modify-write cycle, must be made while holding {@link
  * AccountLedgerLock}</b> -- this class provides no locking of its own.
- * {@link #tmpPathFor} returns a fixed path ({@code
- * <ledgerPath>.json.tmp}), not one unique per process or per call; two
- * processes calling {@link #persist} on the same {@code ledgerPath}
- * without holding the lock (even a standalone {@code persist} call
- * outside any {@code load} + mutate sequence) can race on that shared
- * temp file -- one process's write/rename can interleave with another's,
- * risking a partial or wrong write landing at {@code ledgerPath} and a
- * real loss of another process's already-committed reservations. See
- * {@link #persist}'s own Javadoc for the full mechanism.
+ * Structurally enforced, not only documented: both methods require an
+ * {@link AccountLedgerLock} argument -- constructible only via {@link
+ * AccountLedgerLock#acquire} -- and reject a {@code null} or already-
+ * released one via {@link AccountLedgerLock#requireHeld()}. This does
+ * <b>not</b> verify that the supplied lock's own path corresponds to
+ * {@code ledgerPath} -- no convention linking the two exists yet in this
+ * codebase (that mapping is {@code SharedKisAccountLedger}, Task C's, to
+ * define) -- so it proves <i>some</i> lock is held, not necessarily the
+ * <i>correct</i> one for this specific ledger. {@link #tmpPathFor}
+ * returns a fixed path ({@code <ledgerPath>.json.tmp}), not one unique
+ * per process or per call; two processes calling {@link #persist} on the
+ * same {@code ledgerPath} without holding the (correct) lock can race on
+ * that shared temp file -- one process's write/rename can interleave
+ * with another's, risking a partial or wrong write landing at {@code
+ * ledgerPath} and a real loss of another process's already-committed
+ * reservations. See {@link #persist}'s own Javadoc for the full
+ * mechanism.
  */
 final class AccountLedgerStore {
 
@@ -239,12 +247,20 @@ final class AccountLedgerStore {
      * this class's own Javadoc already defers to {@code
      * SharedKisAccountLedger}/{@code AccountLedgerReconciler} (Task C/D),
      * not decided here.
+     *
+     * @param lock proof this caller currently holds {@link
+     *     AccountLedgerLock} for this ledger -- see class Javadoc's
+     *     "Caller contract" paragraph; rejected via {@link
+     *     AccountLedgerLock#requireHeld()} if already released
      */
-    static AccountLedger load(Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital) {
+    static AccountLedger load(
+            Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital, AccountLedgerLock lock) {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
         Objects.requireNonNull(venue, "venue is required");
         Objects.requireNonNull(accountId, "accountId is required");
         Objects.requireNonNull(defaultAllocatedCapital, "defaultAllocatedCapital is required");
+        Objects.requireNonNull(lock, "lock is required -- see class Javadoc's caller contract");
+        lock.requireHeld();
         // A zero or negative allocated capital is meaningless for a risk
         // budget. Same "the record/method itself is the structural
         // enforcement point" reasoning already applied to
@@ -341,9 +357,9 @@ final class AccountLedgerStore {
                 List.of());
     }
 
-    /** Convenience overload using the real {@code ATOMIC_MOVE} default -- see the 3-arg overload's Javadoc. */
-    static void persist(Path ledgerPath, AccountLedger ledger) {
-        persist(ledgerPath, ledger, AccountLedgerStore::defaultAtomicMove);
+    /** Convenience overload using the real {@code ATOMIC_MOVE} default -- see the 4-arg overload's Javadoc. */
+    static void persist(Path ledgerPath, AccountLedger ledger, AccountLedgerLock lock) {
+        persist(ledgerPath, ledger, AccountLedgerStore::defaultAtomicMove, lock);
     }
 
     /**
@@ -362,20 +378,20 @@ final class AccountLedgerStore {
      *
      * <p><b>Caller contract: this method must only ever be called while
      * holding {@link AccountLedgerLock}, including a standalone call not
-     * part of a {@code load} + mutate + {@code persist} cycle.</b> {@link
-     * #tmpPathFor} deliberately keeps a fixed, non-process-unique temp
-     * path (the interrupted-persist detection in {@link #load} depends on
-     * that fixed name to recognize a leftover {@code .tmp} from a crashed
-     * prior attempt) -- but that same fixed path means two unsynchronized
-     * concurrent {@code persist} calls against the same {@code
-     * ledgerPath} share one temp file. One call's {@code
-     * TRUNCATE_EXISTING} open, write, and rename can interleave with
-     * another's, risking a partial or otherwise wrong write landing at
-     * {@code ledgerPath} -- a real loss of another process's already-
-     * committed reservations, not merely a hypothetical. This is stated
-     * as an unconditional caller contract now, before {@code
-     * SharedKisAccountLedger} (Task C) becomes the first real caller, so
-     * that wiring has no ambiguity to resolve incorrectly.
+     * part of a {@code load} + mutate + {@code persist} cycle.</b>
+     * Structurally enforced via the required {@code lock} parameter (see
+     * class Javadoc's "Caller contract" paragraph for exactly what is,
+     * and is not, verified about it). {@link #tmpPathFor} deliberately
+     * keeps a fixed, non-process-unique temp path (the interrupted-
+     * persist detection in {@link #load} depends on that fixed name to
+     * recognize a leftover {@code .tmp} from a crashed prior attempt) --
+     * but that same fixed path means two unsynchronized concurrent
+     * {@code persist} calls against the same {@code ledgerPath} share one
+     * temp file. One call's {@code TRUNCATE_EXISTING} open, write, and
+     * rename can interleave with another's, risking a partial or
+     * otherwise wrong write landing at {@code ledgerPath} -- a real loss
+     * of another process's already-committed reservations, not merely a
+     * hypothetical.
      *
      * <p><b>Durability: partial, not complete.</b> The temp file's content
      * is written via a {@link java.nio.channels.FileChannel} and {@link
@@ -418,11 +434,18 @@ final class AccountLedgerStore {
      * to protect, and this method's own write/move machinery below still
      * fails loudly on it rather than silently replacing it (see {@code
      * AccountLedgerStoreTest#persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails}).
+     *
+     * @param lock proof this caller currently holds {@link
+     *     AccountLedgerLock} for this ledger -- see class Javadoc's
+     *     "Caller contract" paragraph; rejected via {@link
+     *     AccountLedgerLock#requireHeld()} if already released
      */
-    static void persist(Path ledgerPath, AccountLedger ledger, AtomicMover mover) {
+    static void persist(Path ledgerPath, AccountLedger ledger, AtomicMover mover, AccountLedgerLock lock) {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
         Objects.requireNonNull(ledger, "ledger is required");
         Objects.requireNonNull(mover, "mover is required");
+        Objects.requireNonNull(lock, "lock is required -- see class Javadoc's caller contract");
+        lock.requireHeld();
         verifyIdentityConsistency(ledgerPath, ledger);
         // Hoisted outside the try block so the outer catch below can clean
         // it up -- see that catch's own comment for why.

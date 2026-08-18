@@ -16,6 +16,7 @@ import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
@@ -40,7 +41,7 @@ class AccountLedgerStoreTest {
     void loadWithNoFileOnDiskReturnsAFreshlyBootstrappedLedger(@TempDir Path tempDir) {
         Path file = tempDir.resolve("ledger.json");
 
-        AccountLedger ledger = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
+        AccountLedger ledger = loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000"));
 
         assertEquals("KIS", ledger.venue());
         assertEquals("acct-1", ledger.accountId());
@@ -71,8 +72,8 @@ class AccountLedgerStoreTest {
                 null,
                 List.of(reservation));
 
-        AccountLedgerStore.persist(file, original);
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000000"));
+        persistWithLock(file, original);
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000000"));
 
         assertEquals(original, reloaded);
     }
@@ -92,8 +93,8 @@ class AccountLedgerStoreTest {
                 "ledger exposure diverged from real account by more than 10%",
                 List.of());
 
-        AccountLedgerStore.persist(file, withAlarm);
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000000"));
+        persistWithLock(file, withAlarm);
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000000"));
 
         assertEquals(withAlarm.reconciliationAlarmTrippedAt(), reloaded.reconciliationAlarmTrippedAt());
         assertEquals(withAlarm.reconciliationAlarmReason(), reloaded.reconciliationAlarmReason());
@@ -113,15 +114,15 @@ class AccountLedgerStoreTest {
         AccountLedger first = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, first);
-        AccountLedger loadedFirst = AccountLedgerStore.load(file, "KIS", "acct-1", defaultAllocatedCapital);
+        persistWithLock(file, first);
+        AccountLedger loadedFirst = loadWithLock(file, "KIS", "acct-1", defaultAllocatedCapital);
         assertEquals(new BigDecimal("1000"), loadedFirst.allocatedVirtualCapital());
 
         AccountLedger second = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("2000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, second);
-        AccountLedger loadedSecond = AccountLedgerStore.load(file, "KIS", "acct-1", defaultAllocatedCapital);
+        persistWithLock(file, second);
+        AccountLedger loadedSecond = loadWithLock(file, "KIS", "acct-1", defaultAllocatedCapital);
 
         // Static, stateless methods -- no instance to have cached the
         // first value; this proves it, not merely asserts it by
@@ -136,15 +137,14 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
     /**
-     * Real Major finding, real CodeRabbit review of this PR: the JSON
-     * literal {@code null} is valid JSON, so {@code
+     * The JSON literal {@code null} is valid JSON, so {@code
      * MAPPER.readValue(raw, AccountLedger.class)} returns a plain Java
      * {@code null} without throwing -- left unchecked, the very next
-     * access ({@code ledger.venue()}) would have thrown a raw {@code
+     * access ({@code ledger.venue()}) would throw a raw {@code
      * NullPointerException} instead of this method's own intended
      * {@code IllegalStateException} fail-closed contract.
      */
@@ -155,7 +155,7 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
     /**
@@ -180,7 +180,7 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000")));
     }
 
     @Test
@@ -197,7 +197,7 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000")));
     }
 
     @Test
@@ -215,7 +215,7 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
     /**
@@ -248,7 +248,7 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
     @Test
@@ -258,7 +258,7 @@ class AccountLedgerStoreTest {
         // persisted yet" case must still bootstrap fresh, not fail
         // closed just because a file happens to be missing.
 
-        AccountLedger ledger = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
+        AccountLedger ledger = loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000"));
 
         assertEquals(new BigDecimal("100000"), ledger.allocatedVirtualCapital());
     }
@@ -292,7 +292,7 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")),
                 "an undetermined .tmp existence state must fail closed, not silently bootstrap a fresh ledger");
     }
 
@@ -310,11 +310,11 @@ class AccountLedgerStoreTest {
         AccountLedger ledgerForKis = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, ledgerForKis);
+        persistWithLock(file, ledgerForKis);
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "BINGX", "acct-1", new BigDecimal("1000")));
+                () -> loadWithLock(file, "BINGX", "acct-1", new BigDecimal("1000")));
     }
 
     @Test
@@ -323,11 +323,11 @@ class AccountLedgerStoreTest {
         AccountLedger ledgerForAcct1 = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, ledgerForAcct1);
+        persistWithLock(file, ledgerForAcct1);
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-2", new BigDecimal("1000")));
+                () -> loadWithLock(file, "KIS", "acct-2", new BigDecimal("1000")));
     }
 
     @Test
@@ -336,9 +336,9 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
 
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000"));
 
         assertEquals(ledger, reloaded);
     }
@@ -355,10 +355,10 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalArgumentException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", BigDecimal.ZERO));
+                () -> loadWithLock(file, "KIS", "acct-1", BigDecimal.ZERO));
         assertThrows(
                 IllegalArgumentException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("-1")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("-1")));
     }
 
     /**
@@ -381,13 +381,13 @@ class AccountLedgerStoreTest {
         AccountLedger ledgerWithALargeStoredAllocation = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("500000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, ledgerWithALargeStoredAllocation);
+        persistWithLock(file, ledgerWithALargeStoredAllocation);
 
         // An operator reducing the configured default below what's already
         // on disk must not have that reduction silently ignored.
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
     }
 
     /**
@@ -402,9 +402,9 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("500000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
 
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("500000"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("500000"));
 
         assertEquals(new BigDecimal("500000"), reloaded.allocatedVirtualCapital());
     }
@@ -465,7 +465,7 @@ class AccountLedgerStoreTest {
         // record's real validation message directly in its own message.
         IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
         assertTrue(
                 thrown.getCause() != null && thrown.getCause().getMessage() != null
                         && thrown.getCause().getMessage().contains("notional must be positive"),
@@ -529,7 +529,7 @@ class AccountLedgerStoreTest {
         // the exception type.
         IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
         assertTrue(
                 thrown.getCause() != null && thrown.getCause().getMessage() != null
                         && thrown.getCause().getMessage().contains("allocatedVirtualCapital must be positive"),
@@ -571,7 +571,7 @@ class AccountLedgerStoreTest {
         // the exception type.
         IllegalStateException trippedAtOnly = assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")),
                 "trippedAt alone (no reason) must fail closed");
         assertTrue(
                 trippedAtOnly.getCause() != null && trippedAtOnly.getCause().getMessage() != null
@@ -588,7 +588,7 @@ class AccountLedgerStoreTest {
                         + "\"reservations\":[]}");
         IllegalStateException reasonOnly = assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")),
                 "reason alone (no trippedAt) must fail closed -- the more dangerous direction, since it would"
                         + " otherwise be read as no alarm tripped at all");
         assertTrue(
@@ -651,7 +651,7 @@ class AccountLedgerStoreTest {
         // the exception type.
         IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")));
         assertTrue(
                 thrown.getCause() != null && thrown.getCause().getMessage() != null
                         && thrown.getCause().getMessage().contains("duplicate clientOrderId"),
@@ -675,14 +675,14 @@ class AccountLedgerStoreTest {
         AccountLedger existing = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, existing);
+        persistWithLock(file, existing);
         AccountLedger differentAccount = new AccountLedger(
                 "KIS", "acct-2", new BigDecimal("99"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, differentAccount));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, differentAccount));
 
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("42"));
         assertEquals(existing, reloaded, "the existing ledger must be untouched by the rejected persist() call");
     }
 
@@ -705,7 +705,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         assertEquals(
                 "not valid json at all",
@@ -729,7 +729,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         assertEquals("null", Files.readString(file), "the existing file must be preserved, not overwritten");
         assertFalse(
@@ -757,7 +757,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         assertFalse(
                 Files.exists(tempDir.resolve("ledger.json.tmp"), LinkOption.NOFOLLOW_LINKS),
@@ -772,7 +772,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
 
         assertTrue(Files.exists(file));
     }
@@ -784,7 +784,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
 
         assertTrue(Files.exists(file));
         assertFalse(Files.exists(tempDir.resolve("ledger.json.tmp")), "the temp file must be renamed away, not left behind");
@@ -817,7 +817,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         assertEquals(
                 "a real ledger another process may still need -- not this call's to touch",
@@ -850,7 +850,7 @@ class AccountLedgerStoreTest {
                 null, null, null, List.of());
 
         IllegalStateException thrown =
-                assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+                assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         // verifyIdentityConsistency's own, earlier determination-failure
         // check on this same ledgerPath fires first -- see this test's
@@ -887,17 +887,17 @@ class AccountLedgerStoreTest {
         AccountLedger priorLedger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("500"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        AccountLedgerStore.persist(file, priorLedger);
+        persistWithLock(file, priorLedger);
         Files.writeString(tmp, "stale garbage from an earlier interrupted persist() call");
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
 
         assertTrue(Files.exists(file), "persist must succeed despite the leftover .tmp file, not throw");
         assertFalse(Files.exists(tmp), "the stale .tmp file must be consumed/replaced, not left behind");
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("1000"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000"));
         assertEquals(ledger, reloaded);
     }
 
@@ -921,9 +921,9 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        AccountLedgerStore.persist(file, ledger, flakyMover);
+        persistWithLock(file, ledger, flakyMover);
 
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("42"));
         assertEquals(new BigDecimal("42"), reloaded.allocatedVirtualCapital());
     }
 
@@ -952,7 +952,7 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, brokenMover));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger, brokenMover));
         assertFalse(Files.exists(file), "the ledger must not be replaced by a non-atomic fallback here");
         // Strengthened per a further real CodeRabbit review round on this
         // PR: the original version of this test stopped at confirming
@@ -992,9 +992,9 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, brokenMover));
+        assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger, brokenMover));
 
-        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000"));
 
         assertEquals(
                 new BigDecimal("100000"),
@@ -1062,14 +1062,14 @@ class AccountLedgerStoreTest {
 
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.persist(file, ledger, atomicMoveNotSupportedMover));
+                () -> persistWithLock(file, ledger, atomicMoveNotSupportedMover));
 
         assertTrue(
                 Files.exists(tempDir.resolve("ledger.json.tmp")),
                 "tmp must survive a fallback-move failure -- it may be the only remaining copy of valid data");
         assertThrows(
                 IllegalStateException.class,
-                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                () -> loadWithLock(file, "KIS", "acct-1", new BigDecimal("100000")),
                 "load must still fail closed after a fallback-move failure, never silently bootstrap empty");
     }
 
@@ -1111,11 +1111,11 @@ class AccountLedgerStoreTest {
         // check (the tmpPreexisted branch) does not fire before
         // FileChannel.open -- this keeps the test on the real
         // ownership-tracking/outer-catch-cleanup path it targets.
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
         Files.createDirectory(candidateTmp);
 
         IllegalStateException thrown =
-                assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+                assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         assertTrue(
                 thrown.getMessage().contains("failed to persist account ledger file"),
@@ -1165,11 +1165,11 @@ class AccountLedgerStoreTest {
         // so persist()'s own missing-ledger-plus-leftover-.tmp fail-closed
         // check does not fire before FileChannel.open reaches candidateTmp's
         // own determination-failure state.
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
         Files.createSymbolicLink(candidateTmp, candidateTmp);
 
         IllegalStateException thrown =
-                assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+                assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger));
 
         assertTrue(
                 thrown.getMessage().contains("failed to persist account ledger file"),
@@ -1194,9 +1194,110 @@ class AccountLedgerStoreTest {
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
-        AccountLedgerStore.persist(file, ledger);
+        persistWithLock(file, ledger);
 
         assertTrue(Files.exists(file));
         assertFalse(Files.exists(tempDir.resolve("ledger.json.tmp")));
+    }
+
+    /**
+     * {@link AccountLedgerStore#load}/{@link AccountLedgerStore#persist}
+     * reject a {@code null} {@code lock} argument -- part of this class's
+     * documented caller contract being structurally enforced, not merely
+     * documented. Exercises the real methods directly (not through {@link
+     * #loadWithLock}/{@link #persistWithLock}), since this is precisely
+     * the enforcement those helpers exist to satisfy on every other call
+     * site in this file.
+     */
+    @Test
+    void loadAndPersistRejectANullLock(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(
+                NullPointerException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"), null));
+        assertThrows(NullPointerException.class, () -> AccountLedgerStore.persist(file, ledger, (AccountLedgerLock) null));
+    }
+
+    /**
+     * The other half of the same structural enforcement: a {@code lock}
+     * that was genuinely acquired but has since been fully released is
+     * rejected too -- accepting it would let a caller present stale proof
+     * of holding a lock it no longer does, exactly the gap this whole
+     * mechanism exists to close. Proven against a real {@link
+     * AccountLedgerLock}, not a fake -- acquired, then closed via the
+     * same bounded retry every real caller in this file's own {@code
+     * AccountLedgerLockTest}/{@code AccountLedgerLockMultiProcessTest}
+     * uses, confirming the lock file is genuinely gone before this test's
+     * own real subject (passing the closed instance) is exercised.
+     */
+    @Test
+    void loadAndPersistRejectAnAlreadyClosedLock(@TempDir Path tempDir) throws InterruptedException {
+        Path file = tempDir.resolve("ledger.json");
+        Path lockPath = lockPathFor(file);
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET);
+        for (int attempt = 0; attempt < 5 && Files.exists(lockPath); attempt++) {
+            lock.close();
+            if (Files.exists(lockPath)) {
+                Thread.sleep(50);
+            }
+        }
+        assertFalse(Files.exists(lockPath), "test setup: the lock must be genuinely released before this test's"
+                + " own real subject (load/persist rejecting a closed lock) is exercised");
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"), lock));
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, lock));
+    }
+
+    private static final Duration LOCK_STALE_THRESHOLD = Duration.ofSeconds(30);
+    private static final Duration LOCK_RETRY_BUDGET = Duration.ofSeconds(5);
+
+    /**
+     * Every real call site in this file goes through these two helpers,
+     * not {@link AccountLedgerStore#load}/{@link AccountLedgerStore#persist}
+     * directly -- both now require a currently-held {@link
+     * AccountLedgerLock} as proof of {@link AccountLedgerStore}'s own
+     * documented caller contract (its class Javadoc's "Caller contract"
+     * paragraph), enforced structurally rather than only documented, so
+     * a test calling either without one simply would not compile. A
+     * fresh lock acquired and released around each individual call is
+     * sufficient proof for {@code AccountLedgerStore}'s own purposes --
+     * it only requires that some non-closed lock is held at call time,
+     * not the same instance across a whole load-mutate-persist sequence
+     * -- and keeps this retrofit mechanical rather than requiring each
+     * test to manage its own lock lifecycle. Real cross-call mutual-
+     * exclusion behavior is {@link AccountLedgerLock}'s own subject,
+     * covered by {@code AccountLedgerLockTest}/
+     * {@code AccountLedgerLockMultiProcessTest}, not re-tested here.
+     */
+    private static AccountLedger loadWithLock(
+            Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital) {
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+            return AccountLedgerStore.load(ledgerPath, venue, accountId, defaultAllocatedCapital, lock);
+        }
+    }
+
+    private static void persistWithLock(Path ledgerPath, AccountLedger ledger) {
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+            AccountLedgerStore.persist(ledgerPath, ledger, lock);
+        }
+    }
+
+    private static void persistWithLock(Path ledgerPath, AccountLedger ledger, AccountLedgerStore.AtomicMover mover) {
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+            AccountLedgerStore.persist(ledgerPath, ledger, mover, lock);
+        }
+    }
+
+    private static Path lockPathFor(Path ledgerPath) {
+        return ledgerPath.resolveSibling(ledgerPath.getFileName() + ".lock");
     }
 }

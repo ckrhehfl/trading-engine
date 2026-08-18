@@ -42,34 +42,21 @@ class AccountLedgerLockTest {
     private static final Duration GENEROUS_RETRY_BUDGET = Duration.ofSeconds(5);
 
     /**
-     * Real Minor finding, real CodeRabbit review of this PR: 12 threads x
-     * 10 acquisitions, each waiter backing off up to 250ms per failed
-     * attempt, can plausibly accumulate close to (or past)
-     * {@link #GENEROUS_RETRY_BUDGET}'s shared 5s budget under ordinary
-     * queuing alone -- not a mutual-exclusion bug, just real contention --
-     * especially combined with this class's own documented 500ms+ single-
-     * operation latency under load on this repository's real drvfs mount.
-     * A budget exhaustion there would fail this test for the wrong reason
-     * (test-harness impatience, not a lock defect), misleading whoever
-     * reads the failure. This test gets its own, much more generous,
-     * dedicated budget instead of sharing the smaller one other tests use
-     * deliberately (to keep {@code acquireThrowsRatherThanHangingWhenTheRetryBudgetIsExhausted}
-     * fast).
+     * Much larger than {@link #GENEROUS_RETRY_BUDGET}: 12 threads x 10
+     * acquisitions, each waiter backing off up to 250ms per failed
+     * attempt, can plausibly accumulate close to (or past) a 5s budget
+     * under ordinary queuing alone -- not a mutual-exclusion bug, just
+     * real contention -- especially combined with this class's own
+     * documented 500ms+ single-operation latency under load on this
+     * repository's real drvfs mount. This test gets its own, dedicated
+     * budget instead of sharing the smaller one other tests use
+     * deliberately (to keep {@code
+     * acquireThrowsRatherThanHangingWhenTheRetryBudgetIsExhausted} fast).
      */
     private static final Duration CONTENTION_RETRY_BUDGET = Duration.ofSeconds(60);
 
     /**
-     * Real Trivial finding, a further real CodeRabbit review round on
-     * this PR: this method's own Javadoc used to sit directly above
-     * {@link #CONTENTION_RETRY_BUDGET}'s field declaration rather than
-     * this method itself (two back-to-back Javadoc blocks in a row both
-     * end up attached to whichever declaration immediately follows the
-     * second one -- the first block is silently discarded by Javadoc
-     * tooling, leaving this method with no rendered documentation at
-     * all). Moved to sit immediately above this method, matching every
-     * other test method's own convention in this file.
-     *
-     * <p>Many real OS threads race {@link AccountLedgerLock#acquire}
+     * Many real OS threads race {@link AccountLedgerLock#acquire}
      * against the same lock path. Mutual exclusion is proven the same
      * way the governing plan itself suggests: a critical section that
      * performs a deliberately non-atomic read-sleep-increment-write on an
@@ -137,24 +124,13 @@ class AccountLedgerLockTest {
     }
 
     /**
-     * Real Minor finding, a further real CodeRabbit review round on this
-     * PR: a single, unretried {@code lock.close()} (the previous, plain
-     * try-with-resources form of the loop above) is inconsistent with
-     * {@link AccountLedgerLock}'s own documented caller contract -- its
-     * class Javadoc's own fourth caller-contract point states that {@code
-     * close()} does not itself signal success or failure, and a caller
-     * wanting the lock file genuinely released must call {@code close()}
-     * again when a first call took one of its retryable paths (a
-     * transient read/visibility gap on this project's own drvfs mount,
-     * which that same Javadoc separately measures at 500ms+ under
-     * contention). This test deliberately creates exactly that kind of
-     * real, sustained contention (12 threads, 10 iterations each), so a
-     * single close() call occasionally leaving the lock file behind is a
-     * real, reachable risk to this test's own final assertion, not
-     * theoretical -- retried here a few times with a short delay,
-     * matching the bounded-retry shape {@link AccountLedgerLock}'s own
-     * {@code deleteIfStillOwnGeneration} already uses for the identical
-     * underlying condition.
+     * Retries {@link AccountLedgerLock#close()} until {@code lockPath} is
+     * confirmed gone: {@code close()} does not itself signal success or
+     * failure (see {@link AccountLedgerLock}'s own class Javadoc, fourth
+     * caller-contract point) and can take a retryable, non-final path on
+     * this project's own drvfs mount, so a single call is not sufficient
+     * proof of release under this test's own real, sustained contention
+     * (12 threads, 10 iterations each).
      */
     private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
         for (int attempt = 0; attempt < 5; attempt++) {
@@ -169,6 +145,44 @@ class AccountLedgerLockTest {
         // own final assertFalse(Files.exists(lockPath)) below is what
         // actually judges it, with a real, meaningful signal rather than
         // a single-shot race against a known transient condition.
+    }
+
+    /**
+     * {@link AccountLedgerLock#requireHeld()} is a pure no-op (no
+     * exception) while this instance has not yet been closed -- proven
+     * here against a real, successfully-acquired lock, not merely
+     * asserted from reading the source.
+     */
+    @Test
+    void requireHeldSucceedsWhileTheLockIsStillHeld(@TempDir Path tempDir) {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
+            lock.requireHeld();
+        }
+    }
+
+    /**
+     * {@link AccountLedgerLock#requireHeld()} throws {@link
+     * IllegalStateException} once this instance has genuinely reached a
+     * final, closed state -- the real backing check {@link
+     * AccountLedgerStore#load}/{@link AccountLedgerStore#persist} rely on
+     * to reject a caller passing an already-released lock as if it were
+     * still proof of holding one.
+     */
+    @Test
+    void requireHeldThrowsAfterTheLockIsGenuinelyClosed(@TempDir Path tempDir) throws InterruptedException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+        closeUntilReleased(lock, lockPath);
+        assertTrue(Files.notExists(lockPath), "test setup: the lock must be genuinely, fully released before"
+                + " this test's own real subject (requireHeld on a closed instance) is exercised");
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, lock::requireHeld);
+
+        assertTrue(
+                thrown.getMessage().contains(lockPath.toString()),
+                "exception must name the lock path; was: " + thrown.getMessage());
     }
 
     /**
@@ -224,19 +238,12 @@ class AccountLedgerLockTest {
     }
 
     /**
-     * Real Minor finding, a further real CodeRabbit review round on this
-     * PR: {@code tryStealIfStale}'s dead-PID check
-     * ({@code ProcessHandle.of(metadata.pid())}) only ever consults
-     * <i>this</i> host's own process table -- meaningful only because
-     * this project's own documented deployment model has every process
-     * sharing a given lock running on the same host (see {@link
-     * AccountLedgerLock}'s own class Javadoc). A lock file recorded by a
-     * genuinely different host (a future multi-host deployment, or a
-     * misconfiguration) would almost certainly show a "not found" result
-     * for that PID on this host regardless of whether the real, foreign
-     * holder is still alive -- silently treating "not found on this
-     * host" as "provably dead" would then be wrong. Fixed:
-     * {@code holderDead} now additionally requires {@code
+     * {@code tryStealIfStale}'s dead-PID check ({@code
+     * ProcessHandle.of(metadata.pid())}) only ever consults <i>this</i>
+     * host's own process table -- meaningful only because this project's
+     * own documented deployment model has every process sharing a given
+     * lock running on the same host (see {@link AccountLedgerLock}'s own
+     * class Javadoc). {@code holderDead} requires {@code
      * metadata.hostname()} to match this host's own current hostname
      * before trusting the PID-liveness result; a hostname mismatch
      * treats the PID as not provably dead (fails toward not stealing via
@@ -418,8 +425,7 @@ class AccountLedgerLockTest {
     }
 
     /**
-     * Real Major finding, a further real CodeRabbit review round on this
-     * PR: choosing a {@code staleThreshold} <b>shorter than a legitimate
+     * Choosing a {@code staleThreshold} <b>shorter than a legitimate
      * holder's own real critical-section duration</b> causes a genuine
      * mutual-exclusion violation. This is not a bug in {@link
      * AccountLedgerLock#acquire}'s own steal logic -- it does exactly
@@ -774,52 +780,36 @@ class AccountLedgerLockTest {
     }
 
     /**
-     * Real Major finding, real CodeRabbit review of this PR, on top of the
-     * two Critical findings above: the original {@code createAndWriteMetadata}
-     * created the lock file and wrote its content as two separate,
-     * <b>path</b>-based operations. If a holder's own write was slow
-     * enough for a sibling to legitimately judge the file abandoned,
-     * steal it, and acquire its own new generation, the original slow
-     * writer's <i>own, now-orphaned</i> write would still land -- since
-     * {@code Files.writeString} re-resolves the path fresh each time -- and
+     * The original {@code createAndWriteMetadata} created the lock file
+     * and wrote its content as two separate, <b>path</b>-based
+     * operations. If a holder's own write was slow enough for a sibling
+     * to legitimately judge the file abandoned, steal it, and acquire
+     * its own new generation, the original slow writer's <i>own,
+     * now-orphaned</i> write would still land -- since {@code
+     * Files.writeString} re-resolves the path fresh each time -- and
      * silently clobber the sibling's real, live metadata with the
      * original holder's stale content.
      *
-     * <p>This test exercises the fixed mechanism directly, more precisely
-     * than the reviewer's own suggested pseudocode (a plain, unguarded
-     * {@code Files.writeString} "simulating" the delayed write -- which
-     * would not actually prove anything, since an ordinary path-based
-     * write was never the vulnerable operation once created via an open
-     * handle; the real question is whether a write through the
-     * <i>original, already-open creation handle</i> survives a concurrent
-     * delete-and-recreate at the same path, which is exactly what {@code
-     * createAndWriteMetadata} now relies on). Opens a {@code CREATE_NEW}
-     * channel exactly the way {@code createAndWriteMetadata} itself does,
-     * without yet writing through it -- reproducing the real slow-write
-     * window -- then has a sibling steal and reacquire through the real
-     * production path, and only then completes the original, now-orphaned
-     * write through the old handle.
+     * <p>This test exercises the fixed mechanism directly: the real
+     * question is whether a write through the <i>original, already-open
+     * creation handle</i> survives a concurrent delete-and-recreate at
+     * the same path, which is exactly what {@code
+     * createAndWriteMetadata} now relies on. Opens a {@code CREATE_NEW}
+     * channel exactly the way {@code createAndWriteMetadata} itself
+     * does, without yet writing through it -- reproducing the real
+     * slow-write window -- then has a sibling steal and reacquire
+     * through the real production path, and only then completes the
+     * original, now-orphaned write through the old handle.
      *
-     * <p><b>Two real, Trivial/Minor findings from a further real
-     * CodeRabbit review round, both addressed</b>: (1) this test's own
-     * premise -- an open file surviving a concurrent delete-and-recreate
-     * at the same path -- is real, observed, POSIX-style behavior
-     * (confirmed by this task's own standalone probe against this
-     * repository's real filesystem, see {@code createAndWriteMetadata}'s
-     * own Javadoc), but is documented to be platform-dependent in
-     * general (traditional Windows semantics differ). Annotated {@code
-     * @EnabledOnOs(OS.LINUX)} accordingly -- true both in this project's
-     * real dev environment (WSL2, a real Linux kernel under the drvfs
-     * mount) and its CI (`ubuntu-latest`), so this is a precise
-     * statement of the tested premise, not a behavior change. (2) {@code
-     * staleWritersChannel} is now opened inside its own try-with-resources
-     * so it cannot leak if {@code Files.delete} or {@code
-     * AccountLedgerLock.acquire} throws before this test's own explicit,
-     * mid-body {@code close()} call -- that explicit close (needed to
-     * make the delayed write actually happen at the right point in the
-     * sequence) stays; a redundant second close from the try-with-
-     * resources block once that already ran is a documented no-op per
-     * {@link SeekableByteChannel#close()}'s own contract, not a bug.
+     * <p><b>Linux-only</b>: this test's own premise -- an open file
+     * surviving a concurrent delete-and-recreate at the same path -- is
+     * real, observed, POSIX-style behavior (confirmed by a standalone
+     * probe against this repository's real filesystem, see {@code
+     * createAndWriteMetadata}'s own Javadoc) but is platform-dependent
+     * in general (traditional Windows semantics differ). Annotated
+     * {@code @EnabledOnOs(OS.LINUX)} accordingly -- true both in this
+     * project's real dev environment (WSL2, a real Linux kernel under
+     * the drvfs mount) and its CI ({@code ubuntu-latest}).
      *
      * <p><b>What this test does NOT cover, by design, not oversight</b>:
      * it proves data is never corrupted, but bypasses {@code
@@ -829,11 +819,8 @@ class AccountLedgerLockTest {
      * READ_FAILED}/{@code EMPTY_OR_UNPARSEABLE} cleanup call, or {@code
      * acquire}'s handling of losing either race through the real
      * production call path. See {@code createAndWriteMetadata}'s own
-     * Javadoc, "Known, permanent test-coverage gap," for the full
-     * reasoning -- reconsidered on five separate real code-review passes
-     * on this same PR and declined each time as requiring either accepted
-     * test flakiness or an unrequested production-only test hook, neither
-     * of which this task makes unilaterally.
+     * Javadoc, "Known, permanent test-coverage gap," for why this is
+     * accepted as a permanent limitation rather than closed.
      */
     @Test
     @EnabledOnOs(OS.LINUX)

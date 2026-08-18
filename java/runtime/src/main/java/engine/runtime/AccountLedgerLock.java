@@ -53,7 +53,7 @@ import org.slf4j.LoggerFactory;
  * with {@link java.nio.file.StandardOpenOption#CREATE_NEW}, with the
  * metadata written through that same open handle -- not two separate,
  * path-based operations (see {@link #createAndWriteMetadata}'s own
- * Javadoc for why that distinction matters). {@link
+ * Javadoc for why that distinction matters). {@code
  * AccountLedgerLockMultiProcessTest} is the real, second-JVM proof this
  * actually holds on this repository's real filesystem, not merely an
  * assumption -- see that test's own Javadoc.
@@ -109,7 +109,7 @@ import org.slf4j.LoggerFactory;
  * lock out from under it, and both processes end up concurrently "inside
  * the lock" from their own perspective -- a real mutual-exclusion
  * violation, not a bug in this class's own logic (empirically
- * demonstrated and reproduced deterministically by {@link
+ * demonstrated and reproduced deterministically by {@code
  * AccountLedgerLockTest#aStaleThresholdShorterThanARealHoldersOwnCriticalSectionCausesARealMutualExclusionViolation}).
  * Deliberately <b>not</b> guarded by an enforced minimum {@code
  * staleThreshold} inside this class: the real minimum any given
@@ -389,7 +389,7 @@ final class AccountLedgerLock implements AutoCloseable {
      * then be created at that same path, and a subsequent write through
      * the original, now-path-invisible channel lands on that original file
      * rather than the new one), not Windows' traditional
-     * delete-blocked-while-open behavior. {@link
+     * delete-blocked-while-open behavior. {@code
      * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
      * proves this holds through the real production code path.
      *
@@ -460,51 +460,27 @@ final class AccountLedgerLock implements AutoCloseable {
      * on, now reached less often rather than relied on exclusively.
      *
      * <p><b>Known, permanent test-coverage gap on this method's own
-     * post-write re-verification branches -- both the genuine-generation-
-     * mismatch {@code null}-return path above, and the {@link
+     * post-write re-verification branches</b> -- both the genuine-
+     * generation-mismatch {@code null}-return path above, and the {@link
      * #READ_FAILED}/{@link #EMPTY_OR_UNPARSEABLE} cleanup-then-{@code
-     * null} path immediately above that -- deliberately left untested,
-     * reconsidered repeatedly and declined each time, not an
-     * oversight.</b> Proving any of these branches directly
-     * would require a real, second thread or process to interfere with
-     * {@code lockPath} in the exact, unobservable window between this
-     * method's own write completing and its immediately-following
-     * re-read -- two sequential lines inside one method call, with no
-     * yield point either line could be paused at from outside. This is
-     * true of the {@code EMPTY_OR_UNPARSEABLE} branch specifically as
-     * much as the genuine-mismatch one: even though {@code
-     * READ_FAILED}/{@code EMPTY_OR_UNPARSEABLE} were reasoned about above
-     * as more likely a same-process transient read/visibility gap than an
-     * actual competing holder, reproducing that transient condition on
-     * demand is no more achievable than reproducing a genuine competing
-     * write -- both require interfering with this exact internal window
-     * from outside, which no seam here allows. {@link
-     * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
-     * proves the closely related, and arguably more important, real-world
-     * property this design exists to protect -- that a delayed write
-     * through an orphaned handle can never corrupt a sibling's new
-     * generation -- but does so by bypassing this method entirely (opening
-     * its own raw channel), so it does not exercise this method's own
-     * {@code null}-return statement, its cleanup call, or {@code
-     * acquire}'s handling of either. The two ways to close this gap for
-     * real were both rejected as out of this task's own scope, not merely
-     * inconvenient: (1) accept genuine timing-dependent test flakiness by
-     * racing real threads against this exact window and hoping to win it
-     * reliably, which this codebase's own no-flaky-tests discipline does
-     * not allow; or (2) add a production-code, test-only synchronization
-     * hook (e.g. a callback or latch invoked between the write and the
-     * re-read) purely so a test could pause execution there, which is
-     * real, unrequested production surface area added solely to serve one
-     * test -- a design compromise this task was never asked to make and
-     * does not make unilaterally. Unlike those two coverage gaps, the
-     * {@code EMPTY_OR_UNPARSEABLE} grouping fix itself was still made
-     * (not declined) despite this -- its correctness rests on matching an
-     * already-independently-validated principle ({@code doClose}'s own
-     * identical grouping) applied to a structurally analogous call site,
-     * and on {@link
+     * null} path immediately above that. Proving either directly requires
+     * a real, second thread or process to interfere with {@code
+     * lockPath} in the exact, unobservable window between this method's
+     * own write completing and its immediately-following re-read -- two
+     * sequential lines inside one method call, with no yield point either
+     * line could be paused at from outside. Both ways to close this gap
+     * for real are rejected: (1) accepting genuine timing-dependent test
+     * flakiness by racing real threads against this window, against this
+     * codebase's own no-flaky-tests discipline; or (2) adding a
+     * production-code, test-only synchronization hook purely so a test
+     * could pause execution there, which is unrequested production
+     * surface area added solely to serve one test. The {@code
+     * EMPTY_OR_UNPARSEABLE} grouping itself is still trusted despite this
+     * gap: it matches {@code doClose}'s own already-independently-
+     * validated identical grouping, and relies on {@link
      * #deleteIfStillOwnGeneration}'s own already-proven safety property,
-     * not on a fresh, untested claim of its own. These branches' only
-     * coverage today is indirect: the multi-thread ({@code
+     * not on a fresh, untested claim of its own. Coverage today is
+     * indirect only: the multi-thread ({@code
      * AccountLedgerLockTest#acquireProvidesRealMutualExclusionAcrossManyThreads})
      * and multi-process ({@code AccountLedgerLockMultiProcessTest}) tests
      * exercise {@code acquire} under enough real contention that these
@@ -631,7 +607,7 @@ final class AccountLedgerLock implements AutoCloseable {
      * metadata could not be read right now.
      *
      * <p><b>A real TOCTOU window this method's own re-verification step
-     * exists to close</b> (see {@link AccountLedgerLockMultiProcessTest}'s
+     * exists to close</b> (see {@code AccountLedgerLockMultiProcessTest}'s
      * Javadoc for the real multi-JVM test that found it): reading this
      * lock's metadata and judging it stale is <b>not instantaneous</b> --
      * real, repeatable measurements
@@ -1142,6 +1118,26 @@ final class AccountLedgerLock implements AutoCloseable {
             return;
         }
         closed = doClose();
+    }
+
+    /**
+     * Throws {@link IllegalStateException} if this instance has already
+     * reached a final, closed state (see {@link #closed}'s own Javadoc for
+     * exactly when that happens -- a retryable, non-final {@link #close}
+     * outcome does <b>not</b> trip this check). {@link
+     * AccountLedgerStore#load}/{@link AccountLedgerStore#persist} call
+     * this as part of enforcing their own documented caller contract: an
+     * already-released lock is worse to accept as proof of holding one
+     * than accepting none at all, since it would read as protected when
+     * it is not. Package-private -- this is a structural check on this
+     * project's own {@code AccountLedgerStore} callers, not a public API.
+     */
+    void requireHeld() {
+        if (closed) {
+            throw new IllegalStateException(
+                    "AccountLedgerLock for " + lockPath + " has already been released -- it cannot be used as"
+                            + " proof of currently holding it");
+        }
     }
 
     /**

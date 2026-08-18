@@ -87,24 +87,14 @@ final class LockContenderMain {
     }
 
     /**
-     * Real Minor finding, a further real CodeRabbit review round on this
-     * PR: a single, unretried {@code lock.close()} (the previous, plain
-     * try-with-resources form of the loop above) is inconsistent with
-     * {@link AccountLedgerLock}'s own documented caller contract -- its
-     * class Javadoc's own fourth caller-contract point states that {@code
-     * close()} does not itself signal success or failure, and a caller
-     * wanting the lock file genuinely released must call {@code close()}
-     * again when a first call took one of its retryable paths (a
-     * transient read/visibility gap on this project's own drvfs mount,
-     * which that same Javadoc separately measures at 500ms+ under
-     * contention). This launcher deliberately creates exactly that kind
-     * of real, sustained multi-process contention (it is the whole point
-     * of {@link AccountLedgerLockMultiProcessTest}), so a single close()
-     * call occasionally leaving this contender's own lock file behind is
-     * a real, reachable risk, not theoretical -- retried here a few times
-     * with a short delay, matching the bounded-retry shape {@link
-     * AccountLedgerLock}'s own {@code deleteIfStillOwnGeneration} already
-     * uses for the identical underlying condition.
+     * Retries {@link AccountLedgerLock#close()} until {@code lockPath} is
+     * confirmed gone: {@code close()} does not itself signal success or
+     * failure (see {@link AccountLedgerLock}'s own class Javadoc, fourth
+     * caller-contract point) and can take a retryable, non-final path on
+     * this project's own drvfs mount, so a single call is not sufficient
+     * proof of release under this launcher's own real, sustained
+     * multi-process contention (the whole point of {@link
+     * AccountLedgerLockMultiProcessTest}).
      */
     private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
         for (int attempt = 0; attempt < 5; attempt++) {
