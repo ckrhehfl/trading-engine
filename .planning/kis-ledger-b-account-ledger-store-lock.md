@@ -4261,6 +4261,44 @@ needed no code or test change of its own). `AccountLedgerStoreTest`
 reran 3 additional explicit times, stable. No raw stress harness
 re-run -- zero production control-flow change this round.
 
+### Round 43
+
+Review id `4966555125`, against commit `28960fa` (round 42's fix
+commit, already pushed), landed at `2026-08-18T22:37:56Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment:
+
+- **(Trivial, quick win) `persist`'s `tmpPreexisted` determination-
+  failure branch (a non-`NoSuchFileException` `IOException` from
+  `Files.readAttributes(candidateTmp, ...)`) silently set `tmpPreexisted
+  = true` with no log line.** The fail-safe direction itself is correct
+  and unchanged by this fix -- treating an undetermined `candidateTmp`
+  as pre-existing is the same "never delete a file this call may not
+  own" reasoning this class already applies elsewhere. The real gap was
+  observability: if this branch fires, a `.tmp` file can be left behind
+  indistinguishable from a genuine crash leftover, and a human working
+  through this class's own manual-resolution procedure (see `load`'s
+  own Javadoc) would have no way to tell the two apart. Fixed exactly
+  as suggested: a `log.warn` call naming `candidateTmp` and the real
+  `determinationFailure`, added before the existing `tmpPreexisted =
+  true` assignment (which is otherwise byte-for-byte unchanged). No new
+  test -- this exact branch is already exercised by the existing
+  `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`
+  test (a self-referential symlink at `candidateTmp` forces the real
+  `FileSystemException` this catch clause handles), and this codebase's
+  own established convention does not unit-test exact log-message
+  content (confirmed by checking: no existing test in this file asserts
+  on any of this class's other `log.warn`/`log.error` calls either) --
+  so the existing test already proves this line executes without
+  throwing, which is what actually needed proving.
+
+Re-ran after the fix: `./gradlew clean build` -- green, **466 tests, 0
+failures, 0 errors** project-wide (unchanged count -- purely additive
+logging, already covered by an existing test, no new/modified test
+method). `AccountLedgerStoreTest` reran 3 additional explicit times,
+stable. No raw stress harness re-run -- confined to
+`AccountLedgerStore.java`, zero `AccountLedgerLock` control-flow change.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4357,7 +4395,11 @@ re-run -- zero production control-flow change this round.
   `AccountLedgerLockTest.java`); 43/43 after round 42's (a comprehensive,
   12-location comment-only narrative sweep of this file, plus a
   reaffirmed decline needing no code change -- no new/modified test
-  methods, zero behavior change).
+  methods, zero behavior change); 43/43 after round 43's (a purely
+  additive `log.warn` call in `persist`'s own `tmpPreexisted`
+  determination-failure branch, already covered by the existing
+  `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`
+  test -- no new/modified test method).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -4717,13 +4759,19 @@ re-run -- zero production control-flow change this round.
   code change, zero production control-flow change, so it likewise did
   not independently warrant a further raw stress-harness round; the
   task-wide total remains **430 clean rounds, 20,640 individual lock
-  acquisitions, zero lost updates** after round 42.
+  acquisitions, zero lost updates** after round 42. Round 43's own real
+  fix (a `log.warn` addition inside `AccountLedgerStore.persist`) is
+  confined to that class, with zero touch on `AccountLedgerLock`'s own
+  acquire/steal/close control flow, so it likewise did not independently
+  warrant a further raw stress-harness round; the task-wide total
+  remains **430 clean rounds, 20,640 individual lock acquisitions, zero
+  lost updates** after round 43.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, and 42
-  (plus round 27's own
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, and
+  43 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -4763,7 +4811,11 @@ re-run -- zero production control-flow change this round.
   harness re-run; round 42's own 3 additional explicit
   `AccountLedgerStoreTest` reruns (a comment-only sweep confined to that
   file, no `AccountLedgerLock`-level change, so no combined rerun or raw
-  harness re-run was warranted that round), all noted above).
+  harness re-run was warranted that round); round 43's own 3 additional
+  explicit `AccountLedgerStoreTest` reruns (the `log.warn` fix confined
+  to that file, no `AccountLedgerLock`-level change, so no combined
+  rerun or raw harness re-run was warranted that round either), all
+  noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -4783,7 +4835,7 @@ re-run -- zero production control-flow change this round.
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
   net-new from round 36's + 0 net-new from round 37's + 0 net-new from
   round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
-  round 41's + 0 net-new from round 42's).
+  round 41's + 0 net-new from round 42's + 0 net-new from round 43's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

@@ -489,6 +489,18 @@ final class AccountLedgerStore {
             } catch (NoSuchFileException absent) {
                 tmpPreexisted = false;
             } catch (IOException determinationFailure) {
+                // Logged (not previously): a human resolving a permanently
+                // fail-closed load() via this class's own manual-resolution
+                // procedure needs to be able to tell a genuine crash
+                // leftover apart from this determination failure having
+                // forced tmpPreexisted -- both leave an unexplained .tmp
+                // file behind, but only one is actually explained by a log
+                // line here.
+                log.warn(
+                        "could not determine whether {} already exists; treating it as pre-existing so this call"
+                                + " never deletes a file it may not own: {}",
+                        candidateTmp,
+                        determinationFailure.toString());
                 tmpPreexisted = true;
             }
             if (!tmpPreexisted) {
