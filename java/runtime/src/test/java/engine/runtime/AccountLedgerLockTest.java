@@ -7,6 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SeekableByteChannel;
 import java.nio.file.Files;
@@ -138,6 +140,18 @@ class AccountLedgerLockTest {
      * brief -- not merely assumed absent) and a fresh {@code acquiredAt}
      * well inside {@code staleThreshold}. {@link AccountLedgerLock#acquire}
      * must steal it via the dead-PID path alone and succeed.
+     *
+     * <p>Uses this test's own real, current hostname in the fabricated
+     * content (not an arbitrary fake value) -- a further real CodeRabbit
+     * review round on this PR found the dead-PID path itself is only
+     * meaningful when the recorded {@code hostname} matches the current
+     * host (see
+     * {@link #acquireDoesNotStealAFabricatedDeadPidLockFromADifferentHostnameWhileFresh}
+     * for the different-host case this distinction protects against);
+     * this test's own subject is the
+     * same-host dead-PID path specifically, so it must use a real,
+     * matching hostname to keep testing that path once that distinction
+     * exists.
      */
     @Test
     void acquireStealsAFabricatedLockWithADeadPid(@TempDir Path tempDir) throws IOException {
@@ -146,7 +160,8 @@ class AccountLedgerLockTest {
 
         Files.writeString(
                 lockPath,
-                "{\"pid\":" + deadPid + ",\"hostname\":\"stale-host\",\"acquiredAt\":\"" + Instant.now() + "\"}");
+                "{\"pid\":" + deadPid + ",\"hostname\":\"" + realHostname() + "\",\"acquiredAt\":\""
+                        + Instant.now() + "\"}");
 
         try (AccountLedgerLock lock =
                 AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET)) {
@@ -157,13 +172,102 @@ class AccountLedgerLockTest {
             // does not distinguish a real steal from acquire() simply
             // never running at all. Verifying the content actually
             // changed to this process's own real metadata (and the
-            // fabricated stale-host value is gone) proves the steal
-            // itself happened, matching the same discipline already
-            // applied to acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold.
+            // fabricated dead pid is gone) proves the steal itself
+            // happened, matching the same discipline already applied to
+            // acquireStealsAnAbandonedEmptyLockFileOlderThanStaleThreshold.
             String content = Files.readString(lockPath);
             assertFalse(
-                    content.contains("stale-host"),
+                    content.contains("\"pid\":" + deadPid),
                     "the fabricated stale generation must have been replaced, not merely left in place");
+            assertTrue(
+                    content.contains("\"pid\":" + ProcessHandle.current().pid()),
+                    "the reclaimed file must hold this process's own real metadata now");
+        }
+    }
+
+    /**
+     * Real Minor finding, a further real CodeRabbit review round on this
+     * PR: {@code tryStealIfStale}'s dead-PID check
+     * ({@code ProcessHandle.of(metadata.pid())}) only ever consults
+     * <i>this</i> host's own process table -- meaningful only because
+     * this project's own documented deployment model has every process
+     * sharing a given lock running on the same host (see {@link
+     * AccountLedgerLock}'s own class Javadoc). A lock file recorded by a
+     * genuinely different host (a future multi-host deployment, or a
+     * misconfiguration) would almost certainly show a "not found" result
+     * for that PID on this host regardless of whether the real, foreign
+     * holder is still alive -- silently treating "not found on this
+     * host" as "provably dead" would then be wrong. Fixed:
+     * {@code holderDead} now additionally requires {@code
+     * metadata.hostname()} to match this host's own current hostname
+     * before trusting the PID-liveness result; a hostname mismatch
+     * treats the PID as not provably dead (fails toward not stealing via
+     * this path, not toward stealing) rather than guessing. The
+     * independent {@code expired} check (a lock's own {@code
+     * acquiredAt} older than {@code staleThreshold}) is deliberately
+     * unaffected -- see {@link
+     * #acquireStealsAFabricatedDeadPidLockFromADifferentHostnameOnceItsTimestampExpires}
+     * immediately below for why a foreign-host lock must still be
+     * reclaimable via that independent path.
+     *
+     * <p>Uses a short, non-generous retry budget so this test (which
+     * proves acquisition genuinely does NOT happen) doesn't need to wait
+     * out {@link #GENEROUS_RETRY_BUDGET}'s own multi-second budget to
+     * observe the expected failure.
+     */
+    @Test
+    void acquireDoesNotStealAFabricatedDeadPidLockFromADifferentHostnameWhileFresh(@TempDir Path tempDir)
+            throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        long deadPid = findAPidThatIsNotRunning();
+        Duration shortRetryBudget = Duration.ofMillis(300);
+
+        Files.writeString(
+                lockPath,
+                "{\"pid\":" + deadPid + ",\"hostname\":\"definitely-a-different-host\",\"acquiredAt\":\""
+                        + Instant.now() + "\"}");
+
+        IllegalStateException thrown = assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, shortRetryBudget));
+
+        assertTrue(
+                thrown.getMessage().contains("within retry budget"),
+                "must genuinely exhaust the retry budget (never steal a foreign-host lock via the PID-liveness"
+                        + " path alone, and never fail for some other reason); was: " + thrown.getMessage());
+        assertTrue(
+                Files.readString(lockPath).contains("definitely-a-different-host"),
+                "the foreign-host lock must be completely untouched -- never stolen via the PID-liveness path"
+                        + " when the hostname doesn't match this host");
+    }
+
+    /**
+     * The direct counterpart to {@link
+     * #acquireDoesNotStealAFabricatedDeadPidLockFromADifferentHostnameWhileFresh}
+     * immediately above, proving the {@code expired} check remains a
+     * fully independent, working backstop for a foreign-host lock -- the
+     * same {@code hostname} mismatch that suppresses the PID-liveness
+     * path must not also suppress this one.
+     */
+    @Test
+    void acquireStealsAFabricatedDeadPidLockFromADifferentHostnameOnceItsTimestampExpires(@TempDir Path tempDir)
+            throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        long deadPid = findAPidThatIsNotRunning();
+        Duration staleThreshold = Duration.ofMillis(50);
+        Instant longAgo = Instant.now().minus(Duration.ofSeconds(60));
+
+        Files.writeString(
+                lockPath,
+                "{\"pid\":" + deadPid + ",\"hostname\":\"definitely-a-different-host\",\"acquiredAt\":\""
+                        + longAgo + "\"}");
+
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, GENEROUS_RETRY_BUDGET)) {
+            assertTrue(Files.exists(lockPath), "a real lock must have been created after the steal");
+            String content = Files.readString(lockPath);
+            assertFalse(
+                    content.contains("definitely-a-different-host"),
+                    "the fabricated foreign-host generation must have been replaced, not merely left in place");
             assertTrue(
                     content.contains("\"pid\":" + ProcessHandle.current().pid()),
                     "the reclaimed file must hold this process's own real metadata now");
@@ -678,6 +782,19 @@ class AccountLedgerLockTest {
      * sequence) stays; a redundant second close from the try-with-
      * resources block once that already ran is a documented no-op per
      * {@link SeekableByteChannel#close()}'s own contract, not a bug.
+     *
+     * <p><b>What this test does NOT cover, by design, not oversight</b>:
+     * it proves data is never corrupted, but bypasses {@code
+     * createAndWriteMetadata} itself (opening its own raw channel rather
+     * than calling that method), so it does not exercise that method's
+     * own {@code null}-return statement or {@code acquire}'s handling of
+     * losing that exact race through the real production call path. See
+     * {@code createAndWriteMetadata}'s own Javadoc, "Known, permanent
+     * test-coverage gap," for the full reasoning -- reconsidered on four
+     * separate real code-review passes on this same PR and declined each
+     * time as requiring either accepted test flakiness or an unrequested
+     * production-only test hook, neither of which this task makes
+     * unilaterally.
      */
     @Test
     @EnabledOnOs(OS.LINUX)
@@ -724,5 +841,21 @@ class AccountLedgerLockTest {
                     + " pick a different fabricated value");
         }
         return candidate;
+    }
+
+    /**
+     * Mirrors {@code AccountLedgerLock}'s own private {@code hostname()}
+     * exactly (same {@link InetAddress#getLocalHost()} call, same
+     * fallback) -- this test class has no access to that private method,
+     * so it needs its own copy to fabricate a lock file whose recorded
+     * {@code hostname} genuinely matches this host, not a value merely
+     * assumed to match.
+     */
+    private static String realHostname() {
+        try {
+            return InetAddress.getLocalHost().getHostName();
+        } catch (UnknownHostException e) {
+            return "unknown-host";
+        }
     }
 }

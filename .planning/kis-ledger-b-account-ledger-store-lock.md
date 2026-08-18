@@ -3205,6 +3205,108 @@ fix, one for the write-side JSON-literal-`null` coverage gap).
 are confined to `AccountLedger`/`AccountLedgerStore`/`AccountLedgerStoreTest`),
 so a further raw stress-harness round was not independently warranted.
 
+### Round 32
+
+Against commit `bdafd0e` (after round 31's fixes were pushed), landed at
+`2026-08-18T09:38:01Z` UTC, `commit_id` verified via the REST reviews API
+to match HEAD exactly -- `CHANGES_REQUESTED`, 1 actionable comment plus 1
+shown separately as a **"Duplicate comment"** -- the same recurring
+`createAndWriteMetadata` null-return-branch coverage finding declined in
+rounds 25, 26, and 29. One real fix, one decline reaffirmed a fourth
+time with a new, permanent disclosure:
+
+- **(Minor) `tryStealIfStale`'s dead-PID check
+  (`ProcessHandle.of(metadata.pid())`) only ever consults THIS host's
+  own process table -- meaningful only because this project's own
+  documented deployment model has every process sharing a lock running
+  on the same host. A lock recorded by a genuinely different host (a
+  future multi-host deployment, or a misconfiguration) would almost
+  certainly read as "not found" on this host regardless of whether its
+  real, foreign holder is still alive.** Real, and a genuine gap in the
+  class's own documented invariant, even though it does not affect this
+  project's *current*, single-host use (every real process sharing a
+  lock today calls the same `hostname()` method and resolves to the
+  same string, so `holderDead`'s computation is unaffected for the only
+  scenario this project actually exercises -- confirmed by the 25-round
+  raw stress harness re-run below, not merely reasoned about). Fixed:
+  `holderDead` now additionally requires the recorded `hostname` to
+  match this host's own current hostname before trusting the
+  PID-liveness result; a mismatch is treated as "not provably dead"
+  (fails toward not stealing via this path) rather than guessed. The
+  independent `expired` check (a lock older than `staleThreshold`) is
+  deliberately unaffected -- a foreign-host lock remains reclaimable via
+  that path alone, matching the reviewer's own explicit instruction.
+  Class Javadoc's own "Contention and staleness" paragraph updated to
+  match. Proven with two new tests:
+  `acquireDoesNotStealAFabricatedDeadPidLockFromADifferentHostnameWhileFresh`
+  (a fabricated dead-looking PID + mismatched hostname + fresh
+  `acquiredAt` must NOT be stolen -- confirmed failing (red) against the
+  pre-fix code first, then green after the fix) and
+  `acquireStealsAFabricatedDeadPidLockFromADifferentHostnameOnceItsTimestampExpires`
+  (the same mismatched-hostname lock, but expired, must still be stolen
+  via the independent time-based path -- passed both before and after,
+  proving that path's own independence directly). **A real, existing
+  test would otherwise have broken by this fix, caught and fixed in the
+  same pass**: `acquireStealsAFabricatedLockWithADeadPid` fabricated its
+  lock with an arbitrary fake `"stale-host"` value, which the dead-PID
+  path no longer trusts once hostname must match -- updated to use this
+  test's own real, current hostname (via a new `realHostname()` test
+  helper mirroring `AccountLedgerLock`'s own private `hostname()`
+  method exactly), keeping it a genuine same-host dead-PID test rather
+  than accidentally becoming a new fail-to-acquire case.
+- **(Duplicate comment, 4th occurrence -- rounds 25, 26, 29, and now
+  this one) `createAndWriteMetadata`'s own genuine-generation-mismatch
+  `null`-return branch still has no test exercising it directly through
+  a real `acquire()` call.** Re-examined fully and freshly, not
+  reflexively re-declined -- specifically checked whether this round's
+  own hostname-gate fix (immediately above) opened any new seam or
+  observable yield point in this exact method; it does not, since that
+  fix is entirely within `tryStealIfStale`, a different method with no
+  call relationship to `createAndWriteMetadata`'s own internal write-
+  then-re-read window. The reasoning is otherwise unchanged from rounds
+  25/26/29: the race requires a real second thread or process to
+  reclaim `lockPath` via `tryStealIfAbandonedEmpty` in the exact,
+  unobservable gap between this method's own write completing and its
+  immediately-following re-read -- two sequential lines inside one
+  method call, no yield point either could be paused at from outside.
+  Closing it for real means either accepting genuine timing-dependent
+  test flakiness (against this codebase's own no-flaky-tests
+  discipline) or adding a production-code, test-only synchronization
+  hook solely to serve one test (real, unrequested production surface
+  area this task does not add unilaterally). **New this round, per the
+  coordinator's own explicit request given this is the fourth
+  occurrence**: rather than let this rest on the planning doc alone
+  (which CodeRabbit's own dup-detection tracks code changes against, not
+  planning-doc entries, hence the repeat re-raises), a permanent, explicit
+  disclosure now lives directly in the code itself -- a new "Known,
+  permanent test-coverage gap" Javadoc paragraph on
+  `createAndWriteMetadata` stating the gap, why it's declined, and both
+  rejected alternatives by name, plus a shorter cross-referencing "What
+  this test does NOT cover, by design, not oversight" paragraph on
+  `aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen`
+  (the closest existing, related test) pointing back to it -- so a
+  future reader of either the production method or its closest test sees
+  this was a deliberate, reconsidered decision on its own terms, not an
+  oversight requiring a planning-doc cross-check to discover.
+  Documentation-only; the decline itself, and its reasoning, are
+  otherwise unchanged from rounds 25/26/29.
+
+Re-ran after the round-32 fix: `./gradlew clean build` -- still green,
+**460 tests, 0 failures, 0 errors** project-wide (+2 from the two new
+`AccountLedgerLockTest` tests; the permanent-disclosure Javadoc additions
+were documentation-only, no new test methods). `AccountLedgerLockTest`
+and `AccountLedgerLockMultiProcessTest` reran 3 additional explicit times
+together, stable. **Because this round's real fix is a genuine change to
+`AccountLedgerLock`'s own acquire/steal control flow** (`tryStealIfStale`'s
+`holderDead` computation) -- the first such change since round 16 -- the
+raw, non-Gradle stress harness was re-run for real: **25/25 rounds exactly
+correct** (6 processes × 8 iterations = 48 expected per round, the same
+realistic configuration as every prior harness run in this task --
+**1,200 individual lock acquisitions this round, zero lost updates**),
+confirming the hostname gate does not disturb real mutual exclusion under
+genuine multi-process contention on this project's actual same-host
+deployment scenario, not merely by code inspection.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3266,7 +3368,9 @@ so a further raw stress-harness round was not independently warranted.
   31's (4 more new tests -- two for the `allocatedVirtualCapital`
   positivity invariant, one for the missing-ledger-plus-leftover-`.tmp`
   write-side fail-closed fix, one for the write-side JSON-literal-`null`
-  coverage gap).
+  coverage gap); 40/40 after round 32's (no `AccountLedgerStore`-level
+  changes that round -- both real changes were in `AccountLedgerLock`/
+  `AccountLedgerLockTest`).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3332,7 +3436,11 @@ so a further raw stress-harness round was not independently warranted.
   30's (a class-Javadoc-only fourth caller-contract addition, no
   test-level change); 12/12 after round 31's (no `AccountLedgerLock`-
   level changes that round either -- all three real fixes were in
-  `AccountLedger`/`AccountLedgerStore`/`AccountLedgerStoreTest`).
+  `AccountLedger`/`AccountLedgerStore`/`AccountLedgerStoreTest`); 14/14
+  after round 32's (2 more new tests -- the hostname-mismatch dead-PID
+  pair -- plus an existing test's fabricated hostname updated to stay
+  meaningful under the new gate, and the permanent test-coverage-gap
+  disclosure, documentation-only).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3364,7 +3472,15 @@ so a further raw stress-harness round was not independently warranted.
   `clean build`) after round 26, **4 more times** after round 27 (1 part
   of the full `clean build`, plus 3 further explicit `--rerun-tasks`
   runs, given round 27's own real change to this test file's own
-  `finally`-block cleanup timing).
+  `finally`-block cleanup timing), once more (part of the full `clean
+  build`) after round 28, once more (part of the full `clean build`,
+  plus round 29's own 3 additional explicit combined reruns noted in the
+  full-suite bullet below) after round 29, once more (part of the full
+  `clean build`) after round 30, once more (part of the full `clean
+  build`) after round 31, and **4 more times** after round 32 (1 part of
+  the full `clean build`, plus 3 further explicit `--rerun-tasks` runs,
+  given round 32's own real change to `AccountLedgerLock`'s acquire/steal
+  control flow).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -3481,24 +3597,39 @@ so a further raw stress-harness round was not independently warranted.
   JSON-literal-`null` coverage test) are all confined to `AccountLedger`/
   `AccountLedgerStore`/`AccountLedgerStoreTest`, with zero touch on
   `AccountLedgerLock` at all, so it likewise did not independently
-  warrant a further raw stress-harness round).
+  warrant a further raw stress-harness round; round 32's real fix (the
+  `holderDead` hostname gate in `tryStealIfStale`), by contrast, IS a
+  real change to `AccountLedgerLock`'s own acquire/steal control flow --
+  the first since round 16 -- so the raw harness WAS re-run for real
+  this round: **25/25 rounds exactly correct** (6 processes × 8
+  iterations = 48 expected per round, this task's own realistic
+  configuration -- **1,200 individual lock acquisitions this round,
+  zero lost updates**), bringing the task-wide raw-harness total to
+  **305 clean rounds, 14,640 individual lock acquisitions, zero lost
+  updates** across every round this harness has actually been re-run.
+  The decline (the `createAndWriteMetadata` null-return-branch coverage
+  gap, reaffirmed a fourth time) is documentation-only and needed no
+  further raw-harness verification on its own.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, and 31 (plus round 27's own 4 additional explicit
-  `AccountLedgerLockMultiProcessTest` reruns and 3 additional explicit
-  `AccountLedgerStoreTest`-new-test reruns; round 28's own 3 additional
-  explicit `AccountLedgerStoreTest` reruns; round 29's own 3 additional
-  explicit combined reruns of `AccountLedgerLockMultiProcessTest`,
+  26, 27, 28, 29, 30, 31, and 32 (plus round 27's own 4 additional
+  explicit `AccountLedgerLockMultiProcessTest` reruns and 3 additional
+  explicit `AccountLedgerStoreTest`-new-test reruns; round 28's own 3
+  additional explicit `AccountLedgerStoreTest` reruns; round 29's own 3
+  additional explicit combined reruns of `AccountLedgerLockMultiProcessTest`,
   `AccountLedgerLockTest`, and `AccountLedgerStoreTest` together; round
   30's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
-  31's own 3 additional explicit `AccountLedgerStoreTest` reruns, all
-  noted above).
+  31's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
+  32's own 3 additional explicit combined reruns of
+  `AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest`
+  together, plus the 25-round raw stress harness re-run, all noted
+  above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **458 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **460 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -3510,7 +3641,7 @@ so a further raw stress-harness round was not independently warranted.
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
-  from round 30's + 4 from round 31's).
+  from round 30's + 4 from round 31's + 2 from round 32's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

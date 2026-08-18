@@ -70,13 +70,20 @@ import org.slf4j.LoggerFactory;
  * <p><b>Contention and staleness</b>: on {@link FileAlreadyExistsException}
  * from the atomic create, this class reads the existing lock file's
  * metadata and checks whether it is <i>stale</i> -- either condition is
- * sufficient: (1) {@code
+ * sufficient: (1) the recorded {@code hostname} matches this host's own
+ * <i>and</i> {@code
  * ProcessHandle.of(pid).map(ProcessHandle::isAlive).orElse(false)} is
  * {@code false} (the holder is provably dead -- meaningful because every
  * process sharing this lock runs on the same host, per this project's
- * single-VPS/single-laptop deployment model), or (2) {@code
+ * single-VPS/single-laptop deployment model; a {@code hostname} mismatch
+ * -- a future multi-host deployment, or a misconfiguration -- leaves the
+ * pid-liveness result untrusted rather than guessed, since a genuinely
+ * foreign pid would almost always read as "not found" on this host
+ * regardless of whether its real holder is alive), or (2) {@code
  * acquiredAt} is older than {@code staleThreshold} (a generous backstop
- * against PID reuse producing a false "still alive" reading). A genuine
+ * against PID reuse producing a false "still alive" reading, and the
+ * only path that can reclaim a stale lock recorded by a different host).
+ * A genuine
  * steal is <b>never silent</b> -- logged at {@code ERROR}, matching this
  * module's own established "never silently resolve an ambiguous
  * cross-process situation" convention (see {@code
@@ -425,6 +432,41 @@ final class AccountLedgerLock implements AutoCloseable {
      * before reporting the lost race, rather than leaving this holder's
      * own live lock file behind to self-block it (and every other waiter)
      * until {@code staleThreshold} elapses.
+     *
+     * <p><b>Known, permanent test-coverage gap on this method's own {@code
+     * null}-return branch (the genuine-generation-mismatch path
+     * immediately above) -- deliberately left untested, reconsidered on
+     * four separate real code-review passes on this same PR and declined
+     * each time, not an oversight.</b> Proving this branch directly would
+     * require a real, second thread or process to reclaim {@code
+     * lockPath} via {@link #tryStealIfAbandonedEmpty} in the exact,
+     * unobservable window between this method's own write completing
+     * (just above) and its immediately-following re-read -- two
+     * sequential lines inside one method call, with no yield point either
+     * line could be paused at from outside. {@link
+     * AccountLedgerLockTest#aLockFilesOwnOpenCreationHandleCannotClobberADifferentGenerationCreatedAfterItWasStolen}
+     * proves the closely related, and arguably more important, real-world
+     * property this design exists to protect -- that a delayed write
+     * through an orphaned handle can never corrupt a sibling's new
+     * generation -- but does so by bypassing this method entirely (opening
+     * its own raw channel), so it does not exercise this method's own
+     * {@code null}-return statement or {@code acquire}'s handling of it.
+     * The two ways to close this gap for real were both rejected as out of
+     * this task's own scope, not merely inconvenient: (1) accept genuine
+     * timing-dependent test flakiness by racing real threads against this
+     * exact window and hoping to win it reliably, which this codebase's
+     * own no-flaky-tests discipline does not allow; or (2) add a
+     * production-code, test-only synchronization hook (e.g. a callback or
+     * latch invoked between the write and the re-read) purely so a test
+     * could pause execution there, which is real, unrequested production
+     * surface area added solely to serve one test -- a design compromise
+     * this task was never asked to make and does not make unilaterally.
+     * This branch's only coverage today is indirect: the multi-thread
+     * ({@code AccountLedgerLockTest#acquireProvidesRealMutualExclusionAcrossManyThreads})
+     * and multi-process ({@code AccountLedgerLockMultiProcessTest}) tests
+     * exercise {@code acquire} under enough real contention that this
+     * exact race is structurally possible on every run, without ever
+     * being provable to have actually occurred on any given run.
      */
     private static LockMetadata createAndWriteMetadata(Path lockPath) throws IOException {
         Path parent = lockPath.toAbsolutePath().getParent();
@@ -610,7 +652,21 @@ final class AccountLedgerLock implements AutoCloseable {
             return tryStealIfAbandonedEmpty(lockPath, staleThreshold);
         }
 
-        boolean holderDead = !ProcessHandle.of(metadata.pid()).map(ProcessHandle::isAlive).orElse(false);
+        // ProcessHandle.of(pid) only ever consults THIS host's own process
+        // table -- meaningful only because this project's own documented
+        // deployment model has every process sharing a given lock running
+        // on the same host (see class Javadoc). A lock recorded by a
+        // genuinely different host would almost certainly show a
+        // "not found" result for that pid here regardless of whether the
+        // real, foreign holder is still alive -- so the pid-liveness
+        // result is only trusted when the recorded hostname matches this
+        // host's own; a mismatch is treated as "not provably dead" (fails
+        // toward not stealing via this path) rather than guessed. The
+        // expired check below is deliberately independent of this gate --
+        // a foreign-host lock must still be reclaimable once its own
+        // acquiredAt exceeds staleThreshold.
+        boolean holderDead = hostname().equals(metadata.hostname())
+                && !ProcessHandle.of(metadata.pid()).map(ProcessHandle::isAlive).orElse(false);
         boolean expired = Duration.between(metadata.acquiredAt(), Instant.now()).compareTo(staleThreshold) > 0;
         if (!holderDead && !expired) {
             return false; // live, recent holder -- not stale
