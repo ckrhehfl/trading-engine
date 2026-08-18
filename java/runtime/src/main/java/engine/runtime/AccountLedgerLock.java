@@ -211,20 +211,29 @@ final class AccountLedgerLock implements AutoCloseable {
     private static final long MAX_BACKOFF_MILLIS = 250;
 
     /**
-     * How many times {@link #deleteIfStillOwnGeneration} re-reads {@code
-     * lockPath} before giving up on a transient ({@link #READ_FAILED}/
-     * {@link #EMPTY_OR_UNPARSEABLE}) verification result -- see that
-     * method's own Javadoc for why a single immediate read is not enough.
-     * Deliberately small and fixed (not scaled to {@code
-     * totalRetryBudget}): this runs synchronously inside {@link
+     * How many times {@link #deleteIfStillOwnGeneration} and {@link
+     * #stillHoldsCurrentGeneration} each re-read {@code lockPath} before
+     * giving up on a transient ({@link #READ_FAILED}/{@link
+     * #EMPTY_OR_UNPARSEABLE}) verification result -- see each method's own
+     * Javadoc for why a single immediate read is not enough. Deliberately
+     * small and fixed (not scaled to {@code totalRetryBudget}): {@link
+     * #deleteIfStillOwnGeneration} runs synchronously inside {@link
      * #createAndWriteMetadata}, itself already inside {@link #acquire}'s
      * own retry loop, so it must add only a small, bounded amount of
-     * latency, not consume a meaningful share of the caller's own budget.
+     * latency there; {@link #stillHoldsCurrentGeneration} runs inside
+     * {@link #requireHeld()}, called by every {@code AccountLedgerStore}
+     * load/persist, so the same small-and-bounded reasoning applies for
+     * an analogous reason -- neither call site should turn a single
+     * caller invocation into an unbounded stall.
      */
-    private static final int OWN_GENERATION_DELETE_RETRY_ATTEMPTS = 3;
+    private static final int OWN_GENERATION_READ_RETRY_ATTEMPTS = 3;
 
-    /** Delay between {@link #deleteIfStillOwnGeneration}'s own retry attempts -- see that constant's Javadoc. */
-    private static final long OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS = 50;
+    /**
+     * Delay between {@link #deleteIfStillOwnGeneration}'s and {@link
+     * #stillHoldsCurrentGeneration}'s own retry attempts -- see that
+     * constant's Javadoc.
+     */
+    private static final long OWN_GENERATION_READ_RETRY_DELAY_MILLIS = 50;
 
     private final Path lockPath;
 
@@ -788,8 +797,8 @@ final class AccountLedgerLock implements AutoCloseable {
      * different, currently-live holder's lock. Tolerates {@link
      * NoSuchFileException} (already gone -- fine, nothing to do).
      *
-     * <p><b>Retries briefly (up to {@link #OWN_GENERATION_DELETE_RETRY_ATTEMPTS}
-     * reads, {@link #OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS} apart) when
+     * <p><b>Retries briefly (up to {@link #OWN_GENERATION_READ_RETRY_ATTEMPTS}
+     * reads, {@link #OWN_GENERATION_READ_RETRY_DELAY_MILLIS} apart) when
      * the verification read itself comes back as {@link #READ_FAILED} or
      * {@link #EMPTY_OR_UNPARSEABLE}, rather than giving up on the very
      * first such read.</b> A single immediate read is not enough to give
@@ -842,7 +851,7 @@ final class AccountLedgerLock implements AutoCloseable {
      * from.
      */
     private static void deleteIfStillOwnGeneration(Path lockPath, LockMetadata metadata) throws IOException {
-        for (int attempt = 0; attempt < OWN_GENERATION_DELETE_RETRY_ATTEMPTS; attempt++) {
+        for (int attempt = 0; attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS; attempt++) {
             LockMetadata current = readMetadataOrNull(lockPath);
             if (metadata.equals(current)) {
                 try {
@@ -859,8 +868,8 @@ final class AccountLedgerLock implements AutoCloseable {
                 // or the other.
                 return;
             }
-            if (attempt < OWN_GENERATION_DELETE_RETRY_ATTEMPTS - 1) {
-                sleepQuietly(OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS);
+            if (attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS - 1) {
+                sleepQuietly(OWN_GENERATION_READ_RETRY_DELAY_MILLIS);
             }
         }
     }
@@ -1176,6 +1185,18 @@ final class AccountLedgerLock implements AutoCloseable {
      * than accepting none at all, since it would read as protected when
      * it is not. Package-private -- this is a structural check on this
      * project's own {@code AccountLedgerStore} callers, not a public API.
+     *
+     * <p><b>Also rejects this instance once its own generation has been
+     * legitimately stolen</b> (via {@link #tryStealIfStale}, e.g. once
+     * {@code staleThreshold} elapses on a real, still-live, still-working
+     * holder that never called {@link #close}) -- {@link
+     * #releaseRequested} alone cannot catch this, since a caller unaware
+     * its own lock was stolen out from under it never calls {@code
+     * close()} at all. Performs a real, fresh read of {@code lockPath}
+     * and compares it against {@link #ownMetadata} (the same generation-
+     * match check {@link #deleteIfStillOwnGeneration} already uses,
+     * reused here) -- this is real disk I/O on every call, not a pure
+     * in-memory check, a deliberate cost tradeoff for real safety.
      */
     void requireHeld() {
         if (releaseRequested) {
@@ -1183,6 +1204,60 @@ final class AccountLedgerLock implements AutoCloseable {
                     "AccountLedgerLock for " + lockPath + " has already been released -- it cannot be used as"
                             + " proof of currently holding it");
         }
+        if (!stillHoldsCurrentGeneration()) {
+            throw new IllegalStateException(
+                    "AccountLedgerLock for " + lockPath + " is no longer the current holder -- another process has"
+                            + " legitimately reclaimed it (most likely staleThreshold elapsed on a real, still-"
+                            + " working holder that never called close()) or the lock file could not be confirmed"
+                            + " to still hold this instance's own generation, so it cannot be used as proof of"
+                            + " currently holding it");
+        }
+    }
+
+    /**
+     * @return {@code true} only if a fresh read of {@code lockPath}
+     *     confirms it still holds exactly this instance's own {@link
+     *     #ownMetadata}. Retries briefly (up to {@link
+     *     #OWN_GENERATION_READ_RETRY_ATTEMPTS} reads, {@link
+     *     #OWN_GENERATION_READ_RETRY_DELAY_MILLIS} apart) when the read
+     *     itself comes back as {@link #READ_FAILED} or {@link
+     *     #EMPTY_OR_UNPARSEABLE} -- the identical reasoning already
+     *     applied to {@link #deleteIfStillOwnGeneration}'s own retry:
+     *     this project's own drvfs mount has real, measured 500ms+
+     *     transient I/O latency under contention, so a single immediate
+     *     read is not enough to distinguish a genuine steal from a
+     *     transient visibility gap on this instance's own still-valid
+     *     content. A genuine, different generation (a real, different
+     *     {@link LockMetadata}) or a confirmed-absent file ends the
+     *     retry loop immediately, returning {@code false} -- ownership is
+     *     already settled, retrying further would serve no purpose.
+     *     Exhausting the retry budget while the condition is still
+     *     transient also returns {@code false} (fails closed), matching
+     *     {@link #requireHeld()}'s own "doubt must reject, not accept"
+     *     principle -- deliberately the opposite fail direction from
+     *     {@link #deleteIfStillOwnGeneration}'s own exhaustion case
+     *     (which simply gives up without deleting), since that method's
+     *     own risk is wrongly deleting a live lock, not wrongly trusting
+     *     a stale one.
+     */
+    private boolean stillHoldsCurrentGeneration() {
+        for (int attempt = 0; attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS; attempt++) {
+            LockMetadata current = readMetadataOrNull(lockPath);
+            if (ownMetadata.equals(current)) {
+                return true;
+            }
+            if (current != READ_FAILED && current != EMPTY_OR_UNPARSEABLE) {
+                // A genuine, different generation, or a confirmed-absent
+                // file -- not a transient condition, so no point retrying
+                // further; ownership is already settled one way or the
+                // other.
+                return false;
+            }
+            if (attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS - 1) {
+                sleepQuietly(OWN_GENERATION_READ_RETRY_DELAY_MILLIS);
+            }
+        }
+        return false;
     }
 
     /**

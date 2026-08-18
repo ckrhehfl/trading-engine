@@ -381,7 +381,12 @@ final class AccountLedgerStore {
      * part of a {@code load} + mutate + {@code persist} cycle.</b>
      * Structurally enforced via the required {@code lock} parameter (see
      * class Javadoc's "Caller contract" paragraph for exactly what is,
-     * and is not, verified about it). {@link #tmpPathFor} deliberately
+     * and is not, verified about it) -- checked via {@link
+     * AccountLedgerLock#requireHeld()} <b>twice</b>, once at this
+     * method's own entry and again immediately before the actual
+     * truncating write, narrowing (not eliminating) the real window in
+     * which this instance's own lock generation could be legitimately
+     * stolen between the two. {@link #tmpPathFor} deliberately
      * keeps a fixed, non-process-unique temp path (the interrupted-
      * persist detection in {@link #load} depends on that fixed name to
      * recognize a leftover {@code .tmp} from a crashed prior attempt) --
@@ -540,6 +545,23 @@ final class AccountLedgerStore {
             // must still be overwritable on retry, the same as it always
             // was; CREATE_NEW would instead throw
             // FileAlreadyExistsException and break that retry.
+            //
+            // Re-verified again, immediately before the actual truncating
+            // write -- this project's own established "re-verify
+            // immediately before trusting" convention (see
+            // AccountLedgerLock's own tryStealIfStale/
+            // deleteIfStillOwnGeneration), applied here for the identical
+            // reason: the single check at this method's own entry above
+            // narrows, but cannot by itself eliminate, the real window
+            // between validating the lock and this write actually
+            // happening -- verifyIdentityConsistency's own read/parse,
+            // directory creation, serialization, and the tmpPreexisted
+            // determination above all take real, non-negligible time
+            // under this project's own documented drvfs contention. A
+            // second lock.requireHeld() call here narrows that window to
+            // the write itself, at the (deliberate) cost of a second real
+            // disk read on every persist() call.
+            lock.requireHeld();
             try (FileChannel channel = FileChannel.open(
                     candidateTmp,
                     StandardOpenOption.CREATE,

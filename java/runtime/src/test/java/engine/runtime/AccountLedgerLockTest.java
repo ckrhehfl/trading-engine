@@ -725,6 +725,77 @@ class AccountLedgerLockTest {
     }
 
     /**
+     * {@link AccountLedgerLock#requireHeld()} must reject this instance
+     * once its own generation has been legitimately stolen by a real
+     * sibling -- a genuinely reachable state whenever {@code
+     * staleThreshold} elapses on a real, still-live, still-working
+     * holder (this class's own documented caller contract already
+     * requires {@code staleThreshold} be chosen comfortably larger than
+     * any real critical section, but a caller that never observed the
+     * steal -- never called {@code close()}, so {@code releaseRequested}
+     * alone would not catch this -- must still be blocked from using
+     * this now-superseded instance as proof of holding the lock).
+     * Proven through the real production path: a genuine second {@link
+     * AccountLedgerLock#acquire} call, not fabricated content, performs
+     * the steal.
+     */
+    @Test
+    void requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen(@TempDir Path tempDir)
+            throws InterruptedException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        Duration tinyStaleThreshold = Duration.ofMillis(50);
+        // staleThreshold is not a property of the acquired instance -- it is
+        // only ever consulted by a LATER caller judging an existing lock it
+        // finds already present. original's own staleThreshold here is
+        // irrelevant to whether it can later be stolen; it is the sibling's
+        // own staleThreshold below that determines that.
+        AccountLedgerLock original =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+        Thread.sleep(150); // exceed tinyStaleThreshold so the sibling below can legitimately judge it stale
+        AccountLedgerLock sibling = AccountLedgerLock.acquire(lockPath, tinyStaleThreshold, GENEROUS_RETRY_BUDGET);
+
+        try {
+            IllegalStateException thrown = assertThrows(IllegalStateException.class, original::requireHeld);
+            assertTrue(
+                    thrown.getMessage().contains(lockPath.toString()),
+                    "exception must name the lock path; was: " + thrown.getMessage());
+        } finally {
+            closeUntilReleased(sibling, lockPath);
+        }
+    }
+
+    /**
+     * The other half of {@link #requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen}'s
+     * own retry loop: a <i>persistent</i> {@code EMPTY_OR_UNPARSEABLE}
+     * condition on this instance's own {@code lockPath} (not a genuine
+     * steal) must still fail closed once {@link
+     * AccountLedgerLock#requireHeld()}'s own bounded retry budget is
+     * exhausted -- matching {@code requireHeld()}'s own documented
+     * "doubt must reject, not accept" principle. Does not independently
+     * prove the retry loop's own "recovers if the condition resolves
+     * mid-window" half -- the identical, already-disclosed structural
+     * reason applies here as it does for {@link
+     * #deleteIfStillOwnGeneration}'s own analogous retry (see that
+     * method's own Javadoc): reproducing the condition resolving at a
+     * specific point inside this method's own internal retry loop would
+     * need either accepted timing-dependent flakiness or an unrequested
+     * production-only test hook.
+     */
+    @Test
+    void requireHeldFailsClosedOnAPersistentEmptyOrUnparseableCondition(@TempDir Path tempDir) throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        AccountLedgerLock lock =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+        Files.writeString(lockPath, ""); // fabricates a persistent EMPTY_OR_UNPARSEABLE state, never restored
+
+        IllegalStateException thrown = assertThrows(IllegalStateException.class, lock::requireHeld);
+
+        assertTrue(
+                thrown.getMessage().contains(lockPath.toString()),
+                "exception must name the lock path; was: " + thrown.getMessage());
+    }
+
+    /**
      * A lock file that exists but is empty (e.g. the atomic {@link
      * Files#newByteChannel} create with {@code CREATE_NEW} succeeded but
      * the metadata write hasn't landed yet, or crashed before completing)

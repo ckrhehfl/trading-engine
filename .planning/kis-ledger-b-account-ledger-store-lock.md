@@ -4299,6 +4299,103 @@ method). `AccountLedgerStoreTest` reran 3 additional explicit times,
 stable. No raw stress harness re-run -- confined to
 `AccountLedgerStore.java`, zero `AccountLedgerLock` control-flow change.
 
+### Round 44
+
+Review id `4967044189`, against commit `261b773` (round 43's fix
+commit, already pushed), landed at `2026-08-18T23:37:38Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment -- but a real, significant
+one, distinct in kind from round 42's declined finding (that one asked
+`requireHeld()` to verify the lock corresponds to a *specific*
+`ledgerPath`, a naming-convention gap explicitly reserved for Task C;
+this one asks it to verify the lock is still the *current* generation
+of whatever it was originally proof of, a pure re-wiring of already-
+proven machinery, not new design surface):
+
+- **(Major, "Heavy lift") `requireHeld()` checked only
+  `releaseRequested` (round 41's own fix), never whether this
+  instance's generation is still the one currently recorded at
+  `lockPath`.** A real, reachable gap distinct from round 41's:
+  `tryStealIfStale` can legitimately reclaim a lock once
+  `staleThreshold` elapses on a real, still-live, still-working holder
+  that never called `close()` -- `releaseRequested` alone
+  cannot catch that, because the original holder never observed the
+  steal happen. Left unfixed, that original instance could still pass
+  `requireHeld()` and proceed to write through `persist`'s
+  fixed `.tmp` path while a legitimate new holder does the same,
+  the exact corruption this whole mechanism exists to prevent.
+
+  **Fixed by reusing already-proven machinery, not by inventing
+  anything new** -- the key reason this is treated differently from
+  round 42's declined finding. Renamed `AccountLedgerLock`'s existing
+  `OWN_GENERATION_DELETE_RETRY_ATTEMPTS`/`_DELAY_MILLIS` constants to
+  `OWN_GENERATION_READ_RETRY_ATTEMPTS`/`_DELAY_MILLIS` (a pure,
+  behavior-preserving rename -- `deleteIfStillOwnGeneration`'s own
+  logic and values are unchanged) to reflect a second real caller, then
+  added a new private `stillHoldsCurrentGeneration()` -- the identical
+  bounded-retry-on-`READ_FAILED`/`EMPTY_OR_UNPARSEABLE`
+  shape `deleteIfStillOwnGeneration` already uses, re-reading
+  `lockPath` and comparing against `ownMetadata`. One real,
+  deliberate asymmetry from that method: exhausting the retry budget
+  while the condition is still transient returns `false` (fails
+  closed) here, the opposite of `deleteIfStillOwnGeneration`'s own
+  exhaustion case (which simply gives up without deleting) -- because
+  this check's own risk is wrongly *trusting* a stale lock, not wrongly
+  *deleting* a live one, so doubt must reject here, not merely abstain.
+  `requireHeld()` now calls this alongside the existing
+  `releaseRequested` check (both required, neither replaces the
+  other). `AccountLedgerStore.persist` also gained a **second**
+  `lock.requireHeld()` call immediately before the actual truncating
+  write (not just at the method's own entry) -- per the reviewer's own
+  explicit point that a single upfront check does not close the TOCTOU
+  between validating the lock and the write actually happening,
+  since real, non-negligible work (`verifyIdentityConsistency`,
+  serialization, the `tmpPreexisted` determination) sits in between
+  under this project's own documented drvfs contention. Disclosed
+  honestly in both the class and method Javadoc as narrowing, not
+  eliminating, that window -- the same disclosure discipline this file
+  has applied to every other partial mitigation.
+
+  **Proven through the real production path, not fabricated content**:
+  a genuine second `AccountLedgerLock.acquire()` call performs the
+  steal in every new test -- discovered and fixed a real test-authoring
+  mistake along the way (not a production bug): `staleThreshold` is not
+  a property of the acquired instance, it is only ever consulted by a
+  *later* caller judging an existing lock it finds already present, so
+  the first draft of the steal test passed the wrong instance's own
+  threshold and the sibling's own `acquire()` call exhausted its retry
+  budget instead of stealing -- caught by actually running the test
+  before trusting it, not assumed correct from reading the code, fixed
+  by swapping which `acquire()` call receives the short threshold.
+  Three new tests: `AccountLedgerLockTest#requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen`
+  (the core property, via a real steal), `AccountLedgerLockTest#requireHeldFailsClosedOnAPersistentEmptyOrUnparseableCondition`
+  (the retry loop's own fail-closed-on-exhaustion half; the "recovers if
+  the condition resolves mid-window" half is not independently tested,
+  disclosed via the identical, already-established structural reason
+  `deleteIfStillOwnGeneration`'s own retry carries -- no seam exists to
+  pause execution at a specific point inside one method's own internal
+  loop without accepted flakiness or an unrequested production-only
+  test hook), and `AccountLedgerStoreTest#loadAndPersistRejectALockWhoseGenerationHasBeenStolen`
+  (the reviewer's own explicit ask: both `load` and `persist` rejected
+  end-to-end after a real steal, not just `requireHeld()` in
+  isolation).
+
+Re-ran after the fix: `./gradlew clean build` -- green, **469 tests, 0
+failures, 0 errors** project-wide (+3 net-new: the two
+`AccountLedgerLockTest` regression tests and the one
+`AccountLedgerStoreTest` end-to-end test above).
+`AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`, and
+`AccountLedgerStoreTest` all reran 3 additional explicit times
+together, stable. **No raw stress harness re-run this round**, a
+deliberate judgment call disclosed rather than a reflexive skip: the
+constant rename is behavior-preserving (identical values/logic in
+`deleteIfStillOwnGeneration`), and the new `stillHoldsCurrentGeneration`/
+`requireHeld` generation-check logic is reachable only through
+`AccountLedgerStore.load`/`persist`, which `LockContenderMain` (the raw
+harness's own contender) never calls -- so the harness would not
+exercise this round's new code at all, unlike rounds 32/34/36/41 where
+the real change sat directly in `acquire`/`close`'s own call graph.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4399,7 +4496,11 @@ stable. No raw stress harness re-run -- confined to
   additive `log.warn` call in `persist`'s own `tmpPreexisted`
   determination-failure branch, already covered by the existing
   `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`
-  test -- no new/modified test method).
+  test -- no new/modified test method); 44/44 after round 44's (1 more
+  new test -- `loadAndPersistRejectALockWhoseGenerationHasBeenStolen`,
+  proving `load`/`persist` both reject a lock after a real steal by a
+  sibling, end-to-end -- plus the new second `requireHeld()` call inside
+  `persist` itself, needing no test of its own beyond that one).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -4498,7 +4599,15 @@ stable. No raw stress harness re-run -- confined to
   `requireHeldThrowsAfterCloseIsCalledEvenWhenDoCloseTakesARetryableNonFinalPath`,
   proving the real `requireHeld()`-vs-`closed` gap the round's own Major
   finding identified -- plus the hostname-caching fix, which needed no
-  new test of its own, and the flakiness fix to an existing test).
+  new test of its own, and the flakiness fix to an existing test); 17/17
+  after round 42's and round 43's (no `AccountLedgerLock`-level changes
+  either round -- round 42's real fixes were in `AccountLedgerStoreTest.java`
+  comments and a reaffirmed decline, round 43's was confined to
+  `AccountLedgerStore.java`); 19/19 after round 44's (2 more new tests --
+  `requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen`
+  and `requireHeldFailsClosedOnAPersistentEmptyOrUnparseableCondition`,
+  proving the new generation-check gap the round's own Major finding
+  identified and its retry loop's fail-closed-on-exhaustion behavior).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -4557,11 +4666,18 @@ stable. No raw stress harness re-run -- confined to
   38's own real change to this test file's own final assertion -- the
   new `waitForLockFileAbsence` bounded poll -- plus its real child-
   process-side counterpart in `LockContenderMain`'s own
-  `closeUntilReleased`), and **4 more times** after round 39 (1 part of
+  `closeUntilReleased`), **4 more times** after round 39 (1 part of
   the full `clean build`, plus 3 further explicit `--rerun-tasks` runs
   together with `AccountLedgerLockTest`/`AccountLedgerStoreTest` -- this
   file itself was untouched this round, included for the same combined-
-  rerun discipline the other two files' own real changes warranted).
+  rerun discipline the other two files' own real changes warranted), and
+  **4 more times** after round 44 (1 part of the full `clean build`,
+  plus 3 further explicit `--rerun-tasks` runs together with
+  `AccountLedgerLockTest`/`AccountLedgerStoreTest` -- this file itself
+  was untouched again this round, included for the same combined-rerun
+  discipline; rounds 40-43's own individual counts were not itemized
+  here, each disclosed instead in this section's other per-file bullets
+  above).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -4765,13 +4881,21 @@ stable. No raw stress harness re-run -- confined to
   acquire/steal/close control flow, so it likewise did not independently
   warrant a further raw stress-harness round; the task-wide total
   remains **430 clean rounds, 20,640 individual lock acquisitions, zero
-  lost updates** after round 43.
+  lost updates** after round 43. Round 44's real `AccountLedgerLock`
+  changes (the `OWN_GENERATION_READ_RETRY_*` rename, behavior-preserving;
+  the new `stillHoldsCurrentGeneration`/`requireHeld` generation check)
+  are reachable only through `AccountLedgerStore.load`/`persist`, which
+  `LockContenderMain` never calls, so the raw harness would not exercise
+  any of round 44's new code even if re-run -- a deliberate judgment
+  call, disclosed rather than a reflexive skip; the task-wide total
+  remains **430 clean rounds, 20,640 individual lock acquisitions, zero
+  lost updates** after round 44.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, and
-  43 (plus round 27's own
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
+  and 44 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -4814,12 +4938,15 @@ stable. No raw stress harness re-run -- confined to
   harness re-run was warranted that round); round 43's own 3 additional
   explicit `AccountLedgerStoreTest` reruns (the `log.warn` fix confined
   to that file, no `AccountLedgerLock`-level change, so no combined
-  rerun or raw harness re-run was warranted that round either), all
-  noted above).
+  rerun or raw harness re-run was warranted that round either); round
+  44's own 3 additional explicit combined reruns of
+  `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`, and
+  `AccountLedgerStoreTest` together (no raw stress harness re-run that
+  round -- see that bullet's own reasoning above), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **466 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **469 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -4835,7 +4962,8 @@ stable. No raw stress harness re-run -- confined to
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
   net-new from round 36's + 0 net-new from round 37's + 0 net-new from
   round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
-  round 41's + 0 net-new from round 42's + 0 net-new from round 43's).
+  round 41's + 0 net-new from round 42's + 0 net-new from round 43's +
+  3 from round 44's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

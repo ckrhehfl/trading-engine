@@ -1244,6 +1244,47 @@ class AccountLedgerStoreTest {
         assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, lock));
     }
 
+    /**
+     * A third, distinct way an {@link AccountLedgerLock} can stop being
+     * valid proof of holding the lock: a real, legitimate steal by a
+     * sibling (e.g. {@code staleThreshold} elapsing on a still-working
+     * holder that never called {@code close()}) -- {@code
+     * releaseRequested} alone cannot catch this, since the original
+     * caller never observed the steal. Proven through the real
+     * production path: a genuine second {@link AccountLedgerLock#acquire}
+     * call, not fabricated lock-file content, performs the steal, then
+     * both {@link AccountLedgerStore#load} and {@link
+     * AccountLedgerStore#persist} are confirmed to reject the now-stale
+     * original instance.
+     */
+    @Test
+    void loadAndPersistRejectALockWhoseGenerationHasBeenStolen(@TempDir Path tempDir) throws InterruptedException {
+        Path file = tempDir.resolve("ledger.json");
+        Path lockPath = lockPathFor(file);
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        Duration tinyStaleThreshold = Duration.ofMillis(50);
+        AccountLedgerLock original = AccountLedgerLock.acquire(lockPath, LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET);
+        Thread.sleep(150); // exceed tinyStaleThreshold so the sibling below can legitimately judge it stale
+        AccountLedgerLock sibling = AccountLedgerLock.acquire(lockPath, tinyStaleThreshold, LOCK_RETRY_BUDGET);
+
+        try {
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"), original));
+            assertThrows(
+                    IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger, original));
+        } finally {
+            for (int attempt = 0; attempt < 5 && Files.exists(lockPath); attempt++) {
+                sibling.close();
+                if (Files.exists(lockPath)) {
+                    Thread.sleep(50);
+                }
+            }
+        }
+    }
+
     private static final Duration LOCK_STALE_THRESHOLD = Duration.ofSeconds(30);
     private static final Duration LOCK_RETRY_BUDGET = Duration.ofSeconds(5);
 
