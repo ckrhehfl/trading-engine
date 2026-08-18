@@ -100,7 +100,7 @@ final class AccountLedgerStore {
 
     private AccountLedgerStore() {}
 
-    /** Testability seam -- see {@link #persist(Path, AccountLedger, AtomicMover)}'s Javadoc. */
+    /** Testability seam -- see {@link #persist(Path, AccountLedger, AtomicMover, AccountLedgerLock)}'s Javadoc. */
     @FunctionalInterface
     interface AtomicMover {
         void move(Path source, Path target) throws IOException;
@@ -647,7 +647,7 @@ final class AccountLedgerStore {
     }
 
     /**
-     * See {@link #persist(Path, AccountLedger, AtomicMover)}'s own Javadoc
+     * See {@link #persist(Path, AccountLedger, AtomicMover, AccountLedgerLock)}'s own Javadoc
      * for the full reasoning. Uses {@link Files#readAttributes} (not
      * {@link Files#exists}/{@link Files#isRegularFile}, both of which
      * swallow an I/O or permission error into a plain {@code false},

@@ -4040,6 +4040,55 @@ fresh `./gradlew clean build` reproduced the identical 465/0/0/0 result
 before this entry was written, closing the honest possibility that
 something had silently regressed during the gap.
 
+### Round 40
+
+Review id `4964981644`, against commit `18ca668` (round 39's fix
+commit, already pushed), landed at `2026-08-18T19:29:19Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment:
+
+- **(Trivial) `AccountLedgerStore.java` line 103's `{@link
+  #persist(Path, AccountLedger, AtomicMover)}` Javadoc reference still
+  named the pre-round-39, 3-argument `persist` signature** -- round 39
+  added a fourth, mandatory `AccountLedgerLock lock` parameter to that
+  overload (see round 39's own entry above), and this reference was
+  missed in that round's own sweep. An unresolvable `{@link}` is the
+  same class of issue round 39's own finding 1 fixed elsewhere in this
+  file, just missed here. Fixed the cited occurrence and one more,
+  identical stale reference found by grep at line 650 (`{@link
+  #persist(Path, AccountLedger, AtomicMover)}`'s own Javadoc pointer
+  inside `verifyIdentityConsistency`'s Javadoc) -- not separately cited
+  by the reviewer, but the same broken reference left in place would
+  have been an inconsistency introduced by only fixing the one CodeRabbit
+  happened to point at. Confirmed via grep that no other occurrence of
+  either stale signature (`persist(Path, AccountLedger, AtomicMover)`
+  without the fourth argument, or the pre-round-39 4-argument `load`
+  signature) remains anywhere in `java/runtime/src`. No implementation
+  change -- Javadoc-only, per the reviewer's own explicit instruction.
+
+Re-ran after the fix: `./gradlew clean build` -- green, **465 tests, 0
+failures, 0 errors** project-wide (unchanged count -- documentation-only
+fix, no behavior change, no test-level change).
+`AccountLedgerStoreTest` reran 3 additional explicit times, stable. No
+raw stress harness re-run needed -- zero production control-flow change.
+
+**The coordinator's own question about round 39's session interruption,
+answered honestly and specifically here since round 39's own entry
+above only summarized the verification step, not the full account**: on
+resumption after the session-limit interruption, every one of round
+39's five modified files was found present and byte-for-byte as left
+off (`git status --short` showed the same five files, `git diff --stat`
+showed line counts consistent with the changes described in round 39's
+own entry, and the two brand-new test methods added that round were
+confirmed still present by name via direct grep before trusting
+anything). Nothing had to be redone or reconstructed -- the interruption
+landed cleanly between finishing local verification and starting the
+commit, not mid-edit, so no file was left in a partially-written state.
+The only real gap it left behind was exactly what it looked like from
+the outside: the planning-doc entry, commit, and push for round 39 had
+not happened yet, all completed fresh on resumption before this round's
+own review cycle began.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4128,7 +4177,9 @@ something had silently regressed during the gap.
   all 59 pre-existing call sites in this file mechanically retrofitted
   through two new private helpers, `loadWithLock`/`persistWithLock`, to
   supply the newly-required `AccountLedgerLock` argument without any
-  test method's own asserted behavior changing).
+  test method's own asserted behavior changing); 43/43 after round 40's
+  (no `AccountLedgerStore`-level test changes that round -- a
+  Javadoc-only `{@link}` signature correction, no behavior/test change).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -4471,7 +4522,7 @@ something had silently regressed during the gap.
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, and 39 (plus round 27's own
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, and 40 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -4501,7 +4552,11 @@ something had silently regressed during the gap.
   own 3 additional explicit combined reruns of `AccountLedgerLockTest`,
   `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
   together (no raw stress harness re-run that round -- see that
-  bullet's own reasoning above), all noted above).
+  bullet's own reasoning above); round 40's own 3 additional explicit
+  `AccountLedgerStoreTest` reruns (a Javadoc-only fix confined to
+  `AccountLedgerStore.java`, no `AccountLedgerLock`-level change, so no
+  combined rerun or raw harness re-run was warranted that round), all
+  noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -4520,7 +4575,7 @@ something had silently regressed during the gap.
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
   net-new from round 36's + 0 net-new from round 37's + 0 net-new from
-  round 38's + 4 from round 39's).
+  round 38's + 4 from round 39's + 0 net-new from round 40's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
