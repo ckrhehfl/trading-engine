@@ -19,6 +19,8 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -521,6 +523,60 @@ class AccountLedgerStoreTest {
     }
 
     @Test
+    void persistRefusesToOverwriteAnExistingLedgerForADifferentAccount(@TempDir Path tempDir) {
+        // persist() takes no separate "expected identity" parameter the
+        // way load() does -- the only signal available to it is the
+        // existing file's own previously-persisted content, if any. This
+        // protects against a caller-side bug (Task C, not yet wired) that
+        // resolves the wrong AccountLedger object against an existing path
+        // already holding a DIFFERENT account's real, committed
+        // reservations -- the same class of mix-up load()'s own identity
+        // check exists to catch on the read side, closed here on the
+        // write side too, before Task C's first real caller exists to make
+        // the mistake.
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger existing = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        AccountLedgerStore.persist(file, existing);
+        AccountLedger differentAccount = new AccountLedger(
+                "KIS", "acct-2", new BigDecimal("99"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, differentAccount));
+
+        AccountLedger reloaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"));
+        assertEquals(existing, reloaded, "the existing ledger must be untouched by the rejected persist() call");
+    }
+
+    @Test
+    void persistRefusesToOverwriteAnExistingFileWithUnparseableContent(@TempDir Path tempDir) throws IOException {
+        // Same protective intent as
+        // persistRefusesToOverwriteAnExistingLedgerForADifferentAccount --
+        // if this call cannot positively confirm the existing content is a
+        // matching-identity ledger (here: cannot even parse it as a
+        // ledger at all), it must not silently overwrite it. A directory
+        // occupying ledgerPath is a separate, already-covered case (see
+        // persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails
+        // -- that scenario is deliberately NOT rejected by this same
+        // identity check, since a directory was never a valid ledger to
+        // begin with and persist()'s own existing write/move machinery
+        // already fails loudly on it).
+        Path file = tempDir.resolve("ledger.json");
+        Files.writeString(file, "not valid json at all");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        assertThrows(IllegalStateException.class, () -> AccountLedgerStore.persist(file, ledger));
+
+        assertEquals(
+                "not valid json at all",
+                Files.readString(file),
+                "the existing unparseable file must be preserved, not overwritten");
+    }
+
+    @Test
     void persistCreatesParentDirectoriesIfNeeded(@TempDir Path tempDir) {
         Path file = tempDir.resolve("nested").resolve("dir").resolve("ledger.json");
         AccountLedger ledger = new AccountLedger(
@@ -801,6 +857,17 @@ class AccountLedgerStoreTest {
     }
 
     @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    // Files.createSymbolicLink can fail with an AccessDeniedException on
+    // Windows without an elevated process or Developer Mode enabled (an
+    // OS-level privilege requirement, not something this test can control)
+    // -- this project's own CI runs on ubuntu-latest (confirmed via
+    // .github/workflows), so this restriction changes nothing there; it
+    // only prevents a spurious failure for a contributor running this
+    // suite natively on Windows.
+    // persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall above
+    // deliberately stays unrestricted -- its own directory-based fixture
+    // relies on no POSIX-only behavior.
     void persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt(@TempDir Path tempDir)
             throws IOException {
         // Round-25/26's own tmpPreexisted check used Files.exists(candidateTmp),

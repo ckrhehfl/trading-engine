@@ -383,11 +383,35 @@ final class AccountLedgerStore {
      * codebase's other durable stores, which still use the plain {@code
      * Files.writeString} pattern this method itself used until now -- a
      * real, disclosed inconsistency across those four stores.
+     *
+     * <p><b>Refuses to silently overwrite an existing, different-identity
+     * ledger.</b> Unlike {@link #load}, this method takes no separate
+     * "expected {@code venue}/{@code accountId}" parameter -- the only
+     * signal available to it is {@code ledgerPath}'s own existing content,
+     * if any. Before ever replacing an existing file, {@link
+     * #verifyIdentityConsistency} confirms that content -- when it is a
+     * regular file at all -- parses as an {@link AccountLedger} whose
+     * {@code venue}/{@code accountId} match {@code ledger}'s own, throwing
+     * {@link IllegalStateException} (and leaving the existing file
+     * completely untouched) on any mismatch, parse failure, or other read
+     * failure. This guards the same class of mistake {@link #load}'s own
+     * identity check guards on the read side -- a future path-resolution
+     * bug or file mix-up in Task C's caller silently destroying a
+     * <i>different</i> account's real, currently-committed reservations --
+     * closed here on the write side too, before Task C's first real caller
+     * exists to make the mistake. A pre-existing occupant that is not a
+     * regular file at all (e.g. a directory left at this path by mistake)
+     * is deliberately <b>not</b> rejected by this check -- it was never a
+     * valid ledger to begin with, so there is nothing real for this check
+     * to protect, and this method's own write/move machinery below still
+     * fails loudly on it rather than silently replacing it (see {@code
+     * AccountLedgerStoreTest#persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails}).
      */
     static void persist(Path ledgerPath, AccountLedger ledger, AtomicMover mover) {
         Objects.requireNonNull(ledgerPath, "ledgerPath is required");
         Objects.requireNonNull(ledger, "ledger is required");
         Objects.requireNonNull(mover, "mover is required");
+        verifyIdentityConsistency(ledgerPath, ledger);
         // Hoisted outside the try block (rather than declared inside, as
         // originally written) so the outer catch below can clean it up --
         // see that catch's own comment for why.
@@ -606,6 +630,79 @@ final class AccountLedgerStore {
             // read-modify-write cycle must know about, not silently
             // proceed past believing its mutation was recorded.
             throw new IllegalStateException("failed to persist account ledger file " + ledgerPath, e);
+        }
+    }
+
+    /**
+     * See {@link #persist(Path, AccountLedger, AtomicMover)}'s own Javadoc
+     * for the full reasoning. Uses {@link Files#readAttributes} (not
+     * {@link Files#exists}/{@link Files#isRegularFile}, both of which
+     * swallow an I/O or permission error into a plain {@code false},
+     * indistinguishable from "genuinely absent" -- the exact class of bug
+     * fixed elsewhere in this same class) to positively distinguish
+     * "genuinely absent" ({@link NoSuchFileException}, nothing to check),
+     * "exists but is not a regular file" (skip -- never a valid ledger to
+     * begin with, see {@link #persist}'s own Javadoc), and "exists as a
+     * regular file" (must parse as a matching-identity {@link
+     * AccountLedger}). Any other determination, read, or parse failure
+     * fails closed by throwing -- unlike round 27's own {@code
+     * tmpPreexisted} check in {@link #persist} itself, which deliberately
+     * fails toward "treat as pre-existing, don't delete" on an
+     * undetermined state, this check's own risk is the opposite direction
+     * (silently overwriting real data, not wrongly deleting it), so an
+     * undetermined state here must abort the call rather than let it
+     * proceed.
+     */
+    private static void verifyIdentityConsistency(Path ledgerPath, AccountLedger ledger) {
+        BasicFileAttributes attrs;
+        try {
+            attrs = Files.readAttributes(ledgerPath, BasicFileAttributes.class);
+        } catch (NoSuchFileException absent) {
+            return;
+        } catch (IOException determinationFailure) {
+            throw new IllegalStateException(
+                    "refusing to persist over " + ledgerPath + " -- its existing state could not be determined,"
+                            + " so this call cannot confirm it is not silently destroying a different account's"
+                            + " real, committed reservations. A human must resolve the existing path first.",
+                    determinationFailure);
+        }
+        if (!attrs.isRegularFile()) {
+            return;
+        }
+        String existingRaw;
+        try {
+            existingRaw = Files.readString(ledgerPath);
+        } catch (IOException readFailure) {
+            throw new IllegalStateException(
+                    "refusing to persist over " + ledgerPath + " -- its existing content could not be read, so"
+                            + " this call cannot confirm it is not silently destroying a different account's"
+                            + " real, committed reservations. A human must resolve the existing file first.",
+                    readFailure);
+        }
+        AccountLedger existing;
+        try {
+            existing = MAPPER.readValue(existingRaw, AccountLedger.class);
+        } catch (IOException parseFailure) {
+            throw new IllegalStateException(
+                    "refusing to persist over " + ledgerPath + " -- its existing content could not be parsed as"
+                            + " an AccountLedger, so this call cannot confirm it is not silently destroying a"
+                            + " different account's real, committed reservations. A human must resolve the"
+                            + " existing file first.",
+                    parseFailure);
+        }
+        if (existing == null) {
+            throw new IllegalStateException(
+                    "refusing to persist over " + ledgerPath + " -- its existing content parsed as the JSON"
+                            + " literal null, not a real AccountLedger, so this call cannot confirm it is not"
+                            + " silently destroying a different account's real, committed reservations. A human"
+                            + " must resolve the existing file first.");
+        }
+        if (!existing.venue().equals(ledger.venue()) || !existing.accountId().equals(ledger.accountId())) {
+            throw new IllegalStateException(
+                    "refusing to persist ledger for (" + ledger.venue() + ", " + ledger.accountId() + ") over "
+                            + ledgerPath + ", which already holds a real, persisted ledger for ("
+                            + existing.venue() + ", " + existing.accountId() + ") -- this would silently destroy"
+                            + " that account's committed reservations");
         }
     }
 

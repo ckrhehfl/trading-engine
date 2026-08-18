@@ -2722,6 +2722,100 @@ this round (`persist()`'s ownership check) is entirely within
 mutual-exclusion control flow, so a further raw stress-harness round was
 not independently warranted; the other fix is test-support-code-only.
 
+### Round 28
+
+Against commit `49d55ed` (after round 27's fixes were pushed) --
+`CHANGES_REQUESTED`, landed at `2026-08-18T05:24:15Z` UTC, `commit_id`
+verified via the REST reviews API to match HEAD exactly. 2 actionable
+comments, no duplicate-comment re-raises. Both real, both fixed with
+TDD:
+
+- **(Minor) `persist()` had no identity check of its own -- it serializes
+  `ledger` and replaces `ledgerPath` unconditionally, never confirming
+  the existing file (if any) actually belongs to the same `venue`/
+  `accountId`.** Real, and a genuine asymmetry with `load`,
+  which already fails closed on exactly this mismatch on the read side.
+  Unlike `load`, `persist` takes no separate "expected identity"
+  parameter -- the reviewer's own suggested fix text ("derive the
+  expected venue and accountId using the same contract as load") does
+  not quite transfer as literally stated, since there is no
+  "path-implies-identity" contract anywhere in this codebase for
+  `persist` to derive from; the only real signal available to it is
+  `ledgerPath`'s own existing content, if any. Implemented that way
+  instead: a new private `verifyIdentityConsistency` helper, called at
+  the top of `persist` before any tmp-file machinery runs, uses
+  `Files.readAttributes` (round 27's own hardened convention, not
+  `Files.exists`/`isRegularFile`, both of which swallow an I/O or
+  permission error into a plain `false`) to distinguish three cases:
+  genuinely absent (`NoSuchFileException`, nothing to check, ordinary
+  first persist for this path); exists but is not a regular file (a
+  directory left at this path by mistake was never a valid ledger to
+  begin with -- deliberately **not** rejected by this check, since
+  `persist`'s own existing write/move machinery already fails loudly on
+  it, proven by the pre-existing
+  `persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails`
+  test, which uses exactly this fixture and had to keep passing
+  unchanged); and exists as a regular file, which must then parse as a
+  matching-identity `AccountLedger` or the call is rejected with
+  `IllegalStateException`, leaving the existing file completely
+  untouched. Any read/parse failure or a JSON-literal-`null` parse also
+  fails closed (throws), matching `load`'s own treatment of those exact
+  cases. Deliberately the **opposite** fail-closed direction from round
+  27's own `tmpPreexisted` check in this same method -- that check
+  treats an undetermined state as "don't delete" (its risk is wrongly
+  destroying evidence), this one treats an undetermined state as "don't
+  proceed" (its risk is silently overwriting another account's real,
+  committed data) -- both documented explicitly in the new helper's own
+  Javadoc so a future reader doesn't mistake the difference for an
+  inconsistency. Proven with two real tests, not asserted: 
+  `persistRefusesToOverwriteAnExistingLedgerForADifferentAccount`
+  (persists once for `acct-1`, then attempts a second persist to the
+  same path for `acct-2`, asserts the second call throws and the
+  original `acct-1` ledger reloads unchanged) and
+  `persistRefusesToOverwriteAnExistingFileWithUnparseableContent`
+  (pre-writes non-JSON garbage at `ledgerPath`, asserts `persist` throws
+  and the garbage is preserved byte-for-byte). Both confirmed failing
+  (red) against the pre-fix code first, then green after the fix.
+  **A real, self-caught risk during this fix, not left for a future
+  round to find**: the obvious naive placement of this new check would
+  have broken the pre-existing
+  `persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails`
+  test (its own fixture -- a non-empty directory at `ledgerPath` -- would
+  otherwise have been rejected earlier by a cruder version of this check
+  that didn't distinguish "not a regular file" from "unreadable/
+  unparseable regular file," changing which code path the test actually
+  exercises and failing its own tmp-survival assertion); traced through
+  by hand before writing the fix, which is exactly why the check
+  explicitly skips non-regular-file occupants rather than rejecting them
+  too -- confirmed by re-running that specific test, still green,
+  unchanged.
+- **(Trivial) Round 27's new
+  `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`
+  test (the self-referential-symlink fixture) had no platform
+  restriction -- `Files.createSymbolicLink` can fail with an
+  `AccessDeniedException` on Windows without an elevated process or
+  Developer Mode enabled, an OS-level privilege requirement this test
+  cannot control.** Real, though this project's own CI runs on
+  `ubuntu-latest` (confirmed by re-checking `.github/workflows/*.yml`),
+  so this changes nothing there -- it only prevents a spurious failure
+  for a contributor running this suite natively on Windows. Fixed by
+  adding `@EnabledOnOs({OS.LINUX, OS.MAC})` to that one test method, per
+  the reviewer's own explicit instruction left unrestricted
+  (`persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall`, round
+  25's directory-based fixture, relies on no POSIX-only behavior).
+  Annotation-only; no behavior change on the platform this task's own
+  build actually runs on.
+
+Re-ran after both round-28 fixes: `./gradlew clean build` -- still green,
+**451 tests, 0 failures, 0 errors** project-wide (+2 from the two new
+`AccountLedgerStoreTest` regression tests; the `@EnabledOnOs` fix was
+annotation-only, no new test method). `AccountLedgerStoreTest` reran 3
+additional explicit times (`--rerun-tasks`), stable. Both real changes
+this round are entirely within `AccountLedgerStore`/
+`AccountLedgerStoreTest`, not `AccountLedgerLock`'s own mutual-exclusion
+control flow, so a further raw stress-harness round was not
+independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2768,7 +2862,10 @@ not independently warranted; the other fix is test-support-code-only.
   the reaffirmed "Heavy lift" decline still needed no test); 32/32 after
   round 27's (1 more new test -- the `Files.readAttributes`
   determination-failure fix, proven via a self-referential-symlink
-  regression test).
+  regression test); 34/34 after round 28's (2 more new tests -- the new
+  `verifyIdentityConsistency` guard, proven via a mismatched-account
+  rejection test and an unparseable-existing-content rejection test; the
+  `@EnabledOnOs` addition was annotation-only, no new test method).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2824,7 +2921,10 @@ not independently warranted; the other fix is test-support-code-only.
   code change that round -- both real fixes were in
   `AccountLedgerStore`); 11/11 after round 27's (no changes to this file
   that round -- the two real fixes were in `AccountLedgerStore.java` and
-  `AccountLedgerLockMultiProcessTest.java`, not this file).
+  `AccountLedgerLockMultiProcessTest.java`, not this file); 11/11 after
+  round 28's (no changes to this file that round either -- both real
+  fixes were in `AccountLedgerStore.java` and
+  `AccountLedgerStoreTest.java`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -2945,18 +3045,24 @@ not independently warranted; the other fix is test-support-code-only.
   did not independently warrant a further raw stress-harness round --
   the 4 additional `AccountLedgerLockMultiProcessTest` reruns above were
   judged sufficient re-verification for that round's own test-cleanup
-  change instead).
+  change instead; round 28's two real fixes (the new
+  `verifyIdentityConsistency` guard and the `@EnabledOnOs` annotation)
+  are both entirely within `AccountLedgerStore`/`AccountLedgerStoreTest`,
+  with zero touch on `AccountLedgerLock`'s own acquire/steal control
+  flow, so it likewise did not independently warrant a further raw
+  stress-harness round).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, and 27 (plus round 27's own 4 additional explicit
+  26, 27, and 28 (plus round 27's own 4 additional explicit
   `AccountLedgerLockMultiProcessTest` reruns and 3 additional explicit
-  `AccountLedgerStoreTest`-new-test reruns, both noted above).
+  `AccountLedgerStoreTest`-new-test reruns; round 28's own 3 additional
+  explicit `AccountLedgerStoreTest` reruns, all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **449 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **451 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -2967,7 +3073,7 @@ not independently warranted; the other fix is test-support-code-only.
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
-  26's + 1 from round 27's).
+  26's + 1 from round 27's + 2 from round 28's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
