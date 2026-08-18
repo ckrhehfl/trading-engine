@@ -3529,6 +3529,89 @@ from before this round), matching this task's own established pattern
 for documentation-only rounds (rounds 12, 17, 24, 28's `@EnabledOnOs`
 addition, and 30 all skipped the raw harness for the identical reason).
 
+### Round 36
+
+Against commit `7f7dd50` (after round 35's sweep was pushed), landed at
+`2026-08-18T13:43:01Z` UTC, `commit_id` verified via the REST reviews
+API to match HEAD exactly -- `CHANGES_REQUESTED`, 1 actionable comment.
+Real, and a genuine gap between a documented guarantee and actual
+behavior -- verified directly against the code before deciding how to
+respond, not accepted or declined reflexively:
+
+- **(Minor) `deleteIfStillOwnGeneration`'s single, immediate
+  verification read means the `READ_FAILED`/`EMPTY_OR_UNPARSEABLE`
+  cleanup path in `createAndWriteMetadata` (round 34's own fix) rarely
+  actually cleans anything up.** The reviewer's own trace, confirmed by
+  reading the code directly: if the transient condition that produced
+  `READ_FAILED`/`EMPTY_OR_UNPARSEABLE` on `createAndWriteMetadata`'s own
+  re-verification read is still present a moment later (plausible, since
+  this project's own drvfs mount has real, measured 500ms+ transient I/O
+  latency -- far longer than the gap between two back-to-back reads),
+  `deleteIfStillOwnGeneration`'s own single read hits the same sentinel
+  again, `metadata.equals(current)` is false, and the method returns
+  without deleting -- leaving this holder's own real, live-looking lock
+  file in place despite the log message's own claim ("cleaning up only
+  this holder's own verified generation"). Behavior fails safe (never
+  deletes a sibling's real generation), but delivers no actual
+  availability improvement in the case it exists to handle; real
+  recovery only happens later, once `staleThreshold` elapses and
+  `tryStealIfAbandonedEmpty` reclaims it. Given the reviewer's own
+  explicit two-option framing -- (a) actually implement the documented
+  guarantee via a brief, bounded retry, or (b) weaken the Javadoc/log
+  message to accurately describe best-effort-only cleanup -- evaluated
+  both against what `deleteIfStillOwnGeneration` actually does today
+  before choosing: **(a) was implemented.** A short, bounded retry (up
+  to 3 reads, 50ms apart -- new `OWN_GENERATION_DELETE_RETRY_ATTEMPTS`/
+  `OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS` constants) gives this
+  cleanup a real, meaningfully-improved chance of catching the
+  transient condition resolving, closing the gap between the documented
+  guarantee and actual behavior rather than lowering the documented
+  guarantee to match the weaker actual behavior. Judged safe to add
+  without a real chance of new harm: this file's own lock is only ever a
+  few milliseconds old at either of this method's two call sites, far
+  short of any realistic `staleThreshold` (this project's own proposed
+  default ~30s), so `tryStealIfAbandonedEmpty` could not have
+  legitimately reclaimed it during even the full retry window -- a
+  retry here can never race (or mask) a real steal. A genuine, different
+  generation observed on any read still ends the loop immediately
+  without deleting, preserving the unconditional safety property
+  unchanged. The "Re-verification after write" class Javadoc paragraph
+  (round 34's own, already covering this exact sentence) corrected
+  alongside the fix to state this as a real, meaningfully-improved best
+  effort, not an absolute guarantee -- `tryStealIfAbandonedEmpty` remains
+  the real backstop if the condition genuinely outlasts the new retry
+  budget, reached less often now rather than relied on exclusively.
+  **No test accompanies this fix, after real, direct evaluation, not
+  reflexive skipping**: `deleteIfStillOwnGeneration`'s own two real call
+  sites are reachable only through `createAndWriteMetadata`'s own
+  internal, unobservable re-verification window -- the identical
+  structural gap already disclosed five times over for that method's
+  own null-return and cleanup branches. Neither this retry's own
+  "succeeds on a later attempt" case, nor even this method's
+  pre-existing, unconditional safety property, has ever had a direct,
+  dedicated test; both remain covered only indirectly, via the same
+  multi-thread/multi-process contention tests already cited for the
+  other branches. This fix's own correctness is judged, not merely
+  assumed, on the strength of being a small, mechanically simple change
+  (a bounded read-and-compare loop, no new I/O primitive) that strictly
+  narrows an existing no-op window rather than introducing new risk, and
+  that can never delete anything the unconditional exact-match check
+  didn't already permit on a single, unretried read -- disclosed
+  explicitly in the new code's own Javadoc, extending the same
+  five-times-disclosed pattern to this one additional, structurally
+  identical case rather than treating it as a fresh, separate gap.
+
+Re-ran after the round-36 fix: `./gradlew clean build` -- still green,
+**461 tests, 0 failures, 0 errors** project-wide (unchanged count -- no
+new or modified test methods, per this fix's own disclosed reasoning
+above). `AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest`
+reran 3 additional explicit times together, stable. Because this is a
+real change to `AccountLedgerLock`'s own acquire/steal control flow, the
+raw, non-Gradle stress harness was re-run for real: **25/25 rounds
+exactly correct** (1,200 more individual lock acquisitions, zero lost
+updates), bringing the task-wide raw-harness total to **355 clean
+rounds, 17,040 individual lock acquisitions, zero lost updates**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3600,7 +3683,9 @@ addition, and 30 all skipped the raw harness for the identical reason).
   `.tmp` fail-closed test, rewritten mid-round to assert the behavior
   actually observed rather than the scenario originally assumed); 41/41
   after round 35's (comment-only sweep -- one stale test-name
-  cross-reference corrected inside a comment, no test-level change).
+  cross-reference corrected inside a comment, no test-level change);
+  41/41 after round 36's (no `AccountLedgerStore`-level changes that
+  round -- the one real fix was in `AccountLedgerLock`).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3678,7 +3763,10 @@ addition, and 30 all skipped the raw harness for the identical reason).
   fix's own extensively-reconsidered no-test-coverage reasoning lives in
   its own round-34 entry above); 14/14 after round 35's (a large
   comment/Javadoc-only sweep touching most of this file's methods, zero
-  behavioral change, no test-level change).
+  behavioral change, no test-level change); 14/14 after round 36's (a
+  real production-code fix -- the `deleteIfStillOwnGeneration` retry --
+  but no new/modified test methods, per that fix's own disclosed
+  reasoning above).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3723,10 +3811,13 @@ addition, and 30 all skipped the raw harness for the identical reason).
   round -- both real fixes were in `AccountLedgerStoreTest.java`),
   **4 more times** after round 34 (1 part of the full `clean build`,
   plus 3 further explicit `--rerun-tasks` runs, given round 34's own
-  real fix to `createAndWriteMetadata`'s re-verification logic), and
-  once more (part of the full `clean build`) after round 35 (a
+  real fix to `createAndWriteMetadata`'s re-verification logic), once
+  more (part of the full `clean build`) after round 35 (a
   comment/Javadoc-only sweep, zero behavioral change, no test-level
-  change to this file).
+  change to this file), and **4 more times** after round 36 (1 part of
+  the full `clean build`, plus 3 further explicit `--rerun-tasks` runs,
+  given round 36's own real fix to `deleteIfStillOwnGeneration`'s own
+  retry logic).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -3872,12 +3963,19 @@ addition, and 30 all skipped the raw harness for the identical reason).
   behavioral change (verified directly, not merely asserted -- test
   count and every individual test's own pass/fail outcome are
   byte-for-byte unchanged from round 34), so it likewise did not
-  independently warrant a further raw stress-harness round.
+  independently warrant a further raw stress-harness round. Round 36's
+  real fix (`deleteIfStillOwnGeneration`'s own retry logic), by
+  contrast, IS a real change to `AccountLedgerLock`'s own acquire/steal
+  control flow, so the raw harness WAS re-run for real again this round:
+  **25/25 rounds exactly correct** (1,200 more individual lock
+  acquisitions, zero lost updates), bringing the task-wide raw-harness
+  total to **355 clean rounds, 17,040 individual lock acquisitions, zero
+  lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, and 35 (plus round 27's own 4
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, and 36 (plus round 27's own 4
   additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -3895,7 +3993,10 @@ addition, and 30 all skipped the raw harness for the identical reason).
   together, plus its own 25-round raw stress harness re-run; round 35's
   own 3 additional explicit combined reruns of `AccountLedgerLockTest`,
   `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
-  together, all noted above).
+  together; round 36's own 3 additional explicit combined reruns of
+  `AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest`
+  together, plus its own 25-round raw stress harness re-run, all noted
+  above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -3912,7 +4013,8 @@ addition, and 30 all skipped the raw harness for the identical reason).
   net-new from round 24's + 1 from round 25's + 0 net-new from round
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
-  from round 33's + 1 from round 34's + 0 net-new from round 35's).
+  from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
+  net-new from round 36's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

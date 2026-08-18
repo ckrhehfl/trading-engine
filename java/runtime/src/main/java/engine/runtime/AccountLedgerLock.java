@@ -210,6 +210,22 @@ final class AccountLedgerLock implements AutoCloseable {
     private static final long INITIAL_BACKOFF_MILLIS = 25;
     private static final long MAX_BACKOFF_MILLIS = 250;
 
+    /**
+     * How many times {@link #deleteIfStillOwnGeneration} re-reads {@code
+     * lockPath} before giving up on a transient ({@link #READ_FAILED}/
+     * {@link #EMPTY_OR_UNPARSEABLE}) verification result -- see that
+     * method's own Javadoc for why a single immediate read is not enough.
+     * Deliberately small and fixed (not scaled to {@code
+     * totalRetryBudget}): this runs synchronously inside {@link
+     * #createAndWriteMetadata}, itself already inside {@link #acquire}'s
+     * own retry loop, so it must add only a small, bounded amount of
+     * latency, not consume a meaningful share of the caller's own budget.
+     */
+    private static final int OWN_GENERATION_DELETE_RETRY_ATTEMPTS = 3;
+
+    /** Delay between {@link #deleteIfStillOwnGeneration}'s own retry attempts -- see that constant's Javadoc. */
+    private static final long OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS = 50;
+
     private final Path lockPath;
 
     /**
@@ -428,14 +444,20 @@ final class AccountLedgerLock implements AutoCloseable {
      * created and wrote the file in this same call, and this project's
      * own drvfs mount has a real, previously-measured susceptibility to
      * transient read/visibility gaps on a process's own still-valid
-     * content. Both transient cases clean up only this holder's own,
-     * re-verified generation (via {@link #deleteIfStillOwnGeneration}, the
-     * same delete-only-if-content-still-matches-exactly discipline {@link
-     * #tryStealIfStale} itself uses) before reporting the lost race,
-     * rather than leaving this holder's own live lock file behind to
-     * self-block it (and every other waiter) until {@code staleThreshold}
-     * elapses -- exactly the availability gap leaving {@link
-     * #EMPTY_OR_UNPARSEABLE} out of this grouping used to cause.
+     * content. Both transient cases attempt to clean up only this
+     * holder's own, re-verified generation (via {@link
+     * #deleteIfStillOwnGeneration}, the same delete-only-if-content-
+     * still-matches-exactly discipline {@link #tryStealIfStale} itself
+     * uses, with its own brief internal retry against exactly this kind
+     * of transient condition -- see that method's own Javadoc) before
+     * reporting the lost race. This is a real, meaningfully-improved
+     * best effort, not an absolute guarantee: if the transient condition
+     * genuinely outlasts {@link #deleteIfStillOwnGeneration}'s own
+     * bounded retry budget, this holder's own live lock file is left
+     * behind after all, self-blocking it (and every other waiter) until
+     * {@code staleThreshold} elapses and {@link #tryStealIfAbandonedEmpty}
+     * reclaims it -- the same real backstop this design has always relied
+     * on, now reached less often rather than relied on exclusively.
      *
      * <p><b>Known, permanent test-coverage gap on this method's own
      * post-write re-verification branches -- both the genuine-generation-
@@ -754,12 +776,57 @@ final class AccountLedgerLock implements AutoCloseable {
      * {@link #createAndWriteMetadata}'s own "clean up only my own,
      * provably-still-mine generation" case (see that method's own
      * "Re-verification after write" Javadoc). Never guesses: if the
-     * current content can't be confirmed to still be exactly {@code
-     * metadata} -- a genuine mismatch, or even another {@link
-     * #READ_FAILED} on this verification read itself -- this method does
-     * nothing rather than risk deleting a different, currently-live
-     * holder's lock. Tolerates {@link NoSuchFileException} (already gone
-     * -- fine, nothing to do).
+     * current content can be confirmed to be a genuine, different
+     * generation -- this method does nothing rather than risk deleting a
+     * different, currently-live holder's lock. Tolerates {@link
+     * NoSuchFileException} (already gone -- fine, nothing to do).
+     *
+     * <p><b>Retries briefly (up to {@link #OWN_GENERATION_DELETE_RETRY_ATTEMPTS}
+     * reads, {@link #OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS} apart) when
+     * the verification read itself comes back as {@link #READ_FAILED} or
+     * {@link #EMPTY_OR_UNPARSEABLE}, rather than giving up on the very
+     * first such read.</b> A single immediate read is not enough to give
+     * this cleanup a real chance of catching a resolving transient
+     * condition: this project's own drvfs mount has real, measured 500ms+
+     * transient I/O latency under contention (see class Javadoc), which
+     * can easily outlast the gap between two back-to-back reads. Without
+     * this retry, a transient condition sustained across even one extra
+     * read would make this cleanup call a pure no-op, contradicting both
+     * of this method's callers' own stated intent ("cleaning up only this
+     * holder's own verified generation") -- a real, disclosed availability
+     * gap, not theoretical. Safe to retry: this file's own mtime is only
+     * ever a few milliseconds old at either of this method's call sites,
+     * far short of any realistic {@code staleThreshold}, so {@link
+     * #tryStealIfAbandonedEmpty} could not have legitimately reclaimed it
+     * during this short window -- retrying here never risks racing (or
+     * masking) a real steal. A genuine, different generation (a real
+     * {@link LockMetadata} that isn't {@code metadata} and isn't one of
+     * the two transient sentinels) ends the retry loop immediately without
+     * deleting, on the very first read that observes it -- retrying
+     * further would serve no purpose once ownership is genuinely settled.
+     * This retry does not, and cannot, guarantee success if the real
+     * condition outlasts this method's own bounded retry budget; {@link
+     * #tryStealIfAbandonedEmpty}, once {@code staleThreshold} elapses,
+     * remains the real backstop for that case, as it always has been.
+     *
+     * <p><b>Known, permanent test-coverage gap, the identical shape (and
+     * for the identical reason) as the one already disclosed on {@link
+     * #createAndWriteMetadata}'s own Javadoc.</b> Both of this method's
+     * real call sites are reachable only through that method's own
+     * internal, unobservable re-verification window -- so neither this
+     * retry's own "succeeds on a later attempt" case, nor even this
+     * method's pre-existing, unconditional safety property (never
+     * deletes a genuine different generation), has ever had a direct,
+     * dedicated test; both are covered only indirectly, by the same
+     * multi-thread/multi-process contention tests already cited there.
+     * This retry's own correctness rests on the same reasoning already
+     * applied to {@code createAndWriteMetadata}'s analogous {@code
+     * EMPTY_OR_UNPARSEABLE} grouping fix: it is a small, mechanically
+     * simple change (a bounded read-and-compare loop, no new I/O
+     * primitive), it strictly narrows an existing no-op window rather
+     * than introducing new risk, and it can never delete anything the
+     * unconditional exact-match check below wouldn't already have
+     * allowed on a single, unretried read.
      *
      * <p>Declares {@code throws IOException} for any other delete failure
      * rather than wrapping it -- must propagate as a real {@link
@@ -768,14 +835,26 @@ final class AccountLedgerLock implements AutoCloseable {
      * from.
      */
     private static void deleteIfStillOwnGeneration(Path lockPath, LockMetadata metadata) throws IOException {
-        LockMetadata current = readMetadataOrNull(lockPath);
-        if (!metadata.equals(current)) {
-            return;
-        }
-        try {
-            Files.delete(lockPath);
-        } catch (NoSuchFileException e) {
-            // Already gone -- fine.
+        for (int attempt = 0; attempt < OWN_GENERATION_DELETE_RETRY_ATTEMPTS; attempt++) {
+            LockMetadata current = readMetadataOrNull(lockPath);
+            if (metadata.equals(current)) {
+                try {
+                    Files.delete(lockPath);
+                } catch (NoSuchFileException e) {
+                    // Already gone -- fine.
+                }
+                return;
+            }
+            if (current != READ_FAILED && current != EMPTY_OR_UNPARSEABLE) {
+                // A genuine, different generation (or a confirmed-absent
+                // file) -- not a transient condition, so no point
+                // retrying further; ownership is already settled one way
+                // or the other.
+                return;
+            }
+            if (attempt < OWN_GENERATION_DELETE_RETRY_ATTEMPTS - 1) {
+                sleepQuietly(OWN_GENERATION_DELETE_RETRY_DELAY_MILLIS);
+            }
         }
     }
 
