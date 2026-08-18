@@ -603,11 +603,20 @@ final class AccountLedgerLock implements AutoCloseable {
             // extra cost. metadata may still be null here (e.g. if
             // constructing the LockMetadata record itself somehow threw,
             // though nothing in its own construction can) -- guarded
-            // rather than assumed.
+            // rather than assumed. Catches RuntimeException here too, not
+            // only IOException: deleteIfStillOwnGeneration's own bounded
+            // retry (see that method's Javadoc) calls sleepQuietly, which
+            // throws IllegalStateException -- a RuntimeException, not an
+            // IOException -- if this thread is interrupted while waiting.
+            // Left uncaught, that would propagate straight out of this
+            // whole catch block, skipping "throw e" entirely and losing
+            // the real root cause this block exists to report, on top of
+            // leaving this holder's own lock file behind to self-block
+            // every waiter until staleThreshold elapses.
             if (metadata != null) {
                 try {
                     deleteIfStillOwnGeneration(lockPath, metadata);
-                } catch (IOException cleanupFailure) {
+                } catch (IOException | RuntimeException cleanupFailure) {
                     e.addSuppressed(cleanupFailure);
                 }
             }

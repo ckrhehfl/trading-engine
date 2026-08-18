@@ -3612,6 +3612,112 @@ exactly correct** (1,200 more individual lock acquisitions, zero lost
 updates), bringing the task-wide raw-harness total to **355 clean
 rounds, 17,040 individual lock acquisitions, zero lost updates**.
 
+### Round 37
+
+Against commit `406f59f` (after round 36's fix was pushed), landed at
+`2026-08-18T14:46:15Z` UTC, `commit_id` verified via the REST reviews
+API to match HEAD exactly -- `CHANGES_REQUESTED`, 2 actionable comments
+plus 1 shown separately as a **"Duplicate comment"** (the Jackson-BOM
+finding from round 13, re-raised verbatim). Two real fixes, one decline
+reaffirmed:
+
+- **(Minor) `createAndWriteMetadata`'s own outer cleanup catch (`catch
+  (IOException | RuntimeException e)`) only caught `IOException` from
+  its own call to `deleteIfStillOwnGeneration` -- a real regression
+  round 36's own fix introduced, caught here one round later.** Before
+  round 36, `deleteIfStillOwnGeneration` could only ever throw
+  `IOException` (its own declared signature), so `catch (IOException
+  cleanupFailure)` was genuinely sufficient. Round 36 added a bounded
+  retry loop calling `sleepQuietly`, which throws `IllegalStateException`
+  -- a `RuntimeException` -- if this thread is interrupted while
+  waiting between attempts. Left uncaught at this specific call site, an
+  interrupt during that retry would propagate straight out of this whole
+  `catch` block, skip `throw e` entirely, and silently discard the real
+  root cause this block exists to report -- on top of leaving this
+  holder's own lock file behind to self-block every waiter until
+  `staleThreshold` elapses. Fixed exactly as suggested: widened to
+  `catch (IOException | RuntimeException cleanupFailure)`. **No test
+  accompanies this fix, for the same, now six-times-disclosed
+  structural reason**: reaching this exact catch block requires forcing
+  a genuine write failure inside `createAndWriteMetadata`'s own internal
+  logic (no seam exists to do so), compounded here with needing the
+  cleanup's own retry loop to hit a thread interrupt at the right
+  moment -- strictly harder to construct than any of the five
+  already-declined scenarios this class's own Javadoc discloses, not
+  easier.
+- **(Trivial) Four fail-closed tests in `AccountLedgerStoreTest`
+  (negative `notional`, non-positive `allocatedVirtualCapital`, a
+  half-populated reconciliation-alarm pair, duplicate `clientOrderId`)
+  asserted only the thrown exception's type, not its cause -- so a
+  future typo or rename in these tests' own hand-written JSON field
+  names (which aren't compiler-checked against the real record
+  component names) could make Jackson reject the file as an unknown
+  property instead of the intended validation firing, and
+  `AccountLedgerStore.load` would still throw the same
+  `IllegalStateException` either way, keeping `assertThrows` green for
+  the wrong reason.** Real, and these are exactly the four tests pinning
+  this project's own "never weaken risk limits" rule at the record
+  level (a negative `notional` or non-positive `allocatedVirtualCapital`
+  both inflate derived available capital in the risk-budget-bypass
+  direction) -- a single silent regression could make all four stop
+  meaning anything at once. Verified the real fix precisely, not guessed
+  at: wrote a standalone probe (this task's own established discipline)
+  confirming Jackson's `ValueInstantiationException` wrapper embeds the
+  record's own validation message directly in its own `getMessage()`
+  (e.g. `"Cannot construct instance of
+  \`engine.runtime.LedgerReservation\`, problem: notional must be
+  positive"`), for all four cases -- so `thrown.getCause().getMessage()`
+  is sufficient, matching the reviewer's own suggested pattern and this
+  file's own established convention elsewhere. All four tests
+  strengthened with a cause-message assertion (the alarm-pair test's two
+  separate `assertThrows` calls both strengthened, since it fabricates
+  both half-populated directions in one method).
+
+**Declined, reaffirmed from round 13, not reconsidered lightly**:
+**consolidate Jackson versions onto a repo-wide BOM so `java/runtime`
+(2.18.9) stops drifting from `java/schemas`/`java/exchange`/`java/risk`
+(2.18.2).** Re-examined round 13's own four-point reasoning against
+current reality before reaffirming, not simply repeated by default: (1)
+the reviewer's own comment text still explicitly frames this as
+belonging in "a separate follow-up task," not something this PR itself
+must resolve; (2) a real fix still means touching `java/risk` and
+`java/exchange`'s own `build.gradle.kts` files, both still explicitly
+named out-of-scope in this task's own governing brief; (3) `java/runtime/
+build.gradle.kts`'s own comment block (confirmed by direct re-read, not
+assumed unchanged) still accurately documents this exact version split
+and the CVE-2026-54515 non-applicability reasoning -- nothing about
+this pre-existing, previously-reviewed decision (from PR #27) has
+changed; (4) no Jackson BOM exists anywhere in this repository today
+(re-confirmed by grep -- still only `junit-bom` for tests), so
+introducing one remains a genuine, first-of-its-kind architectural
+change deserving its own dedicated task, not something folded into this
+lock/store-focused PR under review-cycle pressure. All four reasons
+hold unchanged from round 13; nothing in this PR's own six rounds since
+then has touched Jackson dependency management at all.
+
+Re-ran after both round-37 fixes: `./gradlew clean build` -- still
+green, **461 tests, 0 failures, 0 errors** project-wide (unchanged count
+-- all four strengthened tests already existed, no new test methods;
+the `AccountLedgerLock` catch-widening fix has no accompanying test per
+its own disclosed reasoning above). `AccountLedgerLockTest`,
+`AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest` all
+reran 3 additional explicit times together, stable. Because the
+`AccountLedgerLock` fix is a real (if narrow) change to
+`createAndWriteMetadata`'s own control flow, the raw, non-Gradle stress
+harness was re-run for real: **25/25 rounds exactly correct** (1,200
+more individual lock acquisitions, zero lost updates -- the first batch
+of 25 hit a real, disclosed tooling problem, not a code problem: a
+stale/mid-write classpath snapshot file caused every contender process
+to fail with `ClassNotFoundException` before even reaching
+`AccountLedgerLock`'s own logic; confirmed via a direct single-process
+invocation showing the same classpath file working correctly moments
+later, then a full clean 25-round re-run passing outright, so the
+original batch's failure is attributed to a transient scratch-file
+race in this task's own manual verification tooling, not a regression
+in the code under test), bringing the task-wide raw-harness total to
+**380 clean rounds, 18,240 individual lock acquisitions, zero lost
+updates**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3685,7 +3791,9 @@ rounds, 17,040 individual lock acquisitions, zero lost updates**.
   after round 35's (comment-only sweep -- one stale test-name
   cross-reference corrected inside a comment, no test-level change);
   41/41 after round 36's (no `AccountLedgerStore`-level changes that
-  round -- the one real fix was in `AccountLedgerLock`).
+  round -- the one real fix was in `AccountLedgerLock`); 41/41 after
+  round 37's (no new test methods -- the four existing fail-closed
+  tests strengthened in place with cause-message assertions).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3766,7 +3874,10 @@ rounds, 17,040 individual lock acquisitions, zero lost updates**.
   behavioral change, no test-level change); 14/14 after round 36's (a
   real production-code fix -- the `deleteIfStillOwnGeneration` retry --
   but no new/modified test methods, per that fix's own disclosed
-  reasoning above).
+  reasoning above); 14/14 after round 37's (a real, narrow production-
+  code fix -- the cleanup catch's `RuntimeException` widening -- but no
+  new/modified test methods, per that fix's own disclosed reasoning
+  above).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3814,10 +3925,12 @@ rounds, 17,040 individual lock acquisitions, zero lost updates**.
   real fix to `createAndWriteMetadata`'s re-verification logic), once
   more (part of the full `clean build`) after round 35 (a
   comment/Javadoc-only sweep, zero behavioral change, no test-level
-  change to this file), and **4 more times** after round 36 (1 part of
+  change to this file), **4 more times** after round 36 (1 part of
   the full `clean build`, plus 3 further explicit `--rerun-tasks` runs,
   given round 36's own real fix to `deleteIfStillOwnGeneration`'s own
-  retry logic).
+  retry logic), and **4 more times** after round 37 (1 part of the full
+  `clean build`, plus 3 further explicit `--rerun-tasks` runs, given
+  round 37's own real fix to `createAndWriteMetadata`'s cleanup catch).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -3970,13 +4083,20 @@ rounds, 17,040 individual lock acquisitions, zero lost updates**.
   **25/25 rounds exactly correct** (1,200 more individual lock
   acquisitions, zero lost updates), bringing the task-wide raw-harness
   total to **355 clean rounds, 17,040 individual lock acquisitions, zero
-  lost updates**.
+  lost updates**. Round 37's own real (if narrow) `AccountLedgerLock`
+  fix (the cleanup catch's `RuntimeException` widening) also touches
+  real control flow inside `createAndWriteMetadata`, so the raw harness
+  was re-run for real again that round too -- **25/25 rounds exactly
+  correct** (a first batch hit a real, disclosed tooling problem, not a
+  code problem, per that round's own entry above; a clean re-run passed
+  outright), bringing the task-wide raw-harness total to **380 clean
+  rounds, 18,240 individual lock acquisitions, zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, and 36 (plus round 27's own 4
-  additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, and 37 (plus round 27's own
+  4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
   29's own 3 additional explicit combined reruns of
@@ -3995,6 +4115,9 @@ rounds, 17,040 individual lock acquisitions, zero lost updates**.
   `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
   together; round 36's own 3 additional explicit combined reruns of
   `AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest`
+  together, plus its own 25-round raw stress harness re-run; round 37's
+  own 3 additional explicit combined reruns of `AccountLedgerLockTest`,
+  `AccountLedgerLockMultiProcessTest`, and `AccountLedgerStoreTest`
   together, plus its own 25-round raw stress harness re-run, all noted
   above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
@@ -4014,7 +4137,7 @@ rounds, 17,040 individual lock acquisitions, zero lost updates**.
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
   from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
-  net-new from round 36's).
+  net-new from round 36's + 0 net-new from round 37's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

@@ -450,9 +450,27 @@ class AccountLedgerStoreTest {
                         + "\"processId\":1,\"hostname\":\"host-a\",\"notional\":-500,"
                         + "\"reservedAt\":\"" + now + "\"}]}");
 
-        assertThrows(
+        // Checks the exception's own cause message, not just its type --
+        // a real Minor finding, real CodeRabbit review of this PR: this
+        // test's own hand-written JSON field names (e.g. "notional")
+        // aren't compiler-checked against LedgerReservation's real record
+        // component names, so a typo or a future rename could make
+        // Jackson reject the file as an unknown property instead --
+        // AccountLedgerStore.load still throws IllegalStateException
+        // either way, so assertThrows alone would keep passing for the
+        // wrong reason, silently no longer proving this test's own real
+        // subject (the record's own notional-positivity invariant).
+        // Confirmed empirically (a standalone probe, not assumed) that
+        // Jackson's own ValueInstantiationException wrapper embeds the
+        // record's real validation message directly in its own message.
+        IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+        assertTrue(
+                thrown.getCause() != null && thrown.getCause().getMessage() != null
+                        && thrown.getCause().getMessage().contains("notional must be positive"),
+                "expected LedgerReservation's own notional-positivity check to be the real cause; was: "
+                        + thrown.getCause());
     }
 
     /**
@@ -506,9 +524,17 @@ class AccountLedgerStoreTest {
                         + "\"lastReconciledDailyPnlPercent\":0,\"lastReconciledWeeklyPnlPercent\":0,"
                         + "\"lastReconciledMonthlyPnlPercent\":0,\"reservations\":[]}");
 
-        assertThrows(
+        // See loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional's own
+        // comment above for why this checks the cause message, not just
+        // the exception type.
+        IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+        assertTrue(
+                thrown.getCause() != null && thrown.getCause().getMessage() != null
+                        && thrown.getCause().getMessage().contains("allocatedVirtualCapital must be positive"),
+                "expected AccountLedger's own allocatedVirtualCapital-positivity check to be the real cause; was: "
+                        + thrown.getCause());
     }
 
     /**
@@ -540,10 +566,18 @@ class AccountLedgerStoreTest {
                         + "\"lastReconciledMonthlyPnlPercent\":0,"
                         + "\"reconciliationAlarmTrippedAt\":\"" + now + "\","
                         + "\"reservations\":[]}");
-        assertThrows(
+        // See loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional's own
+        // comment above for why these check the cause message, not just
+        // the exception type.
+        IllegalStateException trippedAtOnly = assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
                 "trippedAt alone (no reason) must fail closed");
+        assertTrue(
+                trippedAtOnly.getCause() != null && trippedAtOnly.getCause().getMessage() != null
+                        && trippedAtOnly.getCause().getMessage().contains("must both be null or both be non-null"),
+                "expected AccountLedger's own half-populated-alarm-pair check to be the real cause; was: "
+                        + trippedAtOnly.getCause());
 
         Files.writeString(
                 file,
@@ -552,11 +586,16 @@ class AccountLedgerStoreTest {
                         + "\"lastReconciledMonthlyPnlPercent\":0,"
                         + "\"reconciliationAlarmReason\":\"ledger exposure diverged from real account\","
                         + "\"reservations\":[]}");
-        assertThrows(
+        IllegalStateException reasonOnly = assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
                 "reason alone (no trippedAt) must fail closed -- the more dangerous direction, since it would"
                         + " otherwise be read as no alarm tripped at all");
+        assertTrue(
+                reasonOnly.getCause() != null && reasonOnly.getCause().getMessage() != null
+                        && reasonOnly.getCause().getMessage().contains("must both be null or both be non-null"),
+                "expected AccountLedger's own half-populated-alarm-pair check to be the real cause; was: "
+                        + reasonOnly.getCause());
     }
 
     /**
@@ -607,9 +646,17 @@ class AccountLedgerStoreTest {
                         + "\"hostname\":\"host-b\",\"notional\":200,\"reservedAt\":\"" + now + "\"}"
                         + "]}");
 
-        assertThrows(
+        // See loadFailsClosedWhenTheLedgerFileHoldsANegativeNotional's own
+        // comment above for why this checks the cause message, not just
+        // the exception type.
+        IllegalStateException thrown = assertThrows(
                 IllegalStateException.class,
                 () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")));
+        assertTrue(
+                thrown.getCause() != null && thrown.getCause().getMessage() != null
+                        && thrown.getCause().getMessage().contains("duplicate clientOrderId"),
+                "expected AccountLedger's own duplicate-clientOrderId check to be the real cause; was: "
+                        + thrown.getCause());
     }
 
     @Test
