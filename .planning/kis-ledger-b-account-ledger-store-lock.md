@@ -3307,6 +3307,58 @@ confirming the hostname gate does not disturb real mutual exclusion under
 genuine multi-process contention on this project's actual same-host
 deployment scenario, not merely by code inspection.
 
+### Round 33
+
+Against commit `d5778fd` (after round 32's fixes were pushed), landed at
+`2026-08-18T10:38:25Z` UTC, `commit_id` verified via the REST reviews
+API to match HEAD exactly -- `CHANGES_REQUESTED`, 1 actionable comment.
+Real, and a genuine second instance of exactly the shadowing problem
+round 31's own `persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt`
+fix already had to solve for a different test in that same round:
+
+- **(Minor) Round 31's own new missing-ledger-plus-leftover-`.tmp`
+  fail-closed check (`persist`'s `tmpPreexisted` branch) silently
+  shadowed two older tests that never created `ledgerPath` before
+  fabricating a `.tmp`-path fixture --
+  `persistNeverCleansUpATmpPathThatAlreadyExistedBeforeThisCall` (round
+  25, an empty-directory fixture at `candidateTmp`) and
+  `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`
+  (round 27, a self-referential symlink at `candidateTmp`).** Neither
+  test ever created `ledgerPath` -- entirely reasonable when each was
+  originally written, since round 31's check did not exist yet -- so
+  once that check landed, both now hit it first (`tmpPreexisted` true,
+  `ledgerPath` absent) and throw `IllegalStateException` *before* ever
+  reaching `FileChannel.open`, the actual code each test was written to
+  exercise. Both assertions (`assertThrows(IllegalStateException...)`
+  plus "the tmp path still exists") kept passing regardless, for the
+  wrong reason -- a real regression in the ownership-tracking logic
+  either test actually targets would have gone undetected, since
+  round 31's own, earlier check would mask it. Verified directly by
+  tracing both code paths by hand (not just accepting the finding), and
+  fixed the same way round 31's own analogous fix did: both tests now
+  seed `ledgerPath` with a real, matching-identity ledger via a real
+  `AccountLedgerStore.persist` call *before* fabricating the `.tmp`-path
+  fixture, keeping round 31's check from firing and letting execution
+  reach each test's own real subject. **Strengthened beyond the
+  reviewer's own literal ask**: both tests now also assert the thrown
+  exception's message contains `"failed to persist account ledger
+  file"` (the real outer-catch message) and, implicitly, does not match
+  round 31's own distinct `"refusing to persist to missing"` message --
+  proving, not merely restoring by construction, that the intended
+  deeper code path is what actually fired. The stale `FileChannel.open`
+  comment in `persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt`
+  (which, before this fix, described a code path execution no longer
+  reached) is corrected to explain the seeding step's own purpose.
+
+Re-ran after the round-33 fix: `./gradlew clean build` -- still green,
+**460 tests, 0 failures, 0 errors** project-wide (unchanged count -- both
+fixes modified existing test bodies in place, no new test methods).
+`AccountLedgerStoreTest` reran 3 additional explicit times
+(`--rerun-tasks`), stable. Both changes are confined to
+`AccountLedgerStoreTest`'s own test fixtures, with zero production-code
+change and zero touch on `AccountLedgerLock` at all, so a further raw
+stress-harness round was not independently warranted.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -3370,7 +3422,10 @@ deployment scenario, not merely by code inspection.
   write-side fail-closed fix, one for the write-side JSON-literal-`null`
   coverage gap); 40/40 after round 32's (no `AccountLedgerStore`-level
   changes that round -- both real changes were in `AccountLedgerLock`/
-  `AccountLedgerLockTest`).
+  `AccountLedgerLockTest`); 40/40 after round 33's (no new test methods
+  -- two existing tests' fixtures corrected to re-seed `ledgerPath`
+  first, restoring their own coverage of the ownership-tracking path
+  round 31's new check had started shadowing).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -3440,7 +3495,9 @@ deployment scenario, not merely by code inspection.
   after round 32's (2 more new tests -- the hostname-mismatch dead-PID
   pair -- plus an existing test's fabricated hostname updated to stay
   meaningful under the new gate, and the permanent test-coverage-gap
-  disclosure, documentation-only).
+  disclosure, documentation-only); 14/14 after round 33's (no
+  `AccountLedgerLock`-level changes that round -- both real fixes were
+  in `AccountLedgerStoreTest.java`).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3477,10 +3534,12 @@ deployment scenario, not merely by code inspection.
   plus round 29's own 3 additional explicit combined reruns noted in the
   full-suite bullet below) after round 29, once more (part of the full
   `clean build`) after round 30, once more (part of the full `clean
-  build`) after round 31, and **4 more times** after round 32 (1 part of
+  build`) after round 31, **4 more times** after round 32 (1 part of
   the full `clean build`, plus 3 further explicit `--rerun-tasks` runs,
   given round 32's own real change to `AccountLedgerLock`'s acquire/steal
-  control flow).
+  control flow), and once more (part of the full `clean build`) after
+  round 33 (no `AccountLedgerLockMultiProcessTest`-level change that
+  round -- both real fixes were in `AccountLedgerStoreTest.java`).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -3609,12 +3668,15 @@ deployment scenario, not merely by code inspection.
   updates** across every round this harness has actually been re-run.
   The decline (the `createAndWriteMetadata` null-return-branch coverage
   gap, reaffirmed a fourth time) is documentation-only and needed no
-  further raw-harness verification on its own.
+  further raw-harness verification on its own. Round 33's two fixes are
+  both confined to `AccountLedgerStoreTest`'s own test fixtures (no
+  production-code change at all), so it likewise did not independently
+  warrant a further raw stress-harness round.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, and 32 (plus round 27's own 4 additional
+  26, 27, 28, 29, 30, 31, 32, and 33 (plus round 27's own 4 additional
   explicit `AccountLedgerLockMultiProcessTest` reruns and 3 additional
   explicit `AccountLedgerStoreTest`-new-test reruns; round 28's own 3
   additional explicit `AccountLedgerStoreTest` reruns; round 29's own 3
@@ -3624,7 +3686,8 @@ deployment scenario, not merely by code inspection.
   31's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
   32's own 3 additional explicit combined reruns of
   `AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest`
-  together, plus the 25-round raw stress harness re-run, all noted
+  together, plus the 25-round raw stress harness re-run; round 33's own
+  3 additional explicit `AccountLedgerStoreTest` reruns, all noted
   above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
@@ -3641,7 +3704,8 @@ deployment scenario, not merely by code inspection.
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
   26's + 1 from round 27's + 2 from round 28's + 2 from round 29's + 1
-  from round 30's + 4 from round 31's + 2 from round 32's).
+  from round 30's + 4 from round 31's + 2 from round 32's + 0 net-new
+  from round 33's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
