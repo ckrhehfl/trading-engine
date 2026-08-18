@@ -4182,6 +4182,85 @@ acquisitions, zero lost updates), bringing the task-wide raw-harness
 total to **430 clean rounds, 20,640 individual lock acquisitions, zero
 lost updates**.
 
+### Round 42
+
+Review id `4965978846`, against commit `085ede4` (round 41's fix
+commit, already pushed), landed at `2026-08-18T21:35:46Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`COMMENTED` (not `CHANGES_REQUESTED`, not `APPROVED`), 2 real findings
+inside its "Additional comments" section. Treated as seriously as any
+`CHANGES_REQUESTED` round, per this task's own standing rule that only
+a real `APPROVED` review counts as clearing this gate -- a `COMMENTED`
+state is not that, regardless of how CodeRabbit itself labeled it.
+
+- **(Low value, per CodeRabbit's own tag) a 9th narrative-cleanup
+  sweep, this time citing 9 locations in one file
+  (`AccountLedgerStoreTest.java`) in a single finding.** Given the
+  sheer count -- a 9th round of the identical finding class on a file
+  that has now been partially swept 4 separate times (rounds 23, 30,
+  38 [indirectly, via `AccountLedgerStore.java`'s own sibling sweep],
+  and now this one) -- did a genuinely comprehensive pass this round
+  rather than another incremental one: grepped the whole file for
+  every remaining "Real X finding"/"round N"/"CodeRabbit review"
+  occurrence (12 found, not just the 9 cited) and trimmed all 12 to
+  their underlying invariant/reasoning, dropping only the finding-
+  attribution/severity-rating framing. Confirmed after the sweep, via
+  the same grep, that zero occurrences remain in this file. Comment-
+  only, zero behavior change.
+- **(Major, "Heavy lift," itself flagged by CodeRabbit as an
+  "⚠️ Unverified finding -- Sandbox verification was unavailable")
+  `requireHeld()` proves only that *some* lock is held, not that its
+  own path corresponds to the specific `ledgerPath` being loaded/
+  persisted -- a caller could pass ledger A's path with lock B's proof
+  and neither `load` nor `persist` would catch it, reopening the exact
+  race the whole mechanism exists to close.** Real, and not a new
+  discovery -- this is precisely the limitation round 39's own class
+  Javadoc already discloses in these words: "This does not verify
+  that the supplied lock's own path corresponds to `ledgerPath` -- no
+  convention linking the two exists yet in this codebase (that mapping
+  is `SharedKisAccountLedger`, Task C's, to define)." CodeRabbit is
+  re-raising an already-disclosed, deliberate boundary, not identifying
+  an undisclosed one.
+
+  **Reaffirmed, not fixed, after genuinely re-evaluating rather than
+  reflexively applying round 39's own precedent of "build it now."**
+  The two situations are not the same, for a reason specific to what
+  each fix actually requires: round 39's structural lock-holding-proof
+  change reused a type (`AccountLedgerLock`) that already existed with
+  exactly the right shape and constructor visibility -- zero new design
+  surface, pure wiring. This finding's own suggested fix requires
+  *inventing* a real, new path-naming convention linking `ledgerPath`
+  to `lockPath` (e.g. `lockPathFor(Path ledgerPath)`) that exists
+  nowhere in this codebase today -- genuinely new design, not wiring.
+  That distinction is exactly why CLAUDE.md's own KIS/Task C section
+  reserves this specific mapping for `SharedKisAccountLedger` to define
+  -- worded that way in round 39's own Javadoc addition, not invented
+  for this round's decline. Committing to a convention now, inside
+  Task B's own narrow scope (governed by a task brief that explicitly
+  excludes Task C's wiring), risks picking one Task C's real
+  requirements later force a change to -- e.g. a per-venue/account
+  convention rather than a per-`ledgerPath`-sibling one, or a shared
+  directory layout rather than a colocated file -- wasted or actively
+  wrong work now, not saved work. This task's own `loadWithLock`/
+  `persistWithLock` test helpers already invented a convention
+  (`<ledgerPath>.lock`), but explicitly and only as test-fixture
+  convenience -- promoting that into the real production contract here
+  would silently convert a throwaway test choice into a committed
+  design decision without the deliberation Task C is supposed to give
+  it. The production Javadoc's own existing disclosure already states
+  this limitation honestly and was not weakened or hidden -- reaffirmed
+  here with expanded reasoning in this planning doc, matching this
+  task's own established precedent for a reaffirmed decline (the
+  Jackson-BOM decision, reaffirmed multiple times across earlier
+  rounds), not silently dropped.
+
+Re-ran after the narrative sweep: `./gradlew clean build` -- green,
+**466 tests, 0 failures, 0 errors** project-wide (unchanged count --
+comment-only change, no test-method change, and the reaffirmed decline
+needed no code or test change of its own). `AccountLedgerStoreTest`
+reran 3 additional explicit times, stable. No raw stress harness
+re-run -- zero production control-flow change this round.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4275,7 +4354,10 @@ lost updates**.
   Javadoc-only `{@link}` signature correction, no behavior/test change);
   43/43 after round 41's (no `AccountLedgerStore`-level test changes
   that round -- all three real fixes were in `AccountLedgerLock.java`/
-  `AccountLedgerLockTest.java`).
+  `AccountLedgerLockTest.java`); 43/43 after round 42's (a comprehensive,
+  12-location comment-only narrative sweep of this file, plus a
+  reaffirmed decline needing no code change -- no new/modified test
+  methods, zero behavior change).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -4631,11 +4713,16 @@ lost updates**.
   exactly correct** (1,200 more individual lock acquisitions, zero lost
   updates), bringing the task-wide raw-harness total to **430 clean
   rounds, 20,640 individual lock acquisitions, zero lost updates**.
+  Round 42 was a comment-only sweep plus a reaffirmed decline needing no
+  code change, zero production control-flow change, so it likewise did
+  not independently warrant a further raw stress-harness round; the
+  task-wide total remains **430 clean rounds, 20,640 individual lock
+  acquisitions, zero lost updates** after round 42.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, and 41
+  26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, and 42
   (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
@@ -4673,7 +4760,10 @@ lost updates**.
   round 41's own 3 additional explicit combined reruns of
   `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`, and
   `AccountLedgerStoreTest` together, plus its own 25-round raw stress
-  harness re-run, all noted above).
+  harness re-run; round 42's own 3 additional explicit
+  `AccountLedgerStoreTest` reruns (a comment-only sweep confined to that
+  file, no `AccountLedgerLock`-level change, so no combined rerun or raw
+  harness re-run was warranted that round), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -4693,7 +4783,7 @@ lost updates**.
   from round 33's + 1 from round 34's + 0 net-new from round 35's + 0
   net-new from round 36's + 0 net-new from round 37's + 0 net-new from
   round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
-  round 41's).
+  round 41's + 0 net-new from round 42's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

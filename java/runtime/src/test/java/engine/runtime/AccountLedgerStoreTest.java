@@ -104,12 +104,11 @@ class AccountLedgerStoreTest {
     void loadReflectsTheLatestPersistedStateNotAStaleCachedOne(@TempDir Path tempDir) {
         Path file = tempDir.resolve("ledger.json");
         // defaultAllocatedCapital held fixed at 2000 (>= both persisted
-        // values below) throughout this test -- deliberately, so the new
-        // stored-exceeds-configured-default fail-closed check (real Minor
-        // finding, real CodeRabbit review of this PR) never trips here;
-        // this test's own subject is the "no caching" property, not that
-        // check, and 1000 -> 2000 already proves a real state change is
-        // observed either direction.
+        // values below) throughout this test -- deliberately, so the
+        // stored-exceeds-configured-default fail-closed check never trips
+        // here; this test's own subject is the "no caching" property, not
+        // that check, and 1000 -> 2000 already proves a real state change
+        // is observed either direction.
         BigDecimal defaultAllocatedCapital = new BigDecimal("2000");
         AccountLedger first = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -159,7 +158,6 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding, real CodeRabbit review of this PR:
      * {@code DeserializationFeature.FAIL_ON_TRAILING_TOKENS} is disabled
      * by default in Jackson, meaning {@code readValue} would otherwise
      * silently ignore anything after the first complete JSON value --
@@ -219,8 +217,7 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding ("Heavy lift"), real CodeRabbit review of this
-     * PR: {@code persist}'s non-atomic fallback path is not a single
+     * {@code persist}'s non-atomic fallback path is not a single
      * atomic operation -- a crash mid-replace could plausibly leave
      * {@code ledgerPath} missing while its {@code .tmp} source still
      * lingers. Without this check, {@code load} would silently bootstrap
@@ -270,8 +267,7 @@ class AccountLedgerStoreTest {
      * above), and -- proven here, the one previously untested of the
      * three -- {@code .tmp}'s own existence cannot be positively
      * determined at all (also fails closed, via the same {@code
-     * tmpCheckFailure} branch). Real Trivial finding, a further real
-     * CodeRabbit review round on this PR: without this test, someone could
+     * tmpCheckFailure} branch). Without this test, someone could
      * revert that branch's {@code catch (IOException tmpCheckFailure)} to
      * a silent {@code return freshLedger(...)} and every existing test
      * would still pass, even though an undetermined state would then
@@ -297,12 +293,12 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Major finding, real CodeRabbit review of this PR: nothing
-     * upstream of {@code load} validated that a loaded ledger file's own
-     * recorded identity actually matches the {@code (venue, accountId)}
-     * the caller requested -- a future path-resolution bug (Task C) or
-     * file mix-up could otherwise silently use one account's real,
-     * currently-committed exposure to gate a different account's orders.
+     * Nothing upstream of {@code load} validates that a loaded ledger
+     * file's own recorded identity actually matches the {@code (venue,
+     * accountId)} the caller requested -- a future path-resolution bug
+     * (Task C) or file mix-up could otherwise silently use one account's
+     * real, currently-committed exposure to gate a different account's
+     * orders.
      */
     @Test
     void loadFailsClosedWhenTheLoadedLedgersVenueDoesNotMatchTheRequestedOne(@TempDir Path tempDir) {
@@ -344,9 +340,8 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Minor finding, real CodeRabbit review of this PR: {@code
-     * defaultAllocatedCapital} previously had no positivity check at all --
-     * a zero or negative value is meaningless for a risk budget and would
+     * {@code defaultAllocatedCapital} must be strictly positive -- a zero
+     * or negative value is meaningless for a risk budget and would
      * otherwise flow straight into a freshly-bootstrapped ledger.
      */
     @Test
@@ -362,18 +357,15 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Minor finding, real CodeRabbit review of this PR, grounded
-     * directly in CLAUDE.md's own "never weaken risk limits... without
-     * explicit human approval" rule: previously, {@code
-     * defaultAllocatedCapital} was only ever consulted when bootstrapping a
-     * brand new ledger -- for an existing one, the stored {@code
-     * allocatedVirtualCapital} was returned as-is with no comparison
-     * against the currently-configured default at all. That would silently
-     * defeat an operator's own attempt to reduce a risk budget: lowering
-     * {@code defaultAllocatedCapital} in configuration would have no effect
-     * for as long as a larger, previously-persisted value remained on disk.
-     * This proves the fail-closed fix directly, not merely by absence of a
-     * counter-example.
+     * Grounded directly in CLAUDE.md's own "never weaken risk limits...
+     * without explicit human approval" rule: {@code
+     * defaultAllocatedCapital} is only ever consulted when bootstrapping a
+     * brand new ledger -- for an existing one, returning the stored
+     * {@code allocatedVirtualCapital} as-is with no comparison against the
+     * currently-configured default would silently defeat an operator's
+     * own attempt to reduce a risk budget, since lowering {@code
+     * defaultAllocatedCapital} in configuration would have no effect for
+     * as long as a larger, previously-persisted value remained on disk.
      */
     @Test
     void loadFailsClosedWhenAnExistingLedgersAllocatedCapitalExceedsTheConfiguredDefault(@TempDir Path tempDir) {
@@ -451,8 +443,7 @@ class AccountLedgerStoreTest {
                         + "\"reservedAt\":\"" + now + "\"}]}");
 
         // Checks the exception's own cause message, not just its type --
-        // a real Minor finding, real CodeRabbit review of this PR: this
-        // test's own hand-written JSON field names (e.g. "notional")
+        // this test's own hand-written JSON field names (e.g. "notional")
         // aren't compiler-checked against LedgerReservation's real record
         // component names, so a typo or a future rename could make
         // Jackson reject the file as an unknown property instead --
@@ -538,8 +529,7 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Minor finding, real CodeRabbit review of this PR: {@link
-     * AccountLedger}'s own compact constructor now rejects a
+     * {@link AccountLedger}'s own compact constructor rejects a
      * half-populated {@code reconciliationAlarmTrippedAt}/{@code
      * reconciliationAlarmReason} pair -- see that record's own Javadoc
      * for the full reasoning (a pure structural invariant, not an alarm
@@ -599,8 +589,7 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Trivial finding, real CodeRabbit review of this PR: {@link
-     * AccountLedger}'s own compact constructor now rejects two
+     * {@link AccountLedger}'s own compact constructor rejects two
      * reservations sharing the same {@code clientOrderId} -- a duplicate
      * would double-count that reservation's notional against available
      * capital, or (on release) leave one of the two still recorded,
@@ -742,9 +731,9 @@ class AccountLedgerStoreTest {
     void persistFailsClosedBeforeWritingWhenTheLedgerPathsExistenceCannotBeDetermined(@TempDir Path tempDir)
             throws IOException {
         // verifyIdentityConsistency's own determination-failure branch,
-        // exercised at ledgerPath itself rather than the .tmp path -- a
-        // real, previously-untested branch of round 28's new write-side
-        // identity check. A self-referential symlink at ledgerPath forces
+        // exercised at ledgerPath itself rather than the .tmp path -- the
+        // write-side identity check's own previously-untested branch. A
+        // self-referential symlink at ledgerPath forces
         // the same real FileSystemException (not NoSuchFileException)
         // this file's other symlink-based tests already rely on, so
         // persist() cannot positively confirm ledgerPath is either absent
@@ -928,8 +917,7 @@ class AccountLedgerStoreTest {
     }
 
     /**
-     * Real Minor finding, real CodeRabbit review of this PR: {@code
-     * persist}'s non-atomic fallback is deliberately narrow -- only {@link
+     * {@code persist}'s non-atomic fallback is deliberately narrow -- only {@link
      * AtomicMoveNotSupportedException}/{@link FileAlreadyExistsException}
      * (the same class of failure {@code SubmissionMarkerStore}/{@code
      * DailyReportGenerator} already fall back for) trigger the {@code
@@ -954,11 +942,9 @@ class AccountLedgerStoreTest {
 
         assertThrows(IllegalStateException.class, () -> persistWithLock(file, ledger, brokenMover));
         assertFalse(Files.exists(file), "the ledger must not be replaced by a non-atomic fallback here");
-        // Strengthened per a further real CodeRabbit review round on this
-        // PR: the original version of this test stopped at confirming
-        // ledgerPath was never created, which does not prove the tmp file
-        // this same persist() call created was cleaned up too -- see
-        // persistCleansUpItsOwnTmpFileOnFailureSoASubsequentLoadStillBootstrapsFresh
+        // Confirming ledgerPath was never created does not by itself prove
+        // the tmp file this same persist() call created was cleaned up too
+        // -- see persistCleansUpItsOwnTmpFileOnFailureSoASubsequentLoadStillBootstrapsFresh
         // below for why a leftover tmp here is a real availability bug on
         // its own, not merely untidy.
         assertFalse(
@@ -1141,8 +1127,9 @@ class AccountLedgerStoreTest {
     // relies on no POSIX-only behavior.
     void persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt(@TempDir Path tempDir)
             throws IOException {
-        // Round-25/26's own tmpPreexisted check used Files.exists(candidateTmp),
-        // which swallows an I/O/permission error into a plain false --
+        // persist()'s own tmpPreexisted check previously used
+        // Files.exists(candidateTmp), which swallows an I/O/permission
+        // error into a plain false --
         // indistinguishable from "genuinely absent." That misreads an
         // undetermined existence as "this call is creating a new file,"
         // making it eligible for the failure-cleanup path below even
