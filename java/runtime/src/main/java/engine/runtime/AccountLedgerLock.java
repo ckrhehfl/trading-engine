@@ -926,14 +926,21 @@ final class AccountLedgerLock implements AutoCloseable {
      * this distinction wrong. {@link #doClose} now returns {@code
      * boolean}: {@code true} for an outcome no future retry could ever
      * improve on (the file is genuinely gone or already deleted by this
-     * call, or the re-verification found {@link #EMPTY_OR_UNPARSEABLE}
-     * content or a genuine generation mismatch -- both confirmed
-     * alternate states a retry would simply re-observe, not something a
-     * later attempt could resolve differently), {@code false} for a
-     * transient, recoverable outcome a later {@code close()} call might
-     * still resolve better (a {@link #READ_FAILED} re-verification read,
-     * or any {@link IOException} other than {@link NoSuchFileException}
-     * from the delete itself). Without this distinction, an earlier
+     * call, or the re-verification found a genuine generation mismatch --
+     * a real, live different holder provably owns the path now, so no
+     * retry could ever change that), {@code false} for a transient,
+     * recoverable outcome a later {@code close()} call might still resolve
+     * better (a {@link #READ_FAILED} re-verification read, {@link
+     * #EMPTY_OR_UNPARSEABLE} content -- corrected on a still further real
+     * CodeRabbit review round: unlike a genuine different-holder mismatch,
+     * this state cannot actually be distinguished from a transient
+     * filesystem read/visibility gap on this instance's own still-valid
+     * content, a real, previously-measured characteristic of this
+     * project's own drvfs mount (see this class's own class Javadoc), so
+     * it is now treated the same retryable way {@code READ_FAILED} already
+     * is -- or any {@link IOException} other than {@link
+     * NoSuchFileException} from the delete itself). Without this
+     * distinction, an earlier
      * version of this fix set {@link #closed} unconditionally after
      * {@link #doClose} returned normally -- but {@code doClose} returns
      * normally (no exception) even on its own transient-failure paths, so
@@ -983,11 +990,27 @@ final class AccountLedgerLock implements AutoCloseable {
                         "account ledger lock {} exists but its content is empty or unparseable on close"
                                 + " (acquired as {}) -- NOT deleting, since this instance cannot prove the file is"
                                 + " still its own generation (most likely raced a concurrent writer's own brief"
-                                + " create-to-write window). The file will block other waiters until its"
-                                + " staleThreshold elapses.",
+                                + " create-to-write window, or a transient filesystem read/visibility gap on this"
+                                + " instance's own still-valid content). The file will block other waiters until"
+                                + " its staleThreshold elapses.",
                         lockPath,
                         ownMetadata);
-                return true; // confirmed alternate state -- a retry would just re-observe it
+                // Retryable, not final -- a further real CodeRabbit review
+                // round on this PR. Unlike the genuine different-holder
+                // mismatch below (where a real, live new holder provably
+                // owns the path now, so no retry could ever help), this
+                // branch cannot actually distinguish that same situation
+                // from a transient read/visibility gap on this instance's
+                // OWN still-valid content -- a real, previously-measured
+                // characteristic of this project's own drvfs mount (see
+                // this class's own class Javadoc: sub-3ms mtime precision,
+                // 500ms+ transient I/O latency under contention). Treating
+                // this the same retryable way READ_FAILED already is means
+                // a later close() call gets a real chance to observe this
+                // instance's own genuine content again and complete the
+                // delete, rather than permanently stranding a lock this
+                // instance still legitimately owns.
+                return false;
             }
             if (!current.equals(ownMetadata)) {
                 log.error(

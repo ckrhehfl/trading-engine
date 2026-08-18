@@ -2816,6 +2816,203 @@ this round are entirely within `AccountLedgerStore`/
 control flow, so a further raw stress-harness round was not
 independently warranted.
 
+### Round 29
+
+Against commit `9b29f47` (after round 28's fixes were pushed), landed at
+`2026-08-18T06:30:36Z` UTC, `commit_id` verified via the REST reviews API
+to match HEAD exactly -- `CHANGES_REQUESTED`, **7 actionable comments,
+the largest single-round count in this task** (the previous max was 3,
+round 20). This is the first round to touch `AccountLedgerLock.java`
+itself since round 25. 6 fixed with TDD, 1 declined with real,
+documented reasoning:
+
+- **(Trivial) `close()`'s `EMPTY_OR_UNPARSEABLE` branch was treated as a
+  final, unretryable outcome -- the same treatment as a genuine
+  different-holder mismatch.** Real, and specific to this project's own
+  real drvfs mount: the reviewer's argument is that since `acquire`
+  only ever returns a lock after re-verifying its own write, the only
+  real ways this instance's *own* generation could later read back
+  empty/unparseable on `close` are an external factor (a sibling's
+  create-to-write window landing on an already-vacated path -- which
+  really is a settled, different-holder situation, correctly final) or a
+  transient filesystem read/visibility gap on this instance's own
+  still-valid content -- and the second case is exactly the kind of
+  thing this project has already measured as real on this specific
+  mount (sub-3ms mtime precision, 500ms+ transient I/O latency under
+  contention, both cited in this class's own class Javadoc). The two
+  cases are not distinguishable from inside this branch, so treating
+  both as final risks permanently stranding a lock this instance still
+  legitimately owns. Fixed by returning `false` (retryable) here,
+  matching `READ_FAILED`'s existing treatment exactly -- `closed` stays
+  unset, so a later `close()` call gets a real chance to re-observe this
+  instance's own genuine content and complete the delete. `close()`'s
+  own top-level Javadoc (the paragraph explaining what `doClose`'s
+  boolean return means) updated to match -- it previously grouped
+  `EMPTY_OR_UNPARSEABLE` with the genuine-mismatch case as "both
+  confirmed alternate states," which is no longer accurate for either
+  the code or the reasoning. Proven with a real, deterministic test
+  (`closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`):
+  acquires a real lock, fabricates empty content over its own file
+  (simulating the undistinguishable-from-inside condition directly,
+  the same technique this file's own existing empty/unparseable-content
+  tests already use for `acquire`), calls `close()` once and asserts
+  neither deletion nor permanent closure, restores the real content
+  (simulating the transient condition resolving), calls `close()` again,
+  and asserts the delete now succeeds. Confirmed failing (red) against
+  the pre-fix code first, then green after the fix.
+- **(Minor) `AccountLedgerLockTest`'s own steal-timing assertion compared
+  two `System.nanoTime()` values with a direct `<`, which
+  `System.nanoTime()`'s own documented contract does not guarantee is
+  correct across a wraparound** (only a *subtraction* is guaranteed
+  correct, per the JDK's own documentation -- confirmed by the
+  reviewer's own web research, not just asserted). Real, low-probability
+  in practice (a wraparound landing between exactly these two captured
+  timestamps in one test run) but a real latent bug in test code that
+  would fail confusingly if it ever did. Fixed: `stolenAcquiredAtNanos <
+  holderReleasedAtNanos.get()` -> `stolenAcquiredAtNanos -
+  holderReleasedAtNanos.get() < 0`, same assertion message, no new test
+  needed (this is a correctness fix to an existing assertion's own
+  comparison operator, not new behavior to cover).
+- **(Trivial, doc-only) `load`'s Javadoc had a manual-resolution
+  procedure for the missing-ledger-plus-leftover-`.tmp` case (round 24)
+  but none for the different scenario of an *existing* `ledgerPath` file
+  that exists but cannot be parsed or fails one of its own structural
+  checks** (duplicate `clientOrderId`, negative `notional`, a
+  half-populated alarm pair, etc.) -- a real, genuine availability loss
+  the reviewer traced correctly: since round 28's `persist` identity
+  check (`verifyIdentityConsistency`) also parses the existing file the
+  same way, `persist` fails closed on this exact case too, meaning the
+  only path forward is a human editing the file directly, with no
+  documented procedure for how. Fixed, doc-only per the reviewer's own
+  explicit instruction ("automatic recovery is deliberately not in
+  scope, no code change needed"): a new Javadoc paragraph on `load`
+  stating the 3-step procedure (back up, never delete outright;
+  determine from other sources -- operational logs, a sibling process's
+  state, a real exchange-side query -- whether the real committed
+  reservations can be reconstructed; if they can, a human persists a
+  deliberately-reconstructed ledger, if not, do not guess and do not let
+  either method silently regenerate an empty ledger over unknown real
+  exposure), explicitly cross-referencing `persist`'s own identity check
+  as sharing the same fail-closed reasoning.
+- **(Trivial) `load`'s own third missing-`.tmp`-determination branch
+  (genuinely undetermined existence, not merely absent-vs-present) had
+  no dedicated test** -- the reviewer's own argument, verified directly:
+  the existing tests fix the "absent" and "present" branches, but a
+  regression silently reverting the `catch (IOException tmpCheckFailure)`
+  block to `return freshLedger(...)` would pass every existing test
+  while silently bootstrapping an empty ledger over another process's
+  real, committed reservations on a genuinely undetermined state -- the
+  exact class of bug this whole file's fail-closed design exists to
+  prevent, previously unguarded by a test. Fixed with a new test,
+  `loadFailsClosedWhenTheTmpFilesExistenceCannotBeDetermined`, reusing
+  this file's own established self-referential-symlink technique (round
+  27) verbatim -- a self-referential symlink at the `.tmp` path forces
+  the same real `FileSystemException` (not `NoSuchFileException`) that
+  technique already relies on. `@EnabledOnOs({OS.LINUX, OS.MAC})` for
+  the same reason round 28 added it to the original symlink test. This
+  test passed immediately against the *existing* production code
+  (confirming the underlying behavior was already correct, only
+  previously uncovered) -- not a red-then-green fix, a genuine coverage
+  gap closed.
+- **(Minor) `AccountLedgerStoreTest` used `{@link FileAlreadyExistsException}`
+  in two Javadoc blocks (round 15's and round 19's own test method
+  Javadoc) without ever importing the class**, leaving those two
+  cross-references unresolved. Real, and a genuine oversight that
+  predates this round by several rounds -- simply never caught until
+  now. Fixed: added the missing `import java.nio.file.
+  FileAlreadyExistsException;`. Documentation-only, no behavior change.
+- **(Trivial) `LockContenderMain.main` read `args[0]` through `args[5]`
+  with no validation at all** -- a missing or malformed argument would
+  surface as a raw `ArrayIndexOutOfBoundsException`/`NumberFormatException`,
+  and because this class runs in a genuinely separate JVM (see its own
+  class Javadoc), that raw trace is only ever visible in the launching
+  test's own captured stderr file, not inline. Real, though purely a
+  test-harness debuggability nicety, not a correctness issue (every
+  actual call site in this codebase already passes exactly 6
+  well-formed arguments). Fixed per the reviewer's own suggested shape:
+  an explicit `args.length != 6` check with a clear usage message, plus
+  numeric parsing wrapped in a single `try`/`catch (NumberFormatException)`
+  that re-throws with the same usage message and the original malformed
+  value's own message attached. No new test -- this only changes the
+  error path for a launch configuration no real call site in this
+  codebase ever produces; the existing
+  `AccountLedgerLockMultiProcessTest` (which does exercise this class,
+  with valid arguments) continues to pass unchanged, confirming no
+  behavior change for every real caller.
+
+**Declined, with real reasoning, not simply skipped**: **(Trivial /
+Low value, the reviewer's own tags) the stale-steal success path in
+`acquire`'s `catch (FileAlreadyExistsException e)` block retries
+immediately (no backoff) whenever `tryStealIfStale` returns `true`, even
+for its `metadata == null` sub-case (lines 577-583) where nothing was
+actually deleted by this call** -- the file was merely observed already
+gone. The reviewer's own concern: under a specific, tightly-interleaved
+multi-process race (our create fails, a sibling deletes the file, our
+read observes `null`, we retry-create immediately and lose again), this
+could spin CPU with no artificial delay between attempts until the
+retry budget -- which does still bound it -- is exhausted. Investigated
+directly, not reflexively declined: (1) the current immediate-retry
+behavior for a confirmed-gone lock is **deliberate, already-documented
+design intent** (the method's own comment: "tells the caller to retry
+the create loop immediately rather than back off waiting on a holder
+that's already gone") -- the overwhelmingly common case this path
+serves is a holder that legitimately released between our failed create
+and our read, where immediate retry is the *correct*, desirable
+behavior, not a bug; slowing it down to guard a rare pathological case
+would impose a real cost on every ordinary contended acquire. (2) A
+**genuinely correct fix is not the narrow one-line change the reviewer's
+own suggested prompt implies.** Direct inspection of `tryStealIfStale`
+found the `metadata == null` case is not the *only* `true`-returning
+sub-path where nothing was deleted by this call: the real-steal path's
+own `catch (NoSuchFileException e)` (around line 633-637, "another
+waiter beat us to stealing it") is the identical shape -- `true` is
+returned, but the deletion, if any, was performed by someone else, not
+this call. The reviewer's finding text names only the first case, but a
+fix addressing just that one would leave this second, equally-real one
+with the exact same characteristic, an inconsistent, partial correction
+rather than a real one. A correct, complete fix needs
+`tryStealIfStale`'s own return contract redesigned (e.g. a tri-state
+outcome distinguishing "this call performed a genuine deletion" from
+"confirmed already gone via any means" from "not stale") -- real,
+non-trivial production-code surface area for `AccountLedgerLock`, not a
+quick win despite the label. (3) **No way to deterministically test
+either version of this fix** was found: reproducing the exact race
+(a sibling process or thread deleting the lock file in the narrow
+window between this call's own failed create and its subsequent read)
+has no externally observable yield point to hook into -- the identical
+structural problem this task's own round 25/26 "Heavy lift" finding
+already worked through and declined for a different internal race in
+this same class (`createAndWriteMetadata`'s null-return branch), and the
+same conclusion applies here for the same reason: accepting either real
+test flakiness or adding a production-code test-only hook are the only
+two ways to force it, and neither fits this task's own TDD discipline or
+scope. Given a low-severity, low-value-tagged finding whose complete fix
+is real, untested-without-hooks production surface area on
+`AccountLedgerLock` -- not the file this round's other six findings
+mostly concerned -- this is deferred as a real, disclosed, dedicated
+follow-up rather than rushed into this round, matching this task's own
+established precedent for handling exactly this shape of finding.
+
+Re-ran after all six round-29 fixes: `./gradlew clean build` -- still
+green, **453 tests, 0 failures, 0 errors** project-wide (+2 from the two
+new tests -- `closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`
+in `AccountLedgerLockTest`, `loadFailsClosedWhenTheTmpFilesExistenceCannotBeDetermined`
+in `AccountLedgerStoreTest`; the nanoTime, Javadoc-import, and
+`LockContenderMain` fixes needed no new test methods, per each finding's
+own reasoning above). `AccountLedgerLockMultiProcessTest`,
+`AccountLedgerLockTest`, and `AccountLedgerStoreTest` all reran 3
+additional explicit times (`--rerun-tasks`) together, stable. This is
+the first round since round 16 with a real, non-Javadoc-only behavior
+change inside `AccountLedgerLock.java` itself (`close()`'s
+`EMPTY_OR_UNPARSEABLE` return value) -- the raw, non-Gradle stress
+harness was **not** independently re-run this round, since the change is
+confined to `close()`'s own re-verification-read-result handling, not
+`acquire`'s create/steal control flow the harness actually exercises
+(the harness only calls `acquire`+`close` in its own ordinary, successful
+path -- it never fabricates the fail-closed states `close()`'s branches
+distinguish); `AccountLedgerLockTest`'s own new, deterministic test is
+judged sufficient re-verification for this specific change instead.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -2865,7 +3062,11 @@ independently warranted.
   regression test); 34/34 after round 28's (2 more new tests -- the new
   `verifyIdentityConsistency` guard, proven via a mismatched-account
   rejection test and an unparseable-existing-content rejection test; the
-  `@EnabledOnOs` addition was annotation-only, no new test method).
+  `@EnabledOnOs` addition was annotation-only, no new test method);
+  35/35 after round 29's (1 more new test --
+  `loadFailsClosedWhenTheTmpFilesExistenceCannotBeDetermined`, closing a
+  real, previously-uncovered gap on `load`'s own third missing-`.tmp`-
+  determination branch -- plus a missing-import fix, documentation-only).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -2924,7 +3125,10 @@ independently warranted.
   `AccountLedgerLockMultiProcessTest.java`, not this file); 11/11 after
   round 28's (no changes to this file that round either -- both real
   fixes were in `AccountLedgerStore.java` and
-  `AccountLedgerStoreTest.java`).
+  `AccountLedgerStoreTest.java`); 12/12 after round 29's (1 more new test
+  -- `closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`
+  -- plus the `System.nanoTime()` subtraction-comparison fix to an
+  existing assertion, no new method for that one).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -3050,19 +3254,34 @@ independently warranted.
   are both entirely within `AccountLedgerStore`/`AccountLedgerStoreTest`,
   with zero touch on `AccountLedgerLock`'s own acquire/steal control
   flow, so it likewise did not independently warrant a further raw
-  stress-harness round).
+  stress-harness round; round 29's one real `AccountLedgerLock.java`
+  behavior change (`close()`'s `EMPTY_OR_UNPARSEABLE` return value) is
+  confined to `doClose`'s own re-verification-read-result handling, not
+  `acquire`'s create/steal control flow the raw harness actually
+  exercises -- the harness's own contenders only ever call
+  `acquire`+`close` along the ordinary, successful path, never
+  fabricating the fail-closed states `close()`'s branches distinguish --
+  so it likewise did not independently warrant a further raw
+  stress-harness round; the round's other five fixes (a test-assertion
+  operator fix, a doc-only Javadoc addition, a new `AccountLedgerStore`-
+  level test, a missing test import, and `LockContenderMain`'s own
+  argument validation) touch no `AccountLedgerLock` control flow at
+  all).
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-  26, 27, and 28 (plus round 27's own 4 additional explicit
+  26, 27, 28, and 29 (plus round 27's own 4 additional explicit
   `AccountLedgerLockMultiProcessTest` reruns and 3 additional explicit
   `AccountLedgerStoreTest`-new-test reruns; round 28's own 3 additional
-  explicit `AccountLedgerStoreTest` reruns, all noted above).
+  explicit `AccountLedgerStoreTest` reruns; round 29's own 3 additional
+  explicit combined reruns of `AccountLedgerLockMultiProcessTest`,
+  `AccountLedgerLockTest`, and `AccountLedgerStoreTest` together, all
+  noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **451 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **453 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -3073,7 +3292,7 @@ independently warranted.
   round 18's + 1 from round 19's + 1 from round 20's + 0 net-new from
   round 21's + 0 net-new from round 22's + 1 from round 23's + 0
   net-new from round 24's + 1 from round 25's + 0 net-new from round
-  26's + 1 from round 27's + 2 from round 28's).
+  26's + 1 from round 27's + 2 from round 28's + 2 from round 29's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

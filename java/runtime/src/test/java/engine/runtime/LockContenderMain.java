@@ -32,13 +32,39 @@ final class LockContenderMain {
 
     private LockContenderMain() {}
 
+    private static final String USAGE = "usage: LockContenderMain <lockPath> <counterPath> <iterations>"
+            + " <staleThresholdMillis> <totalRetryBudgetMillis> <holdMillis>";
+
     public static void main(String[] args) throws Exception {
+        // Real Trivial finding, a further real CodeRabbit review round on
+        // this PR: this class runs in a genuinely separate JVM (see class
+        // Javadoc), so an unvalidated ArrayIndexOutOfBoundsException/
+        // NumberFormatException from a real launch-configuration mistake
+        // would only ever surface as a raw stack trace in the launching
+        // test's own captured stderr file -- a clear usage message here
+        // lets that be told apart immediately from a genuine mutual-
+        // exclusion defect, rather than requiring the stderr file to be
+        // opened and read first.
+        if (args.length != 6) {
+            throw new IllegalArgumentException(USAGE + "; got " + args.length + " argument(s)");
+        }
         Path lockPath = Path.of(args[0]);
         Path counterPath = Path.of(args[1]);
-        int iterations = Integer.parseInt(args[2]);
-        Duration staleThreshold = Duration.ofMillis(Long.parseLong(args[3]));
-        Duration totalRetryBudget = Duration.ofMillis(Long.parseLong(args[4]));
-        long holdMillis = Long.parseLong(args[5]);
+        int iterations;
+        long staleThresholdMillis;
+        long totalRetryBudgetMillis;
+        long holdMillis;
+        try {
+            iterations = Integer.parseInt(args[2]);
+            staleThresholdMillis = Long.parseLong(args[3]);
+            totalRetryBudgetMillis = Long.parseLong(args[4]);
+            holdMillis = Long.parseLong(args[5]);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException(
+                    USAGE + " -- one or more numeric arguments could not be parsed: " + e.getMessage(), e);
+        }
+        Duration staleThreshold = Duration.ofMillis(staleThresholdMillis);
+        Duration totalRetryBudget = Duration.ofMillis(totalRetryBudgetMillis);
 
         for (int i = 0; i < iterations; i++) {
             try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, totalRetryBudget)) {

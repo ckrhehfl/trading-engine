@@ -127,6 +127,33 @@ final class AccountLedgerStore {
      * real, currently-committed exposure -- invisible, undermining the
      * entire reason this shared ledger exists.
      *
+     * <p><b>Manual resolution procedure for a human hitting this exception
+     * because an <i>existing</i> {@code ledgerPath} file cannot be parsed
+     * or fails one of its own structural checks</b> -- documented here
+     * (real Trivial finding, a further real CodeRabbit review round on
+     * this PR) because it is a genuinely different scenario from the
+     * missing-ledger-plus-leftover-{@code .tmp} procedure below: there,
+     * {@code ledgerPath} itself does not exist at all; here, it exists but
+     * this call cannot trust its content. The same fail-closed reasoning
+     * now also gates {@link #persist}'s own {@code
+     * verifyIdentityConsistency} check on the write side, for the
+     * identical reason. (1) move the unparseable file to a backup path
+     * (never delete it outright -- it may still hold real, recoverable
+     * evidence of this account's last-known committed exposure); (2)
+     * determine from other sources -- this venue/account's own operational
+     * logs, a sibling process's independent state, or a real exchange-side
+     * position/balance query -- whether the committed reservations this
+     * ledger was tracking can be reconstructed; (3) if they can, a human
+     * constructs a new, valid {@link AccountLedger} reflecting that
+     * reconstructed state and persists it deliberately; if they cannot be
+     * confidently reconstructed, do not guess and do not let this method
+     * (or {@code persist}) silently regenerate an empty ledger over an
+     * unknown real exposure -- this is exactly the ambiguous case this
+     * class refuses to resolve automatically, matching the missing-
+     * ledger-plus-{@code .tmp} procedure's own "do not guess" principle.
+     * Automatic recovery is deliberately out of scope for the same
+     * reasoning already given below for that case.
+     *
      * <p><b>Also fails closed if the loaded file's own {@code venue}/{@code
      * accountId} don't match the requested ones.</b> Nothing upstream of
      * this method validates that {@code ledgerPath} actually corresponds

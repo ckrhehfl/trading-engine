@@ -12,6 +12,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -260,6 +261,39 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000"));
 
         assertEquals(new BigDecimal("100000"), ledger.allocatedVirtualCapital());
+    }
+
+    /**
+     * {@code load}'s missing-ledger branch actually distinguishes three
+     * outcomes, not two: genuinely absent {@code .tmp} (fresh bootstrap,
+     * proven above), a confirmed-present {@code .tmp} (fail closed, proven
+     * above), and -- proven here, the one previously untested of the
+     * three -- {@code .tmp}'s own existence cannot be positively
+     * determined at all (also fails closed, via the same {@code
+     * tmpCheckFailure} branch). Real Trivial finding, a further real
+     * CodeRabbit review round on this PR: without this test, someone could
+     * revert that branch's {@code catch (IOException tmpCheckFailure)} to
+     * a silent {@code return freshLedger(...)} and every existing test
+     * would still pass, even though an undetermined state would then
+     * silently bootstrap an empty ledger, discarding another process's
+     * real, committed reservations. Reuses this file's own established
+     * self-referential-symlink technique (see {@link
+     * #persistTreatsAnUndeterminableTmpPathAsPreexistingRatherThanDeletingIt})
+     * to reproduce a genuine {@code FileSystemException} from {@code
+     * Files.readAttributes} rather than the absent-file {@code
+     * NoSuchFileException} the other two branches turn on.
+     */
+    @Test
+    @EnabledOnOs({OS.LINUX, OS.MAC})
+    void loadFailsClosedWhenTheTmpFilesExistenceCannotBeDetermined(@TempDir Path tempDir) throws IOException {
+        Path file = tempDir.resolve("ledger.json");
+        Path tmp = tempDir.resolve("ledger.json.tmp");
+        Files.createSymbolicLink(tmp, tmp);
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("100000")),
+                "an undetermined .tmp existence state must fail closed, not silently bootstrap a fresh ledger");
     }
 
     /**

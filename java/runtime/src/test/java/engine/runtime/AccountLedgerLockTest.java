@@ -397,8 +397,14 @@ class AccountLedgerLockTest {
         // real mutual-exclusion violation directly caused by
         // staleThreshold being shorter than the holder's own real
         // critical-section duration.
+        // Compared via subtraction, not a direct < -- System.nanoTime()'s
+        // own documented contract only guarantees correctness for
+        // differences, since the underlying value can wrap around; a
+        // direct comparison would misjudge the two timestamps' real order
+        // if a wraparound happened to fall between them (real Minor
+        // finding, real CodeRabbit review of this PR).
         assertTrue(
-                stolenAcquiredAtNanos < holderReleasedAtNanos.get(),
+                stolenAcquiredAtNanos - holderReleasedAtNanos.get() < 0,
                 "expected the steal to succeed WHILE the original holder was still genuinely active -- proving a"
                         + " real mutual-exclusion violation when staleThreshold is shorter than a legitimate"
                         + " holder's own real critical-section duration");
@@ -475,6 +481,55 @@ class AccountLedgerLockTest {
         assertTrue(
                 Files.readString(lockPath).contains("someone-else"),
                 "the sibling's own lock content must be completely untouched by the repeat close() call");
+    }
+
+    /**
+     * Real Trivial finding, a further real CodeRabbit review round on this
+     * PR: {@code close()}'s own {@code EMPTY_OR_UNPARSEABLE} branch used to
+     * be treated as a final, unretryable outcome -- the same treatment as a
+     * genuine different-holder mismatch. On this specific project's real
+     * drvfs mount (previously measured sub-3ms mtime precision, 500ms+
+     * transient I/O latency under contention -- see {@link
+     * AccountLedgerLock}'s own class Javadoc), that conflated two different
+     * situations: a genuine new holder mid-write (nothing to gain from
+     * retrying, correctly final) and a transient filesystem read/visibility
+     * gap on this instance's <i>own</i>, still-valid content (where a later
+     * {@code close()} call might well observe the real content and
+     * successfully delete it). Now treated the same retryable way {@link
+     * #READ_FAILED} already is. Proven here, not just asserted: a first
+     * {@code close()} call observes fabricated empty content and must
+     * neither delete nor permanently mark this instance closed; a second
+     * call, after the real content is restored (simulating the transient
+     * condition resolving), must still be able to complete the delete.
+     */
+    @Test
+    void closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt(@TempDir Path tempDir)
+            throws IOException {
+        Path lockPath = tempDir.resolve("ledger.json.lock");
+        AccountLedgerLock lock =
+                AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+        String ownContent = Files.readString(lockPath);
+        Files.writeString(lockPath, ""); // fabricates the EMPTY_OR_UNPARSEABLE state on this instance's own path
+
+        lock.close(); // first attempt: must not delete, must not permanently mark this instance closed
+
+        assertTrue(
+                Files.exists(lockPath),
+                "close() must not delete when it cannot confirm the file is still its own generation");
+        assertEquals(
+                "",
+                Files.readString(lockPath),
+                "the fabricated empty content must be untouched by the non-deleting first close() attempt");
+
+        Files.writeString(lockPath, ownContent); // the transient condition resolves -- this instance's own real
+        // content is confirmable again
+
+        lock.close(); // second attempt must retry (not have been permanently marked closed) and succeed
+
+        assertFalse(
+                Files.exists(lockPath),
+                "a later close() call must still be able to delete this instance's own lock once its content is"
+                        + " confirmable again -- EMPTY_OR_UNPARSEABLE must be retryable, not final");
     }
 
     /**
