@@ -5038,6 +5038,110 @@ extraction, no test method added, removed, or behaviorally changed).
 entirely to `AccountLedgerStoreTest.java`'s own fixture construction,
 zero `AccountLedgerLock.java`/`LockContenderMain.java` change.
 
+### Round 55 (the operator-agreed cap round)
+
+Review id `4974120322`, against commit `e34776e` (round 54's fix
+commit, already pushed), landed at `2026-08-19T15:55:16Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment. Fetched the full review body
+and the full inline comment body directly (not a truncated read --
+this exact round is why that discipline matters: a truncated read of an
+earlier round's review by someone relaying it had already caused a
+description mismatch once, corrected in round 54's own entry above).
+
+- **(Major, Security & Privacy, Authorization Bypass / CWE-285)
+  `persist`'s own `verifyIdentityConsistency` check compared only
+  `venue`/`accountId` between the existing on-disk ledger and the new
+  one being written -- never `allocatedVirtualCapital` itself.** Real,
+  verified against current code before fixing: an ordinary `persist()`
+  call could silently raise the persisted risk budget simply by writing
+  a larger `allocatedVirtualCapital` than what was already on disk, with
+  no approval step and no audit trail beyond an ordinary write. `load`
+  already has an analogous fail-closed check on the read side (a stored
+  value exceeding the currently-configured `defaultAllocatedCapital`
+  fails closed, added well before this round) -- but nothing previously
+  compared the *new* value being persisted against the *existing*
+  on-disk value on the write side, which is a different comparison
+  entirely (configured-default-vs-stored is not existing-vs-new).
+  Grounded directly in CLAUDE.md's own "never weaken risk limits...
+  without explicit human approval" rule, the same rule the read-side
+  check already applies. Fixed by adding a new comparison inside
+  `verifyIdentityConsistency`, immediately after the existing venue/
+  accountId check: when a matching-identity ledger already exists at
+  `ledgerPath`, `persist` now throws `IllegalStateException` (leaving
+  the existing file completely untouched, same guarantee as the
+  identity-mismatch case) if the new ledger's `allocatedVirtualCapital`
+  is strictly greater than the existing one's. An unchanged or reduced
+  value is unaffected -- only a genuine increase is rejected. A
+  legitimate increase needs a separate, explicit approval API; none
+  exists yet, and this fix deliberately does not invent one on its own
+  authority -- matching the finding's own request precisely, and
+  consistent with this task's own repeated declines of any change that
+  would itself constitute new, undesigned R3-risk policy. Both `persist`'s
+  own class-level Javadoc and `verifyIdentityConsistency`'s own Javadoc
+  updated to document the new check.
+
+  **Two pre-existing tests' fixtures needed repair, found by reasoning
+  through every test with 2+ persist calls to the same `ledgerPath`
+  before running anything, not discovered via a failing run**: both
+  `loadReflectsTheLatestPersistedStateNotAStaleCachedOne` (persisted
+  1000 then 2000 -- a real increase, which the new check would now
+  reject, defeating that test's own actual subject: proving `load`
+  reflects the latest state, not a stale cached one, which needs a
+  genuine value *change* but not necessarily an *increase*) and
+  `persistOverwritesALeftoverTmpFileFromAnEarlierInterruptedAttempt`
+  (persisted 500 then 1000 -- same problem, unrelated to that test's own
+  actual subject: leftover-`.tmp`-file consumption on retry). Both
+  repaired by changing the second persisted value to a decrease (2000 ->
+  500, 1000 -> 200 respectively) rather than an increase -- still proves
+  each test's own real subject (a genuine value change is observed;
+  the leftover `.tmp` is still consumed) without exercising the new
+  invariant incidentally. Every other multi-persist test in this file
+  was checked individually (via `grep -n` cross-referencing `@Test`
+  markers against `persistWithLock`/`AccountLedgerStore.persist` call
+  sites) and confirmed either single-persist, already-expected-to-throw
+  for an unrelated reason (e.g. the differing-account-id case, which
+  throws on the identity check before ever reaching the new capital
+  comparison), or reusing the identical `ledger` value across both
+  calls -- none needed repair.
+
+  **Three new regression tests added, matching the finding's own
+  explicit request** (reject an increase; accept an equal value; accept
+  a decrease) -- placed immediately after
+  `persistRefusesToOverwriteAnExistingLedgerForADifferentAccount`,
+  mirroring that test's own shape (seed an existing ledger, attempt a
+  second `persist`, assert on the outcome and on the existing file's own
+  untouched-or-updated state via a reload):
+  `persistFailsClosedWhenTheNewAllocatedVirtualCapitalExceedsTheExistingOne`
+  (1000 -> 1001 rejected, existing ledger confirmed untouched via
+  reload -- the real, load-bearing new coverage this finding asked for);
+  `persistSucceedsWhenTheNewAllocatedVirtualCapitalExactlyEqualsTheExistingOne`
+  (1000 -> 1000, boundary case -- "greater than", not "greater than or
+  equal to", mirroring
+  `loadSucceedsWhenAnExistingLedgersAllocatedCapitalExactlyEqualsTheConfiguredDefault`'s
+  own boundary on the read side; a different field --
+  `lastReconciledDailyPnlPercent` -- varied between the two ledger
+  objects so the test genuinely proves the second `persist` succeeded
+  and overwrote, not merely that nothing happened to change);
+  `persistSucceedsWhenTheNewAllocatedVirtualCapitalIsLowerThanTheExistingOne`
+  (1000 -> 999, a genuine reduction, confirmed to succeed and land on
+  reload).
+
+Re-ran after the fix: `./gradlew clean build` -- green, **474 tests, 0
+failures, 0 errors** project-wide (3 more than round 54's 471 -- the
+three new regression tests above; no other test file changed test
+count). `AccountLedgerStoreTest` (now 49/49, up from 46/46) reran 3
+additional explicit times (`--rerun-tasks`), stable. No raw stress
+harness re-run -- `LockContenderMain.java` never calls
+`AccountLedgerStore.persist` at all (confirmed via `grep`, its own only
+reference to `AccountLedgerStore` is a Javadoc cross-reference comment,
+not a call site), so this round's real fix -- confined entirely to
+`AccountLedgerStore.verifyIdentityConsistency`, reachable only through
+`AccountLedgerStore.persist` -- is structurally unreachable via the raw
+harness regardless of how many rounds it were re-run, the identical
+reasoning already applied in round 44's own entry for an
+`AccountLedgerStore`-only change.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -5177,7 +5281,14 @@ zero `AccountLedgerLock.java`/`LockContenderMain.java` change.
   methods' inline `ObjectMapper` fixture construction replaced with a
   call to the new shared `fixtureMapper()` private helper, extracted per
   that round's own finding; test count and each test's own asserted
-  behavior unchanged).
+  behavior unchanged); 49/49 after round 55's (3 more new tests --
+  `persistFailsClosedWhenTheNewAllocatedVirtualCapitalExceedsTheExistingOne`,
+  `persistSucceedsWhenTheNewAllocatedVirtualCapitalExactlyEqualsTheExistingOne`,
+  `persistSucceedsWhenTheNewAllocatedVirtualCapitalIsLowerThanTheExistingOne`
+  -- proving the new `allocatedVirtualCapital`-increase fail-closed check
+  in `verifyIdentityConsistency` -- plus two pre-existing tests' own
+  fixtures repaired to use a decrease rather than an increase between
+  their two persisted values, per that round's own entry above).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -5671,13 +5782,23 @@ zero `AccountLedgerLock.java`/`LockContenderMain.java` change.
   close control flow or on `LockContenderMain`, so it likewise did not
   independently warrant a further raw stress-harness round; the
   task-wide total remains **480 clean rounds, 23,040 individual lock
-  acquisitions, zero lost updates** after round 54.
+  acquisitions, zero lost updates** after round 54. Round 55's own real
+  fix (the new `allocatedVirtualCapital`-increase check inside
+  `verifyIdentityConsistency`) is confined entirely to
+  `AccountLedgerStore.java`, reachable only through
+  `AccountLedgerStore.persist` -- which `LockContenderMain` never calls
+  at all (confirmed via `grep`, its own only reference to
+  `AccountLedgerStore` is a Javadoc cross-reference, not a call site) --
+  so the raw harness would not exercise this round's new code even if
+  re-run, the identical reasoning already applied in round 44's own
+  entry; the task-wide total remains **480 clean rounds, 23,040
+  individual lock acquisitions, zero lost updates** after round 55.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, and 54 (plus round 27's own
+  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, and 55 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5757,11 +5878,15 @@ zero `AccountLedgerLock.java`/`LockContenderMain.java` change.
   additional explicit `AccountLedgerStoreTest` reruns (the
   `fixtureMapper()` extraction, confined to that file, no
   `AccountLedgerLock`-level change, so no combined rerun or raw harness
+  re-run was warranted that round either); round 55's own 3 additional
+  explicit `AccountLedgerStoreTest` reruns (the new
+  `allocatedVirtualCapital`-increase check, confined to that file, no
+  `AccountLedgerLock`-level change, so no combined rerun or raw harness
   re-run was warranted that round either), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **471 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **474 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -5782,7 +5907,7 @@ zero `AccountLedgerLock.java`/`LockContenderMain.java` change.
   0 net-new from round 47's + 0 net-new from round 48's + 1 from
   round 49's + 0 net-new from round 50's + 0 net-new from round 51's +
   0 net-new from round 52's + 0 net-new from round 53's + 0 net-new from
-  round 54's).
+  round 54's + 3 from round 55's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

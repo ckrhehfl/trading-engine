@@ -441,6 +441,23 @@ final class AccountLedgerStore {
      * fails loudly on it rather than silently replacing it (see {@code
      * AccountLedgerStoreTest#persistPreservesItsTmpFileWhenTheNonAtomicFallbackMoveItselfFails}).
      *
+     * <p><b>Also refuses to silently raise an existing ledger's {@code
+     * allocatedVirtualCapital}.</b> {@link #verifyIdentityConsistency}
+     * compares {@code ledger}'s own {@code allocatedVirtualCapital} against
+     * the existing on-disk value (when a matching-identity ledger already
+     * exists) and throws {@link IllegalStateException} -- leaving the
+     * existing file untouched, same as the identity check above -- if the
+     * new value is strictly greater. Grounded directly in CLAUDE.md's own
+     * "never weaken risk limits... without explicit human approval" rule,
+     * the same rule {@link #load}'s own stored-vs-configured-default
+     * comparison already applies on the read side -- this is the write-side
+     * analogue, closing the gap a caller could otherwise use to silently
+     * raise the persisted risk budget simply by persisting a larger value,
+     * with no approval step in between. An unchanged or reduced value is
+     * unaffected -- only a genuine increase is rejected. A legitimate
+     * increase needs a separate, explicit approval path; none exists yet,
+     * and this method deliberately does not invent one on its own authority.
+     *
      * @param lock proof this caller currently holds {@link
      *     AccountLedgerLock} for this ledger -- see class Javadoc's
      *     "Caller contract" paragraph; rejected via {@link
@@ -725,7 +742,9 @@ final class AccountLedgerStore {
      * "exists but is not a regular file" (skip -- never a valid ledger to
      * begin with, see {@link #persist}'s own Javadoc), and "exists as a
      * regular file" (must parse as a matching-identity {@link
-     * AccountLedger}). Any other determination, read, or parse failure
+     * AccountLedger} whose {@code allocatedVirtualCapital} is not being
+     * silently raised -- see {@link #persist}'s own Javadoc). Any other
+     * determination, read, or parse failure
      * fails closed by throwing -- unlike the {@code tmpPreexisted} check
      * in {@link #persist} itself (above), which deliberately fails toward
      * "treat as pre-existing, don't delete" on an undetermined state,
@@ -775,6 +794,25 @@ final class AccountLedgerStore {
                             + ledgerPath + ", which already holds a real, persisted ledger for ("
                             + existing.venue() + ", " + existing.accountId() + ") -- this would silently destroy"
                             + " that account's committed reservations");
+        }
+        // Same fail-closed discipline as the identity check just above,
+        // grounded in the same CLAUDE.md "never weaken risk limits...
+        // without explicit human approval" rule load()'s own stored-vs-
+        // configured-default comparison already applies on the read side
+        // (see this class's own class-level Javadoc). Without this check,
+        // an ordinary persist() call could silently raise the persisted
+        // risk budget simply by writing a larger allocatedVirtualCapital --
+        // no approval step, no audit trail beyond an ordinary write. An
+        // unchanged or reduced value is unaffected -- strictly greater is
+        // what's rejected.
+        if (ledger.allocatedVirtualCapital().compareTo(existing.allocatedVirtualCapital()) > 0) {
+            throw new IllegalStateException(
+                    "refusing to persist ledger for (" + ledger.venue() + ", " + ledger.accountId() + ") over "
+                            + ledgerPath + " with an increased allocatedVirtualCapital ("
+                            + ledger.allocatedVirtualCapital() + " > " + existing.allocatedVirtualCapital()
+                            + ") -- persist() must not be usable to silently raise a risk budget. A real"
+                            + " increase requires a separate, explicit approval path, not an ordinary persist()"
+                            + " call. A human must resolve this explicitly.");
         }
     }
 

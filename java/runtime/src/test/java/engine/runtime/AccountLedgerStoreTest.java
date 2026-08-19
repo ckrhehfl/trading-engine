@@ -108,8 +108,11 @@ class AccountLedgerStoreTest {
         // values below) throughout this test -- deliberately, so the
         // stored-exceeds-configured-default fail-closed check never trips
         // here; this test's own subject is the "no caching" property, not
-        // that check, and 1000 -> 2000 already proves a real state change
-        // is observed either direction.
+        // that check. 1000 -> 500 (a decrease, not an increase --
+        // persist()'s own allocatedVirtualCapital-increase fail-closed
+        // check, added separately, rejects the other direction; see
+        // persistFailsClosedWhenTheNewAllocatedVirtualCapitalExceedsTheExistingOne
+        // below) still proves a real state change is genuinely observed.
         BigDecimal defaultAllocatedCapital = new BigDecimal("2000");
         AccountLedger first = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
@@ -119,7 +122,7 @@ class AccountLedgerStoreTest {
         assertEquals(new BigDecimal("1000"), loadedFirst.allocatedVirtualCapital());
 
         AccountLedger second = new AccountLedger(
-                "KIS", "acct-1", new BigDecimal("2000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "KIS", "acct-1", new BigDecimal("500"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
         persistWithLock(file, second);
         AccountLedger loadedSecond = loadWithLock(file, "KIS", "acct-1", defaultAllocatedCapital);
@@ -127,7 +130,7 @@ class AccountLedgerStoreTest {
         // Static, stateless methods -- no instance to have cached the
         // first value; this proves it, not merely asserts it by
         // construction.
-        assertEquals(new BigDecimal("2000"), loadedSecond.allocatedVirtualCapital());
+        assertEquals(new BigDecimal("500"), loadedSecond.allocatedVirtualCapital());
     }
 
     @Test
@@ -670,6 +673,86 @@ class AccountLedgerStoreTest {
         assertEquals(existing, reloaded, "the existing ledger must be untouched by the rejected persist() call");
     }
 
+    /**
+     * Grounded directly in CLAUDE.md's own "never weaken risk limits...
+     * without explicit human approval" rule -- the same rule {@link
+     * AccountLedgerStore#load}'s own stored-vs-configured-default
+     * comparison already applies on the read side (see {@link
+     * #loadFailsClosedWhenAnExistingLedgersAllocatedCapitalExceedsTheConfiguredDefault}
+     * above). Without this check, persist() could be used to silently
+     * raise the persisted risk budget simply by writing a larger {@code
+     * allocatedVirtualCapital} -- no approval step, no audit trail beyond
+     * an ordinary write. This is the write-side analogue, and the existing
+     * file must be left completely untouched by the rejected call, the
+     * same guarantee {@link
+     * #persistRefusesToOverwriteAnExistingLedgerForADifferentAccount}
+     * proves for the identity-mismatch case above.
+     */
+    @Test
+    void persistFailsClosedWhenTheNewAllocatedVirtualCapitalExceedsTheExistingOne(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger existing = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        persistWithLock(file, existing);
+        AccountLedger increased = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1001"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        IllegalStateException thrown =
+                assertThrows(IllegalStateException.class, () -> persistWithLock(file, increased));
+        assertTrue(
+                thrown.getMessage().contains("increased allocatedVirtualCapital"),
+                "expected the allocatedVirtualCapital-increase fail-closed check to be the real cause; was: "
+                        + thrown.getMessage());
+
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000"));
+        assertEquals(existing, reloaded, "the existing ledger must be untouched by the rejected persist() call");
+    }
+
+    /**
+     * The boundary case immediately adjacent to the fail-closed check
+     * above: a new value exactly equal to (not merely less than) the
+     * existing one must still be accepted -- the check is "greater than",
+     * not "greater than or equal to", mirroring {@link
+     * #loadSucceedsWhenAnExistingLedgersAllocatedCapitalExactlyEqualsTheConfiguredDefault}'s
+     * own boundary on the read side.
+     */
+    @Test
+    void persistSucceedsWhenTheNewAllocatedVirtualCapitalExactlyEqualsTheExistingOne(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger existing = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        persistWithLock(file, existing);
+        AccountLedger unchanged = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), new BigDecimal("1"), BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        persistWithLock(file, unchanged);
+
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000"));
+        assertEquals(unchanged, reloaded);
+    }
+
+    /** A genuine reduction must also succeed -- only an increase is rejected. */
+    @Test
+    void persistSucceedsWhenTheNewAllocatedVirtualCapitalIsLowerThanTheExistingOne(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        AccountLedger existing = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+        persistWithLock(file, existing);
+        AccountLedger reduced = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("999"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        persistWithLock(file, reduced);
+
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000"));
+        assertEquals(reduced, reloaded);
+    }
+
     @Test
     void persistRefusesToOverwriteAnExistingFileWithUnparseableContent(@TempDir Path tempDir) throws IOException {
         // Same protective intent as
@@ -873,15 +956,22 @@ class AccountLedgerStoreTest {
                 null, null, null, List.of());
         persistWithLock(file, priorLedger);
         Files.writeString(tmp, "stale garbage from an earlier interrupted persist() call");
+        // 500 -> 200 (a decrease, not an increase) -- persist()'s own
+        // allocatedVirtualCapital-increase fail-closed check, added
+        // separately, rejects the other direction; see
+        // persistFailsClosedWhenTheNewAllocatedVirtualCapitalExceedsTheExistingOne
+        // below. This test's own subject is the leftover-.tmp-consumption
+        // behavior, not that check, and a decrease still proves the
+        // reloaded content genuinely reflects this call's own write.
         AccountLedger ledger = new AccountLedger(
-                "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                "KIS", "acct-1", new BigDecimal("200"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
 
         persistWithLock(file, ledger);
 
         assertTrue(Files.exists(file), "persist must succeed despite the leftover .tmp file, not throw");
         assertFalse(Files.exists(tmp), "the stale .tmp file must be consumed/replaced, not left behind");
-        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("1000"));
+        AccountLedger reloaded = loadWithLock(file, "KIS", "acct-1", new BigDecimal("500"));
         assertEquals(ledger, reloaded);
     }
 
