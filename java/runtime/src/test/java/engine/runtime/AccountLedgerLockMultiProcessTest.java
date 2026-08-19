@@ -12,6 +12,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
 
 /**
@@ -60,7 +61,23 @@ import org.junit.jupiter.api.io.TempDir;
  */
 class AccountLedgerLockMultiProcessTest {
 
+    /**
+     * A real, disclosed round-49 addition: {@code process.waitFor(
+     * perProcessTimeoutSeconds, ...)} below applies sequentially, once
+     * per contender -- if all {@code processCount} (4) contenders
+     * genuinely hung, the cumulative wait could reach {@code
+     * processCount x perProcessTimeoutSeconds}, on the order of 20+
+     * minutes, silently stalling this test's own JVM (and, if run in
+     * CI, that whole run) rather than ever reaching this method's own
+     * `fail(...)` calls. This method-level {@code @Timeout} is a real
+     * outer bound on top of the existing per-process checks -- it does
+     * not replace or weaken them; a well-behaved run finishes in a small
+     * fraction of this, and this is deliberately generous specifically
+     * so it never trips on a legitimately slow-but-correct run under
+     * this project's own documented drvfs contention.
+     */
     @Test
+    @Timeout(value = 25, unit = TimeUnit.MINUTES)
     void acquireProvidesRealMutualExclusionAcrossGenuinelySeparateOsProcesses(@TempDir Path tempDir)
             throws Exception {
         Path lockPath = tempDir.resolve("ledger.json.lock");

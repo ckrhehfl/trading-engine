@@ -570,6 +570,31 @@ final class AccountLedgerStore {
             // second lock.requireHeld() call here narrows that window to
             // the write itself, at the (deliberate) cost of a second real
             // disk read on every persist() call.
+            //
+            // Known, permanent test-coverage gap, disclosed rather than
+            // silently left implicit: no test in this file independently
+            // proves THIS specific call -- as opposed to the identical-
+            // looking entry check above -- actually rejects a steal.
+            // AccountLedgerStoreTest#loadAndPersistRejectALockWhoseGenerationHasBeenStolen
+            // steals the lock before persist() is ever called, so the
+            // entry check throws first every time; that test would still
+            // pass green if this second call were deleted outright,
+            // which would silently reopen exactly the TOCTOU window this
+            // call exists to narrow. Two ways to close this gap for real
+            // were both considered and declined, matching this project's
+            // own established precedent for the identical class of
+            // problem elsewhere (see AccountLedgerLock's own disclosed
+            // gaps on createAndWriteMetadata/deleteIfStillOwnGeneration):
+            // (1) accept genuine timing-dependent flakiness by racing a
+            // real sibling steal against this exact window and hoping to
+            // win it reliably, which this codebase's own no-flaky-tests
+            // discipline does not allow; or (2) add a production-code,
+            // test-only hook between serialization and this call purely
+            // so a test could pause execution here, which is real,
+            // unrequested production surface area added solely to serve
+            // one test -- the same "AtomicMover-shaped" seam this class
+            // already has cannot substitute, since mover.move only runs
+            // after the write this call exists to guard, not before it.
             lock.requireHeld();
             try (FileChannel channel = FileChannel.open(
                     candidateTmp,
