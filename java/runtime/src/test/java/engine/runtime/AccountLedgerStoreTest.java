@@ -172,9 +172,7 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        ObjectMapper mapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        ObjectMapper mapper = fixtureMapper();
         Files.writeString(file, mapper.writeValueAsString(ledger) + "null");
 
         assertThrows(
@@ -188,9 +186,7 @@ class AccountLedgerStoreTest {
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("1000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        ObjectMapper mapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        ObjectMapper mapper = fixtureMapper();
         String single = mapper.writeValueAsString(ledger);
         Files.writeString(file, single + single);
 
@@ -235,9 +231,7 @@ class AccountLedgerStoreTest {
         AccountLedger orphaned = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("500000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
-        ObjectMapper mapper = new ObjectMapper()
-                .registerModule(new JavaTimeModule())
-                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        ObjectMapper mapper = fixtureMapper();
         Files.writeString(tmp, mapper.writeValueAsString(orphaned));
         // ledgerPath itself deliberately never created -- simulates a
         // crash after the old file was replaced but before (or during) the
@@ -1400,5 +1394,25 @@ class AccountLedgerStoreTest {
         try (AccountLedgerLock lock = AccountLedgerLock.acquire(AccountLedgerStore.lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
             AccountLedgerStore.persist(ledgerPath, ledger, mover, lock);
         }
+    }
+
+    /**
+     * A fixture-only mapper, kept separate from {@code
+     * AccountLedgerStore}'s own production {@code MAPPER}: these fixtures
+     * need the identical {@code Instant} serialization format the
+     * production mapper uses (so the JSON they hand-assemble is readable
+     * by it), but must not inherit {@code FAIL_ON_TRAILING_TOKENS} --
+     * several of these same tests deliberately append trailing content
+     * after a valid value, which that setting would reject before the
+     * fixture was ever fully written. Kept as one shared helper, not
+     * three separately-maintained copies of the same configuration, so a
+     * future change to the production mapper's own serialization format
+     * only needs updating in one place to keep these fixtures compatible
+     * with it.
+     */
+    private static ObjectMapper fixtureMapper() {
+        return new ObjectMapper()
+                .registerModule(new JavaTimeModule())
+                .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
     }
 }

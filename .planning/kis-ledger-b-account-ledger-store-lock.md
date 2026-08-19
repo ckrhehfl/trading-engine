@@ -4982,6 +4982,62 @@ reran 3 additional explicit times, stable. No raw stress harness
 re-run -- comment-only, confined to `AccountLedgerStoreTest.java`, zero
 `AccountLedgerLock` control-flow change.
 
+### Round 54
+
+Review id `4972773886`, against commit `87064bb` (round 53's fix
+commit, already pushed), landed at `2026-08-19T13:41:38Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment.
+
+**Disclosure**: the coordinator's own relayed description of this
+round's finding (an over-long "known, permanent test-coverage gap"
+comment near `AccountLedgerStore.persist`'s second `lock.requireHeld()`
+call, lines ~551-597, asking to trim it to lines 558-572's design
+rationale and move the rest to this planning doc) did **not** match what
+direct, independent verification found. Fetched the review's own comment
+body directly (`gh api repos/ckrhehfl/trading-engine/pulls/100/comments
+--paginate`, filtered on `pull_request_review_id == 4972773886`) rather
+than trusting the relayed summary, per this task's own standing
+verification discipline. The real finding, confirmed against current
+code before touching anything, is entirely different:
+
+- **(Minor, quick win) `AccountLedgerStoreTest.java` constructs an
+  identical `ObjectMapper` fixture independently in three separate test
+  methods** (comment anchored at lines 175-177, "Also applies to:
+  191-193, 238-240"):
+  `aFileWithAValidLedgerFollowedByTrailingJsonNullFailsClosed` (line
+  175), `aFileWithTwoConcatenatedValidLedgerObjectsFailsClosed` (line
+  191), and `loadFailsClosedWhenTheLedgerIsMissingButALeftoverTmpFileExists`
+  (line 238), each inlining the same three-line
+  `new ObjectMapper().registerModule(new JavaTimeModule())
+  .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)` construction.
+  Verified via `grep -n "new ObjectMapper()"` before fixing -- exactly 3
+  matches, matching the finding precisely. Fixed by extracting a shared
+  private static `fixtureMapper()` helper (placed near this file's other
+  private static test-fixture helpers, `loadWithLock`/`persistWithLock`,
+  at the end of the class) and routing all three call sites through it.
+  Deliberately kept separate from `AccountLedgerStore`'s own production
+  `MAPPER`, not a reuse of it: these fixtures must produce JSON the
+  production `MAPPER` can read, so the `Instant` serialization format
+  must match it, but must NOT inherit `FAIL_ON_TRAILING_TOKENS` --
+  several of these same tests deliberately append trailing content after
+  a valid value, which that setting would reject before the fixture was
+  ever fully written. A single shared helper also means a future change
+  to the production mapper's own serialization format only needs
+  updating in one place to keep all three fixtures compatible with it,
+  rather than three separately-maintained copies silently drifting out
+  of sync. No new test method -- this is a pure refactor of existing
+  test fixture construction, not new coverage; the three tests' own
+  asserted behavior is unchanged.
+
+Re-ran after the fix: `./gradlew clean build` -- green, **471 tests, 0
+failures, 0 errors** project-wide (unchanged count -- a fixture-helper
+extraction, no test method added, removed, or behaviorally changed).
+`AccountLedgerStoreTest` reran 3 additional explicit times
+(`--rerun-tasks`), stable. No raw stress harness re-run -- confined
+entirely to `AccountLedgerStoreTest.java`'s own fixture construction,
+zero `AccountLedgerLock.java`/`LockContenderMain.java` change.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -5116,7 +5172,12 @@ re-run -- comment-only, confined to `AccountLedgerStoreTest.java`, zero
   `AccountLedgerStoreTest` changes that round -- the one real fix was
   in `LockContenderMain.java`); 46/46 after round 53's (a comment-only
   correction to `defaultAtomicMoverPersistsWithoutTheTestSeam`'s own
-  stale overload reference, no behavior/test-method change).
+  stale overload reference, no behavior/test-method change); 46/46 after
+  round 54's (no new/modified test methods -- three existing test
+  methods' inline `ObjectMapper` fixture construction replaced with a
+  call to the new shared `fixtureMapper()` private helper, extracted per
+  that round's own finding; test count and each test's own asserted
+  behavior unchanged).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -5603,13 +5664,20 @@ re-run -- comment-only, confined to `AccountLedgerStoreTest.java`, zero
   zero `AccountLedgerLock` control-flow change, so it likewise did not
   independently warrant a further raw stress-harness round; the
   task-wide total remains **480 clean rounds, 23,040 individual lock
-  acquisitions, zero lost updates** after round 53.
+  acquisitions, zero lost updates** after round 53. Round 54's own real
+  fix (the `fixtureMapper()` extraction) is a pure test-fixture refactor
+  confined to `AccountLedgerStoreTest.java`'s own JSON-construction
+  helpers, with zero touch on `AccountLedgerLock`'s own acquire/steal/
+  close control flow or on `LockContenderMain`, so it likewise did not
+  independently warrant a further raw stress-harness round; the
+  task-wide total remains **480 clean rounds, 23,040 individual lock
+  acquisitions, zero lost updates** after round 54.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, 48, 49, 50, 51, 52, and 53 (plus round 27's own
+  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, and 54 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5685,7 +5753,11 @@ re-run -- comment-only, confined to `AccountLedgerStoreTest.java`, zero
   bullet's own reasoning above); round 53's own 3 additional explicit
   `AccountLedgerStoreTest` reruns (comment-only, confined to that file,
   no `AccountLedgerLock`-level change, so no combined rerun or raw
-  harness re-run was warranted that round either), all noted above).
+  harness re-run was warranted that round either); round 54's own 3
+  additional explicit `AccountLedgerStoreTest` reruns (the
+  `fixtureMapper()` extraction, confined to that file, no
+  `AccountLedgerLock`-level change, so no combined rerun or raw harness
+  re-run was warranted that round either), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -5709,7 +5781,8 @@ re-run -- comment-only, confined to `AccountLedgerStoreTest.java`, zero
   3 from round 44's + 0 net-new from round 45's + 1 from round 46's +
   0 net-new from round 47's + 0 net-new from round 48's + 1 from
   round 49's + 0 net-new from round 50's + 0 net-new from round 51's +
-  0 net-new from round 52's + 0 net-new from round 53's).
+  0 net-new from round 52's + 0 net-new from round 53's + 0 net-new from
+  round 54's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
