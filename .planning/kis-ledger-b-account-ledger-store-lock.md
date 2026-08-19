@@ -4817,6 +4817,97 @@ to decline the new seam). `AccountLedgerLockMultiProcessTest` and
 stable. No raw stress harness re-run -- both fixes are test-file/
 comment-only, zero `AccountLedgerLock` production control-flow change.
 
+### Round 51
+
+Review id `4971030210`, against commit `621d8ae` (round 50's fix
+commit, already pushed), landed at `2026-08-19T10:17:14Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 3 actionable comments. The coordinator flagged
+finding 1 as deserving the same rigor as rounds 44/46 (real changes to
+`acquire`'s own control-flow ordering) -- treated accordingly, with a
+full re-derivation before touching anything, not applied from the
+suggested diff alone.
+
+- **(Trivial, quick win -- the real one this round) `createAndWriteMetadata`'s
+  own post-write re-verification read ran while the writing channel was
+  still open (inside the same `try (channel)` block), not after it
+  closed.** Verified the exact mechanism before accepting it, not taken
+  on faith: this project's own class Javadoc already documents real,
+  measured 500ms+ transient I/O latency and read/visibility gaps on
+  this repository's real drvfs/9p mount under contention -- a separate,
+  freshly-opened read of the same path is not guaranteed to observe
+  content written through a still-open handle on every filesystem,
+  and 9p's own protocol semantics are a real, plausible mechanism for
+  exactly that gap (data confirmed to the server at close, not
+  necessarily at each write). The consequence of hitting it here is not
+  a correctness bug -- it's a real, if narrow, availability cost: a
+  spurious `EMPTY_OR_UNPARSEABLE` observation on this holder's own,
+  genuinely successful write would make `createAndWriteMetadata` delete
+  its own just-created lock and report lost contention, burning real
+  retry budget for no reason (see this method's own already-extensive
+  Javadoc on that exact failure shape). **Confirmed the fix carries no
+  hidden cost before applying it**: `readMetadataOrNull` (the
+  re-verification read) declares no checked exceptions and swallows
+  every real `IOException` internally into sentinel return values, so
+  moving it outside the `try (channel)` block does not change what the
+  method's own write-failure `catch` clause needs to handle -- that
+  catch block already exists solely for the create/write step, not the
+  read, confirmed by re-reading its own comment before restructuring
+  anything. Fixed by narrowing the `try (channel)` block to cover only
+  the metadata construction and write loop (its own `catch
+  (IOException | RuntimeException)` cleanup-and-rethrow logic
+  completely unchanged), then moving the re-verification read,
+  comparison, transient-condition cleanup, and both return statements
+  to run strictly after that block -- a pure reordering with the exact
+  same comparisons, same cleanup call, and same return values for any
+  given real execution trace, not a logic change. No new test: this is
+  a reordering of already-tested logic (every branch here is already
+  exercised by `AccountLedgerLockTest#acquireProvidesRealMutualExclusionAcrossManyThreads`
+  and `AccountLedgerLockMultiProcessTest`), and directly proving the
+  *ordering itself* would need the identical kind of internal-window
+  instrumentation this file's own "Known, permanent test-coverage gap"
+  disclosures already decline elsewhere for the same structural reason
+  -- not a new decision, the established one applied consistently.
+- **(Minor, quick win) `closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`'s
+  own second `lock.close()` call asserted file-absence immediately
+  after a single, unretried call** -- the identical class of flakiness
+  risk round 38's own findings already fixed in two other files and
+  round 41 fixed for a different test in this same file, missed here.
+  Fixed by routing the second close through the file's own existing
+  `closeUntilReleased` helper, matching established precedent exactly.
+- **(Minor, quick win) Two stale/incorrect Javadoc references, found and
+  fixed together.** `closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt`'s
+  own Javadoc used `{@link #READ_FAILED}` -- unresolved, since `#`
+  resolves relative to the *test* class, which has no such member (a
+  private field of `AccountLedgerLock`); converted to `{@code
+  READ_FAILED}`. Separately, `requireHeldFailsClosedOnAPersistentEmptyOrUnparseableCondition`'s
+  own Javadoc claimed the *other* test method
+  (`requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen`)
+  has "its own retry loop" -- factually wrong; the retry loop lives in
+  the production method `AccountLedgerLock.stillHoldsCurrentGeneration()`,
+  which neither test method contains. Corrected the attribution and
+  converted the same Javadoc's own unresolved `{@link
+  #deleteIfStillOwnGeneration}` to `{@code deleteIfStillOwnGeneration}`
+  alongside it.
+
+Re-ran after all of round 51's fixes: `./gradlew clean build` -- green,
+**471 tests, 0 failures, 0 errors** project-wide (unchanged count --
+a control-flow reordering, a test-retry fix, and Javadoc corrections;
+no new/modified test method). `AccountLedgerLockTest` and
+`AccountLedgerLockMultiProcessTest` both reran 3 additional explicit
+times together, stable -- notably including
+`acquireProvidesRealMutualExclusionAcrossManyThreads` and the full
+multi-process test, both of which exercise `createAndWriteMetadata`'s
+restructured control flow directly. **Because this round's real fix
+touches `acquire`'s own call graph (`createAndWriteMetadata`, called
+directly from `acquire`'s own retry loop) -- the same class of change
+that triggered a raw-harness re-run in rounds 32/34/36/41/44, and the
+coordinator explicitly asked for round-44/46-level rigor here** -- the
+raw, non-Gradle stress harness was re-run for real: **25/25 rounds
+exactly correct** (1,200 more individual lock acquisitions, zero lost
+updates), bringing the task-wide raw-harness total to **455 clean
+rounds, 21,840 individual lock acquisitions, zero lost updates**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -5063,7 +5154,16 @@ comment-only, zero `AccountLedgerLock` production control-flow change.
   changes that round -- the one real fix was in `AccountLedgerStoreTest.java`);
   19/19 after round 48's (no new/modified test methods -- a
   `sleepQuietly` call-site update, a comment explaining `original`'s
-  deliberate non-closure, no test-level change to this file).
+  deliberate non-closure, no test-level change to this file); 19/19
+  after round 49's (no `AccountLedgerLockTest` changes that round --
+  the one real fix was in `AccountLedgerStore.java`); 19/19 after
+  round 50's (no `AccountLedgerLockTest` changes that round -- the
+  `@Timeout` addition was to `AccountLedgerLockMultiProcessTest.java`,
+  the comment disclosure to `AccountLedgerStore.java`); 19/19 after
+  round 51's (no new/modified test methods -- the `createAndWriteMetadata`
+  reordering needed no new test per its own disclosed reasoning, the
+  second `close()` call now uses `closeUntilReleased`, and two Javadoc
+  corrections, all to existing test bodies/comments).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -5139,12 +5239,16 @@ comment-only, zero `AccountLedgerLock` production control-flow change.
   this file directly, its process-timeout derivation and its
   `finally`-block interrupt handling; rounds 45-47 made no changes to
   this file, disclosed instead in this section's other per-file bullets
-  above), and **4 more times** after round 50 (1 part of the full
+  above), **4 more times** after round 50 (1 part of the full
   `clean build`, plus 3 further explicit `--rerun-tasks` runs together
   with `AccountLedgerStoreTest` -- this round's own real fix added a
   method-level `@Timeout` to this file's own real test method; round 49
   made no changes to this file, disclosed instead in this section's
-  other per-file bullets above).
+  other per-file bullets above), and **4 more times** after round 51
+  (1 part of the full `clean build`, plus 3 further explicit
+  `--rerun-tasks` runs together with `AccountLedgerLockTest` -- this
+  round's own real fix, `createAndWriteMetadata`'s reordering, is
+  exercised directly by this file's own real multi-process test).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -5394,13 +5498,20 @@ comment-only, zero `AccountLedgerLock` production control-flow change.
   `AccountLedgerLock` production control flow, so it likewise did not
   independently warrant a further raw stress-harness round; the
   task-wide total remains **430 clean rounds, 20,640 individual lock
-  acquisitions, zero lost updates** after round 50.
+  acquisitions, zero lost updates** after round 50. Round 51's real fix
+  to `createAndWriteMetadata` -- called directly from `acquire`'s own
+  retry loop, the same class of change that triggered a raw-harness
+  re-run in rounds 32/34/36/41/44 -- DID warrant re-running the raw
+  harness: **25/25 rounds exactly correct** (1,200 more individual lock
+  acquisitions, zero lost updates), bringing the task-wide raw-harness
+  total to **455 clean rounds, 21,840 individual lock acquisitions,
+  zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, 48, 49, and 50 (plus round 27's own
+  44, 45, 46, 47, 48, 49, 50, and 51 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5467,7 +5578,10 @@ comment-only, zero `AccountLedgerLock` production control-flow change.
   re-run was warranted that round either); round 50's own 3 additional
   explicit combined reruns of `AccountLedgerLockMultiProcessTest` and
   `AccountLedgerStoreTest` together (no raw stress harness re-run that
-  round -- see that bullet's own reasoning above), all noted above).
+  round -- see that bullet's own reasoning above); round 51's own 3
+  additional explicit combined reruns of `AccountLedgerLockTest` and
+  `AccountLedgerLockMultiProcessTest` together, plus its own 25-round
+  raw stress harness re-run, all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -5490,7 +5604,7 @@ comment-only, zero `AccountLedgerLock` production control-flow change.
   round 41's + 0 net-new from round 42's + 0 net-new from round 43's +
   3 from round 44's + 0 net-new from round 45's + 1 from round 46's +
   0 net-new from round 47's + 0 net-new from round 48's + 1 from
-  round 49's + 0 net-new from round 50's).
+  round 49's + 0 net-new from round 50's + 0 net-new from round 51's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

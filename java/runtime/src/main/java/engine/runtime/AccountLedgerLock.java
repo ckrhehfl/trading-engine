@@ -482,10 +482,20 @@ final class AccountLedgerLock implements AutoCloseable {
      * against its own now-path-invisible file even when a sibling has
      * already reclaimed the path via {@link #tryStealIfAbandonedEmpty} and
      * holds a real, different generation there. To close that gap, this
-     * method re-reads {@code lockPath} immediately after the write
-     * completes and confirms it still holds exactly the {@link
-     * LockMetadata} just written; if not, it returns {@code null} rather
-     * than the metadata. This method never deletes anything on that path
+     * method re-reads {@code lockPath} -- deliberately after the writing
+     * channel has already been closed, not while it is still open -- and
+     * confirms it still holds exactly the {@link LockMetadata} just
+     * written; if not, it returns {@code null} rather than the metadata.
+     * Closing first, not merely a stylistic reordering: a separate,
+     * freshly-opened read of the same path is not guaranteed to observe
+     * content written through a still-open handle on every filesystem,
+     * and this project's own drvfs mount already has real, measured
+     * transient read/visibility gaps under contention (see this class's
+     * own class Javadoc) -- reading only after the write side is fully
+     * closed removes that specific ambiguity from the comparison below
+     * rather than leaving it as an unnecessary, avoidable source of the
+     * exact transient conditions this method already has to defend
+     * against. This method never deletes anything on that path
      * for a genuine generation mismatch (real, different metadata read
      * back): the path now legitimately belongs to whoever's generation
      * the re-read found, and this method has no business touching it. The
@@ -570,51 +580,6 @@ final class AccountLedgerLock implements AutoCloseable {
             while (buffer.hasRemaining()) {
                 channel.write(buffer);
             }
-            // Re-verify we still actually own lockPath -- see this
-            // method's own "Re-verification after write, and why a lost
-            // race is not an error" Javadoc above for why a successful
-            // write alone does not prove this.
-            LockMetadata current = readMetadataOrNull(lockPath);
-            if (metadata.equals(current)) {
-                return metadata;
-            }
-            if (current == READ_FAILED || current == EMPTY_OR_UNPARSEABLE) {
-                // A transient read failure proves nothing about the
-                // file's real content -- see this method's own
-                // "Re-verification after write" Javadoc for why this must
-                // not be treated the same as a genuine mismatch.
-                // EMPTY_OR_UNPARSEABLE must be grouped here too, not left
-                // to fall through to the genuine-mismatch branch below (no
-                // cleanup) -- consistent with this same sentinel's own
-                // treatment in doClose(), which already treats it as a
-                // transient read/visibility gap on this instance's own
-                // still-valid content (a real, previously-measured
-                // characteristic of this project's own drvfs mount), not
-                // proof of a different holder. Left ungrouped, a holder
-                // whose own re-verification read hit
-                // this sentinel would return null without deleting its
-                // own real, just-written, live-looking file -- acquire()
-                // would then retry, find that same file via
-                // FileAlreadyExistsException, and tryStealIfStale would
-                // correctly judge it not stale (its own live pid, its own
-                // fresh acquiredAt), exhausting the retry budget and
-                // self-blocking on its own lock file until staleThreshold
-                // elapses, blocking every other waiter too.
-                // deleteIfStillOwnGeneration only ever deletes when the
-                // content still exactly matches this holder's own
-                // metadata, so a sibling's genuine new generation is
-                // never at risk from this grouping.
-                log.error(
-                        "account ledger lock {} could not be confirmed immediately after this holder wrote its own"
-                                + " metadata ({}) -- read failed, or the content read back empty/unparseable."
-                                + " Cannot prove ownership from this read alone; cleaning up only this holder's own"
-                                + " verified generation (if it's still there) and reporting lost contention rather"
-                                + " than leaving a live-looking file behind.",
-                        lockPath,
-                        metadata);
-                deleteIfStillOwnGeneration(lockPath, metadata);
-            }
-            return null;
         } catch (IOException | RuntimeException e) {
             // Generation-safe cleanup: this catch must verify the delete
             // target is still this holder's own generation before
@@ -653,6 +618,53 @@ final class AccountLedgerLock implements AutoCloseable {
             }
             throw e;
         }
+        // Re-verify we still actually own lockPath -- deliberately after
+        // the try-with-resources block above has already closed the
+        // writing channel (see this method's own "Re-verification after
+        // write, and why a lost race is not an error" Javadoc for why a
+        // successful write alone does not prove this, and why closing
+        // first matters).
+        LockMetadata current = readMetadataOrNull(lockPath);
+        if (metadata.equals(current)) {
+            return metadata;
+        }
+        if (current == READ_FAILED || current == EMPTY_OR_UNPARSEABLE) {
+            // A transient read failure proves nothing about the
+            // file's real content -- see this method's own
+            // "Re-verification after write" Javadoc for why this must
+            // not be treated the same as a genuine mismatch.
+            // EMPTY_OR_UNPARSEABLE must be grouped here too, not left
+            // to fall through to the genuine-mismatch branch below (no
+            // cleanup) -- consistent with this same sentinel's own
+            // treatment in doClose(), which already treats it as a
+            // transient read/visibility gap on this instance's own
+            // still-valid content (a real, previously-measured
+            // characteristic of this project's own drvfs mount), not
+            // proof of a different holder. Left ungrouped, a holder
+            // whose own re-verification read hit
+            // this sentinel would return null without deleting its
+            // own real, just-written, live-looking file -- acquire()
+            // would then retry, find that same file via
+            // FileAlreadyExistsException, and tryStealIfStale would
+            // correctly judge it not stale (its own live pid, its own
+            // fresh acquiredAt), exhausting the retry budget and
+            // self-blocking on its own lock file until staleThreshold
+            // elapses, blocking every other waiter too.
+            // deleteIfStillOwnGeneration only ever deletes when the
+            // content still exactly matches this holder's own
+            // metadata, so a sibling's genuine new generation is
+            // never at risk from this grouping.
+            log.error(
+                    "account ledger lock {} could not be confirmed immediately after this holder wrote its own"
+                            + " metadata ({}) -- read failed, or the content read back empty/unparseable."
+                            + " Cannot prove ownership from this read alone; cleaning up only this holder's own"
+                            + " verified generation (if it's still there) and reporting lost contention rather"
+                            + " than leaving a live-looking file behind.",
+                    lockPath,
+                    metadata);
+            deleteIfStillOwnGeneration(lockPath, metadata);
+        }
+        return null;
     }
 
     /**

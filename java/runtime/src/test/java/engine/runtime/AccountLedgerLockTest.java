@@ -664,8 +664,8 @@ class AccountLedgerLockTest {
      * retrying, correctly final) and a transient filesystem read/visibility
      * gap on this instance's <i>own</i>, still-valid content (where a later
      * {@code close()} call might well observe the real content and
-     * successfully delete it). Now treated the same retryable way {@link
-     * #READ_FAILED} already is. Proven here, not just asserted: a first
+     * successfully delete it). Now treated the same retryable way {@code
+     * READ_FAILED} already is. Proven here, not just asserted: a first
      * {@code close()} call observes fabricated empty content and must
      * neither delete nor permanently mark this instance closed; a second
      * call, after the real content is restored (simulating the transient
@@ -673,7 +673,7 @@ class AccountLedgerLockTest {
      */
     @Test
     void closeRetriesAfterObservingEmptyOrUnparseableContentOnAnEarlierAttempt(@TempDir Path tempDir)
-            throws IOException {
+            throws IOException, InterruptedException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         AccountLedgerLock lock =
                 AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
@@ -693,7 +693,15 @@ class AccountLedgerLockTest {
         Files.writeString(lockPath, ownContent); // the transient condition resolves -- this instance's own real
         // content is confirmable again
 
-        lock.close(); // second attempt must retry (not have been permanently marked closed) and succeed
+        // A single second close() call is not itself guaranteed to
+        // observe the now-resolved content and delete on its own first
+        // try -- close() does not signal success/failure (class Javadoc,
+        // fourth caller-contract point), and this repository's own real
+        // drvfs mount can still interpose a further transient gap here.
+        // This test's own subject is "not permanently marked closed,"
+        // which closeUntilReleased's own bounded retry proves without
+        // conflating it with an unrelated, single-attempt timing risk.
+        closeUntilReleased(lock, lockPath);
 
         assertFalse(
                 Files.exists(lockPath),
@@ -784,17 +792,18 @@ class AccountLedgerLockTest {
     }
 
     /**
-     * The other half of {@link #requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen}'s
-     * own retry loop: a <i>persistent</i> {@code EMPTY_OR_UNPARSEABLE}
-     * condition on this instance's own {@code lockPath} (not a genuine
-     * steal) must still fail closed once {@link
+     * The other half of {@link AccountLedgerLock#stillHoldsCurrentGeneration()}'s
+     * own retry loop -- the retry loop itself lives in that production
+     * method, not in either test: a <i>persistent</i> {@code
+     * EMPTY_OR_UNPARSEABLE} condition on this instance's own {@code
+     * lockPath} (not a genuine steal) must still fail closed once {@link
      * AccountLedgerLock#requireHeld()}'s own bounded retry budget is
      * exhausted -- matching {@code requireHeld()}'s own documented
      * "doubt must reject, not accept" principle. Does not independently
      * prove the retry loop's own "recovers if the condition resolves
      * mid-window" half -- the identical, already-disclosed structural
-     * reason applies here as it does for {@link
-     * #deleteIfStillOwnGeneration}'s own analogous retry (see that
+     * reason applies here as it does for {@code
+     * deleteIfStillOwnGeneration}'s own analogous retry (see that
      * method's own Javadoc): reproducing the condition resolving at a
      * specific point inside this method's own internal retry loop would
      * need either accepted timing-dependent flakiness or an unrequested
