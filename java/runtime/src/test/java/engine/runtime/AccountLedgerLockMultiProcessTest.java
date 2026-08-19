@@ -208,9 +208,21 @@ class AccountLedgerLockMultiProcessTest {
      * exists for) -- it only gives the lock-file-absence check the same
      * brief, bounded grace period {@link AccountLedgerLockTest}'s own
      * {@code closeUntilReleased} already applies from the closing side.
+     *
+     * <p>Real Minor finding, a further real CodeRabbit review round on
+     * this PR: the grace period here previously totaled only 250ms (5
+     * attempts x 50ms) -- shorter than this project's own real, measured
+     * single-file-operation latency on this repository's drvfs mount
+     * (500ms+ under contention, per {@link AccountLedgerLock}'s own class
+     * Javadoc), which this check needs to absorb across four separate
+     * child processes' own exits, not just one. Now 40 attempts x 50ms =
+     * ~2s, matching the identical fix applied to {@link
+     * AccountLedgerLockTest#closeUntilReleased} and {@code
+     * LockContenderMain#closeUntilReleased} (round 55's own three sibling
+     * fixes).
      */
     private static boolean waitForLockFileAbsence(Path lockPath) throws InterruptedException {
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < 40; attempt++) {
             if (Files.notExists(lockPath)) {
                 return true;
             }

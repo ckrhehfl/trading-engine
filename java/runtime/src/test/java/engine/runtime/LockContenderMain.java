@@ -73,7 +73,7 @@ final class LockContenderMain {
         for (int i = 0; i < iterations; i++) {
             AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, totalRetryBudget);
             try {
-                int current = readCounter(counterPath);
+                int current = readCounter(counterPath, i == 0);
                 Thread.sleep(holdMillis);
                 writeCounterAtomically(counterPath, current + 1);
             } finally {
@@ -82,10 +82,37 @@ final class LockContenderMain {
         }
     }
 
-    private static int readCounter(Path counterPath) throws Exception {
+    /**
+     * Real Major finding, a further real CodeRabbit review round on this
+     * PR: {@code counterPath} being absent is only ever a normal state on
+     * this process's own very first iteration, before any contender has
+     * ever written it. On any later iteration, an observed absence means
+     * the file this process (or a sibling) already created has vanished
+     * again -- possibly via {@link #writeCounterAtomically}'s own
+     * non-atomic fallback move path, or this project's own documented
+     * drvfs visibility gap -- and silently treating that as "0" would
+     * rewind the counter, losing every increment recorded so far. The
+     * launching {@link AccountLedgerLockMultiProcessTest} would then
+     * misattribute the resulting final-count shortfall to a genuine
+     * mutual-exclusion defect (two processes inside the lock-protected
+     * section at once) when the real cause is this harness losing its own
+     * bookkeeping. This harness is Task B's own sole empirical proof of
+     * real cross-process mutual exclusion (see class Javadoc); a failure
+     * mode that pollutes its signal is removed here, not merely
+     * tolerated: {@code absenceIsExpected} is {@code true} only for
+     * {@code i == 0}; any later absence propagates as a real, explicit
+     * {@link IllegalStateException} instead.
+     */
+    private static int readCounter(Path counterPath, boolean absenceIsExpected) throws Exception {
         try {
             return Integer.parseInt(Files.readString(counterPath).trim());
         } catch (NoSuchFileException e) {
+            if (!absenceIsExpected) {
+                throw new IllegalStateException(
+                        "counter file " + counterPath + " vanished after it had already been written --"
+                                + " this is a harness/filesystem fault, not a mutual-exclusion failure",
+                        e);
+            }
             return 0;
         }
     }
@@ -119,6 +146,18 @@ final class LockContenderMain {
         try {
             Files.move(tmp, counterPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
         } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
+            // Real Trivial finding, a further real CodeRabbit review round
+            // on this PR: entering this fallback means real atomicity was
+            // just lost for this write -- silently proceeding hides that
+            // fact from the launching test's own stderr-file diagnostics
+            // (see class Javadoc), so a later counter shortfall caused by
+            // this exact fallback path would be indistinguishable from a
+            // genuine mutual-exclusion defect. Logged before the fallback
+            // move itself, not after, so the log line exists even if the
+            // fallback move also fails.
+            System.err.println("WARNING: ATOMIC_MOVE unavailable for " + counterPath
+                    + " -- falling back to a non-atomic replace. A later counter shortfall may be a harness"
+                    + " artifact rather than a real mutual-exclusion failure. Cause: " + e);
             // Same fallback this project's own durable-store classes
             // already establish for the identical class of failure (some
             // filesystems/cross-volume setups don't support ATOMIC_MOVE
@@ -139,9 +178,23 @@ final class LockContenderMain {
      * proof of release under this launcher's own real, sustained
      * multi-process contention (the whole point of {@link
      * AccountLedgerLockMultiProcessTest}).
+     *
+     * <p>Real Minor finding, a further real CodeRabbit review round on
+     * this PR: the retry budget here previously totaled only 250ms (5
+     * attempts x 50ms) -- shorter than this project's own real, measured
+     * single-file-operation latency on this repository's drvfs mount
+     * (500ms+ under contention, per {@link AccountLedgerLock}'s own class
+     * Javadoc). A budget too small to absorb that delay defeats this
+     * method's own purpose: a contender could exit having left the lock
+     * file behind for a reason unrelated to a real defect, blocking the
+     * next holder until {@code staleThreshold} elapses. Now 40 attempts x
+     * 50ms = ~2s, matching the identical fix applied to {@link
+     * AccountLedgerLockTest#closeUntilReleased} and {@code
+     * AccountLedgerLockMultiProcessTest#waitForLockFileAbsence} (round
+     * 55's own three sibling fixes).
      */
     private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < 40; attempt++) {
             lock.close();
             if (Files.notExists(lockPath)) {
                 return;

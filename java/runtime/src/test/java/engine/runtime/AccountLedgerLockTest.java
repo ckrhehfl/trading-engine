@@ -131,9 +131,23 @@ class AccountLedgerLockTest {
      * this project's own drvfs mount, so a single call is not sufficient
      * proof of release under this test's own real, sustained contention
      * (12 threads, 10 iterations each).
+     *
+     * <p>Real Minor finding, a further real CodeRabbit review round on
+     * this PR: the retry budget here previously totaled only 250ms (5
+     * attempts x 50ms) -- shorter than this project's own real, measured
+     * single-file-operation latency on this repository's drvfs mount
+     * (500ms+ under contention, per {@link AccountLedgerLock}'s own class
+     * Javadoc). A budget smaller than the delay it exists to absorb
+     * cannot do its job: the deletion-visibility assertion could then
+     * fail for a reason unrelated to a real lock defect, polluting this
+     * task's own sole empirical signal. Now 40 attempts x 50ms = ~2s,
+     * applied identically here, in {@code
+     * AccountLedgerLockMultiProcessTest#waitForLockFileAbsence}, and in
+     * {@code LockContenderMain#closeUntilReleased} (round 55's own three
+     * sibling fixes).
      */
     private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
-        for (int attempt = 0; attempt < 5; attempt++) {
+        for (int attempt = 0; attempt < 40; attempt++) {
             lock.close();
             if (Files.notExists(lockPath)) {
                 return;

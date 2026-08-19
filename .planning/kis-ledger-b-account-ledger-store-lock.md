@@ -5142,6 +5142,134 @@ harness regardless of how many rounds it were re-run, the identical
 reasoning already applied in round 44's own entry for an
 `AccountLedgerStore`-only change.
 
+### Round 56 (past the operator-agreed round-55 cap -- continuing per
+the coordinator's own explicit instruction after round 55 came back
+`CHANGES_REQUESTED`, not a clean `APPROVED`)
+
+Review id `4974713952`, against commit `fe0dc4d` (round 55's fix
+commit, already pushed), landed at `2026-08-19T16:57:57Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 3 actionable comments. Fetched the full review
+body and all three full inline comment bodies directly (not a
+truncated read, per this task's own standing discipline). All three
+are confined to this PR's own test/harness infrastructure -- none touch
+`AccountLedgerLock.java`'s or `AccountLedgerStore.java`'s own
+production control flow -- but one is inside `LockContenderMain.java`,
+the raw stress harness's own driver, so a raw-harness re-run is
+warranted this round per this task's own established rule.
+
+- **(Minor, Stability & Availability) Three lock-release-wait helpers
+  all budget only 250ms (5 attempts x 50ms) -- shorter than this
+  project's own real, measured single-file-operation latency on this
+  repository's drvfs mount (500ms+ under contention, per
+  `AccountLedgerLock`'s own class Javadoc).** Real, verified against
+  current code before fixing: `AccountLedgerLockTest#closeUntilReleased`
+  (lines 135-148), `AccountLedgerLockMultiProcessTest
+  #waitForLockFileAbsence` (lines 212-220), and `LockContenderMain
+  #closeUntilReleased` (lines 143-156) all used the identical `for
+  (attempt < 5) { ...; Thread.sleep(50); }` shape. A budget shorter than
+  the delay it exists to absorb cannot do its job -- the deletion-
+  visibility assertion could fail for a reason unrelated to a real lock
+  defect, polluting this task's own sole empirical signal (this exact
+  failure mode is why these three helpers exist in the first place, per
+  their own Javadoc -- rounds 27/38/50/51). Fixed by raising all three
+  to 40 attempts x 50ms = ~2s, applied identically everywhere the
+  finding named. Verified the existing `perProcessTimeoutSeconds =
+  (iterationsPerProcess * totalRetryBudgetMillis) / 1000 + 30`
+  derivation (round 48) already absorbs this: the new worst-case
+  addition per contender process is `iterationsPerProcess * 2s = 10s`
+  at this test's own `iterationsPerProcess = 5`, comfortably inside the
+  existing `+ 30` buffer -- no derivation change needed. Comment-only/
+  constant-magnitude change to an existing, already-tested retry loop --
+  no new test method, matching this task's own established precedent
+  for a pure timing-budget bump (rounds 46/48/50).
+
+- **(Major, Data Integrity) `LockContenderMain#readCounter` treated a
+  missing counter file as `0` unconditionally, on every iteration, not
+  only the first.** Real, verified against current code: a
+  `NoSuchFileException` is a normal, expected state only on this
+  process's very first iteration, before any contender has ever written
+  the counter file. On any later iteration, an observed absence means a
+  file that was already created has genuinely vanished again --
+  possibly via `writeCounterAtomically`'s own non-atomic fallback move
+  path (lines 121-129), or this project's own documented drvfs
+  visibility gap -- and silently returning `0` in that case rewinds the
+  counter, permanently losing every increment recorded so far.
+  `AccountLedgerLockMultiProcessTest` would then misattribute the
+  resulting final-count shortfall to a genuine mutual-exclusion defect
+  (two processes inside the lock-protected section at once) when the
+  real cause is this harness losing its own bookkeeping -- and this
+  harness is Task B's own sole empirical proof of real cross-process
+  mutual exclusion, so a failure mode that pollutes its signal must be
+  removed, not merely tolerated (identical reasoning to round 52's own
+  `writeCounterAtomically` fix). Fixed by adding a new `boolean
+  absenceIsExpected` parameter to `readCounter`, `true` only when `i ==
+  0` at the sole call site in `main`; any later absence now throws a
+  real, explicit `IllegalStateException` naming the real cause instead
+  of silently returning `0`. **No new dedicated unit test** -- `readCounter`
+  is `private` inside `LockContenderMain`, a class this task has no
+  dedicated test class for and has never added one for (round 52's own
+  `writeCounterAtomically` fix set this exact precedent: "this is
+  test-harness-internal reliability code, not production logic; its
+  correctness is what the raw stress harness itself... actually
+  proves"). The failure scenario this fix guards against (a counter
+  file vanishing mid-run on a later iteration) is not deterministically
+  reproducible without a filesystem fake this class was never built
+  with a seam for, and adding one now would itself be new,
+  undesigned surface on Task B's own sole empirical-proof harness --
+  disclosed here as a real, honest coverage gap rather than invented
+  around under review pressure, matching this task's own repeated
+  disclosure pattern for a genuinely-untestable-without-a-production-
+  only-hook case. Verified instead via the 25-round raw-harness re-run
+  below, which exercises this exact code path on every one of its
+  6 x 25 = 150 real contender-process launches (each running its own 8
+  read-modify-write iterations against `readCounter`, 1,200 total).
+
+- **(Trivial, Maintainability) `writeCounterAtomically`'s non-atomic
+  fallback move path (catching `AtomicMoveNotSupportedException`/
+  `FileAlreadyExistsException`) proceeded silently, with no log line.**
+  Real, verified: if atomicity is genuinely lost for a given write, and
+  nothing records that fact, a later counter shortfall caused by
+  exactly this fallback path would be indistinguishable from a real
+  mutual-exclusion defect when the launching test's own captured stderr
+  file is inspected for diagnosis. Fixed by adding a `System.err
+  .println` warning immediately on entering the `catch` block, before
+  the fallback move itself runs -- so the log line exists even if the
+  fallback move also fails. Purely additive, no behavior change to the
+  fallback logic itself -- no new test, matching round 43's own
+  precedent for an identical class of addition (`AccountLedgerStore
+  .persist`'s own `log.warn` addition that round, also verified by an
+  already-existing test rather than a new one).
+
+Re-ran after the fix: `./gradlew clean build` -- green, **474 tests, 0
+failures, 0 errors** project-wide (unchanged count -- all three fixes
+are either pure timing-constant changes to already-tested retry loops,
+or purely additive logging/fail-fast changes with no new test method).
+`AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest` reran 3
+additional explicit combined times (`--rerun-tasks`), stable.
+
+**Raw stress harness re-run, warranted this round**: this round's real
+fixes touch `LockContenderMain.java` directly (all three of
+`readCounter`, `writeCounterAtomically`, and `closeUntilReleased`),
+which is the raw harness's own driver code -- the identical situation
+round 52 already established warrants a re-run even when
+`AccountLedgerLock.java` itself is untouched. Classpath regenerated
+against the fresh build (Gradle dependency jars unchanged since round
+52's own cached classpath; only the local `build/classes/java/{main,
+test}` directories needed to reflect the new compiled code, confirmed
+by a single sanity-check round before the full 25 -- see below). **25/25
+rounds exactly correct** (6 processes x 8 iterations = 48 expected per
+round, this task's own realistic configuration -- **1,200 more
+individual lock acquisitions, zero lost updates**), bringing the
+task-wide raw-harness total to **505 clean rounds, 24,240 individual
+lock acquisitions, zero lost updates**. Every round's own captured
+per-process stderr log was also checked for the new `"ATOMIC_MOVE
+unavailable"` warning from this round's third fix -- **zero
+occurrences across all 25 rounds' 150 contender-process runs**,
+consistent with every prior round's own observation that this
+repository's real filesystem has never actually forced the non-atomic
+fallback path during this task's testing.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -5416,7 +5544,12 @@ reasoning already applied in round 44's own entry for an
   round 51's (no new/modified test methods -- the `createAndWriteMetadata`
   reordering needed no new test per its own disclosed reasoning, the
   second `close()` call now uses `closeUntilReleased`, and two Javadoc
-  corrections, all to existing test bodies/comments).
+  corrections, all to existing test bodies/comments); 19/19 after
+  round 56's (no new/modified test methods -- `closeUntilReleased`'s own
+  retry budget raised from 5 attempts x 50ms to 40 x 50ms, per that
+  round's own finding; the existing retry loop's own tested behavior --
+  succeed once the file is confirmed gone -- is unchanged, only the
+  magnitude of how long it keeps trying).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -5505,7 +5638,13 @@ reasoning already applied in round 44's own entry for an
   **3 more times** after round 52 (1 part of the full `clean build`,
   plus its own 3 further explicit `--rerun-tasks` runs -- this round's
   real fix was to `LockContenderMain.java`, this test's own real child
-  process, not to this file itself).
+  process, not to this file itself), and **4 more times** after round 56
+  (1 part of the full `clean build`, plus 3 further explicit
+  `--rerun-tasks` runs together with `AccountLedgerLockTest` -- this
+  round's own real fix touched this file's own `waitForLockFileAbsence`
+  directly, plus its own real child process `LockContenderMain.java`;
+  rounds 53-55 made no changes to this file, disclosed instead in this
+  section's other per-file bullets above).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -5793,12 +5932,26 @@ reasoning already applied in round 44's own entry for an
   re-run, the identical reasoning already applied in round 44's own
   entry; the task-wide total remains **480 clean rounds, 23,040
   individual lock acquisitions, zero lost updates** after round 55.
+  Round 56's own real fixes touch `LockContenderMain.java` directly
+  (`readCounter`'s new fail-fast-after-the-first-iteration behavior,
+  `writeCounterAtomically`'s new fallback-path logging, and
+  `closeUntilReleased`'s own retry-budget bump), which is the raw
+  harness's own driver code -- the identical situation round 52 already
+  established warrants a re-run even when `AccountLedgerLock.java`
+  itself is untouched, so the raw harness WAS re-run for real again
+  this round: **25/25 rounds exactly correct** (1,200 more individual
+  lock acquisitions, zero lost updates; every round's own captured
+  per-process stderr also checked for the new `"ATOMIC_MOVE
+  unavailable"` warning -- zero occurrences across all 150 real
+  contender-process launches, consistent with every prior round),
+  bringing the task-wide raw-harness total to **505 clean rounds,
+  24,240 individual lock acquisitions, zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, and 55 (plus round 27's own
+  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, and 56 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5882,7 +6035,12 @@ reasoning already applied in round 44's own entry for an
   explicit `AccountLedgerStoreTest` reruns (the new
   `allocatedVirtualCapital`-increase check, confined to that file, no
   `AccountLedgerLock`-level change, so no combined rerun or raw harness
-  re-run was warranted that round either), all noted above).
+  re-run was warranted that round either); round 56's own 3 additional
+  explicit combined reruns of `AccountLedgerLockTest` and
+  `AccountLedgerLockMultiProcessTest` together, plus its own 25-round
+  raw stress harness re-run (this round's own real fixes touched
+  `LockContenderMain.java` directly, the raw harness's own driver code),
+  all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -5907,7 +6065,7 @@ reasoning already applied in round 44's own entry for an
   0 net-new from round 47's + 0 net-new from round 48's + 1 from
   round 49's + 0 net-new from round 50's + 0 net-new from round 51's +
   0 net-new from round 52's + 0 net-new from round 53's + 0 net-new from
-  round 54's + 3 from round 55's).
+  round 54's + 3 from round 55's + 0 net-new from round 56's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
