@@ -1175,8 +1175,10 @@ class AccountLedgerStoreTest {
     void defaultAtomicMoverPersistsWithoutTheTestSeam(@TempDir Path tempDir) {
         // Mirrors SubmissionMarkerStoreTest's own
         // defaultAtomicMoverPersistsWithoutTheTestSeam -- exercises the
-        // real production default (the 2-arg persist overload) directly,
-        // rather than only ever going through the AtomicMover seam.
+        // real production default (the 3-arg persist(Path, AccountLedger,
+        // AccountLedgerLock) overload, which delegates to
+        // defaultAtomicMove) directly, rather than only ever going
+        // through the AtomicMover seam.
         Path file = tempDir.resolve("ledger.json");
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
