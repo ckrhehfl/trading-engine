@@ -69,7 +69,16 @@ class AccountLedgerLockMultiProcessTest {
         int iterationsPerProcess = 5;
         int expectedTotal = processCount * iterationsPerProcess;
         long staleThresholdMillis = 30_000;
-        long totalRetryBudgetMillis = 20_000;
+        // 60s, not the previous 20s -- matching this method's own
+        // process.waitFor(60, TimeUnit.SECONDS) below, so a genuinely
+        // narrow retry budget is never the reason a contender exits
+        // non-zero (a real, distinguishable failure from a genuine
+        // mutual-exclusion defect). This class's own Javadoc documents
+        // real, measured 500ms+ transient I/O latency under contention on
+        // this project's actual drvfs mount -- under 4 real, genuinely
+        // contending OS processes, that can plausibly stack past 20s
+        // before a given contender's own turn comes around.
+        long totalRetryBudgetMillis = 60_000;
         long holdMillis = 20;
 
         List<Process> processes = new ArrayList<>();

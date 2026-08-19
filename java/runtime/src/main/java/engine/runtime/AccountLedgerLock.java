@@ -180,6 +180,30 @@ import org.slf4j.LoggerFactory;
  * behavior) must call {@code close()} again rather than assume the first
  * call was final.
  *
+ * <p><b>A fifth, separate part of the same caller contract: {@code
+ * staleThreshold} must also be chosen larger than {@link #requireHeld()}'s
+ * own real I/O cost, not just the ledger read-modify-write work it
+ * guards.</b> {@link #requireHeld()} performs a real, fresh read of
+ * {@code lockPath} on every call -- {@code AccountLedgerStore.load} calls
+ * it once, {@code AccountLedgerStore.persist} calls it <b>twice</b> (once
+ * at entry, once again immediately before its own actual write, to narrow
+ * the window a lock could be stolen in between). Under a transient
+ * {@link #READ_FAILED}/{@link #EMPTY_OR_UNPARSEABLE} condition, {@link
+ * #stillHoldsCurrentGeneration()} retries up to {@link
+ * #OWN_GENERATION_READ_RETRY_ATTEMPTS} (3) reads, {@link
+ * #OWN_GENERATION_READ_RETRY_DELAY_MILLIS} (50ms) apart -- up to 100ms of
+ * additional sleep on top of the reads themselves. Combined with this
+ * class's own documented 500ms+ single-operation latency under
+ * contention, a single {@code persist()} call's real critical-section
+ * duration can include several seconds of lock-validation I/O alone,
+ * before any of the actual ledger read-modify-write work. A caller (this
+ * class's own Task C, not yet built) choosing {@code staleThreshold} must
+ * account for this cost explicitly, not just the time its own business
+ * logic between {@code load} and {@code persist} takes -- underestimating
+ * it moves a real deployment closer to this Javadoc's own first caller-
+ * contract point above (a {@code staleThreshold} shorter than a real
+ * critical section causes a genuine mutual-exclusion violation).
+ *
  * <p><b>Deviation from the governing plan's own literal code sketch</b>:
  * the plan's summary writes {@code Files.createFile(path,
  * StandardOpenOption.CREATE_NEW)} -- {@link Files#createFile} does not
@@ -1258,6 +1282,20 @@ final class AccountLedgerLock implements AutoCloseable {
             }
         }
         return false;
+    }
+
+    /**
+     * The path this instance was acquired for -- exposed so {@link
+     * AccountLedgerStore#load}/{@link AccountLedgerStore#persist} can
+     * confirm a caller-supplied lock actually corresponds to the {@code
+     * ledgerPath} being loaded/persisted, not just that some lock is
+     * currently held (see {@code AccountLedgerStore}'s own class Javadoc,
+     * "Caller contract," for the full reasoning). Package-private -- not
+     * a public API, purely a structural check on this project's own
+     * {@code AccountLedgerStore} callers.
+     */
+    Path lockPath() {
+        return lockPath;
     }
 
     /**

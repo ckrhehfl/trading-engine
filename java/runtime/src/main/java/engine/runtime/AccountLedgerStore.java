@@ -51,20 +51,20 @@ import org.slf4j.LoggerFactory;
  * Structurally enforced, not only documented: both methods require an
  * {@link AccountLedgerLock} argument -- constructible only via {@link
  * AccountLedgerLock#acquire} -- and reject a {@code null} or already-
- * released one via {@link AccountLedgerLock#requireHeld()}. This does
- * <b>not</b> verify that the supplied lock's own path corresponds to
- * {@code ledgerPath} -- no convention linking the two exists yet in this
- * codebase (that mapping is {@code SharedKisAccountLedger}, Task C's, to
- * define) -- so it proves <i>some</i> lock is held, not necessarily the
- * <i>correct</i> one for this specific ledger. {@link #tmpPathFor}
- * returns a fixed path ({@code <ledgerPath>.json.tmp}), not one unique
- * per process or per call; two processes calling {@link #persist} on the
- * same {@code ledgerPath} without holding the (correct) lock can race on
- * that shared temp file -- one process's write/rename can interleave
- * with another's, risking a partial or wrong write landing at {@code
- * ledgerPath} and a real loss of another process's already-committed
- * reservations. See {@link #persist}'s own Javadoc for the full
- * mechanism.
+ * released one via {@link AccountLedgerLock#requireHeld()}. Both also
+ * verify the supplied lock's own path actually corresponds to {@code
+ * ledgerPath} (see {@link #lockPathFor}/{@link
+ * #requireLockMatchesLedgerPath}), failing closed on a mismatch -- so a
+ * caller cannot present a real, currently-held, correct-generation lock
+ * for the <i>wrong</i> ledger as if it were proof of holding the right
+ * one. {@link #tmpPathFor} returns a fixed path ({@code
+ * <ledgerPath>.json.tmp}), not one unique per process or per call; two
+ * processes calling {@link #persist} on the same {@code ledgerPath}
+ * without holding the (correct) lock can race on that shared temp file --
+ * one process's write/rename can interleave with another's, risking a
+ * partial or wrong write landing at {@code ledgerPath} and a real loss
+ * of another process's already-committed reservations. See {@link
+ * #persist}'s own Javadoc for the full mechanism.
  */
 final class AccountLedgerStore {
 
@@ -261,6 +261,7 @@ final class AccountLedgerStore {
         Objects.requireNonNull(defaultAllocatedCapital, "defaultAllocatedCapital is required");
         Objects.requireNonNull(lock, "lock is required -- see class Javadoc's caller contract");
         lock.requireHeld();
+        requireLockMatchesLedgerPath(lock, ledgerPath);
         // A zero or negative allocated capital is meaningless for a risk
         // budget. Same "the record/method itself is the structural
         // enforcement point" reasoning already applied to
@@ -451,6 +452,7 @@ final class AccountLedgerStore {
         Objects.requireNonNull(mover, "mover is required");
         Objects.requireNonNull(lock, "lock is required -- see class Javadoc's caller contract");
         lock.requireHeld();
+        requireLockMatchesLedgerPath(lock, ledgerPath);
         verifyIdentityConsistency(ledgerPath, ledger);
         // Hoisted outside the try block so the outer catch below can clean
         // it up -- see that catch's own comment for why.
@@ -785,5 +787,57 @@ final class AccountLedgerStore {
 
     private static Path tmpPathFor(Path ledgerPath) {
         return ledgerPath.resolveSibling(ledgerPath.getFileName() + ".tmp");
+    }
+
+    /**
+     * The production {@code ledgerPath}-to-lock-path convention: a
+     * sibling file named {@code <ledgerPath>.lock}, mirroring {@link
+     * #tmpPathFor}'s own identical shape. Package-private (not {@code
+     * private}) so {@code AccountLedgerStoreTest} can call this exact
+     * method for its own test fixtures rather than maintaining a second,
+     * separately-defined copy of the same convention that could silently
+     * drift out of sync with the real one.
+     *
+     * <p>Promoted from what had been, since this class's own {@code
+     * load}/{@code persist} first gained a mandatory {@link
+     * AccountLedgerLock} parameter, only a test-fixture convenience with
+     * no production meaning -- {@link #load}/{@link #persist} now use
+     * this exact method to verify a caller-supplied lock actually
+     * corresponds to the ledger being loaded/persisted (see this class's
+     * own "Caller contract" paragraph). This is not a fresh design
+     * decision invented under review pressure: it is the same convention
+     * every one of this test suite's own call sites has used, unchanged,
+     * since that parameter was first added -- promoting an already-
+     * universally-adopted convention into the real contract is a
+     * materially smaller commitment than inventing a new one would have
+     * been.
+     */
+    static Path lockPathFor(Path ledgerPath) {
+        return ledgerPath.resolveSibling(ledgerPath.getFileName() + ".lock");
+    }
+
+    /**
+     * Fails closed if {@code lock} was not acquired for {@code
+     * ledgerPath}'s own expected lock path (see {@link #lockPathFor}).
+     * {@link AccountLedgerLock#requireHeld()} alone only proves
+     * <i>some</i> lock is currently, genuinely held -- not that it is
+     * the <i>correct</i> one for this specific ledger. Neither {@code
+     * releaseRequested} nor {@code AccountLedgerLock}'s own generation
+     * check can catch this: both only ever examine the lock instance
+     * itself, never compare it against the {@code ledgerPath} a caller
+     * is actually trying to use it for. A caller bug (e.g. passing the
+     * wrong account's lock, or a copy-paste mistake wiring two ledgers'
+     * worth of load/persist calls) would otherwise go completely
+     * undetected -- this method exists to reject it explicitly rather
+     * than silently proceed as if the correct lock had been held.
+     */
+    private static void requireLockMatchesLedgerPath(AccountLedgerLock lock, Path ledgerPath) {
+        Path expectedLockPath = lockPathFor(ledgerPath);
+        if (!expectedLockPath.equals(lock.lockPath())) {
+            throw new IllegalStateException(
+                    "lock for " + lock.lockPath() + " does not correspond to ledgerPath " + ledgerPath
+                            + " -- expected a lock for " + expectedLockPath + ". Refusing to treat a lock acquired"
+                            + " for a different ledger as proof of holding the correct lock for this one.");
+        }
     }
 }

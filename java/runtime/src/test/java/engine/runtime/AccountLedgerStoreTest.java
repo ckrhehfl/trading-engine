@@ -1224,7 +1224,7 @@ class AccountLedgerStoreTest {
     @Test
     void loadAndPersistRejectAnAlreadyClosedLock(@TempDir Path tempDir) throws InterruptedException {
         Path file = tempDir.resolve("ledger.json");
-        Path lockPath = lockPathFor(file);
+        Path lockPath = AccountLedgerStore.lockPathFor(file);
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
@@ -1260,7 +1260,7 @@ class AccountLedgerStoreTest {
     @Test
     void loadAndPersistRejectALockWhoseGenerationHasBeenStolen(@TempDir Path tempDir) throws InterruptedException {
         Path file = tempDir.resolve("ledger.json");
-        Path lockPath = lockPathFor(file);
+        Path lockPath = AccountLedgerStore.lockPathFor(file);
         AccountLedger ledger = new AccountLedger(
                 "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
                 null, null, null, List.of());
@@ -1282,6 +1282,38 @@ class AccountLedgerStoreTest {
                     Thread.sleep(50);
                 }
             }
+        }
+    }
+
+    /**
+     * A fourth, distinct way an {@link AccountLedgerLock} can fail to be
+     * valid proof for a given {@link AccountLedgerStore#load}/{@link
+     * AccountLedgerStore#persist} call: a real, currently-held, non-
+     * closed, correct-generation lock -- but acquired for a
+     * <i>different</i> ledger's own lock path entirely. Neither {@code
+     * releaseRequested} nor the generation check can catch this, since
+     * both only ever examine the lock this instance itself holds, never
+     * compare it against the {@code ledgerPath} the caller is actually
+     * trying to use it for. Proven against two real, genuinely different
+     * {@code AccountLedgerLock} instances (one legitimately acquired for
+     * {@code other.json}'s own lock path), not a fabricated mismatch.
+     */
+    @Test
+    void loadAndPersistRejectALockAcquiredForADifferentLedgerPath(@TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        Path otherFile = tempDir.resolve("other.json");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        try (AccountLedgerLock lockForOtherFile = AccountLedgerLock.acquire(
+                AccountLedgerStore.lockPathFor(otherFile), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"), lockForOtherFile));
+            assertThrows(
+                    IllegalStateException.class,
+                    () -> AccountLedgerStore.persist(file, ledger, lockForOtherFile));
         }
     }
 
@@ -1308,24 +1340,20 @@ class AccountLedgerStoreTest {
      */
     private static AccountLedger loadWithLock(
             Path ledgerPath, String venue, String accountId, BigDecimal defaultAllocatedCapital) {
-        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(AccountLedgerStore.lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
             return AccountLedgerStore.load(ledgerPath, venue, accountId, defaultAllocatedCapital, lock);
         }
     }
 
     private static void persistWithLock(Path ledgerPath, AccountLedger ledger) {
-        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(AccountLedgerStore.lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
             AccountLedgerStore.persist(ledgerPath, ledger, lock);
         }
     }
 
     private static void persistWithLock(Path ledgerPath, AccountLedger ledger, AccountLedgerStore.AtomicMover mover) {
-        try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+        try (AccountLedgerLock lock = AccountLedgerLock.acquire(AccountLedgerStore.lockPathFor(ledgerPath), LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
             AccountLedgerStore.persist(ledgerPath, ledger, mover, lock);
         }
-    }
-
-    private static Path lockPathFor(Path ledgerPath) {
-        return ledgerPath.resolveSibling(ledgerPath.getFileName() + ".lock");
     }
 }

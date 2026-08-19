@@ -471,15 +471,17 @@ class AccountLedgerLockTest {
             @TempDir Path tempDir) throws Exception {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         Duration pathologicallySmallStaleThreshold = Duration.ofMillis(10);
-        // Deliberately generous relative to pathologicallySmallStaleThreshold + the
-        // 30ms pre-steal wait below (a ~960ms margin) -- this class's own Javadoc
-        // documents real, measured 500ms+ transient write latency on this
-        // project's actual drvfs mount under contention, so the steal attempt
-        // itself (read + stale judgment + delete + create/write + re-verify) needs
-        // real headroom to finish before the holder legitimately releases, or this
-        // test would be flaky on a slow/loaded machine for a reason that has
-        // nothing to do with the real bug it exists to prove.
-        long holderRealHoldMillis = 1_000;
+        // 5s, not the previous 1s -- this class's own Javadoc documents
+        // real, measured 500ms+ transient I/O latency PER OPERATION on
+        // this project's actual drvfs mount under contention, and the
+        // steal attempt itself is several real operations back to back
+        // (read + stale judgment + delete + create/write + re-verify) --
+        // at 500ms+ each, that can plausibly approach or exceed a 1s
+        // hold time, making it a coin flip whether the steal finishes
+        // before the holder legitimately releases, rather than the real
+        // headroom this test needs to reliably prove the mutual-exclusion
+        // violation it targets, not a rare race with the steal itself.
+        long holderRealHoldMillis = 5_000;
 
         CountDownLatch holderAcquired = new CountDownLatch(1);
         AtomicLong holderReleasedAtNanos = new AtomicLong(-1);
@@ -526,7 +528,16 @@ class AccountLedgerLockTest {
             stolenAcquiredAtNanos = System.nanoTime();
         }
 
-        holder.join(TimeUnit.SECONDS.toMillis(5));
+        // 15s, not the previous 5s -- a necessary companion to
+        // holderRealHoldMillis's own increase above (not itself cited by
+        // the review round that raised this): the holder thread cannot
+        // finish before its own holderRealHoldMillis sleep completes,
+        // plus whatever real time its own close() then takes re-reading
+        // a by-then-stolen lock file under this same drvfs contention --
+        // a 5s join budget against a 5s hold time alone would leave zero
+        // real margin, reintroducing exactly the flakiness risk this
+        // whole fix exists to remove.
+        holder.join(TimeUnit.SECONDS.toMillis(15));
         assertTrue(holderFailures.isEmpty(), "holder thread must not have failed: " + holderFailures);
         // Real Minor finding, a further real CodeRabbit review round on
         // this PR: System.nanoTime()'s own documented contract is only
