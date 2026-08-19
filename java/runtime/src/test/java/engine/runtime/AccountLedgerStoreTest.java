@@ -2,6 +2,7 @@ package engine.runtime;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -1321,6 +1322,41 @@ class AccountLedgerStoreTest {
             assertThrows(
                     IllegalStateException.class,
                     () -> AccountLedgerStore.persist(file, ledger, lockForOtherFile));
+        }
+    }
+
+    /**
+     * The safe-direction counterpart to {@link
+     * #loadAndPersistRejectALockAcquiredForADifferentLedgerPath}:
+     * {@code requireLockMatchesLedgerPath} must not wrongly reject a
+     * lock genuinely acquired for the correct file merely because its
+     * path was constructed with a different, but equivalent, textual
+     * representation (here, a redundant {@code "."} segment) --
+     * {@link java.nio.file.Path#equals} does not normalize, so an
+     * unnormalized comparison would treat these as different paths even
+     * though they resolve to the exact same real file.
+     */
+    @Test
+    void loadAndPersistAcceptALockAcquiredViaAnEquivalentButTextuallyDifferentPathRepresentation(
+            @TempDir Path tempDir) {
+        Path file = tempDir.resolve("ledger.json");
+        Path realLockPath = AccountLedgerStore.lockPathFor(file);
+        // Same real file as realLockPath, via a redundant "." segment --
+        // Path.equals() alone judges these as different (it compares
+        // segments, not resolved identity), even though
+        // Path#toAbsolutePath()#normalize() collapses them to the same path.
+        Path equivalentLockPath = tempDir.resolve(".").resolve(realLockPath.getFileName());
+        assertNotEquals(
+                realLockPath, equivalentLockPath, "test setup: these must be textually different Path objects");
+        AccountLedger ledger = new AccountLedger(
+                "KIS", "acct-1", new BigDecimal("42"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                null, null, null, List.of());
+
+        try (AccountLedgerLock lock =
+                AccountLedgerLock.acquire(equivalentLockPath, LOCK_STALE_THRESHOLD, LOCK_RETRY_BUDGET)) {
+            AccountLedger loaded = AccountLedgerStore.load(file, "KIS", "acct-1", new BigDecimal("42"), lock);
+            assertEquals(new BigDecimal("42"), loaded.allocatedVirtualCapital());
+            AccountLedgerStore.persist(file, ledger, lock);
         }
     }
 

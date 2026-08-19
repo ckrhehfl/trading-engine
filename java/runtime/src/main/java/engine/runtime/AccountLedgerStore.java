@@ -832,8 +832,19 @@ final class AccountLedgerStore {
      * than silently proceed as if the correct lock had been held.
      */
     private static void requireLockMatchesLedgerPath(AccountLedgerLock lock, Path ledgerPath) {
-        Path expectedLockPath = lockPathFor(ledgerPath);
-        if (!expectedLockPath.equals(lock.lockPath())) {
+        // Path#equals does not normalize -- two textually different
+        // representations of the exact same real file (a redundant "."
+        // segment, ".." segments, or a relative vs. absolute form) would
+        // otherwise be judged "different" and permanently fail closed here,
+        // even though nothing is actually wrong. Comparing normalized
+        // absolute forms removes that false-positive risk while leaving
+        // this check's own real job -- rejecting a lock genuinely acquired
+        // for a different file -- completely unaffected: two paths that
+        // resolve to different real files remain different after
+        // normalization too.
+        Path expectedLockPath = lockPathFor(ledgerPath).toAbsolutePath().normalize();
+        Path suppliedLockPath = lock.lockPath().toAbsolutePath().normalize();
+        if (!expectedLockPath.equals(suppliedLockPath)) {
             throw new IllegalStateException(
                     "lock for " + lock.lockPath() + " does not correspond to ledgerPath " + ledgerPath
                             + " -- expected a lock for " + expectedLockPath + ". Refusing to treat a lock acquired"

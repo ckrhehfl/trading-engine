@@ -4700,6 +4700,49 @@ by the full, passing test suite (including
 `acquire`'s own retry loop end to end). The other three fixes are
 confined entirely to test files, touching zero production code.
 
+### Round 49
+
+Review id `4969752273`, against commit `5b7547c` (round 48's fix
+commit, already pushed), landed at `2026-08-19T07:57:36Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment. Real, fixed via TDD:
+
+- **(Trivial, quick win) `requireLockMatchesLedgerPath` (round 46)
+  compared raw, unnormalized `Path` objects -- `Path#equals` does not
+  normalize, so two textually different representations of the exact
+  same real file (a redundant `"."` segment, `".."` segments, or a
+  relative vs. absolute form) would be wrongly judged "different" and
+  fail closed, even though nothing is actually wrong.** The failure
+  direction is the safe one -- over-rejection, not under-rejection, so
+  no capital-safety risk exists today -- but a real reliability gap:
+  once Task C actually wires `AccountLedgerLock`/`AccountLedgerStore`
+  together, a lock path and a ledger path constructed through two
+  different (but equivalent) code paths could make an entirely correct
+  caller fail permanently, and the resulting exception message would
+  show two strings that look identical to a human, actively misleading
+  whoever investigates it. **Proven as a real, reproducible bug before
+  being fixed, not merely reasoned about**: a new test,
+  `AccountLedgerStoreTest#loadAndPersistAcceptALockAcquiredViaAnEquivalentButTextuallyDifferentPathRepresentation`,
+  constructs a lock path via a redundant `tempDir.resolve(".")` segment
+  -- confirmed via its own `assertNotEquals` to be genuinely, textually
+  different from the real expected path -- and confirmed to fail red
+  against the pre-fix code (a genuine `IllegalStateException`, not
+  assumed) before the fix, then pass green after. Fixed exactly as
+  suggested: both sides of the comparison now go through
+  `toAbsolutePath().normalize()` before `equals()`, which removes only
+  the false-positive risk -- two paths that resolve to genuinely
+  different real files remain different after normalization too, so
+  `loadAndPersistRejectALockAcquiredForADifferentLedgerPath` (round 46's
+  own regression test for the opposite direction) needed no change and
+  still passes unmodified.
+
+Re-ran after the fix: `./gradlew clean build` -- green, **471 tests, 0
+failures, 0 errors** project-wide (+1 net-new: the path-normalization
+regression test above). `AccountLedgerStoreTest` reran 3 additional
+explicit times, stable. No raw stress harness re-run -- confined to
+`AccountLedgerStore.java`, zero `AccountLedgerLock` control-flow
+change.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4815,7 +4858,15 @@ confined entirely to test files, touching zero production code.
   production `AccountLedgerStore.lockPathFor` directly); 45/45 after
   round 47's (a one-line cleanup addition -- `original.close()` -- to
   round 44's own `loadAndPersistRejectALockWhoseGenerationHasBeenStolen`
-  test, no new/modified test method).
+  test, no new/modified test method); 45/45 after round 48's (no
+  `AccountLedgerStore`-level test changes that round -- all four real
+  fixes were in `AccountLedgerLock.java`/`AccountLedgerLockTest.java`/
+  `AccountLedgerLockMultiProcessTest.java`); 46/46 after round 49's (1
+  more new test --
+  `loadAndPersistAcceptALockAcquiredViaAnEquivalentButTextuallyDifferentPathRepresentation`,
+  proving the new `toAbsolutePath().normalize()` fix to
+  `requireLockMatchesLedgerPath`, run red against the pre-fix code
+  before the fix was applied).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -5248,13 +5299,18 @@ confined entirely to test files, touching zero production code.
   fixes are confined entirely to test files. None of it independently
   warrants a further raw stress-harness round; the task-wide total
   remains **430 clean rounds, 20,640 individual lock acquisitions, zero
-  lost updates** after round 48.
+  lost updates** after round 48. Round 49's real fix was confined to
+  `AccountLedgerStore.java` (a `Path` normalization fix), zero
+  `AccountLedgerLock` control-flow change, so it likewise did not
+  independently warrant a further raw stress-harness round; the
+  task-wide total remains **430 clean rounds, 20,640 individual lock
+  acquisitions, zero lost updates** after round 49.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, and 48 (plus round 27's own
+  44, 45, 46, 47, 48, and 49 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5314,12 +5370,15 @@ confined entirely to test files, touching zero production code.
   re-run was warranted that round either); round 48's own 3 additional
   explicit combined reruns of `AccountLedgerLockTest` and
   `AccountLedgerLockMultiProcessTest` together (no raw stress harness
-  re-run that round -- see that bullet's own reasoning above), all
-  noted above).
+  re-run that round -- see that bullet's own reasoning above); round
+  49's own 3 additional explicit `AccountLedgerStoreTest` reruns (a
+  `Path`-normalization fix confined to that file, no
+  `AccountLedgerLock`-level change, so no combined rerun or raw harness
+  re-run was warranted that round either), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
-  **470 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
+  **471 tests, 0 failures, 0 errors** (405 pre-existing from Task A's
   merged state + 15 from this task's original implementation + 7 from
   round 1's CodeRabbit review + 3 from round 2's + 0 net-new from
   round 3's + 1 from round 4's + 2 from round 5's + 2 from round 6's + 1
@@ -5337,7 +5396,8 @@ confined entirely to test files, touching zero production code.
   round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
   round 41's + 0 net-new from round 42's + 0 net-new from round 43's +
   3 from round 44's + 0 net-new from round 45's + 1 from round 46's +
-  0 net-new from round 47's + 0 net-new from round 48's).
+  0 net-new from round 47's + 0 net-new from round 48's + 1 from
+  round 49's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
