@@ -4563,6 +4563,38 @@ code at all -- none of round 46's changes sit in the raw harness's own
 exercised call graph, matching the same reasoning already applied in
 round 44.
 
+### Round 47
+
+Review id `4967933015`, against commit `1e885d5` (round 46's fix
+commit, already pushed), landed at `2026-08-19T02:42:29Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment:
+
+- **(Trivial, "low value" per CodeRabbit's own tag) round 44's own
+  `loadAndPersistRejectALockWhoseGenerationHasBeenStolen` test's
+  `finally` block closed `sibling` but never `original`.** Currently
+  harmless, and the reviewer's own finding says so directly: by the
+  time `finally` runs, `original`'s own generation has already been
+  stolen, so its `close()` call would be a real no-op (nothing on disk
+  still matches its own metadata), and `@TempDir` cleans up any
+  residual file regardless. Fixed anyway, not declined as pure
+  nitpicking -- this is a lock-lifecycle safety test specifically, and
+  explicitly closing both instances means the test's own cleanup no
+  longer implicitly depends on `close()`'s conditional-release behavior
+  staying exactly as it is today; a future change to that behavior
+  should not be able to make this specific test start leaking a lock
+  file as a side effect. Applied exactly as suggested: `original.close()`
+  added after the existing `sibling` retry-close loop, with a comment
+  explaining why it's currently a no-op rather than leaving that
+  unstated.
+
+Re-ran after the fix: `./gradlew clean build` -- green, **470 tests, 0
+failures, 0 errors** project-wide (unchanged count -- a one-line
+addition to an existing test's own cleanup, no new/modified test
+method). `AccountLedgerStoreTest` reran 3 additional explicit times,
+stable. No raw stress harness re-run -- test-only, zero
+`AccountLedgerLock` control-flow change.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4675,7 +4707,10 @@ round 44.
   the new `requireLockMatchesLedgerPath` check the round's own reopened
   Major finding asked for -- plus the deletion of this file's own
   duplicate private `lockPathFor` helper in favor of calling the real
-  production `AccountLedgerStore.lockPathFor` directly).
+  production `AccountLedgerStore.lockPathFor` directly); 45/45 after
+  round 47's (a one-line cleanup addition -- `original.close()` -- to
+  round 44's own `loadAndPersistRejectALockWhoseGenerationHasBeenStolen`
+  test, no new/modified test method).
 - `./gradlew :runtime:test --tests "engine.runtime.AccountLedgerLockTest"`
   — green, 4/4, stable across 3 repeated full re-runs; 7/7 after round
   1's CodeRabbit fixes (3 new tests); 8/8 after round 2's (1 more new
@@ -5084,12 +5119,17 @@ round 44.
   code -- none of it independently warrants a further raw stress-harness
   round; the task-wide total remains **430 clean rounds, 20,640
   individual lock acquisitions, zero lost updates** after round 46.
+  Round 47 was test-only (a one-line cleanup addition to an existing
+  test), zero production code touched, so it likewise did not
+  independently warrant a further raw stress-harness round; the
+  task-wide total remains **430 clean rounds, 20,640 individual lock
+  acquisitions, zero lost updates** after round 47.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, and 46 (plus round 27's own
+  44, 45, 46, and 47 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5143,7 +5183,10 @@ round 44.
   either); round 46's own 3 additional explicit combined reruns of
   `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`, and
   `AccountLedgerStoreTest` together (no raw stress harness re-run that
-  round -- see that bullet's own reasoning above), all noted above).
+  round -- see that bullet's own reasoning above); round 47's own 3
+  additional explicit `AccountLedgerStoreTest` reruns (test-only, no
+  `AccountLedgerLock`-level change, so no combined rerun or raw harness
+  re-run was warranted that round either), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -5164,7 +5207,8 @@ round 44.
   net-new from round 36's + 0 net-new from round 37's + 0 net-new from
   round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
   round 41's + 0 net-new from round 42's + 0 net-new from round 43's +
-  3 from round 44's + 0 net-new from round 45's + 1 from round 46's).
+  3 from round 44's + 0 net-new from round 45's + 1 from round 46's +
+  0 net-new from round 47's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

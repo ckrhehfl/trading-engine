@@ -1282,6 +1282,13 @@ class AccountLedgerStoreTest {
                     Thread.sleep(50);
                 }
             }
+            // original's own generation was already stolen by the time this
+            // runs, so its close() call is currently a real no-op (nothing
+            // on disk still matches its own metadata) -- explicitly closed
+            // anyway rather than relying on that being true, so this test's
+            // own lock lifecycle is complete on its own terms regardless of
+            // how close()'s conditional-release behavior evolves.
+            original.close();
         }
     }
 
