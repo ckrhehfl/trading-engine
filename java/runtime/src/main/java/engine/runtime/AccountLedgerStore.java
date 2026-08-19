@@ -525,9 +525,16 @@ final class AccountLedgerStore {
                 // leftover-tmp-overwrite behavior exists to support); a
                 // ledgerPath whose existence cannot be determined
                 // propagates to this method's outer catch, failing the
-                // whole call closed. This duplicates verifyIdentityConsistency's
-                // own earlier, equivalent check as a defensive redundancy
-                // against a TOCTOU race between the two -- not dead code.
+                // whole call closed. verifyIdentityConsistency above does
+                // NOT cover this: it returns normally on a confirmed-absent
+                // ledgerPath, because a missing target is ordinary for a
+                // first-ever persist. Only this block combines that absence
+                // with a pre-existing candidateTmp, which is the exact
+                // interrupted-persist evidence load() refuses to resolve
+                // automatically -- this is the sole fail-closed guard for
+                // that combination, not a redundant duplicate. Removing it
+                // would let the TRUNCATE_EXISTING write below consume that
+                // evidence.
                 try {
                     Files.readAttributes(ledgerPath, BasicFileAttributes.class);
                 } catch (NoSuchFileException ledgerAbsent) {
