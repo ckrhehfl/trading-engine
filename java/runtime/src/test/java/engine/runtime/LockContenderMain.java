@@ -1,8 +1,12 @@
 package engine.runtime;
 
+import java.io.IOException;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 
 /**
@@ -71,7 +75,7 @@ final class LockContenderMain {
             try {
                 int current = readCounter(counterPath);
                 Thread.sleep(holdMillis);
-                Files.writeString(counterPath, Integer.toString(current + 1));
+                writeCounterAtomically(counterPath, current + 1);
             } finally {
                 closeUntilReleased(lock, lockPath);
             }
@@ -83,6 +87,46 @@ final class LockContenderMain {
             return Integer.parseInt(Files.readString(counterPath).trim());
         } catch (NoSuchFileException e) {
             return 0;
+        }
+    }
+
+    /**
+     * Writes via a temp file plus {@link StandardCopyOption#ATOMIC_MOVE}
+     * -- the same pattern {@code AccountLedgerStore#persist} already
+     * establishes, reused here for the identical underlying reason. A
+     * direct {@code Files.writeString(counterPath, ...)} truncates then
+     * writes as two separate steps; even though {@code counterPath} is
+     * only ever written while this process holds the real, shared {@link
+     * AccountLedgerLock}, this project's own class Javadoc documents
+     * real, measured transient I/O latency and read/visibility gaps on
+     * this repository's real drvfs mount -- a real, if narrow, risk that
+     * the <i>next</i> holder's own {@link #readCounter} call could
+     * observe the post-truncate, pre-write empty state and throw {@code
+     * NumberFormatException}, exiting this whole process non-zero for a
+     * reason with nothing to do with mutual exclusion. This test harness
+     * is Task B's own sole empirical proof of real cross-process mutual
+     * exclusion (see class Javadoc); a failure mode that pollutes its
+     * signal is removed here, not merely tolerated. The temp file name
+     * includes this process's own pid so genuinely concurrent contenders
+     * (each writing only while holding the lock, but still real,
+     * separate processes) can never collide on it even outside the
+     * lock-protected window.
+     */
+    private static void writeCounterAtomically(Path counterPath, int value) throws IOException {
+        Path tmp = counterPath.resolveSibling(
+                counterPath.getFileName() + ".tmp." + ProcessHandle.current().pid());
+        Files.writeString(tmp, Integer.toString(value));
+        try {
+            Files.move(tmp, counterPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+        } catch (AtomicMoveNotSupportedException | FileAlreadyExistsException e) {
+            // Same fallback this project's own durable-store classes
+            // already establish for the identical class of failure (some
+            // filesystems/cross-volume setups don't support ATOMIC_MOVE
+            // at all, or implementation-specifically reject an existing
+            // target rather than replace it) -- not atomic, but strictly
+            // better than leaving counterPath in its pre-truncate state
+            // forever on a real move failure.
+            Files.move(tmp, counterPath, StandardCopyOption.REPLACE_EXISTING);
         }
     }
 

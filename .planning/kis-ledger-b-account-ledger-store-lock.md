@@ -4908,6 +4908,56 @@ exactly correct** (1,200 more individual lock acquisitions, zero lost
 updates), bringing the task-wide raw-harness total to **455 clean
 rounds, 21,840 individual lock acquisitions, zero lost updates**.
 
+### Round 52
+
+Review id `4971594912`, against commit `c14e698` (round 51's fix
+commit, already pushed), landed at `2026-08-19T11:29:00Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 1 actionable comment. Real, fixed via careful
+re-derivation, not applied blindly:
+
+- **(Minor, quick win) `LockContenderMain`'s own shared counter file
+  was written via a direct, non-atomic `Files.writeString` (truncate
+  then write as two separate steps), not the temp-file + `ATOMIC_MOVE`
+  pattern `AccountLedgerStore#persist` already
+  establishes for the identical class of risk.** Verified the real
+  mechanism before accepting it: the counter write only ever happens
+  while this process holds the real, shared `AccountLedgerLock`, so
+  there is no *logical* race on the write itself -- but this class's
+  own already-documented real, measured transient I/O latency and
+  read/visibility gaps on this repository's actual drvfs mount mean the
+  *next* legitimate holder's own `readCounter` call could still observe
+  the post-truncate, pre-write empty state, throwing
+  `NumberFormatException` and exiting that whole contender process
+  non-zero -- a failure `AccountLedgerLockMultiProcessTest` cannot tell
+  apart from a genuine mutual-exclusion defect. Since this harness is
+  Task B's own sole empirical proof of real cross-process mutual
+  exclusion, a failure mode that pollutes that specific signal is worth
+  removing outright, not merely tolerating. Fixed by adding a
+  `writeCounterAtomically` helper (temp file named with this process's
+  own pid, then `ATOMIC_MOVE` with a `REPLACE_EXISTING`/non-atomic-move
+  fallback matching this project's own established durable-store
+  convention exactly) and routing the counter write through it. No new
+  test -- this is test-harness-internal reliability code, not
+  production logic; its correctness is what the raw stress harness
+  itself (re-run below) actually proves.
+
+Re-ran after the fix: `./gradlew clean build` -- green, **471 tests, 0
+failures, 0 errors** project-wide (unchanged count -- a test-harness
+reliability fix, no test method added or changed).
+`AccountLedgerLockMultiProcessTest` reran 3 additional explicit times,
+stable. **Raw stress harness re-run, a deliberate judgment call**:
+`AccountLedgerLock.java` itself is untouched this round, which would
+ordinarily not warrant a re-run under this task's own established
+rule -- but `LockContenderMain.java` (this round's real fix) *is* the
+raw harness's own driver code, and the fix's whole purpose is to make
+that exact harness more reliable, so verifying it empirically through
+the harness it fixes was judged worth doing rather than skipped on a
+technicality: **25/25 rounds exactly correct** (1,200 more individual
+lock acquisitions, zero lost updates), bringing the task-wide
+raw-harness total to **480 clean rounds, 23,040 individual lock
+acquisitions, zero lost updates**.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -5244,11 +5294,15 @@ rounds, 21,840 individual lock acquisitions, zero lost updates**.
   with `AccountLedgerStoreTest` -- this round's own real fix added a
   method-level `@Timeout` to this file's own real test method; round 49
   made no changes to this file, disclosed instead in this section's
-  other per-file bullets above), and **4 more times** after round 51
+  other per-file bullets above), **4 more times** after round 51
   (1 part of the full `clean build`, plus 3 further explicit
   `--rerun-tasks` runs together with `AccountLedgerLockTest` -- this
   round's own real fix, `createAndWriteMetadata`'s reordering, is
-  exercised directly by this file's own real multi-process test).
+  exercised directly by this file's own real multi-process test), and
+  **3 more times** after round 52 (1 part of the full `clean build`,
+  plus its own 3 further explicit `--rerun-tasks` runs -- this round's
+  real fix was to `LockContenderMain.java`, this test's own real child
+  process, not to this file itself).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -5505,13 +5559,21 @@ rounds, 21,840 individual lock acquisitions, zero lost updates**.
   harness: **25/25 rounds exactly correct** (1,200 more individual lock
   acquisitions, zero lost updates), bringing the task-wide raw-harness
   total to **455 clean rounds, 21,840 individual lock acquisitions,
-  zero lost updates**.
+  zero lost updates**. Round 52's real fix (`LockContenderMain`'s own
+  counter-write atomicity) touches no `AccountLedgerLock.java` code at
+  all, which would ordinarily not warrant a re-run -- but
+  `LockContenderMain` is itself the raw harness's own driver, and the
+  fix's whole purpose is harness reliability, so it was re-run anyway
+  as a deliberate judgment call, not a reflexive skip: **25/25 rounds
+  exactly correct** (1,200 more individual lock acquisitions, zero lost
+  updates), bringing the task-wide raw-harness total to **480 clean
+  rounds, 23,040 individual lock acquisitions, zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, 48, 49, 50, and 51 (plus round 27's own
+  44, 45, 46, 47, 48, 49, 50, 51, and 52 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5581,7 +5643,10 @@ rounds, 21,840 individual lock acquisitions, zero lost updates**.
   round -- see that bullet's own reasoning above); round 51's own 3
   additional explicit combined reruns of `AccountLedgerLockTest` and
   `AccountLedgerLockMultiProcessTest` together, plus its own 25-round
-  raw stress harness re-run, all noted above).
+  raw stress harness re-run; round 52's own 3 additional explicit
+  `AccountLedgerLockMultiProcessTest` reruns, plus its own 25-round raw
+  stress harness re-run (a deliberate judgment call -- see that
+  bullet's own reasoning above), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -5604,7 +5669,8 @@ rounds, 21,840 individual lock acquisitions, zero lost updates**.
   round 41's + 0 net-new from round 42's + 0 net-new from round 43's +
   3 from round 44's + 0 net-new from round 45's + 1 from round 46's +
   0 net-new from round 47's + 0 net-new from round 48's + 1 from
-  round 49's + 0 net-new from round 50's + 0 net-new from round 51's).
+  round 49's + 0 net-new from round 50's + 0 net-new from round 51's +
+  0 net-new from round 52's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
