@@ -4595,6 +4595,111 @@ method). `AccountLedgerStoreTest` reran 3 additional explicit times,
 stable. No raw stress harness re-run -- test-only, zero
 `AccountLedgerLock` control-flow change.
 
+### Round 48
+
+Review id `4968810976`, against commit `358dee0` (round 47's fix
+commit, already pushed), landed at `2026-08-19T05:50:33Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 4 actionable comments. A real, disclosed session
+delay preceded this round: two consecutive `@coderabbitai full review`
+triggers each returned an immediate "Action performed" acknowledgment
+but never produced a landed review object even after ~10-15 minutes of
+polling -- re-checking the rate limit directly (not trusting the
+commit-status badge or the acknowledgment text, per this task's own
+established discipline) both times revealed a *fresh* rate-limit
+window had actually been entered, not a stuck or broken review. The
+review that did land this round is the third trigger attempt. All four
+findings real, all four fixed:
+
+- **(Trivial, "low value") `sleepQuietly`'s hardcoded exception message
+  ("interrupted while waiting to acquire account ledger lock")
+  misdescribes 2 of its 3 real call sites.** Verified directly, not
+  assumed from the finding text: `sleepQuietly` is called three times
+  from `acquire`'s own backoff (accurately described by the existing
+  message), once from `deleteIfStillOwnGeneration`'s re-verification
+  delay, and once from `stillHoldsCurrentGeneration`'s re-verification
+  delay -- neither of the latter two is actually "waiting to acquire."
+  An interrupt during `requireHeld()` (which calls
+  `stillHoldsCurrentGeneration`) would show an operator investigating a
+  real shared-KIS-account-risk-ledger incident a message describing
+  lock *acquisition* contention when this instance was really
+  re-verifying a lock it already believes it holds -- pointing a real
+  investigation in the wrong direction. Fixed by adding a `purpose`
+  parameter, with each of the three real call sites (all three
+  `acquire`-internal ones share the same, accurate message; the other
+  two each get their own) passing an accurate description. Compiles as
+  the structural proof all real call sites were updated, not just the
+  two the reviewer cited -- confirmed by a clean `:runtime:compileJava`
+  immediately after.
+- **(Minor, quick win -- a real regression this task's own round 46
+  introduced, caught here one round later) `AccountLedgerLockMultiProcessTest`'s
+  `totalRetryBudgetMillis` (bumped 20s -> 60s in round 46) and
+  `process.waitFor(60, TimeUnit.SECONDS)` are measuring two different
+  things that used to be closer together and no longer are.**
+  `totalRetryBudgetMillis` bounds a single `AccountLedgerLock.acquire()`
+  call; `LockContenderMain`'s own loop (verified directly against its
+  real source before accepting this) consumes a **fresh** budget on
+  every one of `iterationsPerProcess` (5) iterations, so a single
+  contender process's real worst-case runtime is
+  `iterationsPerProcess x totalRetryBudgetMillis` = up to 300s, not
+  60s. Round 46's own comment explicitly (and, on this re-examination,
+  wrongly) claimed the two values were "matching" -- they were never
+  matching in the sense that mattered, and bumping
+  `totalRetryBudgetMillis` alone made the mismatch categorically worse
+  (100s worst case at the old 20s value vs. 300s at the new 60s value,
+  against an unchanged 60s wait). Fixed by deriving
+  `perProcessTimeoutSeconds` from
+  `(iterationsPerProcess * totalRetryBudgetMillis) / 1000 + 30` (30s
+  further margin for process startup/JVM warmup/output-flushing
+  overhead) and using that in `process.waitFor`, with the round-46
+  comment corrected to state the real per-call-vs-per-process
+  relationship instead of the "matching" framing it wrongly leaned on.
+  Disclosed here as a self-caught regression, not merely a reviewer
+  finding, per this task's own standing honesty discipline.
+- **(Minor, quick win) The `finally` block's own cleanup
+  (`process.destroyForcibly().waitFor(10, TimeUnit.SECONDS)`) declares
+  `InterruptedException`, and Java's own `finally`-block semantics mean
+  an exception thrown there silently discards whatever real failure
+  (an earlier `fail(...)`'s own `AssertionError`, this test's actual
+  correctness signal) was already propagating out of the `try` block.**
+  A real, if narrow, risk to the one test this whole task's own
+  "the actual point of Task B" section names as its real, cross-process
+  proof. Fixed by wrapping the per-process cleanup call in its own
+  `try`/`catch (InterruptedException e)`, restoring the interrupt flag
+  and continuing to clean up the remaining processes rather than
+  propagating -- matching this project's own established convention
+  for handling an interrupt during best-effort cleanup elsewhere in
+  this same file family.
+- **(Trivial, "low value") Round 44's own
+  `requireHeldThrowsOnceThisInstancesGenerationHasBeenLegitimatelyStolen`
+  test never calls `close()` on `original` (the instance whose
+  generation gets stolen), with no comment explaining why.** Currently
+  harmless -- `original.close()` would hit `doClose()`'s own genuine-
+  generation-mismatch branch, which never deletes -- but every other
+  test in this file uses try-with-resources or `closeUntilReleased`, so
+  the omission reads as an oversight. A future maintainer "fixing" it by
+  adding `original.close()` would make the test log a real `ERROR`
+  against `sibling`'s own live generation, polluting the test's own
+  signal without changing its outcome. Fixed by stating the omission is
+  deliberate, and why, directly above `original`'s own acquisition.
+
+Re-ran after all of round 48's fixes: `./gradlew clean build` -- green,
+**470 tests, 0 failures, 0 errors** project-wide (unchanged count --
+every fix this round was a parameter addition, a comment, or an
+exception-handling change to existing methods/tests, no new/modified
+test method). `AccountLedgerLockTest` and
+`AccountLedgerLockMultiProcessTest` both reran 3 additional explicit
+times together, stable. **No raw stress harness re-run this round**:
+`sleepQuietly`'s new `purpose` parameter is the only production code
+touched, and it is a pure, additive change to an interrupt-path
+exception *message* only -- it changes no actual sleep duration, retry
+count, or control-flow branch the raw harness's own lost-update check
+could observe, and its correctness was already independently confirmed
+by the full, passing test suite (including
+`AccountLedgerLockMultiProcessTest`, which directly stress-tests
+`acquire`'s own retry loop end to end). The other three fixes are
+confined entirely to test files, touching zero production code.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -4825,7 +4930,11 @@ stable. No raw stress harness re-run -- test-only, zero
   own beyond the new `AccountLedgerStoreTest` regression test, the I/O-
   cost documentation was Javadoc-only, and the two timing-budget bumps
   changed existing tests' own constants, not their assertions or
-  method count).
+  method count); 19/19 after round 47's (no `AccountLedgerLockTest`
+  changes that round -- the one real fix was in `AccountLedgerStoreTest.java`);
+  19/19 after round 48's (no new/modified test methods -- a
+  `sleepQuietly` call-site update, a comment explaining `original`'s
+  deliberate non-closure, no test-level change to this file).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -4895,6 +5004,12 @@ stable. No raw stress harness re-run -- test-only, zero
   was untouched again this round, included for the same combined-rerun
   discipline; rounds 40-43's own individual counts were not itemized
   here, each disclosed instead in this section's other per-file bullets
+  above), and **4 more times** after round 48 (1 part of the full
+  `clean build`, plus 3 further explicit `--rerun-tasks` runs together
+  with `AccountLedgerLockTest` -- this round's own real fix touched
+  this file directly, its process-timeout derivation and its
+  `finally`-block interrupt handling; rounds 45-47 made no changes to
+  this file, disclosed instead in this section's other per-file bullets
   above).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
@@ -5123,13 +5238,23 @@ stable. No raw stress harness re-run -- test-only, zero
   test), zero production code touched, so it likewise did not
   independently warrant a further raw stress-harness round; the
   task-wide total remains **430 clean rounds, 20,640 individual lock
-  acquisitions, zero lost updates** after round 47.
+  acquisitions, zero lost updates** after round 47. Round 48's only
+  production `AccountLedgerLock` change (`sleepQuietly`'s new `purpose`
+  parameter) is a pure, additive change to an interrupt-path exception
+  *message* -- no sleep duration, retry count, or control-flow branch
+  changed, already independently confirmed correct by the full passing
+  test suite (including `AccountLedgerLockMultiProcessTest`, which
+  directly stress-tests `acquire`'s own retry loop); its other three
+  fixes are confined entirely to test files. None of it independently
+  warrants a further raw stress-harness round; the task-wide total
+  remains **430 clean rounds, 20,640 individual lock acquisitions, zero
+  lost updates** after round 48.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, and 47 (plus round 27's own
+  44, 45, 46, 47, and 48 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -5186,7 +5311,11 @@ stable. No raw stress harness re-run -- test-only, zero
   round -- see that bullet's own reasoning above); round 47's own 3
   additional explicit `AccountLedgerStoreTest` reruns (test-only, no
   `AccountLedgerLock`-level change, so no combined rerun or raw harness
-  re-run was warranted that round either), all noted above).
+  re-run was warranted that round either); round 48's own 3 additional
+  explicit combined reruns of `AccountLedgerLockTest` and
+  `AccountLedgerLockMultiProcessTest` together (no raw stress harness
+  re-run that round -- see that bullet's own reasoning above), all
+  noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -5208,7 +5337,7 @@ stable. No raw stress harness re-run -- test-only, zero
   round 38's + 4 from round 39's + 0 net-new from round 40's + 1 from
   round 41's + 0 net-new from round 42's + 0 net-new from round 43's +
   3 from round 44's + 0 net-new from round 45's + 1 from round 46's +
-  0 net-new from round 47's).
+  0 net-new from round 47's + 0 net-new from round 48's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of

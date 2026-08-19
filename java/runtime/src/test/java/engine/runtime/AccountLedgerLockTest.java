@@ -762,6 +762,14 @@ class AccountLedgerLockTest {
         // own staleThreshold below that determines that.
         AccountLedgerLock original =
                 AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
+        // original is deliberately never close()d in this test -- it covers
+        // exactly the caller that never observed its own lock being stolen,
+        // and such a caller would never call close() either. Closing it
+        // here would exercise doClose()'s own generation-mismatch branch
+        // against sibling's real, live generation and log a real ERROR,
+        // polluting this test's own signal without deleting anything (a
+        // genuine mismatch is never deleted) -- sibling's own lock file is
+        // released below regardless.
         Thread.sleep(150); // exceed tinyStaleThreshold so the sibling below can legitimately judge it stale
         AccountLedgerLock sibling = AccountLedgerLock.acquire(lockPath, tinyStaleThreshold, GENEROUS_RETRY_BUDGET);
 

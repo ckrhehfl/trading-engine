@@ -69,17 +69,28 @@ class AccountLedgerLockMultiProcessTest {
         int iterationsPerProcess = 5;
         int expectedTotal = processCount * iterationsPerProcess;
         long staleThresholdMillis = 30_000;
-        // 60s, not the previous 20s -- matching this method's own
-        // process.waitFor(60, TimeUnit.SECONDS) below, so a genuinely
-        // narrow retry budget is never the reason a contender exits
-        // non-zero (a real, distinguishable failure from a genuine
-        // mutual-exclusion defect). This class's own Javadoc documents
-        // real, measured 500ms+ transient I/O latency under contention on
-        // this project's actual drvfs mount -- under 4 real, genuinely
-        // contending OS processes, that can plausibly stack past 20s
-        // before a given contender's own turn comes around.
+        // 60s, not the previous 20s -- applies to a single
+        // AccountLedgerLock.acquire() call, not to a whole contender
+        // process (see perProcessTimeoutSeconds below for that). This
+        // class's own Javadoc documents real, measured 500ms+ transient
+        // I/O latency under contention on this project's actual drvfs
+        // mount -- under 4 real, genuinely contending OS processes, that
+        // can plausibly stack past 20s before a given contender's own
+        // turn comes around.
         long totalRetryBudgetMillis = 60_000;
         long holdMillis = 20;
+        // A real, disclosed round-46 mistake, caught and fixed the round
+        // after it was introduced: totalRetryBudgetMillis above applies
+        // to a single acquire() call, but LockContenderMain's own loop
+        // consumes a fresh budget on every one of its
+        // iterationsPerProcess iterations -- so a single contender
+        // process's own real worst-case runtime is iterationsPerProcess x
+        // totalRetryBudgetMillis, not totalRetryBudgetMillis alone. The
+        // process-level wait below must cover that full worst case, not
+        // just one acquire() call's own budget, plus real margin (30s)
+        // for process startup/JVM warmup and this test's own
+        // output-flushing/exit overhead.
+        long perProcessTimeoutSeconds = (iterationsPerProcess * totalRetryBudgetMillis) / 1000 + 30;
 
         List<Process> processes = new ArrayList<>();
         List<Path> outputs = new ArrayList<>();
@@ -94,7 +105,7 @@ class AccountLedgerLockMultiProcessTest {
 
             for (int i = 0; i < processes.size(); i++) {
                 Process process = processes.get(i);
-                boolean finished = process.waitFor(60, TimeUnit.SECONDS);
+                boolean finished = process.waitFor(perProcessTimeoutSeconds, TimeUnit.SECONDS);
                 if (!finished) {
                     fail("a real contender process did not finish within the test timeout. Output so far: "
                             + readOutputOrPlaceholder(outputs.get(i)));
@@ -129,7 +140,21 @@ class AccountLedgerLockMultiProcessTest {
             // waited on regardless of whether an earlier fail(...) already
             // fired.
             for (Process process : processes) {
-                process.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+                try {
+                    process.destroyForcibly().waitFor(10, TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    // An interrupt during this best-effort cleanup must not
+                    // replace this test's own real failure signal (an
+                    // assertion or fail(...) already thrown above, still
+                    // propagating out of this finally block) with a bare
+                    // InterruptedException -- a real Java exception-
+                    // shadowing hazard, not theoretical: an exception
+                    // thrown from a finally block silently discards
+                    // whatever was already propagating. Restore the
+                    // interrupt flag and keep cleaning up the remaining
+                    // processes rather than aborting or rethrowing.
+                    Thread.currentThread().interrupt();
+                }
             }
         }
 

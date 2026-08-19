@@ -376,7 +376,7 @@ final class AccountLedgerLock implements AutoCloseable {
                     // whole loop, never returning a lock we don't
                     // actually have and never touching the sibling's
                     // real file.
-                    sleepQuietly(backoffMillis);
+                    sleepQuietly(backoffMillis, "waiting to acquire account ledger lock");
                     backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
                     continue;
                 }
@@ -398,7 +398,7 @@ final class AccountLedgerLock implements AutoCloseable {
                 } catch (IOException stealFailure) {
                     lastTransientFailure = stealFailure;
                 }
-                sleepQuietly(backoffMillis);
+                sleepQuietly(backoffMillis, "waiting to acquire account ledger lock");
                 backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
             } catch (IOException e) {
                 // Transient (e.g. a real, measured slow/flaky drvfs I/O
@@ -408,7 +408,7 @@ final class AccountLedgerLock implements AutoCloseable {
                 // own lastTransientFailure comment above for why the
                 // budget-exhausted branch still reports this as the cause.
                 lastTransientFailure = e;
-                sleepQuietly(backoffMillis);
+                sleepQuietly(backoffMillis, "waiting to acquire account ledger lock");
                 backoffMillis = Math.min(MAX_BACKOFF_MILLIS, backoffMillis * 2);
             }
         }
@@ -893,7 +893,9 @@ final class AccountLedgerLock implements AutoCloseable {
                 return;
             }
             if (attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS - 1) {
-                sleepQuietly(OWN_GENERATION_READ_RETRY_DELAY_MILLIS);
+                sleepQuietly(
+                        OWN_GENERATION_READ_RETRY_DELAY_MILLIS,
+                        "re-verifying this holder's own account ledger lock generation before deleting it");
             }
         }
     }
@@ -1081,12 +1083,25 @@ final class AccountLedgerLock implements AutoCloseable {
         }
     }
 
-    private static void sleepQuietly(long millis) {
+    /**
+     * @param purpose what this specific call is waiting for, embedded
+     *     verbatim in the exception message on interrupt -- this method
+     *     has three real, distinct callers ({@link #acquire}'s own
+     *     backoff, {@link #deleteIfStillOwnGeneration}'s re-verification
+     *     delay, {@link #stillHoldsCurrentGeneration}'s re-verification
+     *     delay), only the first of which is actually "waiting to
+     *     acquire" -- a single, hardcoded message would misdescribe the
+     *     other two as lock-acquisition contention when they are really
+     *     re-verifying a lock this instance already believes it holds,
+     *     misleading a human investigating a real incident on this
+     *     shared KIS account risk ledger.
+     */
+    private static void sleepQuietly(long millis, String purpose) {
         try {
             Thread.sleep(millis);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("interrupted while waiting to acquire account ledger lock", e);
+            throw new IllegalStateException("interrupted while " + purpose, e);
         }
     }
 
@@ -1278,7 +1293,9 @@ final class AccountLedgerLock implements AutoCloseable {
                 return false;
             }
             if (attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS - 1) {
-                sleepQuietly(OWN_GENERATION_READ_RETRY_DELAY_MILLIS);
+                sleepQuietly(
+                        OWN_GENERATION_READ_RETRY_DELAY_MILLIS,
+                        "re-verifying this holder still owns its own account ledger lock generation");
             }
         }
         return false;
