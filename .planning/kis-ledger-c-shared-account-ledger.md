@@ -401,6 +401,71 @@ alone (not account-identifying) is logged freely. Documented as a
 standing rule in the class's own Javadoc so a future addition to this
 class doesn't reintroduce it.
 
+### 10. CodeRabbit pre-merge check finding: loss-limit enforcement is inert for `kis-paper` until Task D — real, disclosed, deliberately not fixed here
+
+CodeRabbit's repo-configured "No Risk Or Leverage Relaxation" pre-merge
+check (`.coderabbit.yaml`, distinct from its inline review comments)
+failed on this PR's second commit, with a real and precisely correct
+observation: `SharedKisAccountLedger`'s `AccountState` always carries
+`lastReconciledDailyPnlPercent`/`...Weekly...`/`...Monthly...` exactly as
+stored on the ledger, which is `BigDecimal.ZERO` until a reconciliation
+pass (Task D, not built) ever runs — meaning `RiskGateway.checkLossLimits`
+compares a permanently-`0` PnL against `RiskLimits.canary()`'s negative
+thresholds forever, so the daily/weekly/monthly loss-limit and hard-stop
+checks can never actually trip for `kis-paper`.
+
+**Verified this is a real behavioral change relative to `kis-paper`
+before this PR, not merely a pre-existing characteristic restated**:
+before Task C, `forKisPaper()` built `TradingLoop` via the 6-arg
+constructor, which uses the private `SyntheticAccountStateProvider` ->
+`TradingLoop.buildAccountState()` -> a **live**, fee-driven `pnlPercent
+= (equity - INITIAL_EQUITY) / INITIAL_EQUITY` that moves every tick a
+fill accrues a fee (confirmed by reading `TradingLoop.java` directly,
+lines 460-463). That number was never *real* P&L (a synthetic $100,000
+baseline, fees only, no real KIS balance) — but it did move, and could in
+principle cross a loss-limit threshold given enough fee accumulation.
+`SharedKisAccountLedger`'s PnL percents, by contrast, are structurally
+incapable of ever moving until Task D exists. **This is a genuine, if
+narrow, reduction in loss-limit responsiveness for `kis-paper`
+specifically, introduced by this PR** — accurately what CodeRabbit's
+check is pointing at, not a false positive.
+
+**Not fixed here, deliberately, not silently accepted either.** The
+governing task brief itself explicitly pre-approved exactly this
+tradeoff, in the same words used to scope this task: *"PnL percentages...
+do NOT recompute these live... This is a deliberate, disclosed
+simplification — real reconciliation that keeps these fresh is Task D's
+job, not yours... you are not the one who ever sets that field... Do not
+build a reconciler, a cadence, or an alarm-tripping mechanism — those are
+explicitly Task D's job, out of scope here."* Building any part of Task
+D's reconciler under review pressure, to silence this one pre-merge
+check, would itself violate that explicit scope boundary and this
+project's own TDD-for-R3-risk discipline (a reconciler deserves its own
+`Discuss`/`Plan`, not a rushed addition here) — the same reasoning
+CLAUDE.md's own KIS design applies to `forKisPaper()`'s unconditional
+`KillSwitch.trip()` (a real, disclosed gap mitigated by a blunt
+instrument, not silently fixed, until its own dedicated fix lands).
+
+**Real, bounding mitigation already in place, unaffected by this gap**:
+`forKisPaper()`'s existing unconditional `killSwitch.trip()` (KOSPI200
+contract-multiplier gap, untouched by this PR — see "Judgment calls" #7)
+already means no order can be submitted through `kis-paper` at all
+without a deliberate human reset, regardless of this separate loss-limit
+gap. This does not make the loss-limit gap irrelevant (a human resetting
+the kill switch for the contract-multiplier reason would also, without
+realizing it, be resetting into a state where loss limits don't work
+either) — surfaced explicitly here so that reset decision is made with
+full information, not decided or hidden by this task on its own
+authority.
+
+**Left for the human to decide**: whether to accept this PR with the gap
+disclosed (matching the task brief's own explicit sign-off), or to
+require some interim mitigation (e.g. fail-closed on a `null`
+`lastReconciledAt` — reject rather than silently treat as "0% PnL,
+always passes") before merging. Not decided here — this PR does not
+attempt to check the CodeRabbit pre-merge "Ignore" box, and this session
+does not merge regardless (see top-level instructions).
+
 ## Verification
 
 Full project build, from `/mnt/c/Dev/trading-engine/java`:
