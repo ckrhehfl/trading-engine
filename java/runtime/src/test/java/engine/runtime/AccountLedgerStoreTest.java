@@ -960,7 +960,7 @@ class AccountLedgerStoreTest {
         // allocatedVirtualCapital-increase fail-closed check, added
         // separately, rejects the other direction; see
         // persistFailsClosedWhenTheNewAllocatedVirtualCapitalExceedsTheExistingOne
-        // below. This test's own subject is the leftover-.tmp-consumption
+        // above. This test's own subject is the leftover-.tmp-consumption
         // behavior, not that check, and a decrease still proves the
         // reloaded content genuinely reflects this call's own write.
         AccountLedger ledger = new AccountLedger(
@@ -1491,14 +1491,30 @@ class AccountLedgerStoreTest {
      * AccountLedgerStore}'s own production {@code MAPPER}: these fixtures
      * need the identical {@code Instant} serialization format the
      * production mapper uses (so the JSON they hand-assemble is readable
-     * by it), but must not inherit {@code FAIL_ON_TRAILING_TOKENS} --
-     * several of these same tests deliberately append trailing content
-     * after a valid value, which that setting would reject before the
-     * fixture was ever fully written. Kept as one shared helper, not
-     * three separately-maintained copies of the same configuration, so a
-     * future change to the production mapper's own serialization format
-     * only needs updating in one place to keep these fixtures compatible
-     * with it.
+     * by it). The production {@code MAPPER} itself is {@code private
+     * static} and therefore not reachable from this test at all, so a
+     * separate instance is required here, not merely preferred.
+     *
+     * <p><b>Correction, a further real CodeRabbit review round on this
+     * PR</b>: this Javadoc previously also claimed a separate mapper was
+     * needed so fixtures "must not inherit {@code FAIL_ON_TRAILING_TOKENS}"
+     * -- inaccurate, and now removed rather than left to mislead a future
+     * reader judging which code path actually runs. {@code
+     * FAIL_ON_TRAILING_TOKENS} is a {@link
+     * com.fasterxml.jackson.databind.DeserializationFeature}, and every
+     * call site below only ever calls {@code writeValueAsString}
+     * (serialization) on this mapper -- never a read/parse call -- so
+     * that setting is simply irrelevant to what this method does,
+     * regardless of which mapper instance is used. (Where a test
+     * deliberately appends trailing content after a valid value, e.g.
+     * {@code mapper.writeValueAsString(ledger) + "null"}, that
+     * concatenation happens on the resulting {@code String} after this
+     * mapper has already finished serializing -- this mapper never sees
+     * or processes the trailing content at all.) Kept as one shared
+     * helper, not three separately-maintained copies of the same
+     * configuration, so a future change to the production mapper's own
+     * serialization format only needs updating in one place to keep
+     * these fixtures compatible with it.
      */
     private static ObjectMapper fixtureMapper() {
         return new ObjectMapper()

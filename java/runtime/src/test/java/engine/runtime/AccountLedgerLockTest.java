@@ -35,7 +35,32 @@ import org.junit.jupiter.api.io.TempDir;
  * governing plan) lives in {@link AccountLedgerLockMultiProcessTest},
  * kept in its own file since it launches genuine second JVMs and is
  * meaningfully slower than everything here.
+ *
+ * <p><b>Class-level {@code @SuppressWarnings("PMD.UnusedLocalVariable")},
+ * a further real CodeRabbit review round on this PR</b>: many methods
+ * below declare {@code try (AccountLedgerLock lock = AccountLedgerLock
+ * .acquire(...)) { ... }} purely for its auto-close side effect, never
+ * referencing {@code lock} by name inside the block -- assertions are
+ * made against {@code lockPath}'s own on-disk content instead, which is
+ * often the more direct way to prove what these specific tests need to
+ * prove (e.g. that a steal genuinely replaced the file's content). Java's
+ * try-with-resources syntax requires a name for a freshly-declared
+ * resource (the {@code try (existingRef)} shorthand only works for an
+ * already-declared reference), so this is a real, structural consequence
+ * of the syntax, not a genuine dead-variable bug -- PMD's own {@code
+ * UnusedLocalVariable} rule cannot tell the two apart. Per this finding's
+ * own explicit recommendation, a single class-level suppression here is
+ * the deliberately smaller, preferred change over adding an artificial
+ * "use" (e.g. a gratuitous {@code lock.requireHeld()} call) at each of
+ * the several affected declarations, which would only obscure each
+ * test's own real intent. Real, disclosed tradeoff: this also suppresses
+ * the rule for any genuinely-dead local variable added to this class in
+ * the future, not only the try-with-resources idiom above -- accepted
+ * here because this file's own established review discipline (TDD, a
+ * further CodeRabbit pass on every PR) is the actual backstop against
+ * that, not this specific lint rule.
  */
+@SuppressWarnings("PMD.UnusedLocalVariable")
 class AccountLedgerLockTest {
 
     private static final Duration GENEROUS_STALE_THRESHOLD = Duration.ofSeconds(30);
@@ -99,7 +124,7 @@ class AccountLedgerLockTest {
                             Thread.sleep(2); // widen the race window
                             counter.set(current + 1);
                         } finally {
-                            closeUntilReleased(lock, lockPath);
+                            closeUntilReleased(lock);
                         }
                     }
                 } catch (Throwable e) {
@@ -143,22 +168,43 @@ class AccountLedgerLockTest {
      * task's own sole empirical signal. Now 40 attempts x 50ms = ~2s,
      * applied identically here, in {@code
      * AccountLedgerLockMultiProcessTest#waitForLockFileAbsence}, and in
-     * {@code LockContenderMain#closeUntilReleased} (round 55's own three
+     * {@code LockContenderMain#closeUntilReleased} (round 56's own three
      * sibling fixes).
+     *
+     * <p>Real Minor finding, a further real CodeRabbit review round on
+     * this PR: {@code Files.notExists(lockPath)} alone is not proof this
+     * instance's own release genuinely completed -- under real
+     * contention, a sibling can legitimately acquire the very next
+     * generation at the same path immediately after this instance's own
+     * release completes, so the file can still exist (now under a
+     * different, live generation) even though this instance is
+     * genuinely, fully released. Polling mere existence in that case
+     * wastes the whole retry budget above on a wait that was already
+     * over. Now polls {@link AccountLedgerLock#stillHoldsCurrentGeneration()}
+     * instead -- once it returns {@code false}, this instance's own
+     * release has genuinely concluded (whether via confirmed deletion or
+     * a confirmed, different successor generation), independent of
+     * {@code Files.notExists}'s own inability to distinguish "gone" from
+     * "replaced by someone else's new generation." See that method's own
+     * Javadoc for why {@link AccountLedgerLock#requireHeld()} cannot
+     * substitute for this. The {@code lockPath} parameter this method
+     * used to take is no longer needed -- {@code lock} alone now fully
+     * determines the loop's termination condition.
      */
-    private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
+    private static void closeUntilReleased(AccountLedgerLock lock) throws InterruptedException {
         for (int attempt = 0; attempt < 40; attempt++) {
             lock.close();
-            if (Files.notExists(lockPath)) {
+            if (!lock.stillHoldsCurrentGeneration()) {
                 return;
             }
             Thread.sleep(50);
         }
-        // Not treated as a hard failure here -- if the lock file is
-        // genuinely still present after this many attempts, this test's
-        // own final assertFalse(Files.exists(lockPath)) below is what
-        // actually judges it, with a real, meaningful signal rather than
-        // a single-shot race against a known transient condition.
+        // Not treated as a hard failure here -- if this instance's own
+        // generation is genuinely still present after this many attempts,
+        // this test's own final assertFalse(Files.exists(lockPath)) below
+        // is what actually judges it, with a real, meaningful signal
+        // rather than a single-shot race against a known transient
+        // condition.
     }
 
     /**
@@ -188,7 +234,7 @@ class AccountLedgerLockTest {
     void requireHeldThrowsAfterTheLockIsGenuinelyClosed(@TempDir Path tempDir) throws InterruptedException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
-        closeUntilReleased(lock, lockPath);
+        closeUntilReleased(lock);
         assertTrue(Files.notExists(lockPath), "test setup: the lock must be genuinely, fully released before"
                 + " this test's own real subject (requireHeld on a closed instance) is exercised");
 
@@ -644,7 +690,7 @@ class AccountLedgerLockTest {
         // this test's own real subject (idempotency on a REPEAT call)
         // relies on the same closeUntilReleased helper every other real
         // caller in this file uses to get there first.
-        closeUntilReleased(lock, lockPath);
+        closeUntilReleased(lock);
         assertFalse(Files.exists(lockPath), "the first close() call must have deleted this instance's own lock file");
 
         // A sibling legitimately acquires a brand new generation at the
@@ -715,7 +761,7 @@ class AccountLedgerLockTest {
         // This test's own subject is "not permanently marked closed,"
         // which closeUntilReleased's own bounded retry proves without
         // conflating it with an unrelated, single-attempt timing risk.
-        closeUntilReleased(lock, lockPath);
+        closeUntilReleased(lock);
 
         assertFalse(
                 Files.exists(lockPath),
@@ -801,7 +847,7 @@ class AccountLedgerLockTest {
                     thrown.getMessage().contains(lockPath.toString()),
                     "exception must name the lock path; was: " + thrown.getMessage());
         } finally {
-            closeUntilReleased(sibling, lockPath);
+            closeUntilReleased(sibling);
         }
     }
 

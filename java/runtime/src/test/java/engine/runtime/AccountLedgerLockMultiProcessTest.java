@@ -218,8 +218,18 @@ class AccountLedgerLockMultiProcessTest {
      * child processes' own exits, not just one. Now 40 attempts x 50ms =
      * ~2s, matching the identical fix applied to {@link
      * AccountLedgerLockTest#closeUntilReleased} and {@code
-     * LockContenderMain#closeUntilReleased} (round 55's own three sibling
+     * LockContenderMain#closeUntilReleased} (round 56's own three sibling
      * fixes).
+     *
+     * <p>Deliberately still checks mere file absence, not generation
+     * identity, unlike the two {@code closeUntilReleased} siblings above
+     * -- a further real CodeRabbit review round on this PR named those
+     * two specifically, not this method, and for a real, structural
+     * reason: this method runs in the <i>launching</i> test process,
+     * which never itself held an {@link AccountLedgerLock} for the four
+     * real child-process contenders it is waiting on, so it has no
+     * generation of its own to compare against. File absence is the only
+     * signal genuinely available to it here.
      */
     private static boolean waitForLockFileAbsence(Path lockPath) throws InterruptedException {
         for (int attempt = 0; attempt < 40; attempt++) {

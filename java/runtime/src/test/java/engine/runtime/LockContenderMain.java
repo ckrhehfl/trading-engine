@@ -77,7 +77,7 @@ final class LockContenderMain {
                 Thread.sleep(holdMillis);
                 writeCounterAtomically(counterPath, current + 1);
             } finally {
-                closeUntilReleased(lock, lockPath);
+                closeUntilReleased(lock);
             }
         }
     }
@@ -191,20 +191,40 @@ final class LockContenderMain {
      * 50ms = ~2s, matching the identical fix applied to {@link
      * AccountLedgerLockTest#closeUntilReleased} and {@code
      * AccountLedgerLockMultiProcessTest#waitForLockFileAbsence} (round
-     * 55's own three sibling fixes).
+     * 56's own three sibling fixes).
+     *
+     * <p>Real Minor finding, a further real CodeRabbit review round on
+     * this PR: {@code Files.notExists(lockPath)} alone is not proof this
+     * process's own release genuinely completed -- under real
+     * contention, a sibling contender (or the launching test's own
+     * generation-stealing) can legitimately acquire the very next
+     * generation at the same path immediately after this process's own
+     * release completes, so the file can still exist (now under a
+     * different, live generation) even though this process is genuinely,
+     * fully released. Polling mere existence in that case wastes the
+     * whole retry budget above on a wait that was already over -- exactly
+     * the extra cost {@code holdMillis}-driven contention in {@link
+     * AccountLedgerLockMultiProcessTest} is likely to trigger. Now polls
+     * {@link AccountLedgerLock#stillHoldsCurrentGeneration()} instead,
+     * matching the identical fix applied to {@link
+     * AccountLedgerLockTest#closeUntilReleased} -- see that method's own
+     * Javadoc for why {@link AccountLedgerLock#requireHeld()} cannot
+     * substitute for this. The {@code lockPath} parameter this method
+     * used to take is no longer needed -- {@code lock} alone now fully
+     * determines the loop's termination condition.
      */
-    private static void closeUntilReleased(AccountLedgerLock lock, Path lockPath) throws InterruptedException {
+    private static void closeUntilReleased(AccountLedgerLock lock) throws InterruptedException {
         for (int attempt = 0; attempt < 40; attempt++) {
             lock.close();
-            if (Files.notExists(lockPath)) {
+            if (!lock.stillHoldsCurrentGeneration()) {
                 return;
             }
             Thread.sleep(50);
         }
-        // Not treated as a hard failure here -- if the lock file is
-        // genuinely still present after this many attempts, the launching
-        // test's own final assertions (the counter total, and its own
-        // lock-file-absence check) are what actually judge this run, not
-        // this launcher itself.
+        // Not treated as a hard failure here -- if this process's own
+        // generation is genuinely still present after this many attempts,
+        // the launching test's own final assertions (the counter total,
+        // and its own lock-file-absence check) are what actually judge
+        // this run, not this launcher itself.
     }
 }

@@ -1290,8 +1290,37 @@ final class AccountLedgerLock implements AutoCloseable {
      *     (which simply gives up without deleting), since that method's
      *     own risk is wrongly deleting a live lock, not wrongly trusting
      *     a stale one.
+     *
+     *     <p><b>Package-private, not private</b> -- a further real
+     *     CodeRabbit review round on this PR: {@link
+     *     AccountLedgerLockTest}'s and {@code LockContenderMain}'s own
+     *     {@code closeUntilReleased} helpers previously polled {@code
+     *     Files.notExists(lockPath)} as proof that this instance's own
+     *     {@link #close()} call had genuinely finished releasing the
+     *     lock -- but under real contention, a sibling can legitimately
+     *     acquire the very next generation at the same path immediately
+     *     after this instance's own release completes, so the file can
+     *     still exist (now under a different, live generation) even
+     *     though this instance is genuinely, fully released. Polling
+     *     mere existence in that case wastes the full retry budget
+     *     (round 56's own fix widened that budget to ~2s, which only
+     *     made this waste larger) on a wait that was already over.
+     *     {@link #requireHeld()} cannot substitute for this: {@link
+     *     #releaseRequested} is set unconditionally on the very first
+     *     {@link #close()} call (see that field's own Javadoc), before
+     *     that call's own deletion has necessarily completed, so {@link
+     *     #requireHeld()} would throw immediately after any {@link
+     *     #close()} call regardless of whether the release actually
+     *     finished -- unusable as a completion signal. This method,
+     *     already computing exactly "does {@code lockPath} still reflect
+     *     this instance's own generation," is the real, correct
+     *     completion signal instead: once it returns {@code false}, this
+     *     instance's own release has genuinely concluded (whether via
+     *     confirmed deletion or a confirmed, different successor
+     *     generation), independent of {@link #releaseRequested}'s own
+     *     earlier-firing semantics.
      */
-    private boolean stillHoldsCurrentGeneration() {
+    boolean stillHoldsCurrentGeneration() {
         for (int attempt = 0; attempt < OWN_GENERATION_READ_RETRY_ATTEMPTS; attempt++) {
             LockMetadata current = readMetadataOrNull(lockPath);
             if (ownMetadata.equals(current)) {
