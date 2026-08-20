@@ -535,6 +535,79 @@ public final class PaperTradingApp {
     }
 
     /**
+     * KIS shared account risk ledger, Task C overload -- the same eight
+     * parameters as the {@link PriceFeed}-accepting constructor directly
+     * above, plus an explicit {@link AccountStateProvider} threaded through
+     * to {@link TradingLoop}'s own new 7-arg constructor (see that
+     * interface's Javadoc) instead of always falling back to {@code
+     * TradingLoop}'s private, process-local, synthetic provider. {@link
+     * #forKisPaper} is the only real caller, passing a real {@link
+     * SharedKisAccountLedger}.
+     *
+     * <p>The 8-arg overload directly above is completely untouched by this
+     * addition -- it keeps constructing {@link TradingLoop} via its
+     * existing 6-arg constructor exactly as before, so every one of its
+     * own existing tests are unaffected (zero test-file diff), matching
+     * this codebase's established "new overload, not a modified existing
+     * one" precedent already used for the {@code OrderExecutor}/{@code
+     * PriceFeed}/{@code AccountStateProvider} extractions themselves.
+     */
+    PaperTradingApp(
+            String symbol,
+            PriceFeed priceFeed,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock,
+            TradingCalendar tradingCalendar,
+            OrderExecutor orderExecutor,
+            AccountStateProvider accountStateProvider) {
+        Objects.requireNonNull(symbol, "symbol is required");
+        Objects.requireNonNull(priceFeed, "priceFeed is required");
+        Objects.requireNonNull(signalPath, "signalPath is required");
+        Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
+        Objects.requireNonNull(clock, "clock is required");
+        Objects.requireNonNull(tradingCalendar, "tradingCalendar is required");
+        Objects.requireNonNull(orderExecutor, "orderExecutor is required");
+        Objects.requireNonNull(accountStateProvider, "accountStateProvider is required");
+        if (tickIntervalSeconds <= 0) {
+            throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
+        }
+        this.tickIntervalSeconds = tickIntervalSeconds;
+        this.gracefulShutdownTimeout = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT;
+        this.forcedShutdownTimeout = DEFAULT_FORCED_SHUTDOWN_TIMEOUT;
+        this.clock = clock;
+        this.tradingCalendar = tradingCalendar;
+
+        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        this.orderStore = new OrderStore();
+        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
+        this.orderExecutor = orderExecutor;
+        // "kis-delivered.marker" -- same reasoning as the 8-arg overload
+        // directly above, see that constructor's own Javadoc.
+        FileSignalSource signalSource =
+                new FileSignalSource(signalPath, signalPath.resolveSibling("kis-delivered.marker"));
+        this.killSwitch = new KillSwitch();
+
+        this.tradingLoop = new TradingLoop(
+                orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol,
+                accountStateProvider);
+        this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
+        this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
+
+        log.info(
+                "PaperTradingApp constructed: symbol={} signalPath={} tickIntervalSeconds={} reportsDirectory={}"
+                        + " riskTier=canary orderExecutor={} tradingCalendar={} accountStateProvider={}",
+                symbol,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                orderExecutor.getClass().getSimpleName(),
+                tradingCalendar.getClass().getSimpleName(),
+                accountStateProvider.getClass().getSimpleName());
+    }
+
+    /**
      * Resolves configuration from environment variables and constructs a
      * real {@code PaperTradingApp} -- what {@link #main} calls. Every env
      * var:
@@ -816,6 +889,18 @@ public final class PaperTradingApp {
 
         KisPreflight.Result preflight = KisPreflight.run(adapter);
 
+        // Shared KIS account risk ledger (KIS Ledger Task C) -- bootstraps
+        // allocatedVirtualCapital from the real balance KisPreflight just
+        // verified on first creation of the ledger file, or reuses an
+        // already-persisted ledger as-is if a sibling kis-paper process
+        // (a different symbol, same real account) already created one --
+        // see SharedKisAccountLedger#bootstrapOrLoad's own Javadoc. Placed
+        // right after KisPreflight succeeds and before the submission-
+        // marker step below, per the governing plan.
+        Path accountLedgerPath = resolveAccountLedgerPath("KIS", accountNo);
+        SharedKisAccountLedger accountStateProvider =
+                SharedKisAccountLedger.bootstrapOrLoad(accountLedgerPath, "KIS", accountNo, preflight.balance().balance());
+
         SubmissionMarkerStore markerStore = new SubmissionMarkerStore(resolveKisSubmissionMarkersPath(symbol));
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
         boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
@@ -831,7 +916,8 @@ public final class PaperTradingApp {
                 reportsDirectory,
                 Clock.systemUTC(),
                 new KrxMarketCalendar(),
-                orderExecutor);
+                orderExecutor,
+                accountStateProvider);
 
         // Unconditionally tripped, not only on a preflight/marker problem
         // (a real CodeRabbit review finding, tied directly to this method's
@@ -934,6 +1020,37 @@ public final class PaperTradingApp {
                             + "'");
         }
         return Path.of("var", "live", symbol + "-kis_submission_markers.json");
+    }
+
+    /**
+     * {@code var/live/{venue}-{accountId}-account_ledger.json} -- the
+     * shared, cross-process {@link SharedKisAccountLedger}'s own file path,
+     * mirroring {@link #resolveKisSubmissionMarkersPath}'s exact shape and
+     * validation (see that method's own Javadoc for why the traversal
+     * check exists despite {@code venue}/{@code accountId} being operator-
+     * configured, not attacker-controlled). No environment-variable
+     * override, same no-config-surface discipline as every other {@code
+     * var/live/} path this class resolves. Deliberately keyed by {@code
+     * (venue, accountId)} rather than {@code symbol} -- unlike the
+     * submission-markers path above, this ledger is meant to be
+     * <b>shared</b> across every {@code kis-paper} process trading
+     * different symbols against the same real KIS account (see the
+     * governing plan's "Shared KIS account risk ledger" section) -- a
+     * per-symbol path here would defeat the entire point of a shared risk
+     * budget.
+     */
+    static Path resolveAccountLedgerPath(String venue, String accountId) {
+        requireSafeFilenameSegment(venue, "venue");
+        requireSafeFilenameSegment(accountId, "accountId");
+        return Path.of("var", "live", venue + "-" + accountId + "-account_ledger.json");
+    }
+
+    private static void requireSafeFilenameSegment(String value, String label) {
+        if (value.contains("/") || value.contains("\\") || value.equals(".") || value.equals("..")) {
+            throw new IllegalArgumentException(
+                    label + " must be a single safe filename segment (no path separators or '.'/'..'), was '"
+                            + value + "'");
+        }
     }
 
     /**
