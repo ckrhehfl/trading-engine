@@ -1184,6 +1184,12 @@ class PaperTradingAppTest {
 
         assertTrue(app.accountLedgerReconciler().isPresent());
         assertSame(reconciler, app.accountLedgerReconciler().get());
+        assertSame(
+                killSwitch,
+                app.killSwitch(),
+                "the externally-built KillSwitch passed to the constructor must be the exact same instance"
+                        + " TradingLoop itself checks -- otherwise AccountLedgerReconciler tripping its own"
+                        + " reference would never actually block anything");
 
         app.runTick(); // first call ever -- seeds the reconciler's own day-tracking state, no pass yet
         assertEquals(0, reconciler.reconciliationPassCount());

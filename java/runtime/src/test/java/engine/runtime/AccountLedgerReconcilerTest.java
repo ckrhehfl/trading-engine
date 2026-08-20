@@ -79,6 +79,50 @@ class AccountLedgerReconcilerTest {
         assertTrue(onDisk.reconciliationAlarmReason().contains("50000"));
     }
 
+    /**
+     * Boundary case: a mismatch of exactly 10% of {@code
+     * allocatedVirtualCapital} must NOT trip the alarm -- the threshold is
+     * "exceeding 10%" (strict {@code >}), not "10% or more".
+     */
+    @Test
+    void aMismatchOfExactlyTenPercentDoesNotTripTheAlarm(@TempDir Path tempDir) {
+        Path ledgerPath = tempDir.resolve("ledger.json");
+        SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"));
+        // ledgerExposure=0, realExposure=10000 -- mismatch is exactly 10% of allocatedVirtualCapital.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnPositions(List.of(position("SYM", "100", "100")));
+        KillSwitch killSwitch = new KillSwitch();
+        AccountLedgerReconciler reconciler = new AccountLedgerReconciler(
+                ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"), adapter, killSwitch, fixedClock());
+
+        reconciler.runStartupReconciliation();
+
+        assertFalse(killSwitch.isTripped(), "a mismatch of exactly 10% must not trip the kill switch");
+        AccountLedger onDisk = loadWithLock(ledgerPath);
+        assertNull(onDisk.reconciliationAlarmTrippedAt());
+        assertNull(onDisk.reconciliationAlarmReason());
+    }
+
+    /** Complement to the exactly-10% case above: a mismatch one cent over 10% must trip. */
+    @Test
+    void aMismatchJustOverTenPercentTripsTheAlarm(@TempDir Path tempDir) {
+        Path ledgerPath = tempDir.resolve("ledger.json");
+        SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"));
+        // ledgerExposure=0, realExposure=10000.01 -- one cent over the 10% threshold (10000).
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnPositions(List.of(position("SYM", "1", "10000.01")));
+        KillSwitch killSwitch = new KillSwitch();
+        AccountLedgerReconciler reconciler = new AccountLedgerReconciler(
+                ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"), adapter, killSwitch, fixedClock());
+
+        reconciler.runStartupReconciliation();
+
+        assertTrue(killSwitch.isTripped(), "a mismatch one cent over 10% must trip the kill switch");
+        AccountLedger onDisk = loadWithLock(ledgerPath);
+        assertNotNull(onDisk.reconciliationAlarmTrippedAt());
+        assertNotNull(onDisk.reconciliationAlarmReason());
+    }
+
     @Test
     void incompletePositionDataTripsTheAlarmWithoutComputingAPossiblyWrongMismatch(@TempDir Path tempDir) {
         Path ledgerPath = tempDir.resolve("ledger.json");
