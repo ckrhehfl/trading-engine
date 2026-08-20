@@ -57,8 +57,13 @@ Two new files, one modified production file, one modified test file
     a reservation → else create/merge a `LedgerReservation` sized to
     `intent.quantity() × price`, monotonically (never shrinking an
     existing reservation for the same `intentId` — see `reserveMonotonic`)
-    → persist → return `equity = allocatedVirtualCapital −
-    Σ(reservations.notional)`, floored at `BigDecimal.ONE`.
+    → calculate the hypothetical combined notional across all reservations
+    after that merge → if it would exceed `allocatedVirtualCapital`,
+    return a floored-near-zero-equity snapshot **without persisting** the
+    candidate (see "Judgment calls" #9 — added on CodeRabbit review, not
+    part of the original submission) → otherwise persist → return `equity
+    = allocatedVirtualCapital − Σ(reservations.notional)`, floored at
+    `BigDecimal.ONE`.
   - `confirmReservation(intentId, approvedQuantity, price)`: acquire lock
     → load → find the matching reservation by `clientOrderId == intentId`
     → shrink it to `approvedQuantity × price` (or drop it entirely if that
