@@ -19,21 +19,25 @@ dependencies {
     // calls a public, unauthenticated one). See BingXPriceFeed's Javadoc.
     implementation(project(":exchange"))
     // 2.18.9, not the 2.18.2 used elsewhere in this repo (schemas/risk/
-    // exchange) -- 2.18.2 is in the CVE-2026-54515 range (case-insensitive
-    // deserialization can restore properties @JsonIgnoreProperties should
-    // have excluded), fixed in 2.18.9. Nothing in this codebase actually
-    // uses the vulnerable combination (ACCEPT_CASE_INSENSITIVE_PROPERTIES
-    // + @JsonIgnoreProperties -- verified via repo-wide grep, zero hits),
-    // and this module only ever calls readTree() (untyped tree walking),
-    // never readValue() -- but this is the one module in the repo parsing
-    // untrusted external (BingX) JSON over the network, so patching costs
-    // nothing and is worth doing here regardless. Left at 2.18.2 in the
-    // other three modules deliberately, not bumped here -- see PR #27
-    // review discussion for why a repo-wide, cross-module version bump
-    // (all four build.gradle.kts, including java/exchange, which this
-    // task was explicitly told not to touch) is a separate, dedicated
-    // follow-up rather than folded into this task's diff.
+    // exchange) -- left at 2.18.2 there deliberately; a repo-wide bump is
+    // a separate follow-up. 2.18.2 is in the CVE-2026-54515 range
+    // (case-insensitive deserialization can restore properties
+    // @JsonIgnoreProperties should have excluded), fixed in 2.18.9.
+    // Nothing in this codebase uses the vulnerable combination
+    // (ACCEPT_CASE_INSENSITIVE_PROPERTIES + @JsonIgnoreProperties --
+    // verified via repo-wide grep, zero hits); this module's own
+    // MAPPER.readValue() calls (AccountLedgerStore.load,
+    // AccountLedgerLock's lock-metadata parsing) are only ever on
+    // internally-written JSON files, never on untrusted external network
+    // input.
     implementation("com.fasterxml.jackson.core:jackson-databind:2.18.9")
+    // Needed for AccountLedger/LedgerReservation/AccountLedgerLock's
+    // Instant-typed fields to serialize directly -- plain jackson-databind
+    // has no built-in Instant support. This is pulled in transitively on
+    // this module's runtime/test classpath via :schemas, but Gradle's
+    // implementation/api separation does not expose it on this module's
+    // own compile classpath, so it must be declared here explicitly too.
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.18.9")
     implementation("org.slf4j:slf4j-api:2.0.16")
     // A real SLF4J binding for actual (non-test) execution -- every other
     // module in this repo only ever declares slf4j-simple as
