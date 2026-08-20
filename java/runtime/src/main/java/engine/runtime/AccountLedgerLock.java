@@ -1225,6 +1225,37 @@ final class AccountLedgerLock implements AutoCloseable {
     }
 
     /**
+     * @return {@code true} only if this instance has reached its own
+     *     final, closed state -- i.e. some past {@link #close()} call's
+     *     own {@link #doClose()} returned {@code true}. Package-private,
+     *     added for a further real CodeRabbit review round on this PR:
+     *     {@link #close()}'s own early-return guard above already checks
+     *     this exact field internally, but nothing outside this class
+     *     could previously observe it directly. {@link
+     *     #stillHoldsCurrentGeneration()} answers a related but genuinely
+     *     different question ("does {@code lockPath} still reflect this
+     *     instance's own generation") -- {@code closed} can still be
+     *     {@code false} even after {@link #stillHoldsCurrentGeneration()}
+     *     starts returning {@code false} (a transient {@link #READ_FAILED}/
+     *     {@link #EMPTY_OR_UNPARSEABLE} on {@code doClose()}'s own
+     *     re-verification read leaves {@link #closed} {@code false} even
+     *     if the file happens to vanish for an unrelated reason
+     *     immediately afterward) -- conflating the two was exactly the
+     *     bug {@link AccountLedgerLockTest
+     *     #closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall} needs
+     *     this accessor to avoid: that test's own real subject is
+     *     specifically "is a second call, after {@code closed} is
+     *     genuinely {@code true}, a pure no-op" -- a claim only checkable
+     *     by observing {@code closed} itself, not a proxy for it.
+     *     Deliberately read-only -- exposes existing state, does not let
+     *     a caller mutate or bypass anything {@link #close()} itself
+     *     enforces.
+     */
+    boolean isClosed() {
+        return closed;
+    }
+
+    /**
      * Throws {@link IllegalStateException} if a caller has ever called
      * {@link #close} on this instance (see {@link #releaseRequested}'s own
      * Javadoc for exactly why this is deliberately <b>not</b> the same

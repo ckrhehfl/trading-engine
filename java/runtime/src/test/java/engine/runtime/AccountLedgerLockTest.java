@@ -124,7 +124,7 @@ class AccountLedgerLockTest {
                             Thread.sleep(2); // widen the race window
                             counter.set(current + 1);
                         } finally {
-                            closeUntilReleased(lock);
+                            LockReleaseWait.closeUntilReleased(lock);
                         }
                     }
                 } catch (Throwable e) {
@@ -146,65 +146,6 @@ class AccountLedgerLockTest {
                 counter.get(),
                 "a lower-than-expected count means two threads were inside the lock-protected section at once");
         assertFalse(Files.exists(lockPath), "the lock file must not be left behind once every holder has released it");
-    }
-
-    /**
-     * Retries {@link AccountLedgerLock#close()} until {@code lockPath} is
-     * confirmed gone: {@code close()} does not itself signal success or
-     * failure (see {@link AccountLedgerLock}'s own class Javadoc, fourth
-     * caller-contract point) and can take a retryable, non-final path on
-     * this project's own drvfs mount, so a single call is not sufficient
-     * proof of release under this test's own real, sustained contention
-     * (12 threads, 10 iterations each).
-     *
-     * <p>Real Minor finding, a further real CodeRabbit review round on
-     * this PR: the retry budget here previously totaled only 250ms (5
-     * attempts x 50ms) -- shorter than this project's own real, measured
-     * single-file-operation latency on this repository's drvfs mount
-     * (500ms+ under contention, per {@link AccountLedgerLock}'s own class
-     * Javadoc). A budget smaller than the delay it exists to absorb
-     * cannot do its job: the deletion-visibility assertion could then
-     * fail for a reason unrelated to a real lock defect, polluting this
-     * task's own sole empirical signal. Now 40 attempts x 50ms = ~2s,
-     * applied identically here, in {@code
-     * AccountLedgerLockMultiProcessTest#waitForLockFileAbsence}, and in
-     * {@code LockContenderMain#closeUntilReleased} (round 56's own three
-     * sibling fixes).
-     *
-     * <p>Real Minor finding, a further real CodeRabbit review round on
-     * this PR: {@code Files.notExists(lockPath)} alone is not proof this
-     * instance's own release genuinely completed -- under real
-     * contention, a sibling can legitimately acquire the very next
-     * generation at the same path immediately after this instance's own
-     * release completes, so the file can still exist (now under a
-     * different, live generation) even though this instance is
-     * genuinely, fully released. Polling mere existence in that case
-     * wastes the whole retry budget above on a wait that was already
-     * over. Now polls {@link AccountLedgerLock#stillHoldsCurrentGeneration()}
-     * instead -- once it returns {@code false}, this instance's own
-     * release has genuinely concluded (whether via confirmed deletion or
-     * a confirmed, different successor generation), independent of
-     * {@code Files.notExists}'s own inability to distinguish "gone" from
-     * "replaced by someone else's new generation." See that method's own
-     * Javadoc for why {@link AccountLedgerLock#requireHeld()} cannot
-     * substitute for this. The {@code lockPath} parameter this method
-     * used to take is no longer needed -- {@code lock} alone now fully
-     * determines the loop's termination condition.
-     */
-    private static void closeUntilReleased(AccountLedgerLock lock) throws InterruptedException {
-        for (int attempt = 0; attempt < 40; attempt++) {
-            lock.close();
-            if (!lock.stillHoldsCurrentGeneration()) {
-                return;
-            }
-            Thread.sleep(50);
-        }
-        // Not treated as a hard failure here -- if this instance's own
-        // generation is genuinely still present after this many attempts,
-        // this test's own final assertFalse(Files.exists(lockPath)) below
-        // is what actually judges it, with a real, meaningful signal
-        // rather than a single-shot race against a known transient
-        // condition.
     }
 
     /**
@@ -234,7 +175,7 @@ class AccountLedgerLockTest {
     void requireHeldThrowsAfterTheLockIsGenuinelyClosed(@TempDir Path tempDir) throws InterruptedException {
         Path lockPath = tempDir.resolve("ledger.json.lock");
         AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, GENEROUS_STALE_THRESHOLD, GENEROUS_RETRY_BUDGET);
-        closeUntilReleased(lock);
+        LockReleaseWait.closeUntilReleased(lock);
         assertTrue(Files.notExists(lockPath), "test setup: the lock must be genuinely, fully released before"
                 + " this test's own real subject (requireHeld on a closed instance) is exercised");
 
@@ -686,11 +627,35 @@ class AccountLedgerLockTest {
         // close() does not itself signal success/failure and can take a
         // retryable, non-final path on this project's own drvfs mount (see
         // AccountLedgerLock's own class Javadoc, fourth caller-contract
-        // point) -- a single call is not sufficient proof of release, so
-        // this test's own real subject (idempotency on a REPEAT call)
-        // relies on the same closeUntilReleased helper every other real
-        // caller in this file uses to get there first.
-        closeUntilReleased(lock);
+        // point) -- a single call is not sufficient proof of release.
+        //
+        // Real Minor finding, a further real CodeRabbit review round on
+        // this PR: LockReleaseWait.closeUntilReleased's own termination
+        // condition is stillHoldsCurrentGeneration() == false, which is a
+        // real, DIFFERENT signal from closed == true (see
+        // AccountLedgerLock#isClosed()'s own Javadoc for exactly why) -- a
+        // transient READ_FAILED/EMPTY_OR_UNPARSEABLE on doClose()'s own
+        // re-verification read leaves closed false even if lockPath then
+        // happens to vanish for an unrelated reason, which
+        // stillHoldsCurrentGeneration() alone cannot tell apart from a
+        // genuine, confirmed release. This test's own real subject --
+        // whether a second close() call, once closed is GENUINELY true,
+        // is a pure no-op -- needs closed itself directly confirmed, not
+        // assumed from that related-but-different signal. Retries against
+        // AccountLedgerLock#isClosed() directly below (reusing
+        // LockReleaseWait's own retry-budget constants, not a fourth
+        // independent copy of the same numbers) rather than relying on
+        // closeUntilReleased to have established it as a side effect.
+        for (int attempt = 0; attempt < LockReleaseWait.MAX_ATTEMPTS && !lock.isClosed(); attempt++) {
+            lock.close();
+            if (!lock.isClosed()) {
+                Thread.sleep(LockReleaseWait.DELAY_MILLIS);
+            }
+        }
+        assertTrue(
+                lock.isClosed(),
+                "this instance must have genuinely reached closed == true before this test's own repeat-close-is-a"
+                        + "-no-op assertion below is meaningful");
         assertFalse(Files.exists(lockPath), "the first close() call must have deleted this instance's own lock file");
 
         // A sibling legitimately acquires a brand new generation at the
@@ -700,9 +665,9 @@ class AccountLedgerLockTest {
                 lockPath,
                 "{\"pid\":999999999,\"hostname\":\"someone-else\",\"acquiredAt\":\"" + Instant.now() + "\"}");
 
-        lock.close(); // a second call on the same, already-closed instance -- closeUntilReleased above already
-        // confirmed closed is true, so this is a genuine, pure no-op (early return, zero I/O) -- unlike the first
-        // close() above, there is no retryable outcome here for a bounded retry to guard against.
+        lock.close(); // a second call on the same, already-closed instance -- closed == true is directly confirmed
+        // above (not merely assumed), so this really is a genuine, pure no-op (early return, zero I/O) -- unlike
+        // the first close() above, there is no retryable outcome here for a bounded retry to guard against.
 
         assertTrue(
                 Files.exists(lockPath),
@@ -761,7 +726,7 @@ class AccountLedgerLockTest {
         // This test's own subject is "not permanently marked closed,"
         // which closeUntilReleased's own bounded retry proves without
         // conflating it with an unrelated, single-attempt timing risk.
-        closeUntilReleased(lock);
+        LockReleaseWait.closeUntilReleased(lock);
 
         assertFalse(
                 Files.exists(lockPath),
@@ -847,7 +812,7 @@ class AccountLedgerLockTest {
                     thrown.getMessage().contains(lockPath.toString()),
                     "exception must name the lock path; was: " + thrown.getMessage());
         } finally {
-            closeUntilReleased(sibling);
+            LockReleaseWait.closeUntilReleased(sibling);
         }
     }
 

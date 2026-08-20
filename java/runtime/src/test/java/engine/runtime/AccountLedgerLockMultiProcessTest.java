@@ -230,13 +230,26 @@ class AccountLedgerLockMultiProcessTest {
      * real child-process contenders it is waiting on, so it has no
      * generation of its own to compare against. File absence is the only
      * signal genuinely available to it here.
+     *
+     * <p>Real Trivial finding, yet another further real CodeRabbit review
+     * round on this PR: this method's own "40 attempts x 50ms" numbers
+     * used to be a third, independently-maintained literal copy of the
+     * identical budget {@link AccountLedgerLockTest}'s and {@code
+     * LockContenderMain}'s own {@code closeUntilReleased} each carried --
+     * three separate copies of the same real number is a real drift risk
+     * (round 56 had to widen all three by hand together). Now reuses
+     * {@link LockReleaseWait#MAX_ATTEMPTS}/{@link
+     * LockReleaseWait#DELAY_MILLIS} for the numbers themselves -- but
+     * deliberately NOT {@link LockReleaseWait#closeUntilReleased}, whose
+     * generation-based termination condition does not apply here, per
+     * this Javadoc's own paragraph immediately above.
      */
     private static boolean waitForLockFileAbsence(Path lockPath) throws InterruptedException {
-        for (int attempt = 0; attempt < 40; attempt++) {
+        for (int attempt = 0; attempt < LockReleaseWait.MAX_ATTEMPTS; attempt++) {
             if (Files.notExists(lockPath)) {
                 return true;
             }
-            Thread.sleep(50);
+            Thread.sleep(LockReleaseWait.DELAY_MILLIS);
         }
         return Files.notExists(lockPath);
     }

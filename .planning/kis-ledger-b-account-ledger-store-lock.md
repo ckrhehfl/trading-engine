@@ -5453,6 +5453,144 @@ verification (`./gradlew clean build`, the combined 3x reruns, and the
 25-round raw-harness re-run) stands as this task's own final
 verification rather than a further round-trip.
 
+### Round 58 (the actual final CodeRabbit round -- round 57's own "final
+planned round" framing above did not, in the end, hold: the
+coordinator independently requested one more review afterward, not to
+resume the automated cycle, but to check GitHub's own `reviewDecision`
+field directly, which was found stuck at `CHANGES_REQUESTED` and
+blocking merge via branch protection despite CI being fully green.
+That review landed with 2 more real, actionable findings, both
+test-only -- production code stayed clean for a 4th consecutive round)
+
+Review id `4978629530`, against commit `c1f4ea3` (round 57's fix
+commit, already pushed), landed at `2026-08-20T02:52:17Z` UTC,
+`commit_id` verified via the REST reviews API to match HEAD exactly --
+`CHANGES_REQUESTED`, 2 actionable comments. Fetched the full review
+body and both full inline comment bodies directly, confirmed to match
+the coordinator's own relayed description exactly this round (no
+discrepancy this time, unlike round 54's).
+
+- **(Minor, Maintainability) `closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall`'s
+  own comment asserted an unverified precondition.** Real, verified
+  against current code before fixing: the comment above the second
+  `lock.close()` call claimed `LockReleaseWait.closeUntilReleased`
+  (round 57's own rename) had already confirmed `closed == true`. It
+  had not -- `closeUntilReleased`'s own termination condition is `!lock
+  .stillHoldsCurrentGeneration()`, a genuinely different signal from
+  `closed`. Traced through `AccountLedgerLock#doClose()`'s own logic to
+  confirm the real gap: if `doClose()` observes a transient `READ_FAILED`
+  or `EMPTY_OR_UNPARSEABLE` on its own re-verification read, it returns
+  `false` and `closed` stays `false` -- but if `lockPath` then vanishes
+  for an unrelated reason immediately afterward,
+  `stillHoldsCurrentGeneration()` would independently become `false` and
+  `closeUntilReleased` would return, with `closed` still genuinely
+  `false`. In that (real, if narrow) window, the test's own second
+  `close()` call would NOT be the pure no-op the test's own name and
+  comment claimed -- it would run `doClose()` for real, observe the
+  fabricated sibling's `"someone-else"` content, and log a genuine
+  generation-mismatch `ERROR`. The test's own final assertions (lines
+  707-712 pre-fix) would still pass either way, since a genuine mismatch
+  never deletes -- so the test would not fail, it would simply stop
+  proving its own stated subject (idempotency specifically) without any
+  visible symptom. Fixed per the finding's own suggested resolution:
+  exposed a new package-private `AccountLedgerLock#isClosed()` accessor
+  (a pure read of the existing `closed` field, no new mutation surface,
+  no bypass of anything `close()` itself enforces -- full reasoning in
+  its own Javadoc) and rewrote the test to retry `close()` in a bounded
+  loop (reusing `LockReleaseWait.MAX_ATTEMPTS`/`DELAY_MILLIS`, not a
+  fourth independent copy of the same numbers) until `lock.isClosed()`
+  is directly, genuinely confirmed `true` -- asserted explicitly before
+  proceeding to the sibling-fabrication and second-`close()` steps, so
+  the test's own real precondition is established, not assumed. The
+  sibling generation-mismatch protection those later steps exercise is
+  completely unchanged. No new dedicated test method for `isClosed()`
+  itself -- it is a trivial, pure accessor whose correctness is directly
+  exercised by this exact test's own new `assertTrue(lock.isClosed(),
+  ...)` and its retry loop, matching this file's own established
+  pattern (e.g. round 46's `lockPath()` accessor, proven the same way).
+
+- **(Trivial, Maintainability) The identical "40 attempts x 50ms" retry
+  budget was independently duplicated in three separate places** --
+  `AccountLedgerLockTest#closeUntilReleased`, `LockContenderMain
+  #closeUntilReleased`, and `AccountLedgerLockMultiProcessTest
+  #waitForLockFileAbsence` -- confirmed by direct inspection, and by
+  this exact drift risk having already materialized once: round 56 had
+  to widen the same number by hand in all three places together, and
+  each of the three round-56 Javadoc blocks explicitly records having
+  done so ("round 56's own three sibling fixes"). Fixed by extracting a
+  new shared class, `LockReleaseWait`
+  (`java/runtime/src/test/java/engine/runtime/LockReleaseWait.java`,
+  matching this test source set's own established convention of small,
+  non-`*Test`-named shared helpers -- `FakeAccountStateProvider`,
+  `FakeExchangeAdapter`, etc.): `MAX_ATTEMPTS`/`DELAY_MILLIS` constants
+  as the single source of truth for the numbers themselves, plus a
+  `closeUntilReleased(AccountLedgerLock)` method for the two call sites
+  (`AccountLedgerLockTest`, `LockContenderMain`) whose own termination
+  condition is identical (poll `stillHoldsCurrentGeneration()`, round
+  57's own fix). `AccountLedgerLockTest`'s own private
+  `closeUntilReleased` method was deleted outright (not left as a
+  redundant wrapper) and all 5 of its own call sites updated to call
+  `LockReleaseWait.closeUntilReleased` directly; `LockContenderMain`'s
+  own private copy was deleted the same way, its 1 call site updated.
+  **Per the finding's own explicit instruction, `AccountLedgerLockMultiProcessTest
+  #waitForLockFileAbsence` keeps its own distinct file-absence
+  termination condition** -- it runs in the launching process, which
+  never itself held a lock for the four child contenders it waits on,
+  so it has no generation to compare against, a real structural
+  difference from the other two, not an oversight -- but now reuses
+  `LockReleaseWait.MAX_ATTEMPTS`/`DELAY_MILLIS` for its own loop bound
+  and sleep duration rather than a third independent literal copy.
+  No new/modified test methods for either helper-consolidation change --
+  every existing test that exercised `closeUntilReleased`'s or
+  `waitForLockFileAbsence`'s own retry-until-condition behavior still
+  exercises the identical observable behavior through the new shared
+  code path.
+
+Re-ran after the fixes: `./gradlew clean build` -- green, **474 tests, 0
+failures, 0 errors** project-wide (unchanged count -- a new accessor, a
+strengthened existing test's own precondition-establishing logic, and a
+pure extract-shared-helper refactor with zero observable-behavior
+change at any of the three call sites; no new or removed test methods).
+`AccountLedgerLockTest` and `AccountLedgerLockMultiProcessTest` reran 3
+additional explicit combined times (`--rerun-tasks`), stable.
+
+**Raw stress harness re-run, warranted this round**: `LockContenderMain`'s
+own call site changed (now calls `LockReleaseWait.closeUntilReleased`
+instead of its own now-deleted private method) -- functionally
+identical behavior, but a real change to the raw harness's own driver
+code, the same situation rounds 52/56/57 already established warrants
+a re-run. The scratchpad's own classpath and driver script from round
+57 survived this round (no environment restart between 57 and 58,
+unlike the 56-to-57 gap), reused directly against this round's freshly
+recompiled `build/classes/java/{main,test}` directories, confirmed via
+a sanity-check round before the full 25. **25/25 rounds exactly
+correct** (1,200 more individual lock acquisitions, zero lost
+updates), bringing the task-wide raw-harness total to **555 clean
+rounds, 26,640 individual lock acquisitions, zero lost updates**. The
+`"ATOMIC_MOVE unavailable"` warning check repeated -- zero occurrences
+again across all 25 rounds.
+
+**This really is the final round of this PR's CodeRabbit review cycle
+-- per an explicit joint operator/coordinator decision communicated
+this round, not merely restated from round 57's own (as it turned out,
+premature) framing.** No further `@coderabbitai full review` is
+requested by either the coordinator or this agent after this round's
+push. The coordinator will handle unblocking the PR for merge
+independently (a manual review-dismiss on GitHub, given `reviewDecision`
+was the actual blocker, not a CI or CodeRabbit-status problem) rather
+than chasing a further automated review cycle -- consistent with
+production code having now stayed clean across three consecutive real
+review rounds. Round 55 was the last review round with a genuine
+production-code finding (the `allocatedVirtualCapital`-increase check
+in `AccountLedgerStore.java`); round 54 before it was already
+test-only (the `fixtureMapper()` dedup), and every finding in rounds
+56, 57, and 58 has been entirely test/harness-infrastructure -- the two
+small `AccountLedgerLock.java` changes in rounds 57 and 58
+(`stillHoldsCurrentGeneration()`'s visibility widening, the new
+`isClosed()` accessor) were both pure, additive, no-behavior-change
+exposures of existing internal state, made specifically to let a *test*
+observe a signal correctly, not fixes to a production-logic bug.
+
 ## Verification
 
 - `./gradlew :runtime:compileTestJava` (before implementing the ledger
@@ -5746,7 +5884,16 @@ verification rather than a further round-trip.
   `@SuppressWarnings("PMD.UnusedLocalVariable")` addition and a
   round-56-self-fix comment correction; the existing contention test's
   own final assertions are what actually judge release, unaffected by
-  which internal signal `closeUntilReleased` polls).
+  which internal signal `closeUntilReleased` polls); 19/19 after round
+  58's (no new/modified test methods -- this file's own private
+  `closeUntilReleased` method deleted outright, all 5 call sites now
+  call the new shared `LockReleaseWait.closeUntilReleased` instead
+  (identical observable behavior); `closeIsIdempotentAndNeverReExaminesTheFileOnARepeatCall`
+  strengthened in place to directly confirm `closed == true` via the
+  new `AccountLedgerLock#isClosed()` accessor before its own repeat-
+  close assertions, rather than assuming `closeUntilReleased` already
+  established it -- an existing test's own logic tightened, not a new
+  test method).
 - `./gradlew :runtime:test --tests
   "engine.runtime.AccountLedgerLockMultiProcessTest"` — **failed for
   real** on the first run (19 vs. expected 20 — see "The real finding"
@@ -5848,7 +5995,13 @@ verification rather than a further round-trip.
   file was a comment-only Javadoc addition to `waitForLockFileAbsence`
   disclosing why it was deliberately left on the mere-file-absence check
   rather than changed the same way as its two `closeUntilReleased`
-  siblings, no behavior change).
+  siblings, no behavior change), and **3 more times** after round 58 (1
+  part of the full `clean build`, plus 3 further explicit combined
+  `--rerun-tasks` runs together with `AccountLedgerLockTest` -- this
+  round's own only change to this file was its `waitForLockFileAbsence`
+  loop bound switching from hardcoded `40`/`50` literals to the new
+  shared `LockReleaseWait.MAX_ATTEMPTS`/`DELAY_MILLIS` constants,
+  identical values, no behavior change).
 - A raw, non-Gradle stress harness (`LockContenderMain` launched directly
   via `ProcessBuilder`-equivalent manual invocation, bypassing Gradle's
   own test-launch overhead to run many more real-process rounds in
@@ -6162,13 +6315,25 @@ verification rather than a further round-trip.
   acquisitions, zero lost updates; the `"ATOMIC_MOVE unavailable"`
   warning check repeated -- zero occurrences again), bringing the
   task-wide raw-harness total to **530 clean rounds, 25,440 individual
+  lock acquisitions, zero lost updates**. Round 58's own real fix again
+  touches `LockContenderMain.java` directly (its `closeUntilReleased`
+  call site now calls the new shared `LockReleaseWait.closeUntilReleased`,
+  functionally identical behavior but a real change to the raw harness's
+  own driver code), so it was re-run again -- the scratchpad's own
+  classpath and driver script survived this round (no environment
+  restart between 57 and 58), reused directly against this round's
+  freshly recompiled classes, confirmed via a sanity-check round before
+  the full 25: **25/25 rounds exactly correct** (1,200 more individual
+  lock acquisitions, zero lost updates; the `"ATOMIC_MOVE unavailable"`
+  warning check repeated -- zero occurrences again), bringing the
+  task-wide raw-harness total to **555 clean rounds, 26,640 individual
   lock acquisitions, zero lost updates**.
 - `./gradlew :runtime:test` (full module suite) — green, confirmed 3
   times (`--rerun-tasks`) before round 1's review, once more after round
   1, part of the full `clean build` runs after rounds 2, 3, 4, 5, 6, 7,
   8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
   26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43,
-  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, and 57 (plus round 27's own
+  44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, and 58 (plus round 27's own
   4 additional explicit `AccountLedgerLockMultiProcessTest` reruns and 3
   additional explicit `AccountLedgerStoreTest`-new-test reruns; round
   28's own 3 additional explicit `AccountLedgerStoreTest` reruns; round
@@ -6261,7 +6426,12 @@ verification rather than a further round-trip.
   `AccountLedgerLockTest`, `AccountLedgerLockMultiProcessTest`, and
   `AccountLedgerStoreTest` together, plus its own 25-round raw stress
   harness re-run (this round's own real fix again touched
-  `LockContenderMain.java` directly), all noted above).
+  `LockContenderMain.java` directly); round 58's own 3 additional
+  explicit combined reruns of `AccountLedgerLockTest` and
+  `AccountLedgerLockMultiProcessTest` together, plus its own 25-round
+  raw stress harness re-run (this round's own real fix again touched
+  `LockContenderMain.java` directly, via the new shared
+  `LockReleaseWait`), all noted above).
 - `./gradlew clean build` (full six-module suite, clean, not incremental)
   — **BUILD SUCCESSFUL**. Summed real JUnit XML reports across every
   module (`schemas`, `oms`, `risk`, `execution`, `exchange`, `runtime`):
@@ -6287,7 +6457,7 @@ verification rather than a further round-trip.
   round 49's + 0 net-new from round 50's + 0 net-new from round 51's +
   0 net-new from round 52's + 0 net-new from round 53's + 0 net-new from
   round 54's + 3 from round 55's + 0 net-new from round 56's + 0
-  net-new from round 57's).
+  net-new from round 57's + 0 net-new from round 58's).
 - PR to be opened, not merged — per the governing task brief and
   CLAUDE.md's Auto-merge Policy, this is Java runtime/Risk-Gateway-
   adjacent code and requires explicit human sign-off regardless of
