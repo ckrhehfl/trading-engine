@@ -176,6 +176,38 @@ class PaperTradingAppTest {
         assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveKisSubmissionMarkersPath("."));
     }
 
+    /**
+     * {@link PaperTradingApp#resolveAccountLedgerPath} is deliberately keyed
+     * by {@code (venue, accountId)}, not {@code symbol} -- unlike {@link
+     * #resolveKisSubmissionMarkersPathDiffersBySymbol} above, this ledger is
+     * meant to be <b>shared</b> across every {@code kis-paper} process
+     * trading different symbols against the same real KIS account (see the
+     * governing plan's "Shared KIS account risk ledger" section). Same
+     * account, different symbol must resolve to the SAME path; different
+     * account must resolve to a different one.
+     */
+    @Test
+    void resolveAccountLedgerPathIsKeyedByVenueAndAccountNotSymbol() {
+        Path forOneAccount = PaperTradingApp.resolveAccountLedgerPath("KIS", "12345678");
+        Path forSameAccountAgain = PaperTradingApp.resolveAccountLedgerPath("KIS", "12345678");
+        Path forADifferentAccount = PaperTradingApp.resolveAccountLedgerPath("KIS", "87654321");
+
+        assertEquals(Path.of("var", "live", "KIS-12345678-account_ledger.json"), forOneAccount);
+        assertEquals(forOneAccount, forSameAccountAgain);
+        assertEquals(Path.of("var", "live", "KIS-87654321-account_ledger.json"), forADifferentAccount);
+    }
+
+    /** Same traversal/path-separator protection as {@link #resolveKisSubmissionMarkersPathRejectsPathSeparatorsAndTraversalSegments}, applied to both {@code venue} and {@code accountId}. */
+    @Test
+    void resolveAccountLedgerPathRejectsPathSeparatorsAndTraversalSegments() {
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveAccountLedgerPath("../evil", "acct"));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveAccountLedgerPath("KIS", "../evil"));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveAccountLedgerPath("a/b", "acct"));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveAccountLedgerPath("KIS", "a\\b"));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveAccountLedgerPath(".", "acct"));
+        assertThrows(IllegalArgumentException.class, () -> PaperTradingApp.resolveAccountLedgerPath("KIS", ".."));
+    }
+
     @Test
     void resolveTickIntervalSecondsDefaultsTo300WhenRawIsNullOrBlank() {
         assertEquals(300L, PaperTradingApp.resolveTickIntervalSeconds(null));
@@ -961,6 +993,121 @@ class PaperTradingAppTest {
                 Files.exists(sharedBingxStyleMarkerFile),
                 "must not also write the bingx-vst-style shared marker name -- that would defeat the whole point of"
                         + " a venue-specific filename");
+    }
+
+    // ---- KIS shared account risk ledger (Task C): the 9-arg PriceFeed + AccountStateProvider overload ----
+
+    @Test
+    void nineArgKisConstructorRejectsNullAccountStateProvider(@TempDir Path tempDir) {
+        Path signalPath = tempDir.resolve("latest.json");
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        PaperBroker executor = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+
+        assertThrows(
+                NullPointerException.class,
+                () -> new PaperTradingApp(
+                        SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                        executor, null));
+    }
+
+    /**
+     * Mirrors {@link #constructingWithPriceFeedConstructorUsesTheInjectedOrderExecutorAndTradingCalendar}
+     * above, for the new 9-arg overload's own added {@link
+     * AccountStateProvider} parameter: proves the exact injected instance
+     * -- not {@code TradingLoop}'s own private synthetic fallback -- is
+     * what actually gets consulted, via {@link FakeAccountStateProvider}'s
+     * own call-count instrumentation (the same technique {@code
+     * TradingLoopTest} already established for this fake).
+     */
+    @Test
+    void constructingWithNineArgKisConstructorUsesTheInjectedAccountStateProvider(@TempDir Path tempDir)
+            throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+        AccountState fixedAccountState =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeAccountStateProvider accountStateProvider = new FakeAccountStateProvider(fixedAccountState);
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")), accountStateProvider);
+
+        app.runTick();
+
+        assertEquals(1, accountStateProvider.reserveCallCount(), "the injected AccountStateProvider must be consulted");
+        assertEquals(intent.intentId(), accountStateProvider.lastReservedIntent().intentId());
+    }
+
+    /**
+     * Regression test for KIS Ledger Task C's own hard requirement:
+     * {@code forKisPaper()}'s unconditional {@code killSwitch.trip()} call
+     * (see that method's own Javadoc -- it fires regardless of preflight/
+     * marker state, specifically because of the still-open KOSPI200
+     * contract-multiplier gap) must keep fully blocking new-signal
+     * submission even with a real, shared {@link SharedKisAccountLedger}
+     * wired all the way through to {@link TradingLoop} -- not merely that
+     * {@link KillSwitch#trip()} itself works (that is already covered
+     * generically elsewhere and would be true trivially). {@code
+     * forKisPaper()} itself cannot be invoked directly in a test (it reads
+     * real environment variables with no mocking framework available, and
+     * -- by this class's own deliberate, documented "no configuration
+     * surface" design -- always points at the real, hardcoded {@code
+     * KIS_PAPER_BASE_URL} host; see this class's own Javadoc, "Execution
+     * mode", and the identical, pre-existing untestability of {@code
+     * forBingXVst()} this class's own top Javadoc already discloses:
+     * "Construction/config-resolution logic is tested directly here...
+     * fromEnvironment() is deliberately a thin wrapper around the
+     * fully-testable constructor"). This test instead exercises the exact
+     * same real, production {@code PaperTradingApp}+{@code TradingLoop}+
+     * {@code KillSwitch}+{@code SharedKisAccountLedger} graph {@code
+     * forKisPaper()} wires (via the 9-arg constructor above, with a real,
+     * temp-file-backed {@link SharedKisAccountLedger}, not a fake), then
+     * replicates {@code forKisPaper()}'s own trailing {@code
+     * app.killSwitch().trip()} call verbatim -- proving the trip genuinely
+     * prevents the real signal-processing path from ever reaching {@code
+     * SharedKisAccountLedger#reserveForIntent} or producing an order, with
+     * a real ledger file genuinely present on disk throughout.
+     */
+    @Test
+    void unconditionalKillSwitchTripStillBlocksNewSignalSubmissionWithASharedLedgerPresent(@TempDir Path tempDir)
+            throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1"), null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+        Path ledgerPath = tempDir.resolve("KIS-acct-1-account_ledger.json");
+        SharedKisAccountLedger accountStateProvider =
+                SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, "KIS", "acct-1", new BigDecimal("100000"));
+        assertTrue(Files.exists(ledgerPath), "the shared ledger file must be a real, persisted file on disk");
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")), accountStateProvider);
+
+        // Mirrors forKisPaper()'s own unconditional trip, verbatim -- see
+        // that method's own Javadoc for why this must remain unconditional.
+        app.killSwitch().trip();
+
+        app.runTick();
+
+        assertTrue(app.killSwitch().isTripped());
+        assertNotNull(app.tradingLoop().lastTickAt(), "tick() itself still runs (fill polling), only new-signal processing is gated");
+        assertTrue(
+                app.tradingLoop().submittedOrderIds().isEmpty(),
+                "no order may be submitted while the kill switch is tripped, even with a real signal available and a"
+                        + " real shared ledger present");
+        assertTrue(
+                app.orderStore().findByClientOrderId(intent.intentId()).isEmpty(),
+                "the pending signal must never have reached OrderPipeline/OrderStore at all");
     }
 
     /**
