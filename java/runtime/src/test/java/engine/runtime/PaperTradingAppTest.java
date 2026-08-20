@@ -32,6 +32,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -1108,6 +1109,129 @@ class PaperTradingAppTest {
         assertTrue(
                 app.orderStore().findByClientOrderId(intent.intentId()).isEmpty(),
                 "the pending signal must never have reached OrderPipeline/OrderStore at all");
+    }
+
+    // ---- KIS shared account risk ledger (Task D): AccountLedgerReconciler gating in runTick() ----
+
+    /**
+     * {@code simulated}/{@code bingx-vst} (the 4-arg and {@code
+     * OrderExecutor}-accepting constructors) and the two other, reconciler-
+     * less KIS constructors (the {@code PriceFeed} 8-arg and {@code
+     * PriceFeed}+{@code AccountStateProvider} 9-arg overloads) must all
+     * leave {@link PaperTradingApp#accountLedgerReconciler()} {@link
+     * Optional#empty()} -- a structural fact, not merely "looks unchanged":
+     * there is no code path inside any of these constructor bodies that
+     * could ever populate it, since only the new 11-arg overload accepts an
+     * {@link AccountLedgerReconciler} at all.
+     */
+    @Test
+    void nonKisLedgerConstructorsAlwaysLeaveAccountLedgerReconcilerEmpty(@TempDir Path tempDir) {
+        Path signalPath = tempDir.resolve("latest.json");
+
+        PaperTradingApp simulated = new PaperTradingApp(SYMBOL, "http://localhost:1", signalPath, 60);
+        assertEquals(Optional.empty(), simulated.accountLedgerReconciler());
+
+        PaperTradingApp bingxVstStyle = new PaperTradingApp(
+                SYMBOL, "http://localhost:1", signalPath, 60, tempDir.resolve("reports-vst"), Clock.systemUTC(),
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
+        assertEquals(Optional.empty(), bingxVstStyle.accountLedgerReconciler());
+
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+        PaperTradingApp kisWithoutLedger = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports-kis8"), Clock.systemUTC(), calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")));
+        assertEquals(Optional.empty(), kisWithoutLedger.accountLedgerReconciler());
+
+        AccountState fixedAccountState =
+                new AccountState(new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO);
+        FakeAccountStateProvider accountStateProvider = new FakeAccountStateProvider(fixedAccountState);
+        PaperTradingApp kisWithLedgerNoReconciler = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports-kis9"), Clock.systemUTC(), calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")), accountStateProvider);
+        assertEquals(Optional.empty(), kisWithLedgerNoReconciler.accountLedgerReconciler());
+    }
+
+    /**
+     * Contrast case to the test above, proving the gate is real and
+     * reachable, not merely present-but-dead code: the new 11-arg
+     * constructor populates {@link PaperTradingApp#accountLedgerReconciler()},
+     * and {@link PaperTradingApp#runTick()} actually drives a real {@link
+     * AccountLedgerReconciler} pass through it once a UTC day boundary is
+     * crossed -- proven via {@link AccountLedgerReconciler#reconciliationPassCount()},
+     * not merely "no exception was thrown."
+     */
+    @Test
+    void elevenArgKisConstructorPopulatesAccountLedgerReconcilerAndRunTickInvokesItAcrossADayBoundary(
+            @TempDir Path tempDir) {
+        Path signalPath = tempDir.resolve("latest.json"); // never written -- irrelevant to this test
+        Path ledgerPath = tempDir.resolve("KIS-acct-recon-account_ledger.json");
+        SharedKisAccountLedger accountStateProvider =
+                SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, "KIS", "acct-recon", new BigDecimal("100000"));
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnPositions(List.of());
+        KillSwitch killSwitch = new KillSwitch();
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+        AccountLedgerReconciler reconciler = new AccountLedgerReconciler(
+                ledgerPath, "KIS", "acct-recon", new BigDecimal("100000"), adapter, killSwitch, clock);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), clock, calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")), accountStateProvider, killSwitch,
+                reconciler);
+
+        assertTrue(app.accountLedgerReconciler().isPresent());
+        assertSame(reconciler, app.accountLedgerReconciler().get());
+        assertSame(
+                killSwitch,
+                app.killSwitch(),
+                "the externally-built KillSwitch passed to the constructor must be the exact same instance"
+                        + " TradingLoop itself checks -- otherwise AccountLedgerReconciler tripping its own"
+                        + " reference would never actually block anything");
+
+        app.runTick(); // first call ever -- seeds the reconciler's own day-tracking state, no pass yet
+        assertEquals(0, reconciler.reconciliationPassCount());
+
+        clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+        app.runTick(); // crosses a UTC day boundary -- must invoke a real reconciliation pass
+        assertEquals(1, reconciler.reconciliationPassCount());
+    }
+
+    /**
+     * {@link AccountLedgerReconciler#runOnUtcDayBoundary()} throwing must
+     * never propagate out of {@link PaperTradingApp#runTick()} -- an
+     * uncaught exception from a {@code scheduleAtFixedRate} task would
+     * silently cancel every future execution of the whole scheduled loop.
+     */
+    @Test
+    void runTickCatchesAndLogsAnAccountLedgerReconciliationFailureRatherThanPropagatingIt(@TempDir Path tempDir) {
+        Path signalPath = tempDir.resolve("latest.json");
+        Path ledgerPath = tempDir.resolve("KIS-acct-recon-fail-account_ledger.json");
+        SharedKisAccountLedger accountStateProvider = SharedKisAccountLedger.bootstrapOrLoad(
+                ledgerPath, "KIS", "acct-recon-fail", new BigDecimal("100000"));
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnPositions(List.of());
+        KillSwitch killSwitch = new KillSwitch();
+        MutableClock clock = new MutableClock(Instant.parse("2026-08-07T00:05:00Z"));
+        AccountLedgerReconciler reconciler = new AccountLedgerReconciler(
+                ledgerPath, "KIS", "acct-recon-fail", new BigDecimal("100000"), adapter, killSwitch, clock);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), clock, calendar,
+                new PaperBroker(new BigDecimal("5"), new BigDecimal("2")), accountStateProvider, killSwitch,
+                reconciler);
+
+        app.runTick(); // seeds the reconciler's own day tracking (day 1) -- no pass yet
+        clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
+        adapter.willFailPositionsWith(new RuntimeException("simulated getPositions failure"));
+
+        app.runTick(); // must not throw, even though the reconciler's own pass fails
+
+        assertEquals(0, reconciler.reconciliationPassCount(), "the failed pass must not count as completed");
+        assertNotNull(app.tradingLoop().lastTickAt(), "the rest of the tick must still have run normally");
     }
 
     /**

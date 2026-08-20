@@ -14,6 +14,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
@@ -241,6 +242,19 @@ public final class PaperTradingApp {
      * those modes could ever end up with a different calendar.
      */
     private final TradingCalendar tradingCalendar;
+    /**
+     * KIS shared account risk ledger, Task D -- periodic real-account
+     * reconciliation. Populated only by the KIS-specific 11-arg constructor
+     * (see {@link #PaperTradingApp(String, PriceFeed, Path, long, Path,
+     * Clock, TradingCalendar, OrderExecutor, AccountStateProvider,
+     * KillSwitch, AccountLedgerReconciler)}, used only by {@link
+     * #forKisPaper}); every other constructor leaves this {@link
+     * Optional#empty()}, which is what keeps {@code simulated}/{@code
+     * bingx-vst} (and the two other, reconciler-less KIS constructors)
+     * provably unaffected by this field's introduction -- see {@link
+     * #runTick()}'s own Javadoc.
+     */
+    private final Optional<AccountLedgerReconciler> accountLedgerReconciler;
     private final long tickIntervalSeconds;
     private final Duration gracefulShutdownTimeout;
     private final Duration forcedShutdownTimeout;
@@ -366,6 +380,7 @@ public final class PaperTradingApp {
         FileSignalSource signalSource = new FileSignalSource(signalPath);
         BingXPriceFeed priceFeed = new BingXPriceFeed(bingxBaseUrl);
         this.killSwitch = new KillSwitch();
+        this.accountLedgerReconciler = Optional.empty();
 
         this.tradingLoop =
                 new TradingLoop(orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol);
@@ -440,6 +455,7 @@ public final class PaperTradingApp {
         FileSignalSource signalSource = new FileSignalSource(signalPath, signalPath.resolveSibling("delivered.marker"));
         BingXPriceFeed priceFeed = new BingXPriceFeed(bingxBaseUrl);
         this.killSwitch = new KillSwitch();
+        this.accountLedgerReconciler = Optional.empty();
 
         this.tradingLoop =
                 new TradingLoop(orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol);
@@ -517,6 +533,7 @@ public final class PaperTradingApp {
         FileSignalSource signalSource =
                 new FileSignalSource(signalPath, signalPath.resolveSibling("kis-delivered.marker"));
         this.killSwitch = new KillSwitch();
+        this.accountLedgerReconciler = Optional.empty();
 
         this.tradingLoop =
                 new TradingLoop(orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol);
@@ -588,6 +605,7 @@ public final class PaperTradingApp {
         FileSignalSource signalSource =
                 new FileSignalSource(signalPath, signalPath.resolveSibling("kis-delivered.marker"));
         this.killSwitch = new KillSwitch();
+        this.accountLedgerReconciler = Optional.empty();
 
         this.tradingLoop = new TradingLoop(
                 orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol,
@@ -598,6 +616,91 @@ public final class PaperTradingApp {
         log.info(
                 "PaperTradingApp constructed: symbol={} signalPath={} tickIntervalSeconds={} reportsDirectory={}"
                         + " riskTier=canary orderExecutor={} tradingCalendar={} accountStateProvider={}",
+                symbol,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                orderExecutor.getClass().getSimpleName(),
+                tradingCalendar.getClass().getSimpleName(),
+                accountStateProvider.getClass().getSimpleName());
+    }
+
+    /**
+     * KIS shared account risk ledger, Task D overload -- the same nine
+     * parameters as the {@link AccountStateProvider}-accepting constructor
+     * directly above, plus an externally-built {@link KillSwitch} (instead
+     * of always constructing a fresh one internally) and a real {@link
+     * AccountLedgerReconciler}. {@link #forKisPaper} is the only real
+     * caller.
+     *
+     * <p><b>Why an externally-built {@code KillSwitch}</b>: {@link
+     * AccountLedgerReconciler} tripping its own {@code KillSwitch}
+     * reference on a real mismatch only means anything if it trips the
+     * exact same {@link KillSwitch} instance {@code TradingLoop} itself
+     * checks on every tick -- and {@link
+     * #forKisPaper}'s own startup reconciliation pass must run before the
+     * ledger is handed to this constructor at all (see {@link
+     * AccountLedgerReconciler}'s own Javadoc, "Cadence"), i.e. before this
+     * class could otherwise build one internally. Threading the same
+     * instance through both is the only way to satisfy that.
+     *
+     * <p>The 9-arg overload directly above is completely untouched by this
+     * addition -- every one of its own existing tests are unaffected (zero
+     * test-file diff), matching this codebase's established "new overload,
+     * not a modified existing one" precedent.
+     */
+    PaperTradingApp(
+            String symbol,
+            PriceFeed priceFeed,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock,
+            TradingCalendar tradingCalendar,
+            OrderExecutor orderExecutor,
+            AccountStateProvider accountStateProvider,
+            KillSwitch killSwitch,
+            AccountLedgerReconciler accountLedgerReconciler) {
+        Objects.requireNonNull(symbol, "symbol is required");
+        Objects.requireNonNull(priceFeed, "priceFeed is required");
+        Objects.requireNonNull(signalPath, "signalPath is required");
+        Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
+        Objects.requireNonNull(clock, "clock is required");
+        Objects.requireNonNull(tradingCalendar, "tradingCalendar is required");
+        Objects.requireNonNull(orderExecutor, "orderExecutor is required");
+        Objects.requireNonNull(accountStateProvider, "accountStateProvider is required");
+        Objects.requireNonNull(killSwitch, "killSwitch is required");
+        Objects.requireNonNull(accountLedgerReconciler, "accountLedgerReconciler is required");
+        if (tickIntervalSeconds <= 0) {
+            throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
+        }
+        this.tickIntervalSeconds = tickIntervalSeconds;
+        this.gracefulShutdownTimeout = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT;
+        this.forcedShutdownTimeout = DEFAULT_FORCED_SHUTDOWN_TIMEOUT;
+        this.clock = clock;
+        this.tradingCalendar = tradingCalendar;
+
+        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        this.orderStore = new OrderStore();
+        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
+        this.orderExecutor = orderExecutor;
+        // "kis-delivered.marker" -- same reasoning as the 9-arg overload
+        // directly above, see that constructor's own Javadoc.
+        FileSignalSource signalSource =
+                new FileSignalSource(signalPath, signalPath.resolveSibling("kis-delivered.marker"));
+        this.killSwitch = killSwitch;
+        this.accountLedgerReconciler = Optional.of(accountLedgerReconciler);
+
+        this.tradingLoop = new TradingLoop(
+                orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol,
+                accountStateProvider);
+        this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
+        this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
+
+        log.info(
+                "PaperTradingApp constructed: symbol={} signalPath={} tickIntervalSeconds={} reportsDirectory={}"
+                        + " riskTier=canary orderExecutor={} tradingCalendar={} accountStateProvider={}"
+                        + " accountLedgerReconciler=present",
                 symbol,
                 signalPath,
                 tickIntervalSeconds,
@@ -782,10 +885,11 @@ public final class PaperTradingApp {
 
     /**
      * Builds the real {@code kis-paper}-mode graph -- mirrors {@link
-     * #forBingXVst}'s shape (real adapter -> real preflight -> submission-
-     * marker resolution -> {@link ExchangeOrderExecutor} -> construct ->
-     * trip kill switch if needed -> log without credentials), not its
-     * specific logic (see {@link KisPreflight}'s own Javadoc for why it
+     * #forBingXVst}'s shape (real adapter -> real preflight -> shared
+     * account ledger bootstrap-or-load -> real-account reconciliation ->
+     * submission-marker resolution -> {@link ExchangeOrderExecutor} ->
+     * construct -> trip kill switch if needed -> log without credentials),
+     * not its specific logic (see {@link KisPreflight}'s own Javadoc for why it
      * can't mirror {@link VstPreflight}'s asset-name gate). A real {@link
      * KisAdapter} and {@link KisPriceFeed} share one {@link
      * KisTokenProvider} (see {@code KisPriceFeed}'s own Javadoc for why
@@ -801,6 +905,19 @@ public final class PaperTradingApp {
      * System.getenv} into local variables only ever passed to {@link
      * KisTokenProvider}/{@link KisAdapter}'s constructors, never into a log
      * statement.
+     *
+     * <p><b>Shared account risk ledger and reconciliation (KIS Ledger Tasks
+     * C/D)</b>: right after {@link KisPreflight#run} succeeds, {@link
+     * SharedKisAccountLedger#bootstrapOrLoad} bootstraps-or-loads the shared
+     * ledger, then a real {@link AccountLedgerReconciler} runs one
+     * reconciliation pass against the real account (via {@link
+     * AccountLedgerReconciler#runStartupReconciliation()}) before that
+     * ledger is ever handed to this class's own constructor -- see {@link
+     * AccountLedgerReconciler}'s own Javadoc for exactly what that pass
+     * compares and does on a mismatch. The same {@link AccountLedgerReconciler}
+     * instance is threaded through to {@link #runTick()} (via the 11-arg
+     * constructor overload) so the ongoing, once-per-UTC-day reconciliation
+     * keeps running for as long as this process does.
      *
      * <p><b>Three real gaps, flagged across three rounds of real CodeRabbit
      * review of the PR that added this method.</b> Two are fixed directly;
@@ -901,6 +1018,25 @@ public final class PaperTradingApp {
         SharedKisAccountLedger accountStateProvider =
                 SharedKisAccountLedger.bootstrapOrLoad(accountLedgerPath, "KIS", accountNo, preflight.balance().balance());
 
+        // Shared KIS account risk ledger (KIS Ledger Task D) -- real-account
+        // reconciliation. Built externally (not via PaperTradingApp's own
+        // internal `new KillSwitch()`) because this pass must run right now,
+        // before the ledger is handed to TradingLoop's constructor below --
+        // see AccountLedgerReconciler's own Javadoc, "Cadence", and this
+        // class's 11-arg KIS constructor's own Javadoc for why the same
+        // KillSwitch instance has to be threaded through both. defaultAllocatedCapital
+        // reuses preflight.balance().balance() -- the exact value
+        // bootstrapOrLoad above was already given, and its own fail-closed
+        // check already proved the persisted allocatedVirtualCapital does
+        // not exceed it, so reusing it here can never trip
+        // AccountLedgerStore.load's "stored value exceeds configured
+        // default" check.
+        KillSwitch killSwitch = new KillSwitch();
+        AccountLedgerReconciler accountLedgerReconciler = new AccountLedgerReconciler(
+                accountLedgerPath, "KIS", accountNo, preflight.balance().balance(), adapter, killSwitch,
+                Clock.systemUTC());
+        accountLedgerReconciler.runStartupReconciliation();
+
         SubmissionMarkerStore markerStore = new SubmissionMarkerStore(resolveKisSubmissionMarkersPath(symbol));
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
         boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
@@ -917,7 +1053,9 @@ public final class PaperTradingApp {
                 Clock.systemUTC(),
                 new KrxMarketCalendar(),
                 orderExecutor,
-                accountStateProvider);
+                accountStateProvider,
+                killSwitch,
+                accountLedgerReconciler);
 
         // Unconditionally tripped, not only on a preflight/marker problem
         // (a real CodeRabbit review finding, tied directly to this method's
@@ -1157,9 +1295,24 @@ public final class PaperTradingApp {
      * class's own "a single tick's failure must never propagate"
      * philosophy) since it runs outside {@code tick()}'s own error
      * handling in this branch.
+     *
+     * <p><b>KIS shared account risk ledger, Task D</b>: {@link
+     * #accountLedgerReconciler}, when present, is consulted on every call
+     * via {@link AccountLedgerReconciler#runOnUtcDayBoundary()} --
+     * unconditionally, not gated on {@link #tradingCalendar}, since
+     * reconciliation is an account-health check independent of whether
+     * new-signal processing happened this tick. For {@code simulated}/
+     * {@code bingx-vst} (and the two other, reconciler-less KIS
+     * constructors) {@link #accountLedgerReconciler} is always {@link
+     * Optional#empty()}, so this is a provably inert no-op for them -- see
+     * that field's own Javadoc. Wrapped in its own {@code try}/{@code
+     * catch}, same reasoning as {@code pollPendingFills()} below: an
+     * uncaught exception from a {@code scheduleAtFixedRate} task would
+     * silently cancel every future execution of this whole loop.
      */
     void runTick() {
         dailyReportGenerator.beforeTick();
+        accountLedgerReconciler.ifPresent(this::runAccountLedgerReconciliationOnUtcDayBoundary);
         if (tradingCalendar.isOpen(clock.instant())) {
             tradingLoop.tick();
             Throwable error = tradingLoop.lastError();
@@ -1187,6 +1340,22 @@ public final class PaperTradingApp {
         // Runs regardless of the tick's own outcome above -- see class
         // Javadoc, "Internal consistency reconciliation".
         reconcile();
+    }
+
+    /**
+     * See {@link #runTick()}'s own Javadoc, "KIS shared account risk
+     * ledger, Task D". A single failed reconciliation pass must never
+     * propagate out of {@link #runTick()} -- {@link
+     * AccountLedgerReconciler#runOnUtcDayBoundary()} itself does not
+     * advance its own tracked day when a pass throws, so logging and
+     * returning here is sufficient for the next scheduled tick to retry.
+     */
+    private void runAccountLedgerReconciliationOnUtcDayBoundary(AccountLedgerReconciler reconciler) {
+        try {
+            reconciler.runOnUtcDayBoundary();
+        } catch (RuntimeException e) {
+            log.warn("account ledger reconciliation failed on this tick's UTC day-boundary check; will retry next scheduled tick", e);
+        }
     }
 
     /**
@@ -1313,6 +1482,16 @@ public final class PaperTradingApp {
     /** Test-only accessor (package-private) -- see {@link #tradingLoop()}'s own Javadoc. */
     OrderStore orderStore() {
         return orderStore;
+    }
+
+    /**
+     * Test-only accessor (package-private) -- see {@link #tradingLoop()}'s
+     * own Javadoc. {@link Optional#empty()} for every constructor except
+     * the KIS shared-account-risk-ledger, Task D overload -- see that
+     * field's own Javadoc.
+     */
+    Optional<AccountLedgerReconciler> accountLedgerReconciler() {
+        return accountLedgerReconciler;
     }
 
     /** Test-only accessor (package-private) -- see {@link #tradingLoop()}'s own Javadoc. */
