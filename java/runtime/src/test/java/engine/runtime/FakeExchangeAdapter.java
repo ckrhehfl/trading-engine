@@ -42,16 +42,20 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
     private volatile RuntimeException setLeverageFailure;
     private final List<LeverageCall> leverageCalls = new CopyOnWriteArrayList<>();
 
+    /** Clears any previously-scripted {@link #willFailBalanceWith} -- lets a test script a failure, then a later recovery, on the same instance. */
     void willReturnBalance(BalanceSnapshot balance) {
         this.balance = Objects.requireNonNull(balance);
+        this.balanceFailure = null;
     }
 
     void willFailBalanceWith(RuntimeException failure) {
         this.balanceFailure = Objects.requireNonNull(failure);
     }
 
+    /** Clears any previously-scripted {@link #willFailPositionsWith} -- lets a test script a failure, then a later recovery, on the same instance. */
     void willReturnPositions(List<PositionSnapshot> positions) {
         this.positions = Objects.requireNonNull(positions);
+        this.positionsFailure = null;
     }
 
     void willFailPositionsWith(RuntimeException failure) {
