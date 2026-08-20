@@ -58,6 +58,33 @@ import org.slf4j.LoggerFactory;
  * <= 0} rejection handles the actual rejection, given an ordinary,
  * unmodified snapshot of the ledger's current equity.
  *
+ * <p><b>Over-budget reservations are declined outright, not merely
+ * floored after the fact.</b> {@link AccountLedgerLock} alone only
+ * prevents a <i>lost update</i> (two concurrent callers clobbering each
+ * other's write) -- it does not, by itself, prevent the <i>sum</i> of
+ * sequentially-persisted pessimistic reservations from exceeding {@code
+ * allocatedVirtualCapital}, since each {@link #reserveForIntent} call is
+ * its own independent critical section and a pessimistic reservation is
+ * deliberately sized to the full pre-clamp {@code intent.quantity()} (see
+ * {@link AccountStateProvider}'s own Javadoc), not to whatever capital
+ * happens to remain. Before persisting, {@link #reserveForIntent}
+ * computes the hypothetical combined total the candidate reservation
+ * would produce (after {@link #reserveMonotonic}'s own merge) and, if
+ * that total would exceed {@code allocatedVirtualCapital}, declines to
+ * persist it at all -- same treatment as the alarm-tripped/non-positive-
+ * price cases above: a floored near-zero-equity snapshot, no reservation
+ * recorded, {@code RiskGateway}'s own unmodified clamped-quantity-rounds-
+ * to-zero path doing the actual rejecting. This is what keeps the
+ * <i>on-disk</i> committed total within budget at every persisted state,
+ * not just once outstanding reservations are eventually confirmed/
+ * released back down.
+ *
+ * <p><b>Account-identifier logging</b>: no log statement in this class
+ * ever includes {@code ledgerPath} or {@code accountId} -- both either
+ * are, or embed, a real KIS account identifier, and CLAUDE.md's
+ * Non-negotiable Rules forbid raw account identifiers in logs. {@code
+ * venue} alone is not account-identifying and is logged freely.
+ *
  * <p><b>Idempotency</b>: {@link #reserveForIntent} never reduces an
  * existing reservation for a repeated {@code intentId} -- see {@link
  * #reserveMonotonic} and {@link AccountStateProvider}'s own Javadoc for
@@ -183,11 +210,13 @@ final class SharedKisAccountLedger implements AccountStateProvider {
         try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, DEFAULT_STALE_THRESHOLD, DEFAULT_RETRY_BUDGET)) {
             AccountLedger ledger = AccountLedgerStore.load(ledgerPath, venue, accountId, realBalance, lock);
             AccountLedgerStore.persist(ledgerPath, ledger, lock);
+            // Deliberately omits ledgerPath/accountId -- both embed or are a
+            // real KIS account identifier, and CLAUDE.md's Non-negotiable
+            // Rules forbid raw account identifiers in logs. venue alone is
+            // not account-identifying.
             log.info(
-                    "shared account ledger ready at {} for ({}, {}): allocatedVirtualCapital={} existingReservations={}",
-                    ledgerPath,
+                    "shared account ledger ready for venue={}: allocatedVirtualCapital={} existingReservations={}",
                     venue,
-                    accountId,
                     ledger.allocatedVirtualCapital(),
                     ledger.reservations().size());
             return new SharedKisAccountLedger(ledgerPath, venue, accountId, ledger.allocatedVirtualCapital());
@@ -202,11 +231,10 @@ final class SharedKisAccountLedger implements AccountStateProvider {
         try (AccountLedgerLock lock = AccountLedgerLock.acquire(lockPath, staleThreshold, retryBudget)) {
             AccountLedger ledger = AccountLedgerStore.load(ledgerPath, venue, accountId, defaultAllocatedCapital, lock);
             if (ledger.reconciliationAlarmTrippedAt() != null) {
+                // venue/accountId deliberately omitted -- see class Javadoc's account-identifier logging note.
                 log.warn(
-                        "reserveForIntent: reconciliation alarm is tripped for ({}, {}) (reason={}) -- returning a"
-                                + " floored near-zero-equity snapshot without creating a reservation for intent {}",
-                        venue,
-                        accountId,
+                        "reserveForIntent: reconciliation alarm is tripped (reason={}) -- returning a floored"
+                                + " near-zero-equity snapshot without creating a reservation for intent {}",
                         ledger.reconciliationAlarmReason(),
                         intent.intentId());
                 return flooredNearZeroEquitySnapshot(ledger);
@@ -221,6 +249,36 @@ final class SharedKisAccountLedger implements AccountStateProvider {
             LedgerReservation candidate = new LedgerReservation(
                     intent.intentId(), intent.symbol(), ProcessHandle.current().pid(), HOSTNAME, notional, Instant.now());
             List<LedgerReservation> updatedReservations = reserveMonotonic(ledger.reservations(), candidate);
+            BigDecimal hypotheticalTotal = totalNotional(updatedReservations);
+            if (hypotheticalTotal.compareTo(ledger.allocatedVirtualCapital()) > 0) {
+                // Real safety property, not merely defensive: the lock alone
+                // only prevents a LOST update (two concurrent callers
+                // clobbering each other's write) -- it does not by itself
+                // prevent the SUM of sequentially-persisted pessimistic
+                // reservations from exceeding allocatedVirtualCapital, since
+                // each reserveForIntent call is its own independent critical
+                // section and a pessimistic reservation is deliberately
+                // sized to the full pre-clamp intent.quantity() (see
+                // AccountStateProvider's own Javadoc), not to whatever
+                // capital happens to remain. Declining to persist this
+                // candidate entirely -- rather than persisting it and
+                // relying solely on the equity floor below to eventually
+                // get corrected via confirmReservation/releaseReservation --
+                // is what actually keeps the ON-DISK committed total within
+                // allocatedVirtualCapital at every persisted state, not just
+                // at quiescence. Matches the existing alarm-tripped/non-
+                // positive-price cases above: no reservation, a floored
+                // near-zero snapshot, RiskGateway's own unmodified clamped-
+                // quantity-rounds-to-zero path does the actual rejecting.
+                log.warn(
+                        "reserveForIntent: declining to reserve for intent {} -- hypothetical combined committed"
+                                + " notional {} would exceed allocatedVirtualCapital {}; returning a floored"
+                                + " near-zero-equity snapshot instead of persisting an over-budget reservation",
+                        intent.intentId(),
+                        hypotheticalTotal,
+                        ledger.allocatedVirtualCapital());
+                return flooredNearZeroEquitySnapshot(ledger);
+            }
             AccountLedger updated = withReservations(ledger, updatedReservations);
             AccountLedgerStore.persist(ledgerPath, updated, lock);
             return accountStateFor(updated);
@@ -252,13 +310,13 @@ final class SharedKisAccountLedger implements AccountStateProvider {
                 }
             }
             if (!found) {
+                // venue/accountId deliberately omitted -- see class Javadoc's account-identifier logging note.
                 log.warn(
-                        "confirmReservation: no matching reservation found for intentId {} in ledger ({}, {}) --"
-                                + " nothing to confirm (expected only if reserveForIntent's own reservation was"
-                                + " skipped, e.g. a tripped reconciliation alarm or a non-positive effective price)",
-                        intentId,
-                        venue,
-                        accountId);
+                        "confirmReservation: no matching reservation found for intentId {} -- nothing to confirm"
+                                + " (expected only if reserveForIntent's own reservation was skipped, e.g. a"
+                                + " tripped reconciliation alarm, a non-positive effective price, or an over-budget"
+                                + " decline)",
+                        intentId);
                 return;
             }
             AccountLedger updated = withReservations(ledger, updatedReservations);
@@ -274,12 +332,8 @@ final class SharedKisAccountLedger implements AccountStateProvider {
             AccountLedger ledger = AccountLedgerStore.load(ledgerPath, venue, accountId, defaultAllocatedCapital, lock);
             boolean present = ledger.reservations().stream().anyMatch(r -> r.clientOrderId().equals(intentId));
             if (!present) {
-                log.debug(
-                        "releaseReservation: no matching reservation found for intentId {} in ledger ({}, {}) --"
-                                + " nothing to release",
-                        intentId,
-                        venue,
-                        accountId);
+                // venue/accountId deliberately omitted -- see class Javadoc's account-identifier logging note.
+                log.debug("releaseReservation: no matching reservation found for intentId {} -- nothing to release", intentId);
                 return;
             }
             List<LedgerReservation> updatedReservations =
@@ -334,11 +388,12 @@ final class SharedKisAccountLedger implements AccountStateProvider {
                 reservations);
     }
 
+    private static BigDecimal totalNotional(List<LedgerReservation> reservations) {
+        return reservations.stream().map(LedgerReservation::notional).reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
     private static BigDecimal computeEquity(AccountLedger ledger) {
-        BigDecimal committed = ledger.reservations().stream()
-                .map(LedgerReservation::notional)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
-        BigDecimal equity = ledger.allocatedVirtualCapital().subtract(committed);
+        BigDecimal equity = ledger.allocatedVirtualCapital().subtract(totalNotional(ledger.reservations()));
         return equity.compareTo(MIN_EQUITY) > 0 ? equity : MIN_EQUITY;
     }
 

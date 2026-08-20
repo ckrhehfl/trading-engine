@@ -204,17 +204,140 @@ class SharedKisAccountLedgerTest {
         assertEquals(new BigDecimal("8000"), afterLarger.reservations().get(0).notional());
     }
 
+    /**
+     * Real CodeRabbit review finding on this PR: the lock alone only
+     * prevents a lost update, not a sequence of independently-valid
+     * pessimistic reservations from together exceeding {@code
+     * allocatedVirtualCapital}. A second reservation whose own pessimistic
+     * notional would push the combined total over budget must be declined
+     * outright -- not persisted and relied on to self-correct later.
+     */
     @Test
-    void equityIsFlooredAtAPositiveMinimumWhenReservationsExceedAllocatedCapital(@TempDir Path tempDir) {
+    void reserveForIntentDeclinesAReservationThatWouldPushCombinedTotalOverAllocatedCapital(@TempDir Path tempDir) {
+        Path ledgerPath = tempDir.resolve("ledger.json");
+        SharedKisAccountLedger ledger =
+                SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"));
+        OrderIntent first = guardedMarketIntent(new BigDecimal("600")); // 600 * 100 = 60000
+        OrderIntent second = guardedMarketIntent(new BigDecimal("600")); // another 60000 -> 120000 combined, over budget
+
+        AccountState firstResult = ledger.reserveForIntent(first, new BigDecimal("100"));
+        AccountState secondResult = ledger.reserveForIntent(second, new BigDecimal("100"));
+
+        assertEquals(new BigDecimal("40000"), firstResult.equity());
+        assertEquals(0, BigDecimal.ONE.compareTo(secondResult.equity()), "the declined attempt must get a floored snapshot");
+        AccountLedger onDisk = loadWithLock(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"));
+        assertEquals(1, onDisk.reservations().size(), "only the first, budget-fitting reservation may be persisted");
+        assertEquals(first.intentId(), onDisk.reservations().get(0).clientOrderId());
+        BigDecimal total = onDisk.reservations().stream().map(LedgerReservation::notional).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertTrue(total.compareTo(new BigDecimal("100000")) <= 0);
+    }
+
+    /** Complement to the decline test above: a candidate that exactly fills the remaining budget must still be accepted (not over, not under-tolerant). */
+    @Test
+    void reserveForIntentAcceptsAReservationThatExactlyFillsTheRemainingBudget(@TempDir Path tempDir) {
+        Path ledgerPath = tempDir.resolve("ledger.json");
+        SharedKisAccountLedger ledger =
+                SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"));
+        OrderIntent first = guardedMarketIntent(new BigDecimal("600")); // 60000
+        OrderIntent second = guardedMarketIntent(new BigDecimal("400")); // exactly the remaining 40000
+
+        ledger.reserveForIntent(first, new BigDecimal("100"));
+        AccountState secondResult = ledger.reserveForIntent(second, new BigDecimal("100"));
+
+        assertEquals(0, BigDecimal.ONE.compareTo(secondResult.equity()), "exactly exhausting the budget floors equity, but the reservation is still accepted");
+        AccountLedger onDisk = loadWithLock(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("100000"));
+        assertEquals(2, onDisk.reservations().size());
+        BigDecimal total = onDisk.reservations().stream().map(LedgerReservation::notional).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertEquals(new BigDecimal("100000"), total);
+    }
+
+    /**
+     * Direct, {@link SharedKisAccountLedger}-level proof of the same
+     * property {@link
+     * #concurrentTradingLoopsSharingOneLedgerFileNeverExceedAllocatedVirtualCapital}
+     * proves through the full {@link TradingLoop} pipeline -- this one
+     * calls {@link SharedKisAccountLedger#reserveForIntent} directly from
+     * many real concurrent threads, deliberately bypassing {@code
+     * RiskGateway}/{@code confirmReservation}/{@code releaseReservation}
+     * entirely, so the over-budget-decline behavior above is what's
+     * actually under test, not masked by the full pipeline's own
+     * downstream clamp-and-shrink correction. Five threads each attempt to
+     * reserve exactly 40% of {@code allocatedVirtualCapital} (40000 of
+     * 100000) -- the arithmetic is deterministic regardless of arrival
+     * order: exactly two attempts can ever fit (80000 <= 100000), any
+     * further attempt (90000 &gt; wait, 3*40000=120000 &gt; 100000) is
+     * declined, so exactly 2 of the 5 reservations must succeed no matter
+     * which two.
+     */
+    @Test
+    void reserveForIntentNeverPersistsACombinedTotalOverBudgetUnderRealConcurrentAccess(@TempDir Path tempDir)
+            throws InterruptedException {
+        Path ledgerPath = tempDir.resolve("ledger.json");
+        String stressAccount = "cap-acct";
+        BigDecimal allocatedVirtualCapital = new BigDecimal("100000");
+        SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, VENUE, stressAccount, allocatedVirtualCapital);
+
+        int threadCount = 5;
+        BigDecimal quantityPerAttempt = new BigDecimal("400"); // notional 40000 each at price 100
+        BigDecimal price = new BigDecimal("100");
+
+        List<Throwable> failures = new CopyOnWriteArrayList<>();
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(threadCount);
+
+        for (int t = 0; t < threadCount; t++) {
+            Thread thread = new Thread(() -> {
+                try {
+                    startLatch.await();
+                    SharedKisAccountLedger threadLedger = new SharedKisAccountLedger(
+                            ledgerPath, VENUE, stressAccount, allocatedVirtualCapital,
+                            LOCK_STALE_THRESHOLD, Duration.ofSeconds(60));
+                    OrderIntent intent = guardedMarketIntent(quantityPerAttempt);
+                    threadLedger.reserveForIntent(intent, price);
+                } catch (Throwable e) {
+                    failures.add(e);
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+            thread.start();
+        }
+
+        startLatch.countDown();
+        assertTrue(doneLatch.await(60, TimeUnit.SECONDS), "all threads must finish within the test timeout");
+        assertTrue(failures.isEmpty(), "no thread should have failed: " + failures);
+
+        AccountLedger finalLedger = loadWithLock(ledgerPath, VENUE, stressAccount, allocatedVirtualCapital);
+        BigDecimal total = finalLedger.reservations().stream().map(LedgerReservation::notional).reduce(BigDecimal.ZERO, BigDecimal::add);
+        assertTrue(
+                total.compareTo(allocatedVirtualCapital) <= 0,
+                "combined committed notional " + total + " must never exceed allocatedVirtualCapital "
+                        + allocatedVirtualCapital);
+        assertEquals(
+                2,
+                finalLedger.reservations().size(),
+                "exactly 2 of 5 concurrent 40000-notional attempts can ever fit within a 100000 budget, regardless"
+                        + " of arrival order -- a lower count means a correct decline that shouldn't have happened,"
+                        + " a higher count means a real over-budget lost update");
+    }
+
+    @Test
+    void equityIsFlooredAtAPositiveMinimumForASingleRequestThatAloneExceedsAllocatedCapital(@TempDir Path tempDir) {
         Path ledgerPath = tempDir.resolve("ledger.json");
         SharedKisAccountLedger ledger =
                 SharedKisAccountLedger.bootstrapOrLoad(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("1000"));
         OrderIntent hugeIntent = guardedMarketIntent(new BigDecimal("1000")); // 1000 * 100 = 100000 >> 1000 allocated
 
+        // Declined outright by the over-budget check above (a single request already exceeding the whole
+        // budget can never fit) -- equity is still floored either way (this class's own contract, regardless
+        // of whether the floor is reached via a declined reservation or an accepted one that exhausts the
+        // budget -- see reserveForIntentAcceptsAReservationThatExactlyFillsTheRemainingBudget for the latter).
         AccountState result = ledger.reserveForIntent(hugeIntent, new BigDecimal("100"));
 
         assertTrue(result.equity().signum() > 0, "AccountState requires strictly positive equity");
         assertEquals(0, BigDecimal.ONE.compareTo(result.equity()));
+        AccountLedger onDisk = loadWithLock(ledgerPath, VENUE, ACCOUNT_ID, new BigDecimal("1000"));
+        assertTrue(onDisk.reservations().isEmpty(), "a single over-budget request must never be persisted");
     }
 
     // ---- confirmReservation ----
@@ -322,13 +445,20 @@ class SharedKisAccountLedgerTest {
      * additional {@code ProcessBuilder}/classpath-wiring machinery Task B's
      * own multi-process test already carries.
      *
-     * <p>Each thread mints large, aggressive orders ({@code quantity=
-     * 1,000,000} against a small allocated capital) so {@link RiskGateway}
-     * clamps every approved order down to {@code maxOrderNotionalPercent}
-     * of whatever equity the shared ledger currently reports -- this
-     * deliberately keeps every successful reservation as large as the
-     * ledger will allow at that instant, maximizing real contention on the
-     * shared budget rather than trading well within it.
+     * <p>Each thread mints aggressive orders (pessimistic notional 10% of
+     * {@code allocatedVirtualCapital} -- comfortably fits the reservation-
+     * stage over-budget check on its own, see {@link
+     * #reserveForIntentDeclinesAReservationThatWouldPushCombinedTotalOverAllocatedCapital},
+     * while still being 5x {@link RiskGateway}'s own canary-tier 2%
+     * per-order cap) so {@code RiskGateway} clamps every approved order
+     * down to {@code maxOrderNotionalPercent} of whatever equity the
+     * shared ledger currently reports -- this deliberately keeps every
+     * successful reservation as large as {@code RiskGateway} will allow at
+     * that instant, maximizing real contention on the shared budget rather
+     * than trading well within it, without every single pessimistic
+     * request being declined outright before {@code RiskGateway} ever sees
+     * it (a materially different, narrower property than this test's own
+     * subject -- see the dedicated decline tests above for that).
      */
     @Test
     void concurrentTradingLoopsSharingOneLedgerFileNeverExceedAllocatedVirtualCapital(@TempDir Path tempDir)
@@ -355,8 +485,10 @@ class SharedKisAccountLedgerTest {
                     OrderStore orderStore = new OrderStore();
                     OrderPipeline orderPipeline = new OrderPipeline(riskGateway, orderStore);
                     PaperBroker broker = new PaperBroker(BigDecimal.ZERO, BigDecimal.ZERO);
+                    // notional = 1000 * 100 = 100000 -- 10% of allocatedVirtualCapital (fits the
+                    // reservation-stage over-budget check on its own), 5x RiskGateway's own 2% cap.
                     DummySignalSource signalSource = new DummySignalSource(
-                            symbol, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1000000"), null, 1);
+                            symbol, Side.LONG, OrderType.GUARDED_MARKET, new BigDecimal("1000"), null, 1);
                     FakePriceFeed priceFeed = new FakePriceFeed(price);
                     KillSwitch killSwitch = new KillSwitch();
                     SharedKisAccountLedger threadLedger = new SharedKisAccountLedger(

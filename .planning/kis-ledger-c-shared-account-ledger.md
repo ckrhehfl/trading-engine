@@ -123,7 +123,7 @@ Two new files, one modified production file, one modified test file
   (the Task C regression test — see "Judgment calls" for why it can't
   literally invoke `forKisPaper()`).
 
-- **`SharedKisAccountLedgerTest.java`** (new, 15 tests) — unit coverage of
+- **`SharedKisAccountLedgerTest.java`** (new, 18 tests) — unit coverage of
   all three `AccountStateProvider` methods in isolation, the bootstrap/
   reuse/fail-closed paths, the equity floor, the monotonic-reservation
   rule, and the real multi-threaded concurrency stress test (see below).
@@ -321,29 +321,109 @@ argument), matching `TradingLoop.tick()`'s own call sites (which pass
 `order.get().clientOrderId()` — the same value — when recording
 `submittedOrderIds`).
 
+### 9. Real CodeRabbit review finding, fixed: the lock alone doesn't cap the combined total against `allocatedVirtualCapital`
+
+CodeRabbit's first-round review (state `CHANGES_REQUESTED`, commit
+`58cd08e`) found a genuine functional gap in the original submission's
+`reserveForIntent`: it unconditionally added the pessimistic candidate
+reservation and persisted, relying solely on the equity floor
+(`MIN_EQUITY`) plus `RiskGateway`'s own downstream clamped-quantity-
+rounds-to-zero rejection to eventually correct an over-commitment. The
+concrete failure this misses: `AccountLedgerLock` only prevents a *lost
+update* (two racing writers clobbering each other) — it does **not**
+prevent a *sequence* of independently-valid, sequentially-persisted
+pessimistic reservations from summing past `allocatedVirtualCapital`,
+since each `reserveForIntent` call is its own independent critical
+section and each reservation is deliberately sized to the full,
+un-clamped `intent.quantity()`. CodeRabbit's own example: capital
+100,000, three processes each pessimistically reserve 50,000 — even with
+perfect lock serialization (no lost update), the on-disk total could
+genuinely reach 150,000 for the window between the third persist and its
+eventual `releaseReservation` call. Given CLAUDE.md's own "never weaken
+risk limits... without explicit human approval" rule, and that this is
+literally the safety property the whole 3-task effort exists to prove
+("combined committed notional never exceeds `allocatedVirtualCapital`"),
+this was accepted as a real, valid finding, not dismissed.
+
+**Fix**: before persisting, `reserveForIntent` now computes the
+hypothetical combined total the candidate reservation would produce
+(after `reserveMonotonic`'s own merge) and, if that total would exceed
+`allocatedVirtualCapital`, declines to persist it at all — same treatment
+as the existing alarm-tripped/non-positive-price cases (a floored near-
+zero-equity snapshot, no reservation recorded, `RiskGateway`'s own
+unmodified rejection path doing the actual rejecting). This does **not**
+conflict with `AccountStateProvider`'s frozen Task A Javadoc ("must size
+the reservation to `intent.quantity()`... the full requested quantity,
+not any anticipated clamp") — that describes how a reservation is *sized
+when one is created*, not that one must always be created; declining
+outright when there's no room is the same pattern the alarm/non-positive-
+price cases already established, extended to a third condition.
+
+**A real, deliberate consequence for the original stress test**: the
+original `concurrentTradingLoopsSharingOneLedgerFileNeverExceedAllocatedVirtualCapital`
+test used an absurdly large fixed quantity (pessimistic notional
+100,000,000 against a 1,000,000 budget) specifically to force
+`RiskGateway`'s 2% clamp on every attempt. With the fix, that same
+request is declined **before ever reaching `RiskGateway`** — a single
+request whose own pre-clamp notional already exceeds the entire budget
+can never fit, by design. This is not a test bug to work around; it's
+the fix working correctly. The test was updated to a more realistic
+pessimistic notional (10% of capital — large enough to still trigger
+`RiskGateway`'s 2% clamp meaningfully, small enough to comfortably fit
+the reservation-stage check on its own) so it continues to exercise the
+intended "many concurrent orders, each aggressively clamped and shrunk"
+stress pattern rather than a degenerate "every attempt declined
+immediately" one.
+
+**New, more direct tests added**, since the full-`TradingLoop`-pipeline
+stress test alone doesn't isolate the reservation-stage cap from
+`RiskGateway`'s own separate, much narrower (2% per order) clamp:
+`reserveForIntentDeclinesAReservationThatWouldPushCombinedTotalOverAllocatedCapital`
+(sequential, single-call proof), `reserveForIntentAcceptsAReservationThatExactlyFillsTheRemainingBudget`
+(off-by-one boundary — exactly filling the budget must still be
+accepted, not just "not exceeding" declined too aggressively), and
+`reserveForIntentNeverPersistsACombinedTotalOverBudgetUnderRealConcurrentAccess`
+(direct `SharedKisAccountLedger`-level concurrency test, bypassing
+`TradingLoop`/`RiskGateway` entirely — 5 threads each attempt a fixed
+40,000-notional reservation against a 100,000 budget; the arithmetic is
+deterministic regardless of arrival order, so exactly 2 of 5 must
+succeed, asserted precisely rather than just "does not exceed").
+
+CodeRabbit's other two findings from the same review, also fixed:
+(1) a markdownlint MD040 warning (this doc's own `./gradlew build` fence
+now specifies `sh`); (2) a real account-identifier logging concern —
+`bootstrapOrLoad`'s (and every other method's) log lines used to include
+`ledgerPath` (which embeds the real KIS account number in its filename)
+and/or `accountId` directly. Per CLAUDE.md's Non-negotiable Rules ("never
+commit raw trading logs containing secrets or account identifiers"), all
+such log statements in `SharedKisAccountLedger` now omit both — `venue`
+alone (not account-identifying) is logged freely. Documented as a
+standing rule in the class's own Javadoc so a future addition to this
+class doesn't reintroduce it.
+
 ## Verification
 
 Full project build, from `/mnt/c/Dev/trading-engine/java`:
 
-```
+```sh
 ./gradlew build
 ```
 
 Result: **BUILD SUCCESSFUL**, all modules green (`runtime`, `exchange`,
 `execution`, `oms`, `risk`, `schemas`). Per-module test counts (all
-passing, 0 failures, 0 errors, 0 skipped):
+passing, 0 failures, 0 errors, 0 skipped) — re-run after the CodeRabbit-
+findings fix below (see "Judgment calls" #9):
 
 | Module | Tests |
 |---|---|
-| `runtime` | 291 |
+| `runtime` | 294 |
 | `exchange` | 63 |
 | `execution` | 51 |
 | `oms` | 30 |
 | `risk` | 28 |
 | `schemas` | 31 |
 
-`SharedKisAccountLedgerTest` alone: 15/15 passing, full suite in 3.311s
-(the concurrency stress test itself: 0.985s).
+`SharedKisAccountLedgerTest` alone: 18/18 passing, full suite in 3.2s.
 
 Confirmed directly (not just by running the suite):
 - `AccountStateProvider.java`, `AccountLedgerLock.java`,
