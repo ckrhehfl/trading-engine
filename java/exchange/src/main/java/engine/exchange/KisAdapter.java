@@ -139,7 +139,12 @@ public final class KisAdapter implements ExchangeAdapter {
     private static final String TR_ID_INQUIRE_CCNL = "VTTO5201R";
     private static final String TR_ID_INQUIRE_BALANCE = "VTFO6118R";
 
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    // Widened from 10s to 20s on real verification (2026-08-21): real KIS
+    // paper-trading responses (both /oauth2/tokenP and inquire-balance)
+    // were directly observed taking 7-10s, uncomfortably close to the
+    // original 10s timeout and causing real, intermittent
+    // HttpTimeoutExceptions against the live API, not a code bug.
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter ORDER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     // Bounded pagination for queryOrder's inquire-ccnl loop -- see that
@@ -342,6 +347,13 @@ public final class KisAdapter implements ExchangeAdapter {
         query.put("ACNT_PRDT_CD", accountProductCode);
         query.put("MGNA_DVSN", "01");
         query.put("EXCC_STAT_CD", "1");
+        // Required by KIS despite being unused here (no pagination is ever
+        // followed for this endpoint) -- confirmed via real API verification
+        // 2026-08-21: omitting either causes a real OPSQ2001 "INPUT_FIELD_NAME
+        // CTX_AREA_FK200" rejection, matching KIS's own official
+        // inquire_balance.py example, which always sends both (as FK200/NK200).
+        query.put("CTX_AREA_FK200", "");
+        query.put("CTX_AREA_NK200", "");
 
         JsonNode root = request("GET", INQUIRE_BALANCE_PATH, TR_ID_INQUIRE_BALANCE, Map.of(), query);
         if (!isSuccess(root)) {
@@ -405,6 +417,9 @@ public final class KisAdapter implements ExchangeAdapter {
         query.put("ACNT_PRDT_CD", accountProductCode);
         query.put("MGNA_DVSN", "01");
         query.put("EXCC_STAT_CD", "1");
+        // See getPositions()'s identical fields for why these are required.
+        query.put("CTX_AREA_FK200", "");
+        query.put("CTX_AREA_NK200", "");
 
         JsonNode root = request("GET", INQUIRE_BALANCE_PATH, TR_ID_INQUIRE_BALANCE, Map.of(), query);
         if (!isSuccess(root)) {
