@@ -159,9 +159,32 @@ start_symbol() {
         env_args+=("KIS_MARKET_DIVISION=$market_division")
     fi
 
+    # Real gap found and fixed after this script's own first real-KIS test
+    # run: tmux new-session's pane runs the command directly (no shell,
+    # no persistence) -- if the process crashes (as one did: KisPreflight's
+    # real getBalance() call failing with HTTP 403 from KIS itself),
+    # tmux's pane closes immediately since there's nothing left to keep it
+    # open, taking the crash output with it the moment the session (here,
+    # the only session) exits and the tmux server shuts down. Piping
+    # through `tee` into a real log file survives that -- both the live
+    # `tmux attach` view AND a persisted log for post-mortem diagnosis.
+    #
+    # Uses `bash -c 'script' "$0-arg" "$@-args"` (positional parameters,
+    # not string interpolation) specifically so no credential value is
+    # ever embedded into a shell command string -- a value containing a
+    # shell metacharacter still can't be reinterpreted as code, same
+    # guarantee this script's own header comment already documents for
+    # the plain `env KEY=value ...` argv form used elsewhere. `$0` inside
+    # the script is the log file path (bash's own convention: the first
+    # argument after the script string sets `$0`, not `$1`); `"$@"` is
+    # every KIS_*/PAPER_TRADING_* env arg.
+    local log_dir="$REPO_ROOT/var/live/reports/kis-$symbol"
+    mkdir -p "$log_dir"
+    local log_file="$log_dir/kis-paper.log"
     tmux new-session -d -s "$session" -c "$REPO_ROOT/java" \
-        env "${env_args[@]}" \
-        ./gradlew -q :runtime:runPaperTradingApp
+        bash -c 'exec env "$@" ./gradlew -q :runtime:runPaperTradingApp 2>&1 | tee -a "$0"' \
+        "$log_file" "${env_args[@]}"
+    echo "[$symbol] log: $log_file"
 }
 
 stop_symbol() {

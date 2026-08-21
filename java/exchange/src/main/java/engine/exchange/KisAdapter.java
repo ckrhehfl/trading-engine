@@ -52,6 +52,36 @@ import org.slf4j.LoggerFactory;
  * empirically verified," until exercised against a real KIS paper
  * account (Task 4's own real-verification step).
  *
+ * <p><b>Real verification against KIS's live paper-trading API (2026-08-21)
+ * found response field names above were wrong in two distinct ways, both
+ * corrected here rather than left as the original inference</b>: (1)
+ * response field-name <b>casing is genuinely per-endpoint, not a single
+ * project-wide convention</b> -- confirmed directly against KIS's own
+ * official {@code koreainvestment/open-trading-api} example source
+ * (each endpoint's own {@code COLUMN_MAPPING}, not assumed): {@code order}
+ * (submit) responds with UPPERCASE fields ({@code ODNO}, matching this
+ * class's original guess), while {@code inquire-balance} and {@code
+ * inquire-ccnl} both respond with lowercase fields ({@code pdno}, {@code
+ * cblc_qty}, {@code odno}, {@code tot_ccld_qty}, ...) -- the original
+ * uppercase guess for those two was wrong and would have silently parsed
+ * every field as {@code null} ({@link com.fasterxml.jackson.databind.JsonNode}
+ * field lookup is case-sensitive) rather than throwing, since {@link
+ * #parseBigDecimal} treats a missing field as legitimately absent, not an
+ * error. Request-parameter casing (always UPPERCASE, e.g. {@code CANO},
+ * {@code ACNT_PRDT_CD}) is unaffected -- this was a response-parsing-only
+ * bug. (2) {@code getBalance()} originally called {@code inquire-deposit}
+ * (TR {@code CTRP6550R}) under the (now-disproven) assumption that its
+ * {@code tr_id} was shared between real and paper trading -- a real call
+ * against the paper host returned {@code HTTP 500}/{@code EGW00205}
+ * ("credentials_type이 유효하지 않습니다.(Bearer)"), and a manually
+ * {@code V}-prefixed variant ({@code VTRP6550R}) returned {@code
+ * OPSQ0002} ("없는 서비스 코드 입니다") -- i.e. {@code inquire-deposit} has
+ * no working paper-trading counterpart at all. {@code getBalance()} now
+ * reuses the same {@code inquire-balance}/{@code VTFO6118R} call {@link
+ * #getPositions()} already made successfully, reading its {@code output2}
+ * (account-level summary) object instead.
+ *
+
  * <p><b>Paper-only by design, not by convention</b>: every {@code tr_id}
  * constant below is hardcoded to its KIS-assigned demo/paper-trading
  * value (the {@code V}-prefixed forms KIS's own real/demo TR-id
@@ -100,7 +130,6 @@ public final class KisAdapter implements ExchangeAdapter {
     private static final String ORDER_CANCEL_PATH = "/uapi/domestic-futureoption/v1/trading/order-rvsecncl";
     private static final String INQUIRE_CCNL_PATH = "/uapi/domestic-futureoption/v1/trading/inquire-ccnl";
     private static final String INQUIRE_BALANCE_PATH = "/uapi/domestic-futureoption/v1/trading/inquire-balance";
-    private static final String INQUIRE_DEPOSIT_PATH = "/uapi/domestic-futureoption/v1/trading/inquire-deposit";
 
     // Demo/paper-only tr_id values -- see class Javadoc, "Paper-only by
     // design". Real-trading equivalents (TTTO1101U, TTTO1103U, TTTO5201R,
@@ -109,12 +138,13 @@ public final class KisAdapter implements ExchangeAdapter {
     private static final String TR_ID_ORDER_CANCEL = "VTTO1103U";
     private static final String TR_ID_INQUIRE_CCNL = "VTTO5201R";
     private static final String TR_ID_INQUIRE_BALANCE = "VTFO6118R";
-    // Same tr_id for real and demo per KIS's own real source -- see
-    // KisTokenProvider's Javadoc for the general "confirmed against real
-    // source" disclosure this class follows throughout.
-    private static final String TR_ID_INQUIRE_DEPOSIT = "CTRP6550R";
 
-    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
+    // Widened from 10s to 20s on real verification (2026-08-21): real KIS
+    // paper-trading responses (both /oauth2/tokenP and inquire-balance)
+    // were directly observed taking 7-10s, uncomfortably close to the
+    // original 10s timeout and causing real, intermittent
+    // HttpTimeoutExceptions against the live API, not a code bug.
+    private static final Duration REQUEST_TIMEOUT = Duration.ofSeconds(20);
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
     private static final DateTimeFormatter ORDER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyyMMdd");
     // Bounded pagination for queryOrder's inquire-ccnl loop -- see that
@@ -317,6 +347,13 @@ public final class KisAdapter implements ExchangeAdapter {
         query.put("ACNT_PRDT_CD", accountProductCode);
         query.put("MGNA_DVSN", "01");
         query.put("EXCC_STAT_CD", "1");
+        // Required by KIS despite being unused here (no pagination is ever
+        // followed for this endpoint) -- confirmed via real API verification
+        // 2026-08-21: omitting either causes a real OPSQ2001 "INPUT_FIELD_NAME
+        // CTX_AREA_FK200" rejection, matching KIS's own official
+        // inquire_balance.py example, which always sends both (as FK200/NK200).
+        query.put("CTX_AREA_FK200", "");
+        query.put("CTX_AREA_NK200", "");
 
         JsonNode root = request("GET", INQUIRE_BALANCE_PATH, TR_ID_INQUIRE_BALANCE, Map.of(), query);
         if (!isSuccess(root)) {
@@ -324,7 +361,10 @@ public final class KisAdapter implements ExchangeAdapter {
         }
         List<PositionSnapshot> positions = new ArrayList<>();
         for (JsonNode node : root.path("output1")) {
-            BigDecimal quantity = parseBigDecimal(node, "CBLC_QTY");
+            // output1 field names are lowercase -- confirmed against KIS's
+            // own real response and official column mapping, see class
+            // Javadoc's "Real verification..." disclosure.
+            BigDecimal quantity = parseBigDecimal(node, "cblc_qty");
             // A zero-quantity row (no open position for that product) isn't
             // a real open position -- skipping it matches PositionSnapshot's
             // own implicit contract elsewhere in this codebase (BingXAdapter
@@ -333,38 +373,65 @@ public final class KisAdapter implements ExchangeAdapter {
                 continue;
             }
             positions.add(new PositionSnapshot(
-                    node.path("PDNO").asText(),
-                    node.path("SLL_BUY_DVSN_NAME").asText(),
+                    node.path("pdno").asText(),
+                    node.path("sll_buy_dvsn_name").asText(),
                     quantity,
-                    parseBigDecimal(node, "PCHS_UNPR"),
+                    // ccld_avg_unpr1 ("체결평균단가1", average execution
+                    // price) -- the original PCHS_UNPR guess doesn't appear
+                    // in KIS's own official output1 column mapping at all.
+                    parseBigDecimal(node, "ccld_avg_unpr1"),
                     // No BingX-style user-settable leverage multiplier for
                     // this venue -- see class Javadoc. Left null (matching
                     // parseBigDecimal's own missing-field convention) rather
                     // than a fabricated value.
                     null,
-                    parseBigDecimal(node, "EVAL_PFLS_AMT"),
+                    parseBigDecimal(node, "evlu_pfls_amt"),
                     null));
         }
         return positions;
     }
 
+    /**
+     * Reuses the same {@code inquire-balance}/{@code VTFO6118R} call {@link
+     * #getPositions()} already makes successfully, reading its {@code
+     * output2} (account-level cash/margin/P&amp;L summary) object instead
+     * of {@code output1} -- see class Javadoc's "Real verification..."
+     * disclosure for why {@code inquire-deposit} (this method's original
+     * data source) doesn't work here at all. {@code output2} field ->
+     * {@link BalanceSnapshot} field mapping (KIS's own official column
+     * names/descriptions, human-confirmed, no exact 1:1 semantic match
+     * exists for every field so this is a best reasonable correspondence,
+     * not a guaranteed-identical concept):
+     * {@code tot_dncl_amt} (총예수금액/total deposit amount) -> {@code
+     * balance}; {@code prsm_dpast_amt} (추정예탁자산금액/estimated total
+     * account assets, i.e. deposit + P&amp;L) -> {@code equity}; {@code
+     * ord_psbl_cash} (주문가능현금/order-available cash) -> {@code
+     * availableMargin}; {@code mgna_tota} (증거금총액/total margin) ->
+     * {@code usedMargin}; {@code evlu_pfls_amt_smtl} (평가손익금액합계/total
+     * evaluation P&amp;L) -> {@code unrealizedProfit}.
+     */
     @Override
     public BalanceSnapshot getBalance() {
         Map<String, String> query = new LinkedHashMap<>();
         query.put("CANO", accountNo);
         query.put("ACNT_PRDT_CD", accountProductCode);
+        query.put("MGNA_DVSN", "01");
+        query.put("EXCC_STAT_CD", "1");
+        // See getPositions()'s identical fields for why these are required.
+        query.put("CTX_AREA_FK200", "");
+        query.put("CTX_AREA_NK200", "");
 
-        JsonNode root = request("GET", INQUIRE_DEPOSIT_PATH, TR_ID_INQUIRE_DEPOSIT, Map.of(), query);
+        JsonNode root = request("GET", INQUIRE_BALANCE_PATH, TR_ID_INQUIRE_BALANCE, Map.of(), query);
         if (!isSuccess(root)) {
             throw new ExchangeException("KIS getBalance failed: " + errorMessage(root));
         }
-        JsonNode output = root.path("output");
+        JsonNode output2 = root.path("output2");
         return new BalanceSnapshot(
-                parseBigDecimal(output, "DNCA_TOT_AMT"),
-                parseBigDecimal(output, "TOT_EVAL_AMT"),
-                parseBigDecimal(output, "ORD_PSBL_CASH"),
-                parseBigDecimal(output, "MGN_USE_AMT"),
-                parseBigDecimal(output, "EVAL_PFLS_AMT"),
+                parseBigDecimal(output2, "tot_dncl_amt"),
+                parseBigDecimal(output2, "prsm_dpast_amt"),
+                parseBigDecimal(output2, "ord_psbl_cash"),
+                parseBigDecimal(output2, "mgna_tota"),
+                parseBigDecimal(output2, "evlu_pfls_amt_smtl"),
                 "KRW");
     }
 
@@ -578,9 +645,12 @@ public final class KisAdapter implements ExchangeAdapter {
         return odno.asText();
     }
 
+    // output1 field names are lowercase for inquire-ccnl -- confirmed
+    // against KIS's own official column mapping, see class Javadoc's "Real
+    // verification..." disclosure.
     private static JsonNode findOrderInOutput1(JsonNode output1, String exchangeOrderId) {
         for (JsonNode node : output1) {
-            if (exchangeOrderId.equals(node.path("ODNO").asText(null))) {
+            if (exchangeOrderId.equals(node.path("odno").asText(null))) {
                 return node;
             }
         }
@@ -590,35 +660,51 @@ public final class KisAdapter implements ExchangeAdapter {
     /**
      * Derives a normalized status string matching {@code BingXAdapter}'s own
      * status-value convention ({@code NEW}/{@code PARTIALLY_FILLED}/{@code
-     * FILLED}) from a quantity comparison, rather than trusting an inferred
-     * raw KIS status field -- deliberately, so {@code ExchangeOrderExecutor}
-     *'s existing status-mapping table (built once, for BingX) can be reused
-     * unmodified for this adapter too, without needing its own KIS-specific
-     * branch. Cancellation detection ({@code CNCL_YN}, inferred) is the one
-     * piece of this genuinely unconfirmed against a real response -- flagged
-     * here specifically, not just via the class-level disclosure, because
-     * getting it wrong fails differently (a cancelled order misreported as
-     * still-pending) than a wrong price/quantity field would (which fails
-     * loudly via {@link ExchangeException}).
+     * FILLED}/{@code CANCELLED}) from a quantity comparison, rather than
+     * trusting a raw KIS status field -- deliberately, so {@code
+     * ExchangeOrderExecutor}'s existing status-mapping table (built once,
+     * for BingX) can be reused unmodified for this adapter too, without
+     * needing its own KIS-specific branch.
+     *
+     * <p><b>Cancellation detection was corrected on real verification</b>:
+     * the original {@code CNCL_YN} field this class guessed does not exist
+     * anywhere in {@code inquire-ccnl}'s real, official response (confirmed
+     * against KIS's own column mapping) -- it always resolved to {@code
+     * false}, silently. Replaced with a real-field-based heuristic: {@code
+     * qty} ("잔량", remaining/un-filled quantity) reaching zero without the
+     * order having fully filled means the remainder was cancelled or
+     * rejected by the exchange -- both map to {@code CANCELLED} here,
+     * matching this adapter's own established "reject-after-fill maps to
+     * the cancel path" convention (see {@link #submitOrder}'s own Javadoc
+     * for the identical reasoning applied to a different case). {@code
+     * avg_idx} ("평균지수", average index) is the closest real field to an
+     * average fill price for an index-futures contract; no separate
+     * "average price" field exists in the real response.
      */
     private static OrderStatus toOrderStatus(JsonNode node) {
-        BigDecimal orderedQty = parseBigDecimal(node, "ORD_QTY");
-        BigDecimal filledQty = parseBigDecimal(node, "TOT_CCLD_QTY");
-        BigDecimal avgPrice = parseBigDecimal(node, "AVG_PRC");
-        boolean cancelled = "Y".equals(node.path("CNCL_YN").asText(null));
+        BigDecimal orderedQty = parseBigDecimal(node, "ord_qty");
+        BigDecimal filledQty = parseBigDecimal(node, "tot_ccld_qty");
+        BigDecimal avgPrice = parseBigDecimal(node, "avg_idx");
+        BigDecimal remainingQty = parseBigDecimal(node, "qty");
+
+        boolean fullyFilled = orderedQty != null && filledQty != null && filledQty.compareTo(orderedQty) >= 0;
+        boolean noRemainder = remainingQty == null || remainingQty.signum() == 0;
+        boolean filledSomething = filledQty != null && filledQty.signum() > 0;
 
         String status;
-        if (cancelled) {
-            status = "CANCELLED";
-        } else if (filledQty == null || filledQty.signum() == 0) {
-            status = "NEW";
-        } else if (orderedQty != null && filledQty.compareTo(orderedQty) >= 0) {
+        if (fullyFilled) {
             status = "FILLED";
-        } else {
+        } else if (noRemainder) {
+            // Remaining quantity exhausted without the order having fully
+            // filled -- the rest was cancelled or rejected by KIS.
+            status = "CANCELLED";
+        } else if (filledSomething) {
             status = "PARTIALLY_FILLED";
+        } else {
+            status = "NEW";
         }
 
-        return new OrderStatus(node.path("ODNO").asText(), status, filledQty, avgPrice);
+        return new OrderStatus(node.path("odno").asText(), status, filledQty, avgPrice);
     }
 
     private static BigDecimal parseBigDecimal(JsonNode node, String field) {
