@@ -24,9 +24,17 @@ something actually needs it.
 returned daily bar's `time` is exactly a multiple of 86,400,000 (BingX
 does *not* open its daily candle at a local/exchange-timezone offset,
 which would have made this constant wrong while still looking right).
+
+`1m` was added in Scalping Strategy Research Task S1 (see CLAUDE.md's
+"Scalping Strategy Research" section) -- the one-line addition this
+docstring has anticipated since Task A, not a refactor. Its real BingX
+retention depth is a separate, open empirical question (Task S1's own
+go/no-go probe) -- wiring the interval into the grid does not itself
+say anything about how much real history is actually fetchable at it.
 """
 
 INTERVAL_MS = {
+    "1m": 60_000,
     "15m": 900_000,
     "1h": 3_600_000,
     "1d": 86_400_000,
