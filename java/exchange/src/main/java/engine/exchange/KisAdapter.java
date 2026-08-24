@@ -359,8 +359,19 @@ public final class KisAdapter implements ExchangeAdapter {
         if (!isSuccess(root)) {
             throw new ExchangeException("KIS getPositions failed: " + errorMessage(root));
         }
+        // Required and must be an array, not merely optional (tightened on
+        // real CodeRabbit review): output1 missing or wrong-shaped iterates
+        // as empty (Jackson's default for a non-array JsonNode), which
+        // would otherwise be indistinguishable from the legitimate
+        // "genuinely no open positions" case below -- the same
+        // response-shape-anomaly-vs-"nothing here" ambiguity already
+        // closed for cblc_qty itself, now closed one level up.
+        JsonNode output1 = root.path("output1");
+        if (!output1.isArray()) {
+            throw new ExchangeException("KIS getPositions response missing or malformed 'output1' array: " + root);
+        }
         List<PositionSnapshot> positions = new ArrayList<>();
-        for (JsonNode node : root.path("output1")) {
+        for (JsonNode node : output1) {
             // output1 field names are lowercase -- confirmed against KIS's
             // own real response and official column mapping, see class
             // Javadoc's "Real verification..." disclosure.

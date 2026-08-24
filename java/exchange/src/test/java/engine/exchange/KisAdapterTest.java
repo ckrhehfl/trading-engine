@@ -380,6 +380,13 @@ class KisAdapterTest {
     }
 
     @Test
+    void getPositionsThrowsWhenOutput1MissingRatherThanReturningEmptyList() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
+    }
+
+    @Test
     void getPositionsParsesArrayAndSkipsZeroQuantityRows() {
         server.respondWith(
                 200,
