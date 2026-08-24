@@ -2387,7 +2387,19 @@ matching the KIS documentation PRs' own precedent this same day.
   `slippage_bps` is disqualified regardless of any statistical
   significance a raw backtest might show, the same ordering discipline
   already applied to the KOSPI200 contract-multiplier conversion
-  running before `RiskLimits.canary()`'s percentage check.
+  running before `RiskLimits.canary()`'s percentage check. **This
+  `GUARDED_MARKET`-only restriction is a research/backtest *scope*
+  decision only — not a live- or paper-order-submission approval of any
+  kind** (clarified explicitly on real CodeRabbit review, so it can
+  never be misread as one): clearing this gate, or any later
+  walk-forward/DSR/holdout gate, never bypasses the Live Entry
+  Criteria's own separate, still-unverified "market-order guard
+  enabled" requirement (see that section above — real per-call
+  verification against a live account has not happened for
+  `GUARDED_MARKET` on either adapter yet), and every real order,
+  scalping or otherwise, still must pass through the Java Trading
+  Plane's `RiskGateway` in full, exactly as this file's Non-negotiable
+  Rules already require.
 - **Task S3** — statistical methodology addendum (mostly documentation
   — the harness itself already works, per finding 1 above): the
   `bars_per_day=1440` convention for 1m strategies; fold geometry
@@ -2398,14 +2410,28 @@ matching the KIS documentation PRs' own precedent this same day.
   once S1's real bar count is known; a new curated `strategy_family`
   entry in `python/research/lineage.py` (e.g. `"btc-scalping"`) or a
   run-time `strategy_family=` for a first attempt, per that module's own
-  stated preference for genuinely new work. **Open design question,
-  flagged not resolved**: if real retention is short enough to need
-  multiple non-overlapping historical windows pooled, or a
-  live-paper-trading-driven approach per S1's go/no-go outcome, how that
-  interacts with the project-level DSR trial count `N` may be genuinely
-  new territory, similar to how `sr-t`'s early-window holdout and
-  `sr-r`'s retrospective DSR closeout each solved a new problem for
-  their own timeframe.
+  stated preference for genuinely new work. **A required completion
+  criterion, not an open question left dangling** (tightened on real
+  CodeRabbit review, which correctly rejected the original wording —
+  "flagged, not resolved" — as insufficient given what it gates): if
+  real retention is short enough to need multiple non-overlapping
+  historical windows pooled, or a live-paper-trading-driven approach per
+  S1's go/no-go outcome, how that interacts with the project-level DSR
+  trial count `N` may be genuinely new territory, similar to how
+  `sr-t`'s early-window holdout and `sr-r`'s retrospective DSR closeout
+  each solved a new problem for their own timeframe — **but Task S3 is
+  not complete until this is actually settled and preregistered as a
+  fixed procedure, not merely acknowledged.** Concretely:
+  `python/research/overfitting_check.py::check_project_combination_count`
+  computes `N` *after* the fact and only warns, and a preregistration
+  today only blocks exceeding its own declared `total_candidates` —
+  neither actually stops S4 from running against an unfixed `N`. Task S3
+  must fix a specific project-level `N`-accounting procedure (how
+  pooled-window trials count, how accumulated live-paper observation
+  differs from a selection trial and is excluded from `N` accordingly)
+  and preregister it *before* S4's own preregistration is filed — S4
+  must not begin walk-forward/DSR analysis until this procedure exists
+  and is committed.
 - **Task S4** — first candidate signal research pass. **Recommended
   first candidate: VWAP-to-mid deviation short-term reversion** — the
   most directly, recently, and strongly supported candidate found (see
