@@ -398,12 +398,33 @@ injected into `RiskGateway` via a second constructor (the original
 one-argument constructor stays a zero-behavior-change delegation to the
 new `SimpleNotionalCalculator`, used by every BTC-USDT loop unchanged),
 supplies the real `quantity × price × multiplier` conversion for KIS —
-`FixedMultiplierNotionalCalculator`, generic and KOSPI/KIS-name-free
-(matching this file's own "a new venue means a new `ExchangeAdapter`,
-never a change to `RiskGateway` itself" rule), enforces a positive
-integer contract count, and rounds notional up (never down, so rounding
-can't understate exposure and let an over-limit order through) with the
-inverse clamp rounding quantity down to a whole contract. `PaperTradingApp
+`FixedMultiplierNotionalCalculator`, generic and KOSPI/KIS-name-free,
+enforces a positive integer contract count, and rounds notional up
+(never down, so rounding can't understate exposure and let an
+over-limit order through) with the inverse clamp rounding quantity down
+to a whole contract.
+
+**Why this doesn't violate "a new venue means a new `ExchangeAdapter`,
+never a change to `RiskGateway`/OMS/Execution" — addressed explicitly
+here rather than left implicit, on real CodeRabbit review**: `RiskGateway
+.java` genuinely did change (a new constructor, a new dependency).
+That rule's real intent, evidenced by every other extensibility seam
+already in this codebase (`PriceFeed`, `TradingCalendar`,
+`AccountStateProvider`, `OrderExecutor` itself), is "no per-venue branch
+or hardcoded venue fact inside OMS/Risk/Execution's own logic" — not
+"the file's text may never be touched again." Each of those seams
+required exactly one, one-time interface-extraction change to a
+previously-concrete class, after which every further venue implements
+the interface with zero additional change to the class that depends on
+it. `NotionalCalculator` follows the identical shape: `RiskGateway`
+itself contains no KOSPI/KIS-specific name, string, or number anywhere
+— the real `₩250,000` value lives in `PaperTradingApp`
+(`KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER`, in `:runtime`), the same
+module/layer BingX-specific constants like `BINGX_VST_BASE_URL` already
+live in. A hypothetical future venue needing its own notional shape
+implements `NotionalCalculator` the same way `KisAdapter` implements
+`ExchangeAdapter` — zero further change to `RiskGateway.java` itself,
+which is the actual property this rule protects. `PaperTradingApp
 .forKisPaper()` resolves it via `resolveKisNotionalCalculator`:
 `INDEX_FUTURES` gets the real ₩250,000 multiplier; `STOCK_FUTURES` fails
 closed (refuses to start) rather than guess at its own real, different,
@@ -601,12 +622,16 @@ multiplier (a real, different, per-stock contract multiplier — the
 symbol master file's own `한글종목명` field shows a `(  10)` suffix per
 stock-futures row, plausibly a 10-shares-per-contract multiplier, not
 yet independently confirmed against KIS's own contract-specification
-docs). `resolveKisNotionalCalculator` fails closed for `STOCK_FUTURES`
-(refuses to start the process at all) rather than trade under an
-unconfirmed multiplier. `forKisPaper()`'s own unconditional `KillSwitch`
-trip (see above) already covers both products regardless — no code path
-in this extension is exempt from that mitigation, and the trip was kept
-in place even for `INDEX_FUTURES` once its own conversion was built (see
+docs). The two products are protected two different ways, not the same
+mitigation applied twice (corrected on real CodeRabbit review, which
+caught this section's own first version blurring the distinction):
+`resolveKisNotionalCalculator` fails closed for `STOCK_FUTURES` by
+throwing before `forKisPaper()` ever constructs a `KillSwitch` at all —
+the process refuses to start, full stop, not "starts with a switch
+already tripped." `INDEX_FUTURES` does construct the app (its own real
+conversion exists now) and is protected by `forKisPaper()`'s own
+unconditional `KillSwitch` trip instead — the trip was kept in place
+even for `INDEX_FUTURES` once its own conversion was built (see
 the update above for why).
 
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
