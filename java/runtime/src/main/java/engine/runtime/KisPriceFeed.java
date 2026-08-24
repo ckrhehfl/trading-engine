@@ -190,7 +190,9 @@ public final class KisPriceFeed implements PriceFeed {
 
         JsonNode priceNode = root.path("output1").get("futs_prpr");
         if (priceNode == null || priceNode.isNull()) {
-            throw new ExchangeException("KIS price feed: output1 missing 'futs_prpr' field: " + root.path("output1"));
+            // Never embeds output1 -- see this method's own top-of-method
+            // note above for why (tightened on real CodeRabbit review).
+            throw new ExchangeException("KIS price feed: output1 missing 'futs_prpr' field");
         }
         try {
             return new BigDecimal(priceNode.asText());

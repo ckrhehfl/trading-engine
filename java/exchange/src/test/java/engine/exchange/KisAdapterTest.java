@@ -384,6 +384,19 @@ class KisAdapterTest {
     }
 
     @Test
+    void queryOrderThrowsWhenTrContMWithBlankContinuationKey() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+        adapter.submitOrder(order);
+        // tr_cont="M" (more pages) but ctx_area_nk200 is blank -- a real
+        // anomaly this method can't resolve into an actual next page.
+        server.queueResponse(
+                200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[],\"ctx_area_nk200\":\"\"}", "M");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
     void queryOrderSearchesFromYesterdayThroughToday() {
         server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
         Order order = guardedMarketOrder(Side.LONG, "1");
@@ -479,6 +492,32 @@ class KisAdapterTest {
 
         assertEquals(1, positions.size());
         assertEquals("101W09", positions.get(0).symbol());
+    }
+
+    @Test
+    void getPositionsThrowsWhenTrContMWithBlankContinuationKey() {
+        // tr_cont="M" (more pages) but ctx_area_nk200 is blank -- a real
+        // anomaly this method can't resolve into an actual next page.
+        server.queueResponse(
+                200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[],\"ctx_area_nk200\":\"\"}", "M");
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
+    }
+
+    @Test
+    void getPositionsThrowsWhenPageLimitReachedWithMorePagesRemaining() {
+        // Every page (up to the bound) reports tr_cont="M" with a real
+        // continuation key -- KIS genuinely has more data than this
+        // method's bounded loop will ever fetch. Must fail closed rather
+        // than silently return an incomplete position list.
+        for (int i = 0; i < 15; i++) {
+            server.queueResponse(
+                    200,
+                    "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[],\"ctx_area_nk200\":\"KEY" + i + "\"}",
+                    "M");
+        }
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
     }
 
     @Test

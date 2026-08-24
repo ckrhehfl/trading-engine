@@ -336,6 +336,15 @@ public final class KisAdapter implements ExchangeAdapter {
                 break; // no further pages
             }
             continuationKey = root.path("ctx_area_nk200").asText("");
+            // A real response anomaly, not a legitimate continuation --
+            // see getPositions()'s identical guard for why (added on real
+            // CodeRabbit review): fail closed rather than let the next
+            // iteration silently re-request the same page with an empty
+            // key.
+            if (continuationKey.isBlank()) {
+                throw new ExchangeException(
+                        "KIS queryOrder: tr_cont='M' but ctx_area_nk200 missing/blank, cannot continue pagination");
+            }
             firstPage = false;
         }
         if (matched == null) {
@@ -351,6 +360,7 @@ public final class KisAdapter implements ExchangeAdapter {
         List<PositionSnapshot> positions = new ArrayList<>();
         String continuationKey = "";
         boolean firstPage = true;
+        boolean morePagesRemain = false;
         // Bounded pagination, mirroring queryOrder's own inquire-ccnl loop
         // (added on real CodeRabbit review): inquire-balance can itself
         // return a continuation page ("한 번의 호출에 최대 20건까지 확인
@@ -455,10 +465,32 @@ public final class KisAdapter implements ExchangeAdapter {
             // the bug surfaced for real while adding this loop).
             String trCont = response.headers().firstValue("tr_cont").orElse("");
             if (!"M".equals(trCont)) {
+                morePagesRemain = false;
                 break; // no further pages
             }
             continuationKey = root.path("ctx_area_nk200").asText("");
+            // A real response anomaly, not a legitimate continuation
+            // (added on real CodeRabbit review): tr_cont="M" with no real
+            // continuation key can't be resolved into an actual next page
+            // -- fail closed rather than let the next iteration silently
+            // re-request the same page with an empty key.
+            if (continuationKey.isBlank()) {
+                throw new ExchangeException(
+                        "KIS getPositions: tr_cont='M' but ctx_area_nk200 missing/blank, cannot continue pagination");
+            }
+            morePagesRemain = true;
             firstPage = false;
+        }
+        // The page bound was reached while KIS still reported more data
+        // (added on real CodeRabbit review): silently returning what's
+        // accumulated so far would let a real position on an unfetched
+        // page vanish from this method's output undetected --
+        // AccountLedgerReconciler relies on this output to catch exactly
+        // a real-vs-ledger exposure mismatch, so an incomplete list here
+        // must fail closed, not be mistaken for a complete one.
+        if (morePagesRemain) {
+            throw new ExchangeException(
+                    "KIS getPositions: reached page limit (" + MAX_INQUIRE_PAGES + ") with more pages remaining");
         }
         return positions;
     }
@@ -746,7 +778,11 @@ public final class KisAdapter implements ExchangeAdapter {
     private static String extractOrderId(JsonNode outputNode) {
         JsonNode odno = outputNode.get("ODNO");
         if (odno == null || odno.isNull()) {
-            throw new ExchangeException("KIS order response missing 'ODNO' field: " + outputNode);
+            // Never embeds outputNode -- see parseBigDecimal's own Javadoc
+            // note for why (tightened on real CodeRabbit review: this
+            // node can carry real order-identifying/account data, and the
+            // exception now lands in a real, persisted kis-paper.log).
+            throw new ExchangeException("KIS order response missing 'ODNO' field");
         }
         return odno.asText();
     }
