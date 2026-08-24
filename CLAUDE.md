@@ -2213,13 +2213,13 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — planned, not yet started (design committed
-2026-08-24 per `.planning/README.md`'s "design lives in CLAUDE.md before
-work begins" rule)
+### Scalping Strategy Research — planned, not yet started
 
-A new, second research direction alongside `daily-tsmom-ensemble`,
-human-approved 2026-08-24: **retail scalping** (minutes to tens of
-minutes holding period) on BTC-USDT. Explicitly requested as a
+Design committed 2026-08-24 per `.planning/README.md`'s "design lives
+in CLAUDE.md before work begins" rule. A new, second research direction
+alongside `daily-tsmom-ensemble`, human-approved 2026-08-24: **retail
+scalping** (minutes to tens of minutes holding period) on BTC-USDT.
+Explicitly requested as a
 methodology-first effort — several earlier ad hoc "find me a strategy"
 conversational attempts had already failed, and the human operator
 asked for a real research methodology to be established before any
@@ -2292,12 +2292,26 @@ assumed from memory):
    this project's own prior pattern of narrow, purely-factor-style
    candidate generation (moving-average/momentum/mean-reversion), which
    is a poor fit for scalping timescales anyway:
-   - **VWAP-to-mid deviation short-term reversion**: strongly and
-     directly supported — a 2026 arXiv paper ("Explainable Patterns in
-     Cryptocurrency Microstructure") analyzing Binance Futures order
-     books/trades at 1-second frequency through October 2025 found
-     VWAP-to-mid deviations show "asymmetric effects coherent with
-     short-lived pressure and microstructure reversion."
+   - **VWAP-to-mid deviation short-term reversion**: real literature
+     support exists, but precisely scoped rather than claimed as direct
+     proof for this project's own planned implementation (tightened on
+     real CodeRabbit review): arXiv:2602.00776 ("Explainable Patterns in
+     Cryptocurrency Microstructure") analyzed **Binance Futures
+     order-book/trade data at 1-second frequency**, through October
+     2025, and found VWAP-to-mid deviations show "asymmetric effects
+     coherent with short-lived pressure and microstructure reversion."
+     This project's own Task S1/S4 would use **BingX 1-minute OHLCV
+     kline bars** — no order-book data, a coarser frequency, a different
+     venue — as a necessary proxy (e.g. a rolling volume-weighted price
+     over kline closes standing in for a true tick-level VWAP, and
+     kline close standing in for mid-price). The paper's finding is real
+     evidence the *mechanism* (VWAP-to-mid reversion) exists in crypto
+     perpetuals microstructure; it is **not** evidence that this
+     project's specific 1-minute-OHLCV-proxy implementation on BingX
+     will show the same effect — that remains a hypothesis Task S4 must
+     test for real, not an imported result. Task S4's own preregistration
+     must state the exact proxy definition and cite this gap explicitly,
+     not imply direct transferability.
    - **Order flow imbalance (OFI)**: real support exists, but with an
      important, honest caveat directly relevant to scalping — "The
      Quarter-Hour Effect" (2026 arXiv, Binance USDT perpetuals) found
@@ -2318,11 +2332,12 @@ assumed from memory):
 
 **Task breakdown** (own `.planning/scalp-*.md` doc per task, own PR
 each). Python research/backtest-infra work (Tasks S1/S2) is not
-CODEOWNERS-matched and can auto-merge on CI passing (no live-order
-risk, matching this project's existing Auto-merge Policy for
-non-risk Python paths); this section itself and its Task S3 follow-up
-are CODEOWNERS-matched (`CLAUDE.md`) — stop-and-ask, matching the KIS
-documentation PRs' own precedent this same day.
+CODEOWNERS-matched — per this project's existing Auto-merge Policy for
+non-risk Python paths (no live-order risk), that means CI **and** a
+completed, non-pending CodeRabbit review passing is sufficient to
+auto-merge, not CI alone; this section itself and its Task S3
+follow-up are CODEOWNERS-matched (`CLAUDE.md`) — stop-and-ask,
+matching the KIS documentation PRs' own precedent this same day.
 
 - **Task S0** (this section) — design write-up, before any code.
 - **Task S1** — 1-minute BTC-USDT data infrastructure
@@ -2349,19 +2364,30 @@ documentation PRs' own precedent this same day.
   behavior at 1-10 minute holding periods (cited, not invented) before
   picking `fee_bps`/`slippage_bps` for any scalping preregistration —
   never reuse the daily strategy's `5`/`2` bps figures without explicit
-  justification. **Recommended, cheaper-first approach**: require every
-  scalping preregistration to declare and justify a materially higher
-  `slippage_bps` than the daily default, with the real gap disclosed,
-  rather than rebuilding `fill.py`'s limit-order fill model right away
-  (a real, larger undertaking — order-book depth/partial-fill
-  simulation, a disclosed possible follow-up, not committed to here).
+  justification. **A real constraint tightened on CodeRabbit review of
+  the PR that added this section**: raising `slippage_bps` is only a
+  real, meaningful lever for `GUARDED_MARKET` candidates — per finding 3
+  above, `fill.py` applies slippage *exclusively* to `GUARDED_MARKET`
+  orders; a `LIMIT` order still fills 100% at the exact limit price the
+  instant a bar's high/low touches it, completely unaffected by
+  `slippage_bps`, no matter how high it's set. Declaring a "higher"
+  `slippage_bps` for a limit-order candidate would silently do nothing
+  and produce a false sense of conservatism. **Scalping candidates
+  researched under this task are therefore restricted to
+  `GUARDED_MARKET` execution only, for now** — a `LIMIT`-order-based
+  scalping candidate is explicitly out of scope until `fill.py`'s
+  limit-order fill model itself is hardened (order-book depth,
+  partial-fill/queue-position, adverse-selection awareness — the "real,
+  larger undertaking" already named as a disclosed possible follow-up,
+  not committed to here); until then, treat any `LIMIT`-order scalping
+  result as unverifiable under this engine, not merely conservative.
   **This gate must run and produce a real, disclosed pass/fail before
-  any walk-forward/DSR statistical validation** — a candidate that
-  isn't net-positive under conservative, realistic costs is
-  disqualified regardless of any statistical significance a raw
-  backtest might show, the same ordering discipline already applied to
-  the KOSPI200 contract-multiplier conversion running before
-  `RiskLimits.canary()`'s percentage check.
+  any walk-forward/DSR statistical validation** — a `GUARDED_MARKET`
+  candidate that isn't net-positive under a conservative, cited
+  `slippage_bps` is disqualified regardless of any statistical
+  significance a raw backtest might show, the same ordering discipline
+  already applied to the KOSPI200 contract-multiplier conversion
+  running before `RiskLimits.canary()`'s percentage check.
 - **Task S3** — statistical methodology addendum (mostly documentation
   — the harness itself already works, per finding 1 above): the
   `bars_per_day=1440` convention for 1m strategies; fold geometry
@@ -2391,9 +2417,13 @@ documentation PRs' own precedent this same day.
   grid-searched) — matching `daily-tsmom-ensemble`'s own
   zero-fitted-parameter precedent, specifically to avoid repeating the
   117-trial overfitting problem this project has already lived through
-  once. Must clear Task S2's execution-realism gate before any
-  walk-forward run is attempted. Own preregistration, filed before any
-  1m data is touched for this strategy, matching the established
+  once. Entries/exits via `GUARDED_MARKET`, not `LIMIT`, per Task S2's
+  own constraint above — a deviation-threshold-triggered market order
+  fits this signal's own mean-reversion mechanism fine and keeps
+  `slippage_bps` a real, meaningful cost lever rather than an inert one.
+  Must clear Task S2's execution-realism gate before any walk-forward
+  run is attempted. Own preregistration, filed before any 1m data is
+  touched for this strategy, matching the established
   `sr-u`/`sr-v`/`sr-x`/`sr-y` pre-registration discipline.
 
 **Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
