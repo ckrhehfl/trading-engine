@@ -2213,6 +2213,205 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
+### Scalping Strategy Research — planned, not yet started (design committed
+2026-08-24 per `.planning/README.md`'s "design lives in CLAUDE.md before
+work begins" rule)
+
+A new, second research direction alongside `daily-tsmom-ensemble`,
+human-approved 2026-08-24: **retail scalping** (minutes to tens of
+minutes holding period) on BTC-USDT. Explicitly requested as a
+methodology-first effort — several earlier ad hoc "find me a strategy"
+conversational attempts had already failed, and the human operator
+asked for a real research methodology to be established before any
+candidate signal work begins, grounded in a real investigation of this
+codebase (not assumed).
+
+**Scope, decided, not to be silently widened**: 1-minute bars and
+coarser only. No tick/trade-level data, no true HFT — stays inside this
+file's own permanent "HFT/co-location/tick-level strategies" non-goal
+(see "Non-goals" above). "Tens of seconds" was explicitly considered and
+rejected for this phase — it would need an entirely new trade/tick
+data-collection layer this project doesn't have and isn't building now.
+
+**A real, concrete question the human operator asked, worth recording
+the answer to precisely**: is a backtest signal ("enter at HH:MM at
+price P, exit at HH:MM:SS at price P'") meaningfully different from live
+trading? Two separate concerns, conflated in the question but real and
+distinct: (1) look-ahead bias — already prevented structurally by this
+codebase's bar-by-bar `KlineWindow` (see "Look-ahead-bias protection"
+above), unaffected by timeframe. (2) **Execution realism** — the real
+gap for scalping specifically (see the fill-model finding below): the
+signal must be net-positive after *realistic* fees and slippage, not
+the exact theoretical fill a backtest optimistically assumes.
+
+**Codebase investigation, confirmed by direct inspection before any task
+breakdown** (three parallel Explore-agent passes, 2026-08-24 — not
+assumed from memory):
+
+1. **The statistical harness (`python/research/walkforward.py`,
+   `eligibility.py`, `preregistration.py`, `overfitting_check.py`,
+   `lineage.py`, `holdout.py`) already generalizes to minute bars with
+   zero code changes.** `bars_per_day` is an explicit, required
+   parameter threaded end-to-end — a deliberate result of the earlier
+   1h-variant refactor that pulled a hardcoded 15m assumption out. DSR,
+   PSR, the frequency-scaled trade-count floor
+   (`frequency_scaled_min_trades`), fold generation, and experiment
+   logging are all pure bar-count/statistics functions with no
+   hardcoded timeframe anywhere. Every strategy module already declares
+   its own `DEFAULT_BARS_PER_DAY` constant (`96`=15m, `24`=1h, `1`=1d);
+   a scalping strategy needs its own (`1440` for 1m), following the
+   identical established pattern — not a new one.
+2. **The data layer needs one real line of code, plus a real,
+   currently-unknown fact.** `python/data/_grid.py`'s `INTERVAL_MS`
+   dict wires up only `15m`/`1h`/`1d` (`5m` is named-but-unwired per its
+   own docstring; `1m` isn't named at all). Adding `"1m": 60_000` is
+   structurally trivial — the SQLite cache schema
+   (`python/data/store.py`) has no CHECK constraint on `interval`, and
+   both exchange clients already pass `interval` through as a free
+   string. **But BingX's real 1-minute retention has never been
+   probed** — no figure exists anywhere in this file. The `5m` figure
+   itself (~3 months, see "Exchange API Facts — BingX" above) is only a
+   binary-search estimate, never confirmed via a full backfill. This is
+   the single biggest open unknown determining whether this whole
+   effort is viable at all.
+3. **The backtest engine's fill/fee model is the real, load-bearing
+   risk for scalping specifically** — the honest answer to the question
+   above. `python/backtest/fill.py`: fees and slippage are flat basis
+   points on notional (slippage only applied to `GUARDED_MARKET`
+   orders, never limit orders); there is no order-book depth, spread,
+   or liquidity modeling of any kind; a limit order fills at 100% the
+   moment a bar's high/low merely *touches* the limit price, with no
+   volume/queue-position awareness. This barely matters at daily bars;
+   it is a materially bigger source of backtest-to-live divergence at
+   scalping bar sizes. The existing daily strategy's calibration
+   (`FEE_BPS=5`, `SLIPPAGE_BPS=2`, `python/live/generate_daily_signal.py`)
+   is very likely to understate real scalping costs if reused
+   unexamined — nothing in the codebase currently prevents that reuse.
+4. **Real, current (2025-2026) academic research on candidate signal
+   sources** — found via live search specifically to avoid repeating
+   this project's own prior pattern of narrow, purely-factor-style
+   candidate generation (moving-average/momentum/mean-reversion), which
+   is a poor fit for scalping timescales anyway:
+   - **VWAP-to-mid deviation short-term reversion**: strongly and
+     directly supported — a 2026 arXiv paper ("Explainable Patterns in
+     Cryptocurrency Microstructure") analyzing Binance Futures order
+     books/trades at 1-second frequency through October 2025 found
+     VWAP-to-mid deviations show "asymmetric effects coherent with
+     short-lived pressure and microstructure reversion."
+   - **Order flow imbalance (OFI)**: real support exists, but with an
+     important, honest caveat directly relevant to scalping — "The
+     Quarter-Hour Effect" (2026 arXiv, Binance USDT perpetuals) found
+     opening order imbalance predicts returns over **4-12 hours**, with
+     "much weaker effects at finer clock-time frequencies." A BitMEX
+     XBTUSD study similarly found the OFI-price relationship holds
+     mainly "over large enough time intervals." OFI's real published
+     support is weaker, not stronger, at the fine frequencies retail
+     scalping targets — deliberately not treated as an easy scalping
+     win below.
+   - **Liquidation cascades**: real minute-bar academic work exists
+     (two 2025-2026 arXiv papers analyzing the real October 2025 $19B
+     and November 2025 cascades), but the actual finding is about
+     **pre-cascade early-warning signals** (rolling variance, lag-1
+     autocorrelation buildup before a cascade) — not "trade the
+     cascade's own momentum after it starts," a naive framing
+     deliberately avoided below.
+
+**Task breakdown** (own `.planning/scalp-*.md` doc per task, own PR
+each). Python research/backtest-infra work (Tasks S1/S2) is not
+CODEOWNERS-matched and can auto-merge on CI passing (no live-order
+risk, matching this project's existing Auto-merge Policy for
+non-risk Python paths); this section itself and its Task S3 follow-up
+are CODEOWNERS-matched (`CLAUDE.md`) — stop-and-ask, matching the KIS
+documentation PRs' own precedent this same day.
+
+- **Task S0** (this section) — design write-up, before any code.
+- **Task S1** — 1-minute BTC-USDT data infrastructure
+  (`_grid.py`'s `INTERVAL_MS`, plus `python/tests/test_grid.py`, which
+  likely has an explicit "`1m` raises `ValueError`" assertion today
+  that needs flipping, not just new tests added) **and a real retention
+  probe — a genuine go/no-go gate, not a formality.** Binary search
+  first (matching the established methodology), then a real, full
+  backfill with a confirmed zero-gap count — this project's own
+  standard, stated explicitly for `1h`/`1d`: "an earliest-bar probe
+  alone is not enough, a full backfill with a real gap count is." If
+  real retention is very short (plausible, given the confirmed
+  1d→1h→15m→5m retention-shrinks-with-granularity pattern) — e.g. days
+  to a couple of weeks — that reshapes the whole effort: walk-forward
+  folds may not be viable on backtested history at all, meaning the
+  practical path may become live paper-trading accumulation over real
+  calendar time rather than deep historical backtesting. Report the
+  real number honestly either way; do not proceed to Task S3's
+  fold-geometry design before it's known. **Open, undecided**: BingX
+  only, or also probe Binance (which has shown deeper `1d` retention
+  than BingX — unconfirmed whether that holds at `1m`).
+- **Task S2** — execution-cost-first realism gate, the methodologically
+  most important task. Research real, current BTC-USDT spread/slippage
+  behavior at 1-10 minute holding periods (cited, not invented) before
+  picking `fee_bps`/`slippage_bps` for any scalping preregistration —
+  never reuse the daily strategy's `5`/`2` bps figures without explicit
+  justification. **Recommended, cheaper-first approach**: require every
+  scalping preregistration to declare and justify a materially higher
+  `slippage_bps` than the daily default, with the real gap disclosed,
+  rather than rebuilding `fill.py`'s limit-order fill model right away
+  (a real, larger undertaking — order-book depth/partial-fill
+  simulation, a disclosed possible follow-up, not committed to here).
+  **This gate must run and produce a real, disclosed pass/fail before
+  any walk-forward/DSR statistical validation** — a candidate that
+  isn't net-positive under conservative, realistic costs is
+  disqualified regardless of any statistical significance a raw
+  backtest might show, the same ordering discipline already applied to
+  the KOSPI200 contract-multiplier conversion running before
+  `RiskLimits.canary()`'s percentage check.
+- **Task S3** — statistical methodology addendum (mostly documentation
+  — the harness itself already works, per finding 1 above): the
+  `bars_per_day=1440` convention for 1m strategies; fold geometry
+  derived from Task S1's *real* retention number, not guessed in
+  advance (mirrors how `sr-f`/`sr-t` each derived fold geometry from a
+  real, just-confirmed retention figure); the minimum-trade-count floor
+  re-derived via the existing `frequency_scaled_min_trades` formula
+  once S1's real bar count is known; a new curated `strategy_family`
+  entry in `python/research/lineage.py` (e.g. `"btc-scalping"`) or a
+  run-time `strategy_family=` for a first attempt, per that module's own
+  stated preference for genuinely new work. **Open design question,
+  flagged not resolved**: if real retention is short enough to need
+  multiple non-overlapping historical windows pooled, or a
+  live-paper-trading-driven approach per S1's go/no-go outcome, how that
+  interacts with the project-level DSR trial count `N` may be genuinely
+  new territory, similar to how `sr-t`'s early-window holdout and
+  `sr-r`'s retrospective DSR closeout each solved a new problem for
+  their own timeframe.
+- **Task S4** — first candidate signal research pass. **Recommended
+  first candidate: VWAP-to-mid deviation short-term reversion** — the
+  most directly, recently, and strongly supported candidate found (see
+  finding 4 above); order flow imbalance is explicitly *not*
+  recommended first, given real published evidence its effect is
+  weaker at scalping-relevant frequencies specifically. Design with
+  zero or minimal free parameters where possible (a fixed VWAP window
+  and reversion threshold sourced from the literature, not
+  grid-searched) — matching `daily-tsmom-ensemble`'s own
+  zero-fitted-parameter precedent, specifically to avoid repeating the
+  117-trial overfitting problem this project has already lived through
+  once. Must clear Task S2's execution-realism gate before any
+  walk-forward run is attempted. Own preregistration, filed before any
+  1m data is touched for this strategy, matching the established
+  `sr-u`/`sr-v`/`sr-x`/`sr-y` pre-registration discipline.
+
+**Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
+→ S2 (execution-realism gate design, can start in parallel with S1's
+backfill running) → S3 (methodology addendum, needs S1's real number) →
+S4 (first real candidate research pass).
+
+**Explicitly out of scope this phase**: tick/trade-level data, true
+HFT, co-location (confirmed with the human operator, stays inside the
+existing non-goal boundary); further KIS/KOSPI200 work (explicitly
+deprioritized this session, not abandoned); actually promoting any
+scalping strategy to paper trading (this covers research
+infrastructure, methodology, and one real first attempt — the same
+Eligibility Bar and human-approval discipline governing every other
+strategy still applies in full before any promotion); rebuilding
+`fill.py`'s fill-simulation model in full (Task S2's cheaper gate comes
+first, a full rework is a disclosed possible follow-up only).
+
 ## Tooling Stack
 
 | Layer | Choice | Status |
