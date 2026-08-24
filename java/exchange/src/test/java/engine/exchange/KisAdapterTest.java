@@ -304,6 +304,49 @@ class KisAdapterTest {
     }
 
     @Test
+    void queryOrderThrowsWhenTotCcldQtyExceedsOrdQty() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "5");
+        adapter.submitOrder(order);
+        // ord_qty=5, tot_ccld_qty=6, qty=0 -- a fill exceeding what was
+        // ever ordered must never be reported as a valid FILLED status.
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"odno\":\"123\",\"ord_qty\":\"5\","
+                        + "\"tot_ccld_qty\":\"6\",\"avg_idx\":\"350\",\"qty\":\"0\"}],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
+    void queryOrderThrowsWhenQtyExceedsRemainingCapacity() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "5");
+        adapter.submitOrder(order);
+        // ord_qty=5, tot_ccld_qty=2, qty=4 -- remaining (4) exceeds
+        // ord_qty-tot_ccld_qty (3), an internally inconsistent response.
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"odno\":\"123\",\"ord_qty\":\"5\","
+                        + "\"tot_ccld_qty\":\"2\",\"avg_idx\":\"350\",\"qty\":\"4\"}],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
+    void queryOrderThrowsWhenOrdQtyIsZero() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "5");
+        adapter.submitOrder(order);
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"odno\":\"123\",\"ord_qty\":\"0\","
+                        + "\"tot_ccld_qty\":\"0\",\"avg_idx\":\"0\",\"qty\":\"0\"}],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
     void queryOrderThrowsWhenOrderNotFoundInOutput1() {
         server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
         Order order = guardedMarketOrder(Side.LONG, "1");
@@ -387,7 +430,7 @@ class KisAdapterTest {
     }
 
     @Test
-    void getPositionsThrowsWhenPdnoMissingOrBlank() {
+    void getPositionsThrowsWhenPdnoMissing() {
         server.respondWith(
                 200,
                 "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":["
@@ -396,6 +439,46 @@ class KisAdapterTest {
                         + "],\"output2\":{}}");
 
         assertThrows(ExchangeException.class, () -> adapter.getPositions());
+    }
+
+    @Test
+    void getPositionsThrowsWhenPdnoBlank() {
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":["
+                        + "{\"pdno\":\"   \",\"sll_buy_dvsn_name\":\"매수\",\"cblc_qty\":\"3\","
+                        + "\"ccld_avg_unpr1\":\"350\",\"evlu_pfls_amt\":\"1500\"}"
+                        + "],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
+    }
+
+    @Test
+    void getPositionsFollowsPaginationToFindAPositionOnASecondPage() {
+        // First page: only a flat (zero-quantity) row, but tr_cont="M"
+        // response header says more pages exist -- getPositions must
+        // follow ctx_area_nk200 into a second request rather than
+        // concluding the account has no open positions.
+        server.queueResponse(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":["
+                        + "{\"pdno\":\"101W12\",\"sll_buy_dvsn_name\":\"매도\",\"cblc_qty\":\"0\","
+                        + "\"ccld_avg_unpr1\":\"0\",\"evlu_pfls_amt\":\"0\"}"
+                        + "],\"ctx_area_nk200\":\"PAGE2KEY\"}",
+                "M");
+        // Second (final) page: contains a real open position, tr_cont="F".
+        server.queueResponse(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":["
+                        + "{\"pdno\":\"101W09\",\"sll_buy_dvsn_name\":\"매수\",\"cblc_qty\":\"3\","
+                        + "\"ccld_avg_unpr1\":\"350\",\"evlu_pfls_amt\":\"1500\"}"
+                        + "],\"ctx_area_nk200\":\"\"}",
+                "F");
+
+        List<PositionSnapshot> positions = adapter.getPositions();
+
+        assertEquals(1, positions.size());
+        assertEquals("101W09", positions.get(0).symbol());
     }
 
     @Test
