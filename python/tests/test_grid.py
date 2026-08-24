@@ -8,7 +8,9 @@ arithmetic differs from the others in a way worth pinning down directly
 (a 86,400,000ms step means "aligned" is UTC midnight, and a
 1000-candle page spans ~2.74 years rather than ~10 days), so the grid
 gets its own tests here rather than being asserted only as a side effect
-of a kline-fetch test.
+of a kline-fetch test. Scalping Strategy Research Task S1 adds `1m`
+(see CLAUDE.md's "Scalping Strategy Research" section) -- the one-line
+addition `_grid.py`'s own docstring anticipated, not a refactor.
 
 The `15m`/`1h` assertions below are deliberately included even though
 neither is new: this task's whole risk is that adding a third interval
@@ -32,16 +34,21 @@ def test_interval_ms_supports_1d():
     assert interval_ms("1d") == DAY_MS
 
 
+def test_interval_ms_supports_1m():
+    assert interval_ms("1m") == 60_000
+
+
 def test_interval_ms_still_supports_the_pre_existing_intervals():
-    # Byte-for-byte unchanged behavior for the two intervals every
-    # existing config, cached row, and logged experiment already uses.
+    # Byte-for-byte unchanged behavior for every interval every existing
+    # config, cached row, and logged experiment already uses.
     assert interval_ms("15m") == 900_000
     assert interval_ms("1h") == 3_600_000
+    assert interval_ms("1d") == DAY_MS
 
 
 def test_interval_map_contains_exactly_the_wired_intervals():
     # `5m` is deliberately still unwired -- see `_grid.py`'s docstring.
-    assert set(INTERVAL_MS) == {"15m", "1h", "1d"}
+    assert set(INTERVAL_MS) == {"1m", "15m", "1h", "1d"}
 
 
 def test_interval_ms_rejects_an_unsupported_interval_and_names_the_supported_ones():
@@ -51,13 +58,16 @@ def test_interval_ms_rejects_an_unsupported_interval_and_names_the_supported_one
     message = str(excinfo.value)
     assert "5m" in message
     assert "1d" in message  # the error lists what *is* supported
+    assert "1m" in message
 
 
 def test_one_day_step_is_exactly_ninety_six_fifteen_minute_steps():
-    # Not a tautology: it pins the relationship the 15m/1h/1d cache rows
-    # share, so a typo'd constant (e.g. 86_400_00) fails loudly here.
+    # Not a tautology: it pins the relationship the 1m/15m/1h/1d cache
+    # rows share, so a typo'd constant (e.g. 86_400_00) fails loudly here.
     assert interval_ms("1d") == 96 * interval_ms("15m")
     assert interval_ms("1d") == 24 * interval_ms("1h")
+    assert interval_ms("1d") == 1440 * interval_ms("1m")
+    assert interval_ms("15m") == 15 * interval_ms("1m")
 
 
 # ---------------------------------------------------------------------------
