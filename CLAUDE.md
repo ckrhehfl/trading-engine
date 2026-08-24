@@ -299,6 +299,14 @@ entirely (not called as a no-op). Real verification against KIS's actual
 API is blocked on the user's own KIS 모의투자 registration + App
 Key/Secret generation (not yet done as of this writing) — everything
 else in Task 4 (building/testing against a fake server) is not blocked
+by it. **Update 2026-08-21/24: no longer blocked** — the user completed
+registration (including a genuinely separate 국내 선물옵션 모의거래 이수
+certification the account also needed, confirmed real via a distinct
+provisioned account number), and real verification actually happened.
+Several real bugs this fake-server-only build could not itself have
+caught were found and fixed as a result — see "Exchange API Facts — KIS"
+below for the full account, kept separate from this section per this
+file's own established pattern for BingX/Binance.
 by it.
 
 **Two more real gaps found while actually implementing `KisAdapter`
@@ -1055,6 +1063,128 @@ Only public, unauthenticated read endpoints (klines only) have been
 called against the live API. No authenticated Binance endpoint has
 ever been called by this project, and none is planned — see the
 data-research-only framing above.
+
+## Exchange API Facts — KIS (verify before relying on them)
+
+### Verified — authenticated, paper key (2026-08-21/24, real 모의투자
+credentials, PR #103, the first real contact this project has ever had
+with KIS's live API — everything under "KIS/KOSPI200 venue integration"
+above was fake-server-verified only until this point)
+
+- **Response field-name casing is genuinely per-endpoint, not one
+  project-wide convention** — confirmed directly against KIS's own
+  official `koreainvestment/open-trading-api` example source (each
+  endpoint's own `COLUMN_MAPPING` dict, not guessed): `order` (submit)
+  responds UPPERCASE (`ODNO`); `inquire-balance` and `inquire-ccnl` both
+  respond lowercase (`pdno`, `cblc_qty`, `sll_buy_dvsn_name`,
+  `ccld_avg_unpr1`, `evlu_pfls_amt`, `odno`, `ord_qty`, `tot_ccld_qty`,
+  `qty`, `avg_idx`, ...). Request-parameter casing (always UPPERCASE,
+  e.g. `CANO`, `ACNT_PRDT_CD`) is unaffected — this is a response-body
+  quirk only. `KisAdapter`'s original implementation guessed uppercase
+  for all three endpoints; the two wrong guesses parsed every field as
+  silently `null` rather than throwing (Jackson's `JsonNode` lookup is
+  case-sensitive, and a missing field isn't distinguished from a
+  wrong-case one), not a loud failure — worth remembering for any future
+  KIS endpoint this project integrates.
+- **`inquire-deposit` (TR `CTRP6550R`, 선물옵션 총자산현황) has no working
+  paper-trading TR id at all**, despite this project's original,
+  disproven assumption that it was shared between real and paper
+  trading. A real call with the real tr_id against the paper host
+  returns `HTTP 500`/`EGW00205` ("credentials_type이 유효하지 않습니다.
+  (Bearer)"); a manually `V`-prefixed variant (`VTRP6550R`, following
+  KIS's own general real→paper tr_id convention — see `KisTokenProvider`)
+  returns `OPSQ0002` ("없는 서비스 코드 입니다", "no such service code
+  exists"). `KisAdapter.getBalance()` no longer calls this endpoint at
+  all — it now reuses the same `inquire-balance`/`VTFO6118R` call
+  `getPositions()` already used successfully, reading `output2` (an
+  account-level cash/margin/P&L summary object) instead of `output1`.
+- **`inquire-balance` requires `CTX_AREA_FK200`/`CTX_AREA_NK200` query
+  params even on a call that never follows pagination** — omitting
+  either causes a real `OPSQ2001` ("INPUT_FIELD_NAME CTX_AREA_FK200")
+  rejection, matching KIS's own official `inquire_balance.py` example,
+  which always sends both (`FK200`/`NK200`). `getBalance()` sends
+  `CTX_AREA_FK200=""` always; both `getBalance()`/`getPositions()`
+  genuinely paginate now (below), so `CTX_AREA_NK200` carries the real
+  continuation key on a page after the first.
+- **`inquire-balance` genuinely paginates** ("한 번의 호출에 최대 20건까지
+  확인 가능", per KIS's own official docstring) — `getPositions()` was
+  originally built reading only the first page, silently missing any
+  position past the 20-row mark. Now follows the same bounded
+  continuation loop `queryOrder`'s own `inquire-ccnl` call already used
+  (`MAX_INQUIRE_PAGES = 10`, shared by both), and fails closed (throws)
+  rather than return a silently-incomplete position list if the bound is
+  reached while KIS still reports more data.
+- **`tr_cont` response-header continuation convention, confirmed**:
+  `"M"` means more pages exist (continue); anything else, including
+  `"F"` (a real, observed final-page value), means stop. **A real,
+  disclosed latent bug found while building `getPositions()`'s
+  pagination loop**: the original continuation check (also present in
+  `queryOrder`, written earlier without a real API to test against)
+  treated `"F"` the same as `"M"`, so it never actually stopped on a
+  final page and would have kept fetching a nonexistent next page. This
+  was masked in `queryOrder` by that loop's own separate `matched ==
+  null` early-exit condition (which always stops the loop once the
+  target order is found, regardless of this flaw) — it surfaced for
+  real only once `getPositions()`'s own new test, with no such early
+  exit, exhausted the fake server's queued responses. Both loops now
+  correctly continue only on `"M"`, and both fail closed on `"M"` paired
+  with a blank continuation key (a KIS-side anomaly neither loop could
+  otherwise resolve into a real next page).
+- **Real observed response latency**: both `POST /oauth2/tokenP` and
+  `GET .../inquire-balance` were directly observed taking 7-10 seconds
+  during real verification — uncomfortably close to `KisAdapter`'s
+  original 10-second `REQUEST_TIMEOUT`, and the actual cause of several
+  real, intermittent `HttpTimeoutException`s hit while testing against
+  the live API. Widened to 20 seconds as a result — treat KIS's paper
+  host as meaningfully slower than BingX's under real conditions.
+- **`/oauth2/tokenP` has a real, empirically-hit rate limit**
+  (`EGW00133`, "접근토큰 발급 잠시 후 다시 시도하십시오" — "please try
+  again shortly for token issuance"), triggered by repeated token
+  requests within roughly a minute of each other. `KisTokenProvider`
+  caches a token in memory for the life of one JVM process, but each
+  fresh `kis-paper.sh` restart (a new JVM) requests a brand-new token —
+  repeated restarts in quick succession while debugging can exhaust this
+  budget for real. Space out restarts by at least ~60-90s if this
+  happens; it self-resolves, it is not a credential or code problem.
+- **`getBalance()`'s `output2` → `BalanceSnapshot` field mapping**
+  (KIS's own official column names/descriptions, human-confirmed, no
+  exact 1:1 semantic match for every field): `tot_dncl_amt` (총예수금액,
+  total deposit amount) → `balance`; `prsm_dpast_amt` (추정예탁자산금액,
+  estimated total account assets, i.e. deposit + P&L) → `equity`;
+  `ord_psbl_cash` (주문가능현금, order-available cash) → `availableMargin`;
+  `mgna_tota` (증거금총액, total margin) → `usedMargin`;
+  `evlu_pfls_amt_smtl` (평가손익금액합계, total evaluation P&L) →
+  `unrealizedProfit`. `balance` specifically is load-bearing, not just
+  informational: `PaperTradingApp.forKisPaper()` bootstraps
+  `SharedKisAccountLedger`'s entire `allocatedVirtualCapital` risk budget
+  directly from it, matching `BingXAdapter`'s own raw-balance (not
+  equity) convention for the analogous BingX-side value.
+- **Every response-parsing failure mode above is now fail-closed, not a
+  silent fallback** (tightened across five real CodeRabbit review
+  rounds on PR #103, each finding verified against current code before
+  fixing): a missing/malformed `output1`/`output2`, a missing `cblc_qty`/
+  `pdno`/`ord_qty`/`tot_ccld_qty`/`qty`, or a mutually-inconsistent
+  `ord_qty`/`tot_ccld_qty`/`qty` triple (e.g. filled exceeding ordered)
+  all throw `ExchangeException` rather than silently producing a `null`
+  amount, an empty symbol, or a misclassified order status. No exception
+  message anywhere in `KisAdapter`/`KisPriceFeed` embeds raw response
+  content (full JSON nodes, response bodies, or parsed field values) —
+  matching `KisAdapter.parseBody`'s own original discipline, extended to
+  every newer exception added during this same verification pass, since
+  a real KIS response can carry account numbers and balance/position
+  amounts, and these exceptions now land in a real, persisted
+  `kis-paper.log` file (see `scripts/kis-paper.sh`'s own tee-based
+  logging), not just an ephemeral tmux pane.
+- **First real end-to-end run, confirmed working** (2026-08-24, symbol
+  `A01609`, KOSPI200 index futures, `kis-paper` mode, PR #103 merged):
+  `KisPreflight` real balance = 50,000,000 KRW, no pre-existing
+  positions (clean start), `SharedKisAccountLedger` bootstrapped
+  `allocatedVirtualCapital` from that real balance, `AccountLedgerReconciler`
+  clean reconciliation (`ledgerExposure=0 realExposure=0 mismatch=0`),
+  `PaperTradingApp` constructed successfully, and a real tick completed.
+  Kill switch starts tripped by design regardless (the KOSPI200
+  contract-multiplier gap disclosed earlier in this file is still
+  unresolved) — no order was or could be submitted in this run.
 
 ## LLM Usage Policy
 
