@@ -227,13 +227,14 @@ public final class PaperTradingApp {
      * KRX's own official KOSPI200 index futures contract specification:
      * one contract = index points x KRW250,000 -- see CLAUDE.md's
      * "RiskLimits" section. Used only for {@code
-     * KisPriceFeed.MarketDivision.INDEX_FUTURES}; individual-stock
-     * futures (KOSPI200 index futures) have a real, different, per-stock
-     * contract multiplier that is not yet confirmed against KIS's own
-     * contract-specification docs (see CLAUDE.md's own "Scope extension
-     * beyond KOSPI200 index futures" disclosure) -- {@link #forKisPaper}
-     * fails closed (refuses to start) for {@code STOCK_FUTURES} rather
-     * than guess.
+     * KisPriceFeed.MarketDivision.INDEX_FUTURES}. Individual-stock
+     * futures ({@code STOCK_FUTURES}) are a real, different KRX product
+     * with a real, different, per-stock contract multiplier that is not
+     * yet confirmed against KIS's own contract-specification docs (see
+     * CLAUDE.md's own "Scope extension beyond KOSPI200 index futures"
+     * disclosure) -- this constant must never be reused for that product;
+     * {@link #forKisPaper} fails closed (refuses to start) for {@code
+     * STOCK_FUTURES} rather than guess.
      */
     private static final BigDecimal KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER = new BigDecimal("250000");
 
@@ -1057,33 +1058,38 @@ public final class PaperTradingApp {
      *   so their {@code tick()} always ran) -- it was new, introduced by
      *   {@code kis-paper} being the first mode with a calendar that can
      *   actually report closed.
-     *   <li><b>Mitigated, not solved: {@code RiskGateway} has no KOSPI200
-     *   contract-multiplier conversion.</b> It computes notional as plain
-     *   {@code quantity × price}; a real KOSPI200 futures contract is
-     *   worth {@code index points × ₩250,000} (KRX's own official
-     *   multiplier -- see CLAUDE.md's "KIS/KOSPI200 venue integration,
-     *   Phase 1" section). Until that conversion exists and runs before
-     *   {@code RiskLimits.canary()}'s percentage check, the canary 2%
-     *   order-notional limit does not meaningfully bound a real KIS
-     *   order's exposure. This was anticipated, not newly discovered:
-     *   CLAUDE.md's own design review already named this as required
-     *   "before the canary percentages mean anything here." It remains
-     *   unbuilt because it is real R3-risk architecture (a change to
-     *   {@code RiskGateway}'s own notional calculation, touching every
-     *   venue) that needs its own {@code Discuss} pass. <b>Correcting an
-     *   earlier version of this same disclosure, on an earlier review
-     *   round</b>: this graph is fully order-submission-capable the moment
-     *   a real signal appears at {@code signalPath} -- an earlier claim
-     *   that {@code kis-paper} mode was "unaffected in practice" because it
-     *   "still runs against {@code DummySignalSource}" was simply wrong;
-     *   this method has always wired a real {@link FileSignalSource}, the
-     *   same as {@link #forBingXVst} does. The real mitigation is below:
-     *   this method now unconditionally trips {@link #killSwitch}
-     *   regardless of preflight/marker state, specifically because of this
-     *   gap, so no signal -- real or accidental -- can result in a
-     *   submitted order without a deliberate human reset first. Remove
-     *   that unconditional trip only once the contract-multiplier
-     *   conversion is built and tested.
+     *   <li><b>Update: {@code RiskGateway}'s KOSPI200 contract-multiplier
+     *   conversion is now built, but the unconditional kill-switch trip
+     *   below stays regardless.</b> {@code RiskGateway} used to compute
+     *   notional as plain {@code quantity × price}, meaningless for a real
+     *   KOSPI200 futures contract (worth {@code index points ×
+     *   ₩250,000}, KRX's own official multiplier -- see CLAUDE.md's
+     *   "RiskLimits" section). {@link #resolveKisNotionalCalculator} now
+     *   supplies the real conversion via {@code engine.risk
+     *   .NotionalCalculator} for {@code INDEX_FUTURES}; {@code
+     *   STOCK_FUTURES} fails closed (refuses to start) rather than guess
+     *   at its own real, different, still-unconfirmed per-stock
+     *   multiplier. This closes the specific gap the unconditional trip
+     *   below was originally added for -- but the trip is <b>deliberately
+     *   left in place anyway</b>, a real decision made with the human
+     *   operator rather than a side effect of building the conversion:
+     *   (1) the conversion is verified only by unit tests so far, not
+     *   against KIS's live API; (2) two further, independently-disclosed
+     *   gaps remain open regardless -- KIS order submission has no
+     *   client-supplied idempotency key for ambiguous-submission recovery,
+     *   and {@code GUARDED_MARKET} has no wire-level price guard for
+     *   either adapter (see this class's own Javadoc elsewhere and
+     *   CLAUDE.md's "KIS/KOSPI200 venue integration" section for both).
+     *   Resetting the kill switch remains a deliberate, explicit human
+     *   choice, not something any single fix silently unlocks. <b>Also
+     *   correcting an earlier version of this same disclosure, on an
+     *   earlier review round</b>: this graph is fully order-submission-
+     *   capable the moment a real signal appears at {@code signalPath} --
+     *   an earlier claim that {@code kis-paper} mode was "unaffected in
+     *   practice" because it "still runs against {@code
+     *   DummySignalSource}" was simply wrong; this method has always
+     *   wired a real {@link FileSignalSource}, the same as {@link
+     *   #forBingXVst} does.
      * </ol>
      */
     private static PaperTradingApp forKisPaper(
@@ -1161,24 +1167,29 @@ public final class PaperTradingApp {
 
         // Unconditionally tripped, not only on a preflight/marker problem
         // (a real CodeRabbit review finding, tied directly to this method's
-        // own Javadoc "still open" gap above): RiskGateway has no KOSPI200
-        // contract-multiplier conversion yet, so RiskLimits.canary()'s 2%
-        // order-notional limit does not meaningfully bound a real KIS
-        // order's exposure. This graph is otherwise fully capable of
-        // submitting a real order the moment a signal appears at
-        // signalPath -- until the contract-multiplier conversion exists,
-        // this process must never do that without a deliberate human
-        // reset first, regardless of whether preflight/markers looked
-        // clean. Remove this once that conversion is built and tested (see
-        // this method's own Javadoc).
+        // own Javadoc above). Update: RiskGateway's KOSPI200 contract-
+        // multiplier conversion is now built (resolveKisNotionalCalculator
+        // above) -- but this trip stays anyway, a deliberate decision made
+        // with the human operator, not a side effect of building the
+        // conversion: it is verified only by unit tests so far, not
+        // against KIS's live API, and two further, independently-disclosed
+        // gaps remain open regardless (no idempotency key for ambiguous-
+        // submission recovery; no wire-level GUARDED_MARKET price guard --
+        // see this method's own Javadoc). This graph is otherwise fully
+        // capable of submitting a real order the moment a signal appears
+        // at signalPath -- resetting the kill switch remains a deliberate,
+        // explicit human choice, not something any single fix silently
+        // unlocks (see this method's own Javadoc).
         app.killSwitch.trip();
         log.error(
-                "PaperTradingApp starting in kis-paper mode with the kill switch already TRIPPED -- RiskGateway has"
-                        + " no KOSPI200 contract-multiplier conversion yet, so the canary notional limit does not"
-                        + " meaningfully bound a real KIS order's exposure (see forKisPaper's own Javadoc). A"
-                        + " deliberate human reset is required before any signal is submitted, independent of"
-                        + " preflightFoundNonZeroPosition={} and unresolvedSubmissionMarkersRequiringReview={}"
-                        + " below, both still logged since they're separately meaningful once that reset happens.",
+                "PaperTradingApp starting in kis-paper mode with the kill switch already TRIPPED -- the KOSPI200"
+                        + " contract-multiplier conversion is now built (see forKisPaper's own Javadoc), but this"
+                        + " trip stays regardless: it is unit-tested only, not yet verified against KIS's live API,"
+                        + " and two further disclosed gaps (ambiguous-submission recovery, no wire-level"
+                        + " GUARDED_MARKET guard) remain open. A deliberate human reset is required before any"
+                        + " signal is submitted, independent of preflightFoundNonZeroPosition={} and"
+                        + " unresolvedSubmissionMarkersRequiringReview={} below, both still logged since they're"
+                        + " separately meaningful once that reset happens.",
                 preflight.killSwitchShouldStartTripped(),
                 unresolvedMarkers);
         log.info(

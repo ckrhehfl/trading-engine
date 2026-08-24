@@ -771,6 +771,14 @@ class PaperTradingAppTest {
         var calculator = PaperTradingApp.resolveKisNotionalCalculator(KisPriceFeed.MarketDivision.INDEX_FUTURES);
 
         assertTrue(calculator instanceof FixedMultiplierNotionalCalculator);
+        // Not just the type -- the real value, so a future accidental change
+        // to KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER's own literal would be
+        // caught here, not just at FixedMultiplierNotionalCalculator's own
+        // (necessarily value-agnostic) unit tests.
+        assertEquals(
+                0,
+                new BigDecimal("250000")
+                        .compareTo(((FixedMultiplierNotionalCalculator) calculator).multiplier()));
     }
 
     /**

@@ -72,4 +72,9 @@ public final class FixedMultiplierNotionalCalculator implements NotionalCalculat
         BigDecimal contractValue = price.multiply(multiplier);
         return maxNotional.divide(contractValue, 0, RoundingMode.DOWN);
     }
+
+    /** The exact multiplier this instance was constructed with -- lets a caller (e.g. a test) verify which value is actually wired in, not just the calculator's type. */
+    public BigDecimal multiplier() {
+        return multiplier;
+    }
 }
