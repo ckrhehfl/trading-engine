@@ -4,9 +4,9 @@ import engine.schemas.Decision;
 import engine.schemas.OrderIntent;
 import engine.schemas.RiskDecision;
 import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,12 +29,27 @@ import org.slf4j.LoggerFactory;
 public final class RiskGateway {
 
     private static final Logger log = LoggerFactory.getLogger(RiskGateway.class);
-    private static final int QUANTITY_SCALE = 8;
 
     private final RiskLimits limits;
+    private final NotionalCalculator notionalCalculator;
 
     public RiskGateway(RiskLimits limits) {
+        this(limits, SimpleNotionalCalculator.INSTANCE);
+    }
+
+    /**
+     * {@code notionalCalculator} lets a venue whose quantity unit isn't
+     * 1:1 with its priced unit (e.g. KOSPI200 futures, see {@link
+     * FixedMultiplierNotionalCalculator}) supply its own conversion,
+     * without {@link RiskGateway} itself needing to know any
+     * venue-specific fact -- see {@link NotionalCalculator}'s own
+     * Javadoc. The one-argument constructor above (used by every
+     * BTC-USDT loop) is a zero-behavior-change delegation to {@link
+     * SimpleNotionalCalculator#INSTANCE}, not a separate code path.
+     */
+    public RiskGateway(RiskLimits limits, NotionalCalculator notionalCalculator) {
         this.limits = Objects.requireNonNull(limits, "limits is required");
+        this.notionalCalculator = Objects.requireNonNull(notionalCalculator, "notionalCalculator is required");
     }
 
     public RiskDecision evaluate(OrderIntent intent, BigDecimal referencePrice, AccountState account) {
@@ -57,14 +72,25 @@ public final class RiskGateway {
             // requested quantity regardless of size — reject outright instead.
             return reject(intent, "cannot evaluate order: effective price " + price + " is not positive");
         }
-        BigDecimal notional = intent.quantity().multiply(price);
+
+        // Checked before any notional math, and before the notional-percent
+        // check below (not after or in parallel) -- an invalid quantity
+        // shape (e.g. fractional where only a whole contract count is
+        // valid) makes any notional computed from it meaningless. See
+        // NotionalCalculator's own Javadoc.
+        Optional<String> quantityRejection = notionalCalculator.quantityRejectionReason(intent);
+        if (quantityRejection.isPresent()) {
+            return reject(intent, quantityRejection.get());
+        }
+
+        BigDecimal notional = notionalCalculator.notionalOf(intent, price);
         BigDecimal maxNotional = limits.maxOrderNotionalPercent().multiply(account.equity());
 
         if (notional.compareTo(maxNotional) <= 0) {
             return approve(intent, intent.quantity());
         }
 
-        BigDecimal clampedQuantity = maxNotional.divide(price, QUANTITY_SCALE, RoundingMode.DOWN);
+        BigDecimal clampedQuantity = notionalCalculator.maxQuantityFor(maxNotional, price);
         if (clampedQuantity.signum() <= 0) {
             return reject(
                     intent,

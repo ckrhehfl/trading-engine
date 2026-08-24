@@ -209,6 +209,98 @@ class RiskGatewayTest {
     }
 
     @Test
+    void evaluateWithFixedMultiplierCalculatorAppliesMultiplierToNotional() throws Exception {
+        // 1 contract at 350 would be notional=350 under plain qty*price
+        // (well within any reasonable maxNotional) -- but at a real
+        // KOSPI200-style 250000 multiplier the real notional is
+        // 87,500,000, which must actually be checked against maxNotional,
+        // not silently approved as if the multiplier didn't exist. This
+        // is the exact bug this NotionalCalculator plumbing exists to fix.
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new FixedMultiplierNotionalCalculator(new BigDecimal("250000")));
+        OrderIntent intent = limitIntent(new BigDecimal("1"), new BigDecimal("350"));
+        AccountState account = healthyAccount(new BigDecimal("100000")); // maxNotional = 2000
+
+        RiskDecision decision = gateway.evaluate(intent, new BigDecimal("350"), account);
+
+        assertEquals(Decision.REJECTED, decision.decision());
+        assertRoundTrips(decision);
+    }
+
+    @Test
+    void evaluateWithFixedMultiplierCalculatorApprovesWithinLimit() throws Exception {
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new FixedMultiplierNotionalCalculator(new BigDecimal("250000")));
+        // notional = 1 * 0.01 * 250000 = 2500... use a small enough price so
+        // 1 contract fits within maxNotional (2000 at equity=100000).
+        OrderIntent intent = limitIntent(BigDecimal.ONE, new BigDecimal("0.007"));
+        AccountState account = healthyAccount(new BigDecimal("100000")); // maxNotional = 2000
+
+        RiskDecision decision = gateway.evaluate(intent, new BigDecimal("0.007"), account);
+
+        assertEquals(Decision.APPROVED, decision.decision());
+        assertEquals(BigDecimal.ONE, decision.approvedQuantity());
+        assertRoundTrips(decision);
+    }
+
+    @Test
+    void evaluateWithFixedMultiplierCalculatorClampsToWholeContractsNotFractional() throws Exception {
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new FixedMultiplierNotionalCalculator(new BigDecimal("250000")));
+        // maxNotional = 0.02 * 16,200,000,000 = 324,000,000; contractValue
+        // = 350 * 250000 = 87,500,000; 324,000,000 / 87,500,000 = 3.7028...
+        // -- requesting 10 contracts must clamp DOWN to the whole contract
+        // count 3, never a fractional one (a fractional KOSPI200 futures
+        // contract cannot be submitted) and never UP to 4 (would exceed
+        // maxNotional).
+        OrderIntent intent = limitIntent(new BigDecimal("10"), new BigDecimal("350"));
+        AccountState account = healthyAccount(new BigDecimal("16200000000"));
+
+        RiskDecision decision = gateway.evaluate(intent, new BigDecimal("350"), account);
+
+        assertEquals(Decision.MODIFIED, decision.decision());
+        assertEquals(0, new BigDecimal("3").compareTo(decision.approvedQuantity()));
+        assertEquals(0, decision.approvedQuantity().scale(), "must be a whole contract count, not fractional");
+        assertTrue(
+                decision.approvedQuantity()
+                                .multiply(new BigDecimal("350"))
+                                .multiply(new BigDecimal("250000"))
+                                .compareTo(new BigDecimal("324000000"))
+                        <= 0);
+        assertRoundTrips(decision);
+    }
+
+    @Test
+    void evaluateWithFixedMultiplierCalculatorRejectsFractionalRequestedQuantity() throws Exception {
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new FixedMultiplierNotionalCalculator(new BigDecimal("250000")));
+        OrderIntent intent = limitIntent(new BigDecimal("1.5"), new BigDecimal("0.001"));
+        AccountState account = healthyAccount(new BigDecimal("100000"));
+
+        RiskDecision decision = gateway.evaluate(intent, new BigDecimal("0.001"), account);
+
+        assertEquals(Decision.REJECTED, decision.decision());
+        assertTrue(decision.reason().contains("whole contract count"));
+        assertNull(decision.approvedQuantity());
+        assertRoundTrips(decision);
+    }
+
+    @Test
+    void evaluateOneArgConstructorStillUsesSimpleNotionalCalculator() throws Exception {
+        // Regression: the plain RiskLimits-only constructor every BTC-USDT
+        // loop uses today must remain byte-for-byte the pre-NotionalCalculator
+        // behavior -- proven, not just asserted by construction.
+        RiskGateway gateway = new RiskGateway(RiskLimits.canary());
+        OrderIntent intent = limitIntent(new BigDecimal("0.03"), new BigDecimal("60000"));
+        AccountState account = healthyAccount(new BigDecimal("100000"));
+
+        RiskDecision decision = gateway.evaluate(intent, new BigDecimal("60000"), account);
+
+        assertEquals(Decision.APPROVED, decision.decision());
+        assertEquals(new BigDecimal("0.03"), decision.approvedQuantity());
+    }
+
+    @Test
     void degenerateClampRejectsInsteadOfZeroOrNegativeQuantity() throws Exception {
         RiskGateway gateway = new RiskGateway(RiskLimits.canary());
         // tiny equity relative to price: maxNotional = 0.02 * 0.001 = 0.00002,

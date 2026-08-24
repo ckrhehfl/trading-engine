@@ -14,6 +14,7 @@ import engine.execution.PaperBroker;
 import engine.oms.Order;
 import engine.oms.OrderState;
 import engine.risk.AccountState;
+import engine.risk.FixedMultiplierNotionalCalculator;
 import engine.risk.RiskGateway;
 import engine.risk.RiskLimits;
 import engine.schemas.OrderIntent;
@@ -766,6 +767,35 @@ class PaperTradingAppTest {
     }
 
     @Test
+    void resolveKisNotionalCalculatorReturnsFixedMultiplierForIndexFutures() {
+        var calculator = PaperTradingApp.resolveKisNotionalCalculator(KisPriceFeed.MarketDivision.INDEX_FUTURES);
+
+        assertTrue(calculator instanceof FixedMultiplierNotionalCalculator);
+        // Not just the type -- the real value, so a future accidental change
+        // to KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER's own literal would be
+        // caught here, not just at FixedMultiplierNotionalCalculator's own
+        // (necessarily value-agnostic) unit tests.
+        assertEquals(
+                0,
+                new BigDecimal("250000")
+                        .compareTo(((FixedMultiplierNotionalCalculator) calculator).multiplier()));
+    }
+
+    /**
+     * Fail-closed by design (see {@code resolveKisNotionalCalculator}'s
+     * own Javadoc): individual-stock futures have a real, different,
+     * per-stock contract multiplier this project has not yet confirmed
+     * against KIS's own contract-specification docs, so this must refuse
+     * rather than guess or silently reuse the index-futures multiplier.
+     */
+    @Test
+    void resolveKisNotionalCalculatorRejectsStockFutures() {
+        assertThrows(
+                IllegalStateException.class,
+                () -> PaperTradingApp.resolveKisNotionalCalculator(KisPriceFeed.MarketDivision.STOCK_FUTURES));
+    }
+
+    @Test
     void resolveExecutionModeReturnsBingxVstOnlyForAnExactMatch() {
         assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("bingx-vst"));
         assertEquals(PaperTradingApp.EXECUTION_MODE_BINGX_VST, PaperTradingApp.resolveExecutionMode("  bingx-vst  "));
@@ -1197,6 +1227,104 @@ class PaperTradingAppTest {
         clock.advanceTo(Instant.parse("2026-08-08T00:05:00Z"));
         app.runTick(); // crosses a UTC day boundary -- must invoke a real reconciliation pass
         assertEquals(1, reconciler.reconciliationPassCount());
+    }
+
+    // ---- KIS contract-multiplier NotionalCalculator wiring: the 12-arg overload ----
+
+    /**
+     * Proves the 12-arg overload's own added {@link
+     * engine.risk.NotionalCalculator} parameter is what {@link
+     * engine.risk.RiskGateway} actually evaluates against, end to end
+     * through the real {@code TradingLoop}+{@code OrderPipeline} path --
+     * not merely that {@code FixedMultiplierNotionalCalculator} works in
+     * isolation (already covered by its own unit tests). 1 contract at
+     * price 350 is notional=350 under plain {@code quantity * price}
+     * (comfortably inside a 2000 maxNotional) but the real, KOSPI200-style
+     * notional at a 250000 multiplier is 87,500,000 -- so this order must
+     * be REJECTED here even though the identical signal, submitted via
+     * the 11-arg overload directly above (no multiplier), is APPROVED --
+     * see the companion test below.
+     */
+    @Test
+    void twelveArgKisConstructorAppliesNotionalCalculatorToRiskDecisions(@TempDir Path tempDir) throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, BigDecimal.ONE, null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+        FakeAccountStateProvider accountStateProvider =
+                new FakeAccountStateProvider(new AccountState(
+                        new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+        PaperBroker broker = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnPositions(List.of());
+        KillSwitch killSwitch = new KillSwitch();
+        AccountLedgerReconciler reconciler = new AccountLedgerReconciler(
+                tempDir.resolve("ledger.json"), "KIS", "acct-mult", new BigDecimal("100000"), adapter, killSwitch,
+                Clock.systemUTC());
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar, broker,
+                accountStateProvider, killSwitch, reconciler,
+                new FixedMultiplierNotionalCalculator(new BigDecimal("250000")));
+
+        app.runTick();
+
+        assertTrue(broker.pendingOrders().isEmpty(), "notional at the real 250000 multiplier exceeds maxNotional");
+        assertEquals(1, accountStateProvider.releaseCallCount(), "a rejected order must release its reservation");
+        assertEquals(0, accountStateProvider.confirmCallCount());
+    }
+
+    /**
+     * Companion to the test directly above: the identical signal, same
+     * price and equity, submitted via the 11-arg overload (no {@code
+     * NotionalCalculator} parameter, so {@code RiskGateway} falls back to
+     * plain {@code quantity * price}) is APPROVED -- proving the
+     * rejection above is genuinely caused by the injected multiplier,
+     * not some other difference between the two overloads.
+     */
+    @Test
+    void elevenArgKisConstructorApprovesTheSameSignalTheTwelveArgOverloadRejects(@TempDir Path tempDir)
+            throws IOException {
+        Path signalPath = tempDir.resolve("latest.json");
+        OrderIntent intent = new OrderIntent(
+                UUID.randomUUID(), SYMBOL, Side.LONG, OrderType.GUARDED_MARKET, BigDecimal.ONE, null, "1d",
+                Instant.now());
+        writeIntent(signalPath, intent);
+        FakePriceFeed priceFeed = new FakePriceFeed(new BigDecimal("350"));
+        FakeTradingCalendar calendar = new FakeTradingCalendar(true);
+        FakeAccountStateProvider accountStateProvider =
+                new FakeAccountStateProvider(new AccountState(
+                        new BigDecimal("100000"), BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO));
+        PaperBroker broker = new PaperBroker(new BigDecimal("5"), new BigDecimal("2"));
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnPositions(List.of());
+        KillSwitch killSwitch = new KillSwitch();
+        AccountLedgerReconciler reconciler = new AccountLedgerReconciler(
+                tempDir.resolve("ledger.json"), "KIS", "acct-mult-none", new BigDecimal("100000"), adapter,
+                killSwitch, Clock.systemUTC());
+
+        PaperTradingApp app = new PaperTradingApp(
+                SYMBOL, priceFeed, signalPath, 60, tempDir.resolve("reports"), Clock.systemUTC(), calendar, broker,
+                accountStateProvider, killSwitch, reconciler);
+
+        app.runTick();
+
+        // confirmCallCount, not pendingOrders() -- a GUARDED_MARKET order
+        // resolves synchronously against PaperBroker's injected price, so
+        // an approved order need not still be "pending" by the time this
+        // assertion runs; confirmCallCount/releaseCallCount are the
+        // reliable signals of RiskGateway's actual decision regardless of
+        // fill timing (see the rejected-case test above, where an empty
+        // pendingOrders() is unambiguous because a rejected intent is
+        // never submitted to the broker at all).
+        assertEquals(
+                1,
+                accountStateProvider.confirmCallCount(),
+                "notional=350 under plain quantity*price fits maxNotional=2000, so RiskGateway must approve");
+        assertEquals(0, accountStateProvider.releaseCallCount());
     }
 
     /**
