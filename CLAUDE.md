@@ -392,6 +392,33 @@ order-notional limit does not meaningfully bound a real KIS order's
 exposure today** — it is checked against `quantity × price`, off from
 the real notional by the ₩250,000 contract multiplier.
 
+**Update 2026-08-24 (PR #105): the contract-multiplier conversion named
+above is now built.** A new `engine.risk.NotionalCalculator` interface,
+injected into `RiskGateway` via a second constructor (the original
+one-argument constructor stays a zero-behavior-change delegation to the
+new `SimpleNotionalCalculator`, used by every BTC-USDT loop unchanged),
+supplies the real `quantity × price × multiplier` conversion for KIS —
+`FixedMultiplierNotionalCalculator`, generic and KOSPI/KIS-name-free
+(matching this file's own "a new venue means a new `ExchangeAdapter`,
+never a change to `RiskGateway` itself" rule), enforces a positive
+integer contract count, and rounds notional up (never down, so rounding
+can't understate exposure and let an over-limit order through) with the
+inverse clamp rounding quantity down to a whole contract. `PaperTradingApp
+.forKisPaper()` resolves it via `resolveKisNotionalCalculator`:
+`INDEX_FUTURES` gets the real ₩250,000 multiplier; `STOCK_FUTURES` fails
+closed (refuses to start) rather than guess at its own real, different,
+still-unconfirmed per-stock multiplier (the gap named in "Still fully
+unbuilt" below remains open specifically for that product). **This does
+not, by itself, change whether `kis-paper` can submit a real order**:
+`forKisPaper()`'s unconditional `KillSwitch.trip()` (immediately below)
+was deliberately left in place rather than removed — a real decision
+made with the human operator, not a side effect of this task — because
+the conversion is verified only by unit tests so far, not against KIS's
+live API, and the two gaps named two paragraphs below (ambiguous-
+submission recovery, no wire-level `GUARDED_MARKET` guard) remain open
+regardless of this fix. Resetting the kill switch stays a separate,
+explicit human choice.
+
 **Correction to this disclosure's own first version, caught on a second
 CodeRabbit review pass of the same PR**: it originally claimed this gap
 was "inert... because it still runs against `DummySignalSource`." That
@@ -408,7 +435,11 @@ and marker state look. This bounds the risk to "a human must actively
 choose to enable trading," it does not fix the underlying gap; the
 contract-multiplier conversion must still be built — as its own dedicated
 task, per the requirement above — before that reset is ever performed
-against a `kis-paper` process pointed at a real strategy signal.
+against a `kis-paper` process pointed at a real strategy signal. **Now
+built for `INDEX_FUTURES` (see the 2026-08-24/PR #105 update above) —
+but stated precisely, its being built is necessary, not sufficient, for
+that reset**: real-API verification and the two still-open gaps named in
+that same update remain, independent of this specific conversion.
 
 **A second Task 4 finding, same review, now fixed**: `FileSignalSource`'s
 delivered-marker file (see Task H's own "durable, cross-restart dedup"
@@ -560,17 +591,23 @@ against a real individual-stock-futures symbol (e.g. `A11609`) to settle,
 which is deliberately not asserted as already-confirmed anywhere in code
 or here.
 
-**Still fully unbuilt, unaffected by this extension**: the RiskGateway
-KOSPI200 contract-multiplier conversion disclosed earlier in this section
-remains disclosed-not-built, and does not yet distinguish index-futures
-(₩250,000/index point) from stock-futures (a real, different, per-stock
-contract multiplier — the symbol master file's own `한글종목명` field shows
-a `(  10)` suffix per stock-futures row, plausibly a 10-shares-per-
-contract multiplier, not yet independently confirmed against KIS's own
-contract-specification docs). `forKisPaper()`'s own unconditional
-`KillSwitch` trip (see above) already covers this extension too, for the
-identical reason — no code path in this extension is exempt from that
-mitigation.
+**Updated 2026-08-24 (PR #105) — index-futures side now built, stock-
+futures side still fully unbuilt.** The RiskGateway KOSPI200 contract-
+multiplier conversion disclosed earlier in this section now exists for
+`INDEX_FUTURES` (the real ₩250,000/index point multiplier, via
+`FixedMultiplierNotionalCalculator`), but still does not — and, per that
+same update, deliberately refuses to guess at — a stock-futures
+multiplier (a real, different, per-stock contract multiplier — the
+symbol master file's own `한글종목명` field shows a `(  10)` suffix per
+stock-futures row, plausibly a 10-shares-per-contract multiplier, not
+yet independently confirmed against KIS's own contract-specification
+docs). `resolveKisNotionalCalculator` fails closed for `STOCK_FUTURES`
+(refuses to start the process at all) rather than trade under an
+unconfirmed multiplier. `forKisPaper()`'s own unconditional `KillSwitch`
+trip (see above) already covers both products regardless — no code path
+in this extension is exempt from that mitigation, and the trip was kept
+in place even for `INDEX_FUTURES` once its own conversion was built (see
+the update above for why).
 
 Explicitly out of scope this entire phase: **KOSPI200 options** (a
 canonical strike/expiry/multiplier-preserving symbol format is undesigned
