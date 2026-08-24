@@ -368,7 +368,12 @@ public final class KisAdapter implements ExchangeAdapter {
         // closed for cblc_qty itself, now closed one level up.
         JsonNode output1 = root.path("output1");
         if (!output1.isArray()) {
-            throw new ExchangeException("KIS getPositions response missing or malformed 'output1' array: " + root);
+            // Never embeds root/node content -- see parseBigDecimal's own
+            // Javadoc note below (tightened on real CodeRabbit review): a
+            // malformed output1 alongside a well-formed output2 would
+            // otherwise leak real balance/deposit figures into this
+            // exception's message.
+            throw new ExchangeException("KIS getPositions response missing or malformed 'output1' array");
         }
         List<PositionSnapshot> positions = new ArrayList<>();
         for (JsonNode node : output1) {
@@ -392,8 +397,19 @@ public final class KisAdapter implements ExchangeAdapter {
             if (quantity.signum() == 0) {
                 continue;
             }
+            // Required and non-blank, not merely optional (tightened on
+            // real CodeRabbit review): asText("") on a missing/blank pdno
+            // would otherwise silently produce a PositionSnapshot with an
+            // empty symbol -- a real position an operator/RiskGateway
+            // couldn't identify by product. positionSide is left as
+            // KIS's own raw exchange string, deliberately not normalized
+            // here.
+            String symbol = node.path("pdno").asText("").strip();
+            if (symbol.isEmpty()) {
+                throw new ExchangeException("KIS position response missing required field 'pdno'");
+            }
             positions.add(new PositionSnapshot(
-                    node.path("pdno").asText(),
+                    symbol,
                     node.path("sll_buy_dvsn_name").asText(),
                     quantity,
                     // ccld_avg_unpr1 ("체결평균단가1", average execution
@@ -464,13 +480,28 @@ public final class KisAdapter implements ExchangeAdapter {
         if (!isSuccess(root)) {
             throw new ExchangeException("KIS getBalance failed: " + errorMessage(root));
         }
-        JsonNode output2 = root.path("output2");
+        // Required and must be an object, and every field below required,
+        // not merely optional (tightened on real CodeRabbit review, same
+        // fail-closed discipline as getPositions()'s output1/cblc_qty
+        // checks above): a missing/malformed output2 or field would
+        // otherwise silently produce a BalanceSnapshot with null amounts --
+        // meaningful here specifically because balance() seeds
+        // SharedKisAccountLedger's entire allocatedVirtualCapital risk
+        // budget (see this method's own Javadoc above), so a null there
+        // must fail startup, not silently proceed with an unknown budget.
+        JsonNode output2 = root.get("output2");
+        if (output2 == null || !output2.isObject()) {
+            // Never embeds root content -- see parseBigDecimal's own
+            // Javadoc note below (tightened on real CodeRabbit review): the
+            // response root can carry real deposit/balance figures.
+            throw new ExchangeException("KIS getBalance response missing or malformed 'output2'");
+        }
         return new BalanceSnapshot(
-                parseBigDecimal(output2, "tot_dncl_amt"),
-                parseBigDecimal(output2, "prsm_dpast_amt"),
-                parseBigDecimal(output2, "ord_psbl_cash"),
-                parseBigDecimal(output2, "mgna_tota"),
-                parseBigDecimal(output2, "evlu_pfls_amt_smtl"),
+                requireBigDecimal(output2, "tot_dncl_amt"),
+                requireBigDecimal(output2, "prsm_dpast_amt"),
+                requireBigDecimal(output2, "ord_psbl_cash"),
+                requireBigDecimal(output2, "mgna_tota"),
+                requireBigDecimal(output2, "evlu_pfls_amt_smtl"),
                 "KRW");
     }
 
@@ -753,6 +784,15 @@ public final class KisAdapter implements ExchangeAdapter {
         return new OrderStatus(node.path("odno").asText(), status, filledQty, avgPrice);
     }
 
+    /**
+     * Never embeds the parsed value or the containing node in a thrown
+     * message (tightened on real CodeRabbit review, matching {@link
+     * #parseBody}'s own established discipline) -- a real KIS response can
+     * carry account numbers and balance/deposit/position amounts, and this
+     * method backs fields across every response this adapter parses, not
+     * just non-sensitive ones. The field name and endpoint context alone
+     * are enough to diagnose a malformed response without that risk.
+     */
     private static BigDecimal parseBigDecimal(JsonNode node, String field) {
         JsonNode value = node.get(field);
         if (value == null || value.isNull()) {
@@ -765,7 +805,7 @@ public final class KisAdapter implements ExchangeAdapter {
         try {
             return new BigDecimal(text);
         } catch (NumberFormatException e) {
-            throw new ExchangeException("KIS response field '" + field + "' is not a valid decimal: '" + text + "'", e);
+            throw new ExchangeException("KIS response field '" + field + "' is not a valid decimal", e);
         }
     }
 
@@ -775,11 +815,13 @@ public final class KisAdapter implements ExchangeAdapter {
      * branches on, where a genuinely missing value is a real response-shape
      * anomaly (added on real CodeRabbit review, see {@link #toOrderStatus}
      * and {@link #getPositions()} for the two call sites this protects).
+     * Never embeds the containing node -- see this class's own
+     * {@link #parseBigDecimal} Javadoc immediately above for why.
      */
     private static BigDecimal requireBigDecimal(JsonNode node, String field) {
         BigDecimal value = parseBigDecimal(node, field);
         if (value == null) {
-            throw new ExchangeException("KIS response missing required field '" + field + "': " + node);
+            throw new ExchangeException("KIS response missing required field '" + field + "'");
         }
         return value;
     }

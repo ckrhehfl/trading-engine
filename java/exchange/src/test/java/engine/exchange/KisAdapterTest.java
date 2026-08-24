@@ -387,6 +387,18 @@ class KisAdapterTest {
     }
 
     @Test
+    void getPositionsThrowsWhenPdnoMissingOrBlank() {
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":["
+                        + "{\"sll_buy_dvsn_name\":\"매수\",\"cblc_qty\":\"3\","
+                        + "\"ccld_avg_unpr1\":\"350\",\"evlu_pfls_amt\":\"1500\"}"
+                        + "],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
+    }
+
+    @Test
     void getPositionsParsesArrayAndSkipsZeroQuantityRows() {
         server.respondWith(
                 200,
@@ -426,6 +438,23 @@ class KisAdapterTest {
         assertEquals("KRW", balance.asset());
         assertEquals("/uapi/domestic-futureoption/v1/trading/inquire-balance", server.lastPath());
         assertEquals("VTFO6118R", server.lastTrIdHeader());
+    }
+
+    @Test
+    void getBalanceThrowsWhenOutput2MissingRatherThanReturningNullAmounts() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[]}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getBalance());
+    }
+
+    @Test
+    void getBalanceThrowsWhenOutput2MissingAField() {
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[],\"output2\":{\"tot_dncl_amt\":\"10000000\","
+                        + "\"prsm_dpast_amt\":\"10050000\",\"ord_psbl_cash\":\"9500000\",\"mgna_tota\":\"500000\"}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getBalance());
     }
 
     @Test
