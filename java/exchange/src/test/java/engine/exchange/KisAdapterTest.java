@@ -262,6 +262,48 @@ class KisAdapterTest {
     }
 
     @Test
+    void queryOrderThrowsWhenOrdQtyMissingRatherThanMisclassifyingStatus() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+        adapter.submitOrder(order);
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"odno\":\"123\","
+                        + "\"tot_ccld_qty\":\"0\",\"avg_idx\":\"0\",\"qty\":\"1\"}],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
+    void queryOrderThrowsWhenTotCcldQtyMissingRatherThanMisclassifyingStatus() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+        adapter.submitOrder(order);
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"odno\":\"123\",\"ord_qty\":\"1\","
+                        + "\"avg_idx\":\"0\",\"qty\":\"1\"}],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
+    void queryOrderThrowsWhenQtyMissingRatherThanMisreportingAsCancelled() {
+        server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
+        Order order = guardedMarketOrder(Side.LONG, "5");
+        adapter.submitOrder(order);
+        // A still-live order (no "qty" field, ordered=5, filled=2) must
+        // throw, not fall through to noRemainder=true and be misreported
+        // as CANCELLED -- the exact bug CodeRabbit flagged.
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":[{\"odno\":\"123\",\"ord_qty\":\"5\","
+                        + "\"tot_ccld_qty\":\"2\",\"avg_idx\":\"350\"}],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
     void queryOrderThrowsWhenOrderNotFoundInOutput1() {
         server.respondWith(200, "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output\":{\"ODNO\":\"123\"}}");
         Order order = guardedMarketOrder(Side.LONG, "1");
@@ -323,6 +365,18 @@ class KisAdapterTest {
         server.respondWith(200, "{\"rt_cd\":\"1\",\"msg_cd\":\"1\",\"msg1\":\"boom\",\"output1\":[],\"output2\":{}}");
 
         assertThrows(ExchangeException.class, () -> adapter.queryOrder(order));
+    }
+
+    @Test
+    void getPositionsThrowsWhenCblcQtyMissingRatherThanTreatingRowAsFlat() {
+        server.respondWith(
+                200,
+                "{\"rt_cd\":\"0\",\"msg_cd\":\"\",\"msg1\":\"\",\"output1\":["
+                        + "{\"pdno\":\"101W09\",\"sll_buy_dvsn_name\":\"매수\","
+                        + "\"ccld_avg_unpr1\":\"350\",\"evlu_pfls_amt\":\"1500\"}"
+                        + "],\"output2\":{}}");
+
+        assertThrows(ExchangeException.class, () -> adapter.getPositions());
     }
 
     @Test

@@ -162,17 +162,24 @@ public final class KisPriceFeed implements PriceFeed {
             throw new ExchangeException("KIS price feed request interrupted calling " + QUOTE_PATH, e);
         }
 
+        // Deliberately never embeds response.body() in a thrown message --
+        // added on real CodeRabbit review, matching KisAdapter.parseBody's
+        // own established discipline (see that method's Javadoc): this
+        // endpoint's own query carries no account identifier, but KIS's
+        // real error-response shape on a failure is not itself confirmed,
+        // and this exception's message now lands in a real, persisted
+        // kis-paper.log file (see scripts/kis-paper.sh's own tee-based
+        // logging) rather than only an ephemeral tmux pane.
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new ExchangeException(
-                    "KIS price feed request to " + QUOTE_PATH + " returned HTTP " + response.statusCode() + ": "
-                            + response.body());
+                    "KIS price feed request to " + QUOTE_PATH + " returned HTTP " + response.statusCode());
         }
 
         JsonNode root;
         try {
             root = objectMapper.readTree(response.body());
         } catch (IOException e) {
-            throw new ExchangeException("KIS price feed response body is not valid JSON: " + response.body(), e);
+            throw new ExchangeException("KIS price feed response body is not valid JSON", e);
         }
 
         if (!"0".equals(root.path("rt_cd").asText(null))) {

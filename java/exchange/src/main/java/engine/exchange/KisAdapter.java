@@ -364,12 +364,21 @@ public final class KisAdapter implements ExchangeAdapter {
             // output1 field names are lowercase -- confirmed against KIS's
             // own real response and official column mapping, see class
             // Javadoc's "Real verification..." disclosure.
-            BigDecimal quantity = parseBigDecimal(node, "cblc_qty");
+            // Required, not optional (tightened on real CodeRabbit review):
+            // a genuinely missing cblc_qty is a response-shape anomaly, not
+            // a legitimate "flat position" case -- KIS's own official
+            // column mapping always includes it, present-as-"0" for a flat
+            // row. Silently treating "missing" the same as "zero" would let
+            // a real open position vanish from getPositions() undetected --
+            // meaningful here specifically because AccountLedgerReconciler
+            // compares this method's own output against the shared ledger's
+            // committed exposure to catch exactly this kind of divergence.
+            BigDecimal quantity = requireBigDecimal(node, "cblc_qty");
             // A zero-quantity row (no open position for that product) isn't
             // a real open position -- skipping it matches PositionSnapshot's
             // own implicit contract elsewhere in this codebase (BingXAdapter
             // never emits a snapshot for a flat symbol either).
-            if (quantity == null || quantity.signum() == 0) {
+            if (quantity.signum() == 0) {
                 continue;
             }
             positions.add(new PositionSnapshot(
@@ -409,6 +418,25 @@ public final class KisAdapter implements ExchangeAdapter {
      * availableMargin}; {@code mgna_tota} (증거금총액/total margin) ->
      * {@code usedMargin}; {@code evlu_pfls_amt_smtl} (평가손익금액합계/total
      * evaluation P&amp;L) -> {@code unrealizedProfit}.
+     *
+     * <p><b>{@code balance} specifically is load-bearing, not just
+     * informational</b> (raised on real CodeRabbit review): {@code
+     * engine.runtime.PaperTradingApp.forKisPaper} bootstraps {@code
+     * SharedKisAccountLedger}'s entire {@code allocatedVirtualCapital} risk
+     * budget -- shared across every {@code kis-paper} process trading this
+     * account -- directly from this field. {@code tot_dncl_amt} (raw
+     * deposited capital) rather than {@code prsm_dpast_amt} (deposit +
+     * unrealized P&amp;L, mapped to {@code equity}) is the deliberate
+     * choice: matches {@code BingXAdapter}'s own {@code balance} field,
+     * which is likewise the raw settled account figure BingX's API reports
+     * (not its own {@code equity}), and {@code VstPreflight}'s established
+     * precedent of bootstrapping the BingX-side ledger-equivalent from that
+     * same raw-balance field. Since {@code SharedKisAccountLedger} only
+     * ever bootstraps at a confirmed-flat-position startup (see {@code
+     * KisPreflight}'s own non-zero-position kill-switch-trip check above),
+     * deposit and mark-to-market equity coincide at the moment this value
+     * is read -- so this choice is not yet distinguishable from the
+     * alternative in practice, only in principle.
      */
     @Override
     public BalanceSnapshot getBalance() {
@@ -682,14 +710,21 @@ public final class KisAdapter implements ExchangeAdapter {
      * "average price" field exists in the real response.
      */
     private static OrderStatus toOrderStatus(JsonNode node) {
-        BigDecimal orderedQty = parseBigDecimal(node, "ord_qty");
-        BigDecimal filledQty = parseBigDecimal(node, "tot_ccld_qty");
+        // ord_qty/tot_ccld_qty/qty are required, not merely optional --
+        // tightened on real CodeRabbit review: a missing field previously
+        // fell through to noRemainder=true (via the null-check in that
+        // condition), misclassifying a genuinely still-live order (whose
+        // status response is simply malformed/incomplete) as CANCELLED
+        // rather than surfacing the anomaly. avg_idx stays optional --
+        // legitimately absent-as-"0" pre-fill, not decision-relevant here.
+        BigDecimal orderedQty = requireBigDecimal(node, "ord_qty");
+        BigDecimal filledQty = requireBigDecimal(node, "tot_ccld_qty");
+        BigDecimal remainingQty = requireBigDecimal(node, "qty");
         BigDecimal avgPrice = parseBigDecimal(node, "avg_idx");
-        BigDecimal remainingQty = parseBigDecimal(node, "qty");
 
-        boolean fullyFilled = orderedQty != null && filledQty != null && filledQty.compareTo(orderedQty) >= 0;
-        boolean noRemainder = remainingQty == null || remainingQty.signum() == 0;
-        boolean filledSomething = filledQty != null && filledQty.signum() > 0;
+        boolean fullyFilled = filledQty.compareTo(orderedQty) >= 0;
+        boolean noRemainder = remainingQty.signum() == 0;
+        boolean filledSomething = filledQty.signum() > 0;
 
         String status;
         if (fullyFilled) {
@@ -721,5 +756,20 @@ public final class KisAdapter implements ExchangeAdapter {
         } catch (NumberFormatException e) {
             throw new ExchangeException("KIS response field '" + field + "' is not a valid decimal: '" + text + "'", e);
         }
+    }
+
+    /**
+     * Like {@link #parseBigDecimal} but throws rather than silently
+     * returning {@code null} -- for a field this adapter's own logic
+     * branches on, where a genuinely missing value is a real response-shape
+     * anomaly (added on real CodeRabbit review, see {@link #toOrderStatus}
+     * and {@link #getPositions()} for the two call sites this protects).
+     */
+    private static BigDecimal requireBigDecimal(JsonNode node, String field) {
+        BigDecimal value = parseBigDecimal(node, field);
+        if (value == null) {
+            throw new ExchangeException("KIS response missing required field '" + field + "': " + node);
+        }
+        return value;
     }
 }
