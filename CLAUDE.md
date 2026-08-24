@@ -1071,6 +1071,8 @@ credentials, PR #103, the first real contact this project has ever had
 with KIS's live API — everything under "KIS/KOSPI200 venue integration"
 above was fake-server-verified only until this point)
 
+
+
 - **Response field-name casing is genuinely per-endpoint, not one
   project-wide convention** — confirmed directly against KIS's own
   official `koreainvestment/open-trading-api` example source (each
@@ -1102,10 +1104,12 @@ above was fake-server-verified only until this point)
   params even on a call that never follows pagination** — omitting
   either causes a real `OPSQ2001` ("INPUT_FIELD_NAME CTX_AREA_FK200")
   rejection, matching KIS's own official `inquire_balance.py` example,
-  which always sends both (`FK200`/`NK200`). `getBalance()` sends
-  `CTX_AREA_FK200=""` always; both `getBalance()`/`getPositions()`
-  genuinely paginate now (below), so `CTX_AREA_NK200` carries the real
-  continuation key on a page after the first.
+  which always sends both (`FK200`/`NK200`). `getBalance()` sends both
+  as fixed empty strings and never follows a continuation — it makes a
+  single call and reads only `output2`, which is not itself paginated.
+  `getPositions()` genuinely paginates (below), so for it
+  `CTX_AREA_NK200` carries the real continuation key on a page after the
+  first.
 - **`inquire-balance` genuinely paginates** ("한 번의 호출에 최대 20건까지
   확인 가능", per KIS's own official docstring) — `getPositions()` was
   originally built reading only the first page, silently missing any
