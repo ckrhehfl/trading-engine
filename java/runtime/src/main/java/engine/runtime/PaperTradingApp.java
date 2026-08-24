@@ -7,6 +7,8 @@ import engine.execution.ExchangeOrderExecutor;
 import engine.execution.OrderExecutor;
 import engine.execution.PaperBroker;
 import engine.oms.OrderStore;
+import engine.risk.FixedMultiplierNotionalCalculator;
+import engine.risk.NotionalCalculator;
 import engine.risk.RiskGateway;
 import engine.risk.RiskLimits;
 import java.math.BigDecimal;
@@ -220,6 +222,20 @@ public final class PaperTradingApp {
      * unlike BingX's separate price-feed-vs-order-execution split.
      */
     private static final String KIS_PAPER_BASE_URL = "https://openapivts.koreainvestment.com:29443";
+
+    /**
+     * KRX's own official KOSPI200 index futures contract specification:
+     * one contract = index points x KRW250,000 -- see CLAUDE.md's
+     * "RiskLimits" section. Used only for {@code
+     * KisPriceFeed.MarketDivision.INDEX_FUTURES}; individual-stock
+     * futures (KOSPI200 index futures) have a real, different, per-stock
+     * contract multiplier that is not yet confirmed against KIS's own
+     * contract-specification docs (see CLAUDE.md's own "Scope extension
+     * beyond KOSPI200 index futures" disclosure) -- {@link #forKisPaper}
+     * fails closed (refuses to start) for {@code STOCK_FUTURES} rather
+     * than guess.
+     */
+    private static final BigDecimal KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER = new BigDecimal("250000");
 
     /** {@code var/live/} convention, matching {@code signals}/{@code reports/daily} -- see class Javadoc. */
     private static final Path SUBMISSION_MARKERS_PATH = Path.of("var", "live", "submission_markers.json");
@@ -711,6 +727,85 @@ public final class PaperTradingApp {
     }
 
     /**
+     * Identical to the 11-arg overload directly above except for the
+     * added {@code notionalCalculator} parameter, threaded into {@link
+     * RiskGateway}'s own two-argument constructor instead of the
+     * 11-arg overload's implicit {@link RiskGateway#RiskGateway(RiskLimits)}
+     * (which defaults to plain {@code quantity * price} notional, wrong
+     * for an instrument like KOSPI200 futures where one quantity unit is
+     * one exchange-defined contract, not one unit of the priced
+     * instrument -- see {@code NotionalCalculator}'s own Javadoc).
+     * {@link #forKisPaper} is the only real caller. The 11-arg overload
+     * directly above is completely untouched by this addition -- every
+     * one of its own existing tests are unaffected (zero test-file
+     * diff), matching this codebase's established "new overload, not a
+     * modified existing one" precedent.
+     */
+    PaperTradingApp(
+            String symbol,
+            PriceFeed priceFeed,
+            Path signalPath,
+            long tickIntervalSeconds,
+            Path reportsDirectory,
+            Clock clock,
+            TradingCalendar tradingCalendar,
+            OrderExecutor orderExecutor,
+            AccountStateProvider accountStateProvider,
+            KillSwitch killSwitch,
+            AccountLedgerReconciler accountLedgerReconciler,
+            NotionalCalculator notionalCalculator) {
+        Objects.requireNonNull(symbol, "symbol is required");
+        Objects.requireNonNull(priceFeed, "priceFeed is required");
+        Objects.requireNonNull(signalPath, "signalPath is required");
+        Objects.requireNonNull(reportsDirectory, "reportsDirectory is required");
+        Objects.requireNonNull(clock, "clock is required");
+        Objects.requireNonNull(tradingCalendar, "tradingCalendar is required");
+        Objects.requireNonNull(orderExecutor, "orderExecutor is required");
+        Objects.requireNonNull(accountStateProvider, "accountStateProvider is required");
+        Objects.requireNonNull(killSwitch, "killSwitch is required");
+        Objects.requireNonNull(accountLedgerReconciler, "accountLedgerReconciler is required");
+        Objects.requireNonNull(notionalCalculator, "notionalCalculator is required");
+        if (tickIntervalSeconds <= 0) {
+            throw new IllegalArgumentException("tickIntervalSeconds must be positive, was " + tickIntervalSeconds);
+        }
+        this.tickIntervalSeconds = tickIntervalSeconds;
+        this.gracefulShutdownTimeout = DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT;
+        this.forcedShutdownTimeout = DEFAULT_FORCED_SHUTDOWN_TIMEOUT;
+        this.clock = clock;
+        this.tradingCalendar = tradingCalendar;
+
+        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary(), notionalCalculator);
+        this.orderStore = new OrderStore();
+        OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
+        this.orderExecutor = orderExecutor;
+        // "kis-delivered.marker" -- same reasoning as the 11-arg overload
+        // directly above, see that constructor's own Javadoc.
+        FileSignalSource signalSource =
+                new FileSignalSource(signalPath, signalPath.resolveSibling("kis-delivered.marker"));
+        this.killSwitch = killSwitch;
+        this.accountLedgerReconciler = Optional.of(accountLedgerReconciler);
+
+        this.tradingLoop = new TradingLoop(
+                orderPipeline, this.orderExecutor, signalSource, priceFeed, this.killSwitch, symbol,
+                accountStateProvider);
+        this.dailyReportGenerator = new DailyReportGenerator(tradingLoop, reportsDirectory, clock);
+        this.executor = Executors.newSingleThreadScheduledExecutor(r -> new Thread(r, "paper-trading-loop"));
+
+        log.info(
+                "PaperTradingApp constructed: symbol={} signalPath={} tickIntervalSeconds={} reportsDirectory={}"
+                        + " riskTier=canary orderExecutor={} tradingCalendar={} accountStateProvider={}"
+                        + " accountLedgerReconciler=present notionalCalculator={}",
+                symbol,
+                signalPath,
+                tickIntervalSeconds,
+                reportsDirectory,
+                orderExecutor.getClass().getSimpleName(),
+                tradingCalendar.getClass().getSimpleName(),
+                accountStateProvider.getClass().getSimpleName(),
+                notionalCalculator.getClass().getSimpleName());
+    }
+
+    /**
      * Resolves configuration from environment variables and constructs a
      * real {@code PaperTradingApp} -- what {@link #main} calls. Every env
      * var:
@@ -1000,6 +1095,12 @@ public final class PaperTradingApp {
                 firstNonBlank(System.getenv(ENV_KIS_ACCOUNT_PRODUCT_CODE), DEFAULT_KIS_ACCOUNT_PRODUCT_CODE);
         KisPriceFeed.MarketDivision marketDivision = resolveKisMarketDivision(System.getenv(ENV_KIS_MARKET_DIVISION));
 
+        // Resolved before any KIS network call below, so a misconfigured
+        // process (STOCK_FUTURES, no confirmed multiplier -- see
+        // resolveKisNotionalCalculator's own Javadoc) never even reaches
+        // KisPreflight.
+        NotionalCalculator notionalCalculator = resolveKisNotionalCalculator(marketDivision);
+
         KisTokenProvider tokenProvider = new KisTokenProvider(appKey, appSecret, KIS_PAPER_BASE_URL);
         KisAdapter adapter = new KisAdapter(tokenProvider, accountNo, accountProductCode, KIS_PAPER_BASE_URL);
         KisPriceFeed priceFeed = new KisPriceFeed(tokenProvider, KIS_PAPER_BASE_URL, marketDivision);
@@ -1055,7 +1156,8 @@ public final class PaperTradingApp {
                 orderExecutor,
                 accountStateProvider,
                 killSwitch,
-                accountLedgerReconciler);
+                accountLedgerReconciler,
+                notionalCalculator);
 
         // Unconditionally tripped, not only on a preflight/marker problem
         // (a real CodeRabbit review finding, tied directly to this method's
@@ -1219,6 +1321,31 @@ public final class PaperTradingApp {
                 ENV_KIS_MARKET_DIVISION + " must be one of "
                         + java.util.Arrays.toString(KisPriceFeed.MarketDivision.values()) + " (or unset/blank, which"
                         + " defaults to INDEX_FUTURES) -- was '" + raw + "'");
+    }
+
+    /**
+     * A real, confirmed RiskGateway contract multiplier exists only for
+     * {@code INDEX_FUTURES} today (KRX's own official KOSPI200 index
+     * futures spec: index points x KRW250,000, see {@link
+     * #KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER}'s own Javadoc) -- fails
+     * closed for {@code STOCK_FUTURES} (individual-stock futures have a
+     * real, different, per-stock multiplier this project has not yet
+     * confirmed against KIS's own contract-specification docs) rather
+     * than evaluate risk against a guessed or missing one. Extracted from
+     * {@link #forKisPaper} as its own testable method, matching {@link
+     * #resolveKisMarketDivision}'s own precedent -- {@code forKisPaper()}
+     * itself cannot be invoked directly in a test (see that method's own
+     * Javadoc and this class's top Javadoc, "Execution mode").
+     */
+    static NotionalCalculator resolveKisNotionalCalculator(KisPriceFeed.MarketDivision marketDivision) {
+        return switch (marketDivision) {
+            case INDEX_FUTURES -> new FixedMultiplierNotionalCalculator(KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER);
+            case STOCK_FUTURES ->
+                throw new IllegalStateException(
+                        "KIS_MARKET_DIVISION=STOCK_FUTURES has no confirmed RiskGateway contract"
+                                + " multiplier yet -- refusing to start rather than evaluate risk against"
+                                + " an unconfirmed multiplier (see CLAUDE.md's own disclosed gap)");
+        };
     }
 
     /**
