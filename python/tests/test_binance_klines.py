@@ -65,12 +65,43 @@ def test_fetch_klines_page_uses_parse_float_decimal_to_avoid_float_roundtrip_pre
     assert rows[0].open == Decimal(precise_price)
 
 
-def test_fetch_klines_page_parses_a_realistic_12_element_row_ignoring_trailing_fields(server):
+def test_fetch_klines_page_parses_a_realistic_12_element_row_ignoring_close_time_and_trade_count(server):
+    # close_time_ms (index 6), quote_asset_volume (7), num_trades (8), and
+    # the trailing "ignore" field (11) are genuinely unused -- but
+    # taker_buy_base_volume (9) / taker_buy_quote_volume (10) are NOT
+    # (Scalping Strategy Research Task S5), see the dedicated test below.
     server.set_kline(BASE, "1", "1", "1", "1", "1")
 
     rows = fetch_klines_page(server.base_url, SPOT_KLINES_PATH, "BTCUSDT", "1d", BASE, BASE + STEP)
 
-    assert len(rows) == 1  # the row parses despite carrying 12 fields, not just the 6 load-bearing ones
+    assert len(rows) == 1  # the row parses despite carrying 12 fields, not just the 6 core OHLCV ones
+
+
+def test_fetch_klines_page_parses_taker_buy_volume_fields(server):
+    server.set_kline(
+        BASE, "100", "101", "99", "100", "10",
+        taker_buy_base_volume="6.25", taker_buy_quote_volume="625.5",
+    )
+
+    rows = fetch_klines_page(server.base_url, SPOT_KLINES_PATH, "BTCUSDT", "1d", BASE, BASE + STEP)
+
+    assert rows[0].taker_buy_base_volume == Decimal("6.25")
+    assert rows[0].taker_buy_quote_volume == Decimal("625.5")
+
+
+def test_fetch_klines_page_taker_buy_volume_is_none_for_a_short_row_without_those_fields(server):
+    # A 6-element row (older/hypothetical shorter response) must not
+    # raise -- the two new fields simply stay at KlineRow's own None
+    # default, same "missing data is None, not an error" contract
+    # bingx_klines.KlineRow already establishes.
+    body = f'[[{BASE},"100","101","99","100","10"]]'
+    server.force_response(200, body)
+
+    rows = fetch_klines_page(server.base_url, SPOT_KLINES_PATH, "BTCUSDT", "1d", BASE, BASE + STEP)
+
+    assert len(rows) == 1
+    assert rows[0].taker_buy_base_volume is None
+    assert rows[0].taker_buy_quote_volume is None
 
 
 def test_fetch_klines_page_sends_expected_path_and_query_params(server):

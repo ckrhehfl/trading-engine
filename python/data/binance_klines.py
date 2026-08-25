@@ -27,12 +27,17 @@ literal lives (mirroring where `DEFAULT_FRED_BASE_URL` lives in
 env var).
 
 `fetch_klines_page`/`iter_klines_range` return/yield
-`bingx_klines.KlineRow` (imported, not redefined) -- the wire row shape
-this pipeline needs (`open_time_ms`, `open`, `high`, `low`, `close`,
-`volume`) is identical between BingX and Binance, so `store.py`'s
-existing `upsert_klines`/`fetch_klines`/`find_missing_ranges` work
-against Binance data completely unchanged; no new schema or new row type
-was needed for this task. `symbol` values passed to `store.py` are
+`bingx_klines.KlineRow` (imported, not redefined) -- the core OHLCV wire
+row shape (`open_time_ms`, `open`, `high`, `low`, `close`, `volume`) is
+identical between BingX and Binance, so `store.py`'s existing
+`upsert_klines`/`fetch_klines`/`find_missing_ranges` work against
+Binance data completely unchanged; no new schema or new row type was
+needed for the original (Task Z) version of this module. Scalping
+Strategy Research Task S5 later added two further, optional
+`KlineRow` fields this module now also populates from the wire (see
+below) -- see `bingx_klines.KlineRow`'s own docstring for why they are
+additive and don't disturb this paragraph's original claim for the
+6 core fields. `symbol` values passed to `store.py` are
 namespaced (`"BINANCE:BTCUSDT"`/`"BINANCE-FUTURES:BTCUSDT"`) by
 `backfill_binance.py`, not here -- this module always uses Binance's own
 raw wire symbol (`"BTCUSDT"`, no dash, no exchange prefix) in requests,
@@ -48,13 +53,24 @@ BingX" bar:
   endpoint in this pipeline works.** Each row:
   `[open_time_ms, open, high, low, close, volume, close_time_ms,
   quote_asset_volume, num_trades, taker_buy_base_volume,
-  taker_buy_quote_volume, ignore]` -- 12 elements; only the first 6 are
-  used here. `open_time_ms`/`close_time_ms`/`num_trades` are bare
-  (unquoted) JSON integers; every OHLCV/volume field is a quoted JSON
-  string, confirmed via `type()` on every field checked, identically for
-  both spot and futures. `json.loads(..., parse_float=Decimal)` is used
-  anyway, same defensive-in-depth reasoning as `bingx_klines.py`'s own
-  module docstring.
+  taker_buy_quote_volume, ignore]` -- 12 elements. `open_time_ms`/
+  `close_time_ms`/`num_trades` are bare (unquoted) JSON integers; every
+  OHLCV/volume field (including the two taker-buy fields) is a quoted
+  JSON string, confirmed via `type()` on every field checked,
+  identically for both spot and futures. `json.loads(..., parse_float=
+  Decimal)` is used anyway, same defensive-in-depth reasoning as
+  `bingx_klines.py`'s own module docstring. **`taker_buy_base_volume`
+  (index 9) and `taker_buy_quote_volume` (index 10) are parsed and
+  populated (Scalping Strategy Research Task S5)** -- the volume of this
+  candle's trades whose taker (the side that crossed the spread) was a
+  *buyer*; `quote_asset_volume`, `num_trades`, and `close_time_ms`
+  (indices 6-8) remain genuinely unused. This is the concrete, real
+  order-flow-imbalance proxy Task S5's own planning document
+  (`.planning/scalp-s5-binance-1m-orderflow-infra.md`) exists to make
+  available -- BingX's own kline wire format has no buyer/seller
+  breakdown of any kind, confirmed directly against that endpoint's own
+  response shape (see `bingx_klines.py`'s module docstring), so this
+  field is Binance-only and `None` for every BingX-sourced row.
 - **`endTime` is INCLUSIVE, not half-open** -- a genuine, load-bearing
   divergence from `bingx_klines.py`'s `[start, end)` convention.
   Confirmed by a real `startTime == endTime` request returning exactly
@@ -305,6 +321,18 @@ def iter_klines_range(
 
 
 def _parse_row(row: object) -> KlineRow:
+    """`len(row) < 6` (the original, unwidened guard) is still the only
+    hard requirement -- a short (e.g. 6-element) row still parses
+    successfully, with the two taker-buy fields left at `KlineRow`'s own
+    `None` default, rather than being treated as malformed. This matters
+    for real backward compatibility, not just test convenience: it means
+    a caller that ever legitimately receives a shorter row shape (e.g. a
+    hypothetical future/alternate endpoint, or an existing hand-built
+    fixture) degrades gracefully to "no order-flow data available for
+    this row" instead of a hard failure -- the same "missing data is
+    `None`, not an error" contract `KlineRow`'s own docstring already
+    establishes for BingX rows.
+    """
     if not isinstance(row, list) or len(row) < 6:
         raise BinanceKlinesError(f"malformed kline row (not an array of >=6 elements): {row!r}")
     try:
@@ -315,6 +343,8 @@ def _parse_row(row: object) -> KlineRow:
             low=Decimal(row[3]),
             close=Decimal(row[4]),
             volume=Decimal(row[5]),
+            taker_buy_base_volume=Decimal(row[9]) if len(row) > 9 else None,
+            taker_buy_quote_volume=Decimal(row[10]) if len(row) > 10 else None,
         )
     except (TypeError, ValueError, ArithmeticError) as exc:
         raise BinanceKlinesError(f"malformed kline row: {row!r}") from exc
