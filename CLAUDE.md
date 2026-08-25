@@ -2778,35 +2778,89 @@ matching the KIS documentation PRs' own precedent this same day.
   results beyond the bound already reasoned about here. Task S4's own
   preregistration must name both gaps, this disclosure, and this
   pre-access check explicitly, not silently inherit it.
-- **Task S4** — first candidate signal research pass. **Recommended
-  first candidate: VWAP-to-mid deviation short-term reversion** — the
-  most directly, recently, and strongly supported candidate found (see
-  finding 4 above); order flow imbalance is explicitly *not*
-  recommended first, given real published evidence its effect is
-  weaker at scalping-relevant frequencies specifically. Design with
-  zero or minimal free parameters where possible (a fixed VWAP window
-  and reversion threshold sourced from the literature, not
-  grid-searched) — matching `daily-tsmom-ensemble`'s own
+- **Task S4** — first candidate signal research pass — **done, commit
+  phase PR #111, real holdout executed 2026-08-25.** **First candidate:
+  VWAP-to-mid deviation short-term reversion** — the most directly,
+  recently, and strongly supported candidate found (see finding 4
+  above); order flow imbalance is explicitly *not* recommended first,
+  given real published evidence its effect is weaker at
+  scalping-relevant frequencies specifically. Zero-fitted-parameter
+  design (20-period rolling VWAP, 2-SD Bollinger-shaped band — the same
+  external convention `mean_reversion.py`'s own Bollinger Bands already
+  use, not grid-searched) — matching `daily-tsmom-ensemble`'s own
   zero-fitted-parameter precedent, specifically to avoid repeating the
   117-trial overfitting problem this project has already lived through
   once. Entries/exits via `GUARDED_MARKET`, not `LIMIT`, per Task S2's
   own constraint above — a deviation-threshold-triggered market order
   fits this signal's own mean-reversion mechanism fine and keeps
   `slippage_bps` a real, meaningful cost lever rather than an inert one.
-  Per Task S3's design decision above, this is a **single pre-registered
+  Per Task S3's design decision, this ran as a **single pre-registered
   holdout access against the full 631.98-day 1m window**, evaluated via
   the Eligibility Bar's single-window variant — **not** an iterative
-  walk-forward research pass, so Task S2's execution-realism gate is
-  evaluated *from that same single access* per the "two different
-  execution shapes" ordering above, not as a separate prior run. Own
-  preregistration,
-  filed and committed *before* any 1m data is touched for this
+  walk-forward research pass, with Task S2's execution-realism gate
+  evaluated *from that same single access*. Own preregistration
+  (`configs/research/preregistrations/vwap-mid-reversion-1m-holdout.json`),
+  filed and committed *before* any 1m data was touched for this
   `strategy_id`, matching `daily-tsmom-ensemble`'s own
-  `sr-u`/`sr-v`/`sr-aa`/`sr-ab` single-access discipline precisely (not
-  `sr-x`/`sr-y`'s ordinary-walk-forward-on-a-research-split pattern,
-  which this design deliberately forgoes — see Task S3). Must also add
-  the curated `research/lineage.py` entry (family `"btc-scalping"`) in
-  the same PR, per Task S3's note above.
+  `sr-u`/`sr-v`/`sr-aa`/`sr-ab` single-access discipline precisely.
+  Curated `research/lineage.py` entry added (family `"btc-scalping"`).
+
+  **A real gap surfaced and closed during PR #111's own review, worth
+  keeping in mind for any future registration with known data gaps**:
+  the first commit-phase attempt gated the gap check
+  (`verify_1m_gaps.py`) behind a separate, dedicated wrapper script —
+  real CodeRabbit review correctly found this left the shared, general
+  `research.run_preregistered_holdout` command (the same one every
+  other holdout confirmation in this project already uses) able to
+  bypass the check entirely. Fixed by moving the check into
+  `run_preregistered_holdout.py` itself, gated on a new, optional,
+  purely-additive `data.known_gaps` preregistration field
+  (`verify_known_gaps`/`UnexpectedKnownGapsError`, checked before
+  `load_holdout_klines`, same fail-closed-before-loading placement as
+  the pre-existing `verify_detection_floor` check) — a no-op for every
+  registration that doesn't declare it, confirmed directly against
+  `daily-tsmom-ensemble-1d-holdout.json`. There is now only one real
+  execution command for any holdout confirmation, with no
+  interval-specific wrapper to remember or bypass.
+
+  **Real result, executed 2026-08-25 (full account:
+  `.planning/scalp-s4-vwap-mid-reversion-result.md`)**: `PSR = 0.999999`
+  (clears the 0.95 threshold) but **max drawdown 106.19 (10,619%),
+  profit factor 0.00117, observed Sharpe 0.392** (below the window's own
+  1.250042 detection floor) — 3 of 5 gating checks fail.
+  **Outcome: INCONCLUSIVE** per the registration's own pre-committed,
+  mechanical precedence (PSR positive, so not `FAIL`; not all five
+  checks clear, so not `PASS`) — but the mechanical label understates
+  the real severity, stated plainly rather than softened: starting
+  equity $10,000 went to **-$1,051,858** (a real, complete wipeout many
+  times over, had this run against actual capital), across 44,344
+  trades with a **1.13% win rate**. This is the real, honest
+  confirmation of a risk the strategy's own module docstring disclosed
+  *before* this access: with no ATR stop and no ADX regime filter
+  (deliberately excluded to keep `free_parameter_count: 0`), a
+  mean-reversion position can be held indefinitely against a market that
+  simply does not revert — confirmed, at 1-minute BTC-USDT granularity,
+  to be catastrophic rather than merely costly. Per the registration's
+  own `outcome_interpretation` (modeled on `sr-ab`'s scoping, not
+  `sr-u`/`sr-v`'s broader one): this parks THIS SPECIFIC hypothesis
+  (20-period/2-SD VWAP reversion, zero risk controls) as a candidate —
+  it does **not** end the broader Scalping Strategy Research direction
+  (order-flow imbalance and other candidates remain untested), and does
+  **not** affect `daily-tsmom-ensemble`'s own unrelated paper-trading
+  status. Re-running this exact spec or grid-searching its parameters is
+  foreclosed by the registration's own `stopping_rule`, matching this
+  project's standing rule against selection-after-seeing-a-result. **A
+  real, disclosed lesson for any future scalping candidate, not a rule
+  this result is empowered to set alone**: "zero free parameters" and
+  "zero risk controls" are not the same discipline — `daily_tsmom_
+  ensemble`'s own "hold until the signal reverses, no stop" convention
+  is defensible for a trend-following signal (a big move IS the thesis)
+  but this result suggests it does not safely transfer to a
+  mean-reversion signal, whose core risk is precisely "the market does
+  not revert." Whether a future mean-reversion-style candidate should
+  treat a stop-loss or regime filter as a legitimate,
+  literature-sourced (zero-*search*, if not zero-*parameter*) risk
+  control is a real open design question for that future task.
 
 **Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
 → S2 (execution-realism gate design, can start in parallel with S1's
