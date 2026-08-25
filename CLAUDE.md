@@ -2430,13 +2430,20 @@ matching the KIS documentation PRs' own precedent this same day.
   `slippage_bps` for a limit-order candidate would silently do nothing
   and produce a false sense of conservatism. **Scalping candidates
   researched under this task are therefore restricted to
-  `GUARDED_MARKET` execution only, for now** — a `LIMIT`-order-based
-  scalping candidate is explicitly out of scope until `fill.py`'s
-  limit-order fill model itself is hardened (order-book depth,
-  partial-fill/queue-position, adverse-selection awareness — the "real,
-  larger undertaking" already named as a disclosed possible follow-up,
-  not committed to here); until then, treat any `LIMIT`-order scalping
-  result as unverifiable under this engine, not merely conservative.
+  `GUARDED_MARKET` execution only, for now** — **a policy exclusion,
+  not a claim the engine lacks `LIMIT` support** (clarified on real
+  CodeRabbit review: `fill.py::simulate_fill` genuinely implements a
+  real `LIMIT` branch and will produce a deterministic result for one —
+  the point below is that this project chooses not to trust that
+  result for scalping validation, not that it can't be computed at
+  all). A `LIMIT`-order-based scalping candidate is explicitly out of
+  scope until `fill.py`'s limit-order fill model itself is hardened
+  (order-book depth, partial-fill/queue-position, adverse-selection
+  awareness — the "real, larger undertaking" already named as a
+  disclosed possible follow-up, not committed to here); until then,
+  treat any `LIMIT`-order scalping result as unverifiable under this
+  engine's current optimistic 100%-fill-on-touch model, not merely
+  conservative.
   **This gate must run and produce a real, disclosed pass/fail before
   any walk-forward/DSR statistical validation** — a `GUARDED_MARKET`
   candidate that isn't net-positive under a conservative, cited
@@ -2725,10 +2732,17 @@ matching the KIS documentation PRs' own precedent this same day.
   `backtest/kline_window.py`, and `metrics/metrics.py` directly rather
   than re-asserting the original claim). The real, code-verified scope:
   (1) `fill.py::simulate_fill` selects the fill bar **positionally**
-  (`klines[signal_bar_index + 1]`), so a signal on either of the ≤2 bars
-  immediately preceding a gap fills against a bar 4-7 real minutes later
-  than a continuous series would give — a genuine engine-level effect,
-  not merely a rolling-feature one; (2) `metrics.py::_sharpe_ratio`'s
+  (`klines[signal_bar_index + 1]`) — since only *one* bar-index step is
+  taken, exactly **one** signal position is affected per gap (the last
+  real bar strictly before it), not a range of bars, and the exact
+  delay is computable, not a rounded estimate (tightened on real
+  CodeRabbit review, which caught the original "≤2 bars... 4-7 minutes"
+  phrasing as imprecise): a signal on the `2025-04-25T06:53:00Z` bar
+  fills against `06:57:00Z` (4 real minutes later, 3 minutes more than
+  a continuous series' 1-minute step would give); a signal on the
+  `2026-02-13T20:31:00Z` bar fills against `20:36:00Z` (5 real minutes
+  later, 4 minutes more than continuous) — a genuine engine-level
+  effect, not merely a rolling-feature one; (2) `metrics.py::_sharpe_ratio`'s
   per-bar returns are computed between **consecutive array elements**,
   so the 2 gap-spanning observations are real, if bounded, distortions
   feeding directly into Sharpe/PSR; (3) `eligibility.py`'s
