@@ -2415,7 +2415,8 @@ matching the KIS documentation PRs' own precedent this same day.
   holds at `1m`, and now lower-priority given BingX's own `1m` depth
   already exceeds what a scalping walk-forward plausibly needs).
 - **Task S2** — execution-cost-first realism gate, the methodologically
-  most important task. Research real, current BTC-USDT spread/slippage
+  most important task — **done, PR #110.** Research real, current
+  BTC-USDT spread/slippage
   behavior at 1-10 minute holding periods (cited, not invented) before
   picking `fee_bps`/`slippage_bps` for any scalping preregistration —
   never reuse the daily strategy's `5`/`2` bps figures without explicit
