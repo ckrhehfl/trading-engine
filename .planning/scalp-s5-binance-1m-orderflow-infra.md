@@ -189,6 +189,43 @@ questions for a future task, not resolved by this document.
   tree, real and tested, plus the real backfilled data in the production
   `klines.sqlite3`, for review before committing.
 
+## Real CodeRabbit review findings on this task's own PR, and how each was handled
+
+Two findings, verified individually:
+
+1. **Not applied — verified against the actual session date context
+   first.** The reviewer flagged the 2026-08-26 dates in this document
+   and CLAUDE.md's own Scalping Strategy Research section as "future"
+   relative to what it inferred as "today" (2026-08-25). Checked before
+   deciding: this session's own environment explicitly updated to
+   2026-08-26 partway through (a real, authoritative date-context
+   change, not a documentation slip), and every action described here
+   (both research forks, this infrastructure task) genuinely happened
+   after that update. Left unchanged rather than "corrected" to a wrong
+   date to match a tool's own inference.
+2. **Real, fixed.** `_ensure_klines_columns`'s check-then-`ALTER`
+   sequence had no lock between the `PRAGMA table_info` read and the
+   `ALTER TABLE` write — two concurrent `connect()` calls against the
+   same pre-migration database could both read a column as missing
+   before either committed, and the second `ALTER TABLE` would then
+   fail with "duplicate column name". Fixed by wrapping the sequence in
+   a real `BEGIN IMMEDIATE` transaction (acquires SQLite's write lock up
+   front, serializing concurrent callers) plus a `PRAGMA busy_timeout =
+   5000` (so a second caller waits up to 5s for the lock rather than
+   failing immediately, SQLite's own default with no timeout set) and a
+   `rollback()` on any exception. Verified with a real, not simulated,
+   2-thread reproduction test (`test_concurrent_migrations_against_an_
+   old_schema_database_never_raise_duplicate_column`) — both threads
+   open independent real connections and race to migrate the same
+   pre-Task-S5 database; both succeed cleanly under the fix. A
+   secondary, tool-flagged "SQL injection via f-string" note on the same
+   line was reviewed and is a static-analysis false positive: `column`
+   is always drawn from the fixed, hardcoded `_KLINES_ORDER_FLOW_COLUMNS`
+   tuple, never external input, and SQLite has no parameter-binding
+   syntax for a column *name* in `ALTER TABLE ADD COLUMN` in the first
+   place — noted in the function's own docstring rather than silently
+   dismissed.
+
 ## Files created/modified
 
 - `python/data/bingx_klines.py` -- `KlineRow` gains two optional fields.

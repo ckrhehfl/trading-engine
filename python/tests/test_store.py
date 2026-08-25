@@ -6,6 +6,7 @@ from data.bingx_funding import FUNDING_INTERVAL_MS, FundingRow
 from data.bingx_klines import KlineRow
 from data.fred_client import ObservationRow
 from data.store import (
+    _ensure_klines_columns,
     connect,
     fetch_funding_rates,
     fetch_klines,
@@ -136,6 +137,72 @@ def test_connect_migration_is_idempotent_when_columns_already_exist(tmp_path):
     rows = fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + STEP)
     conn.close()
     assert len(rows) == 1
+
+
+def test_concurrent_migrations_against_an_old_schema_database_never_raise_duplicate_column(tmp_path):
+    # Real CodeRabbit review finding: without BEGIN IMMEDIATE serializing
+    # the check-then-ALTER sequence, two connections racing to migrate
+    # the same pre-Task-S5 database could both read the column as
+    # missing before either commits, and the second ALTER TABLE would
+    # then fail with "duplicate column name". A real, barrier-synced
+    # 2-thread reproduction, not just a code-reading argument.
+    import sqlite3
+    import threading
+
+    db_path = tmp_path / "old_klines.sqlite3"
+    raw = sqlite3.connect(db_path)
+    raw.execute(
+        """
+        CREATE TABLE klines (
+          symbol TEXT NOT NULL,
+          interval TEXT NOT NULL,
+          open_time_ms INTEGER NOT NULL,
+          open TEXT NOT NULL,
+          high TEXT NOT NULL,
+          low TEXT NOT NULL,
+          close TEXT NOT NULL,
+          volume TEXT NOT NULL,
+          fetched_at TEXT NOT NULL,
+          PRIMARY KEY (symbol, interval, open_time_ms)
+        );
+        """
+    )
+    raw.commit()
+    raw.close()
+
+    # Real, not simulated: both threads open their own connection and
+    # race to call the real _ensure_klines_columns concurrently (a
+    # start barrier maximizes the real overlap, but the actual
+    # serialization guarantee under test comes from SQLite's own
+    # BEGIN IMMEDIATE locking inside the function, not from this test
+    # forcing an artificial interleaving point).
+    barrier = threading.Barrier(2)
+    results: list[str] = []
+
+    def _migrate():
+        conn = sqlite3.connect(db_path, timeout=5)
+        try:
+            barrier.wait()
+            _ensure_klines_columns(conn)
+            results.append("ok")
+        except Exception as exc:  # noqa: BLE001 -- deliberately broad, this is the assertion
+            results.append(f"{type(exc).__name__}: {exc}")
+        finally:
+            conn.close()
+
+    threads = [threading.Thread(target=_migrate) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert results == ["ok", "ok"], results
+
+    conn = sqlite3.connect(db_path)
+    columns = {row[1] for row in conn.execute("PRAGMA table_info(klines)")}
+    conn.close()
+    assert "taker_buy_base_volume" in columns
+    assert "taker_buy_quote_volume" in columns
 
 
 def test_connect_is_idempotent_against_an_existing_database(tmp_path):

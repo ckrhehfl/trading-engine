@@ -83,12 +83,33 @@ def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
     via `PRAGMA table_info` first, making this safe to call on every
     `connect()` (idempotent: a column already present is left untouched,
     never re-added, never dropped, never rewritten).
+
+    The check-then-`ALTER` sequence is wrapped in a real `BEGIN
+    IMMEDIATE` transaction (real CodeRabbit review finding): without it,
+    two concurrent `connect()` calls against the same database file could
+    both read the column as missing before either commits, and the
+    second `ALTER TABLE` would then fail with "duplicate column name".
+    `BEGIN IMMEDIATE` acquires SQLite's write lock up front, so a second,
+    concurrent caller blocks (see the `busy_timeout` below -- without it,
+    SQLite's own default is to fail immediately rather than wait) until
+    the first's transaction resolves and then correctly sees the column
+    already present -- serialized, not racing. `column` is always drawn
+    from the fixed, hardcoded `_KLINES_ORDER_FLOW_COLUMNS` tuple above,
+    never external input, so the f-string here is not a SQL-injection
+    surface (SQLite has no parameter-binding syntax for a column *name*
+    in `ALTER TABLE ADD COLUMN`, only for values).
     """
-    existing = {row[1] for row in conn.execute("PRAGMA table_info(klines)").fetchall()}
-    for column in _KLINES_ORDER_FLOW_COLUMNS:
-        if column not in existing:
-            conn.execute(f"ALTER TABLE klines ADD COLUMN {column} TEXT")
-    conn.commit()
+    conn.execute("PRAGMA busy_timeout = 5000")  # wait, don't fail-fast, on real lock contention
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(klines)").fetchall()}
+        for column in _KLINES_ORDER_FLOW_COLUMNS:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE klines ADD COLUMN {column} TEXT")
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
 
 
 FUNDING_SCHEMA = """
