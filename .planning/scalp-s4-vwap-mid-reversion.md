@@ -259,7 +259,7 @@ Queried directly against `python/data/var/klines.sqlite3`
 (`SELECT MIN(open_time_ms), MAX(open_time_ms), COUNT(*) FROM klines
 WHERE symbol='BTC-USDT' AND interval='1m'`):
 
-```
+```text
 min_open_time_ms: 1732982400000  (2024-11-30T16:00:00Z)
 max_open_time_ms: 1787585160000  (2026-08-24T15:26:00Z)
 count: 910040
@@ -270,7 +270,7 @@ Computed via `research.preregistration.frequency_scaled_min_trades` and
 `research.run_preregistered_holdout.recompute_detection_floor_sharpe`
 (both real function calls, not hand arithmetic):
 
-```
+```text
 evaluated_days = 910040 // 1440 = 631
 min_total_trades = max(30, min(100, 631 // 20)) = 31
 years = 910040 / 1440 / 365 = 1.7314307458143072
@@ -292,6 +292,61 @@ call): confirms exactly the 2 known, disclosed gaps
 (`[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)`,
 `[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)`), nothing more, nothing
 less.
+
+## Real CodeRabbit review findings on this task's own PR, and how each was handled
+
+Three findings, verified individually rather than applied blindly:
+
+1. **Real, minor**: two fenced code blocks above were missing a language
+   tag (markdownlint MD040). Fixed.
+2. **Not a real bug -- verified and rejected, not silently applied.**
+   The reviewer claimed `VwapMidReversionStrategy.__call__`'s first
+   post-warmup band reading, if already at an extreme, would never
+   produce an entry, because `_signal_state` would still be `None` at
+   that point. Independently re-run against the actual code and the
+   actual test suite before deciding: `test_enters_long_on_transition_
+   into_oversold` and `test_a_sizing_rejected_entry_is_retried_once_
+   sizing_becomes_available` -- the exact two tests the finding claimed
+   would fail -- both pass, confirmed via a direct, isolated
+   `pytest -k` run, not just the full-suite green light. Tracing the
+   actual code: the unconditional `if not entry_rejected_by_filters:
+   self._signal_state = current_signal` at the end of `__call__` runs on
+   *every* call, warmup included (it sits outside the `if bands is not
+   None:` guard, confirmed via `cat -A` to rule out a
+   whitespace-misreading on either side) -- so `_signal_state` is set to
+   `0` after the very first bar, never observed as `None` on any bar
+   where `bands is not None` could be true. This project's own review
+   discipline ("verify each finding against current code, fix only
+   still-valid issues, skip the rest with a brief reason") was applied
+   here for real, not just quoted: skipped, with this paragraph as the
+   documented reason, rather than accepting a plausible-looking but
+   factually-contradicted suggested diff.
+3. **Real, and the most substantive finding**: `verify_1m_gaps.py` was
+   originally a fully standalone module -- nothing in the real execution
+   path called it automatically. The reviewer correctly traced
+   `research/run_preregistered_holdout.py`'s real code and confirmed it
+   never calls `verify_1m_gaps`, so running the same raw command every
+   prior holdout confirmation (`sr-v`, `sr-ab`) used
+   (`python -m research.run_preregistered_holdout <path>`) would consume
+   the single-access claim even with an unexpected gap present -- a real
+   gap between "a check exists" and "the check is structurally
+   enforced." Fixed by adding `research/run_vwap_mid_reversion_holdout.py`,
+   a thin wrapper specific to this one registration (deliberately still
+   not a change to the shared `run_preregistered_holdout.py` -- every
+   other interval's own holdout confirmation has zero known gaps, so
+   folding an interval-specific gap check into generic infrastructure
+   remains out of this task's scope) that calls `verify_1m_gaps`
+   unconditionally before calling `run_preregistered_holdout`, with
+   `verify_gaps`/`execute_holdout` both injectable so the short-circuit
+   property itself (execute_holdout structurally unreachable when
+   verify_gaps raises, proven by Python's own control flow, not by
+   convention) is directly unit-tested
+   (`python/tests/test_run_vwap_mid_reversion_holdout.py`). The real
+   execution command is now `python -m
+   research.run_vwap_mid_reversion_holdout`, not the raw
+   `research.run_preregistered_holdout` invocation -- both the
+   pre-registration's own notes and this document have been updated to
+   say so explicitly.
 
 ## What this task does NOT decide
 
