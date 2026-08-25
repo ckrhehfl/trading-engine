@@ -767,12 +767,52 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
   variant.md` for the full arithmetic); `15m` back to ~2025-11-16 (~8.3
   months, matching `.planning/sr-a-data-pipeline.md`'s independent
   finding); `5m` back to ~2026-05-02 (~3 months, binary-search estimate
-  only, not re-verified via a full backfill). Finer granularity has
-  materially shorter retention — not a fluke specific to `15m`, a real
-  BingX-side pattern across all four. Like the `15m` depth before it,
-  expect these numbers to keep drifting forward on every future run
-  (rolling retention, not a fixed archive) — re-run `backfill.py` rather
-  than trust any of these as permanent.
+  only, not re-verified via a full backfill). Like the `15m` depth
+  before it, expect these numbers to keep drifting forward on every
+  future run (rolling retention, not a fixed archive) — re-run
+  `backfill.py` rather than trust any of these as permanent.
+  **`1m` added 2026-08-24 (Scalping Strategy Research Task S1) — and it
+  breaks the "finer granularity means shorter retention" pattern the
+  four granularities above were previously read as establishing.** `1m`
+  back to **2024-11-30T16:00:00Z exactly** (confirmed by a real
+  backfill run as of 2026-08-24T15:44Z: **910,040 bars, latest bar
+  2026-08-24T15:26:00Z, a 631.98-day span**), which is *deeper* than
+  both `15m` (~8.3 months, as of the shared 2026-07-26 probe date above)
+  and `5m` (~3 months, same date) despite being finer than either —
+  sitting between `1h` (819.9 days) and `15m` in depth, not continuing a
+  monotonic shrink. The binary-search estimate that preceded the real
+  backfill (2024-11-30T16:00:00Z, from a ~1-hour-wide probe window)
+  turned out to be **exact**, reproduced bar-for-bar by the full
+  backfill — the strongest agreement between probe and backfill of any
+  granularity checked so far. **Unlike `1h`/`1d`, `1m`'s backfill is not
+  perfectly zero-gap**: 2 real, small gaps (7 bars total) were found in
+  the middle of the range — `[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)`
+  (3 missing bars) and `[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)`
+  (4 missing bars), both stated half-open to match this project's own
+  `[start, end)` convention — confirmed as genuinely absent, not a
+  fetch artifact, via 5 consecutive retries each returning zero rows for
+  the missing windows. **A new, real risk this specific finding
+  surfaces, not yet closed**: `python/research/walkforward.py`'s
+  `generate_folds` and `python/backtest/`'s bar-by-bar iteration are
+  pure positional/bar-count arithmetic (confirmed by direct
+  investigation) — neither detects a timestamp gap in the underlying
+  kline sequence, both would silently treat the bar immediately after a
+  gap as if it followed the prior bar by exactly one `interval_ms` step.
+  This was never a live issue for `1d`/`1h` (both confirmed perfectly
+  zero-gap), so it is a genuinely new exposure `1m` introduces, not a
+  pre-existing one newly noticed. **Task S3/S4 must not treat this as
+  silently resolved**: either add real gap-aware validation to the
+  backtest/walk-forward path before any `1m` run, or, as a cheaper
+  interim measure, explicitly verify any chosen `1m` research/holdout
+  window against the known gap list above (and re-check for new gaps
+  after any future backfill re-run) before trusting a result computed
+  over it. This revises the earlier "finer granularity has materially
+  shorter retention — a real BingX-side pattern across all four" claim:
+  that pattern held for the four granularities checked at the time
+  (`1d`/`1h`/`15m`/`5m`), but does not extend to `1m` —
+  granularity-vs-retention on BingX is not a simple monotonic
+  relationship, and no further extrapolation to an unmeasured
+  granularity should be assumed without its own real probe.
 - **Funding rate**: `GET /openApi/swap/v2/quote/fundingRate?symbol=BTC-
   USDT` (`v2`, public, unauthenticated). Envelope matches every other
   BingX endpoint (`{"code","msg","data"}`) except empty-result `data` is
@@ -2341,24 +2381,39 @@ matching the KIS documentation PRs' own precedent this same day.
 
 - **Task S0** (this section) — design write-up, before any code.
 - **Task S1** — 1-minute BTC-USDT data infrastructure
-  (`_grid.py`'s `INTERVAL_MS`, plus `python/tests/test_grid.py`, which
-  likely has an explicit "`1m` raises `ValueError`" assertion today
-  that needs flipping, not just new tests added) **and a real retention
-  probe — a genuine go/no-go gate, not a formality.** Binary search
-  first (matching the established methodology), then a real, full
-  backfill with a confirmed zero-gap count — this project's own
-  standard, stated explicitly for `1h`/`1d`: "an earliest-bar probe
-  alone is not enough, a full backfill with a real gap count is." If
-  real retention is very short (plausible, given the confirmed
-  1d→1h→15m→5m retention-shrinks-with-granularity pattern) — e.g. days
-  to a couple of weeks — that reshapes the whole effort: walk-forward
-  folds may not be viable on backtested history at all, meaning the
-  practical path may become live paper-trading accumulation over real
-  calendar time rather than deep historical backtesting. Report the
-  real number honestly either way; do not proceed to Task S3's
-  fold-geometry design before it's known. **Open, undecided**: BingX
-  only, or also probe Binance (which has shown deeper `1d` retention
-  than BingX — unconfirmed whether that holds at `1m`).
+  (`_grid.py`'s `INTERVAL_MS`) — **done, PR #108.** `python/tests/
+  test_grid.py`'s existing assertions were updated in place (an
+  exact-wired-set assertion, not a standalone "`1m` raises
+  `ValueError`" case) to cover `1m` alongside every prior interval.
+  **Real retention probe result: GO, not a formality-cleared gate but a
+  genuinely good one.** Binary search first (matching the established
+  methodology — and, unusually, exact on the first try: the estimate
+  reproduced bar-for-bar against the real backfill), then a real, full
+  backfill with an independently-confirmed gap count. `1m` retention is
+  **631.98 days** (910,040 bars, 2 small real gaps confirmed via retry —
+  see "Exchange API Facts — BingX" above for the full result) —
+  materially deeper than the pre-probe worst-case fear ("days to a
+  couple of weeks") and, surprisingly, deeper than both `15m` and `5m`
+  despite being the finest granularity checked. Walk-forward folds on
+  real backtested history are viable; the live-paper-trading-only
+  fallback path this task's own go/no-go was written to trigger is not
+  needed. Fold geometry for Task S3 can proceed from this real number.
+  **A new prerequisite for Task S3/S4, surfaced by this task's own real
+  gap count**: neither `walkforward.py`'s fold generation nor the
+  backtest engine's bar iteration detects a timestamp gap in the
+  underlying kline sequence today (both are pure positional/bar-count
+  arithmetic) — never a live issue for the always-zero-gap `1d`/`1h`
+  data this project has used so far, but `1m` has 2 confirmed real gaps
+  (see "Exchange API Facts — BingX" above for the exact windows). Task
+  S3/S4 must not silently assume this is handled — either add real
+  gap-aware validation before any `1m` walk-forward run, or explicitly
+  verify the chosen research/holdout window against the known gap list
+  first (and re-check after any future backfill re-run, since more
+  gaps could exist further back or appear on a rerun).
+  **Still open, undecided**: BingX only, or also probe Binance (which
+  has shown deeper `1d` retention than BingX — unconfirmed whether that
+  holds at `1m`, and now lower-priority given BingX's own `1m` depth
+  already exceeds what a scalping walk-forward plausibly needs).
 - **Task S2** — execution-cost-first realism gate, the methodologically
   most important task. Research real, current BTC-USDT spread/slippage
   behavior at 1-10 minute holding periods (cited, not invented) before
