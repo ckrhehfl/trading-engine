@@ -2832,12 +2832,25 @@ matching the KIS documentation PRs' own precedent this same day.
   mechanical precedence (PSR positive, so not `FAIL`; not all five
   checks clear, so not `PASS`) — but the mechanical label understates
   the real severity, stated plainly rather than softened: starting
-  equity $10,000 went to **-$1,051,858** (a real, complete wipeout many
-  times over, had this run against actual capital), across 44,344
-  trades with a **1.13% win rate**. This is the real, honest
-  confirmation of a risk the strategy's own module docstring disclosed
-  *before* this access: with no ATR stop and no ADX regime filter
-  (deliberately excluded to keep `free_parameter_count: 0`), a
+  equity $10,000 went to a raw, uncapped **-$1,051,858** across 44,344
+  trades at a **1.13% win rate**. **Precisely characterized, not
+  overstated** (tightened on real CodeRabbit review of the result
+  write-up): `backtest/engine.py::run_backtest` never passes equity/
+  portfolio state to the `Strategy` callable at all, so this number is
+  not "what a real leveraged account would have lost" (one would have
+  been liquidated long before this point) — it is the backtest's raw,
+  uncapped cumulative P&L sum from a strategy that kept sizing new
+  positions off a **fixed** `reference_equity` constant regardless of
+  accumulated losses, with no insolvency/margin concept anywhere in this
+  engine (a real, disclosed, pre-existing characteristic of every
+  strategy in this package, not unique to this one). The qualitative
+  conclusion is unaffected by this correction — a real account would
+  still have been wiped out, just earlier and by a smaller, margin-
+  bounded amount than this raw figure — but the number itself is a
+  severity signal, not a literal dollar figure. This is the real,
+  honest confirmation of a risk the strategy's own module docstring
+  disclosed *before* this access: with no ATR stop and no ADX regime
+  filter (deliberately excluded to keep `free_parameter_count: 0`), a
   mean-reversion position can be held indefinitely against a market that
   simply does not revert — confirmed, at 1-minute BTC-USDT granularity,
   to be catastrophic rather than merely costly. Per the registration's

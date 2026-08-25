@@ -43,16 +43,16 @@ describes.
 ## The real result
 
 ```text
-bars evaluated              : 910,040
-observed annualized Sharpe  : 0.39177869182677105
-declared detection floor    : 1.250042
-PSR                         : 0.9999990069208105
-max drawdown                : 106.1858812217089971014340498  (i.e. 10,619%)
-total trades                : 44,344
-win rate                    : 0.0113205845210175  (1.13%)
+bars evaluated               : 910,040
+observed annualized Sharpe   : 0.39177869182677105  (bar-level, annualized)
+declared detection floor     : 1.250042
+PSR                          : 0.9999990069208105
+max drawdown                 : 106.1858812217089971014340498  (i.e. 10,619%)
+total trades                 : 44,344
+win rate                     : 0.0113205845210175  (1.13%)
 profit factor                : 0.0011658624713518876
-starting equity             : 10,000
-final equity                : -1,051,858.81
+starting equity               : 10,000
+final equity (see caveat below) : -1,051,858.81
 ```
 
 ```text
@@ -66,28 +66,87 @@ gating checks:
 OUTCOME: INCONCLUSIVE
 ```
 
+**PSR's own input series, documented precisely (real CodeRabbit review
+finding — a first version of this document conflated two different
+statistics, corrected here rather than left wrong):**
+`psr_from_equity_curve` resamples `metrics.equity_curve` to **daily**
+granularity (`bars_per_day=1440`, `sampling="daily"`) before computing
+PSR — a **different, smaller** series than the 910,039 raw bar-level
+returns `return_skewness`/`return_kurtosis` describe. The real,
+logged `psr` sub-object (`runs/experiments.jsonl`,
+`run_id=2e492b52-b004-4da9-8d41-8e320cb3cdce`, reproduced verbatim in
+`.planning/scalp-s4-vwap-mid-reversion-result-records.jsonl`):
+
+```text
+psr.num_observations : 630        (daily-resampled points, not 910,039)
+psr.sampling          : "daily"
+psr.benchmark_sharpe   : 0.0
+psr.moments_source     : "observed"
+psr.sharpe_ratio       : 0.060432567693992356   (DAILY Sharpe -- not the
+                                                   0.392 annualized figure
+                                                   above, a different
+                                                   quantity entirely)
+psr.skewness           : 23.679371604107992
+psr.kurtosis           : 584.3496557847623
+psr.z_score            : 4.754827593755083
+psr.psr                : 0.9999990069208105
+```
+
+The bar-level `return_skewness=-618.82`/`return_kurtosis=550780.21`
+(910,039 raw per-bar observations) are a **separate, real, logged**
+statistic — genuinely computed, not invented — but they are **not**
+what PSR was evaluated against; an earlier version of this document
+incorrectly cited them as PSR's own moments. Both series are real; they
+describe different things, and only the daily-resampled one feeds PSR.
+
 ## Honest interpretation — the mechanical label undersells the severity
 
 Per `evaluate_gating`'s own pre-committed, mechanical precedence (`PASS`
 iff all five checks clear; `FAIL` iff PSR is undefined or `<= 0`;
 `INCONCLUSIVE` otherwise), this result lands in `INCONCLUSIVE` because
-PSR is technically positive (extremely close to 1.0, driven by a return
-distribution with severe skewness (-618.8) and kurtosis (550,780) —
-the statistic's own moments-from-observed-data computation is real and
-was not hand-adjusted, but a PSR this close to 1.0 alongside a
+PSR is technically positive (extremely close to 1.0, on a 630-point
+daily-resampled return series with real skewness 23.68/kurtosis 584.35
+— see the exact figures above). A PSR this close to 1.0 alongside a
 catastrophic drawdown is a real illustration of PSR alone being an
 incomplete picture, not a contradiction — this is exactly why the
 Eligibility Bar's single-window variant requires all five checks, not
-PSR alone).
+PSR alone.
 
-**Stated plainly, not softened by the mechanical label**: this was not
-a mild underperformance. Starting from $10,000, the strategy's paper
-equity went to **-$1,051,858** — a real, complete, and then some,
-wipeout, had this been run against actual capital. Win rate was **1.13%**
-across 44,344 trades (roughly one trade every 20 real minutes over the
-632-day window, matching the 20-period reversion band's own expected
-trigger frequency). Profit factor of 0.0012 means gross losses
-outweighed gross profits by roughly 860-to-1.
+**A real, separate caveat on `final_equity`/`max_drawdown`, tightened on
+the same review pass**: `backtest/engine.py::run_backtest` never passes
+equity or any portfolio state to the `Strategy` callable at all (its own
+type signature: `Callable[[Sequence[Kline]], OrderIntent | None]`) — so
+`VwapMidReversionStrategy` has no way to know real cumulative P&L, and
+keeps sizing every new position off the **fixed** `reference_equity`
+constant regardless of how deep prior losses went. There is no
+insolvency or margin-call concept anywhere in this engine — a real,
+disclosed, pre-existing characteristic of every strategy in this
+package, not unique to this one. **Consequence for how to read
+`final_equity=-$1,051,858`**: this is not "the literal dollar loss a
+real leveraged account would have sustained" — a real account would
+have been liquidated by its exchange long before paper equity went
+negative, well short of this raw figure. It is the backtest's raw,
+uncapped cumulative P&L sum, useful as a **severity signal** (how bad
+the aggregate edge is, in aggregate) rather than a literal number. The
+qualitative conclusion is unaffected — a real account trading this
+exact spec would still have been wiped out, just earlier and by a
+smaller, margin-bounded amount — but the number itself needed this
+precise a framing, not the more literal one an earlier version of this
+document used.
+
+**Stated plainly, not softened by the mechanical label, and precise
+about what the raw number does and doesn't show (see the engine caveat
+above)**: this was not a mild underperformance. The strategy's raw,
+uncapped paper equity fell from $10,000 to **-$1,051,858** — a severity
+signal, not a literal dollar figure a real leveraged account would have
+reached, since this engine has no margin/insolvency concept and a real
+account would have been liquidated, and this trading stopped, long
+before reaching this point. Win rate was **1.13%** across 44,344 trades
+(roughly one trade every 20 real minutes over the 632-day window,
+matching the 20-period reversion band's own expected trigger frequency).
+Profit factor of 0.0012 means gross losses outweighed gross profits by
+roughly 860-to-1 — a ratio, unlike the raw equity figure, that stays
+meaningful regardless of the margin caveat.
 
 ## Why this happened — a real, disclosed design choice, not a bug
 
@@ -171,3 +230,16 @@ for that future task, not decided here.
 - Every number in this document's "The real result" section was read
   directly from the real logged record and the real command's own
   stdout, not recomputed or estimated.
+- **Independently auditable without trusting this document's own prose**
+  (real CodeRabbit review finding, closed by precedent — `runs/
+  experiments.jsonl` itself is gitignored, same as every prior holdout
+  result in this project, so a committed, de-identified extract is the
+  established way to make a result independently checkable; mirrors
+  `.planning/sr-y-appended-log-records.jsonl`'s own precedent for the
+  same reason): `.planning/scalp-s4-vwap-mid-reversion-result-records.jsonl`
+  carries the real, complete, verbatim `holdout_access` record and both
+  real `backtest_run` records (the outer holdout confirmation and its
+  inner diagnostic sub-record) this document's numbers were read from —
+  no raw trading logs, secrets, or account identifiers anywhere in it
+  (pure research metadata: strategy hyperparameters, metrics, timestamps,
+  the git commit SHA, and the preregistration's own SHA-256).
