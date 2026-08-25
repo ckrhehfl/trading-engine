@@ -307,6 +307,42 @@ def test_expected_bars_must_be_positive():
         validate_preregistration(_valid_config(data={**_valid_config()["data"], "expected_bars": 0}))
 
 
+def test_known_gaps_is_optional_and_absent_by_default():
+    # Every registration committed before this field existed (e.g. the real
+    # daily-tsmom-ensemble-1d-holdout.json) must keep validating cleanly --
+    # this field is purely additive.
+    validate_preregistration(_valid_config())
+
+
+def test_known_gaps_accepts_a_well_formed_list():
+    data = {**_valid_config()["data"], "known_gaps": [[100, 200], [300, 400]]}
+    validate_preregistration(_valid_config(data=data))
+
+
+def test_known_gaps_rejects_an_empty_list():
+    data = {**_valid_config()["data"], "known_gaps": []}
+    with pytest.raises(PreregistrationError, match="known_gaps"):
+        validate_preregistration(_valid_config(data=data))
+
+
+def test_known_gaps_rejects_a_non_list():
+    data = {**_valid_config()["data"], "known_gaps": "not-a-list"}
+    with pytest.raises(PreregistrationError, match="known_gaps"):
+        validate_preregistration(_valid_config(data=data))
+
+
+def test_known_gaps_rejects_an_entry_that_is_not_a_pair():
+    data = {**_valid_config()["data"], "known_gaps": [[100, 200, 300]]}
+    with pytest.raises(PreregistrationError, match=r"known_gaps\[0\]"):
+        validate_preregistration(_valid_config(data=data))
+
+
+def test_known_gaps_rejects_an_inverted_pair():
+    data = {**_valid_config()["data"], "known_gaps": [[200, 100]]}
+    with pytest.raises(PreregistrationError, match=r"known_gaps\[0\]"):
+        validate_preregistration(_valid_config(data=data))
+
+
 def test_an_inverted_window_is_rejected():
     with pytest.raises(PreregistrationError, match="end_ms"):
         validate_preregistration(_valid_config(data={**_valid_config()["data"], "end_ms": START_MS}))

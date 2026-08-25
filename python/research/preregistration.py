@@ -459,6 +459,29 @@ def _validate_entry_point(value: Any) -> None:
         )
 
 
+def _validate_known_gaps(value: Any) -> None:
+    """Validate the OPTIONAL `data.known_gaps` field: a non-empty list of
+    `[start_ms, end_ms]` half-open pairs, each `start_ms < end_ms`. Absent
+    entirely means "this registration's window has no known gaps" (every
+    registration before this field existed, and every future registration
+    against a zero-gap interval, is unaffected) -- see
+    `run_preregistered_holdout.py`'s own `verify_known_gaps` for what
+    actually enforces this against the real database at execution time;
+    this function only checks the *shape* is well-formed.
+    """
+    if not isinstance(value, list) or not value:
+        raise PreregistrationError(f"data.known_gaps must be a non-empty list of [start_ms, end_ms] pairs, got {value!r}")
+    for index, entry in enumerate(value):
+        if not isinstance(entry, list) or len(entry) != 2:
+            raise PreregistrationError(f"data.known_gaps[{index}] must be a 2-element [start_ms, end_ms] list, got {entry!r}")
+        gap_start = _require_int(entry[0], f"data.known_gaps[{index}][0]", minimum=0)
+        gap_end = _require_int(entry[1], f"data.known_gaps[{index}][1]", minimum=0)
+        if gap_end <= gap_start:
+            raise PreregistrationError(
+                f"data.known_gaps[{index}]: end ({gap_end}) must be greater than start ({gap_start})"
+            )
+
+
 def _validate_data(data: Any) -> tuple[str, int]:
     """Returns `(split, expected_bars)` for the cross-checks below."""
     mapping = _require_mapping(data, "data")
@@ -477,6 +500,10 @@ def _validate_data(data: Any) -> tuple[str, int]:
     if end_ms <= start_ms:
         raise PreregistrationError(f"data.end_ms ({end_ms}) must be greater than data.start_ms ({start_ms})")
     expected_bars = _require_int(mapping["expected_bars"], "data.expected_bars", minimum=1)
+
+    if "known_gaps" in mapping:
+        _validate_known_gaps(mapping["known_gaps"])
+
     return split, expected_bars
 
 

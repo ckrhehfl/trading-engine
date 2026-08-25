@@ -34,6 +34,7 @@ from research.run_preregistered_holdout import (
     OUTCOME_FAIL,
     OUTCOME_INCONCLUSIVE,
     OUTCOME_PASS,
+    UnexpectedKnownGapsError,
     evaluate_gating,
     main,
     recompute_detection_floor_sharpe,
@@ -499,6 +500,103 @@ def test_a_mismatched_declared_detection_floor_fails_closed_before_loading_any_h
     # before load_holdout_klines was ever reached.
     assert _holdout_access_records(runs_path) == []
     assert _backtest_records(runs_path) == []
+
+
+def test_a_registration_declaring_known_gaps_that_do_not_match_the_real_data_fails_closed_before_loading(
+    tmp_path, holdout_config_path, db_path, runs_path
+):
+    # db_path's own fixture is a complete, gap-free window -- declaring a
+    # known_gaps entry that doesn't actually exist in it must fail closed,
+    # the same "before any holdout data is loaded, before the single-access
+    # claim could be consumed" placement as verify_detection_floor's own
+    # mismatch case above (Scalping Strategy Research Task S4's own real
+    # CodeRabbit review finding: an earlier version of this check lived in
+    # a separate, bypassable wrapper script rather than here).
+    fake_gap = [START_MS + 5 * STEP_MS, START_MS + 6 * STEP_MS]
+    data = {**_config()["data"], "known_gaps": [fake_gap]}
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path, data=data))
+
+    with pytest.raises(UnexpectedKnownGapsError, match="known_gaps"):
+        run_preregistered_holdout(prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path)
+
+    assert _holdout_access_records(runs_path) == []
+    assert _backtest_records(runs_path) == []
+
+
+def test_a_registration_declaring_known_gaps_that_exactly_match_the_real_data_runs_to_completion(
+    tmp_path, holdout_config_path, runs_path
+):
+    # A second, deliberately gapped fixture DB -- one real bar missing at a
+    # known position -- to prove a CORRECTLY declared known_gaps entry does
+    # not block execution (the mirror image of the fail-closed test above).
+    gapped_db_path = tmp_path / "gapped_klines.sqlite3"
+    conn = connect(gapped_db_path)
+    skip_index = 5
+    upsert_klines(
+        conn,
+        "BTC-USDT",
+        "1d",
+        [
+            KlineRow(
+                open_time_ms=START_MS + i * STEP_MS,
+                open=Decimal(100 + i),
+                high=Decimal(102 + i),
+                low=Decimal(99 + i),
+                close=Decimal(100 + i) + (Decimal("5") if i % 6 < 3 else Decimal("-5")),
+                volume=Decimal("1"),
+            )
+            for i in range(NUM_BARS)
+            if i != skip_index
+        ],
+    )
+    conn.close()
+
+    real_gap = [START_MS + skip_index * STEP_MS, START_MS + (skip_index + 1) * STEP_MS]
+    expected_bars = NUM_BARS - 1
+    data = {
+        **_config()["data"],
+        "known_gaps": [real_gap],
+        "expected_bars": expected_bars,
+    }
+    criterion = {
+        **_config()["primary_criterion"],
+        "min_total_trades": frequency_scaled_min_trades(total_evaluated_bars=expected_bars, bars_per_day=1),
+    }
+    prereg = load_preregistration(
+        _write_prereg(
+            tmp_path,
+            holdout_config_path,
+            data=data,
+            primary_criterion=criterion,
+            declared_detection_floor_sharpe=recompute_detection_floor_sharpe(
+                total_evaluated_bars=expected_bars, bars_per_day=1
+            ),
+        )
+    )
+
+    result = run_preregistered_holdout(
+        prereg, strategy=_RecordingTrainable(), db_path=gapped_db_path, runs_path=runs_path
+    )
+
+    assert result.klines_count == expected_bars
+    assert len(_holdout_access_records(runs_path)) == 1
+
+
+def test_a_registration_without_known_gaps_is_unaffected_by_the_new_check(
+    tmp_path, holdout_config_path, db_path, runs_path
+):
+    # Every registration committed before known_gaps existed (e.g. the real
+    # daily-tsmom-ensemble-1d-holdout.json) must behave byte-for-byte as
+    # before -- verify_known_gaps is a no-op when the field is absent.
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
+    assert prereg.data.get("known_gaps") is None
+
+    result = run_preregistered_holdout(
+        prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path
+    )
+
+    assert result.klines_count == NUM_BARS
+    assert len(_holdout_access_records(runs_path)) == 1
 
 
 def test_a_registration_stricter_than_the_trade_floor_still_runs_to_completion(

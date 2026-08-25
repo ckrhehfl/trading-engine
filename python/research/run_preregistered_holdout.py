@@ -94,6 +94,7 @@ from uuid import uuid4
 from backtest.engine import run_backtest
 from backtest.kline import Kline
 from data.backfill import DEFAULT_DB_PATH
+from data.store import connect, find_missing_ranges
 from metrics.metrics import Metrics, compute_metrics
 from research import experiment_log
 from research.eligibility import SAMPLING_DAILY, PsrResult, psr_from_equity_curve
@@ -261,6 +262,71 @@ def verify_detection_floor(prereg: Preregistration, *, tolerance: float = 1e-3) 
             recomputed,
         )
     return matches
+
+
+class UnexpectedKnownGapsError(RuntimeError):
+    """Raised when a registration's declared `data.known_gaps` does not
+    match the real gap set for its `symbol`/`interval`/`start_ms`/`end_ms`
+    range exactly -- fewer, more, or relocated gaps versus what was
+    declared before this registration was committed. Fail-closed: an
+    undetermined/changed gap situation must never be silently treated as
+    "safe to proceed" (same discipline as `KrxMarketCalendar`'s
+    holiday-lookup rule, CLAUDE.md's Java side).
+    """
+
+
+def verify_known_gaps(prereg: Preregistration, *, db_path: str | Path) -> None:
+    """No-op when `prereg.data` does not declare `known_gaps` (every
+    registration before this field existed, and every future registration
+    against an interval with zero known gaps, is completely unaffected --
+    this check is purely additive).
+
+    When `known_gaps` IS declared, diffs the real kline sequence for this
+    registration's own `symbol`/`interval`/`start_ms`/`end_ms` (via
+    `data.store.find_missing_ranges`) against the declared list and raises
+    `UnexpectedKnownGapsError` if they do not match exactly. Called from
+    `run_preregistered_holdout` BEFORE `load_holdout_klines`, same
+    fail-closed-before-any-data-is-loaded placement as
+    `verify_detection_floor` -- a real CodeRabbit review finding
+    (Scalping Strategy Research Task S4's own PR) caught that an earlier,
+    interval-specific-only version of this check (`research.
+    verify_1m_gaps`, still present as a standalone diagnostic) was never
+    actually enforced on the real execution path: nothing stopped a
+    caller from invoking `run_preregistered_holdout` directly and bypassing
+    it entirely. Folding the check in here, gated on an opt-in
+    registration field rather than a hardcoded symbol/interval, closes
+    that gap for every current and future registration in one place,
+    rather than requiring a fresh dedicated wrapper module per interval
+    that happens to have known gaps.
+    """
+    declared = prereg.data.get("known_gaps")
+    if declared is None:
+        return
+
+    expected = tuple((int(start), int(end)) for start, end in declared)
+
+    conn = connect(db_path)
+    try:
+        real_gaps = find_missing_ranges(
+            conn,
+            prereg.data["symbol"],
+            prereg.data["interval"],
+            prereg.data["start_ms"],
+            prereg.data["end_ms"],
+        )
+    finally:
+        conn.close()
+
+    if tuple(real_gaps) != expected:
+        raise UnexpectedKnownGapsError(
+            f"pre-registration {prereg.preregistration_id!r} declares known_gaps={expected!r} for "
+            f"{prereg.data['symbol']}/{prereg.data['interval']}, but the real gap set in "
+            f"[{prereg.data['start_ms']}, {prereg.data['end_ms']}) is {real_gaps!r} -- refusing to "
+            "load or score holdout data until this discrepancy (a new gap, a resolved gap, or a "
+            "relocated one) is understood and, if genuine, disclosed and this registration updated "
+            "accordingly (a changed known_gaps value requires a new preregistration_id, same as any "
+            "other post-commit change to this file)."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -585,6 +651,14 @@ def run_preregistered_holdout(
             prereg.strategy_id,
         )
     else:
+        # Fail closed BEFORE any holdout data is loaded (and therefore
+        # before the single-access claim could be consumed) if this
+        # registration declares known_gaps and the real gap set no longer
+        # matches -- see verify_known_gaps's own docstring. A no-op for
+        # every registration that doesn't declare known_gaps (unchanged
+        # behavior for every pre-existing registration).
+        verify_known_gaps(prereg, db_path=db_path)
+
         klines = load_holdout_klines(
             data["start_ms"],
             data["end_ms"],

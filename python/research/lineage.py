@@ -190,6 +190,16 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/sr-y-macro-sp500-strategy.md",
     ),
+    # --- btc-scalping (Scalping Strategy Research Task S4 -- a single
+    # pre-registered whole-window 1m holdout confirmation, not a walk-
+    # forward research run; see CLAUDE.md's "Scalping Strategy Research"
+    # section for the design and .planning/scalp-s4-vwap-mid-reversion.md
+    # for this specific candidate's own record) ----------------------------
+    "vwap-mid-reversion": FamilyEntry(
+        family="btc-scalping",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/scalp-s4-vwap-mid-reversion.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them
