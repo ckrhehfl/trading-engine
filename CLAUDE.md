@@ -2455,6 +2455,72 @@ matching the KIS documentation PRs' own precedent this same day.
   scalping or otherwise, still must pass through the Java Trading
   Plane's `RiskGateway` in full, exactly as this file's Non-negotiable
   Rules already require.
+
+  **Real cost research completed 2026-08-25** (three real searches, not
+  invented numbers — citations below). Two separate cost components,
+  held to different confidence levels since one is a precisely
+  documented exchange fact and the other is a reasoned estimate:
+
+  - **`fee_bps` — confirmed, no change needed.** BingX's and Binance's
+    own published VIP0 (base-tier retail) taker fee is **0.05% = 5bps**
+    on both venues — an exact match to the existing `FEE_BPS=5` this
+    project's daily strategy already uses
+    (`python/live/generate_daily_signal.py`). Unlike slippage, an
+    exchange's taker fee is a fixed percentage of notional regardless of
+    holding period, so there is no scalping-specific reason to raise it
+    — `FEE_BPS=5` is reused for scalping preregistrations **as a
+    confirmed fact re-verified for this use, not an unexamined default
+    carried over** (the distinction this task exists to enforce).
+  - **`slippage_bps` — must rise materially above the daily default's
+    `2`, for real, cited reasons.** Real BTC-USDT typical daily-average
+    bid-ask spread is on the order of **~0.04% = 4bps** (general
+    market-data sources), corroborated by rigorous recent academic
+    measurement: "The Extremity Premium: Sentiment Regimes and Adverse
+    Selection in Cryptocurrency Markets" (arXiv 2602.07018) validates
+    spread estimators against real 90-day Bybit L2 order-book data and
+    61-day Binance effective-spread data (Oct 2025-Jan 2026), confirming
+    BTC spreads are both rigorously measurable and materially consistent
+    cross-exchange. That same body of work (and the general
+    market-microstructure literature) also confirms spreads widen during
+    volatile regimes — exactly the kind of short-term price dislocation
+    a scalping signal is, by construction, more likely to trigger around.
+
+    `fill.py`'s own model applies `slippage_bps` as a price displacement
+    from the *next bar's open* for a `GUARDED_MARKET` order, in the
+    direction against the trader (see its module logic) — so the number
+    chosen here must cover not just the bid-ask spread itself, but also
+    the gap between "next bar's open" and the price a real market order
+    would actually pay, including volatility-driven widening around the
+    trigger moment. **Recommended: `SLIPPAGE_BPS = 10` for scalping
+    `GUARDED_MARKET` preregistrations** — roughly 2.5x the cited ~4bps
+    typical spread. This multiplier is **not itself a citation** — it is
+    a deliberately conservative reasoned estimate (moderate confidence,
+    disclosed as such rather than presented as an exact figure): ~4bps
+    for the spread itself, plus a margin for volatility-regime widening
+    and the open-vs-achievable-price gap above. A candidate that can't
+    stay net-positive after `FEE_BPS=5` + `SLIPPAGE_BPS=10` per round
+    trip (~15bps one-way, ~30bps round trip — non-trivial relative to
+    scalping-scale price moves) is disqualified before any statistical
+    validation, regardless of raw Sharpe.
+  - Same discipline as the Risk Parameters/Eligibility Bar above: any
+    future revision of these two constants needs its own
+    re-justification here, not silent per-strategy tuning to make a
+    marginal candidate pass.
+
+  **Concrete gate mechanics**: a scalping candidate's `GUARDED_MARKET`
+  backtest, run with `FEE_BPS=5`/`SLIPPAGE_BPS=10` (or a
+  candidate-specific higher figure, itself justified — never lower
+  without new evidence), must show a positive mean profit factor and
+  positive mean Sharpe across its evaluated folds **before** any
+  walk-forward/DSR significance test is run against it — the same
+  ordering discipline already established for the KOSPI200
+  contract-multiplier conversion running before `RiskLimits.canary()`'s
+  percentage check. A candidate failing this gate is reported as
+  cost-disqualified, never run through DSR at all: spending a DSR trial
+  (and raising the project-level `N` every future candidate is deflated
+  against) on a candidate that can't clear realistic costs would be pure
+  waste — the same reasoning behind the standing rule against further
+  searching on the spent 1h window.
 - **Task S3** — statistical methodology addendum (mostly documentation
   — the harness itself already works, per finding 1 above): the
   `bars_per_day=1440` convention for 1m strategies; fold geometry
