@@ -2532,22 +2532,50 @@ matching the KIS documentation PRs' own precedent this same day.
   profit factor is gross-profit/gross-loss, a ratio of two non-negative
   magnitudes, so it is arithmetically *always* ≥0; "positive" excludes
   nothing, and a `0 < PF < 1` candidate — net cost-losing — would pass
-  a bare positivity check) and a positive mean Sharpe (this one *is*
-  already a real net-of-cost check, not merely directional — `fill.py`'s
-  fees/slippage are applied to the fill price itself before the return
-  series Sharpe is computed from is ever built, so Sharpe>0 already
-  means net-positive after `FEE_BPS`/`SLIPPAGE_BPS`) across its
-  evaluated folds **before** any walk-forward/DSR significance test is
-  run against it. A fold's `profit_factor: null` (zero trades, or zero
-  losing trades) is interpreted per this file's own existing Eligibility
-  Bar convention above, not a new rule invented here. This cost gate is
-  deliberately a separate, earlier, cheaper screen than the full
-  Eligibility Bar's own later profit-factor floor (1.3-1.5, a cushion
-  for backtest-to-live mismodeling on top of a candidate that has
-  already cleared walk-forward/DSR) — `PF>1.0` here only establishes
-  "not obviously cost-negative," relying on `SLIPPAGE_BPS=10`'s own
-  built-in conservatism (already ~2.5x the cited real spread) rather
-  than duplicating the stricter downstream floor.
+  a bare positivity check) and a positive mean Sharpe. The Sharpe check
+  *is* already a real net-of-cost check, not merely directional —
+  `fill.py`'s fees/slippage are applied to the fill price itself,
+  before the return series used to compute Sharpe is ever built, so
+  Sharpe>0 already means net-positive after `FEE_BPS`/`SLIPPAGE_BPS`.
+  A fold's `profit_factor: null` (zero trades, or zero losing trades)
+  is interpreted per this file's own existing Eligibility Bar convention
+  above, not a new rule invented here. This cost gate is deliberately a
+  separate, earlier, cheaper screen than the full Eligibility Bar's own
+  later profit-factor floor (1.3-1.5, a cushion for backtest-to-live
+  mismodeling on top of a candidate that has already cleared
+  walk-forward/DSR) — `PF>1.0` here only establishes "not obviously
+  cost-negative," relying on `SLIPPAGE_BPS=10`'s own built-in
+  conservatism (already ~2.5x the cited real spread) rather than
+  duplicating the stricter downstream floor.
+
+  **Two different execution shapes need two different orderings for
+  this gate, stated explicitly rather than left to the runner's
+  judgment** (tightened on real CodeRabbit review, which correctly
+  pointed out the original single "before any walk-forward/DSR test"
+  wording doesn't fit a single-window holdout at all): for a
+  **research-split, walk-forward candidate** (the shape every non-1m
+  timeframe uses, and any future scalping candidate that *does* get a
+  reusable research split), the gate runs on the research folds and
+  must pass **before** any walk-forward/DSR significance test is run
+  against those same folds — real iterative access exists here, so a
+  cheaper cost-only pass genuinely can precede the fuller statistical
+  one. For a **single pre-registered holdout candidate** (1m scalping's
+  own design per Task S3 above — see `daily-tsmom-ensemble`'s
+  `sr-u`/`sr-v`/`sr-aa`/`sr-ab` precedent), there is no separate prior
+  access to run the gate against without spending the one-time holdout
+  itself — the gate criteria (`PF>1.0`, Sharpe>0) are instead evaluated
+  **from that same single holdout run**, as an additional required
+  criterion alongside the Eligibility Bar's existing Holdout confirmation
+  (single-window variant) checks (PSR≥0.95, drawdown, trade count,
+  profit-factor floor), not as a temporally separate backtest. If the
+  cost-gate criteria fail on that one access, the result is reported as
+  **cost-disqualified**, regardless of what PSR says — a high PSR on a
+  cost-disqualified holdout run would be an artifact of the assumed
+  fee/slippage figures, not evidence of a tradeable edge, so cost
+  disqualification takes reporting priority over a PSR-based pass. Task
+  S4's own preregistration must state which of these two shapes it uses
+  and, if the single-holdout shape, restate this ordering explicitly
+  rather than silently inherit it.
 
   This is the same ordering discipline already established for the
   KOSPI200 contract-multiplier conversion running before
@@ -2623,18 +2651,40 @@ matching the KIS documentation PRs' own precedent this same day.
   **does not arise** — there is nothing to pool. The single-holdout run
   is `N=1` for its *own* PSR evaluation (never searched over, one
   access, one run — DSR and PSR coincide at `N=1`, same reasoning as
-  `daily-tsmom-ensemble`'s). Separately, it **does** contribute exactly
-  one new entry to the **project-level** research `N` every *other*
-  strategy's DSR must be deflated against going forward — the same way
-  `sr-x`/`sr-y`'s macro attempts each added to `N` despite also being
-  single-pre-committed-candidate runs. A curated `research/lineage.py`
-  entry (family `"btc-scalping"`) will be added in Task S4 once the real
-  `strategy_id` exists, alongside a run-time `strategy_family=` pass —
-  matching the `daily-tsmom`/`macro-conditioned` precedent of a curated
-  fallback entry existing even for a strategy that also self-describes
-  at run time (required per Eligibility Bar clause 2: "a DSR computed
-  against an `'unmapped'` resolution is inadmissible"). Not added here
-  in S3 since no `strategy_id` exists yet and `lineage.py`'s own
+  `daily-tsmom-ensemble`'s).
+
+  **Corrected on a second real CodeRabbit review pass, which verified
+  against the actual code and a runnable reproduction rather than trust
+  this document's own prior claim**: an earlier version of this
+  paragraph asserted the single-holdout run "contributes exactly one new
+  entry to the project-level research `N`." **That was checked against
+  `python/research/overfitting_check.py` and found to be false.**
+  `check_project_combination_count`'s own scanner (`_holdout_run_ids`/
+  `_is_holdout_related`, Strategy Research Task V) explicitly excludes
+  both a logged holdout confirmation's own final record *and* every
+  record related to it (by `parent_run_id`) from the project-level
+  count — contributing **zero**, not one. The module's own docstring
+  states the real reasoning directly: "a holdout confirmation was never
+  searched over, so it is not a combination 'tried' in the sense this
+  heuristic measures." This is not a gap or a bug to fix — it is the
+  same treatment `daily-tsmom-ensemble`'s own `sr-v`/`sr-ab` holdout
+  confirmations have silently and correctly received all along, and the
+  1m single-holdout design simply inherits it unchanged, exactly as it
+  should: `sr-x`/`sr-y`'s macro attempts are the *wrong* comparison to
+  reach for here (this document's own prior error) — those were
+  ordinary walk-forward runs on an untouched *research* split, never
+  marked `is_holdout_run=True`, which is precisely why they *do* count.
+  A single-window holdout access is categorically different from an
+  iterative research-split run for `N`-accounting purposes, and this
+  file's text now says so correctly instead of conflating the two.
+
+  A curated `research/lineage.py` entry (family `"btc-scalping"`) will
+  still be added in Task S4 once the real `strategy_id` exists, for
+  record-keeping/attribution hygiene consistent with every other logged
+  strategy — but not, as an earlier version of this paragraph implied,
+  because it changes this run's own contribution to the project-level
+  `N` (it doesn't: zero, either way, per the mechanism above). Not added
+  here in S3 since no `strategy_id` exists yet and `lineage.py`'s own
   docstring requires a citation to the document that justifies each
   entry.
 
@@ -2665,27 +2715,55 @@ matching the KIS documentation PRs' own precedent this same day.
   the ceiling this can reach, not a guess Task S4 must re-derive from
   scratch.
 
-  **Gap-detection prerequisite from Task S1, resolved via the cheaper
-  interim measure** (explicit verification, not a general gap-aware-
-  validation rebuild — the larger undertaking stays a disclosed future
-  follow-up). Because the single-holdout design uses the *entire*
-  retention window rather than a chosen sub-range, there is no window-
-  selection step where the two known real gaps
+  **Gap-detection prerequisite from Task S1, resolved with a real
+  pre-access check, not documentation alone** (a first version of this
+  paragraph claimed the residual risk narrows to "rolling-window
+  features only" once `walkforward.py`'s own fold-generation is out of
+  the picture for a single-window run — **corrected on real CodeRabbit
+  review, which was right that this understated the scope**, verified
+  by reading `backtest/engine.py`, `backtest/fill.py`,
+  `backtest/kline_window.py`, and `metrics/metrics.py` directly rather
+  than re-asserting the original claim). The real, code-verified scope:
+  (1) `fill.py::simulate_fill` selects the fill bar **positionally**
+  (`klines[signal_bar_index + 1]`), so a signal on either of the ≤2 bars
+  immediately preceding a gap fills against a bar 4-7 real minutes later
+  than a continuous series would give — a genuine engine-level effect,
+  not merely a rolling-feature one; (2) `metrics.py::_sharpe_ratio`'s
+  per-bar returns are computed between **consecutive array elements**,
+  so the 2 gap-spanning observations are real, if bounded, distortions
+  feeding directly into Sharpe/PSR; (3) `eligibility.py`'s
+  `resample_equity_to_daily` chunks positionally too, so daily-bucket
+  boundaries drift from true UTC-midnight alignment by up to the gap's
+  own bar count after each gap — bounded, cumulative ≤7 minutes across
+  the whole series, never compounding further. **One claim in the
+  reviewer's own framing is precisely wrong and worth stating, not just
+  conceding everything**: holding-period/elapsed-time tracking itself is
+  *not* affected — `metrics/position.py`'s `ClosedTrade.entry_time`/
+  `exit_time` are real `datetime` values sourced from `fill.fill_time`,
+  not bar-count arithmetic, so a trade's *duration* is always accurate
+  even when *which bar* became the fill was distorted by (1) above.
+
+  **The actual fix, not just a bounded disclosure**: `python/data/
+  store.py::find_missing_ranges` already exists (it is the same function
+  that originally found these 2 gaps) and needs no engine change to
+  reuse — Task S4 must call it against the full loaded 1m holdout window
+  **before** the single holdout access happens, and **fail closed if the
+  result differs from exactly the 2 known, already-disclosed gaps**
   (`[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)`, 3 bars;
   `[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)`, 4 bars — see "Exchange
-  API Facts — BingX") could be dodged even if desired. Both are
-  disclosed here explicitly: mid-window, not at either boundary,
-  combined 7 bars out of 910,040 (~0.00077% of the window). This also
-  narrows the concrete residual risk versus what Task S1 originally
-  flagged: `walkforward.py`'s own gap-blind positional arithmetic isn't
-  exercised at all by a single-window run (no fold generation happens),
-  so the only remaining exposure is a rolling-window feature (e.g. Task
-  S4's own VWAP lookback) spanning either gap seeing a very slightly
-  longer wall-clock span than its bar count implies, for at most one
-  window's worth of bars around each gap — a real, disclosed, bounded
-  distortion, not a crash risk, and negligible at this scale. Task S4's
-  own preregistration must name both gaps and this disclosure, not
-  silently inherit it.
+  API Facts — BingX"). Not a bare "fail on any gap" — these 2 are real,
+  permanent, and unfixable at the source, so that would block the design
+  outright — but a real, testable guard against an *unexpected* gap
+  (fewer, more, or relocated versus the disclosed 2), matching this
+  file's own established "fail closed on undetermined, not on an
+  already-accepted condition" pattern (e.g. `KrxMarketCalendar`'s
+  holiday-lookup discipline above). The 2 known gaps' own bounded impact
+  — (1)-(3) above — is accepted and disclosed, not eliminated; what this
+  check adds is protection against a *different*, undisclosed gap
+  appearing (e.g. from a future backfill re-run) and silently distorting
+  results beyond the bound already reasoned about here. Task S4's own
+  preregistration must name both gaps, this disclosure, and this
+  pre-access check explicitly, not silently inherit it.
 - **Task S4** — first candidate signal research pass. **Recommended
   first candidate: VWAP-to-mid deviation short-term reversion** — the
   most directly, recently, and strongly supported candidate found (see
@@ -2701,11 +2779,13 @@ matching the KIS documentation PRs' own precedent this same day.
   own constraint above — a deviation-threshold-triggered market order
   fits this signal's own mean-reversion mechanism fine and keeps
   `slippage_bps` a real, meaningful cost lever rather than an inert one.
-  Must clear Task S2's execution-realism gate before the single holdout
-  access happens. Per Task S3's design decision above, this is a
-  **single pre-registered holdout access against the full 631.98-day 1m
-  window**, evaluated via the Eligibility Bar's single-window variant —
-  **not** an iterative walk-forward research pass. Own preregistration,
+  Per Task S3's design decision above, this is a **single pre-registered
+  holdout access against the full 631.98-day 1m window**, evaluated via
+  the Eligibility Bar's single-window variant — **not** an iterative
+  walk-forward research pass, so Task S2's execution-realism gate is
+  evaluated *from that same single access* per the "two different
+  execution shapes" ordering above, not as a separate prior run. Own
+  preregistration,
   filed and committed *before* any 1m data is touched for this
   `strategy_id`, matching `daily-tsmom-ensemble`'s own
   `sr-u`/`sr-v`/`sr-aa`/`sr-ab` single-access discipline precisely (not
