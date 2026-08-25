@@ -295,7 +295,8 @@ less.
 
 ## Real CodeRabbit review findings on this task's own PR, and how each was handled
 
-Three findings, verified individually rather than applied blindly:
+Two review rounds, five findings total, verified individually rather than
+applied blindly:
 
 1. **Real, minor**: two fenced code blocks above were missing a language
    tag (markdownlint MD040). Fixed.
@@ -321,7 +322,7 @@ Three findings, verified individually rather than applied blindly:
    here for real, not just quoted: skipped, with this paragraph as the
    documented reason, rather than accepting a plausible-looking but
    factually-contradicted suggested diff.
-3. **Real, and the most substantive finding**: `verify_1m_gaps.py` was
+3. **Real, round 1's most substantive finding**: `verify_1m_gaps.py` was
    originally a fully standalone module -- nothing in the real execution
    path called it automatically. The reviewer correctly traced
    `research/run_preregistered_holdout.py`'s real code and confirmed it
@@ -330,23 +331,64 @@ Three findings, verified individually rather than applied blindly:
    (`python -m research.run_preregistered_holdout <path>`) would consume
    the single-access claim even with an unexpected gap present -- a real
    gap between "a check exists" and "the check is structurally
-   enforced." Fixed by adding `research/run_vwap_mid_reversion_holdout.py`,
-   a thin wrapper specific to this one registration (deliberately still
-   not a change to the shared `run_preregistered_holdout.py` -- every
-   other interval's own holdout confirmation has zero known gaps, so
-   folding an interval-specific gap check into generic infrastructure
-   remains out of this task's scope) that calls `verify_1m_gaps`
-   unconditionally before calling `run_preregistered_holdout`, with
-   `verify_gaps`/`execute_holdout` both injectable so the short-circuit
-   property itself (execute_holdout structurally unreachable when
-   verify_gaps raises, proven by Python's own control flow, not by
-   convention) is directly unit-tested
-   (`python/tests/test_run_vwap_mid_reversion_holdout.py`). The real
-   execution command is now `python -m
-   research.run_vwap_mid_reversion_holdout`, not the raw
-   `research.run_preregistered_holdout` invocation -- both the
-   pre-registration's own notes and this document have been updated to
-   say so explicitly.
+   enforced." **First fix attempt (round 1): a dedicated wrapper
+   script**, `research/run_vwap_mid_reversion_holdout.py`, that called
+   `verify_1m_gaps` before calling `run_preregistered_holdout`, with
+   both steps injectable so the short-circuit property was directly
+   unit-tested. **Round 2's review correctly found this fix incomplete**
+   (see finding 4 below) -- the raw `run_preregistered_holdout` command
+   was still callable directly, bypassing the new wrapper entirely, so
+   the "structurally enforced" claim was only true if the operator
+   remembered to use the new command instead of the old one. **Superseded
+   by a better design, not patched further**: the gap check now lives
+   directly inside `research/run_preregistered_holdout.py` itself
+   (`verify_known_gaps`/`UnexpectedKnownGapsError`), gated on a new,
+   OPTIONAL `data.known_gaps` preregistration field rather than a
+   hardcoded `1m`-specific constant -- a no-op (zero behavior change) for
+   every registration that doesn't declare it, including every one
+   already committed (verified directly: `daily-tsmom-ensemble-1d-
+   holdout.json` still loads with `known_gaps=None` and is completely
+   unaffected). Since this check now lives in the ONE function every
+   holdout confirmation in this project already calls, there is no
+   longer a second command to forget -- the bypass round 2 found is
+   closed structurally, not by convention. `research/run_vwap_mid_
+   reversion_holdout.py` and its test were deleted (redundant once the
+   check moved into shared infrastructure); `verify_1m_gaps.py` survives
+   as a standalone, `1m`-specific diagnostic CLI, no longer positioned as
+   the enforcement mechanism.
+4. **Real, round 2**: the round-1 wrapper fix above had two further real
+   gaps, both closed by the same round-2 redesign rather than patched
+   individually: (a) an operator could still bypass the gap check by
+   calling `run_preregistered_holdout` directly instead of the new
+   wrapper -- now impossible, since there is only one real command; (b)
+   the wrapper's `preregistration_path` argument accepted any file while
+   `verify_1m_gaps` always hardcoded `symbol="BTC-USDT"`/`interval="1m"`,
+   so pointing the wrapper at a differently-scoped registration would
+   have silently verified the wrong range against the wrong data --
+   moot now, since `verify_known_gaps` reads `symbol`/`interval`/
+   `start_ms`/`end_ms` directly from the SAME `prereg.data` the loader
+   itself uses, never a separate hardcoded constant. A third round-2
+   sub-point -- `force_reclaim_reason` accepts any non-blank string with
+   no verifiable human-approval record -- was investigated and left
+   unchanged: this is `research.holdout.load_holdout_klines`'s own
+   existing, already-litigated, deliberately-permissive design (its own
+   module docstring: "a mandatory, non-blank, human-written
+   justification... The design intentionally puts the judgment call in a
+   human's hands, not the software's"), already tracked as a real, open,
+   separate question (github.com/ckrhehfl/trading-engine/issues/58,
+   confirmed to actually exist via `gh issue view 58` before citing it,
+   raised by CodeRabbit against the shared `sr-v` PR and deliberately not
+   changed there either). Tightening it just for this one registration's
+   own code path would create an inconsistent security model across
+   registrations rather than fix anything -- out of this task's scope,
+   not silently ignored.
+5. **Real, round 2, minor**: `test_run_vwap_mid_reversion_holdout.py`'s
+   `REAL_PREREGISTRATION_PATH` was a plain relative string, correct only
+   when pytest is invoked with `cwd=python/` (this project's own
+   established convention -- `test_daily_tsmom_ensemble.py` already uses
+   the identical pattern) but fragile against any other invocation
+   directory. Moot: that whole test file was deleted along with the
+   wrapper it tested (see finding 3).
 
 ## What this task does NOT decide
 

@@ -1,46 +1,36 @@
-"""Standalone gap-detection preflight for a `BTC-USDT`/`1m` holdout
-access -- Scalping Strategy Research Task S4.
+"""Standalone `BTC-USDT`/`1m` gap-detection diagnostic -- Scalping
+Strategy Research Task S4.
 
-## Why this exists, and why it is not inside `run_preregistered_holdout.py`
+## What this is now, after a real design correction
 
-Task S1 confirmed real BingX `BTC-USDT`/`1m` kline retention has **2
-known, real, permanent gaps** (see CLAUDE.md's "Exchange API Facts --
-BingX" section) -- unlike every other interval this project has ever
-run a holdout confirmation against (`15m`/`1h`/`1d`, all confirmed
-zero-gap). Task S3 found that neither `research/walkforward.py`'s fold
-generation nor `python/backtest/`'s bar-by-bar iteration detects a
-timestamp gap in the underlying kline sequence -- both are pure
-positional/bar-count arithmetic -- and, because the 1m holdout design
-(Task S3) uses the *entire* retention window rather than a chosen
-sub-range, there is no window-selection step that could dodge the 2
-known gaps even if desired.
+This module's first version was meant to be the enforcement mechanism
+gating the real `vwap-mid-reversion` 1m holdout access, invoked through
+a dedicated wrapper script. A real CodeRabbit review finding on that
+PR caught that the wrapper was only a *convention*: nothing stopped a
+caller from invoking `research.run_preregistered_holdout` directly
+(the same command every other holdout confirmation in this project
+already uses) and bypassing the gap check entirely.
 
-This module is the "fail closed on an *unexpected* gap" mechanism
-CLAUDE.md's Task S3 design requires before any real 1m holdout access:
-**not** "fail on any gap" (the 2 known gaps are real, permanent, and
-unfixable at the source -- a bare "fail on any gap" rule would block
-the whole 1m holdout design outright), but "fail on a gap set that
-differs from the 2 already-disclosed ones" -- fewer, more, or relocated
-gaps, e.g. from a future backfill re-run that turns up something new.
+**The real enforcement now lives inside
+`research/run_preregistered_holdout.py` itself**
+(`verify_known_gaps`/`UnexpectedKnownGapsError`), gated on an optional,
+opt-in `data.known_gaps` field a registration can declare -- generic
+to any interval that ever turns out to have known gaps, not hardcoded
+to `1m`, and a no-op (zero behavior change) for every registration that
+doesn't declare it, including every one already committed before this
+field existed. That is the one real execution path for *every*
+holdout confirmation in this project, so there is no longer a second,
+bypassable command to remember.
 
-Deliberately a **separate, standalone** module, not a change to
-`research/run_preregistered_holdout.py`: that runner is shared,
-already-proven infrastructure (it has already executed `sr-v`/`sr-ab`'s
-real holdout confirmations), and this gap check is specific to the one
-interval (`1m`) that currently has any known gaps at all -- every other
-interval's own holdout confirmation would trivially pass a check that
-requires "zero gaps, exactly," so folding this into the shared runner
-would add an interval-specific concern to a generic module, unasked by
-this task's own scope ("touch only what the task requires").
-
-## What this does NOT do
-
-Does not call `research.holdout.load_holdout_klines` or touch
-`runs/experiments.jsonl`'s holdout-access tracking in any way -- this
-reads `find_missing_ranges`' own *metadata* (which timestamps are
-present/absent), never the real price/volume content of any bar, and
-is safe to run any number of times without spending the single,
-enforced-once holdout access.
+This module survives as a convenient, standalone, `1m`-specific CLI for
+manually checking the gap set at any time -- e.g. after a future
+backfill re-run, to see whether a new gap appeared, independent of and
+without needing a preregistration file at hand. It reads
+`find_missing_ranges`' own *metadata* (which timestamps are present/
+absent), never the real price/volume content of any bar, and is safe
+to run any number of times: it never calls
+`research.holdout.load_holdout_klines` and never touches
+`runs/experiments.jsonl`'s holdout-access tracking.
 """
 
 import logging
