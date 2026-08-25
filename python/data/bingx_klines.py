@@ -90,6 +90,17 @@ class KlineRow:
     (that type is datetime-keyed and Python-internal to the backtest
     engine; this one is ms-timestamp-keyed, matching the wire format,
     and is what `store.py` persists).
+
+    `taker_buy_base_volume`/`taker_buy_quote_volume` (Scalping Strategy
+    Research Task S5) are additive, optional order-flow fields -- `None`
+    for every BingX-sourced row (BingX's own kline wire format has no
+    buyer/seller volume breakdown at all, confirmed directly against
+    this module's own `_parse_row` below) and populated only for
+    Binance-sourced rows that choose to capture them
+    (`binance_klines.py::_parse_row`). Placed last, both defaulted to
+    `None`, specifically so every existing keyword-constructed `KlineRow`
+    call site in this codebase (BingX rows, test fixtures) keeps working
+    unchanged.
     """
 
     open_time_ms: int
@@ -98,6 +109,8 @@ class KlineRow:
     low: Decimal
     close: Decimal
     volume: Decimal
+    taker_buy_base_volume: Decimal | None = None
+    taker_buy_quote_volume: Decimal | None = None
 
 
 def fetch_klines_page(

@@ -25,6 +25,15 @@ use `INSERT OR IGNORE` against their primary key -- this is the
 resumability mechanism: re-fetching an overlapping range becomes a
 no-op for rows already present, with no separate "have I already
 fetched this" bookkeeping needed anywhere else in the pipeline.
+
+`klines.taker_buy_base_volume`/`taker_buy_quote_volume` were added by
+Scalping Strategy Research Task S5 -- nullable, additive columns (`NULL`
+for every BingX-sourced row and any pre-Task-S5 row of any source; see
+`bingx_klines.KlineRow`'s own docstring). Because `CREATE TABLE IF NOT
+EXISTS` cannot retroactively add a column to the real, already-populated
+production `klines` table, `connect()` also runs `_ensure_klines_columns`
+on every call -- a real, idempotent `ALTER TABLE ... ADD COLUMN`
+migration, not baked into `SCHEMA` itself.
 """
 
 import sqlite3
@@ -52,6 +61,35 @@ CREATE TABLE IF NOT EXISTS klines (
   PRIMARY KEY (symbol, interval, open_time_ms)
 );
 """
+
+# Additive columns (Scalping Strategy Research Task S5) -- nullable, no
+# DEFAULT needed since every existing row simply has no value for a
+# column that didn't exist when it was inserted. `NULL` for every
+# BingX-sourced row (no buyer/seller breakdown on that wire at all) and
+# for any Binance-sourced row that predates this task; populated only for
+# Binance-sourced rows fetched after this task via
+# `binance_klines.py::_parse_row`. Migrated via `_ensure_klines_columns`
+# below, not baked into `SCHEMA` itself, because `CREATE TABLE IF NOT
+# EXISTS` is a genuine no-op against the real, already-populated
+# production `klines` table -- it does not retroactively add a column to
+# a table that already exists.
+_KLINES_ORDER_FLOW_COLUMNS = ("taker_buy_base_volume", "taker_buy_quote_volume")
+
+
+def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
+    """Add any of `_KLINES_ORDER_FLOW_COLUMNS` missing from the real
+    `klines` table -- SQLite's `ALTER TABLE ... ADD COLUMN` has no
+    portable `IF NOT EXISTS` clause, so existence is checked explicitly
+    via `PRAGMA table_info` first, making this safe to call on every
+    `connect()` (idempotent: a column already present is left untouched,
+    never re-added, never dropped, never rewritten).
+    """
+    existing = {row[1] for row in conn.execute("PRAGMA table_info(klines)").fetchall()}
+    for column in _KLINES_ORDER_FLOW_COLUMNS:
+        if column not in existing:
+            conn.execute(f"ALTER TABLE klines ADD COLUMN {column} TEXT")
+    conn.commit()
+
 
 FUNDING_SCHEMA = """
 CREATE TABLE IF NOT EXISTS funding_rates (
@@ -94,6 +132,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute(FUNDING_SCHEMA)
     conn.execute(MACRO_SCHEMA)
     conn.commit()
+    _ensure_klines_columns(conn)
     return conn
 
 
@@ -132,14 +171,17 @@ def upsert_klines(
             str(row.close),
             str(row.volume),
             fetched_at,
+            str(row.taker_buy_base_volume) if row.taker_buy_base_volume is not None else None,
+            str(row.taker_buy_quote_volume) if row.taker_buy_quote_volume is not None else None,
         )
         for row in rows
     ]
 
     cursor = conn.executemany(
         "INSERT OR IGNORE INTO klines "
-        "(symbol, interval, open_time_ms, open, high, low, close, volume, fetched_at) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "(symbol, interval, open_time_ms, open, high, low, close, volume, fetched_at, "
+        "taker_buy_base_volume, taker_buy_quote_volume) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params,
     )
     conn.commit()
@@ -212,7 +254,8 @@ def fetch_klines(
     require_valid_range(start_ms, end_ms, step)
 
     rows = conn.execute(
-        "SELECT open_time_ms, open, high, low, close, volume FROM klines "
+        "SELECT open_time_ms, open, high, low, close, volume, "
+        "taker_buy_base_volume, taker_buy_quote_volume FROM klines "
         "WHERE symbol = ? AND interval = ? AND open_time_ms >= ? AND open_time_ms < ? "
         "ORDER BY open_time_ms",
         (symbol, interval, start_ms, end_ms),
@@ -226,6 +269,8 @@ def fetch_klines(
             low=Decimal(row[3]),
             close=Decimal(row[4]),
             volume=Decimal(row[5]),
+            taker_buy_base_volume=Decimal(row[6]) if row[6] is not None else None,
+            taker_buy_quote_volume=Decimal(row[7]) if row[7] is not None else None,
         )
         for row in rows
     ]

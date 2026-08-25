@@ -81,6 +81,9 @@ class FakeBinanceKlinesServer:
         low: Decimal | str,
         close: Decimal | str,
         volume: Decimal | str,
+        *,
+        taker_buy_base_volume: Decimal | str = "0",
+        taker_buy_quote_volume: Decimal | str = "0",
     ) -> None:
         with self._lock:
             self._klines[open_time_ms] = [
@@ -93,8 +96,8 @@ class FakeBinanceKlinesServer:
                 open_time_ms + 59_999,  # close_time -- placeholder, not load-bearing
                 "0",  # quote_asset_volume
                 0,  # num_trades
-                "0",  # taker_buy_base_volume
-                "0",  # taker_buy_quote_volume
+                str(taker_buy_base_volume),
+                str(taker_buy_quote_volume),
                 "0",  # ignore
             ]
 

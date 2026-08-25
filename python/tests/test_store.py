@@ -68,7 +68,74 @@ def test_connect_creates_the_klines_table(conn):
         "close",
         "volume",
         "fetched_at",
+        "taker_buy_base_volume",
+        "taker_buy_quote_volume",
     }
+
+
+def test_connect_migrates_an_old_schema_database_adding_order_flow_columns_without_losing_rows(tmp_path):
+    # A real pre-Task-S5 database (the OLD CREATE TABLE shape, built by
+    # hand here to simulate it -- not connect(), which already includes
+    # the migration) must gain the two new nullable columns on its next
+    # connect(), with every pre-existing row's data completely intact and
+    # NULL for the two new columns specifically (never a fabricated
+    # default).
+    db_path = tmp_path / "old_klines.sqlite3"
+    import sqlite3
+
+    raw = sqlite3.connect(db_path)
+    raw.execute(
+        """
+        CREATE TABLE klines (
+          symbol TEXT NOT NULL,
+          interval TEXT NOT NULL,
+          open_time_ms INTEGER NOT NULL,
+          open TEXT NOT NULL,
+          high TEXT NOT NULL,
+          low TEXT NOT NULL,
+          close TEXT NOT NULL,
+          volume TEXT NOT NULL,
+          fetched_at TEXT NOT NULL,
+          PRIMARY KEY (symbol, interval, open_time_ms)
+        );
+        """
+    )
+    raw.execute(
+        "INSERT INTO klines (symbol, interval, open_time_ms, open, high, low, close, volume, fetched_at) "
+        "VALUES ('BTC-USDT', '15m', ?, '100', '101', '99', '100', '1', '2026-01-01T00:00:00+00:00')",
+        (BASE,),
+    )
+    raw.commit()
+    raw.close()
+
+    migrated = connect(db_path)
+    columns = {row[1] for row in migrated.execute("PRAGMA table_info(klines)")}
+    assert "taker_buy_base_volume" in columns
+    assert "taker_buy_quote_volume" in columns
+
+    rows = fetch_klines(migrated, "BTC-USDT", "15m", BASE, BASE + STEP)
+    migrated.close()
+
+    assert len(rows) == 1
+    assert rows[0].open == Decimal("100")  # pre-existing data intact
+    assert rows[0].taker_buy_base_volume is None  # NULL, not fabricated
+    assert rows[0].taker_buy_quote_volume is None
+
+
+def test_connect_migration_is_idempotent_when_columns_already_exist(tmp_path):
+    db_path = tmp_path / "klines.sqlite3"
+    connect(db_path).close()
+    # A second connect() against a database that already has the new
+    # columns must not raise ("duplicate column name") and must not
+    # touch existing data.
+    conn = connect(db_path)
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(0)])
+    conn.close()
+
+    conn = connect(db_path)  # third connect() -- still a no-op migration
+    rows = fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + STEP)
+    conn.close()
+    assert len(rows) == 1
 
 
 def test_connect_is_idempotent_against_an_existing_database(tmp_path):
@@ -134,6 +201,50 @@ def test_upsert_klines_stores_decimal_values_as_exact_text_not_float(conn):
     assert raw_open[1] == "text"
     assert Decimal(raw_open[0]) == precise
     assert raw_open[0] == str(precise)  # exact text, not a reformatted/rounded value
+
+
+def test_upsert_and_fetch_klines_round_trips_taker_buy_volume_for_a_binance_style_row(conn):
+    row = KlineRow(
+        open_time_ms=BASE,
+        open=Decimal("100"),
+        high=Decimal("101"),
+        low=Decimal("99"),
+        close=Decimal("100"),
+        volume=Decimal("10"),
+        taker_buy_base_volume=Decimal("6.25"),
+        taker_buy_quote_volume=Decimal("625.5"),
+    )
+
+    upsert_klines(conn, "BINANCE-FUTURES:BTCUSDT", "1m", [row])
+    fetched = fetch_klines(conn, "BINANCE-FUTURES:BTCUSDT", "1m", BASE, BASE + STEP)
+
+    assert len(fetched) == 1
+    assert fetched[0].taker_buy_base_volume == Decimal("6.25")
+    assert fetched[0].taker_buy_quote_volume == Decimal("625.5")
+
+    raw = conn.execute(
+        "SELECT taker_buy_base_volume, typeof(taker_buy_base_volume) FROM klines WHERE open_time_ms = ?", (BASE,)
+    ).fetchone()
+    assert raw[1] == "text"  # exact TEXT storage, same convention as every other volume/price column
+    assert raw[0] == "6.25"
+
+
+def test_upsert_and_fetch_klines_round_trips_null_taker_buy_volume_for_a_bingx_style_row(conn):
+    # Regression: a plain BingX-sourced row (no taker-buy fields at all,
+    # matching every KlineRow constructed before Task S5) must still
+    # round-trip cleanly with the two new columns genuinely NULL, not
+    # some fabricated zero/empty-string default.
+    upsert_klines(conn, "BTC-USDT", "15m", [_row(0)])
+    fetched = fetch_klines(conn, "BTC-USDT", "15m", BASE, BASE + STEP)
+
+    assert len(fetched) == 1
+    assert fetched[0].taker_buy_base_volume is None
+    assert fetched[0].taker_buy_quote_volume is None
+
+    raw = conn.execute(
+        "SELECT taker_buy_base_volume FROM klines WHERE open_time_ms = ?", (BASE,)
+    ).fetchone()
+    assert raw[0] is None  # a real SQL NULL, not the string "None"
 
 
 def test_upsert_klines_scopes_rows_to_the_given_symbol(conn):

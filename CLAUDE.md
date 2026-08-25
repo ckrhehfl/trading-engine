@@ -1139,6 +1139,51 @@ being added.
   was triggered), deliberately treated as non-retryable in
   `binance_klines.py` on the same "don't retry into an active ban"
   principle BingX's own non-retryable statuses already follow.
+- **`taker_buy_base_volume`/`taker_buy_quote_volume` (wire indices 9/10)
+  are real, populated, order-flow-relevant fields — captured by this
+  pipeline starting Scalping Strategy Research Task S5
+  (`.planning/scalp-s5-binance-1m-orderflow-infra.md`)**, having been
+  silently discarded since Task Z (`binance_klines.py::_parse_row` only
+  ever extracted the first 6 of 12 wire fields before this task). Now
+  persisted via two new, additive, nullable columns on the shared
+  `klines` table (`store.py`, migrated onto the real production DB via
+  a real `ALTER TABLE ... ADD COLUMN`, not baked into `CREATE TABLE`,
+  since the table already existed with real data — `NULL` for every
+  BingX-sourced row, which has no buyer/seller breakdown on its wire at
+  all, and for every pre-Task-S5 Binance row). **Real, full backfill,
+  USDT-M futures BTCUSDT `1m` (futures, not spot — this project's own
+  live-trading scope is perpetual futures, so futures order flow is the
+  economically relevant proxy; spot was not touched at this
+  granularity)**: retention reaches back to **2019-09-08T17:57:00Z** —
+  essentially the futures market's own real launch, not a rolling
+  window at all, a genuine structural difference from every other
+  retention figure in this file (BingX's own four granularities, and
+  Binance's own `1d` above, are all real, non-zero rolling windows).
+  **3,661,780 bars, a 6.962-year span, exactly 1 real gap**
+  (`[2019-09-08T19:00:00Z, 2019-09-08T19:01:00Z)`, one missing minute
+  ~2 hours after the market's own first bar, plausibly real
+  launch-day instability) — confirmed via `find_missing_ranges`, not
+  merely estimated from the binary-search probe alone (same "an
+  earliest-bar probe alone is not enough, a full backfill with a real
+  gap count is" standard this file already applies elsewhere).
+  `taker_buy_base_volume` is non-`NULL` for all 3,661,780 rows, with
+  zero `taker_buy_base_volume > volume` sanity-check violations.
+  **Disclosed, unverified assumption, not resolved by this
+  infrastructure task**: this project doesn't and won't trade on
+  Binance at all, so using Binance futures taker-buy volume as a proxy
+  for BTC market-wide order flow (or for BingX's own order flow
+  specifically) carries a real cross-venue-transferability assumption
+  — the same category of caveat this file's VWAP-reversion section
+  already discloses for its own proxy (a 1-second Binance order-book
+  paper standing in for this project's 1-minute OHLCV
+  implementation). **Real, load-bearing side-finding, disclosed not
+  acted on**: this window's own calendar span (6.962 years) implies a
+  PSR/DSR detection floor of `1.6449/sqrt(6.962) ≈ 0.623` —
+  meaningfully better than even the `1d` early-window holdout's own
+  ~0.958 (this project's previous best) — but whether/how this window
+  should be split into research vs. holdout, and which future strategy
+  (if any) should spend it, are real, undecided questions for a future
+  task, not resolved here.
 
 ### Verified — real, computed statistics (not an API fact, but load-bearing for how this data should be used)
 
@@ -2875,11 +2920,89 @@ matching the KIS documentation PRs' own precedent this same day.
   literature-sourced (zero-*search*, if not zero-*parameter*) risk
   control is a real open design question for that future task.
 
+**Second-candidate investigation (2026-08-26): both of the remaining
+named candidates turned out to lack a real, external, zero-fitted-
+parameter foundation once actually investigated — disclosed here rather
+than quietly abandoned.** After Task S4's INCONCLUSIVE result, the
+human operator asked to proceed to the next candidate. Real research
+(not assumption) into each of the two remaining options this section
+originally named:
+
+- **Order-flow imbalance**: this project's data layer cannot compute it
+  at all today — BingX's own kline wire format has no buyer/seller
+  volume breakdown whatsoever (confirmed directly against
+  `bingx_klines.py`), and while Binance's kline wire format does carry
+  `taker_buy_base_volume`/`taker_buy_quote_volume`, this project's own
+  `binance_klines.py::_parse_row` discarded those fields entirely, and
+  no Binance data had ever been backfilled at `1m` granularity. Real,
+  fresh literature research also found the existing "Quarter-Hour
+  Effect" citation's own real horizon (4-12 hours) doesn't transfer
+  down to scalping timescales, and no better-fitting new evidence
+  specifically for BTC at 1-minute granularity was found.
+- **Liquidation cascades**: the real papers behind this project's
+  existing citation (Garcia Seuma, arXiv:2607.27070 and arXiv:2608.03616,
+  studying 7 major BTC liquidation cascades including the real 2025-10-10
+  $19B event) turned out to be pure diagnostic/monitoring studies with
+  **no trading rule proposed anywhere** — the OHLCV-computable half of
+  their early-warning signal (rolling variance/lag-1 autocorrelation of
+  price) is silent in exactly 2 of 7 events (including the most famous
+  one) and was swept across 39 analysis configurations per event with no
+  fixed, reusable window/threshold convention to borrow (unlike
+  VWAP-reversion's genuine external 20-period/2-SD convention); the one
+  cross-event-consistent signal needs taker order-flow/open-interest data
+  this project also lacks; and **no post-cascade price-reversion pattern
+  is documented anywhere in this literature** — the structural
+  justification VWAP-reversion's own citation at least partially
+  provided (a real, if imperfect, "63% reversion rate from 2-SD
+  extensions" statistic) has no analog here. A fallback search for a
+  general (non-liquidation-specific) large-move-reversion paper at
+  minute-scale for BTC found nothing rigorous, only anecdotal/blog-level
+  claims.
+
+Given neither candidate could be tested honestly without either (a)
+fitting parameters from scratch against this project's own 1m data
+(repeating the exact 117-trial overfitting mistake this project has
+already learned from) or (b) data this project structurally lacks, the
+human operator chose **(b), build the missing data infrastructure
+first**, rather than press ahead with a weakly-grounded design or pause
+scalping research entirely.
+
+- **Task S5** — Binance `1m` + order-flow (taker-buy-volume) data
+  infrastructure — **done, real backfill completed 2026-08-26**
+  (`.planning/scalp-s5-binance-1m-orderflow-infra.md`). Infrastructure
+  only — no strategy was designed, implemented, or backtested, and the
+  BTC-USDT/BingX `1m` holdout `vwap-mid-reversion` already spent was not
+  touched at all (this task's own data, `BINANCE-FUTURES:BTCUSDT`, is a
+  genuinely separate symbol/venue). `KlineRow` gained two additive,
+  optional fields (`taker_buy_base_volume`/`taker_buy_quote_volume`,
+  `None` for every BingX row and every pre-Task-S5 Binance row); the
+  `klines` table gained two matching nullable columns via a real,
+  idempotent migration (`ALTER TABLE`, not baked into `CREATE TABLE`,
+  since the real production table already existed with real data —
+  verified byte-for-byte zero data loss on every pre-existing row,
+  before and after). `binance_klines.py::_parse_row` now captures the
+  two fields it previously discarded. See "Exchange API Facts — Binance"
+  above for the full real retention/gap-count/population findings
+  (headline: USDT-M futures `BTCUSDT` `1m` retention is **not** a
+  rolling window at all — it reaches back to essentially the market's
+  own 2019-09-08 launch, 3,661,780 bars, exactly 1 real gap, giving a
+  PSR/DSR detection floor of ~0.623, this project's best yet — disclosed
+  as a real side-finding, not yet spent or claimed by any strategy).
+  **What Task S5 explicitly does not decide**: whether/how this new
+  window should be split into research vs. holdout, the disclosed
+  unverified Binance-futures-order-flow-as-BingX-proxy
+  cross-venue-transferability assumption, and which future candidate (if
+  any) — OFI, revisited with real data now available, a redesigned
+  liquidation-cascade attempt, or something else — should actually spend
+  it. All real, open, human-`Discuss` questions for the next task.
+
 **Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
 → S2 (execution-realism gate design, can start in parallel with S1's
 backfill running) → S3 (methodology addendum, needs S1's real number) →
 S4 (first real candidate research pass, a single pre-registered holdout
-access per S3's design decision).
+access per S3's design decision) → S5 (Binance `1m` + order-flow data
+infrastructure, prompted by S4's INCONCLUSIVE result and the negative
+OFI/liquidation-cascade investigations above).
 
 **Explicitly out of scope this phase**: tick/trade-level data, true
 HFT, co-location (confirmed with the human operator, stays inside the
