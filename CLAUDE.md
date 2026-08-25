@@ -2463,15 +2463,31 @@ matching the KIS documentation PRs' own precedent this same day.
   documented exchange fact and the other is a reasoned estimate:
 
   - **`fee_bps` — confirmed, no change needed.** BingX's and Binance's
-    own published VIP0 (base-tier retail) taker fee is **0.05% = 5bps**
-    on both venues — an exact match to the existing `FEE_BPS=5` this
-    project's daily strategy already uses
+    own published VIP0 (base-tier retail) taker fee for **USDT-M
+    perpetual futures** — this project's own product scope, and what
+    scalping's `GUARDED_MARKET` orders actually trade — is **0.05% =
+    5bps** on both venues, an exact match to the existing `FEE_BPS=5`
+    this project's daily strategy already uses
     (`python/live/generate_daily_signal.py`). Unlike slippage, an
     exchange's taker fee is a fixed percentage of notional regardless of
     holding period, so there is no scalping-specific reason to raise it
     — `FEE_BPS=5` is reused for scalping preregistrations **as a
     confirmed fact re-verified for this use, not an unexamined default
     carried over** (the distinction this task exists to enforce).
+    **Product-scoped deliberately, not a blanket "both venues" claim**
+    (tightened on real CodeRabbit review): Binance's and BingX's own
+    **spot** VIP0 taker fee is a different, higher **0.10% = 10bps** —
+    irrelevant to this project's perpetual-futures-only scope, but a
+    real, disclosed discrepancy this research surfaced in an unrelated,
+    already-completed task: `configs/research/preregistrations/daily-
+    tsmom-ensemble-binance-virgin-holdout.json` (`sr-aa`/`sr-ab`, a
+    **Binance spot** backtest) used `fee_bps=5` — the futures rate, not
+    spot's real 10bps — understating that run's real costs. That
+    holdout access already happened and its INCONCLUSIVE result is
+    already logged and disclosed on its own terms; editing the spent
+    config now would misrepresent history rather than fix anything, so
+    it is disclosed here rather than silently corrected in a PR whose
+    actual scope is scalping's own cost gate, not `sr-ab`'s.
   - **`slippage_bps` — must rise materially above the daily default's
     `2`, for real, cited reasons.** Real BTC-USDT typical daily-average
     bid-ask spread is on the order of **~0.04% = 4bps** (general
@@ -2511,49 +2527,165 @@ matching the KIS documentation PRs' own precedent this same day.
   **Concrete gate mechanics**: a scalping candidate's `GUARDED_MARKET`
   backtest, run with `FEE_BPS=5`/`SLIPPAGE_BPS=10` (or a
   candidate-specific higher figure, itself justified — never lower
-  without new evidence), must show a positive mean profit factor and
-  positive mean Sharpe across its evaluated folds **before** any
-  walk-forward/DSR significance test is run against it — the same
-  ordering discipline already established for the KOSPI200
-  contract-multiplier conversion running before `RiskLimits.canary()`'s
-  percentage check. A candidate failing this gate is reported as
-  cost-disqualified, never run through DSR at all: spending a DSR trial
-  (and raising the project-level `N` every future candidate is deflated
-  against) on a candidate that can't clear realistic costs would be pure
-  waste — the same reasoning behind the standing rule against further
-  searching on the spent 1h window.
-- **Task S3** — statistical methodology addendum (mostly documentation
-  — the harness itself already works, per finding 1 above): the
-  `bars_per_day=1440` convention for 1m strategies; fold geometry
-  derived from Task S1's *real* retention number, not guessed in
-  advance (mirrors how `sr-f`/`sr-t` each derived fold geometry from a
-  real, just-confirmed retention figure); the minimum-trade-count floor
-  re-derived via the existing `frequency_scaled_min_trades` formula
-  once S1's real bar count is known; a new curated `strategy_family`
-  entry in `python/research/lineage.py` (e.g. `"btc-scalping"`) or a
-  run-time `strategy_family=` for a first attempt, per that module's own
-  stated preference for genuinely new work. **A required completion
-  criterion, not an open question left dangling** (tightened on real
-  CodeRabbit review, which correctly rejected the original wording —
-  "flagged, not resolved" — as insufficient given what it gates): if
-  real retention is short enough to need multiple non-overlapping
-  historical windows pooled, or a live-paper-trading-driven approach per
-  S1's go/no-go outcome, how that interacts with the project-level DSR
-  trial count `N` may be genuinely new territory, similar to how
-  `sr-t`'s early-window holdout and `sr-r`'s retrospective DSR closeout
-  each solved a new problem for their own timeframe — **but Task S3 is
-  not complete until this is actually settled and preregistered as a
-  fixed procedure, not merely acknowledged.** Concretely:
-  `python/research/overfitting_check.py::check_project_combination_count`
-  computes `N` *after* the fact and only warns, and a preregistration
-  today only blocks exceeding its own declared `total_candidates` —
-  neither actually stops S4 from running against an unfixed `N`. Task S3
-  must fix a specific project-level `N`-accounting procedure (how
-  pooled-window trials count, how accumulated live-paper observation
-  differs from a selection trial and is excluded from `N` accordingly)
-  and preregister it *before* S4's own preregistration is filed — S4
-  must not begin walk-forward/DSR analysis until this procedure exists
-  and is committed.
+  without new evidence), must show a mean profit factor **greater than
+  1.0** (not merely positive — tightened on real CodeRabbit review:
+  profit factor is gross-profit/gross-loss, a ratio of two non-negative
+  magnitudes, so it is arithmetically *always* ≥0; "positive" excludes
+  nothing, and a `0 < PF < 1` candidate — net cost-losing — would pass
+  a bare positivity check) and a positive mean Sharpe (this one *is*
+  already a real net-of-cost check, not merely directional — `fill.py`'s
+  fees/slippage are applied to the fill price itself before the return
+  series Sharpe is computed from is ever built, so Sharpe>0 already
+  means net-positive after `FEE_BPS`/`SLIPPAGE_BPS`) across its
+  evaluated folds **before** any walk-forward/DSR significance test is
+  run against it. A fold's `profit_factor: null` (zero trades, or zero
+  losing trades) is interpreted per this file's own existing Eligibility
+  Bar convention above, not a new rule invented here. This cost gate is
+  deliberately a separate, earlier, cheaper screen than the full
+  Eligibility Bar's own later profit-factor floor (1.3-1.5, a cushion
+  for backtest-to-live mismodeling on top of a candidate that has
+  already cleared walk-forward/DSR) — `PF>1.0` here only establishes
+  "not obviously cost-negative," relying on `SLIPPAGE_BPS=10`'s own
+  built-in conservatism (already ~2.5x the cited real spread) rather
+  than duplicating the stricter downstream floor.
+
+  This is the same ordering discipline already established for the
+  KOSPI200 contract-multiplier conversion running before
+  `RiskLimits.canary()`'s percentage check. A candidate failing this
+  gate is reported as cost-disqualified, never run through DSR at all —
+  but **its backtest run must still be logged via `log_run`, not
+  silently discarded** (a real gap closed on CodeRabbit review, which
+  traced `research/overfitting_check.py::check_project_combination_count`
+  and confirmed it counts every logged `total_candidates` regardless of
+  cost-filter outcome, with no cost-status field to exclude one): a
+  cost-disqualified candidate was still a real attempt to find a viable
+  configuration, and excluding it from the project-level `N` would
+  understate how much searching actually happened — the same
+  "default to overstating rather than understating selection bias"
+  direction this file's Eligibility Bar clause 2 already applies to an
+  unrecognized `strategy_family`. What the cost gate saves is a DSR
+  *trial's* worth of downstream computation and interpretation on a
+  candidate that can't clear realistic costs — not its contribution to
+  `N`, which is preregistered here as always counted, matching the same
+  reasoning behind the standing rule against further searching on the
+  spent 1h window.
+- **Task S3** — statistical methodology addendum. **Resolved with a
+  real, computed finding (2026-08-25), not guessed — the finding
+  changed the design, so this is more than "mostly documentation" turned
+  out to be.** `python/research/eligibility.py`'s PSR/DSR machinery
+  resamples equity curves to **daily** granularity before computing
+  significance (`psr_from_equity_curve`'s default `SAMPLING_DAILY`; the
+  module's own docstring: "the detection threshold depends on calendar
+  span, not sampling frequency (~`1.6449/sqrt(years)`)") — confirmed by
+  reproducing this project's own already-published 1h (1.84y → 1.213 ≈
+  "~1.21") and 1d-holdout (2.95y → 0.958 ≈ "~0.96") numbers exactly from
+  this one formula. **Consequence, real and load-bearing**:
+  `bars_per_day=1440` only changes how many raw bars get resampled
+  *into* each daily point — it does not change the number of daily
+  points, which is bounded by calendar days regardless of native bar
+  frequency. Using the *entire* 631.98-day 1m retention window (1.7302
+  years) gives a detection floor of **1.6449/sqrt(1.7302) ≈ 1.25** —
+  barely better than the already-spent 1h research window's own ~1.21,
+  and materially worse than the 1d holdout's ~0.96. Any real holdout
+  that reserves less than the full window (as every other timeframe's
+  holdout does) sits higher still — e.g. a 180-day holdout floor is
+  ~2.34. **The 632-day retention depth Task S1 found does not, by
+  itself, buy 1m the statistical power its raw bar count (910,040)
+  suggests** — worth stating plainly here rather than discovering it
+  only after a real holdout access was already spent.
+
+  **Design decision, made with this finding in hand (human-confirmed
+  2026-08-25, chosen over two alternatives — a research-split/holdout
+  design mirroring 15m/1h/1d, and deprioritizing backtest validation in
+  favor of live paper-trading accumulation)**: 1m scalping does **not**
+  use a walk-forward research-split + holdout-confirmation structure.
+  Instead, the **entire 631.98-day window is reserved as a single
+  pre-registered holdout**, evaluated exactly once via the Eligibility
+  Bar's existing **Holdout confirmation (single-window variant)** clause
+  defined earlier in this file — matching `daily-tsmom-ensemble`'s own
+  `sr-u`/`sr-v`/`sr-aa`/`sr-ab` precedent exactly, not a new mechanism.
+  Rationale: (1) Task S4's own recommended first candidate (VWAP-to-mid
+  reversion) is designed with zero or minimal free parameters, so there
+  is no fitting/searching step that actually needs a separate research
+  window; (2) splitting the 632-day window in two would weaken the
+  already-thin holdout power further (a ~180-day holdout floor of ~2.34
+  is a much higher bar than the full window's ~1.25); (3) 1.73 years is
+  this project's *worst*-powered untouched window among 15m/1h/1d/1m —
+  worse even than the already-spent 1h research window — so treating it
+  as a single precious access follows this file's own standing "every
+  additional trial... adds no new evidence" reasoning for the closed 1h
+  window, applied here pre-emptively rather than after the fact.
+
+  **What this resolves, replacing the "flagged, not resolved" placeholder
+  CodeRabbit correctly rejected**: because there is no walk-forward
+  research portion for 1m, the pooled-window `N`-accounting question
+  this section originally flagged as "possibly genuinely new territory"
+  **does not arise** — there is nothing to pool. The single-holdout run
+  is `N=1` for its *own* PSR evaluation (never searched over, one
+  access, one run — DSR and PSR coincide at `N=1`, same reasoning as
+  `daily-tsmom-ensemble`'s). Separately, it **does** contribute exactly
+  one new entry to the **project-level** research `N` every *other*
+  strategy's DSR must be deflated against going forward — the same way
+  `sr-x`/`sr-y`'s macro attempts each added to `N` despite also being
+  single-pre-committed-candidate runs. A curated `research/lineage.py`
+  entry (family `"btc-scalping"`) will be added in Task S4 once the real
+  `strategy_id` exists, alongside a run-time `strategy_family=` pass —
+  matching the `daily-tsmom`/`macro-conditioned` precedent of a curated
+  fallback entry existing even for a strategy that also self-describes
+  at run time (required per Eligibility Bar clause 2: "a DSR computed
+  against an `'unmapped'` resolution is inadmissible"). Not added here
+  in S3 since no `strategy_id` exists yet and `lineage.py`'s own
+  docstring requires a citation to the document that justifies each
+  entry.
+
+  Live-paper-trading accumulation, once/if this strategy is ever
+  promoted, is **not** a selection trial and does not touch this `N` at
+  all — unchanged from how paper trading already works for every other
+  strategy in this project (`daily-tsmom-ensemble`'s own paper-trading
+  days were never logged as a research trial). No new machinery was
+  needed to state this; it was implicit and is now explicit.
+
+  **`bars_per_day = 1440`** is used wherever the Eligibility Bar's
+  formulas need it (the daily-resampling bucket size above,
+  `frequency_scaled_min_trades`'s `evaluated_days` computation below) —
+  the same one-constant-per-timeframe convention `DEFAULT_BARS_PER_DAY`
+  already establishes for every existing strategy module (`96`=15m,
+  `24`=1h, `1`=1d).
+
+  **Minimum trade-count floor, real formula applied**:
+  `frequency_scaled_min_trades` (`python/research/preregistration.py`)
+  computes `max(30, min(100, floor(evaluated_days/20)))` where
+  `evaluated_days = total_evaluated_bars // bars_per_day`. Against the
+  real Task S1 bar count (910,040 bars, `bars_per_day=1440`):
+  `evaluated_days = 631` (floor division — one day short of the 631.98-
+  day calendar span, since a day needs a full 1440 completed bars to
+  count), `631 // 20 = 31`, floor after clamp = **31**. The exact figure
+  will move slightly once a real candidate's own warmup period (e.g. a
+  VWAP lookback window) is subtracted from the evaluated range — 31 is
+  the ceiling this can reach, not a guess Task S4 must re-derive from
+  scratch.
+
+  **Gap-detection prerequisite from Task S1, resolved via the cheaper
+  interim measure** (explicit verification, not a general gap-aware-
+  validation rebuild — the larger undertaking stays a disclosed future
+  follow-up). Because the single-holdout design uses the *entire*
+  retention window rather than a chosen sub-range, there is no window-
+  selection step where the two known real gaps
+  (`[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)`, 3 bars;
+  `[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)`, 4 bars — see "Exchange
+  API Facts — BingX") could be dodged even if desired. Both are
+  disclosed here explicitly: mid-window, not at either boundary,
+  combined 7 bars out of 910,040 (~0.00077% of the window). This also
+  narrows the concrete residual risk versus what Task S1 originally
+  flagged: `walkforward.py`'s own gap-blind positional arithmetic isn't
+  exercised at all by a single-window run (no fold generation happens),
+  so the only remaining exposure is a rolling-window feature (e.g. Task
+  S4's own VWAP lookback) spanning either gap seeing a very slightly
+  longer wall-clock span than its bar count implies, for at most one
+  window's worth of bars around each gap — a real, disclosed, bounded
+  distortion, not a crash risk, and negligible at this scale. Task S4's
+  own preregistration must name both gaps and this disclosure, not
+  silently inherit it.
 - **Task S4** — first candidate signal research pass. **Recommended
   first candidate: VWAP-to-mid deviation short-term reversion** — the
   most directly, recently, and strongly supported candidate found (see
@@ -2569,15 +2701,24 @@ matching the KIS documentation PRs' own precedent this same day.
   own constraint above — a deviation-threshold-triggered market order
   fits this signal's own mean-reversion mechanism fine and keeps
   `slippage_bps` a real, meaningful cost lever rather than an inert one.
-  Must clear Task S2's execution-realism gate before any walk-forward
-  run is attempted. Own preregistration, filed before any 1m data is
-  touched for this strategy, matching the established
-  `sr-u`/`sr-v`/`sr-x`/`sr-y` pre-registration discipline.
+  Must clear Task S2's execution-realism gate before the single holdout
+  access happens. Per Task S3's design decision above, this is a
+  **single pre-registered holdout access against the full 631.98-day 1m
+  window**, evaluated via the Eligibility Bar's single-window variant —
+  **not** an iterative walk-forward research pass. Own preregistration,
+  filed and committed *before* any 1m data is touched for this
+  `strategy_id`, matching `daily-tsmom-ensemble`'s own
+  `sr-u`/`sr-v`/`sr-aa`/`sr-ab` single-access discipline precisely (not
+  `sr-x`/`sr-y`'s ordinary-walk-forward-on-a-research-split pattern,
+  which this design deliberately forgoes — see Task S3). Must also add
+  the curated `research/lineage.py` entry (family `"btc-scalping"`) in
+  the same PR, per Task S3's note above.
 
 **Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
 → S2 (execution-realism gate design, can start in parallel with S1's
 backfill running) → S3 (methodology addendum, needs S1's real number) →
-S4 (first real candidate research pass).
+S4 (first real candidate research pass, a single pre-registered holdout
+access per S3's design decision).
 
 **Explicitly out of scope this phase**: tick/trade-level data, true
 HFT, co-location (confirmed with the human operator, stays inside the
