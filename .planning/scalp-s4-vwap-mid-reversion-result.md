@@ -237,7 +237,7 @@ for that future task, not decided here.
   established way to make a result independently checkable; mirrors
   `.planning/sr-y-appended-log-records.jsonl`'s own precedent for the
   same reason): `.planning/scalp-s4-vwap-mid-reversion-result-records.jsonl`
-  carries the real, complete, verbatim `holdout_access` record and both
+  carries the real, complete, losslessly normalized `holdout_access` record and both
   real `backtest_run` records (the outer holdout confirmation and its
   inner diagnostic sub-record) this document's numbers were read from —
   no raw trading logs, secrets, or account identifiers anywhere in it
