@@ -57,6 +57,71 @@ conversion exists (PR #105); `STOCK_FUTURES` deliberately fails closed.
 The two gaps named below — ambiguous-submission recovery, and
 `GUARDED_MARKET` having no wire-level price guard — remain open.
 
+**Read the extract as a historical document, not a status report.** It
+opens with the words "planned, not yet built" and, near its end, still
+describes credential provisioning as blocked on a KIS registration that
+has since completed. Both were true when written and are false now; they
+are preserved because this file's whole purpose is faithful preservation,
+and correcting them in place would destroy the byte-identical property
+that makes the preservation trustworthy. The paragraph immediately above
+is the authoritative current status. The extract also carries one
+orphaned sentence fragment (`by it.` on its own line, an editing artifact
+already present in CLAUDE.md before this extraction); it is preserved for
+the same reason and disappears from CLAUDE.md when that block is replaced
+in the next phase of this cleanup.
+
+## A third open gap, found *by* this extraction (2026-08-26)
+
+Not previously recorded anywhere, and not created by this PR — surfaced
+by real CodeRabbit review of the extraction itself, then verified
+directly against the code. **CLAUDE.md specified a fail-closed validation
+that was never built, and nothing reconciled the two when the
+implementation landed.**
+
+The extract below states, as a requirement on the contract-multiplier
+conversion:
+
+> the margin-rate input has a defined source and a staleness check; …
+> **missing or stale price/margin data is a rejection (fail closed),
+> never a silent fallback**
+
+What the code actually does, confirmed by direct inspection:
+
+- `engine.runtime.PriceFeed#latestPrice` returns a bare `BigDecimal` with
+  **no timestamp** — an interface-level property, so this affects
+  `BingXPriceFeed` equally, not only `KisPriceFeed`. `KisPriceFeed`'s own
+  Javadoc already discloses this and argues the separation of concerns is
+  deliberate: knowing *when* it is safe to act on a price is
+  `engine.runtime.TradingCalendar`'s job, which gates whether
+  `TradingLoop.tick()` runs at all outside market hours. That argument is
+  reasonable for market-hours gating; it does not provide a staleness
+  check *within* an open session, and it is not the fail-closed rejection
+  the requirement above describes.
+- `engine.risk.FixedMultiplierNotionalCalculator` performs
+  `quantity × price × multiplier` with rounding, and rejects a
+  non-positive-integer contract count. It has **no staleness check and no
+  margin-rate input at all** — the margin-rate half of the requirement
+  describes something that was never built rather than something built
+  incorrectly.
+- `engine.risk.RiskGateway` uses `Instant.now()` only to stamp its own
+  decisions; it performs no freshness validation on its inputs.
+
+**Severity, stated precisely rather than either inflated or waved away**:
+latent, not live. `PaperTradingApp.forKisPaper()` trips `KillSwitch`
+unconditionally at construction, so no KIS order can reach `submitOrder`
+today regardless. The gap matters at exactly the moment a human considers
+resetting that switch — which is also when the two other open gaps are
+supposed to be reviewed. It belongs on that same checklist.
+
+**Deliberately not fixed here.** Adding freshness/margin validation
+touches `RiskGateway` and the `PriceFeed` interface — R3-risk Java
+trading-plane code, which CLAUDE.md's Development Methodology requires a
+`Discuss` pass for and explicitly warns against changing under review
+pressure. Bolting it onto a documentation-extraction PR that adds no code
+would be exactly that. Recorded here so the next `Discuss` on the KIS
+loop starts from an accurate picture instead of trusting a requirement
+paragraph that was never implemented.
+
 ---
 
 **KIS/KOSPI200 venue integration, Phase 1 — planned, not yet built**
