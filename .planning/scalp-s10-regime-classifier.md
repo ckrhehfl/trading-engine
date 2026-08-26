@@ -238,3 +238,52 @@ Two things, and the second matters more than the first:
   not gate on the *classifier* as a whole, and specifically do not rely
   on its structure axis. Its volatility axis is now sound, just weaker
   than using the underlying measure directly.
+
+---
+
+# Second follow-up: gaps now fail closed
+
+Raised on review of this PR, against this project's own "gap-aware
+pre-access check, fail-closed" rule — and it was a real hole.
+
+ADX and ATR both accumulate across consecutive bars. The classifier fed
+them whatever arrived, without checking that two bars were actually
+adjacent. A missing minute, a duplicate, or an out-of-order bar therefore
+produced an indicator computed across a discontinuity, and a perfectly
+confident-looking `Regime` derived from it. **This project's 1-minute data
+has real gaps** — 2 in the BingX window, 1 in Binance — so the hole was
+live, not hypothetical.
+
+`update()` now checks contiguity **before touching any state**. The bar
+interval is inferred from the first two bars (or supplied explicitly via
+`expected_interval`), and any bar not sitting exactly one interval after
+its predecessor resets every accumulated indicator and returns `None`
+until warmup completes again. A `discontinuities` counter exposes how
+often that happened, so a caller measuring over data with known gaps can
+assert the count is what it expects.
+
+**Verified against the real data, and it matches the documented gap counts
+exactly:**
+
+| Window | Bars | Discontinuities detected | Gaps on record |
+|---|---|---|---|
+| `BINANCE-FUTURES:BTCUSDT` | 3,661,780 | **1** | 1 |
+| `BTC-USDT` (BingX) | 910,040 | **2** | 2 |
+
+That is an independent confirmation of the gap counts in CLAUDE.md's
+Exchange API Facts, arrived at by a completely different route (streaming
+contiguity check) than the one that originally found them
+(`find_missing_ranges` over the stored table).
+
+Five existing tests failed when this landed — every one because its
+fixture jumped in time (`start=100` after twelve bars) rather than because
+the check was wrong. Fixtures made contiguous; four new tests cover the
+gap, duplicate, and out-of-order cases, an explicit `expected_interval`
+overriding inference, and that contiguous data never trips the counter.
+
+Suite 1581 → 1585.
+
+**Scope note**: `AtrRatio` and `AbsoluteAtr` themselves remain
+time-unaware by design. They are indicator primitives fed by a caller;
+the contiguity contract lives at the classifier boundary, which is the
+only place that sees a bar stream rather than a sequence of readings.

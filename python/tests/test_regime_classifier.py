@@ -111,7 +111,7 @@ def test_classifier_returns_none_until_both_axes_have_resolved():
     # volatility axis has something outside its band to resolve on --
     # constant-width bars alone sit at ratio 1.0 forever, which is the
     # separate case asserted below.
-    bars = flat_bars(12, width=1.0) + flat_bars(1, width=20.0, start=100)
+    bars = flat_bars(12, width=1.0) + flat_bars(1, width=20.0, start=12)
     out = [c.update(b) for b in bars]
     assert out[0] is None
     assert any(r is not None for r in out), "never resolved at all"
@@ -144,13 +144,13 @@ def test_a_reading_inside_the_band_holds_the_previous_label():
         c.update(b)
 
     # Range 20 against a trailing mean of 2 -> ratio 10 -> EXPANSION.
-    established = c.update(bar(100, 110.0, 90.0, 100.0))
+    established = c.update(bar(12, 110.0, 90.0, 100.0))
     assert established is not None
     assert established.volatility is Volatility.EXPANSION
 
     # Trailing ATR window is now [2, 2, 20], mean 8. A bar of range
     # exactly 8 gives ratio exactly 1.0 -- inside the band.
-    held = c.update(bar(101, 104.0, 96.0, 100.0))
+    held = c.update(bar(13, 104.0, 96.0, 100.0))
     assert held is not None
     assert held.volatility is Volatility.EXPANSION, "hysteresis band failed to hold the label"
     assert held.volatility_bars > established.volatility_bars, "holding should extend the counter"
@@ -161,7 +161,7 @@ def test_structure_flips_to_trending_on_a_sustained_trend():
     last = None
     for b in flat_bars(20, width=1.0):
         last = c.update(b) or last
-    for b in trending_bars(40, start=100, step=5.0):
+    for b in trending_bars(40, start=20, step=5.0):
         last = c.update(b) or last
     assert last is not None
     assert last.structure is Structure.TRENDING
@@ -177,7 +177,7 @@ def test_min_dwell_blocks_a_label_change_before_the_dwell_is_met():
         r = c.update(b)
         if r:
             seen.append(r.structure)
-    for b in trending_bars(30, start=100, step=5.0):
+    for b in trending_bars(30, start=20, step=5.0):
         r = c.update(b)
         if r:
             seen.append(r.structure)
@@ -195,7 +195,7 @@ def test_dwell_default_is_derived_from_the_adx_period():
 def test_bars_held_counters_increase_while_a_label_persists():
     c = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     counts = []
-    for b in flat_bars(20, width=1.0) + trending_bars(40, start=100, step=5.0):
+    for b in flat_bars(20, width=1.0) + trending_bars(40, start=20, step=5.0):
         r = c.update(b)
         if r:
             counts.append(r.structure_bars)
@@ -242,7 +242,7 @@ def test_defaults_reuse_the_existing_project_constants():
 def test_classification_of_a_prefix_is_unchanged_by_bars_that_come_after_it():
     """The load-bearing guarantee: feeding N bars then M more must not
     alter any label already emitted for the first N."""
-    bars = flat_bars(30, width=1.0) + trending_bars(30, start=100, step=5.0)
+    bars = flat_bars(30, width=1.0) + trending_bars(30, start=30, step=5.0)
     a = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     prefix = [a.update(b) for b in bars[:40]]
     b_ = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
@@ -328,9 +328,9 @@ def test_a_stale_threshold_snapshot_never_changes_a_rank_into_the_future():
     eager = AbsoluteAtr(atr_period=1, history=20, refresh_every=1)
     lazy = AbsoluteAtr(atr_period=1, history=20, refresh_every=10)
     for b in bars:
-        e, l = eager.update(b), lazy.update(b)
+        eager_rank, lazy_rank = eager.update(b), lazy.update(b)
         # Neither may resolve before the other: warmup is identical.
-        assert (e is None) == (l is None)
+        assert (eager_rank is None) == (lazy_rank is None)
 
 
 # --- the classifier defaults to the axis that works -------------------------
@@ -344,3 +344,59 @@ def test_classifier_defaults_to_the_absolute_axis():
 
 def test_absolute_axis_default_history_is_one_day_of_one_minute_bars():
     assert DEFAULT_ABSOLUTE_HISTORY == 1440
+
+
+# --- gaps fail closed -------------------------------------------------------
+
+
+def test_a_missing_bar_resets_state_and_suppresses_the_label():
+    """ADX and ATR accumulate across consecutive bars, so a pair that was
+    never adjacent produces an indicator computed from a discontinuity.
+    This project's own 1m data has real gaps, so the classifier must
+    notice and refuse rather than emit a fabricated label."""
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
+    for b in flat_bars(12, width=1.0):
+        c.update(b)
+    established = c.update(bar(12, 110.0, 90.0, 100.0))
+    assert established is not None, "precondition: a label was established"
+    assert c.discontinuities == 0
+
+    # Jump forward by 10 minutes instead of 1.
+    after_gap = c.update(bar(23, 110.0, 90.0, 100.0))
+    assert after_gap is None, "a gap must suppress the label"
+    assert c.discontinuities == 1
+
+    # And it stays suppressed until warmup completes again.
+    assert c.update(bar(24, 101.0, 99.0, 100.0)) is None
+
+
+def test_a_duplicate_or_out_of_order_bar_is_treated_as_a_discontinuity():
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
+    for b in flat_bars(12, width=1.0):
+        c.update(b)
+    assert c.update(bar(12, 110.0, 90.0, 100.0)) is not None
+    # Same timestamp again -> delta of zero, not one interval.
+    assert c.update(bar(12, 110.0, 90.0, 100.0)) is None
+    assert c.discontinuities == 1
+    # Backwards in time -> negative delta.
+    c.update(bar(13, 101.0, 99.0, 100.0))
+    assert c.update(bar(5, 101.0, 99.0, 100.0)) is None
+    assert c.discontinuities == 2
+
+
+def test_contiguous_bars_never_trip_the_discontinuity_counter():
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
+    for b in flat_bars(200, width=1.0):
+        c.update(b)
+    assert c.discontinuities == 0
+
+
+def test_an_explicit_expected_interval_overrides_inference():
+    # Bars every 5 minutes. Without an explicit interval the first pair
+    # would define 5 minutes as normal; with 1 minute declared, every bar
+    # is a discontinuity.
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO,
+                         atr_ratio_window=3, expected_interval=timedelta(minutes=1))
+    five_min = [bar(i * 5, 101.0, 99.0, 100.0) for i in range(10)]
+    assert all(c.update(b) is None for b in five_min)
+    assert c.discontinuities == 9

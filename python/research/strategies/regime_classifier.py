@@ -57,6 +57,21 @@ meaningfully re-decide faster than its own lookback, so 14 is a
 principled floor rather than a tuned one. Dwell is applied per axis --
 each axis has been in its own current state for its own number of bars.
 
+**Gaps fail closed.** ADX and ATR both accumulate across consecutive
+bars, so feeding them a pair that was never actually adjacent -- across
+a missing minute, a duplicate, or an out-of-order bar -- computes an
+indicator from a discontinuity and produces a label that is fiction.
+This project's own 1-minute data has real gaps (2 in the BingX window,
+1 in the Binance window), so this is a live concern, not hypothetical.
+`update()` therefore checks contiguity **before touching any state**:
+the bar interval is inferred from the first two bars (or given via
+`expected_interval`), and any bar that does not sit exactly one interval
+after its predecessor resets every accumulated indicator and returns
+`None` until warmup completes again. `discontinuities` counts how often
+that has happened, so a caller measuring over data with known gaps can
+assert the count matches what it expects -- an unexpected number means
+the input is not what it was believed to be.
+
 **Look-ahead safety** is inherited: `update(kline)` reads only the
 current bar and state accumulated from bars already fed, the same
 guarantee `AverageTrueRange.update` and `AverageDirectionalIndex.update`
@@ -70,6 +85,7 @@ history of ATR readings to rank against.
 from bisect import bisect_left
 from collections import deque
 from dataclasses import dataclass
+from datetime import timedelta
 from decimal import Decimal
 from enum import Enum
 
@@ -309,6 +325,12 @@ class RegimeClassifier:
         "_adx",
         "_adx_high",
         "_adx_low",
+        "_adx_period",
+        "_atr_period",
+        "_discontinuities",
+        "_expected_interval",
+        "_last_open_time",
+        "_make_vol",
         "_min_dwell_bars",
         "_structure",
         "_structure_bars",
@@ -332,6 +354,7 @@ class RegimeClassifier:
         vol_low: Decimal | None = None,
         vol_high: Decimal | None = None,
         min_dwell_bars: int | None = None,
+        expected_interval: timedelta | None = None,
     ) -> None:
         if adx_low > adx_high:
             raise ValueError(f"adx_low ({adx_low}) must not exceed adx_high ({adx_high})")
@@ -339,20 +362,26 @@ class RegimeClassifier:
             raise ValueError(f"min_dwell_bars must not be negative, got {min_dwell_bars}")
 
         if volatility_axis is VolatilityAxis.ABSOLUTE:
-            self._vol = AbsoluteAtr(
-                atr_period=atr_period,
-                history=absolute_history,
-                refresh_every=absolute_refresh,
-            )
+            def make_vol():
+                return AbsoluteAtr(
+                    atr_period=atr_period,
+                    history=absolute_history,
+                    refresh_every=absolute_refresh,
+                )
             default_low, default_high = DEFAULT_ABSOLUTE_LOW, DEFAULT_ABSOLUTE_HIGH
         else:
-            self._vol = AtrRatio(atr_period=atr_period, window=atr_ratio_window)
+            def make_vol():
+                return AtrRatio(atr_period=atr_period, window=atr_ratio_window)
             default_low, default_high = DEFAULT_ATR_RATIO_LOW, DEFAULT_ATR_RATIO_HIGH
+        self._make_vol = make_vol
+        self._vol = make_vol()
         vol_low = default_low if vol_low is None else vol_low
         vol_high = default_high if vol_high is None else vol_high
         if vol_low > vol_high:
             raise ValueError(f"vol_low ({vol_low}) must not exceed vol_high ({vol_high})")
 
+        self._adx_period = adx_period
+        self._atr_period = atr_period
         self._adx = AverageDirectionalIndex(period=adx_period)
         self._adx_low = adx_low
         self._adx_high = adx_high
@@ -362,6 +391,10 @@ class RegimeClassifier:
         # docstring.
         self._min_dwell_bars = adx_period if min_dwell_bars is None else min_dwell_bars
 
+        self._expected_interval = expected_interval
+        self._last_open_time = None
+        self._discontinuities = 0
+
         self._structure: Structure | None = None
         self._volatility: Volatility | None = None
         self._structure_bars = 0
@@ -370,6 +403,26 @@ class RegimeClassifier:
     @property
     def min_dwell_bars(self) -> int:
         return self._min_dwell_bars
+
+    @property
+    def discontinuities(self) -> int:
+        """How many times a non-contiguous bar has forced a reset. A
+        caller measuring over data with known gaps should assert this
+        matches the gaps it expects -- an unexpected count means the
+        input is not what it was believed to be."""
+        return self._discontinuities
+
+    def _reset(self) -> None:
+        """Drop every accumulated indicator and label. Called on a
+        discontinuity: an ADX or ATR carried across a gap is computed from
+        bars that were never adjacent, and a label derived from it would
+        be fiction. Warmup restarts from scratch."""
+        self._adx = AverageDirectionalIndex(period=self._adx_period)
+        self._vol = self._make_vol()
+        self._structure = None
+        self._volatility = None
+        self._structure_bars = 0
+        self._volatility_bars = 0
 
     def _resolve(self, reading, low, high, below, above, current, held_bars):
         """Hysteresis + dwell for one axis.
@@ -396,6 +449,19 @@ class RegimeClassifier:
         return current, held_bars + 1
 
     def update(self, kline: Kline) -> Regime | None:
+        # Contiguity check, before any state is touched -- see the module
+        # docstring's fail-closed note.
+        previous = self._last_open_time
+        self._last_open_time = kline.open_time
+        if previous is not None:
+            delta = kline.open_time - previous
+            if self._expected_interval is None:
+                self._expected_interval = delta
+            elif delta != self._expected_interval:
+                self._discontinuities += 1
+                self._reset()
+                return None
+
         adx = self._adx.update(kline)
         vol = self._vol.update(kline)
 
