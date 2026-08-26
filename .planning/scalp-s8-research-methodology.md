@@ -118,14 +118,34 @@ prior 30 minutes, known at decision time):
 
 (bps, and as a multiple of the 30bps round-trip cost. Bold = clears cost.)
 
-**15-minute holding is viable in the top ~10% of activity**, and
-comfortable in the top 1%. The original "impossible" conclusion was an
-artefact of the unconditional framing.
+**What this does and does not establish**, stated precisely because the
+first draft of this document overstated it and the overstatement was
+caught on review.
 
-This is not a data-mined coincidence. **Volatility clustering** — large
-moves followed by large moves — is among the most robust empirical facts
-in finance (Mandelbrot 1963; Engle's ARCH, 1982, Nobel 2003). Conditioning
-on recent realised activity genuinely predicts near-future activity.
+It establishes only that **15-minute holding is not excluded on cost
+grounds** once entries are restricted to elevated-activity moments: the
+typical absolute move there is large enough that the round trip could be
+covered. The original "arithmetically impossible" conclusion was an
+artefact of the unconditional framing, and that much is genuinely
+retired.
+
+It does **not** establish that 15-minute holding is tradeable. An
+absolute move is unsigned. Covering costs requires **direction**, and
+this measurement says nothing about whether direction is predictable in
+those moments — that is a separate question, unanswered here, and the
+subject of steps 2-4 of the work order in Part 4. Nor does it account
+for realised fill costs (see the slippage sensitivity immediately
+below), post-cost expectancy, or out-of-sample behaviour. **"Viable" is
+reserved for a candidate that has cleared signed-return evidence, a
+measured win rate, real execution costs, and out-of-sample
+validation.** Nothing here has.
+
+The conditioning itself is not a data-mined coincidence: **volatility
+clustering** — large moves followed by large moves — is among the most
+robust empirical facts in finance (Mandelbrot 1963; Engle's ARCH, 1982,
+Nobel 2003), so recent realised activity is a legitimate predictor of
+near-future activity. That supports the *magnitude* conditioning only,
+not any directional claim.
 
 **But the conclusion is fragile to the slippage assumption**, and in
 exactly the wrong direction: the strategy would deliberately enter during
@@ -160,12 +180,29 @@ size. Re-measured directionally on the same data:
 | Near prior-day **low** (support) | 53.05% (+2.68pp) | 54.87% (+3.99pp) | **56.15% (+5.13pp)** |
 | Near prior-day **high** (resistance) | 49.08% (−1.29pp) | 48.45% (−2.44pp) | **46.91% (−4.12pp)** |
 
-Real, correctly signed (support → up, resistance → down), monotonically
-increasing with horizon, on 64k/86k samples. A genuine directional signal
-that a single-timeframe indicator design cannot see.
+Correctly signed (support → up, resistance → down) and monotonically
+increasing with horizon — a pattern a single-timeframe indicator design
+cannot see.
 
-**Honest limit**: at 4h support the median gain is +9.2bps against a
-30bps round trip — the effect is real but **not tradeable on its own**.
+**This is an observed association, not an established signal**, and the
+distinction is load-bearing rather than pedantic. The nominal sample
+counts (64k/86k) are **not** independent observations: every 1-minute
+bar was used as an observation while the forward windows are 30, 120 and
+240 minutes long, so consecutive observations overlap almost completely
+and are heavily autocorrelated. The effective sample size is far smaller
+than the nominal one, and the usual standard errors do not apply.
+Separately, six comparisons were made (two levels × three horizons) with
+no multiple-testing correction — a correction this project applies
+rigorously elsewhere via DSR, and which was simply skipped here.
+
+Before this is described as a signal, it needs: non-overlapping samples
+or HAC/block-bootstrap inference to handle the dependence, and an
+explicit multiple-testing correction across levels and horizons. Until
+then it is a reason to investigate, not a result.
+
+**Honest limit even if it survives testing**: at 4h support the median
+gain is +9.2bps against a 30bps round trip — **not tradeable on its
+own**.
 Also note mean +0.05bps vs median +9.23bps: a left-skewed distribution,
 many small gains and occasional large losses. Win rate alone would be
 actively misleading here, and a stop is structural rather than optional.
@@ -268,24 +305,59 @@ Fix the constraint before writing strategy logic:
    dead. A 25-30% threshold is defensible; 50% is too late.
 2. **Acceptable risk of ruin.** Institutional practice is **<1%**;
    **>5% means reduce size before trading live**.
-3. **Solve for risk per trade.** `RoR ≈ (LossRate / (WinRate × R:R)) ^
-   (Threshold / RiskPerTrade)` — the exponent is the drawdown budget
-   divided by per-trade risk, so per-trade risk falls out directly.
+3. **Solve for risk per trade — using the formula that matches the
+   sizing model, which is not optional.** The two differ, and picking
+   the wrong one silently understates risk:
+   - **Fixed dollar risk per trade** (this codebase today, via
+     `compute_position_size`'s fixed `reference_equity`): risk units are
+     additive, `N = Threshold / RiskPerTrade`, and
+     `RoR ≈ (LossRate / (WinRate × R:R)) ^ N`.
+   - **Equity-compounding risk** (a fixed *fraction* of live equity):
+     losses compound multiplicatively, so the unit count is logarithmic —
+     `N = ln(1 − Threshold) / ln(1 − RiskFraction)` — and the additive
+     form above **overstates** the number of units the account can
+     absorb.
+
+   Both closed forms assume i.i.d. trades with a fixed payoff ratio.
+   Where payoffs are variable, trades are serially dependent, or fees
+   and slippage are material — all true here — the closed form is a
+   first screen only and the real number comes from **Monte Carlo
+   simulation over the actual trade distribution**, not from either
+   formula.
+
+   The evaluation contract must also be pinned before use, or the same
+   backtest yields different position sizes: what counts as the ruin
+   event (peak-to-trough drawdown, not loss from starting capital),
+   over what evaluation horizon, on **net** returns including fees and
+   slippage, how serial dependence is handled, and at what confidence
+   level. Record these alongside the resulting size.
 4. **Divide by stop distance to get quantity.** Stop distance and size
-   are *jointly* determined by a fixed dollar risk budget, which is what
+   are *jointly* determined by a fixed risk budget, which is what
    allows a wider stop without more risk.
-5. **Deflate for correlation** — the closed form assumes i.i.d. trades,
+5. **Deflate for correlation** — the closed forms assume i.i.d. trades,
    and correlated simultaneous positions raise effective per-trade risk.
 6. **Reject any strategy that cannot live inside the budget.** The budget
-   does not move.
+   does not move. If measured RoR exceeds the threshold in (2), size is
+   reduced until it does not — the strategy is not re-tuned to fit.
 
-Sizing is exponentially more decisive than edge: doubling per-trade size
-can raise ruin probability by an order of magnitude, while doubling edge
-reduces it only modestly. Kelly is a **ceiling, not a target** — full
-Kelly carries roughly an X% chance of falling to X% of starting capital,
-and half-Kelly retains ~75% of the growth rate at half the volatility.
-Below ~50 trades, win-rate estimates are too noisy for Kelly to mean
-anything.
+Sizing is exponentially more decisive than edge: in the closed forms
+above, per-trade risk sits in the exponent while edge sits in the base,
+so halving per-trade risk moves RoR far more than doubling edge does.
+
+Kelly is a **ceiling, not a target**. The quantitative claims usually
+attached to it are results under specific model assumptions — continuous
+rebalancing, known and stationary edge, i.i.d. outcomes — none of which
+hold here, so they are cited as motivation for fractional Kelly rather
+than as numbers to compute against. What survives the assumptions and is
+worth acting on: full Kelly maximises long-run growth only when the edge
+is known exactly, it is highly sensitive to estimation error in that
+edge, overbetting is strictly worse than underbetting (lower growth *and*
+higher variance), and the growth curve is flat near the optimum so
+betting below Kelly costs little growth while materially reducing
+variance. Hence the practitioner convention of half- or quarter-Kelly.
+
+Below ~50 trades, win-rate and payoff estimates are too noisy for any
+Kelly fraction derived from them to be meaningful.
 
 ### 3.7 Place stops and targets with MAE/MFE, not convention
 
@@ -314,6 +386,25 @@ Diagnostics worth acting on:
 Task S6 chose `stop_multiplier=1.5` / `target_multiplier=3.0` by
 convention and never measured whether they fit. That is exactly the gap
 this replaces.
+
+**Calculation contract — must be pinned before any MAE/MFE study runs.**
+Without this, the same trades yield different R-multiples and therefore
+different stop boundaries. It must align with the contracts this
+codebase already has, not invent parallel ones:
+
+| Question | Rule, and the existing contract it must match |
+|---|---|
+| Measurement start | The **fill bar**, not the signal bar. `backtest.fill.simulate_fill` fills at the *next* bar's open (`signal_bar_index + 1`), so excursion is measured from the actual fill price, and the signal bar itself is excluded |
+| Reference price | The realised fill price including modelled fee and slippage — the same price `PositionTracker` uses, so MAE/MFE and P&L share one basis |
+| Gross vs net | **Net.** Excursions are measured on the same net basis as reported P&L; an MAE computed gross and compared against a net R would be inconsistent |
+| Intrabar path | Bar high/low, the only intrabar information available at 1m resolution. This is an approximation — true tick path is unobserved — and it makes MAE a *lower* bound on the real worst excursion. Disclose, do not silently treat as exact |
+| Same-bar stop and target | Stop wins, matching `research.strategies.risk_management.check_exit_trigger`'s existing tie-break. Any other choice would make the study disagree with the engine it informs |
+| R denominator | The **planned** risk at entry (entry-to-stop distance), fixed at entry and never re-based, so R-multiples stay comparable across trades |
+| Still-open trades | Force-closed at the final bar, matching `metrics.metrics.build_equity_curve`'s existing rule, and **flagged as censored** — a forced close is not a real exit and its MFE capture rate is not meaningful |
+| Gaps | A gap through the stop is recorded at the actual traded price, not the stop price, so MAE reflects real adverse excursion rather than the intended one |
+
+Where these rules and the engine ever diverge, the engine is the
+authority and this document is wrong.
 
 ### 3.8 Expanded evaluation metrics
 
@@ -360,9 +451,12 @@ Distinct from backtest assumptions. Currently missing or unverified:
 - **Stale-data check.** A bot acting on stale prices is creating risk,
   not managing it. Already identified as a real gap on the KIS path
   (`PriceFeed#latestPrice` returns a bare value with no timestamp).
-- **Turnover ceiling** and **order-rate anomaly trigger** (runaway-loop
-  detection) — separate triggers, because each catches a failure the
-  others do not.
+- **Turnover ceiling** and **order-rate anomaly trigger** — two distinct
+  metrics, not one under two names. **Turnover** is traded notional (or
+  absolute position change) divided by capital over a period, i.e. an
+  *exposure* measure. **Order rate** is orders or trades per unit time,
+  i.e. a *runaway-loop* measure. A strategy can breach either without the
+  other, so each needs its own threshold and its own trigger.
 - **Drawdown circuit breakers** at daily/weekly/total resolution, halting
   automatically and requiring **manual review before restart**.
 - **Run all pre-trade checks, do not short-circuit** — stopping at the
@@ -376,7 +470,23 @@ Distinct from backtest assumptions. Currently missing or unverified:
 
 1. **Measure slippage for real.** Determines whether 15-minute horizons
    survive at all (Part 2 sensitivity table). 1m OHLCV cannot show
-   spread; needs either order-book data or real VST fill experiments.
+   spread, so this needs either public order-book/quote data — the
+   preferred route, since it involves no order at all — or, only if that
+   proves insufficient, a **BingX VST demo fill experiment against
+   virtual funds**, which requires its own human approval and is bounded
+   as follows:
+
+   - **Demo host only** (`open-api-vst.bingx.com`, virtual USDT). No
+     production endpoint, under any circumstance.
+   - **Through the full OMS path** — `OrderIntent → OrderPipeline →
+     RiskGateway → Order → ExchangeOrderExecutor → BingXAdapter` — never
+     a hand-built order or a direct adapter call. This is a standing
+     project rule, not a per-task choice.
+   - **Existing risk controls verified working first**, and the live-side
+     controls listed in 3.10 either implemented or explicitly accepted as
+     absent for this bounded experiment by the human operator.
+   - Nothing in this step authorises `GUARDED_MARKET` against a real
+     account, or any relaxation of the Live Entry Criteria.
 2. **Build the regime classifier** (two-axis, hysteresis, dwell time) and
    characterise the research windows by regime.
 3. **Measure IC per feature category** (3.5 table), by regime.
@@ -454,10 +564,49 @@ reference is named.
 
 ### Reproduction
 
-The measurements in Part 2 were produced by throwaway analysis scripts
-run against `python/data/var/klines.sqlite3` (already-spent windows
-only). They are described in enough detail above to reproduce:
-activity = rolling 30-bar sum of |1m returns|; levels = prior UTC day
-high/low, proximity 10bps; horizons as stated. No holdout was accessed
-and no `runs/experiments.jsonl` record was written, because no strategy
-configuration was selected or scored.
+The Part 2 measurements were produced by throwaway analysis scripts run
+against the local `python/data/var/klines.sqlite3` (gitignored). No
+holdout was accessed and no `runs/experiments.jsonl` record was written,
+because no strategy configuration was selected or scored.
+
+**Provenance of the data as read on 2026-08-26:**
+
+| Symbol | Interval | Bars | Range (UTC) | Duplicate `open_time_ms` |
+|---|---|---|---|---|
+| `BINANCE-FUTURES:BTCUSDT` | 1m | 3,661,780 | 2019-09-08T17:57:00Z → 2026-08-25T15:37:00Z | 0 |
+| `BTC-USDT` (BingX) | 1m | 910,040 | 2024-11-30T16:00:00Z → 2026-08-24T15:26:00Z | 0 |
+
+Both windows are already spent (`ofi-momentum` and `vwap-mid-reversion`
+respectively). Repository state at the time of measurement:
+`027278a879c9e8a7ced7bfd1eca7ad33c850316d`.
+
+**Computation rules, stated so a re-run is unambiguous:**
+
+- **Returns**: simple, on `close`, in bps —
+  `(close[i+h] − close[i]) / close[i] × 10_000`. Bars with
+  `close[i] <= 0` are skipped; none were encountered.
+- **Missing bars are not interpolated.** Indexing is positional, so the
+  known real gaps (2 in the BingX window, 1 in the Binance window — see
+  CLAUDE.md's Exchange API Facts) mean a handful of "h-bar" horizons
+  span slightly more wall-clock time than nominal. Bounded and
+  disclosed; not corrected.
+- **Cost horizon table**: non-overlapping samples, stepping `h` bars at
+  a time — these observations are independent.
+- **Activity buckets and the directional level test**: **overlapping**,
+  every bar used as an observation. This is the dependence problem
+  flagged above; the nominal counts are not effective sample sizes.
+- **Activity** = rolling sum of `|1m return|` over the prior 30 bars,
+  computed from bars strictly before the decision bar.
+- **Levels** = prior UTC calendar day's high/low, built from the same 1m
+  bars; proximity threshold 10bps; the first day (no prior day) is
+  excluded.
+- **No fees or slippage are applied to these numbers.** They are gross
+  price movements, compared *against* a separately stated 30bps
+  round-trip cost assumption (`FEE_BPS=5` + `SLIPPAGE_BPS=10`, one way,
+  doubled). This is why the tables report a ratio rather than a P&L.
+
+The scripts were deliberately not committed: they select no
+configuration, produce no logged run, and re-implementing them from the
+rules above is the point of stating the rules. If any Part 2 number is
+ever used to justify a strategy decision rather than to direct research,
+it should be recomputed by committed code first.

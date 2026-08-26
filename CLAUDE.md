@@ -1459,10 +1459,18 @@ mechanical single-indicator candidates, and the pushback was correct.
    median absolute move as a multiple of the 30bps round trip is:
    15 min → **1.09x in the top 10% of activity, 2.08x in the top 1%**
    (0.40x unconditionally); 1 hour → 1.98x / 3.51x (0.76x
-   unconditionally). **15-minute holding is viable when entries are
-   restricted to elevated-activity moments.** This rests on volatility
-   clustering (Mandelbrot 1963; Engle 1982), one of the most robust
-   empirical facts in finance, not on a data-mined artefact.
+   unconditionally). **So 15-minute holding is not excluded on cost
+   grounds** once entries are restricted to elevated-activity moments —
+   which retires the "impossible" claim, and is all it does. An absolute
+   move is unsigned: this shows the move is large enough that a round
+   trip *could* be covered, not that direction is predictable, and
+   proves neither post-cost expectancy nor out-of-sample behaviour.
+   **"Viable" stays reserved for a candidate that has cleared
+   signed-return evidence, a measured win rate, real execution costs,
+   and out-of-sample validation.** The conditioning itself rests on
+   volatility clustering (Mandelbrot 1963; Engle 1982), one of the most
+   robust empirical facts in finance — which supports the *magnitude*
+   conditioning only, not any directional claim.
 2. **That conclusion is fragile to `SLIPPAGE_BPS`, in the wrong
    direction.** Such a strategy deliberately enters when spreads widen
    and depth thins, but `SLIPPAGE_BPS = 10` was calibrated against a
@@ -1500,11 +1508,31 @@ mechanical single-indicator candidates, and the pushback was correct.
   >5% means reduce size) → risk per trade → quantity via stop distance.
   Reject any strategy that cannot live inside the budget rather than
   widening it. Both prior runs backtested first and looked at drawdown
-  afterwards.
+  afterwards. **The risk-of-ruin calculation is only defined once its
+  contract is pinned** — which closed form (the additive one for fixed
+  dollar risk, the logarithmic one for equity-compounding risk; they
+  differ, and using the additive form for compounding overstates
+  survivable units), what counts as the ruin event (peak-to-trough
+  drawdown, not loss from starting capital), the evaluation horizon,
+  that returns are **net** of fees and slippage, how serial dependence is
+  handled, and the confidence level. Both closed forms assume i.i.d.
+  trades with a fixed payoff ratio; where payoffs vary or trades are
+  dependent — true here — the closed form is a first screen and the real
+  number comes from Monte Carlo over the actual trade distribution. See
+  S8 §3.6.
 - **Add Sortino, Calmar, expectancy, MAE/MFE, MFE capture rate,
-  turnover, and risk of ruin** to the metrics already in use. A turnover
-  ceiling alone would have flagged both failures immediately — they ran
-  ~70 and ~89 trades per day.
+  turnover, order rate, and risk of ruin** to the metrics already in use.
+  **Turnover and order rate are two different metrics, not one under two
+  names**: turnover is traded notional (or absolute position change) over
+  capital, an *exposure* measure; order rate is orders/trades per unit
+  time, a *runaway-loop* measure. Each needs its own threshold. What
+  would have flagged both prior failures immediately is the **order-rate**
+  metric — they ran ~70 and ~89 trades per day, against the practitioner
+  heuristic that a bot wanting 100 trades today is broken. MAE/MFE also
+  needs a pinned calculation contract (measurement starts at the fill
+  bar, net of costs, stop-wins on a same-bar tie, planned-risk R
+  denominator, forced closes flagged as censored) so the same trades
+  cannot yield different stop boundaries — S8 §3.7.
 - **Use a research split, not another single-shot holdout.** The two
   spent 1m windows become research data (they cannot be clean holdouts
   again); Binance **spot** 1m stays reserved and untouched. Search
@@ -1512,14 +1540,37 @@ mechanical single-indicator candidates, and the pushback was correct.
   machinery is for. Avoiding search to keep `N` low avoided the penalty
   and also avoided all learning.
 
-**Live-side controls S8 names as prerequisites** (distinct from backtest
-assumptions, and all currently missing or unverified): a real
-slippage/price-reasonability guard — `GUARDED_MARKET` currently maps to
-a plain `"MARKET"` order with no price cap, so the guard is a name only;
-a stale-data check; a turnover ceiling and a separate order-rate anomaly
-trigger; drawdown circuit breakers requiring manual review before
-restart; running all pre-trade checks without short-circuiting, so the
-audit log records every failure rather than only the first.
+**Live-side controls S8 names as prerequisites — these are hard gates,
+not a wishlist.** All are currently missing or unverified, and they are
+distinct from backtest cost assumptions. Each is an additional required
+item alongside the Live Entry Criteria's existing "market-order guard
+enabled" and "kill switch verified" lines, and **all must be implemented
+and verified before live activation, and before `GUARDED_MARKET` is used
+against any real account. Absent or unverified means fail closed — no
+live order.** Every live order still passes through the Java Trading
+Plane and the Java Risk Gateway in full, per the Non-negotiable Rules;
+nothing here creates an exception to that.
+
+1. **Wire-level price guard.** `GUARDED_MARKET` currently maps to a
+   plain `"MARKET"` order with no price cap on both `BingXAdapter` and
+   `KisAdapter` — the guard is a name only today.
+2. **Stale-data check.** `PriceFeed#latestPrice` returns a bare value
+   with no timestamp (interface-level, so every venue is affected).
+   Acting on a stale price creates risk rather than managing it.
+3. **Turnover ceiling** and **order-rate anomaly trigger** — separate
+   thresholds on separate metrics, per the distinction above.
+4. **Drawdown circuit breakers** at daily/weekly/total resolution that
+   halt automatically and require **manual review before restart**.
+5. **Pre-trade checks run in full without short-circuiting**, so the
+   audit log records every failure rather than only the first.
+
+A bounded exception exists for measuring real slippage (S8 Part 4 item
+1): a **BingX VST demo** fill experiment against virtual funds, through
+the full `OrderIntent → OrderPipeline → RiskGateway → Order →
+ExchangeOrderExecutor → BingXAdapter` path, with its own human approval
+and an explicit acceptance of which of the above are still absent. It
+authorises nothing on a production endpoint and relaxes no Live Entry
+Criterion.
 
 **Open, not decided**: whether to pursue equity-compounding sizing (the
 other half of what S7 left), and the order of S8's own work items beyond
