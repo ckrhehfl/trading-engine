@@ -3083,20 +3083,26 @@ scalping research entirely.
   **Real holdout result, executed 2026-08-26 (full account:
   `.planning/scalp-s6-ofi-momentum-result.md`)**: `observed annualized
   Sharpe 0.640` genuinely **clears** its own declared detection floor
-  (0.623) — a real, statistically meaningful non-random signal — but
-  `PSR 0.823` falls short of the pre-registered 0.95 threshold, and
-  `max drawdown 2391.6 (239,161%)` and `profit factor 0.0549` both fail
-  catastrophically — 3 of 5 gating checks fail. **Outcome: INCONCLUSIVE**,
-  a *different* failure shape from `vwap-mid-reversion`'s own result
-  (whose Sharpe never cleared its own floor at all), worth distinguishing
-  rather than treating both as interchangeable losses. Two real, distinct
-  causes, both disclosed precisely: (1) **the signal's own edge is real
-  but negative at this win rate** — with the 1:2 risk:reward from
-  `stop_multiplier=1.5`/`target_multiplier=3.0`, breakeven needs
-  ~33.3% win rate; the real observed win rate is **17.98%**, a real,
-  quantified empirical confirmation (not just the cited paper's own
-  qualitative warning) that order-flow imbalance does not transfer well
-  to a scalping-scale horizon for BTC specifically; (2) **a real,
+  (0.623) — but clearing the detection floor is a power statement (an
+  effect this size is large enough to be detectable on a window this
+  long), not a significance result; the actual significance test,
+  `PSR 0.823` against the pre-registered 0.95 threshold, **failed**.
+  `max drawdown 2391.6 (239,161%)` and `profit factor 0.0549` also both
+  fail catastrophically — 3 of 5 gating checks fail, and the PSR miss is
+  the significance test itself coming up short, not merely one practical
+  gate among several. **Outcome: INCONCLUSIVE**, a *different* failure
+  shape from `vwap-mid-reversion`'s own result (whose Sharpe never
+  cleared its own floor at all, so that run wasn't even powered to speak
+  to significance), worth distinguishing rather than treating both as
+  interchangeable losses or overstating this one into a confirmed
+  finding. Two real, distinct causes, both disclosed precisely: (1) **the
+  observed win rate sits far below this structure's breakeven point** —
+  with the 1:2 risk:reward from `stop_multiplier=1.5`/`target_multiplier=3.0`,
+  breakeven needs ~33.3% win rate; the real observed win rate **in this
+  one holdout run** is **17.98%**, a real, quantified data point
+  consistent with (not a statistical confirmation of) the cited paper's
+  own qualitative warning that order-flow imbalance's effect weakens at
+  finer clock-time frequencies; (2) **a real,
   disclosed, project-wide sizing characteristic let a negative-edge
   signal compound to a catastrophic aggregate result even with a real,
   working per-trade risk control**: `compute_position_size` sizes every

@@ -82,30 +82,42 @@ not what PSR was evaluated against.)
 
 Unlike `vwap-mid-reversion`'s own result (INCONCLUSIVE only on the
 *practical* gates, Sharpe below its own detection floor), **this run's
-Sharpe (0.640) genuinely clears its own detection floor (0.623)** — a
-real, statistically meaningful signal that the strategy has *some*
-non-random directional structure over this window. The run still lands
-in INCONCLUSIVE because PSR (0.823) falls short of the pre-registered
-0.95 threshold, and because drawdown and profit factor both fail
-catastrophically. This is a *different* failure shape from
-`vwap-mid-reversion`'s, worth stating precisely rather than treating
-both results as interchangeable "it lost money" outcomes.
+Sharpe (0.640) genuinely clears its own detection floor (0.623)**.
+Clearing the detection floor and being statistically significant are
+two different claims, kept separate here rather than conflated: the
+detection floor states that an effect of this size is *large enough to
+be detectable at all* on a window of this calendar length — it is a
+power statement, not a significance test. The actual significance test
+is PSR against the pre-registered 0.95 threshold, and **that test
+failed** (PSR = 0.8231). So the honest framing is that this window was
+powered to detect an edge of this size, not that a real edge was
+thereby confirmed — the PSR miss is not one practical gate among
+several alongside drawdown/profit-factor, it is the significance result
+itself coming up short. This is still a *different* failure shape from
+`vwap-mid-reversion`'s (there, Sharpe itself fell below the detection
+floor, so the run wasn't even powered to speak to significance) —
+worth stating precisely rather than treating both results as
+interchangeable "it lost money" outcomes, without overstating this run
+into a confirmed finding it isn't.
 
-**Cause 1 — the signal's own edge is real but negative at this
-win rate.** With `stop_multiplier=1.5`/`target_multiplier=3.0` (a 1:2
-risk:reward ratio), the strategy needs roughly a 33.3% win rate to break
-even before costs (ignoring the modest asymmetry fees/slippage add).
-The real observed win rate is **17.98%** — well below that threshold.
-This is a real, structural finding, not noise: at this scalping-scale
-horizon, the OFI-momentum signal predicts the *wrong* direction (or
-fails to predict at all) often enough that the 1:2 R:R structure loses
-money systematically. This is the **empirical confirmation** of the
-real cited paper's own honest caveat — Kim & Hansen (2026, arXiv:
-2607.09426) found order-flow imbalance's real effect is "much weaker at
-finer clock-time frequencies" than its own 4-12-hour finding — stated
-there as a qualitative warning, now given a real, quantified,
-scalping-scale data point (17.98% vs. a ~33.3% breakeven need) by this
-holdout.
+**Cause 1 — the observed win rate is far below this structure's
+breakeven point.** With `stop_multiplier=1.5`/`target_multiplier=3.0`
+(a 1:2 risk:reward ratio), the strategy needs roughly a 33.3% win rate
+to break even before costs (ignoring the modest asymmetry fees/slippage
+add) — this arithmetic is exact, not run-specific. The real observed
+win rate **in this one holdout run** is **17.98%** — well below that
+threshold. Stated as precisely as the significance discussion above
+requires: this is a real, disclosed observation from this specific
+run, not an independently statistically-confirmed structural property
+of OFI at this horizon (the PSR gate above did not pass, so this run
+alone cannot carry that claim). It is, however, **consistent with** —
+not a confirmation of — the real cited paper's own honest caveat: Kim &
+Hansen (2026, arXiv:2607.09426) found order-flow imbalance's real
+effect is "much weaker at finer clock-time frequencies" than its own
+4-12-hour finding, stated there as a qualitative warning. This holdout
+gives one real, quantified data point in that same direction
+(17.98% vs. a ~33.3% breakeven need) — one observation aligned with the
+paper's caveat, not a statistical test of it.
 
 **Cause 2 — a real, disclosed, project-wide sizing characteristic let a
 negative-edge signal compound to a catastrophic aggregate result, even
@@ -172,12 +184,15 @@ document is empowered to set alone**:
    fixed, non-compounding position sizing can still produce a
    catastrophic aggregate result. A future candidate with a real risk
    control should not treat that alone as "risk solved."
-2. Order-flow imbalance's real predictive power, confirmed empirically
-   here (not just cited from the literature), does not transfer well
-   to a scalping-scale (15-minute lookback, tens-of-minutes-to-hours
-   holding) horizon for BTC specifically — a real, quantified data
-   point (17.98% win rate against a ~33.3% breakeven need) for whoever
-   next considers an order-flow-based candidate at a similar timescale.
+2. Order-flow imbalance's real-world transfer to a scalping-scale
+   (15-minute lookback, tens-of-minutes-to-hours holding) horizon for
+   BTC is, on this one holdout run, weak — the PSR significance gate
+   did not pass, so this is a real, disclosed data point consistent
+   with the cited literature's own caveat, not an independent
+   statistical confirmation of it. A real, quantified number for
+   whoever next considers an order-flow-based candidate at a similar
+   timescale: 17.98% win rate against a ~33.3% breakeven need, from
+   this one run.
 3. Whether this project's backtest engine should eventually gain a
    real, disclosed insolvency/circuit-breaker concept (halting further
    trading once cumulative losses pass some threshold, or sizing
@@ -201,7 +216,14 @@ document is empowered to set alone**:
   docstring describes.
 - `data_range` in the logged record (`start_ms=1567965420000,
   end_ms=1787672220000, num_bars=3661780`) matches the registration's
-  own declared window exactly.
+  own declared window (`start_ms=1567965420000, end_ms=1787672280000`)
+  under each field's own semantics, not literal equality: the
+  registration's `end_ms` is an exclusive upper bound on the query,
+  while the logged `data_range.end_ms` is the `open_time` of the actual
+  last bar returned — one bar interval (60,000ms) earlier by
+  construction for a half-open `[start, end)` range. The 60-second gap
+  between the two values is this intended semantic difference, not a
+  discrepancy.
 - `code_version` in the logged record matches PR #115's real merge
   commit (`73c757c...`), confirming the run executed against the exact
   code that was reviewed and merged.
