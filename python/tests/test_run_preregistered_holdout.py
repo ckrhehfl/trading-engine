@@ -18,14 +18,15 @@ import re
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
+from backtest.engine import run_backtest
 from backtest.kline import Kline
 from data.bingx_klines import KlineRow
 from data.store import connect, upsert_klines
-from metrics.metrics import Metrics
+from metrics.metrics import Metrics, compute_metrics
 from research.eligibility import PsrResult
 from research.experiment_log import log_holdout_access, read_records
 from research.holdout import HoldoutAlreadyClaimedError
@@ -905,3 +906,130 @@ def test_the_cli_without_force_reclaim_reason_propagates_the_already_claimed_err
 def test_the_cli_requires_a_preregistration_path_argument():
     with pytest.raises(SystemExit):
         main([])
+
+
+# ---------------------------------------------------------------------------
+# Scalping Strategy Research Task S7: run_preregistered_holdout now threads
+# its own starting_equity into run_backtest itself, not only into
+# compute_metrics -- see .planning/scalp-s7-backtest-insolvency-floor.md.
+# ---------------------------------------------------------------------------
+
+
+class _RepeatedLosingRoundTripTrainable:
+    """A `TrainableStrategy` test double mirroring the real mechanism
+    behind this task's own two motivating catastrophic results
+    (`.planning/scalp-s4-vwap-mid-reversion-result.md`,
+    `.planning/scalp-s6-ofi-momentum-result.md`): many repeated,
+    fixed-size open/close round trips against a market that only ever
+    moves against the position, each one a real, small realized loss --
+    not one single runaway position, but many discrete losing trades
+    compounding one after another for as long as the strategy keeps
+    trading. `fit()` ignores `train_klines` entirely, mirroring
+    `test_walkforward.py`'s identically-purposed fixture.
+    """
+
+    def fit(self, train_klines, params, *, parent_run_id=None):
+        state = {"flat": True}
+
+        def _strategy(visible_klines):
+            i = len(visible_klines) - 1
+            if state["flat"]:
+                state["flat"] = False
+                side = Side.LONG
+            else:
+                state["flat"] = True
+                side = Side.SHORT
+            return OrderIntent(
+                intent_id=UUID(int=i + 1),
+                symbol="BTC-USDT",
+                side=side,
+                order_type=OrderType.GUARDED_MARKET,
+                quantity=Decimal("10"),
+                limit_price=None,
+                signal_timeframe="1m",
+                created_at=visible_klines[-1].open_time,
+            )
+
+        return _strategy
+
+
+def _crashing_klines(count: int, start_price: int, drop: int) -> list[Kline]:
+    """Every bar's `open == close`, monotonically decreasing by `drop` per
+    bar -- a simple, hand-verifiable "the market only ever moves against a
+    long position" fixture, mirroring `test_walkforward.py`'s identically
+    named helper.
+    """
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    return [
+        Kline(
+            open_time=base + timedelta(minutes=i),
+            open=Decimal(start_price - drop * i),
+            high=Decimal(start_price - drop * i + 1),
+            low=Decimal(start_price - drop * i - 1),
+            close=Decimal(start_price - drop * i),
+            volume=Decimal("1"),
+        )
+        for i in range(count)
+    ]
+
+
+def test_run_preregistered_holdout_threads_starting_equity_into_run_backtest_bounding_a_runaway_result(
+    tmp_path, holdout_config_path, runs_path
+):
+    """Same real-shape fixture as `test_walkforward.py`'s identically-
+    purposed test, driven through the dedicated holdout runner instead --
+    a strategy that keeps opening and closing a fixed-size position
+    against a market that only ever moves against it would, before this
+    task, keep trading (and losing) for the entire window. With
+    `starting_equity` now threaded into `run_backtest` itself (not only
+    into `compute_metrics`), the resulting `Metrics.final_equity` is
+    bounded, not catastrophic.
+    """
+    num_bars = 200
+    klines = _crashing_klines(count=num_bars, start_price=10_000, drop=50)
+    starting_equity = Decimal("1000")
+
+    prereg = load_preregistration(
+        _write_prereg(
+            tmp_path,
+            holdout_config_path,
+            data={**_config()["data"], "expected_bars": num_bars},
+            declared_detection_floor_sharpe=recompute_detection_floor_sharpe(
+                total_evaluated_bars=num_bars, bars_per_day=1
+            ),
+        )
+    )
+
+    result = run_preregistered_holdout(
+        prereg,
+        strategy=_RepeatedLosingRoundTripTrainable(),
+        klines=klines,
+        runs_path=runs_path,
+        starting_equity=starting_equity,
+    )
+
+    # Bounded: far fewer fills than one per bar (200) -- fills stopped once
+    # mark-to-market equity crossed the zero floor, instead of continuing
+    # to open and close new, ever-more-costly round trips for the rest of
+    # the window.
+    assert len(result.metrics.equity_curve) == num_bars  # sanity: the full window was actually evaluated
+    assert result.metrics.num_trades < 20
+
+    # Reference: the SAME strategy/klines WITHOUT the floor at the engine
+    # level (starting_equity=None -- what this module's run_backtest call
+    # did before this task), scored downstream by the exact same
+    # compute_metrics starting_equity -- proves the bounded result above is
+    # bounded BECAUSE of the fix, not merely a coincidence of this fixture.
+    unbounded_strategy = _RepeatedLosingRoundTripTrainable().fit(klines, prereg.run_params(), parent_run_id=None)
+    unbounded_result = run_backtest(klines, unbounded_strategy, prereg.fee_bps, prereg.slippage_bps)
+    unbounded_metrics = compute_metrics(
+        klines,
+        unbounded_result.filled_intents,
+        unbounded_result.fills,
+        starting_equity,
+        bars_per_day=int(prereg.procedure["bars_per_day"]),
+    )
+
+    # The unbounded reference is far more catastrophic than the bounded
+    # result -- not just "a bit lower".
+    assert unbounded_metrics.final_equity < result.metrics.final_equity - Decimal("20000")

@@ -8,12 +8,14 @@ implements.
 import json
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
+from backtest.engine import run_backtest
 from backtest.kline import Kline
 from metrics.funding import FundingRate
+from metrics.metrics import compute_metrics
 from research.walkforward import generate_folds, run_walk_forward
 from schemas.order_intent import OrderIntent, OrderType, Side
 
@@ -1304,3 +1306,128 @@ def test_logged_walk_forward_config_records_bars_per_day(tmp_path):
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["walk_forward_config"]["bars_per_day"] == 24
+
+
+# ---------------------------------------------------------------------------
+# Scalping Strategy Research Task S7: run_walk_forward now threads its own
+# starting_equity into run_backtest itself, not only into compute_metrics --
+# see .planning/scalp-s7-backtest-insolvency-floor.md.
+# ---------------------------------------------------------------------------
+
+
+def _crashing_klines(count: int, start_price: int, drop: int) -> list[Kline]:
+    """Every bar's `open == close`, monotonically decreasing by `drop` per
+    bar -- a simple, hand-verifiable "the market only ever moves against a
+    long position" fixture.
+    """
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    return [
+        Kline(
+            open_time=base + timedelta(minutes=i),
+            open=Decimal(start_price - drop * i),
+            high=Decimal(start_price - drop * i + 1),
+            low=Decimal(start_price - drop * i - 1),
+            close=Decimal(start_price - drop * i),
+            volume=Decimal("1"),
+        )
+        for i in range(count)
+    ]
+
+
+class _RepeatedLosingRoundTripStrategy:
+    """A `TrainableStrategy` test double mirroring the real mechanism
+    behind this task's own two motivating catastrophic results
+    (`.planning/scalp-s4-vwap-mid-reversion-result.md`,
+    `.planning/scalp-s6-ofi-momentum-result.md`): many repeated,
+    fixed-size open/close round trips against a market that only ever
+    moves against the position, each one a real, small realized loss --
+    not one single runaway position, but many discrete losing trades
+    compounding one after another for as long as the strategy keeps
+    trading. `fit()` ignores `train_klines` entirely -- what matters here
+    is the returned strategy's own behavior against whatever window it's
+    scored against.
+    """
+
+    def fit(self, train_klines, params, *, parent_run_id=None):
+        state = {"flat": True}
+
+        def _strategy(visible_klines):
+            i = len(visible_klines) - 1
+            if state["flat"]:
+                state["flat"] = False
+                side = Side.LONG
+            else:
+                state["flat"] = True
+                side = Side.SHORT
+            return OrderIntent(
+                intent_id=UUID(int=i + 1),
+                symbol="BTC-USDT",
+                side=side,
+                order_type=OrderType.GUARDED_MARKET,
+                quantity=Decimal("10"),
+                limit_price=None,
+                signal_timeframe="1m",
+                created_at=visible_klines[-1].open_time,
+            )
+
+        return _strategy
+
+
+def test_run_walk_forward_threads_starting_equity_into_run_backtest_bounding_a_runaway_fold(tmp_path):
+    """A strategy that keeps opening and closing a fixed-size position
+    against a market that only ever moves against it would, before this
+    task, keep trading (and losing) for the fold's entire duration
+    (bounded only by `compute_metrics` reporting -- after the fact --
+    however catastrophic the result turned out to be). With
+    `starting_equity` now threaded into `run_backtest` itself, the fold's
+    own fills are capped the moment mark-to-market equity would go
+    non-positive.
+    """
+    klines = _crashing_klines(count=202, start_price=10_000, drop=50)
+    strategy = _RepeatedLosingRoundTripStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+    starting_equity = Decimal("1000")
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-runaway",
+        "v1",
+        {},
+        train_bars=2,
+        validate_bars=200,
+        step_bars=200,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        starting_equity=starting_equity,
+        bars_per_day=1440,
+        runs_path=runs_path,
+    )
+
+    assert len(result.folds) == 1
+    fold = result.folds[0]
+    assert fold.backtest_result.insolvent_at_index is not None
+    # Bounded: the fold's own fill count is capped at the point insolvency
+    # triggered, nowhere close to one fill per validate bar (200) as it
+    # would be without the floor.
+    assert len(fold.backtest_result.fills) < 20
+
+    # Reference: the SAME strategy/klines WITHOUT the floor at the engine
+    # level (starting_equity=None -- what every call in this codebase did
+    # before this task), scored downstream by the exact same
+    # compute_metrics starting_equity -- proves the bounded result above is
+    # bounded BECAUSE of the fix, not merely a coincidence of this fixture.
+    validate_klines = klines[2:202]
+    unbounded_strategy = strategy.fit(klines[:2], {}, parent_run_id=None)
+    unbounded_result = run_backtest(validate_klines, unbounded_strategy, Decimal("0"), Decimal("0"))
+    unbounded_metrics = compute_metrics(
+        validate_klines,
+        unbounded_result.filled_intents,
+        unbounded_result.fills,
+        starting_equity,
+        bars_per_day=1440,
+    )
+
+    # The unbounded reference is far more catastrophic than the bounded
+    # fold result -- not just "a bit lower".
+    assert unbounded_metrics.final_equity < fold.metrics.final_equity - Decimal("20000")

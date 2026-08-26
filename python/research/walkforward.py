@@ -49,6 +49,14 @@ from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_
 # across the whole run), so this is an arbitrary but fixed reference
 # value -- CLAUDE.md's Eligibility Bar is expressed in ratios (Sharpe,
 # drawdown %, profit factor) that don't depend on its actual magnitude.
+#
+# Scalping Strategy Research Task S7: this same value is now also passed
+# to `backtest.engine.run_backtest`'s own `starting_equity` argument below,
+# not just to `compute_metrics` -- so each fold's own insolvency floor
+# (fills silently stop once a fold's independent mark-to-market equity
+# would go to zero) is seeded from the identical figure its Sharpe/
+# drawdown/profit-factor are computed against. See
+# `.planning/scalp-s7-backtest-insolvency-floor.md`.
 _DEFAULT_STARTING_EQUITY = Decimal("10000")
 
 # Default Sharpe-annualization bars-per-day, matching
@@ -349,7 +357,9 @@ def run_walk_forward(
         validate_klines = klines[fold.validate_start_index : fold.validate_end_index]
 
         bound_strategy = strategy.fit(train_klines, params, parent_run_id=run_id)
-        backtest_result = run_backtest(validate_klines, bound_strategy, fee_bps, slippage_bps)
+        backtest_result = run_backtest(
+            validate_klines, bound_strategy, fee_bps, slippage_bps, starting_equity=starting_equity
+        )
         fold_metrics = compute_metrics(
             validate_klines,
             backtest_result.filled_intents,

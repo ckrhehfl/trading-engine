@@ -115,6 +115,13 @@ logger = logging.getLogger(__name__)
 # and `daily_tsmom_ensemble.DEFAULT_STARTING_EQUITY` -- CLAUDE.md's
 # Eligibility Bar is expressed in ratios (Sharpe, drawdown %, profit
 # factor), which don't depend on this value's actual magnitude.
+#
+# Scalping Strategy Research Task S7: also passed to `backtest.engine.
+# run_backtest`'s own `starting_equity` argument now, not just to
+# `compute_metrics` -- so a holdout confirmation's insolvency floor (fills
+# silently stop once mark-to-market equity would go to zero) is seeded
+# from the identical figure the reported Sharpe/drawdown/profit-factor are
+# computed against. See `.planning/scalp-s7-backtest-insolvency-floor.md`.
 _DEFAULT_STARTING_EQUITY = Decimal("10000")
 
 OUTCOME_PASS = "PASS"
@@ -706,7 +713,9 @@ def run_preregistered_holdout(
     # separate train/validate split at this level (see module docstring) --
     # the whole point of a zero-fitted-parameter strategy is that there is
     # nothing to overfit to by doing so.
-    backtest_result = run_backtest(klines, bound_strategy, prereg.fee_bps, prereg.slippage_bps)
+    backtest_result = run_backtest(
+        klines, bound_strategy, prereg.fee_bps, prereg.slippage_bps, starting_equity=starting_equity
+    )
 
     bars_per_day = int(prereg.procedure["bars_per_day"])
     metrics = compute_metrics(
