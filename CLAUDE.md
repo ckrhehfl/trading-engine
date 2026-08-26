@@ -2997,13 +2997,12 @@ scalping research entirely.
   it. All real, open, human-`Discuss` questions for the next task.
 
 - **Task S6** — order-flow-imbalance momentum, second real candidate —
-  **commit phase done, PR #114, 2026-08-26; real holdout access not yet
-  executed.** Mirrors `sr-u`'s own commit/execution split, already
-  followed once by this project (Task S4's PR #111 commit phase → PR
-  #112 real execution): this task commits the strategy, its tests, and
-  its preregistration; a separate, later, deliberate step executes the
-  real holdout access. Full design record:
-  `.planning/scalp-s6-ofi-momentum.md`.
+  **commit phase done (PR #114) + real holdout executed, both
+  2026-08-26.** Mirrors `sr-u`→`sr-v`'s own commit/execution split,
+  already followed once by this project (Task S4's PR #111 commit
+  phase → PR #112 real execution). Full design record:
+  `.planning/scalp-s6-ofi-momentum.md`; full real result:
+  `.planning/scalp-s6-ofi-momentum-result.md`.
 
   Chosen over a redesigned liquidation-cascade attempt (per this task's
   own recommendation, human-confirmed) now that Task S5's real Binance
@@ -3074,13 +3073,61 @@ scalping research entirely.
   approved clean. Curated `research/lineage.py` entry added (family
   `"btc-scalping"`, `strategy_id="ofi-momentum"`).
 
-  **What this task did not do**: did not call
-  `research.holdout.load_holdout_klines` or
-  `run_preregistered_holdout` against the real registration — the real
-  holdout access is a separate, later, deliberate step, not yet
-  scheduled. Did not touch the BingX `1m` `vwap-mid-reversion` holdout
-  already spent (genuinely different symbol/venue). Did not touch
-  `generate_daily_signal.py`'s own separate conversion path.
+  **What the commit-phase task did not do**: did not itself call
+  `research.holdout.load_holdout_klines` or `run_preregistered_holdout`
+  against the real registration. Did not touch the BingX `1m`
+  `vwap-mid-reversion` holdout already spent (genuinely different
+  symbol/venue). Did not touch `generate_daily_signal.py`'s own separate
+  conversion path.
+
+  **Real holdout result, executed 2026-08-26 (full account:
+  `.planning/scalp-s6-ofi-momentum-result.md`)**: `observed annualized
+  Sharpe 0.640` genuinely **clears** its own declared detection floor
+  (0.623) — but clearing the detection floor is a power statement (an
+  effect this size is large enough to be detectable on a window this
+  long), not a significance result; the actual significance test,
+  `PSR 0.823` against the pre-registered 0.95 threshold, **failed**.
+  `max drawdown 2391.6 (239,161%)` and `profit factor 0.0549` also both
+  fail catastrophically — 3 of 5 gating checks fail, and the PSR miss is
+  the significance test itself coming up short, not merely one practical
+  gate among several. **Outcome: INCONCLUSIVE**, a *different* failure
+  shape from `vwap-mid-reversion`'s own result (whose Sharpe never
+  cleared its own floor at all, so that run wasn't even powered to speak
+  to significance), worth distinguishing rather than treating both as
+  interchangeable losses or overstating this one into a confirmed
+  finding. Two real, distinct causes, both disclosed precisely: (1) **the
+  observed win rate sits far below this structure's breakeven point** —
+  with the 1:2 risk:reward from `stop_multiplier=1.5`/`target_multiplier=3.0`,
+  breakeven needs ~33.3% win rate; the real observed win rate **in this
+  one holdout run** is **17.98%**, a real, quantified data point
+  consistent with (not a statistical confirmation of) the cited paper's
+  own qualitative warning that order-flow imbalance's effect weakens at
+  finer clock-time frequencies; (2) **a real,
+  disclosed, project-wide sizing characteristic let a negative-edge
+  signal compound to a catastrophic aggregate result even with a real,
+  working per-trade risk control**: `compute_position_size` sizes every
+  trade against a **fixed** `reference_equity` constant, never the
+  strategy's own real, shrinking equity (by design, shared by every
+  strategy in this codebase using `risk_management.py`, including
+  already-shipped `hourly_momentum.py`) — the ATR stop genuinely bounds
+  any *single* trade's loss (~$100, a real, working fix for
+  `vwap-mid-reversion`'s own disclosed gap), but does not bound the
+  *sum* of 56,441 trades against a real negative edge, producing a raw,
+  severity-signal (not literal) `final_equity` of **-$23,906,095** — a
+  real account would have been liquidated enormously earlier. **The
+  honest, real lesson**: a structurally-bounded-per-trade stop-loss is
+  necessary but demonstrably **not sufficient** on its own — whether
+  this project's shared backtest engine should eventually gain a real
+  insolvency/circuit-breaker concept, or equity-compounding sizing, is a
+  genuine, disclosed, project-wide open question this result makes
+  concrete, not decided or scoped here (it would touch
+  `backtest/engine.py`/`risk_management.py`, shared infrastructure used
+  by every strategy in this codebase, not just scalping candidates). Per
+  the registration's own `outcome_interpretation` (same `sr-ab`-style
+  narrow scoping `vwap-mid-reversion`'s own registration used): parks
+  THIS SPECIFIC hypothesis as a candidate; does not end the broader
+  Scalping Strategy Research direction or affect any other strategy's
+  own already-logged result.
 
 **Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
 → S2 (execution-realism gate design, can start in parallel with S1's
@@ -3089,8 +3136,8 @@ S4 (first real candidate research pass, a single pre-registered holdout
 access per S3's design decision) → S5 (Binance `1m` + order-flow data
 infrastructure, prompted by S4's INCONCLUSIVE result and the negative
 OFI/liquidation-cascade investigations above) → S6 (second real
-candidate, order-flow-imbalance momentum, commit phase — real holdout
-access still pending).
+candidate, order-flow-imbalance momentum, with a real ATR-based risk
+control — real holdout executed, INCONCLUSIVE).
 
 **Explicitly out of scope this phase**: tick/trade-level data, true
 HFT, co-location (confirmed with the human operator, stays inside the
