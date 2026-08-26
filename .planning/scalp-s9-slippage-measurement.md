@@ -11,9 +11,19 @@ S8's own sensitivity analysis made every short-horizon conclusion
 contingent on `SLIPPAGE_BPS`, and in the wrong direction: a strategy that
 deliberately enters on volatility spikes gets worse fills than average,
 while the assumed `SLIPPAGE_BPS = 10` was calibrated against a ~4bps
-*typical* spread cited in Task S2. At 30bps one-way slippage, 15-minute
-holding failed even in the top 1% of activity. So the assumption had to
-be measured before any signal research could be trusted.
+*typical* spread cited in Task S2. At **30bps of one-way slippage —
+a 70bps round trip** — 15-minute holding failed even in the top 1% of
+activity. So the assumption had to be measured before any signal
+research could be trusted.
+
+**Units, stated once because two different "30bps" appear in this
+document.** `backtest/fill.py` applies fee and slippage per fill, so a
+one-way cost is `FEE_BPS + SLIPPAGE_BPS` and a round trip is twice that.
+The *baseline* assumption being revised here is `5 + 10 = 15bps` one way,
+**30bps round trip** — that is the 30bps used in every viability table.
+The sensitivity row quoted immediately above instead varies *slippage
+alone* up to 30bps one way, which is a 70bps round trip. Every figure
+below is labelled explicitly.
 
 ## Method
 
@@ -23,9 +33,21 @@ from `data.binance.vision` carry `price` and `is_buyer_maker`:
 `true` means the seller was the taker, so it executed at the bid. For
 each pair of *consecutive* trades whose direction flips, the absolute
 price difference estimates the spread. Consecutive aggTrades are
-typically milliseconds to seconds apart, so trend contamination is
-small, and any contamination inflates rather than deflates the estimate
-— the result is conservative in the right direction.
+typically milliseconds to seconds apart, so contamination from price
+movement between them is small.
+
+**This estimator is not a guaranteed upper bound, and an earlier draft
+of this document wrongly claimed it was.** Price movement between the
+two trades can *offset* the spread as easily as add to it — a taker-sell
+at 100.00 followed by a taker-buy at 100.05, on a true 0.10 spread with
+0.05 of downward drift in between, understates it. The observed
+exact-zero pairs (0.9% quiet, 4.5% volatile) are consistent with exactly
+that offsetting happening occasionally. What survives is weaker and
+sufficient: with symmetric price noise the *median* is robust even
+though individual observations are noisy in both directions, and the
+result below is corroborated independently by the tick-multiple
+distribution (below) and by a live BingX quote check, neither of which
+uses this estimator.
 
 Three days were chosen from our own 1m data to span the volatility
 range, measured as the daily sum of |1-minute returns|:
@@ -96,18 +118,28 @@ than indicative.
 
 ## The revised cost structure
 
-| Component | One way |
-|---|---|
-| Taker fee, VIP0 perpetual futures | 5.000 bps |
-| Effective half-spread (BingX measured) | ~0.015 bps |
-| Market impact at 0.03 BTC | ~0 |
-| **Conservative `SLIPPAGE_BPS`** | **1.000 bps** (≈65x the measured half-spread) |
-| **Total one way** | **6 bps** |
-| **Round trip** | **12 bps** (was assumed 30) |
+| Component | One way | Basis |
+|---|---|---|
+| Taker fee, VIP0 perpetual futures | 5.000 bps | published schedule, both venues (S2) |
+| Effective half-spread | ~0.015 bps | BingX live samples (~0.03bps spread) |
+| Market impact at 0.03 BTC — **Binance** | ~0 | 0.03% of the 101 BTC minimum ±0.20% depth |
+| Market impact at 0.03 BTC — **BingX** | **~1 tick (~0.013 bps)** | best ask held 0.010-0.028 BTC in the live samples, so the order can clear it |
+| **Conservative `SLIPPAGE_BPS`** | **1.000 bps** | ≈65x the measured half-spread |
+| **Total one way** | **6 bps** | |
+| **Round trip** | **12 bps** | was assumed 30 |
+
+**Market impact is not uniformly negligible across venues, and the two
+must not be merged.** On Binance it genuinely rounds to zero at this
+size. On BingX the live samples showed a thin best ask (0.010-0.028 BTC
+against a 26-33 BTC best bid), so a 0.03 BTC buy can clear the top level
+and take the next — roughly one tick of impact, on one side only. That
+is still far inside the `SLIPPAGE_BPS = 1` allowance, but it is a real
+venue difference, observed rather than assumed, and it is one of the
+reasons that allowance is set loose rather than tight.
 
 `SLIPPAGE_BPS = 1` is deliberately ~65x the measured half-spread rather
 than a tight fit, to absorb the BingX-vs-Binance gap, regime variation
-not captured by three days, and the top-of-book asymmetry noted above.
+not captured by three days, and the top-of-book asymmetry above.
 
 **The fee now dominates completely — it is ~330x the spread.** That is
 the single most consequential consequence of this measurement, and it

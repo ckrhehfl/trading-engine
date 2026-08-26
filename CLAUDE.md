@@ -1338,15 +1338,24 @@ first**:
   ~2.5x a cited ~4bps "typical BTC-USDT spread", disclosed at the time
   as a reasoned estimate rather than a measurement. Measured against
   public Binance `aggTrades` across three days spanning a 22x volatility
-  range (1.5M direction-flip observations), the real effective spread on
-  BTCUSDT perpetual futures is **0.014-0.015bps — one tick — in every
-  regime**, with the 99th percentile on the most volatile day still only
-  2.4bps. BingX, the venue actually traded, spot-checked at
-  0.026-0.038bps. So the cited ~4bps figure does not describe this
-  instrument on a major venue; it was two to three orders of magnitude
-  too wide. Market impact is separately negligible at canary size (0.03
-  BTC against a minimum ±0.20% depth of 101 BTC on the most volatile
-  day). `SLIPPAGE_BPS = 1` is still ~65x the measured half-spread,
+  range (1.5M direction-flip observations), **the median direction-flip
+  price difference on BTCUSDT perpetual futures is 0.014-0.015bps — one
+  tick — in every regime**, with the 99th percentile on the most
+  volatile day still only 2.4bps. Stated as the observed statistic
+  rather than as "the true effective spread" deliberately: the estimator
+  is not a guaranteed upper bound, since price movement between the two
+  trades can offset the spread as easily as add to it. It is
+  corroborated independently by the tick-multiple distribution (98.3%
+  of pairs at exactly one tick on the quiet day) and by live BingX
+  quotes at 0.026-0.038bps, neither of which uses that estimator. So the
+  cited ~4bps figure does not describe this instrument on a major venue;
+  it was two to three orders of magnitude too wide. Market impact is
+  separately negligible **on Binance** at canary size (0.03 BTC against
+  a minimum ±0.20% depth of 101 BTC on the most volatile day); **on
+  BingX it is about one tick**, since the live samples showed a thin
+  best ask (0.010-0.028 BTC) that a 0.03 BTC order can clear — a real
+  venue difference, not merged into the Binance figure.
+  `SLIPPAGE_BPS = 1` is still ~65x the measured half-spread,
   deliberately, to absorb the BingX-vs-Binance gap and regime variation
   three days cannot capture. Revising either constant needs its own
   justification here, never silent per-strategy tuning to make a
