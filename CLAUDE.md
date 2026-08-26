@@ -314,618 +314,328 @@ respect; those are two different points in the system's lifecycle, not a
 contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
 (see its Javadoc).
 
-## Exchange API Facts — BingX (first adapter, verify before relying on them)
+## Exchange API Facts
 
-### Verified (called the live public API directly and observed the response)
+Operational reference. **Verify before relying on any of it** — every
+figure here was true when observed and several are known to drift. Full
+investigation detail for each finding lives in the `.planning/` doc
+cited beside it.
 
-- Symbol: `BTC-USDT`
-- Recent trades: `GET /openApi/swap/v2/quote/trades`
-- 15m klines: `GET /openApi/swap/v3/quote/klines`, interval token `15m`
-- Historical range: `startTime`/`endTime` are half-open
-  (`startTime <= t < endTime`), must align to the 900,000ms (15m) grid, max
-  span 1000 candles per request
-- `limit` is not a reliable count guarantee — requests over 1000 are
-  silently capped; verify actual returned count in code
-- **Historical kline retention on the live production endpoint
-  (`open-api.bingx.com`) is granularity-dependent, not a single fixed
-  window** — confirmed 2026-07-26 via direct binary-search probing (all
-  four granularities) plus a real, full `backfill.py` run for `1h` and
-  (2026-07-28, Task T) `1d` — the two granularities this project's
-  strategy research actually depends on, so those two got the stronger
-  verification: a complete fetch with an independently-confirmed
-  zero-gap count, not just an earliest-bar probe. `1d` back to
-  **2021-05-14T00:00:00Z exactly** (confirmed by a real backfill:
-  **1,901 daily bars, zero internal gaps**, latest 2026-07-27, as of
-  2026-07-28 — a 5.21-year span, and the interval token is `1d` with
-  every bar's `time` on the UTC-midnight 86,400,000ms grid, i.e. BingX
-  does *not* open its daily candle at a local/exchange-timezone offset.
-  Gap count for `1d` was previously simply unknown — a binary search
-  finds an edge, it cannot find holes. Unlike `1h` below, `1d`'s
-  earlier probe-only estimate turned out **accurate**: it said
-  ~2021-05-12 / "~5 years" and the real backfill says 2021-05-14 /
-  5.21 years, a 2-day difference over 2 elapsed days, consistent with
-  both rolling retention and ±2 days of probe imprecision — the two
-  can't be told apart from one pair of observations. See
-  `.planning/sr-t-daily-data-path.md`); `1h` back to
-  **2024-04-27T10:00:00Z exactly** (confirmed by the real backfill: **819.9
-  days / 19,678 hourly bars, zero internal gaps**, as of 2026-07-26 —
-  note this is the true span from that earliest date to "now," roughly
-  **1.8x longer** than an earlier same-day binary-search estimate of "~15
-  months" for `1h`, which undercounted; the earliest-date finding itself
-  was correct and reproduced exactly by the real backfill, only the
-  derived duration was off — see `.planning/sr-f-risk-management-and-1h-
-  variant.md` for the full arithmetic); `15m` back to ~2025-11-16 (~8.3
-  months, matching `.planning/sr-a-data-pipeline.md`'s independent
-  finding); `5m` back to ~2026-05-02 (~3 months, binary-search estimate
-  only, not re-verified via a full backfill). Like the `15m` depth
-  before it, expect these numbers to keep drifting forward on every
-  future run (rolling retention, not a fixed archive) — re-run
-  `backfill.py` rather than trust any of these as permanent.
-  **`1m` added 2026-08-24 (Scalping Strategy Research Task S1) — and it
-  breaks the "finer granularity means shorter retention" pattern the
-  four granularities above were previously read as establishing.** `1m`
-  back to **2024-11-30T16:00:00Z exactly** (confirmed by a real
-  backfill run as of 2026-08-24T15:44Z: **910,040 bars, latest bar
-  2026-08-24T15:26:00Z, a 631.98-day span**), which is *deeper* than
-  both `15m` (~8.3 months, as of the shared 2026-07-26 probe date above)
-  and `5m` (~3 months, same date) despite being finer than either —
-  sitting between `1h` (819.9 days) and `15m` in depth, not continuing a
-  monotonic shrink. The binary-search estimate that preceded the real
-  backfill (2024-11-30T16:00:00Z, from a ~1-hour-wide probe window)
-  turned out to be **exact**, reproduced bar-for-bar by the full
-  backfill — the strongest agreement between probe and backfill of any
-  granularity checked so far. **Unlike `1h`/`1d`, `1m`'s backfill is not
-  perfectly zero-gap**: 2 real, small gaps (7 bars total) were found in
-  the middle of the range — `[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)`
-  (3 missing bars) and `[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)`
-  (4 missing bars), both stated half-open to match this project's own
-  `[start, end)` convention — confirmed as genuinely absent, not a
-  fetch artifact, via 5 consecutive retries each returning zero rows for
-  the missing windows. **A new, real risk this specific finding
-  surfaces, not yet closed**: `python/research/walkforward.py`'s
-  `generate_folds` and `python/backtest/`'s bar-by-bar iteration are
-  pure positional/bar-count arithmetic (confirmed by direct
-  investigation) — neither detects a timestamp gap in the underlying
-  kline sequence, both would silently treat the bar immediately after a
-  gap as if it followed the prior bar by exactly one `interval_ms` step.
-  This was never a live issue for `1d`/`1h` (both confirmed perfectly
-  zero-gap), so it is a genuinely new exposure `1m` introduces, not a
-  pre-existing one newly noticed. **Task S3/S4 must not treat this as
-  silently resolved**: either add real gap-aware validation to the
-  backtest/walk-forward path before any `1m` run, or, as a cheaper
-  interim measure, explicitly verify any chosen `1m` research/holdout
-  window against the known gap list above (and re-check for new gaps
-  after any future backfill re-run) before trusting a result computed
-  over it. This revises the earlier "finer granularity has materially
-  shorter retention — a real BingX-side pattern across all four" claim:
-  that pattern held for the four granularities checked at the time
-  (`1d`/`1h`/`15m`/`5m`), but does not extend to `1m` —
-  granularity-vs-retention on BingX is not a simple monotonic
-  relationship, and no further extrapolation to an unmeasured
-  granularity should be assumed without its own real probe.
-- **Funding rate**: `GET /openApi/swap/v2/quote/fundingRate?symbol=BTC-
-  USDT` (`v2`, public, unauthenticated). Envelope matches every other
-  BingX endpoint (`{"code","msg","data"}`) except empty-result `data` is
-  `null`, not `[]` — confirmed both for a genuinely out-of-retention
-  range and an in-retention range with zero funding events in it.
-  Ordering newest-first within a page, silently capped to the newest
-  rows on an over-wide request — same shape as klines — but `limit` over
-  1000 is a hard server error (`code: 109400`), not a silent clamp,
-  unlike klines. **`data: null` is flaky/non-deterministic near the
-  retention edge**, confirmed two ways: `sr-m`'s original 2026-07-27
-  probing found a range independently known to have real data returning
-  `null` on ~1-in-6 to 1-in-2 of repeated identical calls; re-probed
-  2026-07-28 during this same task and found the flakiness had gotten
-  *worse* at the same boundary (15/15 consecutive `null`s for a range
-  the local cache already had real, previously-fetched rows for) —
-  consistent with a rolling retention window genuinely moving forward
-  hour to hour, not just a flaky server. A real, resumable
-  `backfill_funding.py` run (2026-07-27/28) confirms actual depth back
-  to **2020-11-29T12:00:00Z** (**6,199 rows** through 2026-07-27T16:00Z,
-  re-run multiple times to converge) — far deeper than funding's 8h
-  cadence would suggest is needed for a useful signal, and much deeper
-  than klines' own retention at any granularity. 3 small gaps (4-16h
-  each) remain unresolved right at that earliest boundary after 3+
-  reruns (15+ null-retries each) — treated as genuinely gone, same
-  "consistently null after 10-15 trials = really gone" standard as
-  klines' retention-edge probing. Real historical `fundingTime` values
-  are **not** always aligned to the modern 8h/28,800,000ms grid (a
-  2020-11-29 through 2021-01-05 stretch settles 4h off the grid every
-  later row uses, plus one isolated one-off row) — range validation for
-  this endpoint deliberately does not enforce grid alignment the way
-  klines does. Sign convention (verified against BingX's own official
-  docs): `fundingRate > 0` → longs pay shorts; `fundingRate < 0` →
-  shorts pay longs. Implemented as `payment = -sign(position_qty) ×
-  |position_qty| × markPrice × fundingRate` — `position_notional`
-  (`|position_qty| × markPrice`) is always the unsigned magnitude; the
-  position's own long(+1)/short(-1) sign is what actually flips the
-  payment direction between "pays" and "receives" for a given
-  `fundingRate` sign, using the funding row's own historical
-  `markPrice`. See `.planning/sr-m-funding-rate-pipeline.md` for the
-  full investigation and `python/metrics/position.py`'s module
-  docstring for the implementation-level detail.
+Three venues, three different roles: **BingX** is the first and only
+`ExchangeAdapter` with a paper/live path. **Binance** is a read-only
+historical-data source for research — no credentials, no order
+placement, and no plan to become a trading venue. **KIS** is the third
+paper-trading loop (KOSPI200 index futures), kill-switch-tripped by
+design.
 
-### Verified — authenticated, VST key (2026-07-24, @ckrhehfl's demo-trading
-API key against `open-api-vst.bingx.com`)
+### BingX — verified against the live public API
 
-- Response envelope is `{"code": 0, "msg": "", "data": ...}` (sometimes
-  with a top-level `timestamp` too) — confirmed on balance, positions,
-  and position-mode calls.
-- **Balance** (`GET /openApi/swap/v3/user/balance`): `data` is an
-  **array** of per-asset objects, not a single object as assumed pre-
-  verification — `[{"userId", "asset", "balance", "equity",
-  "unrealizedProfit", "realizedProfit", "availableMargin", "usedMargin",
-  "frozenMargin", "shortUid"}]`. `BalanceSnapshot` parsing must index
-  into the array (one element per asset — just `VST` for a demo
-  account) rather than treat `data` as the balance object directly.
-- **Positions** (`GET /openApi/swap/v2/user/positions`): `data` is also
-  an array (empty `[]` with no open positions) — consistent envelope
-  pattern with balance, not a one-off.
-- **Position mode default on a fresh key resolved**: `dualSidePosition`
-  came back `"true"` (**hedge mode**) without ever having been set —
-  this was flagged as undocumented pre-verification; hedge mode is
-  confirmed as the default, not one-way. OMS should still set it
-  explicitly on startup rather than rely on this (a default can change),
-  but "undocumented" is no longer the reason to do so.
-- **Real order placement, fill, cancel, and duplicate-`clientOrderID`
-  behavior (2026-08-09, Paper Trading Bridge Task H's real VST
-  verification — full raw JSON and narrative in `.planning/paper-
-  trading-h-vst-integration.md`)**: a real `GUARDED_MARKET` BTC-USDT
-  order (0.001 BTC, LONG), submitted through the full, real, OMS-mediated
-  path (`OrderIntent → OrderPipeline → RiskGateway → Order →
-  ExchangeOrderExecutor → BingXAdapter`), was acknowledged with a real
-  `exchangeOrderId` and observed `FILLED` — `POST
-  /openApi/swap/v2/trade/order`'s own **submit** response already
-  reported `"status":"FILLED"` (a market order matched essentially
-  instantly against the demo book), even though this codebase's own
-  `ExchangeOrderExecutor.submit` deliberately never assumes an instant
-  fill from that response (always returns `Optional.empty()`, resolved
-  only via a later `pollFills`/`queryOrder`) — so the ~1.5s "ack-to-fill"
-  latency actually observed reflects this project's own polling cadence,
-  not real exchange latency, which is at or near the same round trip as
-  acknowledgment itself.
-  - **A real `commission` field exists** on `queryOrder`'s response
-    (`GET /openApi/swap/v2/trade/order`) — e.g. `"commission":"-0.032441"`
-    (negative = fee charged) — confirming (not yet acted on; a real,
-    evidence-first follow-up per `ExchangeOrderExecutor`'s own Javadoc,
-    Paper Trading Bridge Task G) that a real fee figure is available on
-    the wire, not modeled-only. For this trade it was extremely close to
-    this project's own modeled `FEE_BPS=5` estimate (`0.03244075`
-    modeled vs. `0.032441` real, ~5bps either way) — one real data
-    point, not a general proof the two always agree this closely.
-  - **Cancel confirmed real**: `DELETE /openApi/swap/v2/trade/order`
-    against a real, unfilled `LIMIT` order (priced far from market)
-    returned the real status token `"CANCELLED"` (double-L) — confirms
-    the REST-casing half of the previously-documented REST/WebSocket
-    casing inconsistency; WebSocket's own `"CANCELED"` casing remains
-    unverified (no WebSocket call has ever been made by this project).
-  - **Duplicate `clientOrderID` is rejected server-side, not silently
-    accepted or ignored**: a second, independent submission (a genuinely
-    separate `RiskGateway`+`OrderStore`+`OrderPipeline`+
-    `ExchangeOrderExecutor` graph — simulating a second process/session
-    whose own `OrderStore` never saw the first submission, e.g. exactly
-    the restart scenario Task H's own `FileSignalSource` marker-file fix
-    protects against) carrying the **same** `clientOrderID` as the
-    already-filled order above returned
-    `{"code":101400,"msg":"clientOrderID unique check failed"}` — a real,
-    definitive rejection (mapped cleanly by this project's own
-    `ExchangeOrderExecutor`/`Order.reject()` path), not a silent
-    duplicate fill. This is real evidence BingX's own server-side
-    idempotency is a genuine additional safety layer on top of (not a
-    substitute for) this project's own software-side protections —
-    unconfirmed before this run, and not something to rely on exclusively
-    given it is observed, not officially documented, behavior.
-  - **Real account-wide leverage originally observed: `"20X"`** on a fresh
-    VST account's BTC-USDT position, independent of and unenforced by
-    `RiskGateway`'s own approved leverage — because at the time of that
-    original observation, **nothing in this codebase called `POST
-    /openApi/swap/v2/trade/leverage`** (confirmed by grep — `setLeverage`
-    existed on `ExchangeAdapter` and was implemented by `BingXAdapter`,
-    but had no caller anywhere). **Since fixed, on real CodeRabbit review
-    of this same PR**: `VstPreflight` (see below) now actively calls
-    `ExchangeAdapter#setLeverage` for both `LONG` and `SHORT` (hedge mode)
-    to `RiskLimits.canary().baseLeverage()` on every clean start (no
-    pre-existing position found) — closing the gap the `20X` observation
-    above exposed. **Fails closed**: if a pre-existing non-zero position
-    is found, leverage enforcement is skipped entirely (a leverage change
-    while a position is open is commonly rejected by exchanges) and the
-    kill switch starts already tripped instead, requiring a deliberate
-    human reset before any new signal is submitted — so this process
-    never proceeds to normal trading believing leverage is constrained
-    when a stale, unconstrained position might still exist. If either
-    `setLeverage` call itself fails, that propagates uncaught and refuses
-    to start, the same fail-closed treatment as the asset check above.
-    Real per-call HTTP verification against the live BingX VST API is
-    still outstanding as of this note — confirmed only against a
-    hand-written fake `ExchangeAdapter` (`VstPreflightTest`) — because the
-    account still held a real position from the original verification run
-    and this codebase's OMS-mediated order path has no way to close/reduce
-    a position at all (submitting `Side.SHORT` in hedge mode opens a
-    second, independent position rather than closing the existing `LONG`
-    one) — a separate, real, disclosed gap, out of scope for this task.
-    Full detail on both: `.planning/paper-trading-h-vst-integration.md`.
-  - **A real, disclosed credential-handling incident during this same
-    verification, fixed at the root cause**: the real `BINGX_API_KEY`
-    value was briefly written to a local, gitignored scratch log file
-    (never committed, never pushed) after a CRLF-terminated `.env`
-    (confirmed: `file .env` reports `ASCII text, with CRLF line
-    terminators`) was sourced naively via `bash source`, leaving a
-    trailing `\r` on the value; the JDK's own `HttpRequest.Builder
-    #header` rejects a raw `\r` in a header value (RFC 7230) with an
-    `IllegalArgumentException` whose message embeds the literal
-    (invalid) value — i.e. the real credential — verbatim. The exposed
-    scratch file was overwritten immediately on discovery; a separate,
-    unrelated `cat -A` diagnostic command (checking for the same CRLF
-    issue) also briefly surfaced the real `FRED_API_KEY` value in a tool
-    transcript for the same reason (a missing final `.env` newline broke
-    an ad hoc redaction filter). Root-caused and fixed for real, not just
-    disclosed: `BingXAdapter`'s constructor now `.strip()`s both
-    `apiKey`/`apiSecret` before storing them, closing this class of issue
-    at its one real entry point rather than relying on every future
-    credential source to be pre-sanitized — regression test
-    `BingXAdapterTest#constructorStripsLeadingAndTrailingWhitespaceFromCredentials`.
-    **Neither exposure reached any committed file, git history, or a
-    public surface** — both were local-only (a gitignored scratch file
-    and this session's own tool-call transcript) — but both values
-    should still be treated as potentially compromised out of caution;
-    rotating `BINGX_API_KEY` (VST-only, no withdrawal permission per this
-    project's own Non-negotiable Rules) and `FRED_API_KEY` (free,
-    read-only, no live-trading surface) is a cheap, low-stakes precaution
-    a human can take at their convenience. `BINGX_API_SECRET` was never
-    used as an HTTP header value anywhere in this codebase (only for a
-    client-side HMAC signature, never transmitted or logged in plaintext)
-    and was independently confirmed, via a redacted diagnostic check, to
-    never have hit this same failure path — no evidence it was ever
-    exposed.
+| Item | Value |
+|---|---|
+| Symbol | `BTC-USDT` |
+| Recent trades | `GET /openApi/swap/v2/quote/trades` |
+| Klines | `GET /openApi/swap/v3/quote/klines` |
+| Range semantics | `startTime`/`endTime` half-open (`startTime <= t < endTime`), must align to the interval grid (e.g. 900,000ms for 15m), max 1000 candles per request |
+| `limit` | **Not a count guarantee** — requests over 1000 are silently capped. Verify the returned count in code. |
+| Over-limit capping | Keeps the **newest** rows (closest to `endTime`) |
 
-### Documented, not yet empirically verified (2026-07-24 research pass —
-read from BingX's official docs site, not tested against a live key yet;
-treat with less confidence than the section above until someone actually
-calls these with real credentials)
+**Historical kline retention is granularity-dependent, and *not*
+monotonic in granularity** — a real BingX-side property, re-measured
+rather than extrapolated. Expect every figure to drift forward; re-run
+`backfill.py` rather than trust these as permanent.
 
-- Base URLs: `https://open-api.bingx.com` (production) vs
-  `https://open-api-vst.bingx.com` (**VST demo trading** — virtual USDT,
-  same signing scheme, real order-matching behavior against simulated
-  funds). VST's existence matters a lot for how #7 gets built: it means
-  the write-side (order placement) can be built and tested for real
-  without live-money risk, not just designed against docs. Confirmed
-  2026-07-24: an API key created through the normal API Management flow
-  (no separate "demo account" step) authenticates against the VST host
-  successfully. Still unverified: whether that same key *also*
-  authenticates against the production host — not worth testing on
-  purpose given the project isn't going live.
-- Auth: `X-BX-APIKEY` header + `HMAC-SHA256` signature over all request
-  params (incl. `timestamp`) sorted alphabetically and joined as
-  `key=value&...`, hex-encoded uppercase, appended as `&signature=...`.
-  Requests must be within 5s of server time
-  (`GET /openApi/swap/v2/server/time` for clock sync).
-- Order placement: `POST /openApi/swap/v2/trade/order` (all types via a
-  `type` field: MARKET/LIMIT/etc.); a `POST .../order/test` variant
-  validates without executing. Cancel: `DELETE /openApi/swap/v2/trade/order`.
-- Position mode (`GET`/`POST /openApi/swap/v1/positionSide/dual`) is
-  **account-wide** (not per-symbol) and can't change while any position
-  or open order exists. One-way mode = one net position per symbol;
-  hedge mode = simultaneous LONG + SHORT. Default-on-a-fresh-key is now
-  verified (see above) — hedge mode. Leverage (`POST .../trade/leverage`)
-  takes `side=BOTH` in one-way mode, `LONG`/`SHORT` in hedge mode.
-- Endpoint versions are mixed within the same API family on purpose, not
-  a one-off: balance is `v3` (`GET /openApi/swap/v3/user/balance`),
-  positions/order/leverage are `v2`, position-mode is `v1`. Matches the
-  same pattern already noted above for klines (v3) vs trades (v2).
-- Private WebSocket (order/position push) shares the public market-data
-  WS host with a `?listenKey=...` query param; the key comes from
-  `POST /openApi/user/auth/userDataStream` (1hr TTL, refresh via `PUT`).
-  Relevant to the long-term ~100-200ms latency target.
-- Rate limits are per-account (UID), not shared across endpoints: order
-  place/cancel 10/s, order query 30/s, positions 10/s, balance 5/s,
-  leverage 5/s. IP-based limits on these were reportedly removed
-  2025-12-16 per a changelog entry, but the docs UI still shows legacy
-  numbers — don't trust either without testing.
-- Known internal doc inconsistencies to test rather than trust blindly:
-  order status casing differs between REST (`CANCELLED`) and WebSocket
-  (`CANCELED`) samples; listen-key generation's code sample omits the
-  signature params its own metadata says are required; WS connection
-  limit is stated as both 60/IP and 240/IP in different parts of the
-  same docs bundle.
+| Interval | Earliest bar | Span / count | Verification |
+|---|---|---|---|
+| `1d` | 2021-05-14T00:00:00Z | 5.21 y, **1,901 bars, zero gaps** | full backfill (`sr-t`); bars on the UTC-midnight 86,400,000ms grid — BingX does *not* open its daily candle at a local offset |
+| `1h` | 2024-04-27T10:00:00Z | 819.9 d, **19,678 bars, zero gaps** | full backfill (`sr-f`) |
+| `1m` | 2024-11-30T16:00:00Z | 631.98 d, **910,040 bars, 2 real gaps** | full backfill (`scalp-s0-s3`); binary-search estimate was *exact*, reproduced bar for bar |
+| `15m` | ~2025-11-16 | ~8.3 months | probe (`sr-a`) |
+| `5m` | ~2026-05-02 | ~3 months | probe only, never backfilled |
 
-Only public, unauthenticated read endpoints have been called against the
-live API so far. Everything under "Documented, not yet empirically
-verified" needs a real API key (VST is fine) before Priority #7 code
-that depends on it is trusted.
+`1m` is **deeper than both `15m` and `5m` despite being finer**, which
+retires the earlier "finer granularity means shorter retention" reading
+of the four coarser intervals. No extrapolation to an unmeasured
+granularity is safe without its own probe.
 
-## Exchange API Facts — Binance (data-research source only, not an `ExchangeAdapter`)
+**The two real `1m` gaps** (half-open, matching this project's
+convention): `[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)` (3 bars) and
+`[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)` (4 bars). Confirmed
+genuinely absent via 5 consecutive retries each, not a fetch artifact.
 
-**Binance is not, and has no plan to become, a live-trading venue in
-this project** — BingX remains the only exchange with a paper/live
-path (Current Scope, `ExchangeAdapter`, Priority #7). Binance is used
-exclusively as a deeper historical-data source for strategy research
-(`python/data/binance_klines.py`, `backfill_binance.py` — Strategy
-Research Task Z, `.planning/sr-z-binance-data-research.md`): no
-credentials, no order placement, read-only public klines only. This
-section exists for the same reason BingX's own does — verify before
-relying on these facts — not because a second live-trading surface is
-being added.
+**Gap-blindness, a real and still-open exposure**: neither
+`research/walkforward.py`'s fold generation nor `python/backtest/`'s bar
+iteration detects a timestamp gap — both are pure positional arithmetic,
+so the bar after a gap is silently treated as one `interval_ms` step
+later. Never an issue for the zero-gap `1d`/`1h` data, so `1m` introduces
+it fresh. Bounded and disclosed rather than fixed: `simulate_fill`
+selects the fill bar positionally (`signal_bar_index + 1`), so exactly
+**one** signal position per gap is affected, with a computable delay (4
+and 5 real minutes for the two gaps above); `_sharpe_ratio` sees 2
+distorted observations; `resample_equity_to_daily` drifts bucket
+boundaries by ≤7 minutes cumulatively. Holding-period tracking is
+**not** affected — `ClosedTrade.entry_time`/`exit_time` are real
+timestamps, not bar arithmetic. The guard is
+`run_preregistered_holdout.py`'s `verify_known_gaps`, which fails closed
+when the real gap set differs from a registration's declared one.
 
-### Verified (called the live public API directly and observed the response, 2026-08-05)
+**Funding rate**: `GET /openApi/swap/v2/quote/fundingRate?symbol=BTC-USDT`
+(v2, public). Same `{"code","msg","data"}` envelope as everything else
+**except an empty result is `data: null`, not `[]`**. Newest-first,
+silently capped on an over-wide request — but `limit` over 1000 is a hard
+server error (`code: 109400`), unlike klines' silent clamp. `data: null`
+is **flaky near the retention edge**: a range with known-good data
+returned `null` on ~1-in-6 to 1-in-2 of identical repeated calls
+(2026-07-27), and worse on re-probe a day later (15/15 nulls for a range
+already cached locally) — consistent with a rolling window genuinely
+moving, not just a flaky server. Real depth reaches **2020-11-29T12:00:00Z
+(6,199 rows)**, far deeper than klines at any granularity; 3 small gaps
+(4-16h) at that earliest boundary survived 3+ reruns and are treated as
+genuinely gone. **Historical `fundingTime` is not always on the modern
+8h/28,800,000ms grid** — a 2020-11-29 to 2021-01-05 stretch settles 4h
+off it, plus one isolated row — so range validation for this endpoint
+deliberately does not enforce grid alignment the way klines does. Sign
+convention, verified against BingX's own docs: `fundingRate > 0` → longs
+pay shorts; `< 0` → shorts pay longs. Implemented as
+`payment = -sign(position_qty) × |position_qty| × markPrice × fundingRate`
+using the funding row's own historical mark price. Detail: `sr-m`,
+`metrics/position.py`.
 
-- Symbol: `BTCUSDT` (no dash — differs from BingX's `BTC-USDT`).
-  Spot: `GET https://api.binance.com/api/v3/klines`. USDT-M futures:
-  `GET https://fapi.binance.com/fapi/v1/klines`.
-- Response is a **bare JSON array of arrays, by position**, not an
-  object envelope: `[open_time_ms, open, high, low, close, volume,
-  close_time_ms, quote_asset_volume, num_trades,
-  taker_buy_base_volume, taker_buy_quote_volume, ignore]`.
-  `open_time_ms`/`close_time_ms`/`num_trades` are bare (unquoted)
-  integers; OHLCV/volume fields are quoted strings — confirmed
-  identically for spot and futures.
-- **`endTime` is INCLUSIVE, not half-open** — confirmed by a real
-  `startTime == endTime` request returning exactly one row. This
-  project's own pipeline convention is half-open `[start, end)`
-  everywhere else (BingX, and internally for Binance too via
-  `binance_klines.py`'s `endTime = end_ms - 1` translation) — a
-  genuine, load-bearing wire-level divergence to remember if calling
-  this endpoint directly outside that module.
-- **Silent over-limit capping keeps the OLDEST rows (closest to
-  `startTime`), the opposite of BingX's verified newest-closest-to-
-  `endTime` capping.** Confirmed for both spot and futures. A direct
-  consequence: Binance's own rows come back **oldest-first
-  (ascending)**, not newest-first like BingX.
-- **Max `limit` differs by market and by enforcement style**: spot's
-  hard max is **1000**, silently capped (no error) for anything
-  higher, confirmed by exact row count for `limit=1001` and
-  `limit=1500` alike. Futures' hard max is **1500**, enforced as a
-  real `HTTP 400` (`{"code":-1130,"msg":"Data sent for parameter
-  'limit' is not valid."}`) for `limit=1501` — futures rejects
-  over-limit outright, spot does not.
-- **A range starting before a symbol's real listing date returns an
-  empty array** (`[]`), not an error and not padded — confirmed for
-  spot BTCUSDT requesting 2017-01-01 through 2017-08-15 (before the
-  real 2017-08-17 start).
-- **Errors are a real non-2xx HTTP status with a JSON object body**
-  (`{"code": <int>, "msg": "..."}`) — confirmed `400` for both a bad
-  `limit` (spot) and a bad `symbol` (futures) — never a `200` with an
-  embedded error code the way BingX works.
-- **Real historical depth, confirmed via a full backfill with
-  independently-verified zero internal gaps** (same "earliest-bar
-  probe alone is not enough, a full backfill with a real gap count is"
-  standard this file already applies to BingX `1h`/`1d`): spot BTCUSDT
-  `1d` back to **2017-08-17T00:00:00Z exactly** (**3,275 daily bars,
-  zero internal gaps**, latest bar 2026-08-04 — a ~8.97-year span, and
-  the interval token is `1d` with every bar on the UTC-midnight
-  86,400,000ms grid, same as BingX's own `1d`); USDT-M futures BTCUSDT
-  `1d` back to **2019-09-08T00:00:00Z** (**2,523 daily bars, zero
-  internal gaps** — verified to the same gap-detection standard as
-  spot, though not independently re-verified for listing-date-artifact
-  or early-era data quality the way spot was — see
-  `.planning/sr-z-binance-data-research.md` for the full "lighter
-  check" disclosure). Both are materially deeper than BingX's own best
-  `1d` retention (5.21 years) — pooling Binance spot's full ~8.97-year
-  history drops this project's own `1.645/sqrt(years)` detection floor
-  to **~0.55** annualized Sharpe. **Both this and BingX's own 5.21-year
-  floor (~0.72) fall inside, not outside, the 0.4-0.8
-  credible-institutional-edge range this file already cites** — the
-  real difference is *where* inside that range: BingX's ~0.72 sits
-  near the range's top, so only its narrow top sliver (~0.72-0.8) is
-  detectable and the rest (0.4-0.72, most of the range) is not;
-  Binance's ~0.55 moves that boundary meaningfully lower, so roughly
-  the top two-thirds of the range (~0.55-0.8) becomes detectable. Real
-  power gain, not a change from "undetectable" to "detectable" outright
-  — the low end of the credible range (below ~0.55) still isn't. Like
-  every other retention figure in this file, expect this to keep drifting
-  forward on future runs — re-run `backfill_binance.py` rather than
-  trust this as permanent.
-- **Rate limits are real, numeric, and confirmed live** — a first for
-  this pipeline (BingX and FRED both rely on undocumented/third-party
-  estimates). Live-fetched via each host's own `GET .../exchangeInfo`
-  `rateLimits` field: spot `REQUEST_WEIGHT` = **6000/minute** per IP;
-  futures `REQUEST_WEIGHT` = **2400/minute** per IP. Per-request weight
-  costs (spot: flat 2 regardless of `limit`; futures: tiered 1/2/5/10
-  by `limit` bucket) are sourced from Binance's own official
-  docs/changelog rather than re-derived from isolated request-header
-  deltas this session, so held to slightly lower confidence than the
-  live-fetched budget numbers themselves. **HTTP 418** is Binance's own
-  documented signal for a temporary IP ban after repeated rate-limit
-  violations (distinct from `429`) — not observed live (no violation
-  was triggered), deliberately treated as non-retryable in
-  `binance_klines.py` on the same "don't retry into an active ban"
-  principle BingX's own non-retryable statuses already follow.
-- **`taker_buy_base_volume`/`taker_buy_quote_volume` (wire indices 9/10)
-  are real, populated, order-flow-relevant fields — captured by this
-  pipeline starting Scalping Strategy Research Task S5
-  (`.planning/scalp-s5-binance-1m-orderflow-infra.md`)**, having been
-  silently discarded since Task Z (`binance_klines.py::_parse_row` only
-  ever extracted the first 6 of 12 wire fields before this task). Now
-  persisted via two new, additive, nullable columns on the shared
-  `klines` table (`store.py`, migrated onto the real production DB via
-  a real `ALTER TABLE ... ADD COLUMN`, not baked into `CREATE TABLE`,
-  since the table already existed with real data — `NULL` for every
-  BingX-sourced row, which has no buyer/seller breakdown on its wire at
-  all, and for every pre-Task-S5 Binance row). **Real, full backfill,
-  USDT-M futures BTCUSDT `1m` (futures, not spot — this project's own
-  live-trading scope is perpetual futures, so futures order flow is the
-  economically relevant proxy; spot was not touched at this
-  granularity)**: retention reaches back to **2019-09-08T17:57:00Z** —
-  essentially the futures market's own real launch, not a rolling
-  window at all, a genuine structural difference from every other
-  retention figure in this file (BingX's own four granularities, and
-  Binance's own `1d` above, are all real, non-zero rolling windows).
-  **3,661,780 bars, a 6.962-year span, exactly 1 real gap**
-  (`[2019-09-08T19:00:00Z, 2019-09-08T19:01:00Z)`, one missing minute
-  ~2 hours after the market's own first bar, plausibly real
-  launch-day instability) — confirmed via `find_missing_ranges`, not
-  merely estimated from the binary-search probe alone (same "an
-  earliest-bar probe alone is not enough, a full backfill with a real
-  gap count is" standard this file already applies elsewhere).
-  `taker_buy_base_volume` is non-`NULL` for all 3,661,780 rows, with
-  zero `taker_buy_base_volume > volume` sanity-check violations.
-  **Disclosed, unverified assumption, not resolved by this
-  infrastructure task**: this project doesn't and won't trade on
-  Binance at all, so using Binance futures taker-buy volume as a proxy
-  for BTC market-wide order flow (or for BingX's own order flow
-  specifically) carries a real cross-venue-transferability assumption
-  — the same category of caveat this file's VWAP-reversion section
-  already discloses for its own proxy (a 1-second Binance order-book
-  paper standing in for this project's 1-minute OHLCV
-  implementation). **Real, load-bearing side-finding, disclosed not
-  acted on**: this window's own calendar span (6.962 years) implies a
-  PSR/DSR detection floor of `1.6449/sqrt(6.962) ≈ 0.623` —
-  meaningfully better than even the `1d` early-window holdout's own
-  ~0.958 (this project's previous best) — but whether/how this window
-  should be split into research vs. holdout, and which future strategy
-  (if any) should spend it, are real, undecided questions for a future
-  task, not resolved here.
+### BingX — verified against the live VST (demo) API with a real key
 
-### Verified — real, computed statistics (not an API fact, but load-bearing for how this data should be used)
+Envelope is `{"code": 0, "msg": "", "data": ...}`, sometimes with a
+top-level `timestamp`.
 
-- **Binance spot BTCUSDT vs. BingX BTC-USDT daily-close correlation
-  over their full overlap (2021-05-14 through 2026-08-04, 1,909 common
-  days): 1.000000.** Daily log-return correlation: **0.999955**
-  (n=1,908). This shows the two venues' **daily price series** are
-  extremely tightly linked — not merely assumed from "BTC is
-  fungible." It does **not** by itself show that a trading *signal*
-  developed on Binance data would transfer profitably to BingX: a real
-  signal's performance also depends on volume, funding, basis,
-  execution costs, and timing/alignment, none of which a price-only
-  correlation measures. That question needs its own signal-specific,
-  cost-inclusive backtest and paper validation — not asserted here.
-- **Binance spot vs. futures basis, over their full overlap
-  (2019-09-08 through 2026-08-04, 2,523 common days)**: mean
-  `(futures-spot)/spot` = -0.0154%, stdev 0.0652%, range -0.74% to
-  +1.80% — tight, and narrowing over time (mean absolute basis 0.057%
-  in the first third of the overlap vs. ~0.044% in the later two
-  thirds), consistent with a maturing derivatives market rather than a
-  data-quality issue.
+| Call | Real observed shape |
+|---|---|
+| `GET /openApi/swap/v3/user/balance` | `data` is an **array** of per-asset objects (`userId`, `asset`, `balance`, `equity`, `unrealizedProfit`, `realizedProfit`, `availableMargin`, `usedMargin`, `frozenMargin`, `shortUid`) — not a single object. Parsing must index into it. |
+| `GET /openApi/swap/v2/user/positions` | Also an array; `[]` when flat |
+| `GET`/`POST /openApi/swap/v1/positionSide/dual` | `dualSidePosition` came back `"true"` on a fresh key — **hedge mode is the default**, previously undocumented. Set it explicitly at startup anyway; a default can change. |
 
-Only public, unauthenticated read endpoints (klines only) have been
-called against the live API. No authenticated Binance endpoint has
-ever been called by this project, and none is planned — see the
-data-research-only framing above.
+**A real order was placed, filled, and cancelled through the full
+OMS-mediated path** (`OrderIntent → OrderPipeline → RiskGateway → Order →
+ExchangeOrderExecutor → BingXAdapter`), 2026-08-09 — detail in
+`.planning/paper-trading-h-vst-integration.md`:
 
-## Exchange API Facts — KIS (verify before relying on them)
+- `POST /openApi/swap/v2/trade/order`'s **submit** response already
+  reported `"status":"FILLED"` for a market order. `ExchangeOrderExecutor
+  .submit` deliberately never trusts that (always returns
+  `Optional.empty()`, resolving only via a later `pollFills`/`queryOrder`),
+  so the ~1.5s ack-to-fill latency observed reflects **this project's own
+  polling cadence**, not real exchange latency.
+- `queryOrder` carries a real **`commission`** field (e.g.
+  `"-0.032441"`, negative = fee charged), confirming a real fee figure is
+  available on the wire. For that trade it landed within ~5bps of this
+  project's modeled `FEE_BPS=5` (0.03244075 modeled vs 0.032441 real) —
+  one data point, not proof the two always agree.
+- `DELETE /openApi/swap/v2/trade/order` on an unfilled limit order
+  returned the status token **`"CANCELLED"`** (double-L), confirming the
+  REST half of the documented REST/WebSocket casing inconsistency.
+  WebSocket's `"CANCELED"` remains unverified — no WS call has ever been
+  made by this project.
+- **Duplicate `clientOrderID` is rejected server-side**:
+  `{"code":101400,"msg":"clientOrderID unique check failed"}`, from a
+  genuinely separate graph simulating a restarted process. Real evidence
+  BingX's own idempotency is an additional safety layer on top of — not a
+  substitute for — this project's software-side protections. Observed,
+  not officially documented.
+- **Account-wide leverage was originally observed at `"20X"`** on a fresh
+  VST account, unenforced by `RiskGateway`, because nothing called
+  `POST /openApi/swap/v2/trade/leverage`. Since fixed: `VstPreflight` now
+  sets leverage for both `LONG` and `SHORT` to
+  `RiskLimits.canary().baseLeverage()` on every clean start. **Fails
+  closed** — if a pre-existing non-zero position is found, leverage
+  enforcement is skipped (exchanges commonly reject a change with a
+  position open) and the kill switch starts tripped instead, requiring a
+  deliberate human reset. A `setLeverage` failure propagates and refuses
+  to start. Verified against a hand-written fake adapter; real per-call
+  HTTP verification is still outstanding, because the account still holds
+  a position from the original run and this codebase's OMS path has no
+  way to close one (in hedge mode a `SHORT` opens a second position
+  rather than closing the `LONG`) — a real, disclosed gap.
 
-### Verified — authenticated, paper key (2026-08-21/24, real 모의투자
-credentials, PR #103, the first real contact this project has ever had
-with KIS's live API — everything under "KIS/KOSPI200 venue integration"
-above was fake-server-verified only until this point)
+**A real credential-handling incident, root-caused and fixed.** A
+CRLF-terminated `.env` sourced naively left a trailing `\r` on
+`BINGX_API_KEY`; the JDK's `HttpRequest.Builder#header` rejects a raw
+`\r` (RFC 7230) with an exception **whose message embeds the offending
+value verbatim** — writing the real key into a local gitignored scratch
+log. A separate `cat -A` diagnostic similarly surfaced `FRED_API_KEY` in
+a tool transcript. **Neither reached any committed file, git history, or
+public surface.** Fixed at the root rather than merely disclosed:
+`BingXAdapter`'s constructor now `.strip()`s both credentials, with a
+regression test. `BINGX_API_SECRET` was never used as a header value
+(HMAC only, never transmitted) and was confirmed unaffected. Rotating the
+two exposed keys remains a cheap precaution — both are low-stakes
+(VST-only, no withdrawal permission; and a free read-only data key).
 
+### BingX — documented but NOT empirically verified
 
+Read from BingX's docs, never called with a real key. Treat with less
+confidence than everything above.
 
-- **Response field-name casing is genuinely per-endpoint, not one
-  project-wide convention** — confirmed directly against KIS's own
-  official `koreainvestment/open-trading-api` example source (each
-  endpoint's own `COLUMN_MAPPING` dict, not guessed): `order` (submit)
-  responds UPPERCASE (`ODNO`); `inquire-balance` and `inquire-ccnl` both
-  respond lowercase (`pdno`, `cblc_qty`, `sll_buy_dvsn_name`,
-  `ccld_avg_unpr1`, `evlu_pfls_amt`, `odno`, `ord_qty`, `tot_ccld_qty`,
-  `qty`, `avg_idx`, ...). Request-parameter casing (always UPPERCASE,
-  e.g. `CANO`, `ACNT_PRDT_CD`) is unaffected — this is a response-body
-  quirk only. `KisAdapter`'s original implementation guessed uppercase
-  for all three endpoints; the two wrong guesses parsed every field as
-  silently `null` rather than throwing (Jackson's `JsonNode` lookup is
-  case-sensitive, and a missing field isn't distinguished from a
-  wrong-case one), not a loud failure — worth remembering for any future
-  KIS endpoint this project integrates.
-- **`inquire-deposit` (TR `CTRP6550R`, 선물옵션 총자산현황) has no working
-  paper-trading TR id at all**, despite this project's original,
-  disproven assumption that it was shared between real and paper
-  trading. A real call with the real tr_id against the paper host
-  returns `HTTP 500`/`EGW00205` ("credentials_type이 유효하지 않습니다.
-  (Bearer)"); a manually `V`-prefixed variant (`VTRP6550R`, following
-  KIS's own general real→paper tr_id convention — see `KisTokenProvider`)
-  returns `OPSQ0002` ("없는 서비스 코드 입니다", "no such service code
-  exists"). `KisAdapter.getBalance()` no longer calls this endpoint at
-  all — it now reuses the same `inquire-balance`/`VTFO6118R` call
-  `getPositions()` already used successfully, reading `output2` (an
-  account-level cash/margin/P&L summary object) instead of `output1`.
-- **`inquire-balance` requires `CTX_AREA_FK200`/`CTX_AREA_NK200` query
-  params even on a call that never follows pagination** — omitting
-  either causes a real `OPSQ2001` ("INPUT_FIELD_NAME CTX_AREA_FK200")
-  rejection, matching KIS's own official `inquire_balance.py` example,
-  which always sends both (`FK200`/`NK200`). `getBalance()` sends both
-  as fixed empty strings and never follows a continuation — it makes a
-  single call and reads only `output2`, which is not itself paginated.
-  `getPositions()` genuinely paginates (below), so for it
-  `CTX_AREA_NK200` carries the real continuation key on a page after the
-  first.
-- **`inquire-balance` genuinely paginates** ("한 번의 호출에 최대 20건까지
-  확인 가능", per KIS's own official docstring) — `getPositions()` was
-  originally built reading only the first page, silently missing any
-  position past the 20-row mark. Now follows the same bounded
-  continuation loop `queryOrder`'s own `inquire-ccnl` call already used
-  (`MAX_INQUIRE_PAGES = 10`, shared by both), and fails closed (throws)
-  rather than return a silently-incomplete position list if the bound is
-  reached while KIS still reports more data.
-- **`tr_cont` response-header continuation convention, confirmed**:
-  `"M"` means more pages exist (continue); anything else, including
-  `"F"` (a real, observed final-page value), means stop. **A real,
-  disclosed latent bug found while building `getPositions()`'s
-  pagination loop**: the original continuation check (also present in
-  `queryOrder`, written earlier without a real API to test against)
-  treated `"F"` the same as `"M"`, so it never actually stopped on a
-  final page and would have kept fetching a nonexistent next page. This
-  was masked in `queryOrder` by that loop's own separate `matched ==
-  null` early-exit condition (which always stops the loop once the
-  target order is found, regardless of this flaw) — it surfaced for
-  real only once `getPositions()`'s own new test, with no such early
-  exit, exhausted the fake server's queued responses. Both loops now
-  correctly continue only on `"M"`, and both fail closed on `"M"` paired
-  with a blank continuation key (a KIS-side anomaly neither loop could
-  otherwise resolve into a real next page).
-- **Real observed response latency**: both `POST /oauth2/tokenP` and
-  `GET .../inquire-balance` were directly observed taking 7-10 seconds
-  during real verification — uncomfortably close to `KisAdapter`'s
-  original 10-second `REQUEST_TIMEOUT`, and the actual cause of several
-  real, intermittent `HttpTimeoutException`s hit while testing against
-  the live API. Widened to 20 seconds as a result — treat KIS's paper
-  host as meaningfully slower than BingX's under real conditions.
-- **`/oauth2/tokenP` has a real, empirically-hit rate limit**
-  (`EGW00133`, "접근토큰 발급 잠시 후 다시 시도하십시오" — "please try
-  again shortly for token issuance"), triggered by repeated token
-  requests within roughly a minute of each other. `KisTokenProvider`
-  caches a token in memory for the life of one JVM process, but each
-  fresh `kis-paper.sh` restart (a new JVM) requests a brand-new token —
-  repeated restarts in quick succession while debugging can exhaust this
-  budget for real. Space out restarts by at least ~60-90s if this
-  happens; it self-resolves, it is not a credential or code problem.
-- **`getBalance()`'s `output2` → `BalanceSnapshot` field mapping**
-  (KIS's own official column names/descriptions, human-confirmed, no
-  exact 1:1 semantic match for every field): `tot_dncl_amt` (총예수금액,
-  total deposit amount) → `balance`; `prsm_dpast_amt` (추정예탁자산금액,
-  estimated total account assets, i.e. deposit + P&L) → `equity`;
-  `ord_psbl_cash` (주문가능현금, order-available cash) → `availableMargin`;
-  `mgna_tota` (증거금총액, total margin) → `usedMargin`;
-  `evlu_pfls_amt_smtl` (평가손익금액합계, total evaluation P&L) →
-  `unrealizedProfit`. `balance` specifically is load-bearing, not just
-  informational: `PaperTradingApp.forKisPaper()` bootstraps
-  `SharedKisAccountLedger`'s entire `allocatedVirtualCapital` risk budget
-  directly from it, matching `BingXAdapter`'s own raw-balance (not
-  equity) convention for the analogous BingX-side value.
-- **Every response-parsing failure mode above is now fail-closed, not a
-  silent fallback** (tightened across five real CodeRabbit review
-  rounds on PR #103, each finding verified against current code before
-  fixing): a missing/malformed `output1`/`output2`, a missing `cblc_qty`/
-  `pdno`/`ord_qty`/`tot_ccld_qty`/`qty`, or a mutually-inconsistent
-  `ord_qty`/`tot_ccld_qty`/`qty` triple (e.g. filled exceeding ordered)
-  all throw `ExchangeException` rather than silently producing a `null`
-  amount, an empty symbol, or a misclassified order status. No exception
-  message anywhere in `KisAdapter`/`KisPriceFeed` embeds raw response
-  content (full JSON nodes, response bodies, or parsed field values) —
-  matching `KisAdapter.parseBody`'s own original discipline, extended to
-  every newer exception added during this same verification pass, since
-  a real KIS response can carry account numbers and balance/position
-  amounts, and these exceptions now land in a real, persisted
-  `kis-paper.log` file (see `scripts/kis-paper.sh`'s own tee-based
-  logging), not just an ephemeral tmux pane.
-- **First real end-to-end run, confirmed working** (2026-08-24, symbol
-  `A01609`, KOSPI200 index futures, `kis-paper` mode, PR #103 merged):
-  `KisPreflight` real balance = 50,000,000 KRW, no pre-existing
-  positions (clean start), `SharedKisAccountLedger` bootstrapped
-  `allocatedVirtualCapital` from that real balance, `AccountLedgerReconciler`
-  clean reconciliation (`ledgerExposure=0 realExposure=0 mismatch=0`),
-  `PaperTradingApp` constructed successfully, and a real tick completed.
-  Kill switch starts tripped by design regardless (the KOSPI200
-  contract-multiplier gap disclosed earlier in this file is still
-  unresolved) — no order was or could be submitted in this run.
+- **Base URLs**: `https://open-api.bingx.com` (production) vs
+  `https://open-api-vst.bingx.com` (VST demo — virtual USDT, same signing
+  scheme, real matching behaviour). A key made through the normal API
+  Management flow authenticates against VST; whether the same key *also*
+  works against production is untested and deliberately not tested.
+- **Auth**: `X-BX-APIKEY` header + HMAC-SHA256 over all params including
+  `timestamp`, sorted alphabetically, joined `key=value&…`, hex uppercase,
+  appended as `&signature=…`. Requests must be within 5s of server time
+  (`GET /openApi/swap/v2/server/time`).
+- **Orders**: `POST /openApi/swap/v2/trade/order` (type field selects
+  MARKET/LIMIT/etc.); `POST .../order/test` validates without executing;
+  `DELETE /openApi/swap/v2/trade/order` cancels.
+- **Position mode** is account-wide, not per-symbol, and cannot change
+  while any position or open order exists. Leverage takes `side=BOTH` in
+  one-way mode, `LONG`/`SHORT` in hedge mode.
+- **Endpoint versions are mixed within the same family on purpose**:
+  balance v3, positions/order/leverage v2, position-mode v1 — matching
+  klines (v3) vs trades (v2).
+- **Private WebSocket** shares the public market-data host with
+  `?listenKey=…`, from `POST /openApi/user/auth/userDataStream` (1h TTL,
+  `PUT` to refresh).
+- **Rate limits** are per-account (UID): order place/cancel 10/s, order
+  query 30/s, positions 10/s, balance 5/s, leverage 5/s. A changelog
+  claims IP-based limits were removed 2025-12-16 while the docs UI still
+  shows legacy numbers — trust neither without testing.
+- **Known internal doc contradictions**, to test rather than trust: order
+  status casing `CANCELLED` (REST) vs `CANCELED` (WS); the listen-key
+  sample omits signature params its own metadata requires; the WS
+  connection limit is stated as both 60/IP and 240/IP.
+
+### Binance — data-research source only
+
+**Not a trading venue and not planned to become one.** No credentials, no
+order placement, read-only public klines (`data/binance_klines.py`,
+`backfill_binance.py`; `sr-z`, `scalp-s5`). This section exists for the
+same verify-before-relying reason as BingX's, not because a second live
+surface is being added.
+
+| Item | Value |
+|---|---|
+| Symbol | `BTCUSDT` (no dash — differs from BingX) |
+| Spot klines | `GET https://api.binance.com/api/v3/klines` |
+| USDT-M futures klines | `GET https://fapi.binance.com/fapi/v1/klines` |
+| Response | A **bare JSON array of arrays, by position** — not an object envelope: `[open_time_ms, open, high, low, close, volume, close_time_ms, quote_asset_volume, num_trades, taker_buy_base_volume, taker_buy_quote_volume, ignore]`. Timestamps and `num_trades` are bare integers; OHLCV are quoted strings. |
+| `endTime` | **INCLUSIVE**, not half-open — confirmed by a `startTime == endTime` request returning exactly one row. A real wire-level divergence from this project's `[start, end)` convention everywhere else, which `binance_klines.py` absorbs via `endTime = end_ms - 1`. |
+| Over-limit capping | Keeps the **OLDEST** rows (closest to `startTime`) — the opposite of BingX. Consequently rows come back **ascending**, not newest-first. |
+| Max `limit` | Spot **1000**, silently capped. Futures **1500**, enforced as a real `HTTP 400` (`-1130`) — futures rejects, spot does not. |
+| Pre-listing range | Returns `[]`, not an error and not padded |
+| Errors | A real non-2xx status with `{"code": <int>, "msg": "…"}` — never a `200` carrying an embedded error the way BingX works |
+
+**Retention, by full backfill with independently verified gap counts**:
+
+| Market / interval | Earliest bar | Count | Gaps |
+|---|---|---|---|
+| Spot `1d` | 2017-08-17T00:00:00Z | 3,275 | **0** |
+| Futures `1d` | 2019-09-08T00:00:00Z | 2,523 | **0** |
+| Futures `1m` | 2019-09-08T17:57:00Z | **3,661,780** | **1** (`[2019-09-08T19:00:00Z, 2019-09-08T19:01:00Z)`) |
+
+Futures `1m` reaching essentially the market's own launch means it is
+**not a rolling window at all** — a genuine structural difference from
+every other retention figure in this file. Its 6.962-year span implies a
+PSR/DSR detection floor of **~0.623**, the best this project has. Spot
+`1d`'s ~8.97 years gives ~0.55, versus BingX's own best (`1d`, 5.21y) at
+~0.72. All three sit **inside** the 0.4-0.8 credible-institutional-edge
+range; the difference is where: BingX's ~0.72 makes only the range's top
+sliver detectable, Binance's ~0.55 makes roughly its top two-thirds
+detectable. Real power gain, not a change from undetectable to
+detectable outright.
+
+**`taker_buy_base_volume`/`taker_buy_quote_volume` (wire indices 9/10)**
+are real, populated, order-flow-relevant fields, silently discarded by
+`_parse_row` from `sr-z` until `scalp-s5` captured them into two additive
+nullable `klines` columns (`NULL` for every BingX row — that wire has no
+buyer/seller breakdown at all — and every pre-`scalp-s5` Binance row).
+Non-`NULL` for all 3,661,780 futures `1m` rows, with zero
+`taker_buy_base_volume > volume` violations. **Disclosed, unresolved
+assumption**: this project does not trade on Binance, so using Binance
+futures order flow as a proxy for BTC market-wide (or BingX-specific)
+flow carries a real cross-venue transferability assumption.
+
+**Rate limits are real, numeric, and live-confirmed** — a first for this
+pipeline, fetched from each host's own `GET .../exchangeInfo`
+`rateLimits`: spot `REQUEST_WEIGHT` **6000/min** per IP, futures
+**2400/min** per IP. Per-request weight costs (spot flat 2; futures
+tiered 1/2/5/10 by `limit` bucket) come from Binance's docs rather than
+re-derived here, so are held to slightly lower confidence. **HTTP 418** is
+Binance's documented temporary-IP-ban signal, distinct from `429`; not
+observed live, and treated as non-retryable on the same "don't retry into
+an active ban" principle.
+
+**Computed statistics, load-bearing for how this data may be used** (not
+API facts): Binance spot vs BingX daily closes over their full 1,909-day
+overlap correlate at **1.000000**; daily log-returns at **0.999955**.
+That shows the two **price series** are tightly linked — it does **not**
+show a signal developed on one transfers profitably to the other, which
+also depends on volume, funding, basis, execution costs, and timing, none
+of which a price correlation measures. Binance spot-vs-futures basis over
+2,523 common days: mean `(futures-spot)/spot` −0.0154%, stdev 0.0652%,
+range −0.74% to +1.80%, narrowing over time — consistent with a maturing
+derivatives market, not a data-quality problem.
+
+### KIS — verified against the live paper (모의투자) API
+
+First real contact 2026-08-21/24 (PR #103); everything in the Phase 1
+design above was fake-server-verified only until then. Full account:
+`.planning/kis-phase1-venue-integration.md`.
+
+- **Response field-name casing is per-endpoint, not one convention.**
+  `order` (submit) responds UPPERCASE (`ODNO`); `inquire-balance` and
+  `inquire-ccnl` respond lowercase (`pdno`, `cblc_qty`, `odno`,
+  `ord_qty`, `tot_ccld_qty`, …). Request parameters are always UPPERCASE
+  regardless. The original implementation guessed uppercase for all
+  three; the two wrong guesses parsed **every field as silently `null`**
+  rather than throwing, since Jackson cannot distinguish a missing field
+  from a wrong-cased one.
+- **`inquire-deposit` (`CTRP6550R`) has no working paper TR id at all.**
+  The real id returns `HTTP 500`/`EGW00205`; a `V`-prefixed variant
+  following KIS's own real→paper convention returns `OPSQ0002` ("no such
+  service code"). `getBalance()` no longer calls it — it reuses
+  `inquire-balance`/`VTFO6118R` and reads `output2`.
+- **`inquire-balance` requires `CTX_AREA_FK200`/`CTX_AREA_NK200` even on
+  a call that never paginates** — omitting either gives `OPSQ2001`.
+- **`inquire-balance` genuinely paginates** (max 20 rows per call).
+  `getPositions()` originally read only the first page. It now follows a
+  bounded continuation loop (`MAX_INQUIRE_PAGES = 10`, shared with
+  `queryOrder`) and **fails closed** rather than return a silently
+  incomplete position list.
+- **`tr_cont` convention**: `"M"` means more pages; anything else,
+  including the real observed `"F"`, means stop. A latent bug treated
+  `"F"` as continue — masked in `queryOrder` by its own early exit, and
+  surfaced only when `getPositions()` exhausted a fake server's queued
+  responses. Both loops now continue only on `"M"`, and both fail closed
+  on `"M"` paired with a blank continuation key.
+- **Real observed latency is 7-10 seconds** for both `POST /oauth2/tokenP`
+  and `inquire-balance` — the actual cause of intermittent
+  `HttpTimeoutException`s against the original 10s timeout, since widened
+  to 20s. Treat KIS's paper host as meaningfully slower than BingX's.
+- **`/oauth2/tokenP` has a real rate limit** (`EGW00133`), triggered by
+  repeated token requests within roughly a minute. `KisTokenProvider`
+  caches per JVM process, so repeated restarts while debugging can
+  exhaust it. Space restarts ~60-90s apart; it self-resolves and is not a
+  credential or code problem.
+- **`getBalance()`'s `output2` → `BalanceSnapshot` mapping** (KIS's own
+  column names; no exact 1:1 semantic match for every field):
+  `tot_dncl_amt` (총예수금액) → `balance`; `prsm_dpast_amt` (추정예탁자산금액)
+  → `equity`; `ord_psbl_cash` (주문가능현금) → `availableMargin`;
+  `mgna_tota` (증거금총액) → `usedMargin`; `evlu_pfls_amt_smtl`
+  (평가손익금액합계) → `unrealizedProfit`. **`balance` is load-bearing, not
+  informational**: `forKisPaper()` bootstraps `SharedKisAccountLedger`'s
+  entire `allocatedVirtualCapital` from it, matching `BingXAdapter`'s own
+  raw-balance convention.
+- **Every response-parsing failure mode is fail-closed** (tightened over
+  five real review rounds): a missing or malformed `output1`/`output2`, a
+  missing `cblc_qty`/`pdno`/`ord_qty`/`tot_ccld_qty`/`qty`, or a mutually
+  inconsistent `ord_qty`/`tot_ccld_qty`/`qty` triple all throw rather than
+  produce a `null` amount, an empty symbol, or a misclassified status.
+  **No exception message anywhere in `KisAdapter`/`KisPriceFeed` embeds
+  raw response content** — a real KIS response carries account numbers and
+  balances, and these exceptions land in a persisted `kis-paper.log`.
+- **First real end-to-end run, 2026-08-24**, symbol `A01609`: real balance
+  50,000,000 KRW, no pre-existing positions, ledger bootstrapped from that
+  balance, clean reconciliation (`ledgerExposure=0 realExposure=0
+  mismatch=0`), a real tick completed. **The kill switch starts tripped by
+  design**, so no order was or could be submitted.
 
 ## LLM Usage Policy
 
