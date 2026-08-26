@@ -2996,13 +2996,101 @@ scalping research entirely.
   liquidation-cascade attempt, or something else — should actually spend
   it. All real, open, human-`Discuss` questions for the next task.
 
+- **Task S6** — order-flow-imbalance momentum, second real candidate —
+  **commit phase done, PR #114, 2026-08-26; real holdout access not yet
+  executed.** Mirrors `sr-u`'s own commit/execution split, already
+  followed once by this project (Task S4's PR #111 commit phase → PR
+  #112 real execution): this task commits the strategy, its tests, and
+  its preregistration; a separate, later, deliberate step executes the
+  real holdout access. Full design record:
+  `.planning/scalp-s6-ofi-momentum.md`.
+
+  Chosen over a redesigned liquidation-cascade attempt (per this task's
+  own recommendation, human-confirmed) now that Task S5's real Binance
+  order-flow data exists. 15-bar ("quarter-hour") rolling OFI window
+  (`ofi_t = 2 × taker_buy_base_volume_t / volume_t − 1`) + 2-SD band —
+  the window naming grounded directly in the real cited paper (Kim &
+  Hansen 2026, "The Quarter-Hour Effect," arXiv:2607.09426; its own real
+  finding is a 4-12 hour forward-return horizon with "much weaker
+  effects at finer clock-time frequencies" — this task's own
+  minutes-to-tens-of-minutes adaptation is disclosed as a genuine,
+  untested hypothesis, not an imported result), 2-SD reusing this
+  codebase's own existing convention (`BollingerBands`, `VwapMidBands`).
+  Momentum direction, not reversion — the cited paper's own finding is
+  continuation, not reversion, a structurally different signal class
+  from `vwap_mid_reversion.py`.
+
+  **The real, deliberate answer to Task S4's own disclosed lesson**
+  ("zero fitted parameters" and "zero risk controls" are not the same
+  discipline): this strategy reuses `research/strategies/
+  risk_management.py`'s ATR-stop/target machinery completely unmodified
+  (14-period ATR/Wilder's standard, 1.5x stop, 3.0x target/1:2
+  risk:reward, 1% fixed-fractional sizing — all pre-existing,
+  literature-sourced, "not searched or tuned to this asset" per that
+  module's own docstring), composed the same entry-only-while-flat/
+  exit-checked-first shape `hourly_momentum.py` already established —
+  not `vwap_mid_reversion.py`'s own no-exit design, whose real holdout
+  result is exactly what motivated this change.
+
+  **A real, consequential infrastructure gap found and closed during
+  this task, before any strategy code was written**: `backtest.kline
+  .Kline` — the in-memory type a `Strategy` actually receives via its
+  `window` argument, distinct from `data.bingx_klines.KlineRow`, the
+  storage type Task S5 extended — had no
+  `taker_buy_base_volume`/`taker_buy_quote_volume` fields at all, and
+  `research.holdout._kline_row_to_kline` (the only real conversion path
+  from a stored `KlineRow` to a `Kline` a holdout run actually feeds a
+  strategy) silently dropped both fields on every call. Task S5 extended
+  the storage layer only; this gap meant the entire OFI-momentum design,
+  however correct on paper, would have been structurally unable to see
+  real order-flow data against real holdout klines — only against
+  hand-built test fixtures. Fixed additively in both (`Decimal | None =
+  None`, zero regression — confirmed every real `Kline(...)`
+  construction site in the codebase is keyword-based).
+  `python/live/generate_daily_signal.py`'s own separate, BingX-only
+  `_kline_row_to_kline` was deliberately not touched — BingX rows have
+  no real order-flow data regardless.
+
+  **Preregistration, real computed values** (queried directly against
+  the real production database, independently re-confirmed rather than
+  trusting Task S5's own already-published numbers): whole-window
+  holdout design matching Task S3's decision for the BingX 1m window —
+  the entire real Binance USDT-M futures BTCUSDT `1m` window (3,661,780
+  bars, 2019-09-08T17:57:00Z through 2026-08-25T15:37:00Z, the same 1
+  real gap Task S5 found) is reserved as a single, precious holdout
+  access, not split into research+holdout (no fitting step needs a
+  research portion). `min_total_trades = 100` — the first registration
+  in this project's history to land on the 100-trade **cap** rather than
+  the 30-trade floor. `declared_detection_floor_sharpe ≈ 0.6231732616841021`
+  — this project's best-ever detection floor, a direct consequence of
+  Task S5's own finding that this window is not a rolling window at
+  all. Before commit: `load_preregistration`,
+  `verify_trade_floor`, `verify_detection_floor`, and
+  `verify_known_gaps` all ran for real against the real production
+  database and passed.
+
+  Full suite 1535/1535 passing (24 new tests in `test_ofi_momentum.py`,
+  2 new in `test_holdout.py`). CodeRabbit review: zero findings,
+  approved clean. Curated `research/lineage.py` entry added (family
+  `"btc-scalping"`, `strategy_id="ofi-momentum"`).
+
+  **What this task did not do**: did not call
+  `research.holdout.load_holdout_klines` or
+  `run_preregistered_holdout` against the real registration — the real
+  holdout access is a separate, later, deliberate step, not yet
+  scheduled. Did not touch the BingX `1m` `vwap-mid-reversion` holdout
+  already spent (genuinely different symbol/venue). Did not touch
+  `generate_daily_signal.py`'s own separate conversion path.
+
 **Sequencing**: S0 (this write-up) → S1 (data + real retention go/no-go)
 → S2 (execution-realism gate design, can start in parallel with S1's
 backfill running) → S3 (methodology addendum, needs S1's real number) →
 S4 (first real candidate research pass, a single pre-registered holdout
 access per S3's design decision) → S5 (Binance `1m` + order-flow data
 infrastructure, prompted by S4's INCONCLUSIVE result and the negative
-OFI/liquidation-cascade investigations above).
+OFI/liquidation-cascade investigations above) → S6 (second real
+candidate, order-flow-imbalance momentum, commit phase — real holdout
+access still pending).
 
 **Explicitly out of scope this phase**: tick/trade-level data, true
 HFT, co-location (confirmed with the human operator, stays inside the
