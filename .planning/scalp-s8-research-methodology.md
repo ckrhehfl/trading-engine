@@ -591,7 +591,12 @@ respectively). Repository state at the time of measurement:
   span slightly more wall-clock time than nominal. Bounded and
   disclosed; not corrected.
 - **Cost horizon table**: non-overlapping samples, stepping `h` bars at
-  a time — these observations are independent.
+  a time — these observations are **non-overlapping**, which is not the
+  same as independent. No two share a bar, but serial dependence
+  survives regardless: volatility clustering, the very property this
+  document relies on elsewhere, guarantees it. Any confidence interval
+  or test computed on these still needs HAC or block-bootstrap
+  inference.
 - **Activity buckets and the directional level test**: **overlapping**,
   every bar used as an observation. This is the dependence problem
   flagged above; the nominal counts are not effective sample sizes.

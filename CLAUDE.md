@@ -1525,10 +1525,15 @@ mechanical single-indicator candidates, and the pushback was correct.
   **Turnover and order rate are two different metrics, not one under two
   names**: turnover is traded notional (or absolute position change) over
   capital, an *exposure* measure; order rate is orders/trades per unit
-  time, a *runaway-loop* measure. Each needs its own threshold. What
-  would have flagged both prior failures immediately is the **order-rate**
-  metric — they ran ~70 and ~89 trades per day, against the practitioner
-  heuristic that a bot wanting 100 trades today is broken. MAE/MFE also
+  time, a *runaway-loop* measure. Each needs its own threshold, and
+  **neither threshold is defined yet** — doing so requires naming what is
+  counted (orders or filled trades), the measurement window, the limit,
+  and the fail-closed action on breach. Stated precisely rather than
+  overclaimed: the prior failures ran ~70 and ~89 trades per day, which
+  is the kind of figure an order-rate metric exists to surface for
+  **investigation**; it does not by itself breach the practitioner
+  heuristic often quoted as ~100 trades/day, and an earlier version of
+  this section wrongly implied it did. MAE/MFE also
   needs a pinned calculation contract (measurement starts at the fill
   bar, net of costs, stop-wins on a same-bar tie, planned-risk R
   denominator, forced closes flagged as censored) so the same trades
