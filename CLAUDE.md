@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S7 done, both candidates INCONCLUSIVE
+### Scalping Strategy Research — Tasks S0-S8; both candidates INCONCLUSIVE, methodology rebuilt
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1435,16 +1435,151 @@ circuit-breaker half only** — making a strategy's own sizing equity-aware
 is a separate, larger, still-undone direction, and no strategy's sizing
 changed.
 
-**Open, not decided**: both 1m holdout windows are now spent (BingX
-BTC-USDT, and Binance futures BTCUSDT). Untouched data remains — Binance
-*spot* 1m, other granularities, other symbols. Whether to attempt a third
-candidate, pursue equity-compounding sizing, or consolidate and stop is a
-human `Discuss`. Liquidation cascades, the one remaining named candidate,
-was investigated and found to lack a usable foundation: the real papers
-propose no trading rule, their OHLCV-computable early-warning signal is
-silent in 2 of 7 studied cascades, they sweep 39 configurations with no
-reusable convention, and no post-cascade reversion pattern is documented
-anywhere in that literature.
+Liquidation cascades, the one remaining named candidate from the original
+list, was investigated and found to lack a usable foundation: the real
+papers propose no trading rule, their OHLCV-computable early-warning
+signal is silent in 2 of 7 studied cascades, they sweep 39 configurations
+with no reusable convention, and no post-cascade reversion pattern is
+documented anywhere in that literature.
+
+**Task S8 (2026-08-26) rebuilt the research methodology** rather than
+attempting a third candidate under the same one. Full document, with
+external sources: `.planning/scalp-s8-research-methodology.md`. It exists
+because the human operator pushed back on a framing that was producing
+mechanical single-indicator candidates, and the pushback was correct.
+
+**Two prior claims in this section were wrong and are corrected here.**
+
+1. **"Minutes-scale scalping is arithmetically impossible after costs"
+   was an artefact of comparing costs to the *unconditional* median
+   move** — the move from entering at a uniformly random moment. A
+   strategy does not enter at random. Measured on the real Binance
+   futures 1m window (3,661,780 bars), conditioning on recent activity
+   (rolling 30-bar sum of |1m returns|, known at decision time), the
+   median absolute move as a multiple of the 30bps round trip is:
+   15 min → **1.09x in the top 10% of activity, 2.08x in the top 1%**
+   (0.40x unconditionally); 1 hour → 1.98x / 3.51x (0.76x
+   unconditionally). **So 15-minute holding is not excluded on cost
+   grounds** once entries are restricted to elevated-activity moments —
+   which retires the "impossible" claim, and is all it does. An absolute
+   move is unsigned: this shows the move is large enough that a round
+   trip *could* be covered, not that direction is predictable, and
+   proves neither post-cost expectancy nor out-of-sample behaviour.
+   **"Viable" stays reserved for a candidate that has cleared
+   signed-return evidence, a measured win rate, real execution costs,
+   and out-of-sample validation.** The conditioning itself rests on
+   volatility clustering (Mandelbrot 1963; Engle 1982), one of the most
+   robust empirical facts in finance — which supports the *magnitude*
+   conditioning only, not any directional claim.
+2. **That conclusion is fragile to `SLIPPAGE_BPS`, in the wrong
+   direction.** Such a strategy deliberately enters when spreads widen
+   and depth thins, but `SLIPPAGE_BPS = 10` was calibrated against a
+   ~4bps *typical* spread. At 30bps one-way slippage, 15-minute holding
+   fails even in the top 1% of activity (0.89x) while 1-2 hour holding
+   survives. **Shorter horizons are structurally more exposed to this
+   assumption**, so real slippage must be measured before any
+   short-horizon candidate is trusted — it is the first item in S8's
+   own work order, ahead of any signal research.
+
+**What S8 changes, binding on any future scalping candidate**:
+
+- **Decompose the strategy** into direction / entry-exit / sizing and
+  research them separately. Both failed candidates fused all three into
+  one threshold rule.
+- **A hypothesis must name a mechanism** — who is on the other side and
+  why they lose. "20-period VWAP, 2 SD" is a formula, not a hypothesis.
+- **A regime layer comes before signals**: two-axis (direction ×
+  volatility), with hysteresis and a minimum dwell time to stop label
+  flicker, computed only from information available at bar close.
+  Running mean-reversion into an emerging trend is the documented
+  classic blowup, and is exactly what `vwap-mid-reversion` did.
+- **Measure signals as signals (IC) before assembling a strategy.**
+  Usable ICs are small — 0.02-0.05 is genuinely useful, so individual
+  features will look unimpressive and that is normal.
+- **Combine weak, uncorrelated signals.** Grinold's `IR ≈ IC × √breadth`
+  makes **orthogonality, not individual signal strength, the binding
+  constraint** — treated as a design principle and upper bound, never a
+  performance forecast (the law is known to overstate achievable IR).
+- **Place stops and targets from MAE/MFE distributions**, not
+  convention. S6's `stop_multiplier=1.5`/`target_multiplier=3.0` were
+  never measured against anything.
+- **Derive the risk budget first**: ruin threshold (25-30%, not 50% —
+  recovery is asymmetric) → acceptable risk of ruin (<1% institutional,
+  >5% means reduce size) → risk per trade → quantity via stop distance.
+  Reject any strategy that cannot live inside the budget rather than
+  widening it. Both prior runs backtested first and looked at drawdown
+  afterwards. **The risk-of-ruin calculation is only defined once its
+  contract is pinned** — which closed form (the additive one for fixed
+  dollar risk, the logarithmic one for equity-compounding risk; they
+  differ, and using the additive form for compounding overstates
+  survivable units), what counts as the ruin event (peak-to-trough
+  drawdown, not loss from starting capital), the evaluation horizon,
+  that returns are **net** of fees and slippage, how serial dependence is
+  handled, and the confidence level. Both closed forms assume i.i.d.
+  trades with a fixed payoff ratio; where payoffs vary or trades are
+  dependent — true here — the closed form is a first screen and the real
+  number comes from Monte Carlo over the actual trade distribution. See
+  S8 §3.6.
+- **Add Sortino, Calmar, expectancy, MAE/MFE, MFE capture rate,
+  turnover, order rate, and risk of ruin** to the metrics already in use.
+  **Turnover and order rate are two different metrics, not one under two
+  names**: turnover is traded notional (or absolute position change) over
+  capital, an *exposure* measure; order rate is orders/trades per unit
+  time, a *runaway-loop* measure. Each needs its own threshold, and
+  **neither threshold is defined yet** — doing so requires naming what is
+  counted (orders or filled trades), the measurement window, the limit,
+  and the fail-closed action on breach. Stated precisely rather than
+  overclaimed: the prior failures ran ~70 and ~89 trades per day, which
+  is the kind of figure an order-rate metric exists to surface for
+  **investigation**; it does not by itself breach the practitioner
+  heuristic often quoted as ~100 trades/day, and an earlier version of
+  this section wrongly implied it did. MAE/MFE also
+  needs a pinned calculation contract (measurement starts at the fill
+  bar, net of costs, stop-wins on a same-bar tie, planned-risk R
+  denominator, forced closes flagged as censored) so the same trades
+  cannot yield different stop boundaries — S8 §3.7.
+- **Use a research split, not another single-shot holdout.** The two
+  spent 1m windows become research data (they cannot be clean holdouts
+  again); Binance **spot** 1m stays reserved and untouched. Search
+  freely, count every trial, deflate with DSR — that is what the
+  machinery is for. Avoiding search to keep `N` low avoided the penalty
+  and also avoided all learning.
+
+**Live-side controls S8 names as prerequisites — these are hard gates,
+not a wishlist.** All are currently missing or unverified, and they are
+distinct from backtest cost assumptions. Each is an additional required
+item alongside the Live Entry Criteria's existing "market-order guard
+enabled" and "kill switch verified" lines, and **all must be implemented
+and verified before live activation, and before `GUARDED_MARKET` is used
+against any real account. Absent or unverified means fail closed — no
+live order.** Every live order still passes through the Java Trading
+Plane and the Java Risk Gateway in full, per the Non-negotiable Rules;
+nothing here creates an exception to that.
+
+1. **Wire-level price guard.** `GUARDED_MARKET` currently maps to a
+   plain `"MARKET"` order with no price cap on both `BingXAdapter` and
+   `KisAdapter` — the guard is a name only today.
+2. **Stale-data check.** `PriceFeed#latestPrice` returns a bare value
+   with no timestamp (interface-level, so every venue is affected).
+   Acting on a stale price creates risk rather than managing it.
+3. **Turnover ceiling** and **order-rate anomaly trigger** — separate
+   thresholds on separate metrics, per the distinction above.
+4. **Drawdown circuit breakers** at daily/weekly/total resolution that
+   halt automatically and require **manual review before restart**.
+5. **Pre-trade checks run in full without short-circuiting**, so the
+   audit log records every failure rather than only the first.
+
+A bounded exception exists for measuring real slippage (S8 Part 4 item
+1): a **BingX VST demo** fill experiment against virtual funds, through
+the full `OrderIntent → OrderPipeline → RiskGateway → Order →
+ExchangeOrderExecutor → BingXAdapter` path, with its own human approval
+and an explicit acceptance of which of the above are still absent. It
+authorises nothing on a production endpoint and relaxes no Live Entry
+Criterion.
+
+**Open, not decided**: whether to pursue equity-compounding sizing (the
+other half of what S7 left), and the order of S8's own work items beyond
+slippage measurement first.
 
 **Out of scope this phase**: tick/trade-level data, true HFT,
 co-location; promoting any scalping strategy to paper trading (the
