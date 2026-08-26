@@ -17,13 +17,17 @@ activity. So the assumption had to be measured before any signal
 research could be trusted.
 
 **Units, stated once because two different "30bps" appear in this
-document.** `backtest/fill.py` applies fee and slippage per fill, so a
-one-way cost is `FEE_BPS + SLIPPAGE_BPS` and a round trip is twice that.
-The *baseline* assumption being revised here is `5 + 10 = 15bps` one way,
-**30bps round trip** — that is the 30bps used in every viability table.
-The sensitivity row quoted immediately above instead varies *slippage
-alone* up to 30bps one way, which is a 70bps round trip. Every figure
-below is labelled explicitly.
+document.** `backtest/fill.py` applies `fee_bps` to every fill but
+`slippage_bps` **only on the `GUARDED_MARKET` branch** — a `LIMIT` fill
+pays fee alone. Every figure here is therefore a `GUARDED_MARKET` cost,
+which is the only execution type scalping candidates may use under the
+S2 policy restriction; none of it describes a limit-order cost. On that
+branch a one-way cost is `FEE_BPS + SLIPPAGE_BPS` and a round trip is
+twice that. The *baseline* being revised is `5 + 10 = 15bps` one way,
+**30bps round trip** — the 30bps used in every viability table. The
+sensitivity row quoted immediately above instead varies *slippage alone*
+up to 30bps one way, a **70bps round trip**, also `GUARDED_MARKET`-only.
+Every figure below is labelled explicitly.
 
 ## Method
 
