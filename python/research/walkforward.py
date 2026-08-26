@@ -57,6 +57,21 @@ from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_
 # would go to zero) is seeded from the identical figure its Sharpe/
 # drawdown/profit-factor are computed against. See
 # `.planning/scalp-s7-backtest-insolvency-floor.md`.
+#
+# Disclosed limitation (CodeRabbit review finding on the PR that added
+# this, not a silent gap): a fold run with `funding_rates` supplied (see
+# `run_walk_forward`'s own docstring above) still evaluates the insolvency
+# floor on price-only equity -- `run_backtest`'s internal `PositionTracker`
+# is deliberately constructed with no `funding_rates`, matching this
+# task's own explicit scope ("run_backtest has never had funding awareness
+# ... this task does not add it", `.planning/scalp-s7-backtest-insolvency-
+# floor.md`). A fold whose funding P&L would push it to insolvency earlier
+# or later than its price-only equity suggests is not something the engine
+# gate can see today, even though `compute_metrics`'s own downstream
+# funding-inclusive figures are correct. No currently-registered scalping
+# candidate uses `funding_included: true`, so this has zero practical
+# effect today; it's a real, disclosed gap for a future funding-inclusive
+# walk-forward run, not resolved by this task.
 _DEFAULT_STARTING_EQUITY = Decimal("10000")
 
 # Default Sharpe-annualization bars-per-day, matching

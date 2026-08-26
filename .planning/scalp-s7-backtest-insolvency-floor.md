@@ -317,16 +317,136 @@ project's established one-test-file-per-module convention):
 ## Test results
 
 Full suite (`cd /mnt/c/Dev/trading-engine/python && .venv/bin/python -m
-pytest tests/ -q`): **1548 passed** (up from **1535** before this task —
-the last recorded count, PR #115; +11 from the new dedicated test file,
-+1 each from the two integration tests added to existing files). Zero
-pre-existing test files had
-their assertions modified; the only changes to pre-existing test files
-were the two new integration tests appended to `test_walkforward.py` and
-`test_run_preregistered_holdout.py` (plus their supporting fixtures/
-imports), and one new dedicated test file. The full, unmodified suite
-passing is this task's own primary regression guarantee for the
-`starting_equity=None` no-op claim — not merely asserted, actually run.
+pytest tests/ -q`): **1550 passed** (up from **1535** before this task —
+the last recorded count, PR #115). Zero pre-existing test files had
+their *assertions* modified — the only changes to pre-existing test
+files were the new tests and fixture/import changes described above and
+in "Real CodeRabbit review findings" below (the two integration tests
+appended to `test_walkforward.py`/`test_run_preregistered_holdout.py`,
+the two new logging-behavior tests, and the fixture consolidation into
+`insolvency_fixtures.py`), plus the new dedicated `test_engine_
+insolvency_floor.py`. The full, unmodified-assertion suite passing is
+this task's own primary regression guarantee for the `starting_equity=
+None` no-op claim — not merely asserted, actually run (first at 1548,
+confirmed again at 1550 after the review-driven fixes below added two
+more tests).
+
+## Real CodeRabbit review findings on this PR, and how each was handled
+
+Six actionable findings on the initial PR, each verified against the
+actual code before deciding fix vs. decline — two declined with a
+written rebuttal (not silently ignored), four fixed for real.
+
+**Declined 1 (Major) — "`kline.close` gates same-bar orders on
+unavailable data, a same-candle lookahead."** The reviewer's own claim:
+using `klines[i].close` inside the insolvency check at the top of
+iteration `i` (before calling `strategy` for bar `i`) blocks bar `i`'s
+own order using a price "not yet known" at bar `i`'s start, and argued
+`build_equity_curve` using the identical formula is fine only because
+it's a post-hoc report, not a live gating decision. **Investigated and
+declined, not silently overridden**: this codebase's own established
+lookahead-safety model, stated explicitly in three independent places,
+treats bar `i`'s *entire* OHLC — close included — as legitimately
+visible the moment bar `i` is the "current" bar: (1)
+`backtest.kline_window.KlineWindow`'s own guarantee is that nothing can
+observe `klines[length]` or beyond — a window of length `i+1` includes
+index `i` (bar `i`) in full, there is no partial-`Kline`
+open-only-visibility concept anywhere in this codebase, a `Kline` is
+always seen whole or not at all; (2) `backtest.fill.simulate_fill`'s own
+docstring: intents are "generated while looking at `klines[:
+signal_bar_index + 1]`" (bar `i` fully included) and fill "against the
+*next* bar only... (no same-candle **execution**)" — the restriction is
+on execution *price*, never on decision-time *visibility*; (3) CLAUDE.md's
+own Strategy Research Methodology states the rule directly: "a strategy
+is only ever shown bars up to and including the current one" — the
+current bar, including its close, is exactly what "up to and including"
+means. The strategy's own `OrderIntent` for bar `i` is *already* computed
+using `klines[i].close` (via `visible[-1].close`) before the insolvency
+gate ever runs — so the gate re-reading the exact same, already-legitimate
+data the strategy itself just used is not a new lookahead source, it's
+the same information at the same point in the loop. Switching to
+`kline.open` (the suggested fix) would not remove a lookahead risk; it
+would introduce a *new* inconsistency — gating a decision computed from
+bar `i`'s close against a stale, bar-`i`-open equity snapshot that lags
+the very information the decision was based on. This is also the exact
+formula the task brief explicitly required mirroring from
+`metrics.metrics.build_equity_curve` (itself unchanged, long-shipped,
+and behind every Sharpe/drawdown/PSR/DSR figure this project has ever
+logged) — not a new pattern this PR invented. Responded on the PR with
+this full reasoning rather than applying the suggested diff.
+
+**Declined 2 (Minor) — "funding P&L should be applied to the insolvency
+gate in `run_walk_forward`."** Real and correctly diagnosed (a
+funding-inclusive fold's engine-level insolvency check today evaluates
+price-only equity, not funding-adjusted equity), but **directly
+contradicts this task's own explicit, deliberate brief**: "Do not pass
+any `funding_rates` to the `PositionTracker()` you construct here...
+`run_backtest` has never had funding awareness (that's `metrics.py`-only,
+opt-in there) and this task does not add it." Implementing the suggested
+change would silently widen this task's own scope boundary rather than
+respect it. Declined the code change; **disclosed instead** — a new
+comment block next to `research/walkforward.py`'s own
+`_DEFAULT_STARTING_EQUITY` (see "Call sites updated" above) names the gap
+precisely and notes it has zero practical effect today (no currently-
+registered scalping candidate uses `funding_included: true`).
+
+**Fixed 3 (Major) — `insolvent_at_index` was computed but never logged
+into the holdout confirmation record.** Real, valid gap: a holdout is a
+single, un-repeatable access (`research.holdout`'s own single-access
+enforcement), so a low-`num_trades` result with no recorded
+`insolvent_at_index` would leave a future reader unable to tell "the
+strategy rarely signaled" apart from "the circuit breaker cut the run
+short" — permanently, since the access can't be repeated to find out.
+Fixed for real, not just at the log line the finding pointed at:
+`_log_holdout_confirmation` gained an optional `insolvent_at_index`
+parameter, included in `aggregate_metrics` only when not `None`
+(matching this file's own established "field only appears when the
+feature is actually used" convention, e.g. `funding_pnl_included`); the
+in-memory `HoldoutConfirmationResult` dataclass — not named in the
+reviewer's own suggested diff, but the same real gap — also gained the
+field, so a caller doesn't have to re-read the log to learn a fact the
+function it just called already computed. Two new tests
+(`test_run_preregistered_holdout_logs_insolvent_at_index_when_triggered`,
+`..._omits_insolvent_at_index_when_never_triggered`) prove both the
+presence-when-triggered and field-omitted-not-null-when-never-triggered
+cases against the real logged record, not just the in-memory result.
+
+**Fixed 4 (Minor) — stale docstring cross-reference.**
+`test_engine_insolvency_floor.py`'s module docstring referenced
+`test_full_suite_passes_unmodified_confirms_the_byte_for_byte_no_op_claim`,
+a test renamed to `test_starting_equity_is_keyword_only_with_a_none_default`
+during writing but left un-updated in the docstring's own reference.
+Corrected.
+
+**Fixed 5 (Trivial nitpick) — duplicated fixtures across the two
+integration test files.** `_crashing_klines` and the repeated-round-trip
+strategy double existed as two independent, identically-behaved copies in
+`test_walkforward.py` and `test_run_preregistered_holdout.py`. Real risk
+named correctly: the two copies could silently drift apart over a future
+edit, leaving both integration tests claiming to prove the same circuit
+breaker while actually exercising two different scenarios, with nothing
+surfacing the divergence. Consolidated into a new shared module,
+`python/tests/insolvency_fixtures.py` (`crashing_klines`,
+`RepeatedLosingRoundTripStrategy`), following this test suite's existing
+`fake_*_server.py` precedent for a shared, non-`test_`-prefixed helper
+module — imported by both test files as `tests.insolvency_fixtures`,
+matching how `fake_binance_server.py` is already imported elsewhere in
+this suite.
+
+**Fixed 6 (Trivial nitpick) — hardcoded fold-boundary slice literals in
+the walk-forward integration test.** `klines[2:202]`/`klines[:2]` were
+correct only because they happened to match `train_bars=2`/
+`validate_bars=200` by construction; a future change to
+`generate_folds`' own boundary arithmetic would not fail this test, it
+would silently compare the bounded fold result against a *different*
+window than the fold actually used. Replaced with
+`klines[fold.train_start_index : fold.train_end_index]`/
+`klines[fold.validate_start_index : fold.validate_end_index]`, derived
+from the real `Fold` object the test already had in scope — the two can
+no longer diverge.
+
+Full suite re-run after all four fixes: **1550 passed** (see "Test
+results" above for the final, authoritative count and its derivation).
 
 ## Files created/modified
 
@@ -336,15 +456,26 @@ passing is this task's own primary regression guarantee for the
   change.
 - `python/research/walkforward.py` — `run_walk_forward`'s per-fold
   `run_backtest` call now also passes `starting_equity=starting_equity`;
-  a comment added near `_DEFAULT_STARTING_EQUITY` explaining the dual use.
+  a comment added near `_DEFAULT_STARTING_EQUITY` explaining the dual use
+  and (added on review) disclosing the funding-P&L gap named in "Declined
+  2" below.
 - `python/research/run_preregistered_holdout.py` — same one-line change
   at its own `run_backtest` call site, same comment pattern near its own
-  `_DEFAULT_STARTING_EQUITY`.
+  `_DEFAULT_STARTING_EQUITY`; `_log_holdout_confirmation` and
+  `HoldoutConfirmationResult` both gained `insolvent_at_index` (added on
+  review, "Fixed 3" below).
 - `python/tests/test_engine_insolvency_floor.py` — new, 11 tests.
-- `python/tests/test_walkforward.py` — one new integration test plus its
-  supporting fixture/helper and three new imports.
+- `python/tests/insolvency_fixtures.py` — new (added on review, "Fixed 5"
+  below): `crashing_klines`/`RepeatedLosingRoundTripStrategy`, shared by
+  both integration test files.
+- `python/tests/test_walkforward.py` — one new integration test, now
+  importing its fixtures from `insolvency_fixtures.py` and deriving its
+  reference window from the real `Fold` object rather than hardcoded
+  slice literals (review fixes 5 and 6).
 - `python/tests/test_run_preregistered_holdout.py` — one new integration
-  test plus its supporting fixture/helper and three new imports.
+  test plus two new tests proving `insolvent_at_index` is logged when
+  triggered and omitted when not (review fix 3), all importing their
+  shared fixtures from `insolvency_fixtures.py` (review fix 5).
 - `.planning/scalp-s7-backtest-insolvency-floor.md` — this document.
 
 ## What this does and does not resolve, restated

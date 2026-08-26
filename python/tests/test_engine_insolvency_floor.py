@@ -12,8 +12,9 @@ insolvency).
 behavior (lookahead safety, fill/intent alignment, determinism) --
 deliberately untouched here, and re-run in full as this feature's own
 primary regression guarantee (see
-`test_full_suite_passes_unmodified_confirms_the_byte_for_byte_no_op_claim`
-below for why that's asserted structurally rather than just claimed).
+`test_starting_equity_is_keyword_only_with_a_none_default` below for the
+structural half of that claim; the full-suite pass count itself is
+recorded in `.planning/scalp-s7-backtest-insolvency-floor.md`).
 """
 
 import inspect

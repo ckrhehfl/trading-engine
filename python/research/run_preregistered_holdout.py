@@ -466,6 +466,13 @@ class HoldoutConfirmationResult:
     psr_result: PsrResult
     outcome: str
     gating_checks: dict[str, GatingCheck]
+    # Additive (Scalping Strategy Research Task S7) -- the bar index at
+    # which run_backtest's own insolvency floor first triggered during this
+    # confirmation, or None if it never did. See backtest.engine.
+    # BacktestResult.insolvent_at_index and this module's own
+    # _log_holdout_confirmation (which persists the same fact into the
+    # logged record, not just this in-memory result).
+    insolvent_at_index: int | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -476,6 +483,7 @@ class HoldoutConfirmationResult:
             "klines_count": self.klines_count,
             "outcome": self.outcome,
             "gating_checks": {key: value.to_dict() for key, value in self.gating_checks.items()},
+            "insolvent_at_index": self.insolvent_at_index,
         }
 
 
@@ -489,6 +497,7 @@ def _log_holdout_confirmation(
     outcome: str,
     checks: dict[str, GatingCheck],
     runs_path: str | Path,
+    insolvent_at_index: int | None = None,
 ) -> dict:
     metrics_summary = {
         "starting_equity": metrics.starting_equity,
@@ -532,6 +541,19 @@ def _log_holdout_confirmation(
         "gating_checks": {key: value.to_dict() for key, value in checks.items()},
         "outcome_region": outcome,
     }
+    # Additive (Scalping Strategy Research Task S7) -- only present when
+    # this holdout run actually crossed the insolvency floor, so an
+    # existing reader of runs/experiments.jsonl sees byte-for-byte the same
+    # aggregate_metrics shape as before this field existed. A holdout is a
+    # single, un-repeatable access (research.holdout's own single-access
+    # enforcement) -- recording this here, not only in the in-memory
+    # HoldoutConfirmationResult, is what lets a future reader distinguish
+    # "few trades because the strategy rarely signaled" from "few trades
+    # because the circuit breaker cut the run short" without a second
+    # access this project's own rules don't allow. (CodeRabbit review
+    # finding on the PR that added this parameter.)
+    if insolvent_at_index is not None:
+        aggregate_metrics["insolvent_at_index"] = insolvent_at_index
     walk_forward_config = {
         "train_bars": len(klines),
         "validate_bars": len(klines),
@@ -748,6 +770,7 @@ def run_preregistered_holdout(
         outcome=outcome,
         checks=checks,
         runs_path=runs_path,
+        insolvent_at_index=backtest_result.insolvent_at_index,
     )
 
     return HoldoutConfirmationResult(
@@ -760,6 +783,7 @@ def run_preregistered_holdout(
         psr_result=psr_result,
         outcome=outcome,
         gating_checks=checks,
+        insolvent_at_index=backtest_result.insolvent_at_index,
     )
 
 
