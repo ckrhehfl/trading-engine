@@ -12,10 +12,13 @@ from uuid import uuid4
 
 import pytest
 
+from backtest.engine import run_backtest
 from backtest.kline import Kline
 from metrics.funding import FundingRate
+from metrics.metrics import compute_metrics
 from research.walkforward import generate_folds, run_walk_forward
 from schemas.order_intent import OrderIntent, OrderType, Side
+from tests.insolvency_fixtures import RepeatedLosingRoundTripStrategy, crashing_klines
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -1304,3 +1307,81 @@ def test_logged_walk_forward_config_records_bars_per_day(tmp_path):
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["walk_forward_config"]["bars_per_day"] == 24
+
+
+# ---------------------------------------------------------------------------
+# Scalping Strategy Research Task S7: run_walk_forward now threads its own
+# starting_equity into run_backtest itself, not only into compute_metrics --
+# see .planning/scalp-s7-backtest-insolvency-floor.md. Fixtures shared with
+# test_run_preregistered_holdout.py's identically-purposed test live in
+# insolvency_fixtures.py (CodeRabbit review finding: two independent copies
+# of the same fixture could silently drift into proving different
+# scenarios while both claiming to test the same circuit breaker).
+# ---------------------------------------------------------------------------
+
+
+def test_run_walk_forward_threads_starting_equity_into_run_backtest_bounding_a_runaway_fold(tmp_path):
+    """A strategy that keeps opening and closing a fixed-size position
+    against a market that only ever moves against it would, before this
+    task, keep trading (and losing) for the fold's entire duration
+    (bounded only by `compute_metrics` reporting -- after the fact --
+    however catastrophic the result turned out to be). With
+    `starting_equity` now threaded into `run_backtest` itself, the fold's
+    own fills are capped the moment mark-to-market equity would go
+    non-positive.
+    """
+    klines = crashing_klines(count=202, start_price=10_000, drop=50)
+    strategy = RepeatedLosingRoundTripStrategy()
+    runs_path = tmp_path / "experiments.jsonl"
+    starting_equity = Decimal("1000")
+
+    result = run_walk_forward(
+        klines,
+        strategy,
+        "strat-runaway",
+        "v1",
+        {},
+        train_bars=2,
+        validate_bars=200,
+        step_bars=200,
+        fee_bps=Decimal("0"),
+        slippage_bps=Decimal("0"),
+        starting_equity=starting_equity,
+        bars_per_day=1440,
+        runs_path=runs_path,
+    )
+
+    assert len(result.folds) == 1
+    fold = result.folds[0]
+    assert fold.backtest_result.insolvent_at_index is not None
+    # Bounded: the fold's own fill count is capped at the point insolvency
+    # triggered, nowhere close to one fill per validate bar (200) as it
+    # would be without the floor.
+    assert len(fold.backtest_result.fills) < 20
+
+    # Reference: the SAME strategy/klines WITHOUT the floor at the engine
+    # level (starting_equity=None -- what every call in this codebase did
+    # before this task), scored downstream by the exact same
+    # compute_metrics starting_equity -- proves the bounded result above is
+    # bounded BECAUSE of the fix, not merely a coincidence of this fixture.
+    # Derived from the fold's OWN indices (not hardcoded slice literals --
+    # CodeRabbit review finding: a hardcoded `klines[2:202]` would silently
+    # compare against a different window than the fold actually used if
+    # generate_folds' own boundary arithmetic ever changed) so this
+    # comparison can never silently drift onto a different window than the
+    # fold it's meant to be a reference for.
+    train_klines = klines[fold.train_start_index : fold.train_end_index]
+    validate_klines = klines[fold.validate_start_index : fold.validate_end_index]
+    unbounded_strategy = strategy.fit(train_klines, {}, parent_run_id=None)
+    unbounded_result = run_backtest(validate_klines, unbounded_strategy, Decimal("0"), Decimal("0"))
+    unbounded_metrics = compute_metrics(
+        validate_klines,
+        unbounded_result.filled_intents,
+        unbounded_result.fills,
+        starting_equity,
+        bars_per_day=1440,
+    )
+
+    # The unbounded reference is far more catastrophic than the bounded
+    # fold result -- not just "a bit lower".
+    assert unbounded_metrics.final_equity < fold.metrics.final_equity - Decimal("20000")

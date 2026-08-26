@@ -22,10 +22,11 @@ from uuid import uuid4
 
 import pytest
 
+from backtest.engine import run_backtest
 from backtest.kline import Kline
 from data.bingx_klines import KlineRow
 from data.store import connect, upsert_klines
-from metrics.metrics import Metrics
+from metrics.metrics import Metrics, compute_metrics
 from research.eligibility import PsrResult
 from research.experiment_log import log_holdout_access, read_records
 from research.holdout import HoldoutAlreadyClaimedError
@@ -43,6 +44,7 @@ from research.run_preregistered_holdout import (
     verify_trade_floor,
 )
 from schemas.order_intent import OrderIntent, OrderType, Side
+from tests.insolvency_fixtures import RepeatedLosingRoundTripStrategy, crashing_klines
 
 STEP_MS = 86_400_000  # 1d
 START_MS = (1_700_000_000_000 // STEP_MS) * STEP_MS
@@ -905,3 +907,135 @@ def test_the_cli_without_force_reclaim_reason_propagates_the_already_claimed_err
 def test_the_cli_requires_a_preregistration_path_argument():
     with pytest.raises(SystemExit):
         main([])
+
+
+# ---------------------------------------------------------------------------
+# Scalping Strategy Research Task S7: run_preregistered_holdout now threads
+# its own starting_equity into run_backtest itself, not only into
+# compute_metrics -- see .planning/scalp-s7-backtest-insolvency-floor.md.
+# Fixtures shared with test_walkforward.py's identically-purposed test live
+# in insolvency_fixtures.py (CodeRabbit review finding: two independent
+# copies of the same fixture could silently drift into proving different
+# scenarios while both claiming to test the same circuit breaker).
+# ---------------------------------------------------------------------------
+
+
+def test_run_preregistered_holdout_threads_starting_equity_into_run_backtest_bounding_a_runaway_result(
+    tmp_path, holdout_config_path, runs_path
+):
+    """Same real-shape fixture as `test_walkforward.py`'s identically-
+    purposed test, driven through the dedicated holdout runner instead --
+    a strategy that keeps opening and closing a fixed-size position
+    against a market that only ever moves against it would, before this
+    task, keep trading (and losing) for the entire window. With
+    `starting_equity` now threaded into `run_backtest` itself (not only
+    into `compute_metrics`), the resulting `Metrics.final_equity` is
+    bounded, not catastrophic.
+    """
+    num_bars = 200
+    klines = crashing_klines(count=num_bars, start_price=10_000, drop=50)
+    starting_equity = Decimal("1000")
+
+    prereg = load_preregistration(
+        _write_prereg(
+            tmp_path,
+            holdout_config_path,
+            data={**_config()["data"], "expected_bars": num_bars},
+            declared_detection_floor_sharpe=recompute_detection_floor_sharpe(
+                total_evaluated_bars=num_bars, bars_per_day=1
+            ),
+        )
+    )
+
+    result = run_preregistered_holdout(
+        prereg,
+        strategy=RepeatedLosingRoundTripStrategy(),
+        klines=klines,
+        runs_path=runs_path,
+        starting_equity=starting_equity,
+    )
+
+    # Bounded: far fewer fills than one per bar (200) -- fills stopped once
+    # mark-to-market equity crossed the zero floor, instead of continuing
+    # to open and close new, ever-more-costly round trips for the rest of
+    # the window.
+    assert len(result.metrics.equity_curve) == num_bars  # sanity: the full window was actually evaluated
+    assert result.metrics.num_trades < 20
+    assert result.insolvent_at_index is not None
+
+    # Reference: the SAME strategy/klines WITHOUT the floor at the engine
+    # level (starting_equity=None -- what this module's run_backtest call
+    # did before this task), scored downstream by the exact same
+    # compute_metrics starting_equity -- proves the bounded result above is
+    # bounded BECAUSE of the fix, not merely a coincidence of this fixture.
+    unbounded_strategy = RepeatedLosingRoundTripStrategy().fit(klines, prereg.run_params(), parent_run_id=None)
+    unbounded_result = run_backtest(klines, unbounded_strategy, prereg.fee_bps, prereg.slippage_bps)
+    unbounded_metrics = compute_metrics(
+        klines,
+        unbounded_result.filled_intents,
+        unbounded_result.fills,
+        starting_equity,
+        bars_per_day=int(prereg.procedure["bars_per_day"]),
+    )
+
+    # The unbounded reference is far more catastrophic than the bounded
+    # result -- not just "a bit lower".
+    assert unbounded_metrics.final_equity < result.metrics.final_equity - Decimal("20000")
+
+
+def test_run_preregistered_holdout_logs_insolvent_at_index_when_triggered(tmp_path, holdout_config_path, runs_path):
+    """CodeRabbit review finding on this PR: `insolvent_at_index` was
+    computed by `run_backtest` but discarded -- never reaching the
+    persisted holdout confirmation record. A holdout is a single,
+    un-repeatable access (`research.holdout`'s own single-access
+    enforcement), so this fact, once lost, could never be recovered by
+    re-running -- a future reader of a low-`num_trades` holdout result
+    would have no way to tell "the strategy rarely signaled" apart from
+    "the circuit breaker cut the run short".
+    """
+    num_bars = 200
+    klines = crashing_klines(count=num_bars, start_price=10_000, drop=50)
+    starting_equity = Decimal("1000")
+
+    prereg = load_preregistration(
+        _write_prereg(
+            tmp_path,
+            holdout_config_path,
+            data={**_config()["data"], "expected_bars": num_bars},
+            declared_detection_floor_sharpe=recompute_detection_floor_sharpe(
+                total_evaluated_bars=num_bars, bars_per_day=1
+            ),
+        )
+    )
+
+    result = run_preregistered_holdout(
+        prereg,
+        strategy=RepeatedLosingRoundTripStrategy(),
+        klines=klines,
+        runs_path=runs_path,
+        starting_equity=starting_equity,
+    )
+
+    assert result.insolvent_at_index is not None
+
+    record = next(r for r in _backtest_records(runs_path) if r["run_id"] == result.run_id)
+    assert record["aggregate_metrics"]["insolvent_at_index"] == result.insolvent_at_index
+
+
+def test_run_preregistered_holdout_omits_insolvent_at_index_when_never_triggered(
+    tmp_path, holdout_config_path, db_path, runs_path
+):
+    """The mirror case: a run that never crosses the floor must not carry a
+    fabricated `insolvent_at_index` in either the returned result or the
+    logged record -- and the logged record must OMIT the key entirely
+    (matching this module's own established "field only appears when the
+    feature is actually used" convention), not write a literal `null`.
+    """
+    prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
+
+    result = run_preregistered_holdout(prereg, strategy=_RecordingTrainable(), db_path=db_path, runs_path=runs_path)
+
+    assert result.insolvent_at_index is None
+
+    record = next(r for r in _backtest_records(runs_path) if r["run_id"] == result.run_id)
+    assert "insolvent_at_index" not in record["aggregate_metrics"]

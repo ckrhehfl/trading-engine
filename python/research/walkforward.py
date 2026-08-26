@@ -49,6 +49,29 @@ from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_
 # across the whole run), so this is an arbitrary but fixed reference
 # value -- CLAUDE.md's Eligibility Bar is expressed in ratios (Sharpe,
 # drawdown %, profit factor) that don't depend on its actual magnitude.
+#
+# Scalping Strategy Research Task S7: this same value is now also passed
+# to `backtest.engine.run_backtest`'s own `starting_equity` argument below,
+# not just to `compute_metrics` -- so each fold's own insolvency floor
+# (fills silently stop once a fold's independent mark-to-market equity
+# would go to zero) is seeded from the identical figure its Sharpe/
+# drawdown/profit-factor are computed against. See
+# `.planning/scalp-s7-backtest-insolvency-floor.md`.
+#
+# Disclosed limitation (CodeRabbit review finding on the PR that added
+# this, not a silent gap): a fold run with `funding_rates` supplied (see
+# `run_walk_forward`'s own docstring above) still evaluates the insolvency
+# floor on price-only equity -- `run_backtest`'s internal `PositionTracker`
+# is deliberately constructed with no `funding_rates`, matching this
+# task's own explicit scope ("run_backtest has never had funding awareness
+# ... this task does not add it", `.planning/scalp-s7-backtest-insolvency-
+# floor.md`). A fold whose funding P&L would push it to insolvency earlier
+# or later than its price-only equity suggests is not something the engine
+# gate can see today, even though `compute_metrics`'s own downstream
+# funding-inclusive figures are correct. No currently-registered scalping
+# candidate uses `funding_included: true`, so this has zero practical
+# effect today; it's a real, disclosed gap for a future funding-inclusive
+# walk-forward run, not resolved by this task.
 _DEFAULT_STARTING_EQUITY = Decimal("10000")
 
 # Default Sharpe-annualization bars-per-day, matching
@@ -349,7 +372,9 @@ def run_walk_forward(
         validate_klines = klines[fold.validate_start_index : fold.validate_end_index]
 
         bound_strategy = strategy.fit(train_klines, params, parent_run_id=run_id)
-        backtest_result = run_backtest(validate_klines, bound_strategy, fee_bps, slippage_bps)
+        backtest_result = run_backtest(
+            validate_klines, bound_strategy, fee_bps, slippage_bps, starting_equity=starting_equity
+        )
         fold_metrics = compute_metrics(
             validate_klines,
             backtest_result.filled_intents,
