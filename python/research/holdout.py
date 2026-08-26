@@ -219,6 +219,14 @@ def _kline_row_to_kline(row: KlineRow) -> Kline:
     the timestamp -- every stored `open_time_ms` is an exact multiple of
     1000 given the 900,000ms (15m) grid, so this is always exact, never
     an approximation.
+
+    `taker_buy_base_volume`/`taker_buy_quote_volume` are carried through
+    unchanged (Scalping Strategy Research Task S6) -- `None` for a
+    BingX-sourced row, a real `Decimal` for a Binance-sourced row that
+    captured them (Task S5). A real, closed gap: Task S5 extended
+    `KlineRow` (the storage layer) but this function, the only real path
+    from stored rows to the `Kline` objects a `Strategy` actually
+    observes, silently dropped both fields until now.
     """
     return Kline(
         open_time=datetime.fromtimestamp(row.open_time_ms // 1000, tz=timezone.utc),
@@ -227,6 +235,8 @@ def _kline_row_to_kline(row: KlineRow) -> Kline:
         low=row.low,
         close=row.close,
         volume=row.volume,
+        taker_buy_base_volume=row.taker_buy_base_volume,
+        taker_buy_quote_volume=row.taker_buy_quote_volume,
     )
 
 

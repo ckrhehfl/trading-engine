@@ -99,6 +99,47 @@ def test_load_research_klines_returns_klines_within_the_requested_range(db_path,
     assert len(klines) == 5
 
 
+def test_load_research_klines_carries_taker_buy_volume_through_the_conversion(tmp_path, holdout_config_path):
+    # Scalping Strategy Research Task S6: _kline_row_to_kline must carry
+    # taker_buy_base_volume/taker_buy_quote_volume through -- Task S5
+    # only extended the storage layer (KlineRow); this is the real,
+    # closed gap in the one function that actually converts stored rows
+    # into the Kline objects a Strategy observes.
+    db_path = tmp_path / "klines_with_order_flow.sqlite3"
+    conn = connect(db_path)
+    row_with_flow = KlineRow(
+        open_time_ms=BASE,
+        open=Decimal("100"),
+        high=Decimal("100"),
+        low=Decimal("100"),
+        close=Decimal("100"),
+        volume=Decimal("10"),
+        taker_buy_base_volume=Decimal("6.25"),
+        taker_buy_quote_volume=Decimal("625.5"),
+    )
+    upsert_klines(conn, "BTC-USDT", "15m", [row_with_flow])
+    conn.close()
+
+    klines = load_research_klines(BASE, BASE + STEP, db_path=db_path, holdout_config_path=holdout_config_path)
+
+    assert len(klines) == 1
+    assert klines[0].taker_buy_base_volume == Decimal("6.25")
+    assert klines[0].taker_buy_quote_volume == Decimal("625.5")
+
+
+def test_load_research_klines_leaves_taker_buy_volume_none_for_a_plain_bingx_style_row(
+    db_path, holdout_config_path
+):
+    # Regression: every pre-existing fixture row (via the module-level
+    # _row() helper, no taker-buy fields) must still convert cleanly with
+    # genuine Nones, not a fabricated default.
+    klines = load_research_klines(BASE, BASE + STEP, db_path=db_path, holdout_config_path=holdout_config_path)
+
+    assert len(klines) == 1
+    assert klines[0].taker_buy_base_volume is None
+    assert klines[0].taker_buy_quote_volume is None
+
+
 def test_load_research_klines_clamps_end_ms_to_the_holdout_cutoff(db_path, holdout_config_path):
     # Requesting through bar 19, well past the cutoff at bar 10.
     klines = load_research_klines(

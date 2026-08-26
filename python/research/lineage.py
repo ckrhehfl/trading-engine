@@ -200,6 +200,19 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/scalp-s4-vwap-mid-reversion.md",
     ),
+    # Second real member of this family (Scalping Strategy Research Task
+    # S6) -- also a single pre-registered whole-window 1m holdout
+    # confirmation, against a different symbol/venue (Binance USDT-M
+    # futures BTCUSDT, not BingX BTC-USDT) built specifically for this
+    # candidate by Task S5. A curated entry here for record-keeping/
+    # attribution consistency, per Task S3's own established reasoning --
+    # not because it changes this run's own contribution to the project-
+    # level N, which is zero either way for a holdout confirmation.
+    "ofi-momentum": FamilyEntry(
+        family="btc-scalping",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/scalp-s6-ofi-momentum.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them

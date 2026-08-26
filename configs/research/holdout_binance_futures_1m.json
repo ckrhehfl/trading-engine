@@ -1,0 +1,8 @@
+{
+  "symbol": "BINANCE-FUTURES:BTCUSDT",
+  "interval": "1m",
+  "holdout_cutoff_ms": 1567965420000,
+  "holdout_side": "after",
+  "set_on": "2026-08-26",
+  "rationale": "Scalping Strategy Research Task S6 -- the entire real Binance USDT-M futures BTCUSDT 1m retention window (2019-09-08T17:57:00Z, essentially the futures market's own launch, through present) is reserved as a single whole-window holdout, matching Task S3's design decision for the BingX 1m window exactly: zero/minimal-fitted-parameter candidates have no fitting step that needs a separate research split, so splitting this window would only weaken its own real 6.966-year detection floor (~0.623, this project's best) for no benefit. holdout_cutoff_ms is the real MIN(open_time_ms) for symbol='BINANCE-FUTURES:BTCUSDT', interval='1m' in python/data/var/klines.sqlite3 -- with holdout_side='after', this makes the ENTIRE real window the holdout (no 1m Binance data exists before this timestamp on the real exchange itself, so the research side is trivially empty, same property the BingX 1m holdout config already established)."
+}
