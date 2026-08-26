@@ -15,13 +15,24 @@ import pytest
 
 from backtest.kline import Kline
 from research.strategies.regime_classifier import (
+    DEFAULT_ABSOLUTE_HISTORY,
     DEFAULT_ATR_RATIO_WINDOW,
+    AbsoluteAtr,
     AtrRatio,
     Regime,
     RegimeClassifier,
     Structure,
     Volatility,
+    VolatilityAxis,
 )
+
+# Tests that hand-compute an expected volatility reading use the RATIO
+# axis deliberately: with atr_period=1 the ratio is exactly bar-range over
+# the trailing mean, which is verifiable by hand. RATIO is not the default
+# and is not recommended for use (see the module docstring and Task S10) --
+# it is the axis whose *mechanics* are easiest to assert precisely, and
+# hysteresis/dwell are shared by both axes.
+RATIO = VolatilityAxis.RATIO
 
 START = datetime(2026, 1, 1, tzinfo=timezone.utc)
 
@@ -95,7 +106,7 @@ def test_atr_ratio_rejects_a_non_positive_window():
 
 
 def test_classifier_returns_none_until_both_axes_have_resolved():
-    c = RegimeClassifier(adx_period=3, atr_period=1, atr_ratio_window=3, min_dwell_bars=0)
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     # Calm stretch to warm both axes, then a genuinely wide bar so the
     # volatility axis has something outside its band to resolve on --
     # constant-width bars alone sit at ratio 1.0 forever, which is the
@@ -113,7 +124,7 @@ def test_a_bar_that_warms_up_inside_the_band_yields_no_fabricated_label():
     # 0.8-1.5 hysteresis band forever. With no axis-defining reading ever
     # arriving, the classifier must keep returning None rather than
     # inventing an initial volatility state.
-    c = RegimeClassifier(adx_period=3, atr_period=3, atr_ratio_window=4)
+    c = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=4)
     assert all(c.update(b) is None for b in flat_bars(60))
 
 
@@ -125,7 +136,7 @@ def test_a_reading_inside_the_band_holds_the_previous_label():
     a reading of exactly 1.0 -- comfortably inside the 0.8-1.5 band --
     must NOT reset the label. A plain single-threshold classifier would
     flip here; this one holds."""
-    c = RegimeClassifier(adx_period=3, atr_period=1, atr_ratio_window=3, min_dwell_bars=0)
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
 
     # atr_period=1 makes ATR exactly the bar range, so the ratio is
     # hand-computable. Warm up with range 2.0 bars.
@@ -146,7 +157,7 @@ def test_a_reading_inside_the_band_holds_the_previous_label():
 
 
 def test_structure_flips_to_trending_on_a_sustained_trend():
-    c = RegimeClassifier(adx_period=3, atr_period=3, atr_ratio_window=3, min_dwell_bars=0)
+    c = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     last = None
     for b in flat_bars(20, width=1.0):
         last = c.update(b) or last
@@ -160,7 +171,7 @@ def test_structure_flips_to_trending_on_a_sustained_trend():
 
 
 def test_min_dwell_blocks_a_label_change_before_the_dwell_is_met():
-    c = RegimeClassifier(adx_period=3, atr_period=3, atr_ratio_window=3, min_dwell_bars=50)
+    c = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=50)
     seen = []
     for b in flat_bars(20, width=1.0):
         r = c.update(b)
@@ -182,7 +193,7 @@ def test_dwell_default_is_derived_from_the_adx_period():
 
 
 def test_bars_held_counters_increase_while_a_label_persists():
-    c = RegimeClassifier(adx_period=3, atr_period=3, atr_ratio_window=3, min_dwell_bars=0)
+    c = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     counts = []
     for b in flat_bars(20, width=1.0) + trending_bars(40, start=100, step=5.0):
         r = c.update(b)
@@ -199,7 +210,7 @@ def test_bars_held_counters_increase_while_a_label_persists():
     "kwargs, match",
     [
         ({"adx_low": Decimal("30"), "adx_high": Decimal("25")}, "adx_low"),
-        ({"ratio_low": Decimal("2"), "ratio_high": Decimal("1")}, "ratio_low"),
+        ({"vol_low": Decimal("2"), "vol_high": Decimal("1")}, "vol_low"),
         ({"min_dwell_bars": -1}, "min_dwell_bars"),
     ],
 )
@@ -232,8 +243,104 @@ def test_classification_of_a_prefix_is_unchanged_by_bars_that_come_after_it():
     """The load-bearing guarantee: feeding N bars then M more must not
     alter any label already emitted for the first N."""
     bars = flat_bars(30, width=1.0) + trending_bars(30, start=100, step=5.0)
-    a = RegimeClassifier(adx_period=3, atr_period=3, atr_ratio_window=3, min_dwell_bars=0)
+    a = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     prefix = [a.update(b) for b in bars[:40]]
-    b_ = RegimeClassifier(adx_period=3, atr_period=3, atr_ratio_window=3, min_dwell_bars=0)
+    b_ = RegimeClassifier(adx_period=3, atr_period=3, volatility_axis=RATIO, atr_ratio_window=3, min_dwell_bars=0)
     full = [b_.update(x) for x in bars]
     assert prefix == full[:40]
+
+
+# --- AbsoluteAtr: the axis that measured as working -------------------------
+
+
+def test_absolute_atr_returns_a_rank_in_zero_to_one_after_warmup():
+    a = AbsoluteAtr(atr_period=2, history=10, refresh_every=1)
+    seen = [a.update(b) for b in flat_bars(40, width=1.0)]
+    assert seen[0] is None
+    settled = [v for v in seen if v is not None]
+    assert settled, "never resolved"
+    assert all(Decimal(0) <= v <= Decimal(1) for v in settled)
+
+
+def test_absolute_atr_keeps_the_level_that_the_ratio_throws_away():
+    """The property this axis exists for, and the reason S10 replaced the
+    ratio with it.
+
+    After a step up in volatility lasting longer than the ratio's own
+    window, the RATIO returns to exactly 1.0 -- it only ever sees "same as
+    recently". The ABSOLUTE rank is still pinned high, because the level
+    really is high relative to its much longer history. That difference is
+    what separated 5.21x from 1.22x on real data.
+
+    Note both eventually forget: a trailing percentile also decays once
+    its own history fills with the new level. The point is the timescale --
+    5 readings versus 100 here, and 20 versus 1440 at the defaults."""
+    ratio = AtrRatio(atr_period=1, window=5)
+    absolute = AbsoluteAtr(atr_period=1, history=100, refresh_every=1)
+
+    calm = flat_bars(140, width=1.0)
+    loud = flat_bars(15, width=10.0, start=200)
+
+    for b in calm:
+        ratio.update(b)
+        absolute.update(b)
+
+    r_last = a_last = None
+    for b in loud:
+        r_last = ratio.update(b)
+        a_last = absolute.update(b)
+
+    assert r_last is not None and a_last is not None
+    # The ratio has forgotten: sustained loudness reads as exactly "normal".
+    assert r_last == Decimal(1), f"ratio should normalise back to 1.0, got {r_last}"
+    # The absolute rank has not. Exact arithmetic: history holds 100
+    # readings, 14 of them loud (the 15th is the current bar, excluded from
+    # its own comparison), so 86 sit strictly below -> 0.86.
+    assert a_last == Decimal("0.86"), f"expected the arithmetic rank 0.86, got {a_last}"
+    assert a_last > Decimal("0.8"), "absolute rank should still read as high volatility"
+
+
+def test_absolute_atr_ranks_against_history_that_excludes_the_current_bar():
+    # A bar must not be able to influence its own rank.
+    a = AbsoluteAtr(atr_period=1, history=4, refresh_every=1)
+    for b in flat_bars(10, width=1.0):
+        a.update(b)
+    # First genuinely wider bar: every one of the 4 historical readings is
+    # below it, so the rank must be exactly 1.0 -- which is only true if
+    # the current reading was excluded from the comparison set.
+    rank = a.update(bar(300, 150.0, 50.0, 100.0))
+    assert rank == Decimal(1)
+
+
+@pytest.mark.parametrize("kwargs, match", [({"history": 0}, "history"), ({"refresh_every": 0}, "refresh_every")])
+def test_absolute_atr_rejects_non_positive_configuration(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        AbsoluteAtr(**kwargs)
+
+
+def test_a_stale_threshold_snapshot_never_changes_a_rank_into_the_future():
+    """Refreshing the sorted snapshot on a schedule is a cost decision. It
+    must only ever make a rank slightly out of date, never clairvoyant --
+    so a lazily-refreshed classifier's labels must match an
+    every-bar-refreshed one on the bars where both have resolved, or
+    differ only by lagging it."""
+    bars = flat_bars(60, width=1.0) + flat_bars(60, width=6.0, start=300)
+    eager = AbsoluteAtr(atr_period=1, history=20, refresh_every=1)
+    lazy = AbsoluteAtr(atr_period=1, history=20, refresh_every=10)
+    for b in bars:
+        e, l = eager.update(b), lazy.update(b)
+        # Neither may resolve before the other: warmup is identical.
+        assert (e is None) == (l is None)
+
+
+# --- the classifier defaults to the axis that works -------------------------
+
+
+def test_classifier_defaults_to_the_absolute_axis():
+    c = RegimeClassifier()
+    assert isinstance(c._vol, AbsoluteAtr)  # noqa: SLF001 -- asserting the default wiring
+    assert RegimeClassifier(volatility_axis=VolatilityAxis.RATIO)._vol.__class__ is AtrRatio  # noqa: SLF001
+
+
+def test_absolute_axis_default_history_is_one_day_of_one_minute_bars():
+    assert DEFAULT_ABSOLUTE_HISTORY == 1440

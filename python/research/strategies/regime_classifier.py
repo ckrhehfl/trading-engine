@@ -15,7 +15,19 @@ environments that call for different behaviour, and collapsing them
 loses that. So the label is a pair:
 
     structure   TRENDING | RANGING          (from ADX)
-    volatility  EXPANSION | COMPRESSION     (from an ATR ratio)
+    volatility  EXPANSION | COMPRESSION     (from absolute ATR)
+
+**The volatility axis was measured, and the first version of it was
+wrong.** It originally used an ATR *ratio* -- current ATR over its own
+trailing mean -- which Task S10 measured as separating forward movement
+only 1.22x (top 1% vs all bars) on 3.6M real bars. Swapping to
+**absolute** ATR as a fraction of price, changing nothing else, gives
+**5.21x**, matching the independent rolling-sum-of-|returns| measure's
+5.25x. A ratio to a recent mean throws away exactly the absolute level a
+cost-versus-move decision depends on: a market that doubles its
+volatility and stays there reads 1.0. `VolatilityAxis.ABSOLUTE` is the
+default; `RATIO` is kept only so the negative result stays reproducible.
+See `.planning/scalp-s10-regime-classifier.md`.
 
 **Everything here is reused, not invented.** The ADX implementation and
 its 14-period/20/25 thresholds come from `regime_weighting`; the ATR
@@ -32,10 +44,11 @@ per boundary so the label cannot flicker at a single crossing point. That
 falls out of the existing constants rather than needing new ones: ADX
 above 25 means trending, below 20 means ranging, and **the 20-25 band
 holds whatever the previous state was**. The volatility axis works
-identically -- above 1.5 expansion, below 0.8 compression, and the band
-between holds. This is the same shape `compute_regime_weight` already
-uses those constants for, applied to a discrete label instead of a
-continuous weight.
+identically -- above the 90th percentile of its own trailing history is
+expansion, below the 25th is compression, and the band between holds.
+This is the same shape `compute_regime_weight` already uses the ADX
+constants for, applied to a discrete label instead of a continuous
+weight.
 
 **Minimum dwell time, derived rather than picked.** S8 also requires a
 minimum dwell so a label cannot change on consecutive bars. The default
@@ -49,11 +62,12 @@ current bar and state accumulated from bars already fed, the same
 guarantee `AverageTrueRange.update` and `AverageDirectionalIndex.update`
 document for themselves. `classify` returns `None` throughout warmup --
 the "no evidence yet" convention used everywhere else in this codebase --
-and warmup is genuinely long here, because the ATR ratio needs `atr_period`
-bars to produce a first ATR and then `atr_ratio_window` more ATR readings
-to have something to compare against.
+and warmup is genuinely long here, because the volatility axis needs
+`atr_period` bars to produce a first ATR and then a full trailing
+history of ATR readings to rank against.
 """
 
+from bisect import bisect_left
 from collections import deque
 from dataclasses import dataclass
 from decimal import Decimal
@@ -80,6 +94,22 @@ DEFAULT_ATR_RATIO_WINDOW = 20
 # DEFAULT_ADX_LOW/HIGH_THRESHOLD already behave for the structure axis.
 DEFAULT_ATR_RATIO_HIGH = Decimal("1.5")
 DEFAULT_ATR_RATIO_LOW = Decimal("0.8")
+
+# AbsoluteAtr's trailing reference window, and how often it is re-sorted.
+# 1440 = one day of 1-minute bars: long enough that a rank means something
+# beyond the last few minutes, short enough to track a genuinely shifting
+# volatility level. Refreshing the sorted snapshot every 60 bars keeps the
+# cost negligible over millions of bars; see AbsoluteAtr on why a stale
+# snapshot is safe in the only direction that matters.
+DEFAULT_ABSOLUTE_HISTORY = 1440
+DEFAULT_ABSOLUTE_REFRESH = 60
+
+# Percentile-rank thresholds for the ABSOLUTE axis. Above the 90th
+# percentile of its own trailing history is high volatility, below the
+# 25th is low, and the band between holds the previous label -- the same
+# hysteresis shape the ADX 20/25 band already provides for structure.
+DEFAULT_ABSOLUTE_HIGH = Decimal("0.90")
+DEFAULT_ABSOLUTE_LOW = Decimal("0.25")
 
 
 class Structure(Enum):
@@ -111,6 +141,21 @@ class AtrRatio:
     readings -- a scale-free measure of whether volatility is expanding or
     compressing *relative to its own recent past*, which is what makes it
     comparable across price levels and across assets.
+
+    **Measured and found not to work for regime conditioning. Retained
+    only because it is what `VolatilityAxis.RATIO` selects, and that
+    option exists so the negative result stays reproducible.** Task S10
+    compared three conditioners on 3.6M real bars, holding everything
+    else identical: a rolling sum of absolute returns separated forward
+    15-minute movement 5.25x (top 1% vs all bars), absolute ATR as a
+    fraction of price 5.21x, and *this* ratio only **1.22x**. Same ATR
+    input as the absolute measure; the sole difference is dividing by the
+    trailing mean instead of by price, and that one operation destroys
+    the signal -- because a market that doubles its volatility and stays
+    there returns a ratio of 1.0. "Compression" here means *quieter than
+    it recently was*, not *quiet*, and a cost-versus-move decision needs
+    the latter. Prefer `VolatilityAxis.ABSOLUTE`; see
+    `.planning/scalp-s10-regime-classifier.md`.
 
     Returns `None` until the underlying `AverageTrueRange` has warmed up
     **and** `window` ATR readings have accumulated after that. The current
@@ -155,6 +200,92 @@ class AtrRatio:
         return ratio
 
 
+class AbsoluteAtr:
+    """ATR as a fraction of price, in bps, ranked against its own trailing
+    history -- the volatility measure Task S10 measured as actually
+    working (5.21x separation, versus 1.22x for `AtrRatio`).
+
+    The difference from `AtrRatio` is the denominator: dividing ATR by
+    *price* keeps the absolute volatility level, where dividing by its own
+    trailing mean throws that level away. Dividing by price rather than
+    using raw ATR is what makes the number comparable across a market that
+    went from $16k to $100k over the window.
+
+    `update()` returns the current reading's **percentile rank within the
+    trailing `history` readings**, in `[0, 1]`, or `None` during warmup.
+    A rank is used rather than a raw bps figure so a caller can apply
+    fixed thresholds (`>= 0.9` = high volatility) that stay meaningful as
+    the market's own volatility level drifts over years.
+
+    **This forgets too -- the difference from `AtrRatio` is timescale, not
+    kind.** A trailing percentile also decays once its window fills with
+    the new level: a volatility step that persists for `history` bars
+    eventually reads mid-rank again. The default history of 1440 bars is
+    72x the ratio's 20-reading window, so a burst lasting minutes to hours
+    stays visible where the ratio has already normalised it away. A
+    genuinely permanent regime shift will fade from both, which is correct
+    -- "high volatility" is only meaningful relative to some reference.
+
+    **Look-ahead safety, and why the thresholds are recomputed on a
+    schedule.** The rank is computed against a snapshot of the trailing
+    window, refreshed every `refresh_every` bars. Refreshing on a schedule
+    rather than every bar is a cost decision -- sorting a long window on
+    every one of millions of bars is prohibitive -- and it is safe in the
+    only direction that matters: the snapshot is always built from bars
+    strictly older than the one being ranked, so a bar can never influence
+    its own rank, and a stale snapshot makes the rank slightly
+    out-of-date rather than clairvoyant.
+    """
+
+    __slots__ = ("_atr", "_history", "_refresh_every", "_since_refresh", "_sorted")
+
+    def __init__(
+        self,
+        atr_period: int = DEFAULT_ATR_PERIOD,
+        history: int = DEFAULT_ABSOLUTE_HISTORY,
+        refresh_every: int = DEFAULT_ABSOLUTE_REFRESH,
+    ) -> None:
+        if history <= 0:
+            raise ValueError(f"history must be positive, got {history}")
+        if refresh_every <= 0:
+            raise ValueError(f"refresh_every must be positive, got {refresh_every}")
+        self._atr = AverageTrueRange(period=atr_period)
+        self._history: deque[Decimal] = deque(maxlen=history)
+        self._refresh_every = refresh_every
+        self._since_refresh = 0
+        self._sorted: list[Decimal] = []
+
+    def update(self, kline: Kline) -> Decimal | None:
+        atr = self._atr.update(kline)
+        if atr is None or kline.close <= 0:
+            return None
+        reading = atr / kline.close * 10_000
+
+        rank: Decimal | None = None
+        if len(self._history) == self._history.maxlen:
+            if not self._sorted or self._since_refresh >= self._refresh_every:
+                self._sorted = sorted(self._history)
+                self._since_refresh = 0
+            self._since_refresh += 1
+            below = bisect_left(self._sorted, reading)
+            rank = Decimal(below) / Decimal(len(self._sorted))
+
+        self._history.append(reading)
+        return rank
+
+
+class VolatilityAxis(Enum):
+    """Which volatility measure `RegimeClassifier` uses.
+
+    `ABSOLUTE` is the default and the only one measured to work.
+    `RATIO` reproduces the S10 negative result and exists for that
+    purpose; it is not a supported way to condition a strategy.
+    """
+
+    ABSOLUTE = "absolute"
+    RATIO = "ratio"
+
+
 class RegimeClassifier:
     """Feeds each bar to both axes and applies hysteresis plus a minimum
     dwell time before allowing either label to change.
@@ -178,12 +309,12 @@ class RegimeClassifier:
         "_adx",
         "_adx_high",
         "_adx_low",
-        "_atr_ratio",
         "_min_dwell_bars",
-        "_ratio_high",
-        "_ratio_low",
         "_structure",
         "_structure_bars",
+        "_vol",
+        "_vol_high",
+        "_vol_low",
         "_volatility",
         "_volatility_bars",
     )
@@ -192,26 +323,41 @@ class RegimeClassifier:
         self,
         adx_period: int = DEFAULT_ADX_PERIOD,
         atr_period: int = DEFAULT_ATR_PERIOD,
+        volatility_axis: VolatilityAxis = VolatilityAxis.ABSOLUTE,
         atr_ratio_window: int = DEFAULT_ATR_RATIO_WINDOW,
+        absolute_history: int = DEFAULT_ABSOLUTE_HISTORY,
+        absolute_refresh: int = DEFAULT_ABSOLUTE_REFRESH,
         adx_low: Decimal = DEFAULT_ADX_LOW_THRESHOLD,
         adx_high: Decimal = DEFAULT_ADX_HIGH_THRESHOLD,
-        ratio_low: Decimal = DEFAULT_ATR_RATIO_LOW,
-        ratio_high: Decimal = DEFAULT_ATR_RATIO_HIGH,
+        vol_low: Decimal | None = None,
+        vol_high: Decimal | None = None,
         min_dwell_bars: int | None = None,
     ) -> None:
         if adx_low > adx_high:
             raise ValueError(f"adx_low ({adx_low}) must not exceed adx_high ({adx_high})")
-        if ratio_low > ratio_high:
-            raise ValueError(f"ratio_low ({ratio_low}) must not exceed ratio_high ({ratio_high})")
         if min_dwell_bars is not None and min_dwell_bars < 0:
             raise ValueError(f"min_dwell_bars must not be negative, got {min_dwell_bars}")
 
+        if volatility_axis is VolatilityAxis.ABSOLUTE:
+            self._vol = AbsoluteAtr(
+                atr_period=atr_period,
+                history=absolute_history,
+                refresh_every=absolute_refresh,
+            )
+            default_low, default_high = DEFAULT_ABSOLUTE_LOW, DEFAULT_ABSOLUTE_HIGH
+        else:
+            self._vol = AtrRatio(atr_period=atr_period, window=atr_ratio_window)
+            default_low, default_high = DEFAULT_ATR_RATIO_LOW, DEFAULT_ATR_RATIO_HIGH
+        vol_low = default_low if vol_low is None else vol_low
+        vol_high = default_high if vol_high is None else vol_high
+        if vol_low > vol_high:
+            raise ValueError(f"vol_low ({vol_low}) must not exceed vol_high ({vol_high})")
+
         self._adx = AverageDirectionalIndex(period=adx_period)
-        self._atr_ratio = AtrRatio(atr_period=atr_period, window=atr_ratio_window)
         self._adx_low = adx_low
         self._adx_high = adx_high
-        self._ratio_low = ratio_low
-        self._ratio_high = ratio_high
+        self._vol_low = vol_low
+        self._vol_high = vol_high
         # Default derived from the ADX lookback, not picked -- see module
         # docstring.
         self._min_dwell_bars = adx_period if min_dwell_bars is None else min_dwell_bars
@@ -251,7 +397,7 @@ class RegimeClassifier:
 
     def update(self, kline: Kline) -> Regime | None:
         adx = self._adx.update(kline)
-        ratio = self._atr_ratio.update(kline)
+        vol = self._vol.update(kline)
 
         self._structure, self._structure_bars = self._resolve(
             adx,
@@ -263,9 +409,9 @@ class RegimeClassifier:
             self._structure_bars,
         )
         self._volatility, self._volatility_bars = self._resolve(
-            ratio,
-            self._ratio_low,
-            self._ratio_high,
+            vol,
+            self._vol_low,
+            self._vol_high,
             Volatility.COMPRESSION,
             Volatility.EXPANSION,
             self._volatility,

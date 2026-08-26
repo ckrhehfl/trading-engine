@@ -139,3 +139,102 @@ correlation of trailing vs forward H-bar simple returns, stepping H bars
 so samples do not overlap. Both on already-spent windows; no holdout
 accessed, no strategy configuration selected, nothing logged to
 `runs/experiments.jsonl`.
+
+---
+
+# Follow-up, same day: the hypothesis was right, and the fix is partial
+
+The section above closed by naming an untested guess — that the ATR
+*ratio* was the culprit, because it normalises away absolute level — and
+called testing it a cheap experiment. It was, so it was run.
+
+## The ratio was the whole problem, isolated cleanly
+
+Three conditioners, same 3,661,780 bars, same global percentile buckets,
+same forward 15-minute move. Only the measure differs:
+
+| Conditioner | All bars | Top 1% | Separation |
+|---|---|---|---|
+| A. Activity — rolling 30-bar sum of \|1m returns\| (S8/S9 baseline) | 11.9bps | 62.5bps | **5.25x** |
+| B. ATR **ratio** — ATR(14) ÷ mean of trailing 20 ATRs | 11.9bps | 14.6bps | **1.22x** |
+| C. ATR **absolute** — ATR(14) ÷ price | 11.9bps | 62.0bps | **5.21x** |
+
+B and C take **the same ATR(14) input**. The only difference is the
+denominator — trailing mean versus price — and it accounts for the entire
+gap. It was not the hysteresis, not the dwell, not ADX noise. C also
+lands within 1% of the independent activity measure, which is a useful
+cross-check: two unrelated formulations of "how much is this market
+moving right now" agree, and the ratio disagrees with both.
+
+## What changed in the code
+
+`AbsoluteAtr` replaces `AtrRatio` as the default volatility axis
+(`VolatilityAxis.ABSOLUTE`). It reports ATR as a fraction of price —
+keeping the level — and returns its **percentile rank within a trailing
+1,440-bar history** rather than a raw figure, so fixed thresholds stay
+meaningful as the market's own volatility drifts across years.
+
+Look-ahead safety with an affordable cost: the sorted reference snapshot
+refreshes every 60 bars rather than every bar. That is safe in the only
+direction that matters — the snapshot is always built from strictly older
+bars, so a bar can never influence its own rank, and staleness makes a
+rank slightly out of date rather than clairvoyant.
+
+`AtrRatio` and `VolatilityAxis.RATIO` are kept **only so the negative
+result stays reproducible**, and both say so in their own docstrings.
+
+**A real property found by a test rather than assumed**: the absolute
+measure forgets too. A trailing percentile decays once its window fills
+with the new level — the difference from the ratio is timescale (1,440
+bars versus 20, a 72x ratio), not kind. A permanently shifted regime
+fades from both, which is correct: "high volatility" is only meaningful
+against some reference.
+
+## Re-characterisation: better, balanced, and still much weaker than the raw measure
+
+| Regime | Share | 15m median | 60m median |
+|---|---|---|---|
+| trending / expansion | 29.6% | **15.6bps** | 28.8bps |
+| ranging / expansion | 9.9% | **15.1bps** | 28.6bps |
+| trending / compression | 43.9% | 10.0bps | 19.6bps |
+| ranging / compression | 16.5% | 10.4bps | 20.5bps |
+
+Two things, and the second matters more than the first:
+
+1. **The volatility axis now works.** Expansion reads ~15.5bps against
+   compression's ~10.2bps, and the label distribution is balanced
+   (43.9/29.6/16.5/9.9) where before it was 59.9/24.1/13.7/**2.3**. BingX
+   shows the same pattern at a slightly lower level. That is a genuine
+   fix, not a rounding difference.
+
+2. **The structure axis still contributes nothing.** Within a volatility
+   state the two structures are indistinguishable — 15.6 vs 15.1 in
+   expansion, 10.0 vs 10.4 in compression. Every bit of the separation
+   comes from volatility. Combined with the directional test above (all
+   correlations under 0.015), ADX has now failed to carry information on
+   *both* axes it could plausibly have carried it on.
+
+3. **Discretising costs most of the signal.** The classifier separates
+   ~1.5x where the continuous measure it is built from separates 5.2x.
+   That is the expected price of two states plus hysteresis plus a
+   14-bar dwell, but it is a large price, and it means the label is a
+   worse conditioner than the number underneath it.
+
+## Revised conclusion
+
+- **Use the continuous absolute volatility measure**, not the
+  discretised regime label, wherever a conditioner is needed — including
+  S8 step 3's per-feature IC work. 5.2x beats 1.5x, and nothing about
+  the IC measurement needs a discrete label.
+- **The regime label earns its place only where a discrete state is
+  genuinely required** — for example gating "trade / do not trade" — and
+  even then the structure axis should be dropped or replaced until
+  something shows it adds information.
+- **ADX is now measured as unhelpful here twice**, on magnitude and on
+  direction. Keeping it in the classifier is not justified by anything in
+  this task; it stays only because removing it is a separate change and
+  the axis is inert rather than harmful.
+- The earlier instruction stands in spirit and is narrowed in fact: do
+  not gate on the *classifier* as a whole, and specifically do not rely
+  on its structure axis. Its volatility axis is now sound, just weaker
+  than using the underlying measure directly.
