@@ -3120,9 +3120,10 @@ scalping research entirely.
   this project's shared backtest engine should eventually gain a real
   insolvency/circuit-breaker concept, or equity-compounding sizing, is a
   genuine, disclosed, project-wide open question this result makes
-  concrete, not decided or scoped here (it would touch
-  `backtest/engine.py`/`risk_management.py`, shared infrastructure used
-  by every strategy in this codebase, not just scalping candidates). Per
+  concrete (it would touch `backtest/engine.py`/`risk_management.py`,
+  shared infrastructure used by every strategy in this codebase, not
+  just scalping candidates) — **the circuit-breaker half is now built,
+  see Task S7 below; equity-compounding sizing remains open.** Per
   the registration's own `outcome_interpretation` (same `sr-ab`-style
   narrow scoping `vwap-mid-reversion`'s own registration used): parks
   THIS SPECIFIC hypothesis as a candidate; does not end the broader
@@ -3137,7 +3138,76 @@ access per S3's design decision) → S5 (Binance `1m` + order-flow data
 infrastructure, prompted by S4's INCONCLUSIVE result and the negative
 OFI/liquidation-cascade investigations above) → S6 (second real
 candidate, order-flow-imbalance momentum, with a real ATR-based risk
-control — real holdout executed, INCONCLUSIVE).
+control — real holdout executed, INCONCLUSIVE) → S7 (backtest engine
+insolvency floor, the shared-infrastructure gap both S4 and S6
+disclosed — done, PR #117).
+
+- **Task S7** — backtest engine insolvency floor. `python/backtest/
+  engine.py::run_backtest` gained a keyword-only `starting_equity: Decimal
+  | None = None` parameter (`None` default, byte-for-byte no-op — proven
+  by the full pre-existing suite passing unmodified). When supplied, it
+  reuses `metrics.position.PositionTracker` (not a second hand-rolled
+  tracker) to mark equity to market at the top of every bar — same
+  formula, same order, as `metrics.metrics.build_equity_curve`'s own
+  downstream computation, so the two can't silently drift apart — and
+  once equity reaches exactly `Decimal("0")` (a permanent, non-resetting
+  flag; a real liquidated account doesn't un-liquidate on a later bar's
+  favorable mark-to-market), the strategy is still called every remaining
+  bar (preserving a stateful strategy's own internal continuity) but its
+  returned `OrderIntent` is silently discarded rather than filled. No
+  liquidation fill is synthesized — the already-open position, if any, is
+  simply left for `metrics.py`'s existing final-bar force-close logic to
+  handle, unchanged; a real, disclosed consequence of that choice is that
+  `final_equity` can still read more negative than the level that
+  triggered insolvency, since the fix bounds *new* exposure after going
+  insolvent, not the eventual magnitude on whatever was already open. The
+  floor is hardcoded at exactly zero, not a tunable/margin-aware
+  parameter — deliberate: no margin-rate input exists anywhere in this
+  codebase to justify a non-zero one, and adding a knob without one would
+  just invent a number. `BacktestResult` gained an additive
+  `insolvent_at_index: int | None = None` field. `research/walkforward.py`
+  and `research/run_preregistered_holdout.py` now thread `starting_equity`
+  into their own `run_backtest` calls (previously only `compute_metrics`
+  saw it), turning the floor on by default for every future walk-forward
+  fold and holdout confirmation; `research/run_preregistered.py` needed no
+  change (delegates to `walkforward.py`); `research/robustness.py`'s own
+  separate, diagnostic-only `run_backtest` call site was deliberately left
+  at `starting_equity=None`, out of this task's scope.
+
+  **Resolves only the circuit-breaker half of the open question S6 named
+  above — equity-compounding sizing (making a strategy's own position
+  sizing equity-aware, not just capping when the engine stops accepting
+  new fills) remains a separate, different, undone direction.**
+  `research/strategies/risk_management.py::compute_position_size` and
+  every strategy's own sizing logic are completely untouched — a
+  strategy still sizes every trade against the fixed
+  `DEFAULT_REFERENCE_EQUITY` constant, exactly as before this task.
+  Neither already-logged scalping holdout (`vwap-mid-reversion`,
+  `ofi-momentum`) was re-run or touched — both remain historical,
+  immutable, spent single-access INCONCLUSIVE records; this task adds
+  engine capability for future runs only.
+
+  A real CodeRabbit review round produced 6 findings, 4 fixed (a real gap
+  where `insolvent_at_index` was computed but never logged into the
+  holdout confirmation record — fixed, since a holdout's single-access
+  nature means an unrecorded circuit-breaker trip would be permanently
+  unrecoverable information; a stale docstring cross-reference; two test
+  duplication/robustness nitpicks) and 2 declined with a written,
+  code-cited rebuttal rather than silently applied: a claimed same-candle
+  lookahead in using `kline.close` for the insolvency check, refuted by
+  this codebase's own established visibility convention (`KlineWindow`,
+  `simulate_fill`'s docstring, and this file's own "shown bars up to and
+  including the current one" rule all treat a bar's close as legitimately
+  visible the moment it's the current bar — switching to `kline.open`
+  would introduce a new inconsistency, not remove a real risk); and a
+  suggestion to feed funding P&L into the insolvency gate, which directly
+  contradicted this task's own deliberate scope boundary (`run_backtest`
+  has never been funding-aware) — disclosed as a known, currently-inert
+  gap in a code comment instead of silently expanding scope under review
+  pressure. Full account: `.planning/scalp-s7-backtest-insolvency-floor.md`.
+  Full suite: **1550/1550 passing** (up from 1535 before this task),
+  independently re-run and confirmed by the coordinating session, not
+  only reported by the implementing agent.
 
 **Explicitly out of scope this phase**: tick/trade-level data, true
 HFT, co-location (confirmed with the human operator, stays inside the
