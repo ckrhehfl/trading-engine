@@ -1068,61 +1068,58 @@ Non-negotiable once strategy research begins:
 
 ### Strategy Research Operational Design
 
-The mechanics the paragraph above left deliberately open (experiment-
-tracking format, walk-forward window sizing, holdout-split mechanics)
-were designed on 2026-07-25 and built across four sequenced tasks, now
-all merged to `main`: `python/data/` (historical BingX kline pipeline,
-SQLite cache), `python/backtest/kline_window.py` + `python/metrics/`
-(O(1) lookahead-safe iteration, position/equity/Sharpe/drawdown
-reconstruction), `python/research/` (walk-forward harness, holdout
-enforcement, the `runs/experiments.jsonl` experiment log), and
-`python/research/strategies/ma_crossover.py` (a placeholder MA-crossover
-`TrainableStrategy` proving the pipeline end-to-end for real against
-live BingX data — not a validated strategy, see its docstring). Full
-build detail, judgment calls, and any deviation from the original
-design live in `.planning/sr-a-data-pipeline.md`,
-`.planning/sr-b-engine-metrics.md`, `.planning/sr-c-walkforward-holdout.md`,
-and `.planning/sr-d-placeholder-strategy.md` — this
-section is trimmed to a pointer per `.planning/README.md`'s "Where does
-a design belong" rule now that the work has actually happened.
+The mechanics the section above leaves open — experiment-tracking format,
+walk-forward window sizing, holdout-split enforcement — were designed
+2026-07-25 and built across four merged tasks: `python/data/` (BingX
+kline pipeline, SQLite cache), `python/backtest/kline_window.py` +
+`python/metrics/` (O(1) lookahead-safe iteration, position/equity/Sharpe/
+drawdown reconstruction), `python/research/` (walk-forward harness,
+holdout enforcement, the `runs/experiments.jsonl` log), and
+`research/strategies/ma_crossover.py` (a placeholder proving the pipeline
+end to end against live data — not a validated strategy). Build detail
+and judgment calls: `.planning/sr-a-*.md` through `sr-d-*.md`.
 
-Provisional default walk-forward windows (defined in bars, the
-canonical unit, not calendar months): train = 8,640 bars (~90 days),
-validate = 2,880 bars (~30 days), step = validate (2,880 bars) —
-rolling (fixed-size sliding, not expanding), non-overlapping by
-default.
+**Default walk-forward windows** (defined in bars, the canonical unit,
+not calendar months): train 8,640 bars (~90 days), validate 2,880 (~30
+days), step = validate — rolling fixed-size sliding, not expanding,
+non-overlapping by default. These are the 15m defaults.
 
-**Walk-forward depth**: a real BingX backfill (2026-07-25/26) found only
-~252 days of actual historical retention for `BTC-USDT`/`15m` (24,199
-bars) — only 3 non-overlapping folds at the windows above, short of the
-Eligibility Bar's "8-10 folds" floor. This was practically addressed,
-not resolved as a one-time human decision: `sr-f` found `1h` bars have
-~27 months of real BingX history (vs. ~8.3 months at `15m`, 16,078
-research bars after the holdout cutoff) and moved primary strategy
-research to `1h` bars with its own, smaller windows (`train_bars=2160`,
-`validate_bars=720`, `step_bars=720` — distinct from the `15m`
-defaults above, scaled down for the `1h` timeframe, not the same
-numbers on a different unit), yielding **19** real folds — the fold
-count behind every `1h`-timeframe result in "Strategy Attempts So Far"
-below (the earlier `15m` runs counted there have 3).
+**Per-timeframe fold geometry**, each derived from that timeframe's real
+measured retention rather than assumed:
 
-**A third timeframe, `1d`, and an inverted holdout (`sr-t`,
-2026-07-28)**: every one of the 1,839 logged backtest runs starts at or
-after 2024-04-27T10:00:00Z (1h retention's floor — verified directly
-against `runs/experiments.jsonl`), so **1d data before that date has
-been touched by zero trials in this project's history**. `sr-t` wired
-`1d` into the data pipeline and reserved that early window as a holdout:
-`configs/research/holdout_1d.json` uses a new, optional, backward-
-compatible `"holdout_side": "before"` config key (default `"after"`, so
-the 15m/1h configs are unaffected), making the holdout the **earliest**
-1,079 daily bars rather than a trailing slice. That looks backwards and
-isn't — a holdout is data whose contents have informed no decision, and
-here that is the early window; full reasoning in
-`.planning/sr-t-daily-data-path.md` and `python/research/holdout.py`'s
-module docstring. Detection floor ~0.96 annualized Sharpe over ~2.95
-years, vs. ~2.57 for the 1h trailing holdout. **No strategy has been
-written, run, or evaluated against 1d data** — deliberately, the
-specification must be committed before that window is ever loaded.
+| Timeframe | Geometry | Folds | Notes |
+|---|---|---|---|
+| 15m | the defaults above | 3 | ~252 days retention (24,199 bars) — short of the Eligibility Bar's 8-10 fold floor, which is why primary research moved off it |
+| 1h | `train_bars=2160`, `validate_bars=720`, `step_bars=720` | **19** | scaled down for the timeframe, not the same numbers on a different unit; the fold count behind every 1h result in "Strategy Attempts" below |
+| 1d | `train_bars=90`, `validate_bars=60`, `step_bars=60` | 12 | used by the macro-conditioned attempts on the 1d research split |
+
+**Detection floors, by window** — the annualized Sharpe below which a
+result cannot be distinguished from noise at one-sided α=0.05, computed
+as `1.6449/sqrt(years)` on daily-resampled returns (the floor depends on
+**calendar span, not bar count**, which is why a finer timeframe does not
+buy statistical power):
+
+| Window | Floor |
+|---|---|
+| 15m research | ~2.18 |
+| 1h research | ~1.21 |
+| 1h trailing holdout | ~2.57 |
+| 1d early-window holdout | ~0.96 |
+| Binance spot 1d "virgin" holdout | ~0.85 |
+| BingX 1m (full 631.98-day window) | ~1.25 |
+| Binance futures 1m (full 6.96-year window) | **~0.62** — the best this project has, and still unspent |
+
+**The `1d` holdout is inverted, deliberately** (`sr-t`): every logged
+backtest run starts at or after 2024-04-27T10:00Z (1h retention's floor),
+so 1d data *before* that date had been touched by zero trials.
+`configs/research/holdout_1d.json` therefore uses the optional
+`"holdout_side": "before"` key (default `"after"`, so 15m/1h configs are
+unaffected), reserving the **earliest** 1,079 daily bars rather than a
+trailing slice. That looks backwards and isn't — a holdout is data whose
+contents have informed no decision, and here that is the early window.
+Full reasoning: `.planning/sr-t-daily-data-path.md` and
+`research/holdout.py`'s module docstring. That holdout has since been
+spent, once, by `sr-v`.
 
 **Backtest/Walk-Forward Eligibility Bar** (defaults — same status as
 Risk Parameters: changing these needs explicit human approval; approved
@@ -1430,376 +1427,72 @@ equity-curve retention has to be built before the trigger can ever fire.
 That is a further reason this is a deferral rather than a near-term plan,
 not a reason to weaken the condition.
 
-### Strategy Attempts So Far (closed out 2026-07-29; BTC-only price-signal research line ended 2026-07-30, `sr-v`; first macro-conditioned attempt `sr-x`, 2026-08-03; second and, per explicit human decision, last planned macro-conditioned attempt `sr-y`, 2026-08-04)
+### Strategy Attempts So Far
 
-Eight strategy attempts across **four research families** (plus
-infrastructure demos) were built and walk-forward validated against real
-BingX data in Tasks E-L and N-O: naive SMA crossover, ATR-risk-managed
-crossover (15m and 1h), a multi-lookback ensemble with ADX regime
-weighting and volatility targeting (refined into "Configuration C"),
-regime-gated mean-reversion, a momentum/mean-reversion blend, an
-on-balance-volume trend strategy, and a funding-rate-extremity
-contrarian strategy. Per-task detail and honest negative findings:
-`.planning/sr-e-*.md` through `.planning/sr-o-*.md`.
+Every attempt below was walk-forward validated or holdout-confirmed
+against real exchange data, and every result — including the negative
+ones, which is most of them — is recorded honestly in its own
+`.planning/` doc. **Nothing has cleared the Eligibility Bar outright.**
+One strategy proceeded to paper trading anyway, under an explicit,
+narrowly-scoped human policy exception documented immediately below this
+subsection.
 
-**`sr-r` closed this line of research out statistically.** Every
-distinct multi-fold run in the log — **18 configurations de-duplicated
-from 33 runs** — was re-judged under `sr-p`'s honest trial count and
-`sr-q`'s Deflated Sharpe Ratio. Full table:
-`.planning/sr-r-retrospective-closeout.md`.
+**The single most important finding is about the windows, not the
+strategies.** The 1h research window's own detection floor is **~1.21**
+annualized Sharpe (one-sided α=0.05 over 1.84 years); the 15m window's is
+**~2.18**. A real edge of 0.4-0.8 Sharpe — the range credible
+institutional trend-following actually reports — **could not have been
+detected there by any strategy, however well specified.** So the
+uniformly near-zero DSRs below mean **not shown**, emphatically not
+**shown absent**. Configuration C would have needed an annualized Sharpe
+of 4.6 to clear DSR 0.95 at that `N`, which says more about having
+searched 117 times against 1.8 years of one symbol than about any
+strategy. This is why the standing rule above closes the 1h window to
+*selection* while leaving it open for reproduction, diagnosis, and
+infrastructure testing.
 
-**Result: nothing survives. 0 of 18.** The best result in the project's
-history (Configuration C with funding P&L, mean annualized Sharpe
-**+0.039**) reaches **DSR = 2.0e-05** against the project's **117**
-research selection trials — indistinguishable from the best of 117 coin
-flips. Twelve configurations are `REJECTED`, two
-`REJECTED-UNDERPOWERED`, four `INCONCLUSIVE-DATA-LIMITED` (below the
-trade-count floor: both funding-extremity runs at 7 and 14 trades, and
-two early runs).
+| Line of work | Attempts | Outcome | Records |
+|---|---|---|---|
+| BTC-only price signals (15m/1h): SMA crossover, ATR-risk-managed crossover, multi-lookback ensemble with ADX regime weighting and vol targeting ("Configuration C"), regime-gated mean reversion, momentum/mean-reversion blend, on-balance-volume trend, funding-rate extremity | 8 strategies across 4 families; **18 distinct configurations** de-duplicated from 33 runs | **0 of 18 survive.** 12 `REJECTED`, 2 `REJECTED-UNDERPOWERED`, 4 `INCONCLUSIVE-DATA-LIMITED`. Best in project history — Configuration C with funding P&L, mean annualized Sharpe **+0.039** — reaches **DSR = 2.0e-05** against 117 research selection trials: indistinguishable from the best of 117 coin flips. | `sr-e` … `sr-o`; retrospective closeout `sr-r` |
+| `daily-tsmom-ensemble` on the 1d early-window holdout (BingX 2021-2024) — zero-fitted-parameter Moskowitz-Ooi-Pedersen, specification and registration committed *before* any 1d data was accessed | 1 pre-registered access | **INCONCLUSIVE.** PSR 0.9367 (< 0.95); Sharpe 0.882 (< the window's own 0.9567 floor — "not powered to confirm"); 26 trades (< 53). Drawdown 12.0% and profit factor 2.87 both cleared comfortably. | `sr-s`, `sr-t`, `sr-u`, `sr-v` |
+| Macro-conditioned signals on the untouched BTC 1d *research* split: 10-year real yield (`DFII10`, inverted), then S&P 500 trend (`SP500`, not inverted). Both zero-fitted-parameter, same 63-day lookback, same fold geometry for direct comparability | 2 attempts, pre-authorized individually | Both **INCONCLUSIVE-DATA-LIMITED** — 34 and 19 trades against a 36-trade floor. Remaining metrics are descriptive only and are **not** grounds for a directional conclusion either way. Named temptations (loosen the geometry, flip the inversion, shorten the lookback) were recorded and not acted on. | `sr-w`, `sr-x`, `sr-y` |
+| Same-asset alternate-venue replication of the identical `daily-tsmom-ensemble` hypothesis, byte-for-byte unmodified code, against Binance spot's pre-2021 "virgin" window (2017-2021) | 1 pre-registered access | **INCONCLUSIVE**, but the closest anything has come: PSR 0.9945, Sharpe 1.305 (> the 0.8503 floor), profit factor 7.68 — three of five gates clear by wide margins, all stronger than `sr-v`'s. The two misses are very narrow: **64 trades vs. a 68 floor**, and **max drawdown 20.135% vs. a 20% ceiling**. | `sr-aa`, `sr-ab` |
+| Retrospective meta-analysis of the two independent `daily-tsmom-ensemble` holdouts (no new data accessed, no new trial) | 0 new accesses | Combining two disjoint-sample significance tests via Stouffer's weighted Z gives **Z = 2.914, Φ(Z) = 0.9982** — genuinely stronger than either individual PSR. But a full PASS is **mathematically impossible**: for any chronological concatenation, combined max drawdown is provably `>= max(leg1, leg2) = 20.14%`, already over the 20% ceiling before the true figure is computed. Combined trades 90 vs. a recomputed 100 floor. | `sr-ac` |
 
-**The single most important finding is about the window, not the
-strategies.** The 1h research window's own **detection floor is ~1.21
-annualized Sharpe** (one-sided α=0.05 over 1.84 years); the 15m
-window's is **~2.18**. A real edge of 0.4-0.8 Sharpe — the range
-credible institutional trend-following actually reports — **could not
-have been detected here by any strategy, however well specified**. So
-"DSR ≈ 0" across the board means **not shown**, and emphatically **not
-shown absent**. Configuration C would have needed an annualized Sharpe
-of **4.6** to clear DSR 0.95 at this `N` — a target that says more
-about having searched 117 times against 1.8 years of one symbol than
-about any strategy.
+**What the meta-analysis does and does not establish**, since it is the
+strongest positive result this project has: the combined significance is
+real evidence, not an artifact. It does **not** show a live-tradeable
+strategy — the drawdown ceiling is a practical risk-control limit and the
+trade-count floor a minimum-evidence-volume requirement, both independent
+of whether a mean effect is statistically real, and neither is overridden
+by a strong Z-score answering a different question.
 
-**Consequence: the 1h research window is spent** (see the standing rule
-under "Non-negotiable once strategy research begins" above). Further
-searching on it cannot produce a defensible result, because every
-additional trial raises the `N` that any future winner must be deflated
-against. The live options are therefore about *changing the evidence
-base*, not the signal:
+**Two structural remedies remain open, and neither has been chosen** —
+that choice is a human `Discuss`, not something any of the above decided
+on its own authority:
 
-1. **~~The `1d` early-window holdout (`sr-t`)~~ — spent, INCONCLUSIVE
-   (`sr-v`, 2026-07-30; full result below).** This was the only
-   untouched single-symbol BTC-USDT price window this project had with
-   a detection floor below a plausible real edge; it no longer is.
-2. **Multi-symbol expansion, with survivorship-safe data.** A
-   meaningful share of the Sharpe reported by the institutional
-   research benchmarked in `sr-g` plausibly comes from cross-symbol
-   diversification a single-symbol design cannot access. A real
-   architecture reconsideration (it touches the data pipeline's
-   survivorship-bias handling, per Strategy Research Methodology) that
-   deserves its own `Discuss` pass — now the pre-registration's own
-   named remedy for the INCONCLUSIVE result below, not just an item on
-   a list.
-3. **A genuinely different data source entirely** — the
-   pre-registration's other named remedy, alongside (2); neither is
-   chosen yet, and choosing between them is a human `Discuss`, not
-   resolved here.
-4. **Stop adding strategies and build the infrastructure instead**
-   (Priorities #8-#10). Nothing about the paper-trading loop,
-   supervision, or `ExchangeAdapter` work is blocked by the absence of
-   a validated strategy — CLAUDE.md already says they can and should
-   proceed on dummy signals. Unlike (2)/(3), this does not require
-   resolving the BTC-only price-signal question first.
+1. **Multi-symbol expansion with survivorship-safe data.** A meaningful
+   share of the Sharpe that institutional research reports plausibly
+   comes from cross-symbol diversification a single-symbol design cannot
+   access. Touches the data pipeline's survivorship-bias handling.
+   Currently deprioritized on a practical judgment — a survivorship-safe,
+   comparably-liquid universe beyond BTC/ETH is not readily available
+   from this project's current sources — which is a sequencing choice,
+   not an architectural reversal of the multi-symbol design targets above.
+2. **A genuinely different data source or asset class.** Two macro data
+   points (`sr-x`, `sr-y`) are a first probe, not an exhaustive test.
+   `DGS10` and `DTWEXBGS` remain cached but untested; testing either
+   needs its own fresh authorization the way each macro hypothesis did.
+   On-chain data has been named but never attempted.
 
-**Explicitly NOT a live option**: another search, threshold, or
-lookback set, on any timeframe, against any signal class — the
-pre-registration's own pre-committed stopping rule for this exact
-outcome (see below).
-
-**Retired**: the two funding-extremity follow-ups previously listed
-here as live candidates (changing the edge-trigger rule; lowering
-`entry_z_threshold`/`funding_zscore_lookback`). Both are more searching
-on the spent 1h window — see the standing rule above.
-
-**`sr-s`/`sr-t`/`sr-u`/`sr-v` spent the `1d` holdout option above
-(2026-07-30).** `sr-s` built the pre-registration mechanism
-(`python/research/preregistration.py`) so a single attempt's `N=1`
-claim would be provable, not merely asserted, rather than another
-untracked trial. `sr-t` wired the `1d` interval into the data pipeline
-and reserved its early window as the holdout (see "A third timeframe,
-`1d`" above). `sr-u` then committed the full specification — a
-zero-fitted-parameter Moskowitz-Ooi-Pedersen (2012) daily
-time-series-momentum ensemble (the literature's own canonical
-21/63/126/252-trading-day lookback set, constant 20%-annualized-
-vol-target sizing, no ADX gate, no ATR stop, no funding signal —
-`free_parameter_count: 0`) and its registration
-(`configs/research/preregistrations/daily-tsmom-ensemble-1d-holdout.json`)
-**before** any `1d` price data was ever accessed. `sr-v` then executed
-it — exactly once, for real, against the registered window
-(2021-05-14 through 2024-04-26, 1,079 daily bars):
-
-- **PSR 0.9367** — positive, but below the registered 0.95 threshold.
-- **Observed annualized Sharpe 0.882** — below the window's own 0.9567
-  detection floor ("not powered to confirm", clause 3).
-- **26 trades** — below the 53-trade frequency-scaled floor.
-- Max drawdown (12.0%) and profit factor (2.87) both cleared
-  comfortably, but PASS requires all five checks, and this result hits
-  three separate INCONCLUSIVE triggers at once.
-
-**Verdict: INCONCLUSIVE** — not a rejection, not a pass. Real, full
-result, the logged record
-(`run_id=8143a525-3159-447b-991d-2f11a0ef790b`), and an honest account
-of the one (non-hypothesis-related) invocation bug hit and fixed during
-execution: `.planning/sr-v-preregistered-attempt-result.md`.
-
-**Per the pre-registration's own pre-committed meta-consequence**
-(written before the run, not decided after seeing it): this
-INCONCLUSIVE result **ends the BTC-only price-signal research program
-as a line of work.** "The only legitimate remedy is more calendar time
-or more data, explicitly NOT another search, another threshold, or
-another lookback set" — the next move is a named structural change,
-options (2) and (3) above, not another grid on any timeframe against
-any signal class. Whether and how to pursue either is a human
-`Discuss`, not resolved here.
-
-**`sr-x` (2026-08-03) is the first real pursuit of remedy (3) named
-above ("a genuinely different data source entirely") — authorized
-directly via this task's own brief, which pre-decided the specific
-hypothesis before any code was written ("decided, not yours to
-redesign"); that authorization is the human `Discuss` remedy (3)'s
-listing called for, for this one specific instance (FRED macro data,
-`DFII10` specifically), not a resolution of the broader (2)-vs-(3)
-comparison, which remains open.** It ran the first genuinely
-non-BTC-price-derived signal this project has ever tested (precise
-wording, not "non-price-derived" generally — `sr-y` below tests `SP500`,
-itself a price index, just not BTC's own): a 10-year
-real-yield (`DFII10`, via FRED) trend, INVERTED (falling real yields →
-BTC-bullish/long; rising →
-BTC-bearish/short), against the untouched BTC 1d **research** split
-(2024-04-27 onward — never the spent 1d holdout), via ordinary
-iterative walk-forward, not a pre-registered holdout attempt.
-Zero-fitted-parameter (`total_candidates: 1`, a single pre-committed
-63-trading-day lookback — the middle of `daily_tsmom_ensemble.py`'s own
-literature-sourced 21/63/126/252 set), sizing via the standing 20%-vol-
-target convention, no ADX/ATR/funding/price-momentum combination — a
-clean, standalone test. `train_bars=90, validate_bars=60, step_bars=60`
-→ 12 folds over 822 bars, chosen by bar-count arithmetic alone before
-the run, matching this project's own detection-floor-driven fold-sizing
-precedent.
-
-**Result (`run_id=848a9f13-9fc7-478c-90ac-70cf03a8025c`,
-`strategy_family=macro-conditioned`): mean annualized Sharpe −1.303**
-(1 of 12 folds positive), **34 trades against a 36-trade frequency-
-scaled floor** (60 validate bars × 12 folds = 720 evaluated bars, not
-the full 822 research bars — 2 trades short), worst-fold drawdown 27.3%
-(over the 20-25% ceiling), mean profit factor 0.32 (under the 1.3-1.5
-floor), sign test p=0.9998 and one-sided t-test p=0.978, PSR (N=1)
-0.034, DSR 0.0135 at the family's own N=2, DSR
-5.0×10⁻¹¹ at the project-level research N=119 (117 prior + this
-family's 2).
-
-**Verdict: INCONCLUSIVE-DATA-LIMITED** (below the 36-trade floor — per
-the standing rule above, "neither a pass nor a fail... not evidence
-against the strategy"). The remaining metrics above are reported
-descriptively only; because the run is below the trade-count floor,
-they do not constitute a pass, a fail, or evidence against the
-strategy, and are not grounds for a directional conclusion or a
-follow-up change. Three temptations (loosen the fold geometry to clear
-the trade floor; flip the inversion; shorten the lookback) were named
-and not acted on, matching `sr-v`'s own precedent for handling a
-near-miss honestly. Full result, statistical detail, and the real
-`DFII10` backfill (6,151 rows, 2003-01-02 onward): `.planning/sr-x-
-macro-real-yield-strategy.md`.
-
-This does not by itself close off the macro-data-source remedy the way
-`sr-v` closed off BTC-only price signals — one lookback/inversion/
-geometry combination on one FRED series is a first data point, not an
-exhaustive test of "is macro data useful at all". `sr-y` (immediately
-below) is the second data point, on the same window and fold geometry.
-
-**`sr-y` (2026-08-04) is the second and, per explicit human decision
-made at that task's own outset, last planned macro-conditioned
-attempt.** It tests the S&P 500 (`SP500`, via FRED)'s own trend, NOT
-INVERTED (rising S&P 500/risk-on → BTC-bullish/long; falling → BTC-
-bearish/short — the opposite structural shape from `sr-x`'s inverse
-real-yield relationship), against the same untouched BTC 1d
-**research** split `sr-x` used, via ordinary iterative walk-forward.
-Same zero-fitted-parameter discipline (`total_candidates: 1`), the SAME
-63-trading-day lookback `sr-x` used — reused deliberately for direct
-comparability between the two macro attempts rather than re-derived —
-same 20%-vol-target sizing, same Option B order emission, no ADX/ATR/
-funding/price-momentum/real-yield combination. Same fold geometry as
-`sr-x` (`train_bars=90, validate_bars=60, step_bars=60` → 12 folds over
-822 bars), chosen for direct comparability per this task's own brief.
-
-**Result (`run_id=e0abfeaa-cfb3-49b5-b247-955a54789baa`,
-`strategy_family=macro-conditioned`): mean annualized Sharpe −0.284**
-(7 of 12 folds positive, 58.3% fold consistency), **19 trades against
-the same 36-trade frequency-scaled floor** (17 trades short — a wider
-miss than `sr-x`'s 2-trade near-miss), worst-fold drawdown 14.4%
-(comfortably inside the 20-25% ceiling, unlike `sr-x`'s 27.3%), mean
-profit factor 0.21 (under the 1.3-1.5 floor, and lower than `sr-x`'s
-own 0.32), sign test p=0.387 and one-sided t-test p=0.612 (both far
-less extreme than `sr-x`'s near-1.0 values, but still failing to reject
-the null), PSR (N=1) 0.345, DSR 0.137 at the family's own N=4, DSR
-2.20×10⁻⁷ at the project-level research N=121 (117 pre-`sr-x` + 2 from
-`sr-x`'s own strategy + 2 from this run). A real, disclosed logging bug
-(a driver-script omission sent 12 of 13 records to a stray local file
-instead of the shared log) was found and fixed — by appending the real,
-already-computed records to the correct log, not by re-running — before
-any figure above was read off; full account in
-`.planning/sr-y-macro-sp500-strategy.md`. That fix also recomputed
-`sr-x`'s own family/project-level DSR downward (`N=2→4`, `N=119→121`:
-`DSR 0.0135→0.00586`, `DSR 5.0×10⁻¹¹→4.76×10⁻¹¹`) — a real, disclosed
-instance of this project's own "every additional trial lowers the DSR
-of an existing result" rule in action, not a change to `sr-x`'s already-
-decisive verdict.
-
-**Verdict: INCONCLUSIVE-DATA-LIMITED** (below the 36-trade floor by a
-wider margin than `sr-x`). The remaining metrics are reported
-descriptively only and are not grounds for a directional conclusion —
-several read less extreme than `sr-x`'s (fold consistency, sign/t-test
-p-values, drawdown, and a point estimate whose magnitude sits below its
-own detection floor rather than past it in the wrong direction) while
-one reads more extreme (profit factor); this mixed pattern is not
-evidence that S&P 500 trend is closer to (or further from) a real edge
-than real yield trend — both runs are simply underpowered by trade
-count. Three temptations (loosen the fold geometry to clear the trade
-floor; flip to the inverted mapping after seeing a negative result;
-shorten the lookback, whose mechanism a real sign-distribution check
-made unusually legible — the S&P 500 trend at 63 trading days flipped
-sign only 10 times in ~2.5 years of the research window) were named and
-not acted on. Full result, statistical detail, the sign-correctness
-verification, and the disclosed logging-bug account:
-`.planning/sr-y-macro-sp500-strategy.md`.
-
-**Per this task's own governing brief, this was the last planned macro
-attempt** before this project's research line either pivots to on-chain
-data or pauses — `DGS10` (nominal 10-year yield) and `DTWEXBGS` (dollar
-index) remain cached (`sr-w`) but untested, and testing either is not
-currently scheduled; it would need its own fresh authorization the same
-way the real-yield and S&P 500 hypotheses each were. The broader (2)
-multi-symbol-expansion vs. (3) genuinely-different-data-source choice
-named earlier in this section remains open — two data points within
-option (3) do not resolve it, and resolving it is a human `Discuss`, not
-something either macro task decided on its own authority.
-
-**`sr-aa`/`sr-ab` (2026-08-05) is the second, independent same-asset-
-alternate-venue replication of `sr-u`/`sr-v`'s identical zero-fitted-
-parameter daily-TSMOM hypothesis** — same code
-(`research/strategies/daily_tsmom_ensemble.py`, byte-for-byte
-unmodified), same 21/63/126/252-trading-day lookback set, same 20%-vol-
-target sizing, `free_parameter_count: 0` — this time against Binance
-spot BTCUSDT's own pre-2021 "virgin" window (2017-08-17 through
-2021-05-13, 1,366 daily bars, `configs/research/holdout_1d_binance_
-virgin.json`), rather than another search, threshold, or lookback set.
-`sr-aa` registered the hypothesis and holdout config
-(`configs/research/preregistrations/daily-tsmom-ensemble-binance-virgin-
-holdout.json`) before any access; `sr-ab` executed it for real. Two
-real, disclosed, non-hypothesis infrastructure bugs were hit and fixed
-during execution — a relative-path invocation gotcha (the same class
-`sr-v` already documented) and a missing Binance backfill in the
-shared, gitignored `klines.sqlite3` (the original `sr-z`/`sr-aa`
-backfill lived in a since-cleaned-up isolated git worktree) — both
-fixed by re-running the existing, unmodified `backfill_binance.py` for
-real against the live Binance API, not by touching any strategy,
-registration, or config file. Because the empty-result attempt this
-caused had already technically consumed the single-access claim (per
-`research/holdout.py`'s own pre-disclosed "the claim is written once
-the read completes, even on an empty result" behavior, and exposed
-zero real information about the window), completing the real access
-required a second, disclosed `force_reclaim_reason` — full accounting
-in `.planning/sr-ab-binance-virgin-holdout-result.md`.
-
-**Result (`run_id=a84d52ba-5f5d-43bd-a528-3d5cd494208a`,
-`strategy_family=daily-tsmom`): PSR 0.9945** (above the 0.95
-threshold), **observed annualized Sharpe 1.305** (above the window's
-own 0.8503 detection floor), **profit factor 7.68** (above the 1.3
-floor) — three of five gating checks clear cleanly, all three by wide
-margins and all three stronger than `sr-v`'s own corresponding numbers
-(PSR 0.9367, Sharpe 0.882, profit factor 2.87). The remaining two
-checks miss by very narrow margins: **64 trades against a 68-trade
-floor** (4 short), and **max drawdown 20.135% against the 20%
-ceiling** (0.135 percentage points over).
-
-**Verdict: INCONCLUSIVE** (2 of 5 gating checks fail). Per the
-registration's own pre-committed `outcome_interpretation.INCONCLUSIVE`
-text — reconsidered honestly rather than copied from `sr-u`'s older
-wording, which this registration deliberately superseded for this
-specific attempt: this result **parks the zero-parameter daily-TSMOM-
-on-BTC-spot-price hypothesis specifically** — the only remaining
-legitimate remedy for this hypothesis is a structurally different
-signal class or a structurally different asset universe, not another
-exchange's price series for the same instrument — and does **not**
-retroactively validate or invalidate `sr-v`'s own BingX-window
-INCONCLUSIVE result, which stands unaffected on its own terms. It
-**does** close off same-asset alternate-venue replication specifically
-as a further remedy for this hypothesis — Binance's pre-2021 window
-was this project's last remaining independent-ish BTC-price data
-source (Binance/BingX daily closes correlate at 0.999955, per `sr-z`).
-It does **not** close off CLAUDE.md's remedy (2) (multi-symbol
-expansion with survivorship-safe data) or remedy (3) (a genuinely
-different, non-price-index asset class or data source, e.g. on-chain
-data, named in `sr-y`'s own closing text) — both remain open,
-undecided, human-`Discuss` questions neither `sr-aa` nor `sr-ab`
-resolves. The temptation to read significance into how narrow both
-misses are was named and not acted on, matching `sr-v`'s own precedent
-for handling a near-miss honestly. Full result, the two infrastructure-
-bug accounts, and a side-by-side comparison with `sr-v`'s own numbers:
-`.planning/sr-ab-binance-virgin-holdout-result.md`.
-
-**`sr-ac` (2026-08-05) is a retrospective statistical meta-analysis of
-`sr-v` and `sr-ab` together — not a new strategy attempt, not a new
-trial, and not a new pre-registration.** No holdout data was accessed to
-produce it; everything is computed from the two runs' own already-logged
-summary statistics. It answers the human operator's reasonable question
-— given the pattern of two narrow INCONCLUSIVE misses on the same
-zero-fitted-parameter hypothesis, how strong is the combined case,
-really — as honestly and completely as already-logged data allows.
-
-Two independent, disjoint-sample significance tests for the same null
-("true Sharpe ≤ 0") can be combined via Stouffer's (weighted) Z-score
-method (Stouffer et al. 1949; sample-size weighting per Whitlock 2005),
-using each run's own already-logged `psr.z_score`
-(`sr-v`: 1.5274, n=1078; `sr-ab`: 2.5410, n=1365) — a new, tested
-function, `research.meta_analysis.combine_z_scores`. **Result: combined
-Z = 2.914, corresponding probability Φ(Z) = 0.9982 — clears the
-project's standing 0.95 convention comfortably**, stronger than either
-individual PSR (`sr-v`: 0.9367; `sr-ab`: 0.9945).
-
-**That significance result does not, and cannot, produce a formal PASS,
-for a separate, purely mathematical reason established independently of
-it.** For any chronological concatenation of two return series, the
-combined max drawdown is provably `>= max(leg 1's own max drawdown, leg
-2's own max drawdown)` — proved directly (the combined running peak at
-any point can only be raised, never lowered, by the other leg's own
-levels) and confirmed numerically against 2,000 synthetic equity-curve
-pairs. Concatenating `sr-ab` (2017-2021) then `sr-v` (2021-2024) in real
-calendar order: `combined_drawdown >= max(0.1199, 0.2014) = 0.2014` —
-**already over the registered 0.20 ceiling**, before the true combined
-figure (which could only be higher, never lower) is even considered. A
-full PASS on the combined series' drawdown criterion is therefore
-mathematically impossible regardless of the significance result above.
-
-Combined trade count sums exactly (no path-dependency, unlike drawdown):
-`26 + 64 = 90`. The real combined frequency-scaled floor, recomputed via
-`research.preregistration.frequency_scaled_min_trades` against the
-combined 2,445 bars (not hand-arithmetic): **100** — so 90 combined
-trades falls 10 short. Profit factor is comfortably clear on both legs
-individually (2.87, 7.68, both far above the 1.3 floor) but a rigorous
-*pooled* figure is not reconstructable from logged fields alone (gross
-win/loss sums aren't separately logged, only the ratio) — not forced as
-an approximation, and not the binding constraint either way.
-
-**Bottom line, stated as plainly as the numbers allow**: the combined
-significance is real and meaningfully stronger than either individual
-result — genuine evidence, not an artifact of this analysis. It does
-**not** show a live-tradeable strategy: the drawdown ceiling is a
-practical risk-control limit and the trade-count floor is a
-minimum-evidence-volume requirement, both independent of whether a mean
-effect is statistically real, and neither is overridden by a strong
-Z-score answering a different question. It does **not** resolve which of
-CLAUDE.md's two live options — multi-symbol expansion (remedy 2) or a
-human policy-exception decision to proceed toward paper trading despite
-not formally clearing every gate — is the right next step; that remains
-an open human `Discuss`, fed by these numbers, not decided by them. Such
-a policy exception, if ever granted, would be a decision to proceed
-DESPITE the unmet drawdown/trade-count gates — it would not retroactively
-satisfy them, would not waive this section's own non-negotiable rolling
-walk-forward validation requirement (a single-window holdout, combined or
-not, is still not that), and would not substitute for the Eligibility
-Bar's holdout single-window variant itself. Full derivation, the
-drawdown-bound proof, and the complete numerical detail:
-`.planning/sr-ac-combined-holdout-meta-analysis.md`.
+**Explicitly not a live option: another search, threshold, or lookback
+set, on any timeframe, against any signal class.** `sr-u`'s
+pre-registration committed to that stopping rule *before* its run, and
+`sr-v`'s INCONCLUSIVE result triggered it: the only legitimate remedy is
+more calendar time or more data. Same-asset alternate-venue replication
+is also now closed off for the daily-TSMOM hypothesis specifically —
+Binance's pre-2021 window was the last independent-ish BTC price source,
+and BingX/Binance daily closes correlate at 0.999955.
 
 **Paper Trading Policy Exception — `daily-tsmom-ensemble` (human-approved
 2026-08-05).** CLAUDE.md's standing rule requires clearing the
