@@ -3150,9 +3150,12 @@ disclosed — done, PR #117).
   tracker) to mark equity to market at the top of every bar — same
   formula, same order, as `metrics.metrics.build_equity_curve`'s own
   downstream computation, so the two can't silently drift apart — and
-  once equity reaches exactly `Decimal("0")` (a permanent, non-resetting
-  flag; a real liquidated account doesn't un-liquidate on a later bar's
-  favorable mark-to-market), the strategy is still called every remaining
+  once equity reaches or drops below `Decimal("0")` (not only exactly
+  zero — a bar whose price gap carries equity straight past zero to
+  negative still triggers it, e.g. a fill landing equity at -50 with no
+  intervening zero-valued bar) — a permanent, non-resetting flag; a real
+  liquidated account doesn't un-liquidate on a later bar's favorable
+  mark-to-market — the strategy is still called every remaining
   bar (preserving a stateful strategy's own internal continuity) but its
   returned `OrderIntent` is silently discarded rather than filled. No
   liquidation fill is synthesized — the already-open position, if any, is
