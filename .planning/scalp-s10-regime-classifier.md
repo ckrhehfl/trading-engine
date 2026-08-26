@@ -283,6 +283,18 @@ overriding inference, and that contiguous data never trips the counter.
 
 Suite 1581 → 1585.
 
+**A second-round hole in the gap check itself, also caught on review.**
+The inference step was the one place a broken stream could whitelist
+itself: if the *first two* bars were duplicates or out of order, a zero
+or negative delta became the expected interval, and every later bar at
+that same broken spacing then passed the contiguity check it exists to
+catch. Fixed by rejecting a non-positive gap **before** the inference
+step, and by requiring an explicitly-supplied `expected_interval` to be
+positive. Three regression tests cover a duplicate opening pair, a
+backwards opening pair, and both invalid explicit values. The real-data
+verification was re-run afterwards and still reproduces 1 and 2
+discontinuities exactly. Suite 1585 -> 1589.
+
 **Scope note**: `AtrRatio` and `AbsoluteAtr` themselves remain
 time-unaware by design. They are indicator primitives fed by a caller;
 the contiguity contract lives at the classifier boundary, which is the

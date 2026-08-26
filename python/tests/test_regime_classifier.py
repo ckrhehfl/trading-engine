@@ -400,3 +400,31 @@ def test_an_explicit_expected_interval_overrides_inference():
     five_min = [bar(i * 5, 101.0, 99.0, 100.0) for i in range(10)]
     assert all(c.update(b) is None for b in five_min)
     assert c.discontinuities == 9
+
+
+def test_a_duplicate_first_pair_cannot_become_the_expected_interval():
+    """The inference step is the one place a broken bar stream could
+    whitelist itself: if the first two bars are duplicates, a zero
+    interval would become "normal" and every later duplicate would sail
+    through the contiguity check it exists to catch."""
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3)
+    assert c.update(bar(0, 101.0, 99.0, 100.0)) is None
+    assert c.update(bar(0, 101.0, 99.0, 100.0)) is None
+    assert c.discontinuities == 1, "a duplicate opening pair must count as a discontinuity"
+    # Genuine 1-minute bars now establish the interval normally.
+    for i in range(1, 40):
+        c.update(bar(i, 101.0, 99.0, 100.0))
+    assert c.discontinuities == 1, "contiguous bars after the reset must not add more"
+
+
+def test_a_backwards_first_pair_cannot_become_the_expected_interval():
+    c = RegimeClassifier(adx_period=3, atr_period=1, volatility_axis=RATIO, atr_ratio_window=3)
+    assert c.update(bar(10, 101.0, 99.0, 100.0)) is None
+    assert c.update(bar(3, 101.0, 99.0, 100.0)) is None
+    assert c.discontinuities == 1
+
+
+@pytest.mark.parametrize("bad", [timedelta(0), timedelta(minutes=-1)])
+def test_classifier_rejects_a_non_positive_expected_interval(bad):
+    with pytest.raises(ValueError, match="expected_interval must be positive"):
+        RegimeClassifier(expected_interval=bad)

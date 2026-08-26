@@ -67,7 +67,11 @@ This project's own 1-minute data has real gaps (2 in the BingX window,
 the bar interval is inferred from the first two bars (or given via
 `expected_interval`), and any bar that does not sit exactly one interval
 after its predecessor resets every accumulated indicator and returns
-`None` until warmup completes again. `discontinuities` counts how often
+`None` until warmup completes again. A non-positive gap -- a duplicate or
+a backwards bar -- is rejected **before** the inference step, so a broken
+opening pair can never install itself as the expected interval and
+whitelist its own pathology; `expected_interval` is likewise required to
+be positive. `discontinuities` counts how often
 that has happened, so a caller measuring over data with known gaps can
 assert the count matches what it expects -- an unexpected number means
 the input is not what it was believed to be.
@@ -360,6 +364,8 @@ class RegimeClassifier:
             raise ValueError(f"adx_low ({adx_low}) must not exceed adx_high ({adx_high})")
         if min_dwell_bars is not None and min_dwell_bars < 0:
             raise ValueError(f"min_dwell_bars must not be negative, got {min_dwell_bars}")
+        if expected_interval is not None and expected_interval <= timedelta(0):
+            raise ValueError(f"expected_interval must be positive, got {expected_interval}")
 
         if volatility_axis is VolatilityAxis.ABSOLUTE:
             def make_vol():
@@ -455,6 +461,16 @@ class RegimeClassifier:
         self._last_open_time = kline.open_time
         if previous is not None:
             delta = kline.open_time - previous
+            if delta <= timedelta(0):
+                # A duplicate or backwards bar is a discontinuity no matter
+                # when it arrives. Critically this is checked BEFORE the
+                # inference below: letting a non-positive first delta become
+                # the expected interval would teach the classifier that the
+                # very pathology this check exists to catch is normal, and
+                # every subsequent bar at that spacing would sail through.
+                self._discontinuities += 1
+                self._reset()
+                return None
             if self._expected_interval is None:
                 self._expected_interval = delta
             elif delta != self._expected_interval:
