@@ -28,7 +28,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any
@@ -329,6 +329,105 @@ def latest_signal_decision(cron_log: Path) -> dict[str, str] | None:
     return latest
 
 
+SIGNAL_STALE_AFTER = timedelta(hours=36)
+
+
+def signal_decision_age(
+    decision: dict[str, str] | None, now: datetime | None = None
+) -> timedelta | None:
+    """How long ago `decision` (from `latest_signal_decision`) was logged.
+
+    `None` when there is no decision, or when its timestamp doesn't parse --
+    both meaning "can't tell", which the caller must render differently
+    from a known-fresh age rather than collapsing to "fine".
+
+    **The timestamp is LOCAL time, not UTC.** `cron.log` mixes two writers:
+    `scripts/paper-trading-daily-signal.sh` writes its own ISO-8601 `Z`
+    lines, while these decision lines come from Python's `logging` default
+    format, which uses local time with no offset marker. Parsing them as
+    UTC on a UTC+9 machine yields an age nine hours in the future, i.e. a
+    silently negative staleness -- exactly the direction that would hide an
+    outage. So the naive parse is made aware via `.astimezone()`, which
+    interprets a naive datetime as local time.
+
+    A negative age is still possible (clock skew, a timezone change between
+    the write and this read) and is returned as-is rather than clamped; the
+    caller decides what to say about it. It is never treated as stale,
+    because "logged in the future" is a clock problem, not a stalled loop.
+    """
+    if decision is None:
+        return None
+    raw = decision.get("timestamp")
+    if not raw:
+        return None
+    try:
+        logged = datetime.strptime(raw, "%Y-%m-%d %H:%M:%S,%f")
+    except (ValueError, TypeError):
+        return None
+    # Naive -> aware, interpreting as local time (see docstring).
+    logged = logged.astimezone()
+    return (now or datetime.now(timezone.utc)) - logged
+
+
+def _fmt_age(age: timedelta) -> str:
+    total_minutes = int(abs(age).total_seconds()) // 60
+    days, rem = divmod(total_minutes, 1440)
+    hours, minutes = divmod(rem, 60)
+    if days:
+        return f"{days}d {hours}h ago"
+    if hours:
+        return f"{hours}h {minutes}m ago"
+    return f"{minutes}m ago"
+
+
+def format_signal_freshness(
+    decision: dict[str, str] | None, now: datetime | None = None
+) -> str:
+    """One line stating how fresh the last daily-signal decision is, and
+    loudly flagging it when it is not.
+
+    This exists because of a real 16-day outage (2026-08-10 to 08-26) that
+    nobody noticed: the crontab had been emptied, so nothing ran. Neither
+    `cron.log` nor `watchdog.log` said anything, because both are silent
+    during healthy operation *and* when the scheduler is gone entirely --
+    the exact ambiguity `docs/paper-trading-runbook.md` section 5 warns
+    about. A dashboard that only tails those two logs looks identical in
+    both cases, which is why this reports an **age** rather than just the
+    latest decision's timestamp.
+
+    `SIGNAL_STALE_AFTER` is 36 hours. `live.generate_daily_signal` decides
+    once per UTC calendar day (the marker file in
+    `scripts/paper-trading-daily-signal.sh` suppresses re-runs after the
+    day's first success), so a healthy log gains one decision line per day
+    and its newest line is at most ~24h old. 36h therefore means at least
+    one whole UTC day produced no decision at all, while leaving enough
+    slack that an ordinary day-boundary or a briefly-suspended machine does
+    not cry wolf.
+    """
+    age = signal_decision_age(decision, now)
+    if age is None:
+        if decision is None:
+            return (
+                "Freshness: UNKNOWN -- no decision logged yet. If the loops were "
+                "just started this is expected; otherwise check `crontab -l`."
+            )
+        return "Freshness: UNKNOWN -- latest decision's timestamp did not parse."
+    if age < timedelta(0):
+        return (
+            f"Freshness: latest decision is timestamped {_fmt_age(age)} in the FUTURE "
+            "-- clock or timezone skew, not a stalled loop. Not treated as stale."
+        )
+    if age >= SIGNAL_STALE_AFTER:
+        return (
+            f"Freshness: *** STALE -- last decision {_fmt_age(age)} *** "
+            "No signal has been generated for over a day. Check `crontab -l` first "
+            "(an empty crontab caused a real 16-day silent outage), then that cron "
+            "is firing: `journalctl -u cron --since '10 minutes ago'`. "
+            "An empty cron.log/watchdog.log does NOT mean healthy."
+        )
+    return f"Freshness: OK -- last decision {_fmt_age(age)}"
+
+
 def tail_lines(path: Path, n: int = 8) -> list[str]:
     if not path.is_file():
         return []
@@ -488,6 +587,7 @@ def format_dashboard(statuses: list[LoopStatus]) -> str:
         parts.append(f"Latest decision: HOLD at {decision['timestamp']} ({decision['detail']})")
     else:
         parts.append(f"Latest decision: SIGNAL at {decision['timestamp']} -- {decision['detail']}")
+    parts.append(format_signal_freshness(decision))
     if SIGNAL_FILE.is_file():
         parts.append(f"Standing signal file present: {SIGNAL_FILE.relative_to(REPO_ROOT)}")
         try:
@@ -551,7 +651,15 @@ def to_json_dict(statuses: list[LoopStatus]) -> dict[str, Any]:
             "recent_trades": recent_trades(status),
             "daily_reports": status.daily_reports,
         }
-    result["latest_signal_decision"] = latest_signal_decision(CRON_LOG)
+    decision = latest_signal_decision(CRON_LOG)
+    result["latest_signal_decision"] = decision
+    # Age in seconds rather than a formatted string, so a consumer can apply
+    # its own threshold; `signal_stale` carries this module's own verdict at
+    # SIGNAL_STALE_AFTER. Both None when the age can't be determined -- a
+    # consumer must not read that as "fresh".
+    age = signal_decision_age(decision)
+    result["signal_decision_age_seconds"] = None if age is None else int(age.total_seconds())
+    result["signal_stale"] = None if age is None else age >= SIGNAL_STALE_AFTER
     result["watchdog_log_tail"] = tail_lines(WATCHDOG_LOG, 8)
     return result
 

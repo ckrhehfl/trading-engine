@@ -11,23 +11,27 @@ sample text/files instead.
 """
 
 import json
+from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
 from live import dashboard
 from live.dashboard import (
+    SIGNAL_STALE_AFTER,
     LoopStatus,
     TickStatus,
     _decimal_default,
     current_equity,
     format_dashboard,
     format_loop_section,
+    format_signal_freshness,
     kill_switch_mentioned,
     latest_signal_decision,
     load_daily_reports,
     parse_latest_tick,
     parse_latest_vst_balance,
     recent_trades,
+    signal_decision_age,
     return_pct,
     tail_lines,
     to_json_dict,
@@ -443,3 +447,84 @@ def test_to_json_dict_is_json_serializable_with_decimal_default():
     parsed = json.loads(text)
     assert parsed["loops"]["simulated"]["current_equity"] == "100420"
     assert parsed["loops"]["simulated"]["return_pct"] == "0.4200"
+
+
+# --- daily-signal freshness -------------------------------------------------
+#
+# These exist because of a real 16-day silent outage (2026-08-10 to 08-26):
+# the crontab had been emptied, nothing ran, and neither cron.log nor
+# watchdog.log said anything -- both are silent when healthy AND when the
+# scheduler is gone. See format_signal_freshness' docstring.
+
+
+def _decision_at(local_ts: str) -> dict[str, str]:
+    return {"timestamp": local_ts, "decision": "hold", "detail": "no sign-category change"}
+
+
+def _local(*args) -> datetime:
+    """A local-time datetime made aware in the machine's own zone -- the same
+    interpretation signal_decision_age applies to a cron.log timestamp."""
+    return datetime(*args).astimezone()
+
+
+def test_signal_decision_age_treats_the_timestamp_as_local_not_utc():
+    # The load-bearing case. cron.log's decision lines come from Python
+    # logging's default format, which is LOCAL time with no offset marker.
+    # Parsing them as UTC on a UTC+9 machine puts them 9h in the future and
+    # would hide an outage. Anchoring "now" to the same local instant must
+    # therefore give an age of exactly zero, on any machine timezone.
+    logged_local = _local(2026, 8, 10, 9, 5, 6)
+    age = signal_decision_age(_decision_at("2026-08-10 09:05:06,610"), now=logged_local)
+    assert abs(age.total_seconds()) < 1
+
+
+def test_signal_decision_age_none_for_missing_or_unparseable_timestamp():
+    assert signal_decision_age(None) is None
+    assert signal_decision_age({"decision": "hold"}) is None
+    assert signal_decision_age(_decision_at("not-a-timestamp")) is None
+    # Right shape, wrong format (no milliseconds) -- still unparseable, and
+    # must degrade to "can't tell" rather than raising.
+    assert signal_decision_age(_decision_at("2026-08-10 09:05:06")) is None
+
+
+def test_format_signal_freshness_ok_well_inside_the_threshold():
+    now = _local(2026, 8, 11, 9, 0, 0)
+    text = format_signal_freshness(_decision_at("2026-08-10 09:05:06,610"), now=now)
+    assert text.startswith("Freshness: OK")
+    assert "STALE" not in text
+
+
+def test_format_signal_freshness_flags_the_real_16_day_outage():
+    # The exact scenario this feature was built for.
+    now = _local(2026, 8, 26, 8, 45, 0)
+    text = format_signal_freshness(_decision_at("2026-08-10 09:05:06,610"), now=now)
+    assert "STALE" in text
+    assert "15d" in text or "16d" in text
+    # Must name the first thing to check -- the real root cause was simply
+    # that `crontab -l` was empty.
+    assert "crontab -l" in text
+
+
+def test_format_signal_freshness_threshold_boundary():
+    logged = "2026-08-10 09:05:06,610"
+    base = _local(2026, 8, 10, 9, 5, 6)
+    just_under = format_signal_freshness(_decision_at(logged), now=base + SIGNAL_STALE_AFTER - timedelta(minutes=1))
+    just_over = format_signal_freshness(_decision_at(logged), now=base + SIGNAL_STALE_AFTER + timedelta(minutes=1))
+    assert "STALE" not in just_under
+    assert "STALE" in just_over
+
+
+def test_format_signal_freshness_future_timestamp_is_clock_skew_not_stale():
+    # A negative age means the log is timestamped ahead of now (clock or
+    # timezone skew). That is not a stalled loop and must not be reported as
+    # one -- nor silently rendered as a huge positive age.
+    now = _local(2026, 8, 10, 9, 0, 0)
+    text = format_signal_freshness(_decision_at("2026-08-10 09:05:06,610"), now=now)
+    assert "FUTURE" in text
+    assert "STALE" not in text
+
+
+def test_format_signal_freshness_unknown_when_nothing_logged_yet():
+    text = format_signal_freshness(None)
+    assert "UNKNOWN" in text
+    assert "STALE" not in text
