@@ -447,11 +447,18 @@ ExchangeOrderExecutor → BingXAdapter`), 2026-08-09 — detail in
   enforcement is skipped (exchanges commonly reject a change with a
   position open) and the kill switch starts tripped instead, requiring a
   deliberate human reset. A `setLeverage` failure propagates and refuses
-  to start. Verified against a hand-written fake adapter; real per-call
-  HTTP verification is still outstanding, because the account still holds
-  a position from the original run and this codebase's OMS path has no
-  way to close one (in hedge mode a `SHORT` opens a second position
-  rather than closing the `LONG`) — a real, disclosed gap.
+  to start. **Real per-call HTTP verification is now done** (2026-08-26,
+  observed directly in a live VST startup log while restoring the paper
+  loops) — previously outstanding, because the account still held a
+  position from the original run and this codebase's OMS path has no way
+  to close one (in hedge mode a `SHORT` opens a second position rather
+  than closing the `LONG`). That position is gone, so the clean-start
+  branch finally executed against the real API:
+  `VstPreflight: real VST balance=96224.4301 … no pre-existing non-zero
+  positions found, clean start … real exchange-side leverage for BTC-USDT
+  set to 1x (LONG and SHORT, hedge mode)`. The fail-closed
+  pre-existing-position branch remains fake-adapter-verified only — it
+  cannot be exercised without deliberately opening a position first.
 
 **A real credential-handling incident, root-caused and fixed.** A
 CRLF-terminated `.env` sourced naively left a trailing `\r` on
