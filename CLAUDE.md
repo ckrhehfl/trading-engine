@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S9; both candidates INCONCLUSIVE, methodology rebuilt, costs measured
+### Scalping Strategy Research — Tasks S0-S10; both candidates INCONCLUSIVE, methodology rebuilt, costs measured
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1542,6 +1542,21 @@ is only which horizons are ruled out before that work begins.
   flicker, computed only from information available at bar close.
   Running mean-reversion into an emerging trend is the documented
   classic blowup, and is exactly what `vwap-mid-reversion` did.
+  **Task S10 built exactly this (ADX × ATR-ratio) and measured it: it
+  carries no usable information on our data at our horizons.** Forward
+  15-minute movement is 11.4-12.4bps across all four regimes — a 9%
+  spread, against the 5x spread a trivial rolling-sum-of-|returns|
+  activity measure achieves on the same bars — and the structure axis'
+  trailing-vs-forward return correlation is under 0.015 everywhere,
+  below even the 0.02-0.05 band named as usable two bullets down. The
+  diagnosis of `vwap-mid-reversion` stands; this particular
+  operationalisation of the remedy does not. **Do not gate anything on
+  `research.strategies.regime_classifier` until something demonstrates
+  it adds information** — use the activity measure for volatility
+  conditioning instead. Full result, including the likely reasons (the
+  ATR *ratio* normalises away absolute volatility level; hysteresis plus
+  a 14-bar dwell makes labels stick, producing a 60%/2.3% imbalance):
+  `.planning/scalp-s10-regime-classifier.md`.
 - **Measure signals as signals (IC) before assembling a strategy.**
   Usable ICs are small — 0.02-0.05 is genuinely useful, so individual
   features will look unimpressive and that is normal.
