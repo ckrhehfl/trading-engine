@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S8; both candidates INCONCLUSIVE, methodology rebuilt
+### Scalping Strategy Research — Tasks S0-S9; both candidates INCONCLUSIVE, methodology rebuilt, costs measured
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1332,12 +1332,45 @@ first**:
   did surface that `sr-ab`'s Binance **spot** holdout used 5bps and so
   understated its own costs. That access is spent and its result already
   disclosed; editing the spent config now would misrepresent history.)
-- **`SLIPPAGE_BPS = 10`** for scalping `GUARDED_MARKET` preregistrations
-  — roughly 2.5x the cited ~4bps typical BTC-USDT spread. The multiplier
-  is a deliberately conservative reasoned estimate, disclosed as such,
-  not itself a citation. Revising either constant needs its own
-  justification here, never silent per-strategy tuning to make a marginal
-  candidate pass.
+- **`SLIPPAGE_BPS = 1`** for scalping `GUARDED_MARKET` preregistrations,
+  **revised down from 10 on a real measurement (Task S9,
+  `.planning/scalp-s9-slippage-measurement.md`)**. S2's original 10 was
+  ~2.5x a cited ~4bps "typical BTC-USDT spread", disclosed at the time
+  as a reasoned estimate rather than a measurement. Measured against
+  public Binance `aggTrades` across three days spanning a 22x volatility
+  range (1.5M direction-flip observations), **the median direction-flip
+  price difference on BTCUSDT perpetual futures is 0.014-0.015bps — one
+  tick — in every regime**, with the 99th percentile on the most
+  volatile day still only 2.4bps. Stated as the observed statistic
+  rather than as "the true effective spread" deliberately: the estimator
+  is not a guaranteed upper bound, since price movement between the two
+  trades can offset the spread as easily as add to it. It is
+  corroborated independently by the tick-multiple distribution (98.3%
+  of pairs at exactly one tick on the quiet day) and by live BingX
+  quotes at 0.026-0.038bps, neither of which uses that estimator. So the
+  cited ~4bps figure does not describe this instrument on a major venue;
+  it was two to three orders of magnitude too wide. Market impact is
+  separately negligible **on Binance** at canary size (0.03 BTC against
+  a minimum ±0.20% depth of 101 BTC on the most volatile day); **on
+  BingX it is about one tick**, since the live samples showed a thin
+  best ask (0.010-0.028 BTC) that a 0.03 BTC order can clear — a real
+  venue difference, not merged into the Binance figure.
+  `SLIPPAGE_BPS = 1` is still ~65x the measured half-spread,
+  deliberately, to absorb the BingX-vs-Binance gap and regime variation
+  three days cannot capture. Revising either constant needs its own
+  justification here, never silent per-strategy tuning to make a
+  marginal candidate pass.
+- **Consequence: the taker fee now dominates the cost structure
+  entirely** — 5bps against a ~0.015bps spread, roughly 330x. Round trip
+  is **~12bps, not 30**. Two things follow. First, *reducing the number
+  of round trips* matters far more than improving execution precision;
+  both prior candidates traded ~70 and ~89 times per day. Second, the
+  taker-vs-maker fee gap becomes a first-order design question rather
+  than a detail, which is a real argument for revisiting the
+  `GUARDED_MARKET`-only restriction below — though that restriction
+  exists because of `fill.py`'s optimistic limit-fill model, which this
+  measurement does not address and which would have to be hardened
+  first.
 - **`GUARDED_MARKET` execution only.** `fill.py` applies slippage
   *exclusively* to `GUARDED_MARKET` orders; a `LIMIT` order fills 100% at
   the exact limit price the instant a bar's high/low touches it,
@@ -1480,6 +1513,22 @@ mechanical single-indicator candidates, and the pushback was correct.
    assumption**, so real slippage must be measured before any
    short-horizon candidate is trusted — it is the first item in S8's
    own work order, ahead of any signal research.
+
+**Task S9 executed that measurement (2026-08-26), and it resolved the
+fragility in the favourable direction** — see the revised
+`SLIPPAGE_BPS` entry above and
+`.planning/scalp-s9-slippage-measurement.md`. No order was placed; the
+public-data route S8 named as preferred was sufficient, so the bounded
+VST demo fallback was not needed. With the measured ~12bps round trip
+rather than the assumed 30bps, the horizons excluded on cost grounds
+shrink sharply: 15-minute holding moves from 0.40x to **0.99x
+unconditionally** and 1.09x to **2.73x** in the top 10% of activity;
+30-minute clears at **1.37x even unconditionally**. **This still says
+nothing about direction** — the S8 language above stands unchanged,
+these remain unsigned absolute moves, and "viable" remains reserved for
+a candidate that has cleared signed-return evidence, a measured win
+rate, real execution costs, and out-of-sample validation. What changed
+is only which horizons are ruled out before that work begins.
 
 **What S8 changes, binding on any future scalping candidate**:
 
