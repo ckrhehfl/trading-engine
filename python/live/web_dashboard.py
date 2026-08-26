@@ -30,7 +30,7 @@ small flicker) is fine at this scale.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pandas as pd
@@ -226,6 +226,23 @@ def main() -> None:
             st.caption(f"최근 결정: HOLD ({decision['timestamp']}, {decision['detail']})")
         else:
             st.caption(f"최근 결정: SIGNAL ({decision['timestamp']}) -- {decision['detail']}")
+
+        # Freshness, mirroring the CLI dashboard's own line -- an operator who
+        # only ever opens the web view must not miss a stall the terminal view
+        # would have shouted about. Raised to st.error/st.warning rather than a
+        # caption because the failure this exists for (a real 16-day outage
+        # caused by an empty crontab) was invisible precisely because nothing
+        # on screen changed; see dashboard.format_signal_freshness' docstring.
+        age = dashboard.signal_decision_age(decision)
+        freshness = dashboard.format_signal_freshness(decision)
+        if age is None:
+            st.warning(freshness, icon="❓")
+        elif age >= dashboard.SIGNAL_STALE_AFTER:
+            st.error(freshness, icon="🚨")
+        elif age < timedelta(0):
+            st.warning(freshness, icon="🕒")
+        else:
+            st.caption(freshness)
 
     with footer_right, st.container(border=True):
         st.subheader("최근 watchdog 재시작 내역")
