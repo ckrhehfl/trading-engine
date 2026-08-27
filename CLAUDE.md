@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S12; methodology rebuilt, costs measured, signals found, fee identified as the binding constraint
+### Scalping Strategy Research — Tasks S0-S13; measured to a negative conclusion, with the fee as the binding constraint
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1712,9 +1712,51 @@ and an explicit acceptance of which of the above are still absent. It
 authorises nothing on a production endpoint and relaxes no Live Entry
 Criterion.
 
-**Open, not decided**: whether to pursue equity-compounding sizing (the
-other half of what S7 left), and the order of S8's own work items beyond
-slippage measurement first.
+**Task S13 (2026-08-28) closed the last open remedy, and the answer is
+no.** Holding-period extension was the only one of three left — maker
+execution and signal combination were already foreclosed by arithmetic
+(S12: +0.95bps gross is under half a 2bps maker round trip; Grinold's
+`sqrt(3)/sqrt(2)` over the available signals reaches ~1.16bps against a
+10bps fee). Sweeping the holding period on the identical entry rule,
+145,568 positions per horizon:
+
+| Holding | Gross mean | vs 10bps fee |
+|---|---|---|
+| 15 min | +0.43bps | 0.04x |
+| 30 min | +0.67bps | 0.07x |
+| **1 hour** | **+0.95bps** | 0.10x |
+| 2 hour | **−0.05bps** | — |
+| 4 hour | −1.65bps | — |
+| 8 hour | −5.67bps | — |
+
+**The outcome does not grow with holding period — it peaks at one hour
+and inverts at two**, exactly as S11's mean-reverting ICs predict: hold
+past the reversion window and the edge is spent. Win rate rises
+monotonically (37.3% → 47.6%) while expectancy falls and turns negative,
+which is why S8 put expectancy on the metric list rather than trusting
+win rate.
+
+Clearing a 10bps taker round trip needs ~10-15bps gross, i.e. **10.5x to
+15.8x** the best figure this family produced at its own optimal horizon —
+implying a required IC around **0.5-0.8** against the 0.02-0.05 that S8's
+own cited practitioner range calls "genuinely useful". No sustained IC
+near 0.5 appears in the public literature.
+
+**What rejected these candidates was arithmetic, not the statistical
+gates.** No DSR or PSR check rejected anything across S8-S13; a 10bps fee
+against a sub-1bps gross outcome did. And **the reserved Binance spot 1m
+holdout was never touched** — the entire arc ran on already-spent
+windows, so a negative result cost no irreplaceable data. Full account:
+`.planning/scalp-s13-horizon-sweep-and-closeout.md`.
+
+**Open, not decided — a human `Discuss`**: whether to stop this line and
+write the retrospective (S13's own recommendation, on the grounds that
+the specific question now has a measured answer); whether to pursue
+equity-compounding sizing (the half S7 left undone); or whether to spend
+attention instead on a different asset class or data source, S8's
+remaining structural remedy. Nothing here affects `daily-tsmom-ensemble`,
+which trades at a frequency where a 12bps round trip is negligible and
+remains in paper trading under its own approved exception.
 
 **Out of scope this phase**: tick/trade-level data, true HFT,
 co-location; promoting any scalping strategy to paper trading (the
