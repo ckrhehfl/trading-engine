@@ -144,33 +144,47 @@ Direction is confirmed unchanged: trend-**following** returns exactly the
 negative of fading at every cell, so mean reversion remains the correct
 sign.
 
-### But this is not yet an edge, and the reason is in the same data
+### But this is not an edge — and the significance figures above are retracted
 
-Significance is strong — t = 7.0 to 8.0 across the promising cells, far
-above what even a Bonferroni correction for the 15-cell sweep would
-demand. The problem is **concentration**:
+The table above counts **every qualifying bar** as a separate position.
+Extreme readings cluster, so consecutive qualifying bars produce many
+60-minute windows covering nearly the same price path. Treating those as
+independent observations inflates any standard error computed from them.
+An earlier version of this document reported t = 7.0–8.0 from exactly
+that calculation and called it strong. **That claim is withdrawn.**
+CodeRabbit flagged the same defect on the PR independently, and Task S14
+measured its size.
 
-| Cell | 2021's share of trades | 2021's share of the edge |
-|---|---|---|
-| \|z\|≥4, top 0.1% | 11.1% | **65%** |
-| \|z\|≥5, top 1% | 9.6% | **59%** |
-| \|z\|≥6, top 1% | 8.4% | **60%** |
+Restricting to **non-overlapping** positions — the discipline
+`research/ic.py` already enforces for IC sampling, which the excursion
+sweep never inherited:
 
-Excluding 2021, only the most selective cell still clears cost:
+| \|z\| ≥ | Activity | All obs | mean | t (uncorrected) | Independent | mean | **t** |
+|---|---|---|---|---|---|---|---|
+| 2.0 | top 10% | 145,568 | +0.95 | 3.39 | 11,554 | **−0.84** | −0.98 |
+| 4.0 | top 0.1% | 3,717 | +19.31 | 7.04 | 775 | +7.81 | 1.50 |
+| 5.0 | top 1% | 2,994 | +25.10 | 7.96 | 526 | +13.97 | 1.95 |
+| 6.0 | top 1% | 1,233 | +41.30 | 7.31 | 236 | +30.87 | 2.56 |
+| 6.0 | top 0.1% | 818 | +48.84 | 6.24 | 192 | +45.83 | **2.90** |
 
-| Cell | 7 years ex-2021 | |
-|---|---|---|
-| \|z\|≥4, top 0.1% | +7.63 bps | ✗ |
-| \|z\|≥5, top 1% | +11.43 bps | ✗ |
-| \|z\|≥6, top 1% | **+18.24 bps** | ✓ |
+**t collapses roughly threefold, and the mean falls 25–60%** — so the
+duplicated observations were also the better ones. Against this 15-cell
+search a Bonferroni-corrected two-sided threshold is |t| ≈ 2.94, which
+**nothing reaches**. `|z|≥4` no longer clears the 12bps cost at all, and
+the `|z|≥2` cell flips negative.
 
-And **2026, the most recent year, is negative in all three** (−23.9 /
-−29.3 / −26.7 bps).
+What survives is weaker and still real: gross outcome does rise
+monotonically with selectivity, and the sign (mean reversion, not
+trend-following) is confirmed by the inverse returning exactly the
+negative in every cell.
 
-2021 was the leverage-driven bull-and-crash year; an extreme-selectivity
-mean-reversion signal firing on violent moves is exactly what would have
-thrived there. Whether that is a regime the strategy needs, or an
-artefact, is the question the validation pipeline exists to answer.
+### Concentration, which was found before the sampling defect and still holds
+
+2021 supplies roughly **60% of the edge from ~10% of the trades** in
+every promising cell, and **2026 is negative in all of them**. Excluding
+2021, only `|z|≥6, top 1%` clears cost (+18.24bps against +7.63 and
++11.43). 2021 was the leverage-driven bull-and-crash year, exactly where
+an extreme-selectivity mean-reversion signal would thrive.
 
 ### The error pattern this exposed, named so it stops recurring
 
@@ -187,6 +201,9 @@ about a domain from a single parameter setting — sweep it first.**
 
 ## Status
 
-Not a closeout. `|z|≥5, top 1%` and `|z|≥6, top 1%` are the first real
-candidates this arc has produced, and they now go into the walk-forward /
-DSR machinery that has never yet had anything worth running through it.
+Not a closeout, and not a candidate either. The selectivity direction was
+real enough to be worth building and testing properly, which **Task S14
+did** — `.planning/scalp-s14-selective-reversion.md`. That candidate went
+through 83 folds and 721 trades of real walk-forward validation and was
+**REJECTED**, and the diagnosis is what produced the sampling correction
+recorded above.

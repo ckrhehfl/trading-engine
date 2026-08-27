@@ -51,6 +51,10 @@ from research.excursion import measure_excursion, trailing_percentile_rank
 Z_GRID = [2.0, 3.0, 4.0, 5.0, 6.0]
 ACTIVITY_GRID = [0.90, 0.99, 0.999]
 
+# Below this many INDEPENDENT observations a cell is reported as
+# undersampled rather than scored -- never silently dropped.
+MIN_REPORTABLE = 30
+
 
 def load(db: str):
     conn = sqlite3.connect(db)
@@ -103,7 +107,11 @@ def run_cell(z, quantile, times, ohlc, atr, activity_rank, score, max_hold):
     opens, highs, lows, closes = ohlc
     n = len(closes)
     out = []
-    for i in range(n - max_hold - 2):
+    # `measure_excursion` fills at bar i+1 and needs `max_hold` bars after
+    # it, so the last fully observable signal sits at n - max_hold - 2
+    # inclusive. `range` is half-open, hence the +1: the previous bound
+    # silently dropped that final entry.
+    for i in range(n - max_hold - 1):
         rank, s = activity_rank[i], score[i]
         if rank is None or rank < quantile or s is None:
             continue
@@ -119,8 +127,39 @@ def run_cell(z, quantile, times, ohlc, atr, activity_rank, score, max_hold):
     return out
 
 
+def non_overlapping(cell, hold):
+    """Keep only positions whose holding windows do not overlap.
+
+    This is not a refinement, it is a correctness requirement. Extreme
+    readings cluster, so consecutive qualifying bars produce many
+    `hold`-bar windows covering nearly the same price path. Counting
+    those as independent observations inflates any standard error, t
+    statistic or p-value computed from them -- by roughly threefold on
+    this data (Task S14). `research/ic.py` already enforces exactly this
+    discipline for IC sampling; the excursion sweep did not inherit it,
+    and that is the defect this function closes.
+
+    Greedy earliest-first, which is deterministic and never looks ahead.
+    """
+    out, busy_until = [], -1
+    for ts, e in cell:
+        if e.index > busy_until:
+            out.append((ts, e))
+            busy_until = e.index + hold
+    return out
+
+
 def summarise(cell):
+    """Mean, standard error and t, computed on whatever sample is passed.
+
+    The caller is responsible for passing an independent sample: this
+    function assumes i.i.d. observations and says so rather than
+    silently applying an i.i.d. formula to overlapping windows. See
+    `non_overlapping`.
+    """
     g = [e.outcome_gross_bps for _, e in cell]
+    if not g:
+        return float("nan"), float("nan"), float("nan")
     mean = statistics.mean(g)
     stderr = statistics.stdev(g) / math.sqrt(len(g)) if len(g) > 1 else float("nan")
     return mean, stderr, (mean / stderr if stderr and not math.isnan(stderr) else float("nan"))
@@ -150,23 +189,39 @@ def main(argv=None) -> int:
     print(f"{SYMBOL}: {len(rows):,} bars over {days:,.0f} days, "
           f"{args.max_hold}m hold, {COST_BPS:.0f}bps round trip\n")
 
-    hdr = f"{'|z|>=':>6} {'activity':>9} {'trades':>9} {'per day':>8} {'gross':>10} {'net':>10} {'t':>6}"
+    hdr = (f"{'|z|>=':>6} {'activity':>9} | {'all':>8} {'gross':>9} {'t':>6} | "
+           f"{'indep':>7} {'per day':>8} {'gross':>9} {'net':>9} {'t':>6}")
     print(hdr)
     print("-" * len(hdr))
+    print("  'all' counts every qualifying bar and its t is NOT corrected for")
+    print("  overlapping holding windows; 'indep' is the non-overlapping")
+    print("  subset and is the only column whose t means anything.\n")
     best = []
     for z in Z_GRID:
         for q in ACTIVITY_GRID:
             cell = run_cell(z, q, times, ohlc, atr, activity_rank, score, args.max_hold)
-            if len(cell) < 30:
+            indep = non_overlapping(cell, args.max_hold)
+            label = f"{z:>6.1f} {f'top {(1-q)*100:g}%':>9}"
+            # Every cell is reported, including undersampled ones. Silently
+            # dropping them would hide exactly the cells whose apparent
+            # strength comes from having almost no observations.
+            if len(indep) < MIN_REPORTABLE:
+                print(f"{label} | {len(cell):>8,} {'':>9} {'':>6} | "
+                      f"{len(indep):>7,} {'':>8} {'':>9} {'':>9} "
+                      f"insufficient sample (<{MIN_REPORTABLE} independent)")
                 continue
-            mean, _, t = summarise(cell)
-            print(f"{z:>6.1f} {f'top {(1-q)*100:g}%':>9} {len(cell):>9,} "
-                  f"{len(cell)/days:>8.2f} {mean:>7.2f}bps {mean-COST_BPS:>7.2f}bps {t:>6.2f}")
+            mean_all, _, t_all = summarise(cell)
+            mean, _, t = summarise(indep)
+            print(f"{label} | {len(cell):>8,} {mean_all:>6.2f}bps {t_all:>6.2f} | "
+                  f"{len(indep):>7,} {len(indep)/days:>8.2f} {mean:>6.2f}bps "
+                  f"{mean-COST_BPS:>6.2f}bps {t:>6.2f}")
             if mean > COST_BPS:
-                best.append((z, q, cell))
+                best.append((z, q, indep))
 
     print(f"\n{len(Z_GRID)*len(ACTIVITY_GRID)} cells searched -- this is a real "
           f"selection count and must be deflated against, not ignored.")
+    print("A Bonferroni-corrected two-sided threshold at this search width is "
+          "|t| ~= 2.94.")
 
     for z, q, cell in best:
         print(f"\n=== |z|>={z:g}, top {(1-q)*100:g}% -- per year ===")
