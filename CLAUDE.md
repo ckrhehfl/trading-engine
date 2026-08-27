@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S10; both candidates INCONCLUSIVE, methodology rebuilt, costs measured
+### Scalping Strategy Research — Tasks S0-S11; methodology rebuilt, costs measured, first real signals found
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1573,7 +1573,27 @@ is only which horizons are ruled out before that work begins.
   result: `.planning/scalp-s10-regime-classifier.md`.
 - **Measure signals as signals (IC) before assembling a strategy.**
   Usable ICs are small — 0.02-0.05 is genuinely useful, so individual
-  features will look unimpressive and that is normal.
+  features will look unimpressive and that is normal. **Task S11 built
+  the harness (`research/ic.py`, time-series rank IC, non-overlapping
+  samples, Benjamini-Hochberg across the whole sweep) and ran it: 10 of
+  26 feature×horizon combinations clear both bars.** Strongest are
+  `htf_ret_4h` (−0.051 at 60m), `htf_ret_1d` (−0.033), distance to the
+  prior-day high (−0.030) and taker-buy share (−0.027 at 15m).
+  **Every price and momentum IC is negative** — mean reversion at the
+  hour scale, consistently signed across four different formulations —
+  and conditioning on the top 10% of activity *strengthens* most of them
+  rather than washing them out. Nothing usable from volume ratio, round
+  numbers, or weekday. Full result: `.planning/scalp-s11-feature-ic.md`.
+- **Orthogonality is what decides how many signals you have, and S11
+  measured it: those 10 features are about 3 signals.** Daily price
+  structure collapses to one (four members correlated 0.72-0.85);
+  4-hour momentum is partially distinct (0.33-0.41); and **order flow is
+  essentially uncorrelated with every price-based feature, |r| ≤ 0.006**
+  — indistinguishable from zero, which is exactly the condition
+  Grinold's law needs and the first time this project has held two
+  genuinely independent information sources at once. Combine the three,
+  not the ten, and treat `sqrt(3)` as an upper bound rather than a
+  forecast.
 - **Combine weak, uncorrelated signals.** Grinold's `IR ≈ IC × √breadth`
   makes **orthogonality, not individual signal strength, the binding
   constraint** — treated as a design principle and upper bound, never a
