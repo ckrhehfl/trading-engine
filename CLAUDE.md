@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S9; both candidates INCONCLUSIVE, methodology rebuilt, costs measured
+### Scalping Strategy Research — Tasks S0-S10; both candidates INCONCLUSIVE, methodology rebuilt, costs measured
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1542,6 +1542,35 @@ is only which horizons are ruled out before that work begins.
   flicker, computed only from information available at bar close.
   Running mean-reversion into an emerging trend is the documented
   classic blowup, and is exactly what `vwap-mid-reversion` did.
+  **Task S10 built exactly this, measured it, found the first version
+  carried no information, isolated why, and fixed half of it.** The
+  original volatility axis used an ATR *ratio* (current ATR over its own
+  trailing mean) and separated forward 15-minute movement only **1.22x**
+  top-1%-vs-all. Swapping to **absolute** ATR as a fraction of price,
+  changing nothing else, gives **5.21x** — matching the independent
+  rolling-sum-of-|returns| activity measure's 5.25x on the same
+  3.6M bars. A ratio to a recent mean discards exactly the absolute level
+  a cost-versus-move decision needs: a market that doubles its volatility
+  and stays there reads 1.0. `VolatilityAxis.ABSOLUTE` is now the
+  default; `RATIO` is retained only so the negative result stays
+  reproducible.
+  **Two things did not get fixed, and both bind on anyone using this.**
+  First, the **structure axis (ADX) still carries nothing** — within a
+  volatility state the two structures are indistinguishable (15.6 vs
+  15.1bps in expansion, 10.0 vs 10.4 in compression), and its
+  trailing-vs-forward return correlation is under 0.015 everywhere,
+  below even the 0.02-0.05 band named as usable two bullets down. ADX
+  has now failed on both axes it could have carried information on.
+  Second, **discretising costs most of the signal**: the classifier
+  separates ~1.5x where the continuous measure underneath it separates
+  5.2x, the expected price of two states plus hysteresis plus a 14-bar
+  dwell. So: **use the continuous absolute volatility measure as a
+  conditioner, not the discrete label** — including for the per-feature
+  IC work below — and reach for the label only where a genuinely
+  discrete state is required, without relying on its structure axis. The
+  diagnosis of `vwap-mid-reversion` stands throughout; what failed was a
+  particular operationalisation of the remedy, and only partly. Full
+  result: `.planning/scalp-s10-regime-classifier.md`.
 - **Measure signals as signals (IC) before assembling a strategy.**
   Usable ICs are small — 0.02-0.05 is genuinely useful, so individual
   features will look unimpressive and that is normal.
