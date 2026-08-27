@@ -70,8 +70,18 @@ def main(argv=None) -> int:
     n = counts.research_selection_trials
     print(f"\nfamily            : {resolution.family} (source={resolution.source})")
     print(f"project N         : {n}")
-    if resolution.source == "unmapped":
-        print("  ! inadmissible -- an unmapped resolution understates N")
+    if resolution.source == lineage.UNMAPPED_SOURCE:
+        # Fail closed, do not merely warn. An unmapped resolution makes the
+        # strategy its own single-member family, which UNDERSTATES N -- and
+        # a smaller N inflates DSR, making this gate weaker than 0.95
+        # intends. CLAUDE.md's Eligibility Bar clause 2 is explicit that
+        # such a DSR "is not admissible as an Eligibility Bar pass", so no
+        # verdict of any kind may be reported from here.
+        print("\nVERDICT: INADMISSIBLE -- family resolution is 'unmapped', which "
+              "understates N and inflates DSR.\nAdd a curated lineage entry (with "
+              "its .planning/ citation) or pass strategy_family= at run time, "
+              "then re-score.")
+        return 1
 
     # DSR wants per-observation Sharpe on one consistent sampling
     # frequency; every logged `sharpe_ratio` here is annualized, and the
