@@ -217,7 +217,7 @@ def main(argv=None) -> int:
     print(f"mean GROSS          : {result['mean_gross_bps']:+.2f} bps")
     print(f"round-trip cost     : {COST_BPS:.2f} bps")
     print(f"mean NET            : {result['mean_net_bps']:+.2f} bps\n")
-    def fmt(v, suffix=""):
+    def fmt(v: float | None, suffix: str = "") -> str:
         return "n/a" if v is None else f"{v:.3f}{suffix}"
 
     print(f"stop, winners' p80  : {fmt(rec.winner_mae_p80, ' ATR')}")
@@ -228,7 +228,13 @@ def main(argv=None) -> int:
     if rec.warning:
         print(f"  ! {rec.warning}")
     print(f"\nmean winner MAE     : {fmt(avg_r, ' R')}  (against the p80 stop)")
-    print(f"  ! {fragility_warning}" if fragility_warning else "  within Sweeney's 0.7R threshold")
+    if fragility_warning:
+        print(f"  ! {fragility_warning}")
+    elif avg_r is not None:
+        print("  within Sweeney's 0.7R threshold")
+    else:
+        # No winners to measure is not the same as passing the threshold.
+        print("  not measurable -- no uncensored winning positions")
     print(f"\nMFE capture median  : {fmt(capture)}")
     if capture_note:
         print(f"  ! {capture_note}")

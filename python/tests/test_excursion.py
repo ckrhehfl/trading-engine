@@ -333,35 +333,49 @@ def test_trailing_rank_only_ever_looks_backwards():
     early low value against a series that later becomes much larger; a
     trailing rank cannot see those future values at all."""
     values = [1.0, 2.0, 3.0] + [1000.0] * 50
-    out = trailing_percentile_rank(values, history=3, refresh_every=1)
+    out = trailing_percentile_rank(values, history=3)
     # Bar 3 is the first ranked one; against [1,2,3] a 1000 is top rank.
     assert out[3] == pytest.approx(1.0)
     # Appending huge future values must not retroactively change it.
-    longer = trailing_percentile_rank(values + [1e9] * 100, history=3, refresh_every=1)
+    longer = trailing_percentile_rank(values + [1e9] * 100, history=3)
     assert longer[3] == out[3]
-    assert longer[:len(out)] == out
+    assert longer[: len(out)] == out
+
+
+def test_trailing_rank_window_slides_exactly():
+    """The reference window must be the `history` values IMMEDIATELY
+    before each observation. An earlier version rebuilt its sorted
+    snapshot only periodically, leaving the reference stale: on this exact
+    input it returned 1.0 for the second 100, where the true window
+    [2, 3, 100] gives 2/3."""
+    out = trailing_percentile_rank([1.0, 2.0, 3.0, 100.0, 100.0], history=3)
+    assert out[3] == pytest.approx(1.0)          # against [1, 2, 3]
+    assert out[4] == pytest.approx(2 / 3)        # against [2, 3, 100]
+
+
+def test_trailing_rank_matches_a_brute_force_reference():
+    """Belt and braces against the incremental sorted-window maintenance:
+    the same answer a naive recompute-from-scratch would give."""
+    import random
+
+    random.seed(11)
+    values = [random.random() for _ in range(300)]
+    history = 25
+    got = trailing_percentile_rank(values, history=history)
+    for i in range(history, len(values)):
+        window = sorted(values[i - history : i])
+        expected = sum(1 for w in window if w < values[i]) / history
+        assert got[i] == pytest.approx(expected), f"mismatch at {i}"
 
 
 def test_trailing_rank_passes_none_through_without_imputing():
-    out = trailing_percentile_rank([1.0, None, 2.0, 3.0, 4.0], history=2, refresh_every=1)
+    out = trailing_percentile_rank([1.0, None, 2.0, 3.0, 4.0], history=2)
     assert out[1] is None
 
 
-def test_a_stale_snapshot_never_makes_a_rank_clairvoyant():
-    values = [float(i) for i in range(200)]
-    eager = trailing_percentile_rank(values, history=20, refresh_every=1)
-    lazy = trailing_percentile_rank(values, history=20, refresh_every=10)
-    # Same warmup, and a stale snapshot only lags -- it never resolves earlier.
-    assert [v is None for v in eager] == [v is None for v in lazy]
-
-
-@pytest.mark.parametrize("kwargs, match", [
-    ({"history": 0}, "history"),
-    ({"history": 5, "refresh_every": 0}, "refresh_every"),
-])
-def test_trailing_rank_rejects_invalid_configuration(kwargs, match):
-    with pytest.raises(ValueError, match=match):
-        trailing_percentile_rank([1.0, 2.0], **kwargs)
+def test_trailing_rank_rejects_a_non_positive_history():
+    with pytest.raises(ValueError, match="history"):
+        trailing_percentile_rank([1.0, 2.0], history=0)
 
 
 def test_mae_by_outcome_rejects_an_unknown_unit():

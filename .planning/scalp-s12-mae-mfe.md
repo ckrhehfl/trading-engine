@@ -4,9 +4,9 @@ S8 Part 4 step 5, executed 2026-08-26. Builds the excursion machinery
 S8 §3.7 specified, then runs it on provisional entries built from S11's
 orthogonal signals.
 
-**The headline is not the stop placement.** It is that this entry has a
-small, real, positive gross edge — and the taker fee alone is more than
-twice that edge. Everything else follows from that.
+**The headline is not the stop placement.** It is that this entry's
+gross mean outcome, once look-ahead is removed, is a fraction of the
+taker fee. Everything else follows from that.
 
 ## What was built
 
@@ -55,14 +55,15 @@ absorbed silently.
 
 | | |
 |---|---|
-| Positions | 153,184 |
-| Win rate | **43.1%** |
-| **Mean outcome, gross** | **+0.77 bps** |
-| Mean outcome, net of 12bps | **−11.23 bps** |
+| Positions | 145,568 |
+| Win rate | **43.2%** |
+| **Mean outcome, gross** | **+0.95 bps** |
+| Mean outcome, net of 12bps | **−11.05 bps** |
 
-**The gross edge is +0.77 bps, and most of what an earlier version of
-this document reported was look-ahead.** That version put it at +4.28
-bps and called it "real, and matching S11's IC". It was neither: the
+**The gross mean outcome is +0.95 bps, and most of what an earlier
+version of this document reported was look-ahead.** That version put it at +4.28
+bps and called it "real, and matching S11's IC". It was neither -- and it was also never tested for significance, so
+"edge" was the wrong word regardless. The
 activity filter that selected these entries used a percentile computed
 over the **whole dataset**, so early bars were filtered against the
 volatility distribution of bars that had not happened yet. A live system
@@ -72,26 +73,27 @@ already uses — the edge collapses:
 
 | | With look-ahead | Look-ahead removed |
 |---|---|---|
-| Positions | 106,361 | 153,184 |
-| Win rate | 47.4% | **43.1%** |
-| Mean gross | +4.28 bps | **+0.77 bps** |
-| Mean net | −7.72 bps | **−11.23 bps** |
+| Positions | 106,361 | 145,568 |
+| Win rate | 47.4% | **43.2%** |
+| Mean gross outcome | +4.28 bps | **+0.95 bps** |
+| Mean net | −7.72 bps | **−11.05 bps** |
 
-**Roughly 80% of the apparent gross edge was the look-ahead.**
+**Roughly 80% of the apparent gross outcome was the look-ahead.**
 
 **And what remains does not matter, because:**
 
 | Component | bps |
 |---|---|
-| Gross edge per position | **+0.77** |
+| Gross mean outcome per position | **+0.95** |
 | Taker fee, round trip | **10.00** |
 | Slippage, round trip (S9 measured) | 2.00 |
-| **Net** | **−11.23** |
+| **Net** | **−11.05** |
 
-**The fee alone is 13x the gross edge.** Slippage is a rounding error
-here. Even at *zero* slippage this entry loses 9.23 bps per position, and
-+0.77 bps is small enough that it should not be described as an edge at
-all without a significance test this study does not perform.
+**The fee alone is 13x the gross mean outcome.** Slippage is a rounding error
+here. Even at *zero* slippage this entry loses 9.05 bps per position, and
++0.95 bps is small enough that it should not be described as an edge at
+all: this study performs no significance test, so the honest label is a
+**provisional, unvalidated gross mean outcome**, not a signal.
 
 ## Stop placement: S6's 1.5 ATR was far too tight
 
@@ -100,26 +102,26 @@ have cut:
 
 | Stop | Winners cut | Losers cut |
 |---|---|---|
-| 1.00 ATR | 56.3% | 94.8% |
-| **1.50 ATR** (S6's choice) | **41.4%** | 89.5% |
-| 2.00 ATR | 30.4% | 82.7% |
-| **2.68 ATR** (winners' p80) | **20.0%** | 72.7% |
-| 3.90 ATR | 9.4% | 54.8% |
+| 1.00 ATR | 55.8% | 94.7% |
+| **1.50 ATR** (S6's choice) | **40.9%** | 89.2% |
+| 2.00 ATR | 30.0% | 82.4% |
+| **2.65 ATR** (winners' p80) | **20.0%** | 72.7% |
+| 3.90 ATR | 9.1% | 54.1% |
 
 **S6 chose 1.5 ATR by convention and never measured it. On this sample it
-would have destroyed 41.4% of eventual winners.** That is the concrete
+would have destroyed 40.9% of eventual winners.** That is the concrete
 version of S8's complaint that the multipliers "were never measured
 against anything" — now with a number attached.
 
-Sweeney's boundary sits around **2.68 ATR** (winners' 80th percentile),
+Sweeney's boundary sits around **2.65 ATR** (winners' 80th percentile),
 which still truncates 72.7% of losers. Whether that trade is worth making
 depends on a target and a risk budget, neither of which exists yet.
 
-## Two diagnostics that both fire
+## Diagnostics
 
 **Fragility: does NOT fire, and an earlier version of this document
 wrongly said it did.** Mean winning-position MAE is **0.638 R** measured
-against the recommended 2.68 ATR stop — just inside Sweeney's 0.7R
+against the recommended 2.65 ATR stop — just inside Sweeney's 0.7R
 threshold. The earlier claim compared a raw **1.856 ATR** figure against
 a threshold denominated in **R**, which silently assumed 1R = 1 ATR. R is
 multiples of the *planned risk*, and it does not exist until a stop is
@@ -131,7 +133,7 @@ comfortably. Winners routinely give back around two thirds of the planned
 risk before recovering, so the entry is not fragile by Sweeney's test —
 but it is not far off it either.
 
-**Exit quality.** Median MFE capture is **0.126** — the typical position
+**Exit quality.** Median MFE capture is **0.129** — the typical position
 keeps about 13% of the best excursion it showed, well below the 35-55%
 band practitioner literature treats as typical. (An earlier version
 reported **−0.094** by dividing a *net* outcome by a *gross* MFE, which
@@ -141,7 +143,7 @@ available move on the table, which is what a target is for.
 
 ## What this changes
 
-1. **A ~4bps gross edge cannot be traded as a taker.** The binding
+1. **A sub-1bps gross mean outcome cannot be traded as a taker.** The binding
    constraint is now explicit and quantified: any candidate must clear
    ~12bps round trip, and this one clears a third of it. Either the
    signal gets much stronger, or the holding period gets long enough for
@@ -169,8 +171,10 @@ Seven findings, all valid, several changing reported numbers:
 | Percentile off by one (`int(n*p)`) | Now nearest-rank `ceil(n*p)-1`, so "80% stayed inside" is true rather than false by one observation |
 | Flat outcomes counted as losers | Now strictly negative; a flat position is neither |
 | No runnable reproduction | `research/analysis/s12_excursion_run.py` committed |
-| **Look-ahead in the activity filter** | The 90th-percentile threshold was computed over the whole dataset, so early bars were selected against future volatility. Replaced with `trailing_percentile_rank`. **This removed ~80% of the apparent gross edge** (+4.28 → +0.77 bps) and is the most consequential correction in this task |
+| **Look-ahead in the activity filter** | The 90th-percentile threshold was computed over the whole dataset, so early bars were selected against future volatility. Replaced with `trailing_percentile_rank`. **This removed ~80% of the apparent gross mean outcome** (+4.28 → +0.95 bps) and is the most consequential correction in this task |
 | `mae_by_outcome` accepted any `unit` string | A typo silently computed bps; now validated like `recommend_stop` |
+| The trailing rank's sorted window was rebuilt only periodically | Left the reference up to 59 observations stale, so ranks were wrong (not look-ahead — the stale window is strictly *older* — but inaccurate). Now maintained exactly, expiring value removed and new one inserted each observation; verified against a brute-force recompute. Final figures shifted slightly: gross +0.77 → **+0.95 bps** |
+| "gross edge" / "real signal" language | No significance test was run, so these are provisional, unvalidated gross mean outcomes; wording neutralised here and in CLAUDE.md |
 | Text output crashed on a `None` recommendation | Guarded |
 
 ### This also affects one claim in Task S11
@@ -200,7 +204,7 @@ obvious next correction; it is not done here.
 - **Equal weights are unfitted, not optimal — and unfitted does not mean
   it is a floor.** Fitting the weights here would be exactly the
   overfitting S8 warns about, so they were left equal. But other weights
-  could produce a *lower* gross edge just as easily as a higher one:
+  could produce a *lower* gross mean outcome just as easily as a higher one:
   every number here is scoped to this specific equal-weight provisional
   entry and says nothing about the best achievable from these signals.
 - **This is a selection step** and counts toward the project-level trial

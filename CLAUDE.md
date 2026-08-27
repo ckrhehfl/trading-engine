@@ -1602,18 +1602,20 @@ is only which horizons are ruled out before that work begins.
   convention. S6's `stop_multiplier=1.5`/`target_multiplier=3.0` were
   never measured against anything. **Task S12 built the machinery
   (`research/excursion.py`) and measured it: on 106,361 provisional
-  positions, a 1.5 ATR stop would have destroyed 41.4% of eventual
-  winners.** The distribution puts Sweeney's boundary near **2.68 ATR**
+  positions, a 1.5 ATR stop would have destroyed 40.9% of eventual
+  winners.** The distribution puts Sweeney's boundary near **2.65 ATR**
   (winners' 80th percentile), which still truncates 72.7% of losers.
   **The bigger finding is not the stop.** That entry — fading `htf_ret_4h`
   and taker-buy share, the two signals S11 measured as orthogonal,
-  equal-weighted with no fitting — has a gross edge of only **+0.77bps
-  per position** and loses **−11.23bps net**. An earlier draft put that
+  equal-weighted with no fitting — has a gross mean outcome of only
+  **+0.95bps per position** and loses **−11.05bps net**. No significance
+  test was run on it, so it is a provisional, unvalidated figure rather
+  than a demonstrated signal. An earlier draft put that
   gross figure at +4.28bps; **roughly 80% of it was look-ahead**, because
   the activity filter selecting the entries used a percentile computed
   over the whole dataset. Replaced with a trailing rank
   (`excursion.trailing_percentile_rank`). The **taker fee alone (10bps
-  round trip) is now 13x the gross edge**, so it loses heavily even at
+  round trip) is now 13x that figure**, so it loses heavily even at
   zero slippage, and +0.77bps is small enough that it should not be
   called an edge without a significance test.
 
@@ -1625,7 +1627,7 @@ is only which horizons are ruled out before that work begins.
   trailing-rank re-measurement. That is the S9 fee-dominance finding
   measured against a real signal rather than an unconditional price
   move, and **it is the bar every future scalping candidate has to
-  clear**. Median MFE capture is 0.126, well below the 35-55% band, so a
+  clear**. Median MFE capture is 0.129, well below the 35-55% band, so a
   pure time-based exit leaves most of the available move on the table.
   Sweeney's fragility test does *not* fire (0.637R against that stop) --
   an earlier draft said it did, by comparing raw ATR against a threshold

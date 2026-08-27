@@ -56,7 +56,7 @@ different in a quiet hour than a violent one, while "0.8 ATR" does not.
 from __future__ import annotations
 
 import math
-from bisect import bisect_left
+from bisect import bisect_left, insort
 from collections import deque
 from dataclasses import dataclass
 from statistics import median
@@ -369,46 +369,54 @@ def mfe_capture_rate(excursions: Sequence[Excursion]) -> tuple[float | None, str
 def trailing_percentile_rank(
     values: Sequence[float | None],
     history: int,
-    refresh_every: int = 60,
 ) -> list[float | None]:
-    """Each value's percentile rank within the `history` values *before*
-    it -- the look-ahead-safe way to ask "is this bar in the top 10%".
+    """Each value's exact percentile rank within the `history` values
+    *immediately before* it -- the look-ahead-safe way to ask "is this bar
+    in the top 10%".
 
     A global percentile over the whole series is **look-ahead**: it filters
     early bars using the distribution of bars that had not happened yet.
     That is fine for asking whether a quantity *separates* at all, and it
     is not fine for generating the positions whose statistics get
     reported, because a live system could never have selected them. An
-    earlier version of the Task S12 runner made exactly that mistake.
+    earlier version of the Task S12 runner made exactly that mistake, and
+    removing it cost roughly 80% of the apparent edge.
 
-    Mirrors `regime_classifier.AbsoluteAtr`'s approach, including the
-    scheduled re-sort: rebuilding the sorted reference every bar is
-    prohibitive over millions of bars, and a stale snapshot only makes a
-    rank slightly out of date -- never clairvoyant -- because it is always
-    built from strictly earlier values.
+    **Exact, not approximate.** The sorted reference window is maintained
+    incrementally -- the expiring value is removed and the new one
+    inserted after each observation -- so the rank is always against the
+    true preceding `history` values. An earlier version rebuilt the
+    snapshot only every N observations to save time, which left the
+    reference up to N-1 observations stale: on
+    `[1, 2, 3, 100, 100]` with `history=3` it returned `1.0` for the
+    second `100` where the true window `[2, 3, 100]` gives `2/3`. That was
+    never a look-ahead risk -- the stale window is strictly older, not
+    newer -- but it was wrong, and the incremental maintenance turns out
+    to be cheap enough that approximating was not buying anything.
 
-    `None` until `history` values have accumulated, and `None` passes
+    (`regime_classifier.AbsoluteAtr` still uses the periodic-rebuild
+    variant. Its own docstring documents the trade-off, and Task S10
+    concluded that classifier should not gate anything as it stands, so
+    it is left alone here rather than changed as a drive-by.)
+
+    `None` until `history` values have accumulated; a `None` input passes
     through as `None` rather than being imputed.
     """
     if history <= 0:
         raise ValueError(f"history must be positive, got {history}")
-    if refresh_every <= 0:
-        raise ValueError(f"refresh_every must be positive, got {refresh_every}")
 
     out: list[float | None] = [None] * len(values)
-    window: deque[float] = deque(maxlen=history)
-    snapshot: list[float] = []
-    since = 0
+    window: deque[float] = deque()
+    ordered: list[float] = []
     for i, v in enumerate(values):
         if v is None:
             continue
         if len(window) == history:
-            if not snapshot or since >= refresh_every:
-                snapshot = sorted(window)
-                since = 0
-            since += 1
-            out[i] = bisect_left(snapshot, v) / len(snapshot)
+            out[i] = bisect_left(ordered, v) / history
+            expiring = window.popleft()
+            del ordered[bisect_left(ordered, expiring)]
         window.append(v)
+        insort(ordered, v)
     return out
 
 
