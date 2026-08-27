@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S13; measured to a negative conclusion, with the fee as the binding constraint
+### Scalping Strategy Research — Tasks S0-S13; costs measured, signals found, first real candidates at high selectivity
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1712,51 +1712,58 @@ and an explicit acceptance of which of the above are still absent. It
 authorises nothing on a production endpoint and relaxes no Live Entry
 Criterion.
 
-**Task S13 (2026-08-28) closed the last open remedy, and the answer is
-no.** Holding-period extension was the only one of three left — maker
-execution and signal combination were already foreclosed by arithmetic
-(S12: +0.95bps gross is under half a 2bps maker round trip; Grinold's
-`sqrt(3)/sqrt(2)` over the available signals reaches ~1.16bps against a
-10bps fee). Sweeping the holding period on the identical entry rule,
-145,568 positions per horizon:
+**Task S13 (2026-08-28) swept the holding period, then swept selectivity
+— and the second sweep overturned the first's conclusion.** Full account:
+`.planning/scalp-s13-horizon-sweep-and-closeout.md`.
 
-| Holding | Gross mean | vs 10bps fee |
-|---|---|---|
-| 15 min | +0.43bps | 0.04x |
-| 30 min | +0.67bps | 0.07x |
-| **1 hour** | **+0.95bps** | 0.10x |
-| 2 hour | **−0.05bps** | — |
-| 4 hour | −1.65bps | — |
-| 8 hour | −5.67bps | — |
-
-**The outcome does not grow with holding period — it peaks at one hour
-and inverts at two**, exactly as S11's mean-reverting ICs predict: hold
-past the reversion window and the edge is spent. Win rate rises
-monotonically (37.3% → 47.6%) while expectancy falls and turns negative,
+**Holding period does not help.** On the S12 entry rule, gross mean
+outcome peaks at one hour (+0.95bps) and inverts at two (−0.05), reaching
+−5.67bps at eight hours — exactly what S11's mean-reverting ICs predict:
+hold past the reversion window and the edge is spent. Win rate rises
+monotonically 37.3% → 47.6% while expectancy falls and turns negative,
 which is why S8 put expectancy on the metric list rather than trusting
 win rate.
 
-Clearing a 10bps taker round trip needs ~10-15bps gross, i.e. **10.5x to
-15.8x** the best figure this family produced at its own optimal horizon —
-implying a required IC around **0.5-0.8** against the 0.02-0.05 that S8's
-own cited practitioner range calls "genuinely useful". No sustained IC
-near 0.5 appears in the public literature.
+**Selectivity does.** That S12 entry fired **57.2 times per day**. The
+operator pointed out this was still "dozens of trades a day" rather than
+"once or twice, only on a genuinely big signal" — roughly 29x more
+selective, and an operating point never tested. Sweeping it on the
+identical signals:
 
-**What rejected these candidates was arithmetic, not the statistical
-gates.** No DSR or PSR check rejected anything across S8-S13; a 10bps fee
-against a sub-1bps gross outcome did. And **the reserved Binance spot 1m
-holdout was never touched** — the entire arc ran on already-spent
-windows, so a negative result cost no irreplaceable data. Full account:
-`.planning/scalp-s13-horizon-sweep-and-closeout.md`.
+| \|z\| ≥ | Activity | Trades/day | Gross mean | vs 12bps |
+|---|---|---|---|---|
+| 2.0 | top 10% | 57.24 | +0.95bps | ✗ |
+| 4.0 | top 0.1% | **1.46** | **+19.31bps** | ✓ |
+| 5.0 | top 1% | **1.18** | **+25.10bps** | ✓ |
+| 6.0 | top 1% | 0.48 | **+41.30bps** | ✓ |
 
-**Open, not decided — a human `Discuss`**: whether to stop this line and
-write the retrospective (S13's own recommendation, on the grounds that
-the specific question now has a measured answer); whether to pursue
-equity-compounding sizing (the half S7 left undone); or whether to spend
-attention instead on a different asset class or data source, S8's
-remaining structural remedy. Nothing here affects `daily-tsmom-ensemble`,
-which trades at a frequency where a 12bps round trip is negligible and
-remains in paper trading under its own approved exception.
+Gross outcome rises monotonically with selectivity and crosses the cost
+line. Trend-**following** returns exactly the negative at every cell, so
+mean reversion remains the correct sign.
+
+**Not yet an edge, and the reason is in the same data.** Significance is
+strong (t = 7.0-8.0, above what a Bonferroni correction for the 15-cell
+sweep would demand), but the result is **concentrated in 2021** — which
+supplies ~60% of the edge from ~10% of the trades in every promising
+cell. Excluding 2021, only `|z|≥6, top 1%` still clears cost (+18.24bps
+against +7.63 and +11.43 for the others). **2026, the most recent year,
+is negative in all three.**
+
+**The error pattern this exposed, recorded so it stops recurring**: three
+of this arc's largest errors share one shape — a result from a single
+arbitrary configuration generalised to a whole domain (costs vs. the
+*unconditional* move distribution → "minutes-scale impossible"; a
+*directional* hypothesis tested by *magnitude* → "levels carry nothing";
+one operating point at 57 trades/day → "scalping cannot clear costs").
+All three were false and none was caught by reasoning alone. **Never
+conclude about a domain from one parameter setting — sweep it first.**
+
+**Status**: `|z|≥5, top 1%` and `|z|≥6, top 1%` are the first real
+candidates this arc has produced. They go into the walk-forward / DSR
+machinery next — which has never yet had anything worth running through
+it. Nothing here affects `daily-tsmom-ensemble`, which trades at a
+frequency where a 12bps round trip is negligible and remains in paper
+trading under its own approved exception.
 
 **Out of scope this phase**: tick/trade-level data, true HFT,
 co-location; promoting any scalping strategy to paper trading (the

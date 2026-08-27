@@ -1,8 +1,9 @@
-# Scalping Strategy Research Task S13 — the holding-horizon sweep, and what it closes
+# Scalping Strategy Research Task S13 — the holding-horizon sweep, and the selectivity reversal
 
-Executed 2026-08-28. The last open question in the S8 work order, and it
-answers negatively — decisively enough that the honest next step is a
-recommendation to stop this line rather than to try a fourth candidate.
+Executed 2026-08-28. Two findings, and the second overturns the first's
+conclusion. Read both halves: the horizon sweep is correct and still
+useful, but the closeout recommendation it originally carried was drawn
+from one arbitrary operating point and has been retracted.
 
 Measurement only: no strategy registered, no holdout accessed, nothing
 logged to `runs/experiments.jsonl`. Already-spent window.
@@ -112,21 +113,80 @@ And measured facts that constrain any future work here:
 arc ran on already-spent windows. That is the discipline working: a
 negative result cost no irreplaceable data.
 
-## Recommendation
+## SUPERSEDED: the selectivity sweep reverses this conclusion
 
-**Stop this line and write the retrospective.** Not because the research
-failed to produce results — it produced several — but because the
-specific question "can this signal family be traded profitably at
-minutes-to-hours horizons on BTC" now has a measured answer, and it is
-no.
+Everything above is correct **for the entry rule it tested** — and that
+turned out to be the whole problem. The human operator pushed back that
+this was still "trading dozens of times a day", not the "once or twice a
+day, only on a genuinely big signal" they had been describing. They were
+right, and it is measurable:
 
-Continuing would mean either searching for a 10x stronger signal in a
-space where the strongest of ~20 candidates reached IC 0.05, or waiting
-for a fee structure that does not exist at this account tier. Neither is
-research.
+**The tested entry fired 57.2 times per day.** One or two a day is ~29x
+more selective, and that operating point was never tested.
 
-**This is a human decision, not one this document makes.** The
-alternatives, stated fairly: a different asset class or data source
-(S8's own remaining structural remedy); the equity-compounding sizing
-work S7 left half-done; or returning attention to the daily line already
-in paper trading, whose 30-day clock is the only thing currently running.
+Sweeping selectivity on the identical signals (|z| threshold × activity
+percentile), 60-minute hold, gross mean outcome:
+
+| \|z\| ≥ | Activity | Trades/day | Gross mean | vs 12bps cost |
+|---|---|---|---|---|
+| 2.0 | top 10% | 57.24 | +0.95 bps | ✗ |
+| 3.0 | top 0.1% | 2.81 | +10.78 bps | ✗ |
+| 4.0 | top 0.1% | **1.46** | **+19.31 bps** | ✓ |
+| 5.0 | top 1% | **1.18** | **+25.10 bps** | ✓ |
+| 6.0 | top 1% | 0.48 | **+41.30 bps** | ✓ |
+
+**Gross outcome rises monotonically with selectivity and crosses the cost
+line.** The "scalping does not clear costs" conclusion was drawn from a
+single arbitrary operating point and generalised to the whole space. It
+does not hold.
+
+Direction is confirmed unchanged: trend-**following** returns exactly the
+negative of fading at every cell, so mean reversion remains the correct
+sign.
+
+### But this is not yet an edge, and the reason is in the same data
+
+Significance is strong — t = 7.0 to 8.0 across the promising cells, far
+above what even a Bonferroni correction for the 15-cell sweep would
+demand. The problem is **concentration**:
+
+| Cell | 2021's share of trades | 2021's share of the edge |
+|---|---|---|
+| \|z\|≥4, top 0.1% | 11.1% | **65%** |
+| \|z\|≥5, top 1% | 9.6% | **59%** |
+| \|z\|≥6, top 1% | 8.4% | **60%** |
+
+Excluding 2021, only the most selective cell still clears cost:
+
+| Cell | 7 years ex-2021 | |
+|---|---|---|
+| \|z\|≥4, top 0.1% | +7.63 bps | ✗ |
+| \|z\|≥5, top 1% | +11.43 bps | ✗ |
+| \|z\|≥6, top 1% | **+18.24 bps** | ✓ |
+
+And **2026, the most recent year, is negative in all three** (−23.9 /
+−29.3 / −26.7 bps).
+
+2021 was the leverage-driven bull-and-crash year; an extreme-selectivity
+mean-reversion signal firing on violent moves is exactly what would have
+thrived there. Whether that is a regime the strategy needs, or an
+artefact, is the question the validation pipeline exists to answer.
+
+### The error pattern this exposed, named so it stops recurring
+
+Three of this session's largest errors share one shape: **a result from
+one arbitrary configuration generalised to a whole domain.**
+
+1. Costs compared to the *unconditional* move distribution → "minutes-scale is impossible" (false)
+2. A *directional* hypothesis tested by measuring *magnitude* → "levels carry nothing" (false)
+3. One operating point at 57 trades/day → "scalping cannot clear costs" (false)
+
+Each was caught by the operator's pushback or by a measurement, never by
+my own reasoning. The rule this adds to the methodology: **never conclude
+about a domain from a single parameter setting — sweep it first.**
+
+## Status
+
+Not a closeout. `|z|≥5, top 1%` and `|z|≥6, top 1%` are the first real
+candidates this arc has produced, and they now go into the walk-forward /
+DSR machinery that has never yet had anything worth running through it.
