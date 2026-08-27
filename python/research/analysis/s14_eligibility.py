@@ -107,17 +107,37 @@ def main(argv=None) -> int:
     print(f"DSR               : {dsr.dsr:.6g} vs {DSR_THRESHOLD}  "
           f"-> {'PASS' if dsr.dsr >= DSR_THRESHOLD else 'FAIL'}")
 
+    # `evaluate_eligibility` deliberately covers only fold consistency, the
+    # sign test and the mean-Sharpe t-test -- its own docstring says the
+    # remaining criteria stay the caller's responsibility. So the verdict
+    # must combine both halves; reporting `result.passed` alone would call
+    # a run with a sub-floor profit factor a PASS.
     dd = float(agg["worst_fold_max_drawdown"])
     floor = max(30, min(100, int(sum(
-        f["validate_end_index"] - f["validate_start_index"] for f in folds) / 1440 / 20)))
-    print(f"max drawdown      : {dd*100:.2f}% vs {DRAWDOWN_CEILING*100:.0f}%  "
-          f"-> {'PASS' if dd <= DRAWDOWN_CEILING else 'FAIL'}")
-    print(f"trade count       : {trades:,} vs floor {floor}  "
-          f"-> {'PASS' if trades >= floor else 'INCONCLUSIVE-DATA-LIMITED'}")
-    print(f"profit factor     : {agg['mean_profit_factor']:.4f} vs {PROFIT_FACTOR_FLOOR}  "
-          f"-> {'PASS' if agg['mean_profit_factor'] >= PROFIT_FACTOR_FLOOR else 'FAIL'}")
+        f["validate_end_index"] - f["validate_start_index"] for f in folds) / BARS_PER_DAY / 20)))
+    drawdown_ok = dd <= DRAWDOWN_CEILING
+    trades_ok = trades >= floor
+    pf_ok = agg["mean_profit_factor"] >= PROFIT_FACTOR_FLOOR
+    dsr_ok = dsr.dsr is not None and dsr.dsr >= DSR_THRESHOLD
 
-    print(f"\nVERDICT: {'PASS' if result.passed else 'REJECTED'}")
+    print(f"max drawdown      : {dd*100:.2f}% vs {DRAWDOWN_CEILING*100:.0f}%  "
+          f"-> {'PASS' if drawdown_ok else 'FAIL'}")
+    print(f"trade count       : {trades:,} vs floor {floor}  "
+          f"-> {'PASS' if trades_ok else 'INCONCLUSIVE-DATA-LIMITED'}")
+    print(f"profit factor     : {agg['mean_profit_factor']:.4f} vs {PROFIT_FACTOR_FLOOR}  "
+          f"-> {'PASS' if pf_ok else 'FAIL'}")
+
+    # An under-floor trade count is neither a pass nor a fail: CLAUDE.md
+    # requires it be reported as INCONCLUSIVE-DATA-LIMITED and explicitly
+    # says such a run "is not evidence against the strategy and must not be
+    # written up as such". So it is resolved before the pass/fail verdict,
+    # not folded into it.
+    if not trades_ok:
+        print(f"\nVERDICT: INCONCLUSIVE-DATA-LIMITED "
+              f"({trades:,} trades against a floor of {floor})")
+        return 0
+    overall = result.passed and drawdown_ok and pf_ok and dsr_ok
+    print(f"\nVERDICT: {'PASS' if overall else 'REJECTED'}")
     return 0
 
 

@@ -301,6 +301,13 @@ class SelectiveReversionStrategy:
             raise ValueError(f"stop_atr_multiple must be positive, got {stop_atr_multiple}")
         if min_rr <= 0:
             raise ValueError(f"min_rr must be positive, got {min_rr}")
+        # Deliberately NOT floored at DEFAULT_MIN_RR. 2:1 is the policy
+        # floor for a research configuration and DEFAULT_MIN_RR enforces
+        # it for every real run; a hard constructor floor would also make
+        # the gate impossible to switch off, and switching it off is
+        # exactly how `s14_stop_diagnosis.py` isolates its contribution.
+        # A value below 2.0 is a diagnostic setting and is never a valid
+        # configuration to report a result from.
         if max_hold_bars < 1:
             raise ValueError(f"max_hold_bars must be at least 1, got {max_hold_bars}")
         if not (0 <= activity_quantile < 1):

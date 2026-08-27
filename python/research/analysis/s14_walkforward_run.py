@@ -39,7 +39,7 @@ import statistics
 import sys
 from decimal import Decimal
 
-from research import eligibility, lineage, overfitting_check
+from research import lineage, overfitting_check
 from research.holdout import load_research_klines
 from research.strategies.selective_reversion import (
     DEFAULT_BARS_PER_DAY,
@@ -119,19 +119,23 @@ def main(argv=None) -> int:
     if drawdowns:
         print(f"max drawdown      : {max(drawdowns)*100:.2f}% (worst fold)")
 
-    resolution = lineage.resolve_family(STRATEGY_ID, strategy_family=FAMILY)
+    # `resolve_family` takes the logged RECORD, not a keyword -- it reads
+    # `strategy_family` off it. Passing a keyword raises TypeError.
+    resolution = lineage.resolve_family(STRATEGY_ID, {"strategy_family": FAMILY})
     print(f"\nfamily resolution : {resolution.family} (source={resolution.source})")
     if resolution.source == "unmapped":
         print("  ! UNMAPPED -- a DSR against this is inadmissible per the Eligibility Bar")
     counts = overfitting_check.check_project_combination_count()
     print(f"project N         : {counts.research_selection_trials}")
 
+    print("\nScore this against the Eligibility Bar with "
+          "`python -m research.analysis.s14_eligibility`, which reads the\n"
+          "record just logged rather than re-running (and so cannot inflate N).")
     print("\nPer-fold Sharpe:")
     for f in result.folds:
         s = f.metrics.annualized_sharpe
         print(f"  fold {f.fold_index:>3}  trades {f.metrics.num_trades:>4}  "
               f"Sharpe {'n/a' if s is None else f'{float(s):+8.4f}'}")
-    del eligibility  # imported for the caller's convenience; scoring lives in s14_eligibility.py
     return 0
 
 
