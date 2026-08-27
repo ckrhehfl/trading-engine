@@ -89,11 +89,26 @@ already uses — the edge collapses:
 | Slippage, round trip (S9 measured) | 2.00 |
 | **Net** | **−11.05** |
 
-**The fee alone is 13x the gross mean outcome.** Slippage is a rounding error
-here. Even at *zero* slippage this entry loses 9.05 bps per position, and
-+0.95 bps is small enough that it should not be described as an edge at
-all: this study performs no significance test, so the honest label is a
-**provisional, unvalidated gross mean outcome**, not a signal.
+**Every cost scenario loses, including the maker one.** Stated as
+separate multiples because they are different numbers and an earlier
+draft conflated them:
+
+| Scenario | Round-trip cost | vs +0.95 gross | Net |
+|---|---|---|---|
+| Taker fee alone, zero slippage | 10.00 bps | **10.5x** | **−9.05 bps** |
+| Taker fee + measured slippage | 12.00 bps | **12.6x** | **−11.05 bps** |
+| **Maker fee (~1bps/side)** | **2.00 bps** | **2.1x** | **−1.05 bps** |
+
+The maker row matters most, because moving to maker execution was the
+one route that looked like it might close the gap. **It does not.** Even
+paying no taker fee at all, this entry still loses — the gross mean
+outcome is under half the maker round trip. That forecloses the cheapest
+of the three remedies without needing to harden `fill.py`'s limit model
+first.
+
+And +0.95 bps is small enough that it should not be described as an edge
+at all: this study performs no significance test, so the honest label is
+a **provisional, unvalidated gross mean outcome**, not a signal.
 
 ## Stop placement: S6's 1.5 ATR was far too tight
 

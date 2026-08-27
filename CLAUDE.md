@@ -1615,9 +1615,13 @@ is only which horizons are ruled out before that work begins.
   the activity filter selecting the entries used a percentile computed
   over the whole dataset. Replaced with a trailing rank
   (`excursion.trailing_percentile_rank`). The **taker fee alone (10bps
-  round trip) is now 13x that figure**, so it loses heavily even at
-  zero slippage, and +0.77bps is small enough that it should not be
-  called an edge without a significance test.
+  round trip) is 10.5x that figure**, the full 12bps round trip 12.6x,
+  and — the part that forecloses a remedy — **even a maker round trip of
+  ~2bps still loses (−1.05bps)**. Moving to maker execution was the one
+  route that looked like it might close the gap; it does not, without
+  needing to harden `fill.py`'s limit model first. +0.95bps is also small
+  enough that it should not be called an edge without a significance
+  test.
 
   **The same look-ahead affects one S11 claim**: the "conditioning on the
   top 10% of activity strengthens most ICs" table used
