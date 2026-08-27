@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S11; methodology rebuilt, costs measured, first real signals found
+### Scalping Strategy Research — Tasks S0-S12; methodology rebuilt, costs measured, signals found, fee identified as the binding constraint
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1600,7 +1600,44 @@ is only which horizons are ruled out before that work begins.
   performance forecast (the law is known to overstate achievable IR).
 - **Place stops and targets from MAE/MFE distributions**, not
   convention. S6's `stop_multiplier=1.5`/`target_multiplier=3.0` were
-  never measured against anything.
+  never measured against anything. **Task S12 built the machinery
+  (`research/excursion.py`) and measured it: on 106,361 provisional
+  positions, a 1.5 ATR stop would have destroyed 40.9% of eventual
+  winners.** The distribution puts Sweeney's boundary near **2.65 ATR**
+  (winners' 80th percentile), which still truncates 72.7% of losers.
+  **The bigger finding is not the stop.** That entry — fading `htf_ret_4h`
+  and taker-buy share, the two signals S11 measured as orthogonal,
+  equal-weighted with no fitting — has a gross mean outcome of only
+  **+0.95bps per position** and loses **−11.05bps net**. No significance
+  test was run on it, so it is a provisional, unvalidated figure rather
+  than a demonstrated signal. An earlier draft put that
+  gross figure at +4.28bps; **roughly 80% of it was look-ahead**, because
+  the activity filter selecting the entries used a percentile computed
+  over the whole dataset. Replaced with a trailing rank
+  (`excursion.trailing_percentile_rank`). The **taker fee alone (10bps
+  round trip) is 10.5x that figure**, the full 12bps round trip 12.6x,
+  and — the part that forecloses a remedy — **even a maker round trip of
+  ~2bps still loses (−1.05bps)**. Moving to maker execution was the one
+  route that looked like it might close the gap; it does not, without
+  needing to harden `fill.py`'s limit model first. +0.95bps is also small
+  enough that it should not be called an edge without a significance
+  test.
+
+  **The same look-ahead affects one S11 claim**: the "conditioning on the
+  top 10% of activity strengthens most ICs" table used
+  `research.ic.conditional_ic`, whose quantile is also global. S11's
+  unconditional ICs are unaffected and stand; the tradeability
+  conclusion drawn from the conditional table is withdrawn pending a
+  trailing-rank re-measurement. That is the S9 fee-dominance finding
+  measured against a real signal rather than an unconditional price
+  move, and **it is the bar every future scalping candidate has to
+  clear**. Median MFE capture is 0.129, well below the 35-55% band, so a
+  pure time-based exit leaves most of the available move on the table.
+  Sweeney's fragility test does *not* fire (0.637R against that stop) --
+  an earlier draft said it did, by comparing raw ATR against a threshold
+  denominated in R, which silently assumed 1R = 1 ATR. Full result:
+  `.planning/scalp-s12-mae-mfe.md`; reproduce with
+  `research.analysis.s12_excursion_run`.
 - **Derive the risk budget first**: ruin threshold (25-30%, not 50% —
   recovery is asymmetric) → acceptable risk of ruin (<1% institutional,
   >5% means reduce size) → risk per trade → quantity via stop distance.

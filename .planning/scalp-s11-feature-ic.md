@@ -92,8 +92,18 @@ them**, rather than washing them out:
 | `struct_dist_prior_low` | −0.0206 | **−0.0334** |
 | `htf_ret_4h` | −0.0508 | −0.0493 |
 
-That is the useful direction: the signals are not artefacts of untradeable
-quiet periods.
+That looked like the useful direction — but **this specific table is
+contaminated by look-ahead and the conclusion drawn from it is
+withdrawn.** `conditional_ic` computes its quantile threshold over the
+whole series, so "the top 10% of activity" was decided partly by bars
+that had not happened yet. Task S12 hit the same bug in its own entry
+filter and found it accounted for roughly 80% of an apparent edge.
+
+The unconditional ICs above are **unaffected** — they use every bar after
+warmup and no threshold at all — and they stand. What does not stand is
+the claim that the signals survive specifically in *tradeable* moments;
+that needs re-measuring with `excursion.trailing_percentile_rank`, which
+is cheap and not done here.
 
 ## Orthogonality: 10 features are about 3 signals
 
