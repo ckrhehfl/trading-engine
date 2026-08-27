@@ -41,9 +41,24 @@ def _load(runs_path: str) -> dict:
         for line in Path(runs_path).read_text().splitlines()
         if line.strip() and f'"{STRATEGY_ID}"' in line
     ]
-    walk_forward = [r for r in records if r.get("record_type") != "backtest_run" or "fold_results" in r]
+    # Require the fields this scorer actually reads, rather than excluding a
+    # record type. The log holds several shapes for one strategy_id (a
+    # walk-forward run, and any per-candidate `backtest_run` children it
+    # logged), and a filter phrased as "not a backtest_run" admits any
+    # future shape too -- which would KeyError downstream instead of
+    # saying what is wrong.
+    walk_forward = [
+        r for r in records
+        if isinstance(r.get("fold_results"), list)
+        and r["fold_results"]
+        and isinstance(r.get("aggregate_metrics"), dict)
+    ]
     if not walk_forward:
-        raise SystemExit(f"no logged walk-forward record for {STRATEGY_ID} in {runs_path}")
+        raise SystemExit(
+            f"no logged walk-forward record for {STRATEGY_ID} in {runs_path} "
+            f"({len(records)} record(s) matched the strategy_id, none carrying "
+            f"both a non-empty fold_results and aggregate_metrics)"
+        )
     return walk_forward[-1]
 
 
