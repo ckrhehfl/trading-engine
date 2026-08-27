@@ -29,6 +29,7 @@ from research.excursion import (
     measure_excursion,
     mfe_capture_rate,
     recommend_stop,
+    trailing_percentile_rank,
 )
 
 DEFAULT_DB = "python/data/var/klines.sqlite3"
@@ -40,6 +41,7 @@ ATR_PERIOD = 14         # Wilder's, already this project's convention
 Z_WINDOW = 1440         # one day of 1m bars
 ENTRY_Z = 2.0           # conventional 2-sigma
 ACTIVITY_QUANTILE = 0.90  # S9's tradeable-moment threshold
+ACTIVITY_HISTORY = 1440   # trailing reference for that threshold: one day
 MAX_HOLD = 60           # the horizon S11's ICs were strongest at
 COST_BPS = 12.0         # S9's measured round trip
 HTF_LAG = 240           # htf_ret_4h, S11's strongest feature
@@ -114,8 +116,11 @@ def build_entries(rows):
         None if atr[i] is None or closes[i] <= 0 else atr[i] / closes[i] * 1e4
         for i in range(n)
     ]
-    scored = sorted(a for a in activity if a is not None)
-    threshold = scored[min(int(len(scored) * ACTIVITY_QUANTILE), len(scored) - 1)]
+    # Trailing rank, NOT a global percentile. A global threshold would
+    # filter early bars using the volatility distribution of bars that had
+    # not happened yet -- look-ahead, and disqualifying for positions whose
+    # statistics get reported as if a live system could have selected them.
+    activity_rank = trailing_percentile_rank(activity, ACTIVITY_HISTORY)
 
     htf = [None] * n
     for i in range(HTF_LAG, n):
@@ -131,7 +136,7 @@ def build_entries(rows):
 
     entries = []
     for i in range(n - MAX_HOLD - 2):
-        if activity[i] is None or activity[i] < threshold:
+        if activity_rank[i] is None or activity_rank[i] < ACTIVITY_QUANTILE:
             continue
         zp, zf = z_price[i], z_flow[i]
         if zp is None or zf is None:
@@ -212,15 +217,19 @@ def main(argv=None) -> int:
     print(f"mean GROSS          : {result['mean_gross_bps']:+.2f} bps")
     print(f"round-trip cost     : {COST_BPS:.2f} bps")
     print(f"mean NET            : {result['mean_net_bps']:+.2f} bps\n")
-    print(f"stop, winners' p80  : {rec.winner_mae_p80:.3f} ATR")
-    print(f"stop, winners' p90  : {rec.winner_mae_p90:.3f} ATR")
-    print(f"loser MAE median    : {rec.loser_mae_median:.3f} ATR")
-    print(f"losers cut at p80   : {rec.losers_cut_at_p80*100:.1f}%")
+    def fmt(v, suffix=""):
+        return "n/a" if v is None else f"{v:.3f}{suffix}"
+
+    print(f"stop, winners' p80  : {fmt(rec.winner_mae_p80, ' ATR')}")
+    print(f"stop, winners' p90  : {fmt(rec.winner_mae_p90, ' ATR')}")
+    print(f"loser MAE median    : {fmt(rec.loser_mae_median, ' ATR')}")
+    print("losers cut at p80   : "
+          + ("n/a" if rec.losers_cut_at_p80 is None else f"{rec.losers_cut_at_p80*100:.1f}%"))
     if rec.warning:
         print(f"  ! {rec.warning}")
-    print(f"\nmean winner MAE     : {avg_r:.3f} R  (against the p80 stop)")
+    print(f"\nmean winner MAE     : {fmt(avg_r, ' R')}  (against the p80 stop)")
     print(f"  ! {fragility_warning}" if fragility_warning else "  within Sweeney's 0.7R threshold")
-    print(f"\nMFE capture median  : {capture:.3f}" if capture is not None else "")
+    print(f"\nMFE capture median  : {fmt(capture)}")
     if capture_note:
         print(f"  ! {capture_note}")
     print("\nstop trade-off (winners cut / losers cut):")

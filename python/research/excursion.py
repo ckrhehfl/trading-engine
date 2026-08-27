@@ -56,6 +56,8 @@ different in a quiet hour than a violent one, while "0.8 ATR" does not.
 from __future__ import annotations
 
 import math
+from bisect import bisect_left
+from collections import deque
 from dataclasses import dataclass
 from statistics import median
 from typing import Literal, Sequence
@@ -364,6 +366,52 @@ def mfe_capture_rate(excursions: Sequence[Excursion]) -> tuple[float | None, str
     return m, note
 
 
+def trailing_percentile_rank(
+    values: Sequence[float | None],
+    history: int,
+    refresh_every: int = 60,
+) -> list[float | None]:
+    """Each value's percentile rank within the `history` values *before*
+    it -- the look-ahead-safe way to ask "is this bar in the top 10%".
+
+    A global percentile over the whole series is **look-ahead**: it filters
+    early bars using the distribution of bars that had not happened yet.
+    That is fine for asking whether a quantity *separates* at all, and it
+    is not fine for generating the positions whose statistics get
+    reported, because a live system could never have selected them. An
+    earlier version of the Task S12 runner made exactly that mistake.
+
+    Mirrors `regime_classifier.AbsoluteAtr`'s approach, including the
+    scheduled re-sort: rebuilding the sorted reference every bar is
+    prohibitive over millions of bars, and a stale snapshot only makes a
+    rank slightly out of date -- never clairvoyant -- because it is always
+    built from strictly earlier values.
+
+    `None` until `history` values have accumulated, and `None` passes
+    through as `None` rather than being imputed.
+    """
+    if history <= 0:
+        raise ValueError(f"history must be positive, got {history}")
+    if refresh_every <= 0:
+        raise ValueError(f"refresh_every must be positive, got {refresh_every}")
+
+    out: list[float | None] = [None] * len(values)
+    window: deque[float] = deque(maxlen=history)
+    snapshot: list[float] = []
+    since = 0
+    for i, v in enumerate(values):
+        if v is None:
+            continue
+        if len(window) == history:
+            if not snapshot or since >= refresh_every:
+                snapshot = sorted(window)
+                since = 0
+            since += 1
+            out[i] = bisect_left(snapshot, v) / len(snapshot)
+        window.append(v)
+    return out
+
+
 def mae_by_outcome(
     excursions: Sequence[Excursion],
     stops_atr: Sequence[float],
@@ -381,6 +429,9 @@ def mae_by_outcome(
     end of the data, so classifying them as winner or loser would judge
     an observation that never finished.
     """
+    if unit not in ("atr", "bps"):
+        raise ValueError(f"unit must be 'atr' or 'bps', got {unit!r}")
+
     def mae(e: Excursion) -> float | None:
         return e.mae_atr if unit == "atr" else e.mae_bps
 

@@ -55,29 +55,43 @@ absorbed silently.
 
 | | |
 |---|---|
-| Win rate | **47.4%** |
-| **Mean outcome, gross** | **+4.28 bps** |
-| Mean outcome, net of 12bps | **−7.72 bps** |
+| Positions | 153,184 |
+| Win rate | **43.1%** |
+| **Mean outcome, gross** | **+0.77 bps** |
+| Mean outcome, net of 12bps | **−11.23 bps** |
 
-**The gross edge is real and it matches S11's IC.** A ~−0.05 IC at the
-60-minute horizon predicts a small positive expectancy from fading, and
-+4.28 bps per position is exactly that magnitude. The signal is not
-imaginary.
+**The gross edge is +0.77 bps, and most of what an earlier version of
+this document reported was look-ahead.** That version put it at +4.28
+bps and called it "real, and matching S11's IC". It was neither: the
+activity filter that selected these entries used a percentile computed
+over the **whole dataset**, so early bars were filtered against the
+volatility distribution of bars that had not happened yet. A live system
+could never have made those selections. With a trailing rank instead —
+the same look-ahead-safe construction `regime_classifier.AbsoluteAtr`
+already uses — the edge collapses:
 
-**And it does not matter, because:**
+| | With look-ahead | Look-ahead removed |
+|---|---|---|
+| Positions | 106,361 | 153,184 |
+| Win rate | 47.4% | **43.1%** |
+| Mean gross | +4.28 bps | **+0.77 bps** |
+| Mean net | −7.72 bps | **−11.23 bps** |
+
+**Roughly 80% of the apparent gross edge was the look-ahead.**
+
+**And what remains does not matter, because:**
 
 | Component | bps |
 |---|---|
-| Gross edge per position | **+4.28** |
+| Gross edge per position | **+0.77** |
 | Taker fee, round trip | **10.00** |
 | Slippage, round trip (S9 measured) | 2.00 |
-| **Net** | **−7.72** |
+| **Net** | **−11.23** |
 
-**The fee alone is 2.3x the gross edge.** Slippage is a rounding error
-here — S9 already established the fee dominates, and this is the first
-time that has been measured against a real signal rather than against an
-unconditional price move. Even with *zero* slippage this entry loses
-5.72 bps per position.
+**The fee alone is 13x the gross edge.** Slippage is a rounding error
+here. Even at *zero* slippage this entry loses 9.23 bps per position, and
++0.77 bps is small enough that it should not be described as an edge at
+all without a significance test this study does not perform.
 
 ## Stop placement: S6's 1.5 ATR was far too tight
 
@@ -86,26 +100,26 @@ have cut:
 
 | Stop | Winners cut | Losers cut |
 |---|---|---|
-| 1.00 ATR | 58.2% | 96.2% |
-| **1.50 ATR** (S6's choice) | **43.4%** | 91.3% |
-| 2.00 ATR | 32.3% | 85.1% |
-| **2.78 ATR** (winners' p80) | **20.0%** | 73.6% |
-| 3.90 ATR (winners' p90) | 10.0% | 56.4% |
+| 1.00 ATR | 56.3% | 94.8% |
+| **1.50 ATR** (S6's choice) | **41.4%** | 89.5% |
+| 2.00 ATR | 30.4% | 82.7% |
+| **2.68 ATR** (winners' p80) | **20.0%** | 72.7% |
+| 3.90 ATR | 9.4% | 54.8% |
 
 **S6 chose 1.5 ATR by convention and never measured it. On this sample it
-would have destroyed 43.4% of eventual winners.** That is the concrete
+would have destroyed 41.4% of eventual winners.** That is the concrete
 version of S8's complaint that the multipliers "were never measured
 against anything" — now with a number attached.
 
-Sweeney's boundary sits around **2.78 ATR** (winners' 80th percentile),
-which still truncates 73.6% of losers. Whether that trade is worth making
+Sweeney's boundary sits around **2.68 ATR** (winners' 80th percentile),
+which still truncates 72.7% of losers. Whether that trade is worth making
 depends on a target and a risk budget, neither of which exists yet.
 
 ## Two diagnostics that both fire
 
 **Fragility: does NOT fire, and an earlier version of this document
 wrongly said it did.** Mean winning-position MAE is **0.638 R** measured
-against the recommended 2.78 ATR stop — just inside Sweeney's 0.7R
+against the recommended 2.68 ATR stop — just inside Sweeney's 0.7R
 threshold. The earlier claim compared a raw **1.856 ATR** figure against
 a threshold denominated in **R**, which silently assumed 1R = 1 ATR. R is
 multiples of the *planned risk*, and it does not exist until a stop is
@@ -117,8 +131,8 @@ comfortably. Winners routinely give back around two thirds of the planned
 risk before recovering, so the entry is not fragile by Sweeney's test —
 but it is not far off it either.
 
-**Exit quality.** Median MFE capture is **0.119** — the typical position
-keeps about 12% of the best excursion it showed, well below the 35-55%
+**Exit quality.** Median MFE capture is **0.126** — the typical position
+keeps about 13% of the best excursion it showed, well below the 35-55%
 band practitioner literature treats as typical. (An earlier version
 reported **−0.094** by dividing a *net* outcome by a *gross* MFE, which
 folded the cost structure into a number meant to measure exit timing.
@@ -155,6 +169,26 @@ Seven findings, all valid, several changing reported numbers:
 | Percentile off by one (`int(n*p)`) | Now nearest-rank `ceil(n*p)-1`, so "80% stayed inside" is true rather than false by one observation |
 | Flat outcomes counted as losers | Now strictly negative; a flat position is neither |
 | No runnable reproduction | `research/analysis/s12_excursion_run.py` committed |
+| **Look-ahead in the activity filter** | The 90th-percentile threshold was computed over the whole dataset, so early bars were selected against future volatility. Replaced with `trailing_percentile_rank`. **This removed ~80% of the apparent gross edge** (+4.28 → +0.77 bps) and is the most consequential correction in this task |
+| `mae_by_outcome` accepted any `unit` string | A typo silently computed bps; now validated like `recommend_stop` |
+| Text output crashed on a `None` recommendation | Guarded |
+
+### This also affects one claim in Task S11
+
+S11 reported that conditioning on the top 10% of activity *strengthens*
+most feature ICs, and concluded the signals "are not artefacts of
+untradeable quiet periods". That conditioning used
+`research.ic.conditional_ic`, whose quantile threshold is computed over
+the whole series — the **same look-ahead** corrected here.
+
+`conditional_ic`'s own docstring already discloses this and scopes it to
+"measuring *whether* a feature separates", which is legitimate. What is
+not legitimate is the tradeability claim built on top of it: S11's
+unconditional ICs (the main table of 10 survivors) are unaffected and
+stand, but **the conditional strengthening should be treated as
+indicative, not as evidence that the signals survive in tradeable
+moments.** Re-measuring it with a trailing rank is cheap and is the
+obvious next correction; it is not done here.
 
 ## Honest limits
 

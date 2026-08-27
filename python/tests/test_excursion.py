@@ -12,6 +12,7 @@ import pytest
 
 from research.excursion import (
     Excursion,
+    trailing_percentile_rank,
     fragility_check,
     mae_by_outcome,
     measure_excursion,
@@ -36,8 +37,8 @@ def series(prices):
 def test_entry_is_the_open_of_the_bar_after_the_signal():
     """simulate_fill fills at next_bar.open, so the signal bar is excluded
     entirely and the entry price is an OPEN, not a close."""
-    o, h, l, c = series([100.0, 900.0, 100.0, 100.0, 100.0])
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=3)
+    o, h, lows, c = series([100.0, 900.0, 100.0, 100.0, 100.0])
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=3)
     assert e is not None
     assert e.entry_price == 900.0, "entry must be the OPEN of the bar after the signal"
     assert e.mae_bps > 0   # the 100.0 bars that follow are adverse from 900
@@ -62,13 +63,13 @@ def test_movement_before_the_entry_open_is_never_counted_as_excursion():
 
 
 def test_returns_none_when_the_fill_bar_does_not_exist():
-    o, h, l, c = series([100.0, 101.0])
+    o, h, lows, c = series([100.0, 101.0])
     # Signal on the last bar: there is no next bar to fill at.
-    assert measure_excursion(1, "long", o, h, l, c, max_hold=5) is None
-    assert measure_excursion(5, "long", o, h, l, c, max_hold=5) is None
+    assert measure_excursion(1, "long", o, h, lows, c, max_hold=5) is None
+    assert measure_excursion(5, "long", o, h, lows, c, max_hold=5) is None
     # Signal on bar 0 DOES fill, at bar 1's open, and is censored because
     # the data runs out before max_hold elapses.
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=5)
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=5)
     assert e is not None and e.censored
 
 
@@ -81,8 +82,8 @@ def test_measure_excursion_rejects_ragged_price_series():
 
 
 def test_long_excursions_are_measured_in_the_right_directions():
-    o, h, l, c = series([100.0, 100.0, 95.0, 110.0, 100.0])
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=3)
+    o, h, lows, c = series([100.0, 100.0, 95.0, 110.0, 100.0])
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=3)
     assert e is not None
     assert e.entry_price == 100.0
     assert e.mae_bps == pytest.approx(500.0)   # down to 95
@@ -91,8 +92,8 @@ def test_long_excursions_are_measured_in_the_right_directions():
 
 
 def test_short_excursions_invert_adverse_and_favorable():
-    o, h, l, c = series([100.0, 100.0, 95.0, 110.0, 100.0])
-    e = measure_excursion(0, "short", o, h, l, c, max_hold=3)
+    o, h, lows, c = series([100.0, 100.0, 95.0, 110.0, 100.0])
+    e = measure_excursion(0, "short", o, h, lows, c, max_hold=3)
     assert e is not None
     # For a short, a rise is adverse and a fall is favourable.
     assert e.mae_bps == pytest.approx(1000.0)
@@ -100,9 +101,9 @@ def test_short_excursions_invert_adverse_and_favorable():
 
 
 def test_a_short_that_falls_is_a_winner_and_a_long_that_falls_is_not():
-    o, h, l, c = series([100.0, 100.0, 90.0])
-    long_pos = measure_excursion(0, "long", o, h, l, c, max_hold=1)
-    short_pos = measure_excursion(0, "short", o, h, l, c, max_hold=1)
+    o, h, lows, c = series([100.0, 100.0, 90.0])
+    long_pos = measure_excursion(0, "long", o, h, lows, c, max_hold=1)
+    short_pos = measure_excursion(0, "short", o, h, lows, c, max_hold=1)
     assert long_pos is not None and short_pos is not None
     assert not long_pos.is_winner
     assert short_pos.is_winner
@@ -113,32 +114,32 @@ def test_a_short_that_falls_is_a_winner_and_a_long_that_falls_is_not():
 
 
 def test_costs_are_charged_against_the_outcome():
-    o, h, l, c = series([100.0, 100.0, 101.0])
-    free = measure_excursion(0, "long", o, h, l, c, max_hold=1)
-    charged = measure_excursion(0, "long", o, h, l, c, max_hold=1, cost_bps=12.0)
+    o, h, lows, c = series([100.0, 100.0, 101.0])
+    free = measure_excursion(0, "long", o, h, lows, c, max_hold=1)
+    charged = measure_excursion(0, "long", o, h, lows, c, max_hold=1, cost_bps=12.0)
     assert free is not None and charged is not None
     assert charged.outcome_bps == pytest.approx(free.outcome_bps - 12.0)
 
 
 def test_a_win_becomes_a_loss_once_costs_exceed_it():
-    o, h, l, c = series([100.0, 100.0, 100.05])  # +5bps gross
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=1, cost_bps=12.0)
+    o, h, lows, c = series([100.0, 100.0, 100.05])  # +5bps gross
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=1, cost_bps=12.0)
     assert e is not None
     assert not e.is_winner, "5bps gross cannot survive a 12bps round trip"
 
 
 def test_atr_units_are_the_excursion_divided_by_atr_at_entry():
-    o, h, l, c = series([100.0, 100.0, 99.0])
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=1, atr=1.0)
+    o, h, lows, c = series([100.0, 100.0, 99.0])
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=1, atr=1.0)
     assert e is not None
     # ATR of 1.0 on a 100 entry is 100bps; MAE is 100bps -> exactly 1 ATR.
     assert e.mae_atr == pytest.approx(1.0)
 
 
 def test_atr_units_are_none_when_atr_is_absent_or_degenerate():
-    o, h, l, c = series([100.0, 100.0, 99.0])
+    o, h, lows, c = series([100.0, 100.0, 99.0])
     for bad in (None, 0.0, -1.0):
-        e = measure_excursion(0, "long", o, h, l, c, max_hold=1, atr=bad)
+        e = measure_excursion(0, "long", o, h, lows, c, max_hold=1, atr=bad)
         assert e is not None
         assert e.mae_atr is None and e.mfe_atr is None
 
@@ -148,8 +149,8 @@ def test_atr_units_are_none_when_atr_is_absent_or_degenerate():
     ({"max_hold": 0}, "max_hold"),
 ])
 def test_measure_excursion_rejects_invalid_arguments(kwargs, match):
-    o, h, l, c = series([100.0] * 10)
-    args = {"index": 0, "side": "long", "opens": o, "highs": h, "lows": l, "closes": c, "max_hold": 3}
+    o, h, lows, c = series([100.0] * 10)
+    args = {"index": 0, "side": "long", "opens": o, "highs": h, "lows": lows, "closes": c, "max_hold": 3}
     args.update(kwargs)
     with pytest.raises(ValueError, match=match):
         measure_excursion(**args)
@@ -164,8 +165,8 @@ def test_reaching_the_holding_limit_is_a_real_exit_not_censoring():
     position censored when there is no other exit rule, which renders the
     whole study vacuous -- that is what the first run of this analysis
     did."""
-    o, h, l, c = series([100.0] * 20)
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=5)
+    o, h, lows, c = series([100.0] * 20)
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=5)
     assert e is not None
     assert not e.censored
 
@@ -173,8 +174,8 @@ def test_reaching_the_holding_limit_is_a_real_exit_not_censoring():
 def test_running_out_of_data_before_the_holding_limit_is_censoring():
     # The observation was truncated: what the position would have done is
     # genuinely unknown.
-    o, h, l, c = series([100.0] * 6)
-    e = measure_excursion(0, "long", o, h, l, c, max_hold=100)
+    o, h, lows, c = series([100.0] * 6)
+    e = measure_excursion(0, "long", o, h, lows, c, max_hold=100)
     assert e is not None
     assert e.censored
     assert e.mfe_capture is None, "a truncated observation has no real outcome to judge"
@@ -316,3 +317,53 @@ def test_mae_by_outcome_reports_the_trade_off_each_stop_makes():
 def test_mae_by_outcome_excludes_censored_observations():
     ex = [_ex(0.5, 10.0) for _ in range(50)] + [_ex(0.1, 10.0, censored=True) for _ in range(500)]
     assert mae_by_outcome(ex, [0.4])[0.4]["winners_cut"] == pytest.approx(1.0)
+
+
+# --- trailing percentile rank: the look-ahead-safe filter -------------------
+
+
+def test_trailing_rank_is_none_until_the_history_window_fills():
+    out = trailing_percentile_rank([1.0, 2.0, 3.0, 4.0], history=3)
+    assert out[:3] == [None, None, None]
+    assert out[3] is not None
+
+
+def test_trailing_rank_only_ever_looks_backwards():
+    """The property this exists for. A global percentile would rank an
+    early low value against a series that later becomes much larger; a
+    trailing rank cannot see those future values at all."""
+    values = [1.0, 2.0, 3.0] + [1000.0] * 50
+    out = trailing_percentile_rank(values, history=3, refresh_every=1)
+    # Bar 3 is the first ranked one; against [1,2,3] a 1000 is top rank.
+    assert out[3] == pytest.approx(1.0)
+    # Appending huge future values must not retroactively change it.
+    longer = trailing_percentile_rank(values + [1e9] * 100, history=3, refresh_every=1)
+    assert longer[3] == out[3]
+    assert longer[:len(out)] == out
+
+
+def test_trailing_rank_passes_none_through_without_imputing():
+    out = trailing_percentile_rank([1.0, None, 2.0, 3.0, 4.0], history=2, refresh_every=1)
+    assert out[1] is None
+
+
+def test_a_stale_snapshot_never_makes_a_rank_clairvoyant():
+    values = [float(i) for i in range(200)]
+    eager = trailing_percentile_rank(values, history=20, refresh_every=1)
+    lazy = trailing_percentile_rank(values, history=20, refresh_every=10)
+    # Same warmup, and a stale snapshot only lags -- it never resolves earlier.
+    assert [v is None for v in eager] == [v is None for v in lazy]
+
+
+@pytest.mark.parametrize("kwargs, match", [
+    ({"history": 0}, "history"),
+    ({"history": 5, "refresh_every": 0}, "refresh_every"),
+])
+def test_trailing_rank_rejects_invalid_configuration(kwargs, match):
+    with pytest.raises(ValueError, match=match):
+        trailing_percentile_rank([1.0, 2.0], **kwargs)
+
+
+def test_mae_by_outcome_rejects_an_unknown_unit():
+    with pytest.raises(ValueError, match="unit"):
+        mae_by_outcome([_ex(0.3, 10.0)], [1.0], unit="furlongs")

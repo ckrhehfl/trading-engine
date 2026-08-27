@@ -1602,20 +1602,32 @@ is only which horizons are ruled out before that work begins.
   convention. S6's `stop_multiplier=1.5`/`target_multiplier=3.0` were
   never measured against anything. **Task S12 built the machinery
   (`research/excursion.py`) and measured it: on 106,361 provisional
-  positions, a 1.5 ATR stop would have destroyed 43.4% of eventual
-  winners.** The distribution puts Sweeney's boundary near **2.78 ATR**
-  (winners' 80th percentile), which still truncates 73.6% of losers.
+  positions, a 1.5 ATR stop would have destroyed 41.4% of eventual
+  winners.** The distribution puts Sweeney's boundary near **2.68 ATR**
+  (winners' 80th percentile), which still truncates 72.7% of losers.
   **The bigger finding is not the stop.** That entry — fading `htf_ret_4h`
   and taker-buy share, the two signals S11 measured as orthogonal,
-  equal-weighted with no fitting — has a **real gross edge of +4.28bps
-  per position**, matching S11's IC, and loses **−7.72bps net**. The
-  **taker fee alone (10bps round trip) is 2.3x the gross edge**, so it
-  loses even at zero slippage. That is the S9 fee-dominance finding
+  equal-weighted with no fitting — has a gross edge of only **+0.77bps
+  per position** and loses **−11.23bps net**. An earlier draft put that
+  gross figure at +4.28bps; **roughly 80% of it was look-ahead**, because
+  the activity filter selecting the entries used a percentile computed
+  over the whole dataset. Replaced with a trailing rank
+  (`excursion.trailing_percentile_rank`). The **taker fee alone (10bps
+  round trip) is now 13x the gross edge**, so it loses heavily even at
+  zero slippage, and +0.77bps is small enough that it should not be
+  called an edge without a significance test.
+
+  **The same look-ahead affects one S11 claim**: the "conditioning on the
+  top 10% of activity strengthens most ICs" table used
+  `research.ic.conditional_ic`, whose quantile is also global. S11's
+  unconditional ICs are unaffected and stand; the tradeability
+  conclusion drawn from the conditional table is withdrawn pending a
+  trailing-rank re-measurement. That is the S9 fee-dominance finding
   measured against a real signal rather than an unconditional price
   move, and **it is the bar every future scalping candidate has to
-  clear**. Median MFE capture is 0.119, well below the 35-55% band, so a
+  clear**. Median MFE capture is 0.126, well below the 35-55% band, so a
   pure time-based exit leaves most of the available move on the table.
-  Sweeney's fragility test does *not* fire (0.638R against that stop) --
+  Sweeney's fragility test does *not* fire (0.637R against that stop) --
   an earlier draft said it did, by comparing raw ATR against a threshold
   denominated in R, which silently assumed 1R = 1 ATR. Full result:
   `.planning/scalp-s12-mae-mfe.md`; reproduce with
