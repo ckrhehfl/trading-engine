@@ -55,30 +55,29 @@ absorbed silently.
 
 | | |
 |---|---|
-| Win rate | **46.9%** |
-| Mean outcome, net of 12bps | **−8.07 bps** |
-| Median outcome, net | −5.79 bps |
-| **Mean outcome, gross** | **+3.93 bps** |
+| Win rate | **47.4%** |
+| **Mean outcome, gross** | **+4.28 bps** |
+| Mean outcome, net of 12bps | **−7.72 bps** |
 
 **The gross edge is real and it matches S11's IC.** A ~−0.05 IC at the
 60-minute horizon predicts a small positive expectancy from fading, and
-+3.93 bps per position is exactly that magnitude. The signal is not
++4.28 bps per position is exactly that magnitude. The signal is not
 imaginary.
 
 **And it does not matter, because:**
 
 | Component | bps |
 |---|---|
-| Gross edge per position | **+3.93** |
+| Gross edge per position | **+4.28** |
 | Taker fee, round trip | **10.00** |
 | Slippage, round trip (S9 measured) | 2.00 |
-| **Net** | **−8.07** |
+| **Net** | **−7.72** |
 
-**The fee alone is 2.5x the gross edge.** Slippage is a rounding error
+**The fee alone is 2.3x the gross edge.** Slippage is a rounding error
 here — S9 already established the fee dominates, and this is the first
 time that has been measured against a real signal rather than against an
 unconditional price move. Even with *zero* slippage this entry loses
-6.07 bps per position.
+5.72 bps per position.
 
 ## Stop placement: S6's 1.5 ATR was far too tight
 
@@ -87,33 +86,44 @@ have cut:
 
 | Stop | Winners cut | Losers cut |
 |---|---|---|
-| 1.00 ATR | 62.7% | 96.2% |
-| **1.50 ATR** (S6's choice) | **45.1%** | 91.0% |
-| 2.00 ATR | 32.7% | 84.5% |
-| **2.77 ATR** (winners' p80) | **20.0%** | 73.1% |
-| 3.88 ATR (winners' p90) | 10.0% | 55.9% |
+| 1.00 ATR | 58.2% | 96.2% |
+| **1.50 ATR** (S6's choice) | **43.4%** | 91.3% |
+| 2.00 ATR | 32.3% | 85.1% |
+| **2.78 ATR** (winners' p80) | **20.0%** | 73.6% |
+| 3.90 ATR (winners' p90) | 10.0% | 56.4% |
 
 **S6 chose 1.5 ATR by convention and never measured it. On this sample it
-would have destroyed 45% of eventual winners.** That is the concrete
+would have destroyed 43.4% of eventual winners.** That is the concrete
 version of S8's complaint that the multipliers "were never measured
 against anything" — now with a number attached.
 
-Sweeney's boundary sits around **2.77 ATR** (winners' 80th percentile),
-which still truncates 73% of losers. Whether that trade is worth making
+Sweeney's boundary sits around **2.78 ATR** (winners' 80th percentile),
+which still truncates 73.6% of losers. Whether that trade is worth making
 depends on a target and a risk budget, neither of which exists yet.
 
 ## Two diagnostics that both fire
 
-**Fragility.** Mean winning-position MAE is **1.856 ATR**, far above
-Sweeney's 0.7 threshold. These "winners" are rescue trades that went
-deeply against the position before recovering, so a small worsening of
-conditions converts a large share of them into losses. A strategy resting
-on them is structurally fragile even when its win rate looks respectable.
+**Fragility: does NOT fire, and an earlier version of this document
+wrongly said it did.** Mean winning-position MAE is **0.638 R** measured
+against the recommended 2.78 ATR stop — just inside Sweeney's 0.7R
+threshold. The earlier claim compared a raw **1.856 ATR** figure against
+a threshold denominated in **R**, which silently assumed 1R = 1 ATR. R is
+multiples of the *planned risk*, and it does not exist until a stop is
+chosen, so that comparison was meaningless. `fragility_check` now
+requires the planned risk to be supplied and the number is reported in R.
 
-**Exit quality.** Median MFE capture is **−0.094** — negative, meaning
-the typical position ended *below its entry* despite having shown some
-favourable excursion along the way. Under a pure time-based exit that is
-what a losing rule looks like from the inside.
+Worth stating precisely: 0.638R is *inside* the threshold but not
+comfortably. Winners routinely give back around two thirds of the planned
+risk before recovering, so the entry is not fragile by Sweeney's test —
+but it is not far off it either.
+
+**Exit quality.** Median MFE capture is **0.119** — the typical position
+keeps about 12% of the best excursion it showed, well below the 35-55%
+band practitioner literature treats as typical. (An earlier version
+reported **−0.094** by dividing a *net* outcome by a *gross* MFE, which
+folded the cost structure into a number meant to measure exit timing.
+Both sides are now gross.) A pure time-based exit is leaving most of the
+available move on the table, which is what a target is for.
 
 ## What this changes
 
@@ -132,6 +142,20 @@ what a losing rule looks like from the inside.
    strength before strength has finished. That is a signal-timing problem
    no stop placement fixes.
 
+## Corrections made on review
+
+Seven findings, all valid, several changing reported numbers:
+
+| Finding | Effect |
+|---|---|
+| Entry used the fill bar's **close**, not its **open** | `simulate_fill` fills at `next_bar.open`. Using the close also let pre-entry intrabar movement count as excursion. Fixed; win rate 46.9% → 47.4%, gross +3.93 → +4.28 bps |
+| Excursions documented as net, implemented as gross | Contract **amended to gross**, with reasoning: a stop is placed on *price* and triggers regardless of fees, so deducting half a round trip from MAE would misplace every stop derived from it |
+| `mfe_capture` mixed a net numerator with a gross denominator | Now gross over gross; −0.094 → **+0.119** |
+| 0.7 threshold applied to ATR, not R | Invalidated the fragility claim entirely. `fragility_check` now requires the planned risk; the warning **no longer fires** (0.638R) |
+| Percentile off by one (`int(n*p)`) | Now nearest-rank `ceil(n*p)-1`, so "80% stayed inside" is true rather than false by one observation |
+| Flat outcomes counted as losers | Now strictly negative; a flat position is neither |
+| No runnable reproduction | `research/analysis/s12_excursion_run.py` committed |
+
 ## Honest limits
 
 - **One provisional entry, not a strategy.** Different thresholds,
@@ -139,9 +163,12 @@ what a losing rule looks like from the inside.
   distributions. The stop recommendation is conditional on this entry.
 - **MAE is a lower bound.** Bar high/low cannot see the intrabar path, so
   the true worst excursion is at least this bad and possibly worse.
-- **Equal weights are unfitted, not optimal.** Deliberate — fitting the
-  weights here would be exactly the overfitting S8 warns about — but it
-  means the gross edge is a floor, not a ceiling.
+- **Equal weights are unfitted, not optimal — and unfitted does not mean
+  it is a floor.** Fitting the weights here would be exactly the
+  overfitting S8 warns about, so they were left equal. But other weights
+  could produce a *lower* gross edge just as easily as a higher one:
+  every number here is scoped to this specific equal-weight provisional
+  entry and says nothing about the best achievable from these signals.
 - **This is a selection step** and counts toward the project-level trial
   budget when a real strategy is eventually registered.
 - Measured on already-spent windows; no holdout accessed, nothing logged
@@ -149,7 +176,24 @@ what a losing rule looks like from the inside.
 
 ## Reproduction
 
-`research.excursion.measure_excursion` over entries as described above,
-`max_hold=60`, `cost_bps=12`, ATR(14) at entry as the unit.
-`recommend_stop(unit="atr")`, `fragility_check`, `mfe_capture_rate` for
-the summaries. Symbol `BINANCE-FUTURES:BTCUSDT`, all 3,661,780 bars.
+Committed as a runnable module, because describing the inputs is not the
+same as being able to regenerate them — the trailing z-scores, the
+activity filter and the entry selection all have to be reproducible, not
+just the excursion functions:
+
+```
+PYTHONPATH=python python/.venv/bin/python -m research.analysis.s12_excursion_run
+```
+
+`--json` emits the full result set machine-readably and prints a sha256
+of the payload to stderr, so an independent re-run can be compared byte
+for byte rather than eyeballed. `--db-path` selects the kline database
+(default `python/data/var/klines.sqlite3`).
+
+Every constant lives at the top of that module and is either conventional
+(ATR period 14, 2-sigma entry, 1,440-bar z-score window) or measured
+elsewhere in this arc (12bps round trip from S9, the 90th-percentile
+activity threshold from S9, the 60-minute horizon and the 4-hour lag from
+S11). None was fitted here.
+
+Symbol `BINANCE-FUTURES:BTCUSDT`, all 3,661,780 bars, already spent.

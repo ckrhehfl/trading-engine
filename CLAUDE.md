@@ -1600,7 +1600,26 @@ is only which horizons are ruled out before that work begins.
   performance forecast (the law is known to overstate achievable IR).
 - **Place stops and targets from MAE/MFE distributions**, not
   convention. S6's `stop_multiplier=1.5`/`target_multiplier=3.0` were
-  never measured against anything.
+  never measured against anything. **Task S12 built the machinery
+  (`research/excursion.py`) and measured it: on 106,361 provisional
+  positions, a 1.5 ATR stop would have destroyed 43.4% of eventual
+  winners.** The distribution puts Sweeney's boundary near **2.78 ATR**
+  (winners' 80th percentile), which still truncates 73.6% of losers.
+  **The bigger finding is not the stop.** That entry — fading `htf_ret_4h`
+  and taker-buy share, the two signals S11 measured as orthogonal,
+  equal-weighted with no fitting — has a **real gross edge of +4.28bps
+  per position**, matching S11's IC, and loses **−7.72bps net**. The
+  **taker fee alone (10bps round trip) is 2.3x the gross edge**, so it
+  loses even at zero slippage. That is the S9 fee-dominance finding
+  measured against a real signal rather than an unconditional price
+  move, and **it is the bar every future scalping candidate has to
+  clear**. Median MFE capture is 0.119, well below the 35-55% band, so a
+  pure time-based exit leaves most of the available move on the table.
+  Sweeney's fragility test does *not* fire (0.638R against that stop) --
+  an earlier draft said it did, by comparing raw ATR against a threshold
+  denominated in R, which silently assumed 1R = 1 ATR. Full result:
+  `.planning/scalp-s12-mae-mfe.md`; reproduce with
+  `research.analysis.s12_excursion_run`.
 - **Derive the risk budget first**: ruin threshold (25-30%, not 50% —
   recovery is asymmetric) → acceptable risk of ruin (<1% institutional,
   >5% means reduce size) → risk per trade → quantity via stop distance.
