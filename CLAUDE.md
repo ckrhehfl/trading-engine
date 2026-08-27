@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S11; methodology rebuilt, costs measured, first real signals found
+### Scalping Strategy Research — Tasks S0-S12; methodology rebuilt, costs measured, signals found, fee identified as the binding constraint
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
