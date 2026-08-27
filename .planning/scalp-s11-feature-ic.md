@@ -34,8 +34,20 @@ gets wrong in the direction of manufacturing significance:
   Twenty features at two horizons is forty tests; at alpha=0.05 two false
   positives are expected from noise alone. Correcting per horizon would
   understate the test count, which is precisely the loophole the
-  correction exists to close. A dedicated test asserts that adding
-  horizons can never make a result *easier* to call significant.
+  correction exists to close. What that guarantees is that **the family
+  corrected is the family actually tested**, and a test asserts exactly
+  that by comparing `measure_all`'s flags against one BH pass over the
+  whole sweep's p-values.
+
+  **It does not guarantee that more hypotheses make the bar stricter**,
+  and an earlier draft of this document claimed it did. BH re-ranks the
+  entire family whenever it changes, so adding a hypothesis with a very
+  small p-value raises the step-up cutoff and can make a previously
+  rejected result significant: `[0.03, 0.9]` yields no discoveries while
+  `[0.001, 0.03, 0.9]` yields two. That is BH working as designed — it
+  controls the false *discovery rate* across a family, not each member's
+  individual threshold. A regression test pins the counterexample so the
+  false invariant cannot be reintroduced.
 - **`None` features are skipped, never imputed.** Substituting a zero or
   a mean invents data and biases the correlation toward the substitute.
 

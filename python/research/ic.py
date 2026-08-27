@@ -149,7 +149,16 @@ def measure_ic(
     feature itself refused to score) are skipped rather than imputed --
     substituting a zero or a mean would invent data and bias the
     correlation toward whatever was substituted.
+
+    Raises `ValueError` on a length mismatch rather than letting a short
+    `feature` surface as an `IndexError` deep in the loop, or -- worse --
+    letting a `zip` silently truncate and report an IC computed over a
+    prefix of the data as if it covered all of it.
     """
+    if len(feature) != len(closes):
+        raise ValueError(
+            f"feature and closes must be the same length, got {len(feature)} and {len(closes)}"
+        )
     xs: list[float] = []
     ys: list[float] = []
     for i in sample_indices(len(closes), horizon, warmup):
@@ -165,12 +174,20 @@ def measure_ic(
     rank_ic = spearman(xs, ys)
     lin_ic = pearson(xs, ys)
     t_stat = p_value = None
-    if rank_ic is not None and len(xs) > 2 and abs(rank_ic) < 1.0:
-        t_stat = rank_ic * math.sqrt((len(xs) - 2) / (1 - rank_ic**2))
-        # Two-sided, normal approximation to the t distribution. Fine at
-        # the sample sizes here (thousands); the dependence caveat in the
-        # module docstring dominates any error from the approximation.
-        p_value = 2 * (1 - NormalDist().cdf(abs(t_stat)))
+    if rank_ic is not None and len(xs) > 2:
+        if abs(rank_ic) >= 1.0:
+            # A perfect rank match is the strongest possible evidence, so
+            # it must not fall through as an unmeasurable None -- that
+            # would exclude it from FDR correction and mark the most
+            # predictive feature possible as not interesting.
+            t_stat = math.copysign(math.inf, rank_ic)
+            p_value = 0.0
+        else:
+            t_stat = rank_ic * math.sqrt((len(xs) - 2) / (1 - rank_ic**2))
+            # Two-sided, normal approximation to the t distribution. Fine
+            # at the sample sizes here (thousands); the dependence caveat
+            # in the module docstring dominates any approximation error.
+            p_value = 2 * (1 - NormalDist().cdf(abs(t_stat)))
     return IcResult(
         name=name,
         horizon=horizon,
@@ -216,14 +233,26 @@ def measure_all(
     horizons: Sequence[int],
     warmup: int = 0,
     alpha: float = 0.05,
-) -> list[IcResult]:
+) -> list["IcSweep"]:
     """Every feature against every horizon, with one Benjamini-Hochberg
     correction applied across the **whole sweep** -- not per horizon.
 
     Correcting per horizon would understate the number of tests actually
     run and is exactly the loophole the correction exists to close.
-    Results come back sorted by |rank IC| descending, with a
-    `survives_fdr` flag attached via `IcSweep`.
+
+    **This does not mean more hypotheses always make the bar stricter.**
+    Benjamini-Hochberg re-ranks every p-value when the set changes, so
+    adding a hypothesis with a very small p-value can raise the step-up
+    cutoff and make a previously-rejected result significant. Concretely,
+    `[0.03, 0.9]` yields no discoveries while `[0.001, 0.03, 0.9]` yields
+    two. That is BH working as designed -- it controls the false
+    *discovery rate* across the family, not each member's individual
+    threshold -- and an earlier version of this docstring claimed the
+    opposite. What the single-sweep rule actually guarantees is that the
+    family being corrected is the family that was really tested.
+
+    Results come back sorted by |rank IC| descending, each wrapped in an
+    `IcSweep` carrying its `survives_fdr` flag.
     """
     results = [
         measure_ic(name, values, closes, horizon, warmup)
@@ -281,6 +310,13 @@ def conditional_ic(
     """
     if not 0 <= quantile < 1:
         raise ValueError(f"quantile must be in [0, 1), got {quantile}")
+    if not len(feature) == len(conditioner) == len(closes):
+        # A zip would silently truncate to the shortest, reporting an IC
+        # over a prefix as though it covered the whole series.
+        raise ValueError(
+            "feature, conditioner and closes must be the same length, got "
+            f"{len(feature)}, {len(conditioner)} and {len(closes)}"
+        )
     scored = sorted(c for c in conditioner if c is not None)
     if not scored:
         return IcResult(name, horizon, 0, None, None, None, None)

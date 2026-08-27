@@ -198,20 +198,34 @@ def test_benjamini_hochberg_rejects_an_invalid_alpha():
 
 
 def test_measure_all_corrects_across_the_whole_sweep_not_per_horizon():
+    """The real guarantee: the family corrected is the family tested.
+
+    Deliberately NOT asserting that more hypotheses make the bar
+    stricter -- an earlier version of this test did, and the invariant is
+    false for Benjamini-Hochberg (see the counterexample test below).
+    """
     rets = [0.01, -0.01] * 60
     closes = _closes_from_returns(rets)
     features = {f"noise_{k}": [float((i * (k + 3)) % 7) for i in range(len(closes))] for k in range(8)}
-    one_horizon = measure_all(features, closes, horizons=[1])
-    two_horizons = measure_all(features, closes, horizons=[1, 2])
-    # The same features measured at more horizons means more tests, so the
-    # correction must get stricter -- never looser.
-    assert len(two_horizons) == 2 * len(one_horizon)
-    by_name_h1 = {(s.result.name, s.result.horizon): s for s in two_horizons if s.result.horizon == 1}
-    for s in one_horizon:
-        twin = by_name_h1[(s.result.name, 1)]
-        assert not (twin.survives_fdr and not s.survives_fdr), (
-            "adding horizons must not make a result easier to call significant"
-        )
+    sweeps = measure_all(features, closes, horizons=[1, 2])
+
+    assert len(sweeps) == 2 * len(features), "every feature x horizon pair must be tested"
+    expected = benjamini_hochberg([s.result.p_value for s in sweeps])
+    assert [s.survives_fdr for s in sweeps] == expected, (
+        "survives_fdr must be one BH pass over the whole sweep's p-values"
+    )
+
+
+def test_benjamini_hochberg_is_not_monotone_in_the_number_of_hypotheses():
+    """Pins the property that invalidated an earlier version of the test
+    above, so the false invariant cannot be reintroduced.
+
+    BH re-ranks the whole family when it changes, so adding a hypothesis
+    with a very small p-value raises the step-up cutoff and can make a
+    previously-rejected result significant.
+    """
+    assert benjamini_hochberg([0.03, 0.9]) == [False, False]
+    assert benjamini_hochberg([0.001, 0.03, 0.9]) == [True, True, False]
 
 
 def test_measure_all_sorts_by_absolute_rank_ic():
@@ -278,3 +292,35 @@ def test_format_sweep_hides_the_long_tail_below_the_threshold():
     text = format_sweep(sweeps, min_abs_ic=0.5)
     assert "oracle" in text
     assert "flat" not in text
+
+
+# --- input validation and perfect correlation -------------------------------
+
+
+def test_measure_ic_rejects_a_length_mismatch_instead_of_indexing_off_the_end():
+    closes = _closes_from_returns([0.01] * 30)
+    with pytest.raises(ValueError, match="same length"):
+        measure_ic("short", [1.0] * 5, closes, horizon=1)
+
+
+def test_conditional_ic_rejects_a_length_mismatch_instead_of_silently_truncating():
+    closes = _closes_from_returns([0.01] * 30)
+    with pytest.raises(ValueError, match="same length"):
+        conditional_ic("f", [1.0] * 5, closes, 1, [1.0] * len(closes), quantile=0.5)
+
+
+def test_a_perfect_rank_match_gets_a_real_p_value_not_none():
+    """A perfect correlation is the strongest evidence possible; leaving
+    its p-value None would exclude it from FDR correction and mark the
+    most predictive feature imaginable as not interesting."""
+    rets = [(-1) ** i * (0.001 * (i + 1)) for i in range(40)]
+    closes = _closes_from_returns(rets)
+    feature = [rets[i] if i < len(rets) else None for i in range(len(closes))]
+    r = measure_ic("oracle", feature, closes, horizon=1)
+    assert r.rank_ic == pytest.approx(1.0)
+    assert r.p_value == 0.0
+    assert r.t_stat == math.inf
+
+    sweeps = measure_all({"oracle": feature}, closes, horizons=[1])
+    assert sweeps[0].survives_fdr, "a perfect feature must survive FDR"
+    assert sweeps[0].is_interesting
