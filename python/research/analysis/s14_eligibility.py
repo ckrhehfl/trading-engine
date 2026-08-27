@@ -47,6 +47,29 @@ REQUIRED_AGGREGATE_KEYS = (
 )
 
 
+def _as_number(value) -> float | None:
+    """`value` as a float, or `None` if it does not denote one.
+
+    `None` here is a real, expected value rather than corruption: this
+    codebase's `Metrics` contract returns `None` -- deliberately not
+    `0.0`, `inf`, or an exception -- for a degenerate input, so a fold set
+    with no closed trades genuinely produces a null `mean_sharpe` or
+    `mean_profit_factor`. `worst_fold_max_drawdown` is logged as a
+    `Decimal`-derived string, so strings are accepted too. `bool` is
+    excluded because it is an `int` subclass and `True` is never a metric.
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
+
+
 def _load(runs_path: str) -> dict:
     # Parse every line and match `strategy_id` as a field. A substring test
     # on the raw line would also match a record that merely mentions this id
@@ -82,6 +105,31 @@ def _load(runs_path: str) -> dict:
     return walk_forward[-1]
 
 
+def _require_scoreable(agg: dict) -> dict[str, float]:
+    """The four aggregate metrics as real numbers, or exit saying which
+    are undefined.
+
+    Presence of a key is not the same as a value that can be scored. A
+    `null` `mean_sharpe` or `mean_profit_factor` is a legitimate logged
+    outcome (see `_as_number`), and it means the run produced no
+    evaluable risk-adjusted return -- which is an INCONCLUSIVE-DATA-LIMITED
+    condition under CLAUDE.md's trade-count clause, never a FAIL. Formatting
+    it would raise `TypeError` and formatting a substituted zero would
+    silently report a verdict the data does not support.
+    """
+    resolved = {k: _as_number(agg.get(k)) for k in REQUIRED_AGGREGATE_KEYS}
+    undefined = sorted(k for k, v in resolved.items() if v is None)
+    if undefined:
+        print(
+            f"VERDICT: INCONCLUSIVE-DATA-LIMITED -- undefined aggregate "
+            f"metric(s): {', '.join(undefined)}. A null metric means the run "
+            f"produced nothing evaluable there, which is not evidence against "
+            f"the strategy and must not be reported as a FAIL."
+        )
+        raise SystemExit(0)
+    return resolved
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--runs-path", default=RUNS_PATH)
@@ -90,15 +138,19 @@ def main(argv=None) -> int:
     record = _load(args.runs_path)
     folds = record["fold_results"]
     agg = record["aggregate_metrics"]
+    scoreable = _require_scoreable(agg)
     sharpes = [f["metrics"]["sharpe_ratio"] for f in folds]
-    trades = agg["total_trades"]
+    trades = int(scoreable["total_trades"])
+    mean_sharpe = scoreable["mean_sharpe"]
+    worst_drawdown = scoreable["worst_fold_max_drawdown"]
+    mean_profit_factor = scoreable["mean_profit_factor"]
 
     print(f"run_id            : {record['run_id']}")
     print(f"folds             : {len(folds)}")
     print(f"total trades      : {trades:,}")
-    print(f"mean fold Sharpe  : {agg['mean_sharpe']:+.4f}")
-    print(f"worst drawdown    : {float(agg['worst_fold_max_drawdown'])*100:.2f}%")
-    print(f"mean profit factor: {agg['mean_profit_factor']:.4f}")
+    print(f"mean fold Sharpe  : {mean_sharpe:+.4f}")
+    print(f"worst drawdown    : {worst_drawdown*100:.2f}%")
+    print(f"mean profit factor: {mean_profit_factor:.4f}")
 
     resolution = lineage.resolve_family(STRATEGY_ID, record)
     counts = overfitting_check.check_project_combination_count(runs_path=args.runs_path)
@@ -125,7 +177,7 @@ def main(argv=None) -> int:
         None if s is None else eligibility.deannualize_sharpe(s, bars_per_day=BARS_PER_DAY)
         for s in sharpes
     ]
-    mean_daily = eligibility.deannualize_sharpe(agg["mean_sharpe"], bars_per_day=BARS_PER_DAY)
+    mean_daily = eligibility.deannualize_sharpe(mean_sharpe, bars_per_day=BARS_PER_DAY)
     evaluated_days = sum(
         f["validate_end_index"] - f["validate_start_index"] for f in folds
     ) // BARS_PER_DAY
@@ -157,19 +209,19 @@ def main(argv=None) -> int:
     # remaining criteria stay the caller's responsibility. So the verdict
     # must combine both halves; reporting `result.passed` alone would call
     # a run with a sub-floor profit factor a PASS.
-    dd = float(agg["worst_fold_max_drawdown"])
+    dd = worst_drawdown
     floor = max(30, min(100, int(sum(
         f["validate_end_index"] - f["validate_start_index"] for f in folds) / BARS_PER_DAY / 20)))
     drawdown_ok = dd <= DRAWDOWN_CEILING
     trades_ok = trades >= floor
-    pf_ok = agg["mean_profit_factor"] >= PROFIT_FACTOR_FLOOR
+    pf_ok = mean_profit_factor >= PROFIT_FACTOR_FLOOR
     dsr_ok = dsr.dsr is not None and dsr.dsr >= DSR_THRESHOLD
 
     print(f"max drawdown      : {dd*100:.2f}% vs {DRAWDOWN_CEILING*100:.0f}%  "
           f"-> {'PASS' if drawdown_ok else 'FAIL'}")
     print(f"trade count       : {trades:,} vs floor {floor}  "
           f"-> {'PASS' if trades_ok else 'INCONCLUSIVE-DATA-LIMITED'}")
-    print(f"profit factor     : {agg['mean_profit_factor']:.4f} vs {PROFIT_FACTOR_FLOOR}  "
+    print(f"profit factor     : {mean_profit_factor:.4f} vs {PROFIT_FACTOR_FLOOR}  "
           f"-> {'PASS' if pf_ok else 'FAIL'}")
 
     # An under-floor trade count is neither a pass nor a fail: CLAUDE.md
