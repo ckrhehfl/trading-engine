@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -47,7 +48,7 @@ REQUIRED_AGGREGATE_KEYS = (
 )
 
 
-def _as_number(value) -> float | None:
+def _as_number(value, *, non_negative_integer: bool = False) -> float | None:
     """`value` as a float, or `None` if it does not denote one.
 
     `None` here is a real, expected value rather than corruption: this
@@ -57,17 +58,35 @@ def _as_number(value) -> float | None:
     `mean_profit_factor`. `worst_fold_max_drawdown` is logged as a
     `Decimal`-derived string, so strings are accepted too. `bool` is
     excluded because it is an `int` subclass and `True` is never a metric.
+
+    NaN and +/-Infinity are rejected too. Those are not "no value" but a
+    value that silently poisons every comparison downstream: NaN fails
+    every `>=` test, so a NaN profit factor would read as a clean FAIL
+    rather than as unevaluable -- exactly the misclassification this
+    function exists to prevent. `json.loads` really does produce them,
+    since Python's JSON accepts the non-standard `NaN`/`Infinity`
+    literals its own `json.dumps` emits.
+
+    `non_negative_integer` additionally requires a whole, non-negative
+    count -- for `total_trades`, where `12.5` or `-3` is corruption
+    rather than a degenerate measurement.
     """
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
+        number = float(value)
+    elif isinstance(value, str):
         try:
-            return float(value)
+            number = float(value)
         except ValueError:
             return None
-    return None
+    else:
+        return None
+    if not math.isfinite(number):
+        return None
+    if non_negative_integer and (number < 0 or number != int(number)):
+        return None
+    return number
 
 
 def _load(runs_path: str) -> dict:
@@ -117,7 +136,10 @@ def _require_scoreable(agg: dict) -> dict[str, float]:
     it would raise `TypeError` and formatting a substituted zero would
     silently report a verdict the data does not support.
     """
-    resolved = {k: _as_number(agg.get(k)) for k in REQUIRED_AGGREGATE_KEYS}
+    resolved = {
+        k: _as_number(agg.get(k), non_negative_integer=(k == "total_trades"))
+        for k in REQUIRED_AGGREGATE_KEYS
+    }
     undefined = sorted(k for k, v in resolved.items() if v is None)
     if undefined:
         print(
