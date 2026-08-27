@@ -35,30 +35,50 @@ DRAWDOWN_CEILING = 0.25
 PROFIT_FACTOR_FLOOR = 1.3
 
 
+# The `aggregate_metrics` keys this scorer reads. Named, so a record is
+# selected by what it actually provides rather than by what type it calls
+# itself -- the same reason `fold_results` is checked for content and not
+# merely for presence.
+REQUIRED_AGGREGATE_KEYS = (
+    "total_trades",
+    "mean_sharpe",
+    "worst_fold_max_drawdown",
+    "mean_profit_factor",
+)
+
+
 def _load(runs_path: str) -> dict:
-    records = [
-        json.loads(line)
-        for line in Path(runs_path).read_text().splitlines()
-        if line.strip() and f'"{STRATEGY_ID}"' in line
-    ]
-    # Require the fields this scorer actually reads, rather than excluding a
-    # record type. The log holds several shapes for one strategy_id (a
-    # walk-forward run, and any per-candidate `backtest_run` children it
-    # logged), and a filter phrased as "not a backtest_run" admits any
-    # future shape too -- which would KeyError downstream instead of
-    # saying what is wrong.
+    # Parse every line and match `strategy_id` as a field. A substring test
+    # on the raw line would also match a record that merely mentions this id
+    # somewhere else (a `params` value, a family name, a future field), and
+    # scoring the wrong record is worse than scoring none.
+    records = []
+    for line in Path(runs_path).read_text().splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if isinstance(record, dict) and record.get("strategy_id") == STRATEGY_ID:
+            records.append(record)
+
+    # The log holds several shapes for one strategy_id (the walk-forward run,
+    # plus any per-candidate `backtest_run` children it logged), so select
+    # positively on the fields read below rather than excluding a type.
     walk_forward = [
         r for r in records
         if isinstance(r.get("fold_results"), list)
         and r["fold_results"]
         and isinstance(r.get("aggregate_metrics"), dict)
+        and all(k in r["aggregate_metrics"] for k in REQUIRED_AGGREGATE_KEYS)
     ]
     if not walk_forward:
-        raise SystemExit(
-            f"no logged walk-forward record for {STRATEGY_ID} in {runs_path} "
-            f"({len(records)} record(s) matched the strategy_id, none carrying "
-            f"both a non-empty fold_results and aggregate_metrics)"
+        print(
+            f"no logged walk-forward record for {STRATEGY_ID} in {runs_path}: "
+            f"{len(records)} record(s) carry that strategy_id, none with a "
+            f"non-empty fold_results and an aggregate_metrics providing all of "
+            f"{', '.join(REQUIRED_AGGREGATE_KEYS)}.",
+            file=sys.stderr,
         )
+        raise SystemExit(1)
     return walk_forward[-1]
 
 
