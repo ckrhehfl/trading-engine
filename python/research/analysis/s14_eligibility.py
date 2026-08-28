@@ -93,7 +93,7 @@ def _as_number(value, *, non_negative_integer: bool = False) -> float | None:
     return number
 
 
-def _load(runs_path: str) -> dict:
+def _load(runs_path: str, strategy_id: str) -> dict:
     # Parse every line and match `strategy_id` as a field. A substring test
     # on the raw line would also match a record that merely mentions this id
     # somewhere else (a `params` value, a family name, a future field), and
@@ -103,7 +103,7 @@ def _load(runs_path: str) -> dict:
         if not line.strip():
             continue
         record = json.loads(line)
-        if isinstance(record, dict) and record.get("strategy_id") == STRATEGY_ID:
+        if isinstance(record, dict) and record.get("strategy_id") == strategy_id:
             records.append(record)
 
     # The log holds several shapes for one strategy_id (the walk-forward run,
@@ -118,7 +118,7 @@ def _load(runs_path: str) -> dict:
     ]
     if not walk_forward:
         print(
-            f"no logged walk-forward record for {STRATEGY_ID} in {runs_path}: "
+            f"no logged walk-forward record for {strategy_id} in {runs_path}: "
             f"{len(records)} record(s) carry that strategy_id, none with a "
             f"non-empty fold_results and an aggregate_metrics providing all of "
             f"{', '.join(REQUIRED_AGGREGATE_KEYS)}.",
@@ -159,9 +159,11 @@ def _require_scoreable(agg: dict) -> dict[str, float]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--runs-path", default=RUNS_PATH)
+    ap.add_argument("--strategy-id", default=STRATEGY_ID,
+                    help="which logged strategy_id to score (default: the S14 candidate)")
     args = ap.parse_args(argv)
 
-    record = _load(args.runs_path)
+    record = _load(args.runs_path, args.strategy_id)
     folds = record["fold_results"]
     agg = record["aggregate_metrics"]
     scoreable = _require_scoreable(agg)
@@ -178,7 +180,7 @@ def main(argv=None) -> int:
     print(f"worst drawdown    : {worst_drawdown*100:.2f}%")
     print(f"mean profit factor: {mean_profit_factor:.4f}")
 
-    resolution = lineage.resolve_family(STRATEGY_ID, record)
+    resolution = lineage.resolve_family(args.strategy_id, record)
     counts = overfitting_check.check_project_combination_count(runs_path=args.runs_path)
     n = counts.research_selection_trials
     print(f"\nfamily            : {resolution.family} (source={resolution.source})")
@@ -247,8 +249,26 @@ def main(argv=None) -> int:
           f"-> {'PASS' if drawdown_ok else 'FAIL'}")
     print(f"trade count       : {trades:,} vs floor {floor}  "
           f"-> {'PASS' if trades_ok else 'INCONCLUSIVE-DATA-LIMITED'}")
+    # Report the median beside the mean. A profit factor is a ratio of two
+    # non-negative magnitudes, so a fold with almost no losing trades can
+    # produce an enormous value and drag the MEAN across the floor on its
+    # own. CLAUDE.md sets the floor without naming which statistic it
+    # applies to; the mean is what `walkforward` aggregates, so the mean is
+    # what is scored -- but a mean that passes while the median does not is
+    # a fragile pass and saying so is not optional.
+    fold_pf = sorted(
+        v for v in (_as_number(f["metrics"].get("profit_factor")) for f in folds)
+        if v is not None
+    )
+    median_pf = fold_pf[len(fold_pf) // 2] if fold_pf else None
     print(f"profit factor     : {mean_profit_factor:.4f} vs {PROFIT_FACTOR_FLOOR}  "
           f"-> {'PASS' if pf_ok else 'FAIL'}")
+    if median_pf is not None:
+        note = ""
+        if pf_ok and median_pf < PROFIT_FACTOR_FLOOR:
+            note = ("  ! FRAGILE -- the mean clears the floor but the median fold "
+                    "does not, so the pass rests on a few outlier folds")
+        print(f"  median fold PF  : {median_pf:.4f}{note}")
 
     # An under-floor trade count is neither a pass nor a fail: CLAUDE.md
     # requires it be reported as INCONCLUSIVE-DATA-LIMITED and explicitly

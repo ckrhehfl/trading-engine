@@ -227,6 +227,18 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/scalp-s14-selective-reversion.md",
     ),
+    # Fourth member (Scalping Task S15) -- the same signal with the stop
+    # removed as an exit and equity-aware sizing added, after S15 measured
+    # that a stop of every tested width realises a larger loss than the
+    # position it catches would have taken on its own. A direct descendant
+    # of `selective-reversion` and deliberately in the same family: it
+    # reuses that candidate's findings, which is exactly the condition
+    # this module's docstring gives for sharing one `N`.
+    "selective-reversion-no-stop": FamilyEntry(
+        family="btc-scalping",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/scalp-s15-entry-risk-and-sizing.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them

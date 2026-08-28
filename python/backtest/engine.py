@@ -1,6 +1,6 @@
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Callable, Sequence
+from typing import Callable, Protocol, Sequence, runtime_checkable
 
 from backtest.fill import Fill, simulate_fill
 from backtest.kline import Kline
@@ -9,6 +9,46 @@ from metrics.position import PositionTracker
 from schemas.order_intent import OrderIntent
 
 Strategy = Callable[[Sequence[Kline]], OrderIntent | None]
+
+
+@runtime_checkable
+class EquityObserver(Protocol):
+    """Optional, additive extension to `Strategy` (Scalping Task S15).
+
+    A `Strategy` is a bare callable and has never been told anything about
+    its own account, which is why `research.strategies.risk_management.
+    compute_position_size` sizes against a **fixed** `reference_equity`
+    constant. That constant is the mechanism behind this project's largest
+    backtest loss: Task S6's candidate kept risking 1% of its *original*
+    equity after losing most of it, so each successive trade risked an
+    ever-larger share of what actually remained. Task S7 added the
+    zero-equity circuit breaker but explicitly left this half open, and
+    `compute_position_size`'s own docstring names the reason -- a strategy
+    "has no legitimate way to observe" its equity.
+
+    This is that legitimate way. `run_backtest` **already** reconstructs
+    mark-to-market equity every bar when `starting_equity` is supplied
+    (that is how the S7 floor works); this protocol simply hands the value
+    it already has to a strategy that asks for it.
+
+    Look-ahead safety is preserved by construction: the equity passed for
+    bar `i` is built only from fills whose `fill_time <= klines[i].
+    open_time`, and it is delivered *before* `strategy(visible)` is called
+    for that same bar. A strategy therefore learns exactly what a live
+    system would know at its own decision moment, and nothing more.
+
+    Duck-typed and entirely optional -- a strategy without `on_equity` is
+    never called back, and a run without `starting_equity` never produces
+    an equity figure to deliver. Both cases behave exactly as before.
+    """
+
+    def on_equity(self, equity: Decimal, /) -> None:
+        """Mark-to-market equity as of this bar's open, before the
+        strategy is asked for an intent. May be non-positive: the
+        insolvency floor is checked separately by `run_backtest`, and a
+        strategy that sizes from this value must handle a wiped-out
+        account itself rather than assume a positive number."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -145,6 +185,13 @@ def run_backtest(
             else:
                 unrealized = tracker.position_qty * (kline.close - tracker.avg_entry_price)
             equity = starting_equity + tracker.realized_pnl - tracker.cumulative_fees + unrealized
+
+            # Deliver before the strategy is asked for an intent, so the
+            # figure it sizes against is the one that was true at its own
+            # decision moment (Scalping Task S15). Built only from fills at
+            # or before this bar's open, so it cannot leak the future.
+            if isinstance(strategy, EquityObserver):
+                strategy.on_equity(equity)
 
             if equity <= 0:
                 insolvent = True

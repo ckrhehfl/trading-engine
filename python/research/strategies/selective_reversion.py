@@ -161,6 +161,35 @@ DEFAULT_STOP_ATR_MULTIPLE = Decimal("2.65")   # S12 measured winners' MAE p80
 DEFAULT_MIN_RR = Decimal("2.0")               # practitioner floor
 DEFAULT_MAX_HOLD_BARS = 60                    # S11 IC peak / S13 confirmed
 
+# Sizing modes (Scalping Task S15).
+#   "fixed"       -- risk `risk_fraction` of a constant `reference_equity`,
+#                    this package's long-standing behaviour and still the
+#                    default, so nothing changes for an existing caller.
+#   "compounding" -- risk `risk_fraction` of the CURRENT mark-to-market
+#                    equity the engine reports via `on_equity`.
+# `compounding` is what closes the half Task S7 left open: fixed sizing
+# keeps risking a share of the ORIGINAL account after most of it is gone,
+# which is the mechanism behind S6's -239,161% run.
+SIZING_FIXED = "fixed"
+SIZING_COMPOUNDING = "compounding"
+SIZING_MODES = (SIZING_FIXED, SIZING_COMPOUNDING)
+
+# Whether `stop_atr_multiple` is an EXIT TRIGGER or only a SIZING BASIS
+# (Scalping Task S15(b)). Default `True` preserves S14's behaviour.
+#
+# S15(b) measured, at every candidate width from 1.5 to 12 ATR and in both
+# operating cells, that a stop realises a LARGER loss than the position it
+# catches would have taken on its own -- it manufactures losses rather
+# than avoiding them, because this signal's edge lives inside the adverse
+# excursion. "No stop" beat every stop width tested.
+#
+# With `use_stop=False` the same ATR distance still sets position size and
+# still denominates the R:R gate; it simply stops being a price at which
+# the position is closed. The position is then bounded by TIME
+# (`max_hold_bars`) rather than by price, with equity-aware sizing and
+# `run_backtest`'s zero-equity floor as the portfolio-level controls.
+DEFAULT_USE_STOP = True
+
 
 class TrailingZScore:
     """Rolling z-score where the current value is **excluded from its own
@@ -275,6 +304,7 @@ class SelectiveReversionStrategy:
         "_reference_equity", "_risk_fraction",
         "_atr", "_activity", "_z_price", "_z_flow",
         "_closes", "_position", "_bars_held", "_declined_on_rr", "_exits",
+        "_sizing_mode", "_equity", "_declined_no_equity", "_use_stop",
     )
 
     def __init__(
@@ -290,9 +320,13 @@ class SelectiveReversionStrategy:
         stop_atr_multiple: Decimal = DEFAULT_STOP_ATR_MULTIPLE,
         min_rr: Decimal = DEFAULT_MIN_RR,
         max_hold_bars: int = DEFAULT_MAX_HOLD_BARS,
+        use_stop: bool = DEFAULT_USE_STOP,
         reference_equity: Decimal = DEFAULT_REFERENCE_EQUITY,
         risk_fraction: Decimal = DEFAULT_RISK_FRACTION,
+        sizing_mode: str = SIZING_FIXED,
     ) -> None:
+        if sizing_mode not in SIZING_MODES:
+            raise ValueError(f"sizing_mode must be one of {SIZING_MODES}, got {sizing_mode!r}")
         if htf_lag < 1:
             raise ValueError(f"htf_lag must be at least 1, got {htf_lag}")
         if entry_z <= 0:
@@ -320,8 +354,12 @@ class SelectiveReversionStrategy:
         self._stop_atr_multiple = stop_atr_multiple
         self._min_rr = min_rr
         self._max_hold_bars = max_hold_bars
+        self._use_stop = use_stop
         self._reference_equity = reference_equity
         self._risk_fraction = risk_fraction
+        self._sizing_mode = sizing_mode
+        self._equity: Decimal | None = None
+        self._declined_no_equity = 0
 
         self._atr = AverageTrueRange(period=atr_period)
         self._activity = TrailingPercentileRank(history=activity_history)
@@ -342,6 +380,30 @@ class SelectiveReversionStrategy:
     @property
     def open_position(self) -> OpenPosition | None:
         return self._position
+
+    def on_equity(self, equity: Decimal, /) -> None:
+        """`backtest.engine.EquityObserver`. Records the engine's
+        mark-to-market equity for this bar, before an intent is asked for.
+
+        Stored rather than acted on: sizing reads it at entry time, which
+        is the only moment it is needed."""
+        self._equity = equity
+
+    @property
+    def sizing_equity(self) -> Decimal | None:
+        """The equity the next entry would size against, or `None` when
+        `compounding` mode has not been given one yet."""
+        if self._sizing_mode == SIZING_FIXED:
+            return self._reference_equity
+        return self._equity
+
+    @property
+    def declined_no_equity(self) -> int:
+        """Entries refused because `compounding` sizing had no usable
+        equity. Non-zero means the engine was run without
+        `starting_equity`, i.e. the run is misconfigured -- reported
+        rather than hidden, because the alternative failure is silent."""
+        return self._declined_no_equity
 
     @property
     def exits(self) -> dict[str, int]:
@@ -405,6 +467,25 @@ class SelectiveReversionStrategy:
         side = Side.SHORT if score > 0 else Side.LONG
         return self._open(current, side, atr, price_z[1])
 
+    @staticmethod
+    def _unreachable_stop(side: Side) -> Decimal:
+        """A stop level `check_exit_trigger` can never fire.
+
+        Chosen over adding a branch to `check_exit_trigger` deliberately:
+        that function's stop-wins-on-a-same-bar-tie rule is a tested,
+        conservative contract shared by four strategies, and suppressing
+        its `"stop"` return here would also suppress the tie case where a
+        target was genuinely reached. Putting the level out of reach
+        leaves the contract untouched and makes `"target"` the only
+        price-based exit, which is exactly the intent.
+
+        A long is never stopped below zero; a short is never stopped at a
+        price no market reaches. Both are recorded on `OpenPosition` as
+        the sentinel they are, not as a risk figure -- the real risk basis
+        is `stop_atr_multiple`, which still sized the position.
+        """
+        return Decimal(0) if side == Side.LONG else Decimal("1e30")
+
     def _reversion_target(self, mean_htf_ret: Decimal) -> Decimal | None:
         """The price implied by `htf_ret_4h` reverting to the trailing
         mean this bar's own z-score was measured against."""
@@ -437,10 +518,25 @@ class SelectiveReversionStrategy:
             stop_multiplier=self._stop_atr_multiple,
             target_multiplier=reward / atr,
         )
+        # `stop_price` above is the RISK BASIS -- it sized the position and
+        # denominated the R:R gate, both of which stay true either way.
+        # Whether it is also an exit level is a separate decision.
+        exit_stop = stop_price if self._use_stop else self._unreachable_stop(side)
+        # Fail closed rather than fall back. In `compounding` mode a
+        # missing equity figure means the engine was run without
+        # `starting_equity`, and silently sizing off the constant instead
+        # would reproduce exactly the behaviour this mode exists to
+        # replace -- while reporting itself as compounding. A non-positive
+        # equity is a wiped-out account, which cannot be sized against at
+        # all.
+        equity = self.sizing_equity
+        if equity is None or equity <= 0:
+            self._declined_no_equity += 1
+            return None
         quantity = compute_position_size(
             entry_price=entry_price,
             stop_price=stop_price,
-            reference_equity=self._reference_equity,
+            reference_equity=equity,
             risk_fraction=self._risk_fraction,
         )
         if quantity is None:
@@ -450,7 +546,7 @@ class SelectiveReversionStrategy:
             side=side,
             quantity=quantity,
             entry_price=entry_price,
-            stop_price=stop_price,
+            stop_price=exit_stop,
             target_price=resolved_target,
         )
         self._bars_held = 0
@@ -517,8 +613,10 @@ def _build(symbol: str, params) -> SelectiveReversionStrategy:
         stop_atr_multiple=dec("stop_atr_multiple", DEFAULT_STOP_ATR_MULTIPLE),
         min_rr=dec("min_rr", DEFAULT_MIN_RR),
         max_hold_bars=ints("max_hold_bars", DEFAULT_MAX_HOLD_BARS),
+        use_stop=bool(params.get("use_stop", DEFAULT_USE_STOP)),
         reference_equity=dec("reference_equity", DEFAULT_REFERENCE_EQUITY),
         risk_fraction=dec("risk_fraction", DEFAULT_RISK_FRACTION),
+        sizing_mode=str(params.get("sizing_mode", SIZING_FIXED)),
     )
 
 
@@ -532,4 +630,5 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "stop_atr_multiple": DEFAULT_STOP_ATR_MULTIPLE,
     "min_rr": DEFAULT_MIN_RR,
     "max_hold_bars": DEFAULT_MAX_HOLD_BARS,
+    "use_stop": DEFAULT_USE_STOP,
 }
