@@ -40,10 +40,36 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 LOG_FILE="var/live/watchdog.log"
-mkdir -p "$(dirname "$LOG_FILE")"
+SESSION_LOG_DIR="var/live/sessions"
+mkdir -p "$(dirname "$LOG_FILE")" "$SESSION_LOG_DIR"
 
 log() {
     printf '%s %s\n' "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" "$1" >>"$LOG_FILE"
+}
+
+# Persist a session's pane output to a file so a crash leaves evidence.
+#
+# Why this is needed at all: a tmux pane's scrollback dies with the
+# session, so every restart this watchdog performed was erasing the only
+# record of WHY the app had stopped. The watchdog log proves the sessions
+# died roughly daily (2026-08-26 through 2026-08-28); not one of those
+# deaths is diagnosable, because the output went nowhere durable.
+#
+# `pipe-pane` is used rather than a shell redirection inside the
+# `new-session` command deliberately: the command below is a fixed
+# string with no credential in it, so this keeps the credential-safety
+# property the start functions were written for (values reach `env` as
+# separate argv elements and are never re-parsed by a shell).
+#
+# Requires `--console=plain` on the gradlew invocations. Without it
+# Gradle redraws a progress spinner about once a second and the capture
+# is ~86,000 lines a day of ANSI escapes with the app's real log lines
+# buried in them -- verified by doing exactly that before fixing it.
+pipe_session_log() {
+    local session="$1"
+    tmux pipe-pane -o -t "${session}:0.0" \
+        "cat >> '$REPO_ROOT/$SESSION_LOG_DIR/${session}.log'" 2>/dev/null \
+        || log "WARNING: could not attach a session log for $session"
 }
 
 # Extracts one KEY=VALUE pair's value from .env WITHOUT ever executing
@@ -64,7 +90,8 @@ start_simulated() {
     log "starting simulated session (was not running)"
     tmux new-session -d -s paper-trading -c "$REPO_ROOT/java" \
         env BINGX_BASE_URL=https://open-api.bingx.com \
-        ./gradlew -q :runtime:runPaperTradingApp
+        ./gradlew -q --console=plain :runtime:runPaperTradingApp
+    pipe_session_log paper-trading
 }
 
 start_vst() {
@@ -88,7 +115,8 @@ start_vst() {
         PAPER_TRADING_EXECUTION_MODE=bingx-vst \
         BINGX_BASE_URL=https://open-api.bingx.com \
         PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
-        ./gradlew -q :runtime:runPaperTradingApp
+        ./gradlew -q --console=plain :runtime:runPaperTradingApp
+    pipe_session_log paper-trading-vst
 }
 
 # `=name` forces an EXACT session-name match. Without the `=`, tmux's
