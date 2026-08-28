@@ -187,9 +187,20 @@ def main(argv=None) -> int:
             mark = "  <- S14" if abs(stop - 2.65) < 1e-9 else ""
             print(f"  {stop:>7.2f} {wc:>8} {lc:>9} {eff['stopped']:>8,} "
                   f"{r_txt:>11} {a_txt:>10} {verdict:>9} {w_txt:>12}{mark}")
-        no_stop = statistics.mean(gross)
+        # The `none` row must be averaged over the SAME population as the
+        # stop rows. Those exclude positions with no MAE reading (they
+        # cannot be classified as caught or survived), so averaging `none`
+        # over every position would compare two different samples -- and
+        # that comparison is the entire point of this table.
+        measurable = [e for _, e in indep if e.mae_atr is not None]
+        excluded = len(indep) - len(measurable)
+        no_stop = statistics.mean(e.outcome_gross_bps for e in measurable) if measurable else None
+        n_txt = "n/a" if no_stop is None else f"{no_stop:>9.2f}bps"
         print(f"  {'none':>7} {'0.0%':>8} {'0.0%':>9} {0:>8,} "
-              f"{'--':>11} {'--':>10} {'--':>9} {no_stop:>9.2f}bps")
+              f"{'--':>11} {'--':>10} {'--':>9} {n_txt:>12}")
+        if excluded:
+            print(f"  ({excluded:,} of {len(indep):,} positions have no ATR at entry and are "
+                  f"excluded from every row above, including 'none')")
         print()
 
     print("'stop takes' is what the stop realises on a caught position;")
