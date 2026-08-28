@@ -33,16 +33,23 @@ it. `|z|≥6`, top 1%, non-overlapping positions:
 | turn, 25% retrace | +23.58 | +11.58 | 1.90 | 4.25 |
 | turn, 50% retrace | +24.44 | +12.44 | 2.10 | 3.91 |
 
-Mean MAE falls monotonically with delay and so does the outcome. **The
-adverse excursion is not a cost paid before the edge arrives; it is the
-edge.** A confirmation entry (wait for the move to give back 25–50% of its
+Mean MAE falls monotonically with delay. **The outcome does not** -- it
+collapses immediately (+30.87 -> +18.92 -> +7.55) and then wanders near
+zero (-2.18 at +30 bars, +3.93 at +60), which is what a spent edge plus
+sampling noise looks like rather than a clean gradient. The claim that
+survives is the weaker and sufficient one: **every delay tested is worse
+than immediate entry, on gross, on net and on t, and none recovers.**
+
+**The adverse excursion is not a cost paid before the edge arrives; it is
+the edge.** A confirmation entry (wait for the move to give back 25–50% of its
 adverse excursion, rather than for a fixed number of bars) is the best of
 the delayed variants — it keeps ~76–79% of the gross for a slightly lower
 MAE — and is still strictly worse than immediate entry on net outcome and
 on t.
 
-This is not a "tune the delay" result. Every delay tested is worse, and
-monotonically so.
+This is not a "tune the delay" result either. There is no delay at which
+the outcome recovers, and the best delayed variant (the 50% retrace
+confirmation) is still worse than doing nothing.
 
 ## (b) A better stop — NO, and the first hypothesis was wrong
 

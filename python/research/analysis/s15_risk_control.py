@@ -66,24 +66,36 @@ def stop_effect(indep, stop_atr):
     positions it leaves untouched -- which is enough to see whether a stop
     is affordable at all. It is not a substitute for a backtest.
     """
-    survived, cut_winners, cut_losers = [], 0, 0
+    # A position with no MAE reading cannot be classified either way, so
+    # it is EXCLUDED rather than counted as a survivor. Counting it as
+    # survived would silently credit the stop with an outcome it had no
+    # part in, and would put an untouched position into the "with stop"
+    # portfolio average.
+    survived, caught, unknown = [], [], 0
+    cut_winners = cut_losers = 0
     for _, e in indep:
-        if e.mae_atr is not None and e.mae_atr >= stop_atr:
+        if e.mae_atr is None:
+            unknown += 1
+            continue
+        if e.mae_atr >= stop_atr:
+            caught.append(e)
             if e.is_winner:
                 cut_winners += 1
             else:
                 cut_losers += 1
         else:
             survived.append(e)
-    winners = sum(1 for _, e in indep if e.is_winner)
-    losers = len(indep) - winners
-    caught = [e for _, e in indep if e.mae_atr is not None and e.mae_atr >= stop_atr]
+    classified = survived + caught
+    winners = sum(1 for e in classified if e.is_winner)
+    losers = len(classified) - winners
     return {
         "survived": survived,
         "caught": caught,
+        "unknown": unknown,
+        "classified": classified,
         "winners_cut": cut_winners / winners if winners else None,
         "losers_cut": cut_losers / losers if losers else None,
-        "stopped": cut_winners + cut_losers,
+        "stopped": len(caught),
     }
 
 
@@ -132,14 +144,21 @@ def main(argv=None) -> int:
         gross = [e.outcome_gross_bps for _, e in indep]
 
         print(f"=== |z|>={z:g}, top {(1-q)*100:g}%  --  {len(indep):,} independent positions ===")
+        if not gross:
+            print("  no independent positions in this cell -- nothing to measure\n")
+            continue
         print(f"  gross mean {statistics.mean(gross):+.2f}bps   "
               f"winners {len(winner_mae):,}  losers {len(loser_mae):,}")
         # `recommend_stop` is S12's own machinery, re-run on THIS population
         # rather than reusing S12's number -- which is the entire point.
         rec = recommend_stop([e for _, e in indep], unit="atr")
-        print(f"  winners' MAE  p50 {_quantile(winner_mae, 0.50):.2f}  "
-              f"p80 {_quantile(winner_mae, 0.80):.2f}  p90 {_quantile(winner_mae, 0.90):.2f} ATR")
-        print(f"  losers'  MAE  p50 {_quantile(loser_mae, 0.50):.2f} ATR")
+        def qtxt(values, q_):
+            v = _quantile(values, q_)
+            return "n/a" if v is None else f"{v:.2f}"
+
+        print(f"  winners' MAE  p50 {qtxt(winner_mae, 0.50)}  "
+              f"p80 {qtxt(winner_mae, 0.80)}  p90 {qtxt(winner_mae, 0.90)} ATR")
+        print(f"  losers'  MAE  p50 {qtxt(loser_mae, 0.50)} ATR")
         print(f"  recommend_stop on this population: p80 = "
               f"{'n/a' if rec.winner_mae_p80 is None else f'{rec.winner_mae_p80:.2f}'} ATR "
               f"(S14 used 2.65, measured at |z|>=2 top 10%)")
@@ -155,9 +174,10 @@ def main(argv=None) -> int:
             # Portfolio outcome WITH the stop: survivors keep their real
             # outcome, everything the stop caught realises the stop loss.
             with_stop = None
-            if realised is not None and indep:
+            classified = eff["classified"]
+            if realised is not None and classified:
                 total = sum(e.outcome_gross_bps for e in surv) + realised * len(caught)
-                with_stop = total / len(indep)
+                with_stop = total / len(classified)
             wc = "n/a" if eff["winners_cut"] is None else f"{eff['winners_cut']*100:>5.1f}%"
             lc = "n/a" if eff["losers_cut"] is None else f"{eff['losers_cut']*100:>5.1f}%"
             r_txt = "n/a" if realised is None else f"{realised:>8.1f}"

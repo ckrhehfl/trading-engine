@@ -1864,12 +1864,16 @@ still REJECTED.** Full account:
 `.planning/scalp-s15-entry-risk-and-sizing.md`.
 
 - **(a) Enter later — no.** Delaying entry lowers the adverse excursion
-  exactly as predicted (mean MAE 4.65 → 2.23 ATR at +60 bars) and
-  removes the outcome at the same rate (+30.87 → +3.93bps). Every delay
-  tested is worse, monotonically. **The adverse excursion is not a cost
-  paid before the edge; it is the edge.** A confirmation entry (wait for
-  a 25-50% retrace of the adverse move) keeps ~76-79% of the gross and
-  is still strictly worse than immediate on net and on t.
+  exactly as predicted (mean MAE 4.65 → 2.23 ATR at +60 bars) and takes
+  the outcome with it (+30.87 → +18.92 → +7.55bps, then wandering near
+  zero: −2.18 at +30 bars, +3.93 at +60). The decline is **not**
+  monotonic past the first few steps — that reads as a spent edge plus
+  sampling noise — so the claim that survives is the weaker and
+  sufficient one: **every delay tested is worse than immediate entry, on
+  gross, on net and on t, and none recovers.** **The adverse excursion
+  is not a cost paid before the edge; it is the edge.** A confirmation
+  entry (wait for a 25-50% retrace of the adverse move) keeps ~76-79% of
+  the gross and is still strictly worse than immediate.
 - **(b) A better stop — no, and the obvious diagnosis was false.** S14's
   2.65 ATR came from S12's p80 measured on a ~29x less selective
   population, so "wrong population" looked right; re-running

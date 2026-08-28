@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import statistics
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -93,7 +94,7 @@ def _as_number(value, *, non_negative_integer: bool = False) -> float | None:
     return number
 
 
-def _load(runs_path: str, strategy_id: str) -> dict:
+def _load(runs_path: str, strategy_id: str, run_id: str | None = None) -> dict:
     # Parse every line and match `strategy_id` as a field. A substring test
     # on the raw line would also match a record that merely mentions this id
     # somewhere else (a `params` value, a family name, a future field), and
@@ -116,6 +117,12 @@ def _load(runs_path: str, strategy_id: str) -> dict:
         and isinstance(r.get("aggregate_metrics"), dict)
         and all(k in r["aggregate_metrics"] for k in REQUIRED_AGGREGATE_KEYS)
     ]
+    if run_id is not None:
+        walk_forward = [r for r in walk_forward if r.get("run_id") == run_id]
+        if not walk_forward:
+            print(f"no walk-forward record with run_id={run_id} for {strategy_id} "
+                  f"in {runs_path}.", file=sys.stderr)
+            raise SystemExit(1)
     if not walk_forward:
         print(
             f"no logged walk-forward record for {strategy_id} in {runs_path}: "
@@ -124,6 +131,25 @@ def _load(runs_path: str, strategy_id: str) -> dict:
             f"{', '.join(REQUIRED_AGGREGATE_KEYS)}.",
             file=sys.stderr,
         )
+        raise SystemExit(1)
+    if len(walk_forward) > 1 and run_id is None:
+        # Fail closed rather than silently take the newest. One
+        # `strategy_id` can legitimately cover several logged cells --
+        # S15 ran two sizing variants under one id -- and quietly
+        # scoring whichever happened to be logged last would attach a
+        # verdict to a configuration the caller never named.
+        print(
+            f"{len(walk_forward)} walk-forward records match strategy_id="
+            f"{strategy_id!r}; refusing to guess which one to score.\n"
+            f"Re-run with --run-id, choosing from:",
+            file=sys.stderr,
+        )
+        for r in walk_forward:
+            params = r.get("params") or {}
+            hint = ", ".join(
+                f"{k}={params[k]}" for k in sorted(params) if k in ("sizing_mode", "use_stop")
+            )
+            print(f"  {r.get('run_id')}  {r.get('logged_at', '')}  {hint}", file=sys.stderr)
         raise SystemExit(1)
     return walk_forward[-1]
 
@@ -161,9 +187,11 @@ def main(argv=None) -> int:
     ap.add_argument("--runs-path", default=RUNS_PATH)
     ap.add_argument("--strategy-id", default=STRATEGY_ID,
                     help="which logged strategy_id to score (default: the S14 candidate)")
+    ap.add_argument("--run-id", default=None,
+                    help="disambiguate when one strategy_id covers several logged runs")
     args = ap.parse_args(argv)
 
-    record = _load(args.runs_path, args.strategy_id)
+    record = _load(args.runs_path, args.strategy_id, args.run_id)
     folds = record["fold_results"]
     agg = record["aggregate_metrics"]
     scoreable = _require_scoreable(agg)
@@ -260,7 +288,7 @@ def main(argv=None) -> int:
         v for v in (_as_number(f["metrics"].get("profit_factor")) for f in folds)
         if v is not None
     )
-    median_pf = fold_pf[len(fold_pf) // 2] if fold_pf else None
+    median_pf = statistics.median(fold_pf) if fold_pf else None
     print(f"profit factor     : {mean_profit_factor:.4f} vs {PROFIT_FACTOR_FLOOR}  "
           f"-> {'PASS' if pf_ok else 'FAIL'}")
     if median_pf is not None:
