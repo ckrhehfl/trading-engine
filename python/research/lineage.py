@@ -213,6 +213,20 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/scalp-s6-ofi-momentum.md",
     ),
+    # Third real member (Scalping Strategy Research Task S14) -- and the
+    # first that is NOT a pre-registered holdout confirmation. It is an
+    # ordinary walk-forward research run against the Binance USDT-M
+    # futures 1m window, which S6 spent as a holdout and which S8's
+    # methodology rebuild therefore reclassified as research data. So
+    # unlike its two siblings above, this one DOES contribute to the
+    # project-level N -- which is the point: S8's own rule is "search
+    # freely, count every trial, deflate with DSR", and a run that
+    # contributed nothing to `N` would not be honouring it.
+    "selective-reversion": FamilyEntry(
+        family="btc-scalping",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/scalp-s14-selective-reversion.md",
+    ),
     # --- infrastructure (not science) -------------------------------------
     # Pipeline-validation runs: they prove the walk-forward/experiment-log/
     # sensitivity machinery works end to end against real data. None of them

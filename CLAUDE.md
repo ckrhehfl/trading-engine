@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S12; methodology rebuilt, costs measured, signals found, fee identified as the binding constraint
+### Scalping Strategy Research — Tasks S0-S14; costs measured, signals found, first candidate walk-forward validated and REJECTED
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1673,6 +1673,35 @@ is only which horizons are ruled out before that work begins.
   bar, net of costs, stop-wins on a same-bar tie, planned-risk R
   denominator, forced closes flagged as censored) so the same trades
   cannot yield different stop boundaries — S8 §3.7.
+- **Structure a candidate as Condition / Setup / Trigger /
+  Invalidation (CSTI)**, and sequence the risk decision as **stop first,
+  then reward-to-risk against a structural target, then qualify, then
+  size**. A trade whose structure offers poor odds is *declined*, never
+  resized into. Added after the 2026-08-28 practitioner-methodology
+  research and first implemented in S14's `selective-reversion`, where
+  the R:R gate worked as designed even though the underlying signal did
+  not. Two corollaries that research made concrete: a stop belongs at a
+  level that **invalidates the thesis**, not at a round distance or a
+  convenient ATR multiple; and **asymmetry substitutes for win rate** —
+  40% at 3:1 is profitable, 60% at 0.5:1 loses — so a win-rate figure
+  quoted without its payoff ratio says nothing. Floor 2:1, prefer 3:1.
+  **Check the coupling before tuning either side**: S14 found that
+  widening the stop mechanically fails an R:R gate whose denominator is
+  that same stop distance, silently turning "safer stop" into "stop
+  trading".
+- **Judge stability by year, not only in aggregate.** Report the number
+  of positive years alongside the pooled statistic, and treat a result
+  whose edge is concentrated in one regime as unconfirmed until it is
+  shown outside that regime — S13's own candidate drew ~60% of its edge
+  from 2021 and was negative in the most recent year. Where the sample
+  supports it, prefer worst-regime performance (the "Minimum Regime
+  Performance" framing, Alexander & Fabozzi 2026) over the mean as the
+  figure a sizing decision is made against, and bootstrap the year-level
+  spread rather than quoting a single pooled standard error.
+- **Deduplicate overlapping windows before reporting any significance
+  figure** — see the fourth error shape recorded under Task S13/S14 above.
+  This is a hard requirement, not a preference: it cost this arc a
+  threefold-inflated t-statistic and a retracted conclusion.
 - **Use a research split, not another single-shot holdout.** The two
   spent 1m windows become research data (they cannot be clean holdouts
   again); Binance **spot** 1m stays reserved and untouched. Search
@@ -1712,9 +1741,125 @@ and an explicit acceptance of which of the above are still absent. It
 authorises nothing on a production endpoint and relaxes no Live Entry
 Criterion.
 
-**Open, not decided**: whether to pursue equity-compounding sizing (the
-other half of what S7 left), and the order of S8's own work items beyond
-slippage measurement first.
+**Task S13 (2026-08-28) swept the holding period, then swept selectivity
+— and the second sweep overturned the first's conclusion.** Full account:
+`.planning/scalp-s13-horizon-sweep-and-closeout.md`.
+
+**Holding period does not help.** On the S12 entry rule, gross mean
+outcome peaks at one hour (+0.95bps) and inverts at two (−0.05), reaching
+−5.67bps at eight hours — exactly what S11's mean-reverting ICs predict:
+hold past the reversion window and the edge is spent. Win rate rises
+monotonically 37.3% → 47.6% while expectancy falls and turns negative,
+which is why S8 put expectancy on the metric list rather than trusting
+win rate.
+
+**Selectivity does.** That S12 entry fired **57.2 times per day**. The
+operator pointed out this was still "dozens of trades a day" rather than
+"once or twice, only on a genuinely big signal" — roughly 29x more
+selective, and an operating point never tested. Sweeping it on the
+identical signals:
+
+Counting **non-overlapping** positions only (see the retraction below):
+
+| \|z\| ≥ | Activity | Indep. trades/day | Gross mean | vs 12bps | t |
+|---|---|---|---|---|---|
+| 2.0 | top 10% | 4.54 | −0.84bps | ✗ | −0.98 |
+| 4.0 | top 0.1% | 0.30 | +7.81bps | ✗ | 1.50 |
+| 5.0 | top 1% | 0.21 | +13.97bps | ✓ | 1.95 |
+| 6.0 | top 1% | 0.09 | +30.87bps | ✓ | 2.56 |
+| 6.0 | top 0.1% | 0.08 | +45.83bps | ✓ | 2.90 |
+
+Gross outcome rises monotonically with selectivity and crosses the cost
+line at the top end. Trend-**following** returns exactly the negative at
+every cell, so mean reversion remains the correct sign. But a
+Bonferroni-corrected threshold for this 15-cell search is |t| ≈ 2.94,
+which **nothing reaches**.
+
+**Not an edge, and S14 established that with a second, larger problem
+than the one S13 itself found.** S13 reported the result as
+concentrated in 2021 (~60% of the edge from ~10% of the trades in every
+promising cell, and 2026 negative in all three) but statistically strong
+at t = 7.0-8.0. **That t-statistic is retracted.** It was computed over
+*overlapping* 60-minute windows counted as independent observations;
+extreme readings cluster, so one event contributed many correlated
+samples. Deduplicating to non-overlapping positions collapses t to
+**1.50 / 1.95 / 2.56** and cuts the mean 25-60% (+19.31 -> +7.81, +25.10
+-> +13.97, +41.30 -> +30.87 bps), so the duplicates were also the better
+observations. Against a 15-cell search, a Bonferroni threshold is
+|t| ~= 2.94; nothing reaches it, `|z|≥4` no longer clears the 12bps cost
+at all, and the `|z|≥2` cell flips negative. What survives is only that
+gross outcome rises monotonically with selectivity and that the sign
+(mean reversion) is right.
+
+**The error pattern this exposed, recorded so it stops recurring**: three
+of this arc's largest errors share one shape — a result from a single
+arbitrary configuration generalised to a whole domain (costs vs. the
+*unconditional* move distribution → "minutes-scale impossible"; a
+*directional* hypothesis tested by *magnitude* → "levels carry nothing";
+one operating point at 57 trades/day → "scalping cannot clear costs").
+All three were false and none was caught by reasoning alone. **Never
+conclude about a domain from one parameter setting — sweep it first.**
+
+**A fourth, different shape, added by S14 and binding on any future
+measurement here**: *a statistic computed over overlapping windows is not
+a statistic over independent observations.* S13's t = 7.0-8.0 came from
+overlapping 60-minute excursions treated as independent, and correcting
+it cut t roughly threefold. The tooling to avoid this already existed in
+this repo — `research/ic.py` enforces non-overlapping sampling and S11
+documented why — and was simply not applied to the excursion sweep.
+**Building the right tool does not protect you if the next analysis does
+not use it**: any overlapping-window measurement must either deduplicate
+to non-overlapping samples before reporting a t-statistic, p-value or
+standard error, or state explicitly that its significance figures are
+not corrected for overlap.
+
+**Task S14 (2026-08-28) built the candidate, ran it through the real
+walk-forward + Eligibility Bar machinery for the first time in this
+arc, and it was REJECTED.** Full account:
+`.planning/scalp-s14-selective-reversion.md`.
+
+`selective-reversion` is the first strategy in this project structured
+as **Condition / Setup / Trigger / Invalidation** — the practitioner
+structure S8 called for and which S4's and S6's candidates both lacked,
+having fused direction, entry/exit and sizing into one threshold rule.
+Condition: S10's absolute-ATR activity rank ≥ 0.99. Setup: S11's two
+orthogonal features (`z(htf_ret_4h) + z(taker_buy_share)`). Trigger:
+|score| ≥ 5, faded. Invalidation: a **2.65 ATR stop taken from S12's
+measured winners' MAE p80**, not a convention. Plus an **R:R
+qualification gate** applied in the practitioner sequence — stop first,
+then reward against a structural target, then qualify, then size; a
+trade whose structure offers poor odds is declined outright rather than
+resized.
+
+83 folds (30d train / 30d validate / 30d step on 3,661,780 Binance
+futures 1m bars), **721 trades — the first scalping run in this project
+to clear the trade-count floor, so this is a conclusive REJECTED rather
+than another INCONCLUSIVE**. Mean fold Sharpe **−1.471**, 36.1% of folds
+positive, DSR 0.000 against N = 123, profit factor 1.248 vs the 1.3
+floor. Drawdown (12.44%) and trade count passed; everything else failed.
+
+**Two findings from the diagnosis are reusable and outlive the
+candidate**:
+
+1. **The stop is what made it badly negative, and that is a property of
+   mean reversion rather than a defect.** Removing it moves the full-window
+   result from −134% to −0.20%: the edge lives precisely in the adverse
+   excursion the stop cuts off. S12 had already observed the mechanism
+   ("winners digging 1.86 ATR on average says the entry is early")
+   without drawing the conclusion. A systematically-early mean-reversion
+   entry needs a later entry or a risk control that is not a fixed
+   adverse-excursion stop — a real design question, not a tuning knob.
+2. **A wider stop mechanically fails the R:R gate**, because the gate's
+   denominator *is* the stop distance — at 8 ATR it declines 2,831 of
+   2,869 setups. "Widen the stop for safety" silently becomes "stop
+   trading". A real interaction between two independently sensible rules,
+   worth knowing before either is tuned.
+
+The CSTI structure and the R:R gate are **not** implicated and should be
+reused; the signal underneath them was not there. Nothing here affects
+`daily-tsmom-ensemble`, which trades at a frequency where a 12bps round
+trip is negligible and remains in paper trading under its own approved
+exception.
 
 **Out of scope this phase**: tick/trade-level data, true HFT,
 co-location; promoting any scalping strategy to paper trading (the
