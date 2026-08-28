@@ -344,3 +344,129 @@ class TestTrainableAdapter:
     def test_default_params_are_accepted_as_given(self):
         t = SelectiveReversionTrainable(symbol=SYMBOL)
         assert t.fit([], DEFAULT_PARAMS, parent_run_id="r") is not None
+
+
+class TestEquityAwareSizing:
+    """Scalping Task S15. `compounding` closes the half S7 left open:
+    fixed sizing keeps risking a share of the ORIGINAL account after most
+    of it is gone."""
+
+    def test_fixed_is_the_default_and_needs_no_equity(self):
+        s = _strategy(min_rr=Decimal("0.0001"))
+        assert s.sizing_equity == Decimal("10000")
+        assert [i for i in _feed(s, _oscillating(80)) if i is not None]
+        assert s.declined_no_equity == 0
+
+    def test_compounding_refuses_to_trade_without_an_equity_figure(self):
+        """Silently falling back to the constant would reproduce exactly
+        the behaviour this mode replaces, while reporting itself as
+        compounding."""
+        s = _strategy(min_rr=Decimal("0.0001"), sizing_mode="compounding")
+        assert s.sizing_equity is None
+        assert all(i is None for i in _feed(s, _oscillating(80)))
+        assert s.declined_no_equity > 0
+
+    def test_compounding_trades_once_equity_arrives(self):
+        s = _strategy(min_rr=Decimal("0.0001"), sizing_mode="compounding")
+        klines = _oscillating(120)
+        got = []
+        for i in range(len(klines)):
+            s.on_equity(Decimal("10000"))
+            got.append(s(klines[: i + 1]))
+        assert [g for g in got if g is not None]
+        assert s.declined_no_equity == 0
+
+    def test_a_wiped_out_account_cannot_be_sized_against(self):
+        s = _strategy(min_rr=Decimal("0.0001"), sizing_mode="compounding")
+        klines = _oscillating(80)
+        for i in range(len(klines)):
+            s.on_equity(Decimal("0"))
+            assert s(klines[: i + 1]) is None
+        assert s.declined_no_equity > 0
+
+    def test_smaller_equity_gives_a_proportionally_smaller_position(self):
+        klines = _oscillating(120)
+
+        def first_quantity(equity: str):
+            s = _strategy(min_rr=Decimal("0.0001"), sizing_mode="compounding")
+            for i in range(len(klines)):
+                s.on_equity(Decimal(equity))
+                intent = s(klines[: i + 1])
+                if intent is not None:
+                    return intent.quantity
+            return None
+
+        full = first_quantity("10000")
+        half = first_quantity("5000")
+        assert full is not None and half is not None
+        # Decimal division is exact only to the context's precision, so the
+        # two differ in the last unit in the last place; the ratio is what
+        # this test is about.
+        assert abs(half / full - Decimal("0.5")) < Decimal("1e-20")
+
+    def test_rejects_an_unknown_sizing_mode(self):
+        with pytest.raises(ValueError, match="sizing_mode must be one of"):
+            _strategy(sizing_mode="martingale")
+
+    def test_trainable_threads_the_mode_through_params(self):
+        t = SelectiveReversionTrainable(symbol=SYMBOL)
+        s = t.fit([], {**DEFAULT_PARAMS, "sizing_mode": "compounding"}, parent_run_id="r")
+        assert s.sizing_equity is None       # compounding, nothing delivered yet
+
+
+class TestStopAsSizingBasisOnly:
+    """Scalping Task S15(b). A stop of every tested width realises a
+    larger loss than the position it catches would have taken on its own,
+    so `use_stop=False` keeps the ATR distance as the sizing and R:R basis
+    while removing it as an exit."""
+
+    def test_default_still_places_a_real_stop(self):
+        s = _strategy(min_rr=Decimal("0.0001"))
+        klines = _oscillating(200)
+        for i in range(len(klines)):
+            s(klines[: i + 1])
+            if s.open_position is not None:
+                pos = s.open_position
+                assert Decimal(0) < pos.stop_price < Decimal("1e30")
+                return
+        pytest.fail("fixture produced no position")
+
+    def test_no_stop_puts_the_exit_level_out_of_reach(self):
+        s = _strategy(min_rr=Decimal("0.0001"), use_stop=False)
+        klines = _oscillating(200)
+        for i in range(len(klines)):
+            s(klines[: i + 1])
+            pos = s.open_position
+            if pos is not None:
+                assert pos.stop_price in (Decimal(0), Decimal("1e30"))
+                return
+        pytest.fail("fixture produced no position")
+
+    def test_no_stop_means_no_stop_exit_ever_fires(self):
+        s = _strategy(min_rr=Decimal("0.0001"), use_stop=False, max_hold_bars=5)
+        klines = _oscillating(400)
+        for i in range(len(klines)):
+            s(klines[: i + 1])
+        assert s.exits["stop"] == 0
+        assert s.exits["time"] + s.exits["target"] > 0
+
+    def test_sizing_is_unchanged_by_removing_the_stop(self):
+        """The ATR distance still sizes the position -- only its role as an
+        exit level goes away. A different quantity would mean the risk
+        basis had silently changed too."""
+        klines = _oscillating(200)
+
+        def first_quantity(use_stop: bool):
+            s = _strategy(min_rr=Decimal("0.0001"), use_stop=use_stop)
+            for i in range(len(klines)):
+                intent = s(klines[: i + 1])
+                if intent is not None:
+                    return intent.quantity
+            return None
+
+        assert first_quantity(True) == first_quantity(False)
+
+    def test_trainable_threads_use_stop_through_params(self):
+        t = SelectiveReversionTrainable(symbol=SYMBOL)
+        s = t.fit([], {**DEFAULT_PARAMS, "use_stop": False}, parent_run_id="r")
+        assert s._use_stop is False

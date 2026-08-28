@@ -159,3 +159,59 @@ def test_same_inputs_produce_identical_results_every_run():
 
     assert result_a.fills == result_b.fills
     assert len(result_a.fills) > 0  # sanity check the scenario actually produced fills
+
+
+class TestEquityObserver:
+    """Scalping Task S15. The engine already reconstructs mark-to-market
+    equity every bar when `starting_equity` is supplied (that is how the S7
+    insolvency floor works); this is the seam that hands the value it
+    already has to a strategy that asks for it."""
+
+    def test_observer_is_not_called_without_starting_equity(self):
+        seen: list[Decimal] = []
+
+        class Observing:
+            def on_equity(self, equity, /):
+                seen.append(equity)
+
+            def __call__(self, window):
+                return None
+
+        run_backtest(_klines(5), Observing(), fee_bps=Decimal("0"), slippage_bps=Decimal("0"))
+        assert seen == [], "no starting_equity means there is no equity to report"
+
+    def test_observer_receives_one_value_per_bar_before_the_intent(self):
+        seen: list[Decimal] = []
+        order: list[str] = []
+
+        class Observing:
+            def on_equity(self, equity, /):
+                seen.append(equity)
+                order.append("equity")
+
+            def __call__(self, window):
+                order.append("call")
+                return None
+
+        klines = _klines(4)
+        run_backtest(
+            klines, Observing(), fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+            starting_equity=Decimal("10000"),
+        )
+        assert seen == [Decimal("10000")] * len(klines)
+        # Strictly alternating, equity first: a strategy must never size
+        # against a figure that already reflects its own pending decision.
+        assert order == ["equity", "call"] * len(klines)
+
+    def test_a_plain_callable_strategy_is_unaffected(self):
+        calls: list[int] = []
+
+        def plain(window):
+            calls.append(len(window))
+            return None
+
+        run_backtest(
+            _klines(5), plain, fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+            starting_equity=Decimal("10000"),
+        )
+        assert calls == [1, 2, 3, 4, 5]

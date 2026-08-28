@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import statistics
 import sys
 from decimal import Decimal
 from pathlib import Path
@@ -93,7 +94,7 @@ def _as_number(value, *, non_negative_integer: bool = False) -> float | None:
     return number
 
 
-def _load(runs_path: str) -> dict:
+def _load(runs_path: str, strategy_id: str, run_id: str | None = None) -> dict:
     # Parse every line and match `strategy_id` as a field. A substring test
     # on the raw line would also match a record that merely mentions this id
     # somewhere else (a `params` value, a family name, a future field), and
@@ -103,7 +104,7 @@ def _load(runs_path: str) -> dict:
         if not line.strip():
             continue
         record = json.loads(line)
-        if isinstance(record, dict) and record.get("strategy_id") == STRATEGY_ID:
+        if isinstance(record, dict) and record.get("strategy_id") == strategy_id:
             records.append(record)
 
     # The log holds several shapes for one strategy_id (the walk-forward run,
@@ -116,14 +117,39 @@ def _load(runs_path: str) -> dict:
         and isinstance(r.get("aggregate_metrics"), dict)
         and all(k in r["aggregate_metrics"] for k in REQUIRED_AGGREGATE_KEYS)
     ]
+    if run_id is not None:
+        walk_forward = [r for r in walk_forward if r.get("run_id") == run_id]
+        if not walk_forward:
+            print(f"no walk-forward record with run_id={run_id} for {strategy_id} "
+                  f"in {runs_path}.", file=sys.stderr)
+            raise SystemExit(1)
     if not walk_forward:
         print(
-            f"no logged walk-forward record for {STRATEGY_ID} in {runs_path}: "
+            f"no logged walk-forward record for {strategy_id} in {runs_path}: "
             f"{len(records)} record(s) carry that strategy_id, none with a "
             f"non-empty fold_results and an aggregate_metrics providing all of "
             f"{', '.join(REQUIRED_AGGREGATE_KEYS)}.",
             file=sys.stderr,
         )
+        raise SystemExit(1)
+    if len(walk_forward) > 1 and run_id is None:
+        # Fail closed rather than silently take the newest. One
+        # `strategy_id` can legitimately cover several logged cells --
+        # S15 ran two sizing variants under one id -- and quietly
+        # scoring whichever happened to be logged last would attach a
+        # verdict to a configuration the caller never named.
+        print(
+            f"{len(walk_forward)} walk-forward records match strategy_id="
+            f"{strategy_id!r}; refusing to guess which one to score.\n"
+            f"Re-run with --run-id, choosing from:",
+            file=sys.stderr,
+        )
+        for r in walk_forward:
+            params = r.get("params") or {}
+            hint = ", ".join(
+                f"{k}={params[k]}" for k in sorted(params) if k in ("sizing_mode", "use_stop")
+            )
+            print(f"  {r.get('run_id')}  {r.get('logged_at', '')}  {hint}", file=sys.stderr)
         raise SystemExit(1)
     return walk_forward[-1]
 
@@ -159,9 +185,13 @@ def _require_scoreable(agg: dict) -> dict[str, float]:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--runs-path", default=RUNS_PATH)
+    ap.add_argument("--strategy-id", default=STRATEGY_ID,
+                    help="which logged strategy_id to score (default: the S14 candidate)")
+    ap.add_argument("--run-id", default=None,
+                    help="disambiguate when one strategy_id covers several logged runs")
     args = ap.parse_args(argv)
 
-    record = _load(args.runs_path)
+    record = _load(args.runs_path, args.strategy_id, args.run_id)
     folds = record["fold_results"]
     agg = record["aggregate_metrics"]
     scoreable = _require_scoreable(agg)
@@ -178,7 +208,7 @@ def main(argv=None) -> int:
     print(f"worst drawdown    : {worst_drawdown*100:.2f}%")
     print(f"mean profit factor: {mean_profit_factor:.4f}")
 
-    resolution = lineage.resolve_family(STRATEGY_ID, record)
+    resolution = lineage.resolve_family(args.strategy_id, record)
     counts = overfitting_check.check_project_combination_count(runs_path=args.runs_path)
     n = counts.research_selection_trials
     print(f"\nfamily            : {resolution.family} (source={resolution.source})")
@@ -247,8 +277,26 @@ def main(argv=None) -> int:
           f"-> {'PASS' if drawdown_ok else 'FAIL'}")
     print(f"trade count       : {trades:,} vs floor {floor}  "
           f"-> {'PASS' if trades_ok else 'INCONCLUSIVE-DATA-LIMITED'}")
+    # Report the median beside the mean. A profit factor is a ratio of two
+    # non-negative magnitudes, so a fold with almost no losing trades can
+    # produce an enormous value and drag the MEAN across the floor on its
+    # own. CLAUDE.md sets the floor without naming which statistic it
+    # applies to; the mean is what `walkforward` aggregates, so the mean is
+    # what is scored -- but a mean that passes while the median does not is
+    # a fragile pass and saying so is not optional.
+    fold_pf = sorted(
+        v for v in (_as_number(f["metrics"].get("profit_factor")) for f in folds)
+        if v is not None
+    )
+    median_pf = statistics.median(fold_pf) if fold_pf else None
     print(f"profit factor     : {mean_profit_factor:.4f} vs {PROFIT_FACTOR_FLOOR}  "
           f"-> {'PASS' if pf_ok else 'FAIL'}")
+    if median_pf is not None:
+        note = ""
+        if pf_ok and median_pf < PROFIT_FACTOR_FLOOR:
+            note = ("  ! FRAGILE -- the mean clears the floor but the median fold "
+                    "does not, so the pass rests on a few outlier folds")
+        print(f"  median fold PF  : {median_pf:.4f}{note}")
 
     # An under-floor trade count is neither a pass nor a fail: CLAUDE.md
     # requires it be reported as INCONCLUSIVE-DATA-LIMITED and explicitly

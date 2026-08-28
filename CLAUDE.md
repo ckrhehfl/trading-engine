@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S14; costs measured, signals found, first candidate walk-forward validated and REJECTED
+### Scalping Strategy Research — Tasks S0-S15; costs measured, signals found, candidate walk-forward validated and REJECTED under three independent remedies
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1856,7 +1856,81 @@ candidate**:
    worth knowing before either is tuned.
 
 The CSTI structure and the R:R gate are **not** implicated and should be
-reused; the signal underneath them was not there. Nothing here affects
+reused; the signal underneath them was not there.
+
+**Task S15 (2026-08-28) measured all three remedies S14's diagnosis
+named. Two were wrong, one is real infrastructure, and the candidate is
+still REJECTED.** Full account:
+`.planning/scalp-s15-entry-risk-and-sizing.md`.
+
+- **(a) Enter later — no.** Delaying entry lowers the adverse excursion
+  exactly as predicted (mean MAE 4.65 → 2.23 ATR at +60 bars) and takes
+  the outcome with it (+30.87 → +18.92 → +7.55bps, then wandering near
+  zero: −2.18 at +30 bars, +3.93 at +60). The decline is **not**
+  monotonic past the first few steps — that reads as a spent edge plus
+  sampling noise — so the claim that survives is the weaker and
+  sufficient one: **every delay tested is worse than immediate entry, on
+  gross, on net and on t, and none recovers.** **The adverse excursion
+  is not a cost paid before the edge; it is the edge.** A confirmation
+  entry (wait for a 25-50% retrace of the adverse move) keeps ~76-79% of
+  the gross and is still strictly worse than immediate.
+- **(b) A better stop — no, and the obvious diagnosis was false.** S14's
+  2.65 ATR came from S12's p80 measured on a ~29x less selective
+  population, so "wrong population" looked right; re-running
+  `recommend_stop` on the correct population gives **2.71/3.36 ATR**,
+  essentially the same. (What differs is the *mean* MAE, 4.65 ATR, which
+  is dominated by losers — median loser MAE 5.0-5.4 against median
+  winner MAE 1.0-1.2. Conflating the mean with the p80 is what made the
+  hypothesis plausible.) The real question is different: **at every
+  width from 1.5 to 12 ATR, in both cells, the stop realises a larger
+  loss than the position it catches would have taken on its own.** It
+  manufactures losses rather than avoiding them, and "no stop" beats
+  every width. The "cuts 83% of losers" figure that makes a stop look
+  good is measuring the wrong thing — those positions were mostly
+  heading for a *small* loss.
+- **(c) Equity-aware sizing — built, and it closes a real gap.**
+  `backtest.engine.EquityObserver` is an optional, duck-typed protocol:
+  `run_backtest` already reconstructs mark-to-market equity every bar
+  for its S7 insolvency floor, and now hands that value to a strategy
+  that asks, *before* the strategy is called and built only from fills
+  at or before the bar's open (so look-ahead safety is structural). This
+  closes the half S7 explicitly left open — `compute_position_size`
+  sizing against a **fixed** `reference_equity` is the mechanism behind
+  S6's −239,161% run. A strategy in `compounding` mode **fails closed**:
+  given no equity it refuses to trade rather than silently reverting to
+  the constant while reporting itself as compounding.
+
+**The combined result**, 83 folds, same geometry and costs as S14:
+
+| | S14 (2.65 ATR stop) | no stop + compounding | no stop + fixed |
+|---|---|---|---|
+| mean fold Sharpe | −1.4709 | **−0.3326** | −0.2954 |
+| folds Sharpe > 0 | 36.1% | 45.8% | 45.8% |
+| mean profit factor | 1.248 ✗ | 2.513 ✓ | 2.553 ✓ |
+| worst drawdown | 12.44% | 22.55% | 23.09% |
+| verdict | REJECTED | **REJECTED** | REJECTED |
+
+Removing the stop is worth **4.4x on mean Sharpe** — the largest single
+improvement in this arc — and flips profit factor from fail to pass. It
+is still not an edge. Compounding sizing is ~neutral here, which is the
+expected result for a strategy that never compounds far in either
+direction and is evidence that sizing was not what was wrong.
+
+**Three independent structural remedies each moved the result the right
+way and none crossed zero. That is what "the signal is not there" looks
+like, as opposed to "the risk management was wrong."** The
+`selective-reversion` signal is closed; `N` is now **125**.
+
+**A scoring weakness this run exposed, and a reporting fix rather than a
+gate change.** The no-stop cell clears the profit-factor floor on a
+**mean of 2.55 while its median fold is 1.18**; S14's mean was 1.25
+against a median of 0.91. A profit factor is a ratio of two non-negative
+magnitudes, so one fold with almost no losing trades can drag the mean
+across the floor by itself. CLAUDE.md sets the floor without naming
+which statistic it applies to and `walkforward` aggregates the mean, so
+the mean remains what is scored — changing that is a gate change needing
+its own approval. `s14_eligibility.py` now prints the median beside it
+and flags **FRAGILE** whenever the mean passes and the median does not. Nothing here affects
 `daily-tsmom-ensemble`, which trades at a frequency where a 12bps round
 trip is negligible and remains in paper trading under its own approved
 exception.
