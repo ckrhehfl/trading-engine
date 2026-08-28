@@ -689,6 +689,72 @@ refactor) is required for OMS, Risk Gateway, and Execution code — not
 optional. This rule is adopted directly, without installing a separate
 framework for it.
 
+### Conclusion checks — mandatory before any research conclusion is reported
+
+Added 2026-08-28 after a scalping arc that produced **nine** documented
+errors, of which **zero** were caught by the author at the time of
+writing. Eight of the nine happened inside narrow, well-scoped tasks, so
+smaller scope is not the remedy — a verification step that runs against
+the conclusion's own evidence is.
+
+`python/research/conclusion_check.py` implements six checks. **Every one
+exists because this project made that exact mistake, and each carries the
+citation.** That is the design constraint: a checklist of things that
+merely sound like good practice becomes theatre nobody runs.
+
+| Check | Catches | Incident |
+|---|---|---|
+| `check_non_overlapping` | a t/p/stderr over overlapping windows | S13's t = 7-8, really 1.5-2.6 |
+| `check_parameter_swept` | a domain judged from one setting | S14/S15 ran only `entry_z=5.0` |
+| `check_criterion_attainable` | a bar unreachable at this sample size | 80% fold consistency at 2 trades/fold |
+| `check_same_population` | two figures compared across different samples | S15's stop table's `none` row |
+| `check_claim_monotonic` / `check_claim_universal` | prose contradicting its own table | "every delay is worse, monotonically" |
+| `check_dsr_agrees` | a second DSR implementation drifting | fold variance fed where trial variance belongs |
+
+`require_no_blockers` **raises**, and that is deliberate — S13's inflated
+t-statistic was disclosed in prose and still became a headline number.
+
+Two consequences that are already wired in and must not be undone:
+`s14_eligibility.py` runs `check_criterion_attainable` **before** printing
+a verdict and reports the fold-based lines as **UNINFORMATIVE** rather
+than FAIL when the bar is unreachable (a criterion a good strategy clears
+4.6e-05 of the time is evidence about the criterion, not the strategy);
+and it **delegates** DSR/PSR/trial counts to `research/retrospective.py`
+rather than keeping a second implementation.
+
+**What these checks explicitly cannot do**, stated so they are not
+over-trusted: they catch arithmetic and bookkeeping errors in a
+conclusion's own evidence. They cannot catch **asking the wrong
+question**. Every one of this project's largest errors that a human
+caught — comparing costs to an *unconditional* move distribution, testing
+a *directional* hypothesis by measuring *magnitude*, running 57 trades a
+day and calling it "scalping" — passes all six cleanly. That failure mode
+needs someone asking whether the measurement matches the world, which is
+what the human checkpoints below are for.
+
+### Human checkpoints — three moments, not a time interval
+
+Also added 2026-08-28. Periodic check-ins were considered and rejected:
+the expensive errors did not happen at time intervals, they happened at
+**decision transitions**. Stop and get a human decision at exactly these
+three, and at no others — everything else (code, tests, PRs, review
+response, merges) stays delegated per the Auto-merge Policy.
+
+1. **Before declaring a direction closed.** "This signal/approach does not
+   work" is the single most expensive claim in this project, because it
+   stops further work. S15 made it having tested one of two surviving
+   parameter cells; the untested one was positive.
+2. **Before spending a holdout.** One access, permanently. Binance spot
+   1m is the last untouched 1m window this project has.
+3. **Before a conclusion is written into CLAUDE.md.** Future sessions have
+   only this file to go on and will treat what is here as settled.
+
+The human's own contribution at these points is not review of the
+arithmetic — the checks above cover that. It is the question the
+measurement cannot ask itself: *does this match how the thing actually
+works?* On the record for this arc, every time that question was asked it
+found a real problem.
+
 Anthropic's official Agent Teams feature is available but not enabled by
 default — GSD's own subagent-per-task orchestration already covers this
 project's parallel-execution needs. Turn Agent Teams on only if a concrete

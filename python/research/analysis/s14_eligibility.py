@@ -21,7 +21,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-from research import eligibility, lineage, overfitting_check, retrospective
+from research import conclusion_check, eligibility, lineage, overfitting_check, retrospective
 
 STRATEGY_ID = "selective-reversion"
 FAMILY = "btc-scalping"
@@ -250,13 +250,35 @@ def main(argv=None) -> int:
 
     result = eligibility.evaluate_eligibility(sharpes, min_fold_consistency=MIN_FOLD_CONSISTENCY)
 
+    # Run the mechanical conclusion checks BEFORE printing a verdict, and
+    # let them change what is printed rather than sit beside it. A fold
+    # criterion that a good strategy could not clear must not be reported
+    # as a FAIL -- that reads as evidence against the strategy when it is
+    # evidence about the criterion.
+    trades_per_fold = statistics.median(f["metrics"]["num_trades"] for f in folds)
+    fold_bar_unattainable = conclusion_check.check_criterion_attainable(
+        num_folds=len(folds),
+        required_fraction=float(MIN_FOLD_CONSISTENCY),
+        trades_per_fold=trades_per_fold,
+    )
+
     print("\n--- Eligibility Bar ---")
+    if fold_bar_unattainable is not None:
+        print(f"  ! {fold_bar_unattainable.message}")
+        print(f"    ({fold_bar_unattainable.scar})")
+        print("    -> the two fold-based lines below are reported as "
+              "UNINFORMATIVE, not as failures.\n")
     fc = result.fold_consistency
+    def fold_verdict(passed: bool) -> str:
+        if passed:
+            return "PASS"
+        return "UNINFORMATIVE" if fold_bar_unattainable is not None else "FAIL"
+
     print(f"fold consistency  : {fc.num_positive}/{fc.num_folds} "
           f"({fc.fraction_positive*100:.1f}%) vs {float(MIN_FOLD_CONSISTENCY)*100:.0f}%  "
-          f"-> {'PASS' if fc.passed else 'FAIL'}")
+          f"-> {fold_verdict(fc.passed)}")
     st = result.sign_test
-    print(f"sign test         : p={st.p_value:.6g}  -> {'PASS' if st.passed else 'FAIL'}")
+    print(f"sign test         : p={st.p_value:.6g}  -> {fold_verdict(st.passed)}")
     ss = result.sharpe_significance
     print(f"mean-Sharpe t-test: t={ss.t_statistic:+.4f} p={ss.p_value:.6g}  "
           f"-> {'PASS' if ss.passed else 'FAIL'}")
@@ -323,7 +345,14 @@ def main(argv=None) -> int:
         print(f"\nVERDICT: INCONCLUSIVE-DATA-LIMITED "
               f"({trades:,} trades against a floor of {floor})")
         return 0
-    overall = result.passed and drawdown_ok and pf_ok and dsr_ok
+    # When the fold criteria are uninformative they can neither pass nor
+    # fail the run: the verdict then rests on the criteria that ARE
+    # informative at this sample size.
+    if fold_bar_unattainable is not None:
+        informative = result.sharpe_significance.passed
+    else:
+        informative = result.passed
+    overall = informative and drawdown_ok and pf_ok and dsr_ok
     print(f"\nVERDICT: {'PASS' if overall else 'REJECTED'}")
     return 0
 
