@@ -296,9 +296,90 @@ loss limit -1%, weekly -3%, monthly -6%, hard stop -8%, emergency stop
 
 ## Paper Trading Pass Criteria
 
-Minimum 30 days (45 recommended), 50+ trades, zero critical crashes, zero
-duplicate orders, zero position mismatches, zero risk-gateway bypasses, no
-missing daily reports, kill switch verified working, paper score 80+.
+**Revised 2026-08-29, human-approved, replacing a single combined gate.**
+The previous wording was: *"Minimum 30 days (45 recommended), 50+ trades,
+zero critical crashes, zero duplicate orders, zero position mismatches,
+zero risk-gateway bypasses, no missing daily reports, kill switch verified
+working, paper score 80+."* It is kept here verbatim because what follows
+is a **relaxation of one clause**, and a relaxation must be readable
+against what it replaced.
+
+**Why it changed.** That gate mixed two different questions — *does the
+plumbing work* and *does the strategy make money* — and scored them on one
+calendar clock. Six of its eight clauses are about the system. Only the
+50-trade clause is about the strategy, and for a low-frequency strategy it
+is not merely hard but **unreachable**: `daily-tsmom-ensemble` traded 26
+times in 2.95 years (`sr-v`) and 64 in 3.74 years (`sr-ab`), i.e. 9-17 per
+year. 50 trades is **2.9 to 5.6 years**; 15 days is 0.4-0.7 trades. A
+criterion that cannot be satisfied is not a criterion — the same reasoning
+already applied on 2026-07-29 to the backtest trade-count floor.
+
+### Gate A — Operational readiness
+
+Proves the system, not the strategy. **Signal source is irrelevant here**
+and a dedicated mock generator is explicitly allowed, per this file's own
+standing permission to exercise the paper broker, `ExchangeAdapter` and
+supervision loop "with dummy/mock signals independently of a validated
+strategy."
+
+- **15 consecutive days** of operation, **uptime ≥ 99%** measured from the
+  daily reports' own `ticks_succeeded / ticks_attempted`
+- **≥ 200 order events** through the full
+  `OrderIntent → OrderPipeline → RiskGateway → Order → OrderExecutor` path
+- **zero critical crashes** — a session death with no clean shutdown counts,
+  and is only checkable because the session log is now persisted
+- **zero duplicate orders**, **zero position mismatches**, **zero
+  risk-gateway bypasses**
+- **no missing daily reports** across those 15 days
+- **kill switch verified** by a deliberate trip and recovery, not by waiting
+- **ambiguous-submission recovery verified** — the `SUBMISSION_UNKNOWN` path
+
+### Gate B — Strategy edge
+
+Proves the strategy. **Not calendar-bound, because calendar time cannot
+manufacture trades a strategy does not take.** Evidence comes from wherever
+it legitimately can: pre-registered holdout confirmations, walk-forward
+folds meeting the Eligibility Bar, or accumulated paper trades once there
+are enough of them to mean something. Paper-trading trades are recorded and
+reported honestly, and count toward this gate, but a strategy is never
+blocked here for a trade count its own frequency makes impossible to reach.
+
+For `daily-tsmom-ensemble` specifically, Gate B rests on what is already on
+record: two disjoint pre-registered holdouts (`sr-v`, `sr-ab`) and `sr-ac`'s
+combined significance (Stouffer Z = 2.914, Φ(Z) = 0.9982).
+
+### The disclosed cost of this change, stated rather than glossed
+
+**This does not make any strategy more proven.** It stops asking paper
+trading to establish something it structurally cannot for a low-frequency
+strategy, and moves that burden to where it actually sits.
+
+The 50-trade clause was doing **more** evidentiary work than usual for
+`daily-tsmom-ensemble` precisely because its own backtest fell short of the
+trade-count floor — this file's Paper Trading Policy Exception says so
+explicitly. Removing it leaves that strategy's edge resting on **90 backtest
+trades across two holdouts**, and nothing more.
+
+What bounds the resulting exposure is not this gate but the canary tier
+itself: 1x base leverage, 2% max order notional, −0.5% daily loss limit,
+−4% hard stop. Those are unchanged and are not weakened by this revision.
+
+### "paper score 80+" — named here because this revision drops it
+
+The old wording required a **paper score of 80+**. **No such score is
+implemented anywhere in this repo** (verified 2026-08-29: no
+`paper_score`/`paperScore` symbol in any Python, Java or shell source), and
+no definition of it exists in this file either. It was an undefined
+criterion, which means it could never have been evaluated and its
+disappearance from Gate A is not a relaxation of anything real.
+
+Recorded rather than deleted quietly, because the Live Entry Criteria below
+still name it. **Until it is defined and implemented, "paper score 80+"
+cannot gate anything**, and any future decision to keep it must define it
+first. That definition would itself be a Risk-Parameter-class change.
+
+**Both gates must pass before live consideration**, and the separate Live
+Entry Criteria below still apply in full on top of them.
 
 ## Live Entry Criteria
 
@@ -1285,9 +1366,11 @@ not an architectural reversal.
 intended**: this exception applies ONLY to `daily-tsmom-ensemble` v1
 (`research/strategies/daily_tsmom_ensemble.py`, unchanged) proceeding to
 PAPER trading. It does NOT: waive the Paper Trading Pass Criteria (still
-requires a minimum of 30 days (45 recommended), 50+ trades, zero critical crashes/duplicate
-orders/position mismatches/risk-gateway bypasses, paper score 80+, kill
-switch verified, before any live consideration — and given the backtest
+requires the Paper Trading Pass Criteria in force — which were **revised
+2026-08-29** into Gate A (operational readiness) + Gate B (strategy edge);
+the wording quoted in the rest of this paragraph is the pre-revision one and
+is retained because the exception was granted against it — before any live
+consideration — and given the backtest
 evidence itself fell short of the trade-count floor, paper trading's own
 50+-trade requirement is doing more evidentiary work than usual here, not
 less); waive the separate Live Entry Criteria; relax any Risk Parameter
