@@ -73,12 +73,16 @@ def _as_number(value, *, non_negative_integer: bool = False) -> float | None:
     """
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, (int, float)):
-        number = float(value)
-    elif isinstance(value, str):
+    if isinstance(value, (int, float, str)):
         try:
             number = float(value)
-        except ValueError:
+        except (ValueError, OverflowError):
+            # `OverflowError` is not hypothetical: JSON integers are
+            # unbounded, so `json.loads` happily produces a Python int
+            # too large for a float, and `float()` raises on it. A
+            # too-large number is unevaluable in exactly the same way a
+            # null is, and must reach `_require_scoreable` as `None`
+            # rather than escape as a traceback.
             return None
     else:
         return None
