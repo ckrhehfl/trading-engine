@@ -21,7 +21,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-from research import eligibility, lineage, overfitting_check
+from research import eligibility, lineage, overfitting_check, retrospective
 
 STRATEGY_ID = "selective-reversion"
 FAMILY = "btc-scalping"
@@ -226,26 +226,29 @@ def main(argv=None) -> int:
               "then re-score.")
         return 1
 
-    # DSR wants per-observation Sharpe on one consistent sampling
-    # frequency; every logged `sharpe_ratio` here is annualized, and the
-    # bar computes significance on DAILY-resampled returns.
-    daily = [
-        None if s is None else eligibility.deannualize_sharpe(s, bars_per_day=BARS_PER_DAY)
-        for s in sharpes
-    ]
-    mean_daily = eligibility.deannualize_sharpe(mean_sharpe, bars_per_day=BARS_PER_DAY)
-    evaluated_days = sum(
-        f["validate_end_index"] - f["validate_start_index"] for f in folds
-    ) // BARS_PER_DAY
-    dsr = eligibility.evaluate_deflated_sharpe(
-        sharpe_ratio=mean_daily,
-        num_observations=evaluated_days,
-        num_trials=n,
-        trial_sharpe_variance=eligibility.sharpe_variance_across_trials(daily),
+    # DSR, PSR and the family/project trial counts are DELEGATED to
+    # `research/retrospective.py` rather than recomputed here.
+    #
+    # An earlier version of this scorer computed DSR itself and fed
+    # `trial_sharpe_variance` this run's own PER-FOLD Sharpes. That is the
+    # wrong quantity -- the variance the benchmark wants is across the
+    # other TRIALS, each of which is itself an average over folds, so the
+    # fold-level figure is far larger and it pushed every reported DSR
+    # toward zero. Even after correcting the input, a second implementation
+    # kept disagreeing with the reference on details (which purposes to
+    # pool, which sampling flag) that are invisible at a glance and change
+    # the number. One implementation is the fix; this reads the reference's
+    # own row for this run.
+    report = retrospective.build_retrospective(
+        runs_path=args.runs_path, min_fold_consistency=MIN_FOLD_CONSISTENCY
     )
-    result = eligibility.evaluate_eligibility(
-        sharpes, min_fold_consistency=MIN_FOLD_CONSISTENCY, deflated_sharpe=dsr
-    )
+    row = next((r for r in report.rows if r.run_id == record["run_id"]), None)
+    if row is None:
+        print(f"run_id {record['run_id']} is not a distinct multi-fold run in "
+              f"{args.runs_path}; DSR cannot be evaluated for it.", file=sys.stderr)
+        raise SystemExit(1)
+
+    result = eligibility.evaluate_eligibility(sharpes, min_fold_consistency=MIN_FOLD_CONSISTENCY)
 
     print("\n--- Eligibility Bar ---")
     fc = result.fold_consistency
@@ -257,8 +260,21 @@ def main(argv=None) -> int:
     ss = result.sharpe_significance
     print(f"mean-Sharpe t-test: t={ss.t_statistic:+.4f} p={ss.p_value:.6g}  "
           f"-> {'PASS' if ss.passed else 'FAIL'}")
-    print(f"DSR               : {dsr.dsr:.6g} vs {DSR_THRESHOLD}  "
-          f"-> {'PASS' if dsr.dsr >= DSR_THRESHOLD else 'FAIL'}")
+    dsr_ok = row.dsr_project is not None and row.dsr_project >= DSR_THRESHOLD
+    print(f"DSR (project N={row.project_n}) : "
+          f"{'n/a' if row.dsr_project is None else f'{row.dsr_project:.6g}'} vs "
+          f"{DSR_THRESHOLD}  -> {'PASS' if dsr_ok else 'FAIL'}")
+    # PSR is the same statistic with NO selection correction, and the
+    # family-level DSR sits between the two. Printing all three makes the
+    # size of the search penalty visible, instead of leaving a bare DSR of
+    # ~0 looking like the strategy produced nothing at all.
+    print(f"  PSR (no search) : "
+          f"{'n/a' if row.psr_n1 is None else f'{row.psr_n1:.4f}'}   "
+          f"DSR (family N={row.family_n}): "
+          f"{'n/a' if row.dsr_family is None else f'{row.dsr_family:.4f}'}")
+    print(f"  detection floor : {row.detection_floor:.3f} vs observed "
+          f"{row.mean_fold_sharpe:+.3f} -- "
+          f"{'window IS powered for this' if row.mean_fold_sharpe > row.detection_floor else 'NOT powered'}")
 
     # `evaluate_eligibility` deliberately covers only fold consistency, the
     # sign test and the mean-Sharpe t-test -- its own docstring says the
@@ -271,7 +287,7 @@ def main(argv=None) -> int:
     drawdown_ok = dd <= DRAWDOWN_CEILING
     trades_ok = trades >= floor
     pf_ok = mean_profit_factor >= PROFIT_FACTOR_FLOOR
-    dsr_ok = dsr.dsr is not None and dsr.dsr >= DSR_THRESHOLD
+
 
     print(f"max drawdown      : {dd*100:.2f}% vs {DRAWDOWN_CEILING*100:.0f}%  "
           f"-> {'PASS' if drawdown_ok else 'FAIL'}")

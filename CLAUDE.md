@@ -1298,7 +1298,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S15; costs measured, signals found, candidate walk-forward validated and REJECTED under three independent remedies
+### Scalping Strategy Research — Tasks S0-S16; the 1m window is now closed to selection, and the reason is arithmetic
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1916,10 +1916,9 @@ is still not an edge. Compounding sizing is ~neutral here, which is the
 expected result for a strategy that never compounds far in either
 direction and is evidence that sizing was not what was wrong.
 
-**Three independent structural remedies each moved the result the right
-way and none crossed zero. That is what "the signal is not there" looks
-like, as opposed to "the risk management was wrong."** The
-`selective-reversion` signal is closed; `N` is now **125**.
+**Two of those three remedies moved the result the right way and the
+third was neutral — but the sentence that followed here was wrong and is
+retracted. See Task S16 immediately below.** `N` after S15 was **125**.
 
 **A scoring weakness this run exposed, and a reporting fix rather than a
 gate change.** The no-stop cell clears the profit-factor floor on a
@@ -1930,7 +1929,84 @@ across the floor by itself. CLAUDE.md sets the floor without naming
 which statistic it applies to and `walkforward` aggregates the mean, so
 the mean remains what is scored — changing that is a gate change needing
 its own approval. `s14_eligibility.py` now prints the median beside it
-and flags **FRAGILE** whenever the mean passes and the median does not. Nothing here affects
+and flags **FRAGILE** whenever the mean passes and the median does not.
+
+**Task S16 (2026-08-28) audited S15's own conclusion, at the operator's
+request, because it was not trusted — and found three real defects in
+it.** The REJECTED verdict survives; S15's stated *reason* for it does
+not. Full account: `.planning/scalp-s16-audit-of-s15.md`.
+
+1. **The conclusion was drawn from the weaker of the two surviving
+   cells.** S13 left `|z|≥5` (+13.97bps, t=1.95) and `|z|≥6` (+30.87bps,
+   t=2.56) standing. **Every walk-forward S14 and S15 ran used
+   `entry_z=5.0`**; the `|z|≥6` cell was never tested, and "the signal is
+   not there" was declared anyway. This is the **fifth** instance of the
+   error pattern this section already records as a rule, committed at the
+   most expensive stage to commit it. Running the missing cells reverses
+   the sign: `|z|≥6, top 1%` gives mean fold Sharpe **+0.456** and
+   **+13.97% compounded**; `top 0.1%` gives **+0.899** and **+32.42%**,
+   against `|z|≥5`'s −0.333 and −50.6%.
+2. **Fold-based criteria were applied to a strategy holding ~2 trades per
+   fold.** At `|z|≥6` the median fold holds 2 trades, at `|z|≥5` six. A
+   fold's sign is then near a coin flip, and the 80% floor is not merely
+   hard but unreachable: a strategy whose folds are positive 60% of the
+   time (a *good* edge) clears 67-of-83 with probability **4.6e-05**.
+   `sr-j` already made this argument for fold *counts*; it had not been
+   made for trades *per fold*. **Below roughly 20-30 trades per fold,
+   fold consistency and the sign test are uninformative in both
+   directions and must not be reported as evidence either way.**
+3. **The DSR input was wrong, in the strict direction.**
+   `s14_eligibility.py` fed `trial_sharpe_variance` its own run's
+   **per-fold** Sharpes; the benchmark wants the variance across the
+   other **trials**, each itself an average over folds. This inflated the
+   selection benchmark and pushed every DSR that scorer reported toward
+   zero. The scorer now **delegates DSR/PSR/trial counts to
+   `research/retrospective.py`** outright rather than keeping a second
+   implementation, and matches it exactly.
+
+**What the corrected evaluation says about the best configuration**
+(`|z|≥6`, top 0.1%, no stop, compounding sizing): mean-Sharpe t-test
+**t = +2.388, p = 0.0098 — PASS, the first significance test any
+scalping candidate here has cleared**; drawdown 9.93%, 181 trades and
+profit factor 6.44 all pass; PSR **0.9905**; observed Sharpe **+0.899**
+against the window's own **0.623** detection floor, so the window *is*
+powered for it. Six of eight years positive, and **not**
+2021-dependent (+26.12% of the +32.42% survives excluding 2021) — which
+contradicts S13's concentration warning, because S13 measured mean bps
+per position where 2021's violent moves dominate, while the walk-forward
+compounds equity under ATR-inverse sizing that gives those same moves a
+*small* position. **Risk-based sizing neutralised the regime
+concentration.**
+
+**And it still fails, for the one reason that now governs everything
+here: DSR = 6.46e-11 against N = 127.** Inverting the benchmark gives the
+annualized Sharpe a result must post to clear DSR 0.95:
+
+| N | required Sharpe |
+|---|---|
+| 1 (a pre-registered holdout) | **0.63** |
+| 5 (this family) | 2.17 |
+| 50 | 3.56 |
+| **127 (this project today)** | **4.00** |
+
+Credible institutional trend-following reports 0.4-0.8. **At N = 127 no
+realistic edge can clear this bar on this data, whatever it is.** This is
+the same arithmetic that closed the 1h window (Configuration C needed
+4.6), and the standing rule written there now applies verbatim to the
+**Binance futures 1m window**: it stays open for *reproduction,
+diagnosis and infrastructure testing*, and is **closed to selection**,
+because raising `N` can only lower the DSR of any future result there.
+
+**The one number that changes the sequencing**: at `N = 1` the
+requirement is **0.63**, and the observed research-window Sharpe is
+**0.899**. Binance **spot** 1m has never been touched and is not in the
+local store; a single pre-registered confirmation there faces `N = 1` by
+construction. That is the only remaining path on which this candidate
+could be confirmed — and it is a spend-once resource needing its own
+`Discuss`, its own pre-registration committed before any spot data is
+fetched, and an honest accounting of spot-vs-perpetual microstructure
+differences (fee schedule, no funding, different participants) that make
+it a *replication* rather than a continuation. Nothing here affects
 `daily-tsmom-ensemble`, which trades at a frequency where a 12bps round
 trip is negligible and remains in paper trading under its own approved
 exception.
