@@ -2067,12 +2067,22 @@ because raising `N` can only lower the DSR of any future result there.
 requirement is **0.63**, and the observed research-window Sharpe is
 **0.899**. Binance **spot** 1m has never been touched and is not in the
 local store; a single pre-registered confirmation there faces `N = 1` by
-construction. That is the only remaining path on which this candidate
-could be confirmed — and it is a spend-once resource needing its own
-`Discuss`, its own pre-registration committed before any spot data is
-fetched, and an honest accounting of spot-vs-perpetual microstructure
-differences (fee schedule, no funding, different participants) that make
-it a *replication* rather than a continuation. Nothing here affects
+construction.
+
+**But `N = 1` removes the selection penalty, not the replication
+question, and this must not be policy-ised into "one holdout confirms a
+strategy."** A lone clean result is one draw. This project's own
+precedent settles it: `daily-tsmom-ensemble` got **two** disjoint
+pre-registered confirmations plus a combined-significance meta-analysis
+and the verdict was still INCONCLUSIVE. Options — none chosen here, each
+needing its own `Discuss` and a pre-registration committed before any
+data is fetched: define a **research split on an unsearched window**
+first (the ordinary discipline, and it does not spend a one-shot
+resource); find an **independent replication source**; or spend the
+spot-1m holdout, accepting it can at best say "not contradicted here".
+Spot-vs-perpetual microstructure differences (fee schedule, no funding,
+different participants) make that last one a *replication attempt*
+rather than a continuation. Nothing here affects
 `daily-tsmom-ensemble`, which trades at a frequency where a 12bps round
 trip is negligible and remains in paper trading under its own approved
 exception.

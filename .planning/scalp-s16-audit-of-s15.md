@@ -87,8 +87,8 @@ output matches the reference exactly (6.46139e-11).
 this arc has produced:
 
 ```text
-fold consistency  49/83 = 59.0%  vs 80%      FAIL  (uninformative, see Defect 2)
-sign test         p = 0.0619                 FAIL  (uninformative)
+fold consistency  49/83 = 59.0%  vs 80%      UNINFORMATIVE  (see Defect 2)
+sign test         p = 0.0619                 UNINFORMATIVE
 mean-Sharpe t     t = +2.3877, p = 0.0098    PASS  <- first ever in this arc
 DSR (N = 127)     6.46e-11      vs 0.95      FAIL
   PSR (no search) 0.9905     DSR (family N=5) 0.4319
@@ -147,14 +147,39 @@ the local store. A single pre-registered confirmation there faces `N` = 1
 by construction (`overfitting_check` excludes holdout runs), so the bar
 is 0.63, not 4.00.
 
-**That is the only remaining path on which this candidate could ever be
-confirmed** — and it is a one-shot, spend-once resource under the
-`sr-u`/`sr-v` protocol. Stated as a finding, not a recommendation: it
-needs its own `Discuss`, its own pre-registration committed before any
-spot data is fetched, and an honest accounting of the real differences
-between spot and perpetual-futures microstructure (fee schedule, no
-funding, different participants) that make it a *replication* rather
-than a continuation.
+That is the only remaining path on which this candidate could clear a
+**DSR** bar — and clearing DSR is not the same as being confirmed.
+Stated as a finding, not a recommendation.
+
+**A single holdout at `N = 1` removes the selection penalty. It does not
+establish replicability, and this document should not be read as
+proposing that it does.** `N = 1` means "nothing was searched over here";
+it says nothing about whether a second independent sample would agree. A
+lone clean result is still one draw, which is precisely why PSR — not
+merely a positive Sharpe — is the single-window bar.
+
+This project's own precedent is the counterexample to treating one
+holdout as sufficient: `daily-tsmom-ensemble` got **two** disjoint
+pre-registered confirmations (`sr-v`, `sr-ab`) plus `sr-ac`'s combined
+significance, and the honest verdict was still INCONCLUSIVE. One
+spot-1m access would be weaker evidence than that, not stronger.
+
+So the real options, none of which this audit chooses:
+
+1. **Define a research split on an unsearched window first**, so a
+   candidate can be developed and then confirmed on genuinely separate
+   data — the ordinary discipline, and the one that does not spend a
+   one-shot resource to answer a question a split could answer twice.
+2. **Find an independent replication source** — a different venue, asset
+   or era — so a confirmation has something to be replicated against.
+3. **Spend the spot-1m holdout**, accepting that a single access can at
+   best say "not contradicted here", and cannot say "replicable".
+
+Any of these needs its own `Discuss`, a pre-registration committed before
+any data is fetched, and an honest accounting of the spot-vs-perpetual
+microstructure differences (fee schedule, no funding, different
+participants) that make option 3 a *replication attempt* rather than a
+continuation.
 
 ## Corrections this makes to the S15 record
 

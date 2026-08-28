@@ -294,9 +294,21 @@ def main(argv=None) -> int:
           f"{'n/a' if row.psr_n1 is None else f'{row.psr_n1:.4f}'}   "
           f"DSR (family N={row.family_n}): "
           f"{'n/a' if row.dsr_family is None else f'{row.dsr_family:.4f}'}")
-    print(f"  detection floor : {row.detection_floor:.3f} vs observed "
-          f"{row.mean_fold_sharpe:+.3f} -- "
-          f"{'window IS powered for this' if row.mean_fold_sharpe > row.detection_floor else 'NOT powered'}")
+    # `detection_floor` is None whenever the record's data span could not be
+    # computed, and `_load` deliberately does not require the span fields --
+    # so formatting either of these unconditionally would exit with a
+    # TypeError BEFORE the verdict prints. A missing power comparison must
+    # not cost the caller the verdict it came for.
+    if row.detection_floor is None or row.mean_fold_sharpe is None:
+        missing = "detection floor" if row.detection_floor is None else "mean fold Sharpe"
+        print(f"  detection floor : n/a -- {missing} could not be computed for this "
+              f"record (no usable data span), so whether the window is powered "
+              f"for this result is unknown, not answered either way")
+    else:
+        powered = row.mean_fold_sharpe > row.detection_floor
+        print(f"  detection floor : {row.detection_floor:.3f} vs observed "
+              f"{row.mean_fold_sharpe:+.3f} -- "
+              f"{'window IS powered for this' if powered else 'NOT powered'}")
 
     # `evaluate_eligibility` deliberately covers only fold consistency, the
     # sign test and the mean-Sharpe t-test -- its own docstring says the
