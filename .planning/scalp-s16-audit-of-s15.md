@@ -86,7 +86,7 @@ output matches the reference exactly (6.46139e-11).
 `|z|>=6`, top 0.1%, no stop, compounding sizing — the best configuration
 this arc has produced:
 
-```
+```text
 fold consistency  49/83 = 59.0%  vs 80%      FAIL  (uninformative, see Defect 2)
 sign test         p = 0.0619                 FAIL  (uninformative)
 mean-Sharpe t     t = +2.3877, p = 0.0098    PASS  <- first ever in this arc
