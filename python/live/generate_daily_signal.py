@@ -124,6 +124,7 @@ from data.backfill import DEFAULT_DB_PATH, sync_range
 from data.bingx_klines import KlineRow
 from data.store import connect, fetch_klines
 from research.strategies.daily_tsmom_ensemble import DailyTsmomEnsembleTrainable
+from research.strategies.volatility_targeting import DEFAULT_TARGET_ANNUALIZED_VOL
 from schemas.order_intent import OrderIntent
 
 logger = logging.getLogger(__name__)
@@ -150,6 +151,47 @@ STRATEGY_VERSION = "v1"
 # `.planning/paper-trading-b-signal-runner.md` for the citation.
 FEE_BPS = Decimal("5")
 SLIPPAGE_BPS = Decimal("2")
+
+# Position size is scaled DOWN so the strategy's measured worst-case
+# drawdown fits the risk budget, rather than the budget being widened to
+# fit the strategy. CLAUDE.md's own methodology requires this ordering:
+# "Derive the risk budget first ... Reject any strategy that cannot live
+# inside the budget rather than widening it."
+#
+# Derivation, so this is a measured constant and not a tuned one:
+#
+#   `daily-tsmom-ensemble` sizes via constant-volatility targeting at
+#   `DEFAULT_TARGET_ANNUALIZED_VOL` (20%), a convention inherited from
+#   `volatility_targeting.py` -- it was never derived from a drawdown
+#   budget. Its realised drawdowns were 20.135% (Binance 2017-2021) and
+#   18.273% (BingX 2021-2026) against a 20% ceiling.
+#
+#   A single realised drawdown is one draw, so sizing against it would be
+#   sizing against luck. Resampling the real closed-trade sequence 2,000
+#   times (Task S17) gives the distribution instead:
+#
+#     Binance 2017-2021   realised 20.14%   P95 13.07%   worst 20.06%
+#     BingX   2021-2026   realised 18.27%   P95 21.41%   worst 33.64%
+#
+#   The BingX window's realised 18.27% was FORTUNATE -- its own P95 is
+#   21.41%, over the ceiling. Sizing off the realised figure would have
+#   left the budget breached in most orderings of the same trades.
+#
+#   0.199 / 0.2141 = 0.929. Taken from the WORSE of the two windows, not
+#   the average and not the friendlier one, and rounded down.
+#
+# This scales the volatility target, so it scales every position
+# proportionally: winners and losers shrink by the same factor and the
+# payoff ratio is untouched. That is the property a stop does NOT have --
+# S17 measured that a stop cuts winners' excursions (winners' MAE p80
+# 12.5-15.3% against losers' 8.1-9.7%), which is why sizing rather than
+# stopping is the lever here.
+#
+# NOT a fitted parameter in the sense the strategy's own
+# `free_parameter_count: 0` claim protects: it touches sizing, never the
+# signal. The lookback set is still the literature's, unchanged.
+RISK_BUDGET_SCALAR = Decimal("0.929")
+TARGET_ANNUALIZED_VOL = DEFAULT_TARGET_ANNUALIZED_VOL * RISK_BUDGET_SCALAR
 
 # `runs/live_signals.jsonl` -- deliberately NOT
 # `research.experiment_log.DEFAULT_RUNS_PATH` ("runs/experiments.jsonl").
@@ -345,6 +387,7 @@ def generate_signal(
         strategy_version=STRATEGY_VERSION,
         fee_bps=FEE_BPS,
         slippage_bps=SLIPPAGE_BPS,
+        target_annualized_vol=TARGET_ANNUALIZED_VOL,
         runs_path=runs_path,
     )
     strategy = trainable.fit(klines, {"symbol": symbol}, parent_run_id=parent_run_id)

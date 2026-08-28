@@ -573,3 +573,57 @@ def test_main_retry_reproduces_the_identical_intent_id(server, tmp_path, monkeyp
     second_intent_id = json.loads(signal_path.read_text(encoding="utf-8"))["intent_id"]
 
     assert first_intent_id == second_intent_id
+
+
+class TestRiskBudgetSizing:
+    """Task S17. Position size is scaled down so the strategy's measured
+    worst-case drawdown fits the risk budget -- rather than the budget
+    being widened to fit the strategy, which CLAUDE.md's methodology
+    explicitly forbids."""
+
+    def test_the_scalar_shrinks_rather_than_grows_exposure(self):
+        from live.generate_daily_signal import RISK_BUDGET_SCALAR
+
+        assert Decimal("0") < RISK_BUDGET_SCALAR < Decimal("1"), (
+            "a risk-budget scalar above 1 would be widening the budget to fit "
+            "the strategy, which is the thing this exists to prevent"
+        )
+
+    def test_the_target_is_the_convention_scaled_by_it(self):
+        from live.generate_daily_signal import RISK_BUDGET_SCALAR, TARGET_ANNUALIZED_VOL
+        from research.strategies.volatility_targeting import DEFAULT_TARGET_ANNUALIZED_VOL
+
+        assert TARGET_ANNUALIZED_VOL == DEFAULT_TARGET_ANNUALIZED_VOL * RISK_BUDGET_SCALAR
+
+    def test_the_scalar_brings_the_measured_p95_inside_the_budget(self):
+        """The derivation, asserted rather than left in a comment: the
+        worse of the two windows had a resampled P95 drawdown of 21.41%
+        against a 20% ceiling."""
+        from live.generate_daily_signal import RISK_BUDGET_SCALAR
+
+        measured_p95 = Decimal("0.2141")     # BingX 2021-2026, 2,000 resamples
+        ceiling = Decimal("0.20")
+        assert measured_p95 * RISK_BUDGET_SCALAR < ceiling
+
+    def test_the_generator_actually_passes_it_to_the_strategy(self, monkeypatch):
+        """A constant nothing reads would be decoration."""
+        from live import generate_daily_signal as gds
+
+        captured = {}
+        real_init = gds.DailyTsmomEnsembleTrainable.__init__
+
+        def spy(self, *args, **kwargs):
+            captured.update(kwargs)
+            return real_init(self, *args, **kwargs)
+
+        monkeypatch.setattr(gds.DailyTsmomEnsembleTrainable, "__init__", spy)
+        base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        klines = [
+            Kline(open_time=base + timedelta(days=i), open=Decimal("100"),
+                  high=Decimal("101"), low=Decimal("99"), close=Decimal("100"),
+                  volume=Decimal("1"))
+            for i in range(2)
+        ]
+        gds.generate_signal(klines, symbol="BTC-USDT", parent_run_id="p",
+                            runs_path=gds.LIVE_RUNS_PATH)
+        assert captured.get("target_annualized_vol") == gds.TARGET_ANNUALIZED_VOL
