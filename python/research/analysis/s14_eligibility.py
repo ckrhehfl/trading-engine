@@ -21,7 +21,7 @@ import sys
 from decimal import Decimal
 from pathlib import Path
 
-from research import eligibility, lineage, overfitting_check
+from research import conclusion_check, eligibility, lineage, overfitting_check, retrospective
 
 STRATEGY_ID = "selective-reversion"
 FAMILY = "btc-scalping"
@@ -226,39 +226,93 @@ def main(argv=None) -> int:
               "then re-score.")
         return 1
 
-    # DSR wants per-observation Sharpe on one consistent sampling
-    # frequency; every logged `sharpe_ratio` here is annualized, and the
-    # bar computes significance on DAILY-resampled returns.
-    daily = [
-        None if s is None else eligibility.deannualize_sharpe(s, bars_per_day=BARS_PER_DAY)
-        for s in sharpes
-    ]
-    mean_daily = eligibility.deannualize_sharpe(mean_sharpe, bars_per_day=BARS_PER_DAY)
-    evaluated_days = sum(
-        f["validate_end_index"] - f["validate_start_index"] for f in folds
-    ) // BARS_PER_DAY
-    dsr = eligibility.evaluate_deflated_sharpe(
-        sharpe_ratio=mean_daily,
-        num_observations=evaluated_days,
-        num_trials=n,
-        trial_sharpe_variance=eligibility.sharpe_variance_across_trials(daily),
+    # DSR, PSR and the family/project trial counts are DELEGATED to
+    # `research/retrospective.py` rather than recomputed here.
+    #
+    # An earlier version of this scorer computed DSR itself and fed
+    # `trial_sharpe_variance` this run's own PER-FOLD Sharpes. That is the
+    # wrong quantity -- the variance the benchmark wants is across the
+    # other TRIALS, each of which is itself an average over folds, so the
+    # fold-level figure is far larger and it pushed every reported DSR
+    # toward zero. Even after correcting the input, a second implementation
+    # kept disagreeing with the reference on details (which purposes to
+    # pool, which sampling flag) that are invisible at a glance and change
+    # the number. One implementation is the fix; this reads the reference's
+    # own row for this run.
+    report = retrospective.build_retrospective(
+        runs_path=args.runs_path, min_fold_consistency=MIN_FOLD_CONSISTENCY
     )
-    result = eligibility.evaluate_eligibility(
-        sharpes, min_fold_consistency=MIN_FOLD_CONSISTENCY, deflated_sharpe=dsr
+    row = next((r for r in report.rows if r.run_id == record["run_id"]), None)
+    if row is None:
+        print(f"run_id {record['run_id']} is not a distinct multi-fold run in "
+              f"{args.runs_path}; DSR cannot be evaluated for it.", file=sys.stderr)
+        raise SystemExit(1)
+
+    result = eligibility.evaluate_eligibility(sharpes, min_fold_consistency=MIN_FOLD_CONSISTENCY)
+
+    # Run the mechanical conclusion checks BEFORE printing a verdict, and
+    # let them change what is printed rather than sit beside it. A fold
+    # criterion that a good strategy could not clear must not be reported
+    # as a FAIL -- that reads as evidence against the strategy when it is
+    # evidence about the criterion.
+    # The FULL per-fold series, not a median. Fold trade counts vary
+    # widely (this run's range from 0 to 18), so each fold has its own
+    # probability of ending positive and the tail is Poisson-binomial. A
+    # median collapsed to a binomial can report the wrong attainability
+    # and leave an unreachable criterion counted as a genuine FAIL.
+    fold_bar_unattainable = conclusion_check.check_criterion_attainable(
+        num_folds=len(folds),
+        required_fraction=float(MIN_FOLD_CONSISTENCY),
+        trades_by_fold=[f["metrics"]["num_trades"] for f in folds],
     )
 
     print("\n--- Eligibility Bar ---")
+    if fold_bar_unattainable is not None:
+        print(f"  ! {fold_bar_unattainable.message}")
+        print(f"    ({fold_bar_unattainable.scar})")
+        print("    -> the two fold-based lines below are reported as "
+              "UNINFORMATIVE, not as failures.\n")
     fc = result.fold_consistency
+    def fold_verdict(passed: bool) -> str:
+        if passed:
+            return "PASS"
+        return "UNINFORMATIVE" if fold_bar_unattainable is not None else "FAIL"
+
     print(f"fold consistency  : {fc.num_positive}/{fc.num_folds} "
           f"({fc.fraction_positive*100:.1f}%) vs {float(MIN_FOLD_CONSISTENCY)*100:.0f}%  "
-          f"-> {'PASS' if fc.passed else 'FAIL'}")
+          f"-> {fold_verdict(fc.passed)}")
     st = result.sign_test
-    print(f"sign test         : p={st.p_value:.6g}  -> {'PASS' if st.passed else 'FAIL'}")
+    print(f"sign test         : p={st.p_value:.6g}  -> {fold_verdict(st.passed)}")
     ss = result.sharpe_significance
     print(f"mean-Sharpe t-test: t={ss.t_statistic:+.4f} p={ss.p_value:.6g}  "
           f"-> {'PASS' if ss.passed else 'FAIL'}")
-    print(f"DSR               : {dsr.dsr:.6g} vs {DSR_THRESHOLD}  "
-          f"-> {'PASS' if dsr.dsr >= DSR_THRESHOLD else 'FAIL'}")
+    dsr_ok = row.dsr_project is not None and row.dsr_project >= DSR_THRESHOLD
+    print(f"DSR (project N={row.project_n}) : "
+          f"{'n/a' if row.dsr_project is None else f'{row.dsr_project:.6g}'} vs "
+          f"{DSR_THRESHOLD}  -> {'PASS' if dsr_ok else 'FAIL'}")
+    # PSR is the same statistic with NO selection correction, and the
+    # family-level DSR sits between the two. Printing all three makes the
+    # size of the search penalty visible, instead of leaving a bare DSR of
+    # ~0 looking like the strategy produced nothing at all.
+    print(f"  PSR (no search) : "
+          f"{'n/a' if row.psr_n1 is None else f'{row.psr_n1:.4f}'}   "
+          f"DSR (family N={row.family_n}): "
+          f"{'n/a' if row.dsr_family is None else f'{row.dsr_family:.4f}'}")
+    # `detection_floor` is None whenever the record's data span could not be
+    # computed, and `_load` deliberately does not require the span fields --
+    # so formatting either of these unconditionally would exit with a
+    # TypeError BEFORE the verdict prints. A missing power comparison must
+    # not cost the caller the verdict it came for.
+    if row.detection_floor is None or row.mean_fold_sharpe is None:
+        missing = "detection floor" if row.detection_floor is None else "mean fold Sharpe"
+        print(f"  detection floor : n/a -- {missing} could not be computed for this "
+              f"record (no usable data span), so whether the window is powered "
+              f"for this result is unknown, not answered either way")
+    else:
+        powered = row.mean_fold_sharpe > row.detection_floor
+        print(f"  detection floor : {row.detection_floor:.3f} vs observed "
+              f"{row.mean_fold_sharpe:+.3f} -- "
+              f"{'window IS powered for this' if powered else 'NOT powered'}")
 
     # `evaluate_eligibility` deliberately covers only fold consistency, the
     # sign test and the mean-Sharpe t-test -- its own docstring says the
@@ -271,7 +325,7 @@ def main(argv=None) -> int:
     drawdown_ok = dd <= DRAWDOWN_CEILING
     trades_ok = trades >= floor
     pf_ok = mean_profit_factor >= PROFIT_FACTOR_FLOOR
-    dsr_ok = dsr.dsr is not None and dsr.dsr >= DSR_THRESHOLD
+
 
     print(f"max drawdown      : {dd*100:.2f}% vs {DRAWDOWN_CEILING*100:.0f}%  "
           f"-> {'PASS' if drawdown_ok else 'FAIL'}")
@@ -307,7 +361,14 @@ def main(argv=None) -> int:
         print(f"\nVERDICT: INCONCLUSIVE-DATA-LIMITED "
               f"({trades:,} trades against a floor of {floor})")
         return 0
-    overall = result.passed and drawdown_ok and pf_ok and dsr_ok
+    # When the fold criteria are uninformative they can neither pass nor
+    # fail the run: the verdict then rests on the criteria that ARE
+    # informative at this sample size.
+    if fold_bar_unattainable is not None:
+        informative = result.sharpe_significance.passed
+    else:
+        informative = result.passed
+    overall = informative and drawdown_ok and pf_ok and dsr_ok
     print(f"\nVERDICT: {'PASS' if overall else 'REJECTED'}")
     return 0
 
