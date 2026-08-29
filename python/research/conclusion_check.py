@@ -47,6 +47,12 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
 
+_OVERLAP_SCAR = (
+    "S13 reported t = 7.0-8.0 over overlapping 60-minute excursions. "
+    "Deduplicated, t was 1.50-2.56 and the mean fell 25-60%. The tool to "
+    "prevent this (research/ic.py) already existed and was not used."
+)
+
 _SAME_POPULATION_SCAR = (
     "S15's stop table averaged the 'no stop' row over every position while "
     "the stop rows excluded positions with no MAE reading -- in a table whose "
@@ -152,12 +158,82 @@ def check_non_overlapping(
             f"(see research.analysis.s13_selectivity_sweep.non_overlapping), or "
             f"state explicitly that the figures are uncorrected for overlap."
         ),
-        scar=(
-            "S13 reported t = 7.0-8.0 over overlapping 60-minute excursions. "
-            "Deduplicated, t was 1.50-2.56 and the mean fell 25-60%. The tool "
-            "to prevent this (research/ic.py) already existed and was not used."
-        ),
+        scar=_OVERLAP_SCAR,
     )
+
+
+def check_disjoint_intervals(
+    intervals: Sequence[tuple[int, int]],
+    *,
+    clustering_gap: int | None = None,
+    check: str = "disjoint_intervals",
+) -> Finding | None:
+    """`check_non_overlapping` for positions whose holding periods differ.
+
+    `check_non_overlapping` takes a single `hold_bars` and so can only
+    ask whether starts are far enough apart for the *longest* hold. That
+    is sufficient but not necessary, and it became the wrong tool the
+    moment `metrics.book` made variable-duration legs the normal case: a
+    hedge held one bar and another opened two bars later are genuinely
+    disjoint, and reporting them as overlapping would push an analyst
+    toward deduplicating a sample that needs no deduplication -- which is
+    its own way of getting the arithmetic wrong.
+
+    Pass half-open `(start, end)` index pairs. An overlap is a real
+    blocker for the same reason it is there.
+
+    **Disjoint is not the same as independent, and `clustering_gap`
+    exists because of that.** Extreme readings cluster; two positions
+    that merely do not overlap can still belong to the same volatility
+    episode and carry nearly the same information. Supplying
+    `clustering_gap` reports how many consecutive pairs sit closer
+    together than that, as a **warning** rather than a blocker -- the
+    honest handling is to disclose the clustering and note that
+    correcting for it can only shrink a t-statistic, never grow one.
+    """
+    for start, end in intervals:
+        if end < start:
+            raise ValueError(f"interval end {end} precedes start {start}")
+    if clustering_gap is not None and clustering_gap < 0:
+        raise ValueError(f"clustering_gap must be non-negative, got {clustering_gap}")
+
+    ordered = sorted(intervals)
+    overlaps = [
+        (a, b) for a, b in zip(ordered, ordered[1:]) if b[0] < a[1]
+    ]
+    if overlaps:
+        shown = "; ".join(f"[{a[0]},{a[1]}) and [{b[0]},{b[1]})" for a, b in overlaps[:3])
+        more = f" (and {len(overlaps) - 3} more)" if len(overlaps) > 3 else ""
+        return Finding(
+            check=check,
+            severity=BLOCKER,
+            message=(
+                f"{len(overlaps):,} of {len(ordered):,} holding windows overlap the "
+                f"previous one: {shown}{more}. Any t, p-value or standard error "
+                f"over this sample assumes independence it does not have."
+            ),
+            scar=_OVERLAP_SCAR,
+        )
+
+    if clustering_gap:
+        gaps = [b[0] - a[1] for a, b in zip(ordered, ordered[1:])]
+        close = sum(1 for g in gaps if g < clustering_gap)
+        if close:
+            return Finding(
+                check=check,
+                severity=WARNING,
+                message=(
+                    f"windows are disjoint, but {close:,} of {len(gaps):,} consecutive "
+                    f"pairs sit less than {clustering_gap} bars apart. Disjoint is not "
+                    f"independent -- clustered positions carry overlapping information, "
+                    f"so the effective sample is smaller than the count. A correction "
+                    f"for this can only shrink a t-statistic, never grow one: say so "
+                    f"alongside the figure rather than reporting the raw n as if it "
+                    f"were the effective one."
+                ),
+                scar=_OVERLAP_SCAR,
+            )
+    return None
 
 
 # --------------------------------------------------------------------------

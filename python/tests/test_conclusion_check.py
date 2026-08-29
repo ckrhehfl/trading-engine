@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from research.conclusion_check import (
+    check_disjoint_intervals,
     BLOCKER,
     _fold_win_probability,
     WARNING,
@@ -436,3 +437,63 @@ class TestProbabilityParameterRanges:
             num_folds=10, required_fraction=1.0,
             plausible_win_rate=1.0, trade_win_rate=1.0, min_power=1.0,
         )
+
+
+class TestCheckDisjointIntervals:
+    """Variable-duration positions -- what `metrics.book`'s legs produce.
+
+    The uniform-`hold_bars` form cannot express these without either
+    over-flagging (using the longest hold) or under-flagging (using the
+    shortest), and both are wrong in a way that misdirects the analyst.
+    """
+
+    def test_disjoint_intervals_pass(self):
+        assert check_disjoint_intervals([(0, 5), (5, 6), (20, 40)]) is None
+
+    def test_touching_is_disjoint(self):
+        # Half-open: [0,5) and [5,9) share no bar.
+        assert check_disjoint_intervals([(0, 5), (5, 9)]) is None
+
+    def test_real_overlap_blocks(self):
+        finding = check_disjoint_intervals([(0, 10), (5, 15)])
+        assert finding is not None
+        assert finding.severity == BLOCKER
+        assert "overlap" in finding.message
+
+    def test_unsorted_input_is_ordered_first(self):
+        finding = check_disjoint_intervals([(5, 15), (0, 10)])
+        assert finding is not None and finding.severity == BLOCKER
+
+    def test_short_holds_close_together_are_not_overlaps(self):
+        # The exact case the uniform form got wrong: one-bar holds two
+        # bars apart, judged against a three-bar longest hold.
+        intervals = [(0, 1), (2, 3), (4, 5), (6, 9)]
+        assert check_non_overlapping([0, 2, 4, 6], hold_bars=3) is not None
+        assert check_disjoint_intervals(intervals) is None
+
+    def test_clustering_warns_without_blocking(self):
+        finding = check_disjoint_intervals([(0, 1), (2, 3)], clustering_gap=24)
+        assert finding is not None
+        assert finding.severity == WARNING
+        assert "not independent" in finding.message
+
+    def test_clustering_silent_when_far_apart(self):
+        assert check_disjoint_intervals([(0, 1), (100, 101)], clustering_gap=24) is None
+
+    def test_overlap_outranks_clustering(self):
+        # A real overlap must never be downgraded to a warning just
+        # because a clustering gap was also supplied.
+        finding = check_disjoint_intervals([(0, 10), (5, 15)], clustering_gap=24)
+        assert finding is not None and finding.severity == BLOCKER
+
+    def test_backwards_interval_raises(self):
+        with pytest.raises(ValueError, match="precedes start"):
+            check_disjoint_intervals([(10, 5)])
+
+    def test_negative_clustering_gap_raises(self):
+        with pytest.raises(ValueError, match="clustering_gap"):
+            check_disjoint_intervals([(0, 1)], clustering_gap=-1)
+
+    def test_empty_and_single_are_clean(self):
+        assert check_disjoint_intervals([]) is None
+        assert check_disjoint_intervals([(0, 5)], clustering_gap=24) is None
