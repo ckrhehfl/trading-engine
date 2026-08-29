@@ -37,6 +37,7 @@ migration, not baked into `SCHEMA` itself.
 """
 
 import sqlite3
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -134,9 +135,42 @@ CREATE TABLE IF NOT EXISTS macro_series (
 """
 
 
+POSITIONING_SCHEMA = """
+CREATE TABLE IF NOT EXISTS positioning (
+  symbol TEXT NOT NULL,
+  metric TEXT NOT NULL,
+  period TEXT NOT NULL,
+  timestamp_ms INTEGER NOT NULL,
+  value TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (symbol, metric, period, timestamp_ms)
+);
+"""
+"""Positioning and forced-flow series (Trade Management Task B).
+
+**Long format on purpose.** The five endpoints this holds return five
+different shapes -- open interest gives two numbers per timestamp, the
+three long/short ratios give three each, the taker ratio gives three
+more. A column-per-field design would mean a schema migration every time
+another metric is added, and this table exists precisely because the
+catalogue found three whole signal families we had never fetched. One
+row per (symbol, metric, period, timestamp) absorbs any of them.
+
+**`period` is part of the key, not a detail.** These endpoints are
+served per aggregation window ("5m", "1h", "1d", ...) and the same
+instant carries a different value at each. Collapsing them would silently
+overwrite one resolution with another.
+
+**Why this needs to start collecting now.** The `/futures/data/`
+endpoints retain only ~30 days. Unlike klines, this history cannot be
+backfilled later -- whatever is not captured is gone permanently. That is
+the whole reason this table is created before any strategy needs it.
+"""
+
+
 def connect(db_path: str | Path) -> sqlite3.Connection:
-    """Open (creating if needed) the local klines/funding/macro cache and
-    ensure all three schemas exist. `db_path` may be `":memory:"` for
+    """Open (creating if needed) the local market-data cache and ensure
+    every schema exists. `db_path` may be `":memory:"` for
     tests.
 
     `sqlite3.connect` creates the database file itself but not any
@@ -152,6 +186,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute(SCHEMA)
     conn.execute(FUNDING_SCHEMA)
     conn.execute(MACRO_SCHEMA)
+    conn.execute(POSITIONING_SCHEMA)
     conn.commit()
     _ensure_klines_columns(conn)
     return conn
@@ -644,3 +679,88 @@ def fetch_macro_observations(
         )
         for row in rows
     ]
+
+
+@dataclass(frozen=True)
+class PositioningRow:
+    """One (metric, timestamp) observation.
+
+    `value` is a `str` for the same reason every other numeric column in
+    this module is: SQLite has no exact decimal type, and a float
+    round-trip would silently perturb a ratio the strategy layer compares
+    against a threshold.
+    """
+
+    metric: str
+    period: str
+    timestamp_ms: int
+    value: str
+
+
+def upsert_positioning(
+    conn: sqlite3.Connection,
+    symbol: str,
+    rows: Iterable[PositioningRow],
+) -> int:
+    """Insert `rows`, skipping any already present at the same
+    `(symbol, metric, period, timestamp_ms)`.
+
+    Same `INSERT OR IGNORE` resumability as every other upsert here, and
+    the same `cursor.rowcount` caveat: it counts rows actually inserted,
+    so a re-poll over an overlapping window reports 0 rather than
+    duplicating. That matters more here than elsewhere -- a collector
+    running on a short cron interval re-requests the same recent window
+    constantly by design.
+    """
+    rows = list(rows)
+    if not rows:
+        return 0
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    params = [
+        (symbol, r.metric, r.period, r.timestamp_ms, r.value, fetched_at)
+        for r in rows
+    ]
+    try:
+        cursor = conn.executemany(
+            "INSERT OR IGNORE INTO positioning "
+            "(symbol, metric, period, timestamp_ms, value, fetched_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            params,
+        )
+        conn.commit()
+        return cursor.rowcount
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def fetch_positioning(
+    conn: sqlite3.Connection,
+    symbol: str,
+    metric: str,
+    period: str,
+    start_ms: int,
+    end_ms: int,
+) -> list[PositioningRow]:
+    """Rows in the half-open range `[start_ms, end_ms)`, ascending --
+    matching this codebase's range convention everywhere else."""
+    cursor = conn.execute(
+        "SELECT metric, period, timestamp_ms, value FROM positioning "
+        "WHERE symbol = ? AND metric = ? AND period = ? "
+        "AND timestamp_ms >= ? AND timestamp_ms < ? ORDER BY timestamp_ms",
+        (symbol, metric, period, start_ms, end_ms),
+    )
+    return [PositioningRow(m, p, t, v) for m, p, t, v in cursor.fetchall()]
+
+
+def positioning_coverage(conn: sqlite3.Connection) -> list[tuple]:
+    """`(symbol, metric, period, rows, earliest_ms, latest_ms)` per series.
+
+    Exists so a human can answer "how much history have we actually
+    accumulated" without writing SQL -- the question that matters most
+    for a store whose upstream keeps only 30 days.
+    """
+    return conn.execute(
+        "SELECT symbol, metric, period, COUNT(*), MIN(timestamp_ms), MAX(timestamp_ms) "
+        "FROM positioning GROUP BY symbol, metric, period ORDER BY symbol, metric, period"
+    ).fetchall()
