@@ -296,9 +296,90 @@ loss limit -1%, weekly -3%, monthly -6%, hard stop -8%, emergency stop
 
 ## Paper Trading Pass Criteria
 
-Minimum 30 days (45 recommended), 50+ trades, zero critical crashes, zero
-duplicate orders, zero position mismatches, zero risk-gateway bypasses, no
-missing daily reports, kill switch verified working, paper score 80+.
+**Revised 2026-08-29, human-approved, replacing a single combined gate.**
+The previous wording was: *"Minimum 30 days (45 recommended), 50+ trades,
+zero critical crashes, zero duplicate orders, zero position mismatches,
+zero risk-gateway bypasses, no missing daily reports, kill switch verified
+working, paper score 80+."* It is kept here verbatim because what follows
+is a **relaxation of one clause**, and a relaxation must be readable
+against what it replaced.
+
+**Why it changed.** That gate mixed two different questions — *does the
+plumbing work* and *does the strategy make money* — and scored them on one
+calendar clock. Six of its eight clauses are about the system. Only the
+50-trade clause is about the strategy, and for a low-frequency strategy it
+is not merely hard but **unreachable**: `daily-tsmom-ensemble` traded 26
+times in 2.95 years (`sr-v`) and 64 in 3.74 years (`sr-ab`), i.e. 9-17 per
+year. 50 trades is **2.9 to 5.6 years**; 15 days is 0.4-0.7 trades. A
+criterion that cannot be satisfied is not a criterion — the same reasoning
+already applied on 2026-07-29 to the backtest trade-count floor.
+
+### Gate A — Operational readiness
+
+Proves the system, not the strategy. **Signal source is irrelevant here**
+and a dedicated mock generator is explicitly allowed, per this file's own
+standing permission to exercise the paper broker, `ExchangeAdapter` and
+supervision loop "with dummy/mock signals independently of a validated
+strategy."
+
+- **15 consecutive days** of operation, **uptime ≥ 99%** measured from the
+  daily reports' own `ticks_succeeded / ticks_attempted`
+- **≥ 200 order events** through the full
+  `OrderIntent → OrderPipeline → RiskGateway → Order → OrderExecutor` path
+- **zero critical crashes** — a session death with no clean shutdown counts,
+  and is only checkable because the session log is now persisted
+- **zero duplicate orders**, **zero position mismatches**, **zero
+  risk-gateway bypasses**
+- **no missing daily reports** across those 15 days
+- **kill switch verified** by a deliberate trip and recovery, not by waiting
+- **ambiguous-submission recovery verified** — the `SUBMISSION_UNKNOWN` path
+
+### Gate B — Strategy edge
+
+Proves the strategy. **Not calendar-bound, because calendar time cannot
+manufacture trades a strategy does not take.** Evidence comes from wherever
+it legitimately can: pre-registered holdout confirmations, walk-forward
+folds meeting the Eligibility Bar, or accumulated paper trades once there
+are enough of them to mean something. Paper-trading trades are recorded and
+reported honestly, and count toward this gate, but a strategy is never
+blocked here for a trade count its own frequency makes impossible to reach.
+
+For `daily-tsmom-ensemble` specifically, Gate B rests on what is already on
+record: two disjoint pre-registered holdouts (`sr-v`, `sr-ab`) and `sr-ac`'s
+combined significance (Stouffer Z = 2.914, Φ(Z) = 0.9982).
+
+### The disclosed cost of this change, stated rather than glossed
+
+**This does not make any strategy more proven.** It stops asking paper
+trading to establish something it structurally cannot for a low-frequency
+strategy, and moves that burden to where it actually sits.
+
+The 50-trade clause was doing **more** evidentiary work than usual for
+`daily-tsmom-ensemble` precisely because its own backtest fell short of the
+trade-count floor — this file's Paper Trading Policy Exception says so
+explicitly. Removing it leaves that strategy's edge resting on **90 backtest
+trades across two holdouts**, and nothing more.
+
+What bounds the resulting exposure is not this gate but the canary tier
+itself: 1x base leverage, 2% max order notional, −0.5% daily loss limit,
+−4% hard stop. Those are unchanged and are not weakened by this revision.
+
+### "paper score 80+" — named here because this revision drops it
+
+The old wording required a **paper score of 80+**. **No such score is
+implemented anywhere in this repo** (verified 2026-08-29: no
+`paper_score`/`paperScore` symbol in any Python, Java or shell source), and
+no definition of it exists in this file either. It was an undefined
+criterion, which means it could never have been evaluated and its
+disappearance from Gate A is not a relaxation of anything real.
+
+Recorded rather than deleted quietly, because the Live Entry Criteria below
+still name it. **Until it is defined and implemented, "paper score 80+"
+cannot gate anything**, and any future decision to keep it must define it
+first. That definition would itself be a Risk-Parameter-class change.
+
+**Both gates must pass before live consideration**, and the separate Live
+Entry Criteria below still apply in full on top of them.
 
 ## Live Entry Criteria
 
@@ -688,6 +769,72 @@ TDD discipline (red-green-refactor: failing test → minimum code to pass →
 refactor) is required for OMS, Risk Gateway, and Execution code — not
 optional. This rule is adopted directly, without installing a separate
 framework for it.
+
+### Conclusion checks — mandatory before any research conclusion is reported
+
+Added 2026-08-28 after a scalping arc that produced **nine** documented
+errors, of which **zero** were caught by the author at the time of
+writing. Eight of the nine happened inside narrow, well-scoped tasks, so
+smaller scope is not the remedy — a verification step that runs against
+the conclusion's own evidence is.
+
+`python/research/conclusion_check.py` implements six checks. **Every one
+exists because this project made that exact mistake, and each carries the
+citation.** That is the design constraint: a checklist of things that
+merely sound like good practice becomes theatre nobody runs.
+
+| Check | Catches | Incident |
+|---|---|---|
+| `check_non_overlapping` | a t/p/stderr over overlapping windows | S13's t = 7-8, really 1.5-2.6 |
+| `check_parameter_swept` | a domain judged from one setting | S14/S15 ran only `entry_z=5.0` |
+| `check_criterion_attainable` | a bar unreachable at this sample size | 80% fold consistency at 2 trades/fold |
+| `check_same_population` | two figures compared across different samples | S15's stop table's `none` row |
+| `check_claim_monotonic` / `check_claim_universal` | prose contradicting its own table | "every delay is worse, monotonically" |
+| `check_dsr_agrees` | a second DSR implementation drifting | fold variance fed where trial variance belongs |
+
+`require_no_blockers` **raises**, and that is deliberate — S13's inflated
+t-statistic was disclosed in prose and still became a headline number.
+
+Two consequences that are already wired in and must not be undone:
+`s14_eligibility.py` runs `check_criterion_attainable` **before** printing
+a verdict and reports the fold-based lines as **UNINFORMATIVE** rather
+than FAIL when the bar is unreachable (a criterion a good strategy clears
+4.6e-05 of the time is evidence about the criterion, not the strategy);
+and it **delegates** DSR/PSR/trial counts to `research/retrospective.py`
+rather than keeping a second implementation.
+
+**What these checks explicitly cannot do**, stated so they are not
+over-trusted: they catch arithmetic and bookkeeping errors in a
+conclusion's own evidence. They cannot catch **asking the wrong
+question**. Every one of this project's largest errors that a human
+caught — comparing costs to an *unconditional* move distribution, testing
+a *directional* hypothesis by measuring *magnitude*, running 57 trades a
+day and calling it "scalping" — passes all six cleanly. That failure mode
+needs someone asking whether the measurement matches the world, which is
+what the human checkpoints below are for.
+
+### Human checkpoints — three moments, not a time interval
+
+Also added 2026-08-28. Periodic check-ins were considered and rejected:
+the expensive errors did not happen at time intervals, they happened at
+**decision transitions**. Stop and get a human decision at exactly these
+three, and at no others — everything else (code, tests, PRs, review
+response, merges) stays delegated per the Auto-merge Policy.
+
+1. **Before declaring a direction closed.** "This signal/approach does not
+   work" is the single most expensive claim in this project, because it
+   stops further work. S15 made it having tested one of two surviving
+   parameter cells; the untested one was positive.
+2. **Before spending a holdout.** One access, permanently. Binance spot
+   1m is the last untouched 1m window this project has.
+3. **Before a conclusion is written into CLAUDE.md.** Future sessions have
+   only this file to go on and will treat what is here as settled.
+
+The human's own contribution at these points is not review of the
+arithmetic — the checks above cover that. It is the question the
+measurement cannot ask itself: *does this match how the thing actually
+works?* On the record for this arc, every time that question was asked it
+found a real problem.
 
 Anthropic's official Agent Teams feature is available but not enabled by
 default — GSD's own subagent-per-task orchestration already covers this
@@ -1285,9 +1432,11 @@ not an architectural reversal.
 intended**: this exception applies ONLY to `daily-tsmom-ensemble` v1
 (`research/strategies/daily_tsmom_ensemble.py`, unchanged) proceeding to
 PAPER trading. It does NOT: waive the Paper Trading Pass Criteria (still
-requires a minimum of 30 days (45 recommended), 50+ trades, zero critical crashes/duplicate
-orders/position mismatches/risk-gateway bypasses, paper score 80+, kill
-switch verified, before any live consideration — and given the backtest
+requires the Paper Trading Pass Criteria in force — which were **revised
+2026-08-29** into Gate A (operational readiness) + Gate B (strategy edge);
+the wording quoted in the rest of this paragraph is the pre-revision one and
+is retained because the exception was granted against it — before any live
+consideration — and given the backtest
 evidence itself fell short of the trade-count floor, paper trading's own
 50+-trade requirement is doing more evidentiary work than usual here, not
 less); waive the separate Live Entry Criteria; relax any Risk Parameter
@@ -1298,7 +1447,7 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S15; costs measured, signals found, candidate walk-forward validated and REJECTED under three independent remedies
+### Scalping Strategy Research — Tasks S0-S16; the 1m window is now closed to selection, and the reason is arithmetic
 
 A second research direction alongside `daily-tsmom-ensemble`, opened
 2026-08-24 at the human operator's request: **retail scalping** (minutes
@@ -1916,10 +2065,9 @@ is still not an edge. Compounding sizing is ~neutral here, which is the
 expected result for a strategy that never compounds far in either
 direction and is evidence that sizing was not what was wrong.
 
-**Three independent structural remedies each moved the result the right
-way and none crossed zero. That is what "the signal is not there" looks
-like, as opposed to "the risk management was wrong."** The
-`selective-reversion` signal is closed; `N` is now **125**.
+**Two of those three remedies moved the result the right way and the
+third was neutral — but the sentence that followed here was wrong and is
+retracted. See Task S16 immediately below.** `N` after S15 was **125**.
 
 **A scoring weakness this run exposed, and a reporting fix rather than a
 gate change.** The no-stop cell clears the profit-factor floor on a
@@ -1930,7 +2078,94 @@ across the floor by itself. CLAUDE.md sets the floor without naming
 which statistic it applies to and `walkforward` aggregates the mean, so
 the mean remains what is scored — changing that is a gate change needing
 its own approval. `s14_eligibility.py` now prints the median beside it
-and flags **FRAGILE** whenever the mean passes and the median does not. Nothing here affects
+and flags **FRAGILE** whenever the mean passes and the median does not.
+
+**Task S16 (2026-08-28) audited S15's own conclusion, at the operator's
+request, because it was not trusted — and found three real defects in
+it.** The REJECTED verdict survives; S15's stated *reason* for it does
+not. Full account: `.planning/scalp-s16-audit-of-s15.md`.
+
+1. **The conclusion was drawn from the weaker of the two surviving
+   cells.** S13 left `|z|≥5` (+13.97bps, t=1.95) and `|z|≥6` (+30.87bps,
+   t=2.56) standing. **Every walk-forward S14 and S15 ran used
+   `entry_z=5.0`**; the `|z|≥6` cell was never tested, and "the signal is
+   not there" was declared anyway. This is the **fifth** instance of the
+   error pattern this section already records as a rule, committed at the
+   most expensive stage to commit it. Running the missing cells reverses
+   the sign: `|z|≥6, top 1%` gives mean fold Sharpe **+0.456** and
+   **+13.97% compounded**; `top 0.1%` gives **+0.899** and **+32.42%**,
+   against `|z|≥5`'s −0.333 and −50.6%.
+2. **Fold-based criteria were applied to a strategy holding ~2 trades per
+   fold.** At `|z|≥6` the median fold holds 2 trades, at `|z|≥5` six. A
+   fold's sign is then near a coin flip, and the 80% floor is not merely
+   hard but unreachable: a strategy whose folds are positive 60% of the
+   time (a *good* edge) clears 67-of-83 with probability **4.6e-05**.
+   `sr-j` already made this argument for fold *counts*; it had not been
+   made for trades *per fold*. **Below roughly 20-30 trades per fold,
+   fold consistency and the sign test are uninformative in both
+   directions and must not be reported as evidence either way.**
+3. **The DSR input was wrong, in the strict direction.**
+   `s14_eligibility.py` fed `trial_sharpe_variance` its own run's
+   **per-fold** Sharpes; the benchmark wants the variance across the
+   other **trials**, each itself an average over folds. This inflated the
+   selection benchmark and pushed every DSR that scorer reported toward
+   zero. The scorer now **delegates DSR/PSR/trial counts to
+   `research/retrospective.py`** outright rather than keeping a second
+   implementation, and matches it exactly.
+
+**What the corrected evaluation says about the best configuration**
+(`|z|≥6`, top 0.1%, no stop, compounding sizing): mean-Sharpe t-test
+**t = +2.388, p = 0.0098 — PASS, the first significance test any
+scalping candidate here has cleared**; drawdown 9.93%, 181 trades and
+profit factor 6.44 all pass; PSR **0.9905**; observed Sharpe **+0.899**
+against the window's own **0.623** detection floor, so the window *is*
+powered for it. Six of eight years positive, and **not**
+2021-dependent (+26.12% of the +32.42% survives excluding 2021) — which
+contradicts S13's concentration warning, because S13 measured mean bps
+per position where 2021's violent moves dominate, while the walk-forward
+compounds equity under ATR-inverse sizing that gives those same moves a
+*small* position. **Risk-based sizing neutralised the regime
+concentration.**
+
+**And it still fails, for the one reason that now governs everything
+here: DSR = 6.46e-11 against N = 127.** Inverting the benchmark gives the
+annualized Sharpe a result must post to clear DSR 0.95:
+
+| N | required Sharpe |
+|---|---|
+| 1 (a pre-registered holdout) | **0.63** |
+| 5 (this family) | 2.17 |
+| 50 | 3.56 |
+| **127 (this project today)** | **4.00** |
+
+Credible institutional trend-following reports 0.4-0.8. **At N = 127 no
+realistic edge can clear this bar on this data, whatever it is.** This is
+the same arithmetic that closed the 1h window (Configuration C needed
+4.6), and the standing rule written there now applies verbatim to the
+**Binance futures 1m window**: it stays open for *reproduction,
+diagnosis and infrastructure testing*, and is **closed to selection**,
+because raising `N` can only lower the DSR of any future result there.
+
+**The one number that changes the sequencing**: at `N = 1` the
+requirement is **0.63**, and the observed research-window Sharpe is
+**0.899**. Binance **spot** 1m has never been touched and is not in the
+local store; a single pre-registered confirmation there faces `N = 1` by
+construction.
+
+**But `N = 1` removes the selection penalty, not the replication
+question, and this must not be policy-ised into "one holdout confirms a
+strategy."** A lone clean result is one draw. This project's own
+precedent settles it: `daily-tsmom-ensemble` got **two** disjoint
+pre-registered confirmations plus a combined-significance meta-analysis
+and the verdict was still INCONCLUSIVE. Options — none chosen here, each
+needing its own `Discuss` and a pre-registration committed before any
+data is fetched: define a **research split on an unsearched window**
+first (the ordinary discipline, and it does not spend a one-shot
+resource); find an **independent replication source**; or spend the
+spot-1m holdout, accepting it can at best say "not contradicted here".
+Spot-vs-perpetual microstructure differences (fee schedule, no funding,
+different participants) make that last one a *replication attempt*
+rather than a continuation. Nothing here affects
 `daily-tsmom-ensemble`, which trades at a frequency where a 12bps round
 trip is negligible and remains in paper trading under its own approved
 exception.
