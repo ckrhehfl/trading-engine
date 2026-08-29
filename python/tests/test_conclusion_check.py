@@ -12,6 +12,7 @@ import pytest
 
 from research.conclusion_check import (
     BLOCKER,
+    _fold_win_probability,
     WARNING,
     ConclusionCheckError,
     Finding,
@@ -124,8 +125,7 @@ class TestParameterSwept:
 
 class TestCriterionAttainable:
     def test_the_s15_incident_would_have_fired(self):
-        """83 folds, an 80% floor: a strategy positive in 60% of folds
-        clears it with probability 4.6e-05."""
+        """83 folds, an 80% floor, a median of 2 trades per fold."""
         finding = check_criterion_attainable(
             num_folds=83, required_fraction=0.80, trades_per_fold=2
         )
@@ -134,16 +134,30 @@ class TestCriterionAttainable:
         assert "67/83" in finding.message
         assert "2 trades per fold" in finding.message
 
+    def test_trades_per_fold_CHANGES_the_verdict_rather_than_annotating_it(self):
+        """The defect an earlier version had: the argument was accepted,
+        put in the message, and left out of the arithmetic."""
+        thin = check_criterion_attainable(num_folds=83, required_fraction=0.80, trades_per_fold=2)
+        thick = check_criterion_attainable(num_folds=83, required_fraction=0.80, trades_per_fold=500)
+        assert thin is not None, "2 trades per fold cannot support a fold-sign bar"
+        assert thick is None, "500 trades per fold can"
+
+    def test_fold_win_probability_rises_with_trade_count(self):
+        """The mechanism: a fold's sign only reflects the edge once there
+        are enough trades in it for the majority to be informative."""
+        probs = [_fold_win_probability(0.55, k) for k in (2, 6, 20, 50, 200)]
+        assert probs == sorted(probs)
+        assert probs[0] < 0.5, "at 2 trades a fold's sign is worse than a coin flip"
+        assert probs[-1] > 0.9
+
     def test_a_reachable_criterion_passes(self):
         assert check_criterion_attainable(num_folds=83, required_fraction=0.50) is None
 
-    def test_trades_per_fold_is_optional(self):
+    def test_trades_per_fold_is_optional_and_falls_back(self):
         finding = check_criterion_attainable(num_folds=83, required_fraction=0.80)
         assert finding is not None and "trades per fold" not in finding.message
 
     def test_a_stronger_assumed_edge_can_make_the_bar_reachable(self):
-        """The 80% bar is not unreachable in principle -- it is unreachable
-        for a *plausible* edge, which is the point."""
         assert check_criterion_attainable(
             num_folds=83, required_fraction=0.80, plausible_win_rate=0.90
         ) is None
@@ -154,6 +168,8 @@ class TestCriterionAttainable:
             ({"num_folds": 0, "required_fraction": 0.8}, "num_folds must be at least 1"),
             ({"num_folds": 10, "required_fraction": 0.0}, r"required_fraction must be in \(0, 1\]"),
             ({"num_folds": 10, "required_fraction": 1.5}, r"required_fraction must be in \(0, 1\]"),
+            ({"num_folds": 10, "required_fraction": 0.8, "trades_per_fold": 0},
+             "trades_per_fold must be positive"),
         ],
     )
     def test_rejects_degenerate_inputs(self, kwargs, message):
@@ -162,25 +178,49 @@ class TestCriterionAttainable:
 
 
 class TestSamePopulation:
-    def test_equal_sizes_pass(self):
-        assert check_same_population({"with_stop": [1, 2, 3], "no_stop": [4, 5, 6]}) is None
+    def test_identical_observations_pass(self):
+        assert check_same_population({"with_stop": [1, 2, 3], "no_stop": [1, 2, 3]}) is None
+
+    def test_same_size_but_DIFFERENT_observations_is_a_blocker(self):
+        """The failure a size-only check waves through: two statistics
+        over 3 unrelated observations each."""
+        finding = check_same_population({"a": [1, 2, 3], "b": [4, 5, 6]})
+        assert finding is not None
+        assert finding.severity == BLOCKER
+        assert "DIFFERENT observations" in finding.message
 
     def test_the_s15_stop_table_incident_would_have_fired(self):
+        """The real shape: the `none` row averaged over every position
+        while the stop rows excluded those with no MAE reading."""
+        every_position = list(range(526))
+        measurable_only = list(range(520))
         finding = check_same_population(
-            {"stop rows": list(range(520)), "none row": list(range(526))}
+            {"stop rows": measurable_only, "none row": every_position}
         )
         assert finding is not None
         assert finding.severity == BLOCKER
-        assert "different sizes" in finding.message
+
+    def test_reports_what_each_side_is_missing(self):
+        finding = check_same_population({"a": [1, 2, 3], "b": [1, 2]})
+        assert finding is not None
+        assert "1 observation(s) present in a but not here" in finding.message
 
     def test_a_single_sample_is_trivially_consistent(self):
         assert check_same_population({"only": [1, 2, 3]}) is None
 
-    def test_reports_every_size(self):
-        finding = check_same_population({"a": [1], "b": [1, 2], "c": [1, 2, 3]})
+    def test_unhashable_or_duplicated_values_fall_back_and_SAY_SO(self):
+        """A weaker check must never be mistaken for the strong one."""
+        finding = check_same_population({"a": [1.0, 1.0, 2.0], "b": [1.0, 1.0, 2.0]})
         assert finding is not None
-        for fragment in ("a=1", "b=2", "c=3"):
-            assert fragment in finding.message
+        assert finding.severity == WARNING
+        assert "weak form" in finding.message
+        assert "Pass identifiers" in finding.message
+
+    def test_different_sizes_still_block_when_membership_is_uncomparable(self):
+        finding = check_same_population({"a": [1.0, 1.0], "b": [2.0, 2.0, 2.0]})
+        assert finding is not None
+        assert finding.severity == BLOCKER
+        assert "a=2" in finding.message and "b=3" in finding.message
 
 
 class TestClaimMonotonic:

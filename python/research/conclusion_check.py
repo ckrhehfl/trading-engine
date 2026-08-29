@@ -42,9 +42,15 @@ evidence.
 from __future__ import annotations
 
 import math
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
+
+_SAME_POPULATION_SCAR = (
+    "S15's stop table averaged the 'no stop' row over every position while "
+    "the stop rows excluded positions with no MAE reading -- in a table whose "
+    "only purpose was comparing those two."
+)
 
 BLOCKER = "blocker"
 WARNING = "warning"
@@ -54,6 +60,14 @@ WARNING = "warning"
 # reference point, and 0.60 is deliberately generous -- a strategy whose
 # folds are positive 60% of the time is a good one.
 PLAUSIBLE_FOLD_WIN_RATE = 0.60
+
+# Per-TRADE win rate of a genuinely good strategy. Used with
+# `trades_per_fold` to derive the fold-level probability, rather than
+# assuming the fold-level figure directly. 0.55 is deliberately modest:
+# real edges live near the coin flip and it is their payoff asymmetry,
+# not their hit rate, that pays -- so a check calibrated on a high hit
+# rate would understate how unreachable a fold bar becomes.
+PLAUSIBLE_TRADE_WIN_RATE = 0.55
 
 # Below this, a criterion is judged unreachable rather than merely strict:
 # if a good strategy clears it less than 5% of the time, passing it is
@@ -219,36 +233,84 @@ def check_parameter_swept(
 # 3. A criterion that cannot be met at this sample size
 # --------------------------------------------------------------------------
 
+def _fold_win_probability(trade_win_rate: float, trades_per_fold: float) -> float:
+    """P(a fold ends positive), derived from its trade count.
+
+    This is what makes `trades_per_fold` load-bearing rather than
+    decorative. A fold is positive when more than half its trades win, so
+    with `k` trades at per-trade win rate `p` the fold-level probability
+    is `P(Binomial(k, p) > k/2)` -- which converges toward 1 for a real
+    edge as `k` grows, and collapses toward `p` (i.e. toward a coin flip,
+    for a modest edge) as `k` shrinks.
+
+    That collapse is the entire phenomenon: at 2 trades per fold the
+    fold's sign carries almost none of the strategy's edge, so a bar
+    phrased in fold signs stops measuring the strategy. Assuming
+    symmetric payoffs, which is conservative here -- an asymmetric winner
+    would make a fold MORE likely to be positive, so the real bar is at
+    least this unreachable.
+
+    A fractional `trades_per_fold` (a median over folds) is rounded down:
+    the pessimistic side, and the side that matches "at least this many".
+    """
+    k = max(1, int(trades_per_fold))
+    needed = k // 2 + 1
+    return sum(
+        math.comb(k, w) * trade_win_rate**w * (1 - trade_win_rate) ** (k - w)
+        for w in range(needed, k + 1)
+    )
+
+
 def check_criterion_attainable(
     *,
     num_folds: int,
     required_fraction: float,
     trades_per_fold: float | None = None,
     plausible_win_rate: float = PLAUSIBLE_FOLD_WIN_RATE,
+    trade_win_rate: float = PLAUSIBLE_TRADE_WIN_RATE,
     min_power: float = MIN_CRITERION_POWER,
     check: str = "criterion_attainable",
 ) -> Finding | None:
     """Would a genuinely good strategy ever clear this fold criterion?
 
-    If a strategy whose folds are positive `plausible_win_rate` of the
-    time clears the bar less than `min_power` of the time, the bar is
-    measuring luck rather than edge, and reporting a failure against it is
-    misleading in both directions.
+    If a good strategy clears the bar less than `min_power` of the time,
+    the bar is measuring luck rather than edge, and reporting a failure
+    against it is misleading in both directions.
+
+    **`trades_per_fold` changes the answer, it does not merely annotate
+    it.** When supplied, the fold-level win probability is *derived* from
+    it via `_fold_win_probability` rather than taken from
+    `plausible_win_rate` -- because the whole reason a fold criterion
+    fails at low trade counts is that a fold's sign stops reflecting the
+    strategy. An earlier version accepted this argument and then computed
+    power without it, which made the parameter decorative.
+
+    Omitting it falls back to `plausible_win_rate` as a fold-level
+    assumption, which is the older and weaker form.
     """
     if num_folds < 1:
         raise ValueError(f"num_folds must be at least 1, got {num_folds}")
     if not 0 < required_fraction <= 1:
         raise ValueError(f"required_fraction must be in (0, 1], got {required_fraction}")
+    if trades_per_fold is not None and trades_per_fold <= 0:
+        raise ValueError(f"trades_per_fold must be positive, got {trades_per_fold}")
+
+    fold_win = (
+        _fold_win_probability(trade_win_rate, trades_per_fold)
+        if trades_per_fold is not None
+        else plausible_win_rate
+    )
     required = math.ceil(required_fraction * num_folds)
     power = sum(
-        math.comb(num_folds, k) * plausible_win_rate**k * (1 - plausible_win_rate) ** (num_folds - k)
+        math.comb(num_folds, k) * fold_win**k * (1 - fold_win) ** (num_folds - k)
         for k in range(required, num_folds + 1)
     )
     if power >= min_power:
         return None
     thin = (
-        f" At a median of {trades_per_fold:g} trades per fold a fold's sign is "
-        f"close to a coin flip, which is why."
+        f" At {trades_per_fold:g} trades per fold, a strategy winning "
+        f"{trade_win_rate:.0%} of TRADES has only a {fold_win:.1%} chance of a "
+        f"positive fold -- close to a coin flip, which is why."
         if trades_per_fold is not None
         else ""
     )
@@ -256,7 +318,7 @@ def check_criterion_attainable(
         check=check,
         severity=BLOCKER,
         message=(
-            f"a strategy whose folds are positive {plausible_win_rate:.0%} of the "
+            f"a strategy whose folds are positive {fold_win:.0%} of the "
             f"time -- a good edge -- clears {required}/{num_folds} "
             f"({required_fraction:.0%}) with probability {power:.2e}, below the "
             f"{min_power:.0%} floor.{thin} Do not report this criterion as "
@@ -278,31 +340,84 @@ def check_criterion_attainable(
 def check_same_population(
     samples: Mapping[str, Sequence[Any]], *, check: str = "same_population"
 ) -> Finding | None:
-    """Figures presented side by side must be computed over one population.
+    """Figures presented side by side must come from one population.
 
-    Pass the actual samples each headline figure was computed from. A
-    difference in size means the comparison is between two different
-    things, whatever the labels say.
+    Pass the actual samples each headline figure was computed from --
+    ideally as **identifiers** (indices, timestamps, ids), not raw
+    values.
+
+    **Identity is compared when it can be, size only when it cannot.**
+    Equal counts do not mean equal populations: two statistics over 520
+    different observations each would pass a size check while comparing
+    unrelated things. When every sample is hashable this compares the
+    actual membership and reports what each side holds that the other
+    does not. When they are not hashable it falls back to comparing
+    counts and **says so in the finding**, so a weaker check is never
+    mistaken for the strong one.
     """
     sizes = {name: len(values) for name, values in samples.items()}
-    if len(set(sizes.values())) <= 1:
+    if len(samples) < 2:
         return None
+
+    try:
+        as_sets = {name: set(values) for name, values in samples.items()}
+        comparable = all(len(as_sets[n]) == sizes[n] for n in samples)
+    except TypeError:
+        as_sets, comparable = None, False
+
+    if as_sets is not None and comparable:
+        names = list(samples)
+        reference = as_sets[names[0]]
+        differences = []
+        for name in names[1:]:
+            missing = reference - as_sets[name]
+            extra = as_sets[name] - reference
+            if missing or extra:
+                differences.append(
+                    f"{name}: {len(missing)} observation(s) present in {names[0]} but "
+                    f"not here, {len(extra)} present here but not in {names[0]}"
+                )
+        if not differences:
+            return None
+        return Finding(
+            check=check,
+            severity=BLOCKER,
+            message=(
+                "figures presented for comparison were computed over DIFFERENT "
+                "observations, not merely different counts: "
+                + "; ".join(differences)
+                + ". Restrict every figure to the common subset and report how "
+                "many observations that excludes."
+            ),
+            scar=_SAME_POPULATION_SCAR,
+        )
+
+    # Fall back to counts, and label the weakness rather than hide it.
+    if len(set(sizes.values())) <= 1:
+        return Finding(
+            check=check,
+            severity=WARNING,
+            message=(
+                "samples are the same SIZE, but membership could not be compared "
+                "(values are unhashable or contain duplicates), so this is the weak "
+                f"form of the check: {', '.join(f'{n}={c:,}' for n, c in sorted(sizes.items()))}. "
+                "Two statistics over the same number of DIFFERENT observations would "
+                "pass this. Pass identifiers (indices, timestamps, ids) rather than "
+                "raw values to get the real check."
+            ),
+            scar=_SAME_POPULATION_SCAR,
+        )
     listed = ", ".join(f"{name}={size:,}" for name, size in sorted(sizes.items()))
     return Finding(
         check=check,
         severity=BLOCKER,
         message=(
             f"figures presented for comparison were computed over samples of "
-            f"different sizes ({listed}). Whatever the labels say, the "
-            f"comparison is between two different populations. Restrict every "
-            f"figure to the common subset, and report how many observations "
-            f"that excludes."
+            f"different sizes ({listed}). Whatever the labels say, the comparison "
+            f"is between two different populations. Restrict every figure to the "
+            f"common subset, and report how many observations that excludes."
         ),
-        scar=(
-            "S15's stop table averaged the 'no stop' row over every position "
-            "while the stop rows excluded positions with no MAE reading -- in a "
-            "table whose only purpose was comparing those two."
-        ),
+        scar=_SAME_POPULATION_SCAR,
     )
 
 
