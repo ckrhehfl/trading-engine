@@ -402,3 +402,37 @@ class TestPoissonBinomial:
         assert check_criterion_attainable(
             num_folds=83, required_fraction=0.80, trades_by_fold=[500] * 83
         ) is None
+
+
+class TestProbabilityParameterRanges:
+    """A probability outside [0, 1] makes every binomial term
+    meaningless, and `min_power=0` is worse: it passes every criterion
+    regardless of how unreachable it is, silently DISABLING the check
+    rather than failing it."""
+
+    @pytest.mark.parametrize("kwargs,message", [
+        ({"plausible_win_rate": -0.1}, r"plausible_win_rate must be in \[0, 1\]"),
+        ({"plausible_win_rate": 1.5}, r"plausible_win_rate must be in \[0, 1\]"),
+        ({"trade_win_rate": -0.1}, r"trade_win_rate must be in \[0, 1\]"),
+        ({"trade_win_rate": 1.5}, r"trade_win_rate must be in \[0, 1\]"),
+        ({"min_power": 0.0}, r"min_power must be in \(0, 1\]"),
+        ({"min_power": -0.1}, r"min_power must be in \(0, 1\]"),
+        ({"min_power": 1.5}, r"min_power must be in \(0, 1\]"),
+    ])
+    def test_out_of_range_probabilities_are_refused(self, kwargs, message):
+        with pytest.raises(ValueError, match=message):
+            check_criterion_attainable(num_folds=10, required_fraction=0.8, **kwargs)
+
+    def test_min_power_zero_would_otherwise_have_disabled_the_check(self):
+        """The specific danger: without validation this returns None for
+        an unreachable criterion, which reads as 'the bar is fine'."""
+        with pytest.raises(ValueError):
+            check_criterion_attainable(
+                num_folds=83, required_fraction=0.80, trades_per_fold=2, min_power=0.0
+            )
+
+    def test_the_boundary_values_are_accepted(self):
+        check_criterion_attainable(
+            num_folds=10, required_fraction=1.0,
+            plausible_win_rate=1.0, trade_win_rate=1.0, min_power=1.0,
+        )

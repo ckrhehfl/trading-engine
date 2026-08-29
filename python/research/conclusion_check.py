@@ -318,6 +318,16 @@ def check_criterion_attainable(
         raise ValueError(f"num_folds must be at least 1, got {num_folds}")
     if not 0 < required_fraction <= 1:
         raise ValueError(f"required_fraction must be in (0, 1], got {required_fraction}")
+    # A probability outside [0, 1] makes every binomial term meaningless,
+    # and `min_power = 0` is worse than meaningless: it would pass every
+    # criterion regardless of how unreachable it actually is, silently
+    # disabling the check rather than failing it.
+    if not 0 <= plausible_win_rate <= 1:
+        raise ValueError(f"plausible_win_rate must be in [0, 1], got {plausible_win_rate}")
+    if not 0 <= trade_win_rate <= 1:
+        raise ValueError(f"trade_win_rate must be in [0, 1], got {trade_win_rate}")
+    if not 0 < min_power <= 1:
+        raise ValueError(f"min_power must be in (0, 1], got {min_power}")
     if trades_per_fold is not None and trades_per_fold <= 0:
         raise ValueError(f"trades_per_fold must be positive, got {trades_per_fold}")
     if trades_by_fold is not None and len(trades_by_fold) != num_folds:
