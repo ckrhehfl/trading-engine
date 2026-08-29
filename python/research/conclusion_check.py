@@ -42,6 +42,7 @@ evidence.
 from __future__ import annotations
 
 import math
+import statistics
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping
@@ -261,11 +262,36 @@ def _fold_win_probability(trade_win_rate: float, trades_per_fold: float) -> floa
     )
 
 
+def _poisson_binomial_tail(probabilities: Sequence[float], at_least: int) -> float:
+    """P(at least `at_least` successes) over independent Bernoulli trials
+    with DIFFERENT probabilities.
+
+    A plain binomial assumes every fold shares one success probability,
+    which is false whenever folds hold different numbers of trades -- and
+    they routinely do (S14's own folds ranged from 0 to 18). Collapsing
+    that to a median and applying a binomial can report the wrong
+    attainability, which would leave an unreachable criterion counted as
+    a genuine FAIL.
+
+    Exact O(n^2) dynamic programme over the exact-count distribution;
+    n is a fold count, so this is trivial at any realistic size.
+    """
+    distribution = [1.0]
+    for p in probabilities:
+        nxt = [0.0] * (len(distribution) + 1)
+        for successes, mass in enumerate(distribution):
+            nxt[successes] += mass * (1 - p)
+            nxt[successes + 1] += mass * p
+        distribution = nxt
+    return sum(distribution[at_least:]) if at_least <= len(distribution) - 1 else 0.0
+
+
 def check_criterion_attainable(
     *,
     num_folds: int,
     required_fraction: float,
     trades_per_fold: float | None = None,
+    trades_by_fold: Sequence[float] | None = None,
     plausible_win_rate: float = PLAUSIBLE_FOLD_WIN_RATE,
     trade_win_rate: float = PLAUSIBLE_TRADE_WIN_RATE,
     min_power: float = MIN_CRITERION_POWER,
@@ -294,21 +320,39 @@ def check_criterion_attainable(
         raise ValueError(f"required_fraction must be in (0, 1], got {required_fraction}")
     if trades_per_fold is not None and trades_per_fold <= 0:
         raise ValueError(f"trades_per_fold must be positive, got {trades_per_fold}")
+    if trades_by_fold is not None and len(trades_by_fold) != num_folds:
+        raise ValueError(
+            f"trades_by_fold has {len(trades_by_fold)} entries but num_folds is "
+            f"{num_folds}; a per-fold series must cover every fold"
+        )
 
-    fold_win = (
-        _fold_win_probability(trade_win_rate, trades_per_fold)
-        if trades_per_fold is not None
-        else plausible_win_rate
-    )
     required = math.ceil(required_fraction * num_folds)
-    power = sum(
-        math.comb(num_folds, k) * fold_win**k * (1 - fold_win) ** (num_folds - k)
-        for k in range(required, num_folds + 1)
-    )
+
+    if trades_by_fold is not None:
+        # Exact: each fold gets its OWN positive probability from its own
+        # trade count, and the tail is Poisson-binomial. A fold with zero
+        # trades cannot be positive, which a median would have hidden.
+        per_fold = [
+            _fold_win_probability(trade_win_rate, k) if k > 0 else 0.0
+            for k in trades_by_fold
+        ]
+        power = _poisson_binomial_tail(per_fold, required)
+        fold_win = sum(per_fold) / len(per_fold)
+        trades_per_fold = statistics.median(trades_by_fold)
+    else:
+        fold_win = (
+            _fold_win_probability(trade_win_rate, trades_per_fold)
+            if trades_per_fold is not None
+            else plausible_win_rate
+        )
+        power = sum(
+            math.comb(num_folds, k) * fold_win**k * (1 - fold_win) ** (num_folds - k)
+            for k in range(required, num_folds + 1)
+        )
     if power >= min_power:
         return None
     thin = (
-        f" At {trades_per_fold:g} trades per fold, a strategy winning "
+        f" At a median of {trades_per_fold:g} trades per fold, a strategy winning "
         f"{trade_win_rate:.0%} of TRADES has only a {fold_win:.1%} chance of a "
         f"positive fold -- close to a coin flip, which is why."
         if trades_per_fold is not None

@@ -255,11 +255,15 @@ def main(argv=None) -> int:
     # criterion that a good strategy could not clear must not be reported
     # as a FAIL -- that reads as evidence against the strategy when it is
     # evidence about the criterion.
-    trades_per_fold = statistics.median(f["metrics"]["num_trades"] for f in folds)
+    # The FULL per-fold series, not a median. Fold trade counts vary
+    # widely (this run's range from 0 to 18), so each fold has its own
+    # probability of ending positive and the tail is Poisson-binomial. A
+    # median collapsed to a binomial can report the wrong attainability
+    # and leave an unreachable criterion counted as a genuine FAIL.
     fold_bar_unattainable = conclusion_check.check_criterion_attainable(
         num_folds=len(folds),
         required_fraction=float(MIN_FOLD_CONSISTENCY),
-        trades_per_fold=trades_per_fold,
+        trades_by_fold=[f["metrics"]["num_trades"] for f in folds],
     )
 
     print("\n--- Eligibility Bar ---")

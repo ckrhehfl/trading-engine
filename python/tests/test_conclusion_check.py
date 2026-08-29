@@ -347,3 +347,58 @@ class TestFormatFindings:
     def test_a_warning_is_not_labelled_blocker(self):
         text = format_findings([Finding(check="c", severity=WARNING, message="m", scar="s")])
         assert "BLOCKER" not in text and "warning" in text
+
+
+class TestPoissonBinomial:
+    """Fold trade counts vary widely, so each fold has its own
+    probability of ending positive and the tail is Poisson-binomial. A
+    median collapsed to a binomial can report the wrong attainability."""
+
+    def test_reduces_to_the_binomial_when_every_probability_is_equal(self):
+        import math
+
+        from research.conclusion_check import _poisson_binomial_tail
+
+        n, p = 10, 0.5
+        expected = sum(math.comb(n, k) * p**k * (1 - p) ** (n - k) for k in range(6, n + 1))
+        assert _poisson_binomial_tail([p] * n, 6) == pytest.approx(expected, abs=1e-12)
+
+    def test_a_certain_event_is_probability_one(self):
+        from research.conclusion_check import _poisson_binomial_tail
+
+        assert _poisson_binomial_tail([1.0, 1.0, 1.0], 3) == pytest.approx(1.0)
+
+    def test_requiring_more_than_exist_is_impossible(self):
+        from research.conclusion_check import _poisson_binomial_tail
+
+        assert _poisson_binomial_tail([0.9, 0.9], 3) == 0.0
+
+    def test_zero_trade_folds_cannot_be_positive(self):
+        """The fact a median hides: a fold with no trades has probability
+        zero, not the probability of the median fold."""
+        finding = check_criterion_attainable(
+            num_folds=83, required_fraction=0.80,
+            trades_by_fold=[0] * 40 + [18] * 43,
+        )
+        assert finding is not None
+        assert finding.severity == BLOCKER
+
+    def test_a_uniform_series_agrees_with_the_scalar_form(self):
+        uniform = check_criterion_attainable(
+            num_folds=20, required_fraction=0.80, trades_by_fold=[6] * 20
+        )
+        scalar = check_criterion_attainable(
+            num_folds=20, required_fraction=0.80, trades_per_fold=6
+        )
+        assert (uniform is None) == (scalar is None)
+
+    def test_a_mismatched_series_length_is_refused(self):
+        with pytest.raises(ValueError, match="must cover every fold"):
+            check_criterion_attainable(
+                num_folds=83, required_fraction=0.80, trades_by_fold=[6] * 10
+            )
+
+    def test_many_trades_per_fold_still_reaches_the_bar(self):
+        assert check_criterion_attainable(
+            num_folds=83, required_fraction=0.80, trades_by_fold=[500] * 83
+        ) is None
