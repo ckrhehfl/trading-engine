@@ -248,6 +248,7 @@ class DailyTsmomEnsembleStrategy:
         "_vol",
         "_position_sign",
         "_position_quantity",
+        "_rebalance_on_conviction",
     )
 
     def __init__(
@@ -261,7 +262,9 @@ class DailyTsmomEnsembleStrategy:
         target_annualized_vol: Decimal = DEFAULT_TARGET_ANNUALIZED_VOL,
         min_vol_scalar: Decimal = DEFAULT_MIN_VOL_SCALAR,
         max_vol_scalar: Decimal = DEFAULT_MAX_VOL_SCALAR,
+        rebalance_on_conviction: bool = False,
     ) -> None:
+        self._rebalance_on_conviction = rebalance_on_conviction
         lookbacks = tuple(lookbacks)
         if len(lookbacks) < 2:
             raise ValueError(
@@ -337,7 +340,25 @@ class DailyTsmomEnsembleStrategy:
 
         current_sign = _sign(ensemble_value)
         if current_sign == self._position_sign:
-            return None  # Option B: silent unless the SIGN category changes
+            # Option B (the default, and this module's original behaviour):
+            # silent unless the SIGN category changes. A position opened at
+            # ensemble +1.0 is held unchanged even as conviction decays to
+            # +0.25, because only a sign flip emits.
+            if not self._rebalance_on_conviction:
+                return None
+            # Conviction rebalancing (Scalping-arc follow-up): the same-sign
+            # magnitude IS the strategy's own confidence, already computed
+            # every bar, and holding a full position through its decay is a
+            # cost this module's docstring disclosed rather than defended.
+            # Resizing to the current target uses no new parameter -- it
+            # reuses `_compute_target_quantity`, which every entry already
+            # calls.
+            if current_sign == 0:
+                return None  # a flat target with a flat position is a no-op
+            target = self._compute_target_quantity(current, ensemble_value, realized_vol)
+            if target is None or target == self._position_quantity:
+                return None
+            return self._resize_to(current, current_sign, target)
 
         if current_sign == 0:
             return self._flatten_to(current)
@@ -386,6 +407,40 @@ class DailyTsmomEnsembleStrategy:
             side=closing_side,
             order_type=OrderType.GUARDED_MARKET,
             quantity=quantity,
+            limit_price=None,
+            signal_timeframe="1d",
+            created_at=current.open_time,
+        )
+
+    def _resize_to(self, current: Kline, sign: int, target_quantity: Decimal) -> OrderIntent:
+        """Adjust an existing same-sign position to `target_quantity`.
+
+        Distinct from `_transition_to`, which crosses a sign boundary and
+        must close the old leg *and* open the new one in a single intent.
+        Here the sign is unchanged, so the order is the pure delta: buying
+        more of the same side when conviction strengthens, selling part of
+        it back when conviction decays.
+
+        `abs(...)` on the delta with a side flip is what makes a REDUCTION
+        expressible -- shrinking a long is a SHORT order for the
+        difference, which `metrics.position.PositionTracker` interprets as
+        a partial close rather than a new opposite position, because the
+        quantity is strictly smaller than the position it is reducing.
+        """
+        delta = target_quantity - self._position_quantity
+        increasing = delta > 0
+        side = (
+            (Side.LONG if sign > 0 else Side.SHORT)
+            if increasing
+            else (Side.SHORT if sign > 0 else Side.LONG)
+        )
+        self._position_quantity = target_quantity
+        return OrderIntent(
+            intent_id=uuid4(),
+            symbol=self._symbol,
+            side=side,
+            order_type=OrderType.GUARDED_MARKET,
+            quantity=abs(delta),
             limit_price=None,
             signal_timeframe="1d",
             created_at=current.open_time,

@@ -215,3 +215,81 @@ class TestEquityObserver:
             starting_equity=Decimal("10000"),
         )
         assert calls == [1, 2, 3, 4, 5]
+
+
+class TestMultipleIntentsPerBar:
+    """Trade Management Task A. A leg-scoped strategy routinely needs to
+    act twice on one bar -- close the tactical short AND add to the core
+    -- and splitting that across two bars would change the prices it acts
+    at."""
+
+    def _intent(self, side=Side.LONG, qty="1"):
+        return OrderIntent(
+            intent_id=uuid4(), symbol="BTC-USDT", side=side,
+            order_type=OrderType.GUARDED_MARKET, quantity=Decimal(qty),
+            limit_price=None, signal_timeframe="1d",
+            created_at=BASE_TIME,
+        )
+
+    def test_a_single_intent_still_works_unchanged(self):
+        klines = _klines(4)
+        emitted = [self._intent(), None, None, None]
+        result = run_backtest(
+            klines, lambda w: emitted[len(w) - 1],
+            fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+        )
+        assert len(result.fills) == 1
+
+    def test_a_sequence_fills_every_intent_on_the_same_bar(self):
+        klines = _klines(4)
+        pair = [self._intent(Side.SHORT), self._intent(Side.LONG, "2")]
+        result = run_backtest(
+            klines, lambda w: pair if len(w) == 1 else None,
+            fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+        )
+        assert len(result.fills) == 2
+        assert [i.side for i in result.filled_intents] == [Side.SHORT, Side.LONG]
+
+    def test_order_within_the_bar_is_preserved(self):
+        """Closing before opening matters: the two are different economic
+        events and `PositionTracker` applies them in order."""
+        klines = _klines(4)
+        first, second = self._intent(Side.SHORT, "1"), self._intent(Side.LONG, "3")
+        result = run_backtest(
+            klines, lambda w: [first, second] if len(w) == 1 else None,
+            fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+        )
+        assert [i.intent_id for i in result.filled_intents] == [first.intent_id, second.intent_id]
+
+    def test_an_empty_sequence_is_a_no_op(self):
+        result = run_backtest(
+            _klines(4), lambda w: [],
+            fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+        )
+        assert result.fills == []
+
+    def test_insolvency_discards_the_whole_batch(self):
+        """Not just the first intent -- an insolvent account cannot fill
+        any leg of a multi-leg action, so the check sits before the loop
+        rather than inside it."""
+        # `_klines` rises, so a large SHORT loses money fast.
+        klines = _klines(12)
+        big_short = self._intent(Side.SHORT, "500")
+
+        def strategy(window):
+            if len(window) == 1:
+                return [big_short]
+            return [self._intent(Side.LONG, "1"), self._intent(Side.LONG, "1")]
+
+        result = run_backtest(
+            klines, strategy, fee_bps=Decimal("0"), slippage_bps=Decimal("0"),
+            starting_equity=Decimal("100"),
+        )
+        assert result.insolvent_at_index is not None, "fixture must actually go insolvent"
+        # Every post-insolvency batch is dropped whole: the fill count must
+        # be even before insolvency plus nothing after, never an odd number
+        # from half a batch getting through.
+        assert len(result.fills) % 2 == 1, (
+            "one opening short plus zero-or-more complete pairs; a half-applied "
+            "batch would make this even"
+        )
