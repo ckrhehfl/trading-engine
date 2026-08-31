@@ -84,3 +84,31 @@ tasks.register<JavaExec>("runPaperTradingApp") {
     standardOutput = System.out
     errorOutput = System.err
 }
+
+// Prints the same runtime classpath `runPaperTradingApp` uses, and
+// nothing else, so the loop can be started by a plain
+// `java -cp ... engine.runtime.PaperTradingApp` instead of through
+// Gradle.
+//
+// The reason is memory, measured rather than assumed. With both paper
+// loops running on the development host, the two PaperTradingApp JVMs
+// used 267 MB between them while the Gradle daemons and wrapper JVMs
+// backing them used 1,570 MB -- about 6x the application, all of it
+// build tooling that a machine which only runs the app never needs.
+// That difference is what decides whether the loops fit a 1 GB
+// always-free cloud instance, which is the smallest box that can give
+// Gate A the 15 consecutive days at >=99% uptime it needs.
+//
+// Adds no dependency, changes no existing task, and touches no OMS,
+// Risk or Execution logic -- it reads a classpath Gradle has already
+// computed. `scripts/paper-trading-watchdog.sh` calls it once and caches
+// the result; `PAPER_TRADING_LAUNCHER=gradle` (the default) never calls
+// it at all.
+tasks.register("printRuntimeClasspath") {
+    group = "application"
+    description = "Prints the runtime classpath for engine.runtime.PaperTradingApp."
+    val runtimeClasspath = sourceSets["main"].runtimeClasspath
+    // Resolve inside the task action, not at configuration time, so
+    // merely configuring the build does not force dependency resolution.
+    doLast { println(runtimeClasspath.asPath) }
+}

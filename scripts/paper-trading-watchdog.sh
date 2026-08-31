@@ -86,11 +86,72 @@ get_env_var() {
     tr -d '\r' <"$REPO_ROOT/.env" | grep -E "^${key}=" | tail -n1 | cut -d'=' -f2-
 }
 
+# --- launcher: gradle, or a plain JVM on a small box -------------------
+#
+# `./gradlew :runtime:runPaperTradingApp` keeps a Gradle **daemon** and a
+# wrapper JVM alive for the whole life of the loop. Measured on the
+# development host with both loops running: the two PaperTradingApp JVMs
+# together used 267 MB, while the Gradle daemons and wrappers used
+# 1,570 MB -- roughly 6x the application itself, entirely build tooling
+# that a machine which only runs the app has no use for.
+#
+# That difference decides which VPS is viable: 267 MB of application fits
+# a 1 GB always-free instance, 1.8 GB does not.
+#
+# Set PAPER_TRADING_LAUNCHER=java to run the built classes directly. The
+# default stays `gradle`, so no existing host changes behaviour unless it
+# opts in. The classpath is generated once by Gradle and cached; a build
+# is still required before first use, it is simply not kept resident.
+PAPER_TRADING_LAUNCHER="${PAPER_TRADING_LAUNCHER:-gradle}"
+CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
+
+# Heap is capped explicitly rather than left to the JVM's default of a
+# quarter of physical RAM. Two loops defaulting on a 1 GB box would each
+# claim 256 MB of heap on top of metaspace and stacks, which is how a
+# small instance starts swapping instead of ticking.
+PAPER_TRADING_HEAP="${PAPER_TRADING_HEAP:-192m}"
+
+runtime_classpath() {
+    if [[ ! -s "$CLASSPATH_CACHE" ]]; then
+        log "generating runtime classpath (one-off; cached at $CLASSPATH_CACHE)"
+        mkdir -p "$(dirname "$CLASSPATH_CACHE")"
+        ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:classes ) >/dev/null || {
+            log "ERROR: gradle build failed; cannot generate classpath"
+            return 1
+        }
+        # Ask Gradle for the exact runtime classpath rather than guessing
+        # a jar layout. Written atomically so a killed run cannot leave a
+        # half-written cache that later launches would trust.
+        ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
+            >"$CLASSPATH_CACHE.tmp" 2>/dev/null || {
+            rm -f "$CLASSPATH_CACHE.tmp"
+            log "ERROR: :runtime:printRuntimeClasspath unavailable -- keep PAPER_TRADING_LAUNCHER=gradle"
+            return 1
+        }
+        [[ -s "$CLASSPATH_CACHE.tmp" ]] || { rm -f "$CLASSPATH_CACHE.tmp"; return 1; }
+        mv "$CLASSPATH_CACHE.tmp" "$CLASSPATH_CACHE"
+    fi
+    tr -d '\n' <"$CLASSPATH_CACHE"
+}
+
+# Emits the argv that actually starts the app, for either launcher.
+launch_argv() {
+    if [[ "$PAPER_TRADING_LAUNCHER" == "java" ]]; then
+        local cp
+        cp="$(runtime_classpath)" || return 1
+        printf '%s\0' java "-Xmx$PAPER_TRADING_HEAP" -cp "$cp" engine.runtime.PaperTradingApp
+    else
+        printf '%s\0' ./gradlew -q --console=plain :runtime:runPaperTradingApp
+    fi
+}
+
 start_simulated() {
     log "starting simulated session (was not running)"
+    local -a argv
+    mapfile -d '' -t argv < <(launch_argv) || { log "ERROR: could not build launch argv"; return 1; }
     tmux new-session -d -s paper-trading -c "$REPO_ROOT/java" \
         env BINGX_BASE_URL=https://open-api.bingx.com \
-        ./gradlew -q --console=plain :runtime:runPaperTradingApp
+        "${argv[@]}"
     pipe_session_log paper-trading
 }
 
@@ -102,6 +163,8 @@ start_vst() {
         log "ERROR: BINGX_API_KEY/BINGX_API_SECRET missing or empty in .env -- refusing to start bingx-vst session (value itself never logged)"
         return 1
     fi
+    local -a argv
+    mapfile -d '' -t argv < <(launch_argv) || { log "ERROR: could not build launch argv"; return 1; }
     log "starting bingx-vst session (was not running)"
     # Each KEY=value below is its own argv element to `env` (tmux
     # new-session's trailing arguments form an argv array here, not a
@@ -115,7 +178,7 @@ start_vst() {
         PAPER_TRADING_EXECUTION_MODE=bingx-vst \
         BINGX_BASE_URL=https://open-api.bingx.com \
         PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
-        ./gradlew -q --console=plain :runtime:runPaperTradingApp
+        "${argv[@]}"
     pipe_session_log paper-trading-vst
 }
 
