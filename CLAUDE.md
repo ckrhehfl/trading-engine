@@ -2439,12 +2439,35 @@ tools/services, subscription changes).
   promotion of a model/risk/order-logic change — regardless of checks
   passing, matching the Non-negotiable Rules above (e.g. "never weaken
   risk limits... without explicit human approval"). Also still stop and
-  ask when (a) CodeRabbit is rate-limited/unusable rather than passing
-  (see "Rate limits" under Code Review Gate below for the check-before-
-  retry procedure — don't just retry blindly), (b) the change has cost/
-  subscription implications, or (c) the task requires @ckrhehfl to do
-  something only they can do (a GitHub UI setting, an account
-  credential, entering a password).
+  ask when (a) the change has cost/subscription implications, or (b) the
+  task requires @ckrhehfl to do something only they can do (a GitHub UI
+  setting, an account credential, entering a password).
+
+- **A rate-limited CodeRabbit is a wait, not a question** (revised
+  2026-08-31, human-instructed, replacing "still stop and ask when
+  CodeRabbit is rate-limited/unusable rather than passing"). Rate
+  limiting is a scheduling fact with a published ETA attached, not a
+  judgment call, and handing it to the human converts a five-minute wait
+  into an unbounded one. The agent waits it out itself:
+
+  1. Comment `@coderabbitai rate limit` — that query does not itself
+     consume a review — and read the exact ETA out of the reply.
+  2. **Compute the wake time from the reply's own `created_at`**, not
+     from when the ETA was read. The two differ by however long the
+     round trip took, and sleeping the stated minutes from the wrong
+     origin lands early and burns the retry.
+  3. Sleep until then plus a small margin, then comment
+     `@coderabbitai review` once.
+  4. Batch every outstanding fix into one push *before* requesting, per
+     the Rate limits section below — re-requesting per fix is what
+     causes this in the first place.
+
+  Escalate to the human only if it is no longer a wait: the retry is
+  rate-limited again after a genuine wait (which means the budget is
+  exhausted rather than merely paced), CodeRabbit reports an error rather
+  than a limit, or no review appears well past the stated ETA. The merge
+  gate itself is unchanged — a **completed** review is still required,
+  and waiting for one is never the same as proceeding without one.
 
 ## Implementation Priority
 

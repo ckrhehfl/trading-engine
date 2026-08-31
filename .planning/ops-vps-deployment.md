@@ -88,38 +88,52 @@ first attempt failed on exactly that, which is the hostname guard
 working as designed (never hardcoded in source; see
 `.github/workflows/bingx-hostname-guard.yml`).
 
-## Google Cloud options
+## Cost — the recommendation is the free one
 
 Prices are us-central1, on-demand Linux, from third-party aggregators
-rather than Google's own page — **check the official pricing page and
-the calculator before committing budget.** Cloud pricing moves and the
-free tier's terms have changed before.
+rather than Google's own page. **Check the official pricing page and the
+calculator before committing budget** — cloud pricing moves, and free
+tiers have been silently cut before (Oracle halved theirs in June 2026
+with no announcement at all).
 
 | option | vCPU / RAM | cost | fits? |
 |---|---|---|---|
-| **e2-micro (Always Free)** | 2 shared / **1 GB** | **$0** | **yes, with `PAPER_TRADING_LAUNCHER=java`.** 267 MB of app + OS. Not with the Gradle default. |
-| e2-small | 2 shared / 2 GB | ~$12.23/mo | comfortably, either launcher |
-| e2-medium | 2 shared / 4 GB | ~$24.46/mo | more than needed |
+| **GCP e2-micro, Always Free** | 2 shared / **1 GB** | **$0** | **yes, with `PAPER_TRADING_LAUNCHER=java`.** 267 MB of app + OS. Not with the Gradle default. |
+| Hetzner CX22 | 2 / 4 GB | ~€3.79-4.59/mo | comfortably, either launcher |
+| GCP e2-small | 2 shared / 2 GB | ~$12.23/mo | comfortably, either launcher |
+| GCP e2-medium | 2 shared / 4 GB | ~$24.46/mo | far more than needed |
 
-**Recommendation: e2-micro on the free tier**, with the direct-JVM
-launcher. If it proves tight, e2-small is one `gcloud` command away and
-nothing else changes.
+**The recommendation is e2-micro at $0**, and it is not a compromise
+version of the paid one — 267 MB of application in 1 GB is a real fit
+with room, once the Gradle daemon is not resident. GCP is, as of
+2026-08, the only major cloud with a *permanent* free VM; AWS's and
+Azure's free VMs expire after 12 months. Re-verified 2026-08-31: still
+listed on Google's own free-tier page, no announced change, last altered
+in 2021 when e2-micro replaced f1-micro.
 
-### Free-tier conditions that are easy to get wrong
+**If a paid box is ever wanted, it is Hetzner at ~€4, not GCP
+e2-small at $12.23** — a quarter the price for twice the RAM. The only
+reason to prefer GCP once paying is keeping one provider.
 
-- **Region must be `us-west1`, `us-central1`, or `us-east1`.** Anywhere
-  else and it is billed at full rate. (One source claims `europe-west1`
-  also qualifies; Google's own docs list only the three, so treat that
-  as wrong.)
-- **Boot disk must be *standard* persistent disk, ≤30 GB.** Balanced and
-  SSD are not free. 30 GB comfortably holds the 796 MB kline store.
-- **One instance per billing account**, measured in instance-hours
-  (744 in a 31-day month), aggregated across projects — not per project.
-- **The creation screen shows ~$7.31/mo.** That estimate does not apply
-  the free-tier credit; the actual bill is waived if the constraints
-  above hold.
-- 1 GB/month egress from North America is free. This system's egress is
-  API requests only, nowhere near it.
+### Oracle Cloud Always Free was considered and rejected
+
+On specs it wins easily — 2 OCPU / 12 GB, free. Three things rule it out
+for *this* use:
+
+- **The allowance was halved on 2026-06-15**, from 4 OCPU / 24 GB, with
+  no blog post or customer notification; users found out when instances
+  were stopped. A tier that changes silently is a poor foundation for a
+  15-consecutive-day measurement.
+- **"Out of host capacity" is routine** for ARM shapes in busy regions,
+  and Always Free resources are pinned to the home region, which cannot
+  be changed later. Resizing behaves like a fresh launch, so people have
+  shrunk an instance and then been unable to start it again.
+- **Idle instances are reclaimed.** The usual workaround is a cron job
+  that burns CPU to look busy. This system genuinely is idle between
+  5-minute ticks, so it is exactly the profile that gets reclaimed.
+
+Any of the three costs a day of reports, and Gate A's clock restarts on
+a single missing one.
 
 ### Spot VMs are disqualified, not merely cheaper
 
@@ -279,6 +293,9 @@ Pricing and free-tier terms, retrieved 2026-08-31 and **to be verified
 against Google's own pages before committing**:
 
 - [Compute Engine free tier — Google Cloud](https://cloud.google.com/free/docs/compute-getting-started)
+- [Free Trial and Free Tier — Google Cloud](https://cloud.google.com/free)
+- [Oracle quietly halves free-tier Ampere A1 limits — InfoQ](https://www.infoq.com/news/2026/07/oracle-cloud-free-tier-limits/)
+- [Top 5 cheap VPS providers in 2026 — Sliplane](https://sliplane.io/blog/top-5-cheap-vps-providers)
 - [e2-micro pricing — Economize](https://www.economize.cloud/resources/gcp/pricing/compute-engine/e2-micro/)
 - [e2-small pricing — Economize](https://www.economize.cloud/resources/gcp/pricing/compute-engine/e2-small/)
 - [e2-medium specs and pricing — CloudPrice](https://cloudprice.net/gcp/compute/instances/e2-medium)
