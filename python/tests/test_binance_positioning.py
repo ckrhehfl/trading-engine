@@ -205,9 +205,20 @@ class TestCollectGap:
 
     def test_an_unfinished_walk_fails_closed(self, monkeypatch):
         """A partial series is indistinguishable from a complete one and
-        would mark the gap as filled."""
-        monkeypatch.setattr("data.binance_positioning.fetch_metric",
-                            lambda *a, **k: [])
+        would mark the gap as filled.
+
+        Pages must be NON-empty here: an empty past page now stops the
+        walk deliberately (see TestCollectGapStopsRatherThanSkipping), so
+        an all-empty fixture would exercise that path instead of
+        page exhaustion.
+        """
+        monkeypatch.setattr(
+            "data.binance_positioning.fetch_metric",
+            lambda s, y, *, period, limit, base_url, start_ms, end_ms: [
+                PositioningRow(metric="m", period=period,
+                               timestamp_ms=start_ms, value="1")
+            ],
+        )
         now = 1_800_000_000_000
         with pytest.raises(BinancePositioningError, match="did not reach"):
             collect_gap("top_accounts", "BTCUSDT", period="5m",
@@ -228,3 +239,62 @@ class TestCollectGap:
         with pytest.raises(ValueError, match="period must be"):
             collect_gap("top_accounts", "BTCUSDT", period="7m",
                         since_ms=None, now_ms=1_800_000_000_000)
+
+
+class TestCollectGapStopsRatherThanSkipping:
+    """CodeRabbit, PR #135. An empty intermediate page used to advance
+    the cursor; the later pages' rows then moved `_latest_stored` past
+    the hole and every future run began after it — turning a transient
+    failure into a permanent gap in a series that cannot be backfilled."""
+
+    def test_an_empty_intermediate_page_stops_the_walk(self, monkeypatch):
+        step = PERIOD_MS["5m"]
+        now = 1_800_000_000_000
+        start = now - 3 * step * MAX_LIMIT
+        assert now - start < RETENTION_MS, "fixture must fit the retention window"
+        pages: list[tuple[int, int]] = []
+
+        def fake_fetch(spec_name, symbol, *, period, limit, base_url, start_ms, end_ms):
+            pages.append((start_ms, end_ms))
+            if len(pages) == 2:
+                return []  # the hole
+            return [PositioningRow(metric="m", period=period,
+                                   timestamp_ms=start_ms, value="1")]
+
+        monkeypatch.setattr("data.binance_positioning.fetch_metric", fake_fetch)
+        rows = collect_gap("top_accounts", "BTCUSDT", period="5m",
+                           since_ms=start, now_ms=now)
+        assert len(pages) == 2, "must stop at the empty page, not walk past it"
+        assert [r.timestamp_ms for r in rows] == [pages[0][0]], (
+            "only the pre-hole page's rows may be returned, so the next run "
+            "resumes at the hole rather than after it"
+        )
+
+    def test_an_empty_final_page_is_not_a_hole(self, monkeypatch):
+        """The page ending at `now_ms` is simply the present catching up,
+        and must not be treated as a gap."""
+        now = 1_800_000_000_000
+        monkeypatch.setattr("data.binance_positioning.fetch_metric",
+                            lambda *a, **k: [])
+        rows = collect_gap("top_accounts", "BTCUSDT", period="1h",
+                           since_ms=now - 3_600_000, now_ms=now)
+        assert rows == []
+
+    def test_a_complete_walk_still_returns_everything(self, monkeypatch):
+        # Sized inside the retention window: `collect_gap` clamps `start`
+        # to `now - RETENTION_MS`, so a span wider than that silently
+        # yields fewer pages than the arithmetic suggests.
+        step = PERIOD_MS["5m"]
+        now = 1_800_000_000_000
+        start = now - 3 * step * MAX_LIMIT
+        assert now - start < RETENTION_MS, "fixture must fit the retention window"
+        monkeypatch.setattr(
+            "data.binance_positioning.fetch_metric",
+            lambda s, y, *, period, limit, base_url, start_ms, end_ms: [
+                PositioningRow(metric="m", period=period,
+                               timestamp_ms=start_ms, value="1")
+            ],
+        )
+        rows = collect_gap("top_accounts", "BTCUSDT", period="5m",
+                           since_ms=start, now_ms=now)
+        assert len(rows) == 3

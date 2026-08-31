@@ -121,7 +121,13 @@ def replay_fills(
             )
             live[action.leg_id] = leg.leg_id
         else:
-            execution_id = live.pop(action.leg_id, None)
+            # `get`, not `pop`. `Book.close` supports a partial close and
+            # leaves the leg open with the remainder, so popping here
+            # discarded the mapping while the leg was still live -- and
+            # the action closing the rest would then find no execution
+            # leg and be skipped, silently dropping both the open
+            # quantity and its realised P&L from the execution book.
+            execution_id = live.get(action.leg_id)
             if execution_id is None:
                 continue
             open_leg = book.leg(execution_id)
@@ -133,6 +139,9 @@ def replay_fills(
                 exit_time=fill.fill_time,
                 quantity=min(fill.quantity, open_leg.quantity),
             )
+            # Retire the mapping only once the leg is genuinely gone.
+            if book.leg(execution_id) is None:
+                live.pop(action.leg_id, None)
     return book
 
 
@@ -149,7 +158,7 @@ class LegManager:
     execute at that bar's price rather than being spread across bars.
     """
 
-    __slots__ = ("_symbol", "_book", "_pending", "_signal_timeframe", "_actions")
+    __slots__ = ("_actions", "_book", "_pending", "_signal_timeframe", "_symbol")
 
     def __init__(self, *, symbol: str, signal_timeframe: str) -> None:
         self._symbol = symbol

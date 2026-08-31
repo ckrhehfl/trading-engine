@@ -357,10 +357,36 @@ def collect_gap(
         if cursor >= now_ms:
             break
         page_end = min(cursor + page_span, now_ms)
-        for row in fetch_metric(
+        page = fetch_metric(
             spec_name, symbol, period=period, limit=MAX_LIMIT,
             base_url=base_url, start_ms=cursor, end_ms=page_end,
-        ):
+        )
+        # STOP at an empty page that lies entirely in the past, rather
+        # than stepping over it.
+        #
+        # Advancing would be the one unrecoverable mistake this function
+        # can make: the later pages' rows get stored, `_latest_stored`
+        # moves past the hole, and every future run begins after it --
+        # so a transient failure (a flake, a rate limit, a partial
+        # outage) becomes a permanent gap in a series that cannot be
+        # backfilled.
+        #
+        # Stopping is safe in both directions, and deliberately not a
+        # raise. If the gap is transient the next run resumes at exactly
+        # this cursor and heals it. If it is a real, permanent hole in
+        # Binance's own data, retrying forever would strand the series --
+        # but it cannot, because `start` is clamped to
+        # `now_ms - RETENTION_MS`, so within 30 days the window slides
+        # past the hole on its own. A raise would have made a permanent
+        # upstream gap stop collection indefinitely.
+        if not page and page_end < now_ms:
+            print(
+                f"  {spec_name} {symbol} {period}: empty page over "
+                f"[{cursor}, {page_end}) -- stopping the walk here rather than "
+                f"stepping over it. Next run resumes from this point."
+            )
+            break
+        for row in page:
             key = (row.metric, row.timestamp_ms)
             if key not in seen:
                 seen.add(key)

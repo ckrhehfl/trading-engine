@@ -12,6 +12,7 @@ from decimal import Decimal
 from uuid import uuid4
 
 import pytest
+from backtest.fill import Fill
 
 from metrics.book import LegPurpose
 from research.strategies.leg_manager import LegManager
@@ -207,3 +208,38 @@ class TestQueries:
     def test_closing_an_unknown_leg_raises(self):
         with pytest.raises(KeyError, match="no open leg"):
             _mgr().close_leg(uuid4(), price=Decimal("100"), time=T0)
+
+
+def test_replay_fills_keeps_the_mapping_through_a_partial_close():
+    """CodeRabbit, PR #135. `Book.close` supports a partial close and
+    leaves the leg open with the remainder, but `replay_fills` popped the
+    signal->execution mapping before closing. The action closing the rest
+    then found no execution leg and was skipped, dropping both the open
+    quantity and its realised P&L from the execution book."""
+    from research.strategies.leg_manager import LegAction, replay_fills
+
+    leg_id, sym = uuid4(), "BTC-USDT"
+    open_id, half_id, rest_id = uuid4(), uuid4(), uuid4()
+    actions = {
+        open_id: LegAction(kind="open", leg_id=leg_id, purpose=LegPurpose.TACTICAL,
+                           side=Side.SHORT, quantity=Decimal("2")),
+        half_id: LegAction(kind="close", leg_id=leg_id, purpose=LegPurpose.TACTICAL,
+                           side=Side.SHORT, quantity=Decimal("1")),
+        rest_id: LegAction(kind="close", leg_id=leg_id, purpose=LegPurpose.TACTICAL,
+                           side=Side.SHORT, quantity=Decimal("1")),
+    }
+    t = datetime(2024, 1, 1, tzinfo=timezone.utc)
+    fills = [
+        Fill(intent_id=open_id, fill_time=t, fill_price=Decimal("100"),
+             quantity=Decimal("2"), fee=Decimal("0"), notional=Decimal("200")),
+        Fill(intent_id=half_id, fill_time=t, fill_price=Decimal("90"),
+             quantity=Decimal("1"), fee=Decimal("0"), notional=Decimal("90")),
+        Fill(intent_id=rest_id, fill_time=t, fill_price=Decimal("80"),
+             quantity=Decimal("1"), fee=Decimal("0"), notional=Decimal("80")),
+    ]
+    book = replay_fills(actions, fills, symbol=sym)
+
+    assert len(book.closes) == 2, "the second half-close was dropped"
+    # Short from 100: +10 on the first half, +20 on the second.
+    assert book.realized_pnl_by_purpose(sym)[LegPurpose.TACTICAL] == Decimal("30")
+    assert book.gross(sym) == Decimal("0"), "the leg should be fully closed"
