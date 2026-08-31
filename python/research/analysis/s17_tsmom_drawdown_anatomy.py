@@ -46,13 +46,22 @@ DEFAULT_DB = "python/data/var/klines.sqlite3"
 STARTING_EQUITY = Decimal("10000")
 
 # The two windows daily-tsmom-ensemble was actually confirmed against.
+# sr-ab's own evaluation window, pinned as real bounds rather than left
+# in the label. The cache happens to hold exactly this range today, so
+# this changes nothing now -- but a later backfill of earlier or later
+# BINANCE:BTCUSDT 1d bars would silently change the figures this script
+# reports for an already-spent holdout, which is the one thing a
+# reproduction must never do.
+SR_AB_START_MS = 1502928000000  # 2017-08-17T00:00:00Z
+SR_AB_END_MS = 1620950400000  # 2021-05-14T00:00:00Z, half-open
+
 WINDOWS = [
-    ("sr-ab  Binance spot 2017-2021", "BINANCE:BTCUSDT"),
+    ("sr-ab  Binance spot 2017-2021", "BINANCE:BTCUSDT", (SR_AB_START_MS, SR_AB_END_MS)),
     # NOT sr-v's window. sr-v's holdout was 2021-05-14..2024-04-26 (1,079
     # bars, 26 trades); this is the FULL BingX 1d series through today, so
     # its figures are not comparable to sr-v's reported ones and are not
     # presented as a reproduction of them.
-    ("BingX 1d, full series (NOT sr-v's window)", "BTC-USDT"),
+    ("BingX 1d, full series (NOT sr-v's window)", "BTC-USDT", None),
 ]
 
 # sr-ab's own figures, so a reproduction that drifts is visible rather
@@ -60,13 +69,17 @@ WINDOWS = [
 SR_AB_REPORTED = {"max_drawdown": 0.20135, "trades": 64, "profit_factor": 7.68}
 
 
-def load(db: str, symbol: str) -> list[Kline]:
+def load(db: str, symbol: str, bounds: tuple[int, int] | None = None) -> list[Kline]:
     conn = sqlite3.connect(db)
-    rows = conn.execute(
+    query = (
         "SELECT open_time_ms, open, high, low, close, volume FROM klines "
-        "WHERE symbol=? AND interval='1d' ORDER BY open_time_ms",
-        (symbol,),
-    ).fetchall()
+        "WHERE symbol=? AND interval='1d'"
+    )
+    params: tuple = (symbol,)
+    if bounds is not None:
+        query += " AND open_time_ms >= ? AND open_time_ms < ?"
+        params += bounds
+    rows = conn.execute(query + " ORDER BY open_time_ms", params).fetchall()
     conn.close()
     return [
         Kline(
@@ -107,8 +120,8 @@ def main(argv=None) -> int:
     ap.add_argument("--db-path", default=DEFAULT_DB)
     args = ap.parse_args(argv)
 
-    for label, symbol in WINDOWS:
-        klines = load(args.db_path, symbol)
+    for label, symbol, bounds in WINDOWS:
+        klines = load(args.db_path, symbol, bounds)
         if not klines:
             print(f"{label}: no 1d bars for {symbol}", file=sys.stderr)
             continue
@@ -130,7 +143,7 @@ def main(argv=None) -> int:
               f"{'n/a' if metrics.profit_factor is None else f'{float(metrics.profit_factor):.2f}'}")
 
         episodes = equity_drawdowns(list(metrics.equity_curve))
-        print(f"\n  worst drawdown episodes (peak -> trough):")
+        print("\n  worst drawdown episodes (peak -> trough):")
         for peak_i, trough_i, depth in episodes[:5]:
             over = "  <- OVER the 20% ceiling" if depth > 0.20 else ""
             print(f"    {klines[peak_i].open_time:%Y-%m-%d} -> "

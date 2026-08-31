@@ -151,3 +151,37 @@ The legitimate responses are: accept the result; or wait for the
 positioning data now being collected (open interest, long/short ratios)
 and specify a *different* conjunction using families this one could not
 include.
+
+## Amendments — what the run actually did that this document did not say
+
+**Added after execution, deliberately at the bottom, and never by editing
+the text above.** A pre-registration whose body can be revised after the
+result is not a pre-registration. Everything above is exactly as
+committed before any code existed; everything below is what the run
+departed from it, recorded here rather than only in the runner's
+docstring so that a future reader of *this* file cannot come away
+believing the run was "one daily pass on BTC-USDT".
+
+| # | This document said | The run did | Why |
+|---|---|---|---|
+| 1 | "**One run.**" | Two: daily, then hourly | The daily pass fired the conjunction **twice** and returned INCONCLUSIVE-DATA-LIMITED against this document's own floor of 20 — the outcome named above as most likely. The legitimate answer to too few samples is more samples. **No threshold was changed**; only the number of bars a fixed calendar span is expressed in. Calendar-denominated constants were rescaled to hold the span fixed (lookbacks 21/63/126/252 days → 504/1512/3024/6048 hours; trailing window 90 days → 2,160 bars). The ATR period stayed 14 bars, being denominated in bars already. |
+| 2 | "Evaluated on **BTC-USDT daily**" | `BINANCE-FUTURES:BTCUSDT` 1m bars aggregated | The conjunction needs `taker_buy_base_volume` and **BingX's wire carries no buyer/seller breakdown at all**. A BingX run fires the flow condition zero times and, by the strategy's own fail-closed rule, opens no hedge — a guard working, not a measurement. |
+
+**This remains trial two of one hypothesis and is counted as such.** A
+second timeframe is a second look. The result is reported as a conclusion
+only because the two agree; had they disagreed, the honest reading would
+be that neither is established.
+
+### A correction to a figure this document's result originally reported
+
+The first write-up gave the tactical overlay's gross edge as **+45** and
+described it as "net of slippage". Both were wrong: the figure came from
+the **signal-time** book, which records a leg at the decision bar's
+close, while the real fill is the next bar's open with slippage applied.
+Rebuilt from real fills (`leg_manager.replay_fills`), the gross edge is
+**−97**, and the sign is negative rather than positive.
+
+The verdict is unchanged and in fact strengthened — the overlay does not
+merely fail to cover its fees, it loses money before them — but the
+number was wrong and is corrected in
+`tm-c-confluence-hedge-result.md` rather than quietly restated.

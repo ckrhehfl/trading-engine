@@ -2236,9 +2236,9 @@ specification, calendar constants rescaled, **no threshold touched**):
 | core alone | 453 | +173.1% | 18.80% | 3.18 | +0.917 |
 | core + hedge | 452 | +168.6% | 18.80% | 3.17 | +0.903 |
 
-Tactical gross edge **+45** against **+353** in fees it caused, t=+0.29,
-p=0.772. Two independent failures: not distinguishable from zero, and
-an eighth of its own fee bill even taken at face value.
+Tactical gross edge **−97** against **+353** in fees it caused, t=−0.62,
+p=0.535. Two independent failures: not distinguishable from zero, and
+negative before the fees even arrive.
 
 **Four findings outlive the candidate:**
 
@@ -2259,10 +2259,18 @@ an eighth of its own fee bill even taken at face value.
    fixed stop, S17 for a measured one, and now a *selective,
    conjunction-gated* reduction behaves no differently from an
    unconditional one. This is the most transferable result here.
-4. **`Book.realized_pnl` is gross of fees** — `(exit − entry) × qty`,
-   net of slippage (baked into the fill price) but not of `Fill.fee`.
-   Reporting a per-purpose figure without the fee bill beside it shows
-   an overlay's raw edge as its outcome, and here the two differ ~8x.
+4. **A signal-time book is not an execution book, and reporting the
+   first as the second flipped a sign.** `Book.realized_pnl` was computed
+   from the prices the strategy *saw when deciding* (the signal bar's
+   close); the real fill is the next bar's open with slippage.
+   `leg_manager` had always documented that approximation as safe "since
+   reported P&L comes from real fills" — **true until this task made the
+   signal book a reported figure.** The gap came to −141, over 3x the
+   edge being measured: the first write-up said +45, the real figure is
+   −97. Fixed structurally — `LegAction` records what each intent meant
+   and `replay_fills` rebuilds an execution book from real `Fill`s,
+   keyed by `Fill.intent_id`. Also note `Book.realized_pnl` is **gross
+   of fees**, `Fill.fee` being separate.
 
 **Two infrastructure defects were found and fixed, both real:**
 

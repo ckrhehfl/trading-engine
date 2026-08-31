@@ -75,6 +75,7 @@ from research.conclusion_check import (
     require_no_blockers,
 )
 from research.strategies.confluence_hedge import ConfluenceHedgeStrategy
+from research.strategies.leg_manager import replay_fills
 from research.strategies.daily_tsmom_ensemble import DailyTsmomEnsembleStrategy
 
 DEFAULT_DB = "python/data/var/klines.sqlite3"
@@ -217,8 +218,22 @@ def run_timeframe(
         STARTING_EQUITY, bars_per_day=bars_per_day,
     )
 
-    hedges = [c for c in overlay.book.closes if c.purpose is LegPurpose.TACTICAL]
+    # Report from the EXECUTION book, not the signal book. The signal
+    # book records a leg at the bar's close, because that is the only
+    # price a strategy knows when deciding; the real fill is the next
+    # bar's open, with slippage. On 150 hedges that gap is the same order
+    # of magnitude as the edge being measured, so reporting the signal
+    # book's P&L would be measuring the decision rather than the trade.
+    execution_book = replay_fills(
+        overlay.legs.actions, overlay_result.fills, symbol=FLOW_SYMBOL
+    )
+    hedges = [c for c in execution_book.closes if c.purpose is LegPurpose.TACTICAL]
+    signal_hedges = [c for c in overlay.book.closes if c.purpose is LegPurpose.TACTICAL]
     return {
+        "execution_book": execution_book,
+        "signal_tactical_pnl": sum(
+            (c.realized_pnl for c in signal_hedges), Decimal(0)
+        ),
         "label": label,
         "bars_per_day": bars_per_day,
         "klines": klines,
@@ -265,13 +280,18 @@ def report(run: dict) -> list:
     # `Fill` carries separately. Printing it without the fee bill beside
     # it would show the overlay's raw edge as its outcome -- and the two
     # differ by an order of magnitude here, which is the whole finding.
-    by_purpose = strategy.book.realized_pnl_by_purpose(FLOW_SYMBOL)
+    by_purpose = run["execution_book"].realized_pnl_by_purpose(FLOW_SYMBOL)
     for purpose, pnl in by_purpose.items():
         if pnl:
             print(f"    gross edge, {purpose.value:<9} {float(pnl):>+11,.0f}"
                   f"   (before fees)")
     fee_delta = float(run["overlay_fees"] - run["core_fees"])
     print(f"    fees the overlay added {fee_delta:>+16,.0f}")
+    # The signal-book figure is printed beside it so the size of the
+    # signal-price-vs-fill-price gap is visible rather than assumed.
+    tactical = by_purpose.get(LegPurpose.TACTICAL, Decimal(0))
+    print(f"    (signal-price tactical  {float(run['signal_tactical_pnl']):>+11,.0f}"
+          f"   gap {float(tactical - run['signal_tactical_pnl']):+,.0f})")
 
     findings = []
     if len(hedges) < MIN_HEDGES:
@@ -320,8 +340,19 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
 
     funding = load_funding(args.db_path)
-    print(f"funding: {len(funding):,} days "
-          f"({min(funding):%Y-%m-%d} .. {max(funding):%Y-%m-%d})")
+    if not funding:
+        # The strategy is fail-closed on missing funding, so the run is
+        # still meaningful -- it just cannot open a single hedge. Say that
+        # up front rather than letting min() raise a stack trace, and
+        # rather than letting a reader mistake "no hedges" for a result.
+        print(f"funding: NO rows for {FUNDING_SYMBOL} in {args.db_path}.\n"
+              f"  The funding condition can never hold, so no hedge will be "
+              f"opened and\n  every timeframe will report "
+              f"INCONCLUSIVE-DATA-LIMITED. This is the fail-closed\n"
+              f"  guard working, not a measurement.")
+    else:
+        print(f"funding: {len(funding):,} days "
+              f"({min(funding):%Y-%m-%d} .. {max(funding):%Y-%m-%d})")
 
     runs = [
         run_timeframe(label, bpd, secs, args.db_path, funding)

@@ -38,13 +38,102 @@ Under hedge mode the venue keeps the distinction too, via `positionSide`
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
+from backtest.fill import Fill
 from metrics.book import Book, Leg, LegClose, LegPurpose
 from schemas.order_intent import OrderIntent, OrderType, Side
+
+
+@dataclass(frozen=True)
+class LegAction:
+    """What one emitted `OrderIntent` was meant to do to the book.
+
+    The signal-time book records a leg at the **signal bar's close**,
+    because that is the only price a strategy knows when it decides. The
+    real fill happens at the next bar's open, with slippage. For a
+    strategy's own exit arithmetic that approximation is fine and this
+    module always said so.
+
+    It stops being fine the moment a *reported* figure is taken from the
+    signal book. Trade Management Task C did exactly that -- it published
+    `Book.realized_pnl_by_purpose` as the tactical overlay's edge -- and
+    at that size the gap is not a rounding detail: a 2bps round trip on
+    150 hedges is the same order of magnitude as the edge being measured.
+
+    So the intent carries this record, and `replay_fills` rebuilds a
+    second, **execution** book from the real `Fill` prices. Two books,
+    deliberately: the signal book is what the strategy reasons with, the
+    execution book is what may be reported.
+    """
+
+    kind: str  # "open" | "close"
+    leg_id: UUID
+    purpose: LegPurpose
+    side: Side
+    quantity: Decimal
+    invalidation: Decimal | None = None
+    target: Decimal | None = None
+
+
+def replay_fills(
+    actions: Mapping[UUID, LegAction],
+    fills: Sequence[Fill],
+    *,
+    symbol: str,
+) -> Book:
+    """Rebuild a `Book` from real fills, so reported P&L is real P&L.
+
+    Correlated by `Fill.intent_id` rather than by list position: the
+    engine does guarantee `filled_intents[i]` produced `fills[i]`, but an
+    id match cannot silently drift if that contract ever changes, and the
+    id is already on the `Fill`. A fill with no entry in `actions` is a
+    non-leg order and is skipped; an action whose opening order never
+    filled leaves nothing to close, and the matching close is skipped
+    too rather than raising -- an unfilled order is a real outcome, not a
+    bookkeeping error.
+
+    Partial closes are supported by closing the recorded quantity, which
+    is what the signal book did.
+    """
+    book = Book()
+    live: dict[UUID, UUID] = {}  # signal leg id -> execution leg id
+    for fill in fills:
+        action = actions.get(fill.intent_id)
+        if action is None:
+            continue
+        if action.kind == "open":
+            leg = book.open(
+                Leg(
+                    symbol=symbol,
+                    side=action.side,
+                    quantity=fill.quantity,
+                    entry_price=fill.fill_price,
+                    entry_time=fill.fill_time,
+                    purpose=action.purpose,
+                    invalidation=action.invalidation,
+                    target=action.target,
+                )
+            )
+            live[action.leg_id] = leg.leg_id
+        else:
+            execution_id = live.pop(action.leg_id, None)
+            if execution_id is None:
+                continue
+            open_leg = book.leg(execution_id)
+            if open_leg is None:
+                continue
+            book.close(
+                execution_id,
+                exit_price=fill.fill_price,
+                exit_time=fill.fill_time,
+                quantity=min(fill.quantity, open_leg.quantity),
+            )
+    return book
 
 
 def _opposite(side: Side) -> Side:
@@ -60,17 +149,23 @@ class LegManager:
     execute at that bar's price rather than being spread across bars.
     """
 
-    __slots__ = ("_symbol", "_book", "_pending", "_signal_timeframe")
+    __slots__ = ("_symbol", "_book", "_pending", "_signal_timeframe", "_actions")
 
     def __init__(self, *, symbol: str, signal_timeframe: str) -> None:
         self._symbol = symbol
         self._signal_timeframe = signal_timeframe
         self._book = Book()
         self._pending: list[OrderIntent] = []
+        self._actions: dict[UUID, LegAction] = {}
 
     @property
     def book(self) -> Book:
         return self._book
+
+    @property
+    def actions(self) -> Mapping[UUID, LegAction]:
+        """Every emitted intent's meaning, for `replay_fills`."""
+        return self._actions
 
     @property
     def symbol(self) -> str:
@@ -133,7 +228,11 @@ class LegManager:
             target=target,
         )
         self._book.open(leg)
-        self._queue(side, quantity, time)
+        self._queue(
+            side, quantity, time,
+            LegAction(kind="open", leg_id=leg.leg_id, purpose=purpose, side=side,
+                      quantity=quantity, invalidation=invalidation, target=target),
+        )
         return leg
 
     def close_leg(
@@ -156,7 +255,11 @@ class LegManager:
             raise KeyError(f"no open leg with id {leg_id}")
         closing = leg.quantity if quantity is None else quantity
         record = self._book.close(leg_id, exit_price=price, exit_time=time, quantity=closing)
-        self._queue(_opposite(leg.side), closing, time)
+        self._queue(
+            _opposite(leg.side), closing, time,
+            LegAction(kind="close", leg_id=leg_id, purpose=leg.purpose, side=leg.side,
+                      quantity=closing),
+        )
         return record
 
     def add_to_leg(
@@ -220,10 +323,14 @@ class LegManager:
 
     # -- emission ----------------------------------------------------
 
-    def _queue(self, side: Side, quantity: Decimal, time: datetime) -> None:
+    def _queue(
+        self, side: Side, quantity: Decimal, time: datetime, action: LegAction
+    ) -> None:
+        intent_id = uuid4()
+        self._actions[intent_id] = action
         self._pending.append(
             OrderIntent(
-                intent_id=uuid4(),
+                intent_id=intent_id,
                 symbol=self._symbol,
                 side=side,
                 order_type=OrderType.GUARDED_MARKET,

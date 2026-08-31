@@ -11,11 +11,17 @@ import json
 
 import pytest
 
+from data.store import PositioningRow
+
 from data.binance_positioning import (
     MAX_LIMIT,
     SPECS,
     BinancePositioningError,
     fetch_metric,
+    _numeric,
+    collect_gap,
+    PERIOD_MS,
+    RETENTION_MS,
 )
 
 
@@ -122,3 +128,103 @@ class TestArguments:
         assert "symbol=ETHUSDT" in seen[0]
         assert "period=1h" in seen[0]
         assert "limit=100" in seen[0]
+
+
+class TestNumericValidation:
+    """CodeRabbit, PR #135. `str(entry[field])` stored `None`, `{}`, `""`
+    and `NaN` as if they were observations -- and `INSERT OR IGNORE` then
+    discarded the later correct value for that same key, making one
+    transient bad response permanent."""
+
+    @pytest.mark.parametrize("bad", [None, {}, [], "", "  ", "NaN", "inf", "-inf", "abc", True])
+    def test_non_numeric_raises(self, bad):
+        with pytest.raises(BinancePositioningError):
+            _numeric("top_accounts", "longShortRatio", bad)
+
+    @pytest.mark.parametrize("good", ["1.234", "0", "-0.5", "1e-8", 42, 1.5])
+    def test_numeric_passes_through_as_text(self, good):
+        assert _numeric("top_accounts", "longShortRatio", good) == str(good).strip()
+
+    def test_precision_is_not_lost_to_a_round_trip(self):
+        # The original string is stored, not the parsed Decimal, so a
+        # value with more digits than float can hold survives intact.
+        raw = "1.2345678901234567890123456789"
+        assert _numeric("top_accounts", "longShortRatio", raw) == raw
+
+
+class TestCollectGap:
+    """CodeRabbit, PR #135. A plain newest-500 request spans ~41h at 5m,
+    so a longer outage left a hole that no later run ever requested and
+    `INSERT OR IGNORE` made permanent."""
+
+    def test_a_48_hour_gap_is_recovered_without_holes(self, monkeypatch):
+        step = PERIOD_MS["5m"]
+        now = 1_800_000_000_000
+        since = now - 48 * 3_600_000  # 48h ago
+        expected = list(range(since + 1, now, step))
+
+        requested: list[tuple[int, int]] = []
+
+        def fake_fetch(spec_name, symbol, *, period, limit, base_url, start_ms, end_ms):
+            requested.append((start_ms, end_ms))
+            # end_ms arrives already decremented by fetch_metric's
+            # half-open trim in the real code; here it is the raw bound.
+            return [
+                PositioningRow(metric="top_account_long_short_ratio", period=period,
+                               timestamp_ms=t, value="1.0")
+                for t in expected if start_ms <= t < end_ms
+            ][:limit]
+
+        monkeypatch.setattr("data.binance_positioning.fetch_metric", fake_fetch)
+        rows = collect_gap("top_accounts", "BTCUSDT", period="5m",
+                           since_ms=since, now_ms=now)
+        got = sorted(r.timestamp_ms for r in rows)
+        assert got == expected, "the 48h window came back with holes"
+        assert len(requested) > 1, "48h at 5m must take more than one page"
+
+    def test_first_run_starts_at_the_retention_edge_not_the_epoch(self, monkeypatch):
+        now = 1_800_000_000_000
+        seen: list[int] = []
+
+        def fake_fetch(spec_name, symbol, *, period, limit, base_url, start_ms, end_ms):
+            seen.append(start_ms)
+            return []
+
+        monkeypatch.setattr("data.binance_positioning.fetch_metric", fake_fetch)
+        collect_gap("top_accounts", "BTCUSDT", period="1h", since_ms=None, now_ms=now)
+        assert seen[0] == now - RETENTION_MS
+
+    def test_nothing_to_do_makes_no_request(self, monkeypatch):
+        called = []
+        monkeypatch.setattr("data.binance_positioning.fetch_metric",
+                            lambda *a, **k: called.append(1) or [])
+        now = 1_800_000_000_000
+        assert collect_gap("top_accounts", "BTCUSDT", period="1h",
+                           since_ms=now, now_ms=now) == []
+        assert not called
+
+    def test_an_unfinished_walk_fails_closed(self, monkeypatch):
+        """A partial series is indistinguishable from a complete one and
+        would mark the gap as filled."""
+        monkeypatch.setattr("data.binance_positioning.fetch_metric",
+                            lambda *a, **k: [])
+        now = 1_800_000_000_000
+        with pytest.raises(BinancePositioningError, match="did not reach"):
+            collect_gap("top_accounts", "BTCUSDT", period="5m",
+                        since_ms=now - RETENTION_MS, now_ms=now, max_pages=2)
+
+    def test_duplicate_timestamps_across_pages_are_deduplicated(self, monkeypatch):
+        now = 1_800_000_000_000
+        monkeypatch.setattr(
+            "data.binance_positioning.fetch_metric",
+            lambda *a, **k: [PositioningRow(metric="m", period="1h",
+                                            timestamp_ms=now - 1, value="1")],
+        )
+        rows = collect_gap("top_accounts", "BTCUSDT", period="1h",
+                           since_ms=now - 5 * 3_600_000, now_ms=now)
+        assert len(rows) == 1
+
+    def test_unknown_period_raises(self):
+        with pytest.raises(ValueError, match="period must be"):
+            collect_gap("top_accounts", "BTCUSDT", period="7m",
+                        since_ms=None, now_ms=1_800_000_000_000)

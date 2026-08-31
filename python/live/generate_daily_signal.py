@@ -124,7 +124,10 @@ from data.backfill import DEFAULT_DB_PATH, sync_range
 from data.bingx_klines import KlineRow
 from data.store import connect, fetch_klines
 from research.strategies.daily_tsmom_ensemble import DailyTsmomEnsembleTrainable
-from research.strategies.volatility_targeting import DEFAULT_TARGET_ANNUALIZED_VOL
+from research.strategies.volatility_targeting import (
+    DEFAULT_MAX_VOL_SCALAR,
+    DEFAULT_TARGET_ANNUALIZED_VOL,
+)
 from schemas.order_intent import OrderIntent
 
 logger = logging.getLogger(__name__)
@@ -192,6 +195,22 @@ SLIPPAGE_BPS = Decimal("2")
 # signal. The lookback set is still the literature's, unchanged.
 RISK_BUDGET_SCALAR = Decimal("0.929")
 TARGET_ANNUALIZED_VOL = DEFAULT_TARGET_ANNUALIZED_VOL * RISK_BUDGET_SCALAR
+
+# The scalar has to shrink the **cap** as well, or it silently does
+# nothing in exactly the regime it matters most for.
+#
+# `compute_vol_scalar` returns `target / realized` clamped to
+# `[min, max]`. Scaling only the target leaves the clamp where it was, so
+# whenever realized volatility is low enough for the clamp to bind --
+# below 6.67% against the old 20% target, below 6.19% against the new
+# 18.58% one -- both targets produce the same capped 3.0 and the position
+# is not reduced at all. Low realized volatility is precisely when this
+# strategy takes its largest positions, so the un-scaled cap would have
+# exempted the biggest ones from the risk budget.
+#
+# This makes sizing strictly smaller, never larger, so it tightens the
+# risk budget rather than relaxing it.
+MAX_VOL_SCALAR = DEFAULT_MAX_VOL_SCALAR * RISK_BUDGET_SCALAR
 
 # `runs/live_signals.jsonl` -- deliberately NOT
 # `research.experiment_log.DEFAULT_RUNS_PATH` ("runs/experiments.jsonl").
@@ -388,6 +407,7 @@ def generate_signal(
         fee_bps=FEE_BPS,
         slippage_bps=SLIPPAGE_BPS,
         target_annualized_vol=TARGET_ANNUALIZED_VOL,
+        max_vol_scalar=MAX_VOL_SCALAR,
         runs_path=runs_path,
     )
     strategy = trainable.fit(klines, {"symbol": symbol}, parent_run_id=parent_run_id)

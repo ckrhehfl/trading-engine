@@ -251,6 +251,10 @@ class ConfluenceHedgeStrategy:
         self.conjunction_hits = 0
         self.hedges_opened = 0
         self.hedges_invalidated = 0
+        # Bars where a hedge was open but its conditions could not be
+        # evaluated. Counted rather than silently folded into the exit
+        # rule, so a future run on gappier data can see it happening.
+        self.hedge_bars_unevaluable = 0
 
     @property
     def book(self):
@@ -354,10 +358,27 @@ class ConfluenceHedgeStrategy:
                 self._hedge_entry_high = None
                 self.hedges_invalidated += 1
                 return
-            # Exit: the conjunction that justified the hedge no longer
-            # holds. No target distance, no time limit -- the reason is
-            # simply gone.
-            if conditions is None or not all(conditions.values()):
+            # A bar whose inputs cannot be evaluated is NOT the exit
+            # rule. The specification's rule is "the setup conditions no
+            # longer all hold" -- a missing taker-volume figure or a day
+            # with no funding row says nothing about whether they hold.
+            # Treating the two the same would shorten holds, change the
+            # hedge count MIN_HEDGES is judged against, and move the
+            # reported P&L, all without any of it being in the spec.
+            #
+            # Holding through it is bounded, not open-ended: the
+            # invalidation check above needs no conditions and still
+            # fires, so a hedge cannot survive a data outage indefinitely
+            # while its thesis is being disproved by price.
+            #
+            # Measured on this run's data: zero hedges were closed this
+            # way, so this correction changes none of Task C's reported
+            # figures. It is fixed because it is wrong, not because it
+            # mattered here.
+            if conditions is None:
+                self.hedge_bars_unevaluable += 1
+                return
+            if not all(conditions.values()):
                 for leg in open_hedges:
                     self._legs.close_leg(leg.leg_id, price=current.close, time=current.open_time)
                 self._hedge_entry_high = None

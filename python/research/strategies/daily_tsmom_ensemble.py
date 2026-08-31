@@ -192,6 +192,21 @@ DEFAULT_REFERENCE_EQUITY = Decimal("10000")
 # be silently inflated by the 15m/1h assumption's much larger
 # `sqrt(bars_per_day * 365)` factor. See `.planning/sr-t-daily-data-
 # path.md`'s "bars_per_day" consumer-audit note.
+REBALANCE_DEADBAND = Decimal("0.10")
+"""Minimum relative change in target quantity before `rebalance_on_
+conviction` emits an order. 10%.
+
+**Only reachable when that flag is explicitly enabled**, which it is not
+by default and which was measured as harmful -- so this constant is on no
+path any evaluated configuration takes, and changing it re-tunes nothing
+already on record.
+
+It exists because the alternative is not "no parameter" but "a deadband
+of zero", which is the one setting guaranteed to be wrong: `close` and
+`vol_scalar` drift every bar, so an exact comparison rebalances almost
+always and the result measures fees rather than conviction.
+"""
+
 DEFAULT_BARS_PER_DAY = 1
 
 # Moskowitz-Ooi-Pedersen (2012) canonical 1/3/6/12-trading-month lookback
@@ -356,7 +371,23 @@ class DailyTsmomEnsembleStrategy:
             if current_sign == 0:
                 return None  # a flat target with a flat position is a no-op
             target = self._compute_target_quantity(current, ensemble_value, realized_vol)
-            if target is None or target == self._position_quantity:
+            if target is None or self._position_quantity == 0:
+                return None
+            # A deadband, because `target != position` is not the neutral
+            # choice it looks like -- it is a deadband of zero, and it is
+            # the pathological setting. `target` is
+            # `equity / close x |ensemble| x vol_scalar`, and `close` and
+            # `vol_scalar` both move a little every bar, so an exact
+            # comparison fires on almost every bar even when the position
+            # is materially unchanged. Each of those emits a real order
+            # paying real fees and slippage, so turnover explodes and the
+            # measurement becomes a study of costs.
+            #
+            # Declared as a named constant rather than inlined so it is
+            # visible as the rebalance decision's one parameter, and
+            # cannot become a quietly-tuned free variable later.
+            drift = abs(target - self._position_quantity) / abs(self._position_quantity)
+            if drift < REBALANCE_DEADBAND:
                 return None
             return self._resize_to(current, current_sign, target)
 

@@ -23,9 +23,12 @@ import datetime as dt
 import logging
 import sys
 
+import time
+
 from data.binance_positioning import (
     DEFAULT_PERIOD,
     SPECS,
+    collect_gap,
     VALID_PERIODS,
     BinancePositioningError,
     fetch_metric,
@@ -42,6 +45,34 @@ DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT")
 DEFAULT_PERIODS = ("5m", "1h")
 
 logger = logging.getLogger(__name__)
+
+
+def _latest_stored(conn, symbol: str, spec_name: str, period: str) -> int | None:
+    """Newest stored timestamp across every metric this endpoint writes.
+
+    Uses the **minimum** of the per-metric maxima, not the overall max:
+    one endpoint writes several metrics, and if any of them is behind,
+    resuming from the furthest-ahead one would skip the laggard's gap
+    forever. Resuming from the furthest-behind re-requests a few rows the
+    others already have, which `INSERT OR IGNORE` discards for free.
+    """
+    metrics = tuple(SPECS[spec_name].fields.values())
+    placeholders = ",".join("?" * len(metrics))
+    row = conn.execute(
+        f"SELECT MIN(newest) FROM (SELECT MAX(timestamp_ms) AS newest FROM positioning "
+        f"WHERE symbol=? AND period=? AND metric IN ({placeholders}) GROUP BY metric)",
+        (symbol, period, *metrics),
+    ).fetchone()
+    if row is None or row[0] is None:
+        return None
+    # A metric with no rows at all does not appear in the GROUP BY, so a
+    # non-null answer here still means "every metric has something".
+    counted = conn.execute(
+        f"SELECT COUNT(DISTINCT metric) FROM positioning WHERE symbol=? AND period=? "
+        f"AND metric IN ({placeholders})",
+        (symbol, period, *metrics),
+    ).fetchone()[0]
+    return row[0] if counted == len(metrics) else None
 
 
 def collect(
@@ -65,7 +96,20 @@ def collect(
             for period in periods:
                 for spec_name in SPECS:
                     try:
-                        rows = fetch_metric(spec_name, symbol, period=period)
+                        # Page from the newest row already stored rather
+                        # than taking the plain newest-500. At `5m` those
+                        # 500 rows span ~41 hours, so any outage longer
+                        # than that leaves a hole no later run ever asks
+                        # for again -- and `INSERT OR IGNORE` over a
+                        # 30-day retention window makes the hole
+                        # permanent while the data is still on the
+                        # server. This host has genuinely been dark for
+                        # 13 hours at a stretch and down for days.
+                        rows = collect_gap(
+                            spec_name, symbol, period=period,
+                            since_ms=_latest_stored(conn, symbol, spec_name, period),
+                            now_ms=int(time.time() * 1000),
+                        )
                     except (BinancePositioningError, ValueError) as exc:
                         failures += 1
                         logger.warning("%s %s %s: %s", symbol, spec_name, period, exc)

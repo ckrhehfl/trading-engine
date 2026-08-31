@@ -286,9 +286,10 @@ class TestMultipleIntentsPerBar:
             starting_equity=Decimal("100"),
         )
         assert result.insolvent_at_index is not None, "fixture must actually go insolvent"
-        # Every post-insolvency batch is dropped whole: the fill count must
-        # be even before insolvency plus nothing after, never an odd number
-        # from half a batch getting through.
+        # Every post-insolvency batch is dropped whole. The fixture opens
+        # with a single short and then emits complete two-order batches, so
+        # a correct run ends on an ODD count; an even one would mean half a
+        # batch got through before the drop.
         assert len(result.fills) % 2 == 1, (
             "one opening short plus zero-or-more complete pairs; a half-applied "
             "batch would make this even"

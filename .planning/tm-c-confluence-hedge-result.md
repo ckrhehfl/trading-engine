@@ -67,25 +67,48 @@ and had no way to say which part of it earned what.
 
 | | figure |
 |---|---|
-| tactical gross edge, 150 round trips | **+45** |
+| tactical gross edge, 150 round trips | **−97** |
 | fees the overlay added | **+353** |
-| hedge win rate | 58.0% (87 of 150) |
-| mean per hedge | +0.3 (t = **+0.29**, p = 0.772) |
+| hedge win rate | 55.3% (83 of 150) |
+| mean per hedge | −0.6 (t = **−0.62**, p = 0.535) |
 
 Two separate failures, and the order matters:
 
-1. **The edge is not distinguishable from zero.** t = +0.29. A 58% win
-   rate on a mean of +0.3 is what a coin flip looks like at n=150.
-2. **Even taken at face value it is 1/8 of its own fee bill.** +45 gross
-   against +353 in fees. This is the S12 finding again in a new place:
-   a gross figure that is real in sign and an order of magnitude too
-   small to pay for itself.
+1. **The edge is not distinguishable from zero.** t = −0.62. A 55% win
+   rate on a mean of −0.6 is what a coin flip looks like at n=150.
+2. **It is negative before fees even arrive**, and the fee bill is then
+   353 on top. There is no reading of this where the overlay pays for
+   itself.
 
-`Book.realized_pnl` is `(exit − entry) × quantity` — net of slippage,
-which is baked into the fill price, but **gross of fees**, which `Fill`
-carries separately. Reporting the +45 without the +353 beside it would
-have shown the overlay's raw edge as its outcome. The runner now prints
-both, labelled.
+### The first version of this figure was wrong, and how
+
+The original write-up reported **+45** and called it "net of slippage".
+Both were false, and CodeRabbit caught it.
+
+`Book.realized_pnl` is `(exit − entry) × quantity` computed from the
+prices the **strategy saw when deciding** — the signal bar's close. The
+real fill is the next bar's open, with slippage applied. For a strategy's
+own exit arithmetic that approximation is fine, and `leg_manager` always
+documented it as such, on the stated grounds that it "affects the
+strategy's own exit arithmetic, never the reported P&L, which `metrics`
+reconstructs from real fills."
+
+**That premise held until this task made the signal book a reported
+figure.** At 150 round trips the gap is not a rounding detail: it came to
+**−141**, more than three times the edge being measured, and it flipped
+the sign.
+
+Fixed structurally rather than by adjusting the number.
+`leg_manager.LegAction` now records what each emitted `OrderIntent` was
+meant to do to the book, and `replay_fills` rebuilds a second,
+**execution** book from real `Fill` prices, correlated by
+`Fill.intent_id`. Two books, deliberately: the signal book is what the
+strategy reasons with, the execution book is the only one that may be
+reported. The runner prints both, so the size of the gap is visible
+rather than assumed.
+
+`Book.realized_pnl` remains **gross of fees** — `Fill.fee` is carried
+separately — which is why the fee line sits beside it.
 
 ## The mechanism: the hedge never lives long enough
 
@@ -123,7 +146,7 @@ raises rather than warns.
   apart. Disjoint is not independent — clustered positions carry
   overlapping information, so the effective sample is smaller than 150.
   **The direction of that correction is known: it can only shrink a
-  t-statistic, never grow one.** t is already +0.29, so the conclusion
+  t-statistic, never grow one.** |t| is already 0.62, so the conclusion
   is robust to it. Stated rather than corrected because a correction
   would only strengthen a verdict that already holds.
 

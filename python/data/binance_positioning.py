@@ -50,6 +50,8 @@ is nowhere near the limit.
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 import json
 import time
 import urllib.error
@@ -126,6 +128,42 @@ class BinancePositioningError(RuntimeError):
     """
 
 
+def _numeric(spec_name: str, field: str, raw: object) -> str:
+    """The field's value as a string, or raise.
+
+    Binance returns these as strings to preserve precision, and the
+    original code trusted that by calling `str(...)` on whatever arrived.
+    That converts `None`, a nested object, `""` and `NaN` into
+    perfectly-storable text: `"None"` and `"nan"` are stored as if they
+    were observations, and because `upsert_positioning` uses
+    `INSERT OR IGNORE`, the **later good value for that same key is then
+    silently discarded** -- a permanent bad row from one transient
+    response.
+
+    So the value is parsed as a `Decimal` and required to be finite.
+    The original string is what gets stored, not the parsed value, so no
+    precision is lost to a round trip.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (str, int, float)):
+        raise BinancePositioningError(
+            f"{spec_name}: field {field!r} is {type(raw).__name__}, not a number "
+            f"-- the API shape changed, and storing it would poison the key "
+            f"against any later correct value"
+        )
+    text = str(raw).strip()
+    try:
+        parsed = Decimal(text)
+    except (InvalidOperation, ValueError) as exc:
+        raise BinancePositioningError(
+            f"{spec_name}: field {field!r} is not a number: {text!r}"
+        ) from exc
+    if not parsed.is_finite():
+        raise BinancePositioningError(
+            f"{spec_name}: field {field!r} is {text!r}, which is not finite"
+        )
+    return text
+
+
 def _get_with_retry(url: str, *, attempts: int = 3) -> str:
     """Same shape as `binance_klines._get_with_retry`.
 
@@ -161,14 +199,26 @@ def fetch_metric(
     period: str = DEFAULT_PERIOD,
     limit: int = MAX_LIMIT,
     base_url: str = BASE_URL,
+    start_ms: int | None = None,
+    end_ms: int | None = None,
 ) -> list[PositioningRow]:
     """Fetch one endpoint and flatten it into `PositioningRow`s.
 
-    Returns the most recent `limit` observations. These endpoints accept
-    `startTime`/`endTime`, but this deliberately does not use them: the
-    retention window is short and always moving, so "give me the newest
-    N" is both simpler and the only request that reliably returns
-    something.
+    With no bounds, returns the most recent `limit` observations.
+
+    **`start_ms`/`end_ms` exist because "newest 500" is not enough at
+    `5m`.** 500 rows at `5m` spans about 41 hours, so an outage longer
+    than that leaves a hole that the next run can never see -- and since
+    `upsert_positioning` is `INSERT OR IGNORE` over a 30-day retention
+    window, a hole is permanent even though the data is still on the
+    server. That is not hypothetical for this project: the host running
+    the collector has been observed dark for 13 hours at a stretch, and
+    down for days at a time.
+
+    Bounds are half-open (`start_ms <= t < end_ms`), matching this
+    project's convention everywhere else, and are applied by the caller
+    -- `collect_gap` below is what turns "what is missing" into a series
+    of bounded requests.
     """
     spec = SPECS.get(spec_name)
     if spec is None:
@@ -178,7 +228,19 @@ def fetch_metric(
     if not 0 < limit <= MAX_LIMIT:
         raise ValueError(f"limit must be in 1..{MAX_LIMIT}, got {limit}")
 
-    query = urllib.parse.urlencode({"symbol": symbol, "period": period, "limit": limit})
+    if start_ms is not None and end_ms is not None and start_ms >= end_ms:
+        raise ValueError(f"start_ms {start_ms} must be < end_ms {end_ms}")
+
+    params: dict[str, object] = {"symbol": symbol, "period": period, "limit": limit}
+    if start_ms is not None:
+        params["startTime"] = start_ms
+    if end_ms is not None:
+        # Binance treats endTime as INCLUSIVE on this family, as it does
+        # on klines. This project's convention is half-open, so the last
+        # millisecond is trimmed rather than letting one extra
+        # observation leak in at every page boundary and be re-fetched.
+        params["endTime"] = end_ms - 1
+    query = urllib.parse.urlencode(params)
     payload = _get_with_retry(f"{base_url}{spec.path}?{query}")
     try:
         raw = json.loads(payload)
@@ -201,5 +263,87 @@ def fetch_metric(
                     f"shape changed, and silently skipping it would produce an empty "
                     f"series that looks like 'no data'"
                 )
-            rows.append(PositioningRow(metric=metric, period=period, timestamp_ms=ts, value=str(entry[field])))
+            rows.append(
+                PositioningRow(
+                    metric=metric, period=period, timestamp_ms=ts,
+                    value=_numeric(spec_name, field, entry[field]),
+                )
+            )
+    return rows
+
+
+PERIOD_MS: dict[str, int] = {
+    "5m": 300_000, "15m": 900_000, "30m": 1_800_000, "1h": 3_600_000,
+    "2h": 7_200_000, "4h": 14_400_000, "6h": 21_600_000,
+    "12h": 43_200_000, "1d": 86_400_000,
+}
+"""Each period's span. Explicit rather than parsed from the string, so an
+unsupported period is a `KeyError` here instead of a silently wrong page
+size."""
+
+RETENTION_MS = 30 * 86_400_000
+"""Binance's documented retention on the `/futures/data/` family. A
+request for anything older comes back empty, so paging stops there rather
+than walking backwards forever."""
+
+
+def collect_gap(
+    spec_name: str,
+    symbol: str,
+    *,
+    period: str,
+    since_ms: int | None,
+    now_ms: int,
+    base_url: str = BASE_URL,
+    max_pages: int = 20,
+) -> list[PositioningRow]:
+    """Every observation from `since_ms` to `now_ms`, paged.
+
+    This is what makes an outage recoverable. A plain "newest 500" request
+    covers about 41 hours at `5m`; anything longer leaves a hole that no
+    later run will ever ask for again, and `INSERT OR IGNORE` means the
+    hole is permanent even though Binance still has the data for 30 days.
+
+    `since_ms` is the newest timestamp already stored (exclusive), or
+    `None` for a first run. It is clamped to the retention edge -- asking
+    for older than that returns nothing and would just burn requests.
+
+    **Fails closed on an unfinished walk.** If `max_pages` is exhausted
+    with ground still to cover, this raises rather than returning a
+    partial series, because a partial return is indistinguishable from
+    "that is all there was" and would be stored as if the gap were
+    filled.
+    """
+    if period not in PERIOD_MS:
+        raise ValueError(f"period must be one of {sorted(PERIOD_MS)}, got {period!r}")
+    step = PERIOD_MS[period]
+    earliest = now_ms - RETENTION_MS
+    start = earliest if since_ms is None else max(since_ms + 1, earliest)
+    if start >= now_ms:
+        return []
+
+    page_span = step * MAX_LIMIT
+    rows: list[PositioningRow] = []
+    seen: set[tuple[str, int]] = set()
+    cursor = start
+    for _ in range(max_pages):
+        if cursor >= now_ms:
+            break
+        page_end = min(cursor + page_span, now_ms)
+        for row in fetch_metric(
+            spec_name, symbol, period=period, limit=MAX_LIMIT,
+            base_url=base_url, start_ms=cursor, end_ms=page_end,
+        ):
+            key = (row.metric, row.timestamp_ms)
+            if key not in seen:
+                seen.add(key)
+                rows.append(row)
+        cursor = page_end
+    else:
+        if cursor < now_ms:
+            raise BinancePositioningError(
+                f"{spec_name} {symbol} {period}: {max_pages} pages did not reach "
+                f"{now_ms} (stopped at {cursor}). Returning a partial series would "
+                f"look identical to a complete one and mark the gap as filled."
+            )
     return rows

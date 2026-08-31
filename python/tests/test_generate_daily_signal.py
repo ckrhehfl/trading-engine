@@ -627,3 +627,62 @@ class TestRiskBudgetSizing:
         gds.generate_signal(klines, symbol="BTC-USDT", parent_run_id="p",
                             runs_path=gds.LIVE_RUNS_PATH)
         assert captured.get("target_annualized_vol") == gds.TARGET_ANNUALIZED_VOL
+
+
+class TestRiskBudgetScalarAppliesToTheCapToo:
+    """CodeRabbit, PR #135. Scaling only the target left the clamp alone,
+    so in the low-realized-volatility regime -- exactly where this
+    strategy takes its largest positions -- both the old and the new
+    target produced the same capped scalar and nothing was reduced."""
+
+    def test_capped_regime_is_reduced_by_the_scalar(self):
+        from research.strategies.volatility_targeting import (
+            DEFAULT_MAX_VOL_SCALAR, DEFAULT_TARGET_ANNUALIZED_VOL, compute_vol_scalar,
+        )
+        from live.generate_daily_signal import (
+            MAX_VOL_SCALAR, RISK_BUDGET_SCALAR, TARGET_ANNUALIZED_VOL,
+        )
+        # 5% realized volatility clamps under BOTH targets.
+        realized = Decimal("0.05")
+        before = compute_vol_scalar(
+            realized, target_annualized_vol=DEFAULT_TARGET_ANNUALIZED_VOL,
+            max_scalar=DEFAULT_MAX_VOL_SCALAR,
+        )
+        after = compute_vol_scalar(
+            realized, target_annualized_vol=TARGET_ANNUALIZED_VOL,
+            max_scalar=MAX_VOL_SCALAR,
+        )
+        assert before == DEFAULT_MAX_VOL_SCALAR, "fixture must actually hit the cap"
+        assert after == MAX_VOL_SCALAR
+        assert after / before == RISK_BUDGET_SCALAR
+
+    def test_scalar_applies_uniformly_across_regimes(self):
+        from research.strategies.volatility_targeting import (
+            DEFAULT_MAX_VOL_SCALAR, DEFAULT_TARGET_ANNUALIZED_VOL, compute_vol_scalar,
+        )
+        from live.generate_daily_signal import (
+            MAX_VOL_SCALAR, RISK_BUDGET_SCALAR, TARGET_ANNUALIZED_VOL,
+        )
+        for realized in ("0.05", "0.06", "0.10", "0.30", "0.80"):
+            before = compute_vol_scalar(
+                Decimal(realized), target_annualized_vol=DEFAULT_TARGET_ANNUALIZED_VOL,
+                max_scalar=DEFAULT_MAX_VOL_SCALAR,
+            )
+            after = compute_vol_scalar(
+                Decimal(realized), target_annualized_vol=TARGET_ANNUALIZED_VOL,
+                max_scalar=MAX_VOL_SCALAR,
+            )
+            # Tolerance, not exact equality: Decimal division rounds at
+            # the context's 28 significant digits, so a ratio can land at
+            # 0.9289999...9 rather than exactly 0.929. That is arithmetic
+            # noise, not a sizing difference.
+            assert abs(after / before - RISK_BUDGET_SCALAR) < Decimal("1e-24"), (
+                f"realized={realized} was not reduced by the risk budget"
+            )
+
+    def test_the_scalar_only_ever_shrinks_exposure(self):
+        from live.generate_daily_signal import RISK_BUDGET_SCALAR
+        assert Decimal(0) < RISK_BUDGET_SCALAR < Decimal(1), (
+            "a scalar at or above 1 would relax the risk budget, which is a "
+            "Risk-Parameter-class change needing explicit human approval"
+        )
