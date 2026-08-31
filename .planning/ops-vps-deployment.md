@@ -198,9 +198,15 @@ landed since, which would make a later "15 consecutive days at 99%" a
 claim about code nobody checked.
 
 `vps-bootstrap.sh` is idempotent and checks everything above, reporting
-what is missing rather than guessing. It **never reads, writes, echoes or
-receives a secret** — for `--mode bingx-vst` it checks only that `.env`
-exists and is non-empty, then `chmod 600`s it.
+what is missing rather than guessing. It **does not touch `.env` at
+all** — not read, not stat'd, not chmod'd. An earlier version checked
+existence and tightened the mode; a chmod is a modification, which
+CLAUDE.md's "Never modify `.env` or real credential files" forbids
+outright. **Creating that file and setting its permissions is entirely
+the operator's step (6 below), and nothing in this repo will do it for
+you.** The check that matters already exists elsewhere:
+`paper-trading-watchdog.sh::start_vst` refuses to start the VST session
+without both keys and logs the refusal without logging a value.
 
 **5. Credentials — operator only, and rotate first**
 

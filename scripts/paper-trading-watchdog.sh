@@ -143,22 +143,38 @@ runtime_classpath() {
 # empty. `tmux` would then run `env` with no command after it -- a
 # session that exists, logs nothing, and never starts PaperTradingApp,
 # while the watchdog reports success. Failing loudly here is the point.
+#
+# It also sets LAUNCH_DIR, and the two launchers genuinely differ.
+# `runPaperTradingApp` sets `workingDir = rootDir.parentFile`, i.e. the
+# repo root, overriding wherever gradlew was invoked from. A bare
+# `java -cp ...` inherits the caller's directory instead. Starting both
+# from `$REPO_ROOT/java` therefore gives the two launchers *different*
+# working directories, and PaperTradingApp resolves every path it uses
+# relative to that -- signal file, reports directory, kill-switch state.
+# Under the java launcher they would all land under `java/`, silently.
+#
+# So: gradle runs from `java/` because that is where `gradlew` lives, and
+# java runs from the repo root because that is what the Gradle task was
+# already doing.
 LAUNCH_ARGV=()
+LAUNCH_DIR=""
 launch_argv() {
     if [[ "$PAPER_TRADING_LAUNCHER" == "java" ]]; then
         local cp
         cp="$(runtime_classpath)" || return 1
         [[ -n "$cp" ]] || { log "ERROR: runtime classpath is empty"; return 1; }
         LAUNCH_ARGV=(java "-Xmx$PAPER_TRADING_HEAP" -cp "$cp" engine.runtime.PaperTradingApp)
+        LAUNCH_DIR="$REPO_ROOT"
     else
         LAUNCH_ARGV=(./gradlew -q --console=plain :runtime:runPaperTradingApp)
+        LAUNCH_DIR="$REPO_ROOT/java"
     fi
 }
 
 start_simulated() {
     log "starting simulated session (was not running)"
     launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
-    tmux new-session -d -s paper-trading -c "$REPO_ROOT/java" \
+    tmux new-session -d -s paper-trading -c "$LAUNCH_DIR" \
         env BINGX_BASE_URL=https://open-api.bingx.com \
         "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading
@@ -179,7 +195,7 @@ start_vst() {
     # single string re-parsed by a shell) -- so even a credential value
     # containing shell metacharacters is passed through literally, never
     # reinterpreted as code.
-    tmux new-session -d -s paper-trading-vst -c "$REPO_ROOT/java" \
+    tmux new-session -d -s paper-trading-vst -c "$LAUNCH_DIR" \
         env \
         "BINGX_API_KEY=$api_key" \
         "BINGX_API_SECRET=$api_secret" \

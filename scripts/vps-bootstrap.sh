@@ -250,13 +250,23 @@ CRON_LINES=(
 if ((INSTALL_CRON)); then
     current="$(crontab -l 2>/dev/null || true)"
     added=0
-    # Environment assignments must precede the job lines cron applies
-    # them to, so they are prepended rather than appended.
+    # Normalise rather than merely check-and-append. Presence of the
+    # exact line is not enough for two reasons, both of which silently
+    # leave the watchdog on Gradle:
+    #   - a stale `PAPER_TRADING_LAUNCHER=gradle` further down wins, since
+    #     cron applies assignments in order as it reads the file;
+    #   - an assignment placed *after* a job does not apply to that job.
+    # So every existing assignment to a managed variable is stripped, and
+    # a single one is prepended ahead of all job lines.
     for assignment in "${CRON_ENV[@]}"; do
-        if ! grep -Fqx "$assignment" <<<"$current"; then
-            current="$assignment${current:+$'\n'$current}"
-            added=$((added + 1))
+        name="${assignment%%=*}"
+        if [[ -n "$current" ]]; then
+            filtered="$(grep -vE "^[[:space:]]*${name}[[:space:]]*=" <<<"$current" || true)"
+            [[ "$filtered" != "$current" ]] && added=$((added + 1))
+            current="$filtered"
         fi
+        grep -Fqx "$assignment" <<<"$current" || added=$((added + 1))
+        current="$assignment${current:+$'\n'$current}"
     done
     for line in "${CRON_LINES[@]}"; do
         if ! grep -Fqx "$line" <<<"$current"; then
