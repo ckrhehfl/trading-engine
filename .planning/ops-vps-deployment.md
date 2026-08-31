@@ -187,7 +187,15 @@ error, not a clock error.
 
     git clone https://github.com/ckrhehfl/trading-engine.git
     cd trading-engine
+    git checkout <the reviewed, merged commit>
+    git rev-parse HEAD          # confirm it matches before going further
     ./scripts/vps-bootstrap.sh --mode bingx-vst
+
+**Pin the commit rather than taking whatever `main` holds.** The tick
+verification above, and every uptime figure Gate A will be judged on, are
+statements about a specific tree. A bare clone silently deploys whatever
+landed since, which would make a later "15 consecutive days at 99%" a
+claim about code nobody checked.
 
 `vps-bootstrap.sh` is idempotent and checks everything above, reporting
 what is missing rather than guessing. It **never reads, writes, echoes or
@@ -224,10 +232,38 @@ argument, or other configuration surface** able to route it elsewhere.
 years of 1m data and is rate-limited, while the file transfers in
 minutes:
 
-    gzip -c python/data/var/klines.sqlite3 > /tmp/klines.sqlite3.gz   # local
+**Do not `cp`/`gzip` the file while anything is writing to it.**
+`collect-positioning.sh` runs every 30 minutes and writes to this exact
+database, so a plain copy can catch it mid-transaction and carry a
+main file whose journal or WAL state is missing — a torn snapshot that
+opens fine and is wrong. Use SQLite's own consistent-snapshot path:
+
+    # local, safe with the collector still running:
+    python3 -c "
+    import sqlite3
+    src = sqlite3.connect('python/data/var/klines.sqlite3')
+    dst = sqlite3.connect('/tmp/klines-snapshot.sqlite3')
+    with dst: src.backup(dst)
+    "
+    gzip -c /tmp/klines-snapshot.sqlite3 > /tmp/klines.sqlite3.gz
     gcloud compute scp /tmp/klines.sqlite3.gz paper-trading:~/ --zone us-central1-a
-    # on the box:
+    # on the box, BEFORE its own cron is installed:
     gunzip -c ~/klines.sqlite3.gz > trading-engine/python/data/var/klines.sqlite3
+    python3 -c "
+    import sqlite3
+    print(sqlite3.connect('trading-engine/python/data/var/klines.sqlite3')
+              .execute('PRAGMA integrity_check').fetchone()[0])
+    "
+
+`Connection.backup` takes its snapshot through the same locking the
+writers use rather than reading bytes underneath them. **Python's stdlib
+rather than the `sqlite3` CLI on purpose** — the CLI is not installed on
+this project's own dev box and may not be on a minimal cloud image,
+while `python3` is a hard dependency already. The `integrity_check` on
+arrival costs seconds and turns a silent corruption into a loud one.
+
+Measured on the real 796 MB store: **14.5 s**, `integrity_check` ok,
+4,620,920 kline rows and 31,828 positioning rows preserved.
 
 The **positioning** table is the one that cannot be re-fetched — its
 endpoints retain ~30 days — so copy the file rather than starting empty,

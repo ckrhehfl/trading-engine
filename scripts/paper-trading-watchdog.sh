@@ -134,24 +134,33 @@ runtime_classpath() {
     tr -d '\n' <"$CLASSPATH_CACHE"
 }
 
-# Emits the argv that actually starts the app, for either launcher.
+# Sets the global array LAUNCH_ARGV to the command that starts the app.
+#
+# Sets a global rather than printing, because a caller doing
+# `mapfile -t argv < <(launch_argv)` cannot see the failure: process
+# substitution reports the *redirection's* status, not the command's, so
+# a failed classpath lookup would arrive as a clean EOF and leave `argv`
+# empty. `tmux` would then run `env` with no command after it -- a
+# session that exists, logs nothing, and never starts PaperTradingApp,
+# while the watchdog reports success. Failing loudly here is the point.
+LAUNCH_ARGV=()
 launch_argv() {
     if [[ "$PAPER_TRADING_LAUNCHER" == "java" ]]; then
         local cp
         cp="$(runtime_classpath)" || return 1
-        printf '%s\0' java "-Xmx$PAPER_TRADING_HEAP" -cp "$cp" engine.runtime.PaperTradingApp
+        [[ -n "$cp" ]] || { log "ERROR: runtime classpath is empty"; return 1; }
+        LAUNCH_ARGV=(java "-Xmx$PAPER_TRADING_HEAP" -cp "$cp" engine.runtime.PaperTradingApp)
     else
-        printf '%s\0' ./gradlew -q --console=plain :runtime:runPaperTradingApp
+        LAUNCH_ARGV=(./gradlew -q --console=plain :runtime:runPaperTradingApp)
     fi
 }
 
 start_simulated() {
     log "starting simulated session (was not running)"
-    local -a argv
-    mapfile -d '' -t argv < <(launch_argv) || { log "ERROR: could not build launch argv"; return 1; }
+    launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
     tmux new-session -d -s paper-trading -c "$REPO_ROOT/java" \
         env BINGX_BASE_URL=https://open-api.bingx.com \
-        "${argv[@]}"
+        "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading
 }
 
@@ -163,8 +172,7 @@ start_vst() {
         log "ERROR: BINGX_API_KEY/BINGX_API_SECRET missing or empty in .env -- refusing to start bingx-vst session (value itself never logged)"
         return 1
     fi
-    local -a argv
-    mapfile -d '' -t argv < <(launch_argv) || { log "ERROR: could not build launch argv"; return 1; }
+    launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
     log "starting bingx-vst session (was not running)"
     # Each KEY=value below is its own argv element to `env` (tmux
     # new-session's trailing arguments form an argv array here, not a
@@ -178,7 +186,7 @@ start_vst() {
         PAPER_TRADING_EXECUTION_MODE=bingx-vst \
         BINGX_BASE_URL=https://open-api.bingx.com \
         PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
-        "${argv[@]}"
+        "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading-vst
 }
 

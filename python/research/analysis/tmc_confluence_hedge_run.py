@@ -415,11 +415,14 @@ def main(argv=None) -> int:
         "--runs-path", default=experiment_log.DEFAULT_RUNS_PATH,
         help="experiment log to append to; the real research log by default",
     )
-    parser.add_argument(
-        "--no-log", action="store_true",
-        help="skip logging. For re-reading an already-recorded result without "
-             "adding a duplicate trial to N -- never for a fresh evaluation.",
-    )
+    # There is deliberately no --no-log. Every invocation of this module
+    # runs a real backtest, so an unlogged invocation is an unlogged
+    # trial, which under-counts N and inflates every DSR computed against
+    # it. An earlier version offered the flag "for re-reading an
+    # already-recorded result", but this module cannot re-read anything --
+    # it always re-evaluates. To avoid touching the real log, point
+    # --runs-path somewhere else; the run is then still recorded, just
+    # not into the project's count.
     args = parser.parse_args(argv)
 
     funding = load_funding(args.db_path)
@@ -443,10 +446,9 @@ def main(argv=None) -> int:
     ]
     findings = [f for run in runs for f in report(run)]
 
-    if not args.no_log:
-        for run in runs:
-            log(run, runs_path=args.runs_path)
-        print(f"\nlogged {len(runs)} trial(s) to {args.runs_path}")
+    for run in runs:
+        log(run, runs_path=args.runs_path)
+    print(f"\nlogged {len(runs)} trial(s) to {args.runs_path}")
 
     # Two timeframes is a sweep of one parameter, and a small one. It is
     # recorded here so the conclusion is scoped to what was actually

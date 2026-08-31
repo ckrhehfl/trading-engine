@@ -23,10 +23,12 @@
 #
 # ## What it deliberately does NOT do
 #
-# - **It never handles a secret.** No key is read, written, echoed, or
-#   passed as an argument. A mode that needs credentials checks that
-#   `.env` exists and is non-empty, and stops with instructions if not.
-#   Getting `.env` onto the box is a human step, by design.
+# - **It never touches `.env`.** Not read, not stat'd, not chmod'd. An
+#   earlier version checked existence and tightened the mode; a chmod is
+#   a modification, which CLAUDE.md's "Never modify .env or real
+#   credential files" forbids outright, and the check was redundant
+#   anyway -- `paper-trading-watchdog.sh::start_vst` already refuses to
+#   start without both keys, logging the refusal and never a value.
 # - **It never enables trading.** The kill switch's persisted state is
 #   left exactly as found. `forKisPaper()` still trips unconditionally.
 # - **It provisions nothing.** Creating the instance, its firewall and
@@ -48,8 +50,10 @@ usage: vps-bootstrap.sh [--mode MODE] [--install-cron]
                      readiness can be proven without a venue key on the
                      box at all. Default, and the recommended first move.
 
-  --mode bingx-vst   additionally runs the BingX VST demo loop. Requires
-                     a real .env with BINGX_API_KEY / BINGX_API_SECRET.
+  --mode bingx-vst   additionally runs the BingX VST demo loop. Needs
+                     BINGX_API_KEY / BINGX_API_SECRET in .env, which the
+                     operator creates by hand -- this script never
+                     touches that file.
                      Places real orders against the demo host only --
                      PaperTradingApp's VST base URL is a hardcoded Java
                      constant with no environment override.
@@ -180,22 +184,39 @@ say "java build"
 ok "runtime classes built"
 
 say "credentials"
-ENV_FILE="$REPO_ROOT/.env"
+# This script does not touch .env. Not "does not read it" -- does not
+# stat it, does not chmod it, does not check whether it exists.
+#
+# CLAUDE.md's Non-negotiable Rules say "Never modify .env or real
+# credential files", and a chmod is a modification. An earlier version of
+# this script checked existence and tightened the mode, which was both a
+# rule violation and unnecessary: `paper-trading-watchdog.sh::start_vst`
+# already refuses to start the VST session when BINGX_API_KEY or
+# BINGX_API_SECRET is missing or empty, logging the failure without ever
+# logging a value. That check already existed and was already reviewed,
+# so duplicating it here added risk and no safety.
 if [[ "$MODE" == "bingx-vst" ]]; then
-    # Presence and non-emptiness ONLY. This script never reads a value,
-    # and must never be changed to: an exception message that embeds a
-    # header value has already leaked a real key in this project once.
-    [[ -s "$ENV_FILE" ]] || die \
-        ".env is missing or empty at $ENV_FILE, and --mode bingx-vst needs it.
-        Create it on this box by hand -- never commit it, never paste it into
-        a terminal that is being logged, and never pass a key as an argument.
-        It needs BINGX_API_KEY and BINGX_API_SECRET.
-        Consider rotating both first: CLAUDE.md records a real prior exposure."
-    chmod 600 "$ENV_FILE"
-    ok ".env present, mode 0600 (contents never read by this script)"
+    cat <<'CREDS'
+  bingx-vst needs BINGX_API_KEY and BINGX_API_SECRET in .env at the repo
+  root. Creating and securing that file is an operator step, deliberately
+  outside this script:
+
+      cat > .env <<'EOF'
+      BINGX_API_KEY=...
+      BINGX_API_SECRET=...
+      EOF
+      chmod 600 .env
+
+  Rotate both keys before putting them on a new machine -- CLAUDE.md
+  records a real prior exposure where an exception message embedded a key
+  verbatim. Never commit the file, never paste it into a captured
+  terminal, never pass a key as a command argument.
+
+  If it is missing or empty, the watchdog refuses to start the VST
+  session and says so in var/live/watchdog.log, without logging a value.
+CREDS
 else
     ok "mode 'simulated' needs no credentials"
-    [[ -e "$ENV_FILE" ]] && chmod 600 "$ENV_FILE" && ok ".env found anyway; tightened to 0600"
 fi
 
 say "runtime directories"
@@ -215,6 +236,12 @@ else
 fi
 
 say "cron"
+# cron does not read a shell profile, so the launcher choice has to live
+# in the crontab itself. Without it the watchdog silently reverts to its
+# `gradle` default on the next scheduled run and a 1 GB instance runs out
+# of memory -- the single most likely deployment mistake, so it is
+# installed rather than documented.
+CRON_ENV=("PAPER_TRADING_LAUNCHER=java")
 CRON_LINES=(
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-daily-signal.sh"
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-watchdog.sh"
@@ -223,6 +250,14 @@ CRON_LINES=(
 if ((INSTALL_CRON)); then
     current="$(crontab -l 2>/dev/null || true)"
     added=0
+    # Environment assignments must precede the job lines cron applies
+    # them to, so they are prepended rather than appended.
+    for assignment in "${CRON_ENV[@]}"; do
+        if ! grep -Fqx "$assignment" <<<"$current"; then
+            current="$assignment${current:+$'\n'$current}"
+            added=$((added + 1))
+        fi
+    done
     for line in "${CRON_LINES[@]}"; do
         if ! grep -Fqx "$line" <<<"$current"; then
             current="${current:+$current$'\n'}$line"
@@ -245,7 +280,7 @@ if ((INSTALL_CRON)); then
     fi
 else
     ok "cron not touched (pass --install-cron); would install:"
-    printf '          %s\n' "${CRON_LINES[@]}"
+    printf '          %s\n' "${CRON_ENV[@]}" "${CRON_LINES[@]}"
 fi
 
 say "ready"
