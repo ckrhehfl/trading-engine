@@ -164,6 +164,33 @@ def _numeric(spec_name: str, field: str, raw: object) -> str:
     return text
 
 
+def _timestamp_ms(spec_name: str, raw: object) -> int:
+    """A non-negative integer millisecond timestamp, or raise.
+
+    `int(raw)` was too permissive in both directions that matter here:
+    `int(True)` is `1`, and `int("1.9")` raises while `int(1.9)` silently
+    truncates. This value is part of `upsert_positioning`'s primary key,
+    so a wrong one is not just a bad row -- `INSERT OR IGNORE` means the
+    later correct observation for that slot is discarded, permanently, on
+    a series that cannot be backfilled.
+    """
+    if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+        raise BinancePositioningError(
+            f"{spec_name}: timestamp is {type(raw).__name__}, expected an "
+            f"integer millisecond value"
+        )
+    try:
+        ts = int(str(raw).strip())
+    except ValueError as exc:
+        raise BinancePositioningError(
+            f"{spec_name}: timestamp {raw!r} is not an integer -- a truncated "
+            f"fractional value would key a row that later good data cannot replace"
+        ) from exc
+    if ts < 0:
+        raise BinancePositioningError(f"{spec_name}: timestamp {ts} is negative")
+    return ts
+
+
 def _get_with_retry(url: str, *, attempts: int = 3) -> str:
     """Same shape as `binance_klines._get_with_retry`.
 
@@ -255,7 +282,7 @@ def fetch_metric(
     for entry in raw:
         if not isinstance(entry, dict) or "timestamp" not in entry:
             raise BinancePositioningError(f"{spec_name}: row missing 'timestamp': {entry}")
-        ts = int(entry["timestamp"])
+        ts = _timestamp_ms(spec_name, entry["timestamp"])
         for field, metric in spec.fields.items():
             if field not in entry:
                 raise BinancePositioningError(

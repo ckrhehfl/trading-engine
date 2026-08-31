@@ -92,9 +92,11 @@ def collect(
     try:
         inserted = 0
         failures = 0
+        attempted = 0
         for symbol in symbols:
             for period in periods:
                 for spec_name in SPECS:
+                    attempted += 1
                     try:
                         # Page from the newest row already stored rather
                         # than taking the plain newest-500. At `5m` those
@@ -122,6 +124,21 @@ def collect(
                     )
         if failures:
             logger.warning("%d series failed this run", failures)
+        # A run where EVERY series failed is indistinguishable, from the
+        # outside, from a run where there was simply nothing new: both
+        # return 0 and exit cleanly. On data with a ~30-day retention
+        # that cannot be backfilled, a month of that silence is permanent
+        # loss -- which is the whole reason this collector exists. Every
+        # request is still attempted first, so one bad endpoint never
+        # costs the others their window; the failure is raised only once
+        # nothing at all got through.
+        if attempted and failures == attempted:
+            raise BinancePositioningError(
+                f"every one of the {attempted} series failed this run. Exiting "
+                f"non-zero so a scheduler surfaces it: these endpoints retain "
+                f"~30 days and cannot be backfilled, so silent failure is "
+                f"permanent data loss."
+            )
         return inserted
     finally:
         conn.close()
@@ -163,11 +180,15 @@ def main(argv=None) -> int:
     if args.coverage:
         show_coverage(args.db_path)
         return 0
-    inserted = collect(
-        db_path=args.db_path,
-        symbols=tuple(args.symbols),
-        periods=tuple(args.periods),
-    )
+    try:
+        inserted = collect(
+            db_path=args.db_path,
+            symbols=tuple(args.symbols),
+            periods=tuple(args.periods),
+        )
+    except BinancePositioningError as exc:
+        logger.error("%s", exc)
+        return 1
     logger.info("done: %d new row(s)", inserted)
     return 0
 

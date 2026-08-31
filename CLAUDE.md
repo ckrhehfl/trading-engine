@@ -2233,8 +2233,8 @@ specification, calendar constants rescaled, **no threshold touched**):
 
 | | trades | return | max DD | PF | Sharpe |
 |---|---|---|---|---|---|
-| core alone | 453 | +173.1% | 18.80% | 3.18 | +0.917 |
-| core + hedge | 452 | +168.6% | 18.80% | 3.17 | +0.903 |
+| core alone | 453 | +173.0% | 18.80% | 3.18 | +0.916 |
+| core + hedge | 452 | +168.5% | 18.80% | 3.17 | +0.902 |
 
 Tactical gross edge **−97** against **+353** in fees it caused, t=−0.62,
 p=0.535. Two independent failures: not distinguishable from zero, and
@@ -2457,7 +2457,11 @@ tools/services, subscription changes).
      round trip took, and sleeping the stated minutes from the wrong
      origin lands early and burns the retry.
   3. Sleep until then plus a small margin, then comment
-     `@coderabbitai review` once.
+     **`@coderabbitai full review`** once. Not `@coderabbitai review` —
+     that one is rejected unless automatic reviews are *paused*, and a
+     commit pushed while rate-limited is never picked up automatically
+     afterwards, so without this the PR sits with no completed review and
+     cannot pass the merge gate.
   4. Batch every outstanding fix into one push *before* requesting, per
      the Rate limits section below — re-requesting per fix is what
      causes this in the first place.

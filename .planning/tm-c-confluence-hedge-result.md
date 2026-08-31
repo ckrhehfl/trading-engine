@@ -34,13 +34,20 @@ be that neither is established.
 ## The runs
 
 Both aggregate Binance USDT-M futures 1m bars (2019-09-08 → 2026-08-25).
+**Incomplete buckets are dropped rather than emitted as whole bars** — a
+period missing any of its minutes would otherwise hand the strategy a
+fabricated OHLCV and order-flow reading it then conditions on. Measured:
+3 of 61,031 hourly buckets and 2 of 2,544 daily, and two of the three
+hourly ones are merely the first and last, partial because the series
+starts and ends mid-period. Dropping them moves the headline figures by
+about a tenth of a percentage point and changes nothing else.
 That series is used because the conjunction needs
 `taker_buy_base_volume` and **BingX's wire carries no buyer/seller
 breakdown at all**. An earlier daily run against BingX bars fired the
 flow condition zero times and, by the strategy's own fail-closed rule,
 opened no hedge whatsoever — the guard working, not a result.
 
-| | daily (2,544 bars) | hourly (61,031 bars) |
+| | daily (2,542 bars) | hourly (61,028 bars) |
 |---|---|---|
 | funding condition | 364 | 8,460 |
 | flow condition | 348 | 7,674 |
@@ -54,10 +61,10 @@ Hourly, core alone versus core plus overlay:
 
 | | trades | return | max DD | PF | Sharpe |
 |---|---|---|---|---|---|
-| core alone | 453 | +173.1% | 18.80% | 3.18 | +0.917 |
-| core + hedge | 452 | +168.6% | 18.80% | 3.17 | +0.903 |
+| core alone | 453 | +173.0% | 18.80% | 3.18 | +0.916 |
+| core + hedge | 452 | +168.5% | 18.80% | 3.17 | +0.902 |
 
-**The overlay costs 4.49 percentage points of return and lowers Sharpe.**
+**The overlay costs 4.5 percentage points of return and lowers Sharpe.**
 
 ## Why, precisely
 

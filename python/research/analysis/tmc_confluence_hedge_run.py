@@ -150,6 +150,7 @@ def aggregate(db: str, symbol: str, bucket_seconds: int) -> list[Kline]:
             buckets[key] = [
                 Decimal(str(o)), Decimal(str(h)), Decimal(str(low)), Decimal(str(c)),
                 Decimal(str(v)), Decimal(str(taker)) if taker is not None else None,
+                1,  # minutes seen in this bucket
             ]
             continue
         row[1] = max(row[1], Decimal(str(h)))
@@ -158,14 +159,34 @@ def aggregate(db: str, symbol: str, bucket_seconds: int) -> list[Kline]:
         row[4] += Decimal(str(v))
         if row[5] is not None:
             row[5] = None if taker is None else row[5] + Decimal(str(taker))
+        row[6] += 1
     conn.close()
+
+    # A bucket missing any of its minutes is a PARTIAL bar, and passing
+    # one through as a whole one hands the strategy a fabricated
+    # OHLCV/flow reading it then conditions on. Dropped rather than
+    # patched: this series' minute data is what it is, and inventing the
+    # missing volume would be worse than losing the bar.
+    #
+    # Measured on the real Binance futures series: 3 of 61,031 hourly
+    # buckets (0.005%) and 2 of 2,544 daily. Two of the three hourly ones
+    # are the first and last buckets, partial because the series starts
+    # and ends mid-period; the third is the documented 1m gap. So this
+    # removes almost nothing -- which is the point of checking rather
+    # than assuming.
+    expected = bucket_seconds // 60
+    complete = {k: r for k, r in buckets.items() if r[6] == expected}
+    dropped = len(buckets) - len(complete)
+    if dropped:
+        print(f"  aggregate: dropped {dropped} incomplete bucket(s) of "
+              f"{len(buckets):,} (fewer than {expected} one-minute bars)")
     return [
         Kline(
             open_time=dt.datetime.fromtimestamp(key * bucket_seconds, dt.timezone.utc),
             open=r[0], high=r[1], low=r[2], close=r[3], volume=r[4],
             taker_buy_base_volume=r[5],
         )
-        for key, r in sorted(buckets.items())
+        for key, r in sorted(complete.items())
     ]
 
 

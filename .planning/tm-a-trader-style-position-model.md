@@ -30,7 +30,7 @@ was measured and rejected (S15, S17, and the conviction-rebalancing test).
 Those measurements are sound. **They were not measurements of what was
 asked for**, because the codebase cannot represent it:
 
-```
+```text
 DailyTsmomEnsembleStrategy   _position_sign      (one int)
                              _position_quantity  (one Decimal)
 
