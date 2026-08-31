@@ -2462,12 +2462,31 @@ tools/services, subscription changes).
      the Rate limits section below — re-requesting per fix is what
      causes this in the first place.
 
-  Escalate to the human only if it is no longer a wait: the retry is
-  rate-limited again after a genuine wait (which means the budget is
-  exhausted rather than merely paced), CodeRabbit reports an error rather
-  than a limit, or no review appears well past the stated ETA. The merge
-  gate itself is unchanged — a **completed** review is still required,
-  and waiting for one is never the same as proceeding without one.
+  **A second rate limit carrying its own ETA is still a wait, not an
+  escalation.** Observed on PR #135: three review rounds in one session
+  hit the limit twice, at 28 and then 42 minutes, and both cleared
+  exactly when stated. The allowance is a rolling 7-day window over
+  review *attempts*, so an active branch will hit it repeatedly and the
+  waits lengthen — that is the policy working as designed, not a fault.
+  Loop: read the ETA, sleep, retry, and only stop when the signal stops
+  being a schedule.
+
+  Escalate to the human only when it is **no longer a wait**: the reply
+  carries no ETA at all, CodeRabbit reports an error rather than a limit,
+  the quoted wait is long enough to be a real scheduling decision rather
+  than a pause (roughly a few hours or more), or no review appears well
+  past a stated ETA.
+
+  The merge gate itself is unchanged — a **completed** review is still
+  required, and waiting for one is never the same as proceeding without
+  one.
+
+  Two mechanical details, both learned by getting them wrong here:
+  `@coderabbitai review` is rejected unless automatic reviews are
+  *paused*, so after a push the review simply arrives on its own once the
+  limit clears; and the ETA in the check-run summary line goes stale, so
+  always read it from the bot's newest comment rather than from
+  `gh pr checks`.
 
 ## Implementation Priority
 
