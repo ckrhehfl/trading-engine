@@ -239,6 +239,28 @@ by a passing test, is the transferable lesson.** All three versions
 passed their own new tests. What failed them was a sha256 comparison and
 an `ls`.
 
+## A disclosed venue mismatch that narrows every figure here
+
+Price and order flow are Binance USDT-M futures. **Funding is BingX's**,
+because that is the only funding series in this store. Funding is
+venue-specific — each exchange computes it from its own mark/index
+premium under its own settlement rules — so the two are correlated but
+not the same number, and the funding condition directly gates when a
+hedge opens and closes.
+
+**So this run does not measure a strategy executable on Binance.** An
+earlier code comment dismissed the point as "the instrument's rate, not
+a venue's private figure"; that was wrong.
+
+It is disclosed rather than fixed, for a stated reason rather than
+convenience: fixing it means collecting a Binance funding series — a new
+data source with its own pipeline and tests — and it would not change
+this verdict. The tactical edge is −97 against 353 in fees at t = −0.62;
+no plausible funding difference closes an 8x gap or moves a t of that
+size. **It is a prerequisite for any future candidate in this family**,
+and the runner now prints the mismatch prominently at startup so no
+reader can miss it.
+
 ## What this does and does not establish
 
 **Establishes**: this conjunction, at these thresholds, on BTC futures
@@ -246,7 +268,9 @@ at daily and hourly resolution, produces a tactical overlay whose gross
 edge is indistinguishable from zero and far below its own fee bill.
 
 **Does not establish**: that hedging is useless, that confluence is
-useless, or that the operator's described trade does not exist. One
+useless, that the operator's described trade does not exist, or anything
+at all about a *Binance-executable* version of this — see the venue
+mismatch above. One
 specification was tested at two timeframes. The exit rule alone —
 forced parameter-free, and consequently ~1 hour long — is enough to
 account for the result without any claim about the underlying idea.
@@ -258,7 +282,11 @@ fired:
 
 - **"Too rare to measure."** Fired exactly as predicted at daily
   resolution. Resolved by more bars, not by looser thresholds.
-- **"Fees."** Fired, and decisively — 353 against 45.
+- **"Fees."** Fired, and decisively: **353 in fees against a gross
+  edge of −97** — the overlay does not merely fail to cover its costs,
+  it is already negative before they are applied. (An earlier draft of
+  this line read "353 against 45", carrying the pre-correction
+  signal-book figure; see the correction section above.)
 - **"The hedge cuts the core's own edge."** Fired: −4.49pp. The
   specification called this a **direct test of whether a selective,
   conjunction-gated reduction behaves differently from an unconditional

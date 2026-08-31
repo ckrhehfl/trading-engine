@@ -30,7 +30,19 @@ Verified against `python/data/var/klines.sqlite3` and the adapters:
 **That is six price fields, two flow fields, and a funding rate.** Every
 strategy this project has ever built was made from that.
 
-## 2. What the exchange also offers and we have never fetched
+## 2. What the exchange also offers and we had never fetched
+
+**Collection status, 2026-08-31.** Open interest and the
+long/short ratios are no longer un-fetched: `data/binance_positioning.py`
+has been running on cron since this task, and the store holds
+**32,474 rows across 10 metrics, 2026-08-08 to 2026-08-31**.
+
+**The limitation that made this urgent is unchanged and permanent.**
+These endpoints retain ~30 days and **cannot be backfilled**, so this
+series begins the day collection began — no multi-year backtest can ever
+use it, and nothing before that date exists anywhere. What follows
+describes the families as catalogued; treat the "never fetched" framing
+as the state at the time of writing.
 
 From Binance USDⓈ-M futures docs (BingX exposes close equivalents):
 

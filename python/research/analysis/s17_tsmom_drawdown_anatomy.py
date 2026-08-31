@@ -142,6 +142,29 @@ def main(argv=None) -> int:
               f"profit factor "
               f"{'n/a' if metrics.profit_factor is None else f'{float(metrics.profit_factor):.2f}'}")
 
+        # SR_AB_REPORTED existed but nothing read it, so a drift in the
+        # data or the engine would have reprinted new numbers for a spent
+        # holdout without a word. Compared explicitly instead.
+        if symbol == "BINANCE:BTCUSDT":
+            drift = []
+            if abs(float(metrics.max_drawdown) - SR_AB_REPORTED["max_drawdown"]) > 1e-4:
+                drift.append(f"max_drawdown {float(metrics.max_drawdown):.5f} "
+                             f"vs reported {SR_AB_REPORTED['max_drawdown']}")
+            if metrics.num_trades != SR_AB_REPORTED["trades"]:
+                drift.append(f"trades {metrics.num_trades} vs reported "
+                             f"{SR_AB_REPORTED['trades']}")
+            pf = None if metrics.profit_factor is None else float(metrics.profit_factor)
+            if pf is None or abs(pf - SR_AB_REPORTED["profit_factor"]) > 0.01:
+                drift.append(f"profit_factor {pf} vs reported "
+                             f"{SR_AB_REPORTED['profit_factor']}")
+            if drift:
+                print("\n  *** REPRODUCTION DRIFT — this no longer reproduces sr-ab ***")
+                for line in drift:
+                    print(f"      {line}")
+                print("      Do not read the figures below as sr-ab's.")
+            else:
+                print("  reproduces sr-ab exactly (drawdown, trades, profit factor)")
+
         episodes = equity_drawdowns(list(metrics.equity_curve))
         print("\n  worst drawdown episodes (peak -> trough):")
         for peak_i, trough_i, depth in episodes[:5]:

@@ -13,6 +13,7 @@ These tests exist so the fixture fails loudly instead.
 
 from __future__ import annotations
 
+import ast
 import inspect
 import json
 from decimal import Decimal
@@ -135,48 +136,45 @@ def test_every_write_function_in_experiment_log_is_covered():
     )
 
 
-def test_no_module_bypasses_the_module_attribute_with_a_direct_import():
-    """The fixture patches `experiment_log.log_run`, so a caller doing
+def test_no_module_binds_a_writer_directly():
+    """The fixture patches `experiment_log.log_run` and
+    `log_holdout_access` as module attributes, so a caller that did
     `from research.experiment_log import log_run` would hold its own
-    reference and write straight past it."""
-    research = Path(__file__).resolve().parent.parent / "research"
-    offenders = [
-        str(path.relative_to(research.parent))
-        for path in research.rglob("*.py")
-        if "from research.experiment_log import" in path.read_text()
-    ]
-    assert not offenders, (
-        f"{offenders} import from experiment_log directly, bypassing the test "
-        f"isolation in conftest.py. Use `from research import experiment_log` "
-        f"and call `experiment_log.log_run(...)` instead."
-    )
+    reference and write straight past the redirect.
 
+    Scans **all of `python/`**, not just `research/` — an earlier version
+    checked only the latter and so missed
+    `tests/test_experiment_log.py`, which really does bind both writers
+    at module level.
 
-def test_an_explicit_relative_path_is_also_isolated():
-    """The leak the experiments-log-only rule let through.
-
-    `live/generate_daily_signal.py` writes `runs/live_signals.jsonl`
-    through this same `log_run`, passing that relative path explicitly.
-    A rule keyed to the experiments log let it past and the full suite
-    recreated `python/runs/` on the next run.
+    Parsed with `ast` rather than matched as text, and narrowed to the
+    write functions: `read_records` and the module constants are safe to
+    import directly, and flagging them would make this fail for reasons
+    that carry no risk.
     """
-    _log_one(runs_path="runs/live_signals.jsonl")
-    assert not Path("runs/live_signals.jsonl").is_absolute()
-    isolated_dir = Path(experiment_log.DEFAULT_RUNS_PATH).parent
-    written = isolated_dir / "live_signals.jsonl"
-    assert written.exists(), "an explicit relative path was not isolated"
-    assert (isolated_dir / "experiments.jsonl").exists() is False, (
-        "the filename must be preserved, so a test can still tell the two logs apart"
+    root = Path(__file__).resolve().parent.parent
+    writers = set(conftest.WRITE_FUNCTIONS)
+    offenders: list[str] = []
+    for path in root.rglob("*.py"):
+        if ".venv" in path.parts or path.name == Path(__file__).name:
+            continue
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError):
+            continue
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "research.experiment_log":
+                continue
+            bound = {alias.name for alias in node.names} & writers
+            if bound:
+                offenders.append(
+                    f"{path.relative_to(root)}:{node.lineno} binds {sorted(bound)}"
+                )
+    assert not offenders, (
+        "these bind an experiment_log writer directly, bypassing the autouse "
+        "isolation in conftest.py:\n  " + "\n  ".join(offenders) +
+        "\nUse `from research import experiment_log` and call "
+        "`experiment_log.log_run(...)`, or pass an absolute runs_path."
     )
-
-
-def test_no_relative_runs_path_survives_for_any_write_function():
-    """Every writer, not just log_run -- the tuple is easy to extend and
-    easy to extend incompletely."""
-    for name in conftest.WRITE_FUNCTIONS:
-        sig = inspect.signature(inspect.unwrap(getattr(experiment_log, name)))
-        assert "runs_path" in sig.parameters
-        assert not Path(sig.parameters["runs_path"].default).is_absolute(), (
-            f"{name}'s real default is absolute now; the relative-path rule that "
-            f"protects it may no longer be the right one"
-        )

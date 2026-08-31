@@ -85,10 +85,31 @@ STARTING_EQUITY = Decimal("10000")
 
 # The one series in this cache carrying real taker-buy volume.
 FLOW_SYMBOL = "BINANCE-FUTURES:BTCUSDT"
-# Funding is a BingX series; the rate is the instrument's, not a venue's
-# private figure, and both venues quote the same BTC perpetual funding
-# regime. Mapped by calendar day, so it resolves at either timeframe.
+# A REAL, DISCLOSED VENUE MISMATCH, not a detail.
+#
+# Price and order flow come from Binance USDT-M futures; funding is the
+# only BingX series in this store, and it is what the conjunction's
+# funding condition reads. Funding is **venue-specific** -- each exchange
+# computes it from its own mark/index premium under its own settlement
+# rules -- so the two are correlated but not the same number.
+#
+# An earlier comment here waved this away as "the instrument's rate, not
+# a venue's private figure". That was wrong, and CodeRabbit was right to
+# flag it: the funding condition directly gates when a hedge opens and
+# closes, so it moves the hedge count, the P&L, and the MIN_HEDGES
+# verdict. **This run therefore does not measure a strategy executable on
+# Binance**, and its conclusion is correspondingly narrower.
+#
+# Not fixed here because fixing it means collecting a Binance funding
+# series -- a new data source with its own pipeline and tests -- and it
+# would not change this verdict: the tactical edge is -97 against 353 in
+# fees at t = -0.62, and no plausible funding difference closes an 8x
+# gap or moves a t of that size. It IS a prerequisite for any future
+# candidate in this family being taken seriously, and the runner says so
+# loudly at startup rather than leaving it in a comment.
 FUNDING_SYMBOL = "BTC-USDT"
+FUNDING_VENUE = "BingX"
+FLOW_VENUE = "Binance USDT-M futures"
 
 FEE_BPS = Decimal("5")
 SLIPPAGE_BPS = Decimal("2")
@@ -439,6 +460,14 @@ def main(argv=None) -> int:
     else:
         print(f"funding: {len(funding):,} days "
               f"({min(funding):%Y-%m-%d} .. {max(funding):%Y-%m-%d})")
+        if FUNDING_VENUE not in FLOW_VENUE:
+            print(f"\n  !! VENUE MISMATCH: funding is {FUNDING_VENUE}'s, price and "
+                  f"order flow are\n     {FLOW_VENUE}'s. Funding is venue-specific "
+                  f"(each exchange computes it\n     from its own mark/index premium), "
+                  f"and it gates when a hedge opens\n     and closes -- so this run does "
+                  f"NOT measure a strategy executable on\n     {FLOW_VENUE}. Collecting "
+                  f"that venue's own funding series is a\n     prerequisite for any "
+                  f"future candidate in this family.\n")
 
     runs = [
         run_timeframe(label, bpd, secs, args.db_path, funding)

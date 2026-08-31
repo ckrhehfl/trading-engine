@@ -11,7 +11,11 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
 
+from dataclasses import replace
+
 import pytest
+import datetime as _dt
+_T = _dt.datetime(2024,1,1,tzinfo=_dt.timezone.utc)
 
 from metrics.book import (
     Book,
@@ -319,3 +323,28 @@ class TestImmutability:
         book.close(leg.leg_id, exit_price=Decimal("110"), exit_time=T0, quantity=Decimal("1"))
         assert held is not None and held.quantity == Decimal("3")
         assert book.leg(leg.leg_id).quantity == Decimal("2")
+
+
+def test_constructor_rejects_a_duplicate_leg_id():
+    """CodeRabbit, PR #135. The constructor assigned straight into the
+    dict, so a repeated id silently replaced the earlier leg — and a
+    dropped leg understates `net`, `gross` and `reconcile` alike, which
+    is the one direction a position book must never fail in."""
+    leg = Leg(
+        symbol="BTC-USDT", side=Side.LONG, quantity=Decimal("1"),
+        entry_price=Decimal("100"), entry_time=_T, purpose=LegPurpose.CORE,
+    )
+    twin = replace(leg, quantity=Decimal("5"))
+    assert twin.leg_id == leg.leg_id, "fixture must actually reuse the id"
+    with pytest.raises(ValueError):
+        Book([leg, twin])
+
+
+def test_constructor_keeps_distinct_legs():
+    a = Leg(symbol="BTC-USDT", side=Side.LONG, quantity=Decimal("1"),
+            entry_price=Decimal("100"), entry_time=_T, purpose=LegPurpose.CORE)
+    b = Leg(symbol="BTC-USDT", side=Side.SHORT, quantity=Decimal("2"),
+            entry_price=Decimal("110"), entry_time=_T, purpose=LegPurpose.HEDGE)
+    book = Book([a, b])
+    assert book.gross("BTC-USDT") == Decimal("3")
+    assert book.net("BTC-USDT") == Decimal("-1")

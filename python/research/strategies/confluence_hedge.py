@@ -247,6 +247,28 @@ class ConfluenceHedgeStrategy:
         # and how often each condition alone would have. Reported so a
         # result that turns out to be one condition wearing four hats is
         # visible rather than assumed away.
+        # `_sync_core` treats every core intent as a full transition:
+        # it closes the existing core leg and opens a new one. That is
+        # correct for a sign flip, which is the only thing the core emits
+        # by default. It is WRONG for a same-sign resize, which
+        # `rebalance_on_conviction=True` produces as a pure delta intent
+        # -- long 10 to long 12 arrives as "long 2", and this class would
+        # book it as "close 10, open 12". The tactical hedge would also
+        # be closed early by the same branch.
+        #
+        # Refused rather than handled, because handling it means teaching
+        # the book to distinguish a delta from a transition, which is a
+        # real design question and not one this candidate needs: the flag
+        # defaults off and was measured as harmful. Fail closed instead
+        # of silently mis-booking.
+        if getattr(self._core, "_rebalance_on_conviction", False):
+            raise ValueError(
+                "ConfluenceHedgeStrategy cannot wrap a core with "
+                "rebalance_on_conviction=True: that core emits same-sign "
+                "delta intents, and this class books every core intent as a "
+                "full close-and-reopen, which would misstate the core leg "
+                "and close the tactical hedge early."
+            )
         self.condition_hits = {"funding": 0, "flow": 0, "price": 0, "activity": 0}
         self.conjunction_hits = 0
         self.hedges_opened = 0

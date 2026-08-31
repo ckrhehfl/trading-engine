@@ -183,6 +183,18 @@ say "java build"
     || die "gradle build failed"
 ok "runtime classes built"
 
+# The watchdog caches the runtime classpath and skips Gradle entirely
+# once that file exists. After a deploy that added or removed a runtime
+# dependency, a stale cache starts the java launcher against the old
+# classpath and PaperTradingApp dies on NoClassDefFoundError -- with the
+# operator having no reason to suspect a cache. Dropping it here means
+# the next watchdog run regenerates it from the build that just ran.
+CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
+if [[ -e "$CLASSPATH_CACHE" ]]; then
+    mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
+    ok "invalidated the cached runtime classpath (kept as .stale)"
+fi
+
 say "credentials"
 # This script does not touch .env. Not "does not read it" -- does not
 # stat it, does not chmod it, does not check whether it exists.

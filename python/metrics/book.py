@@ -177,7 +177,12 @@ class Book:
     def __init__(self, legs: Iterable[Leg] = ()) -> None:
         self._legs: dict[UUID, Leg] = {}
         for leg in legs:
-            self._legs[leg.leg_id] = leg
+            # Route through `open` rather than assigning, so a duplicate
+            # id raises instead of silently replacing the earlier leg.
+            # A dropped leg understates `net`, `gross` and `reconcile`
+            # alike -- and understating exposure is the one direction a
+            # position book must never fail in.
+            self.open(leg)
         self._closes: list[LegClose] = []
 
     # -- reading -----------------------------------------------------

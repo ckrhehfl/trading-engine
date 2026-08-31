@@ -1,6 +1,18 @@
 # Trade Management Task A — a position model that can express what a trader actually does
 
-**Status: Discuss. Nothing here is built.** Written 2026-08-29 after six
+**Status: Stages 1-2 BUILT and merged.** `metrics/book.py` (`Leg`,
+`LegPurpose`, `Book`) and `research/strategies/leg_manager.py` exist,
+with `LegAction`/`replay_fills` added afterwards so reported P&L comes
+from real fills rather than signal-time prices. Stage 3 was exercised by
+Task C's candidate (REJECTED — see `tm-c-confluence-hedge-result.md`);
+**Stage 4, the live/adapter half, is still not built** and remains gated
+on Stage 3 producing something worth carrying forward.
+
+The original status line read *"Discuss. Nothing here is built"* and is
+preserved here because the design below was written under it — nothing
+in the reasoning was adjusted after implementation.
+
+Written 2026-08-29 after six
 months of strategy research produced no usable edge, and after the
 operator identified — correctly — that the failure was partly in the
 verification framework rather than in the strategies.

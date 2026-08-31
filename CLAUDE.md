@@ -2481,12 +2481,20 @@ tools/services, subscription changes).
   required, and waiting for one is never the same as proceeding without
   one.
 
-  Two mechanical details, both learned by getting them wrong here:
-  `@coderabbitai review` is rejected unless automatic reviews are
-  *paused*, so after a push the review simply arrives on its own once the
-  limit clears; and the ETA in the check-run summary line goes stale, so
-  always read it from the bot's newest comment rather than from
-  `gh pr checks`.
+  Three mechanical details, each learned by getting it wrong here:
+
+  - **`@coderabbitai review` is rejected unless automatic reviews are
+    *paused*.** It is not the retry command.
+  - **A push made *while* rate-limited is not retried when the limit
+    clears.** CodeRabbit has already processed and declined that commit,
+    so waiting produces nothing. The command that works is
+    **`@coderabbitai full review`**, which answers "Full review
+    triggered" and re-examines the whole PR — expect more findings than
+    an incremental pass, since it looks at everything rather than the
+    latest diff.
+  - **The ETA in `gh pr checks`' summary column goes stale** and will
+    keep reading "Review rate limited" long after the bot itself says
+    "available now". Always read status from the bot's newest comment.
 
 ## Implementation Priority
 
