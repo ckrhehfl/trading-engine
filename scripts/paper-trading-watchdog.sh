@@ -86,11 +86,97 @@ get_env_var() {
     tr -d '\r' <"$REPO_ROOT/.env" | grep -E "^${key}=" | tail -n1 | cut -d'=' -f2-
 }
 
+# --- launcher: gradle, or a plain JVM on a small box -------------------
+#
+# `./gradlew :runtime:runPaperTradingApp` keeps a Gradle **daemon** and a
+# wrapper JVM alive for the whole life of the loop. Measured on the
+# development host with both loops running: the two PaperTradingApp JVMs
+# together used 267 MB, while the Gradle daemons and wrappers used
+# 1,570 MB -- roughly 6x the application itself, entirely build tooling
+# that a machine which only runs the app has no use for.
+#
+# That difference decides which VPS is viable: 267 MB of application fits
+# a 1 GB always-free instance, 1.8 GB does not.
+#
+# Set PAPER_TRADING_LAUNCHER=java to run the built classes directly. The
+# default stays `gradle`, so no existing host changes behaviour unless it
+# opts in. The classpath is generated once by Gradle and cached; a build
+# is still required before first use, it is simply not kept resident.
+PAPER_TRADING_LAUNCHER="${PAPER_TRADING_LAUNCHER:-gradle}"
+CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
+
+# Heap is capped explicitly rather than left to the JVM's default of a
+# quarter of physical RAM. Two loops defaulting on a 1 GB box would each
+# claim 256 MB of heap on top of metaspace and stacks, which is how a
+# small instance starts swapping instead of ticking.
+PAPER_TRADING_HEAP="${PAPER_TRADING_HEAP:-192m}"
+
+runtime_classpath() {
+    if [[ ! -s "$CLASSPATH_CACHE" ]]; then
+        log "generating runtime classpath (one-off; cached at $CLASSPATH_CACHE)"
+        mkdir -p "$(dirname "$CLASSPATH_CACHE")"
+        ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:classes ) >/dev/null || {
+            log "ERROR: gradle build failed; cannot generate classpath"
+            return 1
+        }
+        # Ask Gradle for the exact runtime classpath rather than guessing
+        # a jar layout. Written atomically so a killed run cannot leave a
+        # half-written cache that later launches would trust.
+        ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
+            >"$CLASSPATH_CACHE.tmp" 2>/dev/null || {
+            rm -f "$CLASSPATH_CACHE.tmp"
+            log "ERROR: :runtime:printRuntimeClasspath unavailable -- keep PAPER_TRADING_LAUNCHER=gradle"
+            return 1
+        }
+        [[ -s "$CLASSPATH_CACHE.tmp" ]] || { rm -f "$CLASSPATH_CACHE.tmp"; return 1; }
+        mv "$CLASSPATH_CACHE.tmp" "$CLASSPATH_CACHE"
+    fi
+    tr -d '\n' <"$CLASSPATH_CACHE"
+}
+
+# Sets the global array LAUNCH_ARGV to the command that starts the app.
+#
+# Sets a global rather than printing, because a caller doing
+# `mapfile -t argv < <(launch_argv)` cannot see the failure: process
+# substitution reports the *redirection's* status, not the command's, so
+# a failed classpath lookup would arrive as a clean EOF and leave `argv`
+# empty. `tmux` would then run `env` with no command after it -- a
+# session that exists, logs nothing, and never starts PaperTradingApp,
+# while the watchdog reports success. Failing loudly here is the point.
+#
+# It also sets LAUNCH_DIR, and the two launchers genuinely differ.
+# `runPaperTradingApp` sets `workingDir = rootDir.parentFile`, i.e. the
+# repo root, overriding wherever gradlew was invoked from. A bare
+# `java -cp ...` inherits the caller's directory instead. Starting both
+# from `$REPO_ROOT/java` therefore gives the two launchers *different*
+# working directories, and PaperTradingApp resolves every path it uses
+# relative to that -- signal file, reports directory, kill-switch state.
+# Under the java launcher they would all land under `java/`, silently.
+#
+# So: gradle runs from `java/` because that is where `gradlew` lives, and
+# java runs from the repo root because that is what the Gradle task was
+# already doing.
+LAUNCH_ARGV=()
+LAUNCH_DIR=""
+launch_argv() {
+    if [[ "$PAPER_TRADING_LAUNCHER" == "java" ]]; then
+        local cp
+        cp="$(runtime_classpath)" || return 1
+        [[ -n "$cp" ]] || { log "ERROR: runtime classpath is empty"; return 1; }
+        LAUNCH_ARGV=(java "-Xmx$PAPER_TRADING_HEAP" -cp "$cp" engine.runtime.PaperTradingApp)
+        LAUNCH_DIR="$REPO_ROOT"
+    else
+        LAUNCH_ARGV=(./gradlew -q --console=plain :runtime:runPaperTradingApp)
+        LAUNCH_DIR="$REPO_ROOT/java"
+    fi
+}
+
 start_simulated() {
     log "starting simulated session (was not running)"
-    tmux new-session -d -s paper-trading -c "$REPO_ROOT/java" \
+    launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
+    tmux new-session -d -s paper-trading -c "$LAUNCH_DIR" \
         env BINGX_BASE_URL=https://open-api.bingx.com \
-        ./gradlew -q --console=plain :runtime:runPaperTradingApp
+        "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading
 }
 
@@ -102,20 +188,21 @@ start_vst() {
         log "ERROR: BINGX_API_KEY/BINGX_API_SECRET missing or empty in .env -- refusing to start bingx-vst session (value itself never logged)"
         return 1
     fi
+    launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
     log "starting bingx-vst session (was not running)"
     # Each KEY=value below is its own argv element to `env` (tmux
     # new-session's trailing arguments form an argv array here, not a
     # single string re-parsed by a shell) -- so even a credential value
     # containing shell metacharacters is passed through literally, never
     # reinterpreted as code.
-    tmux new-session -d -s paper-trading-vst -c "$REPO_ROOT/java" \
+    tmux new-session -d -s paper-trading-vst -c "$LAUNCH_DIR" \
         env \
         "BINGX_API_KEY=$api_key" \
         "BINGX_API_SECRET=$api_secret" \
         PAPER_TRADING_EXECUTION_MODE=bingx-vst \
         BINGX_BASE_URL=https://open-api.bingx.com \
         PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
-        ./gradlew -q --console=plain :runtime:runPaperTradingApp
+        "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading-vst
 }
 

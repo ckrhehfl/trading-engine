@@ -10,7 +10,8 @@ from decimal import Decimal
 
 import pytest
 
-from research.experiment_log import log_holdout_access, log_run, read_records
+from research.experiment_log import read_records
+from research import experiment_log
 
 # ---------------------------------------------------------------------------
 # log_run
@@ -38,7 +39,7 @@ def _log_run_kwargs(**overrides):
 def test_log_run_writes_one_backtest_run_record(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
 
     lines = runs_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1
@@ -63,7 +64,7 @@ def test_log_run_writes_one_backtest_run_record(tmp_path):
 def test_log_run_captures_git_head_sha_as_code_version(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     # This test runs inside a real git checkout, so a real 40-char hex sha
@@ -82,7 +83,7 @@ def test_log_run_falls_back_to_none_when_git_is_unavailable(tmp_path, monkeypatc
 
     monkeypatch.setattr(subprocess, "run", _boom)
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["code_version"] is None
@@ -91,7 +92,7 @@ def test_log_run_falls_back_to_none_when_git_is_unavailable(tmp_path, monkeypatc
 def test_log_run_serializes_decimal_params_as_strings(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(params={"threshold": Decimal("1.5")}, runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(params={"threshold": Decimal("1.5")}, runs_path=runs_path))
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["params"] == {"threshold": "1.5"}
@@ -100,7 +101,7 @@ def test_log_run_serializes_decimal_params_as_strings(tmp_path):
 def test_log_run_passes_through_grid_search_lineage_fields(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(
+    experiment_log.log_run(
         **_log_run_kwargs(
             parent_run_id="grid-1",
             candidate_index=3,
@@ -123,7 +124,7 @@ def test_log_run_omits_strategy_family_entirely_when_none(tmp_path):
     # the two cases. See `.planning/sr-p-trial-accounting.md`.
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert "strategy_family" not in record
@@ -132,7 +133,7 @@ def test_log_run_omits_strategy_family_entirely_when_none(tmp_path):
 def test_log_run_writes_strategy_family_when_supplied(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(strategy_family="trend-momentum", runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(strategy_family="trend-momentum", runs_path=runs_path))
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert record["strategy_family"] == "trend-momentum"
@@ -144,7 +145,7 @@ def test_log_run_omits_both_preregistration_fields_entirely_when_none(tmp_path):
     # not made under a pre-registration" (Strategy Research Task S).
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
 
     record = json.loads(runs_path.read_text(encoding="utf-8").splitlines()[0])
     assert "preregistration_id" not in record
@@ -155,7 +156,7 @@ def test_log_run_writes_both_preregistration_fields_when_supplied(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
     sha = "a" * 64
 
-    log_run(
+    experiment_log.log_run(
         **_log_run_kwargs(
             preregistration_id="sr-u-daily-attempt",
             preregistration_sha256=sha,
@@ -183,7 +184,7 @@ def test_log_run_rejects_a_half_specified_preregistration_pair(tmp_path, kwargs)
     runs_path = tmp_path / "experiments.jsonl"
 
     with pytest.raises(ValueError, match="preregistration"):
-        log_run(**_log_run_kwargs(runs_path=runs_path, **kwargs))
+        experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path, **kwargs))
 
     assert not runs_path.exists()
 
@@ -191,8 +192,8 @@ def test_log_run_rejects_a_half_specified_preregistration_pair(tmp_path, kwargs)
 def test_log_run_appends_without_clobbering_prior_records(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(run_id="run-1", runs_path=runs_path))
-    log_run(**_log_run_kwargs(run_id="run-2", runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(run_id="run-1", runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(run_id="run-2", runs_path=runs_path))
 
     lines = runs_path.read_text(encoding="utf-8").splitlines()
     assert len(lines) == 2
@@ -203,7 +204,7 @@ def test_log_run_appends_without_clobbering_prior_records(tmp_path):
 def test_log_run_creates_missing_parent_directory(tmp_path):
     runs_path = tmp_path / "nested" / "dir" / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
 
     assert runs_path.exists()
 
@@ -216,7 +217,7 @@ def test_log_run_creates_missing_parent_directory(tmp_path):
 def test_log_holdout_access_writes_one_holdout_access_record(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id="ma-crossover",
         symbol="BTC-USDT",
         interval="15m",
@@ -238,7 +239,7 @@ def test_log_holdout_access_writes_one_holdout_access_record(tmp_path):
 def test_log_holdout_access_records_force_reclaim_reason(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id="ma-crossover",
         symbol="BTC-USDT",
         interval="15m",
@@ -255,8 +256,8 @@ def test_log_holdout_access_records_force_reclaim_reason(tmp_path):
 def test_holdout_access_and_backtest_run_records_interleave_in_one_file(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
 
-    log_run(**_log_run_kwargs(runs_path=runs_path))
-    log_holdout_access(
+    experiment_log.log_run(**_log_run_kwargs(runs_path=runs_path))
+    experiment_log.log_holdout_access(
         strategy_id="ma-crossover",
         symbol="BTC-USDT",
         interval="15m",
@@ -284,8 +285,8 @@ def test_read_records_returns_nothing_for_a_missing_file(tmp_path):
 
 def test_read_records_yields_every_record_in_file_order(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
-    log_run(**_log_run_kwargs(run_id="run-1", runs_path=runs_path))
-    log_holdout_access(
+    experiment_log.log_run(**_log_run_kwargs(run_id="run-1", runs_path=runs_path))
+    experiment_log.log_holdout_access(
         strategy_id="s1", symbol="BTC-USDT", interval="15m", start_ms=1, end_ms=2, runs_path=runs_path
     )
 
@@ -296,7 +297,7 @@ def test_read_records_yields_every_record_in_file_order(tmp_path):
 
 def test_read_records_skips_a_truncated_final_line_instead_of_raising(tmp_path):
     runs_path = tmp_path / "experiments.jsonl"
-    log_run(**_log_run_kwargs(run_id="run-1", runs_path=runs_path))
+    experiment_log.log_run(**_log_run_kwargs(run_id="run-1", runs_path=runs_path))
     # Simulate a crash mid-write of the second line: a trailing line that
     # isn't valid JSON at all.
     with open(runs_path, "a", encoding="utf-8") as f:

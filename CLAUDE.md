@@ -2177,6 +2177,159 @@ rebuilding `fill.py`'s fill model with order-book depth and
 partial-fill/queue-position awareness (a disclosed possible follow-up,
 never committed to).
 
+### Trade Management Tasks A-C — a position model that can express trader-style management, and the first candidate built on it, REJECTED
+
+Opened 2026-08-28 at the operator's request, after sustained and correct
+pushback that this project kept validating *mechanical threshold rules*
+while they were describing something else entirely:
+
+> Enter long on the trend. It rises. Weakness appears but a bounce still
+> looks possible, so add a short hedge there. When it drops, close **only
+> the short** for profit and keep the core.
+
+**The framework could not express that, and that was the real finding.**
+Every strategy in this project held a single net position, so "close
+only the short" had no representation at all — not a missing feature, a
+missing vocabulary. Records: `.planning/tm-a-trader-style-position-model
+.md`, `-b-signal-and-data-catalogue.md`, `-c-confluence-hedge-
+specification.md` and its `-result.md`.
+
+**Task A built the vocabulary.** `metrics.book` (`Leg`, `LegPurpose`,
+`Book`) plus `research.strategies.leg_manager`. Three conventions,
+decided once and binding:
+
+- **Legs close by explicit id**, never FIFO/LIFO — the whole point is
+  closing *that* leg and leaving the rest.
+- **Exposure is reported gross as well as net**, because margin is not
+  netted between a long and a short in hedge mode.
+- **`Book.reconcile` fails closed** against the venue's own per-side
+  totals, since **both Binance and Bybit track exactly one position per
+  direction**. Multi-leg is client-side bookkeeping over a
+  single-position-per-side venue reality, and the liquidation price is
+  computed by the exchange on the netted whole. Any leg abstraction that
+  forgets this is lying about risk.
+
+`backtest.engine`'s `Strategy` type now additionally accepts a
+**sequence** of intents, because a leg-scoped strategy routinely acts
+twice on one bar and splitting that across two bars would change the
+prices it acts at. `OrderIntent` itself is deliberately unchanged — it
+is a tested cross-language wire schema, and which leg an order belongs
+to is strategy-side bookkeeping the venue has no concept of.
+
+**Task B catalogued what the exchange actually offers**, with a third
+column recording *what this project had measured*. The answer:
+**two of five signal families** (price, flow — never positioning, depth,
+or forced-flow). `python/data/binance_positioning.py` now collects open
+interest and long/short ratios on cron, because that data **cannot be
+backfilled** — it exists only from the moment collection starts.
+
+**Task C was pre-registered before implementation and REJECTED.** A
+four-family conjunction gating a tactical hedge over the unchanged
+`daily-tsmom-ensemble` core. Daily: the conjunction fired **twice** in
+2,544 bars → INCONCLUSIVE-DATA-LIMITED, the outcome the specification
+had named in advance as most likely. Hourly (the identical
+specification, calendar constants rescaled, **no threshold touched**):
+166 conjunctions, 150 hedges, and
+
+| | trades | return | max DD | PF | Sharpe |
+|---|---|---|---|---|---|
+| core alone | 453 | +173.0% | 18.80% | 3.18 | +0.916 |
+| core + hedge | 452 | +168.5% | 18.80% | 3.17 | +0.902 |
+
+Tactical gross edge **−97** against **+353** in fees it caused, t=−0.62,
+p=0.535. Two independent failures: not distinguishable from zero, and
+negative before the fees even arrive.
+
+**Four findings outlive the candidate:**
+
+1. **The conjunction is real; what it selects for is not tradeable at
+   these thresholds.** Four conditions firing 364/348/479/912 times
+   individually and **2** times jointly is far below what correlated
+   conditions would produce. The independence premise held. This is the
+   one positive result.
+2. **A parameter-free exit pinned the holding period to ~1 hour**
+   (median hold 1 bar, longest 3). The exit rule "the setup conditions
+   no longer all hold" is fragile by construction — any one of three
+   relaxing ends the hedge. **So what was tested is not the hypothesis
+   that was described**: a one-hour hedge cannot express a pullback
+   trade. Avoiding a parameter is not free; here it silently chose the
+   most important one.
+3. **Third independent confirmation that reducing exposure during an
+   adverse excursion loses money for this core.** S15 found it for a
+   fixed stop, S17 for a measured one, and now a *selective,
+   conjunction-gated* reduction behaves no differently from an
+   unconditional one. This is the most transferable result here.
+4. **A signal-time book is not an execution book, and reporting the
+   first as the second flipped a sign.** `Book.realized_pnl` was computed
+   from the prices the strategy *saw when deciding* (the signal bar's
+   close); the real fill is the next bar's open with slippage.
+   `leg_manager` had always documented that approximation as safe "since
+   reported P&L comes from real fills" — **true until this task made the
+   signal book a reported figure.** The gap came to −141, over 3x the
+   edge being measured: the first write-up said +45, the real figure is
+   −97. Fixed structurally — `LegAction` records what each intent meant
+   and `replay_fills` rebuilds an execution book from real `Fill`s,
+   keyed by `Fill.intent_id`. Also note `Book.realized_pnl` is **gross
+   of fees**, `Fill.fee` being separate.
+
+**Two infrastructure defects were found and fixed, both real:**
+
+- **`check_disjoint_intervals`** added to `research/conclusion_check.py`.
+  `check_non_overlapping` takes a single `hold_bars` and so can only ask
+  whether starts clear the *longest* hold — sufficient but not
+  necessary, and the wrong tool once `metrics.book` made
+  variable-duration legs normal. The new form takes `(start, end)` pairs,
+  blocks on a real overlap, and reports proximity via an optional
+  `clustering_gap` as a **warning**: disjoint is not independent, and
+  the honest handling is disclosure, since correcting for clustering can
+  only shrink a t-statistic.
+- **The test suite was appending to the real research log.**
+  `runs/experiments.jsonl` carries two `test-ofi-momentum` records over
+  20 synthetic bars, so the pre-Task-C `N` of 127 was **126 real trials
+  plus one test artifact**. The error direction is safe (an
+  inflated `N` only lowers DSR), so no past conclusion was wrongly
+  passed and the append-only log is **not** rewritten — but anyone
+  recomputing `N` should read 126. Fixed in `python/tests/conftest.py`:
+  it wraps `experiment_log`'s **write functions** and redirects **any
+  relative `runs_path`**, that being the property behind every incident
+  (a relative path resolves against whatever directory pytest started
+  in). An absolute path is always deliberate and honoured exactly.
+  `test_conftest_isolation.py` (10 tests) asserts the fix works,
+  including that no module bypasses the wrapper with a direct
+  `from research.experiment_log import`.
+
+  **Three false starts, and all three passed their own new tests** —
+  what caught each was an external observable (a sha256 comparison, an
+  `ls`), which is the transferable part: (a) patching
+  `DEFAULT_RUNS_PATH` is **inert**, since defaults bind at `def` time;
+  (b) patching callers does not scale — **25 sites** bind it, including
+  every `Trainable.__init__`, and a version listing two of them leaked
+  past immediately; (c) keying the rule to `runs/experiments.jsonl` was
+  still too narrow, because `live/generate_daily_signal.py` writes the
+  separately-committed `runs/live_signals.jsonl` through the same
+  `log_run`. **A guard that silently does nothing is worse than no
+  guard**: verify one against something outside its own code before
+  trusting it.
+
+**`N` after Task C is 129** — 128 real research selection trials plus
+that one test artifact. Task C's two runs are logged under a new
+`trade-management` family (`research/lineage.py`, cited to the
+pre-registration); an earlier version of the runner called `run_backtest`
+directly and logged **nothing**, which understates `N` and so runs in the
+**unsafe** direction, since a smaller `N` inflates every DSR computed
+against it. Both timeframes are counted, on the same reasoning CLAUDE.md
+already applies to cost-disqualified runs: each was a real attempt to
+find a viable configuration. This does not change the arithmetic that
+governs — at `N` in the 120s the DSR-0.95 bar is still an annualized
+Sharpe near **4.00**, against the 0.4-0.8 credible institutional range.
+
+**The stopping rule forecloses adjusting a threshold and re-running.**
+The permitted responses are to accept the result, or to wait for the
+positioning data now accumulating and specify a *different* conjunction
+using the families this candidate could not include. The holding-period
+finding is a legitimate input to a future specification **provided that
+specification is registered before it is run**, as this one was.
+
 ## Tooling Stack
 
 | Layer | Choice | Status |
@@ -2286,12 +2439,66 @@ tools/services, subscription changes).
   promotion of a model/risk/order-logic change — regardless of checks
   passing, matching the Non-negotiable Rules above (e.g. "never weaken
   risk limits... without explicit human approval"). Also still stop and
-  ask when (a) CodeRabbit is rate-limited/unusable rather than passing
-  (see "Rate limits" under Code Review Gate below for the check-before-
-  retry procedure — don't just retry blindly), (b) the change has cost/
-  subscription implications, or (c) the task requires @ckrhehfl to do
-  something only they can do (a GitHub UI setting, an account
-  credential, entering a password).
+  ask when (a) the change has cost/subscription implications, or (b) the
+  task requires @ckrhehfl to do something only they can do (a GitHub UI
+  setting, an account credential, entering a password).
+
+- **A rate-limited CodeRabbit is a wait, not a question** (revised
+  2026-08-31, human-instructed, replacing "still stop and ask when
+  CodeRabbit is rate-limited/unusable rather than passing"). Rate
+  limiting is a scheduling fact with a published ETA attached, not a
+  judgment call, and handing it to the human converts a five-minute wait
+  into an unbounded one. The agent waits it out itself:
+
+  1. Comment `@coderabbitai rate limit` — that query does not itself
+     consume a review — and read the exact ETA out of the reply.
+  2. **Compute the wake time from the reply's own `created_at`**, not
+     from when the ETA was read. The two differ by however long the
+     round trip took, and sleeping the stated minutes from the wrong
+     origin lands early and burns the retry.
+  3. Sleep until then plus a small margin, then comment
+     **`@coderabbitai full review`** once. Not `@coderabbitai review` —
+     that one is rejected unless automatic reviews are *paused*, and a
+     commit pushed while rate-limited is never picked up automatically
+     afterwards, so without this the PR sits with no completed review and
+     cannot pass the merge gate.
+  4. Batch every outstanding fix into one push *before* requesting, per
+     the Rate limits section below — re-requesting per fix is what
+     causes this in the first place.
+
+  **A second rate limit carrying its own ETA is still a wait, not an
+  escalation.** Observed on PR #135: three review rounds in one session
+  hit the limit twice, at 28 and then 42 minutes, and both cleared
+  exactly when stated. The allowance is a rolling 7-day window over
+  review *attempts*, so an active branch will hit it repeatedly and the
+  waits lengthen — that is the policy working as designed, not a fault.
+  Loop: read the ETA, sleep, retry, and only stop when the signal stops
+  being a schedule.
+
+  Escalate to the human only when it is **no longer a wait**: the reply
+  carries no ETA at all, CodeRabbit reports an error rather than a limit,
+  the quoted wait is long enough to be a real scheduling decision rather
+  than a pause (roughly a few hours or more), or no review appears well
+  past a stated ETA.
+
+  The merge gate itself is unchanged — a **completed** review is still
+  required, and waiting for one is never the same as proceeding without
+  one.
+
+  Three mechanical details, each learned by getting it wrong here:
+
+  - **`@coderabbitai review` is rejected unless automatic reviews are
+    *paused*.** It is not the retry command.
+  - **A push made *while* rate-limited is not retried when the limit
+    clears.** CodeRabbit has already processed and declined that commit,
+    so waiting produces nothing. The command that works is
+    **`@coderabbitai full review`**, which answers "Full review
+    triggered" and re-examines the whole PR — expect more findings than
+    an incremental pass, since it looks at everything rather than the
+    latest diff.
+  - **The ETA in `gh pr checks`' summary column goes stale** and will
+    keep reading "Review rate limited" long after the bot itself says
+    "available now". Always read status from the bot's newest comment.
 
 ## Implementation Priority
 

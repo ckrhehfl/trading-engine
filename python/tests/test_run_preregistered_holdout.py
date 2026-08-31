@@ -28,7 +28,8 @@ from data.bingx_klines import KlineRow
 from data.store import connect, upsert_klines
 from metrics.metrics import Metrics, compute_metrics
 from research.eligibility import PsrResult
-from research.experiment_log import log_holdout_access, read_records
+from research.experiment_log import read_records
+from research import experiment_log
 from research.holdout import HoldoutAlreadyClaimedError
 from research.preregistration import SPLIT_RESEARCH, frequency_scaled_min_trades, load_preregistration
 from research.run_preregistered_holdout import (
@@ -293,7 +294,7 @@ def test_refuses_when_the_strategy_id_already_claimed_the_holdout(
     # -- simulating "this holdout was already spent by a prior real run" --
     # via the real log_holdout_access mechanism (a mocked/fixture claim, per
     # the task's own TDD requirement), not by hand-writing JSON.
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id=STRATEGY_ID,
         symbol="BTC-USDT",
         interval="1d",
@@ -815,7 +816,7 @@ def test_evaluate_gating_treats_a_zero_trade_none_profit_factor_as_not_passing(
 def test_run_preregistered_holdout_never_supplies_a_force_reclaim_reason_by_default(
     tmp_path, holdout_config_path, db_path, runs_path
 ):
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id=STRATEGY_ID, symbol="BTC-USDT", interval="1d", start_ms=START_MS, end_ms=END_MS, runs_path=runs_path
     )
     prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
@@ -830,7 +831,7 @@ def test_run_preregistered_holdout_never_supplies_a_force_reclaim_reason_by_defa
 def test_an_explicit_force_reclaim_reason_is_honored_when_the_caller_supplies_one(
     tmp_path, holdout_config_path, db_path, runs_path
 ):
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id=STRATEGY_ID, symbol="BTC-USDT", interval="1d", start_ms=START_MS, end_ms=END_MS, runs_path=runs_path
     )
     prereg = load_preregistration(_write_prereg(tmp_path, holdout_config_path))
@@ -871,7 +872,7 @@ def test_the_cli_runs_a_registration_against_the_injected_paths(
 def test_the_cli_forwards_an_explicit_force_reclaim_reason(
     tmp_path, holdout_config_path, db_path, runs_path
 ):
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id=STRATEGY_ID, symbol="BTC-USDT", interval="1d", start_ms=START_MS, end_ms=END_MS, runs_path=runs_path
     )
     path = _write_prereg(tmp_path, holdout_config_path)
@@ -895,7 +896,7 @@ def test_the_cli_forwards_an_explicit_force_reclaim_reason(
 def test_the_cli_without_force_reclaim_reason_propagates_the_already_claimed_error(
     tmp_path, holdout_config_path, db_path, runs_path
 ):
-    log_holdout_access(
+    experiment_log.log_holdout_access(
         strategy_id=STRATEGY_ID, symbol="BTC-USDT", interval="1d", start_ms=START_MS, end_ms=END_MS, runs_path=runs_path
     )
     path = _write_prereg(tmp_path, holdout_config_path)

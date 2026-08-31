@@ -83,6 +83,16 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
     # crossover (15m, then a native-1h variant) -> single-lookback momentum
     # -> the multi-lookback ensemble -> "Configuration C". Each step reused
     # the previous step's findings, which is exactly why they share one `N`.
+    # --- trade management: leg-based overlays on an existing core ---------
+    # Its own family, not "trend-momentum". The core it wraps is the
+    # already-evaluated `daily-tsmom-ensemble`, unchanged and not re-selected;
+    # what is being searched over here is the *overlay*, which shares no
+    # decision history with the price-signal families above.
+    "confluence-hedge": FamilyEntry(
+        family="trade-management",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/tm-c-confluence-hedge-specification.md",
+    ),
     "regime-momentum-btc-15m": FamilyEntry(
         family="trend-momentum",
         purpose=RESEARCH_PURPOSE,

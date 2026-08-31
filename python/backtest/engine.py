@@ -8,7 +8,21 @@ from backtest.kline_window import KlineWindow
 from metrics.position import PositionTracker
 from schemas.order_intent import OrderIntent
 
-Strategy = Callable[[Sequence[Kline]], OrderIntent | None]
+# A strategy may return one intent, several, or none.
+#
+# The sequence form is additive (Trade Management Task A): a leg-scoped
+# strategy routinely needs to do two things on one bar -- close the
+# tactical short AND add to the core, say -- and forcing that across two
+# bars would change the prices it acts at. Every existing strategy
+# returns `OrderIntent | None` and is unaffected.
+#
+# `OrderIntent` itself is deliberately NOT extended with a leg id: it is a
+# tested cross-language wire schema (`schemas/fixtures/`, mirrored in
+# Java), and which leg an order belongs to is strategy-side bookkeeping
+# that the venue has no concept of. The strategy owns its `metrics.book.
+# Book` and exposes it for analysis, exactly as today's strategies expose
+# `open_position`.
+Strategy = Callable[[Sequence[Kline]], "OrderIntent | Sequence[OrderIntent] | None"]
 
 
 @runtime_checkable
@@ -199,14 +213,21 @@ def run_backtest(
                     insolvent_at_index = i
 
         visible = KlineWindow(klines, i + 1)
-        intent = strategy(visible)
-        if intent is None:
+        emitted = strategy(visible)
+        if emitted is None:
             continue
+        # Normalise one-or-many at the boundary so the fill loop below has
+        # a single shape. A bare `OrderIntent` is not a `Sequence`, and an
+        # explicit isinstance check is safer here than duck-typing: a
+        # future intent type that happened to be iterable would otherwise
+        # be silently torn apart into its fields.
+        intents = (emitted,) if isinstance(emitted, OrderIntent) else tuple(emitted)
         if insolvent:
             continue
-        fill = simulate_fill(intent, klines, i, fee_bps, slippage_bps)
-        if fill is not None:
-            fills.append(fill)
-            filled_intents.append(intent)
+        for intent in intents:
+            fill = simulate_fill(intent, klines, i, fee_bps, slippage_bps)
+            if fill is not None:
+                fills.append(fill)
+                filled_intents.append(intent)
 
     return BacktestResult(fills=fills, filled_intents=filled_intents, insolvent_at_index=insolvent_at_index)
