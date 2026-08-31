@@ -131,6 +131,12 @@ def test_curated_map_covers_the_families_named_in_the_planning_doc():
         "daily-tsmom",
         "macro-conditioned",
         "btc-scalping",
+        # Trade Management Task C. Its own family rather than
+        # "trend-momentum": the core it wraps is the already-evaluated
+        # daily-tsmom-ensemble, unchanged and not re-selected, and what is
+        # searched over is the overlay, which shares no decision history
+        # with the price-signal families.
+        "trade-management",
         "infrastructure",
     }
 

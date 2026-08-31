@@ -61,11 +61,13 @@ import sqlite3
 import statistics
 import sys
 from decimal import Decimal
+from uuid import uuid4
 
 from backtest.engine import run_backtest
 from backtest.kline import Kline
 from metrics.book import LegPurpose
 from metrics.metrics import compute_metrics
+from research import experiment_log
 from research.conclusion_check import (
     check_claim_universal,
     check_disjoint_intervals,
@@ -334,9 +336,90 @@ def report(run: dict) -> list:
     return findings
 
 
+def log(run: dict, *, runs_path: str) -> None:
+    """Record this trial in `runs/experiments.jsonl`.
+
+    **Not optional.** CLAUDE.md: "Every backtest run against a given
+    strategy/parameter set must be logged... The number of variations
+    tried is part of judging whether a result is genuine edge or data
+    snooping; an untracked count makes that judgment impossible after the
+    fact."
+
+    The first version of this runner called `run_backtest` directly and
+    so logged nothing at all. That understates `N`, and understating `N`
+    is the **unsafe** direction: a smaller `N` inflates every Deflated
+    Sharpe Ratio computed against it. Two timeframes are two looks at one
+    hypothesis, so both are logged.
+
+    `walk_forward_config` records `fold_count: 0` with a note, following
+    `DailyTsmomEnsembleTrainable`'s own precedent for a single-window
+    scoring pass: this is one evaluation over one window, not a
+    walk-forward, and claiming otherwise would misrepresent it.
+    """
+    metrics = run["overlay"]
+    klines = run["klines"]
+    summary = {
+        "starting_equity": str(STARTING_EQUITY),
+        "final_equity": str(metrics.final_equity),
+        "total_return": str(metrics.total_return),
+        "max_drawdown": str(metrics.max_drawdown),
+        "num_trades": metrics.num_trades,
+        "profit_factor": None if metrics.profit_factor is None else float(metrics.profit_factor),
+        "sharpe_ratio": None if metrics.sharpe_ratio is None else float(metrics.sharpe_ratio),
+        "win_rate": None if metrics.win_rate is None else float(metrics.win_rate),
+    }
+    experiment_log.log_run(
+        run_id=str(uuid4()),
+        strategy_id="confluence-hedge",
+        strategy_version="v1",
+        strategy_family="trade-management",
+        params={
+            "timeframe": run["label"],
+            "bars_per_day": run["bars_per_day"],
+            "lookback_days": list(LOOKBACK_DAYS),
+            "trailing_window_days": TRAILING_WINDOW_DAYS,
+            "funding_percentile": "0.80",
+            "flow_z": "1.0",
+            "price_z": "1.0",
+            "activity_rank": "0.5",
+            "hedge_fraction": "0.5",
+            "symbol": FLOW_SYMBOL,
+            "hedges_opened": run["strategy"].hedges_opened,
+        },
+        fold_results=[],
+        aggregate_metrics=summary,
+        data_range={
+            "start_ms": int(klines[0].open_time.timestamp() * 1000),
+            "end_ms": int(klines[-1].open_time.timestamp() * 1000),
+            "num_bars": len(klines),
+        },
+        fee_bps=FEE_BPS,
+        slippage_bps=SLIPPAGE_BPS,
+        walk_forward_config={
+            "train_bars": 0, "validate_bars": len(klines), "step_bars": 0,
+            "fold_count": 0,
+            "note": "single-window evaluation of one pre-registered specification "
+                    "against an unchanged daily-tsmom-ensemble core -- not a "
+                    "walk-forward run, and not a search",
+        },
+        is_holdout_run=False,
+        total_candidates=1,
+        runs_path=runs_path,
+    )
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--db-path", default=DEFAULT_DB)
+    parser.add_argument(
+        "--runs-path", default=experiment_log.DEFAULT_RUNS_PATH,
+        help="experiment log to append to; the real research log by default",
+    )
+    parser.add_argument(
+        "--no-log", action="store_true",
+        help="skip logging. For re-reading an already-recorded result without "
+             "adding a duplicate trial to N -- never for a fresh evaluation.",
+    )
     args = parser.parse_args(argv)
 
     funding = load_funding(args.db_path)
@@ -359,6 +442,11 @@ def main(argv=None) -> int:
         for label, bpd, secs in TIMEFRAMES
     ]
     findings = [f for run in runs for f in report(run)]
+
+    if not args.no_log:
+        for run in runs:
+            log(run, runs_path=args.runs_path)
+        print(f"\nlogged {len(runs)} trial(s) to {args.runs_path}")
 
     # Two timeframes is a sweep of one parameter, and a small one. It is
     # recorded here so the conclusion is scoped to what was actually

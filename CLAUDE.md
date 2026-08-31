@@ -2285,8 +2285,8 @@ negative before the fees even arrive.
   only shrink a t-statistic.
 - **The test suite was appending to the real research log.**
   `runs/experiments.jsonl` carries two `test-ofi-momentum` records over
-  20 synthetic bars, so **the project's stated `N` of 127 is 126 real
-  trials plus one test artifact.** The error direction is safe (an
+  20 synthetic bars, so the pre-Task-C `N` of 127 was **126 real trials
+  plus one test artifact**. The error direction is safe (an
   inflated `N` only lowers DSR), so no past conclusion was wrongly
   passed and the append-only log is **not** rewritten — but anyone
   recomputing `N` should read 126. Fixed in `python/tests/conftest.py`:
@@ -2310,6 +2310,18 @@ negative before the fees even arrive.
   `log_run`. **A guard that silently does nothing is worse than no
   guard**: verify one against something outside its own code before
   trusting it.
+
+**`N` after Task C is 129** — 128 real research selection trials plus
+that one test artifact. Task C's two runs are logged under a new
+`trade-management` family (`research/lineage.py`, cited to the
+pre-registration); an earlier version of the runner called `run_backtest`
+directly and logged **nothing**, which understates `N` and so runs in the
+**unsafe** direction, since a smaller `N` inflates every DSR computed
+against it. Both timeframes are counted, on the same reasoning CLAUDE.md
+already applies to cost-disqualified runs: each was a real attempt to
+find a viable configuration. This does not change the arithmetic that
+governs — at `N` in the 120s the DSR-0.95 bar is still an annualized
+Sharpe near **4.00**, against the 0.4-0.8 credible institutional range.
 
 **The stopping rule forecloses adjusting a threshold and re-running.**
 The permitted responses are to accept the result, or to wait for the
