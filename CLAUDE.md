@@ -2410,14 +2410,45 @@ tools/services, subscription changes).
   required branch-protection check (`README.md` / cleanup PRs merged with
   zero manual action once CodeRabbit's review posted success).
 - **CODEOWNERS-matched** (`java/`, `schemas/`, `configs/`, `.github/`,
-  `CLAUDE.md`, `.coderabbit.yaml`): **verified NOT to be a hard server-side
-  gate right now.** GitHub's "Require review from Code Owners" does not
+  `CLAUDE.md`, `.coderabbit.yaml`): **not a hard server-side gate — but
+  `required_conversation_resolution` is, and that is what will actually
+  stop a merge** (see two bullets down; learned on PR #135). GitHub's "Require review from Code Owners" does not
   block merging when the PR author is also the sole code owner — tested
   empirically with both `enforce_admins: false` and `true`; both merged
   instantly with no review, no queued/waiting state. Self-approval is
   blocked, but GitHub simply doesn't raise the requirement at all rather
   than blocking, since there is no one else who could satisfy it. This is
   a solo-author-repo limitation of GitHub CODEOWNERS, not a config mistake.
+- **The real merge blocker is unresolved review conversations, not
+  CODEOWNERS** (recorded 2026-08-31 after PR #135 sat `BLOCKED` for an
+  hour while this was misdiagnosed). Branch protection has
+  `required_conversation_resolution: true`, and CodeRabbit opens a thread
+  per finding. A PR can therefore show **every required check green, no
+  `CHANGES_REQUESTED`, `mergeable: MERGEABLE`** and still report
+  `mergeStateStatus: BLOCKED`, with the reason appearing neither in the
+  UI nor in `gh pr checks`.
+
+  Diagnose it directly rather than guessing at CODEOWNERS or reaching for
+  `--admin` — query `reviewThreads` via GraphQL and count the ones with
+  `isResolved: false`.
+
+  **Resolve a thread only after its finding is actually addressed or
+  answered.** Resolving *is* the record that it was dealt with, so
+  clearing threads to get a green light falsifies that record. On PR #135
+  two of the five open threads were real, unfixed bugs — a partially
+  closed leg vanishing from the execution book, and a paginator stepping
+  over an empty page and so making a transient failure permanent on a
+  non-backfillable series. Every review **summary** had stopped
+  mentioning both; the threads were the only place they still showed.
+
+  A second, separate mechanism: **CodeRabbit submits a review object only
+  when it has comments.** A clean re-review updates the check status but
+  leaves an earlier `CHANGES_REQUESTED` standing, which blocks on its
+  own. Dismiss those explicitly
+  (`PUT /pulls/N/reviews/ID/dismissals`, `event=DISMISS`) with a message
+  naming the commit that addressed them — that satisfies the gate, where
+  `--admin` would bypass it.
+
 - **Until PR authorship moves to a bot/app identity distinct from
   @ckrhehfl** (out of scope for now — see Tooling Stack), the CODEOWNERS
   boundary is enforced procedurally, not technically. Branch protection
