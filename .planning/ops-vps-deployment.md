@@ -166,6 +166,19 @@ none of these and should not.
 `pd-standard` and the region are the two free-tier conditions above; both
 are easy to lose by accepting a default.
 
+**The `-amd64` suffix is mandatory.** From 24.04 onward Canonical added
+an architecture suffix to the family name, so a bare `ubuntu-2404-lts`
+fails outright (22.04 and earlier used the unsuffixed form). Verified
+2026-08-31 against Google's own docs. `ubuntu-2604-lts-amd64` also exists
+now — 24.04 is chosen deliberately as the older, longer-settled LTS,
+since this box's job is to be boring for 15 consecutive days.
+
+If the create command is rejected for capacity or image reasons, resolve
+the family first rather than guessing:
+
+    gcloud compute images describe-from-family ubuntu-2404-lts-amd64 \
+      --project ubuntu-os-cloud --format='value(name)'
+
 **2. Firewall: leave it closed.** This box makes only outbound requests.
 It needs no inbound rule beyond SSH, and GCP's `default-allow-ssh`
 already covers that. Do not open anything else.
