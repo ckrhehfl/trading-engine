@@ -183,7 +183,35 @@ say "java build"
     || die "gradle build failed"
 ok "runtime classes built"
 
-# Stop the Gradle daemon this build just started.
+# The watchdog caches the runtime classpath and skips Gradle entirely
+# once that file exists. Two things have to happen here, and an earlier
+# version did only the first:
+#
+#   1. INVALIDATE it, because a deploy that changed runtime dependencies
+#      would otherwise start the java launcher against the old classpath
+#      and die on NoClassDefFoundError, with nothing pointing at a cache.
+#
+#   2. REGENERATE it immediately. Deleting alone leaves the cache cold,
+#      so the next time a loop actually needs restarting the watchdog
+#      builds it right then -- starting a ~350 MB Gradle daemon at the
+#      worst possible moment, since a restart usually means the box is
+#      already unhappy. Regenerating here spends that memory once, now,
+#      while nothing else is competing for it.
+CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
+mkdir -p "$(dirname "$CLASSPATH_CACHE")"
+if ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
+       >"$CLASSPATH_CACHE.tmp" 2>/dev/null && [[ -s "$CLASSPATH_CACHE.tmp" ]]; then
+    mv -f "$CLASSPATH_CACHE.tmp" "$CLASSPATH_CACHE"
+    ok "runtime classpath cached ($(tr ':' '\n' <"$CLASSPATH_CACHE" | grep -c .) entries)"
+else
+    rm -f "$CLASSPATH_CACHE.tmp"
+    # Leave no stale cache behind: a wrong classpath is worse than none,
+    # since the watchdog would trust it. Without one it regenerates.
+    [[ -e "$CLASSPATH_CACHE" ]] && mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
+    warn "could not cache the runtime classpath; the watchdog will build it on demand"
+fi
+
+# Stop the Gradle daemon both builds above started.
 #
 # The daemon exists to make *repeat builds* fast by staying resident. A
 # box that only runs the app never builds again, so it is pure squatting
@@ -191,24 +219,8 @@ ok "runtime classes built"
 # against 167 MB for both application JVMs combined. On the 1 GB
 # always-free instance that is the difference between 486 MB free and
 # 75 MB, i.e. between comfortable and swapping.
-#
-# Found on the first real deployment: this script left a daemon behind
-# every time it ran, which is precisely the memory the java launcher
-# exists to avoid.
 ( cd "$REPO_ROOT/java" && ./gradlew --stop >/dev/null 2>&1 ) || true
 ok "stopped the Gradle daemon (a box that only runs the app never rebuilds)"
-
-# The watchdog caches the runtime classpath and skips Gradle entirely
-# once that file exists. After a deploy that added or removed a runtime
-# dependency, a stale cache starts the java launcher against the old
-# classpath and PaperTradingApp dies on NoClassDefFoundError -- with the
-# operator having no reason to suspect a cache. Dropping it here means
-# the next watchdog run regenerates it from the build that just ran.
-CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
-if [[ -e "$CLASSPATH_CACHE" ]]; then
-    mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
-    ok "invalidated the cached runtime classpath (kept as .stale)"
-fi
 
 say "credentials"
 # This script does not touch .env. Not "does not read it" -- does not
