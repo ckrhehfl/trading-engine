@@ -198,16 +198,35 @@ ok "runtime classes built"
 #      already unhappy. Regenerating here spends that memory once, now,
 #      while nothing else is competing for it.
 CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
+CLASSPATH_LOCK="$CLASSPATH_CACHE.lock"
 mkdir -p "$(dirname "$CLASSPATH_CACHE")"
-if ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
-       >"$CLASSPATH_CACHE.tmp" 2>/dev/null && [[ -s "$CLASSPATH_CACHE.tmp" ]]; then
-    mv -f "$CLASSPATH_CACHE.tmp" "$CLASSPATH_CACHE"
+
+# Under a lock, and into a `mktemp` file rather than a shared `.tmp`
+# name. The watchdog runs from cron every 5 minutes and manages the same
+# cache, so the two really can overlap: with a shared temp name, this
+# script's `mv` could land between the watchdog's write and its
+# `[[ -s ... ]]` check, at which point the watchdog concludes generation
+# failed and moves a perfectly good cache to `.stale` -- and that run
+# then refuses to start the java session at all.
+cache_tmp=""
+regenerate_classpath() {
+    cache_tmp="$(mktemp "$CLASSPATH_CACHE.XXXXXX")"
+    if ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
+           >"$cache_tmp" 2>/dev/null && [[ -s "$cache_tmp" ]]; then
+        mv -f "$cache_tmp" "$CLASSPATH_CACHE"
+        cache_tmp=""
+        return 0
+    fi
+    rm -f "$cache_tmp"; cache_tmp=""
+    # Leave no stale cache behind: a wrong classpath is worse than none,
+    # because the watchdog trusts whatever it finds.
+    [[ -e "$CLASSPATH_CACHE" ]] && mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
+    return 1
+}
+
+if ( exec 9>"$CLASSPATH_LOCK"; flock -w 120 9 || exit 3; regenerate_classpath ); then
     ok "runtime classpath cached ($(tr ':' '\n' <"$CLASSPATH_CACHE" | grep -c .) entries)"
 else
-    rm -f "$CLASSPATH_CACHE.tmp"
-    # Leave no stale cache behind: a wrong classpath is worse than none,
-    # since the watchdog would trust it. Without one it regenerates.
-    [[ -e "$CLASSPATH_CACHE" ]] && mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
     warn "could not cache the runtime classpath; the watchdog will build it on demand"
 fi
 
@@ -219,8 +238,16 @@ fi
 # against 167 MB for both application JVMs combined. On the 1 GB
 # always-free instance that is the difference between 486 MB free and
 # 75 MB, i.e. between comfortable and swapping.
-( cd "$REPO_ROOT/java" && ./gradlew --stop >/dev/null 2>&1 ) || true
-ok "stopped the Gradle daemon (a box that only runs the app never rebuilds)"
+#
+# Reported honestly: a failed `--stop` leaves the daemon resident, and
+# printing `ok` regardless would tell the operator the memory was
+# reclaimed when it was not.
+if ( cd "$REPO_ROOT/java" && ./gradlew --stop >/dev/null 2>&1 ); then
+    ok "stopped the Gradle daemon (a box that only runs the app never rebuilds)"
+else
+    warn "could not stop the Gradle daemon -- it may still hold ~350 MB."
+    warn "check with: ps -eo rss,args | grep [a]dd-opens=java.base"
+fi
 
 say "credentials"
 # This script does not touch .env. Not "does not read it" -- does not

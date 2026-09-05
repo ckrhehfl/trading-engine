@@ -115,21 +115,32 @@ runtime_classpath() {
     if [[ ! -s "$CLASSPATH_CACHE" ]]; then
         log "generating runtime classpath (one-off; cached at $CLASSPATH_CACHE)"
         mkdir -p "$(dirname "$CLASSPATH_CACHE")"
-        ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:classes ) >/dev/null || {
-            log "ERROR: gradle build failed; cannot generate classpath"
+        # Under the SAME lock `vps-bootstrap.sh` uses, and into a
+        # `mktemp` file rather than a shared `.tmp` name. This runs from
+        # cron every 5 minutes while the bootstrap may be running by
+        # hand, and with a shared temp name the bootstrap's `mv` can land
+        # between this function's write and its own size check -- after
+        # which this run concludes generation failed, moves a perfectly
+        # good cache to `.stale`, and refuses to start the session.
+        (
+            exec 9>"$CLASSPATH_CACHE.lock"
+            flock -w 120 9 || exit 3
+            # Another holder of the lock may have just written it.
+            [[ -s "$CLASSPATH_CACHE" ]] && exit 0
+            cd "$REPO_ROOT/java" || exit 4
+            ./gradlew -q --console=plain :runtime:classes >/dev/null 2>&1 || exit 5
+            tmp="$(mktemp "$CLASSPATH_CACHE.XXXXXX")"
+            if ./gradlew -q --console=plain :runtime:printRuntimeClasspath >"$tmp" 2>/dev/null \
+                   && [[ -s "$tmp" ]]; then
+                mv -f "$tmp" "$CLASSPATH_CACHE"
+                exit 0
+            fi
+            rm -f "$tmp"
+            exit 6
+        ) || {
+            log "ERROR: could not generate the runtime classpath (rc=$?); keep PAPER_TRADING_LAUNCHER=gradle"
             return 1
         }
-        # Ask Gradle for the exact runtime classpath rather than guessing
-        # a jar layout. Written atomically so a killed run cannot leave a
-        # half-written cache that later launches would trust.
-        ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
-            >"$CLASSPATH_CACHE.tmp" 2>/dev/null || {
-            rm -f "$CLASSPATH_CACHE.tmp"
-            log "ERROR: :runtime:printRuntimeClasspath unavailable -- keep PAPER_TRADING_LAUNCHER=gradle"
-            return 1
-        }
-        [[ -s "$CLASSPATH_CACHE.tmp" ]] || { rm -f "$CLASSPATH_CACHE.tmp"; return 1; }
-        mv "$CLASSPATH_CACHE.tmp" "$CLASSPATH_CACHE"
     fi
     tr -d '\n' <"$CLASSPATH_CACHE"
 }

@@ -161,14 +161,21 @@ amount of configuration changes it.
 So the paper loops — the entire reason for the move — are fine, and the
 Gate A clock runs. What cannot run there is Binance data collection.
 
-**The resolution: positioning collection stays on the local PC**, and it
-is genuinely fine there. The endpoints retain ~30 days and `collect_gap`
-pages back to `now - RETENTION_MS`, so the collector only has to run
-once every 30 days to lose nothing. A desktop that sleeps 13 hours a
-night clears that by a wide margin — the same paging work that was built
-for outage recovery makes an intermittent host adequate for this one
-job. The line is removed from the server's crontab and left in place
-locally.
+**The resolution: positioning collection stays on the local PC**, on its
+existing 30-minute cron.
+
+`collect_gap` pages back to `now - RETENTION_MS`, so an *outage* is
+recoverable in a way it was not before — which is what makes a desktop
+that sleeps overnight acceptable for this job at all. **But 30 days is
+the hard edge, not a safe cadence.** Data older than it is gone from
+`/futures/data/` and cannot be backfilled from anywhere, so a
+once-a-month run has exactly zero margin for a sleeping machine, a
+delayed cron, or a failed request — the three things most likely to
+happen. Keep the 30-minute cron, and treat the retention window as the
+deadline it is: if the last successful run ever approaches it, that is
+already an incident.
+
+The line is removed from the **server's** crontab only.
 
 The Binance kline store is copied to the server once (it is historical
 and complete), so the server never needs to fetch from Binance at all.
