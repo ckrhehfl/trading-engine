@@ -183,6 +183,21 @@ say "java build"
     || die "gradle build failed"
 ok "runtime classes built"
 
+# Stop the Gradle daemon this build just started.
+#
+# The daemon exists to make *repeat builds* fast by staying resident. A
+# box that only runs the app never builds again, so it is pure squatting
+# -- and it is not small: measured at 310-389 MB on the real deployment,
+# against 167 MB for both application JVMs combined. On the 1 GB
+# always-free instance that is the difference between 486 MB free and
+# 75 MB, i.e. between comfortable and swapping.
+#
+# Found on the first real deployment: this script left a daemon behind
+# every time it ran, which is precisely the memory the java launcher
+# exists to avoid.
+( cd "$REPO_ROOT/java" && ./gradlew --stop >/dev/null 2>&1 ) || true
+ok "stopped the Gradle daemon (a box that only runs the app never rebuilds)"
+
 # The watchdog caches the runtime classpath and skips Gradle entirely
 # once that file exists. After a deploy that added or removed a runtime
 # dependency, a stale cache starts the java launcher against the old

@@ -135,6 +135,48 @@ for *this* use:
 Any of the three costs a day of reports, and Gate A's clock restarts on
 a single missing one.
 
+### Binance blocks US IPs, and the free tier is US-only
+
+**Found on the real deployment, 2026-09-05.** Every `/futures/data/`
+request from the instance returns:
+
+    HTTP 451
+    "Service unavailable from a restricted location according to
+     'b. Eligibility' in https://www.binance.com/en/terms"
+
+The free tier requires `us-west1` / `us-central1` / `us-east1`. Binance
+blocks US IPs. **These two conditions cannot both be satisfied**, and no
+amount of configuration changes it.
+
+**What it does and does not break:**
+
+| | |
+|---|---|
+| BingX (`open-api.bingx.com`) | **HTTP 200** — unaffected |
+| Daily signal runner | unaffected (BingX klines) |
+| Both paper-trading loops | unaffected |
+| `collect-positioning.sh` | **completely blocked** |
+| Any Binance kline backfill | blocked |
+
+So the paper loops — the entire reason for the move — are fine, and the
+Gate A clock runs. What cannot run there is Binance data collection.
+
+**The resolution: positioning collection stays on the local PC**, and it
+is genuinely fine there. The endpoints retain ~30 days and `collect_gap`
+pages back to `now - RETENTION_MS`, so the collector only has to run
+once every 30 days to lose nothing. A desktop that sleeps 13 hours a
+night clears that by a wide margin — the same paging work that was built
+for outage recovery makes an intermittent host adequate for this one
+job. The line is removed from the server's crontab and left in place
+locally.
+
+The Binance kline store is copied to the server once (it is historical
+and complete), so the server never needs to fetch from Binance at all.
+
+**Do not "solve" this with a proxy or VPN.** It would be circumventing a
+venue's stated eligibility terms, and this project uses Binance purely
+as a read-only research data source — not worth a terms violation.
+
 ### Spot VMs are disqualified, not merely cheaper
 
 Spot cuts cost roughly in half and is **preempted by design**. Gate A
