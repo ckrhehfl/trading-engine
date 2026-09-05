@@ -184,15 +184,73 @@ say "java build"
 ok "runtime classes built"
 
 # The watchdog caches the runtime classpath and skips Gradle entirely
-# once that file exists. After a deploy that added or removed a runtime
-# dependency, a stale cache starts the java launcher against the old
-# classpath and PaperTradingApp dies on NoClassDefFoundError -- with the
-# operator having no reason to suspect a cache. Dropping it here means
-# the next watchdog run regenerates it from the build that just ran.
+# once that file exists. Two things have to happen here, and an earlier
+# version did only the first:
+#
+#   1. INVALIDATE it, because a deploy that changed runtime dependencies
+#      would otherwise start the java launcher against the old classpath
+#      and die on NoClassDefFoundError, with nothing pointing at a cache.
+#
+#   2. REGENERATE it immediately. Deleting alone leaves the cache cold,
+#      so the next time a loop actually needs restarting the watchdog
+#      builds it right then -- starting a ~350 MB Gradle daemon at the
+#      worst possible moment, since a restart usually means the box is
+#      already unhappy. Regenerating here spends that memory once, now,
+#      while nothing else is competing for it.
 CLASSPATH_CACHE="$REPO_ROOT/var/live/runtime-classpath.txt"
-if [[ -e "$CLASSPATH_CACHE" ]]; then
-    mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
-    ok "invalidated the cached runtime classpath (kept as .stale)"
+CLASSPATH_LOCK="$CLASSPATH_CACHE.lock"
+mkdir -p "$(dirname "$CLASSPATH_CACHE")"
+
+# Under a lock, and into a `mktemp` file rather than a shared `.tmp`
+# name. The watchdog runs from cron every 5 minutes and manages the same
+# cache, so the two really can overlap: with a shared temp name, this
+# script's `mv` could land between the watchdog's write and its
+# `[[ -s ... ]]` check, at which point the watchdog concludes generation
+# failed and moves a perfectly good cache to `.stale` -- and that run
+# then refuses to start the java session at all.
+cache_tmp=""
+regenerate_classpath() {
+    cache_tmp="$(mktemp "$CLASSPATH_CACHE.XXXXXX")"
+    # `mv` is part of the success condition, not a step after it. A
+    # failed rename with an older cache still in place would otherwise be
+    # reported as a fresh one -- the worst outcome, since the watchdog
+    # trusts what it finds.
+    if ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
+           >"$cache_tmp" 2>/dev/null && [[ -s "$cache_tmp" ]] \
+           && mv -f "$cache_tmp" "$CLASSPATH_CACHE"; then
+        cache_tmp=""
+        return 0
+    fi
+    rm -f "$cache_tmp"; cache_tmp=""
+    # Leave no stale cache behind: a wrong classpath is worse than none,
+    # because the watchdog trusts whatever it finds.
+    [[ -e "$CLASSPATH_CACHE" ]] && mv -f "$CLASSPATH_CACHE" "$CLASSPATH_CACHE.stale"
+    return 1
+}
+
+if ( exec 9>"$CLASSPATH_LOCK"; flock -w 120 9 || exit 3; regenerate_classpath ); then
+    ok "runtime classpath cached ($(tr ':' '\n' <"$CLASSPATH_CACHE" | grep -c .) entries)"
+else
+    warn "could not cache the runtime classpath; the watchdog will build it on demand"
+fi
+
+# Stop the Gradle daemon both builds above started.
+#
+# The daemon exists to make *repeat builds* fast by staying resident. A
+# box that only runs the app never builds again, so it is pure squatting
+# -- and it is not small: measured at 310-389 MB on the real deployment,
+# against 167 MB for both application JVMs combined. On the 1 GB
+# always-free instance that is the difference between 486 MB free and
+# 75 MB, i.e. between comfortable and swapping.
+#
+# Reported honestly: a failed `--stop` leaves the daemon resident, and
+# printing `ok` regardless would tell the operator the memory was
+# reclaimed when it was not.
+if ( cd "$REPO_ROOT/java" && ./gradlew --stop >/dev/null 2>&1 ); then
+    ok "stopped the Gradle daemon (a box that only runs the app never rebuilds)"
+else
+    warn "could not stop the Gradle daemon -- it may still hold ~350 MB."
+    warn "check with: ps -eo rss,args | grep [a]dd-opens=java.base"
 fi
 
 say "credentials"

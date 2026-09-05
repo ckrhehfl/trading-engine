@@ -135,6 +135,55 @@ for *this* use:
 Any of the three costs a day of reports, and Gate A's clock restarts on
 a single missing one.
 
+### Binance blocks US IPs, and the free tier is US-only
+
+**Found on the real deployment, 2026-09-05.** Every `/futures/data/`
+request from the instance returns:
+
+    HTTP 451
+    "Service unavailable from a restricted location according to
+     'b. Eligibility' in https://www.binance.com/en/terms"
+
+The free tier requires `us-west1` / `us-central1` / `us-east1`. Binance
+blocks US IPs. **These two conditions cannot both be satisfied**, and no
+amount of configuration changes it.
+
+**What it does and does not break:**
+
+| | |
+|---|---|
+| BingX (`open-api.bingx.com`) | **HTTP 200** — unaffected |
+| Daily signal runner | unaffected (BingX klines) |
+| Both paper-trading loops | unaffected |
+| `collect-positioning.sh` | **completely blocked** |
+| Any Binance kline backfill | blocked |
+
+So the paper loops — the entire reason for the move — are fine, and the
+Gate A clock runs. What cannot run there is Binance data collection.
+
+**The resolution: positioning collection stays on the local PC**, on its
+existing 30-minute cron.
+
+`collect_gap` pages back to `now - RETENTION_MS`, so an *outage* is
+recoverable in a way it was not before — which is what makes a desktop
+that sleeps overnight acceptable for this job at all. **But 30 days is
+the hard edge, not a safe cadence.** Data older than it is gone from
+`/futures/data/` and cannot be backfilled from anywhere, so a
+once-a-month run has exactly zero margin for a sleeping machine, a
+delayed cron, or a failed request — the three things most likely to
+happen. Keep the 30-minute cron, and treat the retention window as the
+deadline it is: if the last successful run ever approaches it, that is
+already an incident.
+
+The line is removed from the **server's** crontab only.
+
+The Binance kline store is copied to the server once (it is historical
+and complete), so the server never needs to fetch from Binance at all.
+
+**Do not "solve" this with a proxy or VPN.** It would be circumventing a
+venue's stated eligibility terms, and this project uses Binance purely
+as a read-only research data source — not worth a terms violation.
+
 ### Spot VMs are disqualified, not merely cheaper
 
 Spot cuts cost roughly in half and is **preempted by design**. Gate A
@@ -165,6 +214,19 @@ none of these and should not.
 
 `pd-standard` and the region are the two free-tier conditions above; both
 are easy to lose by accepting a default.
+
+**The `-amd64` suffix is mandatory.** From 24.04 onward Canonical added
+an architecture suffix to the family name, so a bare `ubuntu-2404-lts`
+fails outright (22.04 and earlier used the unsuffixed form). Verified
+2026-08-31 against Google's own docs. `ubuntu-2604-lts-amd64` also exists
+now — 24.04 is chosen deliberately as the older, longer-settled LTS,
+since this box's job is to be boring for 15 consecutive days.
+
+If the create command is rejected for capacity or image reasons, resolve
+the family first rather than guessing:
+
+    gcloud compute images describe-from-family ubuntu-2404-lts-amd64 \
+      --project ubuntu-os-cloud --format='value(name)'
 
 **2. Firewall: leave it closed.** This box makes only outbound requests.
 It needs no inbound rule beyond SSH, and GCP's `default-allow-ssh`
