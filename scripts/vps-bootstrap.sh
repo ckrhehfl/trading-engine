@@ -211,9 +211,13 @@ mkdir -p "$(dirname "$CLASSPATH_CACHE")"
 cache_tmp=""
 regenerate_classpath() {
     cache_tmp="$(mktemp "$CLASSPATH_CACHE.XXXXXX")"
+    # `mv` is part of the success condition, not a step after it. A
+    # failed rename with an older cache still in place would otherwise be
+    # reported as a fresh one -- the worst outcome, since the watchdog
+    # trusts what it finds.
     if ( cd "$REPO_ROOT/java" && ./gradlew -q --console=plain :runtime:printRuntimeClasspath ) \
-           >"$cache_tmp" 2>/dev/null && [[ -s "$cache_tmp" ]]; then
-        mv -f "$cache_tmp" "$CLASSPATH_CACHE"
+           >"$cache_tmp" 2>/dev/null && [[ -s "$cache_tmp" ]] \
+           && mv -f "$cache_tmp" "$CLASSPATH_CACHE"; then
         cache_tmp=""
         return 0
     fi

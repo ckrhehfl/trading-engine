@@ -130,9 +130,12 @@ runtime_classpath() {
             cd "$REPO_ROOT/java" || exit 4
             ./gradlew -q --console=plain :runtime:classes >/dev/null 2>&1 || exit 5
             tmp="$(mktemp "$CLASSPATH_CACHE.XXXXXX")"
+            # `mv` is inside the condition: a failed rename must reach
+            # the cleanup-and-fail path, not `exit 0`. Otherwise a stale
+            # cache gets reported as freshly generated.
             if ./gradlew -q --console=plain :runtime:printRuntimeClasspath >"$tmp" 2>/dev/null \
-                   && [[ -s "$tmp" ]]; then
-                mv -f "$tmp" "$CLASSPATH_CACHE"
+                   && [[ -s "$tmp" ]] \
+                   && mv -f "$tmp" "$CLASSPATH_CACHE"; then
                 exit 0
             fi
             rm -f "$tmp"
