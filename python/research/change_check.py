@@ -198,6 +198,14 @@ def check_script_fails_closed(
     produced a green result from a broken run: no `set -e`, and command
     output consumed without checking it.
 
+    **`pipefail` counts as checking it.** Under `set -Eeuo pipefail` a
+    bare `run | grep pattern` already aborts on either a failed `run` or
+    an unmatched `grep` -- verified, exit 1, next line unreached. An
+    earlier version of this check flagged that shape as unchecked, which
+    is a false positive on a genuinely fail-closed pipeline; the whole
+    point of a checklist like this is that people keep running it, and
+    one that cries wolf gets skipped.
+
     Scar: `verify-gate-a-kill-switch.sh` shipped with `set -uo pipefail`
     and unchecked `grep`s, so a failed `cd`, an unreadable classpath or a
     JVM that never started would have printed nothing and exited 0 --
@@ -215,17 +223,24 @@ def check_script_fails_closed(
         )
 
     problems: list[str] = []
-    if not re.search(r"^\s*set\s+-[A-Za-z]*e", source, re.MULTILINE):
+    has_errexit = bool(re.search(r"^\s*set\s+-[A-Za-z]*e", source, re.MULTILINE))
+    has_pipefail = bool(re.search(r"^\s*set\s+.*pipefail", source, re.MULTILINE))
+    if not has_errexit:
         problems.append("no `set -e` (or `-Eeuo pipefail`), so a failing step is ignored")
-    # A grep whose result is neither tested nor `-q`-asserted proves nothing.
-    for line in source.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("#") or "grep" not in stripped:
-            continue
-        if any(tok in stripped for tok in ("grep -q", "|| ", "&& ", "if ", "!", "$(")):
-            continue
-        problems.append(f"unchecked grep: {stripped[:70]}")
-        break
+
+    # With `set -e` AND `pipefail`, a bare `run | grep pattern` is already
+    # fail-closed: an unmatched grep or a failed producer aborts the
+    # script. Only look for unchecked greps when that safety net is
+    # absent, or this reports a false positive on correct code.
+    if not (has_errexit and has_pipefail):
+        for line in source.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or "grep" not in stripped:
+                continue
+            if any(tok in stripped for tok in ("grep -q", "|| ", "&& ", "if ", "!", "$(")):
+                continue
+            problems.append(f"unchecked grep with no errexit+pipefail net: {stripped[:60]}")
+            break
 
     if not problems:
         return None

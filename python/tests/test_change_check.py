@@ -93,15 +93,28 @@ class TestScriptFailsClosed:
         assert finding is not None and finding.severity == BLOCKER
         assert "set -e" in finding.message
 
-    def test_catches_an_unchecked_grep_even_with_set_e(self, tmp_path):
+    def test_catches_an_unchecked_grep_when_there_is_no_pipefail_net(self, tmp_path):
         script = tmp_path / "verify.sh"
         script.write_text(
-            "#!/usr/bin/env bash\nset -Eeuo pipefail\nrun | grep something\n",
+            "#!/usr/bin/env bash\nset -e\nrun | grep something\n",
             encoding="utf-8",
         )
         finding = check_script_fails_closed(script)
         assert finding is not None
         assert "unchecked grep" in finding.message
+
+    def test_pipefail_makes_a_bare_grep_pipeline_fail_closed(self, tmp_path):
+        """Not a false positive: under `set -Eeuo pipefail` an unmatched
+        grep or a failed producer already aborts the script. Verified
+        directly -- `echo hello | grep nomatch` exits 1 and the next line
+        never runs. An earlier version of this check flagged it, and a
+        checklist that cries wolf is one people stop running."""
+        script = tmp_path / "verify.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\nset -Eeuo pipefail\nrun | grep something\n",
+            encoding="utf-8",
+        )
+        assert check_script_fails_closed(script) is None
 
     def test_passes_the_corrected_shape(self, tmp_path):
         script = tmp_path / "verify.sh"

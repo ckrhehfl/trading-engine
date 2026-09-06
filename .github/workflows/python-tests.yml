@@ -18,9 +18,14 @@ name: python-tests
 # ## Deliberately no credentials and no network
 #
 # Matching java-tests.yml and CLAUDE.md's "never add live exchange
-# write-access in CI": no secrets are referenced, and every test in this
-# suite is hermetic -- network-touching modules are exercised against
-# in-process fakes or monkeypatched fetchers, never a real venue.
+# write-access in CI": no secrets are referenced, and the suite runs
+# inside `unshare -rn` with loopback brought up -- a namespace with no
+# route off the machine -- so "hermetic" is enforced rather than
+# asserted. Several data modules call
+# `urllib.request.urlopen`, and a regressed mock would otherwise reach a
+# real venue and make the result depend on the outside world. The
+# isolation is itself proven before the suite runs, because a namespace
+# that quietly failed to isolate is worse than none.
 #
 # `python/tests/conftest.py` additionally redirects every experiment-log
 # write to a per-test temp directory, so a run cannot append to
@@ -87,15 +92,59 @@ jobs:
             exit 1
           fi
 
-      - name: Run the test suite
+      - name: Run the test suite with outbound network blocked
         working-directory: python
         # From `python/`, because several tests resolve fixture paths
         # relative to the working directory. PYTHONPATH is `.` for the
         # same reason the local invocation uses it -- the packages live
         # directly under python/, not in an installed distribution.
+        #
+        # `unshare -rn` gives the suite a network namespace with no route
+        # off the machine, so the "hermetic" claim is ENFORCED rather
+        # than asserted. Several data modules call
+        # `urllib.request.urlopen`, and a regressed mock would otherwise
+        # reach a real venue and make the result depend on the outside
+        # world -- which is also how a test starts passing for the wrong
+        # reason.
+        #
+        # `ip link set lo up` is required, not incidental. A fresh
+        # namespace has loopback DOWN, and this project's HTTP tests run
+        # in-process fake servers on 127.0.0.1 -- without it, 108 tests
+        # fail for having no local networking at all, which looks exactly
+        # like "the suite reaches the internet" and is the opposite.
+        # Found by running this locally before pushing it.
+        #
+        # Dependencies are installed in the previous step, outside the
+        # namespace, because that genuinely needs the network.
         env:
           PYTHONPATH: .
-        run: uv run --frozen python -m pytest -q
+        run: |
+          # Prove the isolation is real before trusting it, and prove
+          # loopback still works -- a namespace that silently failed at
+          # either would make this step a lie in one direction or a mass
+          # of false failures in the other.
+          unshare -rn sh -c '
+            ip link set lo up
+            python3 - <<'"'"'PROBE'"'"'
+          import socket, sys, http.server, threading, urllib.request
+          srv = http.server.HTTPServer(("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler)
+          threading.Thread(target=srv.handle_request, daemon=True).start()
+          try:
+              urllib.request.urlopen(f"http://127.0.0.1:{srv.server_address[1]}/", timeout=5)
+          except Exception as exc:
+              print(f"loopback is not usable inside the namespace: {exc!r}")
+              sys.exit(1)
+          try:
+              socket.create_connection(("1.1.1.1", 443), timeout=5)
+          except OSError:
+              print("network isolation confirmed: loopback up, outbound TCP blocked")
+              sys.exit(0)
+          print("outbound TCP succeeded -- refusing to claim the suite is hermetic")
+          sys.exit(1)
+          PROBE
+          ' || { echo "::error::network namespace probe failed"; exit 1; }
+
+          unshare -rn sh -c 'ip link set lo up && exec uv run --frozen python -m pytest -q'
 
       - name: Assert no run log was written
         # A guard nobody verifies is worse than no guard. The isolation
