@@ -540,6 +540,54 @@ class TestStructurallyBrokenState:
         path.write_text(json.dumps(broken), encoding="utf-8")
         assert load_state(path) == {}
 
+    @pytest.mark.parametrize(
+        "broken",
+        [{"open": None}, {"consecutive_dead": None}, {"open": None, "consecutive_dead": None}],
+        ids=["open-is-null", "dead-is-null", "both-null"],
+    )
+    def test_an_explicitly_null_container_is_discarded(self, tmp_path, broken):
+        """`{"open": null}` is valid JSON, and `.get("open", {})` returns
+        `None` for it rather than the default -- `decide` then raised on
+        `set(None)`.
+
+        `save_state` only ever writes a dict, so an explicit null means
+        the file came from somewhere else. Discarded on the same argument
+        that rejects a `bool` counter.
+        """
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        assert load_state(path) == {}
+
+    def test_absent_containers_are_still_fine(self, tmp_path):
+        """Absent and explicitly-null are different, and only one is
+        wrong. Without this, rejecting both would pass the test above
+        while breaking every first run."""
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps({"checked_at": "2026-09-06T00:00:00+00:00"}), encoding="utf-8")
+        assert load_state(path) == {"checked_at": "2026-09-06T00:00:00+00:00"}
+
+    def test_decide_survives_a_null_container_even_if_validation_is_bypassed(self):
+        """Belt-and-braces, asserted directly.
+
+        `_is_well_formed_state` has been corrected four times, each round
+        finding one more shape it missed. The consuming side must not
+        depend on it being exhaustive -- a shape that slips past should
+        degrade to "no history", not kill the cron run.
+        """
+        decision = decide(
+            [Alert("k", CRITICAL, "d")],
+            {"open": None, "consecutive_dead": None},
+            NOW,
+            healthy_status(),
+        )
+        assert [a.key for a in decision.to_send] == ["k"]
+        assert decision.recovered == []
+
+    def test_check_loops_survives_a_null_dead_counter_too(self):
+        status = healthy_status()
+        status["loops"]["simulated"]["alive"] = False
+        assert check_loops(status, {"consecutive_dead": None}, NOW) == []
+
     def test_a_null_timestamp_is_allowed_because_this_module_writes_one(self, tmp_path):
         """`decide` stores `last_notified: None` when a repeat is
         suppressed and the previous entry had none. Rejecting it would

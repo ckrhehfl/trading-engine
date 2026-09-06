@@ -144,7 +144,7 @@ def check_loops(
         if not loop.get("alive"):
             # Consecutive, not instantaneous: see
             # DEAD_LOOP_CONSECUTIVE_CHECKS.
-            seen = int(previous.get("consecutive_dead", {}).get(key, 0)) + 1
+            seen = int((previous.get("consecutive_dead") or {}).get(key, 0)) + 1
             if seen >= DEAD_LOOP_CONSECUTIVE_CHECKS:
                 alerts.append(
                     Alert(
@@ -387,8 +387,13 @@ def _is_well_formed_state(loaded: object) -> bool:
         return False
 
     for key in ("open", "consecutive_dead"):
-        value = loaded.get(key)
-        if value is not None and not isinstance(value, dict):
+        # Presence-checked, not `.get(...) is not None`. Those two differ
+        # exactly at `{"open": null}` -- valid JSON, and `.get` cannot
+        # tell it from an absent key. `save_state` only ever writes a
+        # dict, so an explicit null means the file came from somewhere
+        # else, and gets discarded on the same argument as a `bool`
+        # counter.
+        if key in loaded and not isinstance(loaded[key], dict):
             return False
 
     for entry in (loaded.get("open") or {}).values():
@@ -448,7 +453,19 @@ def decide(
     cannot tell a five-minute blip from a three-day outage -- which is
     exactly the distinction Gate A's uptime clause turns on.
     """
-    open_before = previous.get("open", {})
+    # `or {}` rather than a `.get` default, deliberately, and it is
+    # belt-and-braces on top of `_is_well_formed_state` rather than
+    # instead of it.
+    #
+    # That validator has been corrected four times, each round finding
+    # one more shape it did not cover. Four rounds is evidence that a
+    # single validator is the wrong sole protection for this: it has to
+    # be exhaustive to work, and "we finally thought of everything" is
+    # not a claim this project gets to make about itself. So the
+    # consuming side no longer depends on it being right -- a shape that
+    # slips past now degrades to "no history" instead of killing the
+    # cron run, which is the failure direction that matters.
+    open_before = previous.get("open") or {}
     open_now: dict[str, Any] = {}
     decision = Decision()
 
@@ -474,7 +491,7 @@ def decide(
 
     # Consecutive-dead counters, the one piece of history a check needs.
     dead_now = {
-        key: int(previous.get("consecutive_dead", {}).get(key, 0)) + 1
+        key: int((previous.get("consecutive_dead") or {}).get(key, 0)) + 1
         for key, loop in (status.get("loops") or {}).items()
         if not loop.get("alive")
     }
