@@ -23,11 +23,19 @@ name: python-tests
 # in-process fakes or monkeypatched fetchers, never a real venue.
 #
 # `python/tests/conftest.py` additionally redirects every experiment-log
-# write to a per-test temp directory, so a CI run cannot append to
+# write to a per-test temp directory, so a run cannot append to
 # `runs/experiments.jsonl` -- the file behind the DSR trial count `N`.
 # That isolation is itself tested (test_conftest_isolation.py), and this
-# workflow asserts the committed logs are byte-identical afterwards, so
-# a regression in it fails here rather than silently corrupting `N`.
+# workflow checks it from the outside as well.
+#
+# Here it checks it in a way the local run cannot: `experiments.jsonl` is
+# gitignored (a large, purely local research artifact), so a fresh
+# checkout does not have the file at all. Locally a leak merely appends
+# to an existing 4 MB file; in CI it has to CREATE it, so the file simply
+# existing afterwards is proof. The first version of this workflow
+# assumed the file was tracked and failed on its own first run -- an
+# environment difference invisible locally, which is the category this
+# workflow exists to catch.
 
 on:
   push:
@@ -60,15 +68,24 @@ jobs:
         # testing something nobody has.
         run: uv sync --frozen
 
-      - name: Record the committed logs before the suite runs
-        # The suite must not append to either. `runs/experiments.jsonl`
-        # feeds the DSR trial count `N`; `runs/live_signals.jsonl` is the
-        # operational audit trail. Both are git-tracked and both have
-        # been polluted by tests before -- experiments.jsonl still
-        # carries two `test-ofi-momentum` records from 2026-08.
+      - name: Record the committed log before the suite runs
+        # `runs/live_signals.jsonl` is the git-tracked operational audit
+        # trail and must come out byte-identical.
+        #
+        # `runs/experiments.jsonl` is deliberately NOT tracked (see
+        # .gitignore -- a large, purely local research artifact), so a
+        # fresh checkout does not have it. That makes CI a *stronger*
+        # test than the local run: locally the file exists and a leak
+        # only changes it, while here any write at all creates it, so its
+        # mere existence afterwards is the failure.
         run: |
-          sha256sum runs/experiments.jsonl runs/live_signals.jsonl > /tmp/logs-before.sha256
+          test -f runs/live_signals.jsonl
+          sha256sum runs/live_signals.jsonl > /tmp/logs-before.sha256
           cat /tmp/logs-before.sha256
+          if [ -e runs/experiments.jsonl ]; then
+            echo "::error::runs/experiments.jsonl exists in a fresh checkout -- it is gitignored and should not"
+            exit 1
+          fi
 
       - name: Run the test suite
         working-directory: python
@@ -80,21 +97,26 @@ jobs:
           PYTHONPATH: .
         run: uv run --frozen python -m pytest -q
 
-      - name: Assert the committed logs are unchanged
+      - name: Assert no run log was written
         # A guard nobody verifies is worse than no guard. The isolation
-        # fixture has silently failed three times during its own
-        # development, each time while its unit tests passed -- what
-        # caught it every time was comparing these checksums.
+        # fixture silently failed three times during its own development,
+        # each time while its unit tests passed -- what caught it every
+        # time was an external observable like this one.
         run: |
-          if ! sha256sum --check --status /tmp/logs-before.sha256; then
-            echo "::error::the test suite modified a committed run log."
-            echo "runs/experiments.jsonl feeds the DSR trial count N; runs/live_signals.jsonl"
-            echo "is the operational audit trail. Neither may be written by tests."
-            echo "See python/tests/conftest.py and test_conftest_isolation.py."
-            sha256sum runs/experiments.jsonl runs/live_signals.jsonl
+          if [ -e runs/experiments.jsonl ]; then
+            echo "::error::the test suite created runs/experiments.jsonl."
+            echo "That file feeds the DSR trial count N and is gitignored, so it cannot"
+            echo "exist in a fresh checkout unless a test wrote it."
+            wc -l runs/experiments.jsonl
+            head -3 runs/experiments.jsonl
             exit 1
           fi
-          echo "committed run logs unchanged"
+          if ! sha256sum --check --status /tmp/logs-before.sha256; then
+            echo "::error::the test suite modified runs/live_signals.jsonl, the git-tracked audit trail."
+            sha256sum runs/live_signals.jsonl
+            exit 1
+          fi
+          echo "no experiment log created; live_signals.jsonl unchanged"
 
       - name: Assert no stray runs/ directory was created
         # A relative `runs/` path resolves against whatever directory
