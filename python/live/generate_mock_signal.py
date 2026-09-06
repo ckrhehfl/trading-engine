@@ -85,6 +85,7 @@ from __future__ import annotations
 import argparse
 import logging
 import fcntl
+import json
 import os
 import sys
 from contextlib import contextmanager
@@ -186,8 +187,32 @@ def _exclusive(lock_path: Path):
             fcntl.flock(handle, fcntl.LOCK_UN)
 
 
-def _peek_side(state_path: Path) -> Side:
-    """What `_next_side` would return, without writing anything."""
+def _last_published_side(signal_path: Path) -> Side | None:
+    """The side actually on disk in `latest.json`, or `None`.
+
+    `latest.json` is the authority: it is what a loop reads and therefore
+    what was really published. `.last-side` is only a cache of that fact.
+    """
+    try:
+        return OrderIntent(**json.loads(signal_path.read_text(encoding="utf-8"))).side
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def _peek_side(state_path: Path, signal_path: Path | None = None) -> Side:
+    """What the next published side should be, without writing anything.
+
+    **Recovers from `latest.json` when the two disagree.** A crash between
+    the signal being replaced and `.last-side` being written leaves the
+    cache stale, and trusting it alone would publish the same direction
+    twice — the exact failure the alternation exists to prevent. So the
+    published file wins whenever it can be read, and `.last-side` is
+    consulted only as a fallback for the very first run, when no signal
+    has been published yet.
+    """
+    published = _last_published_side(signal_path) if signal_path is not None else None
+    if published is not None:
+        return Side.SHORT if published is Side.LONG else Side.LONG
     try:
         previous = state_path.read_text(encoding="utf-8").strip()
     except (OSError, ValueError):
@@ -276,7 +301,8 @@ def main(argv=None) -> int:
         # Peek without persisting: a dry run that advanced the side state
         # would change the next real signal, which is the one thing a
         # "does not write" flag must not do.
-        print(build_mock_intent(args.symbol, side=_peek_side(SIDE_STATE_PATH)).model_dump_json())
+        predicted = _peek_side(SIDE_STATE_PATH, Path(args.signal_path))
+        print(build_mock_intent(args.symbol, side=predicted).model_dump_json())
         return 0
 
     # Path check, side choice, write and state commit are ONE critical
@@ -284,11 +310,14 @@ def main(argv=None) -> int:
     # side, and lets a failed write consume a side that was never used.
     try:
         with _exclusive(LOCK_PATH):
-            side = _peek_side(SIDE_STATE_PATH)
+            side = _peek_side(SIDE_STATE_PATH, Path(args.signal_path))
             intent = build_mock_intent(args.symbol, side=side)
             write_signal_atomically(intent, args.signal_path)
             # Only now. The side is spent when the signal is on disk, not
-            # when it was chosen.
+            # when it was chosen. A failure here is survivable rather than
+            # fatal because the next run recovers the true side from
+            # `latest.json` itself -- `.last-side` is a cache, not the
+            # record.
             _commit_side(SIDE_STATE_PATH, side)
     except ValueError as exc:
         logger.error("%s", exc)

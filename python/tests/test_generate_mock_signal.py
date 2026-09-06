@@ -157,7 +157,19 @@ class TestSideAlternation:
         sides and the file must agree with the recorded state.
         """
         monkeypatch.chdir(tmp_path)
-        seen: list[Side] = []
+
+        # Collect what each run actually published. Comparing only the
+        # two FINAL files would pass even if both runs emitted LONG,
+        # which is precisely the race being tested.
+        published: list[Side] = []
+        real_write = mock.write_signal_atomically
+
+        def recording_write(intent, path):
+            real_write(intent, path)
+            published.append(intent.side)
+
+        monkeypatch.setattr(mock, "write_signal_atomically", recording_write)
+
         barrier = threading.Barrier(2)
 
         def run():
@@ -165,14 +177,19 @@ class TestSideAlternation:
             mock.main([])
 
         threads = [threading.Thread(target=run) for _ in range(2)]
-        for t in threads: t.start()
-        for t in threads: t.join()
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert sorted(s.value for s in published) == sorted(
+            [Side.LONG.value, Side.SHORT.value]
+        ), f"both runs published the same side: {[s.value for s in published]}"
 
         final = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
         recorded = mock.SIDE_STATE_PATH.read_text().strip()
         assert recorded == final.value, (
-            f"latest.json says {final.value} but the state says {recorded} -- "
-            f"the two runs raced"
+            f"latest.json says {final.value} but the state says {recorded}"
         )
 
     def test_an_unreadable_state_file_does_not_cost_an_order_event(self, tmp_path):
@@ -267,3 +284,38 @@ class TestCli:
         monkeypatch.chdir(tmp_path)
         assert mock.main([]) == 0
         assert (tmp_path / mock.MOCK_SIGNAL_PATH).exists()
+
+
+class TestStateRecovery:
+    """`.last-side` is a cache; `latest.json` is the record."""
+
+    def test_a_stale_cache_does_not_repeat_a_side(self, tmp_path, monkeypatch):
+        """A crash between replacing the signal and writing `.last-side`
+        leaves the cache behind. Trusting it alone would publish the same
+        direction twice — the exact thing alternation prevents."""
+        monkeypatch.chdir(tmp_path)
+        assert mock.main([]) == 0
+        published = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
+
+        # Simulate the crash: roll the cache back to before that run.
+        mock.SIDE_STATE_PATH.write_text(
+            (Side.SHORT if published is Side.LONG else Side.LONG).value, encoding="utf-8"
+        )
+
+        assert mock.main([]) == 0
+        second = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
+        assert second != published, (
+            "recovered from the stale cache instead of from latest.json"
+        )
+
+    def test_falls_back_to_the_cache_before_anything_is_published(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mock.SIDE_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+        mock.SIDE_STATE_PATH.write_text(Side.LONG.value, encoding="utf-8")
+        assert mock._peek_side(mock.SIDE_STATE_PATH, mock.MOCK_SIGNAL_PATH) is Side.SHORT
+
+    def test_a_corrupt_signal_file_falls_back_rather_than_failing(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        mock.MOCK_SIGNAL_PATH.parent.mkdir(parents=True, exist_ok=True)
+        mock.MOCK_SIGNAL_PATH.write_text("not json at all", encoding="utf-8")
+        assert mock._peek_side(mock.SIDE_STATE_PATH, mock.MOCK_SIGNAL_PATH) is Side.LONG
