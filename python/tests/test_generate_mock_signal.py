@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import ast
 import json
+import threading
 from decimal import Decimal
 from pathlib import Path
 
@@ -113,21 +114,74 @@ class TestIntent:
 class TestSideAlternation:
     def test_alternates_across_invocations(self, tmp_path):
         state = tmp_path / ".last-side"
-        sides = [mock._next_side(state) for _ in range(6)]
+        sides = []
+        for _ in range(6):
+            side = mock._peek_side(state)
+            sides.append(side)
+            mock._commit_side(state, side)
         assert sides == [Side.LONG, Side.SHORT] * 3, (
             "a generator stuck on one side walks the simulated position "
             "steadily in one direction"
         )
 
     def test_a_missing_state_file_starts_long_rather_than_failing(self, tmp_path):
-        assert mock._next_side(tmp_path / "absent" / ".last-side") is Side.LONG
+        assert mock._peek_side(tmp_path / "absent" / ".last-side") is Side.LONG
+
+    def test_a_failed_publish_does_not_consume_the_side(self, tmp_path, monkeypatch):
+        """success -> failure -> success must not repeat a side.
+
+        An earlier version consumed the side the moment it was read, so a
+        refused path or a failed rename still burned it and the next run
+        published the same direction twice while `latest.json` had only
+        ever seen one of them.
+        """
+        monkeypatch.chdir(tmp_path)
+        assert mock.main([]) == 0
+        first = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
+
+        # a refused path: the run fails and must leave the state alone
+        assert mock.main([
+            "--signal-path", "var/live/signals/BTC-USDT/daily-tsmom-ensemble/latest.json",
+        ]) == 2
+
+        assert mock.main([]) == 0
+        third = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
+        assert third != first, (
+            "the failed run consumed a side, so the alternation skipped one"
+        )
+
+    def test_concurrent_runs_do_not_publish_the_same_side(self, tmp_path, monkeypatch):
+        """cron never waits for the previous run, so two can overlap.
+
+        Serialised by `flock`, the two invocations must take different
+        sides and the file must agree with the recorded state.
+        """
+        monkeypatch.chdir(tmp_path)
+        seen: list[Side] = []
+        barrier = threading.Barrier(2)
+
+        def run():
+            barrier.wait()
+            mock.main([])
+
+        threads = [threading.Thread(target=run) for _ in range(2)]
+        for t in threads: t.start()
+        for t in threads: t.join()
+
+        final = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
+        recorded = mock.SIDE_STATE_PATH.read_text().strip()
+        assert recorded == final.value, (
+            f"latest.json says {final.value} but the state says {recorded} -- "
+            f"the two runs raced"
+        )
 
     def test_an_unreadable_state_file_does_not_cost_an_order_event(self, tmp_path):
         """Losing the alternation costs a slightly one-sided position.
         Failing the run costs a Gate A event, which is worse."""
         state = tmp_path / ".last-side"
         state.mkdir()  # a directory where a file is expected
-        assert mock._next_side(state) is Side.LONG
+        assert mock._peek_side(state) is Side.LONG
+        mock._commit_side(state, Side.LONG)  # logs, does not raise
 
 
 class TestWrite:

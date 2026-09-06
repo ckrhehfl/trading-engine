@@ -84,8 +84,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import fcntl
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from decimal import Decimal
 from pathlib import Path
@@ -121,6 +123,7 @@ MOCK_QUANTITY = Decimal("0.001")
 # it dominates the equity curve — which would make the daily reports
 # harder to read for no benefit.
 SIDE_STATE_PATH = MOCK_SIGNAL_DIR / ".last-side"
+LOCK_PATH = MOCK_SIGNAL_DIR / ".lock"
 
 
 def _reject_real_strategy_path(target: Path) -> None:
@@ -161,6 +164,28 @@ def _reject_real_strategy_path(target: Path) -> None:
     )
 
 
+@contextmanager
+def _exclusive(lock_path: Path):
+    """One writer at a time, across processes.
+
+    Cron fires this every five minutes and never waits for the previous
+    run, so two invocations really can overlap — a slow one plus the next
+    tick is enough. Without a lock they read the same `.last-side`, emit
+    the same side, and race to replace `latest.json`, so the file and the
+    state disagree about which side was last published.
+
+    `flock` and not a lockfile-exists check: the kernel releases it if the
+    process dies, so a killed run cannot wedge the generator permanently.
+    """
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(lock_path, "w", encoding="utf-8") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
 def _peek_side(state_path: Path) -> Side:
     """What `_next_side` would return, without writing anything."""
     try:
@@ -170,21 +195,23 @@ def _peek_side(state_path: Path) -> Side:
     return Side.SHORT if previous == Side.LONG.value else Side.LONG
 
 
-def _next_side(state_path: Path) -> Side:
-    """Alternate BUY/SELL across invocations, surviving restarts.
+def _commit_side(state_path: Path, side: Side) -> None:
+    """Record `side` as published. Call only AFTER the signal is on disk.
 
-    A missing or unreadable state file yields `LONG`, which is a fine
-    starting point and never an error: losing the alternation costs
-    nothing but a slightly one-sided position, and failing the run would
-    cost a Gate A order event.
+    Separated from `_peek_side` because an earlier version consumed the
+    side the moment it was read — so a refused path or a failed rename
+    still burned it, and the next run emitted the same direction twice in
+    a row while `latest.json` had only ever seen one of them.
+
+    A failure to persist is logged, not raised: losing the alternation
+    costs a slightly one-sided position, while failing the run costs a
+    Gate A order event, which is worse.
     """
-    side = _peek_side(state_path)
     try:
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(side.value, encoding="utf-8")
     except OSError as exc:
         logger.warning("could not persist side state to %s: %s", state_path, exc)
-    return side
 
 
 def build_mock_intent(symbol: str = DEFAULT_SYMBOL, *, side: Side | None = None) -> OrderIntent:
@@ -252,13 +279,23 @@ def main(argv=None) -> int:
         print(build_mock_intent(args.symbol, side=_peek_side(SIDE_STATE_PATH)).model_dump_json())
         return 0
 
-    intent = build_mock_intent(args.symbol, side=_next_side(SIDE_STATE_PATH))
-
+    # Path check, side choice, write and state commit are ONE critical
+    # section. Splitting them lets an overlapping run publish a duplicate
+    # side, and lets a failed write consume a side that was never used.
     try:
-        write_signal_atomically(intent, args.signal_path)
+        with _exclusive(LOCK_PATH):
+            side = _peek_side(SIDE_STATE_PATH)
+            intent = build_mock_intent(args.symbol, side=side)
+            write_signal_atomically(intent, args.signal_path)
+            # Only now. The side is spent when the signal is on disk, not
+            # when it was chosen.
+            _commit_side(SIDE_STATE_PATH, side)
     except ValueError as exc:
         logger.error("%s", exc)
         return 2
+    except OSError as exc:
+        logger.error("could not publish the mock signal: %s", exc)
+        return 3
 
     logger.info(
         "mock signal written: %s %s %s -> %s",
