@@ -402,13 +402,20 @@ belonging to a running process, which is not a verification anyone
 should have to perform.
 `PAPER_TRADING_SUBMISSION_MARKERS_PATH` was added for exactly this:
 configuration surface only, default byte-for-byte what the constant was.
-Deliberately unlike `BINGX_VST_BASE_URL`, which has no override on
-purpose — that one decides *which venue is reached*, where a
-misconfiguration sends real orders somewhere unintended. A marker path
-decides only where this process keeps its own bookkeeping, and a wrong
-one is fail-safe: the resolver never auto-clears, so it can only cause a
-missed trip to be re-reported later, never a spurious clean start
-against markers that exist.
+
+**It is not fail-safe, and an earlier version of this document claimed
+it was.** Pointing it at an empty location means a real unresolved
+marker in the default store is never looked at and the process starts
+with the kill switch clear — precisely the bypass the marker mechanism
+exists to prevent. Correctly caught on review.
+
+So the override is refused unless
+`PAPER_TRADING_ALLOW_ISOLATED_MARKERS` carries the exact string
+`i-understand-this-bypasses-marker-review`. Two variables because one is
+too easy to set by accident in a deployment script, and a sentence
+rather than `1` because the value *is* the acknowledgement. Normal
+operation never reaches the override; verified on the instance that
+setting the path alone refuses to start.
 
 **A separate real trip and recovery was also observed**, unplanned, on
 2026-09-05: the VST loop found a pre-existing position, refused to start

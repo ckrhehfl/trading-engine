@@ -1488,7 +1488,7 @@ class PaperTradingAppTest {
     void submissionMarkersPathDefaultsToTheVarLiveConventionWhenUnset() {
         assertEquals(
                 Path.of("var", "live", "submission_markers.json"),
-                PaperTradingApp.resolveSubmissionMarkersPath(null),
+                PaperTradingApp.resolveSubmissionMarkersPath(null, null),
                 "the default must match the constant this replaced, or existing"
                         + " deployments lose track of their markers");
     }
@@ -1498,7 +1498,7 @@ class PaperTradingAppTest {
         for (String blank : new String[] {"", "   ", "\t", "\n"}) {
             assertEquals(
                     Path.of("var", "live", "submission_markers.json"),
-                    PaperTradingApp.resolveSubmissionMarkersPath(blank),
+                    PaperTradingApp.resolveSubmissionMarkersPath(blank, null),
                     "an exported-but-empty variable must not redirect the store to"
                             + " the working directory");
         }
@@ -1508,14 +1508,42 @@ class PaperTradingAppTest {
     void submissionMarkersPathHonoursAnExplicitValue() {
         assertEquals(
                 Path.of("/tmp/verify/markers.json"),
-                PaperTradingApp.resolveSubmissionMarkersPath("/tmp/verify/markers.json"));
+                PaperTradingApp.resolveSubmissionMarkersPath(
+                        "/tmp/verify/markers.json", PaperTradingApp.ISOLATED_MARKERS_ACKNOWLEDGEMENT));
     }
 
     @Test
     void submissionMarkersPathTrimsSurroundingWhitespace() {
         assertEquals(
                 Path.of("/tmp/verify/markers.json"),
-                PaperTradingApp.resolveSubmissionMarkersPath("  /tmp/verify/markers.json  "),
+                PaperTradingApp.resolveSubmissionMarkersPath(
+                        "  /tmp/verify/markers.json  ", PaperTradingApp.ISOLATED_MARKERS_ACKNOWLEDGEMENT),
                 "a trailing newline from a shell heredoc must not become part of the path");
+    }
+
+    @Test
+    void submissionMarkersPathOverrideIsRefusedWithoutTheAcknowledgement() {
+        // Pointing the store elsewhere means a real unresolved marker in
+        // the DEFAULT store is never seen, and the process starts with
+        // the kill switch clear -- the exact bypass that mechanism
+        // exists to prevent. An earlier version of this feature called
+        // that fail-safe. It is not.
+        for (String ack : new String[] {null, "", "1", "true", "yes", "I-Understand-This-Bypasses-Marker-Review"}) {
+            IllegalStateException thrown = assertThrows(
+                    IllegalStateException.class,
+                    () -> PaperTradingApp.resolveSubmissionMarkersPath("/tmp/elsewhere.json", ack),
+                    "acknowledgement '" + ack + "' must not unlock the override");
+            assertTrue(
+                    thrown.getMessage().contains("kill switch"),
+                    "the refusal must say what is actually at stake");
+        }
+    }
+
+    @Test
+    void anAbsentOverrideNeedsNoAcknowledgement() {
+        // Normal operation must not require the escape hatch's own flag.
+        assertEquals(
+                Path.of("var", "live", "submission_markers.json"),
+                PaperTradingApp.resolveSubmissionMarkersPath(null, null));
     }
 }

@@ -160,18 +160,42 @@ public final class PaperTradingApp {
      * running process. That is not a verification anyone should have to
      * perform.
      *
-     * <p><b>Configuration surface only, no behaviour change.</b> Omitted,
-     * the default is byte-for-byte what the constant was, so every
-     * existing deployment is unaffected. This is deliberately unlike
-     * {@code BINGX_VST_BASE_URL} and {@code KIS_PAPER_BASE_URL}, which
-     * have no environment override on purpose: those decide *which venue
-     * is reached*, where a misconfiguration sends real orders somewhere
-     * unintended. A marker path decides only where this process keeps its
-     * own bookkeeping, and pointing it somewhere empty is fail-safe --
-     * the resolver treats every marker it finds as unresolved and never
-     * auto-clears, so a wrong path can only cause a *missed* trip to be
-     * re-reported on the real path later, never a spurious clean start
-     * against markers that exist.
+     * <p><b>Configuration surface only, no behaviour change when
+     * omitted.</b> The default is byte-for-byte what the constant was, so
+     * every existing deployment is unaffected.
+     *
+     * <p><b>But it is NOT fail-safe, and an earlier version of this
+     * comment claimed it was.</b> Pointing this at an empty location
+     * means a real unresolved marker in the default store is never
+     * looked at, and the process starts with the kill switch clear —
+     * which is precisely the bypass the marker mechanism exists to
+     * prevent. Correctly identified on review; the claim that a wrong
+     * path "can only cause a missed trip to be re-reported later" was
+     * wrong, because nothing forces a later run to use the right path.
+     *
+     * <p>So the override is refused unless {@link
+     * #ENV_ALLOW_ISOLATED_MARKERS} is also set. Two variables, because a
+     * single one is too easy to set by accident in a deployment script,
+     * and the second one's name says out loud what it is for. Normal
+     * operation cannot reach the override at all.
+     */
+    static final String ENV_ALLOW_ISOLATED_MARKERS = "PAPER_TRADING_ALLOW_ISOLATED_MARKERS";
+
+    /**
+     * Must be exactly {@code "i-understand-this-bypasses-marker-review"}
+     * for {@link #ENV_SUBMISSION_MARKERS_PATH} to take effect.
+     *
+     * <p>A sentence rather than {@code "1"} on purpose: the value is the
+     * acknowledgement. Anyone typing it has read what it does.
+     */
+    static final String ISOLATED_MARKERS_ACKNOWLEDGEMENT = "i-understand-this-bypasses-marker-review";
+
+    /**
+     * Where {@link SubmissionMarkerStore} persists {@code
+     * SUBMISSION_UNKNOWN} markers. Optional; defaults to {@link
+     * #DEFAULT_SUBMISSION_MARKERS_PATH}. Ignored unless {@link
+     * #ENV_ALLOW_ISOLATED_MARKERS} carries {@link
+     * #ISOLATED_MARKERS_ACKNOWLEDGEMENT} — see above for why.
      */
     static final String ENV_SUBMISSION_MARKERS_PATH = "PAPER_TRADING_SUBMISSION_MARKERS_PATH";
 
@@ -982,7 +1006,9 @@ public final class PaperTradingApp {
         VstPreflight.Result preflight = VstPreflight.run(adapter, symbol);
 
         SubmissionMarkerStore markerStore =
-                new SubmissionMarkerStore(resolveSubmissionMarkersPath(System.getenv(ENV_SUBMISSION_MARKERS_PATH)));
+                new SubmissionMarkerStore(resolveSubmissionMarkersPath(
+                        System.getenv(ENV_SUBMISSION_MARKERS_PATH),
+                        System.getenv(ENV_ALLOW_ISOLATED_MARKERS)));
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
         boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
 
@@ -1404,11 +1430,25 @@ public final class PaperTradingApp {
      * exported-but-empty variable cannot silently redirect the store to
      * the working directory.
      */
-    static Path resolveSubmissionMarkersPath(String raw) {
-        if (raw != null && !raw.isBlank()) {
-            return Path.of(raw.trim());
+    static Path resolveSubmissionMarkersPath(String raw, String acknowledgement) {
+        if (raw == null || raw.isBlank()) {
+            return DEFAULT_SUBMISSION_MARKERS_PATH;
         }
-        return DEFAULT_SUBMISSION_MARKERS_PATH;
+        if (!ISOLATED_MARKERS_ACKNOWLEDGEMENT.equals(acknowledgement)) {
+            throw new IllegalStateException(
+                    ENV_SUBMISSION_MARKERS_PATH
+                            + " is set, but "
+                            + ENV_ALLOW_ISOLATED_MARKERS
+                            + " is not '"
+                            + ISOLATED_MARKERS_ACKNOWLEDGEMENT
+                            + "'. Pointing the marker store somewhere else means a real"
+                            + " unresolved SUBMISSION_UNKNOWN marker in the default store is"
+                            + " never seen, and the process starts with the kill switch"
+                            + " clear -- the exact bypass that mechanism exists to prevent."
+                            + " Refusing to start rather than trading past an unreviewed"
+                            + " marker.");
+        }
+        return Path.of(raw.trim());
     }
 
     static Path resolveReportsDirectory(String raw) {
