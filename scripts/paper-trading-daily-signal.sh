@@ -71,6 +71,35 @@ cd "$REPO_ROOT"
 LOG_FILE="var/live/cron.log"
 MARKER_FILE="var/live/last_signal_run_date.txt"
 LOCK_FILE="var/live/.daily-signal.lock"
+
+# The signal log this deployment appends to. Deliberately under the
+# gitignored `var/live/`, and deliberately NOT the repository's tracked
+# `runs/live_signals.jsonl`, which is what
+# `live/generate_daily_signal.py`'s own `--runs-path` defaults to.
+#
+# Those two were the same file until 2026-09-06, and it broke both ways
+# at once on the VPS. `git pull` refused because the running system had
+# dirtied a tracked file, so the deployment sat three commits behind;
+# and the two days of audit trail cron had written existed nowhere but
+# that one free-tier VM. Both are the same root cause -- git and cron
+# writing one file with nothing between them.
+#
+# The deployment now writes only here, and
+# `python -m live.sync_live_signals` is the single, human-run,
+# append-only path from this file into the repository's copy. See that
+# module's docstring for the full account.
+#
+# **Hardcoded, with no environment-variable override, deliberately.** A
+# first version wrote `${LIVE_SIGNALS_PATH:-...}`, which meant a cron
+# environment or a stray export could point the deployment straight back
+# at `runs/live_signals.jsonl` and recreate the exact incident this
+# change exists to remove. `LOG_FILE` and `MARKER_FILE` above are
+# hardcoded for the same reason, and so are `BINGX_VST_BASE_URL` and
+# `KIS_PAPER_BASE_URL` on the Java side: where a configuration surface
+# has one correct value, the safe design is to remove the surface rather
+# than validate it.
+LIVE_SIGNALS_PATH="var/live/live_signals.jsonl"
+
 mkdir -p "$(dirname "$LOG_FILE")"
 
 # Exclusive, non-blocking lock on fd 200 for the rest of this script's
@@ -105,7 +134,8 @@ fi
 set +e
 RUN_OUTPUT="$( {
     echo "$(date -u +'%Y-%m-%dT%H:%M:%SZ') paper-trading-daily-signal: running for $TODAY_UTC (last completed run: ${LAST_RUN_DATE:-none})"
-    PYTHONPATH=python BINGX_BASE_URL=https://open-api.bingx.com python/.venv/bin/python -m live.generate_daily_signal
+    PYTHONPATH=python BINGX_BASE_URL=https://open-api.bingx.com python/.venv/bin/python \
+        -m live.generate_daily_signal --runs-path "$LIVE_SIGNALS_PATH"
 } 2>&1 )"
 PYTHON_EXIT=$?
 set -e

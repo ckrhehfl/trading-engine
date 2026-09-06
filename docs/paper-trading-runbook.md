@@ -293,6 +293,63 @@ ls var/live/reports/daily/                  # simulated loop's daily reports
 ls var/live/reports/vst/                    # VST loop's daily reports
 ```
 
+## 7b. Bringing the deployment's audit trail back into the repository
+
+The deployment appends every live-signal decision to
+`var/live/live_signals.jsonl` — gitignored, local to that machine. The
+repository's copy, `runs/live_signals.jsonl`, is git-tracked and is the
+**record**. Getting from one to the other is a deliberate, human-run
+step:
+
+```bash
+set -Eeuo pipefail                       # so step 1 failing stops the rest
+
+# 1. Pull the deployment's log to this machine, and verify the download.
+#    The shell creates /tmp/from-vps.jsonl BEFORE the remote command
+#    runs, so a failed ssh leaves an empty or partial file behind. A
+#    partial file cut at a line boundary is still valid JSONL, and the
+#    sync would then quietly merge a prefix and report success -- the
+#    audit trail stays safe (the tool is append-only) but the operator
+#    is told the sync is done when records are missing.
+gcloud compute ssh paper-trading --zone=us-central1-a \
+  --command='sudo -u minjun4897 cat ~/trading-engine/var/live/live_signals.jsonl' \
+  > /tmp/from-vps.jsonl
+
+REMOTE_LINES=$(gcloud compute ssh paper-trading --zone=us-central1-a \
+  --command='sudo -u minjun4897 wc -l < ~/trading-engine/var/live/live_signals.jsonl')
+LOCAL_LINES=$(wc -l < /tmp/from-vps.jsonl)
+[ "$REMOTE_LINES" -eq "$LOCAL_LINES" ] || {
+  echo "download is short: remote $REMOTE_LINES, local $LOCAL_LINES"; exit 1; }
+
+# 2. See what it would add. Writes nothing.
+PYTHONPATH=python python/.venv/bin/python -m live.sync_live_signals \
+  /tmp/from-vps.jsonl --dry-run
+
+# 3. Do it, then commit through the normal PR flow.
+PYTHONPATH=python python/.venv/bin/python -m live.sync_live_signals \
+  /tmp/from-vps.jsonl
+git diff runs/live_signals.jsonl        # must show ONLY added lines
+```
+
+Safe to run whenever, and safe to run twice — records are identified by
+`run_id`, so a second sync reports "nothing to do" and does not touch
+the file. It refuses rather than guesses if the same `run_id` carries
+different content in the two logs, or if the tracked file changed while
+the sync was planning.
+
+**Why this is a separate step rather than the deployment committing for
+itself**: giving a VPS push credentials to a public repository is a
+credential-exposure surface, and CLAUDE.md forbids pushing to `main`
+regardless. The cost of the manual step is that the repository's copy
+lags until someone runs it — so run it before deleting or rebuilding
+the instance, because until then that machine holds the only copy.
+
+**Do this before any `git pull` on the deployment**, and never resolve a
+dirty `runs/live_signals.jsonl` with `git checkout` — that silently
+destroys operational history. It should no longer happen at all now that
+the deployment writes elsewhere, but a checkout predating 2026-09-06
+will still have the old behaviour until it is updated.
+
 ## 8. Stopping everything
 
 ```bash
