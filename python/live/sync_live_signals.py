@@ -187,9 +187,13 @@ def plan_sync(
             )
         already_present += 1
 
-    # Ordered by when they were logged, so the merged file stays
-    # chronological -- the property anyone reading an audit trail
-    # assumes without checking.
+    # The APPENDED BLOCK is ordered by `logged_at`. The merged file as a
+    # whole is not guaranteed chronological, and that is deliberate:
+    # append-only wins over ordering, so a deployment record older than
+    # the tracked log's last entry still lands at the end rather than
+    # being inserted. Stated explicitly because a reader who assumes the
+    # whole file is chronological would draw wrong conclusions from it --
+    # sort by `logged_at` before reasoning about sequence.
     added.sort(key=lambda record: record["logged_at"])
 
     return SyncPlan(kept=len(tracked), added=added, already_present=already_present)
@@ -220,13 +224,25 @@ def apply_sync(
     """
     path = Path(tracked_path)
 
+    # Full records, not just the `run_id` list. Comparing ids alone
+    # passes when a record's *content* changed while its id stayed put,
+    # and the very next line writes `tracked` back over it -- silently
+    # reverting an audit record, which is the one thing this module
+    # promises never to do. The docstring above already claimed "exactly
+    # what was planned against"; an id-only comparison was weaker than
+    # its own stated contract.
     on_disk = read_records(path)
-    if [r["run_id"] for r in on_disk] != [r["run_id"] for r in tracked]:
+    if on_disk != tracked:
         raise SyncRefused(
             f"{path} changed after the sync was planned: it now holds "
-            f"{len(on_disk)} record(s) where the plan saw {len(tracked)}. "
-            f"Writing the plan would have erased whatever arrived in between. "
-            f"Re-run the sync. Nothing was written."
+            f"{len(on_disk)} record(s) where the plan saw {len(tracked)}"
+            + (
+                " (same run_ids, different content)"
+                if [r["run_id"] for r in on_disk] == [r["run_id"] for r in tracked]
+                else ""
+            )
+            + ". Writing the plan would have erased or reverted whatever "
+            "arrived in between. Re-run the sync. Nothing was written."
         )
 
     merged = tracked + plan.added
@@ -243,6 +259,15 @@ def apply_sync(
             handle.flush()
             os.fsync(handle.fileno())
         os.replace(tmp, path)
+        # The rename itself is metadata, and metadata is not durable
+        # until the containing directory is synced. Without this a power
+        # loss immediately after a sync can lose the rename and leave
+        # the previous file -- cheap insurance on an audit trail.
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     finally:
         tmp.unlink(missing_ok=True)
 

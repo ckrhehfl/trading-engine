@@ -173,6 +173,23 @@ class TestApplySync:
         with pytest.raises(SyncRefused, match="changed after the sync was planned"):
             apply_sync(plan, tracked, path)
 
+    def test_it_refuses_when_content_changed_but_the_ids_did_not(self, tmp_path):
+        """The id-only comparison the first version used passes here, and
+        the next line writes the stale content back -- silently reverting
+        an audit record. Same run_ids, different payload."""
+        path = tmp_path / "log.jsonl"
+        tracked = [record("1", "2026-09-01T00:00:00Z", sharpe_ratio=0.5)]
+        write_log(path, tracked)
+        plan = plan_sync(tracked, tracked + [record("2", "2026-09-02T00:00:00Z")])
+
+        corrected = [record("1", "2026-09-01T00:00:00Z", sharpe_ratio=-0.9)]
+        write_log(path, corrected)
+        before = path.read_bytes()
+
+        with pytest.raises(SyncRefused, match="same run_ids, different content"):
+            apply_sync(plan, tracked, path)
+        assert path.read_bytes() == before
+
     def test_no_temp_file_is_left_behind(self, tmp_path):
         path = tmp_path / "log.jsonl"
         tracked = [record("1", "2026-09-01T00:00:00Z")]

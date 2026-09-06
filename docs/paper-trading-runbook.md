@@ -302,10 +302,24 @@ repository's copy, `runs/live_signals.jsonl`, is git-tracked and is the
 step:
 
 ```bash
-# 1. Pull the deployment's log to this machine.
+set -Eeuo pipefail                       # so step 1 failing stops the rest
+
+# 1. Pull the deployment's log to this machine, and verify the download.
+#    The shell creates /tmp/from-vps.jsonl BEFORE the remote command
+#    runs, so a failed ssh leaves an empty or partial file behind. A
+#    partial file cut at a line boundary is still valid JSONL, and the
+#    sync would then quietly merge a prefix and report success -- the
+#    audit trail stays safe (the tool is append-only) but the operator
+#    is told the sync is done when records are missing.
 gcloud compute ssh paper-trading --zone=us-central1-a \
   --command='sudo -u minjun4897 cat ~/trading-engine/var/live/live_signals.jsonl' \
   > /tmp/from-vps.jsonl
+
+REMOTE_LINES=$(gcloud compute ssh paper-trading --zone=us-central1-a \
+  --command='sudo -u minjun4897 wc -l < ~/trading-engine/var/live/live_signals.jsonl')
+LOCAL_LINES=$(wc -l < /tmp/from-vps.jsonl)
+[ "$REMOTE_LINES" -eq "$LOCAL_LINES" ] || {
+  echo "download is short: remote $REMOTE_LINES, local $LOCAL_LINES"; exit 1; }
 
 # 2. See what it would add. Writes nothing.
 PYTHONPATH=python python/.venv/bin/python -m live.sync_live_signals \

@@ -88,7 +88,17 @@ LOCK_FILE="var/live/.daily-signal.lock"
 # `python -m live.sync_live_signals` is the single, human-run,
 # append-only path from this file into the repository's copy. See that
 # module's docstring for the full account.
-LIVE_SIGNALS_PATH="${LIVE_SIGNALS_PATH:-var/live/live_signals.jsonl}"
+#
+# **Hardcoded, with no environment-variable override, deliberately.** A
+# first version wrote `${LIVE_SIGNALS_PATH:-...}`, which meant a cron
+# environment or a stray export could point the deployment straight back
+# at `runs/live_signals.jsonl` and recreate the exact incident this
+# change exists to remove. `LOG_FILE` and `MARKER_FILE` above are
+# hardcoded for the same reason, and so are `BINGX_VST_BASE_URL` and
+# `KIS_PAPER_BASE_URL` on the Java side: where a configuration surface
+# has one correct value, the safe design is to remove the surface rather
+# than validate it.
+LIVE_SIGNALS_PATH="var/live/live_signals.jsonl"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 
