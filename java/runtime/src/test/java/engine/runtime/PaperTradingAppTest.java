@@ -1474,4 +1474,48 @@ class PaperTradingAppTest {
                 app.lastReconciliationReport().isClean(),
                 "no internal-consistency mismatch expected -- the seeded order was registered as submitted");
     }
+
+    // --- PAPER_TRADING_SUBMISSION_MARKERS_PATH -----------------------
+    //
+    // Added so the SUBMISSION_UNKNOWN recovery path can be exercised on a
+    // deployed system without touching the live loop's marker store. The
+    // default must stay byte-for-byte what the hardcoded constant was, or
+    // an existing deployment silently starts looking for its markers
+    // somewhere else -- and a missing marker file reads as "nothing to
+    // resolve", i.e. a clean start against markers that do exist.
+
+    @Test
+    void submissionMarkersPathDefaultsToTheVarLiveConventionWhenUnset() {
+        assertEquals(
+                Path.of("var", "live", "submission_markers.json"),
+                PaperTradingApp.resolveSubmissionMarkersPath(null),
+                "the default must match the constant this replaced, or existing"
+                        + " deployments lose track of their markers");
+    }
+
+    @Test
+    void submissionMarkersPathTreatsBlankAsAbsentRatherThanAsAnEmptyPath() {
+        for (String blank : new String[] {"", "   ", "\t", "\n"}) {
+            assertEquals(
+                    Path.of("var", "live", "submission_markers.json"),
+                    PaperTradingApp.resolveSubmissionMarkersPath(blank),
+                    "an exported-but-empty variable must not redirect the store to"
+                            + " the working directory");
+        }
+    }
+
+    @Test
+    void submissionMarkersPathHonoursAnExplicitValue() {
+        assertEquals(
+                Path.of("/tmp/verify/markers.json"),
+                PaperTradingApp.resolveSubmissionMarkersPath("/tmp/verify/markers.json"));
+    }
+
+    @Test
+    void submissionMarkersPathTrimsSurroundingWhitespace() {
+        assertEquals(
+                Path.of("/tmp/verify/markers.json"),
+                PaperTradingApp.resolveSubmissionMarkersPath("  /tmp/verify/markers.json  "),
+                "a trailing newline from a shell heredoc must not become part of the path");
+    }
 }

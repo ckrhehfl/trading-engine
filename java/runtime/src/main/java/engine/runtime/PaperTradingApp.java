@@ -146,6 +146,35 @@ public final class PaperTradingApp {
     static final String ENV_TICK_INTERVAL_SECONDS = "PAPER_TRADING_TICK_INTERVAL_SECONDS";
     static final String ENV_REPORTS_DIRECTORY = "PAPER_TRADING_REPORTS_DIR";
 
+    /**
+     * Where {@link SubmissionMarkerStore} persists {@code
+     * SUBMISSION_UNKNOWN} markers. Optional; defaults to {@link
+     * #DEFAULT_SUBMISSION_MARKERS_PATH}.
+     *
+     * <p>Added so the {@code SUBMISSION_UNKNOWN} recovery path can be
+     * exercised on a deployed system without touching the live loop's
+     * marker store. Gate A requires that path to be verified, and the
+     * store was a hardcoded constant -- so an isolated instance shared
+     * the same file as the real {@code bingx-vst} loop, and the only way
+     * to verify was to hand-edit a risk-control artifact belonging to a
+     * running process. That is not a verification anyone should have to
+     * perform.
+     *
+     * <p><b>Configuration surface only, no behaviour change.</b> Omitted,
+     * the default is byte-for-byte what the constant was, so every
+     * existing deployment is unaffected. This is deliberately unlike
+     * {@code BINGX_VST_BASE_URL} and {@code KIS_PAPER_BASE_URL}, which
+     * have no environment override on purpose: those decide *which venue
+     * is reached*, where a misconfiguration sends real orders somewhere
+     * unintended. A marker path decides only where this process keeps its
+     * own bookkeeping, and pointing it somewhere empty is fail-safe --
+     * the resolver treats every marker it finds as unresolved and never
+     * auto-clears, so a wrong path can only cause a *missed* trip to be
+     * re-reported on the real path later, never a spurious clean start
+     * against markers that exist.
+     */
+    static final String ENV_SUBMISSION_MARKERS_PATH = "PAPER_TRADING_SUBMISSION_MARKERS_PATH";
+
     /** See class Javadoc, "Execution mode". */
     static final String ENV_EXECUTION_MODE = "PAPER_TRADING_EXECUTION_MODE";
 
@@ -239,7 +268,8 @@ public final class PaperTradingApp {
     private static final BigDecimal KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER = new BigDecimal("250000");
 
     /** {@code var/live/} convention, matching {@code signals}/{@code reports/daily} -- see class Javadoc. */
-    private static final Path SUBMISSION_MARKERS_PATH = Path.of("var", "live", "submission_markers.json");
+    private static final Path DEFAULT_SUBMISSION_MARKERS_PATH =
+            Path.of("var", "live", "submission_markers.json");
 
 
     private final TradingLoop tradingLoop;
@@ -951,7 +981,8 @@ public final class PaperTradingApp {
 
         VstPreflight.Result preflight = VstPreflight.run(adapter, symbol);
 
-        SubmissionMarkerStore markerStore = new SubmissionMarkerStore(SUBMISSION_MARKERS_PATH);
+        SubmissionMarkerStore markerStore =
+                new SubmissionMarkerStore(resolveSubmissionMarkersPath(System.getenv(ENV_SUBMISSION_MARKERS_PATH)));
         SubmissionMarkerResolver.Resolution markerResolution = SubmissionMarkerResolver.resolve(markerStore, adapter);
         boolean unresolvedMarkers = !markerResolution.unresolvedMarkers().isEmpty();
 
@@ -1366,6 +1397,20 @@ public final class PaperTradingApp {
      * is relative (the default is), same convention as
      * {@link #resolveSignalPath}.
      */
+    /**
+     * {@link #ENV_SUBMISSION_MARKERS_PATH}, or the {@code var/live/}
+     * default. Same shape as {@link #resolveReportsDirectory}: a blank
+     * value is treated as absent rather than as an empty path, so an
+     * exported-but-empty variable cannot silently redirect the store to
+     * the working directory.
+     */
+    static Path resolveSubmissionMarkersPath(String raw) {
+        if (raw != null && !raw.isBlank()) {
+            return Path.of(raw.trim());
+        }
+        return DEFAULT_SUBMISSION_MARKERS_PATH;
+    }
+
     static Path resolveReportsDirectory(String raw) {
         if (raw != null && !raw.isBlank()) {
             return Path.of(raw);
