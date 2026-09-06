@@ -15,3 +15,6 @@ dev = [
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "allow_network: this test genuinely needs the outside world. Nothing in this suite does today; see tests/conftest.py.",
+]

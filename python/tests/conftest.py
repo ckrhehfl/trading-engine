@@ -98,6 +98,7 @@ relative in, isolated out; absolute in, honoured exactly.
 from __future__ import annotations
 
 import functools
+import socket
 from pathlib import Path
 
 import pytest
@@ -150,3 +151,74 @@ def _isolate_experiment_log(tmp_path, monkeypatch):
             return __original(*args, **kwargs)
 
         monkeypatch.setattr(experiment_log, name, functools.wraps(original)(redirected))
+
+
+# --------------------------------------------------------------------
+# Outbound network
+# --------------------------------------------------------------------
+#
+# The suite is supposed to be hermetic: every network-touching module is
+# exercised against an in-process fake server or a monkeypatched
+# fetcher, never a real venue. Nothing enforced that, so a mock that
+# regressed would quietly reach the internet -- making results depend on
+# the outside world, and letting a test pass for the wrong reason.
+#
+# Enforced here rather than in CI. The first attempt wrapped pytest in
+# `unshare -rn`, which works locally and is refused on GitHub's runners
+# ("write failed /proc/self/uid_map: Operation not permitted" -- Ubuntu
+# restricts unprivileged user namespaces). Doing it in-process is better
+# anyway: it needs no privileges, it applies to local runs too rather
+# than only to CI, and it can allow loopback precisely instead of having
+# to bring an interface up by hand.
+
+
+class OutboundNetworkBlocked(RuntimeError):
+    """A test tried to open a connection off this machine."""
+
+
+_LOOPBACK_PREFIXES = ("127.", "::1", "localhost")
+
+
+def _is_loopback(address: object) -> bool:
+    """True for the in-process fake servers this suite relies on.
+
+    AF_UNIX and other non-IP families come through as something other
+    than a (host, port) tuple and are always allowed -- they cannot leave
+    the machine, and blocking them would break unrelated plumbing.
+    """
+    if not isinstance(address, tuple) or not address:
+        return True
+    host = address[0]
+    if not isinstance(host, str):
+        return True
+    return host == "" or any(host.startswith(p) for p in _LOOPBACK_PREFIXES)
+
+
+@pytest.fixture(autouse=True)
+def _block_outbound_network(monkeypatch, request):
+    """Refuse any connection that is not to loopback.
+
+    Raises rather than returning an error, so the failure names the test
+    and the address instead of surfacing as a timeout twenty seconds
+    later somewhere unrelated.
+
+    Opt out with `@pytest.mark.allow_network` if a test ever genuinely
+    needs the outside world -- nothing in this suite does today, and
+    adding one should be a deliberate, visible act.
+    """
+    if request.node.get_closest_marker("allow_network"):
+        return
+
+    real_connect = socket.socket.connect
+
+    def guarded(self, address, *args, **kwargs):
+        if not _is_loopback(address):
+            raise OutboundNetworkBlocked(
+                f"test tried to connect to {address!r}. This suite is hermetic: "
+                f"use an in-process fake server on 127.0.0.1 or monkeypatch the "
+                f"fetcher. If a test genuinely needs the network, mark it "
+                f"@pytest.mark.allow_network -- and say why."
+            )
+        return real_connect(self, address, *args, **kwargs)
+
+    monkeypatch.setattr(socket.socket, "connect", guarded)

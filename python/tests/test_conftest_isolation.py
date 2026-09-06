@@ -19,6 +19,8 @@ import json
 from decimal import Decimal
 from pathlib import Path
 
+import pytest
+
 import conftest
 import research.experiment_log as experiment_log
 import research.walkforward as walkforward
@@ -178,3 +180,78 @@ def test_no_module_binds_a_writer_directly():
         "\nUse `from research import experiment_log` and call "
         "`experiment_log.log_run(...)`, or pass an absolute runs_path."
     )
+
+
+# --------------------------------------------------------------------
+# The outbound-network guard
+# --------------------------------------------------------------------
+#
+# Same discipline as the log isolation above: a guard nobody has watched
+# fail is not a guard. These assert both directions -- that a real
+# outbound address is refused, and that the loopback the suite's own fake
+# servers run on still works.
+
+
+def test_an_outbound_connection_is_refused():
+    """The whole point. If this ever starts passing silently, the suite
+    is reaching the internet and its results depend on the outside
+    world."""
+    import socket
+
+    with pytest.raises(conftest.OutboundNetworkBlocked) as excinfo:
+        socket.create_connection(("1.1.1.1", 443), timeout=5)
+    assert "1.1.1.1" in str(excinfo.value)
+
+
+def test_a_hostname_is_refused_before_it_is_even_resolved():
+    """`create_connection` resolves first, so a blocked *name* may surface
+    as either the guard or a DNS failure depending on the environment --
+    both are refusals. What must never happen is a successful connection.
+    """
+    import socket
+
+    with pytest.raises((conftest.OutboundNetworkBlocked, OSError)):
+        socket.create_connection(("open-api.bingx.com", 443), timeout=5)
+
+
+def test_loopback_still_works_because_the_suite_depends_on_it():
+    """108 tests run in-process HTTP servers on 127.0.0.1. A guard that
+    blocked those would look exactly like a hermetic suite while
+    breaking everything -- which is precisely what happened under
+    `unshare -rn` with loopback left DOWN."""
+    import http.server
+    import threading
+    import urllib.request
+
+    server = http.server.HTTPServer(
+        ("127.0.0.1", 0), http.server.SimpleHTTPRequestHandler
+    )
+    threading.Thread(target=server.handle_request, daemon=True).start()
+    try:
+        urllib.request.urlopen(
+            f"http://127.0.0.1:{server.server_address[1]}/", timeout=5
+        )
+    finally:
+        server.server_close()
+
+
+@pytest.mark.allow_network
+def test_the_marker_lifts_the_guard():
+    """The escape hatch is asserted here so it is known to work before
+    someone needs it under pressure.
+
+    Checked by the guard's *absence*, not by making a real connection --
+    a test that dialled the internet to prove it could would be the very
+    thing this file exists to stop.
+    """
+    import socket
+
+    assert "guarded" not in socket.socket.connect.__qualname__
+
+
+def test_the_guard_is_installed_for_an_unmarked_test():
+    """The counterpart to the test above. Without both, `allow_network`
+    passing proves nothing -- an inert guard would satisfy it too."""
+    import socket
+
+    assert "guarded" in socket.socket.connect.__qualname__
