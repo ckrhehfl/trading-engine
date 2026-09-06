@@ -1,0 +1,162 @@
+name: python-tests
+
+# Runs the full Python suite (~1,986 tests) on every push and PR.
+#
+# ## Why this did not exist until now, and why that mattered
+#
+# CI ran java-tests, gitleaks and bingx-hostname-guard -- and nothing
+# that executed a single Python test. Meanwhile the Auto-merge Policy in
+# CLAUDE.md says non-CODEOWNERS paths (Python research/backtest code,
+# "most of the repo by volume") merge on "CI + CodeRabbit passing"
+# alone, with no human review.
+#
+# So the largest body of code in this repository was auto-merging behind
+# a gate that never ran its tests. Found 2026-09-06 while auditing what
+# actually catches defects in this project; the honest answer for Python
+# was "CodeRabbit, or production".
+#
+# ## Deliberately no credentials and no network
+#
+# Matching java-tests.yml and CLAUDE.md's "never add live exchange
+# write-access in CI": no secrets are referenced, and every outbound
+# connection is refused, so "hermetic" is enforced rather than asserted.
+# Several data modules call `urllib.request.urlopen`, and a regressed
+# mock would otherwise reach a real venue and make the result depend on
+# the outside world.
+#
+# That enforcement lives in `python/tests/conftest.py`, NOT here. The
+# first version of this workflow wrapped pytest in `unshare -rn`, which
+# works in WSL and is refused on GitHub's runners ("write failed
+# /proc/self/uid_map: Operation not permitted" -- Ubuntu restricts
+# unprivileged user namespaces). Blocking in-process turned out to be
+# the better answer regardless: it needs no privileges, it applies to
+# local runs rather than only to CI, it permits loopback precisely
+# instead of requiring an interface be brought up by hand, and -- unlike
+# a sandbox flag -- it is itself testable. `test_conftest_isolation.py`
+# asserts the guard is installed, that it refuses a real address, and
+# that loopback still works; disabling the guard turns three of them red.
+#
+# `python/tests/conftest.py` additionally redirects every experiment-log
+# write to a per-test temp directory, so a run cannot append to
+# `runs/experiments.jsonl` -- the file behind the DSR trial count `N`.
+# That isolation is itself tested (test_conftest_isolation.py), and this
+# workflow checks it from the outside as well.
+#
+# Here it checks it in a way the local run cannot: `experiments.jsonl` is
+# gitignored (a large, purely local research artifact), so a fresh
+# checkout does not have the file at all. Locally a leak merely appends
+# to an existing 4 MB file; in CI it has to CREATE it, so the file simply
+# existing afterwards is proof. The first version of this workflow
+# assumed the file was tracked and failed on its own first run -- an
+# environment difference invisible locally, which is the category this
+# workflow exists to catch.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: python-tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  python-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@e92bafb6253dcd438e0484186d7669ea7a8ca1cc # v6.4.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      - name: Install dependencies
+        working-directory: python
+        # `--frozen` fails rather than silently resolving a different set
+        # when uv.lock is out of date with pyproject.toml. A CI run that
+        # quietly tests different versions than the lockfile pins is
+        # testing something nobody has.
+        run: uv sync --frozen
+
+      - name: Record the committed log before the suite runs
+        # `runs/live_signals.jsonl` is the git-tracked operational audit
+        # trail and must come out byte-identical.
+        #
+        # `runs/experiments.jsonl` is deliberately NOT tracked (see
+        # .gitignore -- a large, purely local research artifact), so a
+        # fresh checkout does not have it. That makes CI a *stronger*
+        # test than the local run: locally the file exists and a leak
+        # only changes it, while here any write at all creates it, so its
+        # mere existence afterwards is the failure.
+        run: |
+          test -f runs/live_signals.jsonl
+          sha256sum runs/live_signals.jsonl > /tmp/logs-before.sha256
+          cat /tmp/logs-before.sha256
+          if [ -e runs/experiments.jsonl ]; then
+            echo "::error::runs/experiments.jsonl exists in a fresh checkout -- it is gitignored and should not"
+            exit 1
+          fi
+
+      - name: Run the test suite
+        working-directory: python
+        # From `python/`, because several tests resolve fixture paths
+        # relative to the working directory. PYTHONPATH is `.` for the
+        # same reason the local invocation uses it -- the packages live
+        # directly under python/, not in an installed distribution.
+        #
+        # Outbound network is blocked by conftest.py for every test in
+        # this run (see the header). The three tests that assert the
+        # block is real are named explicitly below, so a run where the
+        # guard silently stopped being installed fails here rather than
+        # passing quietly -- `-q` alone would report 2,016 green either
+        # way.
+        env:
+          PYTHONPATH: .
+        run: |
+          uv run --frozen python -m pytest -q \
+            tests/test_conftest_isolation.py::test_an_outbound_connection_is_refused \
+            tests/test_conftest_isolation.py::test_the_cloud_metadata_endpoint_is_refused \
+            tests/test_conftest_isolation.py::test_connect_ex_is_guarded_too \
+            tests/test_conftest_isolation.py::test_a_udp_datagram_is_guarded_too \
+            tests/test_conftest_isolation.py::test_the_allowlist_recognises_only_this_machine \
+            tests/test_conftest_isolation.py::test_the_guard_is_installed_for_an_unmarked_test \
+            tests/test_conftest_isolation.py::test_loopback_still_works_because_the_suite_depends_on_it
+
+          uv run --frozen python -m pytest -q
+
+      - name: Assert no run log was written
+        # A guard nobody verifies is worse than no guard. The isolation
+        # fixture silently failed three times during its own development,
+        # each time while its unit tests passed -- what caught it every
+        # time was an external observable like this one.
+        run: |
+          if [ -e runs/experiments.jsonl ]; then
+            echo "::error::the test suite created runs/experiments.jsonl."
+            echo "That file feeds the DSR trial count N and is gitignored, so it cannot"
+            echo "exist in a fresh checkout unless a test wrote it."
+            wc -l runs/experiments.jsonl
+            head -3 runs/experiments.jsonl
+            exit 1
+          fi
+          if ! sha256sum --check --status /tmp/logs-before.sha256; then
+            echo "::error::the test suite modified runs/live_signals.jsonl, the git-tracked audit trail."
+            sha256sum runs/live_signals.jsonl
+            exit 1
+          fi
+          echo "no experiment log created; live_signals.jsonl unchanged"
+
+      - name: Assert no stray runs/ directory was created
+        # A relative `runs/` path resolves against whatever directory
+        # pytest started in. That is how `python/runs/` appeared once
+        # before -- the same defect as above, wearing a different hat.
+        run: |
+          if [ -e python/runs ]; then
+            echo "::error::python/runs/ was created -- a relative runs_path escaped the fixture."
+            ls -la python/runs
+            exit 1
+          fi
+          echo "no stray python/runs/"
