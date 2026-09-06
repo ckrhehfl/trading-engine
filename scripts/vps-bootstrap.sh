@@ -311,11 +311,16 @@ say "cron"
 # `gradle` default on the next scheduled run and a 1 GB instance runs out
 # of memory -- the single most likely deployment mistake, so it is
 # installed rather than documented.
+# PAPER_TRADING_MOCK_SIGNALS is deliberately NOT set here. Installing
+# the cron line is not the same as enabling mock order flow: the line is
+# inert until an operator sets that variable, so turning Gate A's
+# order-event generator on stays a deliberate act.
 CRON_ENV=("PAPER_TRADING_LAUNCHER=java")
 CRON_LINES=(
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-daily-signal.sh"
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-watchdog.sh"
     "*/30 * * * * $REPO_ROOT/scripts/collect-positioning.sh"
+    "*/5 * * * * $REPO_ROOT/scripts/generate-mock-signal.sh"
 )
 if ((INSTALL_CRON)); then
     current="$(crontab -l 2>/dev/null || true)"
