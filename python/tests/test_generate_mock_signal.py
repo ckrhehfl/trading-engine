@@ -139,10 +139,16 @@ class TestSideAlternation:
         assert mock.main([]) == 0
         first = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
 
-        # a refused path: the run fails and must leave the state alone
-        assert mock.main([
-            "--signal-path", "var/live/signals/BTC-USDT/daily-tsmom-ensemble/latest.json",
-        ]) == 2
+        # Fail the write itself. `--signal-path` is gone (it broke the
+        # alternation it was meant to be neutral about), so the failure
+        # has to come from the write rather than from a refused argument.
+        def boom(intent, path):
+            raise OSError("disk full")
+
+        monkeypatch.setattr(mock, "write_signal_atomically", boom)
+        assert mock.main([]) == 3
+        monkeypatch.undo()
+        monkeypatch.chdir(tmp_path)
 
         assert mock.main([]) == 0
         third = OrderIntent(**json.loads(mock.MOCK_SIGNAL_PATH.read_text())).side
@@ -273,12 +279,22 @@ class TestCli:
         written = OrderIntent(**json.loads((tmp_path / mock.MOCK_SIGNAL_PATH).read_text()))
         assert written.side == predicted
 
-    def test_a_refused_path_exits_non_zero(self, tmp_path, monkeypatch):
+    def test_there_is_no_signal_path_flag(self, tmp_path, monkeypatch):
+        """Configurable output broke the alternation: `.last-side` and the
+        lock are global while the authority (`latest.json`) would be
+        per-path, so publishing to a second allowed path and back gave
+        LONG -> SHORT -> SHORT. Nothing needs a second path."""
         monkeypatch.chdir(tmp_path)
-        rc = mock.main([
-            "--signal-path", "var/live/signals/BTC-USDT/daily-tsmom-ensemble/latest.json",
-        ])
-        assert rc == 2
+        with pytest.raises(SystemExit):
+            mock.main(["--signal-path", "/tmp/anywhere.json"])
+
+    def test_a_write_failure_exits_non_zero(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(
+            mock, "write_signal_atomically",
+            lambda intent, path: (_ for _ in ()).throw(OSError("disk full")),
+        )
+        assert mock.main([]) == 3
 
     def test_writes_to_the_mock_path_by_default(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)

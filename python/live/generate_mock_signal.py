@@ -138,10 +138,14 @@ def _reject_real_strategy_path(target: Path) -> None:
 
     An **allowlist, not a blocklist**. An earlier version only rejected
     paths inside `REAL_SIGNAL_ROOT`, which let anything outside it
-    through -- so a mistyped `--signal-path` could create or overwrite an
-    unrelated file anywhere on the box. Enumerating what must not be
-    written is a losing game; there is exactly one directory this module
-    has business writing to.
+    through -- so a mistyped path could create or overwrite an unrelated
+    file anywhere on the box. Enumerating what must not be written is a
+    losing game; there is exactly one directory this module has business
+    writing to.
+
+    Kept as a function even though `main` no longer takes a path
+    argument, because `write_signal_atomically` is importable and the
+    guard belongs with the write, not with the CLI.
 
     Compares resolved paths, so `..` cannot walk out of the mock
     directory and back into the real tree. Raises rather than warns:
@@ -285,10 +289,13 @@ def write_signal_atomically(intent: OrderIntent, path: str | Path) -> None:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--symbol", default=DEFAULT_SYMBOL)
-    parser.add_argument(
-        "--signal-path", default=str(MOCK_SIGNAL_PATH),
-        help="where to write. Refused if inside a real strategy's signal tree.",
-    )
+    # No --signal-path. There is exactly one place this module writes,
+    # and making it configurable broke the alternation: `.last-side` and
+    # the lock are global while the authority (`latest.json`) would be
+    # per-path, so publishing to a second allowed path and back gave
+    # LONG -> SHORT -> SHORT. Per-path state would fix that, but nothing
+    # needs a second path -- the flag existed only because it looked
+    # like good hygiene.
     parser.add_argument(
         "--dry-run", action="store_true",
         help="build and print the intent without writing it",
@@ -301,7 +308,7 @@ def main(argv=None) -> int:
         # Peek without persisting: a dry run that advanced the side state
         # would change the next real signal, which is the one thing a
         # "does not write" flag must not do.
-        predicted = _peek_side(SIDE_STATE_PATH, Path(args.signal_path))
+        predicted = _peek_side(SIDE_STATE_PATH, MOCK_SIGNAL_PATH)
         print(build_mock_intent(args.symbol, side=predicted).model_dump_json())
         return 0
 
@@ -310,9 +317,9 @@ def main(argv=None) -> int:
     # side, and lets a failed write consume a side that was never used.
     try:
         with _exclusive(LOCK_PATH):
-            side = _peek_side(SIDE_STATE_PATH, Path(args.signal_path))
+            side = _peek_side(SIDE_STATE_PATH, MOCK_SIGNAL_PATH)
             intent = build_mock_intent(args.symbol, side=side)
-            write_signal_atomically(intent, args.signal_path)
+            write_signal_atomically(intent, MOCK_SIGNAL_PATH)
             # Only now. The side is spent when the signal is on disk, not
             # when it was chosen. A failure here is survivable rather than
             # fatal because the next run recovers the true side from
@@ -328,7 +335,7 @@ def main(argv=None) -> int:
 
     logger.info(
         "mock signal written: %s %s %s -> %s",
-        intent.side.value, intent.quantity, intent.symbol, args.signal_path,
+        intent.side.value, intent.quantity, intent.symbol, MOCK_SIGNAL_PATH,
     )
     return 0
 
