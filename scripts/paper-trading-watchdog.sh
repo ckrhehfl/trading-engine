@@ -185,11 +185,33 @@ launch_argv() {
     fi
 }
 
+# Optional, off by default. Set PAPER_TRADING_MOCK_SIGNALS=1 to point the
+# *simulated* loop at `live.generate_mock_signal`'s own output instead of
+# a real strategy's.
+#
+# Gate A needs >= 200 order events and `daily-tsmom-ensemble` trades 9-17
+# times a YEAR, so the gate is unreachable by waiting -- which CLAUDE.md
+# anticipated by explicitly allowing a mock generator for exactly this.
+#
+# Only the simulated loop, and only via its own path. Both loops default
+# to reading the same signal file (verified on the real deployment
+# 2026-09-05), and `start_vst` submits to a real demo venue -- so pointing
+# them at a shared mock feed would put 288 manufactured orders a day onto
+# an exchange account. `simulated` uses the internal PaperBroker and has
+# no venue at all, which is what makes it the safe one to flood.
+MOCK_SIGNAL_PATH="var/live/signals/_mock/latest.json"
+
 start_simulated() {
     log "starting simulated session (was not running)"
     launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
+    local -a extra_env=()
+    if [[ "${PAPER_TRADING_MOCK_SIGNALS:-0}" == "1" ]]; then
+        extra_env+=("PAPER_TRADING_SIGNAL_PATH=$MOCK_SIGNAL_PATH")
+        log "simulated session reading MOCK signals from $MOCK_SIGNAL_PATH (Gate A order-event generation)"
+    fi
     tmux new-session -d -s paper-trading -c "$LAUNCH_DIR" \
         env BINGX_BASE_URL=https://open-api.bingx.com \
+        "${extra_env[@]}" \
         "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading
 }

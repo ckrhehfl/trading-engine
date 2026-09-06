@@ -38,6 +38,7 @@ set -euo pipefail
 
 MODE="simulated"
 INSTALL_CRON=0
+MOCK_SIGNALS=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
@@ -61,6 +62,16 @@ usage: vps-bootstrap.sh [--mode MODE] [--install-cron]
   --install-cron     append this repo's cron lines if absent. Left off by
                      default so the script can be run once to check the
                      machine before anything is scheduled on it.
+
+  --mock-signals     write PAPER_TRADING_MOCK_SIGNALS=1 into the crontab,
+                     turning on Gate A's order-event generator. cron
+                     inherits nothing from your shell, so exporting the
+                     variable by hand does NOT reach the scheduled jobs --
+                     this flag is the only way to enable it persistently.
+                     Off by default: manufacturing order flow is a
+                     deliberate act. Only the `simulated` loop is ever
+                     pointed at mock signals; `bingx-vst` keeps reading
+                     the real strategy path and its venue is untouched.
 USAGE
 }
 
@@ -68,6 +79,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --mode) MODE="${2:?--mode needs a value}"; shift 2 ;;
         --install-cron) INSTALL_CRON=1; shift ;;
+        --mock-signals) MOCK_SIGNALS=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -311,11 +323,21 @@ say "cron"
 # `gradle` default on the next scheduled run and a 1 GB instance runs out
 # of memory -- the single most likely deployment mistake, so it is
 # installed rather than documented.
+# cron inherits nothing from the invoking shell, so an operator who
+# exports PAPER_TRADING_MOCK_SIGNALS=1 in their own session does not
+# reach the scheduled jobs at all -- the generator script and the
+# watchdog both read it and both default to off, so the mock feed would
+# silently never run. `--mock-signals` is the only persistent path, and
+# it stays opt-in because manufacturing order flow is a deliberate act.
 CRON_ENV=("PAPER_TRADING_LAUNCHER=java")
+if ((MOCK_SIGNALS)); then
+    CRON_ENV+=("PAPER_TRADING_MOCK_SIGNALS=1")
+fi
 CRON_LINES=(
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-daily-signal.sh"
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-watchdog.sh"
     "*/30 * * * * $REPO_ROOT/scripts/collect-positioning.sh"
+    "*/5 * * * * $REPO_ROOT/scripts/generate-mock-signal.sh"
 )
 if ((INSTALL_CRON)); then
     current="$(crontab -l 2>/dev/null || true)"
