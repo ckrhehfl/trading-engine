@@ -61,6 +61,8 @@ human, reviewed as a normal PR.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import fcntl
 import json
 import os
 import sys
@@ -78,6 +80,31 @@ TRACKED_PATH = "runs/live_signals.jsonl"
 # Where a deployment writes instead. Gitignored (`var/live/`), so the
 # running system can never dirty the working tree of its own checkout.
 DEPLOYMENT_PATH = "var/live/live_signals.jsonl"
+
+
+@contextlib.contextmanager
+def _exclusive_lock(path: Path):
+    """Serialise the read-modify-write across processes.
+
+    A sidecar `.lock` file rather than the tracked file itself, because
+    the tracked file is *replaced* by `os.replace` -- a lock held on the
+    old inode would protect nothing once the rename lands.
+
+    Blocking, not `LOCK_NB`: a sync that waits its turn and then refuses
+    on a changed file is right, while one that gives up on contention
+    would make two operators running at once look like a corruption.
+    """
+    lock_path = path.with_name(path.name + ".lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = lock_path.open("w")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        # Released implicitly on close, but explicit so the ordering is
+        # visible: unlock, then close.
+        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        handle.close()
 
 
 class SyncRefused(RuntimeError):
@@ -219,10 +246,26 @@ def apply_sync(
     records. So the file is re-read immediately before the rename and
     must still be exactly what was planned against.
 
+    **The re-read alone narrows that window; it does not close it.** Two
+    processes syncing different deployment logs can both read the same
+    `tracked`, both pass this check, and both `os.replace` -- and the
+    second rename silently drops the first one's records. So the whole
+    apply runs under an exclusive `flock`, held from before the re-read
+    through the directory fsync. The lock makes the loser *refuse*
+    rather than clobber: it re-reads inside the lock, sees the file
+    changed, and writes nothing. Refusing is the correct outcome -- the
+    operator re-runs and the second sync then plans against the truth.
+
+    `flock` rather than a lock-free scheme because this repository
+    already serialises `paper-trading-daily-signal.sh` and the mock
+    signal generator the same way, and a second mechanism for the same
+    problem is a second thing to get wrong.
+
     On any refusal the tracked file is untouched: the merged content is
     written to a temp file and renamed only at the very end.
     """
     path = Path(tracked_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
 
     # Full records, not just the `run_id` list. Comparing ids alone
     # passes when a record's *content* changed while its id stayed put,
@@ -231,6 +274,14 @@ def apply_sync(
     # promises never to do. The docstring above already claimed "exactly
     # what was planned against"; an id-only comparison was weaker than
     # its own stated contract.
+    with _exclusive_lock(path):
+        _write_merged_under_lock(plan, tracked, path)
+
+
+def _write_merged_under_lock(
+    plan: SyncPlan, tracked: list[dict[str, Any]], path: Path
+) -> None:
+    """The critical section. Never call this without holding the lock."""
     on_disk = read_records(path)
     if on_disk != tracked:
         raise SyncRefused(
@@ -247,8 +298,10 @@ def apply_sync(
 
     merged = tracked + plan.added
 
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".sync.tmp")
+    # Per-process temp name. A fixed `.sync.tmp` is a second collision
+    # between concurrent syncs, independent of the lock -- and one that
+    # would survive someone removing the lock later.
+    tmp = path.with_name(f"{path.name}.sync.{os.getpid()}.tmp")
     try:
         with tmp.open("w", encoding="utf-8") as handle:
             for record in merged:

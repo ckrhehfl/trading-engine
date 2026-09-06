@@ -13,6 +13,9 @@ adjusted it.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -191,12 +194,19 @@ class TestApplySync:
         assert path.read_bytes() == before
 
     def test_no_temp_file_is_left_behind(self, tmp_path):
+        """The `.lock` sidecar is expected and stays; a `.tmp` must not.
+
+        Asserted as "no temp file" rather than "exactly one file",
+        because the second form would break the next time anything
+        legitimately lands beside the log -- and then get relaxed
+        without anyone re-checking what it was actually for."""
         path = tmp_path / "log.jsonl"
         tracked = [record("1", "2026-09-01T00:00:00Z")]
         write_log(path, tracked)
         plan = plan_sync(tracked, tracked + [record("2", "2026-09-02T00:00:00Z")])
         apply_sync(plan, tracked, path)
-        assert list(tmp_path.iterdir()) == [path]
+        assert [p.name for p in tmp_path.glob("*.tmp")] == []
+        assert path.exists()
 
 
 class TestCli:
@@ -287,3 +297,103 @@ def test_the_tracked_path_default_is_the_committed_audit_trail():
         "the deployment path must sit under the gitignored var/live/, or the "
         "running system dirties its own checkout again"
     )
+
+
+class TestConcurrentSyncs:
+    """Two operators, or two terminals, running a sync at the same time.
+
+    The TOCTOU re-read alone narrows that window without closing it:
+    both processes can read the same `tracked`, both pass the check, and
+    the second `os.replace` silently drops the first one's records.
+
+    The property asserted is **no record is ever lost** -- not "everyone
+    succeeds". Under the lock the loser re-reads inside the critical
+    section, sees the file changed, and refuses. Refusing is correct;
+    clobbering is not. So the file must end up holding exactly the
+    original records plus one per process that reported success.
+
+    Real subprocesses, because `flock` is a kernel lock between
+    processes -- threads in one interpreter would share the descriptor
+    and prove nothing.
+    """
+
+    @staticmethod
+    def _run_one(python, cwd, env, deployment, tracked_path):
+        return subprocess.run(
+            [python, "-m", "live.sync_live_signals", str(deployment),
+             "--tracked", str(tracked_path)],
+            cwd=cwd, env=env, capture_output=True, text=True,
+        )
+
+    def test_concurrent_syncs_never_lose_a_record(self, tmp_path):
+        import concurrent.futures
+
+        tracked_path = tmp_path / "log.jsonl"
+        base = [record("base", "2026-09-01T00:00:00Z")]
+        write_log(tracked_path, base)
+
+        workers = 8
+        deployments = []
+        for i in range(workers):
+            deployment = tmp_path / f"vps-{i}.jsonl"
+            write_log(deployment, base + [record(f"new-{i}", f"2026-09-02T00:00:0{i}Z")])
+            deployments.append(deployment)
+
+        repo_python = Path(__file__).resolve().parents[1]
+        env = {**os.environ, "PYTHONPATH": str(repo_python)}
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+            results = list(pool.map(
+                lambda d: self._run_one(sys.executable, repo_python, env, d, tracked_path),
+                deployments,
+            ))
+
+        succeeded = [r for r in results if r.returncode == 0]
+        refused = [r for r in results if r.returncode == 1]
+        assert len(succeeded) + len(refused) == workers, (
+            "a sync exited with something other than 0 or 1: "
+            + str([r.returncode for r in results])
+        )
+        for r in refused:
+            assert "sync refused" in r.stderr, r.stderr
+
+        final = read_records(tracked_path)
+        assert final[0] == base[0], "the original record must survive untouched"
+
+        # The core assertion. A lost update shows up here as fewer
+        # records than successes -- which is exactly what happens with
+        # the lock removed.
+        appended = [r for r in final if r["run_id"] != "base"]
+        added_by_successes = sum(
+            0 if "nothing to do" in r.stdout else 1 for r in succeeded
+        )
+        assert len(appended) == added_by_successes, (
+            f"{added_by_successes} run(s) reported appending a record but the "
+            f"file holds {len(appended)} -- a concurrent write was lost"
+        )
+        assert len({r["run_id"] for r in final}) == len(final), "duplicate run_id"
+
+    def test_no_temp_files_survive_concurrent_syncs(self, tmp_path):
+        """A fixed `.sync.tmp` name is a second collision, independent of
+        the lock. Per-process names keep it that way if the lock is ever
+        changed."""
+        import concurrent.futures
+
+        tracked_path = tmp_path / "log.jsonl"
+        base = [record("base", "2026-09-01T00:00:00Z")]
+        write_log(tracked_path, base)
+        deployments = []
+        for i in range(4):
+            d = tmp_path / f"vps-{i}.jsonl"
+            write_log(d, base + [record(f"new-{i}", f"2026-09-02T00:00:0{i}Z")])
+            deployments.append(d)
+
+        repo_python = Path(__file__).resolve().parents[1]
+        env = {**os.environ, "PYTHONPATH": str(repo_python)}
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+            list(pool.map(
+                lambda d: self._run_one(sys.executable, repo_python, env, d, tracked_path),
+                deployments,
+            ))
+
+        assert [p.name for p in tmp_path.glob("*.tmp")] == []
