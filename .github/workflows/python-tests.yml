@@ -120,6 +120,9 @@ jobs:
           uv run --frozen python -m pytest -q \
             tests/test_conftest_isolation.py::test_an_outbound_connection_is_refused \
             tests/test_conftest_isolation.py::test_the_cloud_metadata_endpoint_is_refused \
+            tests/test_conftest_isolation.py::test_connect_ex_is_guarded_too \
+            tests/test_conftest_isolation.py::test_a_udp_datagram_is_guarded_too \
+            tests/test_conftest_isolation.py::test_the_allowlist_recognises_only_this_machine \
             tests/test_conftest_isolation.py::test_the_guard_is_installed_for_an_unmarked_test \
             tests/test_conftest_isolation.py::test_loopback_still_works_because_the_suite_depends_on_it
 

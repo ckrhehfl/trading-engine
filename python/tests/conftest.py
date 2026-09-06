@@ -98,6 +98,7 @@ relative in, isolated out; absolute in, honoured exactly.
 from __future__ import annotations
 
 import functools
+import ipaddress
 import socket
 from pathlib import Path
 
@@ -176,31 +177,68 @@ class OutboundNetworkBlocked(RuntimeError):
     """A test tried to open a connection off this machine."""
 
 
-_LOOPBACK_PREFIXES = ("127.", "::1", "localhost")
+# Exactly these names, never a prefix of them. A first version matched
+# `host.startswith("localhost")`, which happily allows
+# `localhost.attacker.example` -- a real, ordinary registrable domain
+# that resolves wherever its owner points it. Prefix-matching a hostname
+# is the same class of bug as prefix-matching a tmux session name, which
+# this project has already shipped once (see the runbook's `=name` note).
+#
+# `""` is allowed because `connect(("", port))` targets the local host;
+# it cannot name a remote one.
+_ALLOWED_HOSTNAMES = frozenset({"", "localhost"})
 
 
 def _is_loopback(address: object) -> bool:
-    """True for the in-process fake servers this suite relies on.
+    """True only for the in-process fake servers this suite relies on.
 
-    AF_UNIX and other non-IP families come through as something other
-    than a (host, port) tuple and are always allowed -- they cannot leave
-    the machine, and blocking them would break unrelated plumbing.
+    An allowlist, not a blocklist: anything not positively recognised as
+    this machine is refused, including inputs nobody has thought of.
+    That is what makes the link-local cloud metadata server
+    (169.254.169.254, which hands out service-account tokens) refused
+    without having had to be enumerated.
+
+    A **hostname** other than `localhost` is refused *here*, before any
+    resolver is consulted -- so a name is never even looked up, let alone
+    connected to.
+
+    AF_UNIX and other non-IP families arrive as something other than a
+    `(host, port)` tuple and are allowed: they cannot leave the machine,
+    and blocking them would break unrelated plumbing.
     """
     if not isinstance(address, tuple) or not address:
         return True
     host = address[0]
     if not isinstance(host, str):
         return True
-    return host == "" or any(host.startswith(p) for p in _LOOPBACK_PREFIXES)
+    if host in _ALLOWED_HOSTNAMES:
+        return True
+    try:
+        # Numeric only. 127.0.0.0/8 and ::1 are loopback; everything
+        # else -- public, private, link-local -- is not this machine.
+        return ipaddress.ip_address(host.split("%", 1)[0]).is_loopback
+    except ValueError:
+        # Not an IP literal, so it is a name that is not `localhost`.
+        return False
+
+
+# Every `socket` method that can start a conversation with another host.
+# `connect` alone is not enough: `connect_ex` is the same syscall with an
+# errno return instead of an exception, and `sendto` needs no connection
+# at all -- a UDP datagram straight out. All three were reachable while
+# only `connect` was patched.
+_ADDRESS_ARG_INDEX = {"connect": 0, "connect_ex": 0, "sendto": -1}
 
 
 @pytest.fixture(autouse=True)
 def _block_outbound_network(monkeypatch, request):
-    """Refuse any connection that is not to loopback.
+    """Refuse any connection or datagram that is not to this machine.
 
-    Raises rather than returning an error, so the failure names the test
-    and the address instead of surfacing as a timeout twenty seconds
-    later somewhere unrelated.
+    Raises rather than returning an error -- including from `connect_ex`,
+    whose real contract is to return an errno. A test that reached the
+    network is a defect in the test, not a network condition to be
+    handled, so it should name itself loudly rather than be swallowed by
+    a caller's own error path.
 
     Opt out with `@pytest.mark.allow_network` if a test ever genuinely
     needs the outside world -- nothing in this suite does today, and
@@ -209,16 +247,21 @@ def _block_outbound_network(monkeypatch, request):
     if request.node.get_closest_marker("allow_network"):
         return
 
-    real_connect = socket.socket.connect
+    for name, index in _ADDRESS_ARG_INDEX.items():
+        real = getattr(socket.socket, name)
 
-    def guarded(self, address, *args, **kwargs):
-        if not _is_loopback(address):
-            raise OutboundNetworkBlocked(
-                f"test tried to connect to {address!r}. This suite is hermetic: "
-                f"use an in-process fake server on 127.0.0.1 or monkeypatch the "
-                f"fetcher. If a test genuinely needs the network, mark it "
-                f"@pytest.mark.allow_network -- and say why."
-            )
-        return real_connect(self, address, *args, **kwargs)
+        def guarded(self, *args, __real=real, __index=index, __name=name, **kwargs):
+            # `sendto(data, address)` and `sendto(data, flags, address)`
+            # both put the address last, which is why the index is -1
+            # there rather than a fixed position.
+            address = args[__index] if args else None
+            if not _is_loopback(address):
+                raise OutboundNetworkBlocked(
+                    f"test called socket.{__name}({address!r}). This suite is "
+                    f"hermetic: use an in-process fake server on 127.0.0.1 or "
+                    f"monkeypatch the fetcher. If a test genuinely needs the "
+                    f"network, mark it @pytest.mark.allow_network -- and say why."
+                )
+            return __real(self, *args, **kwargs)
 
-    monkeypatch.setattr(socket.socket, "connect", guarded)
+        monkeypatch.setattr(socket.socket, name, guarded)

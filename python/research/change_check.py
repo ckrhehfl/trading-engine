@@ -206,6 +206,14 @@ def check_script_fails_closed(
     point of a checklist like this is that people keep running it, and
     one that cries wolf gets skipped.
 
+    **Options are tracked in execution order.** A second earlier version
+    searched the whole file for `set -e`, so a script that turned errexit
+    back off with `set +e` and never restored it was reported
+    fail-closed while a failing command silently continued -- this
+    module's own defect, inside the check written to catch it. What is
+    reported now is the state at the end of the script, and, for each
+    grep, the state at that line.
+
     Scar: `verify-gate-a-kill-switch.sh` shipped with `set -uo pipefail`
     and unchecked `grep`s, so a failed `cd`, an unreadable classpath or a
     JVM that never started would have printed nothing and exited 0 --
@@ -223,24 +231,60 @@ def check_script_fails_closed(
         )
 
     problems: list[str] = []
-    has_errexit = bool(re.search(r"^\s*set\s+-[A-Za-z]*e", source, re.MULTILINE))
-    has_pipefail = bool(re.search(r"^\s*set\s+.*pipefail", source, re.MULTILINE))
-    if not has_errexit:
-        problems.append("no `set -e` (or `-Eeuo pipefail`), so a failing step is ignored")
 
-    # With `set -e` AND `pipefail`, a bare `run | grep pattern` is already
-    # fail-closed: an unmatched grep or a failed producer aborts the
-    # script. Only look for unchecked greps when that safety net is
-    # absent, or this reports a false positive on correct code.
-    if not (has_errexit and has_pipefail):
-        for line in source.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("#") or "grep" not in stripped:
-                continue
-            if any(tok in stripped for tok in ("grep -q", "|| ", "&& ", "if ", "!", "$(")):
-                continue
-            problems.append(f"unchecked grep with no errexit+pipefail net: {stripped[:60]}")
-            break
+    # Options are tracked in EXECUTION ORDER, not searched for anywhere in
+    # the file. `set -Eeuo pipefail` followed later by `set +e` leaves
+    # errexit OFF, and a check that merely greps for `set -e` reports
+    # that script as fail-closed while a failing command silently
+    # continues -- the exact defect this whole module is about, committed
+    # inside the check meant to catch it.
+    #
+    # Order-tracking rather than "any `set +e` is a violation", because
+    # disabling errexit briefly to capture a command's real exit code and
+    # re-enabling it straight after is a legitimate, deliberate pattern
+    # this repository uses (`scripts/paper-trading-daily-signal.sh`).
+    # Flagging it would be a false positive, and a checklist that cries
+    # wolf is one people stop running.
+    errexit = False
+    pipefail = False
+    first_unchecked_grep: str | None = None
+
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            continue
+
+        for match in re.finditer(r"(?:^|;|&&|\|\|)\s*set\s+([^;&|#\n]+)", stripped):
+            enabling = True
+            for token in match.group(1).split():
+                if token.startswith(("-", "+")):
+                    enabling = token.startswith("-")
+                    if "e" in token[1:] and not token[1:].startswith("o"):
+                        errexit = enabling
+                    if token[1:].endswith("o"):
+                        # `-o pipefail` / `+o pipefail`: the option name
+                        # is the next token, handled below.
+                        continue
+                elif token == "pipefail":
+                    pipefail = enabling
+
+        if "grep" in stripped and not (errexit and pipefail):
+            if not any(
+                tok in stripped for tok in ("grep -q", "|| ", "&& ", "if ", "!", "$(")
+            ):
+                first_unchecked_grep = first_unchecked_grep or stripped[:60]
+
+    if not errexit:
+        problems.append(
+            "errexit is not in force at the end of the script (no `set -e` at "
+            "all, or a `set +e` that is never re-enabled), so a failing step "
+            "is ignored"
+        )
+    if first_unchecked_grep:
+        problems.append(
+            f"unchecked grep at a point where errexit+pipefail were not both "
+            f"in force: {first_unchecked_grep}"
+        )
 
     if not problems:
         return None

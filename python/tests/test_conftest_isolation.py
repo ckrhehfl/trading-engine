@@ -220,6 +220,64 @@ def test_the_cloud_metadata_endpoint_is_refused():
         socket.create_connection(("169.254.169.254", 80), timeout=5)
 
 
+def test_connect_ex_is_guarded_too():
+    """`connect_ex` is the same syscall with an errno return instead of
+    an exception. It was a wide-open bypass while only `connect` was
+    patched -- and it is what a caller uses precisely when it wants to
+    probe without raising."""
+    import socket
+
+    with pytest.raises(conftest.OutboundNetworkBlocked):
+        socket.socket().connect_ex(("1.1.1.1", 443))
+
+
+def test_a_udp_datagram_is_guarded_too():
+    """`sendto` needs no connection at all, so patching `connect` did
+    nothing about it. Exfiltrating over UDP is exactly as effective."""
+    import socket
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        with pytest.raises(conftest.OutboundNetworkBlocked):
+            sock.sendto(b"x", ("1.1.1.1", 53))
+    finally:
+        sock.close()
+
+
+def test_a_hostname_that_merely_starts_with_localhost_is_refused():
+    """`localhost.attacker.example` is an ordinary registrable domain
+    that resolves wherever its owner points it. The first version of
+    `_is_loopback` prefix-matched and let it straight through.
+
+    Refused before any resolver is consulted, so the name is never even
+    looked up.
+    """
+    import socket
+
+    with pytest.raises(conftest.OutboundNetworkBlocked):
+        socket.socket().connect(("localhost.attacker.example", 443))
+
+
+def test_the_allowlist_recognises_only_this_machine():
+    """Table-driven, because the guard's whole value is that it refuses
+    addresses nobody enumerated."""
+    from tests.conftest import _is_loopback  # noqa: PLC0415
+
+    for allowed in ["127.0.0.1", "127.1.2.3", "::1", "localhost", ""]:
+        assert _is_loopback((allowed, 80)), allowed
+    for refused in [
+        "1.1.1.1",
+        "169.254.169.254",  # cloud metadata
+        "10.0.0.1",
+        "0.0.0.0",
+        "example.com",
+        "localhost.attacker.example",
+        "127.0.0.1.attacker.example",
+        "::ffff:1.1.1.1",
+    ]:
+        assert not _is_loopback((refused, 80)), refused
+
+
 def test_a_private_lan_address_is_refused():
     """Not routable to the internet either, and equally not this
     machine. `_is_loopback` is an allowlist of exactly 127./::1, which is

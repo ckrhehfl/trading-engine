@@ -116,6 +116,59 @@ class TestScriptFailsClosed:
         )
         assert check_script_fails_closed(script) is None
 
+    def test_set_plus_e_that_is_never_restored_is_caught(self, tmp_path):
+        """The check's own defect, found on review. Searching the whole
+        file for `set -e` reports this script fail-closed while `false`
+        silently continues -- verified directly: under
+        `set -Eeuo pipefail; set +e; false; echo` the echo runs."""
+        script = tmp_path / "verify.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\nset -Eeuo pipefail\nset +e\nfalse\necho survived\n",
+            encoding="utf-8",
+        )
+        finding = check_script_fails_closed(script)
+        assert finding is not None and finding.severity == BLOCKER
+        assert "errexit is not in force at the end" in finding.message
+
+    def test_set_plus_o_pipefail_removes_the_net_for_a_bare_grep(self, tmp_path):
+        """The same hole through the other option: `+o pipefail` matched
+        the old `.*pipefail` regex and so counted as *enabling* it."""
+        script = tmp_path / "verify.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\nset -Eeuo pipefail\nset +o pipefail\nrun | grep x\n",
+            encoding="utf-8",
+        )
+        finding = check_script_fails_closed(script)
+        assert finding is not None
+        assert "unchecked grep" in finding.message
+
+    def test_disabling_errexit_to_capture_an_exit_code_is_not_flagged(self, tmp_path):
+        """Not a false positive. `scripts/paper-trading-daily-signal.sh`
+        does exactly this on purpose -- drop errexit, run the command,
+        read `$?`, put errexit back. Flagging a real and correct pattern
+        is how a checklist stops being run."""
+        script = tmp_path / "verify.sh"
+        script.write_text(
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "set +e\n"
+            "run_the_thing\n"
+            "RC=$?\n"
+            "set -e\n"
+            'grep -q ok "$log" || exit 1\n',
+            encoding="utf-8",
+        )
+        assert check_script_fails_closed(script) is None
+
+    def test_the_repositorys_own_verification_script_passes(self):
+        """The check is pointed at the real script it was written for.
+        A checker nobody runs against real input drifts."""
+        repo_root = Path(__file__).resolve().parents[2]
+        script = repo_root / "scripts" / "verify-gate-a-kill-switch.sh"
+        if not script.exists():  # pragma: no cover - guard against a move
+            pytest.skip(f"{script} not present")
+        assert check_script_fails_closed(script) is None
+
     def test_passes_the_corrected_shape(self, tmp_path):
         script = tmp_path / "verify.sh"
         script.write_text(
