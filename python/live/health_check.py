@@ -59,11 +59,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from live._locking import exclusive_lock
 
 CRITICAL = "critical"
 WARNING = "warning"
@@ -325,27 +328,60 @@ def evaluate(
 
 
 def load_state(path: Path | str = STATE_PATH) -> dict[str, Any]:
-    """A missing or corrupt state file means "no history", never a crash.
+    """A missing, corrupt or structurally wrong state file means "no
+    history", never a crash.
 
     Fail-*open* here specifically, and deliberately: losing history
     re-records an alert, which is noise. Refusing to run produces
     silence, which is the thing this module exists to prevent. Every
     other fail-open decision in this project's operational code is a bug;
-    this one is reasoned, and is why the reasoning is written down.
+    this one is reasoned, which is why the reasoning is written down.
+
+    **Structure is checked, not just JSON syntax.** A first version only
+    verified the top level was a `dict`, so `{"open": []}` -- valid JSON,
+    valid dict, wrong shape -- passed, and `decide` then died on
+    `open_before.get(...)`. Under cron that is the exact silence this
+    module exists to prevent, arriving through the guard meant to
+    prevent it. Anything not shaped like state we wrote is discarded
+    whole rather than partially trusted; a half-valid history is worse
+    than none, because suppression would then key off nonsense.
     """
     try:
         loaded = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
-    return loaded if isinstance(loaded, dict) else {}
+    if not isinstance(loaded, dict):
+        return {}
+    for key in ("open", "consecutive_dead"):
+        value = loaded.get(key)
+        if value is not None and not isinstance(value, dict):
+            return {}
+    # `open`'s values are themselves read with `.get`, so they have to be
+    # dicts too -- the same failure one level down.
+    if any(
+        not isinstance(entry, dict) for entry in (loaded.get("open") or {}).values()
+    ):
+        return {}
+    return loaded
 
 
 def save_state(state: dict[str, Any], path: Path | str = STATE_PATH) -> None:
+    """Atomic, and safe to call from more than one process at once.
+
+    Per-process temp name: a shared `.tmp` is a collision independent of
+    any lock, and one that outlives someone changing the locking later.
+    Two instances on a fixed name can race such that one `replace`s a
+    file the other already moved, and the loser raises FileNotFoundError
+    from inside a cron job -- silence, again.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
-    tmp.replace(path)
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    try:
+        tmp.write_text(json.dumps(state, indent=2, sort_keys=True), encoding="utf-8")
+        tmp.replace(path)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 @dataclass
@@ -516,13 +552,27 @@ def main(argv: list[str] | None = None) -> int:
     else:
         status = gather_status()
 
-    previous = load_state(args.state_path)
-    alerts = evaluate(status, previous=previous, now=now, disk_path=args.disk_path)
-    decision = decide(alerts, previous, now, status)
+    # One lock across read-modify-write. Two instances -- the 15-minute
+    # cron and an operator running it by hand -- would otherwise both
+    # read the same previous state, both decide the condition is new,
+    # and both append: a duplicate alert line, and whichever saves last
+    # silently discards the other's `first_seen`. `first_seen` is how a
+    # reader tells a blip from a three-day outage, so losing it defeats
+    # the point of keeping a history.
+    #
+    # Taken even for `--dry-run`, which writes nothing: holding it means
+    # a dry run reports what the real run would do rather than a torn
+    # read of state another process is mid-write on.
+    with exclusive_lock(Path(args.state_path)):
+        previous = load_state(args.state_path)
+        alerts = evaluate(status, previous=previous, now=now, disk_path=args.disk_path)
+        decision = decide(alerts, previous, now, status)
 
-    if not args.dry_run:
-        FileNotifier(args.alert_log).send(decision.to_send, decision.recovered, now)
-        save_state(decision.state, args.state_path)
+        if not args.dry_run:
+            FileNotifier(args.alert_log).send(
+                decision.to_send, decision.recovered, now
+            )
+            save_state(decision.state, args.state_path)
 
     if args.json:
         print(

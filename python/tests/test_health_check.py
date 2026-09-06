@@ -13,7 +13,11 @@ design depends on consuming that dict rather than re-reading the world.
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -471,3 +475,155 @@ def test_every_alert_key_is_stable_across_runs():
         NOW - timedelta(hours=9)
     ).isoformat()
     assert first == {a.key for a in check_loops(status, {}, NOW)}
+
+
+class TestStructurallyBrokenState:
+    """Valid JSON in the wrong shape must be discarded, not half-trusted.
+
+    A first version checked only that the top level was a `dict`, so
+    `{"open": []}` passed and `decide` then died on `open_before.get(...)`.
+    Under cron that is exactly the silence this module exists to prevent,
+    arriving through the guard meant to prevent it.
+    """
+
+    @pytest.mark.parametrize(
+        "broken",
+        [
+            {"open": []},
+            {"open": "nope"},
+            {"consecutive_dead": []},
+            {"consecutive_dead": 3},
+            {"open": {"k": "not a dict"}},
+            {"open": {"k": ["also", "not"]}},
+        ],
+        ids=[
+            "open-is-a-list", "open-is-a-string", "dead-is-a-list",
+            "dead-is-an-int", "entry-is-a-string", "entry-is-a-list",
+        ],
+    )
+    def test_a_wrongly_shaped_state_file_is_discarded(self, tmp_path, broken):
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        assert load_state(path) == {}
+
+    def test_and_the_run_then_completes_instead_of_dying(self, tmp_path):
+        """The property that actually matters. Discarding the state is
+        only useful if the run survives it."""
+        state = tmp_path / "state.json"
+        state.write_text(json.dumps({"open": []}), encoding="utf-8")
+        status_file = write_status(tmp_path, live_status())
+        assert main(cli_args(tmp_path, status_file)) == 0
+
+    def test_a_well_shaped_state_still_loads(self, tmp_path):
+        """The counterpart: without this, returning `{}` unconditionally
+        would pass every test above."""
+        path = tmp_path / "state.json"
+        good = {"open": {"k": {"first_seen": "x"}}, "consecutive_dead": {"simulated": 1}}
+        path.write_text(json.dumps(good), encoding="utf-8")
+        assert load_state(path) == good
+
+
+class TestConcurrentChecks:
+    """The 15-minute cron and an operator running it by hand.
+
+    Without one lock across read-modify-write, both read the same
+    previous state, both decide the condition is new, and both append --
+    a duplicate line, and whichever saves last discards the other's
+    `first_seen`. `first_seen` is how a reader tells a blip from a
+    three-day outage, so losing it defeats the point of the history.
+
+    Real subprocesses: `flock` is a kernel lock between processes, and
+    threads in one interpreter would share the descriptor.
+    """
+
+    def test_concurrent_runs_record_a_condition_once(self, tmp_path):
+        import concurrent.futures
+
+        status = live_status()
+        status["loops"]["simulated"]["kill_switch_mentioned_in_scrollback"] = True
+        status_file = write_status(tmp_path, status)
+        alert_log = tmp_path / "alerts.jsonl"
+        state = tmp_path / "state.json"
+
+        repo_python = Path(__file__).resolve().parents[1]
+        env = {**os.environ, "PYTHONPATH": str(repo_python)}
+
+        def run(_i):
+            return subprocess.run(
+                [
+                    sys.executable, "-m", "live.health_check",
+                    "--status-json", str(status_file),
+                    "--state-path", str(state),
+                    "--alert-log", str(alert_log),
+                    "--disk-path", str(tmp_path),
+                ],
+                cwd=repo_python, env=env, capture_output=True, text=True,
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            results = list(pool.map(run, range(6)))
+
+        for r in results:
+            assert r.returncode == 1, f"unexpected exit {r.returncode}: {r.stderr}"
+            assert "Traceback" not in r.stderr, r.stderr
+
+        recorded = [
+            json.loads(line) for line in alert_log.read_text().splitlines() if line.strip()
+        ]
+        assert [r["key"] for r in recorded] == ["kill_switch:simulated"], (
+            f"the condition was recorded {len(recorded)} times; concurrent runs "
+            f"each saw an empty history and appended"
+        )
+
+    def test_the_state_temp_name_is_per_process(self, tmp_path, monkeypatch):
+        """Asserted directly, because racing for it cannot fail.
+
+        The per-process temp name is defence *behind* the lock: while the
+        lock holds, two `save_state` calls never overlap, so a
+        concurrency test passes with a fixed `.tmp` name too. Confirmed
+        by reverting to the fixed name -- `TestConcurrentChecks` stayed
+        green, which makes it an inert guard for this particular claim.
+
+        So the property is asserted where it is actually observable: the
+        name itself. It earns its place by surviving someone weakening
+        the locking later, not by being reachable today.
+        """
+        written: list[Path] = []
+        real_write = Path.write_text
+
+        def record(self, *args, **kwargs):
+            written.append(self)
+            return real_write(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "write_text", record)
+        save_state({"open": {}}, tmp_path / "state.json")
+
+        assert written, "save_state wrote nothing"
+        assert str(os.getpid()) in written[-1].name, (
+            f"temp name {written[-1].name!r} is shared between processes"
+        )
+
+    def test_no_state_temp_file_survives(self, tmp_path):
+        """Leftover temp files, whatever the naming scheme."""
+        import concurrent.futures
+
+        status_file = write_status(tmp_path, live_status())
+        repo_python = Path(__file__).resolve().parents[1]
+        env = {**os.environ, "PYTHONPATH": str(repo_python)}
+
+        def run(_i):
+            return subprocess.run(
+                [
+                    sys.executable, "-m", "live.health_check",
+                    "--status-json", str(status_file),
+                    "--state-path", str(tmp_path / "state.json"),
+                    "--alert-log", str(tmp_path / "alerts.jsonl"),
+                    "--disk-path", str(tmp_path),
+                ],
+                cwd=repo_python, env=env, capture_output=True, text=True,
+            )
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+            list(pool.map(run, range(6)))
+
+        assert [p.name for p in tmp_path.glob("*.tmp")] == []
