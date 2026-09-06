@@ -124,7 +124,7 @@ SIDE_STATE_PATH = MOCK_SIGNAL_DIR / ".last-side"
 
 
 def _reject_real_strategy_path(target: Path) -> None:
-    """Refuse to write into a real strategy's signal tree.
+    """Allow only `MOCK_SIGNAL_DIR`; refuse everything else.
 
     The one guard that matters. Both paper loops default to a path under
     `var/live/signals/<symbol>/<strategy>/`, and the `bingx-vst` loop
@@ -132,23 +132,42 @@ def _reject_real_strategy_path(target: Path) -> None:
     there would put 288 manufactured orders a day onto an exchange
     account.
 
-    Compares resolved paths so `..` cannot walk into the tree, and allows
-    exactly the `_mock` subdirectory. Raises rather than warns: there is
-    no sensible way to continue.
+    An **allowlist, not a blocklist**. An earlier version only rejected
+    paths inside `REAL_SIGNAL_ROOT`, which let anything outside it
+    through -- so a mistyped `--signal-path` could create or overwrite an
+    unrelated file anywhere on the box. Enumerating what must not be
+    written is a losing game; there is exactly one directory this module
+    has business writing to.
+
+    Compares resolved paths, so `..` cannot walk out of the mock
+    directory and back into the real tree. Raises rather than warns:
+    there is no sensible way to continue.
     """
     resolved = target.resolve()
-    root = REAL_SIGNAL_ROOT.resolve()
     allowed = MOCK_SIGNAL_DIR.resolve()
     if resolved.is_relative_to(allowed):
         return
-    if resolved.is_relative_to(root):
-        raise ValueError(
-            f"refusing to write a mock signal to {target} -- that is inside "
-            f"{REAL_SIGNAL_ROOT}/, where real strategies publish and where the "
-            f"bingx-vst loop reads. A mock signal there would submit "
-            f"manufactured orders to a real exchange account. Write to "
-            f"{MOCK_SIGNAL_PATH} (the default) instead."
-        )
+    inside_real = resolved.is_relative_to(REAL_SIGNAL_ROOT.resolve())
+    why = (
+        f"that is inside {REAL_SIGNAL_ROOT}/, where real strategies publish and "
+        f"where the bingx-vst loop reads -- a mock signal there would submit "
+        f"manufactured orders to a real exchange account"
+        if inside_real else
+        f"this module only ever writes inside {MOCK_SIGNAL_DIR}/"
+    )
+    raise ValueError(
+        f"refusing to write a mock signal to {target} -- {why}. Write to "
+        f"{MOCK_SIGNAL_PATH} (the default) instead."
+    )
+
+
+def _peek_side(state_path: Path) -> Side:
+    """What `_next_side` would return, without writing anything."""
+    try:
+        previous = state_path.read_text(encoding="utf-8").strip()
+    except (OSError, ValueError):
+        previous = None
+    return Side.SHORT if previous == Side.LONG.value else Side.LONG
 
 
 def _next_side(state_path: Path) -> Side:
@@ -159,12 +178,7 @@ def _next_side(state_path: Path) -> Side:
     nothing but a slightly one-sided position, and failing the run would
     cost a Gate A order event.
     """
-    previous = None
-    try:
-        previous = state_path.read_text(encoding="utf-8").strip()
-    except (OSError, ValueError):
-        pass
-    side = Side.SHORT if previous == Side.LONG.value else Side.LONG
+    side = _peek_side(state_path)
     try:
         state_path.parent.mkdir(parents=True, exist_ok=True)
         state_path.write_text(side.value, encoding="utf-8")
@@ -231,10 +245,14 @@ def main(argv=None) -> int:
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-    intent = build_mock_intent(args.symbol, side=_next_side(SIDE_STATE_PATH))
     if args.dry_run:
-        print(intent.model_dump_json())
+        # Peek without persisting: a dry run that advanced the side state
+        # would change the next real signal, which is the one thing a
+        # "does not write" flag must not do.
+        print(build_mock_intent(args.symbol, side=_peek_side(SIDE_STATE_PATH)).model_dump_json())
         return 0
+
+    intent = build_mock_intent(args.symbol, side=_next_side(SIDE_STATE_PATH))
 
     try:
         write_signal_atomically(intent, args.signal_path)

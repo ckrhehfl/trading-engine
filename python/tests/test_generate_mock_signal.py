@@ -57,8 +57,18 @@ class TestPathGuard:
     def test_allows_the_mock_directory(self, good):
         mock._reject_real_strategy_path(Path(good))
 
-    def test_allows_paths_outside_the_signal_tree(self, tmp_path):
-        mock._reject_real_strategy_path(tmp_path / "latest.json")
+    def test_refuses_paths_outside_the_signal_tree_too(self, tmp_path):
+        """An allowlist, not a blocklist. An earlier version only rejected
+        the real signal tree, so a mistyped `--signal-path` could create
+        or overwrite an unrelated file anywhere on the box. Enumerating
+        what must not be written is a losing game."""
+        with pytest.raises(ValueError, match="only ever writes inside"):
+            mock._reject_real_strategy_path(tmp_path / "latest.json")
+
+    def test_refuses_a_plausible_typo(self):
+        """`_mocks` is not `_mock`."""
+        with pytest.raises(ValueError):
+            mock._reject_real_strategy_path(Path("var/live/signals/_mocks/latest.json"))
 
     def test_the_default_path_passes_its_own_guard(self):
         """A default that its own guard rejects would make the module
@@ -121,19 +131,25 @@ class TestSideAlternation:
 
 
 class TestWrite:
-    def test_writes_readable_json_that_round_trips(self, tmp_path):
-        target = tmp_path / "latest.json"
+    """Writes go through `MOCK_SIGNAL_PATH` relative to a temp cwd, since
+    the guard is an allowlist and an arbitrary `tmp_path` is (correctly)
+    refused."""
+
+    @pytest.fixture
+    def target(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        return mock.MOCK_SIGNAL_PATH
+
+    def test_writes_readable_json_that_round_trips(self, target):
         intent = mock.build_mock_intent()
         mock.write_signal_atomically(intent, target)
         assert OrderIntent(**json.loads(target.read_text())).intent_id == intent.intent_id
 
-    def test_leaves_no_temp_files(self, tmp_path):
-        target = tmp_path / "latest.json"
+    def test_leaves_no_temp_files(self, target):
         mock.write_signal_atomically(mock.build_mock_intent(), target)
-        assert [p.name for p in tmp_path.iterdir()] == ["latest.json"]
+        assert [p.name for p in target.parent.iterdir()] == ["latest.json"]
 
-    def test_overwrites_rather_than_appending(self, tmp_path):
-        target = tmp_path / "latest.json"
+    def test_overwrites_rather_than_appending(self, target):
         first = mock.build_mock_intent()
         mock.write_signal_atomically(first, target)
         second = mock.build_mock_intent()
@@ -170,6 +186,21 @@ class TestCli:
         assert mock.main(["--dry-run"]) == 0
         assert OrderIntent(**json.loads(capsys.readouterr().out)).signal_timeframe == "mock"
         assert not (tmp_path / mock.MOCK_SIGNAL_PATH).exists()
+
+    def test_dry_run_does_not_touch_the_side_state(self, tmp_path, monkeypatch):
+        """A dry run that advanced the side would change the NEXT real
+        signal — the one thing a "does not write" flag must not do."""
+        monkeypatch.chdir(tmp_path)
+        mock.main(["--dry-run"])
+        assert not (tmp_path / mock.SIDE_STATE_PATH).exists()
+
+    def test_dry_run_predicts_what_the_real_run_emits(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.chdir(tmp_path)
+        mock.main(["--dry-run"])
+        predicted = OrderIntent(**json.loads(capsys.readouterr().out)).side
+        mock.main([])
+        written = OrderIntent(**json.loads((tmp_path / mock.MOCK_SIGNAL_PATH).read_text()))
+        assert written.side == predicted
 
     def test_a_refused_path_exits_non_zero(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
