@@ -203,15 +203,31 @@ def test_an_outbound_connection_is_refused():
     assert "1.1.1.1" in str(excinfo.value)
 
 
-def test_a_hostname_is_refused_before_it_is_even_resolved():
-    """`create_connection` resolves first, so a blocked *name* may surface
-    as either the guard or a DNS failure depending on the environment --
-    both are refusals. What must never happen is a successful connection.
+def test_the_cloud_metadata_endpoint_is_refused():
+    """169.254.169.254 is the link-local metadata server on GCP, AWS and
+    Azure, and it hands out service-account tokens to anything on the
+    box that asks.
+
+    Worth its own case because it is the one address a naive "block the
+    internet" guard misses: it is link-local, not routable, so a test
+    could reach it on the VPS while looking perfectly isolated. Blocking
+    everything that is not loopback covers it; blocking a list of public
+    ranges would not.
     """
     import socket
 
-    with pytest.raises((conftest.OutboundNetworkBlocked, OSError)):
-        socket.create_connection(("open-api.bingx.com", 443), timeout=5)
+    with pytest.raises(conftest.OutboundNetworkBlocked):
+        socket.create_connection(("169.254.169.254", 80), timeout=5)
+
+
+def test_a_private_lan_address_is_refused():
+    """Not routable to the internet either, and equally not this
+    machine. `_is_loopback` is an allowlist of exactly 127./::1, which is
+    why this is refused without anyone having had to think of it."""
+    import socket
+
+    with pytest.raises(conftest.OutboundNetworkBlocked):
+        socket.create_connection(("10.0.0.1", 22), timeout=5)
 
 
 def test_loopback_still_works_because_the_suite_depends_on_it():
