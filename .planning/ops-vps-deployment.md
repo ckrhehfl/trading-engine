@@ -390,6 +390,57 @@ scratch:**
 - **Free-tier hours are per billing account.** A second always-free
   e2-micro anywhere on the same account silently makes both billable.
 
+## Gate A: kill switch and SUBMISSION_UNKNOWN, verified on the deployment
+
+Both were outstanding after the move, and both are now done —
+`scripts/verify-gate-a-kill-switch.sh`, run 2026-09-06 against the real
+instance.
+
+| step | result |
+|---|---|
+| a persisted marker starts the loop TRIPPED | `unresolvedSubmissionMarkersRequiringReview=true`; new signal generation suspended |
+| clearing it starts clean | `no pre-existing non-zero positions found, clean start`; leverage set to 1x on the real exchange |
+| the live marker store is untouched | never created |
+
+**What made an isolated run possible.** The marker store path was a
+hardcoded constant, so a second instance shared the live `bingx-vst`
+loop's file — verifying meant hand-editing a risk-control artifact
+belonging to a running process, which is not a verification anyone
+should have to perform.
+`PAPER_TRADING_SUBMISSION_MARKERS_PATH` was added for exactly this:
+configuration surface only, default byte-for-byte what the constant was.
+
+**It is not fail-safe, and an earlier version of this document claimed
+it was.** Pointing it at an empty location means a real unresolved
+marker in the default store is never looked at and the process starts
+with the kill switch clear — precisely the bypass the marker mechanism
+exists to prevent. Correctly caught on review.
+
+So the override is refused unless
+`PAPER_TRADING_ALLOW_ISOLATED_MARKERS` carries the exact string
+`i-understand-this-bypasses-marker-review`. Two variables because one is
+too easy to set by accident in a deployment script, and a sentence
+rather than `1` because the value *is* the acknowledgement. Normal
+operation never reaches the override; verified on the instance that
+setting the path alone refuses to start.
+
+**A separate real trip and recovery was also observed**, unplanned, on
+2026-09-05: the VST loop found a pre-existing position, refused to start
+trading, and came up clean the next day once the position was closed.
+
+### What is still missing, and is deliberate
+
+**There is no operator-facing way to trip or reset the kill switch on a
+running process.** `reset()` is called from nowhere in the operational
+path; recovery means clearing the condition and restarting.
+`KillSwitch`'s own Javadoc says so — no file watch, no HTTP endpoint —
+and CLAUDE.md defers external triggering to Priority #8's
+Monitoring/alerting. Reviewed 2026-09-06 and left as is: Gate A asks for
+a deliberate trip and recovery, which restart-based recovery satisfies,
+and adding a new control surface to a risk control deserves its own
+`Discuss` alongside the monitoring work rather than being bolted on to
+satisfy a checklist.
+
 ## What this does not do
 
 It does not make any strategy more proven, and it is not a step toward
