@@ -337,32 +337,76 @@ def load_state(path: Path | str = STATE_PATH) -> dict[str, Any]:
     other fail-open decision in this project's operational code is a bug;
     this one is reasoned, which is why the reasoning is written down.
 
-    **Structure is checked, not just JSON syntax.** A first version only
-    verified the top level was a `dict`, so `{"open": []}` -- valid JSON,
-    valid dict, wrong shape -- passed, and `decide` then died on
-    `open_before.get(...)`. Under cron that is the exact silence this
-    module exists to prevent, arriving through the guard meant to
-    prevent it. Anything not shaped like state we wrote is discarded
-    whole rather than partially trusted; a half-valid history is worse
-    than none, because suppression would then key off nonsense.
+    **Structure is checked to the leaves, not just JSON syntax, and not
+    just the containers.** This validator has been wrong twice, each
+    time by being one level too shallow:
+
+    - a first version verified only that the top level was a `dict`, so
+      `{"open": []}` passed and `decide` died on `open_before.get(...)`;
+    - a second verified the containers, so
+      `{"consecutive_dead": {"simulated": []}}` passed and `check_loops`
+      died on `int([])`, and `{"open": {"k": {"last_notified": []}}}`
+      passed and `_parse_iso` died on `.replace`.
+
+    Both are the exact silence this module exists to prevent, arriving
+    through the guard written to prevent it. The leaf types are now a
+    declared table (`_is_well_formed_state`) rather than an inline
+    check, so "is this field covered?" is answerable by reading it.
+
+    Anything not shaped like state we wrote is discarded whole rather
+    than partially trusted; a half-valid history is worse than none,
+    because suppression would then key off nonsense.
     """
     try:
         loaded = json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+    return loaded if _is_well_formed_state(loaded) else {}
+
+
+# Every leaf `decide` and `check_loops` actually read, with the types
+# they must have. Declared as a table rather than checked inline,
+# because this validator has now been wrong twice by being one level too
+# shallow -- containers checked, leaves not -- and a table makes "did we
+# cover this field?" answerable by reading it.
+#
+# `_parse_iso` calls `.replace` on the timestamps and `check_loops` calls
+# `int()` on the counters, so a list or a dict in either place raises
+# from inside a cron job. That is silence, which is the one outcome this
+# module exists to prevent.
+_OPEN_ENTRY_STRING_FIELDS = ("severity", "first_seen", "last_notified", "detail")
+
+
+def _is_well_formed_state(loaded: object) -> bool:
+    """True only for a structure this module could itself have written.
+
+    Whole-or-nothing: a partially valid history is worse than none,
+    because repeat suppression would key off nonsense.
+    """
     if not isinstance(loaded, dict):
-        return {}
+        return False
+
     for key in ("open", "consecutive_dead"):
         value = loaded.get(key)
         if value is not None and not isinstance(value, dict):
-            return {}
-    # `open`'s values are themselves read with `.get`, so they have to be
-    # dicts too -- the same failure one level down.
-    if any(
-        not isinstance(entry, dict) for entry in (loaded.get("open") or {}).values()
-    ):
-        return {}
-    return loaded
+            return False
+
+    for entry in (loaded.get("open") or {}).values():
+        if not isinstance(entry, dict):
+            return False
+        for field_name in _OPEN_ENTRY_STRING_FIELDS:
+            field_value = entry.get(field_name)
+            if field_value is not None and not isinstance(field_value, str):
+                return False
+
+    for count in (loaded.get("consecutive_dead") or {}).values():
+        # `bool` is an `int` subclass and would survive `int()`, but it
+        # is not something this module writes -- so it is a sign the file
+        # came from somewhere else, and the safe read is to discard.
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            return False
+
+    return True
 
 
 def save_state(state: dict[str, Any], path: Path | str = STATE_PATH) -> None:

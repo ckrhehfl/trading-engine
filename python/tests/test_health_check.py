@@ -501,16 +501,68 @@ class TestStructurallyBrokenState:
             "dead-is-an-int", "entry-is-a-string", "entry-is-a-list",
         ],
     )
-    def test_a_wrongly_shaped_state_file_is_discarded(self, tmp_path, broken):
+    def test_a_wrongly_shaped_container_is_discarded(self, tmp_path, broken):
         path = tmp_path / "state.json"
         path.write_text(json.dumps(broken), encoding="utf-8")
         assert load_state(path) == {}
+
+    @pytest.mark.parametrize(
+        "broken",
+        [
+            # `check_loops` calls int() on these.
+            {"consecutive_dead": {"simulated": []}},
+            {"consecutive_dead": {"simulated": {}}},
+            {"consecutive_dead": {"simulated": "2"}},
+            {"consecutive_dead": {"simulated": -1}},
+            {"consecutive_dead": {"simulated": True}},
+            # `_parse_iso` calls .replace() on these.
+            {"open": {"k": {"last_notified": []}}},
+            {"open": {"k": {"first_seen": 17}}},
+            {"open": {"k": {"severity": ["critical"]}}},
+            {"open": {"k": {"detail": {}}}},
+        ],
+        ids=[
+            "count-is-a-list", "count-is-a-dict", "count-is-a-string",
+            "count-is-negative", "count-is-a-bool",
+            "last_notified-is-a-list", "first_seen-is-an-int",
+            "severity-is-a-list", "detail-is-a-dict",
+        ],
+    )
+    def test_a_wrongly_typed_LEAF_is_discarded(self, tmp_path, broken):
+        """The second thing this validator got wrong: it checked the
+        containers and not what was inside them.
+
+        `int([])` raises, and so does `[].replace(...)` -- both from
+        inside a cron job, which is the silence this module exists to
+        prevent, arriving through the guard written to prevent it.
+        """
+        path = tmp_path / "state.json"
+        path.write_text(json.dumps(broken), encoding="utf-8")
+        assert load_state(path) == {}
+
+    def test_a_null_timestamp_is_allowed_because_this_module_writes_one(self, tmp_path):
+        """`decide` stores `last_notified: None` when a repeat is
+        suppressed and the previous entry had none. Rejecting it would
+        make the module discard its own valid output."""
+        path = tmp_path / "state.json"
+        good = {"open": {"k": {"first_seen": "x", "last_notified": None}}}
+        path.write_text(json.dumps(good), encoding="utf-8")
+        assert load_state(path) == good
 
     def test_and_the_run_then_completes_instead_of_dying(self, tmp_path):
         """The property that actually matters. Discarding the state is
         only useful if the run survives it."""
         state = tmp_path / "state.json"
         state.write_text(json.dumps({"open": []}), encoding="utf-8")
+        status_file = write_status(tmp_path, live_status())
+        assert main(cli_args(tmp_path, status_file)) == 0
+
+    def test_a_leaf_type_error_does_not_kill_the_run(self, tmp_path):
+        """Discarding the state is only useful if the process survives."""
+        state = tmp_path / "state.json"
+        state.write_text(
+            json.dumps({"consecutive_dead": {"simulated": []}}), encoding="utf-8"
+        )
         status_file = write_status(tmp_path, live_status())
         assert main(cli_args(tmp_path, status_file)) == 0
 
