@@ -226,7 +226,14 @@ If the create command is rejected for capacity or image reasons, resolve
 the family first rather than guessing:
 
     gcloud compute images describe-from-family ubuntu-2404-lts-amd64 \
-      --project ubuntu-os-cloud --format='value(name)'
+      --project ubuntu-os-cloud --zone us-central1-a --format='value(name)'
+
+**`--zone` matters here and is not decoration.** Omitting it returns the
+latest *globally* available image, while `gcloud compute instances
+create` resolves an image family in a public image project **zonally by
+default** — so a diagnosis run without it can report an image the create
+command would not have used, which is the opposite of what a diagnostic
+is for. Pass the same zone the instance is created in.
 
 **2. Firewall: leave it closed.** This box makes only outbound requests.
 It needs no inbound rule beyond SSH, and GCP's `default-allow-ssh`
