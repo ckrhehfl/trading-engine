@@ -813,6 +813,58 @@ day and calling it "scalping" — passes all six cleanly. That failure mode
 needs someone asking whether the measurement matches the world, which is
 what the human checkpoints below are for.
 
+### Change checks — the engineering counterpart, added 2026-09-06
+
+`conclusion_check.py` exists because research conclusions kept carrying
+arithmetic errors nobody caught. **Engineering changes had no
+equivalent**, and an audit of one session's fifteen significant defects
+showed what that cost:
+
+| caught by | count |
+|---|---|
+| CodeRabbit review | ~7 |
+| the real deployment | 3 |
+| an external observable (sha256, `ls`, HTTP status) | 3 |
+| reading the existing system before extending it | 1 |
+| **the tests written alongside the code** | **~0** |
+
+That last row is the finding, and the pattern behind it is one sentence:
+**a verification that shares an assumption with its implementation
+confirms the misunderstanding rather than catching it.** Every category
+that did catch something is a form of stepping outside the thing just
+written.
+
+`python/research/change_check.py` implements seven checks on the same
+terms as `conclusion_check`: each carries the real incident that
+motivates it, and `require_no_blockers` raises rather than warns.
+
+| Check | Catches | Incident |
+|---|---|---|
+| `check_guard_fails_when_removed` | a guard nobody proved can fail | `conftest.py`'s log isolation was inert three versions running, each passing its own tests |
+| `check_guard_is_an_allowlist` | a blocklist betting you thought of everything | the mock path guard blocked the strategy tree and allowed the rest of the filesystem |
+| `check_readonly_path_is_pure` | a "does not write" flag that writes | `--dry-run` advanced the side state and changed the next real signal |
+| `check_script_fails_closed` | evidence that cannot fail | the Gate A verification script shipped without `set -e` and with unchecked greps |
+| `check_no_shared_mutable_state` | two writers, one resource | both paper loops read the same signal file; a mock feed there meant 288 manufactured orders a day to a real venue |
+| `check_reported_from_actual` | a published figure taken from intent | Task C's `+45` was `−97` from real fills — 3x the effect, sign reversed |
+| `check_error_direction_declared` | urgency judged before direction | test pollution inflated `N` (safe); an unlogged run deflated it (unsafe) |
+
+**Three practices these encode, worth stating outside the code:**
+
+1. **Remove the guard and watch the test fail** before believing it.
+   Reading it is not enough — the three inert fixtures all read fine.
+2. **Run it where it will run.** Three defects were invisible locally
+   and obvious on the instance: executable bits (WSL shows `/mnt/c` as
+   777), Binance's `HTTP 451` on US IPs, a 350 MB Gradle daemon.
+3. **Read the existing system before extending it.** One command
+   ("which file does each loop read?") prevented a mock feed reaching a
+   venue. It was asked deliberately, not by habit — that is what this
+   is meant to make routine.
+
+**What they explicitly cannot do**, stated so they are not over-trusted:
+they catch structural mistakes in a change's own construction. They
+cannot say the change was worth making or the design is right. That is
+what the human checkpoints below are for.
+
 ### Human checkpoints — three moments, not a time interval
 
 Also added 2026-08-28. Periodic check-ins were considered and rejected:
