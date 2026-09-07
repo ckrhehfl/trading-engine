@@ -2079,7 +2079,67 @@ find a viable configuration. This does not change the arithmetic that
 governs — at `N` in the 120s the DSR-0.95 bar is still an annualized
 Sharpe near **4.00**, against the 0.4-0.8 credible institutional range.
 
-**Task D is pre-registered and not yet run**
+**Task D has been run, and two policies cleared Gate A — the first time
+any candidate in this project has.** Full account:
+`.planning/tm-d-breakout-management-result.md`. Zero fill-contract
+breaches across all six policies.
+
+| policy | Gate A | return | maxDD | PF | Sharpe | total R |
+|---|---|---|---|---|---|---|
+| **P3** scale out 50% at +1R, trail the rest | **PASS** | +61.8% | 13.0% | 1.542 | **+0.716** | +79.2 |
+| **P5** the same reduction taken as a hedge | **PASS** | +50.6% | 14.6% | 1.528 | +0.617 | +64.8 |
+| P0 / P1 / P2 / P4 | FAIL | withheld — the registration forbids quoting a failing policy's statistics | | | | |
+
+**The finding is the axis, not the winner.** The entry is byte-identical
+across all six, so the entire spread — from Gate A failure to Gate A
+pass — is a management effect. **None of the 129 prior selection trials
+varied this axis at all**; every one searched for a better entry
+formula. P3's Sharpe is also the only one above this window's own 0.623
+detection floor (PSR 0.9705).
+
+**The registered P5 prediction held.** P5 lost to P3 by 14.4R over 464
+identical entries (≈0.031R each — the second spread plus the second set
+of fees), exactly as predicted, giving Task C's negative result a
+mechanism: *a hedge is a costlier way to reduce exposure than reducing
+it.* Both policies cleared Gate A, so both may be quoted.
+
+**Pyramiding (P4) and trailing-only (P2) did not clear Gate A**, failing
+on drawdown and profit factor. No further statistic about either is
+quoted, here or in the result document — and that is a real cost, not a
+formality: **this task exists to compare policies, and four of six
+failed, so the run answered its question and the reporting rule forbids
+most of the answer.** The two rules are in genuine tension and
+**resolving it is a human decision before Task E** — the result
+document's §6 sets out three options and records that the author of the
+rule is the wrong party to reinterpret it after seeing which reading
+flatters the write-up.
+
+**It is not a pass and cannot be**, procedurally: the window is spent,
+so nothing measured there is admissible for promotion. Against the
+project-level `N` (~130) DSR stays far below 0.95, as it does for
+anything on this window.
+
+**The result's own weakness, stated first rather than buried**: **4 of 8
+years are positive and 2020 alone supplies more than the whole total**
+(+73.5R of +79.2R). Excluding 2020, P3 is +5.8R across seven years, and
+2025 and 2026 are both negative. A strategy that clears its gates on one
+year has not been shown to work in the regime it would be traded in.
+
+**Whether P3 justifies spending the Binance spot 1m holdout is a
+separate human decision and is explicitly not granted by this result.**
+The tempting arithmetic (`N = 1` requires 0.63; P3 observed 0.716) sits
+next to the reason it is not sufficient: `N = 1` removes the selection
+penalty, not the replication question, and `daily-tsmom-ensemble` got
+**two** disjoint pre-registered confirmations and stayed INCONCLUSIVE.
+
+**Five implementation defects and three inert tests were found while
+building it** — including a time exit that could never fire, and an
+entry quantity computed twice from different equity that invalidated a
+completed run. Every one was caught by deleting the rule and watching
+the suite stay green, never by reading the code. The list is in the
+result document; the method is the transferable part.
+
+**The registration, unchanged and still the contract**
 (`.planning/tm-d-breakout-management-preregistration.md`, 2026-09-07).
 It exists because an audit of `runs/experiments.jsonl` found that of
 1,883 logged backtest runs, the top four `strategy_id`s are 1,472 of

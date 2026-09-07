@@ -183,3 +183,4 @@ A multi-leg position model, built after the operator pointed out the framework c
 - [`tm-c-confluence-hedge-result.md`](tm-c-confluence-hedge-result.md) — Trade Management Task C — result: the confluence hedge is REJECTED
 - [`tm-c-confluence-hedge-specification.md`](tm-c-confluence-hedge-specification.md) — Trade Management Task C — specification for the core-plus-tactical-hedge candidate
 - [`tm-d-breakout-management-preregistration.md`](tm-d-breakout-management-preregistration.md) — Trade Management Task D — pre-registration: what does *managing* a fixed entry actually do?
+- [`tm-d-breakout-management-result.md`](tm-d-breakout-management-result.md) — Trade Management Task D — result: management is the biggest single effect this project has measured, and two policies clear Gate A
