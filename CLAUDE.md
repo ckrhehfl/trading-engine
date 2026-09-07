@@ -2121,10 +2121,15 @@ model is wrong and that is investigated before anything else in the task
 is trusted.
 
 **The run is on the spent Binance futures 1m window and therefore cannot
-produce a pass** — anything there is deflated against the project-level
-`N` and fails DSR whatever it shows. It is development work whose output
-is a decision about whether to request a Phase 2 holdout access, which
-is a separate document and a separate human approval.
+produce a pass — procedurally, not mathematically.** A result from a
+spent window is not admissible as evidence for promotion whatever it
+shows, and that restriction stands on its own. It is *not* true that a
+high `N` makes DSR unclearable: `N` raises the DSR-0.95 requirement
+(roughly 4.0 annualized Sharpe at the project level) without forbidding
+a result from exceeding it, and DSR is computed and reported either way.
+The task is development work whose output is a decision about whether to
+request a Phase 2 holdout access, which is a separate document and a
+separate human approval.
 
 **The stopping rule forecloses adjusting a threshold and re-running.**
 The permitted responses are to accept the result, or to wait for the

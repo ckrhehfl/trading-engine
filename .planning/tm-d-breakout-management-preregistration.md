@@ -74,8 +74,23 @@ Trigger(d) = Open(d) + k * Range(d)        (long)
              Open(d) - k * Range(d)        (short)
 k          = 0.5
 Entry      = at Trigger, when price first touches it during day d
-Baseline exit = Close(d)  (the day's final bar)
+Baseline exit = Close(d)  (the day's final 1m bar)
 ```
+
+**Signal time and fill time are different, and both are pinned.** Task C
+published `+45` that was really `−97` because a signal-time book was
+reported as an execution record, so this is not a formality:
+
+| Event | Signal | Fill |
+|---|---|---|
+| Entry | the 1m bar whose high (long) / low (short) first touches `Trigger(d)` | that same bar, at `Trigger(d)` **plus adverse slippage** — a touch is a real price, not a forecast |
+| Baseline time exit | the close of day `d`'s final 1m bar (23:59 UTC) | the **next 1m bar's open** plus adverse slippage, the project's standing signal→fill convention |
+| Stop / trailing stop | the 1m bar that touches the stop level | that bar, at the stop level plus adverse slippage |
+| Scale-out / pyramid add | the 1m bar that touches the level | that bar, at the level plus adverse slippage |
+
+All P&L is rebuilt from real `Fill` objects via
+`leg_manager.replay_fills`, never from the prices a policy *saw when
+deciding*.
 
 **`k = 0.5` is fixed and will not be swept.** Secondary sources give a
 0.3–0.7 usable band with 0.5 as the most common convention; 0.5 is taken
@@ -135,6 +150,59 @@ a 5-day moving average (`get_ma5`) — the well-known Korean-community
 Adopting it would therefore be *our* choice of filter rather than the
 published rule's, which is a signal decision and out of scope here.
 
+### `ATR`, and a unit error this document made and is correcting
+
+**A first draft of this pre-registration set P1's stop at `2.65 * ATR`,
+citing S12. That was wrong and is retracted here rather than shipped.**
+S12's `2.65 ATR` was measured with `ATR(14)` computed on **1-minute
+bars**, over a 60-minute maximum hold
+(`s12_excursion_run.py`: `interval='1m'`, `MAX_HOLD = 60`). Reusing that
+multiple on a daily-scale strategy silently changes what `ATR` means by
+about two orders of magnitude — the same unit-mismatch mistake S12
+itself made and documented (comparing a raw ATR figure against a
+threshold denominated in `R`). Caught while pinning this section, before
+any run.
+
+So the stop is taken from the **same published tradition as the entry**
+instead of borrowed across timeframes:
+
+```
+1R (long)  = Entry - (Low(d-1) + Entry) / 2
+1R (short) = (High(d-1) + Entry) / 2 - Entry
+```
+
+the midpoint between the previous session's extreme and the entry — the
+conventional Larry Williams stop, parameter-free, defined by the same
+`Range` that defines the trigger. **No number was chosen by us.**
+
+**Every remaining `ATR` in this document is `ATR(14)`, Wilder's, on
+UTC-midnight daily bars**, and only trailing stops use it.
+
+| Property | Fixed value |
+|---|---|
+| Input bars | daily, aggregated from 1m on the UTC-midnight grid |
+| Observation point | computed from days `d-14 … d-1` — **completed days only**, so day `d` never sees itself |
+| Update cadence | recomputed once per completed day; a trail set on day `d` uses the value fixed at `d`'s open and does not move intraday |
+| Trail distance | `3 * ATR(14)`, the practitioner convention for a daily-swing trail |
+
+### Same-bar ordering, fixed so a tie cannot be resolved after the fact
+
+Within one 1m bar, events are evaluated in this order, and this order is
+**pessimistic by construction**:
+
+1. **Stop / trailing stop** — always first. S8 §3.7 already pins
+   stop-wins on a same-bar tie; a bar that touches both the stop and a
+   profit level is recorded as the stop.
+2. **Scale-out target**
+3. **Pyramid add**
+4. **Time exit**
+
+An entry and its stop cannot both occur on the entry bar: a position
+opened at `Trigger(d)` is checked for stops from the **following** bar
+onward. Otherwise a single volatile bar could be read as both a fill and
+an immediate stop-out, which is a fill-model artefact rather than a
+market event.
+
 ### The day boundary is fixed to UTC midnight, and this is the one real
 ### specification risk
 
@@ -173,18 +241,57 @@ will be chosen after looking at results.
 
 | # | Policy | Specification |
 |---|---|---|
-| **P0** | **Baseline** | Full size at trigger. Exit at `Close(d)`. No stop. The literature default, and the control everything else is measured against. |
-| **P1** | **Stop only** | P0 plus a stop at `2.65 * ATR(14)` from entry, the boundary S12 measured from winners' MAE p80 on this venue. Exit at close or stop, whichever first. |
-| **P2** | **Trail only** | P1, but the time exit is replaced by a `3 * ATR(14)` trailing stop, allowed to carry past the daily close. Sources say trailing beats partial-close for capturing large trends; this is that claim's test. |
-| **P3** | **Scale out** | P1 plus: close **50% at +1R**, move the stop on the remainder to entry, trail the rest at `3 * ATR(14)`. `1R` = the P1 stop distance. The standard practitioner structure. |
-| **P4** | **Pyramid** | P1 plus: each time price advances a further `1R` in favour, add a layer at **half the previous layer's size**, and move the stop to the newest layer's entry minus `1R`. Maximum 3 layers. Follows the three conventional rules — add only on strength, each add smaller, stop rises with each add. |
-| **P5** | **Partial hedge** | P3, except the 50% reduction is taken by **opening an opposing leg** rather than closing half. Included as a **control with a predicted outcome**, see below. |
+| **P0** | **Baseline** | Full size at trigger. Exit at `Close(d)`. **No stop** — a faithful reproduction of the reference implementation, and the control everything else is measured against. |
+| **P1** | **Stop only** | P0 plus the conventional Larry Williams stop (`1R`, defined above). Exit at the time exit or the stop, whichever comes first. |
+| **P2** | **Trail only** | P1, but the time exit is replaced by a `3 * ATR(14)` trailing stop that may carry past the daily close. Sources claim trailing beats partial-close for capturing large trends; this is that claim's test. |
+| **P3** | **Scale out** | P1 plus: close **50% at +1R**, move the remainder's stop to entry, trail the rest at `3 * ATR(14)`. The standard practitioner structure. |
+| **P4** | **Pyramid** | P1 plus: at each further `+1R` in favour, add a layer of **half the previous layer's size**, and move the whole position's stop to the newest layer's entry minus `1R`. **Maximum 3 layers** (1 + 1/2 + 1/4 = 1.75x the initial layer). |
+| **P5** | **Partial hedge** | P3, except the 50% reduction is taken by **opening an opposing leg** rather than closing half. A control with a prediction registered below. |
 
-**Position sizing is identical across all six** and is not a variable
-here: risk `0.5%` of equity per trade against the P1 stop distance,
-equity-aware via `backtest.engine.EquityObserver` (built in S15).
-Holding sizing constant is what makes the comparison a management
-comparison.
+### P4: what is held constant, what is deliberately not
+
+"Sizing identical across all six" means the **initial layer** is
+identical: `0.5%` of equity risked against the `1R` stop distance,
+equity-aware via `backtest.engine.EquityObserver`.
+
+P4's later layers are added *by the management rule*, so its aggregate
+exposure is intentionally larger than the others'. That is the thing
+being studied, not a confound — but it has to be measurable separately
+from a management effect, so:
+
+- **`R` is normalised to the initial layer's planned risk for every
+  policy, including P4's later layers.** A layer opened at half size
+  that gains `1R` of price contributes `0.5R`. Without this, P4's
+  numbers would be denominated in a different unit and `total R` would
+  not compare across policies.
+- **Aggregate risk cap: `1.0R` at all times.** Because the stop moves to
+  the newest layer's entry minus `1R` with each add, the position's
+  worst case never exceeds one initial-layer risk unit — that is what the
+  "raise the stop with each add" rule buys, and it is stated as a cap
+  rather than left as a hoped-for consequence. **If a run ever shows a
+  realised loss beyond `-1.0R` on a P4 episode, that is a bug in the
+  implementation and the run is void**, not a result.
+- P4 reports **peak aggregate exposure** alongside its returns, so an
+  exposure effect cannot be silently read as a management effect.
+
+### P5: the hedge leg's full lifecycle
+
+Left undefined, P5 is not reproducible and its comparison with P3 is
+meaningless. So:
+
+| Property | Fixed value |
+|---|---|
+| Opened | when P3 would close 50%: at `+1R`, same 1m bar, same price, plus adverse slippage |
+| Size | exactly 50% of the current position — a full offset of the fraction P3 would have closed |
+| Direction | opposite to the core leg |
+| Its own stop | **none.** Its purpose is to offset, and giving it a stop would make it a second strategy |
+| Closed | at whichever comes first: (a) the core leg's exit, at which point **both legs close on the same bar**; (b) the core leg's trailing stop being hit |
+| Fees | `FEE_BPS` charged on **both** legs, on open and on close — this is the cost the prediction is about |
+| Funding | not modelled; the run is on a spent window where funding was not collected for this period. **Disclosed: this understates P5's real cost**, so the prediction that P5 loses to P3 is, if anything, conservative |
+| Accounting | the hedge leg is part of the same **trade episode** as its core, and its P&L is included in that episode's `total R` |
+
+Holding the initial-layer sizing constant is what makes this a
+management comparison rather than a sizing comparison.
 
 ### P5 exists to be refuted, and the prediction is recorded now
 
@@ -211,9 +318,9 @@ result a mechanism rather than leaving it as an unexplained loss.
   definition, not a filter. The entry is the fixed constant.
 - **No regime filter.** S10 measured the structure axis as carrying no
   information; adding one would be a new signal search.
-- **No parameter sweeps within a policy.** `2.65 ATR` and `3 ATR` come
-  from S12's measurement and the practitioner convention respectively,
-  and are fixed here.
+- **No parameter sweeps within a policy.** The stop is the published
+  Larry Williams midpoint rule (no number of ours); the trail is
+  `3 * ATR(14)` daily, the practitioner convention. Both fixed here.
 - **No scenario tree.** The operator asked for "predict several
   scenarios and respond" — P3, P4 and P5 are the testable core of that
   idea. A branching decision tree with more free choices per branch is a
@@ -234,9 +341,18 @@ result a mechanism rather than leaving it as an unexplained loss.
 | Execution | `GUARDED_MARKET` only, per the standing policy exclusion on `fill.py`'s optimistic limit model |
 | Sizing | 0.5% equity risk per trade, equity-aware, identical across policies |
 
-**This run cannot produce a pass.** The window is spent, so any result
-here is deflated against a project-level `N` in the 120s and will fail
-DSR whatever it shows. That is expected and is not the point.
+**This run cannot produce a pass — for a procedural reason, not a
+mathematical one.** The window is spent, so a result from it is not
+admissible as evidence for promotion, whatever it shows. That
+restriction stands on its own.
+
+What was *not* true, and is corrected here: an earlier draft said the
+result "will fail DSR whatever it shows". It will not, necessarily. A
+high `N` raises the DSR-0.95 requirement to roughly 4.0 annualized
+Sharpe; it does not forbid clearing it. **DSR is computed and reported
+either way**, against both `N`s (see below). A result that cleared it
+would be genuinely interesting — and still would not be a pass here,
+because of the procedural restriction above.
 
 **What it can produce** is the answer to a question nobody has asked:
 *given a fixed entry, how much does management change the outcome, and
@@ -270,10 +386,27 @@ statistic cannot be chosen after seeing which policy it favours.
 
 | Criterion | Threshold |
 |---|---|
-| Max drawdown | ≤ 20–25% |
+| Max drawdown | **≤ 20%** |
 | Profit factor | ≥ 1.3 |
-| Net of costs | mean R per trade > 0 after 12 bps round trip |
-| Trade count | ≥ 100 (the frequency-scaled floor at 2,543 evaluated days) |
+| Net expectancy | **mean R per episode > 0** |
+| Trade count | ≥ 100 episodes (the frequency-scaled floor at 2,543 evaluated days) |
+
+**Drawdown is pinned at a single 20%, not the Eligibility Bar's 20–25%
+band.** A range is a judgement the Bar leaves open; a pre-registration
+has to remove it, or a 22% result gets adjudicated after the fact. 20%
+is the stricter end, chosen because this is leveraged futures.
+
+**Costs are applied exactly once, and `R` is net.** `Fill.fee` is
+tracked separately from `ClosedTrade.realized_pnl`, and slippage is
+already inside `fill_price` — so computing `R` from `realized_pnl` gives
+a **gross-of-fee** number while computing it from equity gives a net
+one. Deciding after the fact is how a round trip gets deducted twice, or
+zero times.
+
+**Fixed here: every `R` in this task is computed from the equity curve,
+i.e. net of both fees and slippage.** Gate A's threshold is therefore a
+plain `> 0`, with no further 12 bps subtraction — the 12 bps is already
+in the number.
 
 **A policy failing Gate A is reported as failing, and no statistical
 result is quoted in its favour.** This ordering is deliberate: the
@@ -288,20 +421,40 @@ implementation — the S16 defect). `N` for this question is **6**, the
 number of policies here; the project-level `N` is also reported, and the
 larger of the two governs any claim.
 
-At `N = 6` the DSR-0.95 requirement is roughly 2.2 annualized Sharpe.
-Nothing is expected to clear it. **Reporting it anyway is the point** —
+At `N = 6` the DSR-0.95 requirement is roughly 2.2 annualized Sharpe;
+at the project-level `N` it is roughly 4.0. Neither is expected to be
+cleared — *expected*, not *precluded*. **Reporting both anyway is the
+point** —
 the comparison between policies is informative even when no policy is
 individually significant, because they share an entry, a window and a
 cost model, and differ only in the thing being studied.
 
 ### Significance discipline
 
-Positions are non-overlapping by construction (at most one entry per
-day, exited by the next day's open in P0/P1/P3; P2 and P4 may carry, and
-**any overlapping position will be deduplicated before any t-statistic,
-p-value or standard error is reported**, or the figure will be labelled
-as uncorrected). This is S14's lesson, where t = 7–8 collapsed to
-1.5–2.6 on correction.
+**The unit of observation is the trade episode**, fixed here: one
+episode runs from the initial entry to the exit of its final leg, and
+every scale-out tranche, pyramid layer and P5 hedge leg belongs to the
+episode that spawned it. Episodes, not legs and not entries, are what
+significance figures are computed over — otherwise P4 would appear to
+have three times the sample size of P0 for doing the same thing once.
+
+**Episodes are non-overlapping by construction, because a trigger that
+fires while an episode is open is skipped.** Not added to, and not
+opened as a parallel episode. P0/P1/P3 exit within the day so this
+rarely binds; P2 and P4 may carry for days, and on those days their
+trigger is simply not taken.
+
+That choice has a real cost and it is disclosed rather than hidden: **a
+carrying policy takes fewer entries than P0 on the same data**, so trade
+counts will differ between policies and `total R` is compared per
+policy, not per trade. The alternative — allowing parallel episodes —
+would make the significance figures depend on how often a policy happens
+to overlap itself, which is S14's exact lesson, where t = 7–8 collapsed
+to 1.5–2.6 once overlapping windows were deduplicated.
+
+Should any overlap survive implementation, the figure will be
+deduplicated before any t-statistic, p-value or standard error is
+reported, or labelled explicitly as uncorrected.
 
 ---
 
