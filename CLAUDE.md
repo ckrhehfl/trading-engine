@@ -751,6 +751,16 @@ this file (in full, not summarized) until that work actually begins —
 see `.planning/README.md`'s "Where does a design belong" for why, and
 when it's safe to trim back down to a summary + pointer.
 
+**The corollary is the half that gets skipped**: once that work *has*
+happened and its `.planning/` document exists, this file's entry should
+come back down to conclusions plus a pointer. Skipping it is why the
+scalping section reached 730 lines — 27% of this file — recording an
+arc whose full evidence was already committed elsewhere. Trimming it
+back is a mechanical, checkable operation, not a judgement call: verify
+every figure being removed survives in the `.planning/` document, then
+remove it. `.planning/README.md` carries an index of all 77 documents,
+and `python/tests/test_planning_index.py` fails if it goes stale.
+
 State assumptions and ask rather than silently pick between valid
 interpretations — `Discuss` makes this mandatory for R3-risk work; treat
 it as the default for everything else too, since a future session has
@@ -1625,49 +1635,82 @@ first**:
   one. Not "fail on any gap" — the known gaps are real and permanent —
   but a guard against an *unexpected* one appearing.
 
-**Both candidates ran for real. Both came back INCONCLUSIVE, for
-genuinely different reasons — an informative pair, not two redundant
-failures**:
+**What each task settled.** Full record, evidence and every retraction
+in the `.planning/scalp-*.md` document named on each row — these are
+conclusions, and the arithmetic behind them lives there.
 
-- **`vwap-mid-reversion` (S4)**, 20-period VWAP with a 2-SD band, no risk
-  control at all: `PSR 0.999999` but max drawdown 10,619%, profit factor
-  0.00117, and Sharpe 0.392 below the window's own 1.250 detection floor.
-  44,344 trades at a **1.13% win rate**. The honest lesson: **"zero free
-  parameters" and "zero risk controls" are different disciplines.**
-  `daily_tsmom_ensemble`'s hold-until-reversal convention is defensible
-  for trend-following, where a big move *is* the thesis; it does not
-  transfer to mean-reversion, whose core risk is precisely that the
-  market does not revert.
-- **`ofi-momentum` (S6)**, 15-bar order-flow imbalance with a 2-SD band
-  and a real ATR stop/target reused unmodified from `risk_management.py`:
-  Sharpe 0.640 **did** clear its own 0.623 detection floor — but that is
-  a statement about *power*, not significance, and the actual
-  significance test, `PSR 0.823` against the registered 0.95, **failed**.
-  Max drawdown 239,161% and profit factor 0.055 also failed. 56,441
-  trades at a 17.98% win rate against the ~33.3% breakeven the 1:2
-  risk:reward needs. The lesson, deeper than S4's: **a per-trade stop is
-  necessary but demonstrably not sufficient.** It bounded each trade to
-  ~$100 and still could not bound the *sum* across tens of thousands of
-  trades against a negative edge, because `compute_position_size` sizes
-  against a **fixed** `reference_equity` constant rather than real
-  shrinking equity — a project-wide characteristic shared by every
-  strategy using that module.
+| Task | What it was | Outcome |
+|---|---|---|
+| S0-S3 | methodology, real 1m retention probe, cost gate | the design; `scalp-s0-s3-methodology.md` |
+| S4 | `vwap-mid-reversion` — 20-period VWAP, 2-SD band, **no risk control at all** | **INCONCLUSIVE.** PSR 0.999999 but drawdown 10,619%, profit factor 0.0012, Sharpe 0.392 under the window's 1.250 floor. 44,344 trades at a **1.13% win rate**. Lesson: *zero free parameters* and *zero risk controls* are different disciplines — hold-until-reversal is defensible for trend-following and does not transfer to mean-reversion |
+| S5 | Binance 1m + taker-buy-volume infrastructure | the only order-flow source this project has |
+| S6 | `ofi-momentum` — 15-bar OFI, 2-SD band, real ATR stop/target | **INCONCLUSIVE.** Sharpe 0.640 cleared the 0.623 floor — a statement about *power*, not significance — while PSR 0.823 failed against the registered 0.95. Drawdown 239,161%. Lesson: **a per-trade stop is necessary and demonstrably not sufficient**; it bounded each trade and could not bound their sum, because `compute_position_size` sizes against a fixed `reference_equity` |
+| S7 | backtest insolvency floor | the **circuit-breaker half** of what S4/S6 exposed. Equity-aware *sizing* stayed undone until S15 |
+| S8 | methodology rebuilt, after operator pushback | the eleven binding rules below. Retracted two of this section's own prior claims |
+| S9 | real slippage measurement | `SLIPPAGE_BPS` 10 → **1**; see the constants above |
+| S10 | two-axis regime classifier | volatility axis fixed (ratio → **absolute** ATR: 1.22x → 5.21x separation); **structure axis (ADX) carries nothing** and has now failed on both axes it could have |
+| S11 | per-feature IC | 10 of 26 feature×horizon combinations clear; **Every price and momentum IC is negative** — mean reversion at the hour scale, consistently signed across four different formulations; order flow is **uncorrelated with every price feature, \|r\| ≤ 0.006** — the first two genuinely independent information sources this project has held at once. Those 10 features are about **3 signals** |
+| S12 | MAE/MFE | a 1.5 ATR stop destroys **40.9% of eventual winners**; Sweeney's boundary near **2.65 ATR**. The bigger finding: that entry's gross mean is **+0.95bps** and **−11.05bps net**, and **even a ~2bps maker round trip still loses** |
+| S13 | holding-period sweep, then selectivity sweep | holding period does not help (peaks at 1h, inverts at 2h). **Selectivity does**, monotonically. The t-statistics were **retracted** — see the overlapping-window rule below |
+| S14 | `selective-reversion`, first CSTI candidate through real walk-forward | **REJECTED**, and conclusively — 721 trades, the first scalping run to clear the trade-count floor. Mean fold Sharpe −1.471, DSR 0.000 |
+| S15 | the three remedies S14 named | enter later: **no** — every delay tested is worse on gross, net and t, and none recovers. A better stop: **no** — at every width 1.5-12 ATR the stop realises a *larger* loss than the position would have taken alone, so it manufactures losses rather than avoiding them. Equity-aware sizing: **built**, ~neutral here, which is evidence sizing was not what was wrong. Removing the stop is worth **4.4x on mean Sharpe**, the largest single improvement in the arc, and still not an edge |
+| S16 | audit of S15, at the operator's request | found three real defects in S15's *reasoning*. The verdict survived; its stated reason did not. Best configuration posts **t = +2.388, p = 0.0098 — the first significance test any scalping candidate here has cleared** — plus PSR 0.9905, drawdown 9.93%, 181 trades, profit factor 6.44, and is **not** 2021-dependent. It still fails, for the reason below |
 
-Both registrations scoped their own outcome narrowly (the `sr-ab`
-precedent): each parks **that specific hypothesis**, and neither ends the
-scalping direction nor affects any other strategy's logged result.
-Re-running either spec, or grid-searching its constants, is foreclosed by
-its own `stopping_rule`.
+**The one finding from S14/S15 that transfers to any future design**:
+**the adverse excursion is not a cost paid before the edge; it *is* the
+edge.** Removing S14's stop moved the full-window result from −134% to
+−0.20%, and no width helps because the edge lives precisely in the
+excursion a stop cuts off. S12 had already observed the mechanism
+("winners digging 1.86 ATR on average says the entry is early") without
+drawing the conclusion. A systematically-early mean-reversion entry
+needs a later entry or a risk control that is **not** a fixed
+adverse-excursion stop — a real design question, not a tuning knob. The
+CSTI structure and the R:R gate are **not** implicated and should be
+reused; the signal underneath them was not there. Independently
+confirmed a third time by Trade Management Task C, where a *selective,
+conjunction-gated* reduction behaved no differently from an
+unconditional one.
 
-**Task S7** then closed the shared-infrastructure half of what S4 and S6
-exposed: `run_backtest` gained an opt-in `starting_equity` insolvency
-floor (reusing `metrics.position.PositionTracker`, so the engine's check
-and the downstream equity curve cannot drift apart), permanently stopping
-new fills once equity reaches or drops below zero, and now wired into
-both `walkforward.py` and `run_preregistered_holdout.py`. **This is the
-circuit-breaker half only** — making a strategy's own sizing equity-aware
-is a separate, larger, still-undone direction, and no strategy's sizing
-changed.
+**Three findings from S16 that outlive the candidate**, because each is a
+methodological rule rather than a result:
+
+1. **The conclusion was drawn from the weaker of two surviving cells.**
+   Every walk-forward S14 and S15 ran used `entry_z=5.0`; the `|z|≥6`
+   cell was never tested and "the signal is not there" was declared
+   anyway. Running it reverses the sign. This is the **fifth** instance
+   of the single-parameter-setting error below, committed at the most
+   expensive stage to commit it.
+2. **Fold-based criteria are uninformative below ~20-30 trades per
+   fold.** At `|z|≥6` the median fold holds 2 trades, so a fold's sign
+   is near a coin flip and the 80% consistency floor is unreachable: a
+   strategy whose folds are positive 60% of the time clears 67-of-83
+   with probability **4.6e-05**. `sr-j` made this argument for fold
+   *counts*; it had not been made for trades *per fold*. **Do not report
+   fold consistency or the sign test as evidence in either direction
+   below that density.**
+3. **Risk-based sizing neutralised the regime concentration.** S13
+   warned the edge was 2021-dependent; S16's walk-forward contradicts it
+   (**+26.12% of the +32.42% survives excluding 2021**, six of eight
+   years positive). Not a contradiction to resolve by picking one — S13
+   measured mean bps per position, where 2021's violent moves dominate,
+   while the walk-forward compounds equity under ATR-inverse sizing that
+   gives those same moves a *small* position. **Which statistic you
+   measure decides whether a regime looks concentrated.**
+4. **`s14_eligibility.py` fed DSR the wrong variance** — its own run's
+   per-fold Sharpes, where the benchmark wants the variance across other
+   *trials*. It now delegates DSR/PSR/trial counts to
+   `research/retrospective.py` rather than keeping a second
+   implementation.
+
+**A scoring weakness, and a reporting fix rather than a gate change.**
+S15's no-stop cell cleared the profit-factor floor on a **mean of 2.55
+while its median fold was 1.18**. One fold with almost no losing trades
+can drag the mean across the floor by itself. CLAUDE.md sets the floor
+without naming which statistic it applies to and `walkforward`
+aggregates the mean, so the mean remains what is scored — changing that
+is a gate change needing its own approval. `s14_eligibility.py` now
+prints the median beside it and flags **FRAGILE** when the mean passes
+and the median does not.
 
 Liquidation cascades, the one remaining named candidate from the original
 list, was investigated and found to lack a usable foundation: the real
@@ -1676,62 +1719,9 @@ signal is silent in 2 of 7 studied cascades, they sweep 39 configurations
 with no reusable convention, and no post-cascade reversion pattern is
 documented anywhere in that literature.
 
-**Task S8 (2026-08-26) rebuilt the research methodology** rather than
-attempting a third candidate under the same one. Full document, with
-external sources: `.planning/scalp-s8-research-methodology.md`. It exists
-because the human operator pushed back on a framing that was producing
-mechanical single-indicator candidates, and the pushback was correct.
-
-**Two prior claims in this section were wrong and are corrected here.**
-
-1. **"Minutes-scale scalping is arithmetically impossible after costs"
-   was an artefact of comparing costs to the *unconditional* median
-   move** — the move from entering at a uniformly random moment. A
-   strategy does not enter at random. Measured on the real Binance
-   futures 1m window (3,661,780 bars), conditioning on recent activity
-   (rolling 30-bar sum of |1m returns|, known at decision time), the
-   median absolute move as a multiple of the 30bps round trip is:
-   15 min → **1.09x in the top 10% of activity, 2.08x in the top 1%**
-   (0.40x unconditionally); 1 hour → 1.98x / 3.51x (0.76x
-   unconditionally). **So 15-minute holding is not excluded on cost
-   grounds** once entries are restricted to elevated-activity moments —
-   which retires the "impossible" claim, and is all it does. An absolute
-   move is unsigned: this shows the move is large enough that a round
-   trip *could* be covered, not that direction is predictable, and
-   proves neither post-cost expectancy nor out-of-sample behaviour.
-   **"Viable" stays reserved for a candidate that has cleared
-   signed-return evidence, a measured win rate, real execution costs,
-   and out-of-sample validation.** The conditioning itself rests on
-   volatility clustering (Mandelbrot 1963; Engle 1982), one of the most
-   robust empirical facts in finance — which supports the *magnitude*
-   conditioning only, not any directional claim.
-2. **That conclusion is fragile to `SLIPPAGE_BPS`, in the wrong
-   direction.** Such a strategy deliberately enters when spreads widen
-   and depth thins, but `SLIPPAGE_BPS = 10` was calibrated against a
-   ~4bps *typical* spread. At 30bps one-way slippage, 15-minute holding
-   fails even in the top 1% of activity (0.89x) while 1-2 hour holding
-   survives. **Shorter horizons are structurally more exposed to this
-   assumption**, so real slippage must be measured before any
-   short-horizon candidate is trusted — it is the first item in S8's
-   own work order, ahead of any signal research.
-
-**Task S9 executed that measurement (2026-08-26), and it resolved the
-fragility in the favourable direction** — see the revised
-`SLIPPAGE_BPS` entry above and
-`.planning/scalp-s9-slippage-measurement.md`. No order was placed; the
-public-data route S8 named as preferred was sufficient, so the bounded
-VST demo fallback was not needed. With the measured ~12bps round trip
-rather than the assumed 30bps, the horizons excluded on cost grounds
-shrink sharply: 15-minute holding moves from 0.40x to **0.99x
-unconditionally** and 1.09x to **2.73x** in the top 10% of activity;
-30-minute clears at **1.37x even unconditionally**. **This still says
-nothing about direction** — the S8 language above stands unchanged,
-these remain unsigned absolute moves, and "viable" remains reserved for
-a candidate that has cleared signed-return evidence, a measured win
-rate, real execution costs, and out-of-sample validation. What changed
-is only which horizons are ruled out before that work begins.
-
-**What S8 changes, binding on any future scalping candidate**:
+**What S8 changes, binding on any future scalping candidate.** Eleven
+rules. The measurement behind each is in the `.planning/` document
+named; what is stated here is the rule, which is what binds.
 
 - **Decompose the strategy** into direction / entry-exit / sizing and
   research them separately. Both failed candidates fused all three into
@@ -1739,176 +1729,108 @@ is only which horizons are ruled out before that work begins.
 - **A hypothesis must name a mechanism** — who is on the other side and
   why they lose. "20-period VWAP, 2 SD" is a formula, not a hypothesis.
 - **A regime layer comes before signals**: two-axis (direction ×
-  volatility), with hysteresis and a minimum dwell time to stop label
-  flicker, computed only from information available at bar close.
-  Running mean-reversion into an emerging trend is the documented
-  classic blowup, and is exactly what `vwap-mid-reversion` did.
-  **Task S10 built exactly this, measured it, found the first version
-  carried no information, isolated why, and fixed half of it.** The
-  original volatility axis used an ATR *ratio* (current ATR over its own
-  trailing mean) and separated forward 15-minute movement only **1.22x**
-  top-1%-vs-all. Swapping to **absolute** ATR as a fraction of price,
-  changing nothing else, gives **5.21x** — matching the independent
-  rolling-sum-of-|returns| activity measure's 5.25x on the same
-  3.6M bars. A ratio to a recent mean discards exactly the absolute level
-  a cost-versus-move decision needs: a market that doubles its volatility
-  and stays there reads 1.0. `VolatilityAxis.ABSOLUTE` is now the
-  default; `RATIO` is retained only so the negative result stays
-  reproducible.
-  **Two things did not get fixed, and both bind on anyone using this.**
-  First, the **structure axis (ADX) still carries nothing** — within a
-  volatility state the two structures are indistinguishable (15.6 vs
-  15.1bps in expansion, 10.0 vs 10.4 in compression), and its
-  trailing-vs-forward return correlation is under 0.015 everywhere,
-  below even the 0.02-0.05 band named as usable two bullets down. ADX
-  has now failed on both axes it could have carried information on.
-  Second, **discretising costs most of the signal**: the classifier
-  separates ~1.5x where the continuous measure underneath it separates
-  5.2x, the expected price of two states plus hysteresis plus a 14-bar
-  dwell. So: **use the continuous absolute volatility measure as a
-  conditioner, not the discrete label** — including for the per-feature
-  IC work below — and reach for the label only where a genuinely
-  discrete state is required, without relying on its structure axis. The
-  diagnosis of `vwap-mid-reversion` stands throughout; what failed was a
-  particular operationalisation of the remedy, and only partly. Full
-  result: `.planning/scalp-s10-regime-classifier.md`.
+  volatility), hysteresis, minimum dwell time, computed only from
+  information available at bar close. Running mean-reversion into an
+  emerging trend is the documented classic blowup and is exactly what
+  `vwap-mid-reversion` did. **Use the continuous absolute-volatility
+  measure as a conditioner, not the discrete label** — discretising
+  costs most of the signal (5.2x separation becomes ~1.5x) — and do not
+  rely on the structure axis at all (`scalp-s10-regime-classifier.md`).
 - **Measure signals as signals (IC) before assembling a strategy.**
-  Usable ICs are small — 0.02-0.05 is genuinely useful, so individual
-  features will look unimpressive and that is normal. **Task S11 built
-  the harness (`research/ic.py`, time-series rank IC, non-overlapping
-  samples, Benjamini-Hochberg across the whole sweep) and ran it: 10 of
-  26 feature×horizon combinations clear both bars.** Strongest are
-  `htf_ret_4h` (−0.051 at 60m), `htf_ret_1d` (−0.033), distance to the
-  prior-day high (−0.030) and taker-buy share (−0.027 at 15m).
-  **Every price and momentum IC is negative** — mean reversion at the
-  hour scale, consistently signed across four different formulations —
-  and conditioning on the top 10% of activity *strengthens* most of them
-  rather than washing them out. Nothing usable from volume ratio, round
-  numbers, or weekday. Full result: `.planning/scalp-s11-feature-ic.md`.
-- **Orthogonality is what decides how many signals you have, and S11
-  measured it: those 10 features are about 3 signals.** Daily price
-  structure collapses to one (four members correlated 0.72-0.85);
-  4-hour momentum is partially distinct (0.33-0.41); and **order flow is
-  essentially uncorrelated with every price-based feature, |r| ≤ 0.006**
-  — indistinguishable from zero, which is exactly the condition
-  Grinold's law needs and the first time this project has held two
-  genuinely independent information sources at once. Combine the three,
-  not the ten, and treat `sqrt(3)` as an upper bound rather than a
-  forecast.
+  Usable ICs are small: 0.02-0.05 is genuinely useful, so individual
+  features will look unimpressive and that is normal
+  (`scalp-s11-feature-ic.md`).
+- **Orthogonality decides how many signals you have, not their count.**
+  S11's 10 features are about 3. Combine the three, not the ten, and
+  treat `sqrt(3)` as an upper bound rather than a forecast.
 - **Combine weak, uncorrelated signals.** Grinold's `IR ≈ IC × √breadth`
   makes **orthogonality, not individual signal strength, the binding
-  constraint** — treated as a design principle and upper bound, never a
-  performance forecast (the law is known to overstate achievable IR).
+  constraint** — a design principle and upper bound, never a performance
+  forecast; the law is known to overstate achievable IR.
 - **Place stops and targets from MAE/MFE distributions**, not
-  convention. S6's `stop_multiplier=1.5`/`target_multiplier=3.0` were
-  never measured against anything. **Task S12 built the machinery
-  (`research/excursion.py`) and measured it: on 106,361 provisional
-  positions, a 1.5 ATR stop would have destroyed 40.9% of eventual
-  winners.** The distribution puts Sweeney's boundary near **2.65 ATR**
-  (winners' 80th percentile), which still truncates 72.7% of losers.
-  **The bigger finding is not the stop.** That entry — fading `htf_ret_4h`
-  and taker-buy share, the two signals S11 measured as orthogonal,
-  equal-weighted with no fitting — has a gross mean outcome of only
-  **+0.95bps per position** and loses **−11.05bps net**. No significance
-  test was run on it, so it is a provisional, unvalidated figure rather
-  than a demonstrated signal. An earlier draft put that
-  gross figure at +4.28bps; **roughly 80% of it was look-ahead**, because
-  the activity filter selecting the entries used a percentile computed
-  over the whole dataset. Replaced with a trailing rank
-  (`excursion.trailing_percentile_rank`). The **taker fee alone (10bps
-  round trip) is 10.5x that figure**, the full 12bps round trip 12.6x,
-  and — the part that forecloses a remedy — **even a maker round trip of
-  ~2bps still loses (−1.05bps)**. Moving to maker execution was the one
-  route that looked like it might close the gap; it does not, without
-  needing to harden `fill.py`'s limit model first. +0.95bps is also small
-  enough that it should not be called an edge without a significance
-  test.
-
-  **The same look-ahead affects one S11 claim**: the "conditioning on the
-  top 10% of activity strengthens most ICs" table used
-  `research.ic.conditional_ic`, whose quantile is also global. S11's
-  unconditional ICs are unaffected and stand; the tradeability
-  conclusion drawn from the conditional table is withdrawn pending a
-  trailing-rank re-measurement. That is the S9 fee-dominance finding
-  measured against a real signal rather than an unconditional price
-  move, and **it is the bar every future scalping candidate has to
-  clear**. Median MFE capture is 0.129, well below the 35-55% band, so a
-  pure time-based exit leaves most of the available move on the table.
-  Sweeney's fragility test does *not* fire (0.637R against that stop) --
-  an earlier draft said it did, by comparing raw ATR against a threshold
-  denominated in R, which silently assumed 1R = 1 ATR. Full result:
-  `.planning/scalp-s12-mae-mfe.md`; reproduce with
-  `research.analysis.s12_excursion_run`.
+  convention. S6's `stop_multiplier=1.5` was never measured against
+  anything (`scalp-s12-mae-mfe.md`). The MAE/MFE calculation contract is
+  pinned in S8 §3.7 — measurement starts at the fill bar, net of costs,
+  stop-wins on a same-bar tie, planned-risk R denominator, forced closes
+  flagged as censored — so the same trades cannot yield two different
+  stop boundaries.
 - **Derive the risk budget first**: ruin threshold (25-30%, not 50% —
   recovery is asymmetric) → acceptable risk of ruin (<1% institutional,
   >5% means reduce size) → risk per trade → quantity via stop distance.
   Reject any strategy that cannot live inside the budget rather than
-  widening it. Both prior runs backtested first and looked at drawdown
-  afterwards. **The risk-of-ruin calculation is only defined once its
-  contract is pinned** — which closed form (the additive one for fixed
-  dollar risk, the logarithmic one for equity-compounding risk; they
-  differ, and using the additive form for compounding overstates
-  survivable units), what counts as the ruin event (peak-to-trough
-  drawdown, not loss from starting capital), the evaluation horizon,
-  that returns are **net** of fees and slippage, how serial dependence is
-  handled, and the confidence level. Both closed forms assume i.i.d.
-  trades with a fixed payoff ratio; where payoffs vary or trades are
-  dependent — true here — the closed form is a first screen and the real
-  number comes from Monte Carlo over the actual trade distribution. See
-  S8 §3.6.
+  widening it. **The risk-of-ruin calculation is only defined once its
+  contract is pinned** (S8 §3.6): which closed form (the additive one
+  for fixed dollar risk, the logarithmic one for equity-compounding
+  risk — they differ, and using the additive form for compounding
+  overstates survivable units), what counts as the ruin event
+  (peak-to-trough drawdown, not loss from starting capital), the
+  horizon, that returns are **net**, how serial dependence is handled,
+  and the confidence level. Both closed forms assume i.i.d. trades with
+  a fixed payoff ratio; where payoffs vary or trades are dependent — true
+  here — the closed form is a first screen and the real number comes
+  from Monte Carlo over the actual trade distribution.
 - **Add Sortino, Calmar, expectancy, MAE/MFE, MFE capture rate,
-  turnover, order rate, and risk of ruin** to the metrics already in use.
+  turnover, order rate, and risk of ruin** to the metrics in use.
   **Turnover and order rate are two different metrics, not one under two
-  names**: turnover is traded notional (or absolute position change) over
-  capital, an *exposure* measure; order rate is orders/trades per unit
-  time, a *runaway-loop* measure. Each needs its own threshold, and
-  **neither threshold is defined yet** — doing so requires naming what is
-  counted (orders or filled trades), the measurement window, the limit,
-  and the fail-closed action on breach. Stated precisely rather than
-  overclaimed: the prior failures ran ~70 and ~89 trades per day, which
-  is the kind of figure an order-rate metric exists to surface for
-  **investigation**; it does not by itself breach the practitioner
-  heuristic often quoted as ~100 trades/day, and an earlier version of
-  this section wrongly implied it did. MAE/MFE also
-  needs a pinned calculation contract (measurement starts at the fill
-  bar, net of costs, stop-wins on a same-bar tie, planned-risk R
-  denominator, forced closes flagged as censored) so the same trades
-  cannot yield different stop boundaries — S8 §3.7.
+  names**: turnover is traded notional over capital, an *exposure*
+  measure; order rate is orders per unit time, a *runaway-loop* measure.
+  Each needs its own threshold and **neither is defined yet** — doing so
+  requires naming what is counted (orders or filled trades), the window,
+  the limit, and the fail-closed action on breach.
 - **Structure a candidate as Condition / Setup / Trigger /
   Invalidation (CSTI)**, and sequence the risk decision as **stop first,
   then reward-to-risk against a structural target, then qualify, then
   size**. A trade whose structure offers poor odds is *declined*, never
-  resized into. Added after the 2026-08-28 practitioner-methodology
-  research and first implemented in S14's `selective-reversion`, where
-  the R:R gate worked as designed even though the underlying signal did
-  not. Two corollaries that research made concrete: a stop belongs at a
-  level that **invalidates the thesis**, not at a round distance or a
-  convenient ATR multiple; and **asymmetry substitutes for win rate** —
-  40% at 3:1 is profitable, 60% at 0.5:1 loses — so a win-rate figure
-  quoted without its payoff ratio says nothing. Floor 2:1, prefer 3:1.
-  **Check the coupling before tuning either side**: S14 found that
-  widening the stop mechanically fails an R:R gate whose denominator is
-  that same stop distance, silently turning "safer stop" into "stop
-  trading".
+  resized into. A stop belongs at a level that **invalidates the
+  thesis**, not at a round distance or a convenient ATR multiple; and
+  **asymmetry substitutes for win rate** — 40% at 3:1 is profitable, 60%
+  at 0.5:1 loses — so a win-rate figure quoted without its payoff ratio
+  says nothing. Floor 2:1, prefer 3:1. **Check the coupling before
+  tuning either side**: widening the stop mechanically fails an R:R gate
+  whose denominator *is* that stop distance, silently turning "safer
+  stop" into "stop trading" (S14: at 8 ATR it declined 2,831 of 2,869
+  setups).
 - **Judge stability by year, not only in aggregate.** Report the number
-  of positive years alongside the pooled statistic, and treat a result
-  whose edge is concentrated in one regime as unconfirmed until it is
-  shown outside that regime — S13's own candidate drew ~60% of its edge
-  from 2021 and was negative in the most recent year. Where the sample
-  supports it, prefer worst-regime performance (the "Minimum Regime
-  Performance" framing, Alexander & Fabozzi 2026) over the mean as the
-  figure a sizing decision is made against, and bootstrap the year-level
-  spread rather than quoting a single pooled standard error.
+  of positive years alongside the pooled statistic, and treat an edge
+  concentrated in one regime as unconfirmed until shown outside it.
+  Where the sample supports it, prefer worst-regime performance
+  (Alexander & Fabozzi 2026) over the mean as the figure a sizing
+  decision is made against, and bootstrap the year-level spread rather
+  than quoting a single pooled standard error.
 - **Deduplicate overlapping windows before reporting any significance
-  figure** — see the fourth error shape recorded under Task S13/S14 above.
-  This is a hard requirement, not a preference: it cost this arc a
-  threefold-inflated t-statistic and a retracted conclusion.
+  figure.** A hard requirement, not a preference — see the fourth error
+  shape below.
 - **Use a research split, not another single-shot holdout.** The two
-  spent 1m windows become research data (they cannot be clean holdouts
-  again); Binance **spot** 1m stays reserved and untouched. Search
-  freely, count every trial, deflate with DSR — that is what the
-  machinery is for. Avoiding search to keep `N` low avoided the penalty
-  and also avoided all learning.
+  spent 1m windows are research data now; Binance **spot** 1m stays
+  reserved and untouched. Search freely, count every trial, deflate with
+  DSR — that is what the machinery is for. Avoiding search to keep `N`
+  low avoids the penalty and also avoids all learning.
+
+**Two corrections S8 made to this section's own earlier claims**, kept
+because a retraction that is quietly deleted teaches nothing
+(`scalp-s8-research-methodology.md`, `scalp-s9-slippage-measurement.md`):
+
+1. **"Minutes-scale scalping is arithmetically impossible after costs"
+   was false** — an artefact of comparing costs to the *unconditional*
+   median move, i.e. the move from entering at a uniformly random
+   moment. A strategy does not enter at random. Conditioning on recent
+   activity, 15-minute holding reaches 1.09x the round trip in the top
+   10% of activity and 2.08x in the top 1%. **This shows the move is
+   large enough that a round trip could be covered, not that direction
+   is predictable** — an absolute move is unsigned. "Viable" stays
+   reserved for a candidate that has cleared signed-return evidence, a
+   measured win rate, real execution costs, and out-of-sample
+   validation. **This still says nothing about direction.**
+2. **That conclusion was fragile to `SLIPPAGE_BPS`, in the wrong
+   direction** — such a strategy deliberately enters when spreads widen,
+   and the assumed 10bps was calibrated against a ~4bps "typical"
+   spread. **Shorter horizons are structurally more exposed to this
+   assumption**, which is why S8 put measuring real slippage ahead of
+   any signal research. S9 measured it instead and resolved the fragility favourably:
+   at the real ~12bps round trip, 15-minute holding moves from 0.40x to
+   **0.99x unconditionally** and 2.73x in the top 10%; 30-minute clears
+   at **1.37x even unconditionally**. What changed is only which
+   horizons are ruled out before the real work begins.
 
 **Live-side controls S8 names as prerequisites — these are hard gates,
 not a wishlist.** All are currently missing or unverified, and they are
@@ -1942,56 +1864,6 @@ and an explicit acceptance of which of the above are still absent. It
 authorises nothing on a production endpoint and relaxes no Live Entry
 Criterion.
 
-**Task S13 (2026-08-28) swept the holding period, then swept selectivity
-— and the second sweep overturned the first's conclusion.** Full account:
-`.planning/scalp-s13-horizon-sweep-and-closeout.md`.
-
-**Holding period does not help.** On the S12 entry rule, gross mean
-outcome peaks at one hour (+0.95bps) and inverts at two (−0.05), reaching
-−5.67bps at eight hours — exactly what S11's mean-reverting ICs predict:
-hold past the reversion window and the edge is spent. Win rate rises
-monotonically 37.3% → 47.6% while expectancy falls and turns negative,
-which is why S8 put expectancy on the metric list rather than trusting
-win rate.
-
-**Selectivity does.** That S12 entry fired **57.2 times per day**. The
-operator pointed out this was still "dozens of trades a day" rather than
-"once or twice, only on a genuinely big signal" — roughly 29x more
-selective, and an operating point never tested. Sweeping it on the
-identical signals:
-
-Counting **non-overlapping** positions only (see the retraction below):
-
-| \|z\| ≥ | Activity | Indep. trades/day | Gross mean | vs 12bps | t |
-|---|---|---|---|---|---|
-| 2.0 | top 10% | 4.54 | −0.84bps | ✗ | −0.98 |
-| 4.0 | top 0.1% | 0.30 | +7.81bps | ✗ | 1.50 |
-| 5.0 | top 1% | 0.21 | +13.97bps | ✓ | 1.95 |
-| 6.0 | top 1% | 0.09 | +30.87bps | ✓ | 2.56 |
-| 6.0 | top 0.1% | 0.08 | +45.83bps | ✓ | 2.90 |
-
-Gross outcome rises monotonically with selectivity and crosses the cost
-line at the top end. Trend-**following** returns exactly the negative at
-every cell, so mean reversion remains the correct sign. But a
-Bonferroni-corrected threshold for this 15-cell search is |t| ≈ 2.94,
-which **nothing reaches**.
-
-**Not an edge, and S14 established that with a second, larger problem
-than the one S13 itself found.** S13 reported the result as
-concentrated in 2021 (~60% of the edge from ~10% of the trades in every
-promising cell, and 2026 negative in all three) but statistically strong
-at t = 7.0-8.0. **That t-statistic is retracted.** It was computed over
-*overlapping* 60-minute windows counted as independent observations;
-extreme readings cluster, so one event contributed many correlated
-samples. Deduplicating to non-overlapping positions collapses t to
-**1.50 / 1.95 / 2.56** and cuts the mean 25-60% (+19.31 -> +7.81, +25.10
--> +13.97, +41.30 -> +30.87 bps), so the duplicates were also the better
-observations. Against a 15-cell search, a Bonferroni threshold is
-|t| ~= 2.94; nothing reaches it, `|z|≥4` no longer clears the 12bps cost
-at all, and the `|z|≥2` cell flips negative. What survives is only that
-gross outcome rises monotonically with selectivity and that the sign
-(mean reversion) is right.
-
 **The error pattern this exposed, recorded so it stops recurring**: three
 of this arc's largest errors share one shape — a result from a single
 arbitrary configuration generalised to a whole domain (costs vs. the
@@ -2014,176 +1886,9 @@ to non-overlapping samples before reporting a t-statistic, p-value or
 standard error, or state explicitly that its significance figures are
 not corrected for overlap.
 
-**Task S14 (2026-08-28) built the candidate, ran it through the real
-walk-forward + Eligibility Bar machinery for the first time in this
-arc, and it was REJECTED.** Full account:
-`.planning/scalp-s14-selective-reversion.md`.
+**The governing arithmetic, and it governs everything else here.** The best configuration above still fails, on one number: **DSR = 6.46e-11 against N = 127.** Inverting the benchmark gives the annualized Sharpe a result must post to clear DSR 0.95:
 
-`selective-reversion` is the first strategy in this project structured
-as **Condition / Setup / Trigger / Invalidation** — the practitioner
-structure S8 called for and which S4's and S6's candidates both lacked,
-having fused direction, entry/exit and sizing into one threshold rule.
-Condition: S10's absolute-ATR activity rank ≥ 0.99. Setup: S11's two
-orthogonal features (`z(htf_ret_4h) + z(taker_buy_share)`). Trigger:
-|score| ≥ 5, faded. Invalidation: a **2.65 ATR stop taken from S12's
-measured winners' MAE p80**, not a convention. Plus an **R:R
-qualification gate** applied in the practitioner sequence — stop first,
-then reward against a structural target, then qualify, then size; a
-trade whose structure offers poor odds is declined outright rather than
-resized.
-
-83 folds (30d train / 30d validate / 30d step on 3,661,780 Binance
-futures 1m bars), **721 trades — the first scalping run in this project
-to clear the trade-count floor, so this is a conclusive REJECTED rather
-than another INCONCLUSIVE**. Mean fold Sharpe **−1.471**, 36.1% of folds
-positive, DSR 0.000 against N = 123, profit factor 1.248 vs the 1.3
-floor. Drawdown (12.44%) and trade count passed; everything else failed.
-
-**Two findings from the diagnosis are reusable and outlive the
-candidate**:
-
-1. **The stop is what made it badly negative, and that is a property of
-   mean reversion rather than a defect.** Removing it moves the full-window
-   result from −134% to −0.20%: the edge lives precisely in the adverse
-   excursion the stop cuts off. S12 had already observed the mechanism
-   ("winners digging 1.86 ATR on average says the entry is early")
-   without drawing the conclusion. A systematically-early mean-reversion
-   entry needs a later entry or a risk control that is not a fixed
-   adverse-excursion stop — a real design question, not a tuning knob.
-2. **A wider stop mechanically fails the R:R gate**, because the gate's
-   denominator *is* the stop distance — at 8 ATR it declines 2,831 of
-   2,869 setups. "Widen the stop for safety" silently becomes "stop
-   trading". A real interaction between two independently sensible rules,
-   worth knowing before either is tuned.
-
-The CSTI structure and the R:R gate are **not** implicated and should be
-reused; the signal underneath them was not there.
-
-**Task S15 (2026-08-28) measured all three remedies S14's diagnosis
-named. Two were wrong, one is real infrastructure, and the candidate is
-still REJECTED.** Full account:
-`.planning/scalp-s15-entry-risk-and-sizing.md`.
-
-- **(a) Enter later — no.** Delaying entry lowers the adverse excursion
-  exactly as predicted (mean MAE 4.65 → 2.23 ATR at +60 bars) and takes
-  the outcome with it (+30.87 → +18.92 → +7.55bps, then wandering near
-  zero: −2.18 at +30 bars, +3.93 at +60). The decline is **not**
-  monotonic past the first few steps — that reads as a spent edge plus
-  sampling noise — so the claim that survives is the weaker and
-  sufficient one: **every delay tested is worse than immediate entry, on
-  gross, on net and on t, and none recovers.** **The adverse excursion
-  is not a cost paid before the edge; it is the edge.** A confirmation
-  entry (wait for a 25-50% retrace of the adverse move) keeps ~76-79% of
-  the gross and is still strictly worse than immediate.
-- **(b) A better stop — no, and the obvious diagnosis was false.** S14's
-  2.65 ATR came from S12's p80 measured on a ~29x less selective
-  population, so "wrong population" looked right; re-running
-  `recommend_stop` on the correct population gives **2.71/3.36 ATR**,
-  essentially the same. (What differs is the *mean* MAE, 4.65 ATR, which
-  is dominated by losers — median loser MAE 5.0-5.4 against median
-  winner MAE 1.0-1.2. Conflating the mean with the p80 is what made the
-  hypothesis plausible.) The real question is different: **at every
-  width from 1.5 to 12 ATR, in both cells, the stop realises a larger
-  loss than the position it catches would have taken on its own.** It
-  manufactures losses rather than avoiding them, and "no stop" beats
-  every width. The "cuts 83% of losers" figure that makes a stop look
-  good is measuring the wrong thing — those positions were mostly
-  heading for a *small* loss.
-- **(c) Equity-aware sizing — built, and it closes a real gap.**
-  `backtest.engine.EquityObserver` is an optional, duck-typed protocol:
-  `run_backtest` already reconstructs mark-to-market equity every bar
-  for its S7 insolvency floor, and now hands that value to a strategy
-  that asks, *before* the strategy is called and built only from fills
-  at or before the bar's open (so look-ahead safety is structural). This
-  closes the half S7 explicitly left open — `compute_position_size`
-  sizing against a **fixed** `reference_equity` is the mechanism behind
-  S6's −239,161% run. A strategy in `compounding` mode **fails closed**:
-  given no equity it refuses to trade rather than silently reverting to
-  the constant while reporting itself as compounding.
-
-**The combined result**, 83 folds, same geometry and costs as S14:
-
-| | S14 (2.65 ATR stop) | no stop + compounding | no stop + fixed |
-|---|---|---|---|
-| mean fold Sharpe | −1.4709 | **−0.3326** | −0.2954 |
-| folds Sharpe > 0 | 36.1% | 45.8% | 45.8% |
-| mean profit factor | 1.248 ✗ | 2.513 ✓ | 2.553 ✓ |
-| worst drawdown | 12.44% | 22.55% | 23.09% |
-| verdict | REJECTED | **REJECTED** | REJECTED |
-
-Removing the stop is worth **4.4x on mean Sharpe** — the largest single
-improvement in this arc — and flips profit factor from fail to pass. It
-is still not an edge. Compounding sizing is ~neutral here, which is the
-expected result for a strategy that never compounds far in either
-direction and is evidence that sizing was not what was wrong.
-
-**Two of those three remedies moved the result the right way and the
-third was neutral — but the sentence that followed here was wrong and is
-retracted. See Task S16 immediately below.** `N` after S15 was **125**.
-
-**A scoring weakness this run exposed, and a reporting fix rather than a
-gate change.** The no-stop cell clears the profit-factor floor on a
-**mean of 2.55 while its median fold is 1.18**; S14's mean was 1.25
-against a median of 0.91. A profit factor is a ratio of two non-negative
-magnitudes, so one fold with almost no losing trades can drag the mean
-across the floor by itself. CLAUDE.md sets the floor without naming
-which statistic it applies to and `walkforward` aggregates the mean, so
-the mean remains what is scored — changing that is a gate change needing
-its own approval. `s14_eligibility.py` now prints the median beside it
-and flags **FRAGILE** whenever the mean passes and the median does not.
-
-**Task S16 (2026-08-28) audited S15's own conclusion, at the operator's
-request, because it was not trusted — and found three real defects in
-it.** The REJECTED verdict survives; S15's stated *reason* for it does
-not. Full account: `.planning/scalp-s16-audit-of-s15.md`.
-
-1. **The conclusion was drawn from the weaker of the two surviving
-   cells.** S13 left `|z|≥5` (+13.97bps, t=1.95) and `|z|≥6` (+30.87bps,
-   t=2.56) standing. **Every walk-forward S14 and S15 ran used
-   `entry_z=5.0`**; the `|z|≥6` cell was never tested, and "the signal is
-   not there" was declared anyway. This is the **fifth** instance of the
-   error pattern this section already records as a rule, committed at the
-   most expensive stage to commit it. Running the missing cells reverses
-   the sign: `|z|≥6, top 1%` gives mean fold Sharpe **+0.456** and
-   **+13.97% compounded**; `top 0.1%` gives **+0.899** and **+32.42%**,
-   against `|z|≥5`'s −0.333 and −50.6%.
-2. **Fold-based criteria were applied to a strategy holding ~2 trades per
-   fold.** At `|z|≥6` the median fold holds 2 trades, at `|z|≥5` six. A
-   fold's sign is then near a coin flip, and the 80% floor is not merely
-   hard but unreachable: a strategy whose folds are positive 60% of the
-   time (a *good* edge) clears 67-of-83 with probability **4.6e-05**.
-   `sr-j` already made this argument for fold *counts*; it had not been
-   made for trades *per fold*. **Below roughly 20-30 trades per fold,
-   fold consistency and the sign test are uninformative in both
-   directions and must not be reported as evidence either way.**
-3. **The DSR input was wrong, in the strict direction.**
-   `s14_eligibility.py` fed `trial_sharpe_variance` its own run's
-   **per-fold** Sharpes; the benchmark wants the variance across the
-   other **trials**, each itself an average over folds. This inflated the
-   selection benchmark and pushed every DSR that scorer reported toward
-   zero. The scorer now **delegates DSR/PSR/trial counts to
-   `research/retrospective.py`** outright rather than keeping a second
-   implementation, and matches it exactly.
-
-**What the corrected evaluation says about the best configuration**
-(`|z|≥6`, top 0.1%, no stop, compounding sizing): mean-Sharpe t-test
-**t = +2.388, p = 0.0098 — PASS, the first significance test any
-scalping candidate here has cleared**; drawdown 9.93%, 181 trades and
-profit factor 6.44 all pass; PSR **0.9905**; observed Sharpe **+0.899**
-against the window's own **0.623** detection floor, so the window *is*
-powered for it. Six of eight years positive, and **not**
-2021-dependent (+26.12% of the +32.42% survives excluding 2021) — which
-contradicts S13's concentration warning, because S13 measured mean bps
-per position where 2021's violent moves dominate, while the walk-forward
-compounds equity under ATR-inverse sizing that gives those same moves a
-*small* position. **Risk-based sizing neutralised the regime
-concentration.**
-
-**And it still fails, for the one reason that now governs everything
-here: DSR = 6.46e-11 against N = 127.** Inverting the benchmark gives the
-annualized Sharpe a result must post to clear DSR 0.95:
-
-| N | required Sharpe |
+| N | required annualized Sharpe |
 |---|---|
 | 1 (a pre-registered holdout) | **0.63** |
 | 5 (this family) | 2.17 |
@@ -2228,7 +1933,6 @@ Eligibility Bar and human-approval discipline apply in full first);
 rebuilding `fill.py`'s fill model with order-book depth and
 partial-fill/queue-position awareness (a disclosed possible follow-up,
 never committed to).
-
 ### Trade Management Tasks A-C — a position model that can express trader-style management, and the first candidate built on it, REJECTED
 
 Opened 2026-08-28 at the operator's request, after sustained and correct
