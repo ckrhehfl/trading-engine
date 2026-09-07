@@ -51,7 +51,9 @@ from pathlib import Path
 
 from backtest.engine import run_backtest
 from metrics.metrics import compute_metrics
+from research.eligibility import SAMPLING_PER_BAR, deannualize_sharpe, evaluate_psr
 from research.holdout import load_research_klines
+from research.retrospective import detection_floor_sharpe
 from research.strategies.breakout_management import (
     BreakoutManagementStrategy,
     Policy,
@@ -113,6 +115,7 @@ def run_policy(policy: Policy, klines) -> dict:
     # initial-layer planned risk, so P4's half-size layers land in the
     # same unit as P0's full one.
     r_values: list[float] = []
+    per_year: dict[int, float] = {}
     unmatched = 0
     for ep in episodes:
         cash = Decimal(0)
@@ -132,7 +135,10 @@ def run_policy(policy: Policy, klines) -> dict:
             unmatched += 1
             continue
         if ep.planned_risk > 0:
-            r_values.append(float((cash - fees) / ep.planned_risk))
+            r = float((cash - fees) / ep.planned_risk)
+            r_values.append(r)
+            year = klines[ep.fill_index].open_time.year
+            per_year[year] = per_year.get(year, 0.0) + r
 
     return {
         "policy": policy.value,
@@ -160,6 +166,17 @@ def run_policy(policy: Policy, klines) -> dict:
         # material exactly when a carrying policy ends mid-trade. Both
         # are reported with their scope rather than silently averaged.
         "episodes_open_at_end": 1 if strategy._episode is not None else 0,
+        # The registration requires positive years reported beside any
+        # pooled statistic: an edge concentrated in one regime is
+        # unconfirmed until shown outside it.
+        "per_year_r": per_year,
+        "positive_years": sum(1 for v in per_year.values() if v > 0),
+        "years": len(per_year),
+        # PSR needs the return moments, and `Metrics` carries them so a
+        # second implementation is never written (the S16 defect).
+        "num_returns": metrics.num_returns,
+        "return_skewness": metrics.return_skewness,
+        "return_kurtosis": metrics.return_kurtosis,
     }
 
 
@@ -179,6 +196,7 @@ def main(argv: list[str] | None = None) -> int:
         klines = klines[: args.limit_bars]
 
     span_days = (klines[-1].open_time - klines[0].open_time).total_seconds() / 86400
+    span_years = span_days / 365.25
     print(f"{SYMBOL} 1m: {len(klines):,} bars, {span_days:,.0f} days "
           f"({klines[0].open_time:%Y-%m-%d} .. {klines[-1].open_time:%Y-%m-%d})")
     print(f"fee={FEE_BPS}bps slippage={SLIPPAGE_BPS}bps equity={STARTING_EQUITY}\n")
@@ -197,36 +215,51 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"    {b}", file=sys.stderr)
         return 2
 
-    header = (f"\n{'policy':<8}{'episodes':>9}{'return':>12}{'maxDD':>9}"
-              f"{'PF':>8}{'Sharpe':>9}{'win%':>7}{'totalR':>10}{'meanR':>9}"
-              f"{'stopped':>9}{'peakQty':>10}")
-    print(header)
-    print("-" * len(header))
+    # Gate A first, and its verdict decides what may be printed. The
+    # module docstring has said so from the beginning; a first version
+    # printed every policy's return, PF, Sharpe and total R and *then*
+    # evaluated the gate, which is the ordering the registration exists
+    # to prevent. The scalping arc repeatedly produced high PSR figures
+    # on runs that were already cost-disqualified.
     for r in rows:
-        print(f"{r['policy']:<8}{r['episodes']:>9,}"
-              f"{_fmt(r['total_return'], '+.4f'):>12}"
-              f"{_fmt(r['max_drawdown'], '.4f'):>9}"
-              f"{_fmt(r['profit_factor'], '.3f'):>8}"
-              f"{_fmt(r['sharpe_ratio'], '+.3f'):>9}"
-              f"{_fmt(r['win_rate'], '.3f'):>7}"
-              f"{_fmt(r['total_r'], '+.1f'):>10}"
-              f"{_fmt(r['mean_r'], '+.4f'):>9}"
-              f"{r['stopped']:>9,}{r['peak_qty_max']:>10.4f}")
-
-    print("\nGate A (evaluated first; a failing policy gets no statistic quoted for it)")
-    for r in rows:
-        checks = {
+        r["gate_a"] = {
             f"maxDD<={MAX_DRAWDOWN}": r["max_drawdown"] is not None
                 and Decimal(str(r["max_drawdown"])) <= MAX_DRAWDOWN,
             f"PF>={MIN_PROFIT_FACTOR}": r["profit_factor"] is not None
                 and Decimal(str(r["profit_factor"])) >= MIN_PROFIT_FACTOR,
             f"episodes>={MIN_EPISODES}": r["episodes"] >= MIN_EPISODES,
         }
-        verdict = "PASS" if all(checks.values()) else "FAIL"
-        detail = " ".join(f"{k}={'y' if v else 'n'}" for k, v in checks.items())
+        r["gate_a_pass"] = all(r["gate_a"].values())
+
+    print("\nGate A — evaluated first. A failing policy's performance "
+          "statistics are withheld, not merely annotated.")
+    for r in rows:
+        verdict = "PASS" if r["gate_a_pass"] else "FAIL"
+        detail = " ".join(f"{k}={'y' if v else 'n'}" for k, v in r["gate_a"].items())
         print(f"  {r['policy']}: {verdict}   {detail}")
 
-    still_open = [r["policy"] for r in rows if r["episodes_open_at_end"]]
+    passing = [r for r in rows if r["gate_a_pass"]]
+    if not passing:
+        print("\nNo policy cleared Gate A, so no performance statistic is "
+              "quoted for any of them. That is the result.")
+    else:
+        header = (f"\n{'policy':<8}{'episodes':>9}{'return':>12}{'maxDD':>9}"
+                  f"{'PF':>8}{'Sharpe':>9}{'win%':>7}{'totalR':>10}{'meanR':>9}"
+                  f"{'stopped':>9}{'peakQty':>10}")
+        print(header)
+        print("-" * len(header))
+        for r in passing:
+            print(f"{r['policy']:<8}{r['episodes']:>9,}"
+                  f"{_fmt(r['total_return'], '+.4f'):>12}"
+                  f"{_fmt(r['max_drawdown'], '.4f'):>9}"
+                  f"{_fmt(r['profit_factor'], '.3f'):>8}"
+                  f"{_fmt(r['sharpe_ratio'], '+.3f'):>9}"
+                  f"{_fmt(r['win_rate'], '.3f'):>7}"
+                  f"{_fmt(r['total_r'], '+.1f'):>10}"
+                  f"{_fmt(r['mean_r'], '+.4f'):>9}"
+                  f"{r['stopped']:>9,}{r['peak_qty_max']:>10.4f}")
+
+    still_open = [r["policy"] for r in passing if r["episodes_open_at_end"]]
     if still_open:
         print(f"\nstill open at the last bar (excluded from total R, INCLUDED in "
               f"total_return via the equity curve's force-close): {', '.join(still_open)}")
@@ -236,11 +269,56 @@ def main(argv: list[str] | None = None) -> int:
         print(f"\nWARNING: {unmatched_total} episode(s) had an intent with no fill "
               f"and were excluded from R — investigate before quoting total R")
 
+    floor = detection_floor_sharpe(span_years)
+    print(f"\nSharpe vs this window's own detection floor ({floor:.3f}, "
+          f"{span_years:.2f}y at one-sided alpha=0.05)")
+    for r in passing:
+        sr = r["sharpe_ratio"]
+        mark = "n/a" if sr is None else ("ABOVE" if sr > floor else "below")
+        # `Metrics.num_returns` counts the **per-bar** return series the
+        # Sharpe ratio itself is computed on, so PSR must be told the
+        # same sampling. Passing the daily default against a per-bar `T`
+        # would be wrong by sqrt(1440) -- about 38x -- and would produce
+        # a confident-looking number from a mismatched pair.
+        psr = evaluate_psr(
+            sharpe_ratio=deannualize_sharpe(
+                sr, bars_per_day=BARS_PER_DAY, sampling=SAMPLING_PER_BAR
+            ),
+            num_observations=r["num_returns"],
+            skewness=r["return_skewness"],
+            kurtosis=r["return_kurtosis"],
+            sampling=SAMPLING_PER_BAR,
+        ) if sr is not None and r["num_returns"] > 1 else None
+        print(f"  {r['policy']}: Sharpe {_fmt(sr, '+.3f')} {mark} floor   "
+              f"PSR {('n/a' if psr is None else format(psr.psr, '.4f'))}")
+
+    print("\nper-year total R (positive years / years)")
+    for r in passing:
+        years = r["per_year_r"]
+        cells = "  ".join(f"{y}:{v:+.1f}" for y, v in sorted(years.items()))
+        print(f"  {r['policy']}: {r['positive_years']}/{r['years']}   {cells}")
+
     print(f"\nambiguous days skipped (both triggers in one bar): "
           f"{rows[0]['ambiguous_days']:,}")
 
     if args.out:
-        Path(args.out).write_text(json.dumps(rows, indent=2, default=str), encoding="utf-8")
+        # A failing policy serialises its verdict and why, not its
+        # performance — the same rule the printed report follows, so a
+        # downstream reader cannot quote what the report withheld.
+        serialisable = [
+            r if r["gate_a_pass"] else {
+                "policy": r["policy"],
+                "gate_a_pass": False,
+                "gate_a": r["gate_a"],
+                "episodes": r["episodes"],
+                "withheld": "performance statistics are withheld for a policy "
+                            "that did not clear Gate A",
+            }
+            for r in rows
+        ]
+        Path(args.out).write_text(
+            json.dumps(serialisable, indent=2, default=str), encoding="utf-8"
+        )
         print(f"\nwrote {args.out}")
     return 0
 

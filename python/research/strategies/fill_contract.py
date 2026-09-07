@@ -75,12 +75,60 @@ def verify_fill_contract(
     Returns every breach rather than the first, because "which events
     deviate" is the diagnostic and a single-breach abort would hide
     whether the problem is one event type or all of them.
+
+    **Fills are joined to intents by `intent_id`, never by position.** A
+    first version used `zip(..., strict=True)`, which checks only that
+    the two lists are the same length: if their order ever diverged,
+    each fill would be validated against a different intent's signal bar
+    and side, and the guard could both void a valid run and pass a
+    mismatched one. Orphans in either direction are breaches in their
+    own right.
     """
     by_open = {bar.open_time: i for i, bar in enumerate(klines)}
     slip = Decimal(slippage_bps) / _BPS
     breaches: list[ContractBreach] = []
 
-    for fill, intent in zip(fills, filled_intents, strict=True):
+    intents_by_id: dict[object, OrderIntent] = {}
+    for intent in filled_intents:
+        if intent.intent_id in intents_by_id:
+            breaches.append(
+                ContractBreach(
+                    str(intent.intent_id), "", Decimal(0), Decimal(0),
+                    "the same intent_id appears twice among filled intents",
+                )
+            )
+        intents_by_id[intent.intent_id] = intent
+
+    seen_fills: set[object] = set()
+    for fill in fills:
+        if fill.intent_id in seen_fills:
+            breaches.append(
+                ContractBreach(
+                    str(fill.intent_id), str(fill.fill_time), Decimal(0),
+                    fill.fill_price, "two fills share one intent_id",
+                )
+            )
+        seen_fills.add(fill.intent_id)
+
+    for intent_id in intents_by_id:
+        if intent_id not in seen_fills:
+            breaches.append(
+                ContractBreach(
+                    str(intent_id), "", Decimal(0), Decimal(0),
+                    "a filled intent has no matching fill",
+                )
+            )
+
+    for fill in fills:
+        intent = intents_by_id.get(fill.intent_id)
+        if intent is None:
+            breaches.append(
+                ContractBreach(
+                    str(fill.intent_id), str(fill.fill_time), Decimal(0),
+                    fill.fill_price, "fill has no matching intent",
+                )
+            )
+            continue
         signal_index = by_open.get(intent.created_at)
         fill_index = by_open.get(fill.fill_time)
 

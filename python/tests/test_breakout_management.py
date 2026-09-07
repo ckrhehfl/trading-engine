@@ -384,3 +384,55 @@ class TestTheFillGuardChecksTiming:
         )
         assert breaches, "same-candle execution must be a breach"
         assert "the bar after the signal" in breaches[0].reason
+
+
+class TestTheFillGuardJoinsById:
+    """Position-based pairing can validate a fill against the wrong
+    intent, which both voids valid runs and passes mismatched ones.
+
+    A first version used `zip(..., strict=True)`, which checks only that
+    the two lists are the same length.
+    """
+
+    def _one_run(self):
+        # A full day 1 so the 23:59 time exit fires and there is a
+        # closing fill to pair as well as an opening one.
+        klines = flat_day(0, 100.0, span=10.0)
+        klines += [bar(1440, 100, 111, 99, 110)]
+        klines += [bar(1441 + m, 110, 112, 108, 111) for m in range(1439)]
+        klines += flat_day(2, 111.0, span=2.0, minutes=10)
+        _, result = run(Policy.BASELINE, klines)
+        assert len(result.fills) >= 2, "need two fills to reorder"
+        return klines, result
+
+    def test_reordering_the_intents_does_not_change_the_verdict(self):
+        klines, result = self._one_run()
+        clean = verify_fill_contract(klines, result.fills, result.filled_intents, SLIP)
+        assert clean == []
+
+        shuffled = list(reversed(result.filled_intents))
+        still_clean = verify_fill_contract(klines, result.fills, shuffled, SLIP)
+        assert still_clean == [], (
+            "reordering the intent list must not matter: the join is by "
+            f"intent_id, not position — got {[str(b) for b in still_clean]}"
+        )
+
+    def test_a_fill_with_no_matching_intent_is_a_breach(self):
+        klines, result = self._one_run()
+        breaches = verify_fill_contract(
+            klines, result.fills, result.filled_intents[1:], SLIP
+        )
+        assert any("no matching intent" in b.reason for b in breaches)
+
+    def test_an_intent_with_no_fill_is_a_breach(self):
+        klines, result = self._one_run()
+        breaches = verify_fill_contract(
+            klines, result.fills[1:], result.filled_intents, SLIP
+        )
+        assert any("no matching fill" in b.reason for b in breaches)
+
+    def test_two_fills_sharing_an_intent_id_is_a_breach(self):
+        klines, result = self._one_run()
+        doubled = list(result.fills) + [result.fills[0]]
+        breaches = verify_fill_contract(klines, doubled, result.filled_intents, SLIP)
+        assert any("two fills share one intent_id" in b.reason for b in breaches)
