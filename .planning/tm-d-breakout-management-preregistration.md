@@ -167,9 +167,21 @@ So the stop is taken from the **same published tradition as the entry**
 instead of borrowed across timeframes:
 
 ```text
-1R (long)  = Entry - (Low(d-1) + Entry) / 2
-1R (short) = (High(d-1) + Entry) / 2 - Entry
+side = +1 for a long, -1 for a short
+
+1R  = |Entry - (Extreme(d-1) + Entry) / 2|      a positive DISTANCE
+      where Extreme(d-1) = Low(d-1)  for a long
+                           High(d-1) for a short
+
+stop level   = Entry - side * 1R          (below entry long, above short)
+level k hit  when  side * (Price - Entry) >= k * 1R
 ```
+
+**`1R` is a positive distance, so every use of it must carry `side`.**
+Writing "entry minus 1R" would put a short's stop on the *favourable*
+side of entry — no protection at all, and the `1.0R` cap silently
+broken. Direction is therefore expressed as `side * 1R` throughout this
+document, never as a bare subtraction.
 
 the midpoint between the previous session's extreme and the entry — the
 conventional Larry Williams stop, parameter-free, defined by the same
@@ -245,7 +257,7 @@ will be chosen after looking at results.
 | **P1** | **Stop only** | P0 plus the conventional Larry Williams stop (`1R`, defined above). Exit at the time exit or the stop, whichever comes first. |
 | **P2** | **Trail only** | P1, but the time exit is replaced by a `3 * ATR(14)` trailing stop that may carry past the daily close. Sources claim trailing beats partial-close for capturing large trends; this is that claim's test. |
 | **P3** | **Scale out** | P1 plus: close **50% at +1R**, move the remainder's stop to entry, trail the rest at `3 * ATR(14)`. The standard practitioner structure. |
-| **P4** | **Pyramid** | P1 plus: at each further `+1R` in favour, add a layer of **half the previous layer's size**, and move the whole position's stop to the newest layer's entry minus `1R`. **Maximum 3 layers** (1 + 1/2 + 1/4 = 1.75x the initial layer). **At most one layer per 1m bar** — see below. |
+| **P4** | **Pyramid** | P1 plus: at each further `+1R` in favour, add a layer of **half the previous layer's size**, and move the whole position's stop to `newest layer entry - side * 1R`. **Maximum 3 layers** (1 + 1/2 + 1/4 = 1.75x the initial layer). **At most one layer per 1m bar** — see below. |
 | **P5** | **Partial hedge** | P3, except the 50% reduction is taken by **opening an opposing leg** rather than closing half. A control with a prediction registered below. |
 
 ### P4: what is held constant, what is deliberately not
@@ -265,7 +277,7 @@ from a management effect, so:
   numbers would be denominated in a different unit and `total R` would
   not compare across policies.
 - **Aggregate risk cap: `1.0R` of *planned, pre-cost* risk at all
-  times.** Because the stop moves to the newest layer's entry minus `1R`
+  times.** Because the stop moves to `newest layer entry - side * 1R`
   with each add, the position's planned worst case never exceeds one
   initial-layer risk unit — that is what "raise the stop with each add"
   buys, and it is stated as a cap rather than left as a hoped-for
@@ -278,12 +290,38 @@ from a management effect, so:
   Voiding those would delete exactly the losing tail from P4's sample
   and bias the comparison in its favour.
 
-  So the void condition tests the **gross** exit instead: **a run is void
-  if a P4 episode exits at a price worse than its own stop level by more
-  than the modelled slippage, and that gap is not explained by a
-  timestamp gap in the data.** That can only be an implementation bug.
-  A gap-explained breach is a real market event and is reported, not
-  voided.
+  So the void condition tests the **gross** exit instead — and it is
+  evaluated **per stop-triggered exit, against the stop that was active
+  at that moment**, never against "the episode's stop". A P4 episode has
+  as many historical stop levels as it has layers, so comparing an
+  episode's exit to an unspecified one of them would void legitimate
+  fills and miss real breaches at the same time.
+
+  First the fill model, so the comparison has something to be against:
+
+  ```text
+  S = the stop level ACTIVE on the triggering bar
+  O = that bar's open
+  reference = O   if side * (O - S) < 0     (the bar opened through S)
+              S   otherwise
+  fill      = reference - side * slippage
+  ```
+
+  A bar that opens beyond the stop fills at **the open, not the stop**.
+  That is a real market event priced honestly, and not a breach.
+
+  **Void condition**: `side * (reference - fill) > modelled slippage`.
+  The fill is worse than the reference by more than the slippage model
+  allows, which can only be an implementation bug.
+
+  **Explicitly not void, and reported separately** — the previous
+  wording conflated these two, and they are different:
+
+  - a **price gap** between consecutive 1m bars (the bar opened through
+    the stop), handled by the `reference` rule above;
+  - a **timestamp gap** (bars missing from the series; this window has
+    one known, `[2019-09-08T19:00Z, 2019-09-08T19:01Z)`), flagged on the
+    episode, because the true intervening path is unobserved.
 
   Reported alongside: the **net** loss distribution of P4 stop-outs, so
   the fee-and-slippage cost of pyramiding's more frequent stop
@@ -297,10 +335,12 @@ A single 1m bar can span `+1R` and `+2R` at once. Whether that adds one
 layer or two changes aggregate exposure and `total R`, so it is fixed
 here rather than left to the implementation:
 
-**At most one layer is added per 1m bar**, at the lowest un-crossed
-level the bar reached, filled at that level plus adverse slippage. The
-stop is moved to that layer's entry minus `1R` immediately, and the next
-level is only eligible from the **following** bar.
+**At most one layer is added per 1m bar**, at the **smallest un-crossed
+`R` multiple** the bar reached — `side`-aware, so for a short the `+1R`
+level is a *lower* price than `+2R` and is still taken first. Filled at
+that level plus adverse slippage. The stop moves to
+`newest layer entry - side * 1R` immediately, and the next level is only
+eligible from the **following** bar.
 
 Adding two layers on one bar would require assuming the price visited
 `+1R` before `+2R` within that bar — a path assumption 1m OHLC cannot
