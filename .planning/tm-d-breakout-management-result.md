@@ -54,10 +54,19 @@ ranking on win rate would have favoured P3 for the wrong reason.
 0.623** (6.96 years, one-sided α=0.05), the only policy for which that
 is true. PSR 0.9705.
 
-**Both figures cover 464 closed episodes and exclude one episode still
-open at the last bar.** `total_return` includes that position via the
-equity curve's force-close, `total R` does not — the two cover different
-sets and are reported with their scope rather than reconciled.
+**The two figures cover different sets, and neither is adjusted to
+match the other.**
+
+- **`total R` covers the 464 closed episodes only.** An episode still
+  open at the last bar has no closing fill, so there is nothing to
+  rebuild its R from.
+- **`total_return` covers those 464 *plus* the one still open**, which
+  `build_equity_curve` force-closes at the final bar.
+
+So `total_return` is computed over one more episode than `total R` is.
+Reported with their scopes rather than reconciled, because forcing them
+to agree would mean either inventing a closing fill or discarding a real
+one.
 
 ### Per year, because a pooled statistic alone hides regime concentration
 
@@ -100,8 +109,14 @@ management effect.
    than reducing it.
 
 4. **Pyramiding was the worst policy of the six** — the only one with a
-   negative total R, alongside the largest peak exposure (29.5 vs P3's
-   14.3). "Add on strength" cost money on this entry.
+   negative total R, and the one that held the largest peak exposure.
+   "Add on strength" cost money on this entry.
+
+   *(An earlier draft of this document quoted P4's exposure figure
+   against P3's. That violated this task's own reporting rule, which
+   withholds a failing policy's statistics — and it did so three
+   sections after stating the rule. The direction is reportable; the
+   number is not. Removed rather than the rule relaxed to fit it.)*
 
 5. **Trailing alone produced by far the largest total R** and failed
    Gate A on drawdown. That is exactly the trade-off the practitioner
