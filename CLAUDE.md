@@ -2093,7 +2093,10 @@ So Task D **fixes the entry from published literature** (Larry Williams'
 volatility breakout, `k = 0.5`, UTC-midnight day boundary — neither
 swept) and searches only the space of **management policies**: six named,
 fully-specified alternatives (baseline / stop / trail / scale-out /
-pyramid / partial hedge), sizing held constant across all six.
+pyramid / partial hedge), with **initial-layer sizing held constant
+across all six** — management is allowed to change aggregate exposure,
+which is the thing being studied, so `R` is normalised to that initial
+layer to keep `total R` comparable.
 
 **On `N`, stated precisely because this is the reasoning most open to
 abuse.** `N` is a property of the pair (data window, search history):

@@ -68,7 +68,7 @@ why the entry rule here is taken from outside rather than chosen by us.
 **Larry Williams' volatility breakout**, published in the 1970s, in its
 conventional form:
 
-```
+```text
 Range(d)   = High(d-1) - Low(d-1)
 Trigger(d) = Open(d) + k * Range(d)        (long)
              Open(d) - k * Range(d)        (short)
@@ -111,23 +111,39 @@ rejected.** Two reasons, and the second is the one that decides it:
    not a convenience. Carving an exception for the one task that would
    benefit from it weakens a guard this project relies on everywhere
    else.
-2. **The one-bar lag is conservative in every direction it can act.** A
-   breakout entry filled at the next open is worse when the break is
-   fast. A stop filled at the next open is worse when the move against
-   you continues. A scale-out target filled at the next open is worse
-   when price retraces. A pyramid add filled at the next open is worse
-   when the advance continues. Every management event this task studies
-   is *penalised*, never flattered, by the existing contract.
+2. **Building new machinery for one task means changing the measurement
+   apparatus for the thing being measured.** That is the failure this
+   project keeps recording, and it does not become safe just because the
+   change looks principled.
 
-   Building new machinery that would make the numbers better is
-   optimising the measurement apparatus in the flattering direction,
-   which is the failure this project keeps recording. **The apparatus
-   stays as it is and the lag is disclosed as a known, one-sided cost.**
+   **A claim made in an earlier draft is retracted here**: that the
+   one-bar lag is "conservative in every direction" and a "one-sided
+   cost". It is not. Only the `slippage_bps` adjustment is one-sided;
+   `next_bar.open` itself can land **better or worse** than the signal
+   price, and which it is depends on the move, not on the contract. The
+   honest description is that the lag is a **uniform, neutral contract**
+   applied identically to all six policies — which is what makes them
+   comparable, and is a sufficient reason on its own. Two reasons were
+   claimed where one was true.
 
 So all six policies are expressed entirely in `GUARDED_MARKET` intents
 through the unmodified `run_backtest` / `simulate_fill` path. **No
 change to the backtest engine is required by this task, and none may be
 made for it.**
+
+**Three bars, three roles, pinned so no implementation can differ:**
+
+| Bar | What happens |
+|---|---|
+| `t` — **signal bar** | the level is touched; the intent is created |
+| `t+1` — **fill bar** | `simulate_fill` fills at this bar's open × (1 ± `SLIPPAGE_BPS`) |
+| `t+2` — **first managed bar** | the position becomes eligible for stop, trail, target and pyramid evaluation |
+
+Management therefore begins at **`t+2`**, not `t+1`. A position cannot
+be stopped, scaled or added to on the very bar it filled on — the same
+no-same-candle principle the entry obeys, applied consistently to every
+subsequent event. P4's stop is moved when a layer **fills** (at `t+1`),
+and the next pyramid level becomes eligible at `t+2`.
 
 All P&L is rebuilt from real `Fill` objects via
 `leg_manager.replay_fills`, never from the prices a policy *saw when
@@ -343,9 +359,20 @@ from a management effect, so:
   guard reported clean:
 
   ```text
-  for every Fill f produced by any of P0..P5:
-      f.price == bar_after(f.signal_bar).open * (1 +/- SLIPPAGE_BPS / 10000)
+  for every (intent, signal_bar_index, fill) triple any policy produces:
+      fill.fill_price == klines[signal_bar_index + 1].open
+                         * (1 + side * SLIPPAGE_BPS / 10000)
   ```
+
+  Written against the **real** types, because an earlier draft wrote
+  `f.price` and `f.signal_bar` — neither exists. `backtest.fill.Fill`
+  carries `intent_id`, `fill_time`, `fill_price`, `quantity`, `fee`,
+  `notional`; `signal_bar_index` is an *input* to `simulate_fill`, not a
+  field on its output. So the check must be evaluated over the
+  `(OrderIntent, signal_bar_index, Fill)` triple the runner already
+  holds, joined on `Fill.intent_id`. A guard expressed in fields that do
+  not exist is a guard that cannot run — which is the thing this project
+  keeps writing by accident.
 
   Covering entries, time exits, stops, trailing stops, scale-out
   tranches, pyramid adds, **and both the open and the close of P5's
@@ -405,7 +432,7 @@ meaningless. So:
 | Its own stop | **none.** Its purpose is to offset, and giving it a stop would make it a second strategy |
 | Closed | at whichever comes first: (a) the core leg's exit — **both legs signal on the same bar and fill on the same next bar**; (b) the core leg's trailing stop being hit |
 | Fees | `FEE_BPS` charged on **both** legs, on open and on close — this is the cost the prediction is about |
-| Funding | not modelled; the run is on a spent window where funding was not collected for this period. **Disclosed: this understates P5's real cost**, so the prediction that P5 loses to P3 is, if anything, conservative |
+| Funding | **not modelled**, and its direction is **unknown**, not assumed. Funding was not collected for this window, and P5's two legs pay funding in opposite directions — so the omission could flatter or penalise P5 depending on side and the prevailing rate. An earlier draft claimed it understated P5's cost; that was an assumption, not a fact, and is retracted |
 | Accounting | the hedge leg is part of the same **trade episode** as its core, and its P&L is included in that episode's `total R` |
 
 Holding the initial-layer sizing constant is what makes this a
@@ -488,7 +515,7 @@ after", against the file as of 2026-09-07.
 
 ### Reported for every policy, pass or fail
 
-Total return, **total R**, mean R per trade, trade count, win rate,
+Total return, **total R**, mean R per episode, episode count, win rate,
 profit factor, max drawdown, Sharpe (net, annualized, daily-resampled),
 Sortino, Calmar, expectancy, MAE/MFE, MFE capture rate, turnover, order
 rate, and **per-year results** — CLAUDE.md requires the number of
@@ -507,7 +534,12 @@ statistic cannot be chosen after seeing which policy it favours.
 | Max drawdown | **≤ 20%** |
 | Profit factor | ≥ 1.3 |
 | Net expectancy | **mean R per episode > 0** |
-| Trade count | ≥ 100 episodes (the frequency-scaled floor at 2,543 evaluated days) |
+| Episode count | ≥ 100 (the frequency-scaled floor at 2,543 evaluated days) |
+
+**"Trade" and "episode" mean the same thing throughout this document,
+and "episode" is the word used.** An earlier draft mixed them, which
+would have let a reported metric and a Gate A threshold be computed over
+different sample units.
 
 **Drawdown is pinned at a single 20%, not the Eligibility Bar's 20–25%
 band.** A range is a judgement the Bar leaves open; a pre-registration
@@ -589,9 +621,15 @@ P0. That result is a *development* finding on a spent window. Whether it
 justifies spending the Binance spot 1m holdout is a separate human
 decision, in a separate document, and is explicitly not granted here.
 
-**If P5 does not behave as predicted in §3**: that is a finding about
-this project's cost model, and it gets its own investigation before
-anything else in this document is trusted.
+**If P5 does not behave as predicted in §3**: that is a finding, but
+**not automatically a cost-model error** — an earlier draft asserted it
+was. Four candidate causes are investigated in order, and the one that
+explains the gap is reported: (a) fee accounting on the second leg,
+(b) fill behaviour differing between the hedge open and P3's partial
+close, (c) an exposure difference the two policies were assumed to
+share, (d) **unmodelled funding**, whose direction here is genuinely
+unknown. Nothing else in this document is trusted until the gap has an
+explanation.
 
 ---
 

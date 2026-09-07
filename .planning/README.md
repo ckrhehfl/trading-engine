@@ -174,7 +174,7 @@ A second research arc on 1-minute bars, opened 2026-08-24. Closed to selection �
 - [`scalp-s8-research-methodology.md`](scalp-s8-research-methodology.md) — Scalping Strategy Research Task S8 — research methodology, rebuilt
 - [`scalp-s9-slippage-measurement.md`](scalp-s9-slippage-measurement.md) — Scalping Strategy Research Task S9 — real slippage measurement
 
-### Trade management (Tasks A–C)
+### Trade management (Tasks A–D)
 
 A multi-leg position model, built after the operator pointed out the framework could not express what they were describing.
 
