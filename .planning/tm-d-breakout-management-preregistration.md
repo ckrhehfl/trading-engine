@@ -89,8 +89,7 @@ reported as an execution record, so this is not a formality:
 | Scale-out target | the 1m bar that touches `+1R` | the next 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
 | Pyramid add | the 1m bar that touches the level | the next 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
 
-### Why every management event fills one bar late, and why that is the
-### right choice rather than a limitation
+### Why every management event fills one bar late, and why that is right
 
 An earlier draft of this document specified level-triggered fills *on
 the touching bar*, at the level plus slippage. **That describes a stop
@@ -257,8 +256,7 @@ onward. Otherwise a single volatile bar could be read as both a fill and
 an immediate stop-out, which is a fill-model artefact rather than a
 market event.
 
-### The day boundary is fixed to UTC midnight, and this is the one real
-### specification risk
+### The day boundary is fixed to UTC midnight — the one real specification risk
 
 BTC trades 24/7, so "the day" is a choice, not a fact. Sources warn
 explicitly that UTC-midnight versus exchange-local close **materially
@@ -338,18 +336,27 @@ from a management effect, so:
   into the next bar's open. That is a real market cost, not a defect, so
   it cannot be the void test.
 
-  **The void test is instead an identity on the fill itself**, evaluated
-  per stop-triggered exit and fully decidable:
+  **The void test is instead an identity on the fill itself** — and it
+  applies to **every fill in every policy**, not only to stop-triggered
+  exits. A first version tested stops alone, which would have left an
+  entry or a scale-out filling off-contract in the sample while the
+  guard reported clean:
 
   ```text
-  fill_price == next_bar.open * (1 +/- SLIPPAGE_BPS / 10000)
+  for every Fill f produced by any of P0..P5:
+      f.price == bar_after(f.signal_bar).open * (1 +/- SLIPPAGE_BPS / 10000)
   ```
+
+  Covering entries, time exits, stops, trailing stops, scale-out
+  tranches, pyramid adds, **and both the open and the close of P5's
+  hedge leg** — every one of them is a `GUARDED_MARKET` intent through
+  the same path, so every one of them is checkable the same way.
 
   Any deviation means the executor did something other than the
   contract, which can only be an implementation bug. **A run containing
-  one is void.** This is checkable directly against `simulate_fill`
-  rather than against a market judgement, which is what makes it a
-  guard rather than an opinion.
+  one is void.** Checkable directly against `simulate_fill` rather than
+  against a market judgement, which is what makes it a guard rather than
+  an opinion.
 
   Two things are **reported, never voided**, because they are real:
 
