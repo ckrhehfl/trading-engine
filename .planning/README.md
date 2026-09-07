@@ -182,3 +182,4 @@ A multi-leg position model, built after the operator pointed out the framework c
 - [`tm-b-signal-and-data-catalogue.md`](tm-b-signal-and-data-catalogue.md) — Trade Management Task B — what the exchange actually gives us, and what each thing means
 - [`tm-c-confluence-hedge-result.md`](tm-c-confluence-hedge-result.md) — Trade Management Task C — result: the confluence hedge is REJECTED
 - [`tm-c-confluence-hedge-specification.md`](tm-c-confluence-hedge-specification.md) — Trade Management Task C — specification for the core-plus-tactical-hedge candidate
+- [`tm-d-breakout-management-preregistration.md`](tm-d-breakout-management-preregistration.md) — Trade Management Task D — pre-registration: what does *managing* a fixed entry actually do?
