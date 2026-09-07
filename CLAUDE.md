@@ -2079,6 +2079,61 @@ find a viable configuration. This does not change the arithmetic that
 governs — at `N` in the 120s the DSR-0.95 bar is still an annualized
 Sharpe near **4.00**, against the 0.4-0.8 credible institutional range.
 
+**Task D is pre-registered and not yet run**
+(`.planning/tm-d-breakout-management-preregistration.md`, 2026-09-07).
+It exists because an audit of `runs/experiments.jsonl` found that of
+1,883 logged backtest runs, the top four `strategy_id`s are 1,472 of
+them (78%) and all four are momentum-formula variants — and that **every
+`strategy_id` in the log asks the same question: which formula predicts
+direction.** None asks how to manage a position once it is open. Task C
+is the closest and its own result document records that what it tested
+was not the hypothesis described.
+
+So Task D **fixes the entry from published literature** (Larry Williams'
+volatility breakout, `k = 0.5`, UTC-midnight day boundary — neither
+swept) and searches only the space of **management policies**: six named,
+fully-specified alternatives (baseline / stop / trail / scale-out /
+pyramid / partial hedge), with **initial-layer sizing held constant
+across all six** — management is allowed to change aggregate exposure,
+which is the thing being studied, so `R` is normalised to that initial
+layer to keep `total R` comparable.
+
+**On `N`, stated precisely because this is the reasoning most open to
+abuse.** `N` is a property of the pair (data window, search history):
+how many configurations were looked at on this data before choosing the
+one being reported. The 129 trials searched the space of
+direction-predicting formulas; a study that fixes the entry in advance
+and varies only management has not been searched over by them, so its
+own `N` starts at 1 and counts up per policy. **The guard that keeps
+that honest rather than a loophole is that the entry rule and the
+complete policy list are committed before any data access, and neither
+may be extended after seeing results** — adding a policy means a new
+pre-registration. What it explicitly does *not* claim is that the
+project's accumulated knowledge is gone; it is not, which is why the
+entry comes from outside rather than from us.
+
+**P5 (partial hedge) carries a registered prediction that it will
+lose.** A hedge offsetting an existing position is economically
+equivalent to being flat plus a second spread, double margin and
+financing on both legs; the defensible uses are all cases where closing
+is impossible (tax, delivery, illiquidity), none of which apply to one
+symbol on one venue. It is run anyway because a measured refutation
+beats an argued one, and because it gives Task C's negative result a
+mechanism. If it does *not* behave as predicted, this project's cost
+model is wrong and that is investigated before anything else in the task
+is trusted.
+
+**The run is on the spent Binance futures 1m window and therefore cannot
+produce a pass — procedurally, not mathematically.** A result from a
+spent window is not admissible as evidence for promotion whatever it
+shows, and that restriction stands on its own. It is *not* true that a
+high `N` makes DSR unclearable: `N` raises the DSR-0.95 requirement
+(roughly 4.0 annualized Sharpe at the project level) without forbidding
+a result from exceeding it, and DSR is computed and reported either way.
+The task is development work whose output is a decision about whether to
+request a Phase 2 holdout access, which is a separate document and a
+separate human approval.
+
 **The stopping rule forecloses adjusting a threshold and re-running.**
 The permitted responses are to accept the result, or to wait for the
 positioning data now accumulating and specify a *different* conjunction
