@@ -24,11 +24,23 @@ README = PLANNING / "README.md"
 ENTRY = re.compile(r"^- \[`(?P<name>[^`]+)`\]\((?P<href>[^)]+)\) — (?P<title>.+)$", re.M)
 
 
-def indexed() -> dict[str, str]:
-    return {
-        m.group("name"): m.group("title").strip()
+def entries() -> list[tuple[str, str]]:
+    """Every row as it literally appears, duplicates included.
+
+    `indexed()` collapses by filename, which is what the other checks
+    want and is also how a duplicate row hides: two entries for one
+    document become one, and every check passes while the README shows
+    the reader two lines -- with two different descriptions, if someone
+    edited one of them.
+    """
+    return [
+        (m.group("name"), m.group("title").strip())
         for m in ENTRY.finditer(README.read_text(encoding="utf-8"))
-    }
+    ]
+
+
+def indexed() -> dict[str, str]:
+    return dict(entries())
 
 
 def on_disk() -> list[Path]:
@@ -80,11 +92,26 @@ def test_the_link_target_matches_the_filename():
     assert not bad, f"link text and target disagree: {bad}"
 
 
+def test_no_document_is_indexed_twice():
+    """A duplicate row is invisible to every other check here, because
+    they all read the collapsed mapping. Counted from the raw matches
+    instead."""
+    from collections import Counter
+
+    counts = Counter(name for name, _ in entries())
+    duplicated = sorted(name for name, n in counts.items() if n > 1)
+    assert not duplicated, (
+        f"listed more than once in .planning/README.md: {duplicated}. Two rows "
+        f"for one document show the reader two descriptions and hide each "
+        f"other from every other check in this file."
+    )
+
+
 def test_the_index_is_not_empty():
     """Without this, a regex that stopped matching would make every test
     above pass on an empty set -- the inert-guard failure this project
     keeps hitting."""
-    assert len(indexed()) >= 70, (
-        f"only {len(indexed())} entries parsed; the ENTRY regex has probably "
+    assert len(entries()) >= 70, (
+        f"only {len(entries())} entries parsed; the ENTRY regex has probably "
         f"stopped matching the README's format"
     )
