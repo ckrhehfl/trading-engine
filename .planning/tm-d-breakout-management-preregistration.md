@@ -81,12 +81,54 @@ Baseline exit = Close(d)  (the day's final 1m bar)
 published `+45` that was really `−97` because a signal-time book was
 reported as an execution record, so this is not a formality:
 
-| Event | Signal | Fill |
+| Event | Signal bar | Fill |
 |---|---|---|
-| Entry | the 1m bar whose high (long) / low (short) first touches `Trigger(d)` | that same bar, at `Trigger(d)` **plus adverse slippage** — a touch is a real price, not a forecast |
-| Baseline time exit | the close of day `d`'s final 1m bar (23:59 UTC) | the **next 1m bar's open** plus adverse slippage, the project's standing signal→fill convention |
-| Stop / trailing stop | the 1m bar that touches the stop level | that bar, at the stop level plus adverse slippage |
-| Scale-out / pyramid add | the 1m bar that touches the level | that bar, at the level plus adverse slippage |
+| Entry | the 1m bar whose high (long) / low (short) first touches `Trigger(d)` | the **next** 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
+| Baseline time exit | day `d`'s final 1m bar (23:59 UTC) | the next 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
+| Stop / trailing stop | the 1m bar that touches the stop level | the next 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
+| Scale-out target | the 1m bar that touches `+1R` | the next 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
+| Pyramid add | the 1m bar that touches the level | the next 1m bar's open × (1 ± `SLIPPAGE_BPS`) |
+
+### Why every management event fills one bar late, and why that is the
+### right choice rather than a limitation
+
+An earlier draft of this document specified level-triggered fills *on
+the touching bar*, at the level plus slippage. **That describes a stop
+order, and this project's backtest engine has no stop-order fill
+model.** `backtest.fill.simulate_fill` offers exactly two contracts,
+both filling on the bar *after* the signal:
+
+- `GUARDED_MARKET` — next bar's open, adjusted by `slippage_bps`;
+- `LIMIT` — next bar, at the limit price or better, **no slippage**,
+  because a limit order's whole point is a price guarantee.
+
+A stop is neither: unlike a limit it fills at its level *or worse*, and
+unlike a market order it only fills when the level is touched.
+
+**Building a same-bar executor for this task was considered and
+rejected.** Two reasons, and the second is the one that decides it:
+
+1. `fill.py`'s no-same-candle rule is a **structural look-ahead guard**,
+   not a convenience. Carving an exception for the one task that would
+   benefit from it weakens a guard this project relies on everywhere
+   else.
+2. **The one-bar lag is conservative in every direction it can act.** A
+   breakout entry filled at the next open is worse when the break is
+   fast. A stop filled at the next open is worse when the move against
+   you continues. A scale-out target filled at the next open is worse
+   when price retraces. A pyramid add filled at the next open is worse
+   when the advance continues. Every management event this task studies
+   is *penalised*, never flattered, by the existing contract.
+
+   Building new machinery that would make the numbers better is
+   optimising the measurement apparatus in the flattering direction,
+   which is the failure this project keeps recording. **The apparatus
+   stays as it is and the lag is disclosed as a known, one-sided cost.**
+
+So all six policies are expressed entirely in `GUARDED_MARKET` intents
+through the unmodified `run_backtest` / `simulate_fill` path. **No
+change to the backtest engine is required by this task, and none may be
+made for it.**
 
 All P&L is rebuilt from real `Fill` objects via
 `leg_manager.replay_fills`, never from the prices a policy *saw when
@@ -290,38 +332,31 @@ from a management effect, so:
   Voiding those would delete exactly the losing tail from P4's sample
   and bias the comparison in its favour.
 
-  So the void condition tests the **gross** exit instead — and it is
-  evaluated **per stop-triggered exit, against the stop that was active
-  at that moment**, never against "the episode's stop". A P4 episode has
-  as many historical stop levels as it has layers, so comparing an
-  episode's exit to an unspecified one of them would void legitimate
-  fills and miss real breaches at the same time.
+  With next-bar-open fills the realised loss on a stop-out is **expected**
+  to exceed `1.0R` — the move that triggered the stop usually continues
+  into the next bar's open. That is a real market cost, not a defect, so
+  it cannot be the void test.
 
-  First the fill model, so the comparison has something to be against:
+  **The void test is instead an identity on the fill itself**, evaluated
+  per stop-triggered exit and fully decidable:
 
   ```text
-  S = the stop level ACTIVE on the triggering bar
-  O = that bar's open
-  reference = O   if side * (O - S) < 0     (the bar opened through S)
-              S   otherwise
-  fill      = reference - side * slippage
+  fill_price == next_bar.open * (1 +/- SLIPPAGE_BPS / 10000)
   ```
 
-  A bar that opens beyond the stop fills at **the open, not the stop**.
-  That is a real market event priced honestly, and not a breach.
+  Any deviation means the executor did something other than the
+  contract, which can only be an implementation bug. **A run containing
+  one is void.** This is checkable directly against `simulate_fill`
+  rather than against a market judgement, which is what makes it a
+  guard rather than an opinion.
 
-  **Void condition**: `side * (reference - fill) > modelled slippage`.
-  The fill is worse than the reference by more than the slippage model
-  allows, which can only be an implementation bug.
+  Two things are **reported, never voided**, because they are real:
 
-  **Explicitly not void, and reported separately** — the previous
-  wording conflated these two, and they are different:
-
-  - a **price gap** between consecutive 1m bars (the bar opened through
-    the stop), handled by the `reference` rule above;
+  - **realised excursion beyond `1.0R`** on stop-outs — the cost of the
+    one-bar lag, and a number worth seeing per policy;
   - a **timestamp gap** (bars missing from the series; this window has
-    one known, `[2019-09-08T19:00Z, 2019-09-08T19:01Z)`), flagged on the
-    episode, because the true intervening path is unobserved.
+    one known, `[2019-09-08T19:00Z, 2019-09-08T19:01Z)`) — flagged on
+    the episode, because the intervening path is unobserved.
 
   Reported alongside: the **net** loss distribution of P4 stop-outs, so
   the fee-and-slippage cost of pyramiding's more frequent stop
@@ -337,8 +372,8 @@ here rather than left to the implementation:
 
 **At most one layer is added per 1m bar**, at the **smallest un-crossed
 `R` multiple** the bar reached — `side`-aware, so for a short the `+1R`
-level is a *lower* price than `+2R` and is still taken first. Filled at
-that level plus adverse slippage. The stop moves to
+level is a *lower* price than `+2R` and is still taken first. Filled on
+the **next** bar per the contract above. The stop moves to
 `newest layer entry - side * 1R` immediately, and the next level is only
 eligible from the **following** bar.
 
