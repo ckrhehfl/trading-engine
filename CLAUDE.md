@@ -1671,7 +1671,7 @@ confirmed a third time by Trade Management Task C, where a *selective,
 conjunction-gated* reduction behaved no differently from an
 unconditional one.
 
-**Three findings from S16 that outlive the candidate**, because each is a
+**Four findings from S16 that outlive the candidate**, because each is a
 methodological rule rather than a result:
 
 1. **The conclusion was drawn from the weaker of two surviving cells.**
@@ -1719,7 +1719,7 @@ signal is silent in 2 of 7 studied cascades, they sweep 39 configurations
 with no reusable convention, and no post-cascade reversion pattern is
 documented anywhere in that literature.
 
-**What S8 changes, binding on any future scalping candidate.** Eleven
+**What S8 changes, binding on any future scalping candidate.** Thirteen
 rules. The measurement behind each is in the `.planning/` document
 named; what is stated here is the rule, which is what binds.
 
