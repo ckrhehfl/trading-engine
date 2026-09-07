@@ -328,7 +328,8 @@ from a management effect, so:
   **The cap is on planned risk, not on realised net `R`, and the
   distinction is load-bearing.** `R` is defined above as net of fees and
   slippage, so an ordinary P4 stop-out will realise *worse* than
-  `-1.0R` — the stop level plus adverse slippage plus two legs of fees.
+  `-1.0R` — the next bar's open beyond the stop, plus slippage, plus two
+  legs of fees.
   Voiding those would delete exactly the losing tail from P4's sample
   and bias the comparison in its favour.
 
@@ -391,11 +392,11 @@ meaningless. So:
 
 | Property | Fixed value |
 |---|---|
-| Opened | when P3 would close 50%: at `+1R`, same 1m bar, same price, plus adverse slippage |
+| Opened | when P3 would close 50%: signalled on the bar touching `+1R`, filled on the **next** bar's open per the contract above — the same signal bar and the same fill bar as P3's partial close, so the two are compared like for like |
 | Size | exactly 50% of the current position — a full offset of the fraction P3 would have closed |
 | Direction | opposite to the core leg |
 | Its own stop | **none.** Its purpose is to offset, and giving it a stop would make it a second strategy |
-| Closed | at whichever comes first: (a) the core leg's exit, at which point **both legs close on the same bar**; (b) the core leg's trailing stop being hit |
+| Closed | at whichever comes first: (a) the core leg's exit — **both legs signal on the same bar and fill on the same next bar**; (b) the core leg's trailing stop being hit |
 | Fees | `FEE_BPS` charged on **both** legs, on open and on close — this is the cost the prediction is about |
 | Funding | not modelled; the run is on a spent window where funding was not collected for this period. **Disclosed: this understates P5's real cost**, so the prediction that P5 loses to P3 is, if anything, conservative |
 | Accounting | the hedge leg is part of the same **trade episode** as its core, and its P&L is included in that episode's `total R` |
