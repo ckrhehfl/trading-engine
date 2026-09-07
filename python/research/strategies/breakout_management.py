@@ -50,10 +50,11 @@ per bar).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import timezone
 from decimal import Decimal
 from enum import Enum
 from typing import Sequence
-from uuid import uuid4
+from uuid import NAMESPACE_URL, uuid5
 
 from backtest.kline import Kline
 from schemas.order_intent import OrderIntent, OrderType, Side
@@ -80,6 +81,12 @@ RISK_FRACTION = Decimal("0.005")
 every policy's **initial layer**."""
 
 _BPS = Decimal("10000")
+SIGNAL_INDEX = 4
+"""Position of the signal bar index inside `_pending`. Named because a
+first version added `quantity` to that tuple and left the positional
+read at 3, so the entry never converted and no episode ever opened."""
+
+_INTENT_NAMESPACE = uuid5(NAMESPACE_URL, "trading-engine/tm-d-breakout-management")
 
 
 class Policy(str, Enum):
@@ -98,9 +105,16 @@ class Leg:
 
     side: Side
     entry: Decimal
+    """The **signal-time reference price**: the trigger for the initial
+    leg, the `R` level for a pyramid layer or a hedge. Deliberately not a
+    fill price — the fill lands on the next bar at a price this object
+    cannot know when it is created, and a field holding a fill price for
+    one leg and a level for another would be incomparable across legs.
+    Every reported P&L figure is rebuilt from real `Fill`s instead,
+    joined on `Episode.intent_ids`."""
     qty: Decimal
     opened_at: int
-    """Bar index of the fill."""
+    """Bar index the leg was signalled on."""
 
 
 @dataclass
@@ -134,6 +148,13 @@ class Episode:
     report separately from its management effect."""
     trail_extreme: Decimal | None = None
     stopped: bool = False
+    intent_ids: list[object] = field(default_factory=list)
+    """Every intent this episode emitted, opening and closing, hedge
+    legs included. The runner joins these against real `Fill`s to
+    rebuild the episode's P&L — the registration requires reported
+    figures come from fills rather than from the prices the strategy saw
+    when deciding, which is the defect that made Task C publish +45 for
+    what was really -97."""
     day_key: int | None = None
     """UTC day the entry filled on, so a position can be closed on the
     first bar of the next day when the 23:59 bar is missing."""
@@ -206,9 +227,21 @@ class BreakoutManagementStrategy:
         self._atr: Decimal | None = None
 
         self._episode: Episode | None = None
-        self._pending: tuple[Side, Decimal, Decimal, int] | None = None
-        """(side, trigger, r_distance, signal_index) awaiting its fill bar."""
+        self._pending: tuple[Side, Decimal, Decimal, Decimal, int] | None = None
+        """(side, trigger, r_distance, quantity, signal_index) awaiting its
+        fill bar.
+
+        The **quantity is carried, not recomputed.** A first version
+        sized at the signal bar, sent that quantity to the engine, then
+        re-derived it at the fill bar from an equity figure that had
+        moved by one bar's mark-to-market. The engine had filled the
+        first number, so the strategy's position model drifted from
+        reality immediately: `planned_risk`, `peak_qty`, P3's half, P4's
+        add and every closing quantity were computed against a position
+        that did not exist, leaving a residue or an accidental reverse."""
         self._entered_today = False
+        self._pending_intent_ids: list[object] = []
+        self._intent_seq = 0
 
         # Reported, not tuned: the registration requires ambiguous days
         # be skipped, and a count is the only honest way to show how
@@ -233,7 +266,7 @@ class BreakoutManagementStrategy:
         # A pending entry fills on this bar's open. Establish the
         # position before anything else looks at it; management is not
         # eligible until the *next* bar (t+2), which `_manage` enforces.
-        if self._pending is not None and i == self._pending[3] + 1:
+        if self._pending is not None and i == self._pending[SIGNAL_INDEX] + 1:
             self._open_episode(bar, i)
 
         if self._episode is not None:
@@ -277,7 +310,8 @@ class BreakoutManagementStrategy:
         point of the window, so the day's end has to be read off the
         clock instead: the last minute of a UTC day opens at 23:59.
         """
-        return bar.open_time.hour == 23 and bar.open_time.minute == 59
+        utc = bar.open_time.astimezone(timezone.utc)
+        return utc.hour == 23 and utc.minute == 59
 
     # -- entry ---------------------------------------------------------
 
@@ -313,16 +347,14 @@ class BreakoutManagementStrategy:
         if qty <= 0:
             return []
 
-        self._pending = (side, trigger, r, i)
+        self._pending = (side, trigger, r, qty, i)
         self._entered_today = True
         return [self._intent(side, qty, bar)]
 
     def _open_episode(self, bar: Kline, i: int) -> None:
-        side, trigger, r, signal_index = self._pending  # type: ignore[misc]
+        side, trigger, r, qty, signal_index = self._pending  # type: ignore[misc]
         self._pending = None
         sign = 1 if side is Side.LONG else -1
-        entry = bar.open * (Decimal(1) + Decimal(sign) * self._slip)
-        qty = (self._equity * RISK_FRACTION) / r
 
         ep = Episode(
             side=side,
@@ -332,15 +364,17 @@ class BreakoutManagementStrategy:
             signal_index=signal_index,
             fill_index=i,
             day_key=_day_key(bar),
+            intent_ids=list(self._pending_intent_ids),
         )
-        ep.legs.append(Leg(side=side, entry=entry, qty=qty, opened_at=i))
+        self._pending_intent_ids.clear()
+        ep.legs.append(Leg(side=side, entry=trigger, qty=qty, opened_at=i))
         ep.peak_qty = qty
         if self.policy is not Policy.BASELINE:
             # Stop from the trigger, not the fill: the order and its
             # stop are placed together at signal time. See the module
             # docstring.
             ep.stop = trigger - Decimal(sign) * r
-        ep.trail_extreme = entry
+        ep.trail_extreme = trigger
         self._episode = ep
 
     # -- management ----------------------------------------------------
@@ -384,11 +418,18 @@ class BreakoutManagementStrategy:
                     return [self._intent(opposite, half, bar)]
                 # P5: offset instead of closing. Same signal bar, same
                 # fill bar, same size — the control's whole point.
-                ep.hedge = Leg(side=opposite, entry=Decimal(0), qty=half, opened_at=i)
+                ep.hedge = Leg(side=opposite, entry=target, qty=half, opened_at=i)
                 ep.peak_qty = max(ep.peak_qty, ep.open_qty + half)
                 return [self._intent(opposite, half, bar)]
 
         # 3. Pyramid add — at most one layer per bar.
+        #
+        # Accumulated rather than returned. A first version returned
+        # immediately, so a 23:59 bar that also crossed a pyramid level
+        # added the layer and skipped the time exit — leaving P4 exposed
+        # overnight and breaking the invariant that the safety net only
+        # fires when the clock rule *cannot*.
+        out: list[OrderIntent] = []
         if self.policy is Policy.PYRAMID and ep.levels_taken < MAX_LAYERS:
             nxt = ep.levels_taken + 1
             level = ep.trigger + Decimal(sign * nxt) * ep.r_distance
@@ -398,20 +439,20 @@ class BreakoutManagementStrategy:
                 ep.legs.append(Leg(side=ep.side, entry=level, qty=add, opened_at=i))
                 ep.peak_qty = max(ep.peak_qty, ep.open_qty)
                 ep.stop = level - Decimal(sign) * ep.r_distance
-                return [self._intent(ep.side, add, bar)]
+                out.append(self._intent(ep.side, add, bar))
 
         # 4. Time exit — every policy except the trailing ones.
         if self.policy in (Policy.BASELINE, Policy.STOP, Policy.PYRAMID):
             if self._is_last_bar_of_day(bar):
-                return self._close_all(ep, opposite, bar, stopped=False)
+                return out + self._close_all(ep, opposite, bar, stopped=False)
             # Safety net for a missing 23:59 bar: the window has one
             # known timestamp gap, and a position silently carrying into
             # the next day would change the policy rather than report a
             # data problem. Exits one minute later than the clock rule,
             # and can only fire when the clock rule could not.
             if ep.day_key is not None and _day_key(bar) != ep.day_key:
-                return self._close_all(ep, opposite, bar, stopped=False)
-        return []
+                return out + self._close_all(ep, opposite, bar, stopped=False)
+        return out
 
     def _effective_stop(self, ep: Episode) -> Decimal | None:
         """The trail replaces the fixed stop only once it is better."""
@@ -442,8 +483,27 @@ class BreakoutManagementStrategy:
         return out
 
     def _intent(self, side: Side, qty: Decimal, at: Kline) -> OrderIntent:
+        intent = self._build_intent(side, qty, at)
+        if self._episode is not None:
+            self._episode.intent_ids.append(intent.intent_id)
+        else:
+            self._pending_intent_ids.append(intent.intent_id)
+        return intent
+
+    def _build_intent(self, side: Side, qty: Decimal, at: Kline) -> OrderIntent:
+        # Deterministic, so two runs over the same bars produce
+        # byte-comparable output and a diff points at a real change
+        # rather than at fresh random ids. A monotonic counter alone
+        # would collide across policies in one process, so the policy
+        # and symbol are part of the name.
+        self._intent_seq += 1
+        intent_id = uuid5(
+            _INTENT_NAMESPACE,
+            f"{self._symbol}|{self.policy.value}|{at.open_time.isoformat()}"
+            f"|{side.value}|{self._intent_seq}",
+        )
         return OrderIntent(
-            intent_id=uuid4(),
+            intent_id=intent_id,
             symbol=self._symbol,
             side=side,
             order_type=OrderType.GUARDED_MARKET,

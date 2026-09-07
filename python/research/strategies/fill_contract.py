@@ -19,9 +19,18 @@ Two things this exists to prevent, both of which this project has done:
   checked stop-triggered exits only — one of seven event types.
 
 `BacktestResult` gives parallel `fills` and `filled_intents` lists but
-no signal-bar index, so the index is recovered from `Fill.fill_time`:
-the contract fills on the bar *after* the signal, so the signal bar is
-the one preceding the bar whose `open_time` equals `fill_time`.
+no signal-bar index. **Recovering it from `Fill.fill_time` alone is not
+enough**, and a first version did exactly that: it derived the fill bar
+from `fill_time` and then compared the price against *that same bar's*
+open. Same-candle execution would have passed unchallenged, because the
+expected price would have been computed from whichever bar the engine
+chose to fill on.
+
+So the signal bar is taken from `OrderIntent.created_at` — which
+`BreakoutManagementStrategy` sets to the signal bar's `open_time` — and
+the timing is checked explicitly: **the fill bar must be exactly the
+signal bar plus one.** The price check then hangs off a signal index the
+engine did not get to choose.
 """
 
 from __future__ import annotations
@@ -45,6 +54,8 @@ class ContractBreach:
     expected: Decimal
     actual: Decimal
     reason: str
+    signal_index: int | None = None
+    fill_index: int | None = None
 
     def __str__(self) -> str:
         return (
@@ -70,7 +81,21 @@ def verify_fill_contract(
     breaches: list[ContractBreach] = []
 
     for fill, intent in zip(fills, filled_intents, strict=True):
+        signal_index = by_open.get(intent.created_at)
         fill_index = by_open.get(fill.fill_time)
+
+        if signal_index is None:
+            breaches.append(
+                ContractBreach(
+                    str(fill.intent_id),
+                    str(fill.fill_time),
+                    Decimal(0),
+                    fill.fill_price,
+                    "intent.created_at matches no bar open, so the signal bar "
+                    "cannot be identified",
+                )
+            )
+            continue
         if fill_index is None:
             breaches.append(
                 ContractBreach(
@@ -82,20 +107,23 @@ def verify_fill_contract(
                 )
             )
             continue
-        if fill_index == 0:
+        if fill_index != signal_index + 1:
             breaches.append(
                 ContractBreach(
                     str(fill.intent_id),
                     str(fill.fill_time),
                     Decimal(0),
                     fill.fill_price,
-                    "filled on the first bar, so it had no signal bar",
+                    f"filled on bar {fill_index}, expected {signal_index + 1} "
+                    f"(the bar after the signal)",
+                    signal_index,
+                    fill_index,
                 )
             )
             continue
 
         sign = 1 if intent.side is Side.LONG else -1
-        expected = klines[fill_index].open * (Decimal(1) + Decimal(sign) * slip)
+        expected = klines[signal_index + 1].open * (Decimal(1) + Decimal(sign) * slip)
         if fill.fill_price != expected:
             breaches.append(
                 ContractBreach(
@@ -104,6 +132,8 @@ def verify_fill_contract(
                     expected,
                     fill.fill_price,
                     "fill price is not next-bar open adjusted by slippage",
+                    signal_index,
+                    fill_index,
                 )
             )
 

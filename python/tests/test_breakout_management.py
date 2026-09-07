@@ -33,12 +33,12 @@ EQUITY = Decimal("10000")
 START = datetime(2020, 1, 1, tzinfo=timezone.utc)
 
 
-def bar(minute: int, o, h, l, c) -> Kline:
+def bar(minute: int, o, h, low, c) -> Kline:
     return Kline(
         open_time=START + timedelta(minutes=minute),
         open=Decimal(str(o)),
         high=Decimal(str(h)),
-        low=Decimal(str(l)),
+        low=Decimal(str(low)),
         close=Decimal(str(c)),
         volume=Decimal("1"),
     )
@@ -155,6 +155,11 @@ class TestPolicies:
         assert len(strat.episodes) == 1
         assert strat.episodes[0].stop is None
         assert strat.episodes[0].stopped is False
+        # `result` was unused, which is how "exits at the day close"
+        # went unverified. This fixture has no 23:59 bar (its day 1 is
+        # truncated), so the exit is the safety net's, on the first bar
+        # of the next day.
+        assert result.fills[-1].fill_time.hour == 0
 
     def test_p1_places_a_stop_below_entry_for_a_long(self):
         klines = self._breakout_then_run_up()
@@ -202,16 +207,32 @@ class TestPolicies:
         strat, _ = run(Policy.PYRAMID, klines)
         ep = strat.episodes[0] if strat.episodes else strat._episode
         assert ep is not None
-        adds_on_that_bar = [leg for leg in ep.legs if leg.opened_at == 1444]
-        assert len(adds_on_that_bar) <= 1
+        # Index 1443 is the bar that spans several levels. An earlier
+        # version looked at 1444, where no add can occur, so the
+        # assertion held vacuously and a two-adds-per-bar regression
+        # would have stayed green.
+        adds_on_that_bar = [leg for leg in ep.legs if leg.opened_at == 1443]
+        assert len(adds_on_that_bar) == 1, (
+            f"expected exactly one layer added on the multi-level bar, got "
+            f"{len(adds_on_that_bar)}"
+        )
 
     def test_p3_closes_half_at_one_r(self):
         klines = self._breakout_then_run_up()
         strat, result = run(Policy.SCALE_OUT, klines)
         ep = strat.episodes[0] if strat.episodes else strat._episode
         assert ep is not None and ep.scaled_out
+
+        # The flag alone would stay green if the close were the wrong
+        # size, or the core leg were not reduced.
+        entry_qty = result.filled_intents[0].quantity
         closes = [i for i in result.filled_intents if i.side is Side.SHORT]
         assert closes, "the partial close must reach the engine as an intent"
+        assert closes[0].quantity == entry_qty / 2, (
+            f"partial close was {closes[0].quantity}, expected half of "
+            f"{entry_qty}"
+        )
+        assert ep.legs[0].qty == entry_qty / 2, "the core leg must be halved"
 
     def test_p5_opens_an_opposing_leg_instead_of_closing(self):
         klines = self._breakout_then_run_up()
@@ -329,3 +350,37 @@ class TestTimeExitFiresOnTheClockNotTheSafetyNet:
         ]
         strat, _ = run(Policy.BASELINE, klines)
         assert len(strat.episodes) == 1, "a missing 23:59 must not strand the position"
+
+
+class TestTheFillGuardChecksTiming:
+    """The guard must reject same-candle execution, not just a wrong price.
+
+    A first version derived the fill bar from `fill_time` and compared
+    the price against *that same bar's* open — so a fill on the signal
+    bar would have produced a matching expected price and passed. The
+    guard existed to prevent exactly that.
+    """
+
+    def test_a_same_candle_fill_is_rejected(self):
+        from dataclasses import replace
+
+        klines = flat_day(0, 100.0, span=10.0)
+        klines += [bar(1440, 100, 111, 99, 110)]
+        klines += [bar(1441 + m, 110, 112, 108, 111) for m in range(5)]
+        _, result = run(Policy.BASELINE, klines)
+        assert result.fills
+
+        # Move the first fill back onto its own signal bar, and price it
+        # from that bar's open so a price-only check would be satisfied.
+        intent = result.filled_intents[0]
+        signal_bar = next(k for k in klines if k.open_time == intent.created_at)
+        same_candle = replace(
+            result.fills[0],
+            fill_time=signal_bar.open_time,
+            fill_price=signal_bar.open * (Decimal(1) + SLIP / Decimal("10000")),
+        )
+        breaches = verify_fill_contract(
+            klines, [same_candle] + list(result.fills[1:]), result.filled_intents, SLIP
+        )
+        assert breaches, "same-candle execution must be a breach"
+        assert "the bar after the signal" in breaches[0].reason
