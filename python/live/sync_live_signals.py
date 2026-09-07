@@ -61,14 +61,14 @@ human, reviewed as a normal PR.
 from __future__ import annotations
 
 import argparse
-import contextlib
-import fcntl
 import json
 import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from live._locking import exclusive_lock
 
 # The repository's copy: the record. Relative on purpose -- it is a path
 # *within the repository*, and every caller runs from the repository
@@ -80,31 +80,6 @@ TRACKED_PATH = "runs/live_signals.jsonl"
 # Where a deployment writes instead. Gitignored (`var/live/`), so the
 # running system can never dirty the working tree of its own checkout.
 DEPLOYMENT_PATH = "var/live/live_signals.jsonl"
-
-
-@contextlib.contextmanager
-def _exclusive_lock(path: Path):
-    """Serialise the read-modify-write across processes.
-
-    A sidecar `.lock` file rather than the tracked file itself, because
-    the tracked file is *replaced* by `os.replace` -- a lock held on the
-    old inode would protect nothing once the rename lands.
-
-    Blocking, not `LOCK_NB`: a sync that waits its turn and then refuses
-    on a changed file is right, while one that gives up on contention
-    would make two operators running at once look like a corruption.
-    """
-    lock_path = path.with_name(path.name + ".lock")
-    lock_path.parent.mkdir(parents=True, exist_ok=True)
-    handle = lock_path.open("w")
-    try:
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
-        yield
-    finally:
-        # Released implicitly on close, but explicit so the ordering is
-        # visible: unlock, then close.
-        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-        handle.close()
 
 
 class SyncRefused(RuntimeError):
@@ -274,7 +249,7 @@ def apply_sync(
     # promises never to do. The docstring above already claimed "exactly
     # what was planned against"; an id-only comparison was weaker than
     # its own stated contract.
-    with _exclusive_lock(path):
+    with exclusive_lock(path):
         _write_merged_under_lock(plan, tracked, path)
 
 

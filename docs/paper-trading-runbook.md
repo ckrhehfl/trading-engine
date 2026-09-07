@@ -146,6 +146,13 @@ specific time of day).
 # Process watchdog, every 5 minutes -- timezone-independent (a fixed
 # interval, not a specific time of day)
 */5 * * * * /path/to/trading-engine/scripts/paper-trading-watchdog.sh
+
+# Health check, every 15 minutes. Judges the loops against Gate A's own
+# criteria and writes the verdict to var/live/health-alerts.jsonl. It
+# does NOT notify anyone -- see section 7c for exactly what it does and
+# does not do, and why there is no channel yet. Read-only with respect
+# to the trading system: it cannot start, stop or signal either loop.
+*/15 * * * * /path/to/trading-engine/scripts/paper-trading-health-check.sh
 ```
 
 Install with `crontab -e` (or `(crontab -l; echo "...") | crontab -`
