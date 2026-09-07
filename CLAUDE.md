@@ -2097,15 +2097,22 @@ varied this axis at all**; every one searched for a better entry
 formula. P3's Sharpe is also the only one above this window's own 0.623
 detection floor (PSR 0.9705).
 
-**Three registered predictions held.** P5 lost to P3 by 14.4R over 464
+**The registered P5 prediction held.** P5 lost to P3 by 14.4R over 464
 identical entries (≈0.031R each — the second spread plus the second set
-of fees), exactly as the registration predicted and giving Task C's
-negative result a mechanism: *a hedge is a costlier way to reduce
-exposure than reducing it.* Pyramiding was the **worst** of the six, the
-only negative total R, with the largest peak exposure. And trailing
-alone produced by far the largest total R while failing Gate A on
-drawdown — both halves of the practitioner claim that trailing captures
-the right tail scale-out caps, visible in one run.
+of fees), exactly as predicted, giving Task C's negative result a
+mechanism: *a hedge is a costlier way to reduce exposure than reducing
+it.* Both policies cleared Gate A, so both may be quoted.
+
+**Pyramiding (P4) and trailing-only (P2) did not clear Gate A**, failing
+on drawdown and profit factor. No further statistic about either is
+quoted, here or in the result document — and that is a real cost, not a
+formality: **this task exists to compare policies, and four of six
+failed, so the run answered its question and the reporting rule forbids
+most of the answer.** The two rules are in genuine tension and
+**resolving it is a human decision before Task E** — the result
+document's §6 sets out three options and records that the author of the
+rule is the wrong party to reinterpret it after seeing which reading
+flatters the write-up.
 
 **It is not a pass and cannot be**, procedurally: the window is spent,
 so nothing measured there is admissible for promotion. Against the

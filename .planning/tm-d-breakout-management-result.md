@@ -34,10 +34,9 @@ withheld from the report and from its JSON output, per the registration
 — the ordering exists because the scalping arc repeatedly produced high
 PSR figures on runs that were already cost-disqualified.
 
-The failing policies' *directional* facts are reported in §3 without
-their performance figures, because "which management rule made things
-worse" is the finding this task was commissioned for and is not a
-performance claim about any of them.
+**Failing policies are reported by verdict and failed criteria only** —
+no total R, no exposure, no ranking, favourable or not. See §6 for the
+real cost of that rule, which this run is the first to pay.
 
 ## 2. The two that passed
 
@@ -108,21 +107,23 @@ management effect.
    it an unexplained loss: a hedge is a costlier way to reduce exposure
    than reducing it.
 
-4. **Pyramiding was the worst policy of the six** — the only one with a
-   negative total R, and the one that held the largest peak exposure.
-   "Add on strength" cost money on this entry.
+4. **Pyramiding (P4) did not clear Gate A**, failing on drawdown and
+   profit factor. No further statistic about it is quoted here.
 
-   *(An earlier draft of this document quoted P4's exposure figure
-   against P3's. That violated this task's own reporting rule, which
-   withholds a failing policy's statistics — and it did so three
-   sections after stating the rule. The direction is reportable; the
-   number is not. Removed rather than the rule relaxed to fit it.)*
+5. **Trailing alone (P2) did not clear Gate A**, failing on drawdown and
+   profit factor. No further statistic about it is quoted here.
 
-5. **Trailing alone produced by far the largest total R** and failed
-   Gate A on drawdown. That is exactly the trade-off the practitioner
-   sources describe — trailing captures the right tail that scale-out
-   caps, and pays for it in drawdown. Both halves of that claim are
-   visible here in the same run.
+   *Two earlier drafts of this document quoted failing policies'
+   figures: P4's peak exposure against P3's, and P2's total R described
+   as the largest of the six. Both are removed. The second was the
+   clearer violation — the registration's words are "no statistical
+   result is quoted **in its favour**", and "the largest total R" is
+   exactly that.*
+
+   *I wrote that rule, so the reading that would have let those
+   sentences stand is the one I had an interest in. Removed under the
+   strict reading, with the resulting problem stated in §6 rather than
+   argued away.*
 
 ## 4. What this is not
 
@@ -166,7 +167,47 @@ position anyway.
 found by breaking the rule deliberately and checking that something went
 red — never by review of the code, and never by the tests passing.
 
-## 6. What this does not decide
+## 6. The reporting rule and this task's purpose are in tension, and a
+## human has to resolve it
+
+Complying strictly costs something real, and it should be visible rather
+than absorbed.
+
+**This task exists to compare management policies.** Its commissioned
+question is "given a fixed entry, how much does management change the
+outcome, and in which direction" — and a comparison needs its losers
+named. But the registration's Gate A rule withholds a failing policy's
+statistics, and four of six policies failed. So the run answered the
+question and the reporting rule forbids most of the answer.
+
+Both rules are right on their own terms. Gate A's ordering exists
+because the scalping arc repeatedly produced high PSR figures on runs
+that were already cost-disqualified, and a number on screen gets quoted
+whatever is written beside it. That is a real failure this project has
+lived through.
+
+**What is lost, concretely**: the trade-off between trailing and
+scaling out — trailing captures the right tail that scale-out caps and
+pays for it in drawdown — is visible in this run, in one dataset, with
+one entry, and is the clearest confirmation of a practitioner claim this
+project has produced. It cannot be stated with its figures under the
+current rule.
+
+**Not resolved here, deliberately.** I wrote the rule, so I am the wrong
+party to reinterpret it after seeing which reading favours my write-up.
+Options, each needing a human decision before Task E:
+
+1. Leave it. Comparisons are reported by verdict only, and the cost is
+   accepted.
+2. Split the gate from the report: Gate A governs *promotion
+   eligibility*, and a comparison across policies may quote figures for
+   all of them provided no failing policy is described as a candidate.
+3. Add an explicit "comparison run" category to the registration
+   template, with its own reporting rule fixed in advance.
+
+Until one is chosen, this document follows option 1.
+
+## 7. What this does not decide
 
 Whether P3 justifies spending the Binance spot 1m holdout is a separate
 human decision, in its own document, and is explicitly not granted by
