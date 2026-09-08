@@ -15,6 +15,7 @@ import engine.oms.Order;
 import engine.oms.OrderState;
 import engine.risk.AccountState;
 import engine.risk.FixedMultiplierNotionalCalculator;
+import engine.risk.SteppedNotionalCalculator;
 import engine.risk.RiskGateway;
 import engine.risk.RiskLimits;
 import engine.schemas.OrderIntent;
@@ -788,6 +789,47 @@ class PaperTradingAppTest {
      * against KIS's own contract-specification docs, so this must refuse
      * rather than guess or silently reuse the index-futures multiplier.
      */
+    @Test
+    void resolveNotionalCalculatorForSymbolReturnsTheRealPublishedStepForBtcUsdt() {
+        var calculator = PaperTradingApp.resolveNotionalCalculatorForSymbol("BTC-USDT");
+
+        assertTrue(calculator instanceof SteppedNotionalCalculator);
+        // The real value, not just the type -- BingX publishes size = 0.0001
+        // for BTC-USDT and an accidental edit to that literal is exactly the
+        // class of mistake that caused the 2026-09-08 incident.
+        assertEquals(
+                0,
+                new BigDecimal("0.0001").compareTo(((SteppedNotionalCalculator) calculator).step()));
+    }
+
+    @Test
+    void resolveNotionalCalculatorForSymbolFailsClosedOnAnUnknownSymbol() {
+        // Fail closed, matching resolveKisNotionalCalculator's own STOCK_FUTURES
+        // behaviour. A symbol whose real step this project has not verified must
+        // stop startup, not fall back to accepting any precision -- that fallback
+        // is precisely what let a 29-digit quantity reach a real venue.
+        assertThrows(
+                IllegalStateException.class,
+                () -> PaperTradingApp.resolveNotionalCalculatorForSymbol("ETH-USDT"));
+
+        // A KIS symbol must not be told it has no "BingX step" -- these
+        // constructors take PriceFeed/TradingCalendar/AccountStateProvider,
+        // the very seams extracted so a second venue could use them, so a
+        // venue-specific message here misdirects the next caller. CodeRabbit
+        // raised this on PR #153; forKisPaper() itself is unaffected because
+        // it passes its own calculator explicitly, but the trap was real.
+        IllegalStateException kis =
+                assertThrows(
+                        IllegalStateException.class,
+                        () -> PaperTradingApp.resolveNotionalCalculatorForSymbol("A01609"));
+        assertFalse(
+                kis.getMessage().contains("BingX"),
+                "a non-BingX symbol must not be blamed on BingX: " + kis.getMessage());
+        assertTrue(
+                kis.getMessage().contains("NotionalCalculator"),
+                "the message must point at the explicit-calculator constructor: " + kis.getMessage());
+    }
+
     @Test
     void resolveKisNotionalCalculatorRejectsStockFutures() {
         assertThrows(
