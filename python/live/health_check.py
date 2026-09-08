@@ -326,6 +326,35 @@ def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
     class_file = root / CLASS_FILE
     if class_file.exists():
         built = class_file.stat().st_mtime
+
+        # Source newer than the classes it should have produced: a `git
+        # pull` with no rebuild. Reported before the running-code check
+        # because it is the earlier link in the same chain, and because
+        # the running-code check would otherwise print a reassuringly
+        # unchanged number while the real gap has just grown.
+        #
+        # Found on 2026-09-08, immediately after pulling PR #153's Risk
+        # Gateway fix onto the VPS: `check_deployment` reported exactly
+        # the same "38.8 hours" as before the pull, because it only ever
+        # compared *classes* to loops. The whole point of this module is
+        # that the running code is not the deployed code -- and one link
+        # of that chain had no check at all:
+        #
+        #     merged but not pulled    -> the deploy script's own fetch
+        #     pulled but not compiled  -> this
+        #     compiled but not running -> stale_running_code, below
+        newer_source = _java_source_newer_than(root, built)
+        if newer_source is not None:
+            alerts.append(
+                Alert(
+                    "unbuilt_java_source",
+                    CRITICAL,
+                    f"Java source is newer than the compiled classes "
+                    f"({newer_source}), so a pulled change has not even been "
+                    f"built, let alone started. Run scripts/vps-deploy.sh.",
+                )
+            )
+
         started = _oldest_loop_start()
         if started is not None and built > started:
             age = (built - started) / 3600
@@ -339,6 +368,31 @@ def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
                 )
             )
     return alerts
+
+
+def _java_source_newer_than(root: Path, built: float) -> str | None:
+    """The name of one `java/**/main/**.java` file newer than `built`.
+
+    One name, not all of them: the alert exists to say "rebuild", and a
+    list of forty files makes that harder to read, not easier. Test
+    sources are excluded deliberately -- they are not compiled into what
+    the loops run, so flagging them would be the false positive that gets
+    a check switched off.
+    """
+    java_root = root / "java"
+    if not java_root.is_dir():
+        return None
+    newest: tuple[float, str] | None = None
+    for path in java_root.rglob("*.java"):
+        if f"{os.sep}test{os.sep}" in str(path):
+            continue
+        try:
+            mtime = path.stat().st_mtime
+        except OSError:  # pragma: no cover - a file vanishing mid-scan
+            continue
+        if mtime > built and (newest is None or mtime > newest[0]):
+            newest = (mtime, path.name)
+    return newest[1] if newest else None
 
 
 def _git(root: Path, *args: str) -> str | None:
