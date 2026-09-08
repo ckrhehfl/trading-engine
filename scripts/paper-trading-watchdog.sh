@@ -201,6 +201,31 @@ launch_argv() {
 # no venue at all, which is what makes it the safe one to flood.
 MOCK_SIGNAL_PATH="var/live/signals/_mock/latest.json"
 
+# Record which commit a session was launched from, so "what code is that
+# JVM actually running?" is answerable by identity rather than inferred
+# from a timestamp.
+#
+# `vps-deploy.sh` previously answered it with `git log --since=<loop start
+# time>`, which compares commit *dates*. That is accurate for this repo's
+# squash-merge workflow, where the commit date is the merge time -- and
+# silently wrong for a cherry-pick, a force-push, or a rebase that
+# rewrites dates. CodeRabbit flagged it on PR #150 and was right: a
+# missed commit there means a Java change that never reaches the loop,
+# which is the exact failure this whole effort exists to stop.
+#
+# Written after the session is up, not before: a file claiming a session
+# runs commit X when the launch failed is worse than no file.
+record_launch_commit() {
+    local session="$1" sha
+    sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+    if [[ -z "$sha" ]]; then
+        log "WARNING: could not resolve HEAD; $session has no recorded launch commit"
+        return 0
+    fi
+    printf '%s\n' "$sha" > "$REPO_ROOT/$SESSION_LOG_DIR/${session}.commit"
+    log "$session launched from $sha"
+}
+
 start_simulated() {
     log "starting simulated session (was not running)"
     launch_argv || { log "ERROR: could not build launch argv; not starting"; return 1; }
@@ -214,6 +239,7 @@ start_simulated() {
         "${extra_env[@]}" \
         "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading
+    record_launch_commit paper-trading
 }
 
 start_vst() {
@@ -240,6 +266,7 @@ start_vst() {
         PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
         "${LAUNCH_ARGV[@]}"
     pipe_session_log paper-trading-vst
+    record_launch_commit paper-trading-vst
 }
 
 # `=name` forces an EXACT session-name match. Without the `=`, tmux's

@@ -158,13 +158,57 @@ say "the running loops are older than the compiled classes"
 # diff reaches the loop's own object graph is a reading task, not a
 # `grep`. Printing the list is what turns it from an investigation into
 # a glance.
+#
+# Two ways to compute it, and they are not equally trustworthy.
+#
+# The first version used `git log --since=<loop start time>` alone, which
+# compares commit *dates*. That is accurate for this repo's squash-merge
+# workflow -- a squash commit's date is its merge time -- and silently
+# wrong for a cherry-pick, a force-push, or a rebase that rewrites dates.
+# CodeRabbit flagged it on PR #150 and was right: a commit missing from
+# this list is a Java change that never reaches the loop, which is the
+# exact failure this whole script exists to stop.
+#
+# So the watchdog now records the launch commit per session, and the
+# range below is computed from that identity when it is available. The
+# timestamp form remains only as a fallback for a loop started before
+# that recording existed -- labelled, because an incomplete list read as
+# a complete one is worse than no list.
+LAUNCH_COMMIT=""
+for s in "${SESSIONS[@]}"; do
+    f="var/live/sessions/${s}.commit"
+    [[ -r "$f" ]] || continue
+    sha="$(tr -d '[:space:]' < "$f")"
+    git cat-file -e "${sha}^{commit}" 2>/dev/null || continue
+    # The oldest launch commit across the sessions is the conservative
+    # choice: it can list a commit one session already has, never omit
+    # one that some session is missing.
+    if [[ -z "$LAUNCH_COMMIT" ]] || ! git merge-base --is-ancestor "$LAUNCH_COMMIT" "$sha" 2>/dev/null; then
+        LAUNCH_COMMIT="$sha"
+    fi
+done
+
 printf '\n  Java commits the running loops do not have:\n'
-if ! git log --oneline --since="@$LOOP_START" -- java/ | sed 's/^/    /'; then
-    say "(could not list them -- check by hand before restarting)"
+if [[ -n "$LAUNCH_COMMIT" ]]; then
+    git log --oneline "${LAUNCH_COMMIT}..HEAD" -- java/ | sed 's/^/    /' \
+        || say "(could not list them -- check by hand before restarting)"
+    say ""
+    say "(by recorded launch commit ${LAUNCH_COMMIT:0:7} -- exact)"
+else
+    git log --oneline --since="@$LOOP_START" -- java/ | sed 's/^/    /' \
+        || say "(could not list them -- check by hand before restarting)"
+    say ""
+    say "WARNING: no launch commit was recorded for these sessions, so"
+    say "this list is by TIMESTAMP and can MISS a commit whose date does"
+    say "not reflect when it was merged. Treat it as a hint, never as"
+    say "grounds to skip a restart. Restarting once more than needed is"
+    say "cheap; running stale Risk Gateway or OMS code is not."
 fi
 printf '\n  Read that list before answering. If every entry is a test, a\n'
 printf '  doc, or a class the loop never loads, a restart changes nothing\n'
-printf '  and costs a tick-counter reset.\n'
+printf '  and costs a tick-counter reset. If the list is empty and came\n'
+printf '  from the timestamp fallback, that is not the same as "nothing\n'
+printf '  changed" -- prefer restarting.\n'
 
 # A restart while a position is open is a different risk from a restart
 # while flat: the loop comes back and reconciles against a venue state it
