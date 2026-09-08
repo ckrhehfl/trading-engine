@@ -23,14 +23,32 @@ change the outcome, and in which direction? That decides whether a
 Phase 2 holdout access is worth requesting — a separate document and a
 separate human approval, not something this run grants.
 
-## Reporting order is fixed in advance
+## This is a comparison run, and reports as one
 
-Gate A (drawdown, profit factor, net expectancy, episode count) is
-evaluated **first**, and a policy failing it gets no statistical result
-quoted in its favour. **`total R` is the registered headline comparison,
-not win rate**: sources are explicit that scale-out raises win rate while
-capping the right tail, so choosing the statistic after seeing which
-policy it favours would rank P3 above P0 for the wrong reason.
+Gate A is still evaluated **first** and its verdict is printed before
+any figure. What changed on 2026-09-07, in response to this run: under
+CLAUDE.md's **comparison-run category**, a run that varies one axis with
+everything else held fixed reports **every** policy's figures, including
+those that failed.
+
+Gate A's original rule — no statistic quoted in a failing policy's
+favour — was written for a candidate evaluation. Here four of six
+policies fail, so applying it verbatim meant the run answered its
+commissioned question and the rule forbade most of the answer.
+
+The three conditions that make this safe are the category's, not this
+file's, and they are why the report is not simply looser:
+
+1. the pre-registration declares the comparison and names the axis;
+2. **no policy may be promoted or taken to a holdout on this run** — the
+   window is spent, so that holds by construction here too;
+3. a policy later proposed as a candidate must clear Gate A in its own
+   registration, with this run counted toward its `N`.
+
+**`total R` is the registered headline, not win rate**: sources are
+explicit that scale-out raises win rate while capping the right tail, so
+choosing the statistic after seeing which policy it favours would rank
+P3 above P0 for the wrong reason.
 
 ## The fill-contract guard runs before any number is reported
 
@@ -231,8 +249,7 @@ def main(argv: list[str] | None = None) -> int:
         }
         r["gate_a_pass"] = all(r["gate_a"].values())
 
-    print("\nGate A — evaluated first. A failing policy's performance "
-          "statistics are withheld, not merely annotated.")
+    print("\nGate A — evaluated first, before any figure is printed.")
     for r in rows:
         verdict = "PASS" if r["gate_a_pass"] else "FAIL"
         detail = " ".join(f"{k}={'y' if v else 'n'}" for k, v in r["gate_a"].items())
@@ -240,16 +257,19 @@ def main(argv: list[str] | None = None) -> int:
 
     passing = [r for r in rows if r["gate_a_pass"]]
     if not passing:
-        print("\nNo policy cleared Gate A, so no performance statistic is "
-              "quoted for any of them. That is the result.")
-    else:
+        print("\nNo policy cleared Gate A. Under the comparison-run category "
+              "the figures are still reported — none of these policies may be "
+              "promoted or taken to a holdout on this run.")
+
+    if rows:
         header = (f"\n{'policy':<8}{'episodes':>9}{'return':>12}{'maxDD':>9}"
                   f"{'PF':>8}{'Sharpe':>9}{'win%':>7}{'totalR':>10}{'meanR':>9}"
                   f"{'stopped':>9}{'peakQty':>10}")
         print(header)
         print("-" * len(header))
-        for r in passing:
-            print(f"{r['policy']:<8}{r['episodes']:>9,}"
+        for r in rows:
+            print(f"{('*' if r['gate_a_pass'] else ' ') + r['policy']:<8}"
+                  f"{r['episodes']:>9,}"
                   f"{_fmt(r['total_return'], '+.4f'):>12}"
                   f"{_fmt(r['max_drawdown'], '.4f'):>9}"
                   f"{_fmt(r['profit_factor'], '.3f'):>8}"
@@ -259,7 +279,10 @@ def main(argv: list[str] | None = None) -> int:
                   f"{_fmt(r['mean_r'], '+.4f'):>9}"
                   f"{r['stopped']:>9,}{r['peak_qty_max']:>10.4f}")
 
-    still_open = [r["policy"] for r in passing if r["episodes_open_at_end"]]
+        print("\n  * = cleared Gate A. A policy without a star is reported "
+              "for comparison only and is not a candidate.")
+
+    still_open = [r["policy"] for r in rows if r["episodes_open_at_end"]]
     if still_open:
         print(f"\nstill open at the last bar (excluded from total R, INCLUDED in "
               f"total_return via the equity curve's force-close): {', '.join(still_open)}")
@@ -272,7 +295,7 @@ def main(argv: list[str] | None = None) -> int:
     floor = detection_floor_sharpe(span_years)
     print(f"\nSharpe vs this window's own detection floor ({floor:.3f}, "
           f"{span_years:.2f}y at one-sided alpha=0.05)")
-    for r in passing:
+    for r in rows:
         sr = r["sharpe_ratio"]
         mark = "n/a" if sr is None else ("ABOVE" if sr > floor else "below")
         # `Metrics.num_returns` counts the **per-bar** return series the
@@ -293,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
               f"PSR {('n/a' if psr is None else format(psr.psr, '.4f'))}")
 
     print("\nper-year total R (positive years / years)")
-    for r in passing:
+    for r in rows:
         years = r["per_year_r"]
         cells = "  ".join(f"{y}:{v:+.1f}" for y, v in sorted(years.items()))
         print(f"  {r['policy']}: {r['positive_years']}/{r['years']}   {cells}")
@@ -302,22 +325,11 @@ def main(argv: list[str] | None = None) -> int:
           f"{rows[0]['ambiguous_days']:,}")
 
     if args.out:
-        # A failing policy serialises its verdict and why, not its
-        # performance — the same rule the printed report follows, so a
-        # downstream reader cannot quote what the report withheld.
-        serialisable = [
-            r if r["gate_a_pass"] else {
-                "policy": r["policy"],
-                "gate_a_pass": False,
-                "gate_a": r["gate_a"],
-                "episodes": r["episodes"],
-                "withheld": "performance statistics are withheld for a policy "
-                            "that did not clear Gate A",
-            }
-            for r in rows
-        ]
+        # Every policy serialises in full, matching the printed report.
+        # `gate_a_pass` is on each row so a consumer can tell a candidate
+        # from a comparison entry without re-deriving the gate.
         Path(args.out).write_text(
-            json.dumps(serialisable, indent=2, default=str), encoding="utf-8"
+            json.dumps(rows, indent=2, default=str), encoding="utf-8"
         )
         print(f"\nwrote {args.out}")
     return 0

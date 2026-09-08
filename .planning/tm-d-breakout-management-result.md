@@ -34,16 +34,37 @@ withheld from the report and from its JSON output, per the registration
 — the ordering exists because the scalping arc repeatedly produced high
 PSR figures on runs that were already cost-disqualified.
 
-**Failing policies are reported by verdict and failed criteria only** —
-no total R, no exposure, no ranking, favourable or not. See §6 for the
-real cost of that rule, which this run is the first to pay.
+**All six policies' figures are reported below, under the comparison-run
+category added to CLAUDE.md on 2026-09-07** in response to this run.
+That category's three conditions apply here and are stated so they can
+be checked rather than assumed:
 
-## 2. The two that passed
+1. this run varies **management only** — the entry is byte-identical
+   across all six — which is what makes it a comparison;
+2. **no policy here may be promoted, advanced to a holdout, or put
+   forward as a candidate on the strength of this run.** The window is
+   spent, so that is true by construction as well as by rule;
+3. a policy later proposed as a candidate must clear Gate A in its own
+   registration, and **this run counts toward its `N`**.
 
-| | episodes | return | maxDD | PF | Sharpe | win% | **total R** | mean R | peak qty |
-|---|---|---|---|---|---|---|---|---|---|
-| **P3** scale out 50% at +1R, trail the rest | 464 | +61.8% | **13.0%** | **1.542** | **+0.716** | 47.7% | **+79.2** | +0.171 | 14.3 |
-| **P5** same, taken as a hedge | 464 | +50.6% | 14.6% | 1.528 | +0.617 | 28.6% | +64.8 | +0.140 | 21.3 |
+§6 records how the category came about, including that the earlier,
+stricter reading was applied first and that two drafts violated it.
+
+## 2. All six, with the two that cleared Gate A marked
+
+| | Gate A | episodes | return | maxDD | PF | Sharpe | win% | **total R** | mean R | peak qty |
+|---|---|---|---|---|---|---|---|---|---|---|
+| P0 baseline | | 1,778 | +12.5% | 37.8% | 1.154 | +0.187 | 49.7% | +42.1 | +0.024 | 26.3 |
+| P1 stop | | 1,779 | +47.2% | 22.4% | 1.252 | +0.517 | 42.6% | +88.2 | +0.050 | 22.2 |
+| P2 trail | | 312 | +98.0% | 38.3% | 1.288 | +0.569 | 20.1% | **+188.6** | +0.605 | 22.0 |
+| **P3** scale out 50% at +1R, trail the rest | **✓** | 464 | +61.8% | **13.0%** | **1.542** | **+0.716** | 47.7% | +79.2 | +0.171 | **14.3** |
+| P4 pyramid | | 1,779 | −6.9% | 34.7% | 1.186 | −0.014 | 44.1% | **−1.3** | −0.001 | **29.5** |
+| **P5** same reduction as a hedge | **✓** | 464 | +50.6% | 14.6% | 1.528 | +0.617 | 28.6% | +64.8 | +0.140 | 21.3 |
+
+**A ✓ means the policy cleared Gate A. A policy without one is reported
+for comparison and is not a candidate** — see the three conditions in
+§1. Reproduced verbatim from `runs/tm-d/run.log`; every ratio quoted in
+§3 is derived from this table and checked against it.
 
 `total R` is the registered headline, not win rate — sources are
 explicit that scale-out raises win rate while capping the right tail, so
@@ -107,23 +128,22 @@ management effect.
    it an unexplained loss: a hedge is a costlier way to reduce exposure
    than reducing it.
 
-4. **Pyramiding (P4) did not clear Gate A**, failing on drawdown and
-   profit factor. No further statistic about it is quoted here.
+4. **Pyramiding (P4) was the worst policy of the six.** It did not clear
+   Gate A, and it is the only policy with a **negative total R (−1.3)**,
+   while holding the **largest peak exposure (29.5** against P3's
+   **14.3)**. "Add on strength" cost money on this entry, and the extra
+   exposure bought nothing.
 
-5. **Trailing alone (P2) did not clear Gate A**, failing on drawdown and
-   profit factor. No further statistic about it is quoted here.
+5. **Trailing alone (P2) produced by far the largest total R (+188.6)
+   and failed Gate A on drawdown (38.3%).** That is exactly the
+   trade-off the practitioner sources describe: trailing captures the
+   right tail that scale-out caps, and pays for it in drawdown.
 
-   *Two earlier drafts of this document quoted failing policies'
-   figures: P4's peak exposure against P3's, and P2's total R described
-   as the largest of the six. Both are removed. The second was the
-   clearer violation — the registration's words are "no statistical
-   result is quoted **in its favour**", and "the largest total R" is
-   exactly that.*
-
-   *I wrote that rule, so the reading that would have let those
-   sentences stand is the one I had an interest in. Removed under the
-   strict reading, with the resulting problem stated in §6 rather than
-   argued away.*
+   **Both halves of that claim are visible in one run, on one dataset,
+   with one entry** — P2 has 2.4x P3's total R and 2.9x its drawdown.
+   This is the clearest confirmation of a practitioner claim this
+   project has produced, and reporting it is the reason the
+   comparison-run category exists.
 
 ## 4. What this is not
 
@@ -167,45 +187,43 @@ position anyway.
 found by breaking the rule deliberately and checking that something went
 red — never by review of the code, and never by the tests passing.
 
-## 6. The reporting rule and this task's purpose are in tension, and a
-## human has to resolve it
+## 6. How the reporting rule got resolved, and why it needed a human
 
-Complying strictly costs something real, and it should be visible rather
-than absorbed.
+**This run is the reason the comparison-run category exists**, so the
+sequence is recorded rather than smoothed over.
 
-**This task exists to compare management policies.** Its commissioned
-question is "given a fixed entry, how much does management change the
-outcome, and in which direction" — and a comparison needs its losers
-named. But the registration's Gate A rule withholds a failing policy's
-statistics, and four of six policies failed. So the run answered the
-question and the reporting rule forbids most of the answer.
+Gate A's rule — a failing policy is reported as failing, with no
+statistic quoted in its favour — was written for a *candidate
+evaluation*. Applied to a comparison it blocked the finding: four of six
+policies failed, so the run answered its commissioned question and the
+rule forbade most of the answer.
 
-Both rules are right on their own terms. Gate A's ordering exists
-because the scalping arc repeatedly produced high PSR figures on runs
-that were already cost-disqualified, and a number on screen gets quoted
-whatever is written beside it. That is a real failure this project has
-lived through.
+**Two drafts of this document violated the rule before that was
+noticed**, both caught in review: P4's peak exposure quoted against
+P3's, and P2's total R described as the largest of the six. The second
+was the clearer breach — the registration's words are "no statistical
+result is quoted **in its favour**", and "the largest total R" is
+exactly that.
 
-**What is lost, concretely**: the trade-off between trailing and
-scaling out — trailing captures the right tail that scale-out caps and
-pays for it in drawdown — is visible in this run, in one dataset, with
-one entry, and is the clearest confirmation of a practitioner claim this
-project has produced. It cannot be stated with its figures under the
-current rule.
+**The first fix invented a distinction that was not in the
+registration** — "the direction is reportable, the number is not" — and
+kept the sentences that suited the write-up. The second fix complied
+strictly and stated the cost instead of arguing the clause.
 
-**Not resolved here, deliberately.** I wrote the rule, so I am the wrong
-party to reinterpret it after seeing which reading favours my write-up.
-Options, each needing a human decision before Task E:
+**Why it went to a human rather than being reinterpreted here**: I wrote
+the rule, so the looser reading was the one I had an interest in after
+seeing which reading kept the findings intact. That is not a position
+from which to reinterpret it.
 
-1. Leave it. Comparisons are reported by verdict only, and the cost is
-   accepted.
-2. Split the gate from the report: Gate A governs *promotion
-   eligibility*, and a comparison across policies may quote figures for
-   all of them provided no failing policy is described as a candidate.
-3. Add an explicit "comparison run" category to the registration
-   template, with its own reporting rule fixed in advance.
+The operator chose the option that fixes the condition **in the
+pre-registration, before any result exists**, over the alternative that
+required a judgement call at write-up time about whether a failing
+policy was being "described as a candidate" — precisely because this run
+demonstrated that such a judgement gets made by an interested party.
 
-Until one is chosen, this document follows option 1.
+The category and its three conditions are in CLAUDE.md. Under it, §3's
+figures for P2 and P4 are reportable, and none of the six may be
+promoted or taken to a holdout on the strength of this run.
 
 ## 7. What this does not decide
 
