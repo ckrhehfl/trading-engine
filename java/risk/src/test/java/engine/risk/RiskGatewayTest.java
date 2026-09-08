@@ -47,6 +47,75 @@ class RiskGatewayTest {
         assertEquals(decision, mapper.readValue(json, RiskDecision.class));
     }
 
+    // ---------------------------------------------------- issue #151, the wiring
+    //
+    // SteppedNotionalCalculatorTest proves the calculator's arithmetic. These
+    // prove RiskGateway actually consults it -- a distinction this repository
+    // has been bitten by: a correct component nothing calls is a component
+    // that does nothing.
+
+    /** The exact quantity that reached BingX on 2026-09-08. */
+    private static final BigDecimal INCIDENT_QUANTITY =
+            new BigDecimal("0.02318401746487214694970992456");
+
+    @Test
+    void theRealIncidentQuantityIsRejectedBeforeReachingAnyVenue() {
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new SteppedNotionalCalculator(new BigDecimal("0.0001")));
+        AccountState account = healthyAccount(new BigDecimal("100000"));
+
+        RiskDecision decision =
+                gateway.evaluate(guardedMarketIntent(INCIDENT_QUANTITY), new BigDecimal("79020.3"), account);
+
+        assertEquals(Decision.REJECTED, decision.decision());
+        assertTrue(
+                decision.reason().contains("0.0001"),
+                "the rejection must name the step so an operator can act on it: " + decision.reason());
+    }
+
+    @Test
+    void theTruncatedFormOfThatSameQuantityIsApproved() {
+        // The fix is only useful if what generate_daily_signal.py now emits
+        // gets through. 0.0231 * 79020.3 = 1825.37, inside canary's 2% of
+        // 100000 = 2000.
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new SteppedNotionalCalculator(new BigDecimal("0.0001")));
+
+        RiskDecision decision =
+                gateway.evaluate(
+                        guardedMarketIntent(new BigDecimal("0.0231")),
+                        new BigDecimal("79020.3"),
+                        healthyAccount(new BigDecimal("100000")));
+
+        assertEquals(Decision.APPROVED, decision.decision());
+        assertEquals(0, new BigDecimal("0.0231").compareTo(decision.approvedQuantity()));
+    }
+
+    @Test
+    void aClampedQuantityIsItselfSubmittable() {
+        // The second defect from issue #151: SimpleNotionalCalculator clamps
+        // to 8 decimals, so an over-limit order was rewritten into another
+        // quantity the venue would truncate. The clamp must land on the step.
+        RiskGateway gateway =
+                new RiskGateway(RiskLimits.canary(), new SteppedNotionalCalculator(new BigDecimal("0.0001")));
+
+        RiskDecision decision =
+                gateway.evaluate(
+                        guardedMarketIntent(new BigDecimal("1")), // notional 79020, far over 2000
+                        new BigDecimal("79020.3"),
+                        healthyAccount(new BigDecimal("100000")));
+
+        assertEquals(Decision.MODIFIED, decision.decision());
+        BigDecimal approved = decision.approvedQuantity();
+        assertEquals(
+                0,
+                approved.remainder(new BigDecimal("0.0001")).signum(),
+                "clamped to " + approved + ", which the venue would truncate");
+        assertTrue(
+                approved.multiply(new BigDecimal("79020.3")).compareTo(new BigDecimal("2000")) <= 0,
+                "clamped notional exceeds the limit it was clamped to");
+    }
+
     @Test
     void withinLimitsOrderIsApprovedAtRequestedQuantityAndBaseLeverage() throws Exception {
         RiskGateway gateway = new RiskGateway(RiskLimits.canary());

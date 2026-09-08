@@ -458,7 +458,8 @@ public final class PaperTradingApp {
         this.clock = clock;
         this.tradingCalendar = new AlwaysOpenTradingCalendar();
 
-        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        RiskGateway riskGateway =
+                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = new PaperBroker(FEE_BPS, SLIPPAGE_BPS);
@@ -533,7 +534,8 @@ public final class PaperTradingApp {
         this.clock = clock;
         this.tradingCalendar = new AlwaysOpenTradingCalendar();
 
-        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        RiskGateway riskGateway =
+                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -603,7 +605,8 @@ public final class PaperTradingApp {
         this.clock = clock;
         this.tradingCalendar = tradingCalendar;
 
-        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        RiskGateway riskGateway =
+                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -681,7 +684,8 @@ public final class PaperTradingApp {
         this.clock = clock;
         this.tradingCalendar = tradingCalendar;
 
-        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        RiskGateway riskGateway =
+                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -765,7 +769,8 @@ public final class PaperTradingApp {
         this.clock = clock;
         this.tradingCalendar = tradingCalendar;
 
-        RiskGateway riskGateway = new RiskGateway(RiskLimits.canary());
+        RiskGateway riskGateway =
+                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -1419,6 +1424,53 @@ public final class PaperTradingApp {
      * itself cannot be invoked directly in a test (see that method's own
      * Javadoc and this class's top Javadoc, "Execution mode").
      */
+    /**
+     * BingX's published minimum quantity increment for {@code BTC-USDT},
+     * from {@code GET /openApi/swap/v2/quote/contracts}'s own {@code size}
+     * field: {@code 0.0001}, with {@code quantityPrecision: 4} agreeing.
+     * Re-verified live against the public API on 2026-09-08.
+     *
+     * <p>Hardcoded rather than fetched at startup, matching {@link
+     * #KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER}'s own precedent: a venue
+     * constant this project has verified, living in the wiring layer where
+     * {@code BINGX_VST_BASE_URL} already sits. Fetching it would add a
+     * startup dependency and a staleness question for a number that changes
+     * on the order of never.
+     */
+    static final java.math.BigDecimal BINGX_BTC_USDT_QUANTITY_STEP = new java.math.BigDecimal("0.0001");
+
+    /**
+     * The {@link NotionalCalculator} for a BingX symbol, resolved from the
+     * symbol itself and <strong>failing closed</strong> for any symbol whose
+     * real step this project has not verified.
+     *
+     * <p>Exists because {@link engine.risk.SimpleNotionalCalculator}, which
+     * every BingX loop used until 2026-09-08, accepts a quantity of any
+     * precision. That is how a 29-significant-digit quantity reached a real
+     * venue with a 4-decimal step, was silently truncated on fill, and left
+     * an order permanently short of its own {@code approvedQuantity} — see
+     * {@link engine.risk.SteppedNotionalCalculator}'s Javadoc, {@code
+     * .planning/quantity-precision-discuss.md}, and GitHub issue #151.
+     *
+     * <p>Refusing an unverified symbol rather than falling back to the
+     * permissive calculator is the whole point: the fallback <em>was</em>
+     * the defect. Adding a BingX symbol therefore means looking its real
+     * {@code size} up first, which is the discipline that would have
+     * prevented this.
+     */
+    static NotionalCalculator resolveBingXNotionalCalculator(String symbol) {
+        if (DEFAULT_SYMBOL.equals(symbol)) {
+            return new engine.risk.SteppedNotionalCalculator(BINGX_BTC_USDT_QUANTITY_STEP);
+        }
+        throw new IllegalStateException(
+                "no verified BingX quantity step for symbol '"
+                        + symbol
+                        + "' -- refusing to start rather than accept a quantity of any precision,"
+                        + " which is what let a 29-digit quantity reach a real venue on 2026-09-08"
+                        + " (see GitHub issue #151). Look up the symbol's own `size` from"
+                        + " /openApi/swap/v2/quote/contracts and add it here.");
+    }
+
     static NotionalCalculator resolveKisNotionalCalculator(KisPriceFeed.MarketDivision marketDivision) {
         return switch (marketDivision) {
             case INDEX_FUTURES -> new FixedMultiplierNotionalCalculator(KIS_KOSPI200_INDEX_FUTURES_MULTIPLIER);

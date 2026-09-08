@@ -15,6 +15,7 @@ import engine.oms.Order;
 import engine.oms.OrderState;
 import engine.risk.AccountState;
 import engine.risk.FixedMultiplierNotionalCalculator;
+import engine.risk.SteppedNotionalCalculator;
 import engine.risk.RiskGateway;
 import engine.risk.RiskLimits;
 import engine.schemas.OrderIntent;
@@ -788,6 +789,32 @@ class PaperTradingAppTest {
      * against KIS's own contract-specification docs, so this must refuse
      * rather than guess or silently reuse the index-futures multiplier.
      */
+    @Test
+    void resolveBingXNotionalCalculatorReturnsTheRealPublishedStepForBtcUsdt() {
+        var calculator = PaperTradingApp.resolveBingXNotionalCalculator("BTC-USDT");
+
+        assertTrue(calculator instanceof SteppedNotionalCalculator);
+        // The real value, not just the type -- BingX publishes size = 0.0001
+        // for BTC-USDT and an accidental edit to that literal is exactly the
+        // class of mistake that caused the 2026-09-08 incident.
+        assertEquals(
+                0,
+                new BigDecimal("0.0001").compareTo(((SteppedNotionalCalculator) calculator).step()));
+    }
+
+    @Test
+    void resolveBingXNotionalCalculatorFailsClosedOnAnUnknownSymbol() {
+        // Fail closed, matching resolveKisNotionalCalculator's own STOCK_FUTURES
+        // behaviour. A symbol whose real step this project has not verified must
+        // stop startup, not fall back to accepting any precision -- that fallback
+        // is precisely what let a 29-digit quantity reach a real venue.
+        assertThrows(
+                IllegalStateException.class,
+                () -> PaperTradingApp.resolveBingXNotionalCalculator("ETH-USDT"));
+        assertThrows(
+                IllegalStateException.class, () -> PaperTradingApp.resolveBingXNotionalCalculator("SOME-SYM"));
+    }
+
     @Test
     void resolveKisNotionalCalculatorRejectsStockFutures() {
         assertThrows(

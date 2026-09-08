@@ -25,6 +25,7 @@ framework, matching this codebase's established Python test philosophy.
 
 import json
 import os
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from uuid import uuid4
@@ -40,8 +41,10 @@ from live.generate_daily_signal import (
     MIN_WARMUP_BARS,
     STRATEGY_ID,
     STRATEGY_VERSION,
+    QUANTITY_STEP_BY_SYMBOL,
     _deterministic_intent_id,
     _kline_row_to_kline,
+    quantize_to_venue_step,
     fetch_live_klines,
     generate_signal,
     main,
@@ -50,6 +53,8 @@ from live.generate_daily_signal import (
 from research import experiment_log
 from schemas.order_intent import OrderIntent, OrderType, Side
 from tests.fake_bingx_server import FakeBingXKlinesServer
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 DAY_STEP = 86_400_000
 BASE_DAY_MS = (1_735_689_600_000 // DAY_STEP) * DAY_STEP  # 2025-01-01T00:00:00Z, UTC-midnight aligned
@@ -686,3 +691,91 @@ class TestRiskBudgetScalarAppliesToTheCapToo:
             "a scalar at or above 1 would relax the risk budget, which is a "
             "Risk-Parameter-class change needing explicit human approval"
         )
+
+
+class TestVenueQuantityStep:
+    """The 2026-09-08 incident: a 29-significant-digit quantity reached a
+    real venue whose step is 0.0001, was silently truncated on fill, and
+    left the order permanently short of its own approved quantity — which
+    halted the loop. See `.planning/quantity-precision-discuss.md` and
+    GitHub issue #151.
+
+    Java rejects a non-conforming quantity independently
+    (`SteppedNotionalCalculator`). This is the other half: emit a
+    conforming one in the first place.
+    """
+
+    # The exact quantity from the real signal file on the VPS.
+    INCIDENT = Decimal("0.02318401746487214694970992456")
+
+    def test_truncates_the_real_incident_quantity_to_what_bingx_filled(self):
+        # BingX filled 0.0231 — this must reproduce that exactly, or the
+        # two sides still disagree.
+        assert quantize_to_venue_step(self.INCIDENT, Decimal("0.0001")) == Decimal("0.0231")
+
+    def test_rounds_down_never_up(self):
+        # Rounding up would exceed the notional RiskGateway approved.
+        assert quantize_to_venue_step(Decimal("0.02319999"), Decimal("0.0001")) == Decimal("0.0231")
+        assert quantize_to_venue_step(Decimal("0.9999"), Decimal("0.5")) == Decimal("0.5")
+
+    def test_leaves_an_already_conforming_quantity_untouched(self):
+        assert quantize_to_venue_step(Decimal("0.0231"), Decimal("0.0001")) == Decimal("0.0231")
+        assert quantize_to_venue_step(Decimal("0.001"), Decimal("0.0001")) == Decimal("0.001")
+
+    def test_returns_zero_when_the_quantity_is_smaller_than_one_step(self):
+        # The caller must treat this as "no order", never send it: a
+        # zero-quantity order is rejected by the venue and by OrderIntent.
+        assert quantize_to_venue_step(Decimal("0.00005"), Decimal("0.0001")) == Decimal("0")
+
+    def test_the_step_table_matches_the_java_side(self):
+        """The one real cost of Option C: two places must agree on the step.
+
+        Pinned here so a change on either side fails a test rather than
+        silently halting live trading — Java rejects what Python emits,
+        which is the safe direction but still an outage.
+        """
+        java = (
+            REPO_ROOT
+            / "java/runtime/src/main/java/engine/runtime/PaperTradingApp.java"
+        ).read_text(encoding="utf-8")
+        assert 'BINGX_BTC_USDT_QUANTITY_STEP = new java.math.BigDecimal("0.0001")' in java, (
+            "the Java-side BTC-USDT step is no longer 0.0001, or the constant moved — "
+            "update QUANTITY_STEP_BY_SYMBOL to match, or live orders will start being rejected"
+        )
+        assert QUANTITY_STEP_BY_SYMBOL["BTC-USDT"] == Decimal("0.0001")
+
+
+def test_main_writes_a_quantity_the_venue_can_actually_accept(server, tmp_path, monkeypatch):
+    """The regression test for the 2026-09-08 incident, on the real path.
+
+    Before the fix this same run wrote a quantity with ~28 decimal places
+    straight from `reference_equity / entry_price`. BingX truncated it on
+    fill and the loop halted. Asserting on the emitted file rather than on
+    the helper is deliberate: the helper being correct proved nothing about
+    whether anything called it.
+    """
+    monkeypatch.setenv("BINGX_BASE_URL", server.base_url)
+    now_ms = BASE_DAY_MS + DEFAULT_FETCH_BARS * DAY_STEP
+    _seed_warmup_server(server, now_ms=now_ms, fetch_bars=DEFAULT_FETCH_BARS, jump_price="200")
+    monkeypatch.setattr("live.generate_daily_signal._current_time_ms", lambda: now_ms)
+
+    signal_path = tmp_path / "signal.json"
+    exit_code = main(
+        [
+            "--db-path", str(tmp_path / "klines.sqlite3"),
+            "--signal-path", str(signal_path),
+            "--runs-path", str(tmp_path / "live_signals.jsonl"),
+        ]
+    )
+
+    assert exit_code == 0
+    quantity = Decimal(json.loads(signal_path.read_text(encoding="utf-8"))["quantity"])
+    step = QUANTITY_STEP_BY_SYMBOL["BTC-USDT"]
+
+    assert quantity > 0
+    assert quantity % step == 0, (
+        f"emitted {quantity}, which is not a multiple of the venue step {step} -- "
+        f"BingX would truncate it and the order could never complete"
+    )
+    # And the precision is genuinely bounded, not merely divisible by luck.
+    assert -quantity.as_tuple().exponent <= 4, f"{quantity} carries more than 4 decimal places"

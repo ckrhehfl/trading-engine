@@ -115,7 +115,7 @@ import argparse
 import logging
 import os
 from datetime import datetime, timezone
-from decimal import Decimal
+from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 from uuid import UUID, NAMESPACE_URL, uuid4, uuid5
 
@@ -233,6 +233,63 @@ MIN_WARMUP_BARS = 253
 # BingX's own retained history right at the warmup boundary -- see the
 # module docstring's "No cross-invocation state" section for why this
 # must stay >= MIN_WARMUP_BARS.
+# --------------------------------------------------------------------------
+# Venue quantity steps
+#
+# An exchange accepts a quantity only in whole multiples of its own published
+# step. BingX publishes BTC-USDT's as `size` on
+# `GET /openApi/swap/v2/quote/contracts`: 0.0001, with `quantityPrecision: 4`
+# agreeing. Re-verified live against the public API on 2026-09-08.
+#
+# ## Why this is here at all
+#
+# On 2026-09-08 this file emitted a quantity with 29 significant digits --
+# `reference_equity / entry_price` under Python's default 28-digit Decimal
+# context, which nothing downstream reduced because nothing downstream was
+# asked to. BingX accepted the order and filled 0.0231: that quantity
+# truncated to its step. The fill was therefore permanently smaller than the
+# `approvedQuantity` this project recorded, so the order could never complete,
+# and the kill switch tripped and stayed tripped. Full account:
+# `.planning/quantity-precision-discuss.md`, GitHub issue #151.
+#
+# ## Why quantizing here rather than in the strategy
+#
+# `daily_tsmom_ensemble` is venue-agnostic and is the same code the backtests
+# run. Quantizing inside it would change every backtest result and break
+# comparability with the `sr-v`/`sr-ab` holdout confirmations. This module is
+# the live emit boundary and the only place that knows which venue the signal
+# is bound for, so the venue's constraint belongs here.
+#
+# ## This is one of two independent halves
+#
+# Java rejects a non-conforming quantity on its own
+# (`engine.risk.SteppedNotionalCalculator`, reached through the
+# `NotionalCalculator.quantityRejectionReason` hook `RiskGateway` already
+# calls). Neither half trusts the other. If they ever disagree the loop stops
+# trading rather than trading wrongly, which is the safe direction --
+# `TestVenueQuantityStep.test_the_step_table_matches_the_java_side` exists to
+# catch that before it reaches the VPS.
+QUANTITY_STEP_BY_SYMBOL: dict[str, Decimal] = {
+    "BTC-USDT": Decimal("0.0001"),
+}
+
+
+def quantize_to_venue_step(quantity: Decimal, step: Decimal) -> Decimal:
+    """`quantity` truncated down to a whole multiple of `step`.
+
+    Always down, never nearest: rounding up would ask for more exposure
+    than the risk limits approved for the unrounded figure.
+
+    Returns `Decimal("0")` when `quantity` is smaller than one step. The
+    caller must treat that as "no order" rather than sending it -- a
+    zero-quantity order is rejected by `OrderIntent`'s own validation and
+    by the venue.
+    """
+    if step <= 0:
+        raise ValueError(f"step must be positive, got {step}")
+    return (quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+
+
 DEFAULT_FETCH_BARS = 300
 
 # Fixed, deterministic namespace for `_deterministic_intent_id` below --
@@ -571,6 +628,44 @@ def main(argv: list[str] | None = None) -> int:
     decision = decision.model_copy(
         update={"intent_id": _deterministic_intent_id(symbol=args.symbol, created_at=decision.created_at)}
     )
+
+    # Truncate to the venue's own quantity step. See QUANTITY_STEP_BY_SYMBOL
+    # for why this happens here and not in the strategy.
+    #
+    # Fails closed on an unknown symbol rather than emitting the raw
+    # quantity: emitting it is exactly what caused the 2026-09-08 incident,
+    # so "we don't know this venue's step" must stop the signal, not wave it
+    # through.
+    step = QUANTITY_STEP_BY_SYMBOL.get(args.symbol)
+    if step is None:
+        logger.error(
+            "no known venue quantity step for symbol %s -- refusing to emit a signal."
+            " Add the symbol's real step (BingX publishes it as `size` on"
+            " /openApi/swap/v2/quote/contracts) to QUANTITY_STEP_BY_SYMBOL.",
+            args.symbol,
+        )
+        return 1
+
+    raw_quantity = decision.quantity
+    quantized = quantize_to_venue_step(raw_quantity, step)
+    if quantized <= 0:
+        logger.info(
+            "target quantity %s is smaller than %s's venue step %s -- no signal written."
+            " A zero-quantity order is rejected by OrderIntent and by the venue.",
+            raw_quantity,
+            args.symbol,
+            step,
+        )
+        return 0
+    if quantized != raw_quantity:
+        logger.info(
+            "quantity truncated to the venue step: %s -> %s (step %s, dropped %s)",
+            raw_quantity,
+            quantized,
+            step,
+            raw_quantity - quantized,
+        )
+        decision = decision.model_copy(update={"quantity": quantized})
 
     write_signal_atomically(decision, signal_path)
     logger.info(
