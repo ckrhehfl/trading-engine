@@ -766,6 +766,25 @@ interpretations — `Discuss` makes this mandatory for R3-risk work; treat
 it as the default for everything else too, since a future session has
 only this file, not this session's judgment, to go on.
 
+**A Java change is not deployed until the loops restart, and whoever
+made it verifies that.** Added 2026-09-08 after the operator asked
+whether the fixes were reaching the VPS. They were not: the checkout was
+current, the classes had been rebuilt that morning, and both loops were
+still running code from two days earlier — and no dashboard, watchdog or
+log line could have reported it.
+
+Python and shell are exempt by construction: cron re-execs them every
+tick. A JVM keeps the classes it loaded at startup, so an OMS, Risk
+Gateway, adapter or `TradingLoop` fix does nothing until a restart.
+
+So a session that merges a change under `java/` is **not finished when
+the PR merges**. It must additionally run `scripts/vps-deploy.sh` — or
+confirm with the operator that they will — and check the result: both
+sessions up, and their start time later than the compiled classes.
+`live.health_check` reports the mismatch as `stale_running_code` between
+deploys, so the condition is visible rather than remembered; the check
+existing does not move the obligation off whoever made the change.
+
 Touch only what the task requires — no drive-by reformatting or adjacent
 refactors. This matters most in CODEOWNERS-matched paths (`java/`,
 `schemas/`, `configs/`, `.github/`), where an unrelated change makes an
