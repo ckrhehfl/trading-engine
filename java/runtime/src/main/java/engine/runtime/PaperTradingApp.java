@@ -231,6 +231,20 @@ public final class PaperTradingApp {
     private static final String BINGX_VST_BASE_URL = "https://open-api-vst.bingx.com";
 
     /**
+     * The VST demo host, for read-only tooling in this package.
+     *
+     * <p>An accessor rather than widening the constant, and rather than
+     * letting {@link VstAccountInspector} carry its own copy: a safety
+     * constant with two definitions is a safety constant that can drift.
+     * This returns the same hardcoded value and introduces no configuration
+     * surface -- there is still no environment variable, argument or other
+     * input that can point anything at a different host.
+     */
+    static String vstBaseUrl() {
+        return BINGX_VST_BASE_URL;
+    }
+
+    /**
      * Required only in {@code kis-paper} mode -- never logged anywhere in
      * this class, same discipline as the BingX credentials above. {@code
      * KIS_ACCOUNT_NO} is KIS's 8-digit {@code CANO}; {@code

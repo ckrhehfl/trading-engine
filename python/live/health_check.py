@@ -61,6 +61,7 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -103,6 +104,14 @@ DISK_USED_FRACTION_CEILING = 0.85
 # transitions -- which are the whole point of keeping a history -- under
 # repetition of a state that has not changed.
 REPEAT_AFTER = timedelta(hours=6)
+
+CLASS_FILE = "java/runtime/build/classes/java/main/engine/runtime/PaperTradingApp.class"
+"""The class whose mtime stands for "when the Java code last changed".
+
+`PaperTradingApp` is the entry point every loop runs, so any change that
+matters to a running loop recompiles it or something it depends on — and
+Gradle's incremental compilation rewrites it only on a real content
+change."""
 
 STATE_PATH = Path("var/live/health-state.json")
 ALERT_LOG_PATH = Path("var/live/health-alerts.jsonl")
@@ -277,6 +286,102 @@ def check_signal_freshness(status: dict[str, Any]) -> list[Alert]:
     return []
 
 
+def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
+    """Is the code that is *running* the code that is checked out?
+
+    Found on 2026-09-08 by the operator asking whether the fixes were
+    actually reaching the box. They were not: the checkout was current,
+    the classes had been rebuilt that morning, and both loops were still
+    running code from two days earlier. **Nothing in the system could
+    have reported that** — not a dashboard, not the watchdog, not a log
+    line.
+
+    Python and shell are exempt by construction: cron re-execs them every
+    tick, so a merged change is live on its next run. A JVM keeps the
+    classes it loaded at startup, so an OMS, Risk Gateway or adapter fix
+    sits there doing nothing until the loop restarts.
+
+    **The mtime comparison is a real content signal, not a proxy.**
+    Verified on this box: Gradle rewrites a class file only when its
+    content actually changes — `touch` on a source file leaves the class
+    mtime alone, and an UP-TO-DATE task does not touch its outputs. So
+    this cannot cry wolf after a no-op rebuild, which is what would have
+    made it get ignored.
+    """
+    root = Path(repo_root)
+    alerts: list[Alert] = []
+
+    dirty = _git(root, "status", "--porcelain")
+    if dirty:
+        first = dirty.splitlines()[:3]
+        alerts.append(
+            Alert(
+                "uncommitted_changes",
+                WARNING,
+                f"the deployment has uncommitted changes, so what is running "
+                f"cannot be reproduced from any commit: {first}",
+            )
+        )
+
+    class_file = root / CLASS_FILE
+    if class_file.exists():
+        built = class_file.stat().st_mtime
+        started = _oldest_loop_start()
+        if started is not None and built > started:
+            age = (built - started) / 3600
+            alerts.append(
+                Alert(
+                    "stale_running_code",
+                    CRITICAL,
+                    f"the running loops started {age:.1f} hours before the "
+                    f"compiled classes were built, so a Java change is "
+                    f"deployed but not running. Run scripts/vps-deploy.sh.",
+                )
+            )
+    return alerts
+
+
+def _git(root: Path, *args: str) -> str | None:
+    try:
+        done = subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return done.stdout.strip() if done.returncode == 0 else None
+
+
+def _oldest_loop_start() -> float | None:
+    """Earliest start time among the loop JVMs, as epoch seconds."""
+    try:
+        done = subprocess.run(
+            ["ps", "-eo", "pid,lstart,args", "--no-headers"],
+            capture_output=True, text=True, timeout=10, check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if done.returncode != 0:
+        return None
+
+    oldest: float | None = None
+    for line in done.stdout.splitlines():
+        if "engine.runtime.PaperTradingApp" not in line:
+            continue
+        # `pid` then a fixed 5-field `lstart`, then the command.
+        parts = line.split(maxsplit=6)
+        if len(parts) < 6:
+            continue
+        try:
+            started = datetime.strptime(" ".join(parts[1:6]), "%a %b %d %H:%M:%S %Y")
+        except ValueError:
+            continue
+        epoch = started.timestamp()
+        if oldest is None or epoch < oldest:
+            oldest = epoch
+    return oldest
+
+
 def check_disk(path: Path | str = ".") -> list[Alert]:
     """The one thing no dashboard reads.
 
@@ -306,6 +411,7 @@ def evaluate(
     previous: dict[str, Any] | None = None,
     now: datetime | None = None,
     disk_path: Path | str = ".",
+    repo_root: Path | str = ".",
 ) -> list[Alert]:
     """Every check, against one already-gathered view of the world.
 
@@ -319,6 +425,7 @@ def evaluate(
         *check_daily_reports(status, now.date()),
         *check_signal_freshness(status),
         *check_disk(disk_path),
+        *check_deployment(repo_root),
     ]
 
 
@@ -601,6 +708,11 @@ def main(argv: list[str] | None = None) -> int:
         help="filesystem to check for free space (default: the working directory)",
     )
     parser.add_argument(
+        "--repo-root",
+        default=".",
+        help="repository to check for uncommitted changes and stale classes",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="evaluate and report, writing neither the state file nor the alert log",
@@ -626,7 +738,13 @@ def main(argv: list[str] | None = None) -> int:
     # read of state another process is mid-write on.
     with exclusive_lock(Path(args.state_path)):
         previous = load_state(args.state_path)
-        alerts = evaluate(status, previous=previous, now=now, disk_path=args.disk_path)
+        alerts = evaluate(
+            status,
+            previous=previous,
+            now=now,
+            disk_path=args.disk_path,
+            repo_root=args.repo_root,
+        )
         decision = decide(alerts, previous, now, status)
 
         if not args.dry_run:

@@ -89,6 +89,7 @@ def cli_args(tmp_path, status_file, *extra):
         "--state-path", str(tmp_path / "state.json"),
         "--alert-log", str(tmp_path / "alerts.jsonl"),
         "--disk-path", str(tmp_path),
+        "--repo-root", str(tmp_path),
         *extra,
     ]
 
@@ -459,7 +460,7 @@ class TestNotifier:
 
 
 def test_evaluate_on_a_healthy_view_is_silent(tmp_path):
-    assert evaluate(healthy_status(), now=NOW, disk_path=tmp_path) == []
+    assert evaluate(healthy_status(), now=NOW, disk_path=tmp_path, repo_root=tmp_path) == []
 
 
 def test_every_alert_key_is_stable_across_runs():
@@ -656,6 +657,7 @@ class TestConcurrentChecks:
                     "--state-path", str(state),
                     "--alert-log", str(alert_log),
                     "--disk-path", str(tmp_path),
+                    "--repo-root", str(tmp_path),
                 ],
                 cwd=repo_python, env=env, capture_output=True, text=True,
             )
@@ -719,6 +721,7 @@ class TestConcurrentChecks:
                     "--state-path", str(tmp_path / "state.json"),
                     "--alert-log", str(tmp_path / "alerts.jsonl"),
                     "--disk-path", str(tmp_path),
+                    "--repo-root", str(tmp_path),
                 ],
                 cwd=repo_python, env=env, capture_output=True, text=True,
             )
@@ -727,3 +730,103 @@ class TestConcurrentChecks:
             list(pool.map(run, range(6)))
 
         assert [p.name for p in tmp_path.glob("*.tmp")] == []
+
+
+class TestDeploymentCheck:
+    """Detect "the running code is not the code that is checked out".
+
+    Found on 2026-09-08 by the operator asking whether the fixes were
+    actually reaching the box. They were not: the checkout was current,
+    the classes had been rebuilt that morning, and both loops were still
+    running code from two days earlier — and nothing in the system could
+    have reported it.
+    """
+
+    def _commit(self, root):
+        """Commit everything, so a class file written for a test does not
+        itself trigger the uncommitted-changes alert and mask the one
+        being tested."""
+        import subprocess as sp
+
+        sp.run(["git", "-C", str(root), "add", "-A", "-f"], check=True)
+        sp.run(["git", "-C", str(root), "commit", "-qm", "classes"], check=True)
+
+    def _repo(self, tmp_path, dirty: bool = False):
+        import subprocess as sp
+
+        root = tmp_path / "repo"
+        (root / "java/runtime/build/classes/java/main/engine/runtime").mkdir(
+            parents=True
+        )
+        sp.run(["git", "init", "-q", str(root)], check=True)
+        sp.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+        sp.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+        (root / "a.txt").write_text("x")
+        sp.run(["git", "-C", str(root), "add", "-A"], check=True)
+        sp.run(["git", "-C", str(root), "commit", "-qm", "init"], check=True)
+        if dirty:
+            (root / "a.txt").write_text("changed")
+        return root
+
+    def test_a_clean_repo_with_no_class_file_is_silent(self, tmp_path):
+        from live.health_check import check_deployment
+
+        assert check_deployment(self._repo(tmp_path)) == []
+
+    def test_uncommitted_changes_are_reported(self, tmp_path):
+        from live.health_check import check_deployment
+
+        alerts = check_deployment(self._repo(tmp_path, dirty=True))
+        assert [a.key for a in alerts] == ["uncommitted_changes"]
+        assert alerts[0].severity == WARNING
+
+    def test_classes_newer_than_the_running_loops_is_critical(self, tmp_path, monkeypatch):
+        """The real 2026-09-08 shape: checkout current, classes rebuilt
+        this morning, loops started two days ago."""
+        import time
+
+        from live import health_check
+
+        root = self._repo(tmp_path)
+        cls = root / health_check.CLASS_FILE
+        cls.write_text("class")
+        self._commit(root)
+        built = cls.stat().st_mtime
+        monkeypatch.setattr(
+            health_check, "_oldest_loop_start", lambda: built - 2 * 86400
+        )
+        alerts = health_check.check_deployment(root)
+        assert [a.key for a in alerts] == ["stale_running_code"]
+        assert alerts[0].severity == CRITICAL
+        assert "48.0 hours" in alerts[0].detail
+
+    def test_loops_newer_than_the_classes_is_silent(self, tmp_path, monkeypatch):
+        """The normal state after a deploy — and without this the check
+        above would pass on a constant `True`."""
+        from live import health_check
+
+        root = self._repo(tmp_path)
+        cls = root / health_check.CLASS_FILE
+        cls.write_text("class")
+        self._commit(root)
+        built = cls.stat().st_mtime
+        monkeypatch.setattr(health_check, "_oldest_loop_start", lambda: built + 60)
+        assert health_check.check_deployment(root) == []
+
+    def test_no_loop_running_is_not_a_stale_code_alert(self, tmp_path, monkeypatch):
+        """Liveness is a different check's job; reporting both for one
+        fact is how a history becomes unreadable."""
+        from live import health_check
+
+        root = self._repo(tmp_path)
+        (root / health_check.CLASS_FILE).write_text("class")
+        self._commit(root)
+        monkeypatch.setattr(health_check, "_oldest_loop_start", lambda: None)
+        assert health_check.check_deployment(root) == []
+
+    def test_a_non_repo_directory_does_not_crash(self, tmp_path):
+        """`_git` returns None on failure rather than raising, so a
+        deployment without git still gets its other checks."""
+        from live.health_check import check_deployment
+
+        assert check_deployment(tmp_path / "not-a-repo") == []

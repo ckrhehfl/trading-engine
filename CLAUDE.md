@@ -766,6 +766,25 @@ interpretations — `Discuss` makes this mandatory for R3-risk work; treat
 it as the default for everything else too, since a future session has
 only this file, not this session's judgment, to go on.
 
+**A Java change is not deployed until the loops restart, and whoever
+made it verifies that.** Added 2026-09-08 after the operator asked
+whether the fixes were reaching the VPS. They were not: the checkout was
+current, the classes had been rebuilt that morning, and both loops were
+still running code from two days earlier — and no dashboard, watchdog or
+log line could have reported it.
+
+Python and shell are exempt by construction: cron re-execs them every
+tick. A JVM keeps the classes it loaded at startup, so an OMS, Risk
+Gateway, adapter or `TradingLoop` fix does nothing until a restart.
+
+So a session that merges a change under `java/` is **not finished when
+the PR merges**. It must additionally run `scripts/vps-deploy.sh` — or
+confirm with the operator that they will — and check the result: both
+sessions up, and their start time later than the compiled classes.
+`live.health_check` reports the mismatch as `stale_running_code` between
+deploys, so the condition is visible rather than remembered; the check
+existing does not move the obligation off whoever made the change.
+
 Touch only what the task requires — no drive-by reformatting or adjacent
 refactors. This matters most in CODEOWNERS-matched paths (`java/`,
 `schemas/`, `configs/`, `.github/`), where an unrelated change makes an
@@ -887,7 +906,7 @@ confirms the misunderstanding rather than catching it.** Every category
 that did catch something is a form of stepping outside the thing just
 written.
 
-`python/research/change_check.py` implements seven checks on the same
+`python/research/change_check.py` implements eight checks on the same
 terms as `conclusion_check`: each carries the real incident that
 motivates it, and `require_no_blockers` raises rather than warns.
 
@@ -900,6 +919,7 @@ motivates it, and `require_no_blockers` raises rather than warns.
 | `check_no_shared_mutable_state` | two writers, one resource | both paper loops read the same signal file; a mock feed there meant 288 manufactured orders a day to a real venue |
 | `check_reported_from_actual` | a published figure taken from intent | Task C's `+45` was `−97` from real fills — 3x the effect, sign reversed |
 | `check_error_direction_declared` | urgency judged before direction | test pollution inflated `N` (safe); an unlogged run deflated it (unsafe) |
+| `check_java_change_deployed` | a merged Java fix that is not running | the checkout was current, the classes rebuilt that morning, and both loops still running code from two days earlier |
 
 **Three practices these encode, worth stating outside the code:**
 

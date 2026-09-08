@@ -74,6 +74,7 @@ __all__ = [
     "check_no_shared_mutable_state",
     "check_reported_from_actual",
     "check_error_direction_declared",
+    "check_java_change_deployed",
 ]
 
 
@@ -370,6 +371,55 @@ def check_reported_from_actual(
         scar=(
             "Task C's reported +45 gross edge was really -97 once rebuilt from "
             "fills; the gap was 3x the effect and reversed its sign."
+        ),
+    )
+
+
+def check_java_change_deployed(
+    *,
+    touched_java: bool,
+    loops_restarted_and_verified: bool = False,
+    how_verified: str = "",
+    check: str = "java_change_deployed",
+) -> Finding | None:
+    """A Java change is not deployed until the loops restart.
+
+    Pass `loops_restarted_and_verified=True` only after checking that
+    both tmux sessions came back **and** that their start time is later
+    than the compiled classes — not after merging the PR, and not after
+    a `git pull` on the box.
+
+    Scar, 2026-09-08: the operator asked whether the fixes were reaching
+    the VPS. They were not. The checkout was current, the classes had
+    been rebuilt that morning, and both loops were still running code
+    from **two days earlier** — and nothing in the system could have
+    reported it. Python and shell were live the whole time, because cron
+    re-execs them every tick; a JVM keeps the classes it loaded at
+    startup.
+
+    This check exists rather than only the CLAUDE.md sentence because
+    this module's whole premise is that a prose rule gets skipped and a
+    checklist item with a scar attached does not.
+    """
+    if not touched_java or loops_restarted_and_verified:
+        return None
+    return Finding(
+        check=check,
+        severity=BLOCKER,
+        message=(
+            "this change touches java/ and the loops have not been restarted"
+            + (f" ({how_verified})" if how_verified else "")
+            + ". Merging is not deploying: a JVM keeps the classes it loaded "
+            "at startup, so an OMS, Risk Gateway, adapter or TradingLoop fix "
+            "does nothing until the loop restarts. Run scripts/vps-deploy.sh "
+            "and confirm both sessions came back with a start time later than "
+            "the compiled classes."
+        ),
+        scar=(
+            "On 2026-09-08 the checkout was current, the classes had been "
+            "rebuilt that morning, and both loops were still running code from "
+            "two days earlier. It was found by the operator asking, not by any "
+            "check."
         ),
     )
 

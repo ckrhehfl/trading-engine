@@ -220,6 +220,40 @@ isn't running at all."
   (CLAUDE.md's "Safety guard: eliminate the configuration surface,
   don't validate it") — don't try to make it configurable.
 
+## 6b. Deploying a change — and why `git pull` alone is not enough
+
+```bash
+./scripts/vps-deploy.sh --check    # report only, change nothing
+./scripts/vps-deploy.sh            # deploy, ask before restarting
+./scripts/vps-deploy.sh --yes      # deploy and restart without asking
+```
+
+**Python and shell changes are live on their next cron tick.** Cron
+starts a fresh process every time, so a merged change to
+`live/generate_daily_signal.py`, `live/health_check.py` or any script
+runs as soon as the pull lands.
+
+**Java changes are not.** A JVM keeps the classes it loaded at startup,
+so a fix to the OMS, Risk Gateway, an adapter or the trading loop sits in
+the checkout doing nothing until the loop restarts.
+
+Found on 2026-09-08 by the operator asking whether the fixes were
+actually reaching the box. They were not: the checkout was current, the
+classes had been rebuilt that morning, and both loops were still running
+code from **two days earlier** — and no dashboard, watchdog or log line
+could have said so.
+
+`vps-deploy.sh` is idempotent and does the whole sequence: refuse to run
+on an unclean tree, fast-forward, rebuild, and restart **only if the
+running loops are older than the compiled classes**. It checks the VST
+account for open positions first, and asks before restarting, because a
+restart also resets that day's tick counters — which Gate A is measured
+from.
+
+`live.health_check` reports the same condition every 15 minutes as
+`stale_running_code`, so the state is visible without anyone remembering
+to look.
+
 ## 7. Checking on things day-to-day
 
 The fastest way to see both loops at a glance -- running status, return%
