@@ -722,6 +722,30 @@ class TestVenueQuantityStep:
         assert quantize_to_venue_step(Decimal("0.0231"), Decimal("0.0001")) == Decimal("0.0231")
         assert quantize_to_venue_step(Decimal("0.001"), Decimal("0.0001")) == Decimal("0.001")
 
+    def test_never_rounds_up_even_just_below_a_step_boundary(self):
+        """CodeRabbit's finding on PR #153, and a real bug.
+
+        `quantity / step` is evaluated under the current Decimal context
+        (28 significant digits) *before* ROUND_DOWN is applied, so a value
+        just under a step boundary is rounded up past it first and then
+        "truncated" to the higher step. The result asks for MORE exposure
+        than the risk limits approved for the original figure -- the one
+        direction this must never fail in.
+
+        Java does not catch it either: 0.0232 is a valid multiple of
+        0.0001, so `SteppedNotionalCalculator` accepts it. Both layers
+        agreeing on a wrong answer is exactly what defence in depth is not.
+        """
+        for raw in [
+            "0.023199999999999999999999999999",
+            "0.0231999999999999999999999999999999",
+            "0.99999999999999999999999999999999",
+        ]:
+            quantity = Decimal(raw)
+            result = quantize_to_venue_step(quantity, Decimal("0.0001"))
+            assert result <= quantity, f"{raw} -> {result}, which is larger than the input"
+            assert result % Decimal("0.0001") == 0
+
     def test_returns_zero_when_the_quantity_is_smaller_than_one_step(self):
         # The caller must treat this as "no order", never send it: a
         # zero-quantity order is rejected by the venue and by OrderIntent.

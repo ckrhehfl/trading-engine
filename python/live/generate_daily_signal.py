@@ -284,10 +284,70 @@ def quantize_to_venue_step(quantity: Decimal, step: Decimal) -> Decimal:
     caller must treat that as "no order" rather than sending it -- a
     zero-quantity order is rejected by `OrderIntent`'s own validation and
     by the venue.
+
+    ## Why this is integer arithmetic and not `quantity / step`
+
+    The obvious form, `(quantity / step).to_integral_value(ROUND_DOWN)`,
+    is wrong in the one direction that matters. `Decimal` division is
+    evaluated under the active context's precision (28 significant digits
+    by default) *before* `ROUND_DOWN` sees it, so a quantity just below a
+    step boundary is first rounded **up** past it and then "truncated" to
+    the higher step:
+
+        0.023199999999999999999999999999 / 0.0001
+          -> 232.00000000000000000000000000   (28-digit context)
+          -> 0.0232                           (larger than the input)
+
+    That asks for more exposure than the risk limits approved for the
+    original figure. Java does not catch it either -- 0.0232 is a valid
+    multiple of 0.0001, so `SteppedNotionalCalculator` accepts it, and
+    both layers agree on a wrong answer.
+
+    Found by CodeRabbit on PR #153. Scaling both operands to exact
+    integers first removes the context from the calculation entirely.
     """
     if step <= 0:
         raise ValueError(f"step must be positive, got {step}")
-    return (quantity / step).to_integral_value(rounding=ROUND_DOWN) * step
+    if quantity <= 0:
+        return Decimal(0)
+
+    scaled_quantity, scaled_step, _scale = _to_common_integer_scale(quantity, step)
+    whole_steps = scaled_quantity // scaled_step  # exact int floor division
+    if whole_steps <= 0:
+        return Decimal(0)
+
+    # Rendered at the *step's* own scale, not at the common scale used for
+    # the division. Both carry the same value, but `str()` is what reaches
+    # the venue: at the common scale a 28-digit input yields
+    # "2.174600000000000000000000000" -- numerically correct and, having
+    # just been burned by a venue's own parsing of a long decimal, not
+    # something to hand BingX again on the assumption it will cope.
+    step_exponent = step.as_tuple().exponent
+    return _from_integer_scale(whole_steps * _to_integer_scale(step, -step_exponent), -step_exponent)
+
+
+def _to_common_integer_scale(a: Decimal, b: Decimal) -> tuple[int, int, int]:
+    """`a` and `b` as exact ints sharing one decimal scale, plus that scale.
+
+    Built from `as_tuple()` rather than by multiplying, because a
+    multiplication would reintroduce the very context rounding this exists
+    to avoid.
+    """
+    scale = -min(a.as_tuple().exponent, b.as_tuple().exponent, 0)
+    return _to_integer_scale(a, scale), _to_integer_scale(b, scale), scale
+
+
+def _to_integer_scale(value: Decimal, scale: int) -> int:
+    sign, digits, exponent = value.as_tuple()
+    shift = exponent + scale
+    if shift < 0:  # pragma: no cover - `scale` is chosen to make this impossible
+        raise ValueError(f"scale {scale} is too coarse for {value}")
+    magnitude = int("".join(str(d) for d in digits)) * 10**shift
+    return -magnitude if sign else magnitude
+
+
+def _from_integer_scale(value: int, scale: int) -> Decimal:
+    return Decimal(value).scaleb(-scale) if scale else Decimal(value)
 
 
 DEFAULT_FETCH_BARS = 300

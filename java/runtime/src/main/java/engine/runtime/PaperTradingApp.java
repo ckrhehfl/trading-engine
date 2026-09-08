@@ -459,7 +459,7 @@ public final class PaperTradingApp {
         this.tradingCalendar = new AlwaysOpenTradingCalendar();
 
         RiskGateway riskGateway =
-                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
+                new RiskGateway(RiskLimits.canary(), resolveNotionalCalculatorForSymbol(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = new PaperBroker(FEE_BPS, SLIPPAGE_BPS);
@@ -535,7 +535,7 @@ public final class PaperTradingApp {
         this.tradingCalendar = new AlwaysOpenTradingCalendar();
 
         RiskGateway riskGateway =
-                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
+                new RiskGateway(RiskLimits.canary(), resolveNotionalCalculatorForSymbol(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -606,7 +606,7 @@ public final class PaperTradingApp {
         this.tradingCalendar = tradingCalendar;
 
         RiskGateway riskGateway =
-                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
+                new RiskGateway(RiskLimits.canary(), resolveNotionalCalculatorForSymbol(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -685,7 +685,7 @@ public final class PaperTradingApp {
         this.tradingCalendar = tradingCalendar;
 
         RiskGateway riskGateway =
-                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
+                new RiskGateway(RiskLimits.canary(), resolveNotionalCalculatorForSymbol(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -770,7 +770,7 @@ public final class PaperTradingApp {
         this.tradingCalendar = tradingCalendar;
 
         RiskGateway riskGateway =
-                new RiskGateway(RiskLimits.canary(), resolveBingXNotionalCalculator(symbol));
+                new RiskGateway(RiskLimits.canary(), resolveNotionalCalculatorForSymbol(symbol));
         this.orderStore = new OrderStore();
         OrderPipeline orderPipeline = new OrderPipeline(riskGateway, this.orderStore);
         this.orderExecutor = orderExecutor;
@@ -1440,9 +1440,18 @@ public final class PaperTradingApp {
     static final java.math.BigDecimal BINGX_BTC_USDT_QUANTITY_STEP = new java.math.BigDecimal("0.0001");
 
     /**
-     * The {@link NotionalCalculator} for a BingX symbol, resolved from the
+     * The {@link NotionalCalculator} for {@code symbol}, resolved from the
      * symbol itself and <strong>failing closed</strong> for any symbol whose
-     * real step this project has not verified.
+     * real quantity shape this project has not verified.
+     *
+     * <p>Deliberately not named for a venue: the constructors that call it
+     * take {@code PriceFeed}, {@code TradingCalendar} and {@code
+     * AccountStateProvider} — the very seams extracted so a second venue
+     * could reuse them — so a venue-specific name and error message here
+     * would misdirect the next caller. A venue whose instrument is not a
+     * decimal-step one at all (KOSPI200 futures trade in whole contracts)
+     * belongs on the overload that takes a {@link NotionalCalculator}
+     * explicitly, which is what {@code forKisPaper()} already uses.
      *
      * <p>Exists because {@link engine.risk.SimpleNotionalCalculator}, which
      * every BingX loop used until 2026-09-08, accepts a quantity of any
@@ -1458,17 +1467,19 @@ public final class PaperTradingApp {
      * {@code size} up first, which is the discipline that would have
      * prevented this.
      */
-    static NotionalCalculator resolveBingXNotionalCalculator(String symbol) {
+    static NotionalCalculator resolveNotionalCalculatorForSymbol(String symbol) {
         if (DEFAULT_SYMBOL.equals(symbol)) {
             return new engine.risk.SteppedNotionalCalculator(BINGX_BTC_USDT_QUANTITY_STEP);
         }
         throw new IllegalStateException(
-                "no verified BingX quantity step for symbol '"
+                "no verified quantity shape for symbol '"
                         + symbol
                         + "' -- refusing to start rather than accept a quantity of any precision,"
                         + " which is what let a 29-digit quantity reach a real venue on 2026-09-08"
-                        + " (see GitHub issue #151). Look up the symbol's own `size` from"
-                        + " /openApi/swap/v2/quote/contracts and add it here.");
+                        + " (see GitHub issue #151). Either add this symbol's real quantity step"
+                        + " here, or construct PaperTradingApp through the overload that takes a"
+                        + " NotionalCalculator explicitly -- which is what forKisPaper() does,"
+                        + " since a KOSPI200 contract's shape is a whole count, not a decimal step.");
     }
 
     static NotionalCalculator resolveKisNotionalCalculator(KisPriceFeed.MarketDivision marketDivision) {
