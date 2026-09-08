@@ -143,6 +143,29 @@ fi
 printf '\n=== restart needed ===\n'
 say "the running loops are older than the compiled classes"
 
+# What would a restart actually buy? Asked because the first real use of
+# this script, 2026-09-08, found the answer was "nothing": the loops were
+# 40 hours stale, and the only Java that had changed was a standalone
+# diagnostic class with its own `main` that the loop never loads, plus a
+# package-private accessor only that class calls.
+#
+# That matters because a restart is not free -- it resets the day's tick
+# counters, which Gate A is measured from, and it re-arms a loop whose
+# kill switch is in-memory. Restarting to pick up a change that cannot
+# affect the running graph pays that cost for nothing.
+#
+# This lists the commits rather than judging them: deciding whether a
+# diff reaches the loop's own object graph is a reading task, not a
+# `grep`. Printing the list is what turns it from an investigation into
+# a glance.
+printf '\n  Java commits the running loops do not have:\n'
+if ! git log --oneline --since="@$LOOP_START" -- java/ | sed 's/^/    /'; then
+    say "(could not list them -- check by hand before restarting)"
+fi
+printf '\n  Read that list before answering. If every entry is a test, a\n'
+printf '  doc, or a class the loop never loads, a restart changes nothing\n'
+printf '  and costs a tick-counter reset.\n'
+
 # A restart while a position is open is a different risk from a restart
 # while flat: the loop comes back and reconciles against a venue state it
 # did not create. Surfaced rather than blocked, because refusing outright
@@ -156,6 +179,28 @@ if [[ -n "${BINGX_API_KEY:-}" && -n "${BINGX_API_SECRET:-}" && -s var/live/runti
 else
     say "BINGX_API_KEY/SECRET not exported, so the account was NOT checked."
     say "Export both and re-run if you want the position check before restarting."
+fi
+
+# The hazard that is easiest to miss, because nothing on the box states
+# it: `KillSwitch` is constructed with `new KillSwitch()` and is never
+# persisted, and `OrderStore` is in-memory too. So a restart clears both
+# -- a tripped switch comes back **untripped** unless `VstPreflight`
+# independently decides to trip it (a pre-existing non-zero position) or
+# an unresolved submission marker is found.
+#
+# Found on 2026-09-08: the VST loop was halted with its switch tripped,
+# re-tripping every tick on an orphaned order. Restarting it would have
+# cleared the orphan, come back untripped, and re-armed a loop whose
+# quantity-precision defect was still unfixed -- turning a contained
+# incident back into a live one, silently, as a side effect of a deploy.
+if grep -q 'paper-trading-vst' <<<"${SESSIONS[*]}"; then
+    printf '\n'
+    say "NOTE: the kill switch and the order store are both in-memory."
+    say "A restart clears them. If a loop is currently halted -- tripped"
+    say "switch, orphaned order -- it comes back ARMED unless preflight"
+    say "finds an open position or an unresolved marker."
+    say "Do not restart a venue-connected loop to pick up an unrelated"
+    say "change while the defect that halted it is still unfixed."
 fi
 
 if [[ "$ASSUME_YES" -eq 0 ]]; then
