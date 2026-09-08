@@ -209,6 +209,32 @@ multiple of the step.
 getting it wrong is "no order" rather than "wrong order", and it needs no
 new decision-making inside `RiskGateway`.
 
+### Option C is already demonstrated, not merely proposed
+
+Verified while writing this, and it is the strongest argument for C.
+`RiskGateway.evaluate()` calls the hook in its main path, before any
+notional math:
+
+```java
+// RiskGateway.java:81
+Optional<String> quantityRejection = notionalCalculator.quantityRejectionReason(intent);
+if (quantityRejection.isPresent()) {
+    return reject(intent, quantityRejection.get());
+}
+```
+
+And `FixedMultiplierNotionalCalculator` — the KIS/KOSPI200 implementation
+from PR #105 — **already uses it to reject a fractional quantity**, with
+its own tests (`quantityRejectionReasonRejectsFractionalQuantity`,
+`quantityRejectionReasonAcceptsWholeQuantityIncludingTrailingZeroForm`).
+
+So Option C is not a new mechanism. It is the same mechanism, already
+built, already tested, already running for one venue, applied to a
+second. The BTC-USDT case differs only in that its valid shape is "a
+multiple of 0.0001" rather than "a whole number". `SimpleNotionalCalculator`
+is the one implementation that opted out of the check, and that opt-out
+is the defect.
+
 ---
 
 ## 6. Open questions a decision must also answer
