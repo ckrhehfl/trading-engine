@@ -813,6 +813,66 @@ class TestDeploymentCheck:
         monkeypatch.setattr(health_check, "_oldest_loop_start", lambda: built + 60)
         assert health_check.check_deployment(root) == []
 
+    def test_java_source_newer_than_the_classes_is_critical(self, tmp_path, monkeypatch):
+        """A `git pull` that brings Java source but no rebuild.
+
+        Found for real on 2026-09-08: PR #153's Risk Gateway fix was
+        merged and pulled onto the VPS, and `check_deployment` reported
+        the same "38.8 hours" it had reported before the pull — because it
+        only ever compared *classes* to the running loops. Source that is
+        newer than the classes it was supposed to produce was invisible.
+
+        That is the same "the running code is not the deployed code"
+        failure this whole check exists for, one layer up:
+
+            merged but not pulled    -> the deploy script's fetch
+            pulled but not compiled  -> THIS
+            compiled but not running -> stale_running_code
+        """
+        import os
+
+        from live import health_check
+
+        root = self._repo(tmp_path)
+        cls = root / health_check.CLASS_FILE
+        cls.write_text("class")
+        src = root / "java/risk/src/main/java/engine/risk/RiskGateway.java"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("class RiskGateway {}")
+        self._commit(root)
+
+        built = cls.stat().st_mtime
+        os.utime(src, (built + 300, built + 300))
+        # Loops are newer than the classes, so the existing check is silent
+        # and only the new one can fire.
+        monkeypatch.setattr(health_check, "_oldest_loop_start", lambda: built + 60)
+
+        alerts = health_check.check_deployment(root)
+        assert [a.key for a in alerts] == ["unbuilt_java_source"]
+        assert alerts[0].severity == CRITICAL
+        assert "RiskGateway.java" in alerts[0].detail
+
+    def test_java_source_older_than_the_classes_is_silent(self, tmp_path, monkeypatch):
+        """The normal state after a build — without this the check above
+        would pass on a constant `True`."""
+        import os
+
+        from live import health_check
+
+        root = self._repo(tmp_path)
+        src = root / "java/risk/src/main/java/engine/risk/RiskGateway.java"
+        src.parent.mkdir(parents=True, exist_ok=True)
+        src.write_text("class RiskGateway {}")
+        cls = root / health_check.CLASS_FILE
+        cls.write_text("class")
+        self._commit(root)
+
+        built = cls.stat().st_mtime
+        os.utime(src, (built - 300, built - 300))
+        monkeypatch.setattr(health_check, "_oldest_loop_start", lambda: built + 60)
+
+        assert health_check.check_deployment(root) == []
+
     def test_no_loop_running_is_not_a_stale_code_alert(self, tmp_path, monkeypatch):
         """Liveness is a different check's job; reporting both for one
         fact is how a history becomes unreadable."""
