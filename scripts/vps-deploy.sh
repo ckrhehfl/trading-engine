@@ -174,36 +174,61 @@ say "the running loops are older than the compiled classes"
 # timestamp form remains only as a fallback for a loop started before
 # that recording existed -- labelled, because an incomplete list read as
 # a complete one is worse than no list.
-LAUNCH_COMMIT=""
+# Per session, never merged into one range. An earlier version took the
+# "oldest" launch SHA across sessions using `merge-base --is-ancestor`,
+# which is only meaningful when the two are on the same line of history.
+# If they are not -- one session started from a branch, the other from
+# main -- neither is an ancestor of the other, the loop picks one
+# arbitrarily, and the commits the *other* session is missing vanish from
+# the list. CodeRabbit raised this on PR #150.
+#
+# Printing per session is also simply more useful: it says which loop is
+# missing what, rather than a union that names neither.
+printf '\n  Java commits each running loop does not have:\n'
+ANY_RECORDED=0
 for s in "${SESSIONS[@]}"; do
     f="var/live/sessions/${s}.commit"
-    [[ -r "$f" ]] || continue
-    sha="$(tr -d '[:space:]' < "$f")"
-    git cat-file -e "${sha}^{commit}" 2>/dev/null || continue
-    # The oldest launch commit across the sessions is the conservative
-    # choice: it can list a commit one session already has, never omit
-    # one that some session is missing.
-    if [[ -z "$LAUNCH_COMMIT" ]] || ! git merge-base --is-ancestor "$LAUNCH_COMMIT" "$sha" 2>/dev/null; then
-        LAUNCH_COMMIT="$sha"
+    sha=""
+    if [[ -r "$f" ]]; then
+        sha="$(tr -d '[:space:]' < "$f")"
+        git cat-file -e "${sha}^{commit}" 2>/dev/null || sha=""
+    fi
+
+    if [[ -z "$sha" ]]; then
+        say ""
+        say "$s: no launch commit recorded, falling back to TIMESTAMP"
+        git log --oneline --since="@$LOOP_START" -- java/ | sed 's/^/      /' \
+            || say "      (could not list them -- check by hand)"
+        continue
+    fi
+
+    ANY_RECORDED=1
+    say ""
+    say "$s (launched at ${sha:0:7}):"
+    if [[ -z "$(git log --oneline "${sha}..HEAD" -- java/)" ]]; then
+        say "      (none)"
+    else
+        git log --oneline "${sha}..HEAD" -- java/ | sed 's/^/      /'
     fi
 done
 
-printf '\n  Java commits the running loops do not have:\n'
-if [[ -n "$LAUNCH_COMMIT" ]]; then
-    git log --oneline "${LAUNCH_COMMIT}..HEAD" -- java/ | sed 's/^/    /' \
-        || say "(could not list them -- check by hand before restarting)"
+if [[ "$ANY_RECORDED" -eq 0 ]]; then
     say ""
-    say "(by recorded launch commit ${LAUNCH_COMMIT:0:7} -- exact)"
-else
-    git log --oneline --since="@$LOOP_START" -- java/ | sed 's/^/    /' \
-        || say "(could not list them -- check by hand before restarting)"
-    say ""
-    say "WARNING: no launch commit was recorded for these sessions, so"
-    say "this list is by TIMESTAMP and can MISS a commit whose date does"
-    say "not reflect when it was merged. Treat it as a hint, never as"
-    say "grounds to skip a restart. Restarting once more than needed is"
+    say "WARNING: no launch commit was recorded for any session, so the"
+    say "lists above are by TIMESTAMP and can MISS a commit whose date"
+    say "does not reflect when it was merged. Treat them as a hint, never"
+    say "as grounds to skip a restart. Restarting once more than needed is"
     say "cheap; running stale Risk Gateway or OMS code is not."
 fi
+
+say ""
+say "NOTE: a recorded SHA is the checkout at launch, which is not the same"
+say "thing as what the JVM loaded -- classes built from an older commit"
+say "would make it optimistic. health_check's own unbuilt_java_source"
+say "covers that gap separately. These lists are a hint for the question"
+say "below; the restart decision itself is made from the class file's own"
+say "mtime, which is artifact-based and unaffected by any of this."
+
 printf '\n  Read that list before answering. If every entry is a test, a\n'
 printf '  doc, or a class the loop never loads, a restart changes nothing\n'
 printf '  and costs a tick-counter reset. If the list is empty and came\n'

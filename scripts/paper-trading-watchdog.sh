@@ -215,15 +215,24 @@ MOCK_SIGNAL_PATH="var/live/signals/_mock/latest.json"
 #
 # Written after the session is up, not before: a file claiming a session
 # runs commit X when the launch failed is worse than no file.
+# The checkout SHA, read ONCE before any session is started.
+#
+# Read before rather than after, because `tmux new-session -d` returns as
+# soon as the session is detached: a `git merge` landing between the
+# launch and a later `rev-parse` would record a SHA the JVM never saw.
+# CodeRabbit raised this on PR #150 and the window is real -- this script
+# runs from cron every 5 minutes and `vps-deploy.sh` calls it directly,
+# so it genuinely can overlap a checkout.
+LAUNCH_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
+
 record_launch_commit() {
-    local session="$1" sha
-    sha="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || true)"
-    if [[ -z "$sha" ]]; then
+    local session="$1"
+    if [[ -z "$LAUNCH_SHA" ]]; then
         log "WARNING: could not resolve HEAD; $session has no recorded launch commit"
         return 0
     fi
-    printf '%s\n' "$sha" > "$REPO_ROOT/$SESSION_LOG_DIR/${session}.commit"
-    log "$session launched from $sha"
+    printf '%s\n' "$LAUNCH_SHA" > "$REPO_ROOT/$SESSION_LOG_DIR/${session}.commit"
+    log "$session launched from $LAUNCH_SHA"
 }
 
 start_simulated() {
