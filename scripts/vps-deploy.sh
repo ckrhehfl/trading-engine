@@ -143,6 +143,98 @@ fi
 printf '\n=== restart needed ===\n'
 say "the running loops are older than the compiled classes"
 
+# What would a restart actually buy? Asked because the first real use of
+# this script, 2026-09-08, found the answer was "nothing": the loops were
+# 40 hours stale, and the only Java that had changed was a standalone
+# diagnostic class with its own `main` that the loop never loads, plus a
+# package-private accessor only that class calls.
+#
+# That matters because a restart is not free -- it resets the day's tick
+# counters, which Gate A is measured from, and it re-arms a loop whose
+# kill switch is in-memory. Restarting to pick up a change that cannot
+# affect the running graph pays that cost for nothing.
+#
+# This lists the commits rather than judging them: deciding whether a
+# diff reaches the loop's own object graph is a reading task, not a
+# `grep`. Printing the list is what turns it from an investigation into
+# a glance.
+#
+# Two ways to compute it, and they are not equally trustworthy.
+#
+# The first version used `git log --since=<loop start time>` alone, which
+# compares commit *dates*. That is accurate for this repo's squash-merge
+# workflow -- a squash commit's date is its merge time -- and silently
+# wrong for a cherry-pick, a force-push, or a rebase that rewrites dates.
+# CodeRabbit flagged it on PR #150 and was right: a commit missing from
+# this list is a Java change that never reaches the loop, which is the
+# exact failure this whole script exists to stop.
+#
+# So the watchdog now records the launch commit per session, and the
+# range below is computed from that identity when it is available. The
+# timestamp form remains only as a fallback for a loop started before
+# that recording existed -- labelled, because an incomplete list read as
+# a complete one is worse than no list.
+# Per session, never merged into one range. An earlier version took the
+# "oldest" launch SHA across sessions using `merge-base --is-ancestor`,
+# which is only meaningful when the two are on the same line of history.
+# If they are not -- one session started from a branch, the other from
+# main -- neither is an ancestor of the other, the loop picks one
+# arbitrarily, and the commits the *other* session is missing vanish from
+# the list. CodeRabbit raised this on PR #150.
+#
+# Printing per session is also simply more useful: it says which loop is
+# missing what, rather than a union that names neither.
+printf '\n  Java commits each running loop does not have:\n'
+ANY_RECORDED=0
+for s in "${SESSIONS[@]}"; do
+    f="var/live/sessions/${s}.commit"
+    sha=""
+    if [[ -r "$f" ]]; then
+        sha="$(tr -d '[:space:]' < "$f")"
+        git cat-file -e "${sha}^{commit}" 2>/dev/null || sha=""
+    fi
+
+    if [[ -z "$sha" ]]; then
+        say ""
+        say "$s: no launch commit recorded, falling back to TIMESTAMP"
+        git log --oneline --since="@$LOOP_START" -- java/ | sed 's/^/      /' \
+            || say "      (could not list them -- check by hand)"
+        continue
+    fi
+
+    ANY_RECORDED=1
+    say ""
+    say "$s (launched at ${sha:0:7}):"
+    if [[ -z "$(git log --oneline "${sha}..HEAD" -- java/)" ]]; then
+        say "      (none)"
+    else
+        git log --oneline "${sha}..HEAD" -- java/ | sed 's/^/      /'
+    fi
+done
+
+if [[ "$ANY_RECORDED" -eq 0 ]]; then
+    say ""
+    say "WARNING: no launch commit was recorded for any session, so the"
+    say "lists above are by TIMESTAMP and can MISS a commit whose date"
+    say "does not reflect when it was merged. Treat them as a hint, never"
+    say "as grounds to skip a restart. Restarting once more than needed is"
+    say "cheap; running stale Risk Gateway or OMS code is not."
+fi
+
+say ""
+say "NOTE: a recorded SHA is the checkout at launch, which is not the same"
+say "thing as what the JVM loaded -- classes built from an older commit"
+say "would make it optimistic. health_check's own unbuilt_java_source"
+say "covers that gap separately. These lists are a hint for the question"
+say "below; the restart decision itself is made from the class file's own"
+say "mtime, which is artifact-based and unaffected by any of this."
+
+printf '\n  Read that list before answering. If every entry is a test, a\n'
+printf '  doc, or a class the loop never loads, a restart changes nothing\n'
+printf '  and costs a tick-counter reset. If the list is empty and came\n'
+printf '  from the timestamp fallback, that is not the same as "nothing\n'
+printf '  changed" -- prefer restarting.\n'
+
 # A restart while a position is open is a different risk from a restart
 # while flat: the loop comes back and reconciles against a venue state it
 # did not create. Surfaced rather than blocked, because refusing outright
@@ -156,6 +248,28 @@ if [[ -n "${BINGX_API_KEY:-}" && -n "${BINGX_API_SECRET:-}" && -s var/live/runti
 else
     say "BINGX_API_KEY/SECRET not exported, so the account was NOT checked."
     say "Export both and re-run if you want the position check before restarting."
+fi
+
+# The hazard that is easiest to miss, because nothing on the box states
+# it: `KillSwitch` is constructed with `new KillSwitch()` and is never
+# persisted, and `OrderStore` is in-memory too. So a restart clears both
+# -- a tripped switch comes back **untripped** unless `VstPreflight`
+# independently decides to trip it (a pre-existing non-zero position) or
+# an unresolved submission marker is found.
+#
+# Found on 2026-09-08: the VST loop was halted with its switch tripped,
+# re-tripping every tick on an orphaned order. Restarting it would have
+# cleared the orphan, come back untripped, and re-armed a loop whose
+# quantity-precision defect was still unfixed -- turning a contained
+# incident back into a live one, silently, as a side effect of a deploy.
+if grep -q 'paper-trading-vst' <<<"${SESSIONS[*]}"; then
+    printf '\n'
+    say "NOTE: the kill switch and the order store are both in-memory."
+    say "A restart clears them. If a loop is currently halted -- tripped"
+    say "switch, orphaned order -- it comes back ARMED unless preflight"
+    say "finds an open position or an unresolved marker."
+    say "Do not restart a venue-connected loop to pick up an unrelated"
+    say "change while the defect that halted it is still unfixed."
 fi
 
 if [[ "$ASSUME_YES" -eq 0 ]]; then
