@@ -823,6 +823,49 @@ day and calling it "scalping" — passes all six cleanly. That failure mode
 needs someone asking whether the measurement matches the world, which is
 what the human checkpoints below are for.
 
+### Comparison runs — a reporting category, human-approved 2026-09-07
+
+Gate A's rule that **"a policy failing it is reported as failing, and no
+statistical result is quoted in its favour"** was written for a
+*candidate evaluation*: is this strategy good enough to promote? Its
+scar is real — the scalping arc repeatedly produced high PSR figures on
+runs that were already cost-disqualified, and a number on screen gets
+quoted whatever is written beside it.
+
+Applied to a **comparison** it blocks the finding instead. Trade
+Management Task D fixed one entry and varied only management across six
+policies; four failed Gate A, so the run answered its commissioned
+question — *how much does management change the outcome, and in which
+direction* — and the reporting rule forbade most of the answer. What was
+lost concretely: the trailing-versus-scaling trade-off, the clearest
+confirmation of a practitioner claim this project has produced.
+
+**A comparison run may report every policy's figures**, provided all
+three hold:
+
+1. the pre-registration **declares it a comparison run before any data
+   access**, and names the axis being varied and what is held fixed;
+2. **no policy may be promoted, advanced to a holdout, or put forward as
+   a candidate on the strength of that run** — a comparison establishes
+   which rule is better on this data, never that any of them is good
+   enough;
+3. a policy later proposed as a candidate must **clear Gate A on its own
+   terms**, in its own registration, and the comparison run counts
+   toward its `N`.
+
+The scar's protection is intact: nothing gets promoted on a flattering
+statistic, because a comparison run cannot promote anything at all.
+What changes is only that its losers may be named with their numbers,
+which is what makes it a comparison rather than a verdict.
+
+**Why this rather than judgement at write-up time**: the alternative
+considered was "quote everything provided no failing policy is described
+as a candidate", which needs a judgement call made *after* seeing which
+reading flatters the write-up. Task D produced exactly that situation —
+the author of the rule wanted the looser reading — so the condition is
+pinned in the registration instead, where it is fixed before any result
+exists.
+
 ### Change checks — the engineering counterpart, added 2026-09-06
 
 `conclusion_check.py` exists because research conclusions kept carrying
