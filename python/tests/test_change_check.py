@@ -21,6 +21,7 @@ from research.change_check import (
     check_error_direction_declared,
     check_guard_fails_when_removed,
     check_guard_is_an_allowlist,
+    check_java_change_deployed,
     check_no_shared_mutable_state,
     check_readonly_path_is_pure,
     check_reported_from_actual,
@@ -255,6 +256,28 @@ class TestErrorDirectionDeclared:
         ) is not None
 
 
+class TestJavaChangeDeployed:
+    def test_catches_the_real_case(self):
+        """2026-09-08: checkout current, classes rebuilt that morning,
+        both loops still running code from two days earlier."""
+        finding = check_java_change_deployed(touched_java=True)
+        assert finding is not None and finding.severity == BLOCKER
+        assert "Merging is not deploying" in finding.message
+
+    def test_passes_once_the_restart_was_verified(self):
+        assert check_java_change_deployed(
+            touched_java=True,
+            loops_restarted_and_verified=True,
+            how_verified="vps-deploy.sh; both sessions newer than the build",
+        ) is None
+
+    def test_a_change_that_touches_no_java_is_not_flagged(self):
+        """Python and shell are live on the next cron tick, so demanding
+        a restart for them would be a false positive — and a checklist
+        that cries wolf is one people stop running."""
+        assert check_java_change_deployed(touched_java=False) is None
+
+
 class TestHarness:
     def test_require_no_blockers_raises_rather_than_warning(self):
         """Same reasoning as conclusion_check: a warning printed above a
@@ -281,7 +304,7 @@ class TestHarness:
         import research.change_check as cc
 
         checks = [getattr(cc, n) for n in cc.__all__ if n.startswith("check_")]
-        assert len(checks) == 7
+        assert len(checks) == 8
         for fn in checks:
             doc = fn.__doc__ or ""
             assert "Scar" in doc or "scar" in doc, (

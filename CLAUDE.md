@@ -906,7 +906,7 @@ confirms the misunderstanding rather than catching it.** Every category
 that did catch something is a form of stepping outside the thing just
 written.
 
-`python/research/change_check.py` implements seven checks on the same
+`python/research/change_check.py` implements eight checks on the same
 terms as `conclusion_check`: each carries the real incident that
 motivates it, and `require_no_blockers` raises rather than warns.
 
@@ -919,6 +919,7 @@ motivates it, and `require_no_blockers` raises rather than warns.
 | `check_no_shared_mutable_state` | two writers, one resource | both paper loops read the same signal file; a mock feed there meant 288 manufactured orders a day to a real venue |
 | `check_reported_from_actual` | a published figure taken from intent | Task C's `+45` was `−97` from real fills — 3x the effect, sign reversed |
 | `check_error_direction_declared` | urgency judged before direction | test pollution inflated `N` (safe); an unlogged run deflated it (unsafe) |
+| `check_java_change_deployed` | a merged Java fix that is not running | the checkout was current, the classes rebuilt that morning, and both loops still running code from two days earlier |
 
 **Three practices these encode, worth stating outside the code:**
 
