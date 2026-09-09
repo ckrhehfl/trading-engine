@@ -10,6 +10,7 @@ import engine.exchange.ExchangeException;
 import engine.exchange.PositionSnapshot;
 import engine.schemas.Side;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -282,6 +283,44 @@ class VstPreflightTest {
                 IllegalStateException.class,
                 () -> VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP));
         assertEquals(1, adapter.balanceCallCount(), "a safety refusal must not be retried");
+    }
+
+    @Test
+    void runWithRetryWaitsLongEnoughForBingXsOwnSigningWindow() {
+        // NO_SLEEP discards the delay, so without this the 6s constant could
+        // drift below BingX's 5s signing window -- the exact thing the wait
+        // exists to outlast -- and every other test here would still pass.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailBalanceTimesThenRecover(1, new ExchangeException("transient"));
+
+        List<Long> waits = new ArrayList<>();
+        VstPreflight.runWithRetry(adapter, SYMBOL, 3, waits::add);
+
+        assertEquals(List.of(VstPreflight.DEFAULT_RETRY_DELAY_MILLIS), waits);
+        assertTrue(
+                VstPreflight.DEFAULT_RETRY_DELAY_MILLIS >= 5_000L,
+                "BingX rejects a request arriving more than 5s after its timestamp;"
+                        + " a shorter wait can retry straight back into the same window");
+    }
+
+    @Test
+    void runWithRetryRetriesOnlyExchangeFailures() {
+        // The safety-relevant half of the contract. IllegalStateException is
+        // covered above as the not-a-demo-account refusal, but that is one
+        // RuntimeException among many -- widening the catch to RuntimeException
+        // would retry a NullPointerException or a bug, and nothing else here
+        // would notice.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailBalanceTimesThenRecover(1, new IllegalArgumentException("not a venue failure"));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP));
+        assertEquals(1, adapter.balanceCallCount(), "only an ExchangeException may be retried");
     }
 
     @Test

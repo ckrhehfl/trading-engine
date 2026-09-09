@@ -327,11 +327,14 @@ while IFS= read -r raw; do
     [[ "$line" == \#* ]] && continue           # a comment, wherever it was indented
     [[ -z "$line" ]] && continue
 
-    # The watchdog's own entry ends the region that applies to it.
-    if [[ "$line" == *"paper-trading-watchdog.sh"* ]]; then
-        break
-    fi
-
+    # Assignments are parsed FIRST, before anything is tested against the
+    # watchdog's name. A valid assignment can legitimately contain that
+    # name in its value -- `PAPER_TRADING_WATCHDOG_COMMAND=paper-trading-
+    # watchdog.sh` -- and testing for the job entry first would treat it
+    # as the entry, end the region, and drop every assignment after it.
+    # CodeRabbit raised it on PR #155; it is the same shape as the
+    # indented-comment bug one round earlier, which is why the order
+    # matters rather than the pattern.
     if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
         key="${BASH_REMATCH[1]}"
         value="${BASH_REMATCH[2]}"
@@ -344,6 +347,13 @@ while IFS= read -r raw; do
             value="${value:1:${#value}-2}"
         fi
         CRON_ENV_BY_KEY["$key"]="$key=$value"
+        continue
+    fi
+
+    # Only a non-assignment line can be the watchdog's own cron entry,
+    # and that entry ends the region that applies to it.
+    if [[ "$line" == *"paper-trading-watchdog.sh"* ]]; then
+        break
     fi
 done < <(crontab -l 2>/dev/null || true)
 

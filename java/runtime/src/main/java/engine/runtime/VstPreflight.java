@@ -176,6 +176,12 @@ public final class VstPreflight {
                         sleeper.sleep(DEFAULT_RETRY_DELAY_MILLIS);
                     } catch (InterruptedException interrupted) {
                         Thread.currentThread().interrupt();
+                        // Both facts survive: the venue error that caused the
+                        // retry, and the interrupt that stopped it. Restoring
+                        // the flag alone loses the shutdown signal from the
+                        // exception chain, leaving a caller unable to tell an
+                        // exchange outage from a deliberate stop.
+                        e.addSuppressed(interrupted);
                         throw e;
                     }
                 }
