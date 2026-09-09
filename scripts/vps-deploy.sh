@@ -314,6 +314,7 @@ sleep 3
 # undo the very thing this block exists to get right. CodeRabbit raised
 # it on PR #155.
 declare -A CRON_ENV_BY_KEY=()
+WATCHDOG_ENTRY_FOUND=0
 while IFS= read -r raw; do
     # Normalise the way cron reads a line before deciding anything about
     # it. crontab(5) allows leading whitespace, spaces around the `=`, and
@@ -353,9 +354,25 @@ while IFS= read -r raw; do
     # Only a non-assignment line can be the watchdog's own cron entry,
     # and that entry ends the region that applies to it.
     if [[ "$line" == *"paper-trading-watchdog.sh"* ]]; then
+        WATCHDOG_ENTRY_FOUND=1
         break
     fi
 done < <(crontab -l 2>/dev/null || true)
+
+# Without a watchdog entry there is no "before the job" to speak of, and
+# the loop above has just read the whole file -- collecting assignments
+# that belong to other jobs, which is the exact confusion this block
+# exists to prevent. A crontab in that state is possible whenever cron
+# installation was skipped. Discard and take the warning path: starting
+# from this shell's environment is a known, stated condition, where
+# starting from another job's environment is a silent wrong one.
+# CodeRabbit raised it on PR #155.
+if [[ "$WATCHDOG_ENTRY_FOUND" -eq 0 && "${#CRON_ENV_BY_KEY[@]}" -gt 0 ]]; then
+    say "NOTE: the crontab has no paper-trading-watchdog.sh entry, so there is"
+    say "no reliable way to tell which assignments cron would give it. The"
+    say "collected environment is being discarded rather than guessed at."
+    CRON_ENV_BY_KEY=()
+fi
 
 CRON_ENV=()
 CRON_ENV_NAMES=()
