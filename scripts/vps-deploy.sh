@@ -306,19 +306,44 @@ sleep 3
 # is what actually defines the running environment. A second copy would
 # drift, and the drift would be invisible until a restart behaved
 # differently from every cron tick.
-CRON_ENV=()
+# Only assignments that appear BEFORE the watchdog's own cron entry, and
+# for a repeated key only the last one before it -- that is precisely the
+# subset cron itself applies to that job. Collecting the whole crontab
+# would hand the restart a value cron never gives the watchdog; a later
+# `PAPER_TRADING_LAUNCHER=gradle` meant for some other job would silently
+# undo the very thing this block exists to get right. CodeRabbit raised
+# it on PR #155.
+declare -A CRON_ENV_BY_KEY=()
 while IFS= read -r line; do
-    CRON_ENV+=("$line")
-done < <(crontab -l 2>/dev/null | grep -E '^[A-Z_]+=[^ ]*$' || true)
+    # The watchdog's own entry ends the region that applies to it.
+    if [[ "$line" != \#* && "$line" == *"paper-trading-watchdog.sh"* ]]; then
+        break
+    fi
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]*)$ ]]; then
+        CRON_ENV_BY_KEY["${BASH_REMATCH[1]}"]="$line"
+    fi
+done < <(crontab -l 2>/dev/null || true)
+
+CRON_ENV=()
+CRON_ENV_NAMES=()
+for k in "${!CRON_ENV_BY_KEY[@]}"; do
+    CRON_ENV+=("${CRON_ENV_BY_KEY[$k]}")
+    CRON_ENV_NAMES+=("$k")
+done
 
 if [[ "${#CRON_ENV[@]}" -eq 0 ]]; then
-    say "WARNING: no environment assignments found in the crontab, so the"
-    say "loops are starting with this shell's environment instead. If they"
-    say "come back on the Gradle launcher, or the simulated loop starts"
-    say "reading the real signal file, that is why."
+    say "WARNING: no environment assignments precede the watchdog's cron entry,"
+    say "so the loops are starting with this shell's environment instead. If they"
+    say "come back on the Gradle launcher, or the simulated loop starts reading"
+    say "the real signal file, that is why."
     ./scripts/paper-trading-watchdog.sh
 else
-    say "starting under the crontab's own environment: ${CRON_ENV[*]}"
+    # Names only. A crontab is not expected to hold a credential -- this
+    # project keeps those in .env -- but a deploy log is exactly where one
+    # would be least welcome, and this repository already has one real
+    # incident of a credential reaching a local log through an error
+    # message. The values still reach `env` unchanged.
+    say "starting under the crontab's own environment: ${CRON_ENV_NAMES[*]}"
     env "${CRON_ENV[@]}" ./scripts/paper-trading-watchdog.sh
 fi
 sleep 20
