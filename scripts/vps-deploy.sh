@@ -286,7 +286,116 @@ for s in "${SESSIONS[@]}"; do
     tmux kill-session -t "=$s" 2>/dev/null && say "stopped $s" || say "$s was not running"
 done
 sleep 3
-./scripts/paper-trading-watchdog.sh
+
+# Start the loops under the SAME environment cron gives them, not this
+# shell's. Found the hard way on 2026-09-09, the first real use of this
+# script: it invoked the watchdog directly, so the restart ran without
+# `PAPER_TRADING_LAUNCHER=java` and came back on the Gradle launcher --
+# which on a 1 GB instance is the configuration this project measured at
+# 6x the application's own memory and deliberately moved off. No
+# `PaperTradingApp` JVM ever appeared and the verification below failed,
+# correctly.
+#
+# The same crontab also carries `PAPER_TRADING_MOCK_SIGNALS=1`, and
+# missing that one is worse than missing the launcher: without it the
+# simulated loop reads the real daily-signal file instead of its own mock
+# one, putting both loops on a single shared file -- the exact shape of
+# `check_no_shared_mutable_state`'s recorded incident.
+#
+# `crontab -l` is read rather than a copy kept here, because the crontab
+# is what actually defines the running environment. A second copy would
+# drift, and the drift would be invisible until a restart behaved
+# differently from every cron tick.
+# Only assignments that appear BEFORE the watchdog's own cron entry, and
+# for a repeated key only the last one before it -- that is precisely the
+# subset cron itself applies to that job. Collecting the whole crontab
+# would hand the restart a value cron never gives the watchdog; a later
+# `PAPER_TRADING_LAUNCHER=gradle` meant for some other job would silently
+# undo the very thing this block exists to get right. CodeRabbit raised
+# it on PR #155.
+declare -A CRON_ENV_BY_KEY=()
+WATCHDOG_ENTRY_FOUND=0
+while IFS= read -r raw; do
+    # Normalise the way cron reads a line before deciding anything about
+    # it. crontab(5) allows leading whitespace, spaces around the `=`, and
+    # a quoted value; matching on the raw line gets all three wrong.
+    # CodeRabbit raised it on PR #155 -- and the first of the three is the
+    # one that bites hardest: an INDENTED comment mentioning the watchdog
+    # would have ended the collection early, so the real assignments after
+    # it would be dropped and the loops would start from this shell's
+    # environment, which is the very failure this block exists to prevent.
+    line="${raw#"${raw%%[![:space:]]*}"}"     # strip leading whitespace
+    [[ "$line" == \#* ]] && continue           # a comment, wherever it was indented
+    [[ -z "$line" ]] && continue
+
+    # Assignments are parsed FIRST, before anything is tested against the
+    # watchdog's name. A valid assignment can legitimately contain that
+    # name in its value -- `PAPER_TRADING_WATCHDOG_COMMAND=paper-trading-
+    # watchdog.sh` -- and testing for the job entry first would treat it
+    # as the entry, end the region, and drop every assignment after it.
+    # CodeRabbit raised it on PR #155; it is the same shape as the
+    # indented-comment bug one round earlier, which is why the order
+    # matters rather than the pattern.
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+        key="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[2]}"
+        value="${value%"${value##*[![:space:]]}"}"   # strip trailing whitespace
+        # One layer of matching quotes, which cron uses to preserve
+        # whitespace inside a value.
+        if [[ "$value" == \"*\" && "${#value}" -ge 2 ]]; then
+            value="${value:1:${#value}-2}"
+        elif [[ "$value" == \'*\' && "${#value}" -ge 2 ]]; then
+            value="${value:1:${#value}-2}"
+        fi
+        CRON_ENV_BY_KEY["$key"]="$key=$value"
+        continue
+    fi
+
+    # Only a non-assignment line can be the watchdog's own cron entry,
+    # and that entry ends the region that applies to it.
+    if [[ "$line" == *"paper-trading-watchdog.sh"* ]]; then
+        WATCHDOG_ENTRY_FOUND=1
+        break
+    fi
+done < <(crontab -l 2>/dev/null || true)
+
+# Without a watchdog entry there is no "before the job" to speak of, and
+# the loop above has just read the whole file -- collecting assignments
+# that belong to other jobs, which is the exact confusion this block
+# exists to prevent. A crontab in that state is possible whenever cron
+# installation was skipped. Discard and take the warning path: starting
+# from this shell's environment is a known, stated condition, where
+# starting from another job's environment is a silent wrong one.
+# CodeRabbit raised it on PR #155.
+if [[ "$WATCHDOG_ENTRY_FOUND" -eq 0 && "${#CRON_ENV_BY_KEY[@]}" -gt 0 ]]; then
+    say "NOTE: the crontab has no paper-trading-watchdog.sh entry, so there is"
+    say "no reliable way to tell which assignments cron would give it. The"
+    say "collected environment is being discarded rather than guessed at."
+    CRON_ENV_BY_KEY=()
+fi
+
+CRON_ENV=()
+CRON_ENV_NAMES=()
+for k in "${!CRON_ENV_BY_KEY[@]}"; do
+    CRON_ENV+=("${CRON_ENV_BY_KEY[$k]}")
+    CRON_ENV_NAMES+=("$k")
+done
+
+if [[ "${#CRON_ENV[@]}" -eq 0 ]]; then
+    say "WARNING: no environment assignments precede the watchdog's cron entry,"
+    say "so the loops are starting with this shell's environment instead. If they"
+    say "come back on the Gradle launcher, or the simulated loop starts reading"
+    say "the real signal file, that is why."
+    ./scripts/paper-trading-watchdog.sh
+else
+    # Names only. A crontab is not expected to hold a credential -- this
+    # project keeps those in .env -- but a deploy log is exactly where one
+    # would be least welcome, and this repository already has one real
+    # incident of a credential reaching a local log through an error
+    # message. The values still reach `env` unchanged.
+    say "starting under the crontab's own environment: ${CRON_ENV_NAMES[*]}"
+    env "${CRON_ENV[@]}" ./scripts/paper-trading-watchdog.sh
+fi
 sleep 20
 
 printf '\n=== after ===\n'

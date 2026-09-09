@@ -6,9 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import engine.exchange.BalanceSnapshot;
+import engine.exchange.ExchangeException;
 import engine.exchange.PositionSnapshot;
 import engine.schemas.Side;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 
@@ -224,5 +226,111 @@ class VstPreflightTest {
         adapter.willFailSetLeverageWith(new RuntimeException("exchange rejected leverage change"));
 
         assertThrows(RuntimeException.class, () -> VstPreflight.run(adapter, SYMBOL));
+    }
+
+    // ------------------------------------------------ startup retry (2026-09-09)
+    //
+    // A real restart on the VPS died here. Two loop JVMs started at once on a
+    // 955 MB instance while the previous Gradle JVMs were still winding down,
+    // and getBalance() came back `code=109400 timestamp is invalid` -- BingX
+    // requires a request to arrive within 5s of the timestamp it was signed
+    // with, and cold-start contention exceeded that. The clock was fine (392 ms
+    // drift, NTP synchronised) and the identical call succeeded seconds later
+    // once load eased.
+
+    private static final VstPreflight.Sleeper NO_SLEEP = millis -> {};
+
+    @Test
+    void runWithRetryRecoversFromATransientExchangeFailure() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailBalanceTimesThenRecover(
+                1, new ExchangeException("BingX getBalance failed: code=109400 msg=timestamp is invalid"));
+
+        VstPreflight.Result result = VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP);
+
+        assertFalse(result.killSwitchShouldStartTripped());
+        assertEquals(2, adapter.balanceCallCount(), "should have retried exactly once");
+    }
+
+    @Test
+    void runWithRetryStillFailsClosedWhenEveryAttemptFails() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailBalanceTimesThenRecover(
+                99, new ExchangeException("BingX getBalance failed: code=109400 msg=timestamp is invalid"));
+
+        assertThrows(
+                ExchangeException.class, () -> VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP));
+        assertEquals(3, adapter.balanceCallCount(), "should have tried exactly the attempt budget");
+    }
+
+    @Test
+    void runWithRetryDoesNotRetryTheNonVstAssetRefusal() {
+        // The one failure that must NEVER be retried. An asset that is not VST
+        // means this may not be a demo account, and retrying a deliberate
+        // safety stop is how a safety stop becomes a delay.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(
+                new BalanceSnapshot(
+                        new BigDecimal("100"), new BigDecimal("100"), new BigDecimal("100"),
+                        BigDecimal.ZERO, BigDecimal.ZERO, "USDT"));
+        adapter.willReturnPositions(List.of());
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP));
+        assertEquals(1, adapter.balanceCallCount(), "a safety refusal must not be retried");
+    }
+
+    @Test
+    void runWithRetryWaitsLongEnoughForBingXsOwnSigningWindow() {
+        // NO_SLEEP discards the delay, so without this the 6s constant could
+        // drift below BingX's 5s signing window -- the exact thing the wait
+        // exists to outlast -- and every other test here would still pass.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailBalanceTimesThenRecover(1, new ExchangeException("transient"));
+
+        List<Long> waits = new ArrayList<>();
+        VstPreflight.runWithRetry(adapter, SYMBOL, 3, waits::add);
+
+        assertEquals(List.of(VstPreflight.DEFAULT_RETRY_DELAY_MILLIS), waits);
+        assertTrue(
+                VstPreflight.DEFAULT_RETRY_DELAY_MILLIS >= 5_000L,
+                "BingX rejects a request arriving more than 5s after its timestamp;"
+                        + " a shorter wait can retry straight back into the same window");
+    }
+
+    @Test
+    void runWithRetryRetriesOnlyExchangeFailures() {
+        // The safety-relevant half of the contract. IllegalStateException is
+        // covered above as the not-a-demo-account refusal, but that is one
+        // RuntimeException among many -- widening the catch to RuntimeException
+        // would retry a NullPointerException or a bug, and nothing else here
+        // would notice.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailBalanceTimesThenRecover(1, new IllegalArgumentException("not a venue failure"));
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP));
+        assertEquals(1, adapter.balanceCallCount(), "only an ExchangeException may be retried");
+    }
+
+    @Test
+    void runWithRetryCallsOnceWhenNothingFails() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+
+        VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP);
+
+        assertEquals(1, adapter.balanceCallCount());
     }
 }
