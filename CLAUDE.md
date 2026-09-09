@@ -541,6 +541,45 @@ ExchangeOrderExecutor → BingXAdapter`), 2026-08-09 — detail in
   pre-existing-position branch remains fake-adapter-verified only — it
   cannot be exercised without deliberately opening a position first.
 
+**BingX silently TRUNCATES an over-precise quantity — it does not reject
+one.** The single most load-bearing wire fact this project has learned,
+because it caused a real incident on 2026-09-08 and the failure mode is
+invisible at the point of submission. `BTC-USDT`'s published contract
+spec (`GET /openApi/swap/v2/quote/contracts`, re-verified live
+2026-09-08): `size` **0.0001**, `quantityPrecision` **4**,
+`tradeMinQuantity` **0.0001**, `tradeMinUSDT` **2**.
+
+A 29-fractional-digit quantity was **accepted**, then filled at exactly
+that value truncated to 4dp. The order therefore reported `FILLED` at the
+venue while this project's own `approvedQuantity` was larger, so
+`ExchangeOrderExecutor` correctly refused to reconcile the two, the
+`Reconciler` found `ORPHANED_IN_BROKER`, and the kill switch tripped and
+stayed tripped. **Every one of those refusals worked as designed and none
+could prevent the malformed order** — the guard has to be upstream of
+`Order` construction, which is why the fix lives in
+`SteppedNotionalCalculator` behind `RiskGateway`'s existing
+`quantityRejectionReason` hook and not in `BingXAdapter`. Full account:
+`.planning/quantity-precision-discuss.md` (GitHub issue #151, PRs #153-#155).
+
+**Verified end to end against the real VST venue, 2026-09-09**, both
+directions through the full `OrderIntent → OrderPipeline → RiskGateway →
+Order → ExchangeOrderExecutor → BingXAdapter` path: the incident's own
+29-digit quantity is now **rejected before any venue call**, and a
+step-valid `0.0001` order reached `FILLED` with BingX's own record
+(`amt=0.0001 avgPrice=79380.8 leverage=1`) identical to the approved
+quantity. This is the second real order this project has placed, and the
+first where our state and the venue's were confirmed to agree.
+
+**`code=109400 msg=timestamp is invalid` is not necessarily clock drift.**
+Observed on 2026-09-09 when both loop JVMs cold-started together on the
+955 MB instance while the previous Gradle JVMs were still winding down.
+The clock was fine — 392 ms from BingX's own `serverTime`, NTP
+synchronised — and the identical `getBalance` call succeeded seconds
+later once load eased. BingX's 5s signing window was simply lost to
+startup contention. `VstPreflight.runWithRetry` now retries **only**
+`ExchangeException`, never the not-a-demo-account refusal. Check load
+before suspecting the clock.
+
 **A real credential-handling incident, root-caused and fixed.** A
 CRLF-terminated `.env` sourced naively left a trailing `\r` on
 `BINGX_API_KEY`; the JDK's `HttpRequest.Builder#header` rejects a raw

@@ -243,13 +243,14 @@ MIN_WARMUP_BARS = 253
 #
 # ## Why this is here at all
 #
-# On 2026-09-08 this file emitted a quantity with 29 significant digits --
-# `reference_equity / entry_price` under Python's default 28-digit Decimal
-# context, which nothing downstream reduced because nothing downstream was
-# asked to. BingX accepted the order and filled 0.0231: that quantity
-# truncated to its step. The fill was therefore permanently smaller than the
-# `approvedQuantity` this project recorded, so the order could never complete,
-# and the kill switch tripped and stayed tripped. Full account:
+# On 2026-09-08 this file emitted a quantity with 29 fractional digits
+# (28 significant), straight from `reference_equity / entry_price` under
+# Python's default 28-digit Decimal context, which nothing downstream
+# reduced because nothing downstream was asked to. BingX accepted the
+# order and filled 0.0231: that quantity truncated to its step. The fill
+# was therefore permanently smaller than the `approvedQuantity` this
+# project recorded, so the order could never complete, and the kill
+# switch tripped and stayed tripped. Full account:
 # `.planning/quantity-precision-discuss.md`, GitHub issue #151.
 #
 # ## Why quantizing here rather than in the strategy

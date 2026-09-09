@@ -1461,7 +1461,7 @@ public final class PaperTradingApp {
      *
      * <p>Exists because {@link engine.risk.SimpleNotionalCalculator}, which
      * every BingX loop used until 2026-09-08, accepts a quantity of any
-     * precision. That is how a 29-significant-digit quantity reached a real
+     * precision. That is how a 29-fractional-digit quantity reached a real
      * venue with a 4-decimal step, was silently truncated on fill, and left
      * an order permanently short of its own {@code approvedQuantity} — see
      * {@link engine.risk.SteppedNotionalCalculator}'s Javadoc, {@code

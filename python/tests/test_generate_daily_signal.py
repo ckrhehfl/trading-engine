@@ -694,7 +694,7 @@ class TestRiskBudgetScalarAppliesToTheCapToo:
 
 
 class TestVenueQuantityStep:
-    """The 2026-09-08 incident: a 29-significant-digit quantity reached a
+    """The 2026-09-08 incident: a 29-fractional-digit quantity reached a
     real venue whose step is 0.0001, was silently truncated on fill, and
     left the order permanently short of its own approved quantity — which
     halted the loop. See `.planning/quantity-precision-discuss.md` and

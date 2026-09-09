@@ -1,10 +1,20 @@
 # GitHub issue #151: Quantity precision — `Discuss` before any code
 
-**Status**: open. No code has been written. This document exists to get a
-human decision on **where** a venue's quantity step size is enforced,
-because every candidate location is in R3-risk territory (OMS / Risk
-Gateway / Execution) and CLAUDE.md's Development Methodology forbids
-skipping `Discuss` there.
+**Status: RESOLVED 2026-09-09.** The operator chose **Option C** (§5);
+it was built in PR #153, merged, deployed, and **verified against the
+real BingX VST venue** — the account of that verification is §8 at the
+foot of this document, and it is the part worth reading first.
+
+The rest of this document is preserved as written, in the present tense
+it was written in, because it is the record of a decision made *before*
+the answer was known. Rewriting it to sound prescient would destroy the
+only thing it is good for.
+
+> **Status (as written, 2026-09-08)**: open. No code has been written.
+> This document exists to get a human decision on **where** a venue's
+> quantity step size is enforced, because every candidate location is in
+> R3-risk territory (OMS / Risk Gateway / Execution) and CLAUDE.md's
+> Development Methodology forbids skipping `Discuss` there.
 
 **Date**: 2026-09-08. **Trigger**: a real incident, four hours earlier,
 on the `bingx-vst` loop.
@@ -22,7 +32,7 @@ on the `bingx-vst` loop.
  "quantity":"0.02318401746487214694970992456", ...}
 ```
 
-**29 significant digits.** BingX's own published contract spec for
+**29 fractional digits**, 28 significant. BingX's own published contract spec for
 `BTC-USDT`, re-verified live against the public API while writing this
 document:
 
@@ -287,3 +297,84 @@ is the defect.
 **Nothing in step 3 or 4 happens without step 1.** The loop is safely
 halted; there is no time pressure, and acting under the appearance of
 urgency is how the original defect reached a real venue.
+
+
+---
+
+## 8. Resolution, and what the real venue actually did
+
+**Decision**: Option C, chosen by the operator on 2026-09-09. Built in
+PR #153, with three follow-on PRs (#154, #155) for defects the deployment
+itself exposed.
+
+### What was built
+
+- **Java** — `engine.risk.SteppedNotionalCalculator`, reached through the
+  `NotionalCalculator.quantityRejectionReason` hook `RiskGateway` already
+  called. `PaperTradingApp.resolveNotionalCalculatorForSymbol` fails
+  closed for any symbol whose step this project has not verified. The
+  second defect found in §4 is fixed too: `maxQuantityFor` now clamps to
+  the step rather than to 8 decimals.
+- **Python** — `generate_daily_signal.py` quantizes to the venue step at
+  the emit boundary, `ROUND_DOWN`, using exact integer arithmetic. The
+  obvious `quantity / step` form was **wrong in the unsafe direction** —
+  the division rounds under the 28-digit context *before* `ROUND_DOWN`
+  sees it, so a value just below a step boundary rounds **up** past it.
+  Caught by CodeRabbit, not by the author.
+
+### Verified against the real venue, 2026-09-09
+
+Both halves exercised through the full
+`OrderIntent → OrderPipeline → RiskGateway → Order → ExchangeOrderExecutor
+→ BingXAdapter` path on the `bingx-vst` loop:
+
+| | quantity | outcome |
+|---|---|---|
+| A | `0.02318401746487214694970992456` — the incident's own value | **rejected by `RiskGateway`**, no venue call |
+| B | `0.0001` | **`FILLED`**, no orphan, no kill-switch trip |
+
+BingX's own record for B: `side=LONG amt=0.0001 avgPrice=79380.8
+leverage=1` — identical to the approved quantity. The mismatch that
+defined the incident is gone.
+
+### The open questions from §6, answered
+
+1. **Round down, or reject?** Both, in different places — Python rounds
+   down, Java rejects anything unrounded. A quantity below one step
+   writes no signal rather than a zero-quantity order.
+2. **Where does the step come from?** Hardcoded, following the KIS
+   multiplier precedent, in `PaperTradingApp` — the same layer
+   `BINGX_VST_BASE_URL` occupies. A cross-language test pins the Python
+   table against the Java constant, since Option C's one real cost is
+   two places having to agree.
+3. **Python's internal position state** — **still open, and deliberately
+   so.** `daily_tsmom_ensemble` tracks `_position_quantity` unrounded, so
+   emitted-versus-believed drifts by up to one step per rebalance. That
+   is bounded at **0.0001 BTC per rebalance** -- stated in the invariant
+   unit rather than a dollar figure, which is wrong by the time anyone
+   reads this -- and is a *smaller*
+   instance of a pre-existing gap this fix did not create and does not
+   close: **Python never learns what actually filled, at all.** It
+   deserves its own task, not a footnote here.
+4. **KIS** — unchanged. `FixedMultiplierNotionalCalculator` already
+   rejects a fractional contract count, which is the same mechanism.
+5. **How it gets verified** — done, above.
+
+### Two defects the deployment itself exposed
+
+Neither was reachable from a test; both were found by running the tooling
+against the real box. Recorded here because they are the reason a
+"finished" fix took three more PRs.
+
+- **`vps-deploy.sh` did not reproduce cron's environment**, so the
+  restart came back on the Gradle launcher and no loop started. Fixing it
+  took four rounds, because each fix reintroduced the same failure
+  through its own matching: assignments after the job, an indented
+  comment, a value containing the job's name, and a crontab with no job
+  entry at all.
+- **`VstPreflight` had no retry**, and its first call lands at the worst
+  possible moment. Two JVMs cold-starting together on a 955 MB instance
+  produced `code=109400 msg=timestamp is invalid` — **not clock drift**
+  (392 ms, NTP synchronised); the identical call succeeded once load
+  eased. It now retries only `ExchangeException`, never the
+  not-a-demo-account refusal.
