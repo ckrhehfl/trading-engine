@@ -314,13 +314,36 @@ sleep 3
 # undo the very thing this block exists to get right. CodeRabbit raised
 # it on PR #155.
 declare -A CRON_ENV_BY_KEY=()
-while IFS= read -r line; do
+while IFS= read -r raw; do
+    # Normalise the way cron reads a line before deciding anything about
+    # it. crontab(5) allows leading whitespace, spaces around the `=`, and
+    # a quoted value; matching on the raw line gets all three wrong.
+    # CodeRabbit raised it on PR #155 -- and the first of the three is the
+    # one that bites hardest: an INDENTED comment mentioning the watchdog
+    # would have ended the collection early, so the real assignments after
+    # it would be dropped and the loops would start from this shell's
+    # environment, which is the very failure this block exists to prevent.
+    line="${raw#"${raw%%[![:space:]]*}"}"     # strip leading whitespace
+    [[ "$line" == \#* ]] && continue           # a comment, wherever it was indented
+    [[ -z "$line" ]] && continue
+
     # The watchdog's own entry ends the region that applies to it.
-    if [[ "$line" != \#* && "$line" == *"paper-trading-watchdog.sh"* ]]; then
+    if [[ "$line" == *"paper-trading-watchdog.sh"* ]]; then
         break
     fi
-    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=([^[:space:]]*)$ ]]; then
-        CRON_ENV_BY_KEY["${BASH_REMATCH[1]}"]="$line"
+
+    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=[[:space:]]*(.*)$ ]]; then
+        key="${BASH_REMATCH[1]}"
+        value="${BASH_REMATCH[2]}"
+        value="${value%"${value##*[![:space:]]}"}"   # strip trailing whitespace
+        # One layer of matching quotes, which cron uses to preserve
+        # whitespace inside a value.
+        if [[ "$value" == \"*\" && "${#value}" -ge 2 ]]; then
+            value="${value:1:${#value}-2}"
+        elif [[ "$value" == \'*\' && "${#value}" -ge 2 ]]; then
+            value="${value:1:${#value}-2}"
+        fi
+        CRON_ENV_BY_KEY["$key"]="$key=$value"
     fi
 done < <(crontab -l 2>/dev/null || true)
 
