@@ -18,9 +18,10 @@ import java.util.Optional;
  * <h2>The incident this closes</h2>
  *
  * <p>On 2026-09-08 {@code daily-tsmom-ensemble} produced this project's
- * first real live signal, carrying a quantity of <strong>29 significant
- * digits</strong> ({@code 0.02318401746487214694970992456}) -- a {@code
- * Decimal} division under Python's default 28-digit context, which nothing
+ * first real live signal, carrying a quantity of <strong>29 fractional
+ * digits</strong> -- 28 significant --
+ * ({@code 0.02318401746487214694970992456}), from a {@code Decimal}
+ * division under Python's default 28-digit context, which nothing
  * downstream reduced because nothing downstream was asked to. BingX
  * accepted the order and filled {@code 0.0231}: that same quantity
  * truncated to its 4-decimal step.

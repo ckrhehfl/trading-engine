@@ -549,7 +549,7 @@ spec (`GET /openApi/swap/v2/quote/contracts`, re-verified live
 2026-09-08): `size` **0.0001**, `quantityPrecision` **4**,
 `tradeMinQuantity` **0.0001**, `tradeMinUSDT` **2**.
 
-A 29-significant-digit quantity was **accepted**, then filled at exactly
+A 29-fractional-digit quantity was **accepted**, then filled at exactly
 that value truncated to 4dp. The order therefore reported `FILLED` at the
 venue while this project's own `approvedQuantity` was larger, so
 `ExchangeOrderExecutor` correctly refused to reconcile the two, the

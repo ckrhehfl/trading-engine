@@ -32,7 +32,7 @@ on the `bingx-vst` loop.
  "quantity":"0.02318401746487214694970992456", ...}
 ```
 
-**29 significant digits.** BingX's own published contract spec for
+**29 fractional digits**, 28 significant. BingX's own published contract spec for
 `BTC-USDT`, re-verified live against the public API while writing this
 document:
 
@@ -350,7 +350,9 @@ defined the incident is gone.
 3. **Python's internal position state** — **still open, and deliberately
    so.** `daily_tsmom_ensemble` tracks `_position_quantity` unrounded, so
    emitted-versus-believed drifts by up to one step per rebalance. That
-   is bounded (0.0001 BTC, ~$8 at present prices) and is a *smaller*
+   is bounded at **0.0001 BTC per rebalance** -- stated in the invariant
+   unit rather than a dollar figure, which is wrong by the time anyone
+   reads this -- and is a *smaller*
    instance of a pre-existing gap this fix did not create and does not
    close: **Python never learns what actually filled, at all.** It
    deserves its own task, not a footnote here.
