@@ -37,6 +37,9 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     private volatile BalanceSnapshot balance;
     private volatile RuntimeException balanceFailure;
+    private volatile RuntimeException countedBalanceFailure;
+    private volatile int balanceFailuresRemaining;
+    private volatile int balanceCalls;
     private volatile List<PositionSnapshot> positions = List.of();
     private volatile RuntimeException positionsFailure;
     private volatile RuntimeException setLeverageFailure;
@@ -50,6 +53,21 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     void willFailBalanceWith(RuntimeException failure) {
         this.balanceFailure = Objects.requireNonNull(failure);
+    }
+
+    /**
+     * Fail the next {@code times} {@link #getBalance()} calls, then behave
+     * normally. Needed to test a retry at all: a failure that never clears
+     * cannot distinguish "retried and recovered" from "never retried".
+     */
+    void willFailBalanceTimesThenRecover(int times, RuntimeException failure) {
+        this.balanceFailuresRemaining = times;
+        this.countedBalanceFailure = Objects.requireNonNull(failure);
+    }
+
+    /** How many times {@link #getBalance()} has been called. */
+    int balanceCallCount() {
+        return balanceCalls;
     }
 
     /** Clears any previously-scripted {@link #willFailPositionsWith} -- lets a test script a failure, then a later recovery, on the same instance. */
@@ -72,6 +90,11 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     @Override
     public BalanceSnapshot getBalance() {
+        balanceCalls++;
+        if (balanceFailuresRemaining > 0) {
+            balanceFailuresRemaining--;
+            throw countedBalanceFailure;
+        }
         if (balanceFailure != null) {
             throw balanceFailure;
         }

@@ -286,7 +286,41 @@ for s in "${SESSIONS[@]}"; do
     tmux kill-session -t "=$s" 2>/dev/null && say "stopped $s" || say "$s was not running"
 done
 sleep 3
-./scripts/paper-trading-watchdog.sh
+
+# Start the loops under the SAME environment cron gives them, not this
+# shell's. Found the hard way on 2026-09-09, the first real use of this
+# script: it invoked the watchdog directly, so the restart ran without
+# `PAPER_TRADING_LAUNCHER=java` and came back on the Gradle launcher --
+# which on a 1 GB instance is the configuration this project measured at
+# 6x the application's own memory and deliberately moved off. No
+# `PaperTradingApp` JVM ever appeared and the verification below failed,
+# correctly.
+#
+# The same crontab also carries `PAPER_TRADING_MOCK_SIGNALS=1`, and
+# missing that one is worse than missing the launcher: without it the
+# simulated loop reads the real daily-signal file instead of its own mock
+# one, putting both loops on a single shared file -- the exact shape of
+# `check_no_shared_mutable_state`'s recorded incident.
+#
+# `crontab -l` is read rather than a copy kept here, because the crontab
+# is what actually defines the running environment. A second copy would
+# drift, and the drift would be invisible until a restart behaved
+# differently from every cron tick.
+CRON_ENV=()
+while IFS= read -r line; do
+    CRON_ENV+=("$line")
+done < <(crontab -l 2>/dev/null | grep -E '^[A-Z_]+=[^ ]*$' || true)
+
+if [[ "${#CRON_ENV[@]}" -eq 0 ]]; then
+    say "WARNING: no environment assignments found in the crontab, so the"
+    say "loops are starting with this shell's environment instead. If they"
+    say "come back on the Gradle launcher, or the simulated loop starts"
+    say "reading the real signal file, that is why."
+    ./scripts/paper-trading-watchdog.sh
+else
+    say "starting under the crontab's own environment: ${CRON_ENV[*]}"
+    env "${CRON_ENV[@]}" ./scripts/paper-trading-watchdog.sh
+fi
 sleep 20
 
 printf '\n=== after ===\n'

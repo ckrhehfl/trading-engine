@@ -2,6 +2,7 @@ package engine.runtime;
 
 import engine.exchange.BalanceSnapshot;
 import engine.exchange.ExchangeAdapter;
+import engine.exchange.ExchangeException;
 import engine.exchange.PositionSnapshot;
 import engine.risk.RiskLimits;
 import engine.schemas.Side;
@@ -103,6 +104,91 @@ public final class VstPreflight {
     /** The result of a completed preflight run -- see class Javadoc for each field's meaning. */
     public record Result(BalanceSnapshot balance, boolean killSwitchShouldStartTripped) {}
 
+    /** Injectable so a test can exercise the retry without actually waiting. */
+    @FunctionalInterface
+    public interface Sleeper {
+        void sleep(long millis) throws InterruptedException;
+    }
+
+    /**
+     * Attempts before giving up. Three, not more: the condition this exists
+     * for clears in seconds, and a longer budget mostly delays a genuine
+     * failure's report.
+     */
+    public static final int DEFAULT_ATTEMPTS = 3;
+
+    /**
+     * BingX rejects a request that arrives more than 5s after the timestamp
+     * it was signed with, so the wait is that window plus a margin -- long
+     * enough for cold-start contention to ease, short enough that a real
+     * outage is reported promptly.
+     */
+    public static final long DEFAULT_RETRY_DELAY_MILLIS = 6_000L;
+
+    /**
+     * {@link #run} with a bounded retry for a <em>transient venue</em>
+     * failure, and no retry for anything else.
+     *
+     * <h2>Why this exists, and why it does not contradict {@link #run}'s
+     * "exceptions propagate uncaught"</h2>
+     *
+     * <p>A real restart died here on 2026-09-09. Both loop JVMs started at
+     * once on a 955 MB instance while the previous Gradle JVMs were still
+     * winding down, and {@code getBalance()} returned {@code code=109400
+     * msg=timestamp is invalid} -- BingX requires a request to arrive within
+     * 5s of the timestamp it was signed with, and cold-start contention
+     * exceeded that. The machine's clock was not the problem: 392ms drift,
+     * NTP synchronised, and the identical call succeeded seconds later once
+     * load eased.
+     *
+     * <p>{@link #run}'s contract is unchanged and still what a caller gets by
+     * default. What changes is that the <em>startup path</em> no longer treats
+     * a few seconds of load contention as a reason to refuse to start, which
+     * is not a safety property -- it is a loop that fails to come back.
+     *
+     * <p><b>Fail-closed is preserved, deliberately and narrowly.</b> Only
+     * {@link ExchangeException} is retried: a venue or transport condition.
+     * {@link IllegalStateException} -- the "balance asset is not VST, this may
+     * not be a demo account" refusal -- is <b>never</b> retried, because
+     * retrying a deliberate safety stop is how a safety stop becomes a delay.
+     * When the attempt budget is exhausted the original exception is rethrown,
+     * so a real outage still refuses to start.
+     */
+    public static Result runWithRetry(
+            ExchangeAdapter adapter, String symbol, int attempts, Sleeper sleeper) {
+        Objects.requireNonNull(sleeper, "sleeper is required");
+        if (attempts < 1) {
+            throw new IllegalArgumentException("attempts must be at least 1, got " + attempts);
+        }
+        ExchangeException last = null;
+        for (int attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return run(adapter, symbol);
+            } catch (ExchangeException e) {
+                last = e;
+                log.warn(
+                        "VstPreflight attempt {} of {} failed against the venue: {}",
+                        attempt,
+                        attempts,
+                        e.toString());
+                if (attempt < attempts) {
+                    try {
+                        sleeper.sleep(DEFAULT_RETRY_DELAY_MILLIS);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        throw e;
+                    }
+                }
+            }
+        }
+        throw last;
+    }
+
+    /** {@link #runWithRetry} with this class's own defaults and a real sleep. */
+    public static Result runWithRetry(ExchangeAdapter adapter, String symbol) {
+        return runWithRetry(adapter, symbol, DEFAULT_ATTEMPTS, Thread::sleep);
+    }
+
     /**
      * Runs all five checks against {@code adapter} in order. Throws {@link
      * IllegalStateException} (step 1 only) rather than returning a failure
@@ -114,6 +200,10 @@ public final class VstPreflight {
      * uncaught -- this is a one-shot startup check, not a per-tick call with
      * its own retry/never-throw contract like {@code OrderExecutor
      * #pollFills}.
+     *
+     * <p>The startup path calls {@link #runWithRetry} instead, which wraps
+     * this in a bounded retry for a transient venue failure only. This
+     * method's own contract is unchanged: it retries nothing.
      */
     public static Result run(ExchangeAdapter adapter, String symbol) {
         Objects.requireNonNull(adapter, "adapter is required");

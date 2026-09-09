@@ -1022,7 +1022,13 @@ public final class PaperTradingApp {
         String apiSecret = requireNonBlank(System.getenv(ENV_BINGX_API_SECRET), ENV_BINGX_API_SECRET);
         BingXAdapter adapter = new BingXAdapter(apiKey, apiSecret, BINGX_VST_BASE_URL);
 
-        VstPreflight.Result preflight = VstPreflight.run(adapter, symbol);
+        // Retrying variant, not `run`: on 2026-09-09 a real restart died here
+        // because both loop JVMs started at once on a 955 MB instance and
+        // `getBalance` came back "timestamp is invalid" -- BingX's 5s signing
+        // window lost to cold-start contention, not a clock problem. Only a
+        // transient ExchangeException is retried; the not-a-demo-account
+        // refusal still fails immediately. See VstPreflight#runWithRetry.
+        VstPreflight.Result preflight = VstPreflight.runWithRetry(adapter, symbol);
 
         SubmissionMarkerStore markerStore =
                 new SubmissionMarkerStore(resolveSubmissionMarkersPath(
