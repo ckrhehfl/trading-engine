@@ -51,7 +51,19 @@ longest same-sign run is 2.
 **And the final gap is exactly zero for a structural reason, not luck.**
 `_flatten_to` closes using `self._position_quantity` — the same believed
 number the entry sized from — so entry and exit truncate the identical
-value and cancel. That property is **conditional on `rebalance_on_conviction=False`**.
+value and cancel.
+
+**That is a statement about the measured sequence, not a guarantee.** It
+holds because every order in it filled completely, none was rejected or
+cancelled, nothing changed the position from outside, and entry and exit
+truncated the identical value. Remove any of those and the cancellation
+goes with it — which the rest of this document relies on, since §3 says
+plainly that a partial fill or a rejection is never corrected. So: **the
+final gap was zero on a fully-filled 147-order sequence**, and the
+mechanism that made it zero is understood. It is not a property of the
+design.
+
+It is also **conditional on `rebalance_on_conviction=False`**.
 Checked rather than assumed: the flag defaults `False` on
 `DailyTsmomEnsembleStrategy`, and the one production entry point —
 `DailyTsmomEnsembleTrainable(...)` in `python/live/generate_daily_signal.py`
@@ -97,11 +109,29 @@ does not reduce a long.** So:
 | flip long → short, size 0.0231 | open a 0.0462 short, long untouched |
 
 The account ends up **gross-long and gross-short simultaneously**, paying
-margin on both, with a liquidation price computed on a netted whole that
-the strategy has no model of.
+margin on both.
 
-**This is already known, but recorded as an operational nuisance rather
-than a correctness defect.** CLAUDE.md says, of the position left over
+**A claim about liquidation was cut from an earlier draft of this
+paragraph**, which asserted the venue computes one price "on a netted
+whole". The experiment's own output contradicts it — BingX reported a
+liquidation price **per leg**:
+
+```text
+side=LONG  amt=0.0001 avgPrice=78105.4 leverage=1 liquidationPrice=0
+side=SHORT amt=0.0001 avgPrice=78218.3 leverage=1 liquidationPrice=155735.8
+```
+
+The margin mode was never established either, and BingX's per-leg versus
+common liquidation behaviour differs between isolated and cross. So the
+honest statement is narrower: **the strategy has no model of either leg's
+liquidation price, because it does not know the legs exist.** What the
+venue computes, and under which margin mode, is unexamined.
+
+**This document classifies it as a correctness and capital-safety defect**,
+and does so consistently — the recommendation in §8 to fix §2 before §1
+follows from that classification rather than sitting beside a softer one.
+
+It was already known, but **recorded as an operational nuisance.** CLAUDE.md says, of the position left over
 from an earlier run: *"this codebase's OMS path has no way to close one
 (in hedge mode a `SHORT` opens a second position rather than closing the
 `LONG`)"*. That sentence is about a human cleaning up. The same fact,
