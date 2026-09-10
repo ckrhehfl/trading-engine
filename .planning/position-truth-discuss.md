@@ -103,10 +103,34 @@ read against `_flatten_to`, means **the strategy's own exit path has
 never worked against this venue** — and could not have been noticed,
 because the one real signal this project has emitted never completed.
 
-**Not yet observed live.** The 2026-09-08 order was an entry, and it
-halted before any exit. So this is a reasoned consequence of the wire
-mapping, not something seen on an account — which is exactly why it
-belongs in a `Discuss` rather than a patch.
+### Confirmed against the real venue, 2026-09-10
+
+No longer a reasoned consequence. Run deliberately on the VST account
+through the full `OrderIntent → OrderPipeline → RiskGateway → Order →
+ExchangeOrderExecutor → BingXAdapter` path, starting from a flat account:
+
+1. **Open**: `LONG 0.0001` → `FILLED`, account holds
+   `LONG amt=0.0001 avgPrice=78105.4`.
+2. **Close, using exactly what `_flatten_to` emits** for that position —
+   `side=SHORT, quantity=0.0001` → `FILLED`.
+
+The account afterwards:
+
+```
+positions=2
+  symbol=BTC-USDT side=LONG  amt=0.0001 avgPrice=78105.4
+  symbol=BTC-USDT side=SHORT amt=0.0001 avgPrice=78218.3
+usedMargin=15.6323
+```
+
+**The long was not touched. A second position was opened beside it, and
+margin is now posted on both.** Our own OMS recorded the close as
+`FILLED`, and the strategy believes it is flat. Gross exposure doubled.
+
+Nothing in the system reported a problem, because nothing in the system
+is wrong by its own lights: the order was submitted, acknowledged and
+filled exactly as asked. The defect is that what was asked does not mean
+what the strategy meant.
 
 ---
 
@@ -241,13 +265,11 @@ opens an opposing position is worth one, and the same design fixes both.
 
 **Sequence proposed, for the human to accept or change:**
 
-1. **Establish §2 as fact against the real venue** before designing
-   around it — a single deliberate VST test: open a small long, then send
-   the exact intent `_flatten_to` would produce, and observe whether the
-   long closes or a short appears beside it. This is cheap, it is the
-   kind of evidence this project trusts, and it costs one supervised
-   order. **Nothing in §2 has been observed live yet.**
-2. Only then decide §6.1 and §6.2, on evidence.
+1. ~~Establish §2 as fact against the real venue.~~ **Done, 2026-09-10 —
+   see §2's confirmation block. The long survived and a short appeared
+   beside it.** The design questions below are therefore being decided on
+   an observation, not on a reading of the wire mapping.
+2. Decide §6.1 and §6.2, on that evidence.
 3. Treat §7.1 as a gate: if the change moves any backtest number, it is a
    new strategy version, and the Paper Trading Policy Exception is
    re-argued rather than inherited.
