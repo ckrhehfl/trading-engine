@@ -22,6 +22,13 @@ logs/
 runs/*
 !runs/live_signals.jsonl
 python/data/var/
+# ...and the same store wherever a wrong working directory puts it. On
+# 2026-09-10 a `cd python && PYTHONPATH=.` invocation resolved
+# DEFAULT_DB_PATH ("python/data/var/klines.sqlite3") relative to `python/`
+# itself, creating `python/python/data/var/` -- which the anchored rule
+# above does not match, so a 36K SQLite file reached main via a `git add
+# -A`. Unanchored, so depth cannot defeat it again.
+**/data/var/
 # Locally-generated runtime data for the live paper-trading signal runner
 # (python/live/generate_daily_signal.py) -- the signal file(s) it writes,
 # mirroring python/data/var/'s existing gitignore treatment for the kline
