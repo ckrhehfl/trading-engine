@@ -103,6 +103,7 @@ Defects and gaps found after the fact, each tracked to a GitHub issue.
 - [`paper-trading-issue-75-durable-report-persistence.md`](paper-trading-issue-75-durable-report-persistence.md) — GitHub issue #75: durable pending-daily-report persistence
 - [`paper-trading-issue-80-guardrail-alias-tracking.md`](paper-trading-issue-80-guardrail-alias-tracking.md) — GitHub issue #80: cross-statement alias/taint tracking for the VST-host guardrail
 - [`quantity-precision-discuss.md`](quantity-precision-discuss.md) — GitHub issue #151: Quantity precision — `Discuss` before any code
+- [`position-truth-discuss.md`](position-truth-discuss.md) — GitHub issue #157: Position truth — who owns it, and why the strategy currently does
 
 ### KIS / KOSPI200 venue
 
