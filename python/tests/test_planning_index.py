@@ -115,3 +115,26 @@ def test_the_index_is_not_empty():
         f"only {len(entries())} entries parsed; the ENTRY regex has probably "
         f"stopped matching the README's format"
     )
+
+
+def test_the_documents_count_in_the_prose_is_the_real_count():
+    """The README says "This index is checked, not maintained by hope" and
+    then carried a hand-maintained document count two lines above it.
+
+    On PR #159 that count read 77 against a real 81 — stale by four,
+    because three separate PRs had added a document and updated the list
+    without touching the number. Anything maintained by hope eventually
+    is not maintained, including a sentence in the paragraph that says so.
+    """
+    import re
+
+    prose = (PLANNING / "README.md").read_text(encoding="utf-8")
+    match = re.search(r"^(\d+) documents and counting", prose, re.M)
+    assert match, "the README no longer states a document count in the expected form"
+
+    claimed = int(match.group(1))
+    actual = len(on_disk())
+    assert claimed == actual, (
+        f"the index prose claims {claimed} documents; there are {actual}. "
+        f"Update the number in .planning/README.md."
+    )

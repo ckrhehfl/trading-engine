@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-77 documents and counting, which is past the point where `ls` is a
+81 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -103,7 +103,6 @@ Defects and gaps found after the fact, each tracked to a GitHub issue.
 - [`paper-trading-issue-75-durable-report-persistence.md`](paper-trading-issue-75-durable-report-persistence.md) — GitHub issue #75: durable pending-daily-report persistence
 - [`paper-trading-issue-80-guardrail-alias-tracking.md`](paper-trading-issue-80-guardrail-alias-tracking.md) — GitHub issue #80: cross-statement alias/taint tracking for the VST-host guardrail
 - [`quantity-precision-discuss.md`](quantity-precision-discuss.md) — GitHub issue #151: Quantity precision — `Discuss` before any code
-- [`simulation-divergence-catalogue.md`](simulation-divergence-catalogue.md) — What we simulate versus what the venue does
 
 ### KIS / KOSPI200 venue
 
@@ -114,6 +113,12 @@ The third paper-trading loop, and the shared-account ledger that followed it. Ki
 - [`kis-ledger-c-shared-account-ledger.md`](kis-ledger-c-shared-account-ledger.md) — Shared KIS account risk ledger, Task C: `SharedKisAccountLedger` + wiring
 - [`kis-ledger-d-account-ledger-reconciler.md`](kis-ledger-d-account-ledger-reconciler.md) — KIS Ledger Task D: `AccountLedgerReconciler`
 - [`kis-phase1-venue-integration.md`](kis-phase1-venue-integration.md) — KIS / KOSPI200 venue integration, Phase 1 — retrospective design record
+
+### Cross-cutting reference
+
+Not a task record and not tied to one issue — a standing reference that several arcs consult.
+
+- [`simulation-divergence-catalogue.md`](simulation-divergence-catalogue.md) — What we simulate versus what the venue does
 
 ### Operations
 

@@ -37,14 +37,22 @@ one.
 
 | # | We assume | Reality | How we know |
 |---|---|---|---|
-| 1.1 | An oversized opposite-side order closes the position and opens the residual (`PositionTracker`, `_transition_to`) | On BingX hedge mode it opens a **second** position; the original is untouched | **CONFIRMED WRONG** 2026-09-10 — `LONG 0.0001` then `SHORT 0.0001` left both open, `usedMargin` on both |
-| 1.2 | `GUARDED_MARKET` carries a price guard | Maps to a plain `MARKET` on both `BingXAdapter` and `KisAdapter`; the guard is a name only | **KNOWN GAP** — CLAUDE.md gates Live Entry on it |
+| 1.1 | An opposite-side order reduces or closes the position (`PositionTracker`, `_flatten_to`) | On BingX hedge mode it opens a **second** position; the original is untouched | **CONFIRMED WRONG** 2026-09-10 — `LONG 0.0001` then an **equal-sized** `SHORT 0.0001` left both open, `usedMargin` on both |
+| 1.1b | An **oversized** opposite order closes the position and opens the residual (`_transition_to`'s flip) | Same mechanism as 1.1 would make it open one oversized opposing leg | **UNTESTED** — the experiment used equal sizes, so it establishes 1.1 only. 1.1b is inferred from the same `positionSide` mapping and has not been observed |
+| 1.2 | `GUARDED_MARKET` carries a price guard | Maps to a plain `MARKET` on `BingXAdapter`; the guard is a name only | **KNOWN GAP** — CLAUDE.md gates Live Entry on it. (CLAUDE.md records the same of `KisAdapter`; that is **not** evidence gathered here, and §5 keeps KIS out of scope) |
 | 1.3 | Any quantity we send is the quantity that trades | BingX silently truncates to its step | **CONFIRMED WRONG** 2026-09-08, fixed in #153 and re-verified |
 | 1.4 | One net position per symbol | Hedge mode holds `LONG` and `SHORT` separately, and margin is **not** netted between them | **CONFIRMED** — `tm-a` recorded the venue behaviour; 1.1 is what it costs us |
 
 **1.1 and 1.4 are the same fact seen from two sides**, and the project
 already knew 1.4. What was missing was noticing that the strategy's exit
 path depends on the opposite being true.
+
+**1.1b is deliberately a separate row rather than folded into 1.1.** The
+experiment sent an equal-sized opposite order, so that is exactly what it
+establishes. The flip case is the same `positionSide` mapping and almost
+certainly behaves the same way — but "almost certainly" is what this
+table's marking exists to keep out of the CONFIRMED column. Raised by
+CodeRabbit on PR #159.
 
 ---
 
