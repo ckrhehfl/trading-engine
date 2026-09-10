@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-77 documents and counting, which is past the point where `ls` is a
+82 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -114,6 +114,12 @@ The third paper-trading loop, and the shared-account ledger that followed it. Ki
 - [`kis-ledger-c-shared-account-ledger.md`](kis-ledger-c-shared-account-ledger.md) — Shared KIS account risk ledger, Task C: `SharedKisAccountLedger` + wiring
 - [`kis-ledger-d-account-ledger-reconciler.md`](kis-ledger-d-account-ledger-reconciler.md) — KIS Ledger Task D: `AccountLedgerReconciler`
 - [`kis-phase1-venue-integration.md`](kis-phase1-venue-integration.md) — KIS / KOSPI200 venue integration, Phase 1 — retrospective design record
+
+### Cross-cutting reference
+
+Not a task record and not tied to one issue — a standing reference that several arcs consult.
+
+- [`simulation-divergence-catalogue.md`](simulation-divergence-catalogue.md) — What we simulate versus what the venue does
 
 ### Operations
 
