@@ -39,11 +39,25 @@ ALLOWED: frozenset[str] = frozenset({
 
 
 def _tracked_files() -> list[str]:
+    """`-z`, because the default output quotes unusual names.
+
+    `git ls-files` renders a path containing a newline in C style with
+    surrounding double quotes, so `weird<newline>name.sqlite3` arrives as
+    the literal `"weird\\nname.sqlite3"` -- which ends in `"`, not in
+    `.sqlite3`, and slips straight past the suffix test below. Verified
+    directly rather than reasoned about:
+
+        $ git ls-files            ->  "weird\\nname.sqlite3"
+        $ git ls-files -z         ->  weird<NUL-separated real name>
+
+    NUL separation removes the quoting entirely, which is the only form
+    that cannot be defeated by a filename. Raised by CodeRabbit on #160.
+    """
     done = subprocess.run(
-        ["git", "-C", str(REPO_ROOT), "ls-files"],
+        ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
         capture_output=True, text=True, check=True,
     )
-    return done.stdout.splitlines()
+    return [p for p in done.stdout.split("\0") if p]
 
 
 def offending(paths: list[str]) -> list[str]:
@@ -71,6 +85,22 @@ def test_the_rule_detects_a_tracked_database():
     assert offending(["python/live/generate_daily_signal.py", "README.md"]) == []
     # And a deliberate exception must actually be exempt.
     assert offending(["java/gradle/wrapper/gradle-wrapper.jar"]) == []
+
+
+def test_a_quoted_path_would_have_slipped_through():
+    """Pins the reason `_tracked_files` uses `-z`.
+
+    This is what the rule receives if the default `git ls-files` output is
+    used: quoted, ending in `"` rather than the suffix. The assertion is
+    that it is NOT detected -- which is exactly why the caller must never
+    hand it input in that form.
+    """
+    quoted = '"weird\\nname.sqlite3"'
+    assert offending([quoted]) == [], (
+        "the rule matches a C-quoted path, so this test no longer pins "
+        "anything -- re-derive why `-z` is needed before deleting it"
+    )
+    assert offending(["weird\nname.sqlite3"]) == ["weird\nname.sqlite3"]
 
 
 def test_no_binary_artifact_is_tracked():
