@@ -127,11 +127,26 @@ after Trade Management Task C, of which one is a test artifact). This
 document says "~130" elsewhere for that reason; the table keeps 127
 because that is the `N` the figures were actually computed at.
 
-**An agent that autonomously generates and tests hypotheses spends the
-only resource that makes a conclusion possible.** It does not get better
-with more compute; it gets strictly worse, because `N` only rises. A
-factory that "researches continuously" would, within weeks, place every
-future result beyond the reach of its own significance bar.
+**An agent that autonomously generates and tests hypotheses spends a
+resource that makes a conclusion cheaper, and cannot replace it with
+compute.** Each additional trial against the same data raises `N`, and a
+higher `N` raises the observed Sharpe any future result must post.
+
+**Stated precisely, because the loose version is wrong and this project
+has already corrected it once.** CLAUDE.md, closing the 1h window, had to
+add exactly this caveat: the monotonicity is in `N` **at a fixed observed
+Sharpe**. A later trial can of course post a higher raw Sharpe and clear
+the raised bar — nothing is placed permanently beyond reach. What rises
+is the *evidentiary burden*, and it rises for every candidate evaluated
+against that data thereafter.
+
+The claim this section actually rests on is narrower and still decisive:
+**repeatedly testing self-generated hypotheses against the same data and
+the same search space makes each subsequent result harder to
+distinguish from the best of many coin flips**, without adding any
+independent evidence. The three routes below are the exceptions, and they
+are exceptions precisely because they bring evidence from outside that
+loop.
 
 ### The three ways to get evidence without spending N, all scarce
 
