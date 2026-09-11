@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import engine.exchange.BalanceSnapshot;
 import engine.exchange.ExchangeException;
+import engine.exchange.PositionMode;
 import engine.exchange.PositionSnapshot;
 import engine.schemas.Side;
 import java.math.BigDecimal;
@@ -332,5 +333,50 @@ class VstPreflightTest {
         VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP);
 
         assertEquals(1, adapter.balanceCallCount());
+    }
+
+    // ----------------------------------------- one-way position mode (#157)
+
+    @Test
+    void aCleanStartSetsTheAccountToOneWayMode() {
+        // Nothing in this codebase ever called setPositionMode, so the
+        // account ran in whatever BingX defaulted to -- hedge -- where a
+        // SHORT meant to close a long opens a second position instead.
+        // Confirmed on the real VST account 2026-09-10.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+
+        VstPreflight.run(adapter, SYMBOL);
+
+        assertEquals(List.of(PositionMode.ONE_WAY), adapter.positionModeCalls());
+    }
+
+    @Test
+    void aFailureToSetTheModeRefusesToStart() {
+        // Fails closed for the same reason setLeverage does: proceeding
+        // would mean trading while believing a safeguard applied that did
+        // not. Here the "safeguard" is the meaning of every exit order.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailPositionModeWith(new ExchangeException("mode change refused"));
+
+        assertThrows(ExchangeException.class, () -> VstPreflight.run(adapter, SYMBOL));
+    }
+
+    @Test
+    void aPreExistingPositionSkipsTheModeChange() {
+        // The venue cannot change position mode while a position is open,
+        // and the kill switch starts tripped in this branch anyway, so
+        // attempting it would only turn a handled condition into a crash.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of(position(SYMBOL, "0.5")));
+
+        VstPreflight.Result result = VstPreflight.run(adapter, SYMBOL);
+
+        assertTrue(result.killSwitchShouldStartTripped());
+        assertEquals(List.of(), adapter.positionModeCalls());
     }
 }

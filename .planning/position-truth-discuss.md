@@ -1,5 +1,9 @@
 # GitHub issue #157: Position truth — who owns it, and why the strategy currently does
 
+> **DECIDED 2026-09-11: switch the account to one-way mode.** §9 at the
+> foot records the decision and the reasoning. The analysis below is
+> preserved as written, before the decision.
+
 **Status**: open. No code has been written. This document exists to get a
 human decision, because the change it proposes touches `OrderIntent` (a
 tested cross-language wire schema), the strategy interface, and the
@@ -357,3 +361,82 @@ Consulted while writing §4, rather than asserted from memory:
 - [Quant Trading Systems: Architecture & Infrastructure](https://mbrenndoerfer.com/writing/quant-trading-system-architecture-infrastructure)
 - [Trading System Architecture Guide — Low-Latency Components & Design Patterns](https://gegobyteapps.com/resources/trading-system-architecture)
 - [Target trading system and method (US Patent 8,712,896)](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/8712896)
+
+
+---
+
+## 9. Decision, 2026-09-11
+
+**One-way position mode.** Taken by the operator after §4's correction
+reframed the question.
+
+### What reframed it
+
+`metrics.position.PositionTracker` — the model every backtest in this
+project runs on, including both holdout confirmations — maintains a
+**single signed `position_qty`** and nets an opposite fill against it.
+That is one-way semantics. The strategy was written against it.
+
+The account is in hedge mode, and **nothing chose that**:
+`setPositionMode` exists on `ExchangeAdapter` and `BingXAdapter` and is
+**called by no runtime wiring at all**. The mode is whatever BingX
+defaulted to.
+
+So this was never "which design should we build". The system was built
+one-way throughout and is running against an account in the other mode.
+
+### Why not build per-leg targets instead
+
+Keeping hedge mode means changing `OrderIntent` (a cross-language wire
+schema), the strategy interface, **and `PositionTracker` itself** — which
+puts the reproducibility of `sr-v` and `sr-ab` in play. That is a large
+cost, and it buys a capability this project has measured three times:
+
+| | result |
+|---|---|
+| Task C — conjunction-gated tactical hedge | tactical gross edge **−97** against **+353** in fees; t=−0.62, p=0.535 |
+| Task D — P5, the same reduction taken as a hedge | lost to P3 by **14.4R over 464 identical entries**, ≈0.031R each, exactly the registered prediction |
+| S15 / S17 / Task C together | reducing exposure during an adverse excursion loses money for this core, selectively or not |
+
+The mechanism is arithmetic, not a fitted result: **a hedge is flat, plus
+a second spread, plus margin and financing on both legs.** CLAUDE.md's
+own list of defensible uses — tax, delivery, illiquidity — contains
+nothing that applies to one symbol on one venue.
+
+**The architecture cost for hedging should be paid when there is evidence
+hedging earns it. The evidence currently points the other way.**
+
+### What this does not close, stated honestly
+
+The operator's actual interest is a **pullback hedge held for days**:
+long because the trend is up, short-term weakness appears, hedge it,
+close the hedge and keep the core. Task C's own result document records
+that what it measured was **not** that — a parameter-free exit pinned its
+holding period to about one hour, median one bar, and "a one-hour hedge
+cannot express a pullback trade".
+
+So the longer-held version is **untested**, not refuted. It also faces
+the same spread-and-fee arithmetic plus **financing on both legs**, which
+grows with holding period. Any future attempt needs its own
+pre-registration before data access, like every other candidate here.
+
+**The mode is a setting, not a commitment.** It can be switched back
+while the account is flat. Choosing one-way today forecloses nothing
+except paying for a capability before earning it.
+
+### Scope of the change this decision authorises
+
+- `VstPreflight` sets the mode to one-way and **verifies** it, rather
+  than inheriting a default. Fails closed if it cannot.
+- `BingXAdapter` is **told** its mode rather than assuming: `positionSide`
+  becomes `BOTH` in one-way, and `setLeverage` sends `side=BOTH` (per
+  CLAUDE.md's Exchange API Facts, which record that one-way takes `BOTH`
+  where hedge takes `LONG`/`SHORT`).
+- Verified against the real VST account by repeating §2's experiment:
+  open a long, send what `_flatten_to` emits, and confirm the position
+  **closes** instead of a second one appearing.
+
+**Not in scope**: the target-position design. It remains the better
+answer for §3's root cause — one-way closes catalogue rows 1.1, 1.1b and
+1.4, and does nothing for the partial-fill and rejection self-correction
+(rows 2.1, 3.1) that a target design would provide. That stays open.

@@ -37,6 +37,8 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     private volatile BalanceSnapshot balance;
     private volatile RuntimeException balanceFailure;
+    private final List<PositionMode> positionModeCalls = new ArrayList<>();
+    private volatile RuntimeException positionModeFailure;
     private volatile RuntimeException countedBalanceFailure;
     private volatile int balanceFailuresRemaining;
     private volatile int balanceCalls;
@@ -49,6 +51,15 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
     void willReturnBalance(BalanceSnapshot balance) {
         this.balance = Objects.requireNonNull(balance);
         this.balanceFailure = null;
+    }
+
+    /** Every {@link #setPositionMode} call, in order. */
+    List<PositionMode> positionModeCalls() {
+        return new ArrayList<>(positionModeCalls);
+    }
+
+    void willFailPositionModeWith(RuntimeException failure) {
+        this.positionModeFailure = Objects.requireNonNull(failure);
     }
 
     void willFailBalanceWith(RuntimeException failure) {
@@ -137,6 +148,9 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
 
     @Override
     public void setPositionMode(PositionMode mode) {
-        throw new UnsupportedOperationException("this fake's setPositionMode is not scripted for this test suite");
+        positionModeCalls.add(mode);
+        if (positionModeFailure != null) {
+            throw positionModeFailure;
+        }
     }
 }
