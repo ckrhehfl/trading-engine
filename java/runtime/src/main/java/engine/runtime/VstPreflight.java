@@ -227,6 +227,32 @@ public final class VstPreflight {
      * this in a bounded retry for a transient venue failure only. This
      * method's own contract is unchanged: it retries nothing.
      */
+    /**
+     * Reads the account's real mode and refuses to continue unless it is
+     * {@link PositionMode#ONE_WAY}.
+     *
+     * <p>Called on <b>both</b> paths, because setting a mode and knowing one
+     * are different things. On a clean start the set happens first and this
+     * confirms it took; with a pre-existing position no set is possible --
+     * a venue will not change mode while a position is open -- and this is
+     * the only thing standing between a hedge account and an adapter built
+     * for one-way, which would send {@code positionSide=BOTH} the moment a
+     * human reset the kill switch. Raised by CodeRabbit on PR #161.
+     */
+    private static void requireOneWay(ExchangeAdapter adapter) {
+        PositionMode actual = adapter.getPositionMode();
+        if (actual != PositionMode.ONE_WAY) {
+            throw new IllegalStateException(
+                    "VstPreflight refusing to start: the account's real position mode is "
+                            + actual
+                            + ", not ONE_WAY. Every strategy here assumes a single netted position"
+                            + " (metrics.position.PositionTracker), and in HEDGE an opposite-side order"
+                            + " opens a second position instead of reducing one -- confirmed on the real"
+                            + " VST account 2026-09-10. See GitHub issue #157.");
+        }
+        log.info("VstPreflight: account position mode verified as ONE_WAY");
+    }
+
     public static Result run(ExchangeAdapter adapter, String symbol) {
         Objects.requireNonNull(adapter, "adapter is required");
         Objects.requireNonNull(symbol, "symbol is required");
@@ -272,6 +298,10 @@ public final class VstPreflight {
                             + " new signal is submitted. Skipping leverage enforcement -- moot until a human"
                             + " resets the kill switch. positions={}",
                     positions);
+            // No set is possible with a position open, so verification is the
+            // only guard here -- and it must still run, or a kill-switch reset
+            // would arm an adapter that disagrees with the account.
+            requireOneWay(adapter);
             return new Result(balance, true);
         }
         log.info("VstPreflight: no pre-existing non-zero positions found, clean start");
@@ -305,6 +335,7 @@ public final class VstPreflight {
         log.info(
                 "VstPreflight: position mode set to ONE_WAY -- an opposite-side order now reduces the"
                         + " position rather than opening a second one (see GitHub issue #157)");
+        requireOneWay(adapter);
 
         int canaryBaseLeverage = RiskLimits.canary().baseLeverage().intValueExact();
         adapter.setLeverage(symbol, Side.LONG, canaryBaseLeverage);

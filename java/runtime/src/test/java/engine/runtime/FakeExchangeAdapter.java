@@ -153,4 +153,16 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
             throw positionModeFailure;
         }
     }
+
+    private volatile PositionMode reportedMode = PositionMode.ONE_WAY;
+
+    /** What {@link #getPositionMode()} will report -- the account's real mode. */
+    void willReportPositionMode(PositionMode mode) {
+        this.reportedMode = Objects.requireNonNull(mode);
+    }
+
+    @Override
+    public PositionMode getPositionMode() {
+        return reportedMode;
+    }
 }

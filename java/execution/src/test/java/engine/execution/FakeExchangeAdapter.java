@@ -153,4 +153,9 @@ final class FakeExchangeAdapter implements ExchangeAdapter {
     public void setPositionMode(PositionMode mode) {
         throw new UnsupportedOperationException("ExchangeOrderExecutor must never call setPositionMode()");
     }
+
+    @Override
+    public PositionMode getPositionMode() {
+        return PositionMode.ONE_WAY;
+    }
 }

@@ -379,4 +379,52 @@ class VstPreflightTest {
         assertTrue(result.killSwitchShouldStartTripped());
         assertEquals(List.of(), adapter.positionModeCalls());
     }
+
+    @Test
+    void aPreExistingPositionStillVerifiesTheAccountsRealMode() {
+        // CodeRabbit on PR #161. The set is skipped here -- a venue will not
+        // change mode while a position is open -- which left an adapter built
+        // for one-way potentially talking to a hedge account. The kill switch
+        // starts tripped, but a human reset would then send positionSide=BOTH
+        // to a hedge account, and every order's meaning depends on that.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of(position(SYMBOL, "0.5")));
+        adapter.willReportPositionMode(PositionMode.HEDGE);
+
+        IllegalStateException thrown =
+                assertThrows(IllegalStateException.class, () -> VstPreflight.run(adapter, SYMBOL));
+
+        assertTrue(
+                thrown.getMessage().contains("HEDGE"),
+                "the refusal must name the mode found: " + thrown.getMessage());
+        assertEquals(List.of(), adapter.positionModeCalls(), "must not attempt a change with a position open");
+    }
+
+    @Test
+    void aPreExistingPositionInOneWayModeStillTripsButStarts() {
+        // The mode is right; the position is the problem. That is the branch's
+        // existing behaviour and must not become a crash.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of(position(SYMBOL, "0.5")));
+        adapter.willReportPositionMode(PositionMode.ONE_WAY);
+
+        VstPreflight.Result result = VstPreflight.run(adapter, SYMBOL);
+
+        assertTrue(result.killSwitchShouldStartTripped());
+    }
+
+    @Test
+    void aCleanStartVerifiesTheModeTookEffect() {
+        // Setting is not knowing: the venue could accept the call and not
+        // apply it, which is the same "a safeguard that did not run" shape
+        // the leverage check exists for.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willReportPositionMode(PositionMode.HEDGE);   // set did not take
+
+        assertThrows(IllegalStateException.class, () -> VstPreflight.run(adapter, SYMBOL));
+    }
 }

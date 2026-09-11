@@ -367,6 +367,26 @@ public final class BingXAdapter implements ExchangeAdapter {
      * assumes, and what {@code metrics.position.PositionTracker} models. In
      * hedge mode the same order opens an independent leg instead.
      */
+    @Override
+    public PositionMode getPositionMode() {
+        JsonNode root = request("GET", POSITION_MODE_PATH, new LinkedHashMap<>());
+        int code = requireCode(root, "getPositionMode");
+        if (code != 0) {
+            throw new ExchangeException("BingX getPositionMode failed: " + errorSummary(root, code));
+        }
+        JsonNode dual = root.path("data").path("dualSidePosition");
+        if (dual.isMissingNode() || dual.isNull()) {
+            throw new ExchangeException(
+                    "BingX getPositionMode returned no dualSidePosition field -- refusing to guess the"
+                            + " account's position mode, since every order's meaning depends on it");
+        }
+        // A string on the wire, not a boolean -- CLAUDE.md's Exchange API
+        // Facts record `"true"` observed on a fresh key. asBoolean() handles
+        // a real boolean too, should BingX ever change it.
+        boolean hedge = dual.isBoolean() ? dual.asBoolean() : Boolean.parseBoolean(dual.asText());
+        return hedge ? PositionMode.HEDGE : PositionMode.ONE_WAY;
+    }
+
     private String positionSideParam(Side side) {
         if (positionMode == PositionMode.ONE_WAY) {
             return "BOTH";
