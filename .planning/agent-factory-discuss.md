@@ -144,8 +144,8 @@ what the repository actually contains:
 | | status |
 |---|---|
 | **Regime change, measured retrospectively** | **Exists.** Task D reports per-year; it found 2020 supplied +73.5R of +79.2R, and 4 of 8 years positive. `research/strategies/regime_classifier.py` exists from the scalping arc. |
-| **Regime change, detected live** | **Nothing.** No live-plane component watches for it. |
-| **Edge decay / live-versus-backtest divergence** | **Nothing.** Nothing compares realised performance against what the backtest predicted. |
+| **Regime change, detected live** | **Nothing.** `RegimeClassifier` is referenced only from `python/research/` and its own test; nothing under `python/live/` imports or calls it. |
+| **Edge decay / live-versus-backtest divergence** | **Nothing.** `live/health_check.py` checks loop liveness, tick freshness, kill switch, daily reports, signal freshness, disk and deployment staleness. **None of them compares realised performance to what the backtest predicted.** |
 | **Competition from other bots** | **Nothing, and not obviously measurable directly.** |
 
 The third row is the honest proxy for the fourth: an edge being
@@ -164,8 +164,37 @@ Two halves, opposite policies:
 
 **An infrastructure agent that runs often.** Verification external by
 construction — tests, real deployments, venue responses, review. Mistakes
-recoverable. This is what was demonstrated on 2026-09-11 and it needs no
-new permission, only the discipline already written down.
+recoverable.
+
+**"Runs often" is not "may do anything", and the boundary has to be
+written rather than assumed.** CLAUDE.md already restricts live-trading
+enablement, Risk Gateway bypass, risk or leverage relaxation, credential
+handling, and any live-affecting promotion — all of which require a human
+regardless of how well the agent is doing. Raised by CodeRabbit on PR
+#162, and it is the right correction: the earlier wording said this
+"needs no new permission", which reads as though the existing rules
+stretch to cover unattended operation. They do not; they were written for
+a supervised agent.
+
+So the infrastructure half's authority is an **allowlist of reversible
+work**: writing and running tests, building and merging non-CODEOWNERS
+changes that pass their gates, producing documents and measurements, and
+deploying code whose restart it has verified.
+
+And it needs a stated **stop condition**, because the external check it
+depends on is not always available — on 2026-09-11 review was
+rate-limited repeatedly and once went silent entirely. When external
+verification is unavailable the agent must **not**:
+
+- deploy, or restart a venue-connected loop;
+- reset a kill switch, or change any trading state;
+- promote anything to paper or live;
+- take any action it cannot reverse.
+
+It may continue to prepare work, and must leave it unmerged. That is the
+same **halt** posture every other safety property here takes, applied to
+the agent itself — and §7.3 is where its cost is acknowledged rather than
+hidden.
 
 **A research process that runs rarely, and is made *harder* to invoke,
 not easier.** Pre-registration before data access, `N` accounted
