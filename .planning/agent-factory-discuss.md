@@ -96,16 +96,36 @@ reason is arithmetic rather than engineering.
 
 Every configuration examined against a body of data raises that data's
 selection count `N`. The Deflated Sharpe Ratio deflates any result
-against `N`. CLAUDE.md's own table:
+against `N`.
+
+**`N` is not the only input, and the table below should not be read as
+though it were.** DSR (Bailey & López de Prado 2014, implemented as
+`research/eligibility.py::evaluate_deflated_sharpe`, derived in
+`.planning/sr-q-deflated-sharpe.md`) also depends on the sample length
+`T`, the skewness and kurtosis of the returns, and the variance of the
+trial Sharpe estimates. The table is CLAUDE.md's own, computed by
+inverting the benchmark **with those other inputs held at the values from
+that computation** — so it isolates `N`'s effect rather than showing a
+general law. What survives the caveat is the direction and the order of
+magnitude, which is all §3's argument needs.
+
+CLAUDE.md's table, reproduced:
 
 | N | annualized Sharpe required to clear DSR 0.95 |
 |---|---|
 | 1 (a pre-registered holdout) | **0.63** |
 | 5 | 2.17 |
 | 50 | 3.56 |
-| **~130 (this project today)** | **4.00** |
+| **127 (this project at that computation)** | **4.00** |
 
-Credible institutional trend-following reports **0.4–0.8**.
+Credible institutional trend-following reports **0.4–0.8** — the range
+CLAUDE.md uses throughout as its reference for a real edge, not a figure
+derived here.
+
+The project-level count has since moved past 127 (CLAUDE.md records 129
+after Trade Management Task C, of which one is a test artifact). This
+document says "~130" elsewhere for that reason; the table keeps 127
+because that is the `N` the figures were actually computed at.
 
 **An agent that autonomously generates and tests hypotheses spends the
 only resource that makes a conclusion possible.** It does not get better
