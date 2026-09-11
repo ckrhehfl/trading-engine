@@ -3,6 +3,7 @@ package engine.runtime;
 import engine.exchange.BalanceSnapshot;
 import engine.exchange.ExchangeAdapter;
 import engine.exchange.ExchangeException;
+import engine.exchange.PositionMode;
 import engine.exchange.PositionSnapshot;
 import engine.risk.RiskLimits;
 import engine.schemas.Side;
@@ -57,13 +58,28 @@ import org.slf4j.LoggerFactory;
  *       resets the kill switch, and a leverage change while a position is
  *       open is commonly rejected by exchanges (not documented for BingX
  *       specifically, but not worth risking).
+ *   <li><b>Position mode (added 2026-09-11, GitHub issue #157):</b> only
+ *       when starting clean, sets the account to {@link
+ *       PositionMode#ONE_WAY}. Nothing in this codebase had ever called
+ *       {@code setPositionMode}, so the account ran in BingX's hedge
+ *       default -- where a {@code SHORT} order meant to <em>close</em> a
+ *       long opens a second position beside it instead. Confirmed on the
+ *       real VST account: closing a 0.0001 long left the long untouched
+ *       and a 0.0001 short next to it, margin posted on both, while the
+ *       OMS recorded the close as {@code FILLED}. One-way is the mode
+ *       every strategy here was written for, since {@code
+ *       metrics.position.PositionTracker} keeps a single signed position
+ *       and nets an opposite fill against it. Propagates on failure, for
+ *       the same reason leverage does. See {@code
+ *       .planning/position-truth-discuss.md} §9.
  *   <li><b>Leverage enforcement (added after a real, correctly-identified
  *       CodeRabbit review finding on this PR):</b> only when starting clean
  *       (step 3 found no pre-existing position), actively sets the real
- *       exchange-side leverage for {@code symbol}, both {@code LONG} and
- *       {@code SHORT} (hedge mode -- the confirmed real default per
- *       CLAUDE.md's "Verified" section, and the only shape {@code
- *       BingXAdapter#setLeverage} sends), to {@code RiskLimits.canary()
+ *       exchange-side leverage for {@code symbol}. Both {@code LONG} and
+ *       {@code SHORT} are passed, which {@code BingXAdapter} now maps to
+ *       {@code side=BOTH} in one-way mode (CLAUDE.md's Exchange API Facts:
+ *       leverage takes {@code BOTH} in one-way and {@code LONG}/{@code
+ *       SHORT} in hedge), to {@code RiskLimits.canary()
  *       .baseLeverage()} -- closing a real, empirically-confirmed gap: this
  *       project's own real VST verification run found a fresh account's
  *       real default leverage was {@code 20X}, entirely independent of and
@@ -211,6 +227,32 @@ public final class VstPreflight {
      * this in a bounded retry for a transient venue failure only. This
      * method's own contract is unchanged: it retries nothing.
      */
+    /**
+     * Reads the account's real mode and refuses to continue unless it is
+     * {@link PositionMode#ONE_WAY}.
+     *
+     * <p>Called on <b>both</b> paths, because setting a mode and knowing one
+     * are different things. On a clean start the set happens first and this
+     * confirms it took; with a pre-existing position no set is possible --
+     * a venue will not change mode while a position is open -- and this is
+     * the only thing standing between a hedge account and an adapter built
+     * for one-way, which would send {@code positionSide=BOTH} the moment a
+     * human reset the kill switch. Raised by CodeRabbit on PR #161.
+     */
+    private static void requireOneWay(ExchangeAdapter adapter) {
+        PositionMode actual = adapter.getPositionMode();
+        if (actual != PositionMode.ONE_WAY) {
+            throw new IllegalStateException(
+                    "VstPreflight refusing to start: the account's real position mode is "
+                            + actual
+                            + ", not ONE_WAY. Every strategy here assumes a single netted position"
+                            + " (metrics.position.PositionTracker), and in HEDGE an opposite-side order"
+                            + " opens a second position instead of reducing one -- confirmed on the real"
+                            + " VST account 2026-09-10. See GitHub issue #157.");
+        }
+        log.info("VstPreflight: account position mode verified as ONE_WAY");
+    }
+
     public static Result run(ExchangeAdapter adapter, String symbol) {
         Objects.requireNonNull(adapter, "adapter is required");
         Objects.requireNonNull(symbol, "symbol is required");
@@ -256,9 +298,44 @@ public final class VstPreflight {
                             + " new signal is submitted. Skipping leverage enforcement -- moot until a human"
                             + " resets the kill switch. positions={}",
                     positions);
+            // No set is possible with a position open, so verification is the
+            // only guard here -- and it must still run, or a kill-switch reset
+            // would arm an adapter that disagrees with the account.
+            requireOneWay(adapter);
             return new Result(balance, true);
         }
         log.info("VstPreflight: no pre-existing non-zero positions found, clean start");
+
+        // Set the position mode explicitly, before anything can trade.
+        //
+        // Nothing in this codebase had ever called setPositionMode, so the
+        // account ran in whatever BingX defaulted to -- hedge -- in which a
+        // SHORT order meant to *close* a long opens a second position
+        // beside it instead. Confirmed on the real VST account on
+        // 2026-09-10: closing a 0.0001 long left the long untouched and a
+        // 0.0001 short next to it, margin posted on both, while the OMS
+        // recorded the close as FILLED.
+        //
+        // One-way is not a preference. It is the mode every strategy here
+        // was written for: `metrics.position.PositionTracker`, which every
+        // backtest runs on, keeps a single signed position and nets an
+        // opposite fill against it. See `.planning/position-truth-discuss.md`
+        // §9 and GitHub issue #157.
+        //
+        // Propagates on failure, exactly like setLeverage below and for the
+        // same reason: starting anyway would mean trading while believing a
+        // safeguard applied that did not -- and here the "safeguard" is what
+        // every exit order means.
+        //
+        // Deliberately after the pre-existing-position check: a venue will
+        // not change position mode while a position is open, and that branch
+        // already starts the kill switch tripped, so attempting it there
+        // would turn a handled condition into a crash.
+        adapter.setPositionMode(PositionMode.ONE_WAY);
+        log.info(
+                "VstPreflight: position mode set to ONE_WAY -- an opposite-side order now reduces the"
+                        + " position rather than opening a second one (see GitHub issue #157)");
+        requireOneWay(adapter);
 
         int canaryBaseLeverage = RiskLimits.canary().baseLeverage().intValueExact();
         adapter.setLeverage(symbol, Side.LONG, canaryBaseLeverage);

@@ -49,6 +49,7 @@ public final class BingXAdapter implements ExchangeAdapter {
     private final String apiKey;
     private final String apiSecret;
     private final String baseUrl;
+    private final PositionMode positionMode;
     private final HttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -69,10 +70,37 @@ public final class BingXAdapter implements ExchangeAdapter {
      * whole class of issue at its one real entry point rather than relying
      * on every future caller to pre-sanitize its own credential source.
      */
+    /**
+     * Retained for callers that genuinely do not place orders, and for
+     * existing tests. Assumes {@link PositionMode#HEDGE}, which is what
+     * this adapter did implicitly before the mode became explicit.
+     *
+     * <p><b>Do not use it on an order-placing path.</b> Whether an order
+     * reduces a position or opens an opposing one depends entirely on the
+     * account's mode, and assuming the wrong one is exactly the defect the
+     * four-argument constructor exists to remove.
+     */
     public BingXAdapter(String apiKey, String apiSecret, String baseUrl) {
+        this(apiKey, apiSecret, baseUrl, PositionMode.HEDGE);
+    }
+
+    /**
+     * @param positionMode what the account is actually in. <b>Required,
+     *     with no default</b>, because guessing is what produced the defect
+     *     it was added for: nothing in this codebase ever called {@code
+     *     setPositionMode}, the account inherited BingX's hedge default,
+     *     and a {@code SHORT} order meant to close a long opened a second
+     *     position beside it instead -- confirmed on the real VST account
+     *     on 2026-09-10. See {@code .planning/position-truth-discuss.md}
+     *     and GitHub issue #157.
+     *     <p>The caller is responsible for the account really being in this
+     *     mode; {@code VstPreflight} sets and verifies it at startup.
+     */
+    public BingXAdapter(String apiKey, String apiSecret, String baseUrl, PositionMode positionMode) {
         this.apiKey = Objects.requireNonNull(apiKey, "apiKey is required").strip();
         this.apiSecret = Objects.requireNonNull(apiSecret, "apiSecret is required").strip();
         this.baseUrl = Objects.requireNonNull(baseUrl, "baseUrl is required");
+        this.positionMode = Objects.requireNonNull(positionMode, "positionMode is required");
         this.httpClient = HttpClient.newBuilder().connectTimeout(REQUEST_TIMEOUT).build();
     }
 
@@ -84,7 +112,7 @@ public final class BingXAdapter implements ExchangeAdapter {
         Map<String, String> params = new LinkedHashMap<>();
         params.put("symbol", order.symbol());
         params.put("side", bingxSide(order.side()));
-        params.put("positionSide", bingxPositionSide(order.side()));
+        params.put("positionSide", positionSideParam(order.side()));
         params.put("type", bingxOrderType(order.orderType()));
         params.put("quantity", order.approvedQuantity().toPlainString());
         if (order.limitPrice() != null) {
@@ -233,7 +261,7 @@ public final class BingXAdapter implements ExchangeAdapter {
         }
         Map<String, String> params = new LinkedHashMap<>();
         params.put("symbol", symbol);
-        params.put("side", side == Side.LONG ? "LONG" : "SHORT");
+        params.put("side", positionSideParam(side));
         params.put("leverage", String.valueOf(leverage));
 
         JsonNode root = request("POST", LEVERAGE_PATH, params);
@@ -331,7 +359,38 @@ public final class BingXAdapter implements ExchangeAdapter {
      * for why this is flagged as a known limitation rather than silently
      * assumed correct.
      */
-    private static String bingxPositionSide(Side side) {
+    /**
+     * {@code BOTH} in one-way mode, the side's own name in hedge mode.
+     *
+     * <p>In one-way the account holds a single netted position, so an
+     * opposite-side order reduces it -- which is what every strategy here
+     * assumes, and what {@code metrics.position.PositionTracker} models. In
+     * hedge mode the same order opens an independent leg instead.
+     */
+    @Override
+    public PositionMode getPositionMode() {
+        JsonNode root = request("GET", POSITION_MODE_PATH, new LinkedHashMap<>());
+        int code = requireCode(root, "getPositionMode");
+        if (code != 0) {
+            throw new ExchangeException("BingX getPositionMode failed: " + errorSummary(root, code));
+        }
+        JsonNode dual = root.path("data").path("dualSidePosition");
+        if (dual.isMissingNode() || dual.isNull()) {
+            throw new ExchangeException(
+                    "BingX getPositionMode returned no dualSidePosition field -- refusing to guess the"
+                            + " account's position mode, since every order's meaning depends on it");
+        }
+        // A string on the wire, not a boolean -- CLAUDE.md's Exchange API
+        // Facts record `"true"` observed on a fresh key. asBoolean() handles
+        // a real boolean too, should BingX ever change it.
+        boolean hedge = dual.isBoolean() ? dual.asBoolean() : Boolean.parseBoolean(dual.asText());
+        return hedge ? PositionMode.HEDGE : PositionMode.ONE_WAY;
+    }
+
+    private String positionSideParam(Side side) {
+        if (positionMode == PositionMode.ONE_WAY) {
+            return "BOTH";
+        }
         return side == Side.LONG ? "LONG" : "SHORT";
     }
 

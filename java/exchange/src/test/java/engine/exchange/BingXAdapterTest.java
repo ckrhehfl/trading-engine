@@ -495,4 +495,62 @@ class BingXAdapterTest {
             server.stop(0);
         }
     }
+
+    // ----------------------------------------------- one-way mode (issue #157)
+    //
+    // The account ran in hedge mode because nothing ever set the mode --
+    // `setPositionMode` existed and no runtime wiring called it. In hedge
+    // mode a SHORT order opens a short instead of reducing a long, which
+    // was confirmed on the real VST account: closing a 0.0001 long left
+    // the long untouched and a 0.0001 short beside it.
+    //
+    // The adapter must therefore be *told* its mode. There is no default:
+    // guessing is what produced the defect.
+
+    @Test
+    void oneWayModeSendsBothAsThePositionSide() throws Exception {
+        BingXAdapter oneWay =
+                new BingXAdapter("k", "s", server.baseUrl(), PositionMode.ONE_WAY);
+        server.respondWith(
+                200, "{\"code\":0,\"msg\":\"\",\"data\":{\"order\":{\"orderId\":777}}}");
+
+        oneWay.submitOrder(guardedMarketOrder(Side.SHORT, "1"));
+
+        assertEquals("BOTH", server.lastQueryParams().get("positionSide"));
+    }
+
+    @Test
+    void hedgeModeStillSendsTheSideSpecificPositionSide() throws Exception {
+        BingXAdapter hedge =
+                new BingXAdapter("k", "s", server.baseUrl(), PositionMode.HEDGE);
+        server.respondWith(
+                200, "{\"code\":0,\"msg\":\"\",\"data\":{\"order\":{\"orderId\":778}}}");
+
+        hedge.submitOrder(guardedMarketOrder(Side.SHORT, "1"));
+
+        assertEquals("SHORT", server.lastQueryParams().get("positionSide"));
+    }
+
+    @Test
+    void oneWayModeSetsLeverageWithSideBoth() throws Exception {
+        // CLAUDE.md's Exchange API Facts: leverage takes `side=BOTH` in
+        // one-way mode and LONG/SHORT in hedge mode. Sending LONG here
+        // would make VstPreflight believe it constrained leverage when it
+        // may not have -- the same "a safeguard that did not run" shape
+        // the preflight exists to prevent.
+        BingXAdapter oneWay =
+                new BingXAdapter("k", "s", server.baseUrl(), PositionMode.ONE_WAY);
+        server.respondWith(200, "{\"code\":0,\"msg\":\"\",\"data\":{}}");
+
+        oneWay.setLeverage("BTC-USDT", Side.LONG, 1);
+
+        assertEquals("BOTH", server.lastQueryParams().get("side"));
+    }
+
+    @Test
+    void theModeIsRequired() {
+        assertThrows(
+                NullPointerException.class,
+                () -> new BingXAdapter("k", "s", server.baseUrl(), null));
+    }
 }

@@ -593,6 +593,19 @@ public final class KisAdapter implements ExchangeAdapter {
      * futures (one net position per contract) -- see class Javadoc.
      * Deliberately never sends a request.
      */
+
+    /**
+     * Always {@link PositionMode#ONE_WAY}: KRX holds one net position per
+     * contract and has no hedge/one-way concept to query, so this is a
+     * statement about the venue rather than a lookup. Mirrors {@code
+     * setPositionMode} above, which logs and returns rather than throwing,
+     * for the same "same-shaped ExchangeAdapter" reason.
+     */
+    @Override
+    public PositionMode getPositionMode() {
+        return PositionMode.ONE_WAY;
+    }
+
     @Override
     public void setPositionMode(PositionMode mode) {
         Objects.requireNonNull(mode, "mode is required");

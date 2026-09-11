@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import engine.exchange.BalanceSnapshot;
 import engine.exchange.ExchangeException;
+import engine.exchange.PositionMode;
 import engine.exchange.PositionSnapshot;
 import engine.schemas.Side;
 import java.math.BigDecimal;
@@ -332,5 +333,98 @@ class VstPreflightTest {
         VstPreflight.runWithRetry(adapter, SYMBOL, 3, NO_SLEEP);
 
         assertEquals(1, adapter.balanceCallCount());
+    }
+
+    // ----------------------------------------- one-way position mode (#157)
+
+    @Test
+    void aCleanStartSetsTheAccountToOneWayMode() {
+        // Nothing in this codebase ever called setPositionMode, so the
+        // account ran in whatever BingX defaulted to -- hedge -- where a
+        // SHORT meant to close a long opens a second position instead.
+        // Confirmed on the real VST account 2026-09-10.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+
+        VstPreflight.run(adapter, SYMBOL);
+
+        assertEquals(List.of(PositionMode.ONE_WAY), adapter.positionModeCalls());
+    }
+
+    @Test
+    void aFailureToSetTheModeRefusesToStart() {
+        // Fails closed for the same reason setLeverage does: proceeding
+        // would mean trading while believing a safeguard applied that did
+        // not. Here the "safeguard" is the meaning of every exit order.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willFailPositionModeWith(new ExchangeException("mode change refused"));
+
+        assertThrows(ExchangeException.class, () -> VstPreflight.run(adapter, SYMBOL));
+    }
+
+    @Test
+    void aPreExistingPositionSkipsTheModeChange() {
+        // The venue cannot change position mode while a position is open,
+        // and the kill switch starts tripped in this branch anyway, so
+        // attempting it would only turn a handled condition into a crash.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of(position(SYMBOL, "0.5")));
+
+        VstPreflight.Result result = VstPreflight.run(adapter, SYMBOL);
+
+        assertTrue(result.killSwitchShouldStartTripped());
+        assertEquals(List.of(), adapter.positionModeCalls());
+    }
+
+    @Test
+    void aPreExistingPositionStillVerifiesTheAccountsRealMode() {
+        // CodeRabbit on PR #161. The set is skipped here -- a venue will not
+        // change mode while a position is open -- which left an adapter built
+        // for one-way potentially talking to a hedge account. The kill switch
+        // starts tripped, but a human reset would then send positionSide=BOTH
+        // to a hedge account, and every order's meaning depends on that.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of(position(SYMBOL, "0.5")));
+        adapter.willReportPositionMode(PositionMode.HEDGE);
+
+        IllegalStateException thrown =
+                assertThrows(IllegalStateException.class, () -> VstPreflight.run(adapter, SYMBOL));
+
+        assertTrue(
+                thrown.getMessage().contains("HEDGE"),
+                "the refusal must name the mode found: " + thrown.getMessage());
+        assertEquals(List.of(), adapter.positionModeCalls(), "must not attempt a change with a position open");
+    }
+
+    @Test
+    void aPreExistingPositionInOneWayModeStillTripsButStarts() {
+        // The mode is right; the position is the problem. That is the branch's
+        // existing behaviour and must not become a crash.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of(position(SYMBOL, "0.5")));
+        adapter.willReportPositionMode(PositionMode.ONE_WAY);
+
+        VstPreflight.Result result = VstPreflight.run(adapter, SYMBOL);
+
+        assertTrue(result.killSwitchShouldStartTripped());
+    }
+
+    @Test
+    void aCleanStartVerifiesTheModeTookEffect() {
+        // Setting is not knowing: the venue could accept the call and not
+        // apply it, which is the same "a safeguard that did not run" shape
+        // the leverage check exists for.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        adapter.willReturnBalance(vstBalance("100"));
+        adapter.willReturnPositions(List.of());
+        adapter.willReportPositionMode(PositionMode.HEDGE);   // set did not take
+
+        assertThrows(IllegalStateException.class, () -> VstPreflight.run(adapter, SYMBOL));
     }
 }

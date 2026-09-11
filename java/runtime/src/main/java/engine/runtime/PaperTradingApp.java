@@ -1,6 +1,7 @@
 package engine.runtime;
 
 import engine.exchange.BingXAdapter;
+import engine.exchange.PositionMode;
 import engine.exchange.KisAdapter;
 import engine.exchange.KisTokenProvider;
 import engine.execution.ExchangeOrderExecutor;
@@ -1020,7 +1021,12 @@ public final class PaperTradingApp {
             String symbol, String bingxBaseUrl, Path signalPath, long tickIntervalSeconds, Path reportsDirectory) {
         String apiKey = requireNonBlank(System.getenv(ENV_BINGX_API_KEY), ENV_BINGX_API_KEY);
         String apiSecret = requireNonBlank(System.getenv(ENV_BINGX_API_SECRET), ENV_BINGX_API_SECRET);
-        BingXAdapter adapter = new BingXAdapter(apiKey, apiSecret, BINGX_VST_BASE_URL);
+        // ONE_WAY, matching what VstPreflight sets and verifies below, and
+        // what every strategy here assumes -- see issue #157. The adapter
+        // is told rather than left to guess: guessing is what let a SHORT
+        // meant to close a long open a second position instead.
+        BingXAdapter adapter =
+                new BingXAdapter(apiKey, apiSecret, BINGX_VST_BASE_URL, PositionMode.ONE_WAY);
 
         // Retrying variant, not `run`: on 2026-09-09 a real restart died here
         // because both loop JVMs started at once on a 955 MB instance and

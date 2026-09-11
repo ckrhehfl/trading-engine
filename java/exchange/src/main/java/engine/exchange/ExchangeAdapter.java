@@ -40,4 +40,17 @@ public interface ExchangeAdapter {
     void setLeverage(String symbol, Side side, int leverage);
 
     void setPositionMode(PositionMode mode);
+
+    /**
+     * The mode the account is <em>actually</em> in, read from the venue.
+     *
+     * <p>Added because setting a mode is not the same as knowing one.
+     * {@code VstPreflight} skips the set when a pre-existing position is
+     * found -- a venue will not change mode while a position is open --
+     * which left an adapter built for one-way potentially talking to a
+     * hedge account, sending {@code positionSide=BOTH} that the venue
+     * would reject or misapply the moment a human reset the kill switch.
+     * Raised by CodeRabbit on PR #161; see GitHub issue #157.
+     */
+    PositionMode getPositionMode();
 }
