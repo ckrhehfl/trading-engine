@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-82 documents and counting, which is past the point where `ls` is a
+83 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -120,6 +120,7 @@ The third paper-trading loop, and the shared-account ledger that followed it. Ki
 Not a task record and not tied to one issue — a standing reference that several arcs consult.
 
 - [`simulation-divergence-catalogue.md`](simulation-divergence-catalogue.md) — What we simulate versus what the venue does
+- [`agent-factory-discuss.md`](agent-factory-discuss.md) — Agent factory — what can be automated, and the one thing that gets worse if you do
 
 ### Operations
 
