@@ -497,14 +497,21 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
             // plots it.
             BigDecimal commission = status.commission();
             if (commission != null) {
-                lastCostDivergence = new CostDivergence(
+                // Logged from a local, not read back out of the field. The
+                // field is shared and `volatile`; another order resolving
+                // between the assignment and the read would put its own
+                // figures on this order's log line -- losing one observation
+                // and duplicating another, in a series whose whole value is
+                // its counts. Costs nothing to avoid. CodeRabbit on PR #163.
+                CostDivergence divergence = new CostDivergence(
                         id,
                         order.symbol(),
                         incrementNotional,
                         fee,
                         commission.abs(),
                         Instant.now());
-                log.info(lastCostDivergence.toLogLine());
+                lastCostDivergence = divergence;
+                log.info(divergence.toLogLine());
             }
         }
 

@@ -135,13 +135,25 @@ def _finite_decimal(text: str) -> Decimal:
 def read_observations(repo_root: Path | str | None = None) -> list[Observation]:
     """Every observation across every session log, oldest first.
 
-    Deduplicated on `clientOrderId`: a log can be re-read, and a session
-    can be restarted onto the same file, but one order's fill is one
-    observation and counting it twice would overstate `n` — the figure
-    every judgement below rests on.
+    Deduplicated on `(clientOrderId, observedAt)`, **not on
+    `clientOrderId` alone**.
+
+    A log can be re-read and a session can be restarted onto the same
+    file, so some dedup is needed or `n` gets overstated — and `n` is the
+    figure every judgement here rests on. But a *partially filled* order
+    produces one observation per fill, and keying on the order alone threw
+    all but the first away: a real loss of data in a series whose point is
+    its distribution. Raised by CodeRabbit on PR #163.
+
+    The timestamp comes from `Instant.now()` at the moment the record was
+    built, written into the log once, so it is stable across re-reads and
+    distinct per fill — each order is resolved at most once per poll, and
+    polls are minutes apart. An explicit event id on the Java side would be
+    more rigorous still; this achieves the same dedup with no change to the
+    log contract.
     """
     root = DEFAULT_REPO_ROOT if repo_root is None else Path(repo_root)
-    seen: dict[str, Observation] = {}
+    seen: dict[tuple[str, str], Observation] = {}
     for path in sorted(root.glob(LOG_GLOB)):
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -150,7 +162,7 @@ def read_observations(repo_root: Path | str | None = None) -> list[Observation]:
         for line in text.splitlines():
             obs = parse_line(line)
             if obs is not None:
-                seen.setdefault(obs.client_order_id, obs)
+                seen.setdefault((obs.client_order_id, obs.observed_at), obs)
     return sorted(seen.values(), key=_sort_key)
 
 

@@ -188,6 +188,41 @@ def test_the_default_root_is_the_repository_not_the_working_directory():
     assert DEFAULT_REPO_ROOT.name != "python"
 
 
+def test_partial_fills_of_one_order_are_separate_observations(tmp_path: Path):
+    """A partially filled order produces one cost observation per fill.
+
+    Keying dedup on `clientOrderId` alone threw all but the first away --
+    a real loss in a series whose value is its distribution, and one no
+    existing test caught because every fixture used a single fill."""
+    sessions = tmp_path / "var/live/sessions"
+    sessions.mkdir(parents=True)
+    base = LOG_PREFIX + canonical_line_from_java()
+
+    same_order = "clientOrderId=00000000-0000-4000-8000-000000000001"
+    first = base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:07:00Z")
+    second = base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:12:00Z")
+    assert same_order in first and same_order in second
+
+    (sessions / "a.log").write_text(first + "\n" + second + "\n", encoding="utf-8")
+
+    observations = read_observations(tmp_path)
+    assert len(observations) == 2, "both fills of one order are observations"
+    assert observations[0].observed_at < observations[1].observed_at
+
+
+def test_the_same_line_read_twice_is_still_one_observation(tmp_path: Path):
+    """The reason dedup exists at all must survive making the key finer:
+    a re-read log, or a session restarted onto the same file, must not
+    inflate `n`."""
+    sessions = tmp_path / "var/live/sessions"
+    sessions.mkdir(parents=True)
+    line = LOG_PREFIX + canonical_line_from_java()
+    (sessions / "a.log").write_text(line + "\n" + line + "\n", encoding="utf-8")
+    (sessions / "b.log").write_text(line + "\n", encoding="utf-8")
+
+    assert len(read_observations(tmp_path)) == 1
+
+
 def test_no_observations_says_so_rather_than_summarising_nothing():
     summary = summarise([])
     assert summary["n"] == 0
