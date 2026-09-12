@@ -106,6 +106,7 @@ def _obs(order_id: str, divergence: str, at: str) -> Observation:
         modelled_fee_bps=Decimal("5"),
         realised_fee_bps=Decimal(5) + Decimal(divergence),
         divergence_bps=Decimal(divergence),
+        cumulative_quantity=Decimal("1"),
         observed_at=at,
     )
 
@@ -168,9 +169,17 @@ def test_read_observations_returns_them_in_chronological_order(tmp_path: Path):
     assert ids == ["a", "b"], "observations must come back oldest-first by time, not by text"
 
 
-def test_an_unparseable_timestamp_sorts_last_rather_than_raising():
-    """Same tolerance as everywhere else here: one bad line must not take
-    the report down with it."""
+def test_an_unparseable_timestamp_is_rejected_at_parse_time():
+    """It used to be kept and sorted last -- which made `summarise` read
+    `modelled_fee_bps` and `last_observed_at` off it, so one truncated line
+    could masquerade as the newest observation."""
+    base = canonical_line_from_java()
+    assert parse_line(base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=truncated")) is None
+
+
+def test_sorting_still_tolerates_a_directly_constructed_bad_stamp():
+    """`parse_line` rejects these now, but a caller can build an
+    `Observation` by hand and a sort should not raise."""
     good = _obs("id-good", "1", "2026-09-12T00:00:00Z")
     bad = _obs("id-bad", "1", "not-a-timestamp")
 
@@ -199,8 +208,12 @@ def test_partial_fills_of_one_order_are_separate_observations(tmp_path: Path):
     base = LOG_PREFIX + canonical_line_from_java()
 
     same_order = "clientOrderId=00000000-0000-4000-8000-000000000001"
-    first = base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:07:00Z")
-    second = base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:12:00Z")
+    first = base.replace(
+        "observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:07:00Z"
+    ).replace("cumulativeQty=0.0001", "cumulativeQty=0.0001")
+    second = base.replace(
+        "observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:12:00Z"
+    ).replace("cumulativeQty=0.0001", "cumulativeQty=0.0002")
     assert same_order in first and same_order in second
 
     (sessions / "a.log").write_text(first + "\n" + second + "\n", encoding="utf-8")

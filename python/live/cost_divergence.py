@@ -84,6 +84,7 @@ class Observation:
     modelled_fee_bps: Decimal
     realised_fee_bps: Decimal
     divergence_bps: Decimal
+    cumulative_quantity: Decimal
     observed_at: str
 
 
@@ -101,7 +102,9 @@ def parse_line(line: str) -> Observation | None:
     try:
         numbers = {
             name: _finite_decimal(fields[name])
-            for name in ("notional", "modelledFeeBps", "realisedFeeBps", "divergenceBps")
+            for name in (
+                "notional", "modelledFeeBps", "realisedFeeBps", "divergenceBps", "cumulativeQty"
+            )
         }
         return Observation(
             client_order_id=fields["clientOrderId"],
@@ -110,10 +113,22 @@ def parse_line(line: str) -> Observation | None:
             modelled_fee_bps=numbers["modelledFeeBps"],
             realised_fee_bps=numbers["realisedFeeBps"],
             divergence_bps=numbers["divergenceBps"],
-            observed_at=fields["observedAt"],
+            cumulative_quantity=numbers["cumulativeQty"],
+            # Validated here, not merely tolerated at sort time. An
+            # unparseable stamp used to be kept and sorted last, which made
+            # `summarise` read `modelled_fee_bps` and `last_observed_at` off
+            # it -- one truncated line masquerading as the newest
+            # observation. CodeRabbit on PR #163.
+            observed_at=_valid_timestamp(fields["observedAt"]),
         )
     except (KeyError, ArithmeticError, ValueError):
         return None
+
+
+def _valid_timestamp(text: str) -> str:
+    """The stamp unchanged if it parses, else `ValueError`."""
+    datetime.fromisoformat(text.replace("Z", "+00:00"))
+    return text
 
 
 def _finite_decimal(text: str) -> Decimal:
@@ -135,7 +150,7 @@ def _finite_decimal(text: str) -> Decimal:
 def read_observations(repo_root: Path | str | None = None) -> list[Observation]:
     """Every observation across every session log, oldest first.
 
-    Deduplicated on `(clientOrderId, observedAt)`, **not on
+    Deduplicated on `(clientOrderId, observedAt, cumulativeQty)`, **not on
     `clientOrderId` alone**.
 
     A log can be re-read and a session can be restarted onto the same
@@ -145,15 +160,15 @@ def read_observations(repo_root: Path | str | None = None) -> list[Observation]:
     all but the first away: a real loss of data in a series whose point is
     its distribution. Raised by CodeRabbit on PR #163.
 
-    The timestamp comes from `Instant.now()` at the moment the record was
-    built, written into the log once, so it is stable across re-reads and
-    distinct per fill — each order is resolved at most once per poll, and
-    polls are minutes apart. An explicit event id on the Java side would be
-    more rigorous still; this achieves the same dedup with no change to the
-    log contract.
+    The cumulative filled quantity is what actually separates two fills of
+    one order: it is strictly increasing per fill by construction, where
+    `Instant.now()` guarantees neither uniqueness nor monotonicity and so
+    could collide and silently drop one. The timestamp stays in the key
+    because it makes a genuine re-read identical, which is what dedup
+    existed for in the first place.
     """
     root = DEFAULT_REPO_ROOT if repo_root is None else Path(repo_root)
-    seen: dict[tuple[str, str], Observation] = {}
+    seen: dict[tuple[str, str, Decimal], Observation] = {}
     for path in sorted(root.glob(LOG_GLOB)):
         try:
             text = path.read_text(encoding="utf-8", errors="replace")
@@ -162,7 +177,9 @@ def read_observations(repo_root: Path | str | None = None) -> list[Observation]:
         for line in text.splitlines():
             obs = parse_line(line)
             if obs is not None:
-                seen.setdefault((obs.client_order_id, obs.observed_at), obs)
+                seen.setdefault(
+                    (obs.client_order_id, obs.observed_at, obs.cumulative_quantity), obs
+                )
     return sorted(seen.values(), key=_sort_key)
 
 

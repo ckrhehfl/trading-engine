@@ -35,6 +35,16 @@ import java.util.UUID;
  * backtest results would stop being comparable in a second way — and the
  * point of measuring first is to decide that on evidence rather than
  * in advance.
+ *
+ * <h2>Why the cumulative filled quantity is on the record</h2>
+ *
+ * <p>A partially filled order produces one of these per fill, and a reader
+ * has to tell them apart. {@code Instant.now()} guarantees neither
+ * uniqueness nor monotonicity, so {@code (order, timestamp)} can collide
+ * and silently drop a fill. The cumulative quantity is strictly increasing
+ * per fill by construction — the same property this class's caller already
+ * relies on to compute the fill delta — which makes the pair unambiguous.
+ * Raised by CodeRabbit on PR #163.
  */
 public record CostDivergence(
         UUID clientOrderId,
@@ -42,6 +52,7 @@ public record CostDivergence(
         BigDecimal notional,
         BigDecimal modelledFee,
         BigDecimal realisedFee,
+        BigDecimal cumulativeFilledQuantity,
         Instant observedAt) {
 
     private static final BigDecimal BPS_DIVISOR = new BigDecimal("10000");
@@ -53,6 +64,7 @@ public record CostDivergence(
         Objects.requireNonNull(notional, "notional is required");
         Objects.requireNonNull(modelledFee, "modelledFee is required");
         Objects.requireNonNull(realisedFee, "realisedFee is required");
+        Objects.requireNonNull(cumulativeFilledQuantity, "cumulativeFilledQuantity is required");
         Objects.requireNonNull(observedAt, "observedAt is required");
         if (notional.signum() <= 0) {
             throw new IllegalArgumentException("notional must be positive, was " + notional);
@@ -86,6 +98,7 @@ public record CostDivergence(
                 + " notional=" + notional.toPlainString()
                 + " modelledFee=" + modelledFee.toPlainString()
                 + " realisedFee=" + realisedFee.toPlainString()
+                + " cumulativeQty=" + cumulativeFilledQuantity.toPlainString()
                 + " modelledFeeBps=" + modelledFeeBps().toPlainString()
                 + " realisedFeeBps=" + realisedFeeBps().toPlainString()
                 + " divergenceBps=" + divergenceBps().toPlainString()

@@ -503,15 +503,32 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
                 // figures on this order's log line -- losing one observation
                 // and duplicating another, in a series whose whole value is
                 // its counts. Costs nothing to avoid. CodeRabbit on PR #163.
-                CostDivergence divergence = new CostDivergence(
-                        id,
-                        order.symbol(),
-                        incrementNotional,
-                        fee,
-                        commission.abs(),
-                        Instant.now());
-                lastCostDivergence = divergence;
-                log.info(divergence.toLogLine());
+                BigDecimal cumulativeCommission = commission.abs();
+                BigDecimal commissionIncrement = cumulativeCommission.subtract(state.cumulativeCommission);
+                if (commissionIncrement.signum() < 0) {
+                    // A running total that went backwards is corrupt venue
+                    // data, not a rebate. Skipped rather than recorded as a
+                    // negative cost, which would drag the series' median the
+                    // wrong way and look like an improving fee schedule.
+                    log.warn(
+                            "order {} reports cumulative commission {} below the {} already recorded --"
+                                    + " skipping this cost observation rather than recording a negative fee",
+                            id,
+                            cumulativeCommission,
+                            state.cumulativeCommission);
+                } else {
+                    CostDivergence divergence = new CostDivergence(
+                            id,
+                            order.symbol(),
+                            incrementNotional,
+                            fee,
+                            commissionIncrement,
+                            reportedQty,
+                            Instant.now());
+                    lastCostDivergence = divergence;
+                    log.info(divergence.toLogLine());
+                }
+                state.cumulativeCommission = cumulativeCommission;
             }
         }
 
@@ -619,6 +636,17 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
         private final Order order;
         private BigDecimal cumulativeFilledQty = BigDecimal.ZERO;
         private BigDecimal cumulativeNotional = BigDecimal.ZERO;
+
+        /**
+         * The venue's own running fee total as of the last poll that
+         * reported one. Differenced the same way {@link #cumulativeFilledQty}
+         * is, because `queryOrder` returns the ORDER's state -- `executedQty`
+         * beside it is cumulative and this class already differences that, so
+         * `commission` is cumulative for the same reason. Recording the
+         * running total against one fill's increment would overstate every
+         * fill after the first.
+         */
+        private BigDecimal cumulativeCommission = BigDecimal.ZERO;
 
         private PendingOrderState(Order order) {
             this.order = order;

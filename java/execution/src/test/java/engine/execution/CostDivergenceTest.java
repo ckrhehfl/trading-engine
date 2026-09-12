@@ -30,7 +30,8 @@ class CostDivergenceTest {
     static final String CANONICAL_LOG_LINE =
             "cost_divergence clientOrderId=00000000-0000-4000-8000-000000000001"
                     + " symbol=BTC-USDT notional=7.93808 modelledFee=0.00396904"
-                    + " realisedFee=0.0055 modelledFeeBps=5 realisedFeeBps=6.928628"
+                    + " realisedFee=0.0055 cumulativeQty=0.0001"
+                    + " modelledFeeBps=5 realisedFeeBps=6.928628"
                     + " divergenceBps=1.928628 observedAt=2026-09-12T10:07:00.351091713Z";
 
     private CostDivergence canonical() {
@@ -40,6 +41,7 @@ class CostDivergenceTest {
                 new BigDecimal("7.93808"),
                 new BigDecimal("0.00396904"),
                 new BigDecimal("0.0055"),
+                new BigDecimal("0.0001"),
                 Instant.parse("2026-09-12T10:07:00.351091713Z"));
     }
 
@@ -74,6 +76,6 @@ class CostDivergenceTest {
                 IllegalArgumentException.class,
                 () -> new CostDivergence(
                         UUID.randomUUID(), "BTC-USDT", BigDecimal.ZERO,
-                        BigDecimal.ONE, BigDecimal.ONE, Instant.now()));
+                        BigDecimal.ONE, BigDecimal.ONE, BigDecimal.ONE, Instant.now()));
     }
 }

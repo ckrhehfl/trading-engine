@@ -858,4 +858,59 @@ class ExchangeOrderExecutorTest {
                 executor.lastCostDivergence(),
                 "no fill happened, so there is nothing to have cost anything");
     }
+
+    @Test
+    void aCumulativeCommissionIsRecordedAsAnIncrementNotATotal() {
+        // `queryOrder` returns the ORDER's state: `executedQty` is cumulative
+        // and this class already differences it. `commission` alongside it is
+        // cumulative for the same reason, so recording the running total
+        // against one fill's increment overstates every fill after the first.
+        // CodeRabbit on PR #163.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                // fill 1: 4 @ 100 -> notional 400, venue took 0.30 so far
+                new OrderStatus(
+                        order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("4"), new BigDecimal("100"), new BigDecimal("-0.30")),
+                // fill 2: cumulative 10 @ 100 -> increment 6, cumulative fee 0.75
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("10"), new BigDecimal("100"), new BigDecimal("-0.75")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertBigDecimalEquals(new BigDecimal("0.30"), executor.lastCostDivergence().realisedFee());
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        CostDivergence second = executor.lastCostDivergence();
+        // The increment is 0.75 - 0.30 = 0.45, NOT the 0.75 running total.
+        assertBigDecimalEquals(new BigDecimal("0.45"), second.realisedFee());
+        assertBigDecimalEquals(new BigDecimal("600"), second.notional());
+    }
+
+    @Test
+    void theCumulativeFilledQuantityIsOnTheRecordSoFillsAreDistinguishable() {
+        // `Instant.now()` guarantees neither uniqueness nor monotonicity, so a
+        // reader keyed on (order, timestamp) alone can drop a fill. The
+        // cumulative quantity is strictly increasing per fill by construction,
+        // which makes the pair unambiguous.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("4"), new BigDecimal("100"), new BigDecimal("-0.30")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertBigDecimalEquals(
+                new BigDecimal("4"), executor.lastCostDivergence().cumulativeFilledQuantity());
+    }
 }
