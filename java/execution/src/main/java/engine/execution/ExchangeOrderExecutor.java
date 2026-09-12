@@ -230,6 +230,14 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
 
     private final ExchangeAdapter adapter;
     private final BigDecimal feeBps;
+
+    /**
+     * The most recent cost observation, or {@code null} if no fill has
+     * yet carried a commission. Exposed for tests and for a caller that
+     * wants the structured record rather than the log line; the durable
+     * series is the log itself, which is already persisted per session.
+     */
+    private volatile CostDivergence lastCostDivergence;
     private final SubmissionListener submissionListener;
 
     private final Map<UUID, PendingOrderState> pendingOrders = new ConcurrentHashMap<>();
@@ -252,6 +260,11 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
         if (feeBps.signum() < 0) {
             throw new IllegalArgumentException("feeBps must not be negative, was " + feeBps);
         }
+    }
+
+    /** See {@link #lastCostDivergence}. */
+    public CostDivergence lastCostDivergence() {
+        return lastCostDivergence;
     }
 
     @Override
@@ -449,6 +462,28 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
             }
             BigDecimal incrementPrice = incrementNotional.divide(delta, PRICE_SCALE, RoundingMode.HALF_UP);
             BigDecimal fee = incrementNotional.multiply(feeBps).divide(BPS_DIVISOR);
+
+            // Record what the venue says this actually cost, against what we
+            // modelled it at. Measurement only -- `fee` above is unchanged and
+            // still the modelled figure. See CostDivergence's own Javadoc for
+            // why measuring precedes switching.
+            //
+            // `abs()` because BingX reports a charged fee as a NEGATIVE number
+            // (observed "-0.032441" on a real VST fill). Reading the sign
+            // literally would record every real fee as a rebate and invert the
+            // whole series -- the kind of error that is invisible until someone
+            // plots it.
+            BigDecimal commission = status.commission();
+            if (commission != null && commission.signum() != 0) {
+                lastCostDivergence = new CostDivergence(
+                        id,
+                        order.symbol(),
+                        incrementNotional,
+                        fee,
+                        commission.abs(),
+                        Instant.now());
+                log.info(lastCostDivergence.toLogLine());
+            }
 
             order.fill(delta); // may throw -- nothing computed above is preserved yet if it does
 

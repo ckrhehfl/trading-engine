@@ -3,6 +3,8 @@ package engine.execution;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -727,5 +729,85 @@ class ExchangeOrderExecutorTest {
                 fills.size(),
                 "the order must still be pollable/fillable normally after a listener-only failure at submit time");
         assertEquals(OrderState.FILLED, order.state());
+    }
+
+    // ------------------------------------- cost-model divergence (issue #163)
+    //
+    // The venue tells us what the fill actually cost, and this class has been
+    // discarding it and substituting its own model -- the same `notional x
+    // feeBps` formula PaperBroker and simulate_fill use. So the live loop and
+    // the backtest agree on fees by construction, and no evidence about
+    // whether that model is right could ever accumulate.
+    //
+    // This deliberately does NOT change what Fill.fee carries. Switching live
+    // P&L to the realised figure is a behaviour change with its own
+    // consequences; the point here is to measure first.
+
+    @Test
+    void reportsTheGapBetweenTheModelledFeeAndTheVenuesOwnCommission() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "2");
+        executor.submit(order, new BigDecimal("1000"));
+
+        // notional 2 x 1000 = 2000; modelled fee at 5bps = 1.0.
+        // The venue reports 1.4 -- 40% more than modelled.
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("2"), new BigDecimal("1000"), new BigDecimal("-1.4")));
+
+        List<Fill> fills = executor.pollFills(SYMBOL, new BigDecimal("1000"));
+
+        assertEquals(1, fills.size());
+        // Fill.fee stays the modelled figure -- deliberately unchanged.
+        assertBigDecimalEquals(new BigDecimal("1.0"), fills.get(0).fee());
+
+        CostDivergence divergence = executor.lastCostDivergence();
+        assertNotNull(divergence, "a commission on the wire must produce a divergence record");
+        assertBigDecimalEquals(new BigDecimal("1.0"), divergence.modelledFee());
+        assertBigDecimalEquals(new BigDecimal("1.4"), divergence.realisedFee());
+        assertBigDecimalEquals(new BigDecimal("2000"), divergence.notional());
+        // 1.4 / 2000 = 7bps realised against 5bps modelled.
+        assertBigDecimalEquals(new BigDecimal("7"), divergence.realisedFeeBps());
+    }
+
+    @Test
+    void aNegativeCommissionIsReadAsACostNotARebate() {
+        // BingX reports a charged fee as a NEGATIVE number ("-0.032441",
+        // verified on a real VST fill). Reading the sign literally would
+        // record every real fee as a rebate and invert the whole series.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("1"), new BigDecimal("100"), new BigDecimal("-0.05")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertBigDecimalEquals(new BigDecimal("0.05"), executor.lastCostDivergence().realisedFee());
+    }
+
+    @Test
+    void noCommissionOnTheWireProducesNoDivergenceRecord() {
+        // KIS supplies none, and a poll can legitimately lack it. Fabricating
+        // a zero would report "the venue charged nothing", which is a
+        // measurement, not an absence.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "FILLED", new BigDecimal("1"), new BigDecimal("100")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertNull(executor.lastCostDivergence());
     }
 }
