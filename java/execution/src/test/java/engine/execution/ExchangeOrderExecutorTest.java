@@ -3,6 +3,8 @@ package engine.execution;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -726,6 +728,249 @@ class ExchangeOrderExecutorTest {
                 1,
                 fills.size(),
                 "the order must still be pollable/fillable normally after a listener-only failure at submit time");
+        assertEquals(OrderState.FILLED, order.state());
+    }
+
+    // ------------------------------------- cost-model divergence (issue #163)
+    //
+    // The venue tells us what the fill actually cost, and this class has been
+    // discarding it and substituting its own model -- the same `notional x
+    // feeBps` formula PaperBroker and simulate_fill use. So the live loop and
+    // the backtest agree on fees by construction, and no evidence about
+    // whether that model is right could ever accumulate.
+    //
+    // This deliberately does NOT change what Fill.fee carries. Switching live
+    // P&L to the realised figure is a behaviour change with its own
+    // consequences; the point here is to measure first.
+
+    @Test
+    void reportsTheGapBetweenTheModelledFeeAndTheVenuesOwnCommission() {
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "2");
+        executor.submit(order, new BigDecimal("1000"));
+
+        // notional 2 x 1000 = 2000; modelled fee at 5bps = 1.0.
+        // The venue reports 1.4 -- 40% more than modelled.
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("2"), new BigDecimal("1000"), new BigDecimal("-1.4")));
+
+        List<Fill> fills = executor.pollFills(SYMBOL, new BigDecimal("1000"));
+
+        assertEquals(1, fills.size());
+        // Fill.fee stays the modelled figure -- deliberately unchanged.
+        assertBigDecimalEquals(new BigDecimal("1.0"), fills.get(0).fee());
+
+        CostDivergence divergence = executor.lastCostDivergence();
+        assertNotNull(divergence, "a commission on the wire must produce a divergence record");
+        assertBigDecimalEquals(new BigDecimal("1.0"), divergence.modelledFee());
+        assertBigDecimalEquals(new BigDecimal("1.4"), divergence.realisedFee());
+        assertBigDecimalEquals(new BigDecimal("2000"), divergence.notional());
+        // 1.4 / 2000 = 7bps realised against 5bps modelled.
+        assertBigDecimalEquals(new BigDecimal("7"), divergence.realisedFeeBps());
+    }
+
+    @Test
+    void aNegativeCommissionIsReadAsACostNotARebate() {
+        // BingX reports a charged fee as a NEGATIVE number ("-0.032441",
+        // verified on a real VST fill). Reading the sign literally would
+        // record every real fee as a rebate and invert the whole series.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("1"), new BigDecimal("100"), new BigDecimal("-0.05")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertBigDecimalEquals(new BigDecimal("0.05"), executor.lastCostDivergence().realisedFee());
+    }
+
+    @Test
+    void noCommissionOnTheWireProducesNoDivergenceRecord() {
+        // KIS supplies none, and a poll can legitimately lack it. Fabricating
+        // a zero would report "the venue charged nothing", which is a
+        // measurement, not an absence.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "FILLED", new BigDecimal("1"), new BigDecimal("100")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertNull(executor.lastCostDivergence());
+    }
+
+    @Test
+    void aZeroCommissionIsAnObservationNotAnAbsence() {
+        // Only null means unknown. A genuinely fee-free fill is real data, and
+        // dropping it biases the series upward by silently removing its
+        // cheapest members. CodeRabbit on PR #163 -- and the first version of
+        // this code excluded zero while its own Javadoc said not to.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("1"), new BigDecimal("100"), BigDecimal.ZERO));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        CostDivergence divergence = executor.lastCostDivergence();
+        assertNotNull(divergence, "a zero commission is a measurement, not a gap");
+        assertBigDecimalEquals(BigDecimal.ZERO, divergence.realisedFee());
+        // Modelled 5bps against a realised 0 -- the model was pessimistic here.
+        assertEquals(-1, divergence.divergenceBps().signum());
+    }
+
+    @Test
+    void anOverfillRecordsNoCostObservationBecauseNoFillHappened() {
+        // `order.fill(delta)` throws on an overfill and pollFills then returns
+        // no Fill and drops the order. Recording the cost first would leave an
+        // observation for an event that did not occur.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("5"), new BigDecimal("100"), new BigDecimal("-0.25")));
+
+        List<Fill> fills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertTrue(fills.isEmpty(), "an overfill must not produce a Fill");
+        assertNull(
+                executor.lastCostDivergence(),
+                "no fill happened, so there is nothing to have cost anything");
+    }
+
+    @Test
+    void aCumulativeCommissionIsRecordedAsAnIncrementNotATotal() {
+        // `queryOrder` returns the ORDER's state: `executedQty` is cumulative
+        // and this class already differences it. `commission` alongside it is
+        // cumulative for the same reason, so recording the running total
+        // against one fill's increment overstates every fill after the first.
+        // CodeRabbit on PR #163.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                // fill 1: 4 @ 100 -> notional 400, venue took 0.30 so far
+                new OrderStatus(
+                        order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("4"), new BigDecimal("100"), new BigDecimal("-0.30")),
+                // fill 2: cumulative 10 @ 100 -> increment 6, cumulative fee 0.75
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("10"), new BigDecimal("100"), new BigDecimal("-0.75")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertBigDecimalEquals(new BigDecimal("0.30"), executor.lastCostDivergence().realisedFee());
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        CostDivergence second = executor.lastCostDivergence();
+        // The increment is 0.75 - 0.30 = 0.45, NOT the 0.75 running total.
+        assertBigDecimalEquals(new BigDecimal("0.45"), second.realisedFee());
+        assertBigDecimalEquals(new BigDecimal("600"), second.notional());
+    }
+
+    @Test
+    void theCumulativeFilledQuantityIsOnTheRecordSoFillsAreDistinguishable() {
+        // `Instant.now()` guarantees neither uniqueness nor monotonicity, so a
+        // reader keyed on (order, timestamp) alone can drop a fill. The
+        // cumulative quantity is strictly increasing per fill by construction,
+        // which makes the pair unambiguous.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "10");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("4"), new BigDecimal("100"), new BigDecimal("-0.30")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertBigDecimalEquals(
+                new BigDecimal("4"), executor.lastCostDivergence().cumulativeFilledQuantity());
+    }
+
+    @Test
+    void aDecreasingCumulativeCommissionAbandonsCostTrackingForThatOrder() {
+        // 0.30 -> 0.20 -> 0.40. Skipping the decrease but lowering the
+        // baseline to 0.20 would then record 0.40 - 0.20 = 0.20, when the
+        // increment from the last trusted figure is 0.10. Keeping the
+        // baseline instead fixes the fee but misattributes the notional,
+        // since the skipped fill's notional is already gone.
+        //
+        // So neither: a cumulative total that goes backwards is inconsistent
+        // venue data, and every later increment for that order is unreliable.
+        // Cost tracking is abandoned for it rather than producing a subtly
+        // wrong number -- in a series whose value is its distribution, a
+        // wrong observation is worse than a missing one. CodeRabbit on #163.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "9");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("3"), new BigDecimal("100"), new BigDecimal("-0.30")),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("6"), new BigDecimal("100"), new BigDecimal("-0.20")),
+                new OrderStatus(order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("9"), new BigDecimal("100"), new BigDecimal("-0.40")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertBigDecimalEquals(new BigDecimal("0.30"), executor.lastCostDivergence().realisedFee());
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));   // the decrease
+        executor.pollFills(SYMBOL, new BigDecimal("100"));   // and after it
+
+        // Still the first observation -- nothing was recorded after the
+        // inconsistency, in either direction.
+        assertBigDecimalEquals(new BigDecimal("0.30"), executor.lastCostDivergence().realisedFee());
+        assertBigDecimalEquals(new BigDecimal("3"), executor.lastCostDivergence().cumulativeFilledQuantity());
+    }
+
+    @Test
+    void fillsThemselvesAreUnaffectedWhenCostTrackingIsAbandoned() {
+        // Abandoning a measurement must not change trading behaviour.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "6");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("3"), new BigDecimal("100"), new BigDecimal("-0.30")),
+                new OrderStatus(order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("6"), new BigDecimal("100"), new BigDecimal("-0.20")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        List<Fill> second = executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertEquals(1, second.size(), "the fill is real regardless of the cost bookkeeping");
+        assertBigDecimalEquals(new BigDecimal("3"), second.get(0).quantity());
         assertEquals(OrderState.FILLED, order.state());
     }
 }

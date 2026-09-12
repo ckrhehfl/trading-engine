@@ -1,5 +1,6 @@
 package engine.exchange;
 
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -552,5 +553,41 @@ class BingXAdapterTest {
         assertThrows(
                 NullPointerException.class,
                 () -> new BingXAdapter("k", "s", server.baseUrl(), null));
+    }
+
+    // --------------------------------- real commission capture (issue #163)
+
+    @Test
+    void queryOrderCapturesTheVenuesOwnCommissionWithItsSignIntact() {
+        // The exact shape observed on a real VST fill: a charged fee arrives
+        // as a NEGATIVE number. Passed through unmodified -- interpreting the
+        // sign belongs to the consumer, not to the wire layer.
+        server.respondWith(
+                200,
+                "{\"code\":0,\"msg\":\"\",\"data\":{\"order\":{\"orderId\":123,"
+                        + "\"status\":\"FILLED\",\"executedQty\":\"0.0001\","
+                        + "\"avgPrice\":\"79380.8\",\"commission\":\"-0.032441\"}}}");
+        Order order = guardedMarketOrder(Side.LONG, "0.0001");
+        order.submit();
+        order.acknowledge("123");
+
+        OrderStatus status = adapter.queryOrder(order);
+
+        assertEquals(0, new BigDecimal("-0.032441").compareTo(status.commission()));
+    }
+
+    @Test
+    void queryOrderLeavesCommissionNullWhenTheVenueDoesNotReportOne() {
+        // Absence must stay absence. A fabricated zero would read as "the
+        // venue charged nothing", which is a measurement rather than a gap.
+        server.respondWith(
+                200,
+                "{\"code\":0,\"msg\":\"\",\"data\":{\"order\":{\"orderId\":124,"
+                        + "\"status\":\"FILLED\",\"executedQty\":\"1\",\"avgPrice\":\"100\"}}}");
+        Order order = guardedMarketOrder(Side.LONG, "1");
+        order.submit();
+        order.acknowledge("124");
+
+        assertNull(adapter.queryOrder(order).commission());
     }
 }

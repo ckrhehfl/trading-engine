@@ -230,6 +230,14 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
 
     private final ExchangeAdapter adapter;
     private final BigDecimal feeBps;
+
+    /**
+     * The most recent cost observation, or {@code null} if no fill has
+     * yet carried a commission. Exposed for tests and for a caller that
+     * wants the structured record rather than the log line; the durable
+     * series is the log itself, which is already persisted per session.
+     */
+    private volatile CostDivergence lastCostDivergence;
     private final SubmissionListener submissionListener;
 
     private final Map<UUID, PendingOrderState> pendingOrders = new ConcurrentHashMap<>();
@@ -252,6 +260,11 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
         if (feeBps.signum() < 0) {
             throw new IllegalArgumentException("feeBps must not be negative, was " + feeBps);
         }
+    }
+
+    /** See {@link #lastCostDivergence}. */
+    public CostDivergence lastCostDivergence() {
+        return lastCostDivergence;
     }
 
     @Override
@@ -450,11 +463,78 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
             BigDecimal incrementPrice = incrementNotional.divide(delta, PRICE_SCALE, RoundingMode.HALF_UP);
             BigDecimal fee = incrementNotional.multiply(feeBps).divide(BPS_DIVISOR);
 
+            // Record what the venue says this actually cost, against what we
+            // modelled it at. Measurement only -- `fee` above is unchanged and
+            // still the modelled figure. See CostDivergence's own Javadoc for
+            // why measuring precedes switching.
+            //
+            // `abs()` because BingX reports a charged fee as a NEGATIVE number
+            // (observed "-0.032441" on a real VST fill). Reading the sign
+            // literally would record every real fee as a rebate and invert the
+            // whole series -- the kind of error that is invisible until someone
+            // plots it.
             order.fill(delta); // may throw -- nothing computed above is preserved yet if it does
 
             state.cumulativeFilledQty = reportedQty;
             state.cumulativeNotional = newNotional;
             fill = new Fill(id, order.symbol(), incrementPrice, delta, incrementNotional, fee, Instant.now());
+
+            // AFTER the fill exists, deliberately. `order.fill(delta)` above
+            // throws on an overfill, and `pollFills` then returns no Fill and
+            // drops the order -- so recording the cost first would leave an
+            // observation for a fill that never happened, quietly biasing the
+            // series with events that did not occur. CodeRabbit on PR #163.
+            //
+            // A zero commission is recorded, not skipped: only `null` means
+            // unknown. A genuinely fee-free fill is a real observation, and
+            // dropping it would bias the series upward by silently removing
+            // its cheapest members.
+            //
+            // `abs()` because BingX reports a charged fee as a NEGATIVE number
+            // (observed "-0.032441" on a real VST fill). Reading the sign
+            // literally would record every real fee as a rebate and invert the
+            // whole series -- the kind of error that is invisible until someone
+            // plots it.
+            BigDecimal commission = status.commission();
+            if (commission != null) {
+                // Logged from a local, not read back out of the field. The
+                // field is shared and `volatile`; another order resolving
+                // between the assignment and the read would put its own
+                // figures on this order's log line -- losing one observation
+                // and duplicating another, in a series whose whole value is
+                // its counts. Costs nothing to avoid. CodeRabbit on PR #163.
+                BigDecimal cumulativeCommission = commission.abs();
+                BigDecimal commissionIncrement = cumulativeCommission.subtract(state.cumulativeCommission);
+                if (commissionIncrement.signum() < 0 && !state.costTrackingAbandoned) {
+                    // A running total that went backwards is inconsistent
+                    // venue data, not a rebate, and it poisons every later
+                    // increment for this order -- see costTrackingAbandoned.
+                    // Recording it as a negative cost would drag the series'
+                    // median the wrong way and read as an improving fee
+                    // schedule.
+                    state.costTrackingAbandoned = true;
+                    log.warn(
+                            "order {} reports cumulative commission {} below the {} already recorded --"
+                                    + " abandoning cost observation for this order; its fills are unaffected",
+                            id,
+                            cumulativeCommission,
+                            state.cumulativeCommission);
+                } else if (!state.costTrackingAbandoned) {
+                    CostDivergence divergence = new CostDivergence(
+                            id,
+                            order.symbol(),
+                            incrementNotional,
+                            fee,
+                            commissionIncrement,
+                            reportedQty,
+                            Instant.now());
+                    lastCostDivergence = divergence;
+                    log.info(divergence.toLogLine());
+                }
+                if (!state.costTrackingAbandoned) {
+                    state.cumulativeCommission = cumulativeCommission;
+                }
+            }
         }
 
         boolean remove;
@@ -561,6 +641,30 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
         private final Order order;
         private BigDecimal cumulativeFilledQty = BigDecimal.ZERO;
         private BigDecimal cumulativeNotional = BigDecimal.ZERO;
+
+        /**
+         * The venue's own running fee total as of the last poll that
+         * reported one. Differenced the same way {@link #cumulativeFilledQty}
+         * is, because `queryOrder` returns the ORDER's state -- `executedQty`
+         * beside it is cumulative and this class already differences that, so
+         * `commission` is cumulative for the same reason. Recording the
+         * running total against one fill's increment would overstate every
+         * fill after the first.
+         */
+        private BigDecimal cumulativeCommission = BigDecimal.ZERO;
+
+        /**
+         * Set once the venue's running fee total has gone backwards, after
+         * which no further cost observation is recorded for this order.
+         *
+         * <p>Neither available repair is sound. Lowering the baseline makes
+         * the next increment count the decrease twice; keeping it fixes the
+         * fee but attributes it to the wrong notional, since the skipped
+         * fill's notional is already gone. In a series whose value is its
+         * distribution, a subtly wrong observation is worse than a missing
+         * one -- so this order simply stops contributing.
+         */
+        private boolean costTrackingAbandoned;
 
         private PendingOrderState(Order order) {
             this.order = order;

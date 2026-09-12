@@ -189,7 +189,15 @@ public final class BingXAdapter implements ExchangeAdapter {
                 orderNode.path("orderId").asText(),
                 orderNode.path("status").asText(),
                 parseBigDecimal(orderNode, "executedQty"),
-                parseBigDecimal(orderNode, "avgPrice"));
+                parseBigDecimal(orderNode, "avgPrice"),
+                // The fee BingX says it actually charged, reported as a
+                // NEGATIVE number (observed "-0.032441" on a real VST fill).
+                // Passed through with its sign intact -- interpreting it is
+                // the consumer's job, and `CostDivergence` does so explicitly.
+                // Null when absent, never zero: a fabricated zero would read
+                // as "the venue charged nothing", which is a measurement
+                // rather than an absence. See GitHub issue #163.
+                parseBigDecimal(orderNode, "commission"));
     }
 
     @Override
