@@ -505,18 +505,21 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
                 // its counts. Costs nothing to avoid. CodeRabbit on PR #163.
                 BigDecimal cumulativeCommission = commission.abs();
                 BigDecimal commissionIncrement = cumulativeCommission.subtract(state.cumulativeCommission);
-                if (commissionIncrement.signum() < 0) {
-                    // A running total that went backwards is corrupt venue
-                    // data, not a rebate. Skipped rather than recorded as a
-                    // negative cost, which would drag the series' median the
-                    // wrong way and look like an improving fee schedule.
+                if (commissionIncrement.signum() < 0 && !state.costTrackingAbandoned) {
+                    // A running total that went backwards is inconsistent
+                    // venue data, not a rebate, and it poisons every later
+                    // increment for this order -- see costTrackingAbandoned.
+                    // Recording it as a negative cost would drag the series'
+                    // median the wrong way and read as an improving fee
+                    // schedule.
+                    state.costTrackingAbandoned = true;
                     log.warn(
                             "order {} reports cumulative commission {} below the {} already recorded --"
-                                    + " skipping this cost observation rather than recording a negative fee",
+                                    + " abandoning cost observation for this order; its fills are unaffected",
                             id,
                             cumulativeCommission,
                             state.cumulativeCommission);
-                } else {
+                } else if (!state.costTrackingAbandoned) {
                     CostDivergence divergence = new CostDivergence(
                             id,
                             order.symbol(),
@@ -528,7 +531,9 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
                     lastCostDivergence = divergence;
                     log.info(divergence.toLogLine());
                 }
-                state.cumulativeCommission = cumulativeCommission;
+                if (!state.costTrackingAbandoned) {
+                    state.cumulativeCommission = cumulativeCommission;
+                }
             }
         }
 
@@ -647,6 +652,19 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
          * fill after the first.
          */
         private BigDecimal cumulativeCommission = BigDecimal.ZERO;
+
+        /**
+         * Set once the venue's running fee total has gone backwards, after
+         * which no further cost observation is recorded for this order.
+         *
+         * <p>Neither available repair is sound. Lowering the baseline makes
+         * the next increment count the decrease twice; keeping it fixes the
+         * fee but attributes it to the wrong notional, since the skipped
+         * fill's notional is already gone. In a series whose value is its
+         * distribution, a subtly wrong observation is worse than a missing
+         * one -- so this order simply stops contributing.
+         */
+        private boolean costTrackingAbandoned;
 
         private PendingOrderState(Order order) {
             this.order = order;

@@ -913,4 +913,64 @@ class ExchangeOrderExecutorTest {
         assertBigDecimalEquals(
                 new BigDecimal("4"), executor.lastCostDivergence().cumulativeFilledQuantity());
     }
+
+    @Test
+    void aDecreasingCumulativeCommissionAbandonsCostTrackingForThatOrder() {
+        // 0.30 -> 0.20 -> 0.40. Skipping the decrease but lowering the
+        // baseline to 0.20 would then record 0.40 - 0.20 = 0.20, when the
+        // increment from the last trusted figure is 0.10. Keeping the
+        // baseline instead fixes the fee but misattributes the notional,
+        // since the skipped fill's notional is already gone.
+        //
+        // So neither: a cumulative total that goes backwards is inconsistent
+        // venue data, and every later increment for that order is unreliable.
+        // Cost tracking is abandoned for it rather than producing a subtly
+        // wrong number -- in a series whose value is its distribution, a
+        // wrong observation is worse than a missing one. CodeRabbit on #163.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "9");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("3"), new BigDecimal("100"), new BigDecimal("-0.30")),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("6"), new BigDecimal("100"), new BigDecimal("-0.20")),
+                new OrderStatus(order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("9"), new BigDecimal("100"), new BigDecimal("-0.40")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        assertBigDecimalEquals(new BigDecimal("0.30"), executor.lastCostDivergence().realisedFee());
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));   // the decrease
+        executor.pollFills(SYMBOL, new BigDecimal("100"));   // and after it
+
+        // Still the first observation -- nothing was recorded after the
+        // inconsistency, in either direction.
+        assertBigDecimalEquals(new BigDecimal("0.30"), executor.lastCostDivergence().realisedFee());
+        assertBigDecimalEquals(new BigDecimal("3"), executor.lastCostDivergence().cumulativeFilledQuantity());
+    }
+
+    @Test
+    void fillsThemselvesAreUnaffectedWhenCostTrackingIsAbandoned() {
+        // Abandoning a measurement must not change trading behaviour.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "6");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(order.exchangeOrderId(), "PARTIALLY_FILLED",
+                        new BigDecimal("3"), new BigDecimal("100"), new BigDecimal("-0.30")),
+                new OrderStatus(order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("6"), new BigDecimal("100"), new BigDecimal("-0.20")));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+        List<Fill> second = executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertEquals(1, second.size(), "the fill is real regardless of the cost bookkeeping");
+        assertBigDecimalEquals(new BigDecimal("3"), second.get(0).quantity());
+        assertEquals(OrderState.FILLED, order.state());
+    }
 }
