@@ -810,4 +810,52 @@ class ExchangeOrderExecutorTest {
 
         assertNull(executor.lastCostDivergence());
     }
+
+    @Test
+    void aZeroCommissionIsAnObservationNotAnAbsence() {
+        // Only null means unknown. A genuinely fee-free fill is real data, and
+        // dropping it biases the series upward by silently removing its
+        // cheapest members. CodeRabbit on PR #163 -- and the first version of
+        // this code excluded zero while its own Javadoc said not to.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("1"), new BigDecimal("100"), BigDecimal.ZERO));
+
+        executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        CostDivergence divergence = executor.lastCostDivergence();
+        assertNotNull(divergence, "a zero commission is a measurement, not a gap");
+        assertBigDecimalEquals(BigDecimal.ZERO, divergence.realisedFee());
+        // Modelled 5bps against a realised 0 -- the model was pessimistic here.
+        assertEquals(-1, divergence.divergenceBps().signum());
+    }
+
+    @Test
+    void anOverfillRecordsNoCostObservationBecauseNoFillHappened() {
+        // `order.fill(delta)` throws on an overfill and pollFills then returns
+        // no Fill and drops the order. Recording the cost first would leave an
+        // observation for an event that did not occur.
+        FakeExchangeAdapter adapter = new FakeExchangeAdapter();
+        ExchangeOrderExecutor executor = new ExchangeOrderExecutor(adapter, new BigDecimal("5"));
+        Order order = order(Side.LONG, "1");
+        executor.submit(order, new BigDecimal("100"));
+        adapter.scriptStatuses(
+                order.clientOrderId(),
+                new OrderStatus(
+                        order.exchangeOrderId(), "FILLED",
+                        new BigDecimal("5"), new BigDecimal("100"), new BigDecimal("-0.25")));
+
+        List<Fill> fills = executor.pollFills(SYMBOL, new BigDecimal("100"));
+
+        assertTrue(fills.isEmpty(), "an overfill must not produce a Fill");
+        assertNull(
+                executor.lastCostDivergence(),
+                "no fill happened, so there is nothing to have cost anything");
+    }
 }

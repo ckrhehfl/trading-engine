@@ -68,6 +68,34 @@ def test_a_truncated_line_is_skipped_rather_than_raising():
     assert parse_line("cost_divergence notional=notanumber modelledFeeBps=5") is None
 
 
+def test_a_non_finite_number_is_skipped_rather_than_poisoning_the_report():
+    """`Decimal("NaN")` constructs fine and then makes `median`/`min`/`max`
+    raise, so one malformed line would kill the entire report — the opposite
+    of the tolerance this module promises. Verified directly: `median([NaN,
+    1, 2])` raises `InvalidOperation`."""
+    base = canonical_line_from_java()
+    for bad in ("NaN", "Infinity", "-Infinity"):
+        assert parse_line(base.replace("realisedFeeBps=6.928628", f"realisedFeeBps={bad}")) is None
+        assert parse_line(base.replace("notional=7.93808", f"notional={bad}")) is None
+
+
+def test_a_report_survives_a_poisoned_line_beside_good_ones(tmp_path: Path):
+    """The whole point of skipping: the good observations still summarise."""
+    sessions = tmp_path / "var/live/sessions"
+    sessions.mkdir(parents=True)
+    good = LOG_PREFIX + canonical_line_from_java()
+    poisoned = good.replace("realisedFeeBps=6.928628", "realisedFeeBps=NaN").replace(
+        "clientOrderId=00000000-0000-4000-8000-000000000001",
+        "clientOrderId=00000000-0000-4000-8000-000000000002",
+    )
+    (sessions / "a.log").write_text(good + "\n" + poisoned + "\n", encoding="utf-8")
+
+    observations = read_observations(tmp_path)
+
+    assert len(observations) == 1
+    assert summarise(observations)["n"] == 1
+
+
 def _obs(order_id: str, divergence: str, at: str) -> Observation:
     return Observation(
         client_order_id=order_id,

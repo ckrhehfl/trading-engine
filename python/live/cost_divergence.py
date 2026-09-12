@@ -90,17 +90,37 @@ def parse_line(line: str) -> Observation | None:
         return None
     fields = dict(_FIELD.findall(line[start + len(PREFIX) :]))
     try:
+        numbers = {
+            name: _finite_decimal(fields[name])
+            for name in ("notional", "modelledFeeBps", "realisedFeeBps", "divergenceBps")
+        }
         return Observation(
             client_order_id=fields["clientOrderId"],
             symbol=fields["symbol"],
-            notional=Decimal(fields["notional"]),
-            modelled_fee_bps=Decimal(fields["modelledFeeBps"]),
-            realised_fee_bps=Decimal(fields["realisedFeeBps"]),
-            divergence_bps=Decimal(fields["divergenceBps"]),
+            notional=numbers["notional"],
+            modelled_fee_bps=numbers["modelledFeeBps"],
+            realised_fee_bps=numbers["realisedFeeBps"],
+            divergence_bps=numbers["divergenceBps"],
             observed_at=fields["observedAt"],
         )
     except (KeyError, ArithmeticError, ValueError):
         return None
+
+
+def _finite_decimal(text: str) -> Decimal:
+    """A `Decimal` that is a real number, or `ValueError`.
+
+    `Decimal("NaN")` and `Decimal("Infinity")` construct without complaint,
+    and a single one reaching an `Observation` makes `median`, `min` and
+    `max` raise `InvalidOperation` — **killing the whole report over one
+    malformed line**, which is exactly what this module's tolerance is
+    supposed to prevent. Verified directly rather than assumed. Raised by
+    CodeRabbit on PR #163.
+    """
+    value = Decimal(text)
+    if not value.is_finite():
+        raise ValueError(f"not a finite number: {text!r}")
+    return value
 
 
 def read_observations(repo_root: Path | str = ".") -> list[Observation]:

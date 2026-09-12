@@ -473,8 +473,30 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
             // literally would record every real fee as a rebate and invert the
             // whole series -- the kind of error that is invisible until someone
             // plots it.
+            order.fill(delta); // may throw -- nothing computed above is preserved yet if it does
+
+            state.cumulativeFilledQty = reportedQty;
+            state.cumulativeNotional = newNotional;
+            fill = new Fill(id, order.symbol(), incrementPrice, delta, incrementNotional, fee, Instant.now());
+
+            // AFTER the fill exists, deliberately. `order.fill(delta)` above
+            // throws on an overfill, and `pollFills` then returns no Fill and
+            // drops the order -- so recording the cost first would leave an
+            // observation for a fill that never happened, quietly biasing the
+            // series with events that did not occur. CodeRabbit on PR #163.
+            //
+            // A zero commission is recorded, not skipped: only `null` means
+            // unknown. A genuinely fee-free fill is a real observation, and
+            // dropping it would bias the series upward by silently removing
+            // its cheapest members.
+            //
+            // `abs()` because BingX reports a charged fee as a NEGATIVE number
+            // (observed "-0.032441" on a real VST fill). Reading the sign
+            // literally would record every real fee as a rebate and invert the
+            // whole series -- the kind of error that is invisible until someone
+            // plots it.
             BigDecimal commission = status.commission();
-            if (commission != null && commission.signum() != 0) {
+            if (commission != null) {
                 lastCostDivergence = new CostDivergence(
                         id,
                         order.symbol(),
@@ -484,12 +506,6 @@ public final class ExchangeOrderExecutor implements OrderExecutor {
                         Instant.now());
                 log.info(lastCostDivergence.toLogLine());
             }
-
-            order.fill(delta); // may throw -- nothing computed above is preserved yet if it does
-
-            state.cumulativeFilledQty = reportedQty;
-            state.cumulativeNotional = newNotional;
-            fill = new Fill(id, order.symbol(), incrementPrice, delta, incrementNotional, fee, Instant.now());
         }
 
         boolean remove;
