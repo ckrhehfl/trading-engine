@@ -48,11 +48,20 @@ import argparse
 import json
 import re
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from pathlib import Path
 from statistics import median
 
 LOG_GLOB = "var/live/sessions/*.log"
+
+# The repository root, derived from this file rather than from the working
+# directory. The documented invocation is `cd python && .venv/bin/python -m
+# live.cost_divergence`, and a default of "." resolves that against
+# `python/`, where no session log has ever existed -- so the tool would have
+# reported `n = 0` on a real machine and looked like "no data yet" rather
+# than "looking in the wrong place". CodeRabbit on PR #163.
+DEFAULT_REPO_ROOT = Path(__file__).resolve().parents[2]
 
 PREFIX = "cost_divergence "
 
@@ -123,7 +132,7 @@ def _finite_decimal(text: str) -> Decimal:
     return value
 
 
-def read_observations(repo_root: Path | str = ".") -> list[Observation]:
+def read_observations(repo_root: Path | str | None = None) -> list[Observation]:
     """Every observation across every session log, oldest first.
 
     Deduplicated on `clientOrderId`: a log can be re-read, and a session
@@ -131,7 +140,7 @@ def read_observations(repo_root: Path | str = ".") -> list[Observation]:
     observation and counting it twice would overstate `n` — the figure
     every judgement below rests on.
     """
-    root = Path(repo_root)
+    root = DEFAULT_REPO_ROOT if repo_root is None else Path(repo_root)
     seen: dict[str, Observation] = {}
     for path in sorted(root.glob(LOG_GLOB)):
         try:
@@ -142,7 +151,23 @@ def read_observations(repo_root: Path | str = ".") -> list[Observation]:
             obs = parse_line(line)
             if obs is not None:
                 seen.setdefault(obs.client_order_id, obs)
-    return sorted(seen.values(), key=lambda o: o.observed_at)
+    return sorted(seen.values(), key=_sort_key)
+
+
+def _sort_key(observation: Observation) -> tuple[int, object]:
+    """Chronological order, not lexicographic.
+
+    `Instant.toString()` omits trailing zeros from the fraction, so
+    `2026-09-12T00:00:00Z` sorts *after* `2026-09-12T00:00:00.100Z` as text
+    while being 100ms *earlier* in time. Verified directly. That would put
+    `first_observed_at`, `last_observed_at` and the `modelled_fee_bps` taken
+    from the last element out of order. An unparseable stamp sorts last
+    rather than raising, keeping this module's tolerance intact.
+    """
+    try:
+        return (0, datetime.fromisoformat(observation.observed_at.replace("Z", "+00:00")))
+    except ValueError:
+        return (1, observation.observed_at)
 
 
 def summarise(observations: list[Observation]) -> dict:
@@ -187,7 +212,7 @@ def summarise(observations: list[Observation]) -> dict:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--repo-root", default=".")
+    parser.add_argument("--repo-root", default=None, help="defaults to the repository root")
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     args = parser.parse_args(argv)
 

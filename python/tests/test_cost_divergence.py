@@ -15,8 +15,10 @@ from decimal import Decimal
 from pathlib import Path
 
 from live.cost_divergence import (
+    DEFAULT_REPO_ROOT,
     MIN_OBSERVATIONS_FOR_TREND,
     Observation,
+    _sort_key,
     parse_line,
     read_observations,
     summarise,
@@ -118,6 +120,72 @@ def test_one_order_counts_once_even_if_the_log_is_read_twice(tmp_path: Path):
     (sessions / "b.log").write_text(line + "\n", encoding="utf-8")
 
     assert len(read_observations(tmp_path)) == 1
+
+
+def test_ordering_is_chronological_not_lexicographic():
+    """`Instant.toString()` omits trailing zeros, so a stamp exactly on the
+    second sorts *after* one 100ms earlier when compared as text. Verified
+    directly: `sorted(["...00:00:00Z", "...00:00:00.100Z"])` puts the
+    fractional one first, which is backwards.
+
+    It matters because `summarise` reads `modelled_fee_bps` off the last
+    element and reports first/last timestamps."""
+    on_the_second = _obs("id-a", "1", "2026-09-12T00:00:00Z")
+    hundred_ms_later = _obs("id-b", "2", "2026-09-12T00:00:00.100Z")
+
+    # Text order disagrees with time order -- that is the whole trap.
+    assert hundred_ms_later.observed_at < on_the_second.observed_at
+
+    ordered = sorted([hundred_ms_later, on_the_second], key=_sort_key)
+    assert [o.client_order_id for o in ordered] == ["id-a", "id-b"]
+
+
+def test_read_observations_returns_them_in_chronological_order(tmp_path: Path):
+    """Through the real path, not just the key function.
+
+    The first version of the test above called `_sort_key` directly, so
+    reverting `read_observations` to a lexicographic sort left every test
+    green -- an inert test guarding against an ordering bug, which is the
+    shape this repository keeps rediscovering."""
+    sessions = tmp_path / "var/live/sessions"
+    sessions.mkdir(parents=True)
+    base = LOG_PREFIX + canonical_line_from_java()
+
+    def line(order_id: str, stamp: str) -> str:
+        return base.replace(
+            "clientOrderId=00000000-0000-4000-8000-000000000001",
+            f"clientOrderId={order_id}",
+        ).replace("observedAt=2026-09-12T10:07:00.351091713Z", f"observedAt={stamp}")
+
+    # The later one carries a fraction, so text order and time order disagree.
+    (sessions / "a.log").write_text(
+        line("00000000-0000-4000-8000-00000000000b", "2026-09-12T00:00:00.100Z") + "\n"
+        + line("00000000-0000-4000-8000-00000000000a", "2026-09-12T00:00:00Z") + "\n",
+        encoding="utf-8",
+    )
+
+    ids = [o.client_order_id[-1] for o in read_observations(tmp_path)]
+    assert ids == ["a", "b"], "observations must come back oldest-first by time, not by text"
+
+
+def test_an_unparseable_timestamp_sorts_last_rather_than_raising():
+    """Same tolerance as everywhere else here: one bad line must not take
+    the report down with it."""
+    good = _obs("id-good", "1", "2026-09-12T00:00:00Z")
+    bad = _obs("id-bad", "1", "not-a-timestamp")
+
+    ordered = sorted([bad, good], key=_sort_key)
+    assert [o.client_order_id for o in ordered] == ["id-good", "id-bad"]
+
+
+def test_the_default_root_is_the_repository_not_the_working_directory():
+    """The documented invocation is `cd python && ... -m live.cost_divergence`,
+    so a default of "." resolved against `python/` -- where no session log
+    has ever existed. The tool would have reported n=0 on a real machine and
+    read as "no data yet" rather than "looking in the wrong place"."""
+    assert (DEFAULT_REPO_ROOT / "python").is_dir(), DEFAULT_REPO_ROOT
+    assert (DEFAULT_REPO_ROOT / "CLAUDE.md").is_file(), DEFAULT_REPO_ROOT
+    assert DEFAULT_REPO_ROOT.name != "python"
 
 
 def test_no_observations_says_so_rather_than_summarising_nothing():
