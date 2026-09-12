@@ -177,6 +177,26 @@ def test_an_unparseable_timestamp_is_rejected_at_parse_time():
     assert parse_line(base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=truncated")) is None
 
 
+def test_a_timestamp_without_an_offset_is_rejected():
+    """`Instant.toString()` always emits an offset, so a naive stamp means a
+    corrupted line -- and comparing a naive `datetime` against an aware one
+    raises `TypeError`, taking the sort and the whole report with it."""
+    base = canonical_line_from_java()
+    assert parse_line(
+        base.replace("observedAt=2026-09-12T10:07:00.351091713Z", "observedAt=2026-09-12T10:07:00")
+    ) is None
+
+
+def test_sorting_a_naive_stamp_beside_an_aware_one_does_not_raise():
+    """Defence in depth: `parse_line` rejects these, but `_sort_key` must
+    not raise if an `Observation` is constructed directly."""
+    aware = _obs("id-aware", "1", "2026-09-12T00:00:00Z")
+    naive = _obs("id-naive", "1", "2026-09-12T00:00:00")
+
+    ordered = sorted([naive, aware], key=_sort_key)
+    assert [o.client_order_id for o in ordered] == ["id-aware", "id-naive"]
+
+
 def test_sorting_still_tolerates_a_directly_constructed_bad_stamp():
     """`parse_line` rejects these now, but a caller can build an
     `Observation` by hand and a sort should not raise."""

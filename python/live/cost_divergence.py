@@ -126,8 +126,17 @@ def parse_line(line: str) -> Observation | None:
 
 
 def _valid_timestamp(text: str) -> str:
-    """The stamp unchanged if it parses, else `ValueError`."""
-    datetime.fromisoformat(text.replace("Z", "+00:00"))
+    """The stamp unchanged if it parses **and carries an offset**.
+
+    An offset is required, not merely preferred: `Instant.toString()`
+    always emits one, so a naive stamp means a corrupted line -- and a
+    naive `datetime` compared against an aware one raises `TypeError`,
+    which would take the sort and the whole report down. Verified
+    directly. Raised by CodeRabbit on PR #163.
+    """
+    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        raise ValueError(f"timestamp carries no offset: {text!r}")
     return text
 
 
@@ -194,9 +203,14 @@ def _sort_key(observation: Observation) -> tuple[int, object]:
     rather than raising, keeping this module's tolerance intact.
     """
     try:
-        return (0, datetime.fromisoformat(observation.observed_at.replace("Z", "+00:00")))
+        parsed = datetime.fromisoformat(observation.observed_at.replace("Z", "+00:00"))
     except ValueError:
         return (1, observation.observed_at)
+    if parsed.tzinfo is None:
+        # Sorting a naive datetime beside an aware one raises TypeError, so
+        # it goes in the unsortable group rather than into the comparison.
+        return (1, observation.observed_at)
+    return (0, parsed)
 
 
 def summarise(observations: list[Observation]) -> dict:
