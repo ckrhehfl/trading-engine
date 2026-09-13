@@ -189,17 +189,76 @@ directly on this path and must be closed — the multiplier is exactly the
 unconfirmed fact that blocks it. Second, **sector indices are attractive
 for research and useless for execution**, which is the §2.5 trap.
 
-### 4.2 The recommended universe rule
+### 4.2 The universe rule — decided 2026-09-13
 
-**A rule, committed before data access, not a list of names.**
+The operator chose the rule over the named list, noting the names were
+only used because the symbols were unfamiliar, and asked for **turnover**
+as the ranking criterion and for **SK하이닉스 to be included**.
 
-> **KR-10**: the ten single-stock-futures underlyings with the largest
-> KOSPI market capitalisation **as of 2019-01-02** (the window start),
-> subject to (a) a continuous single-stock-futures listing across the
-> whole window, and (b) **no more than three from any one KRX sector
-> classification**, taking the largest by that date's market cap where
-> the cap binds. Plus **KOSPI200 futures** and **KOSDAQ150 futures** as
-> two index members. Target K = 12.
+> **KR-10**: rank the candidate pool (§4.4) by **2018 full-calendar-year
+> traded value (거래대금)** — the year *before* the window opens, so the
+> ranking uses no information from the scored window at all. Take the top
+> ten subject to **no more than three from any one KRX sector
+> classification**, dropping down the ranking where the cap binds. Plus
+> **KOSPI200 futures** and **KOSDAQ150 futures**. Target K = 12.
+
+**On the SK하이닉스 request.** It is very likely a no-op: SK하이닉스 was
+the second-largest Korean stock by both market capitalisation and traded
+value in 2018, so the rule should select it unaided. **The resolution is
+therefore: run the rule first, and report where SK하이닉스 lands.**
+
+- If the rule selects it — no conflict exists and nothing was overridden.
+- If it does not, that is itself a finding worth reporting, and the
+  operator decides then, with the trade-off in front of them rather than
+  assumed away.
+
+Forcing it in *before* checking would convert a probably-harmless
+preference into a documented hindsight selection for no gain.
+
+**Why 2018 turnover rather than market cap.** Turnover measures the thing
+§2.5 actually requires — that the position can be held. Market cap does
+not: a large, thinly-traded name breaks the portfolio arithmetic. Using
+the calendar year *preceding* the window keeps the ranking strictly
+point-in-time.
+
+### 4.3 Signal on spot, execute on futures — this removes the largest new risk
+
+The original sketch had MS-D building continuous back-adjusted
+single-stock-futures series. **Drop that.** Instead:
+
+- **Signal** is computed on the **underlying's adjusted spot daily close**
+  — a continuous series with no roll and therefore no back-adjustment
+  freedom.
+- **Execution** is the single-stock future, with the quarterly roll
+  treated as a **cost**, not as a signal input.
+
+This matters because a back-adjusted series has real discretion in it
+(ratio vs difference adjustment, roll date, roll trigger), and a strategy
+that only works under one convention has not been shown to work. §8
+listed that as a way this fails; this design removes it rather than
+managing it. The assumption it substitutes — that daily futures returns
+track spot returns net of carry — is small, well understood, and
+measurable at MS-C.
+
+### 4.4 The candidate pool, and its one unavoidable compromise
+
+The rule needs a **point-in-time list of what was listed and futures-
+eligible in 2018**. Whether KIS serves one is unknown (§5 item 7).
+
+If it does not, the fallback is to rank **today's KOSPI200 constituents**
+by 2018 turnover and **disclose that the candidate pool is
+survivorship-filtered**. That bias is real: KOSPI200 membership turns
+over roughly 10%/year, so a 7-year window has meaningful churn, and names
+that fell out are absent. It is also bounded and reportable — record how
+many of the ten selected are 2018-vintage large caps that would obviously
+have qualified, versus names whose presence depends on the filter.
+
+**Ranking by turnover necessarily reads price/volume rows for the
+candidate pool.** That is disclosed rather than glossed: the *rule* is
+fixed before the pull, the *selection* uses only 2018 traded value and
+never returns from the scored window, and the resolved list is committed
+to the pre-registration before MS-F scores anything. This is the same
+handling `sr-aa` gave its own disclosed prior-access caveat.
 
 Properties, stated against §3:
 
@@ -220,7 +279,7 @@ Properties, stated against §3:
   both appear but with eight non-semiconductor names beside them.
 - **Shortable**: single-stock futures, so yes.
 
-### 4.3 Rejected alternatives, and why
+### 4.5 Rejected alternatives, and why
 
 - **Sector indices (20+, zero selection bias)** — the cleanest research
   universe available and rejected on §2.5: not tradeable, so it proves
@@ -245,18 +304,35 @@ be repeating its own worst habit by acting on.** The precedent is
 
 ### Phase 0 probes, in order — this is a real go/no-go gate
 
-1. **Does KIS serve historical daily OHLCV at all, and from which host?**
-   The believed endpoints are
-   `/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`
-   (stocks/derivatives, ~100 rows per call) and
-   `…/inquire-daily-indexchartprice` (indices). **Both are unconfirmed
-   against this project and read from documentation, not called.**
-2. **Does it work on the 모의투자 host?** CLAUDE.md already records a case
-   where it does not: `inquire-deposit` (`CTRP6550R`) "has no working
-   paper TR id at all" — the real id returns `HTTP 500`/`EGW00205` and
-   the `V`-prefixed variant returns `OPSQ0002`. Assume nothing.
-   **If quotations require the production host, that is a security
-   decision, not a detail — see §7.**
+**Documentation review, 2026-09-13.** Items 1, 2 and 6 were researched
+against KIS's own developer materials before writing this. What follows
+is *read*, not *called* — it sharpens the probes and replaces none of
+them. This project's own record has a case of documented behaviour being
+wrong in practice (KIS response casing, three endpoints, two guessed
+wrong).
+
+1. **The endpoint appears to exist.**
+   `/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`,
+   `tr_id` `FHKST03010100`, parameters `FID_COND_MRKT_DIV_CODE` (`J` =
+   주식/ETF/ETN), `FID_INPUT_ISCD` (6-digit code), `FID_INPUT_DATE_1` /
+   `_2` (YYYYMMDD range), `FID_PERIOD_DIV_CODE` (`D`/`W`/`M`/`Y`),
+   `FID_ORG_ADJ_PRC`. Response splits `output1` (summary) / `output2`
+   (the daily rows). **Max 100 rows per call**, so a 10-year pull is ~25
+   calls per symbol — 300 calls for K=12, which is trivially within any
+   rate limit. Indices are believed to use
+   `…/inquire-daily-indexchartprice` (`FHKUP03500100`, market division
+   `U`, `0001` KOSPI / `1001` KOSDAQ / `2001` KOSPI200) — **materially
+   less well attested than the stock endpoint and squarely a probe
+   target.**
+2. **모의투자 appears to be supported for this quotation TR** — the same
+   `tr_id` on the paper host, unlike the trading TRs' `V`-prefix
+   convention. KIS's own guidance nonetheless recommends the production
+   host for bulk historical pulls, because the paper host's throughput
+   limits are tighter. **Still verify**: CLAUDE.md records
+   `inquire-deposit` (`CTRP6550R`) as having no working paper TR at all —
+   the real id returns `HTTP 500`/`EGW00205`, the `V`-variant `OPSQ0002`.
+   **If the paper host works, use it and §7's production-host decision
+   never arises.**
 3. **How deep is the history?** This is the single highest-leverage
    unknown. The detection floor is `1.6449/√years`:
 
@@ -277,23 +353,43 @@ be repeating its own worst habit by acting on.** The precedent is
    gap-blindness). A five-day Chuseok closure is not a data gap, but the
    pipeline must record the real trading calendar so `verify_known_gaps`
    has something true to check against.
-5. **Single-stock-futures contract multiplier and continuity.** The fact
-   that already blocks `STOCK_FUTURES` from starting. Also: single-stock
-   futures roll quarterly, so a continuous back-adjusted series has to be
-   *constructed*, and how it is constructed is a real design decision
-   that changes returns. This project has never handled a rolling
-   contract.
-6. **Corporate actions.** Splits, dividends, mergers. `삼성전자`'s 50:1
-   split (2018-05) sits inside a 10-year window and an unadjusted series
-   would show a −98% single-day return that a momentum signal would read
-   as a crash. **Whether KIS returns adjusted or raw prices must be
-   confirmed empirically, per symbol type.** This is the most likely
-   source of a silent, catastrophic, plausible-looking result.
+5. **Single-stock-futures contract multiplier**, and their **liquidity
+   distribution**. The multiplier is the fact that already blocks
+   `STOCK_FUTURES` from starting. Liquidity is the newer worry: KRX
+   single-stock-futures volume concentrates heavily in a few underlyings,
+   and if only three or four are genuinely liquid then K=12 is not
+   achievable *in tradeable form* and §2.5's trap has been walked into
+   from the other side. **Measure the real futures turnover per
+   underlying, not just the spot's.** Continuity is no longer a probe
+   target — §4.3 signals on spot and never constructs a back-adjusted
+   futures series.
+6. **Corporate actions — and the documentation says the trap is armed by
+   default.** `FID_ORG_ADJ_PRC` selects adjusted versus raw: **`0` =
+   수정주가 (adjusted), `1` = 원주가 (raw)**. KIS's own published Python
+   sample **defaults to `1`** — so code written by copying the official
+   example returns *unadjusted* prices. 삼성전자's 50:1 split (2018-05)
+   sits at the edge of a 10-year window and an unadjusted series shows a
+   ~−98% single-day return, which a momentum signal reads as a crash.
+   **Verify by calling it across a known split and checking the printed
+   number, not by trusting the parameter.**
+
+   Also documented and load-bearing: **KIS's 수정주가 adjusts for splits
+   but not for dividends.** Korean large caps yield roughly 2%/year, so a
+   7-year price series understates total return by a meaningful margin.
+   For a *direction* signal this is second-order — dividends are small
+   against daily volatility — but it must be disclosed, and it means the
+   reported return is a price return, not a total return.
+7. **A point-in-time listing / futures-eligibility universe for 2018.**
+   §4.4 needs it and it may not exist on this API. If it does not, §4.4's
+   survivorship-filtered fallback applies with its bias disclosed. This
+   item was added after §4.4 was written; it is the rule's real
+   dependency and was not in the original list.
 
 **Item 6 is the one most likely to produce a wrong answer that looks
-right.** It is the Korean-market analogue of the quantity-precision
-incident: the venue does something silently and nothing downstream
-notices.
+right**, and the documentation review made it worse rather than better:
+the default is the wrong value. It is the Korean-market analogue of the
+quantity-precision incident — the venue does something silently and
+nothing downstream notices.
 
 ---
 
@@ -307,8 +403,8 @@ findings are on record.**
 | **MS-A** | this document | operator sign-off on §4.2 and §7 |
 | **MS-B** | Phase 0 probes (§5), read-only, no strategy code. Report every finding honestly including "not available". | **go/no-go.** If daily history is unavailable or shallow, the direction changes here, and that is a real possible outcome |
 | **MS-C** | `python/data/kis_klines.py` + store schema for KRX symbols; full backfill with independently verified gap/holiday counts, matching the standard every other granularity in this project was held to | a real backfill with a real gap count, not a probe estimate |
-| **MS-D** | Continuous-contract construction for single-stock futures (roll rule), and corporate-action verification. Its own design note — this is genuinely new territory here | correctness shown against a known split |
-| **MS-E** | Universe resolution: apply §4.2's rule, record the selected list, the dropped-for-(a) count, and the sector distribution. **Committed to a pre-registration before MS-F touches price data for scoring** | pre-registration filed |
+| **MS-D** | Corporate-action verification (§5 item 6) and the futures-vs-spot basis/roll cost model. **No longer builds a back-adjusted futures series** — §4.3 removed that | the adjusted series reproduces a known split correctly, checked against the printed number |
+| **MS-E** | Universe resolution: apply §4.2's rule, record the selected list, the sector distribution, **where SK하이닉스 lands**, and the §4.4 pool caveat. **Committed to a pre-registration before MS-F scores anything** | pre-registration filed |
 | **MS-F** | Portfolio TSMOM: `daily_tsmom_ensemble.py` unchanged per constituent, equal-weight aggregation, measured ρ reported against §2.3's assumptions | the Eligibility Bar in force at the time, pinned before access |
 
 `daily_tsmom_ensemble.py` must not be modified. Its zero-fitted-parameter
@@ -319,12 +415,10 @@ portfolio layer belongs above it, not inside it.
 
 ## 7. Open decisions — operator's, not mine
 
-1. **§4.2's universe rule.** It overrides the requested "삼성전자,
-   SK하이닉스 등" with a mechanical rule. 삼성전자 and SK하이닉스 will very
-   likely still be selected; the difference is that the rule chose them.
-   **If the named-list approach is preferred anyway, that is a legitimate
-   call, but the result then cannot support a promotion decision and the
-   write-up must say so.**
+1. ~~**§4.2's universe rule.**~~ **DECIDED 2026-09-13**: the rule, ranked
+   by 2018 traded value, with a three-per-sector cap. SK하이닉스 is
+   expected to be selected by the rule; MS-E reports where it lands
+   rather than forcing it. See §4.2.
 
 2. **The production-host question (§5 item 2).** If quotations only work
    against KIS's real host, this project would run a credentialed
@@ -376,8 +470,64 @@ rationalised afterward.
 - **The roll construction (MS-D) turns out to drive the returns.** A
   back-adjusted series has real freedom in it, and a strategy that only
   works under one roll convention has not been shown to work.
+- **Single-stock-futures liquidity is concentrated** (§5 item 5) and only
+  three or four underlyings can actually be held, collapsing K.
 - **It works and is still not promotable**, because the Live Entry
   Criteria's separate gates — market-order guard, stale-data check,
   ambiguous-submission recovery for KIS (all three open per CLAUDE.md) —
   remain unmet. **This is the expected outcome of a successful MS-F**,
   and it should surprise nobody: research passing is not deployment.
+
+---
+
+## 9. "There's more information here than for Bitcoin, isn't there?"
+
+The operator's question, and the answer is **yes, substantially — and
+that is a hazard at least as much as an advantage.**
+
+### What is genuinely available here and absent for BTC
+
+| | BTC | Korean equities |
+|---|---|---|
+| History | 5.3 y (BingX 1d), 9.0 y (Binance spot) | plausibly decades — **the single biggest gain, see below** |
+| Fundamentals (earnings, book value, dividends) | none exist | full, and long |
+| Cross-sectional structure | 1 asset | 10+, so *relative* strategies become expressible at all |
+| Investor-type daily flow (외국인 / 기관 / 개인) | no equivalent at this quality | published by KRX daily |
+| Sector / index membership | none | structural, and stable |
+
+**The history depth is the one that changes the arithmetic**, because the
+detection floor is `1.6449/√years` and nothing else in this project moves
+it:
+
+| Window | Floor | |
+|---|---|---|
+| BTC 1d holdout (2.95 y) | 0.96 | everything failed against this |
+| Binance futures 1m (6.96 y) | 0.62 | this project's current best |
+| 10 y | **0.52** | better than anything held today |
+| 20 y | **0.37** | comfortably below the 0.4–0.8 credible edge band |
+
+At a 20-year floor of 0.37, a real institutional-grade edge is
+*detectable* rather than merely *not excluded* — which has never once
+been true in this project's history. That, not the extra feature columns,
+is the reason this direction is worth the build.
+
+### Why the extra features are a hazard
+
+`N` is what killed every prior direction. More available inputs means
+more configurations that *could* be tried, and the failure mode is not
+running out of ideas — it is spending the window's evidentiary value on
+them. Fundamentals plus flow plus cross-section is a search space orders
+of magnitude larger than "which momentum lookback", and this project's
+own record is 1,472 of 1,883 runs being variants of one question.
+
+**So the extra information is explicitly out of scope for MS-F.** MS-F
+runs `daily_tsmom_ensemble.py` unchanged, on price only, under §7's N=5
+budget. The other sources are catalogued here so they are not
+rediscovered later as if new, and any use of them is a **separate task
+with its own pre-registration and its own budget** — never an extension
+of MS-F after seeing its result. Extending a registration after results
+is the specific thing CLAUDE.md's stopping rule forbids.
+
+The honest summary: **more data buys statistical power, and it buys
+nothing at all if the power is spent searching.** The budget is what
+converts one into the other.
