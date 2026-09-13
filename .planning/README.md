@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-83 documents and counting, which is past the point where `ls` is a
+84 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -193,3 +193,9 @@ A multi-leg position model, built after the operator pointed out the framework c
 - [`tm-c-confluence-hedge-specification.md`](tm-c-confluence-hedge-specification.md) — Trade Management Task C — specification for the core-plus-tactical-hedge candidate
 - [`tm-d-breakout-management-preregistration.md`](tm-d-breakout-management-preregistration.md) — Trade Management Task D — pre-registration: what does *managing* a fixed entry actually do?
 - [`tm-d-breakout-management-result.md`](tm-d-breakout-management-result.md) — Trade Management Task D — result: management is the biggest single effect this project has measured, and two policies clear Gate A
+
+### Multi-asset expansion (`ms-*`)
+
+The first direction that adds an evidence source rather than re-asking BTC price history.
+
+- [`ms-a-multi-asset-universe-discuss.md`](ms-a-multi-asset-universe-discuss.md) — Multi-Asset TSMOM Task A — `Discuss`: why one asset was the missing piece, and the trap in picking Korean stocks by name
