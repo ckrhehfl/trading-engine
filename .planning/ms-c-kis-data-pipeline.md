@@ -160,8 +160,8 @@ repository has had three inert fixtures that all read fine.
 | invalid-calendar-date conversion (post-review) | 5 tests fail |
 | `ImportFrom` half of the import guard (post-review) | 4 tests fail |
 
-49 tests in `tests/test_kis_klines.py` and 26 in the guard file; the credentialed-client guard in
-`tests/test_kis_probe_cannot_trade.py` now covers `kis_klines.py` as well
+49 tests in `python/tests/test_kis_klines.py` and 26 in
+`python/tests/test_kis_probe_cannot_trade.py`; the credentialed-client guard there now covers `kis_klines.py` as well
 as the probe, so the order-capability and credential-sink contracts apply
 to both.
 
@@ -202,12 +202,14 @@ KIS publishes symbol masters as public ZIPs at
 `new.real.download.dws.co.kr/common/master/`, no credentials. Two matter
 here, and **both were downloaded and inspected successfully**:
 
-| File | Rows | First line |
-|---|---|---|
-| `fo_stk_code_mts.mst` | 14,701 | `1|1GNW04|KR41GNW40002|금양       F 202504 (  10)| |00000.00|1|001570|금양` |
-| `fo_idx_code_mts.mst` | 8,241 | `1|A01612|KR4A016C0004|F 202612| |00000.00|1|2001|KOSPI200` |
+`fo_stk_code_mts.mst` (14,701 rows) and `fo_idx_code_mts.mst` (8,241),
+both pipe-delimited and CP949. Their first lines:
 
-Pipe-delimited, CP949. The layout answers two open questions at once:
+```
+1|1GNW04|KR41GNW40002|금양       F 202504 (  10)| |00000.00|1|001570|금양
+1|A01612|KR4A016C0004|F 202612| |00000.00|1|2001|KOSPI200
+```
+ The layout answers two open questions at once:
 
 - **Field [3] carries the contract multiplier in parentheses** — `(  10)`,
   ten shares per contract for that name. This is the fact that has been
