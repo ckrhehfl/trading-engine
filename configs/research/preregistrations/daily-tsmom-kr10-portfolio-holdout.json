@@ -23,9 +23,10 @@
     "holdout_config_path": "configs/research/holdout_krx_1d.json",
     "universe_config_path": "configs/research/universes/kr10.json",
     "start_ms": 1546387200000,
-    "end_ms": 1788220800000,
+    "end_ms": 1788307200000,
     "expected_bars": 1882,
-    "expected_bars_note": "Per member. All eleven stored series hold exactly this count over the identical range and backfill_kis --verify exits 0 against the KOSPI index calendar. 245.4 trading days per year matches the real KRX rate."
+    "expected_bars_note": "Per member. All eleven stored series hold exactly this count over the identical range and backfill_kis --verify exits 0 against the KOSPI index calendar. 245.4 trading days per year matches the real KRX rate.",
+    "end_ms_note": "EXCLUSIVE upper bound, matching every other registration in this directory (daily-tsmom-ensemble-binance-virgin-holdout's end_ms 1620950400000 is the cutoff, with the last bar at 2021-05-13). CORRECTED 2026-09-14, before any scoring run: the first draft set this to the LAST BAR'S OPEN TIME, which under the store's half-open [start, end) fetch yields 1881 bars rather than the 1882 this registration declares and computed its detection floor from. A mechanical range-bound error, caught by the runner's own expected_bars guard before it could score anything. No criterion, threshold or window changed -- the scored data is exactly the window this registration always described."
   },
   "parameter_grid": [
     {

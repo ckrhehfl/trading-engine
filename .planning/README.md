@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-89 documents and counting, which is past the point where `ls` is a
+90 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -204,3 +204,4 @@ The first direction that adds an evidence source rather than re-asking BTC price
 - [`ms-d-korean-correlations-and-universe.md`](ms-d-korean-correlations-and-universe.md) — Multi-Asset TSMOM Task D — the correlations MS-A assumed, measured; and a timezone artifact that would have flattered them
 - [`ms-e-kr10-universe-rule.md`](ms-e-kr10-universe-rule.md) — Multi-Asset TSMOM Task E — the KR-10 universe rule, fixed before it is run
 - [`ms-f-what-the-run-still-needs.md`](ms-f-what-the-run-still-needs.md) — Multi-Asset TSMOM Task F — what the portfolio run still needs, and why it is not written yet
+- [`ms-f-kr10-portfolio-result.md`](ms-f-kr10-portfolio-result.md) — Multi-Asset TSMOM Task F — result: diversification worked, the signal was not there
