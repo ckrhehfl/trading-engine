@@ -201,7 +201,13 @@ foreseen when the change was made; it was found by running it.
   `configs/research/preregistrations/`, with the Eligibility Bar's
   single-window criteria pinned (MS-A §7 item 3: PSR ≥ 0.95, drawdown,
   trade-count floor, profit factor, and the window's own detection floor).
-- The backfill persisted to the store — nothing is in it yet.
+- ~~The backfill persisted to the store~~ — **done 2026-09-13.**
+  `python/data/backfill_kis.py` fetched the ten members plus the KOSPI
+  reference index over 2019-01-02 … 2026-09-01: **1,882 trading days each,
+  20,702 rows, `quote_volume` populated on every one**, and `--verify`
+  exits 0 with every symbol complete against the index calendar. 1,882
+  days over 7.67 years is 245.4/year, the real KRX rate. Stored under
+  `KRX:` and `KRX-INDEX:` namespaces.
 - ~~The single-stock-futures earliest bar~~ — **resolved 2026-09-13, and
   it does not exist.** KIS serves currently-listed contracts only; every
   2018–2025 expiry returns `rt_cd=0` with zero rows. Futures execution

@@ -37,7 +37,11 @@ PROBE = _DATA / "kis_probe.py"
 # Task C) is held to the same contract as the probe: it authenticates with
 # a real app key, so the argument that made a credentialed client
 # acceptable at all applies to it identically.
-CREDENTIALED_KIS_MODULES = (PROBE, _DATA / "kis_klines.py")
+CREDENTIALED_KIS_MODULES = (
+    PROBE,
+    _DATA / "kis_klines.py",
+    _DATA / "backfill_kis.py",
+)
 
 # KIS's own naming: order submission and cancellation live under /trading/,
 # and their TR ids are (V)TTO/(V)TTC-shaped. The Java adapter's real
@@ -324,7 +328,7 @@ def test_every_credentialed_kis_module_exists():
     reduce this file to testing nothing."""
     for module in CREDENTIALED_KIS_MODULES:
         assert module.is_file(), f"{module} is listed but does not exist"
-    assert len(CREDENTIALED_KIS_MODULES) >= 2
+    assert len(CREDENTIALED_KIS_MODULES) >= 3
 
 
 @pytest.mark.parametrize("secret", ["KIS_APP_KEY", "KIS_APP_SECRET"])
