@@ -1,6 +1,11 @@
 # Multi-Asset TSMOM Task A — `Discuss`: why one asset was the missing piece, and the trap in picking Korean stocks by name
 
-**Status**: Discuss. Nothing built, no data fetched, no code written.
+**Status**: Discuss. Nothing built, **no new market data fetched**, no
+strategy code written. §2.3's correlations were computed by reading the
+existing local store (`python/data/var/klines.sqlite3`) — reading data
+this project already holds is not the same as acquiring new data, and the
+distinction is stated rather than blurred.
+
 **Opened**: 2026-09-13, at the operator's direction, after the arithmetic
 in §2 was worked out in conversation.
 
@@ -86,27 +91,52 @@ venue integration already exists.
 
 ### 2.4 What diversification does to the two failing gates
 
-Equal-weight, per-constituent Sharpe 1.305 and drawdown 20.135% held
-constant at `sr-ab`'s observed values; block-correlated structure.
+**These are projections under assumed correlations, not measurements.**
+Two things are assumed and neither is yet measured: the Korean
+constituents' internal correlation, and their correlation with crypto —
+for which §2.3's BTC/S&P-500 figure of 0.387 stands in as a **sensitivity
+assumption**, because no Korean data exists in this project yet. Both are
+measured at MS-C, before MS-F scores anything, and this table is recomputed
+against the real figures then.
 
-| Structure | Vol multiplier | Portfolio Sharpe | Portfolio DD |
-|---|---|---|---|
-| BTC alone (today) | 1.000 | 1.305 | 20.1% — **fails** |
-| BTC+ETH | 0.960 | 1.359 | 19.3% |
-| Korea ×10 only, internal ρ=0.60 | 0.800 | 1.631 | 16.1% |
-| Korea ×10 only, internal ρ=0.75 (pessimistic) | 0.880 | 1.482 | 17.7% |
-| BTC+ETH + Korea ×10, ρ_int=0.60, ρ_cross=0.387 | 0.760 | 1.717 | 15.3% |
-| BTC+ETH + Korea ×10, ρ_int=0.75, ρ_cross=0.387 | 0.819 | 1.593 | 16.5% |
+Sharpe scales with the volatility multiplier. **Drawdown does not**, and
+an earlier draft of this table wrongly assumed it did. Max drawdown is
+path-dependent — it turns on when losses align, not only on how variance
+adds — so the drawdown column comes from a Monte Carlo (Gaussian copula
+for the correlation structure, marginals bootstrapped from real BTC daily
+returns so the tails are not normal, 1,929 days, 200 trials, median).
+
+**The simulator was validated against the one case with real data**: an
+equal-weight BTC+ETH portfolio over 1,929 days has a measured drawdown
+ratio of **0.978** against the single-asset average; the simulator says
+**0.977**. The volatility multiplier says 0.960 — optimistic by 1.8%, in
+the dangerous direction.
+
+Per-constituent Sharpe 1.305 and drawdown 20.135% held at `sr-ab`'s
+observed values; equal weight.
+
+| Structure | Vol mult | Sharpe | DD mult (simulated) | Portfolio DD |
+|---|---|---|---|---|
+| BTC alone (today) | 1.000 | 1.305 | 1.000 | 20.1% — **fails** |
+| BTC+ETH | 0.960 | 1.359 | 0.978 | 19.7% |
+| Korea ×10, ρ_int=0.60 | 0.800 | 1.631 | 0.808 | 16.3% |
+| Korea ×10, ρ_int=0.75 (pessimistic) | 0.880 | 1.482 | 0.895 | 18.0% |
+| Korea ×10 + BTC/ETH, effective ρ≈0.65 | 0.824 | 1.583 | 0.856 | 17.2% |
+| Korea ×10 + BTC/ETH, pessimistic ρ≈0.72 | 0.862 | 1.514 | 0.894 | 18.0% |
 
 Trade count scales with K: 64 → ~768 at K=12, against a floor near 100.
 
-**Every scenario, including the pessimistic one, clears both gates that
-`sr-ab` missed.** That is the case for this direction.
+**Under these assumptions every structure clears both gates that `sr-ab`
+missed** — the pessimistic row by 2pp on drawdown rather than the 3.6pp
+the volatility multiplier would have claimed. Stated as a conditional,
+because the conditions are assumptions: if the measured Korean
+correlations come in materially above 0.75, this conclusion does not hold
+and the direction is reassessed rather than argued for.
 
 ### 2.5 What this arithmetic assumes, and why §4 exists
 
 It assumes **all K constituents are actually held**. A portfolio Sharpe
-of 1.72 across 12 instruments requires 12 simultaneous positions. Proving
+near 1.6 across 12 instruments requires 12 simultaneous positions. Proving
 the phenomenon on 12 instruments while being able to trade only one
 yields the single-asset result, not the portfolio one. The universe must
 therefore be tradeable, with shorts, on a venue this project has. That
@@ -201,6 +231,30 @@ as the ranking criterion and for **SK하이닉스 to be included**.
 > ten subject to **no more than three from any one KRX sector
 > classification**, dropping down the ranking where the cap binds. Plus
 > **KOSPI200 futures** and **KOSDAQ150 futures**. Target K = 12.
+>
+> **Selection uses only information available on the window's first day.**
+> There is no continuous-listing condition and no survivorship filter.
+> A name is selected on its 2018 traded value alone, and what happens to
+> it afterwards is handled by the exit rule below, not by excluding it in
+> advance.
+>
+> **Exit rule, fixed here rather than discovered later**: if a
+> constituent delists, its futures line is discontinued, or it otherwise
+> stops trading, its position is closed at the last available price on
+> the last day it trades, and its weight is **redistributed equally
+> across the survivors from the following day**. The portfolio is not
+> rebalanced back to K=12 by substituting a new name — substituting
+> would reintroduce a selection decision mid-window.
+
+**An earlier draft got this wrong**, and the error is worth keeping
+visible because it is subtle. That draft required "a continuous
+single-stock-futures listing across the whole window" and proposed
+*reporting* how many names the condition dropped. **Reporting a
+survivorship filter does not remove it.** The condition can only be
+evaluated with knowledge of the whole window, so it is future information
+entering the selection step — and it would also silently shrink K below
+12, invalidating §2.4's arithmetic. Selecting on day-one information and
+handling exits by rule is the standard construction and the correct one.
 
 **On the SK하이닉스 request.** It is very likely a no-op: SK하이닉스 was
 the second-largest Korean stock by both market capitalisation and traded
@@ -267,12 +321,12 @@ Properties, stated against §3:
   is that the author knows roughly how 2019's Korean large caps fared;
   disclosed rather than claimed away, in the same spirit as `sr-aa`'s own
   disclosed price-level caveat.
-- **Survivorship bias**: condition (a) is a survivorship filter and
-  therefore *introduces* bias — it excludes names that stopped trading.
-  The honest handling is to **record which underlyings the rule selects
-  and then drop for failing (a)**, and report the count. If it is zero or
-  one, the bias is negligible and provably so. If it is several, the
-  result is reported with that exposure named.
+- **Survivorship bias**: absent from the *selection* step by construction
+  — nothing about a name's fate after 2019-01-02 affects whether it is
+  chosen, and the exit rule handles what happens to it. What remains is
+  the **candidate pool** exposure in §4.4, which is a different and
+  narrower problem: the pool says what there was to rank, not which
+  survivors to prefer.
 - **Concentration**: the three-per-sector cap is what stops the list
   becoming a semiconductor basket. It is a real constraint on the
   operator's suggestion and the reason 삼성전자 and SK하이닉스 will likely
@@ -402,10 +456,10 @@ findings are on record.**
 |---|---|---|
 | **MS-A** | this document | operator sign-off on §4.2 and §7 |
 | **MS-B** | Phase 0 probes (§5), read-only, no strategy code. Report every finding honestly including "not available". | **go/no-go.** If daily history is unavailable or shallow, the direction changes here, and that is a real possible outcome |
-| **MS-C** | `python/data/kis_klines.py` + store schema for KRX symbols; full backfill with independently verified gap/holiday counts, matching the standard every other granularity in this project was held to | a real backfill with a real gap count, not a probe estimate |
+| **MS-C** | `python/data/kis_klines.py` + store schema for KRX symbols; full backfill with independently verified gap/holiday counts, matching the standard every other granularity in this project was held to. **Also reports the measured Korean internal and Korea-vs-crypto correlations**, so §2.4 is recomputed against real figures before MS-F | a real backfill with a real gap count, not a probe estimate |
 | **MS-D** | Corporate-action verification (§5 item 6) and the futures-vs-spot basis/roll cost model. **No longer builds a back-adjusted futures series** — §4.3 removed that | the adjusted series reproduces a known split correctly, checked against the printed number |
 | **MS-E** | Universe resolution: apply §4.2's rule, record the selected list, the sector distribution, **where SK하이닉스 lands**, and the §4.4 pool caveat. **Committed to a pre-registration before MS-F scores anything** | pre-registration filed |
-| **MS-F** | Portfolio TSMOM: `daily_tsmom_ensemble.py` unchanged per constituent, equal-weight aggregation, measured ρ reported against §2.3's assumptions | the Eligibility Bar in force at the time, pinned before access |
+| **MS-F** | Portfolio TSMOM as a **single pre-registered holdout confirmation**: `daily_tsmom_ensemble.py` unchanged per constituent, equal-weight aggregation, measured ρ reported against §2.4's assumptions | the Eligibility Bar's **single-window variant** — PSR ≥ 0.95 and the non-fold criteria, all pinned before access (§7 item 3) |
 
 `daily_tsmom_ensemble.py` must not be modified. Its zero-fitted-parameter
 property is what the Paper Trading Policy Exception rests on, and the
@@ -430,8 +484,9 @@ portfolio layer belongs above it, not inside it.
    module with anything that can submit. **This needs explicit approval;
    it is adjacent to "never let Python place live orders directly."**
 
-3. **An `N` budget, committed in advance.** The one process change that
-   would actually break the pattern in §1:
+3. **A trial budget, committed in advance — and *not* a way to lower the
+   DSR bar.** The one process change that would actually break §1's
+   pattern:
 
    > This window gets **at most N trials**, declared in the
    > pre-registration before first access. When the budget is spent the
@@ -439,9 +494,44 @@ portfolio layer belongs above it, not inside it.
 
    Every prior window closed by *post-hoc accounting* — the 1h window
    ended at 117 because someone counted afterward, not because a budget
-   was set. **Proposed for MS-F: N = 5.** Low enough that DSR 0.95 needs
-   ~2.17 Sharpe rather than ~4.00, which §2.4's projections can plausibly
-   reach; high enough for a genuine mistake to be corrected once.
+   was set.
+
+   **An earlier draft of this section then claimed the budget lowers the
+   DSR-0.95 requirement from ~4.00 to ~2.17. That was wrong**, and it was
+   an instance of precisely the reasoning CLAUDE.md flags as "most open to
+   abuse." The Eligibility Bar defines its DSR against the **project-level**
+   `research_selection_trials`, deliberately, "because strategy families in
+   this project were compared against each other after their results were
+   known." A budget declared for MS-F does not retire that history, and
+   a family-level `N` is a supplementary report, never the gate.
+
+   **The correct structure needs no gate change at all.** MS-F should run
+   as a **pre-registered holdout confirmation under the Eligibility Bar's
+   single-window variant**, which this project has already used four times
+   (`sr-u`/`sr-v`, `sr-aa`/`sr-ab`) and which is explicit about why:
+
+   > Deliberately **PSR, not DSR**: the holdout was never searched over —
+   > one access, one run, on data no decision has touched — so there is no
+   > selection bias to deflate, and `N`=1 makes DSR identical to PSR
+   > anyway.
+
+   Korean equity data satisfies that condition literally — zero trials in
+   `runs/experiments.jsonl` have ever touched it. So MS-F's bar is **PSR ≥
+   0.95**, plus the non-fold criteria (drawdown ≤20–25%, the trade-count
+   floor, profit factor ≥1.3–1.5), plus the requirement that observed
+   Sharpe exceed the window's own detection floor — all **pinned before
+   access**, per the "in force at the time means pinned before, not chosen
+   after" clause.
+
+   The budget's job is therefore what it says and nothing more: it caps
+   how much searching may happen, and **a run that spends more than one
+   trial is not a single-access holdout confirmation any more.** So either
+   MS-F is one pre-registered run at `N`=1 under PSR, or it is a research
+   study whose results cannot be promoted — and those two must not be
+   blurred after seeing which is more flattering.
+
+   **Recommendation: one pre-registered run, `N` = 1.** The budget concept
+   still binds anything that follows it.
 
 4. **Scope of the crypto leg.** §2.4's best rows include BTC+ETH
    alongside the Korean members. Adding ETH means spending its untouched

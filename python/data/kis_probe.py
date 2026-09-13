@@ -60,7 +60,11 @@ RAW = "1"
 
 SAMSUNG = "005930"  # 삼성전자 -- 50:1 split effective 2018-05-04
 SK_HYNIX = "000660"  # SK하이닉스
-INDEX_CODES = {"0001": "KOSPI", "1001": "KOSDAQ", "2001": "KOSPI200"}
+# KOSPI200 and KOSDAQ150 are KR-10 members (MS-A section 4.2), so their
+# data is *required*, not nice to have. KOSPI/KOSDAQ are context only. The
+# probe distinguishes the two: a required index failing is a no-go.
+REQUIRED_INDEX_CODES = {"2001": "KOSPI200", "2003": "KOSDAQ150"}
+CONTEXT_INDEX_CODES = {"0001": "KOSPI", "1001": "KOSDAQ"}
 
 TIMEOUT_S = 20.0  # KIS paper latency is a real 7-10s (CLAUDE.md)
 
@@ -218,11 +222,21 @@ def probe_row_cap(host: str, tok: str, key: str, sec: str) -> Finding:
     is measured rather than assumed.
     """
     try:
-        _, rows = fetch_daily(
+        env, rows = fetch_daily(
             host, tok, key, sec, code=SAMSUNG, start="20200101", end="20241231"
         )
     except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
         return Finding("row_cap", False, f"transport failure: {type(exc).__name__}")
+    # A KIS application error arrives as HTTP 200 with rt_cd != "0" and an
+    # empty output2. Reporting that as "silently capped" would turn a wrong
+    # TR or parameter into a finding about pagination.
+    if env.get("rt_cd") != "0":
+        return Finding(
+            "row_cap", False,
+            f"application error, not a cap: rt_cd={env.get('rt_cd')} msg_cd={env.get('msg_cd')}",
+        )
+    if not rows:
+        return Finding("row_cap", False, "rt_cd=0 but zero rows -- cannot infer a cap")
     return Finding(
         "row_cap",
         True,
@@ -296,62 +310,185 @@ def probe_adjustment(host: str, tok: str, key: str, sec: str) -> Finding:
             return None
 
     adj_r, raw_r = _ratio(out["adjusted"]), _ratio(out["raw"])
-    # A correctly adjusted series steps ~1x across the split; a raw one ~50x.
-    ok = adj_r is not None and 0.5 < adj_r < 2.0
+    # BOTH legs are required. Checking only the adjusted one would pass even
+    # if KIS ignored FID_ORG_ADJ_PRC entirely and served the adjusted series
+    # for both requests -- in which case the parameter is not doing what the
+    # pipeline will assume it does, which is the whole point of asking.
+    adj_ok = adj_r is not None and 0.5 < adj_r < 2.0
+    raw_ok = raw_r is not None and 25.0 < raw_r < 100.0
+    ok = adj_ok and raw_ok
+    if adj_ok and not raw_ok:
+        verdict = ("adjusted behaves, but the RAW leg does not show the 50:1 step -- "
+                   "FID_ORG_ADJ_PRC may be ignored, so the flag cannot be relied on")
+    elif ok:
+        verdict = "FID_ORG_ADJ_PRC distinguishes the two as documented"
+    else:
+        verdict = "DOES NOT MATCH -- do not build on this until resolved"
     return Finding(
         "adjustment",
         ok,
         f"close ratio across 2018-05-04 -- adjusted={adj_r}, raw={raw_r}. "
-        f"Adjusted should be near 1.0 and raw near 50.0. "
-        f"{'FID_ORG_ADJ_PRC=0 behaves as documented' if ok else 'DOES NOT MATCH -- do not build on this until resolved'}",
-        {"adjusted_ratio": adj_r, "raw_ratio": raw_r},
+        f"Adjusted should be near 1.0 and raw near 50.0. {verdict}",
+        {"adjusted_ratio": adj_r, "raw_ratio": raw_r, "adjusted_ok": adj_ok, "raw_ok": raw_ok},
     )
 
 
 def probe_indices(host: str, tok: str, key: str, sec: str) -> Finding:
     """§5 item 1 -- the index endpoint is materially less well attested than
-    the stock one, so it gets its own probe rather than an assumption."""
-    results = {}
-    for code, name in INDEX_CODES.items():
+    the stock one.
+
+    KOSPI200 and KOSDAQ150 are KR-10 members, so **every** required index
+    must answer. An `any()` here would let the probe pass with no signal
+    data for a constituent the universe depends on.
+    """
+    results: dict[str, str] = {}
+    required_ok = True
+    for code, name in {**REQUIRED_INDEX_CODES, **CONTEXT_INDEX_CODES}.items():
+        required = code in REQUIRED_INDEX_CODES
         try:
             env, rows = fetch_daily(
                 host, tok, key, sec,
                 code=code, start="20240502", end="20240605", is_index=True,
             )
+            good = env.get("rt_cd") == "0" and bool(rows)
             results[name] = f"rt_cd={env.get('rt_cd')} rows={len(rows)}"
         except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+            good = False
             results[name] = f"failed: {type(exc).__name__}"
-        time.sleep(0.2)
-    ok = any("rows=" in v and not v.endswith("rows=0") for v in results.values())
-    return Finding("indices", ok, "; ".join(f"{k}: {v}" for k, v in results.items()), results)
+        if required and not good:
+            required_ok = False
+        time.sleep(0.3)
+    missing = [n for c, n in REQUIRED_INDEX_CODES.items() if "rows=0" in results.get(n, "") or "failed" in results.get(n, "")]
+    detail = "; ".join(f"{k}: {v}" for k, v in results.items())
+    if not required_ok:
+        detail += f" -- REQUIRED index unavailable: {', '.join(missing)}"
+    return Finding("indices", required_ok, detail, results)
+
+
+
+# Real KRX closures in 2024-01-01..2024-04-30, from the published KRX
+# calendar. Committed as a fixture so the probe compares against an
+# independent source rather than against its own weekday arithmetic --
+# comparing a series to a count derived from that same series cannot
+# detect a bar KIS simply failed to return.
+KRX_CLOSURES_2024_Q1 = ("20240101", "20240209", "20240212", "20240301", "20240410")
 
 
 def probe_calendar(host: str, tok: str, key: str, sec: str) -> Finding:
-    """§5 item 4 -- the real trading calendar, so `verify_known_gaps` has
-    something true to check against. A five-day Chuseok closure is not a
-    data gap, and the pipeline must be able to tell the difference."""
-    try:
-        _, rows = fetch_daily(host, tok, key, sec, code=SAMSUNG, start="20240101", end="20240430")
-    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
-        return Finding("calendar", False, f"transport failure: {type(exc).__name__}")
-    dates = sorted(r["stck_bsop_date"] for r in rows)
-    if not dates:
-        return Finding("calendar", False, "no rows")
+    """§5 item 4 -- the real trading calendar, checked two independent ways.
+
+    A five-day Chuseok closure is not a data gap and the pipeline must be
+    able to tell the difference, so `verify_known_gaps` needs a true
+    calendar to check against.
+
+    Two comparisons, because each catches what the other cannot:
+
+    1. **Against the committed KRX fixture** -- catches a bar KIS failed to
+       return on a day the market was genuinely open.
+    2. **Against the KOSPI index's own dates** -- the index trades whenever
+       the market does, so a date present there and absent for the stock is
+       a *stock-specific* halt, not a market closure. Counting those as
+       closures is exactly the conflation this probe must not make.
+    """
     import datetime as dt
 
-    d0 = dt.date(int(dates[0][:4]), int(dates[0][4:6]), int(dates[0][6:]))
-    d1 = dt.date(int(dates[-1][:4]), int(dates[-1][4:6]), int(dates[-1][6:]))
-    weekdays = sum(
-        1
-        for i in range((d1 - d0).days + 1)
-        if (d0 + dt.timedelta(days=i)).weekday() < 5
+    try:
+        env, rows = fetch_daily(host, tok, key, sec, code=SAMSUNG,
+                                start="20240101", end="20240430")
+        ienv, irows = fetch_daily(host, tok, key, sec, code="0001",
+                                  start="20240101", end="20240430", is_index=True)
+    except (urllib.error.HTTPError, urllib.error.URLError, OSError) as exc:
+        return Finding("calendar", False, f"transport failure: {type(exc).__name__}")
+    if env.get("rt_cd") != "0" or ienv.get("rt_cd") != "0":
+        return Finding("calendar", False,
+                       f"rt_cd stock={env.get('rt_cd')} index={ienv.get('rt_cd')}")
+
+    stock = {r["stck_bsop_date"] for r in rows}
+    index = {r["stck_bsop_date"] for r in irows}
+    if not stock or not index:
+        return Finding("calendar", False, "one of the two series came back empty")
+
+    lo, hi = max(min(stock), min(index)), min(max(stock), max(index))
+    span = lambda s: {d for d in s if lo <= d <= hi}
+    stock, index = span(stock), span(index)
+
+    def _weekdays(a: str, b: str) -> set[str]:
+        d0 = dt.date(int(a[:4]), int(a[4:6]), int(a[6:]))
+        d1 = dt.date(int(b[:4]), int(b[4:6]), int(b[6:]))
+        out = set()
+        for i in range((d1 - d0).days + 1):
+            d = d0 + dt.timedelta(days=i)
+            if d.weekday() < 5:
+                out.add(d.strftime("%Y%m%d"))
+        return out
+
+    weekdays = _weekdays(lo, hi)
+    expected_open = weekdays - set(KRX_CLOSURES_2024_Q1)
+    missing_vs_fixture = sorted(expected_open - index)
+    unexpected_open = sorted(index - expected_open)
+    halted = sorted(index - stock)  # market open, this stock did not print
+
+    ok = not missing_vs_fixture and not unexpected_open
+    detail = (
+        f"index {len(index)} days vs {len(expected_open)} expected open "
+        f"({lo}..{hi}); missing_vs_KRX_fixture={missing_vs_fixture or 'none'}; "
+        f"open_but_not_in_fixture={unexpected_open or 'none'}; "
+        f"stock-specific non-printing days={halted or 'none'} (informational)"
     )
+    return Finding("calendar", ok, detail, {
+        "index_days": len(index), "expected_open": len(expected_open),
+        "missing_vs_fixture": missing_vs_fixture,
+        "unexpected_open": unexpected_open,
+        "stock_specific_missing": halted,
+    })
+
+
+def probe_single_stock_futures(host: str, tok: str, key: str, sec: str) -> Finding:
+    """§5 item 5 -- single-stock futures: do they answer, and how far back?
+
+    Deliberately included even though the endpoint family is uncertain.
+    Omitting it would let `main()` print "all probes ok" while the fact
+    that decides whether KR-10 is *tradeable at all* went unasked -- the
+    "evidence that cannot fail" pattern from CLAUDE.md's change checks.
+
+    Reported as a real finding either way. A failure here does not mean
+    single-stock futures are unavailable; it means this probe did not
+    establish them, and MS-C must.
+    """
+    path = "/uapi/domestic-futureoption/v1/quotations/inquire-daily-fuopchartprice"
+    # Samsung Electronics single-stock future, front month. KRX's own code
+    # shape for these is 1AAxxx / 111xxx depending on vintage; both are
+    # tried rather than guessed at once.
+    for tr in ("FHKIF03020100", "FHKST03010100"):
+        for code in ("101S12", "1AA000"):
+            try:
+                payload = _get_json(
+                    host + path,
+                    {
+                        "FID_COND_MRKT_DIV_CODE": "F",
+                        "FID_INPUT_ISCD": code,
+                        "FID_INPUT_DATE_1": "20240502",
+                        "FID_INPUT_DATE_2": "20240605",
+                        "FID_PERIOD_DIV_CODE": "D",
+                    },
+                    _quote_headers(tok, key, sec, tr),
+                )
+                rows = payload.get("output2") or []
+                if payload.get("rt_cd") == "0" and rows:
+                    return Finding(
+                        "single_stock_futures", True,
+                        f"answered for tr={tr} code={code}, {len(rows)} rows",
+                        {"tr_id": tr, "code": code, "rows": len(rows)},
+                    )
+            except (urllib.error.HTTPError, urllib.error.URLError, OSError):
+                pass
+            time.sleep(0.3)
     return Finding(
-        "calendar",
-        True,
-        f"{len(dates)} trading days between {dates[0]} and {dates[-1]}, "
-        f"against {weekdays} weekdays -- {weekdays - len(dates)} closures",
-        {"trading_days": len(dates), "weekdays": weekdays, "closures": weekdays - len(dates)},
+        "single_stock_futures", False,
+        "no (tr_id, code) combination tried returned rows. NOT a finding that "
+        "single-stock futures are unavailable -- the endpoint family and symbol "
+        "format are both unconfirmed. MS-C must establish them, and section 2.1's "
+        "tradeable window depends on it.",
     )
 
 
@@ -362,6 +499,17 @@ PROBES = (
     probe_adjustment,
     probe_indices,
     probe_calendar,
+    probe_single_stock_futures,
+)
+
+# MS-A section 5 items this probe does NOT settle. Printed with the summary
+# so "N/N ok" can never be read as a full go decision.
+NOT_COVERED = (
+    "item 5 (partial): single-stock-futures contract multiplier, and "
+    "per-underlying futures liquidity -- only endpoint reachability is probed",
+    "item 7: a point-in-time 2018 listing / futures-eligibility universe. "
+    "Section 4.4's ranking dependency is closed by acml_tr_pbmn, but the "
+    "candidate-pool dependency is not.",
 )
 
 
@@ -393,7 +541,7 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
-    print("token: issued\n")
+    print("token: ready\n")
 
     findings = []
     for probe in PROBES:
@@ -407,9 +555,14 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{len(findings) - len(failed)}/{len(findings)} probes ok")
     if failed:
         print(f"failed: {', '.join(failed)}")
+    print("\nNOT settled by this run -- a clean summary above is not a full go:")
+    for item in NOT_COVERED:
+        print(f"  - {item}")
     print("\nJSON:")
     print(json.dumps({f.name: {"ok": f.ok, **f.data} for f in findings}, indent=2, ensure_ascii=False))
-    return 0
+    # Fail closed. A go/no-go script that always exits 0 lets automation read
+    # a failed gate as a passed one -- change_check's `check_script_fails_closed`.
+    return 0 if not failed else 1
 
 
 if __name__ == "__main__":  # pragma: no cover
