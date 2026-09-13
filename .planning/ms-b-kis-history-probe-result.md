@@ -231,6 +231,54 @@ for a whole backfill.
 
 ---
 
+## 6.1 A store-level assumption KRX breaks, found while reading the code
+
+Not an API finding, but it belongs with them because it changes what MS-C
+builds and would otherwise be improvised mid-implementation.
+
+`store.find_missing_ranges` diffs stored bars against **an arithmetic
+sequence** — `expected = ts + interval_ms(interval)`. That is exactly
+right for crypto, which trades every day without exception, and it is why
+this project's `1d` BingX series has "zero gaps."
+
+**KRX trades roughly 245 days a year.** Against a 86,400,000 ms grid,
+every weekend and every holiday reads as a missing range — on the order
+of **120 false gaps per year, per symbol**. A backfill loop driven by
+that output would re-request Saturdays forever and never converge, and
+`verify_known_gaps`, which fails closed on any difference between the
+real gap set and a registration's declared one, would fail closed on
+every run.
+
+**Three ways out, and the third is the one this probe's own findings
+recommend**:
+
+1. Give `find_missing_ranges` an optional trading calendar. Cleanest
+   conceptually, but it touches a shared function every existing
+   crypto caller depends on, for a property only KRX has.
+2. A KRX-specific coverage function inside `kis_klines.py` that never
+   calls `find_missing_ranges`. Safe, but leaves two implementations of
+   "what is missing" to drift apart.
+3. **Derive the expected trading days from the index series itself.**
+   §5.2 established that KOSPI (`0001`) answers over the same endpoint,
+   and an index prints on exactly the days the market is open. So the
+   expected day set for any KRX symbol is *the set of dates the index
+   has*, and a gap is a date the index printed and the symbol did not.
+
+Option 3 needs no hardcoded holiday table — so nothing goes stale, and
+moving lunar-calendar holidays, which `KrxMarketCalendar` still lists as
+an unresolved gap because "the JDK ships no chronology that expresses
+them", are handled for free because KRX itself decided them. It also
+distinguishes a market closure from a **stock-specific halt**, which
+`probe_calendar` now reports separately and which a calendar table cannot
+see at all.
+
+The cost, stated so it is not discovered later: it makes the index series
+a **prerequisite** for validating any single-name series, and it inherits
+whatever gaps the index series itself has. MS-C backfills and gap-verifies
+the index first, on its own terms, and only then uses it as the reference.
+
+---
+
 ## 7. Not probed, and still open
 
 - **Single-stock futures**: multiplier, per-underlying liquidity, earliest
