@@ -91,8 +91,72 @@ turnover; correlation only ever vetoes.
 
 ## 4. Result
 
-*Not yet run. This section is filled in by the execution commit, which
-must come after this one in git history.*
+Executed 2026-09-13, against the rule and thresholds committed above at
+`d57a4e3`. Pool 229; 223 had enough 2018 observations to correlate.
+
+| # | Code | Name | 2018 traded value |
+|---|---|---|---|
+| 1 | 005930 | 삼성전자 | ₩144.3 tn |
+| 2 | 068270 | 셀트리온 | ₩92.6 tn |
+| 3 | 000660 | SK하이닉스 | ₩73.0 tn |
+| 4 | 009150 | 삼성전기 | ₩32.5 tn |
+| 5 | 207940 | 삼성바이오로직스 | ₩29.7 tn |
+| 6 | 000720 | 현대건설 | ₩27.4 tn |
+| 7 | 007390 | 네이처셀 | ₩26.6 tn |
+| 8 | 028300 | HLB | ₩25.9 tn |
+| 9 | 064350 | 현대로템 | ₩22.9 tn |
+| 10 | 051910 | LG화학 | ₩21.1 tn |
+
+2018 correlations of the resolved basket: **mean 0.157**, worst pair
+**0.724**, minimum −0.070.
+
+**The constraints did not bind. Zero rejections**, so KR-10 is exactly
+the top ten by 2018 traded value. §3 disclosed in advance that this was
+the likely outcome, and it is reported here unchanged rather than
+followed by a threshold adjustment.
+
+### 4.1 The guard is not inert, and that was checked rather than assumed
+
+A guard never observed firing is a guard nobody has shown works — this
+repository has had three inert fixtures that all read fine. Re-running
+the same rule with tightened thresholds:
+
+| C1 | C2 | Rejections | Resulting mean | Worst pair | First rejected |
+|---|---|---|---|---|---|
+| 0.50 | 0.80 | **0** (committed) | 0.157 | 0.724 | — |
+| 0.50 | 0.60 | 3 | 0.176 | 0.519 | SK하이닉스 (pair 0.650) |
+| 0.50 | 0.30 | 13 | 0.118 | 0.299 | SK하이닉스 |
+| 0.12 | 0.80 | 8 | 0.119 | 0.311 | SK하이닉스 (mean 0.274) |
+| 0.05 | 0.80 | 190 | 0.048 | 0.176 | SK하이닉스 |
+
+The mechanism rejects, in a sensible order, and SK하이닉스 is first out
+every time — it is the name most correlated with the already-admitted
+삼성전자. **It also came close to firing as committed**: the resolved
+basket's worst pair is 0.724 against a C2 of 0.80.
+
+### 4.2 What the correlation constraint catches that a sector cap cannot
+
+The five most correlated pairs in the top thirty by turnover:
+
+| ρ (2018) | Pair | KRX sectors |
+|---|---|---|
+| 0.732 | 현대건설 / 현대엘리베이터 | 건설 / 기계·장비 |
+| 0.724 | 현대건설 / 현대로템 | 건설 / 운송장비·부품 |
+| 0.703 | 현대로템 / 현대엘리베이터 | 운송장비·부품 / 기계·장비 |
+| 0.683 | KB금융 / 신한지주 | 금융 / 금융 |
+| 0.681 | 셀트리온 / 셀트리온제약 | 제약 / 제약 |
+
+**The three most correlated pairs in the entire pool sit in three
+different sectors.** They are the same chaebol group, and a
+three-per-sector cap is structurally blind to that: it would happily
+admit 현대건설, 현대로템 and 현대엘리베이터 as construction, transport
+equipment and machinery — three "different" sectors correlating at
+0.70–0.73.
+
+This is a stronger argument for the replacement than §1's, and unlike
+§1's finding 2 it is computed on **2018** data, outside the scored
+window, so it can be relied on rather than merely noted. It was not
+foreseen when the change was made; it was found by running it.
 
 ## 5. What is still required before MS-F
 
