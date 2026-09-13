@@ -15,10 +15,31 @@ figures then."*
 | Quantity | MS-A §2.4 assumed | Measured | |
 |---|---|---|---|
 | Korean internal correlation | 0.60, pessimistic 0.75 | **0.250** (median 0.216, range 0.104–0.726) | far lower |
-| Korea vs crypto | 0.387, borrowed from BTC/S&P 500 | **~0.10** properly aligned (KOSPI 0.159) | far lower |
+| Korea vs crypto | 0.387, borrowed from BTC/S&P 500 | **~0.20** (see §2.1 — an earlier figure of ~0.10 was an artefact of daily-bar alignment) | lower |
 
-Daily log returns, 1,387 common trading days, 2021-01-05 … 2026-09-01,
-across the ten largest futures-eligible underlyings by 2018 traded value.
+### 1.1 Exactly how each figure is computed, so it can be reproduced
+
+- **Series**: adjusted daily closes (`FID_ORG_ADJ_PRC=0`) from
+  `inquire-daily-itemchartprice`; returns are close-to-close natural logs.
+- **Constituents** — the ten largest futures-eligible underlyings by 2018
+  traded value, **before** the sector cap (§3), i.e. the *pre-measurement*
+  set, not a committed universe:
+  `005930` 삼성전자, `068270` 셀트리온, `000660` SK하이닉스, `009150` 삼성전기,
+  `207940` 삼성바이오로직스, `000720` 현대건설, `007390` 네이처셀,
+  `028300` HLB, `064350` 현대로템, `051910` LG화학.
+- **Korean internal 0.250** = the arithmetic mean of all **45** pairwise
+  correlations (`C(10,2)`) over the **1,387** dates common to all ten
+  series, 2021-01-05 … 2026-09-01. Median 0.216, min 0.104, max 0.726.
+  Both series in every pair are Korean, so no cross-timezone alignment
+  applies.
+- **Korea vs crypto ~0.20** = the mean of the ten individual
+  stock-vs-BTC correlations under the **exact 06:30–06:30 UTC** alignment
+  of §2.1, over the **419** dates where minute data exists to construct
+  it. The KOSPI-index equivalent is 0.338.
+- **§4's inputs are assumptions applied to these measurements**, not
+  measurements of a portfolio: each constituent is given `sr-ab`'s Sharpe
+  and drawdown, and the correlation structure above. §5 says why that
+  distinction is the whole point.
 
 **Both assumptions were conservative, and the direction is stronger than
 MS-A claimed** — which is the safe direction to be wrong in, and is
@@ -52,6 +73,36 @@ safety: it would have made cross-asset diversification look *perfect* and
 inflated every projection built on it. A number that flatters the
 conclusion and is too clean deserves the same suspicion as one that
 breaks it.
+
+### 2.1 The one-day shift is an approximation, and it understates by a third
+
+Caught on review of this document's own PR, and it is a real correction
+to a number published above. A KOSPI close-to-close return spans
+`[D−1 06:30, D 06:30]` UTC, which **straddles two BTC UTC days**. Shifting
+whole daily bars by one day therefore approximates *information
+availability*; it does not align the observation windows. The controls
+establish that the shift direction is right — they say nothing about the
+magnitude.
+
+BTC was re-aggregated to true 06:30→06:30 windows from local 1-minute
+bars, and measured on the **same 419-day sub-sample** so alignment is the
+only thing that varies:
+
+| BTC alignment | KOSPI vs BTC | Individual ten, mean |
+|---|---|---|
+| **Exact 06:30–06:30** | **+0.3377** | **+0.1976** |
+| Daily bars, shifted +1 | +0.2305 | +0.1287 |
+| Daily bars, unshifted | −0.0568 | — |
+
+**The approximation understates the true correlation by about a third**,
+and it does so in the direction that flatters diversification. The
+corrected input is therefore **~0.20** for individual names, not ~0.10.
+
+Disclosed limits: the exact figure rests on 419 days (minute data begins
+2024-11-30) against 1,297 for the approximation, so period and alignment
+are not fully separated. The approximation over the full 5.7 years gives
++0.159 for KOSPI. §4 carries both 0.20 and a conservative 0.34 so the
+conclusion can be read against either.
 
 **Consequence for MS-F, and it is not cosmetic.** A portfolio holding
 Korean and crypto legs together must respect *which information existed
@@ -94,11 +145,78 @@ including the one this task started from — would have excluded. Their
 presence is not a flaw in the rule; it is the rule refusing to encode
 hindsight about which names turned out to be respectable.
 
-**Still missing: sector classification**, so the three-per-sector cap
-cannot be applied yet. The current top ten is visibly concentrated in
-semiconductors (3) and biotech (4), so the cap will bind and the final
-KR-10 will differ from this list. **This ranking is therefore an input,
-not the universe**, and nothing may be promoted on it.
+**This ranking is an input, not the universe**, and nothing may be
+promoted on it.
+
+### 3.1 Sector classification — solved for KOSPI, unmapped for KOSDAQ
+
+Both equity masters carry three `지수업종` code fields (major/mid/minor) in
+their fixed-width tails — at the same relative offsets, though the tails
+themselves differ in width (KOSPI 227 bytes, KOSDAQ 220). A third public
+master, **`idxcode.mst`**, names 486 of those codes, which turns the
+numbers into something checkable:
+
+| Code | Name | KR-10 candidate |
+|---|---|---|
+| `00027` | 제조 | the *major* code for most manufacturers |
+| `00013` | 전기·전자 | 삼성전자, SK하이닉스, 삼성전기 |
+| `00009` | 제약 | 셀트리온, 삼성바이오로직스 |
+| `00008` | 화학 | LG화학 |
+| `00011` | 금속 | POSCO홀딩스 |
+| `00012` | 기계·장비 | 현대엘리베이터 |
+| `00015` | 운송장비·부품 | 현대차, 현대로템 |
+| `00018` | 건설 | 현대건설 |
+| `00029` | IT 서비스 | NAVER, 카카오 |
+
+The resolution rule falls out cleanly: **the mid code when non-zero,
+otherwise the major**. Every KOSPI name lands on a sensible sector.
+
+**KOSDAQ does not resolve.** 네이처셀 and HLB carry `(0091, 0240)`, and
+neither code appears in `idxcode.mst` — its 486 entries are KOSPI-side.
+The two markets use disjoint numbering with no published mapping between
+them, so a shared code space would count KOSPI pharma `(0027,0009)` and
+KOSDAQ pharma `(0091,0240)` as **different** sectors, and a
+three-per-sector cap could admit six biotechs. **The cap cannot be
+applied across markets with the data available.**
+
+### 3.2 The cap makes the measured property worse, not better
+
+MS-A §3.2 argued for the cap because a semiconductor-heavy basket would
+push internal correlation toward 0.8. That reasoning is sound in the
+abstract and turns out to be wrong here:
+
+| Basket | Mean pairwise ρ | Vol multiplier |
+|---|---|---|
+| Top ten by turnover, **no cap** (4 biotech, 3 semis) | **0.2500** | 0.570 |
+| Sector-capped ten (KOSPI-only by construction) | **0.3005** | 0.609 |
+
+The cap removes 네이처셀 and HLB — speculative KOSDAQ names that barely
+co-move with anything — and admits 현대엘리베이터 and POSCO홀딩스, ordinary
+industrials that track the rest more closely. **Sector labels are a poor
+proxy for what actually drives correlation between individual stocks.**
+
+**This comparison must not be used to choose the universe.** It is
+computed over 2021–2026, which is the window MS-F would score on; picking
+a basket because it measures better there is selection on the scored
+window, the precise thing this whole design exists to avoid. It is
+reported as a diagnostic.
+
+A legitimate version exists and is offered as an option, not adopted:
+impose the correlation constraint **on 2018 data** — the same pre-window
+year the ranking already uses — greedily in rank order. That replaces a
+proxy with a direct measurement of the property the proxy stands for,
+using data outside the scored window.
+
+**Three ways forward, and the choice is the operator's** because it
+modifies a committed rule:
+
+1. **Keep the cap, KOSPI-only.** Follows MS-A §4.2 as written, at the
+   cost of a market-wide exclusion the rule never specified.
+2. **Replace the cap with a 2018-measured correlation constraint.**
+   Measures the property directly; needs the threshold committed before
+   use.
+3. **Drop the cap, rank on turnover alone.** Simplest, concentration
+   unguarded — and §3.2 is not sufficient grounds for it.
 
 ## 4. §2.4 recomputed against measured inputs
 
@@ -111,8 +229,13 @@ observed values; equal weight; drawdown from the validated Monte Carlo
 | BTC alone (today) | 1.000 | 1.305 | 20.1% | **fails** |
 | §2.4 assumed, ρ=0.60 | 0.800 | 1.631 | 16.7% | passes |
 | §2.4 pessimistic, ρ=0.75 | 0.880 | 1.482 | 18.2% | passes |
-| **Measured, Korea ×10 at ρ=0.250** | **0.570** | **2.289** | **11.3%** | passes |
-| Measured, + BTC/ETH at cross 0.10 | 0.528 | 2.470 | 10.5% | passes |
+| **Measured, Korea ×10 at ρ=0.250** | **0.570** | **2.289** | **11.8%** | passes |
+| + BTC/ETH, cross 0.20 (exact alignment) | 0.554 | 2.356 | 11.2% | passes |
+| + BTC/ETH, cross 0.34 (KOSPI-index, conservative) | 0.588 | 2.219 | 12.8% | passes |
+
+**The headline row does not use the cross-correlation at all**, so §2.1's
+correction leaves it untouched. Only the combined rows move, and every
+one of them still clears both gates.
 
 Trade count scales with K: 64 → 640 at ten constituents, against a floor
 near 100.
@@ -153,8 +276,9 @@ premise those gates are applied to remains untested.**
 
 ## 7. Next
 
-1. **Sector classification**, so KR-10's three-per-sector cap can be
-   applied and the universe actually resolved (MS-E).
+1. **The §3.2 decision** — cap / correlation constraint / neither — then
+   resolve the universe (MS-E). KOSPI sectors are now resolvable; KOSDAQ
+   is not.
 2. **Backfill** the resolved universe into the store — nothing is
    persisted yet; everything above was computed in memory.
 3. **Pre-registration** committing the resolved list, the window, and the
