@@ -25,6 +25,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -116,7 +117,19 @@ TOKEN_CACHE = TOKEN_CACHE_DIR / "token.json"
 TOKEN_REUSE_S = 3000.0  # KIS access tokens live far longer; this is just prudence
 
 
-def _read_cached_token(host: str) -> str | None:
+def _app_key_fingerprint(app_key: str) -> str:
+    """A SHA-256 prefix identifying which app key a cached token belongs to.
+
+    The cache is keyed on (host, app key), not host alone: KIS binds a token
+    to the key it was issued for, so reusing another key's token would send
+    a mismatched pair and be rejected. The **fingerprint**, never the key
+    itself, because this file exists precisely so a credential is not
+    written to disk in a readable form.
+    """
+    return hashlib.sha256(app_key.encode("utf-8")).hexdigest()[:32]
+
+
+def _read_cached_token(host: str, app_key: str) -> str | None:
     try:
         fd = os.open(TOKEN_CACHE, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
     except OSError:
@@ -137,14 +150,21 @@ def _read_cached_token(host: str) -> str | None:
             pass
         return None
     try:
-        if blob.get("host") == host and time.time() - float(blob["at"]) < TOKEN_REUSE_S:
+        # A cache written before fingerprinting existed has no "key" field.
+        # Treat that as a miss rather than trusting it -- an absent
+        # fingerprint cannot be shown to match.
+        if (
+            blob.get("host") == host
+            and blob.get("key") == _app_key_fingerprint(app_key)
+            and time.time() - float(blob["at"]) < TOKEN_REUSE_S
+        ):
             return str(blob["token"])
     except (KeyError, TypeError, ValueError):
         pass
     return None
 
 
-def _write_cached_token(host: str, token: str) -> None:
+def _write_cached_token(host: str, app_key: str, token: str) -> None:
     try:
         TOKEN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         os.chmod(TOKEN_CACHE_DIR, 0o700)
@@ -160,7 +180,15 @@ def _write_cached_token(host: str, token: str) -> None:
             0o600,
         )
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump({"token": token, "at": time.time(), "host": host}, fh)
+            json.dump(
+                {
+                    "token": token,
+                    "at": time.time(),
+                    "host": host,
+                    "key": _app_key_fingerprint(app_key),
+                },
+                fh,
+            )
     except OSError:
         pass  # an uncacheable token still works for this run
 
@@ -176,7 +204,7 @@ def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = T
     per session, and per backfill.
     """
     if use_cache:
-        cached = _read_cached_token(host)
+        cached = _read_cached_token(host, app_key)
         if cached:
             return cached
     payload = _post_json(
@@ -189,7 +217,7 @@ def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = T
         # Report the error *code*, never the body.
         raise ProbeError(f"no access_token in token response (code={payload.get('error_code')})")
     if use_cache:
-        _write_cached_token(host, str(token))
+        _write_cached_token(host, app_key, str(token))
     return str(token)
 
 
