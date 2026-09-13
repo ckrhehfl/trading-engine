@@ -28,6 +28,7 @@ import argparse
 import json
 import os
 import pathlib
+import stat
 import sys
 import time
 import urllib.error
@@ -102,8 +103,66 @@ def _get_json(url: str, params: dict[str, str], headers: dict[str, str]) -> dict
         return json.loads(resp.read().decode("utf-8"))
 
 
-TOKEN_CACHE = pathlib.Path("/tmp/kis_probe_token.json")
+# A bearer token on disk is a credential on disk, so where it lands matters.
+# A world-writable /tmp path is not safe: `write_text` follows an existing
+# symlink, so anyone able to pre-create the path can have the token written
+# into a file they own, and `chmod(0o600)` afterwards changes nothing --
+# they are already the owner. So: an owner-only 0700 directory, opened with
+# O_NOFOLLOW at both ends, created O_EXCL with mode 0600.
+TOKEN_CACHE_DIR = pathlib.Path(
+    os.environ.get("XDG_RUNTIME_DIR") or pathlib.Path.home() / ".cache"
+) / "kis_probe"
+TOKEN_CACHE = TOKEN_CACHE_DIR / "token.json"
 TOKEN_REUSE_S = 3000.0  # KIS access tokens live far longer; this is just prudence
+
+
+def _read_cached_token(host: str) -> str | None:
+    try:
+        fd = os.open(TOKEN_CACHE, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return None  # absent, or a symlink someone planted -- either way, re-issue
+    try:
+        st = os.fstat(fd)
+        # Refuse anything not a plain file owned by us with no group/other bits.
+        if not stat.S_ISREG(st.st_mode) or st.st_uid != os.getuid():
+            return None
+        if st.st_mode & (stat.S_IRWXG | stat.S_IRWXO):
+            return None
+        with os.fdopen(fd, "r", encoding="utf-8") as fh:
+            blob = json.load(fh)
+    except (OSError, ValueError):
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        return None
+    try:
+        if blob.get("host") == host and time.time() - float(blob["at"]) < TOKEN_REUSE_S:
+            return str(blob["token"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    return None
+
+
+def _write_cached_token(host: str, token: str) -> None:
+    try:
+        TOKEN_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        os.chmod(TOKEN_CACHE_DIR, 0o700)
+        # O_EXCL so an existing file or planted symlink makes this fail rather
+        # than write through it; unlink our own stale copy first.
+        try:
+            os.unlink(TOKEN_CACHE)
+        except FileNotFoundError:
+            pass
+        fd = os.open(
+            TOKEN_CACHE,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"token": token, "at": time.time(), "host": host}, fh)
+    except OSError:
+        pass  # an uncacheable token still works for this run
 
 
 def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = True) -> str:
@@ -116,13 +175,10 @@ def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = T
     can stop a running loop from renewing its own token. Reuse one token
     per session, and per backfill.
     """
-    if use_cache and TOKEN_CACHE.exists():
-        try:
-            blob = json.loads(TOKEN_CACHE.read_text(encoding="utf-8"))
-            if time.time() - float(blob["at"]) < TOKEN_REUSE_S and blob.get("host") == host:
-                return str(blob["token"])
-        except (ValueError, KeyError, OSError):
-            pass  # a corrupt cache is not a reason to fail; just re-issue
+    if use_cache:
+        cached = _read_cached_token(host)
+        if cached:
+            return cached
     payload = _post_json(
         host + TOKEN_PATH,
         {"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
@@ -133,14 +189,7 @@ def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = T
         # Report the error *code*, never the body.
         raise ProbeError(f"no access_token in token response (code={payload.get('error_code')})")
     if use_cache:
-        try:
-            TOKEN_CACHE.write_text(
-                json.dumps({"token": str(token), "at": time.time(), "host": host}),
-                encoding="utf-8",
-            )
-            TOKEN_CACHE.chmod(0o600)
-        except OSError:
-            pass  # an uncacheable token still works for this run
+        _write_cached_token(host, str(token))
     return str(token)
 
 
@@ -408,7 +457,11 @@ def probe_calendar(host: str, tok: str, key: str, sec: str) -> Finding:
     if not stock or not index:
         return Finding("calendar", False, "one of the two series came back empty")
 
-    lo, hi = max(min(stock), min(index)), min(max(stock), max(index))
+    # The fixed requested range, NOT one derived from what came back. Deriving
+    # it from the returned dates means a missing first or last trading day
+    # simply leaves the verification window, and the check passes for having
+    # lost the evidence.
+    lo, hi = "20240101", "20240430"
     span = lambda s: {d for d in s if lo <= d <= hi}
     stock, index = span(stock), span(index)
 

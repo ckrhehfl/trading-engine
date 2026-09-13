@@ -238,13 +238,29 @@ as the ranking criterion and for **SK하이닉스 to be included**.
 > it afterwards is handled by the exit rule below, not by excluding it in
 > advance.
 >
-> **Exit rule, fixed here rather than discovered later**: if a
-> constituent delists, its futures line is discontinued, or it otherwise
-> stops trading, its position is closed at the last available price on
-> the last day it trades, and its weight is **redistributed equally
-> across the survivors from the following day**. The portfolio is not
-> rebalanced back to K=12 by substituting a new name — substituting
-> would reintroduce a selection decision mid-window.
+> **Exit rule, fixed here rather than discovered later.** A position is
+> only ever closed at a price that was **observable and executable at the
+> moment of the decision**:
+>
+> - **Announced** delisting, futures discontinuation or scheduled halt →
+>   exit at the **first executable bar after the announcement date**.
+> - **Unannounced** halt → the position is **held through the halt** and
+>   exited at the **first bar after trading resumes**, or at the official
+>   **cash-settlement price** if it never resumes.
+> - Weight is redistributed across survivors **only from the bar after the
+>   exit actually happens**, never from the halt date.
+>
+> The portfolio is not rebalanced back to K=12 by substituting a new name
+> — substituting would reintroduce a selection decision mid-window.
+
+**A second draft got this wrong too**, in a way worth naming because it
+is the subtler of the two. It said the position closes "at the last
+available price on the last day it trades." **Which day is the last is
+not knowable on that day** — it is only visible afterwards, so exiting
+there is lookahead, and it also assumes a fill at a price that may have
+had no liquidity behind it. Both errors flatter the result. The rule
+above is written so every exit decision uses only information that
+existed when it was made.
 
 **An earlier draft got this wrong**, and the error is worth keeping
 visible because it is subtle. That draft required "a continuous
