@@ -30,7 +30,14 @@ from pathlib import Path
 
 import pytest
 
-PROBE = Path(__file__).resolve().parents[1] / "data" / "kis_probe.py"
+_DATA = Path(__file__).resolve().parents[1] / "data"
+PROBE = _DATA / "kis_probe.py"
+
+# Every credentialed, read-only KIS client. `kis_klines.py` (Multi-Asset
+# Task C) is held to the same contract as the probe: it authenticates with
+# a real app key, so the argument that made a credentialed client
+# acceptable at all applies to it identically.
+CREDENTIALED_KIS_MODULES = (PROBE, _DATA / "kis_klines.py")
 
 # KIS's own naming: order submission and cancellation live under /trading/,
 # and their TR ids are (V)TTO/(V)TTC-shaped. The Java adapter's real
@@ -45,6 +52,11 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
 
 # Names the probe binds credentials to.
 CREDENTIAL_NAMES = frozenset({"key", "sec", "app_key", "app_secret"})
+
+# Top-level packages that can reach an order path. A read-only quotation
+# client has no business importing any of them, however the import is
+# spelled.
+FORBIDDEN_IMPORT_ROOTS = frozenset({"live", "execution", "oms", "trading", "runtime"})
 
 
 def executable_source(source: str) -> str:
@@ -140,6 +152,40 @@ def credential_leak_findings(source: str) -> list[str]:
     return findings
 
 
+def trading_path_imports(source: str) -> list[str]:
+    """Imports that could reach an order path, found via `ast`.
+
+    A substring scan was the first version and it was porous: `import
+    execution`, `from oms import x`, `from . import execution` and
+    `from .execution import x` all read past a list of `"from live"`-style
+    prefixes. Matching import *statements* rather than text makes the
+    spelling irrelevant, which is the whole point -- the previous version
+    of this file had already been bypassed once the same way, by a
+    triple-quoted string.
+    """
+    findings: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root in FORBIDDEN_IMPORT_ROOTS:
+                    findings.append(f"import {alias.name} (line {node.lineno})")
+        elif isinstance(node, ast.ImportFrom):
+            # `from .execution import x` and `from . import execution` are
+            # both relative, and the second names the module in `names`.
+            if node.module:
+                root = node.module.split(".")[0]
+                if root in FORBIDDEN_IMPORT_ROOTS:
+                    findings.append(f"from {node.module} import ... (line {node.lineno})")
+            for alias in node.names:
+                if alias.name.split(".")[0] in FORBIDDEN_IMPORT_ROOTS:
+                    findings.append(
+                        f"from {'.' * node.level}{node.module or ''} import "
+                        f"{alias.name} (line {node.lineno})"
+                    )
+    return findings
+
+
 # --------------------------------------------------------------- fixtures
 
 KNOWN_BAD_ORDER = '''
@@ -218,25 +264,67 @@ def test_the_credential_rule_allows_length_only():
 # ------------------------------------------------------- the real module
 
 
-def test_kis_probe_cannot_place_an_order():
-    findings = order_capable_findings(PROBE.read_text(encoding="utf-8"))
+@pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
+def test_a_credentialed_kis_module_cannot_place_an_order(module):
+    findings = order_capable_findings(module.read_text(encoding="utf-8"))
     assert findings == [], (
-        "data/kis_probe.py has gained an order-capable surface: "
+        f"data/{module.name} has gained an order-capable surface: "
         + "; ".join(findings)
         + ". MS-A section 7's approval for a credentialed KIS client rests on "
-        "this module being quotation-only."
+        "these modules being quotation-only."
     )
 
 
-def test_kis_probe_never_prints_a_credential():
-    findings = credential_leak_findings(PROBE.read_text(encoding="utf-8"))
-    assert findings == [], "credential value reaches an output sink: " + "; ".join(findings)
+@pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
+def test_a_credentialed_kis_module_never_prints_a_credential(module):
+    findings = credential_leak_findings(module.read_text(encoding="utf-8"))
+    assert findings == [], (
+        f"a credential value reaches an output sink in {module.name}: " + "; ".join(findings)
+    )
 
 
-def test_kis_probe_does_not_import_the_trading_path():
-    source = PROBE.read_text(encoding="utf-8")
-    for banned in ("from live", "import live", "from execution", "import oms"):
-        assert banned not in source, f"kis_probe imports {banned!r}"
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "import live\n",
+        "import execution\n",
+        "import trading.orders\n",
+        "from oms import store\n",
+        "from live.signals import x\n",
+        "from .execution import submit\n",
+        "from . import execution\n",
+        "import data.klines as k, oms\n",
+    ],
+    ids=lambda s: s.strip(),
+)
+def test_the_import_rule_rejects_every_spelling(bad):
+    """The gap CodeRabbit found on PR #165: a substring scan passed six of
+    these eight. An import statement has many spellings and only one
+    meaning."""
+    assert trading_path_imports(bad), f"{bad.strip()!r} was not caught"
+
+
+@pytest.mark.parametrize(
+    "ok", ["import json\n", "from data.bingx_klines import KlineRow\n", "import urllib.request\n"]
+)
+def test_the_import_rule_allows_ordinary_imports(ok):
+    assert trading_path_imports(ok) == []
+
+
+@pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
+def test_a_credentialed_kis_module_does_not_import_the_trading_path(module):
+    findings = trading_path_imports(module.read_text(encoding="utf-8"))
+    assert findings == [], (
+        f"{module.name} imports the trading path: " + "; ".join(findings)
+    )
+
+
+def test_every_credentialed_kis_module_exists():
+    """Guards the guard: a renamed or deleted module must not silently
+    reduce this file to testing nothing."""
+    for module in CREDENTIALED_KIS_MODULES:
+        assert module.is_file(), f"{module} is listed but does not exist"
+    assert len(CREDENTIALED_KIS_MODULES) >= 2
 
 
 @pytest.mark.parametrize("secret", ["KIS_APP_KEY", "KIS_APP_SECRET"])

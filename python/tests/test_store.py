@@ -71,6 +71,7 @@ def test_connect_creates_the_klines_table(conn):
         "fetched_at",
         "taker_buy_base_volume",
         "taker_buy_quote_volume",
+        "quote_volume",
     }
 
 
@@ -113,6 +114,7 @@ def test_connect_migrates_an_old_schema_database_adding_order_flow_columns_witho
     columns = {row[1] for row in migrated.execute("PRAGMA table_info(klines)")}
     assert "taker_buy_base_volume" in columns
     assert "taker_buy_quote_volume" in columns
+    assert "quote_volume" in columns  # Multi-Asset Task C, same additive mechanism
 
     rows = fetch_klines(migrated, "BTC-USDT", "15m", BASE, BASE + STEP)
     migrated.close()
@@ -121,6 +123,7 @@ def test_connect_migrates_an_old_schema_database_adding_order_flow_columns_witho
     assert rows[0].open == Decimal("100")  # pre-existing data intact
     assert rows[0].taker_buy_base_volume is None  # NULL, not fabricated
     assert rows[0].taker_buy_quote_volume is None
+    assert rows[0].quote_volume is None
 
 
 def test_connect_migration_is_idempotent_when_columns_already_exist(tmp_path):

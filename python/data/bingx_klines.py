@@ -101,6 +101,16 @@ class KlineRow:
     `None`, specifically so every existing keyword-constructed `KlineRow`
     call site in this codebase (BingX rows, test fixtures) keeps working
     unchanged.
+
+    `quote_volume` is the bar's traded *value* -- price times quantity
+    summed over the bar, in the quote currency -- as distinct from
+    `volume`, which counts units. Added for Multi-Asset Task C, where
+    KIS's `acml_tr_pbmn` (거래대금) is what the KR-10 universe rule ranks
+    on, and `close * volume` is not a substitute for it. `None` for every
+    BingX row and for every row predating this field. Binance's own wire
+    format carries the same quantity at index 7 (`quote_asset_volume`)
+    and currently discards it; retrofitting that is deliberately left
+    alone rather than folded into this task.
     """
 
     open_time_ms: int
@@ -111,6 +121,7 @@ class KlineRow:
     volume: Decimal
     taker_buy_base_volume: Decimal | None = None
     taker_buy_quote_volume: Decimal | None = None
+    quote_volume: Decimal | None = None
 
 
 def fetch_klines_page(

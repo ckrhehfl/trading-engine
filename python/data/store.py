@@ -74,11 +74,18 @@ CREATE TABLE IF NOT EXISTS klines (
 # EXISTS` is a genuine no-op against the real, already-populated
 # production `klines` table -- it does not retroactively add a column to
 # a table that already exists.
-_KLINES_ORDER_FLOW_COLUMNS = ("taker_buy_base_volume", "taker_buy_quote_volume")
+# Every additively-migrated `klines` column. `quote_volume` joined the two
+# order-flow columns in Multi-Asset Task C; the mechanism is unchanged, so
+# the tuple is simply the full list rather than one list per arc.
+_KLINES_ADDITIVE_COLUMNS = (
+    "taker_buy_base_volume",
+    "taker_buy_quote_volume",
+    "quote_volume",
+)
 
 
 def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
-    """Add any of `_KLINES_ORDER_FLOW_COLUMNS` missing from the real
+    """Add any of `_KLINES_ADDITIVE_COLUMNS` missing from the real
     `klines` table -- SQLite's `ALTER TABLE ... ADD COLUMN` has no
     portable `IF NOT EXISTS` clause, so existence is checked explicitly
     via `PRAGMA table_info` first, making this safe to call on every
@@ -95,7 +102,7 @@ def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
     SQLite's own default is to fail immediately rather than wait) until
     the first's transaction resolves and then correctly sees the column
     already present -- serialized, not racing. `column` is always drawn
-    from the fixed, hardcoded `_KLINES_ORDER_FLOW_COLUMNS` tuple above,
+    from the fixed, hardcoded `_KLINES_ADDITIVE_COLUMNS` tuple above,
     never external input, so the f-string here is not a SQL-injection
     surface (SQLite has no parameter-binding syntax for a column *name*
     in `ALTER TABLE ADD COLUMN`, only for values).
@@ -104,7 +111,7 @@ def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
     conn.execute("BEGIN IMMEDIATE")
     try:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(klines)").fetchall()}
-        for column in _KLINES_ORDER_FLOW_COLUMNS:
+        for column in _KLINES_ADDITIVE_COLUMNS:
             if column not in existing:
                 conn.execute(f"ALTER TABLE klines ADD COLUMN {column} TEXT")
         conn.commit()
@@ -229,6 +236,7 @@ def upsert_klines(
             fetched_at,
             str(row.taker_buy_base_volume) if row.taker_buy_base_volume is not None else None,
             str(row.taker_buy_quote_volume) if row.taker_buy_quote_volume is not None else None,
+            str(row.quote_volume) if row.quote_volume is not None else None,
         )
         for row in rows
     ]
@@ -236,8 +244,8 @@ def upsert_klines(
     cursor = conn.executemany(
         "INSERT OR IGNORE INTO klines "
         "(symbol, interval, open_time_ms, open, high, low, close, volume, fetched_at, "
-        "taker_buy_base_volume, taker_buy_quote_volume) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "taker_buy_base_volume, taker_buy_quote_volume, quote_volume) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         params,
     )
     conn.commit()
@@ -311,7 +319,7 @@ def fetch_klines(
 
     rows = conn.execute(
         "SELECT open_time_ms, open, high, low, close, volume, "
-        "taker_buy_base_volume, taker_buy_quote_volume FROM klines "
+        "taker_buy_base_volume, taker_buy_quote_volume, quote_volume FROM klines "
         "WHERE symbol = ? AND interval = ? AND open_time_ms >= ? AND open_time_ms < ? "
         "ORDER BY open_time_ms",
         (symbol, interval, start_ms, end_ms),
@@ -327,6 +335,7 @@ def fetch_klines(
             volume=Decimal(row[5]),
             taker_buy_base_volume=Decimal(row[6]) if row[6] is not None else None,
             taker_buy_quote_volume=Decimal(row[7]) if row[7] is not None else None,
+            quote_volume=Decimal(row[8]) if row[8] is not None else None,
         )
         for row in rows
     ]
