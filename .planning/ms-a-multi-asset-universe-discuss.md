@@ -226,7 +226,19 @@ directly on this path and must be closed — the multiplier is exactly the
 unconfirmed fact that blocks it. Second, **sector indices are attractive
 for research and useless for execution**, which is the §2.5 trap.
 
-### 4.2 The universe rule — decided 2026-09-13
+### 4.2 The universe rule — decided 2026-09-13, **then superseded**
+
+> **SUPERSEDED 2026-09-13 by [`ms-e-kr10-universe-rule.md`](ms-e-kr10-universe-rule.md).**
+> The three-per-sector cap below is **not** the operative rule. It was
+> replaced by a correlation constraint measured on 2018 (C1 mean ≤ 0.50,
+> C2 worst pair ≤ 0.80) because KOSPI and KOSDAQ use disjoint industry
+> code schemes with no mapping, so the cap could not be applied across
+> markets at all. MS-E §2–3 is the committed rule and MS-E §4 the resolved
+> universe; everything below is the pre-supersession record.
+>
+> **`Target K = 12` and the turnover ordering survive unchanged** — MS-E
+> replaces only the concentration constraint.
+
 
 The operator chose the rule over the named list, noting the names were
 only used because the symbols were unfamiliar, and asked for **turnover**

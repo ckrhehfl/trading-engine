@@ -9,8 +9,10 @@ The ordering is the point. A threshold chosen after seeing which value
 produces a nicer basket is not a constraint, and this file exists in git
 history so that ordering is checkable rather than asserted.
 
-Supersedes MS-A §4.2's three-per-sector cap, on the operator's decision
-of 2026-09-13. Reasons in [`ms-d-korean-correlations-and-universe.md`](ms-d-korean-correlations-and-universe.md)
+**This document is the operative KR-10 rule.** It supersedes MS-A §4.2's
+three-per-sector cap on the operator's decision of 2026-09-13; MS-A §4.2
+and MS-D §3.2's option list both now carry supersession notices pointing
+here, so exactly one selection rule is live. Reasons in [`ms-d-korean-correlations-and-universe.md`](ms-d-korean-correlations-and-universe.md)
 §3.1–3.2, summarised in §1 below.
 
 ---

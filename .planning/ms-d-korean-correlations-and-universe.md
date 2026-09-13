@@ -218,7 +218,11 @@ proxy with a direct measurement of the property the proxy stands for,
 using data outside the scored window.
 
 **Three ways forward, and the choice is the operator's** because it
-modifies a committed rule:
+modifies a committed rule. **Decided 2026-09-13: option 2.** The rule and
+its thresholds are committed in
+[`ms-e-kr10-universe-rule.md`](ms-e-kr10-universe-rule.md) §2–3 and the
+resolved universe in its §4; this list is the pre-decision record.
+
 
 1. **Keep the cap, KOSPI-only.** Follows MS-A §4.2 as written, at the
    cost of a market-wide exclusion the rule never specified.
