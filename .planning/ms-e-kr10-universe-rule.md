@@ -53,9 +53,21 @@ proxying it with labels that do not survive a market boundary.
 >    **after** adding it, the basket satisfies both constraints in §3.
 >    A candidate that would violate either is skipped, permanently, and
 >    the scan continues.
-> 4. **Stop** at ten constituents, or when the pool is exhausted.
-> 5. No index members. The crypto leg stays deferred (MS-A §7 item 4,
+> 4. **Stop** at ten single-stock constituents, or when the pool is
+>    exhausted.
+> 5. **Then append MS-A §4.2's two index futures — KOSPI200 and
+>    KOSDAQ150 — subject to the same §3 constraints.** Target K = 12,
+>    unchanged from MS-A. The crypto leg stays deferred (MS-A §7 item 4,
 >    reaffirmed 2026-09-13).
+
+**An earlier draft of item 5 read "No index members" and stopped at ten.**
+That was an unflagged scope change: this task replaces MS-A §4.2's
+*sector cap*, and silently dropping two of its twelve members alongside
+is a different edit that was neither argued nor disclosed. Restored, and
+the index members are put through §3 rather than admitted or excluded by
+hand — an index is a weighted combination of its own constituents, so
+whether it is too correlated with them is exactly the question §3 exists
+to answer.
 
 ## 3. The constraints, and the numbers, fixed here
 
@@ -77,12 +89,19 @@ its rationale.** Both are external conventions, not fitted to this data:
   position held twice, which is what C1 alone would not catch.
 
 **Disclosed, because it would otherwise look like the threshold was
-tuned**: the uncapped top ten measures 0.2500 over 2021–2026, so it is
-already known that C1 is unlikely to bind. That is intentional. **C1 and
-C2 are guards, not optimisers** — their job is to refuse a pathological
-basket (ten semiconductors), not to search for a good one. A guard that
-rarely fires is a guard working as designed, and this project already
-runs several. Whether they actually bound is reported in §4 either way.
+tuned**: a 2021–2026 measurement of the uncapped top ten came in at
+0.2500 (MS-D §1). That figure is **prior-knowledge disclosure only**. It
+was not used to set either threshold — both come from the external
+conventions above — and it is **not** evidence about whether C1 binds on
+**2018**, which is a different sample the thresholds are actually applied
+to. It is recorded so a reader can see what was known at the time, not as
+a prediction.
+
+**C1 and C2 are guards, not optimisers** — their job is to refuse a
+pathological basket (ten semiconductors), not to search for a good one.
+A guard that rarely fires is a guard working as designed, and this
+project already runs several. Whether they actually bound on 2018 is
+reported in §4 either way.
 
 **What this rule explicitly does not do**: it does not pick the
 lowest-correlation ten. That would be optimisation over the pool, would
@@ -107,11 +126,27 @@ Executed 2026-09-13, against the rule and thresholds committed above at
 | 9 | 064350 | 현대로템 | ₩22.9 tn |
 | 10 | 051910 | LG화학 | ₩21.1 tn |
 
-2018 correlations of the resolved basket: **mean 0.157**, worst pair
-**0.724**, minimum −0.070.
+Then MS-A §4.2's two index futures, put through the same §3 constraints
+rather than admitted by hand:
 
-**The constraints did not bind. Zero rejections**, so KR-10 is exactly
-the top ten by 2018 traded value. §3 disclosed in advance that this was
+| Index | Worst pair against the ten | Basket mean after adding | Verdict |
+|---|---|---|---|
+| KOSPI200 (`2001`) | **0.776** vs 삼성전자 | 0.198 | **admitted** |
+| KOSDAQ150 (`2203`) | 0.649 vs 셀트리온 | 0.231 | **admitted** |
+
+**Final K = 12**, matching MS-A §4.2. Resolved-basket 2018 correlations:
+**mean 0.231**, worst pair **0.776**, and for the ten single-stock members
+alone mean 0.157, worst 0.724, minimum −0.070.
+
+**KOSPI200 is the closest anything came to a constraint**: 0.776 against
+a C2 of 0.80, a margin of 0.024. An index is a weighted combination of
+names already in the basket, so this is the pair most at risk of being
+one position held twice — and it is the strongest evidence in §4.1 that
+the guard is live rather than decorative.
+
+**The constraints did not bind. Zero rejections** among the single-stock
+members, so those ten are exactly the top ten by 2018 traded value, and
+neither index member was rejected either. §3 disclosed in advance that this was
 the likely outcome, and it is reported here unchanged rather than
 followed by a threshold adjustment.
 

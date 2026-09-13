@@ -171,15 +171,15 @@ numbers into something checkable:
 The resolution rule falls out cleanly: **the mid code when non-zero,
 otherwise the major**. Every KOSPI name lands on a sensible sector.
 
-**KOSDAQ does not resolve.** 네이처셀 and HLB carry `(0091, 0240)`, and
+**KOSDAQ does not resolve.** 네이처셀 and HLB carry `(00091, 00240)`, and
 neither code appears in `idxcode.mst` — its 486 entries are KOSPI-side.
 The two markets use disjoint numbering with no published mapping between
-them, so a shared code space would count KOSPI pharma `(0027,0009)` and
-KOSDAQ pharma `(0091,0240)` as **different** sectors, and a
+them, so a shared code space would count KOSPI pharma `(00027, 00009)` and
+KOSDAQ pharma `(00091, 00240)` as **different** sectors, and a
 three-per-sector cap could admit six biotechs. **The cap cannot be
 applied across markets with the data available.**
 
-### 3.2 The cap makes the measured property worse, not better
+### 3.2 The capped basket measures worse — but two things changed at once
 
 MS-A §3.2 argued for the cap because a semiconductor-heavy basket would
 push internal correlation toward 0.8. That reasoning is sound in the
@@ -188,12 +188,22 @@ abstract and turns out to be wrong here:
 | Basket | Mean pairwise ρ | Vol multiplier |
 |---|---|---|
 | Top ten by turnover, **no cap** (4 biotech, 3 semis) | **0.2500** | 0.570 |
-| Sector-capped ten (KOSPI-only by construction) | **0.3005** | 0.609 |
+| Sector-capped ten, **KOSPI-only fallback** | **0.3005** | 0.609 |
 
-The cap removes 네이처셀 and HLB — speculative KOSDAQ names that barely
-co-move with anything — and admits 현대엘리베이터 and POSCO홀딩스, ordinary
-industrials that track the rest more closely. **Sector labels are a poor
-proxy for what actually drives correlation between individual stocks.**
+**This is a comparison of two changes, not one, and the effects cannot be
+separated from it.** The capped basket is KOSPI-only *by construction* —
+§3.1 shows KOSDAQ sectors cannot be mapped, so applying the cap at all
+forces the KOSDAQ names out. So the 0.2500 → 0.3005 move mixes (a) the
+sector cap and (b) the loss of 네이처셀 and HLB, two speculative KOSDAQ
+names that barely co-move with anything. Their replacements,
+현대엘리베이터 and POSCO홀딩스, are ordinary industrials that track the rest
+more closely.
+
+The honest reading is therefore only that **the KOSPI-only capped
+fallback is worse on this measure than the uncapped cross-market ten** —
+not that the cap alone causes it. A cleaner argument, computed on 2018
+and free of this confound, appears in
+[`ms-e-kr10-universe-rule.md`](ms-e-kr10-universe-rule.md) §4.2.
 
 **This comparison must not be used to choose the universe.** It is
 computed over 2021–2026, which is the window MS-F would score on; picking
@@ -236,6 +246,23 @@ observed values; equal weight; drawdown from the validated Monte Carlo
 **The headline row does not use the cross-correlation at all**, so §2.1's
 correction leaves it untouched. Only the combined rows move, and every
 one of them still clears both gates.
+
+**The combined rows' full covariance input**, since a `cross` number
+alone does not determine one — this is a two-block structure:
+
+- **Korea block**: 10 members, internal ρ = 0.250 (§1, measured).
+- **Crypto block**: 2 members, internal ρ = **0.8454** — the measured
+  BTC/ETH figure from MS-A §2.3.
+- **Between blocks**: the single `cross` value shown in the row, applied
+  **uniformly to every Korea-crypto pair**, i.e. Korea-vs-BTC and
+  Korea-vs-ETH alike.
+
+Applying one number to both crypto legs **is an assumption, not a
+measurement**: only Korea-vs-BTC was measured (§2.1). ETH's own
+Korea-correlation was not, and ETH's 0.845 co-movement with BTC makes a
+similar value plausible without making it observed. The combined rows are
+therefore **scenarios**; the Korea ×10 row is the one built only on
+measurements.
 
 Trade count scales with K: 64 → 640 at ten constituents, against a floor
 near 100.
