@@ -197,10 +197,13 @@ foreseen when the change was made; it was found by running it.
 
 ## 5. What is still required before MS-F
 
-- The resolved list committed to a pre-registration under
-  `configs/research/preregistrations/`, with the Eligibility Bar's
-  single-window criteria pinned (MS-A §7 item 3: PSR ≥ 0.95, drawdown,
-  trade-count floor, profit factor, and the window's own detection floor).
+- The resolved list is now committed at
+  [`configs/research/universes/kr10.json`](../configs/research/universes/kr10.json)
+  and the window at
+  [`configs/research/holdout_krx_1d.json`](../configs/research/holdout_krx_1d.json).
+  **The pre-registration itself is blocked on two inputs that must not be
+  invented** — the KRX futures cost constants, and a portfolio runner.
+  Both are set out in [`ms-f-what-the-run-still-needs.md`](ms-f-what-the-run-still-needs.md).
 - ~~The backfill persisted to the store~~ — **done 2026-09-13.**
   `python/data/backfill_kis.py` fetched the ten members plus the KOSPI
   reference index over 2019-01-02 … 2026-09-01: **1,882 trading days each,

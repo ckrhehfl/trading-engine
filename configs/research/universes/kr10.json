@@ -1,0 +1,140 @@
+{
+  "universe_id": "kr10",
+  "resolved_at": "2026-09-13T00:00:00Z",
+  "rule_document": ".planning/ms-e-kr10-universe-rule.md",
+  "rule_committed_at_commit": "d57a4e3",
+  "executed_at_commit": "85cdfab",
+  "rule_summary": "Outright single-stock-futures underlyings that traded in 2018, ordered by 2018 full-calendar-year traded value, admitted greedily subject to C1 (basket mean pairwise 2018 correlation <= 0.50) and C2 (no individual 2018 pair > 0.80), stopping at ten; then MS-A section 4.2's two index futures appended under the same constraints. Target K = 12.",
+  "constraints": {
+    "C1_mean_pairwise_max": 0.5,
+    "C2_worst_pair_max": 0.8,
+    "measured_on": "2018 daily log returns, the year before the scored window",
+    "bound": false,
+    "binding_note": "Zero rejections. The ten single-stock members are exactly the top ten by 2018 traded value, and neither index member was rejected. Disclosed in the rule document before execution as the likely outcome; the guard was separately shown able to reject (MS-E section 4.1)."
+  },
+  "measured_2018_correlations": {
+    "single_stock_mean": 0.157,
+    "single_stock_worst_pair": 0.724,
+    "single_stock_min_pair": -0.07,
+    "full_basket_mean": 0.231,
+    "full_basket_worst_pair": 0.776,
+    "worst_pair_identity": "KOSPI200 vs 삼성전자"
+  },
+  "equity_members": [
+    {
+      "rank": 1,
+      "code": "005930",
+      "name": "삼성전자",
+      "storage_symbol": "KRX:005930",
+      "traded_value_2018_trillion_krw": "144.26",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 2,
+      "code": "068270",
+      "name": "셀트리온",
+      "storage_symbol": "KRX:068270",
+      "traded_value_2018_trillion_krw": "92.61",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 3,
+      "code": "000660",
+      "name": "SK하이닉스",
+      "storage_symbol": "KRX:000660",
+      "traded_value_2018_trillion_krw": "72.96",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 4,
+      "code": "009150",
+      "name": "삼성전기",
+      "storage_symbol": "KRX:009150",
+      "traded_value_2018_trillion_krw": "32.45",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 5,
+      "code": "207940",
+      "name": "삼성바이오로직스",
+      "storage_symbol": "KRX:207940",
+      "traded_value_2018_trillion_krw": "29.72",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 6,
+      "code": "000720",
+      "name": "현대건설",
+      "storage_symbol": "KRX:000720",
+      "traded_value_2018_trillion_krw": "27.42",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 7,
+      "code": "007390",
+      "name": "네이처셀",
+      "storage_symbol": "KRX:007390",
+      "traded_value_2018_trillion_krw": "26.62",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 8,
+      "code": "028300",
+      "name": "HLB",
+      "storage_symbol": "KRX:028300",
+      "traded_value_2018_trillion_krw": "25.91",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 9,
+      "code": "064350",
+      "name": "현대로템",
+      "storage_symbol": "KRX:064350",
+      "traded_value_2018_trillion_krw": "22.88",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    },
+    {
+      "rank": 10,
+      "code": "051910",
+      "name": "LG화학",
+      "storage_symbol": "KRX:051910",
+      "traded_value_2018_trillion_krw": "21.11",
+      "contract_multiplier_shares": 10,
+      "stored_bars": 1882
+    }
+  ],
+  "index_members": [
+    {
+      "rank": 11,
+      "code": "2001",
+      "name": "KOSPI200",
+      "storage_symbol": "KRX-INDEX:2001",
+      "worst_pair_vs_equities": 0.776,
+      "admitted_note": "0.776 against 삼성전자, the closest anything came to C2's 0.80"
+    },
+    {
+      "rank": 12,
+      "code": "2203",
+      "name": "KOSDAQ150",
+      "storage_symbol": "KRX-INDEX:2203",
+      "worst_pair_vs_equities": 0.649,
+      "admitted_note": "0.649 against 셀트리온"
+    }
+  ],
+  "reference_calendar_symbol": "KRX-INDEX:0001",
+  "notes": [
+    "The member list is fixed here so a pre-registration can reference it by path rather than restating it.",
+    "Contract multiplier is 10 shares for all 265 futures-eligible underlyings, published in fo_stk_code_mts.mst (MS-D section 3).",
+    "Index members are stored for the signal; the tradeable instrument is the corresponding futures contract.",
+    "KIS serves no expired-contract history, so futures tradeability across the scored window is an UNVERIFIED PREMISE -- see MS-B section 2.1 and the pre-registration that consumes this file."
+  ]
+}
