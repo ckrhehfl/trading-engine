@@ -48,15 +48,20 @@ def _equity_row(date: str, *, close="70000", volume="1000", value="70000000", **
     return row
 
 
-def _index_row(date: str, *, close="2700"):
-    return {
+def _index_row(date: str, *, close="2700", **over):
+    # The real field set, verified against the live endpoint 2026-09-13.
+    row = {
         "stck_bsop_date": date,
         "bstp_nmix_oprc": "2690",
         "bstp_nmix_hgpr": "2710",
         "bstp_nmix_lwpr": "2680",
         "bstp_nmix_prpr": close,
-        "acml_vol": "500000",
+        "acml_vol": "613718",
+        "acml_tr_pbmn": "16353907",
+        "mod_yn": "N",
     }
+    row.update(over)
+    return row
 
 
 class _FakeSession:
@@ -110,6 +115,23 @@ def test_a_malformed_trading_date_is_rejected(bad):
         trading_date_to_ms(bad)
 
 
+@pytest.mark.parametrize("bad", ["20241332", "20240230", "20240001", "20240100"])
+def test_eight_digits_that_are_not_a_real_date_are_rejected_as_KisKlinesError(bad):
+    """Shape is not validity. These pass the digit check and would have
+    surfaced as a bare `ValueError` from `dt.date`, which a caller catching
+    this module's own error type would not see."""
+    with pytest.raises(KisKlinesError):
+        trading_date_to_ms(bad)
+
+
+@pytest.mark.parametrize("bad", ["2024", "", "20241332"])
+def test_a_malformed_range_bound_raises_this_modules_error_type(session, bad):
+    with pytest.raises(KisKlinesError):
+        list(iter_daily_range(session, "005930", bad, "20240630", adjusted=ADJUSTED))
+    with pytest.raises(KisKlinesError):
+        list(iter_daily_range(session, "005930", "20240101", bad, adjusted=ADJUSTED))
+
+
 def test_storage_symbols_keep_equities_and_indices_in_separate_namespaces():
     assert equity_storage_symbol("005930") == "KRX:005930"
     assert index_storage_symbol("2001") == "KRX-INDEX:2001"
@@ -127,10 +149,18 @@ def test_an_equity_row_carries_traded_value_as_quote_volume():
     assert row.quote_volume == Decimal("70000000")
 
 
-def test_an_index_row_has_no_traded_value_rather_than_a_zero():
+def test_an_index_row_keeps_the_traded_value_it_actually_carries():
+    """An earlier version hardcoded `None` here on the claim that indices
+    carry no traded value. The live endpoint's index `output2` includes
+    `acml_tr_pbmn`, so that claim was untrue and discarded a real field."""
     row = _parse_row(_index_row("20240502"), is_index=True)
     assert row.close == Decimal("2700")
-    assert row.quote_volume is None, "absent must not be recorded as zero"
+    assert row.quote_volume == Decimal("16353907")
+
+
+def test_an_index_row_without_a_traded_value_records_absent_not_zero():
+    row = _parse_row(_index_row("20240502", acml_tr_pbmn=""), is_index=True)
+    assert row.quote_volume is None
 
 
 @pytest.mark.parametrize(
@@ -294,6 +324,45 @@ def test_missing_days_are_measured_against_the_index_not_an_arithmetic_grid():
     stock_days = {trading_date_to_ms(d) for d in ("20240502", "20240507")}
     missing = missing_trading_days(index_days, stock_days)
     assert [ms_to_trading_date(m) for m in missing] == ["20240503"]
+
+
+@pytest.mark.parametrize("code", [400, 403, 429])
+def test_a_4xx_is_not_retried(session, monkeypatch, code):
+    """A 4xx is the server saying the request is wrong; retrying cannot fix
+    it, and retrying a 403 spends more of the token allowance the live
+    kis-paper JVM shares."""
+    import urllib.error
+
+    from data import kis_klines as kk
+
+    attempts = []
+
+    def fake_open(req, timeout=None):
+        attempts.append(1)
+        raise urllib.error.HTTPError(req.full_url, code, "no", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    with pytest.raises(KisKlinesError, match="not retried"):
+        kk._get_with_retry("https://example.invalid/x", {})
+    assert len(attempts) == 1, f"HTTP {code} was attempted {len(attempts)} times"
+
+
+def test_a_5xx_is_retried(session, monkeypatch):
+    import urllib.error
+
+    from data import kis_klines as kk
+
+    attempts = []
+
+    def fake_open(req, timeout=None):
+        attempts.append(1)
+        raise urllib.error.HTTPError(req.full_url, 500, "boom", {}, None)
+
+    monkeypatch.setattr("urllib.request.urlopen", fake_open)
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+    with pytest.raises(KisKlinesError):
+        kk._get_with_retry("https://example.invalid/x", {})
+    assert len(attempts) > 1, "a transient 500 must be retried"
 
 
 def test_the_index_endpoint_has_its_own_lower_cap(session, responses):

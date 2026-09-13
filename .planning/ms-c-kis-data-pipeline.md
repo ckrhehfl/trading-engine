@@ -156,13 +156,85 @@ repository has had three inert fixtures that all read fine.
 | index cap reverted to 100 | 2 tests fail |
 | index window widened to 120 days | 1 test fails |
 | reverse direction of the reference check | 1 test fails |
+| 4xx fast-fail (post-review) | 3 tests fail |
+| invalid-calendar-date conversion (post-review) | 5 tests fail |
+| `ImportFrom` half of the import guard (post-review) | 4 tests fail |
 
-36 tests in `tests/test_kis_klines.py`; the credentialed-client guard in
+49 tests in `tests/test_kis_klines.py` and 26 in the guard file; the credentialed-client guard in
 `tests/test_kis_probe_cannot_trade.py` now covers `kis_klines.py` as well
 as the probe, so the order-capability and credential-sink contracts apply
 to both.
 
 ---
+
+## 4.1 Corrections made on review
+
+Four findings on PR #165, all valid, and two of them were wrong claims
+rather than missing hardening:
+
+- **`_get_with_retry` retried 4xx.** A `400`, `403` or `429` is the
+  server saying the request itself is wrong; retrying cannot fix it, and
+  retrying a `403` spends more of the token allowance the live
+  `kis-paper` JVM shares. Only 5xx and transport faults are retried now.
+- **Indices do carry a traded value, and the code claimed they did not.**
+  The docstring asserted index bars have no `acml_tr_pbmn` and hardcoded
+  `quote_volume = None`. Checked against the live endpoint: index
+  `output2` is exactly `[stck_bsop_date, bstp_nmix_{oprc,hgpr,lwpr,prpr},
+  acml_vol, acml_tr_pbmn, mod_yn]` — the same volume pair as an equity.
+  A real field was being discarded on an untrue claim. **The units
+  differ** (KOSPI 2024-05-02 `acml_vol` 613,718 against 삼성전자's
+  26,198,776), so the two namespaces must never be ranked or summed
+  together, and that is now stated where the parsing happens.
+- **`trading_date_to_ms` leaked `ValueError`** for eight digits that are
+  not a real date (`20241332`), and `iter_daily_range` leaked it for a
+  short bound. Shape is not validity; both raise `KisKlinesError` now.
+- **The trading-path import guard was a substring scan** and passed six
+  of eight real spellings — `import execution`, `from oms import x`,
+  `from . import execution` among them. Replaced with an `ast` walk over
+  `Import`/`ImportFrom`, with all eight as known-bad fixtures. This is
+  the second bypass found in that one test file; the first was a
+  triple-quoted string. **A guard written as text matching keeps losing
+  to the language's own flexibility.**
+
+## 4.2 The futures symbol master, and a CDN that will not be relied on
+
+KIS publishes symbol masters as public ZIPs at
+`new.real.download.dws.co.kr/common/master/`, no credentials. Two matter
+here, and **both were downloaded and inspected successfully**:
+
+| File | Rows | First line |
+|---|---|---|
+| `fo_stk_code_mts.mst` | 14,701 | `1|1GNW04|KR41GNW40002|금양       F 202504 (  10)| |00000.00|1|001570|금양` |
+| `fo_idx_code_mts.mst` | 8,241 | `1|A01612|KR4A016C0004|F 202612| |00000.00|1|2001|KOSPI200` |
+
+Pipe-delimited, CP949. The layout answers two open questions at once:
+
+- **Field [3] carries the contract multiplier in parentheses** — `(  10)`,
+  ten shares per contract for that name. This is the fact that has been
+  blocking `KIS_MARKET_DIVISION=STOCK_FUTURES` from starting since PR
+  #105, and it is published rather than needing to be inferred.
+- **Field [7] is the underlying equity code** (`001570`), field [8] its
+  name. So the file *is* a futures-eligibility universe: every underlying
+  with a listed single-stock future, which is precisely the candidate
+  pool MS-A §4.4 needed.
+- The index master maps a futures code to its underlying index
+  (`A01612` → `2001` KOSPI200), and `A016` + `YYMM` is the same shape as
+  `A01609`, the symbol the live `kis-paper` loop already trades.
+
+**The download is unreliable and must be cached, not fetched on demand.**
+Two successful pulls were followed by `HTTP 404` on every subsequent
+attempt — six retries with backoff over two minutes, from both a
+workstation and the instance. The file plainly exists; the CDN simply
+stops serving it for a while. This is the same shape as BingX's
+funding-rate endpoint returning `data: null` on repeated identical calls.
+**Consequence for MS-E**: fetch the master once, commit or cache the
+parsed result, and never put a live download on the critical path of a
+universe resolution.
+
+**Not yet established**, because the retries failed: the count of unique
+underlyings, the multiplier distribution across them, and whether any
+underlying carries more than one multiplier. The parse is written; it
+needs one successful download.
 
 ## 5. Still open
 

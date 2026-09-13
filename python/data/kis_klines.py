@@ -289,7 +289,21 @@ def _get_with_retry(url: str, headers: dict[str, str]) -> dict[str, Any]:
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
                 return json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.HTTPError, urllib.error.URLError, OSError, ValueError) as exc:
+        except urllib.error.HTTPError as exc:
+            # 4xx is the server saying the request itself is wrong -- a bad
+            # parameter, a rejected key, a rate limit. Retrying cannot fix
+            # any of those, and retrying a 403 actively spends more of the
+            # token allowance the live kis-paper JVM shares. Only 5xx is
+            # the transient case this function exists for.
+            if exc.code < 500:
+                raise KisKlinesError(
+                    f"request rejected with HTTP {exc.code}; not retried, because a "
+                    f"4xx is a statement about the request rather than a transient fault"
+                ) from None
+            last = exc
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_BASE_DELAY_S * (2**attempt))
+        except (urllib.error.URLError, OSError, ValueError) as exc:
             last = exc
             if attempt < _MAX_RETRIES - 1:
                 time.sleep(_RETRY_BASE_DELAY_S * (2**attempt))
@@ -321,10 +335,20 @@ def trading_date_to_ms(yyyymmdd: str) -> int:
     """
     if len(yyyymmdd) != 8 or not yyyymmdd.isdigit():
         raise KisKlinesError(f"not a YYYYMMDD trading date: {yyyymmdd!r}")
-    date = dt.date(int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:]))
+    try:
+        # Shape is not validity: 20241332 is eight digits and not a date.
+        date = dt.date(int(yyyymmdd[:4]), int(yyyymmdd[4:6]), int(yyyymmdd[6:]))
+    except ValueError:
+        raise KisKlinesError(f"not a real calendar date: {yyyymmdd!r}") from None
     return int(
         dt.datetime(date.year, date.month, date.day, tzinfo=dt.timezone.utc).timestamp() * 1000
     )
+
+
+def _as_date(yyyymmdd: str) -> dt.date:
+    """Validate through `trading_date_to_ms` and return the date."""
+    ms = trading_date_to_ms(yyyymmdd)
+    return dt.datetime.fromtimestamp(ms / 1000, dt.timezone.utc).date()
 
 
 def ms_to_trading_date(ms: int) -> str:
@@ -355,8 +379,18 @@ def _parse_row(row: dict[str, Any], *, is_index: bool) -> KlineRow:
     KIS integration got three endpoints wrong once already; the Python
     equivalent is a `.get()` that quietly yields `None`.
 
-    Index bars carry `bstp_nmix_*` names and no traded value, so
-    `quote_volume` is `None` for them -- absent, not zero.
+    Index bars carry `bstp_nmix_*` price names but the **same**
+    `acml_vol`/`acml_tr_pbmn` volume pair as equities -- verified against
+    the live endpoint, whose index `output2` is exactly
+    `[stck_bsop_date, bstp_nmix_{oprc,hgpr,lwpr,prpr}, acml_vol,
+    acml_tr_pbmn, mod_yn]`. An earlier version of this function asserted
+    indices had no traded value and hardcoded `None`, discarding a real
+    field on a claim that was simply untrue.
+
+    Index volume and value are reported in the exchange's own index units
+    (KOSPI 2024-05-02: `acml_vol` 613,718 against a single stock's
+    26,198,776), so they are **not** comparable with an equity's and must
+    never be summed or ranked across the two namespaces.
     """
     date = str(row.get("stck_bsop_date") or "")
     if not date:
@@ -368,7 +402,10 @@ def _parse_row(row: dict[str, Any], *, is_index: bool) -> KlineRow:
         low = _decimal(row.get("bstp_nmix_lwpr"), "bstp_nmix_lwpr", date)
         c = _decimal(row.get("bstp_nmix_prpr"), "bstp_nmix_prpr", date)
         volume = _decimal(row.get("acml_vol") or "0", "acml_vol", date)
-        quote_volume = None
+        raw_value = row.get("acml_tr_pbmn")
+        quote_volume = (
+            _decimal(raw_value, "acml_tr_pbmn", date) if raw_value not in (None, "") else None
+        )
     else:
         o = _decimal(row.get("stck_oprc"), "stck_oprc", date)
         h = _decimal(row.get("stck_hgpr"), "stck_hgpr", date)
@@ -484,8 +521,11 @@ def iter_daily_range(
         window_days = default_window_days(is_index=is_index)
     if window_days < 1:
         raise KisKlinesError("window_days must be positive")
-    first = dt.date(int(start[:4]), int(start[4:6]), int(start[6:]))
-    last = dt.date(int(end[:4]), int(end[4:6]), int(end[6:]))
+    # Route both endpoints through the one validator, so a caller sees a
+    # KisKlinesError for every malformed input rather than a bare ValueError
+    # from string slicing for some and a typed error for others.
+    first = _as_date(start)
+    last = _as_date(end)
     if first > last:
         raise KisKlinesError(f"start {start} is after end {end}")
 

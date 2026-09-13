@@ -53,6 +53,11 @@ FORBIDDEN_PATTERNS: tuple[tuple[str, str], ...] = (
 # Names the probe binds credentials to.
 CREDENTIAL_NAMES = frozenset({"key", "sec", "app_key", "app_secret"})
 
+# Top-level packages that can reach an order path. A read-only quotation
+# client has no business importing any of them, however the import is
+# spelled.
+FORBIDDEN_IMPORT_ROOTS = frozenset({"live", "execution", "oms", "trading", "runtime"})
+
 
 def executable_source(source: str) -> str:
     """`source` with comments and **docstrings only** removed.
@@ -144,6 +149,40 @@ def credential_leak_findings(source: str) -> list[str]:
             for value in node.values:
                 if isinstance(value, ast.FormattedValue):
                     scan(value.value, "an f-string")
+    return findings
+
+
+def trading_path_imports(source: str) -> list[str]:
+    """Imports that could reach an order path, found via `ast`.
+
+    A substring scan was the first version and it was porous: `import
+    execution`, `from oms import x`, `from . import execution` and
+    `from .execution import x` all read past a list of `"from live"`-style
+    prefixes. Matching import *statements* rather than text makes the
+    spelling irrelevant, which is the whole point -- the previous version
+    of this file had already been bypassed once the same way, by a
+    triple-quoted string.
+    """
+    findings: list[str] = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                root = alias.name.split(".")[0]
+                if root in FORBIDDEN_IMPORT_ROOTS:
+                    findings.append(f"import {alias.name} (line {node.lineno})")
+        elif isinstance(node, ast.ImportFrom):
+            # `from .execution import x` and `from . import execution` are
+            # both relative, and the second names the module in `names`.
+            if node.module:
+                root = node.module.split(".")[0]
+                if root in FORBIDDEN_IMPORT_ROOTS:
+                    findings.append(f"from {node.module} import ... (line {node.lineno})")
+            for alias in node.names:
+                if alias.name.split(".")[0] in FORBIDDEN_IMPORT_ROOTS:
+                    findings.append(
+                        f"from {'.' * node.level}{node.module or ''} import "
+                        f"{alias.name} (line {node.lineno})"
+                    )
     return findings
 
 
@@ -244,11 +283,40 @@ def test_a_credentialed_kis_module_never_prints_a_credential(module):
     )
 
 
+@pytest.mark.parametrize(
+    "bad",
+    [
+        "import live\n",
+        "import execution\n",
+        "import trading.orders\n",
+        "from oms import store\n",
+        "from live.signals import x\n",
+        "from .execution import submit\n",
+        "from . import execution\n",
+        "import data.klines as k, oms\n",
+    ],
+    ids=lambda s: s.strip(),
+)
+def test_the_import_rule_rejects_every_spelling(bad):
+    """The gap CodeRabbit found on PR #165: a substring scan passed six of
+    these eight. An import statement has many spellings and only one
+    meaning."""
+    assert trading_path_imports(bad), f"{bad.strip()!r} was not caught"
+
+
+@pytest.mark.parametrize(
+    "ok", ["import json\n", "from data.bingx_klines import KlineRow\n", "import urllib.request\n"]
+)
+def test_the_import_rule_allows_ordinary_imports(ok):
+    assert trading_path_imports(ok) == []
+
+
 @pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
 def test_a_credentialed_kis_module_does_not_import_the_trading_path(module):
-    source = module.read_text(encoding="utf-8")
-    for banned in ("from live", "import live", "from execution", "import oms"):
-        assert banned not in source, f"{module.name} imports {banned!r}"
+    findings = trading_path_imports(module.read_text(encoding="utf-8"))
+    assert findings == [], (
+        f"{module.name} imports the trading path: " + "; ".join(findings)
+    )
 
 
 def test_every_credentialed_kis_module_exists():
