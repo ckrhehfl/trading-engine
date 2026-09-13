@@ -171,6 +171,18 @@ FAMILY_BY_STRATEGY_ID: dict[str, FamilyEntry] = {
         purpose=RESEARCH_PURPOSE,
         citation=".planning/sr-u-preregistered-attempt-spec.md",
     ),
+    # Multi-Asset Task F. The SAME zero-parameter rule, unchanged, applied
+    # per constituent to a twelve-instrument Korean portfolio and
+    # aggregated equal-weight. A distinct `strategy_id` because a portfolio
+    # is a different construct from a single-asset run -- not a re-access
+    # of `daily-tsmom-ensemble`'s two spent holdouts -- but the SAME family,
+    # so the project-level `N` accounting rolls the two together rather
+    # than letting a rename look like a fresh start.
+    "daily-tsmom-kr10-portfolio": FamilyEntry(
+        family="daily-tsmom",
+        purpose=RESEARCH_PURPOSE,
+        citation=".planning/ms-e-kr10-universe-rule.md",
+    ),
     # --- macro-conditioned (first genuinely non-price-derived signal;
     # ordinary iterative research on the untouched BTC 1d RESEARCH split,
     # not a pre-registered holdout attempt) --------------------------------

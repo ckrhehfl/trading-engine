@@ -1,0 +1,89 @@
+{
+  "preregistration_id": "daily-tsmom-kr10-portfolio-holdout",
+  "registered_at": "2026-09-14T00:00:00Z",
+  "strategy_family": "daily-tsmom",
+  "strategy_id": "daily-tsmom-kr10-portfolio",
+  "strategy_version": "v1",
+  "strategy_entry_point": "research.strategies.kr10_portfolio:Kr10PortfolioTrainable",
+  "hypothesis": "The SAME zero-fitted-parameter Moskowitz-Ooi-Pedersen time-series-momentum rule already spent on two BTC holdouts (sr-v, sr-ab), applied UNCHANGED per constituent to a twelve-instrument Korean portfolio and aggregated equal-weight. WHAT IS BEING TESTED, stated so it is not confused with the prior runs: not whether TSMOM works -- that question has been asked twice of a SINGLE asset and returned INCONCLUSIVE both times, missing only on max drawdown (20.135% against a 20% ceiling) and trade count (64 against 68), having PASSED PSR, Sharpe-vs-floor and profit factor. Moskowitz-Ooi-Pedersen's own reported Sharpe of 0.8-1.2 is a 58-instrument DIVERSIFIED PORTFOLIO figure; per-instrument is 0.2-0.4. This project applied it to one instrument and posted 0.882 and 1.305, above the literature's per-instrument range. The missing piece was never the signal, it was the portfolio. This registration supplies it. THE PREDICTION: diversification across twelve instruments whose measured 2018 mean pairwise correlation is 0.157 should cut portfolio volatility to roughly 0.57x a single member's and multiply trade count twelvefold, moving both failing gates comfortably clear. It is a NEW strategy_id because a twelve-instrument equal-weight portfolio is a different construct from a single-asset run, not a re-access of daily-tsmom-ensemble's spent holdouts.",
+  "prior_art": [
+    "Moskowitz, Ooi, Pedersen (2012), 'Time Series Momentum,' Journal of Financial Economics 104(2). The 0.8-1.2 Sharpe is a 58-instrument futures portfolio (24 commodity, 12 bond, 9 equity index, 13 FX); per-instrument is materially lower.",
+    ".planning/sr-v-holdout-confirmation.md -- first BTC holdout, INCONCLUSIVE (PSR 0.9367, Sharpe 0.882 under a 0.9567 floor, 26 trades).",
+    ".planning/sr-ab-binance-virgin-holdout-result.md -- second BTC holdout, INCONCLUSIVE, missing only drawdown 20.135% and 64 trades while passing PSR 0.9945, Sharpe 1.305 and profit factor 7.68.",
+    ".planning/sr-ac-combined-significance.md -- Stouffer Z 2.914 across the two disjoint holdouts.",
+    ".planning/ms-a-multi-asset-universe-discuss.md -- why one asset was the missing piece.",
+    ".planning/ms-d-korean-correlations-and-universe.md -- measured Korean internal correlation 0.250 (2021-2026) and 0.157 (2018), against 0.60 assumed.",
+    ".planning/ms-e-kr10-universe-rule.md -- the universe rule, committed at d57a4e3 before being executed at 85cdfab."
+  ],
+  "data": {
+    "symbol": "KRX:KR-10",
+    "interval": "1d",
+    "source": "KIS inquire-daily-itemchartprice (FHKST03010100) with FID_ORG_ADJ_PRC=0 (수정주가), fetched by python/data/backfill_kis.py from the paper host. Twelve members are listed in universe_config_path; each is stored under its own KRX: or KRX-INDEX: symbol. symbol above is the UNIVERSE IDENTIFIER, not a store symbol -- the schema requires a string and a portfolio has no single one.",
+    "split": "holdout",
+    "holdout_config_path": "configs/research/holdout_krx_1d.json",
+    "universe_config_path": "configs/research/universes/kr10.json",
+    "start_ms": 1546387200000,
+    "end_ms": 1788220800000,
+    "expected_bars": 1882,
+    "expected_bars_note": "Per member. All eleven stored series hold exactly this count over the identical range and backfill_kis --verify exits 0 against the KOSPI index calendar. 245.4 trading days per year matches the real KRX rate."
+  },
+  "parameter_grid": [
+    {
+      "lookbacks": [
+        21,
+        63,
+        126,
+        252
+      ]
+    }
+  ],
+  "total_candidates": 1,
+  "free_parameter_count": 0,
+  "procedure": {
+    "fee_bps": 1,
+    "slippage_bps": 20,
+    "bars_per_day": 1,
+    "funding_included": false,
+    "portfolio_weighting": "equal",
+    "cost_derivation": "FEE: KIS's published online (BanKIS) domestic derivatives schedule, effective 2025-10-27, charges 0.0057% = 0.57bps per side for 개별주식/ETF 선물 (KOSPI200 0.00185%, KOSDAQ150 0.003%). 유관기관제비용 is published for the index products only (KOSPI200 0.00025104%, KOSDAQ150 0.0014045%) and is negligible beside the brokerage leg. No securities transaction tax applies to futures, unlike spot -- confirmed on the same schedule. Committed at 1bps, roughly 1.75x the published single-stock rate, absorbing the unpublished exchange component and any tier difference. SLIPPAGE: measured, not assumed. Tick size was derived as the GCD of real daily futures closes for eight of the ten equity members (2026-06-01..09-11, 44 bars each), giving one tick = 5.91 to 19.49 bps: SK하이닉스 5.91, 현대로템 8.12, 삼성바이오 8.25, 현대차 12.42, 삼성전기 14.79, POSCO홀딩스 15.48, LG화학 18.76, 삼성전자 19.49. The implied price bands (100원 below ~200k, 500원 to ~1M, 1000원 above) match KRX's published stock-futures tick table, which is an independent confirmation of the measurement. Committed at 20bps -- one FULL tick at the widest member, applied uniformly, so no member is modelled cheaper than its own worst tick. WHY THIS IS NOT BINGX'S 5/1: those are crypto perpetual taker fees on a 24/7 venue where one tick is 0.015bps and the FEE dominates by ~330x. Here the tick is ~1000x wider in relative terms and SLIPPAGE dominates by ~20x. The round trip is 2*(1+20) = 42bps against BTC perps' 12bps -- 3.5x more expensive, entirely because of tick width. That is a real headwind for the strategy and is committed before the run rather than discovered after.",
+    "execution_type": "GUARDED_MARKET"
+  },
+  "primary_criterion": {
+    "kind": "holdout_psr",
+    "threshold": 0.95,
+    "max_drawdown_ceiling": 0.2,
+    "min_total_trades": 94,
+    "profit_factor_floor": 1.3,
+    "criteria_pinned_at_claude_md_revision": "2026-07-29",
+    "require_sharpe_above_detection_floor": true,
+    "computed_on": "The AGGREGATED portfolio equity curve, not an average of per-member statistics. PSR, drawdown, profit factor and trade count are all portfolio-level."
+  },
+  "secondary_reported_not_gating": [
+    "Per-member Sharpe, drawdown and trade count, so a portfolio result carried by one name is visible.",
+    "Realised mean pairwise correlation over the scored window, against the 0.157 measured on 2018.",
+    "Realised portfolio volatility against the 0.57x multiplier this registration predicts.",
+    "Number of days on which fewer than twelve members held a position.",
+    "Total cost drag in bps and as a fraction of gross return, given the 42bps round trip."
+  ],
+  "declared_detection_floor_sharpe": 0.5942,
+  "declared_power": {
+    "assumed_true_sharpe": 0.8,
+    "probability": 0.716,
+    "derivation": "One-sided, alpha=0.05: power = Phi(sqrt(years)*SR_true - Phi^-1(0.95)) with years=7.663. SR_true=0.8 is the top of the 0.4-0.8 band credible institutional trend-following reports, chosen as the value this window is being asked to detect rather than as a forecast."
+  },
+  "outcome_interpretation": {
+    "PASS": "PSR >= 0.95 on daily-resampled portfolio returns against a zero benchmark, AND max drawdown <= 20%, AND total trades >= 94, AND profit factor >= 1.3, AND observed annualized Sharpe > 0.5942. All five, on the portfolio.",
+    "INCONCLUSIVE": "PSR positive but at least one primary criterion missed. Reported as missing those specific criteria and NOT as evidence against the hypothesis. If the observed Sharpe falls below the detection floor the run is additionally reported as NOT POWERED TO CONFIRM, and clearing the others does not constitute confirmation.",
+    "FAIL": "PSR at or below 0 -- a non-positive point estimate, or not computable. Diversification would then have failed to produce a positive risk-adjusted result at all, which is a real negative answer and is reported as one."
+  },
+  "stopping_rule": "Exactly one execution against configs/research/holdout_krx_1d.json for strategy_id daily-tsmom-kr10-portfolio. No re-run under any outcome. If it misses, the permitted responses are to accept the result or to wait for calendar time -- NOT to adjust the universe, the thresholds, the cost constants or the weighting and re-run. The universe was fixed at commit d57a4e3 and executed at 85cdfab, both before this registration; the cost constants are fixed above from published rates and measured ticks. Changing any of them means a new registration and a new strategy_id, and this window is then spent.",
+  "rationale": "The first test of CLAUDE.md's structural remedy #1, multi-symbol expansion, and the first window this project has held whose detection floor sits below a plausible real edge: 0.5942 against BingX 1d's 0.9567 and Binance futures 1m's 0.623. At this floor a real 0.6-0.8 Sharpe is DETECTABLE rather than merely not excluded, which has not been true of any window used here. That cuts both ways and is the point -- a confident negative would also be informative, where every prior INCONCLUSIVE was not.",
+  "notes": [
+    "UNVERIFIED EXECUTION PREMISE, stated before the run rather than after: KIS serves no expired single-stock-futures contract history -- every 2018-2025 expiry returns rt_cd=0 with zero rows (.planning/ms-b-kis-history-probe-result.md section 2.1). Nothing available confirms that a given member had a listed, liquid future on a given past date, nor measures the historical basis or realised roll cost. A result here assumes these ten names had tradeable futures throughout 2019-2026. Plausible, being the most-traded names on the exchange; plausible is not verified. Whatever this run produces carries that caveat.",
+    "The signal is computed on adjusted SPOT closes and execution is assumed in the corresponding future. That removes the back-adjustment freedom a constructed continuous futures series would carry (MS-A section 4.3) and substitutes the assumption that daily futures returns track spot net of carry.",
+    "research/strategies/daily_tsmom_ensemble.py is used UNCHANGED per member. Its zero-fitted-parameter property is what the Paper Trading Policy Exception rests on; the portfolio layer sits above it and never inside it.",
+    "The 2018 calendar year is SPENT -- it supplied the turnover ordering and the C1/C2 correlation constraints that resolved the universe. The kline store contains no KRX bars before 2019-01-01 at all, so the separation is structural rather than promised.",
+    "Contract multiplier is 10 shares for every futures-eligible underlying, published in fo_stk_code_mts.mst. Not used by the signal, which is computed on spot; recorded because position sizing at execution needs it.",
+    "total_candidates is 1 and free_parameter_count is 0: the lookback set is Moskowitz-Ooi-Pedersen's own canonical [21, 63, 126, 252], and equal weighting is the least-choice aggregation available."
+  ]
+}
