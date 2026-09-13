@@ -200,5 +200,8 @@ foreseen when the change was made; it was found by running it.
   single-window criteria pinned (MS-A §7 item 3: PSR ≥ 0.95, drawdown,
   trade-count floor, profit factor, and the window's own detection floor).
 - The backfill persisted to the store — nothing is in it yet.
-- The single-stock-futures earliest bar, which sets the tradeable window
-  start (MS-C §2.1).
+- ~~The single-stock-futures earliest bar~~ — **resolved 2026-09-13, and
+  it does not exist.** KIS serves currently-listed contracts only; every
+  2018–2025 expiry returns `rt_cd=0` with zero rows. Futures execution
+  across the backtest window is therefore an **unverified premise** the
+  pre-registration must state as such. See MS-B §2.1.

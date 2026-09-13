@@ -247,8 +247,11 @@ needs one successful download.
   is survivorship-filtered. It does carry 상장일자, which removes the
   forward direction — a name that listed after 2019 can be excluded — but
   not the backward one.
-- **Single-stock futures**: multiplier, per-underlying liquidity, and the
-  earliest bar that sets §2.1's tradeable window. Still the fact that
+- **Single-stock futures**: per-underlying liquidity. The **multiplier is
+  resolved** — 10 shares per contract for all 265 underlyings, published
+  in `fo_stk_code_mts.mst` (MS-D §3). The **earliest bar is resolved and
+  unhelpful**: KIS serves only currently-listed contracts, so there is no
+  listing history to set a tradeable-window start from (MS-B §2.1). Still the fact that
   blocks `STOCK_FUTURES` from starting, and still unmeasured.
 - **Measured Korean correlations**, which MS-A §2.4 assumed and owes.
   Cheap once a pool is backfilled, and it decides whether §2.4's
