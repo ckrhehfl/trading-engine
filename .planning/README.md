@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-86 documents and counting, which is past the point where `ls` is a
+87 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -201,3 +201,4 @@ The first direction that adds an evidence source rather than re-asking BTC price
 - [`ms-a-multi-asset-universe-discuss.md`](ms-a-multi-asset-universe-discuss.md) — Multi-Asset TSMOM Task A — `Discuss`: why one asset was the missing piece, and the trap in picking Korean stocks by name
 - [`ms-b-kis-history-probe-result.md`](ms-b-kis-history-probe-result.md) — Multi-Asset TSMOM Task B — result: KIS serves 35 years, and the adjusted-price trap is real
 - [`ms-c-kis-data-pipeline.md`](ms-c-kis-data-pipeline.md) — Multi-Asset TSMOM Task C — the KRX daily pipeline, and the second silent cap
+- [`ms-d-korean-correlations-and-universe.md`](ms-d-korean-correlations-and-universe.md) — Multi-Asset TSMOM Task D — the correlations MS-A assumed, measured; and a timezone artifact that would have flattered them

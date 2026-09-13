@@ -91,6 +91,13 @@ venue integration already exists.
 
 ### 2.4 What diversification does to the two failing gates
 
+> **SUPERSEDED 2026-09-13 by [`ms-d-korean-correlations-and-universe.md`](ms-d-korean-correlations-and-universe.md).**
+> Both correlations below are now measured, and both assumptions were
+> conservative: Korean internal is **0.250**, not 0.60/0.75, and Korea vs
+> crypto is **~0.10** properly aligned, not 0.387. The recomputed table is
+> in MS-D §4 — portfolio Sharpe 2.29 and drawdown 11.3% for Korea ×10.
+> The table below is kept as the pre-measurement record.
+
 **These are projections under assumed correlations, not measurements.**
 Two things are assumed and neither is yet measured: the Korean
 constituents' internal correlation, and their correlation with crypto —
