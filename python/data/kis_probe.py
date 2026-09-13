@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import sys
 import time
 import urllib.error
@@ -97,9 +98,27 @@ def _get_json(url: str, params: dict[str, str], headers: dict[str, str]) -> dict
         return json.loads(resp.read().decode("utf-8"))
 
 
-def issue_token(host: str, app_key: str, app_secret: str) -> str:
-    """`POST /oauth2/tokenP`. Rate-limited (`EGW00133`) at roughly one per
-    minute -- space reruns 60-90s apart, per CLAUDE.md's KIS section."""
+TOKEN_CACHE = pathlib.Path("/tmp/kis_probe_token.json")
+TOKEN_REUSE_S = 3000.0  # KIS access tokens live far longer; this is just prudence
+
+
+def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = True) -> str:
+    """`POST /oauth2/tokenP`, cached on disk between runs.
+
+    The cache is not a convenience. The endpoint rate-limits hard --
+    `EGW00133`, observed as an `HTTP 403` after three issuances within a
+    few minutes on 2026-09-13 -- and the allowance is **per app key**,
+    shared with the live `kis-paper` JVM. A research script that burns it
+    can stop a running loop from renewing its own token. Reuse one token
+    per session, and per backfill.
+    """
+    if use_cache and TOKEN_CACHE.exists():
+        try:
+            blob = json.loads(TOKEN_CACHE.read_text(encoding="utf-8"))
+            if time.time() - float(blob["at"]) < TOKEN_REUSE_S and blob.get("host") == host:
+                return str(blob["token"])
+        except (ValueError, KeyError, OSError):
+            pass  # a corrupt cache is not a reason to fail; just re-issue
     payload = _post_json(
         host + TOKEN_PATH,
         {"grant_type": "client_credentials", "appkey": app_key, "appsecret": app_secret},
@@ -109,6 +128,15 @@ def issue_token(host: str, app_key: str, app_secret: str) -> str:
     if not token:
         # Report the error *code*, never the body.
         raise ProbeError(f"no access_token in token response (code={payload.get('error_code')})")
+    if use_cache:
+        try:
+            TOKEN_CACHE.write_text(
+                json.dumps({"token": str(token), "at": time.time(), "host": host}),
+                encoding="utf-8",
+            )
+            TOKEN_CACHE.chmod(0o600)
+        except OSError:
+            pass  # an uncacheable token still works for this run
     return str(token)
 
 
