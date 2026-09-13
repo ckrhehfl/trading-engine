@@ -758,6 +758,58 @@ design above was fake-server-verified only until then. Full account:
   **No exception message anywhere in `KisAdapter`/`KisPriceFeed` embeds
   raw response content** — a real KIS response carries account numbers and
   balances, and these exceptions land in a persisted `kis-paper.log`.
+- **Historical daily bars are available on the paper host**, and this is
+  the data path Multi-Asset Task B/C opened
+  (`.planning/ms-b-kis-history-probe-result.md`,
+  `.planning/ms-c-kis-data-pipeline.md`). Equities:
+  `GET /uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`,
+  `tr_id` `FHKST03010100`, market division `J`. Indices: `.../inquire-
+  daily-indexchartprice`, `FHKUP03500100`, division `U`, codes `0001`
+  KOSPI / `1001` KOSDAQ / `2001` KOSPI200. Same `tr_id` on paper and
+  production, unlike the trading TRs' `V`-prefix convention.
+- **The two endpoints cap at DIFFERENT row counts, and both truncate
+  silently.** Equities **100** rows per call; indices **50**. Both return
+  `rt_cd=0` and keep the **newest** rows, dropping the oldest -- BingX's
+  direction, not Binance futures', which returns a real HTTP 400. A
+  120-day KOSPI request came back with 50 bars covering only the newest
+  73 days of it, and a pipeline whose guard assumed one shared cap of 100
+  let that through. **A cap is a property of an endpoint, not of a
+  venue.** `FID_PW_DATA_INCU_YN` is not the cause and makes no difference
+  at `Y`, `N`, or absent.
+- **`FID_ORG_ADJ_PRC` is the single most dangerous parameter here**:
+  `0` = 수정주가 (split-adjusted), `1` = 원주가 (raw), and **KIS's own
+  published Python sample defaults to `1`**. Measured across 삼성전자's
+  50:1 split (2018-05-04): adjusted 53,000 -> 51,900; raw 2,650,000 ->
+  51,900, i.e. a -98% single day that a momentum signal reads as a crash.
+  `data/kis_klines.py` therefore takes `adjusted` as a required argument
+  with no default. Separately, **KIS adjusts for splits but not
+  dividends**, so what comes back is a price return, not a total return.
+- **Daily history reaches 1991-08-28** for both 삼성전자 and 현대차 -- the
+  same date to the day, so that is KIS's own floor rather than a listing
+  date. SK하이닉스 begins 2000-08-01, NAVER 2005-08-09. A ~35-year span
+  implies a ~0.28 detection floor, but the operative figure is lower:
+  a backtest assuming single-stock-futures execution cannot start before
+  those futures existed, nor before the youngest constituent has data.
+- **A KRX trading date maps exactly onto UTC midnight.** The continuous
+  session opens 09:00 KST and KST is UTC+9, so a bar dated `20240502`
+  opens at `2024-05-02T00:00:00Z`. An equality, not a rounding -- verified
+  across a real 121-bar fetch -- which is why `1d`'s existing
+  86,400,000 ms grid alignment needs no KRX special case.
+- **`store.find_missing_ranges` is unusable for KRX.** It diffs against an
+  arithmetic sequence, so a market trading ~245 days a year shows ~116
+  false gaps per symbol per year (58 measured over six months). Expected
+  trading days come from an **index series** instead: an index prints
+  exactly when the market is open, so it needs no holiday table, it covers
+  the moving lunar holidays `KrxMarketCalendar` still lists as unresolved,
+  and it separates a market closure from a stock-specific halt. The check
+  must run **both directions** -- a symbol printing on a day the reference
+  lacks means the reference is truncated, and comparing one direction
+  reported "zero gaps" against a reference that was missing 31 days.
+- **`acml_tr_pbmn` (거래대금) is returned on the same call as the prices**,
+  which is what the KR-10 universe rule ranks on; `close * volume` is not
+  a substitute. Stored in `klines.quote_volume`, a nullable column added
+  additively for this (`NULL` for every pre-existing row; migration
+  verified against a copy of the real 4,620,925-row database).
 - **First real end-to-end run, 2026-08-24**, symbol `A01609`: real balance
   50,000,000 KRW, no pre-existing positions, ledger bootstrapped from that
   balance, clean reconciliation (`ledgerExposure=0 realExposure=0

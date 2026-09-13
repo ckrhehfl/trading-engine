@@ -30,7 +30,14 @@ from pathlib import Path
 
 import pytest
 
-PROBE = Path(__file__).resolve().parents[1] / "data" / "kis_probe.py"
+_DATA = Path(__file__).resolve().parents[1] / "data"
+PROBE = _DATA / "kis_probe.py"
+
+# Every credentialed, read-only KIS client. `kis_klines.py` (Multi-Asset
+# Task C) is held to the same contract as the probe: it authenticates with
+# a real app key, so the argument that made a credentialed client
+# acceptable at all applies to it identically.
+CREDENTIALED_KIS_MODULES = (PROBE, _DATA / "kis_klines.py")
 
 # KIS's own naming: order submission and cancellation live under /trading/,
 # and their TR ids are (V)TTO/(V)TTC-shaped. The Java adapter's real
@@ -218,25 +225,38 @@ def test_the_credential_rule_allows_length_only():
 # ------------------------------------------------------- the real module
 
 
-def test_kis_probe_cannot_place_an_order():
-    findings = order_capable_findings(PROBE.read_text(encoding="utf-8"))
+@pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
+def test_a_credentialed_kis_module_cannot_place_an_order(module):
+    findings = order_capable_findings(module.read_text(encoding="utf-8"))
     assert findings == [], (
-        "data/kis_probe.py has gained an order-capable surface: "
+        f"data/{module.name} has gained an order-capable surface: "
         + "; ".join(findings)
         + ". MS-A section 7's approval for a credentialed KIS client rests on "
-        "this module being quotation-only."
+        "these modules being quotation-only."
     )
 
 
-def test_kis_probe_never_prints_a_credential():
-    findings = credential_leak_findings(PROBE.read_text(encoding="utf-8"))
-    assert findings == [], "credential value reaches an output sink: " + "; ".join(findings)
+@pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
+def test_a_credentialed_kis_module_never_prints_a_credential(module):
+    findings = credential_leak_findings(module.read_text(encoding="utf-8"))
+    assert findings == [], (
+        f"a credential value reaches an output sink in {module.name}: " + "; ".join(findings)
+    )
 
 
-def test_kis_probe_does_not_import_the_trading_path():
-    source = PROBE.read_text(encoding="utf-8")
+@pytest.mark.parametrize("module", CREDENTIALED_KIS_MODULES, ids=lambda p: p.name)
+def test_a_credentialed_kis_module_does_not_import_the_trading_path(module):
+    source = module.read_text(encoding="utf-8")
     for banned in ("from live", "import live", "from execution", "import oms"):
-        assert banned not in source, f"kis_probe imports {banned!r}"
+        assert banned not in source, f"{module.name} imports {banned!r}"
+
+
+def test_every_credentialed_kis_module_exists():
+    """Guards the guard: a renamed or deleted module must not silently
+    reduce this file to testing nothing."""
+    for module in CREDENTIALED_KIS_MODULES:
+        assert module.is_file(), f"{module} is listed but does not exist"
+    assert len(CREDENTIALED_KIS_MODULES) >= 2
 
 
 @pytest.mark.parametrize("secret", ["KIS_APP_KEY", "KIS_APP_SECRET"])
