@@ -35,7 +35,10 @@ from data.binance_positioning import (
 )
 from data.store import connect, positioning_coverage, upsert_positioning
 
-DEFAULT_DB_PATH = "python/data/var/klines.sqlite3"
+# Canonical, resolved from the module rather than the working
+# directory -- see data/_paths.py for the second database the two
+# old relative defaults silently created.
+from data._paths import DEFAULT_DB_PATH
 DEFAULT_SYMBOLS = ("BTCUSDT", "ETHUSDT")
 
 # Two resolutions rather than one. "1h" is what a multi-day setup is read
