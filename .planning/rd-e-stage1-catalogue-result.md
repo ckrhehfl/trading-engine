@@ -117,12 +117,13 @@ annual cost drag.
   농어촌특별세 charged on every sale** — raised to that level on
   2026-01-01 — plus a spread of 9.85bp full-window median (6.5bp today;
   the tick is a fixed 원 amount, so its cost in bp fell as Korean prices
-  rose). Re-scored: **zero of the twelve are feasible at 32bp, and exactly
-  one at 28bp.**
+  rose) and a **pinned** 3.54bp commission (뱅키스 online, KRX). Re-scored:
+  **zero of the twelve are feasible at the window's 33.4bp, and exactly one
+  at today's 30.0bp — at 34% against a 35% line.**
 
   **Both are one-tick FLOOR estimates** — a GCD of daily closes measures
   the minimum price increment, not the quoted bid-ask, so the true round
-  trip is higher and the single 28bp survivor may not survive a measured
+  trip is higher and the single survivor may not survive a measured
   spread. rd-f §1.2 says so explicitly.
 - **The situation definitions are one parameterisation each.** Penetration
   depth, lookback and percentile thresholds were chosen to match rd-b's

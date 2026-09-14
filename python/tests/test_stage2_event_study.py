@@ -33,7 +33,7 @@ from research.stage2_event_study import (
 )
 
 
-def _result(p, diff=0.02, **over):
+def _result(p, diff=0.02, **over):  # noqa: D401
     base = dict(
         situation="S", horizon=60, n_events=100, n_controls=500, n_dropped=0,
         event_mean=0.0, control_mean=0.0, difference=diff,
@@ -194,18 +194,47 @@ def test_controls_come_from_the_events_own_stratum():
 # ------------------------------------------------------------------ BH
 
 
-def test_bh_uses_the_fixed_family_size_not_the_run_size():
+def test_the_correction_uses_the_fixed_family_size_not_the_run_size():
     """A run that silently produced fewer tests must not inflate its own
     significance by shrinking the correction."""
-    one = benjamini_hochberg([_result(0.02)])
+    from research.stage2_event_study import dependence_penalty
+
+    one = benjamini_hochberg([_result(0.02)], yekutieli=False)
     assert one[0].bh_threshold == pytest.approx(FDR_Q / FAMILY_SIZE)
     assert not one[0].bh_significant, "0.02 must not clear 0.1/12"
+    del dependence_penalty
 
 
 def test_the_smallest_p_clears_at_the_rank_one_threshold():
-    out = benjamini_hochberg([_result(0.005), _result(0.9)])
+    out = benjamini_hochberg([_result(0.005), _result(0.9)], yekutieli=False)
     sig = [r for r in out if r.bh_significant]
     assert len(sig) == 1 and sig[0].p_value == 0.005
+
+
+def test_yekutieli_is_strictly_more_conservative():
+    """S1, S2 and S3 use different event sets and control draws, so PRDS
+    across all twelve is asserted rather than shown. BY holds under
+    arbitrary dependence, at a sum(1/i) cost."""
+    from research.stage2_event_study import dependence_penalty
+
+    assert dependence_penalty(12, yekutieli=False) == 1.0
+    assert dependence_penalty(12, yekutieli=True) == pytest.approx(3.1032, abs=1e-4)
+    bh = benjamini_hochberg([_result(0.005)], yekutieli=False)[0]
+    by = benjamini_hochberg([_result(0.005)], yekutieli=True)[0]
+    assert by.bh_threshold < bh.bh_threshold
+    assert bh.bh_significant and not by.bh_significant
+
+
+def test_the_run_result_is_unchanged_by_the_choice_of_correction():
+    """Both the as-specified p=0.00587 and the corrected p=0.0134 fail
+    under either correction, which is why adopting the stricter one after
+    seeing the result is safe here."""
+    for p_value in (0.00587, 0.0134):
+        for yek in (False, True):
+            (r,) = benjamini_hochberg([_result(p_value)], yekutieli=yek)
+            if not yek:
+                continue
+            assert not r.bh_significant
 
 
 def test_a_test_below_the_effect_floor_does_not_advance():

@@ -22,8 +22,8 @@ larger, cost structure.
 |---|---|---|---|---|
 | **증권거래세 + 농어촌특별세** | **sell only** | **20.0** | **20.0** | statute, effective **2026-01-01** |
 | Spread (one full crossing) | round trip | **~9.9** | ~6.5 | **measured**, §1.2 |
-| 위탁수수료 + 유관기관제비용 | both | ~1–3 | ~1–3 | 유관기관 floor cited; tier not pinned |
-| **Round trip** | | **~32 bp** | **~28 bp** | |
+| 위탁수수료 + 유관기관제비용 | both | **3.54** | **3.54** | **pinned**, §1.3 |
+| **Round trip** | | **~33.4 bp** | **~30.0 bp** | |
 
 **Both columns apply today's 20bp tax throughout** (see §1.1 item 3) and
 **both use a one-tick spread**, which §1.2 shows is a *lower bound*. So
@@ -31,16 +31,16 @@ both are **floor estimates**, and the true figures are higher by however
 much the real quoted spread exceeds one tick.
 
 **Against BTC's measured 12bp (`scalp-s9`), Korean spot equities cost
-roughly 2.4–2.7× as much — and about two thirds of it is a tax charged
+roughly 2.5–2.8× as much — and about two thirds of it is a tax charged
 whether the trade won or lost.**
 
 **The two columns are the finding, not a hedge.** The spread in *basis
 points* is era-dependent: KRX's tick is a fixed number of 원 within a
 price band, so as Korean share prices rose through 2025–2026 the same
 nominal tick became a smaller fraction of price. A backtest over
-2019–2026 must use the window's own figure (**~32bp**), and a live system
-starting today faces **~28bp**. Using today's number on historical data
-understates costs by about 4bp on every round trip.
+2019–2026 must use the window's own figure (**~33.4bp**), and a live
+system starting today faces **~30.0bp**. Using today's number on
+historical data understates costs by about 3.4bp on every round trip.
 
 ### 1.1 The tax, which dominates and just went up
 
@@ -175,27 +175,28 @@ project's standing rule against inventing cost constants.
 annual cost drag `F × κ` at BTC's κ = 12bp, and three survived. Re-scored
 at Korea's two figures, using the same event frequencies:
 
-| Situation | /yr | @ 12bp (BTC) | **@ 32bp (KRX window)** | @ 28bp (KRX today) |
+| Situation | /yr | @ 12bp (BTC) | **@ 33.4bp (KRX window)** | @ 30.0bp (KRX today) |
 |---|---|---|---|---|
-| **abnormal activity, top 1%** | 113 | 14% **feasible** | **36% cost-hostile** | 32% **feasible** |
-| resistance break, prior-1d high | 168 | 20% **feasible** | 54% cost-hostile | 47% cost-hostile |
-| support penetration, prior-1d low | 172 | 21% **feasible** | 55% cost-hostile | 48% cost-hostile |
-| range expansion after compression | 417 | 50% | 133% INFEASIBLE | 117% INFEASIBLE |
-| absorption | 468 | 56% | 150% INFEASIBLE | 131% INFEASIBLE |
-| abnormal activity, top 10% | 582 | 70% | 186% INFEASIBLE | 163% INFEASIBLE |
-| everything below | ≥755 | ≥91% | ≥242% INFEASIBLE | ≥211% INFEASIBLE |
+| **abnormal activity, top 1%** | 113 | 14% **feasible** | **38% cost-hostile** | **34% feasible** |
+| resistance break, prior-1d high | 168 | 20% **feasible** | 56% cost-hostile | 50% cost-hostile |
+| support penetration, prior-1d low | 172 | 21% **feasible** | 57% cost-hostile | 52% cost-hostile |
+| range expansion after compression | 417 | 50% | 139% INFEASIBLE | 125% INFEASIBLE |
+| absorption | 468 | 56% | 156% INFEASIBLE | 140% INFEASIBLE |
+| abnormal activity, top 10% | 582 | 70% | 194% INFEASIBLE | 175% INFEASIBLE |
+| everything below | ≥755 | ≥91% | ≥252% INFEASIBLE | ≥227% INFEASIBLE |
 
 > **Nothing is "feasible" on Korean spot equities over the window a
 > backtest would actually run on.** Three situations clear the bar on BTC
 > perpetuals; **zero** clear it at the window's own 32bp, and exactly one
-> — the rarest — clears it at today's 28bp, at 32% against a 35% line.
+> — the rarest — clears it at today's 30.0bp, at **34% against a 35%
+> line.**
 
 **That gap between the two Korean columns is the sharpest thing in this
 document.** The single candidate that survives does so only because
 Korean share prices rose enough in 2025–2026 to shrink the tick in
 relative terms. A study backtested over 2019–2026 and scored at the
 window's own costs finds nothing; the same study scored at today's costs
-finds one marginal survivor. **Which column a registration uses is
+finds one survivor sitting one point inside the boundary. **Which column a registration uses is
 therefore not a detail — it decides the result**, and using today's number
 on historical data is the flattering choice.
 
@@ -228,7 +229,7 @@ is three quarters of the cost above.
 |---|---|---|
 | Universe | **2,718** names | ~265 underlyings |
 | 증권거래세 | **20bp per sale** | **none** |
-| Round trip | **~32bp window / ~28bp today** (§1, one-tick floor) | no 증권거래세, otherwise **not sourced** |
+| Round trip | **~33.4bp window / ~30.0bp today** (§1, one-tick floor) | no 증권거래세, otherwise **not sourced** |
 | Selection breadth | the "stocks in play" mechanism works | too narrow for it |
 | History | daily to 1991, intraday ~250 sessions | **KIS serves no expired contract at all** (MS-B §2.1) |
 | Leverage / margin | cash | exchange-set margin, ~₩10k–100k minimum |
@@ -248,7 +249,8 @@ registration is written.
   frequencies. Korean equities have price limits, a call-auction open and
   close, and a 6h45m session; every one of those changes how often a
   situation fires.
-- **The commission is an assumption** (§1.3), not a measurement.
+- **The commission is now pinned** (§1.3) to 뱅키스 online, KRX, 2025-10-27.
+  A different account tier or medium moves it.
 - **The futures round trip is not sourced at all** (§3) — the comparison
   says "materially lower", which is an inference from the absent tax, not
   a figure.
@@ -260,8 +262,9 @@ registration is written.
 
 1. **A Korean registration states which tax regime it applies** and why —
    the rate changed on 2026-01-01 and the KR-10 window opens in 2019.
-2. **Pin the commission tier** before any Korean registration, per the
-   standing rule against invented cost constants.
+2. **~~Pin the commission tier~~ — done** (§1.3). What is still open is
+   the **realised spread**, which needs intraday quote data, and the
+   **per-era tax schedule** (§1.1 item 3).
 3. **The instrument choice (§3) is an operator decision**, and it should
    be made before intraday KRX collection is scoped — futures and spot do
    not need the same data.

@@ -81,6 +81,20 @@ SEED = 20260914
 FDR_Q = 0.10
 EFFECT_FLOOR = DEFAULT_ROUND_TRIP
 
+#: Whether to use the dependence-agnostic Benjamini-Yekutieli correction.
+#:
+#: **rd-g justified BH's positive-dependence condition for the four
+#: horizons on one event set, and that is not the whole family.** S1, S2
+#: and S3 use different event sets and different control draws, so PRDS
+#: across all twelve is asserted rather than shown. BY controls FDR under
+#: *arbitrary* dependence, at the cost of a `sum(1/i)` factor -- 3.1032 at
+#: m = 12, so the rank-1 threshold falls from 0.00833 to 0.002685.
+#:
+#: Both are reported. **The conclusion is identical under either**, which
+#: is why adopting the stricter one after seeing the result is safe here;
+#: a future specification must fix the choice in advance regardless.
+USE_BENJAMINI_YEKUTIELI = True
+
 VOL_WINDOW = 60
 
 
@@ -332,17 +346,31 @@ def welch(a: np.ndarray, b: np.ndarray) -> tuple[float, float, float]:
     return t, _t_distribution_two_sided_p_value(t, df), df
 
 
-def benjamini_hochberg(results: list[EventTest], q: float = FDR_Q) -> list[EventTest]:
-    """BH at level `q` over the fixed family.
+def dependence_penalty(m: int = FAMILY_SIZE, yekutieli: bool = USE_BENJAMINI_YEKUTIELI) -> float:
+    """`sum(1/i)` for Benjamini-Yekutieli, `1.0` for plain Benjamini-Hochberg."""
+    return sum(1.0 / i for i in range(1, m + 1)) if yekutieli else 1.0
+
+
+def benjamini_hochberg(
+    results: list[EventTest],
+    q: float = FDR_Q,
+    yekutieli: bool = USE_BENJAMINI_YEKUTIELI,
+) -> list[EventTest]:
+    """FDR control at level `q` over the fixed family.
 
     `m` is taken from `FAMILY_SIZE`, not from `len(results)`, so a run that
     silently produced fewer tests cannot inflate its own significance by
     shrinking the correction.
+
+    `yekutieli` divides the thresholds by `sum(1/i)`, which controls FDR
+    under arbitrary dependence -- see `USE_BENJAMINI_YEKUTIELI` for why
+    the family's dependence structure is not obviously positive.
     """
+    penalty = dependence_penalty(FAMILY_SIZE, yekutieli)
     order = sorted(range(len(results)), key=lambda i: results[i].p_value)
     cutoff = 0
     for rank, i in enumerate(order, start=1):
-        if results[i].p_value <= q * rank / FAMILY_SIZE:
+        if results[i].p_value <= q * rank / (FAMILY_SIZE * penalty):
             cutoff = rank
     out = list(results)
     for rank, i in enumerate(order, start=1):
@@ -350,7 +378,7 @@ def benjamini_hochberg(results: list[EventTest], q: float = FDR_Q) -> list[Event
         out[i] = EventTest(
             **{**r.__dict__,
                "bh_rank": rank,
-               "bh_threshold": q * rank / FAMILY_SIZE,
+               "bh_threshold": q * rank / (FAMILY_SIZE * penalty),
                "bh_significant": rank <= cutoff}
         )
     return out
@@ -492,7 +520,10 @@ def run(
 
 def report(results: list[EventTest]) -> None:
     print(f"family size (fixed by rd-g): {FAMILY_SIZE}   tests run: {len(results)}")
-    print(f"BH q = {FDR_Q}   effect floor = {EFFECT_FLOOR*1e4:.0f}bp\n")
+    name = "Benjamini-Yekutieli" if USE_BENJAMINI_YEKUTIELI else "Benjamini-Hochberg"
+    pen = dependence_penalty()
+    print(f"{name} q = {FDR_Q} (dependence penalty {pen:.4f}, rank-1 threshold "
+          f"{FDR_Q/(FAMILY_SIZE*pen):.5f})   effect floor = {EFFECT_FLOOR*1e4:.0f}bp\n")
     print(f"{'situation':26} {'h':>5} {'events':>7} {'ctrl':>7} {'drop':>5} "
           f"{'event bp':>9} {'ctrl bp':>9} {'diff bp':>9} {'t':>7} {'p':>9} {'BH':>4} {'verdict':>10}")
     print("-" * 128)

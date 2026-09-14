@@ -56,6 +56,19 @@ Only the top row clears BH at `q = 0.10, m = 12` (rank-1 threshold
 0.00833), and it also clears the 12bp effect floor. **As specified, that
 is one ADVANCE.**
 
+**Under Benjamini–Yekutieli it is not even that.** rd-g justified BH's
+positive-dependence condition for the four horizons on one event set, but
+S1, S2 and S3 use **different event sets and different control draws**, so
+PRDS across all twelve was asserted rather than shown — raised on review
+of PR #169. BY controls FDR under *arbitrary* dependence at a `Σ1/i`
+cost, which at m = 12 is 3.1032 and drops the rank-1 threshold from
+0.00833 to **0.002685**. The top row's `p = 0.00587` does not clear it.
+
+**Both corrections give the same answer here**, which is what makes
+adopting the stricter one after seeing the result safe. The module now
+reports BY by default and a future specification must fix the choice in
+advance regardless.
+
 ## 3. Why it is not one
 
 **The tell was visible in the table before any diagnostic ran.** The
@@ -153,7 +166,8 @@ a rejection loop with an attempt budget, and fractional Welch df:
 | S2 resistance break | 1440 | 347 | 407 | +1.35 | 0.05 | 9.6e-01 | no |
 
 **0 of 12 advance.** The surviving cell moves from `p = 0.0059` to
-`p = 0.0134` and no longer clears the rank-1 BH threshold of 0.00833 — so
+`p = 0.0134`, which clears neither the BH rank-1 threshold of 0.00833 nor
+the BY one of 0.002685 — so
 the corrected run reaches the same conclusion by a different route, while
 *still* carrying §3's placebo bias (S2's control is still −9.53bp).
 
