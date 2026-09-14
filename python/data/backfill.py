@@ -28,7 +28,10 @@ from data.store import connect, find_missing_ranges, upsert_klines
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_DB_PATH = "python/data/var/klines.sqlite3"
+# Canonical, resolved from the module rather than the working
+# directory -- see data/_paths.py for the second database the two
+# old relative defaults silently created.
+from data._paths import DEFAULT_DB_PATH
 
 # Rows are upserted in batches of roughly one page's worth rather than
 # once per gap. For a store that starts empty, find_missing_ranges

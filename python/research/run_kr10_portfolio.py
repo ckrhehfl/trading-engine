@@ -62,7 +62,10 @@ from research.strategies.daily_tsmom_ensemble import DailyTsmomEnsembleStrategy
 LOGGER = logging.getLogger(__name__)
 
 DEFAULT_STARTING_EQUITY = Decimal("10000")
-DEFAULT_DB_PATH = "data/var/klines.sqlite3"
+# Canonical, resolved from the module rather than the working
+# directory -- see data/_paths.py for the second database the two
+# old relative defaults silently created.
+from data._paths import DEFAULT_DB_PATH
 
 
 class PortfolioRunError(RuntimeError):

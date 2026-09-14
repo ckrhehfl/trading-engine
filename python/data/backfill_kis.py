@@ -65,7 +65,10 @@ from data.store import connect, fetch_klines, upsert_klines
 LOGGER = logging.getLogger(__name__)
 
 INTERVAL = "1d"
-DEFAULT_DB_PATH = "data/var/klines.sqlite3"
+# Canonical, resolved from the module rather than the working
+# directory -- see data/_paths.py for the second database the two
+# old relative defaults silently created.
+from data._paths import DEFAULT_DB_PATH
 
 
 def _stored_days(conn, storage_symbol: str, start: str, end: str) -> set[int]:

@@ -42,6 +42,7 @@ CREDENTIALED_KIS_MODULES = (
     _DATA / "kis_klines.py",
     _DATA / "backfill_kis.py",
     _DATA / "kis_flow_probe.py",
+    _DATA / "kis_investor_flow.py",
 )
 
 # KIS's own naming: order submission and cancellation live under /trading/,

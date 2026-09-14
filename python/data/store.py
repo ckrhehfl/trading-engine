@@ -172,6 +172,49 @@ overwrite one resolution with another.
 endpoints retain only ~30 days. Unlike klines, this history cannot be
 backfilled later -- whatever is not captured is gone permanently. That is
 the whole reason this table is created before any strategy needs it.
+
+**Generalized 2026-09-14 to hold KRX 투자자별 매매동향 as well**
+(`kis_investor_flow.py`, RD-C/RD-D). Originally scoped to Binance's
+`/futures/data/` endpoints, the table is reused rather than duplicated
+because the fit is exact on all three counts that motivated it: the same
+`(symbol, metric, period, timestamp)` shape absorbs 12 metrics per
+symbol-day without a migration; the retention argument is identical
+(`inquire-investor` serves exactly 30 rows and takes no date parameter,
+so it cannot be backfilled either); and symbols are venue-namespaced
+(`KRX:005930` vs `BTC-USDT`), so the two cannot collide. Metric names
+carry their own namespace prefix for the same reason.
+"""
+
+
+KRX_UNIVERSE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS krx_universe (
+  snapshot_date TEXT NOT NULL,
+  code TEXT NOT NULL,
+  market TEXT NOT NULL,
+  name TEXT NOT NULL,
+  group_code TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (snapshot_date, code)
+);
+"""
+"""Dated snapshots of the KRX listed universe -- the survivorship record.
+
+**This exists because KIS's master files enumerate currently-listed
+symbols only.** A per-day selection rule over the full universe needs
+every name that traded *on that day*, including ones since delisted, or
+the scan is biased upward by construction: the delisted names are
+disproportionately the ones that collapsed.
+
+Nothing here fixes the *past* -- a snapshot taken today cannot say who was
+listed in 2019. What it fixes is the future, at essentially zero cost, and
+that is the same "cannot be backfilled later" argument as `positioning`
+one level up. A row per `(snapshot_date, code)` makes "which symbols
+existed on date D" a query rather than an assumption.
+
+`group_code` is KIS's 증권그룹구분코드 and is stored rather than filtered on
+ingest: `ST` is common stock, but `EF`/`EN` (ETF/ETN) being present in the
+record is what lets a future reader confirm the filter was applied rather
+than trust that it was.
 """
 
 
@@ -194,6 +237,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute(FUNDING_SCHEMA)
     conn.execute(MACRO_SCHEMA)
     conn.execute(POSITIONING_SCHEMA)
+    conn.execute(KRX_UNIVERSE_SCHEMA)
     conn.commit()
     _ensure_klines_columns(conn)
     return conn
@@ -760,6 +804,80 @@ def fetch_positioning(
         (symbol, metric, period, start_ms, end_ms),
     )
     return [PositioningRow(m, p, t, v) for m, p, t, v in cursor.fetchall()]
+
+
+def upsert_krx_universe(
+    conn: sqlite3.Connection,
+    snapshot_date: str,
+    rows: Iterable[tuple[str, str, str, str]],
+) -> int:
+    """Record one day's listed universe. `rows` are
+    `(code, market, name, group_code)`.
+
+    `INSERT OR IGNORE` like every other upsert here, so re-running a
+    snapshot for a date already captured is a no-op rather than a
+    duplicate -- a cron that fires twice must not corrupt the record this
+    table exists to be.
+    """
+    rows = list(rows)
+    if not rows:
+        return 0
+    if not (len(snapshot_date) == 10 and snapshot_date[4] == snapshot_date[7] == "-"):
+        raise ValueError(f"snapshot_date must be YYYY-MM-DD, got {snapshot_date!r}")
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    params = [(snapshot_date, c, m, n, g, fetched_at) for c, m, n, g in rows]
+    try:
+        cursor = conn.executemany(
+            "INSERT OR IGNORE INTO krx_universe "
+            "(snapshot_date, code, market, name, group_code, fetched_at) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            params,
+        )
+        conn.commit()
+        return cursor.rowcount
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def fetch_krx_universe(
+    conn: sqlite3.Connection,
+    snapshot_date: str,
+    group_code: str | None = "ST",
+) -> list[tuple[str, str, str, str]]:
+    """One snapshot's `(code, market, name, group_code)`, ascending by code.
+
+    `group_code` defaults to `"ST"` (common stock) because that is what a
+    universe scan means -- over half the KOSPI master file is ETFs and
+    ETNs, which would swamp any relative-volume ranking. Pass `None` for
+    the unfiltered snapshot.
+    """
+    if group_code is None:
+        cursor = conn.execute(
+            "SELECT code, market, name, group_code FROM krx_universe "
+            "WHERE snapshot_date = ? ORDER BY code",
+            (snapshot_date,),
+        )
+    else:
+        cursor = conn.execute(
+            "SELECT code, market, name, group_code FROM krx_universe "
+            "WHERE snapshot_date = ? AND group_code = ? ORDER BY code",
+            (snapshot_date, group_code),
+        )
+    return cursor.fetchall()
+
+
+def krx_universe_snapshots(conn: sqlite3.Connection) -> list[tuple]:
+    """`(snapshot_date, rows, common_stock_rows)` per snapshot, ascending.
+
+    The survivorship record's own coverage report: a gap in these dates is
+    a gap in what can later be said about who was listed when.
+    """
+    return conn.execute(
+        "SELECT snapshot_date, COUNT(*), "
+        "SUM(CASE WHEN group_code = 'ST' THEN 1 ELSE 0 END) "
+        "FROM krx_universe GROUP BY snapshot_date ORDER BY snapshot_date"
+    ).fetchall()
 
 
 def positioning_coverage(conn: sqlite3.Connection) -> list[tuple]:

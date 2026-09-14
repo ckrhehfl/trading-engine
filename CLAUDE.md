@@ -689,6 +689,30 @@ Binance's documented temporary-IP-ban signal, distinct from `429`; not
 observed live, and treated as non-retryable on the same "don't retry into
 an active ban" principle.
 
+**Binance geo-blocks the GCP instance entirely, and this decides where
+collectors run.** Verified 2026-09-14 from `paper-trading`
+(us-central1-a): **every** Binance endpoint returns **HTTP 451** — not
+just `/futures/data/` but plain `fapi/v1/klines` too — with *"Service
+unavailable from a restricted location"*, and the instance's egress IP
+geolocates to **US**. So:
+
+- **Binance collection is local-only.** `scripts/collect-positioning.sh`
+  runs on the local (Korean-IP) machine's crontab at `*/30`, and that is
+  the collector of record, not a convenience. Verified healthy on
+  2026-09-14: 118,794 rows, current to that day.
+- **The instance's `positioning` table is a stale replica, not a second
+  collector.** It held 64,848 rows stopping at 2026-09-05 and *cannot*
+  catch up. Running the collector there fails every series and exits
+  non-zero — which is the fail-closed design working, and is **not** a
+  bug to fix by retrying.
+- **KIS/KRX is the opposite**: it works from the instance and is
+  unaffected by this. A collector's home is therefore chosen per venue,
+  not once for the project.
+
+This is the operational consequence of the "Run it where it will run"
+lesson already recorded under Change checks, which named the 451 without
+saying what follows from it.
+
 **Computed statistics, load-bearing for how this data may be used** (not
 API facts): Binance spot vs BingX daily closes over their full 1,909-day
 overlap correlate at **1.000000**; daily log-returns at **0.999955**.
@@ -815,6 +839,64 @@ design above was fake-server-verified only until then. Full account:
   balance, clean reconciliation (`ledgerExposure=0 realExposure=0
   mismatch=0`), a real tick completed. **The kill switch starts tripped by
   design**, so no order was or could be submitted.
+- **투자자별 매매동향 — the one data source Korea has that crypto and US
+  equities do not**, and three facts about it, all measured 2026-09-14
+  (`.planning/rd-c-kis-flow-probe-result.md`, `data/kis_investor_flow.py`).
+  KRX *mandatorily discloses* daily per-stock buying and selling by
+  개인 / 기관 / 외국인; the entire US literature on retail order flow exists
+  because researchers there had to **infer** it.
+  - `GET /uapi/domestic-stock/v1/quotations/inquire-investor`, `tr_id`
+    `FHKST01010900`, `FID_COND_MRKT_DIV_CODE=J`. **Returns exactly 30 rows
+    and accepts no date parameter at all**, so 30 is a *horizon*, not a
+    page cap — unlike the daily-chart endpoints, which cap at 100/50 but
+    page backwards through years. **This series cannot be backfilled.** The
+    window is a rolling lookback, so a collector starting within ~30
+    trading days loses nothing *from its start date forward*.
+  - **`tr_pbmn` (거래대금) is denominated in 백만원, not 원, and KIS
+    documents this nowhere.** Confirmed two independent ways on 삼성전자:
+    the implied price `value × 1e6 / qty` lands within a few percent of
+    that day's close on every overlapping day (259,516 vs 261,000;
+    266,670 vs 266,000), and the three types' summed buy value is a steady
+    **86–90%** of the same day's `klines.quote_volume`, which is in 원.
+    Read as 원 it is off by a factor of a million — an error that does not
+    look wrong, merely small. `kis_investor_flow.py` converts to 원 on
+    ingest so this column and `quote_volume` are directly comparable.
+  - **The three types do not sum to market turnover.** The residual
+    10–14% is 기타법인 / 내국인 / 국가·지자체, which this endpoint does not
+    break out. A "share of volume" computed from these three alone is
+    overstated by roughly that much. `foreign-institution-total`
+    (`FHPTJ04400000`) returns the cross-sectional counterpart with a finer
+    institutional breakdown (`fund_`, `insu_`, `bank_`, `ivtr_`, …).
+- **Intraday bars: two endpoints, and only one has history.**
+  `inquire-time-itemchartprice` (`FHKST03010200`) returns 30 rows and takes
+  a time but **no date**, so it can only ever describe the current session.
+  `inquire-time-dailychartprice` (`FHKST03010230`) takes `FID_INPUT_DATE_1`
+  and serves past sessions at **120 rows per call, back ~250 trading days,
+  rolling** — the boundary pinned to the day on 2026-09-14: **2025-09-03
+  served 120 bars, 2025-09-02 served none.** ~251 trading days, so it is a
+  **trading-day count, not a calendar cutoff**, and the far edge advances
+  one session per session. A full regular session is ~380 bars (390 minutes
+  less the ~10-minute 15:20–15:30 closing call auction, during which there
+  is no continuous trade and so no bar), i.e. **~4 calls per symbol-session**.
+  **Two traps**: an out-of-range date returns `rt_cd=0` with **zero rows**,
+  not an error — the same convention expired futures contracts return, so a
+  backfill treating `rt_cd=0` as success records nothing and reports a clean
+  run; and **bar timestamps are not uniformly on the minute grid** (2026-01-02
+  returned `:11`-second stamps where every other probed date returned `:00`).
+- **The listed universe is 2,718 common stocks** — KOSPI 915 + KOSDAQ 1,803,
+  counted from KIS's own master files (`kospi_code.mst`, `kosdaq_code.mst`,
+  증권그룹구분코드 `ST`) on 2026-09-14. Over half the KOSPI file is ETFs and
+  ETNs (`EF` 1,168, `EN` 375), which would swamp any relative-volume
+  ranking. **The two files carry fixed tails of different lengths — KOSPI
+  228 bytes, KOSDAQ 222** — so one shared offset silently reads the wrong
+  two characters for one market and every group code comes back as
+  whitespace, while the download, the unzip and the row count all look
+  perfect. `krx_universe.py` pins the offsets per market and fails closed on
+  a file that yields zero common stock. **Stock codes are no longer all
+  numeric** — KOSDAQ now issues alphanumeric codes such as `0001A0`, so any
+  `isdigit()` validation is wrong. The files list **currently-listed symbols
+  only**, which is the open survivorship problem for a full-universe scan
+  (`.planning/rd-d-discovery-mode-and-the-full-universe.md` §2.2).
 
 ## LLM Usage Policy
 
@@ -1077,6 +1159,107 @@ run through that infrastructure — none of #6–#8 name that gate
 explicitly, which is exactly why it's written down here rather than left
 implicit.
 
+### Discovery and Confirmation — two modes, human-approved 2026-09-14
+
+**The problem this fixes, stated as evidence rather than as a feeling.**
+Everything below this subsection was built to answer *"does this candidate
+work?"* It has no machinery for *"what is worth testing?"*, and the project
+has been running the second question through the first question's gate.
+Three measurements say the mismatch is real:
+
+1. **The two best results in project history both died on accounting, not
+   on measurement.** S16 posted t = +2.388, p = 0.0098, PSR 0.9905, profit
+   factor 6.44, drawdown 9.93% — and died on DSR = 6.5e-11 against
+   `N` = 127. Trade Management P3 cleared Gate A outright, Sharpe 0.716
+   above its window's own 0.623 floor, PSR 0.9705 — and died because the
+   window was already spent. Neither failed on its own evidence.
+2. **The gate cannot open.** At `N` in the 120s the DSR-0.95 bar is an
+   annualized Sharpe near **4.00**, against the 0.4–0.8 that credible
+   institutional trend-following reports. A gate whose arithmetic
+   guarantees refusal is not measuring anything.
+3. **The instrument cannot see what is being looked for.** `rd-a`
+   measured the standard error of a 30-day fold Sharpe at **3.49** under
+   this project's own 365-day annualization (`_DAYS_PER_YEAR`): a true 0.8
+   edge reads 0.8 ± 3.5, and the *sign* is 59/41. A fold Sharpe is also
+   only defined for a **continuously invested** strategy, and every one of
+   the 1,883 logged runs was always-on — while the thing actually being
+   pursued is flat most of the time. `rd-b` §1: an event study over 1,196
+   episodes detects a 0.15σ effect at t ≈ 5, where no fold-based
+   instrument on that window detects anything below ~5.7 annualized
+   Sharpe.
+
+**Two standing diagnoses are reconciled here rather than one replacing the
+other.** "Strategy Attempts So Far" says the most important finding is
+about the *windows* — detection floors of ~1.21 and ~2.18. That is true of
+the **aggregate** floor and implies the remedy "more data, longer windows."
+`rd-a`'s finding is about the **per-fold** instrument, and **more data does
+not fix it**: SE 3.49 is a property of the fold length and the
+annualization constant, not of the window. Both stand; only one is fixed by
+more data, and the project acted on that one alone for 1,883 runs.
+
+**What the literature says the search should have been aimed at**
+(`.planning/rd-c-mechanism-catalogue.md` §2, four sources that do not cite
+each other): **the selection filter, not the entry formula.**
+Barber/Lee/Liu/Odean find concentration in a few names is the second-best
+predictor of day-trader skill after past performance; Zarattini's
+"Stocks in Play" gets Sharpe 2.81 from a plain opening-range breakout
+restricted to abnormally active names, while the same entry rule fails
+entirely on MNQ with no filter; S11 and S16 found the same thing on this
+project's own data. An audit of `runs/experiments.jsonl` already records
+that **every `strategy_id` in the log asks which formula predicts
+direction.** None asks which situations are worth being present for.
+
+**The split.**
+
+| | **Discovery** | **Confirmation** |
+|---|---|---|
+| question | what is worth testing? | does *this* work? |
+| looking | unlimited, every trial still logged | exactly once |
+| instrument | per-event outcome vs a **matched placebo**; expectancy in R | the Eligibility Bar, unchanged |
+| data | a **designated discovery window**, deliberately and permanently spent | a window no decision has touched |
+| output | a **fully specified candidate** | PASS / FAIL / not powered to confirm |
+| project-level `N` | not incremented | incremented |
+
+**This is not a new exception; it generalizes one already granted.** Trade
+Management Task D's registration states that `N` "is a property of the pair
+(data window, search history)" and that a study which fixes the entry in
+advance and varies only management "has not been searched over by them, so
+its own `N` starts at 1." Discovery and confirmation are that same pair
+distinction applied one level up. What made Task D's version honest is
+reproduced verbatim below.
+
+**The guards. These are what stop this being a loophole, and none of them
+is optional:**
+
+1. **A discovery result may never be promoted, quoted as evidence of an
+   edge, advanced to paper, or reported as a pass.** Its only legitimate
+   output is a written specification. This is the Comparison-run rule's
+   clause 2, applied to a whole mode.
+2. **The specification is committed before the confirmation run** — entry,
+   context, branch rule, trigger, invalidation, management, and decline
+   rule, every parameter fixed. Anything added after confirmation data is
+   seen voids the registration, exactly as it does today.
+3. **A discovery window is named in advance and may never be used for
+   confirmation.** Designated now, and this costs nothing because all three
+   are already closed to selection: the **BTC-USDT 1h** window, **BingX
+   1m**, and **Binance futures 1m**. Unspent and therefore *not* available
+   for discovery: **KRX daily**, **Binance spot 1m**.
+4. **Confirmation is untouched.** The Eligibility Bar, project-level `N`,
+   the single-holdout-access rule, and human checkpoint #2 all apply in
+   full and are not relaxed by anything in this subsection.
+5. **Discovery trials are still logged to `runs/experiments.jsonl`.** Not
+   counting them toward the *promotion* `N` is a decision about which `N`,
+   never permission to stop recording. An unlogged run is still the unsafe
+   direction (Task C's own finding).
+
+**The honest cost, stated rather than glossed.** Discovery buys the ability
+to look, and pays for it by producing weaker evidence: a discovery-mode
+result is a *hypothesis*, and this project's own precedent is that one
+clean confirmation is not enough either — `daily-tsmom-ensemble` got two
+disjoint pre-registered confirmations plus a meta-analysis and remained
+INCONCLUSIVE. Nothing here shortens that path. It only stops the project
+from being unable to legitimately begin it.
+
 Non-negotiable once strategy research begins:
 
 - No strategy is eligible for paper trading without walk-forward
@@ -1104,6 +1287,25 @@ Non-negotiable once strategy research begins:
   pipeline built for that must retain delisted/inactive symbols, not
   only currently-active ones, or backtests across that universe will be
   biased upward by construction.
+
+  **The revisit happened, twice, and the second one is still open.**
+  KR-10 (MS-E) handled it by **day-one selection plus a pre-defined exit
+  rule** — the universe is fixed from information available at the start
+  of the window and members leave on announcement or failure to resume,
+  never on "it stopped trading later." An earlier draft required
+  continuous listing across the window, which is a survivorship filter
+  using future information; that was caught on review and replaced. Ten
+  currently-listed names selected on 2018 data is a **bounded** exposure,
+  because the 2018 ordering could not see 2019–2026.
+
+  **A full-universe scan (KOSPI + KOSDAQ, ~2,700 names) reopens it much
+  more sharply, and is not solved.** The selection step there is
+  *per-day*, so a delisted name must be present in the pool on every day
+  it actually traded or the scan is biased upward by construction — and
+  KIS's master files enumerate **currently-listed symbols only**. Until a
+  delisted-symbol source exists, a full-universe result is
+  survivorship-contaminated and must be reported as such, not quietly
+  scoped away. See `.planning/rd-d-*.md`.
 - **No further parameter searching on the `BTC-USDT` 1h research window
   (2024-04-27T10:00Z → 2026-02-26T07:00Z, 16,078 bars).** (Added
   2026-07-29, human-approved; derivation in
