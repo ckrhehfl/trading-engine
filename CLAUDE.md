@@ -1240,10 +1240,29 @@ is optional:**
    rule, every parameter fixed. Anything added after confirmation data is
    seen voids the registration, exactly as it does today.
 3. **A discovery window is named in advance and may never be used for
-   confirmation.** Designated now, and this costs nothing because all three
-   are already closed to selection: the **BTC-USDT 1h** window, **BingX
+   confirmation.** Designated now: the **BTC-USDT 1h** window, **BingX
    1m**, and **Binance futures 1m**. Unspent and therefore *not* available
    for discovery: **KRX daily**, **Binance spot 1m**.
+
+   **These three are the windows already "closed to selection" elsewhere in
+   this file, and that is not a contradiction — but only because of what
+   the closure was actually for.** Its stated reason is that further search
+   there is *"strictly value-destroying: raising `N` can only lower the DSR
+   of any given result"*, and that on a window with a ~1.21 detection floor
+   any winner *"would be indistinguishable from luck regardless."* Both
+   sentences are about **producing a result that could be promoted on that
+   window.** Discovery never produces one: guard 1 forbids it outright, and
+   its only output is a specification that must then be confirmed on a
+   window it has never touched.
+
+   So the two clauses are reconciled by narrowing the closure to what it
+   was written to mean, and the narrowing is stated rather than assumed:
+   **a spent window is closed to selecting anything for promotion, and open
+   to generating hypotheses that will be confirmed elsewhere.** Reading it
+   any more broadly makes a spent window useless for the one purpose it is
+   still genuinely good for, while reading it any more narrowly would let a
+   discovery result be quoted — which guard 1 prohibits and guard 4 leaves
+   the full Eligibility Bar standing against.
 4. **Confirmation is untouched.** The Eligibility Bar, project-level `N`,
    the single-holdout-access rule, and human checkpoint #2 all apply in
    full and are not relaxed by anything in this subsection.
@@ -1325,6 +1344,16 @@ Non-negotiable once strategy research begins:
   **reproducing** a previously logged result, for **diagnosing** a
   mechanism (as `sr-o` did), and for **infrastructure** testing — none
   of which select a configuration. It is closed to *selection*.
+
+  **Amended 2026-09-14**: "closed to selection" means **closed to
+  selecting anything for promotion**, which is what the argument above is
+  about — `N`, DSR, and a winner being indistinguishable from luck are all
+  statements about a result that could be advanced. It is therefore
+  additionally open for **Discovery mode** under the Discovery /
+  Confirmation subsection's five guards, whose first guard forbids a
+  discovery result from ever being promoted, quoted as evidence, or
+  reported as a pass. This window is in fact **designated** a discovery
+  window there. Nothing else about this rule changes.
 
   New strategy work goes to a window with usable statistical power: the
   `1d` path and its early-window holdout (`sr-t`), or a multi-symbol

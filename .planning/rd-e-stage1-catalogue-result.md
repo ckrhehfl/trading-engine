@@ -36,18 +36,37 @@ taker fee dominates the spread ~330×):
 
 | # | Situation | raw | **episodes** | /yr | **cost/yr** | verdict |
 |---|---|---|---|---|---|---|
-| 4b | **abnormal activity, 60m volume top 1%** | 36,618 | 594 | **85** | **10%** | **feasible** |
+| 4b | **abnormal activity, 60m volume top 1%** | 46,890 | 786 | **113** | **14%** | **feasible** |
 | 2 | **resistance break, prior-1d high, 0.3%** | 2,389 | 1,170 | **168** | **20%** | **feasible** |
 | 1 | **support penetration, prior-1d low, 0.3%** | 2,656 | 1,196 | **172** | **21%** | **feasible** |
-| 7 | range expansion after compression | 3,938 | 2,118 | 304 | 37% | cost-hostile |
-| 10 | absorption (volume top 10%, body bottom 10%) | 12,849 | 2,883 | 414 | 50% | cost-hostile |
-| 4 | abnormal activity, 60m volume top 10% | 366,172 | 3,573 | 513 | 62% | cost-hostile |
+| 7 | range expansion after compression | 5,325 | 2,902 | 417 | 50% | cost-hostile |
+| 10 | absorption (volume top 10%, body bottom 10%) | 13,838 | 3,256 | 468 | 56% | cost-hostile |
+| 4 | abnormal activity, 60m volume top 10% | 383,163 | 4,053 | 582 | 70% | cost-hostile |
 | 1b | support penetration, prior-4h low, 0.1% | 20,774 | 5,259 | 755 | 91% | cost-hostile |
 | 2b | resistance break, prior-4h high, 0.1% | 20,367 | 5,358 | 770 | 92% | cost-hostile |
 | 3 | round-number touch (within 0.02% of a $1k level) | 70,316 | 6,207 | 892 | **107%** | **COST-INFEASIBLE** |
-| — | taker imbalance extreme (top 5%) | 183,063 | 10,552 | 1,516 | **182%** | **COST-INFEASIBLE** (near-continuous) |
+| — | taker imbalance extreme (top 5%) | 186,798 | 12,448 | 1,788 | **215%** | **COST-INFEASIBLE** (near-continuous) |
 | 12b | fair value gap, bearish | 546,761 | 14,822 | 2,129 | **255%** | **COST-INFEASIBLE** (near-continuous) |
 | 12 | **fair value gap, bullish** | 555,213 | 14,827 | **2,130** | **256%** | **COST-INFEASIBLE** (near-continuous) |
+
+**These are the post-correction figures.** The first run of this table
+computed every percentile threshold over the **whole** 6.96 years, so a
+bar was classified as "top 1% of volume" using volume from after it —
+lookahead, and exactly what CLAUDE.md's own clause forbids. Caught on
+CodeRabbit review of PR #168 and replaced with a **trailing quantile**
+recalibrated daily from the prior 30 days.
+
+It moved real numbers. The five threshold-based rows all rose — abnormal
+activity top 1% from 85 to 113/year, range expansion from 304 to 417,
+taker imbalance from 1,516 to 1,788 — because a trailing threshold is
+lower than a full-sample one during the market's growth phases and so
+admits more events. **The seven purely price-based rows (1, 1b, 2, 2b, 3,
+12, 12b) are unchanged**, which is the consistency check: the fix touched
+exactly the rows that used a quantile and nothing else.
+
+**No verdict changed category**, so §3's conclusion survives the
+correction — but it was not safe to assume that in advance, and the
+uncorrected figures are shown nowhere else.
 
 Episodes are collapsed with a **240-bar (4h) cooldown**, the same rule
 rd-b §2 now states explicitly. The ceiling that rule implies is
@@ -83,7 +102,7 @@ annual cost drag.
 - **Nothing about whether the three survivors have an edge.** No forward
   return was computed. "Feasible" means *"costs do not rule it out in
   advance"*, which is the weakest possible positive statement.
-- **"Cost-hostile" is not "dead."** Four situations sit between 37% and
+- **"Cost-hostile" is not "dead."** Five situations sit between 50% and
   92% annual drag. They are excluded from the *first* stage-2 batch on
   cost grounds, not refuted, and a venue with a materially lower round
   trip moves them — the ceiling is a statement about κ, not about the

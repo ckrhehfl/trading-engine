@@ -822,8 +822,21 @@ def upsert_krx_universe(
     rows = list(rows)
     if not rows:
         return 0
-    if not (len(snapshot_date) == 10 and snapshot_date[4] == snapshot_date[7] == "-"):
-        raise ValueError(f"snapshot_date must be YYYY-MM-DD, got {snapshot_date!r}")
+    # A shape check alone accepts "2026-99-99" and "2026-02-31", and the
+    # value lands straight in the primary key, where it corrupts ordering
+    # and every snapshot lookup. Round-tripping through `date` rejects
+    # both, and comparing back to the input rejects anything `date` would
+    # silently normalise.
+    try:
+        parsed = date.fromisoformat(snapshot_date)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"snapshot_date must be a real YYYY-MM-DD date, got {snapshot_date!r}"
+        ) from None
+    if parsed.isoformat() != snapshot_date:
+        raise ValueError(
+            f"snapshot_date must be a real YYYY-MM-DD date, got {snapshot_date!r}"
+        )
     fetched_at = datetime.now(timezone.utc).isoformat()
     params = [(snapshot_date, c, m, n, g, fetched_at) for c, m, n, g in rows]
     try:

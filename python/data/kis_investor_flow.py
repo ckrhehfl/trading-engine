@@ -41,6 +41,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
 import sys
 import time
@@ -173,6 +174,14 @@ def parse_rows(body: dict[str, Any]) -> list[FlowPoint]:
     out = body.get("output")
     if not isinstance(out, list):
         raise InvestorFlowError("output missing or not a list")
+    if not out:
+        # `rt_cd=0` with an empty `output` is the exact silent-failure
+        # shape this project already documented for the intraday endpoint
+        # (an out-of-range date returns success and zero rows). Left
+        # unguarded here it would write nothing, count no failure, and
+        # exit 0 -- a clean-looking run on a series that cannot be
+        # refetched tomorrow.
+        raise InvestorFlowError("output is empty; KIS returned success with no rows")
 
     points: list[FlowPoint] = []
     for row in out:
@@ -195,6 +204,32 @@ def parse_rows(body: dict[str, Any]) -> list[FlowPoint]:
     return points
 
 
+KST = dt.timezone(dt.timedelta(hours=9))
+#: KRX's regular session close. Before it, the current trading date's
+#: 투자자별 매매동향 is 가집계 -- provisional, and it will change.
+KRX_CLOSE_KST = dt.time(15, 30)
+
+
+def provisional_date(now: dt.datetime | None = None) -> str | None:
+    """The `YYYYMMDD` whose flow is still provisional, or `None`.
+
+    **Dropping the row is the fix, not warning about it.** `positioning`
+    is keyed on `(symbol, metric, period, timestamp_ms)` and
+    `upsert_positioning` is `INSERT OR IGNORE`, so a provisional row
+    written at noon is never replaced by the finalised one after the
+    close -- it is wrong permanently, on a series that cannot be
+    refetched. So it is never written in the first place.
+
+    (If one ever *were* stored by an older version, removing it would
+    need an explicit update-on-conflict policy; there is deliberately no
+    such path, because silently overwriting stored observations is a
+    worse default than refusing to create the problem.)
+    """
+    now = now or dt.datetime.now(KST)
+    now = now.astimezone(KST)
+    return now.strftime("%Y%m%d") if now.time() < KRX_CLOSE_KST else None
+
+
 def fetch_flow(session: KisSession, code: str) -> list[FlowPoint]:
     url = (
         f"{session.host}{INVESTOR_PATH}?"
@@ -209,9 +244,18 @@ def fetch_flow(session: KisSession, code: str) -> list[FlowPoint]:
     return parse_rows(body)
 
 
-def sync_symbol(session: KisSession, conn, code: str) -> int:
+def sync_symbol(
+    session: KisSession, conn, code: str, now: dt.datetime | None = None
+) -> int:
     """Collect one symbol. Returns rows newly written (0 if all present)."""
     points = fetch_flow(session, code)
+    skip = provisional_date(now)
+    if skip is not None:
+        points = [p for p in points if p.date != skip]
+        if not points:
+            raise InvestorFlowError(
+                f"every returned row is the provisional {skip}; nothing final to store"
+            )
     rows = [
         PositioningRow(
             metric=p.metric,

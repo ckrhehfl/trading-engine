@@ -143,7 +143,13 @@ def fetch_universe() -> list[Listing]:
 
 def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:
     """Record today's universe. Returns `(date, rows_written, common_stock)`."""
-    date = snapshot_date or dt.datetime.now(dt.timezone.utc).date().isoformat()
+    # `or` would treat an empty string as "use today", silently recording
+    # the wrong date instead of rejecting a caller that passed nothing.
+    date = (
+        dt.datetime.now(dt.timezone.utc).date().isoformat()
+        if snapshot_date is None
+        else snapshot_date
+    )
     listings = fetch_universe()
     written = upsert_krx_universe(
         conn, date, [(x.code, x.market, x.name, x.group_code) for x in listings]

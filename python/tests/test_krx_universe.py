@@ -191,3 +191,17 @@ def test_this_module_never_authenticates():
     )
     for secret in ("KIS_APP_KEY", "KIS_APP_SECRET", "appkey", "appsecret", "tokenP"):
         assert secret not in source, f"{secret} appeared in a module that must stay anonymous"
+
+
+@pytest.mark.parametrize("bad", ["2026-99-99", "2026-02-31", "2026-13-01", "20260914", "", "not-a-date"])
+def test_an_impossible_calendar_date_is_refused(tmp_path, monkeypatch, bad):
+    """A shape check alone accepts 2026-99-99, and the value lands straight
+    in the primary key where it corrupts ordering and every lookup."""
+    conn = connect(tmp_path / "k.sqlite3")
+    monkeypatch.setattr(
+        "data.krx_universe.fetch_universe",
+        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST")],
+    )
+    with pytest.raises(ValueError):
+        snapshot(conn, bad)
+    conn.close()

@@ -32,16 +32,24 @@ cd "$REPO_ROOT"
 LOG_FILE="var/live/krx-flow.log"
 mkdir -p "$(dirname "$LOG_FILE")"
 
-# Never executes .env as shell code and strips the CRLF this file carries
-# -- the same accessor scripts/kis-paper.sh uses, reviewed for this purpose.
+# CREDENTIALS COME FROM THE ENVIRONMENT IF IT SUPPLIES THEM. The .env read
+# below is a fallback for an interactive or cron invocation that does not,
+# so an operator can inject secrets from a manager, a systemd unit, or a
+# wrapper without editing this script. Raised on review of PR #168.
+#
+# The fallback itself never executes .env as shell code (no `source`) and
+# strips the CRLF this repo's .env carries -- the same accessor
+# scripts/kis-paper.sh uses, which was reviewed for exactly this purpose.
+# Values are never echoed; only presence is checked.
 get_env_var() {
+    [ -r "$REPO_ROOT/.env" ] || return 0
     tr -d '\r' <"$REPO_ROOT/.env" | grep -E "^${1}=" | tail -n1 | cut -d'=' -f2-
 }
 
-KIS_APP_KEY="$(get_env_var KIS_APP_KEY)"
-KIS_APP_SECRET="$(get_env_var KIS_APP_SECRET)"
+KIS_APP_KEY="${KIS_APP_KEY:-$(get_env_var KIS_APP_KEY)}"
+KIS_APP_SECRET="${KIS_APP_SECRET:-$(get_env_var KIS_APP_SECRET)}"
 if [ -z "$KIS_APP_KEY" ] || [ -z "$KIS_APP_SECRET" ]; then
-    echo "$(date -Is) ERROR: KIS_APP_KEY/KIS_APP_SECRET missing or empty in .env -- refusing to run (values never logged)" >>"$LOG_FILE"
+    echo "$(date -Is) ERROR: KIS_APP_KEY/KIS_APP_SECRET are neither in the environment nor in .env -- refusing to run (values never logged)" >>"$LOG_FILE"
     exit 1
 fi
 export KIS_APP_KEY KIS_APP_SECRET

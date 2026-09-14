@@ -251,3 +251,84 @@ def test_the_universe_without_a_snapshot_fails_closed(tmp_path):
     with pytest.raises(InvestorFlowError, match="krx_universe snapshot"):
         resolve_symbols(conn, _Args())
     conn.close()
+
+
+# ------------------------------------------------- empty and provisional
+
+
+def test_an_empty_output_is_a_failure_not_a_quiet_success():
+    """`rt_cd=0` with no rows is the same silent-failure shape this project
+    documented for the intraday endpoint. Unguarded it writes nothing,
+    counts no failure and exits 0 -- a clean-looking run on a series that
+    cannot be refetched tomorrow."""
+    with pytest.raises(InvestorFlowError, match="empty"):
+        parse_rows({"rt_cd": "0", "msg1": "정상처리", "output": []})
+
+
+def test_the_current_trading_date_is_provisional_before_the_close():
+    import datetime as dt
+
+    from data.kis_investor_flow import KST, provisional_date
+
+    assert provisional_date(dt.datetime(2026, 9, 14, 12, 0, tzinfo=KST)) == "20260914"
+    assert provisional_date(dt.datetime(2026, 9, 14, 15, 29, tzinfo=KST)) == "20260914"
+
+
+def test_nothing_is_provisional_at_or_after_the_close():
+    import datetime as dt
+
+    from data.kis_investor_flow import KST, provisional_date
+
+    assert provisional_date(dt.datetime(2026, 9, 14, 15, 30, tzinfo=KST)) is None
+    assert provisional_date(dt.datetime(2026, 9, 14, 20, 0, tzinfo=KST)) is None
+
+
+def test_the_provisional_check_uses_kst_not_local_time():
+    """A UTC-noon run is 21:00 KST -- after the close, nothing provisional.
+    Reading the clock in the wrong zone would drop a finalised day."""
+    import datetime as dt
+
+    from data.kis_investor_flow import provisional_date
+
+    assert provisional_date(dt.datetime(2026, 9, 14, 12, 0, tzinfo=dt.timezone.utc)) is None
+
+
+def test_a_provisional_row_is_never_stored(tmp_path, monkeypatch):
+    """The regression that matters: `positioning` is INSERT OR IGNORE, so a
+    provisional row written at noon is never replaced by the finalised one
+    after the close. It is wrong permanently, so it is never written."""
+    import datetime as dt
+
+    from data.kis_investor_flow import KST
+    from data.store import connect
+
+    conn = connect(tmp_path / "k.sqlite3")
+    monkeypatch.setattr(
+        "data.kis_investor_flow.fetch_flow",
+        lambda s, c: parse_rows(_body(_row("20260914"), _row("20260911"))),
+    )
+    noon = dt.datetime(2026, 9, 14, 12, 0, tzinfo=KST)
+    written = sync_symbol(_FakeSession(), conn, "005930", now=noon)
+    assert written == 12, "only the finalised day should be stored"
+    stored = {r[0] for r in conn.execute("SELECT DISTINCT timestamp_ms FROM positioning")}
+    from data.kis_klines import trading_date_to_ms
+
+    assert stored == {trading_date_to_ms("20260911")}
+    conn.close()
+
+
+def test_an_all_provisional_response_fails_rather_than_writing_nothing(tmp_path, monkeypatch):
+    import datetime as dt
+
+    from data.kis_investor_flow import KST
+    from data.store import connect
+
+    conn = connect(tmp_path / "k.sqlite3")
+    monkeypatch.setattr(
+        "data.kis_investor_flow.fetch_flow",
+        lambda s, c: parse_rows(_body(_row("20260914"))),
+    )
+    with pytest.raises(InvestorFlowError, match="provisional"):
+        sync_symbol(_FakeSession(), conn, "005930",
+                    now=dt.datetime(2026, 9, 14, 12, 0, tzinfo=KST))
+    conn.close()

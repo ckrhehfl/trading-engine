@@ -132,3 +132,55 @@ def test_a_quantile_threshold_ignores_nans():
 
 def test_an_all_nan_series_yields_nan_rather_than_raising():
     assert np.isnan(pct_rank_threshold(np.array([np.nan, np.nan]), 0.5))
+
+
+# --------------------------------------------------- no future data leaks
+
+
+def test_the_trailing_quantile_uses_only_prior_bars():
+    """The defect this replaced: a whole-array quantile classified a bar
+    using data from after it, which moved the episode counts and therefore
+    every `feasibility()` verdict."""
+    from research.situation_catalogue import trailing_quantile
+
+    a = np.arange(100.0)
+    out = trailing_quantile(a, 0.5, window=10, step=10)
+    # the first full window is a[0:10]; its median is assigned from index 10
+    assert np.isnan(out[:10]).all(), "bars before the first full window must be NaN"
+    assert out[10] == np.quantile(a[0:10], 0.5)
+    assert out[20] == np.quantile(a[10:20], 0.5)
+
+
+def test_appending_future_bars_does_not_change_an_earlier_threshold():
+    """The property, asserted directly rather than inferred. This is what
+    a whole-array quantile violates."""
+    from research.situation_catalogue import trailing_quantile
+
+    short = np.arange(60.0)
+    long = np.arange(600.0)
+    a = trailing_quantile(short, 0.9, window=10, step=10)
+    b = trailing_quantile(long, 0.9, window=10, step=10)
+    np.testing.assert_array_equal(a[:60], b[:60])
+
+
+def test_a_whole_array_quantile_would_fail_that_property():
+    """Proves the test above can fail — the guard is only worth having if
+    the thing it forbids actually trips it."""
+    short, long = np.arange(60.0), np.arange(600.0)
+    assert pct_rank_threshold(short, 0.9) != pct_rank_threshold(long, 0.9)
+
+
+def test_the_threshold_is_constant_between_recalibrations():
+    """A trader recalibrates periodically, not every bar; holding the
+    threshold is what makes this cheap on 3.66M bars."""
+    from research.situation_catalogue import trailing_quantile
+
+    out = trailing_quantile(np.arange(100.0), 0.5, window=10, step=10)
+    assert len(set(out[10:20])) == 1
+
+
+def test_a_window_of_all_nans_yields_nan_rather_than_guessing():
+    from research.situation_catalogue import trailing_quantile
+
+    a = np.full(40, np.nan)
+    assert np.isnan(trailing_quantile(a, 0.5, window=10, step=10)).all()

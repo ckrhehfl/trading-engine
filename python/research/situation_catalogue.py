@@ -67,7 +67,10 @@ def roll_sum_prior(a: np.ndarray, w: int) -> np.ndarray:
     cs = np.concatenate([[0.0], np.cumsum(np.nan_to_num(a))])
     out = np.full(n, np.nan)
     idx = np.arange(n)
-    ok = idx >= w + 1
+    # `idx >= w`, not `w + 1`: at index w the prior w values are a[0..w-1],
+    # which is exactly one full window. The stricter bound left the first
+    # valid window NaN and delayed every volume signal by one bar.
+    ok = idx >= w
     hi = idx[ok]
     out[ok] = cs[hi] - cs[hi - w]
     return out
@@ -115,8 +118,53 @@ def feasibility(per_year: float, round_trip: float = DEFAULT_ROUND_TRIP) -> tupl
 
 
 def pct_rank_threshold(a: np.ndarray, q: float) -> float:
+    """The `q`-quantile of the finite values of `a`.
+
+    **Whole-array, so it is lookahead if applied per-bar** -- kept only
+    for one-shot reporting over a closed window. Per-bar classification
+    must use `trailing_quantile`.
+    """
     finite = a[np.isfinite(a)]
     return float(np.quantile(finite, q)) if finite.size else np.nan
+
+
+#: Recalibration cadence and lookback for `trailing_quantile`, in bars.
+#: One trading day and thirty, at 1m resolution. A trader recalibrates
+#: periodically rather than every bar, and a daily step keeps 3.66M bars
+#: to ~2,500 quantile computations.
+QUANTILE_STEP = 1440
+QUANTILE_WINDOW = 43_200
+
+
+def trailing_quantile(
+    a: np.ndarray,
+    q: float,
+    window: int = QUANTILE_WINDOW,
+    step: int = QUANTILE_STEP,
+) -> np.ndarray:
+    """Per-bar `q`-quantile computed from **prior bars only**.
+
+    **This exists because the first version of this module used a
+    whole-array quantile**, so a bar at time `i` was classified as
+    "top 10% of volume" using volume from after `i`. That is precisely
+    what CLAUDE.md's look-ahead clause forbids -- *"no feature may be
+    computed using statistics ... derived from data outside what would
+    actually have been available at that point in time"* -- and it moved
+    the event counts and therefore the cost verdicts.
+
+    The threshold is recomputed every `step` bars from the preceding
+    `window` bars and held constant until the next recalibration, so a bar
+    is never classified using itself or anything after it. Bars before the
+    first full window get `NaN` and are excluded rather than guessed.
+    """
+    n = a.size
+    out = np.full(n, np.nan)
+    for start in range(window, n, step):
+        prior = a[max(0, start - window) : start]
+        finite = prior[np.isfinite(prior)]
+        if finite.size:
+            out[start : start + step] = float(np.quantile(finite, q))
+    return out
 
 
 def main() -> int:
@@ -131,24 +179,27 @@ def main() -> int:
     prior_low_4h = roll_extreme(l, 240, True)
     prior_high_4h = roll_extreme(h, 240, False)
 
+    # Every threshold below is a TRAILING quantile: computed from prior
+    # bars only and held until the next recalibration. A whole-array
+    # quantile would classify a bar using data from after it.
     vol60 = roll_sum_prior(v, 60)
-    vol60_hi = pct_rank_threshold(vol60, 0.90)
-    vol60_top1 = pct_rank_threshold(vol60, 0.99)
+    vol60_hi = trailing_quantile(vol60, 0.90)
+    vol60_top1 = trailing_quantile(vol60, 0.99)
 
     rng = h - l
-    rng60_max = np.full(n, np.nan)
     # trailing 60-bar high-low range, prior-only
     ph60 = roll_extreme(h, 60, False)
     pl60 = roll_extreme(l, 60, True)
     rng60 = (ph60 - pl60) / c
-    rng60_lo = pct_rank_threshold(rng60, 0.10)
+    rng60_lo = trailing_quantile(rng60, 0.10)
 
     body = np.abs(c - o) / c
-    body_lo = pct_rank_threshold(body, 0.10)
+    body_lo = trailing_quantile(body, 0.10)
 
     taker_sell = v - tb
-    imb = np.where(v > 0, np.abs(tb - taker_sell) / v, np.nan)
-    imb_hi = pct_rank_threshold(imb, 0.95)
+    with np.errstate(invalid="ignore"):
+        imb = np.where(v > 0, np.abs(tb - taker_sell) / v, np.nan)
+    imb_hi = trailing_quantile(imb, 0.95)
 
     # round numbers: BTC trades in thousands; use 1,000 USD grid
     grid = 1000.0
@@ -171,13 +222,13 @@ def main() -> int:
     add("3  round-number touch (within 0.02% of a $1k level)",
         dist_round < 0.0002)
     add("4  abnormal activity (60m volume, top 10%)",
-        np.isfinite(vol60) & (vol60 >= vol60_hi))
+        np.isfinite(vol60) & np.isfinite(vol60_hi) & (vol60 >= vol60_hi))
     add("4b abnormal activity (60m volume, top 1%)",
-        np.isfinite(vol60) & (vol60 >= vol60_top1))
+        np.isfinite(vol60) & np.isfinite(vol60_top1) & (vol60 >= vol60_top1))
     add("7  range expansion after compression",
-        np.isfinite(rng60) & (rng60 <= rng60_lo) & (rng > (ph60 - pl60) * 0.5))
+        np.isfinite(rng60) & np.isfinite(rng60_lo) & (rng60 <= rng60_lo) & (rng > (ph60 - pl60) * 0.5))
     add("10 absorption (volume top 10%, body bottom 10%)",
-        np.isfinite(vol60) & (vol60 >= vol60_hi) & np.isfinite(body) & (body <= body_lo))
+        np.isfinite(vol60) & np.isfinite(vol60_hi) & (vol60 >= vol60_hi) & np.isfinite(body) & np.isfinite(body_lo) & (body <= body_lo))
     # FVG: bar i-1 high < bar i+1 low  (evaluated at i+1, no future use)
     fvg_up = np.zeros(n, dtype=bool)
     fvg_up[2:] = h[:-2] < l[2:]
@@ -186,7 +237,7 @@ def main() -> int:
     fvg_dn[2:] = l[:-2] > h[2:]
     add("12b fair value gap, bearish", fvg_dn)
     add("--  taker imbalance extreme (top 5%)",
-        np.isfinite(imb) & (imb >= imb_hi))
+        np.isfinite(imb) & np.isfinite(imb_hi) & (imb >= imb_hi))
 
     # rd-b gave stage 1 a FLOOR (>=20/yr to be measurable) and no CEILING.
     # The ceiling is the more binding constraint and it is pure arithmetic:
