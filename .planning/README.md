@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-91 documents and counting, which is past the point where `ls` is a
+92 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -211,3 +211,4 @@ The first direction that adds an evidence source rather than re-asking BTC price
 Stepping back from candidates to ask what instrument the question needs.
 
 - [`rd-a-why-it-failed-and-what-to-measure.md`](rd-a-why-it-failed-and-what-to-measure.md) — Research Direction Task A — `Discuss`: the failure was an instrument, not a strategy
+- [`rd-b-situations-not-formulas.md`](rd-b-situations-not-formulas.md) — Research Direction Task B — `Discuss`: situations, not formulas

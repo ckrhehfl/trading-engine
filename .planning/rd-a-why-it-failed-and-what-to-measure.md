@@ -208,6 +208,21 @@ actually work, one from `√252·√(1/T)`.
 
 ## 5. The proposed program
 
+> **§5 AND §6 ARE SUPERSEDED, 2026-09-14, by
+> [`rd-b-situations-not-formulas.md`](rd-b-situations-not-formulas.md).**
+> The diagnosis in §1–4 stands. The prescription below does not, and the
+> operator caught why: it says *"the instrument was too noisy"* and then
+> silently requires enormous samples — which is a requirement of an
+> **always-on** strategy, and pushes toward statistical arbitrage and away
+> from what a trader actually does. A **conditional** setup is *more*
+> measurable than an always-on one, not less: 1,196 events beats 30 daily
+> observations by a wide margin. And the IC layer below is still the
+> **formula** paradigm, merely a cheaper version of it — it asks whether a
+> number predicts returns, never whether a *situation* has a skewed
+> outcome. Kept unedited because a retraction that is quietly deleted
+> teaches nothing.
+
+
 **One principle: match the instrument to the question, and spend `N` only
 where it is unavoidable.**
 
