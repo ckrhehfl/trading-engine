@@ -137,12 +137,18 @@ class EventTest:
 
     @property
     def control_suspect(self) -> bool:
-        """True when the control arm's own deviation from the baseline is
-        large enough to account for the difference being claimed.
+        """True when `|control_bias| >= |difference| / 2`.
 
-        **This is a veto, not a warning.** If the control has drifted
-        further from unconditional than the size of the effect, the
-        "effect" is a statement about the control construction.
+        **This is a veto, not a warning**, and the threshold is *half* the
+        claimed difference, not all of it: a control that has moved half
+        the effect's size away from its own strata-matched baseline is
+        already the dominant explanation, since the event arm only has to
+        supply the other half.
+
+        The real case it was written for -- S2 at h=1440 -- has
+        `|control_bias| = 87.77bp` against `|difference| = 130.50bp`.
+        That is **67.3%** of the difference, comfortably over the 65.25bp
+        half-threshold.
         """
         return abs(self.control_bias) >= abs(self.difference) / 2.0
 
@@ -182,8 +188,11 @@ def verify_continuity(
     `declared` is a parameter so the guard is usable on any series, not
     only this module's.
     """
-    if t_ms.size < 2:
-        return
+    # No early return on a short series: with a non-empty declaration, an
+    # empty or single-row input is a MISSING declared gap, not a trivially
+    # valid one. `np.diff` handles short arrays, so the comparison below
+    # rejects it correctly. (An empty input would otherwise fail later and
+    # less legibly, at `realised_vol_prior`'s `close[0]`.)
     steps = np.diff(t_ms)
     irregular = steps != 60_000
     # The SIZE is declared, not only the position: a 3-minute gap where a

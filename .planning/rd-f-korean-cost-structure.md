@@ -145,10 +145,10 @@ The last 250 days, per name, for reference:
 minimum price *increment*; the quoted bid-ask can be several ticks wide,
 and daily closes cannot measure it — only quote or trade data can. So
 "one tick = the round-trip cost of crossing" is the **best case**, and
-every figure derived from it (9.85bp, 6.5bp, 32bp, 28bp) is
-correspondingly **biased low**. If the real spread is two ticks the round
-trip is ~42bp over the window, and §2's single surviving candidate does
-not survive either.
+every figure derived from it is correspondingly **biased low**. At two
+ticks the window round trip is `20.0 + 2×9.85 + 3.539 = ` **43.24bp**, and
+§2's single surviving candidate does not survive either — pinned by
+`test_a_two_tick_spread_removes_the_last_korean_survivor`.
 
 Measuring the realised spread needs intraday quote or trade data, which
 [`rd-c`](rd-c-kis-flow-probe-result.md) shows is obtainable for ~250

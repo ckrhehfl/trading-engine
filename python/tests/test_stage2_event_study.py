@@ -289,6 +289,7 @@ def test_a_gap_that_is_not_declared_is_refused():
 
     t = np.arange(0, 10 * 60_000, 60_000)
     verify_continuity(t, declared=())  # contiguous, none declared: fine
+    verify_continuity(np.array([], dtype=np.int64), declared=())
     broken = np.delete(t, 5)
     with pytest.raises(ValueError, match="gap set does not match"):
         verify_continuity(broken, declared=())
@@ -451,3 +452,30 @@ def test_a_significant_test_with_an_unbiased_control_still_advances():
 def test_control_bias_is_measured_against_the_unconditional_baseline():
     r = _result(0.5, diff=0.01, control_mean=-0.004, unconditional_mean=0.001)
     assert r.control_bias == pytest.approx(-0.005)
+
+
+def test_a_short_series_does_not_bypass_a_non_empty_declaration():
+    """An empty or single-row input is a MISSING declared gap, not a
+    trivially valid series -- and it would otherwise fail later and less
+    legibly, at realised_vol_prior's close[0]."""
+    from research.stage2_event_study import verify_continuity
+
+    for t in (np.array([], dtype=np.int64), np.array([0], dtype=np.int64)):
+        with pytest.raises(ValueError, match="declared-but-absent"):
+            verify_continuity(t, declared=((60_000, 120_000),))
+
+
+def test_the_veto_threshold_is_half_the_difference_not_all_of_it():
+    """S2 at h=1440: |bias| 87.77bp against |diff| 130.50bp is 67.3%, over
+    the 65.25bp half-threshold. A whole-difference rule would not fire."""
+    # control -73.05bp, strata baseline +14.71bp -> bias -87.76bp
+    r = _result(0.001, diff=0.013050, control_mean=-0.007305, unconditional_mean=0.001471)
+    assert abs(r.control_bias) * 1e4 == pytest.approx(87.76, abs=0.05)
+    assert abs(r.control_bias) < abs(r.difference)          # not the whole
+    assert abs(r.control_bias) >= abs(r.difference) / 2.0   # but over half
+    assert r.control_suspect
+
+
+def test_a_control_just_under_half_is_not_vetoed():
+    r = _result(0.001, diff=0.010, control_mean=0.0049, unconditional_mean=0.0)
+    assert not r.control_suspect

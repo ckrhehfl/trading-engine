@@ -19,8 +19,10 @@ an edge, or reported as a pass.**
 > **pre-specified** showed it was an artifact of how the controls were
 > built. Repairing a *second* defect — overlapping forward windows — made
 > that artifact **larger**, which is what exposed the design problem:
-> **a matched placebo built by excluding a directional situation's
-> neighbourhood cannot be unbiased at any horizon.**
+> **on this series, at every one of the twelve tests, a matched placebo
+> built by excluding a directional situation's neighbourhood carried a
+> biased control arm — and the bias grew with the exclusion radius that
+> disjointness demands.**
 
 That pre-specified suspicion is the reason this document is not reporting
 a discovery. rd-g named the *suspicion*, not this particular diagnostic —
@@ -217,11 +219,18 @@ And the `ctrl bias` column shows it is not confined to H4: **the control
 arm deviates from the unconditional baseline in all twelve tests**, and in
 most of them by more than the difference being measured.
 
-> **The complement of "near an up-move" is "a down-move."** A matched
-> placebo built by excluding a directional situation's neighbourhood
-> cannot be unbiased, at any horizon, and the bias grows with the
-> exclusion radius that disjointness requires. The two constraints are in
-> direct opposition.
+> **The complement of "near an up-move" is "a down-move."** That is the
+> mechanism, and it was observed in **all twelve tests here** — the bias
+> growing with the exclusion radius disjointness requires, so the two
+> constraints pull against each other.
+
+**Stated at the scope the evidence covers**, rather than as a theorem:
+this is twelve tests on one instrument over one 6.96-year window. It is
+not a proof that every exclusion-based control is biased under every
+data-generating process — a series with no persistent drift, or a
+situation whose neighbourhood is uncorrelated with forward returns, need
+not show it. What it is: **enough to stop using this instrument here**,
+and enough to make the baseline check mandatory anywhere it is used.
 
 **So the instrument needs replacing, not retuning.** A control drawn from
 the same series by *excluding* the event partitions the series by the
@@ -248,9 +257,10 @@ correction, and visible immediately in the baselines.
   evidence the situations are worthless — it is a failure to detect,
   under one specific placebo construction that has now been shown to be
   faulty.
-- **That a directional exclusion rule biases a matched control.** This is
-  a general result about the method, not about these three situations, and
-  it applies to any future event study here.
+- **That a directional exclusion rule biased the control in all twelve
+  tests here.** The mechanism is general; the *demonstration* is one
+  instrument, one window, three situations. Enough to abandon the
+  instrument and to make the baseline check mandatory — not a theorem.
 - **That the pre-specified suspicion did its job.** It was registered
   before the number existed; without it, `t = 2.76, p = 0.0059,
   +15.55bp` on a rare, cost-feasible, mechanically-motivated situation is
