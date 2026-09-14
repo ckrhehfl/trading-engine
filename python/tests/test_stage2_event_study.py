@@ -245,3 +245,101 @@ def test_welch_survives_zero_variance():
     a = np.ones(10)
     t, p, df = welch(a, np.ones(10))
     assert (t, p, df) == (0.0, 1.0, 1)
+
+
+# ------------------------------------------------- review-driven guards
+
+
+def test_a_gap_that_is_not_declared_is_refused():
+    """Row indices are read as minutes, so an undeclared gap silently
+    stretches every forward window spanning it."""
+    from research.stage2_event_study import verify_continuity
+
+    t = np.arange(0, 10 * 60_000, 60_000)
+    verify_continuity(t, declared=())  # contiguous, none declared: fine
+    broken = np.delete(t, 5)
+    with pytest.raises(ValueError, match="gap set does not match"):
+        verify_continuity(broken, declared=())
+
+
+def test_a_declared_gap_that_has_vanished_is_also_refused():
+    """If the series no longer has the gap this project measured, it is
+    not the series these results were computed on."""
+    from research.stage2_event_study import verify_continuity
+
+    t = np.arange(0, 10 * 60_000, 60_000)
+    with pytest.raises(ValueError, match="declared-but-absent"):
+        verify_continuity(t, declared=(300_000,))
+
+
+def test_a_declared_gap_is_accepted():
+    from research.stage2_event_study import KNOWN_GAP_STARTS_MS, verify_continuity
+
+    gap = KNOWN_GAP_STARTS_MS[0]
+    t = np.array([gap - 60_000, gap, gap + 120_000, gap + 180_000])
+    verify_continuity(t)  # the module default declares exactly this gap
+
+
+def test_the_effective_cooldown_grows_with_the_horizon():
+    """rd-g fixed a 240-bar cooldown and a 1,440-bar horizon, which cannot
+    both hold under a t-test: two events 300 bars apart share 1,140 bars of
+    a 1,440-bar window."""
+    from research.stage2_event_study import COOLDOWN, effective_cooldown
+
+    assert effective_cooldown(15) == COOLDOWN
+    assert effective_cooldown(60) == COOLDOWN
+    # h=240 needs 241: an event at i occupies [i+1, i+241], so the next
+    # event must start at i+241 or later for the windows to be disjoint.
+    assert effective_cooldown(240) == 241
+    assert effective_cooldown(1440) == 1441
+    assert effective_cooldown(1440, enforce=False) == COOLDOWN
+
+
+def test_events_spaced_by_the_effective_cooldown_do_not_overlap():
+    from research.stage2_event_study import effective_cooldown
+
+    h = 1440
+    mask = np.zeros(20_000, bool)
+    mask[[1000, 1300, 2600, 5000]] = True
+    ev = collapse(mask, cooldown=effective_cooldown(h))
+    assert (np.diff(ev) > h).all(), "forward windows must be disjoint"
+
+
+def test_drawn_controls_are_held_apart_when_spacing_is_required():
+    n = 50_000
+    decile, hour = np.zeros(n, np.int8), np.zeros(n, np.int8)
+    eligible = np.ones(n, bool)
+    events = np.array([10_000, 20_000, 30_000])
+    _, ctrl, _ = match_controls(
+        events, decile, hour, eligible, np.random.default_rng(5), min_spacing=1441
+    )
+    assert (np.diff(np.sort(ctrl)) >= 1441).all()
+
+
+def test_welch_reports_a_real_difference_between_unequal_constants():
+    """`a=[1,1]`, `b=[2,2]` have different means and zero variance;
+    reporting (0, 1) inverts the answer."""
+    t, p, _ = welch(np.array([1.0, 1.0]), np.array([2.0, 2.0]))
+    assert t == -np.inf and p == 0.0
+
+
+def test_welch_keeps_fractional_degrees_of_freedom():
+    rng = np.random.default_rng(11)
+    _, _, df = welch(rng.normal(0, 1, 30), rng.normal(0, 3, 80))
+    assert df != int(df), "Welch-Satterthwaite df is fractional and was truncated"
+
+
+def test_the_boundary_break_counts_as_an_event():
+    """rd-g says 'broken by >=0.3%'; a strict comparison drops exactly-0.3%."""
+    from research.stage2_event_study import situations
+
+    n = 3000
+    o = np.full(n, 100.0)
+    hi = np.full(n, 100.0)
+    lo = np.full(n, 100.0)
+    c = np.full(n, 100.0)
+    v = np.ones(n)
+    t = np.arange(n, dtype=np.int64) * 60_000
+    lo[2000] = 100.0 * 0.997  # exactly 0.3% below the prior low
+    out = situations(t, o, hi, lo, c, v)
+    assert out["S1 support penetration"][2000], "an exactly-0.3% break must count"

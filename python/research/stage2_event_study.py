@@ -55,6 +55,17 @@ from research.situation_catalogue import (
 
 SYMBOL = "BINANCE-FUTURES:BTCUSDT"
 
+#: The one real gap in this series, from CLAUDE.md's measured retention
+#: table: `[2019-09-08T19:00:00Z, 2019-09-08T19:01:00Z)`, one missing bar.
+#:
+#: Declared rather than tolerated. Every rolling window and every
+#: `forward_return` in this module reads a row index as a minute, so an
+#: **undeclared** gap silently makes `idx + 1 + h` span more than `h`
+#: minutes and distorts both the event definition and the return. The
+#: guard fails closed on any gap that is not this one -- the same shape as
+#: `run_preregistered_holdout.verify_known_gaps`.
+KNOWN_GAP_STARTS_MS = (1567969140000,)  # last bar before it: 2019-09-08T18:59:00Z
+
 #: rd-g §1. Fixed; extending it makes the reported FDR meaningless.
 HORIZONS = (15, 60, 240, 1440)
 FAMILY_SIZE = 12
@@ -108,7 +119,35 @@ def load(db_path: str = DEFAULT_DB_PATH):
     conn.close()
     t = np.array([r[0] for r in rows], dtype=np.int64)
     o, h, l, c, v = (np.array([float(r[i]) for r in rows]) for i in range(1, 6))
+    verify_continuity(t)
     return t, o, h, l, c, v
+
+
+def verify_continuity(
+    t_ms: np.ndarray, declared: tuple[int, ...] = KNOWN_GAP_STARTS_MS
+) -> None:
+    """Refuse a series whose gaps are not exactly the declared ones.
+
+    A *missing* declared gap fails too, not only an extra one: if the
+    series no longer has the gap this project measured, it is not the
+    series these results were computed on, and that is worth stopping for
+    rather than absorbing silently.
+
+    `declared` is a parameter so the guard is usable on any series, not
+    only this module's.
+    """
+    if t_ms.size < 2:
+        return
+    steps = np.diff(t_ms)
+    found = tuple(int(x) for x in t_ms[:-1][steps != 60_000])
+    if found != tuple(declared):
+        extra = sorted(set(found) - set(declared))
+        missing = sorted(set(declared) - set(found))
+        raise ValueError(
+            f"1m gap set does not match the declaration -- undeclared {extra}, "
+            f"declared-but-absent {missing}. Row indices are read as minutes, so "
+            f"an undeclared gap silently stretches every forward window spanning it"
+        )
 
 
 def realised_vol_prior(close: np.ndarray, w: int = VOL_WINDOW) -> np.ndarray:
@@ -158,8 +197,10 @@ def situations(t, o, h, l, c, v) -> dict[str, np.ndarray]:
     vol60 = roll_sum_prior(v, 60)
     vol60_top1 = trailing_quantile(vol60, 0.99)
     return {
-        "S1 support penetration": np.isfinite(prior_low) & (l < prior_low * 0.997),
-        "S2 resistance break": np.isfinite(prior_high) & (h > prior_high * 1.003),
+        # rd-g section 1 says "broken by >=0.3%"; strict comparisons would
+        # drop an event that breaks by exactly that.
+        "S1 support penetration": np.isfinite(prior_low) & (l <= prior_low * 0.997),
+        "S2 resistance break": np.isfinite(prior_high) & (h >= prior_high * 1.003),
         "S3 abnormal activity": (
             np.isfinite(vol60) & np.isfinite(vol60_top1) & (vol60 >= vol60_top1)
         ),
@@ -194,6 +235,7 @@ def match_controls(
     eligible: np.ndarray,
     rng: np.random.Generator,
     k: int = CONTROLS_PER_EVENT,
+    min_spacing: int = 0,
 ) -> tuple[np.ndarray, np.ndarray, int]:
     """`(kept_events, controls, n_dropped)`.
 
@@ -209,6 +251,11 @@ def match_controls(
     control count: a dropped event can sit anywhere in the sequence, so
     slicing the event array by `len(controls) // k` silently pairs the
     wrong events with the wrong controls.
+
+    `min_spacing` keeps drawn controls that far apart, so their forward
+    windows do not overlap each other either. Without it the *control*
+    arm carries the same dependence the event arm was just cleaned of, and
+    the t-test's denominator is still wrong.
     """
     pools: dict[tuple[int, int], np.ndarray] = {}
     where = np.where(eligible)[0]
@@ -220,30 +267,42 @@ def match_controls(
     chosen: list[int] = []
     kept: list[int] = []
     dropped = 0
+    # A boolean block mask rather than pairwise distances: marking a
+    # picked control's neighbourhood is O(min_spacing) per draw, where
+    # comparing every candidate against every prior pick is O(|pool| x
+    # |chosen|) and on this series that is billions of comparisons.
+    blocked = np.zeros(decile.size, dtype=bool)
     for i in events:
         key = (int(decile[i]), int(hour[i]))
         pool = pools.get(key)
         if pool is None or pool.size - len(taken[key]) < k:
             dropped += 1
             continue
-        picked: list[int] = []
-        # Rejection-sample against what this stratum has already given out,
-        # so a control is never counted twice inside one test.
-        attempts = 0
-        while len(picked) < k and attempts < 50 * k:
-            cand = int(pool[rng.integers(pool.size)])
-            attempts += 1
-            if cand not in taken[key]:
-                taken[key].add(cand)
-                picked.append(cand)
-        if len(picked) < k:
-            # Put back what this event took; a partial draw must not
-            # deplete the stratum for the events that follow it.
-            for c in picked:
-                taken[key].discard(c)
+        # Draw from what is ACTUALLY still available, rather than
+        # rejection-sampling with an attempt budget: a budget can exhaust
+        # itself on repeated hits even when k candidates remain, which
+        # would drop an event the specification says to keep and make the
+        # sample depend on event order.
+        available = pool[~blocked[pool]] if min_spacing > 0 else (
+            pool[~np.isin(pool, list(taken[key]))] if taken[key] else pool
+        )
+        if available.size < k:
             dropped += 1
             continue
-        chosen.extend(picked)
+        picked = np.sort(rng.choice(available, size=k, replace=False))
+        if min_spacing > 0:
+            # The draw itself can place two controls too close together;
+            # thin them and, if that leaves fewer than k, drop the event
+            # rather than accept overlapping control windows.
+            picked = picked[np.concatenate([[True], np.diff(picked) >= min_spacing])]
+            if picked.size < k:
+                dropped += 1
+                continue
+            for x in picked:
+                lo = max(0, int(x) - min_spacing + 1)
+                blocked[lo : int(x) + min_spacing] = True
+        taken[key].update(int(x) for x in picked)
+        chosen.extend(int(x) for x in picked)
         kept.append(int(i))
     return (
         np.array(kept, dtype=np.int64),
@@ -252,7 +311,7 @@ def match_controls(
     )
 
 
-def welch(a: np.ndarray, b: np.ndarray) -> tuple[float, float, int]:
+def welch(a: np.ndarray, b: np.ndarray) -> tuple[float, float, float]:
     """`(t, p, df)` for a two-sided Welch test. Welch rather than Student
     because the event arm is by construction the higher-volatility one, so
     equal variances is exactly the assumption that fails here."""
@@ -260,11 +319,17 @@ def welch(a: np.ndarray, b: np.ndarray) -> tuple[float, float, int]:
     va, vb = a.var(ddof=1), b.var(ddof=1)
     se2 = va / na + vb / nb
     if se2 <= 0:
-        return 0.0, 1.0, 1
+        # Both samples are constant. Equal constants are genuinely no
+        # difference; UNEQUAL constants are the clearest possible
+        # difference, and reporting (0, 1) for them inverts the answer.
+        return (0.0, 1.0, 1.0) if a.mean() == b.mean() else (
+            math.inf if a.mean() > b.mean() else -math.inf, 0.0, 1.0
+        )
     t = (a.mean() - b.mean()) / math.sqrt(se2)
-    df = se2**2 / ((va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1))
-    dfi = max(1, int(df))
-    return t, _t_distribution_two_sided_p_value(t, dfi), dfi
+    # Welch-Satterthwaite df is fractional and the p-value formula accepts
+    # a real df, so truncating it throws away precision for nothing.
+    df = max(1.0, se2**2 / ((va / na) ** 2 / (na - 1) + (vb / nb) ** 2 / (nb - 1)))
+    return t, _t_distribution_two_sided_p_value(t, df), df
 
 
 def benjamini_hochberg(results: list[EventTest], q: float = FDR_Q) -> list[EventTest]:
@@ -333,7 +398,42 @@ def control_pool(
     return (~near) & (decile >= 0) & (idx + 1 + horizon < n) & (idx >= 1)
 
 
-def run(db_path: str = DEFAULT_DB_PATH, rule: str = "own") -> list[EventTest]:
+#: Whether event (and control) forward windows are forced to be disjoint.
+#:
+#: **rd-g's specification is internally inconsistent and this is the
+#: repair.** It fixes an episode cooldown of 240 bars and horizons up to
+#: 1,440, then applies a two-sample t-test -- but a t-test is a statement
+#: about *independent* observations, and two events 300 bars apart share
+#: 1,140 bars of a 1,440-bar forward window. Measured on the real series:
+#: H1 and H2 have **zero** overlapping pairs, H3 has 1-37, and **H4 has
+#: 308-531 out of 785-1,196, i.e. 39-44%**.
+#:
+#: CLAUDE.md already records this exact error shape -- S13's t of 7-8 was
+#: really 1.5-2.6 once overlap was removed -- and already records the
+#: lesson that *"building the right tool does not protect you if the next
+#: analysis does not use it."* `research.conclusion_check
+#: .check_disjoint_intervals` is that tool and was not applied.
+#:
+#: Overlap inflates significance, so the as-specified run erred toward
+#: FALSE POSITIVES. Its "zero of twelve" conclusion is therefore unaffected
+#: in direction; its H3/H4 p-values are not.
+ENFORCE_DISJOINT_WINDOWS = True
+
+
+def effective_cooldown(horizon: int, enforce: bool = ENFORCE_DISJOINT_WINDOWS) -> int:
+    """The episode spacing a horizon actually requires.
+
+    `horizon + 1` because entry is the bar *after* the event, so an event
+    at `i` occupies `[i+1, i+1+horizon]`.
+    """
+    return max(COOLDOWN, horizon + 1) if enforce else COOLDOWN
+
+
+def run(
+    db_path: str = DEFAULT_DB_PATH,
+    rule: str = "own",
+    enforce_disjoint: bool = ENFORCE_DISJOINT_WINDOWS,
+) -> list[EventTest]:
     t, o, h, l, c, v = load(db_path)
     n = c.size
     vol = realised_vol_prior(c)
@@ -342,17 +442,30 @@ def run(db_path: str = DEFAULT_DB_PATH, rule: str = "own") -> list[EventTest]:
     rng = np.random.default_rng(SEED)
 
     masks = situations(t, o, h, l, c, v)
+    # The exclusion map uses the base cooldown: it answers "is this bar
+    # near an event", which does not depend on the horizon being tested.
     all_events = {name: collapse(m) for name, m in masks.items()}
 
     results: list[EventTest] = []
     for name in masks:
-        ev_all = all_events[name]
         for hz in HORIZONS:
+            cd = effective_cooldown(hz, enforce_disjoint)
+            ev_all = collapse(masks[name], cooldown=cd)
             ev = ev_all[(ev_all + 1 + hz) < n]
             eligible = control_pool(n, hz, decile, all_events, name, rule)
-            kept, ctrl, dropped = match_controls(ev, decile, hour, eligible, rng)
+            kept, ctrl, dropped = match_controls(
+                ev, decile, hour, eligible, rng, min_spacing=cd if enforce_disjoint else 0
+            )
             if ctrl.size == 0 or kept.size < 2:
-                continue
+                # rd-g section 4 requires exactly twelve tests, all
+                # reported. Silently skipping one would leave BH dividing
+                # by a family larger than what was actually run, and the
+                # missing cell would appear nowhere.
+                raise ValueError(
+                    f"{name} at h={hz} produced no testable sample "
+                    f"({kept.size} events, {ctrl.size} controls, {dropped} dropped); "
+                    f"the specification requires all {FAMILY_SIZE} tests to run"
+                )
             a = forward_return(o, kept, hz)
             b = forward_return(o, ctrl, hz)
             tstat, p, _ = welch(a, b)
@@ -370,6 +483,10 @@ def run(db_path: str = DEFAULT_DB_PATH, rule: str = "own") -> list[EventTest]:
                     p_value=float(p),
                 )
             )
+    if len(results) != FAMILY_SIZE:
+        raise ValueError(
+            f"produced {len(results)} tests, specification fixes {FAMILY_SIZE}"
+        )
     return benjamini_hochberg(results)
 
 

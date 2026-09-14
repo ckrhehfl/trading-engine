@@ -15,10 +15,13 @@ an edge, or reported as a pass.**
 ## 1. The headline
 
 > **Zero of twelve survive.** One test cleared both gates as specified,
-> and the placebo diagnostic that rd-g §6 **mandated in advance** shows it
-> was an artifact of how the controls were built.
+> and the placebo suspicion that rd-g §6 **pre-specified** shows it was an
+> artifact of how the controls were built.
 
-That mandate is the reason this document is not reporting a discovery.
+That pre-specified suspicion is the reason this document is not reporting
+a discovery. rd-g named the *suspicion*, not this particular diagnostic —
+the symmetric-exclusion comparison below was chosen after the fact, and
+only the direction to look was fixed in advance.
 rd-g §6 registered three predictions, and the one that mattered read:
 
 > *"The effect will be small enough to fail condition 2 … **If prediction
@@ -98,6 +101,68 @@ nothing else:
 The event arm is **identical**. Every part of the "effect" came from the
 control arm. **Zero of twelve survive.**
 
+## 3.5 A second defect, in the specification itself
+
+**rd-g fixed an episode cooldown of 240 bars and horizons up to 1,440,
+then applied a two-sample t-test.** Those are mutually inconsistent: a
+t-test is a statement about *independent* observations, and two events
+300 bars apart share 1,140 bars of a 1,440-bar forward window.
+
+Found on CodeRabbit review of PR #169, measured on the real series:
+
+| horizon | overlapping event pairs | of |
+|---|---|---|
+| H1 (15) | **0** | — |
+| H2 (60) | **0** | — |
+| H3 (240) | 1 – 37 | 786 – 1,196 |
+| **H4 (1,440)** | **308 – 531** | **785 – 1,196 (39–44%)** |
+
+**CLAUDE.md already records this exact error shape** — S13's `t = 7–8`
+was really 1.5–2.6 once overlap was removed — and already records the
+lesson: *"building the right tool does not protect you if the next
+analysis does not use it."* `research.conclusion_check
+.check_disjoint_intervals` is that tool, and it was not applied.
+
+**Two things limit the damage, and neither excuses it.** Overlap inflates
+significance, so the as-specified run erred toward **false positives**,
+which cannot manufacture the "zero of twelve" conclusion. And the one
+apparently-significant cell was **H3 with a single overlapping pair out of
+1,170** — so overlap is not what produced it; §3's placebo is.
+
+### The corrected run
+
+Re-run with forward windows forced disjoint (episode spacing
+`max(240, h+1)`, and drawn controls held that far apart too), plus the
+other review fixes — a fail-closed data-continuity check, the `≥0.3%`
+boundary the specification actually specified, direct sampling instead of
+a rejection loop with an attempt budget, and fractional Welch df:
+
+| Situation | h | events | drop | diff bp | t | p | BH |
+|---|---|---|---|---|---|---|---|
+| S2 resistance break | 240 | 1,096 | 73 | +14.46 | 2.48 | **1.3e-02** | **no** |
+| S1 support penetration | 240 | 1,054 | 140 | −7.78 | −1.29 | 2.0e-01 | no |
+| S3 abnormal activity | 15 | 466 | 320 | +6.37 | 1.16 | 2.5e-01 | no |
+| S3 abnormal activity | 240 | 467 | 319 | +11.77 | 1.02 | 3.1e-01 | no |
+| S2 resistance break | 60 | 1,102 | 68 | +3.65 | 0.94 | 3.5e-01 | no |
+| S1 support penetration | 1440 | 349 | 407 | +11.33 | 0.52 | 6.1e-01 | no |
+| S3 abnormal activity | 1440 | 227 | 314 | −14.69 | −0.47 | 6.4e-01 | no |
+| S3 abnormal activity | 60 | 468 | 318 | +1.70 | 0.21 | 8.3e-01 | no |
+| S1 support penetration | 15 | 1,064 | 132 | +0.63 | 0.20 | 8.4e-01 | no |
+| S2 resistance break | 15 | 1,095 | 75 | +0.19 | 0.07 | 9.4e-01 | no |
+| S1 support penetration | 60 | 1,061 | 135 | −0.26 | −0.07 | 9.5e-01 | no |
+| S2 resistance break | 1440 | 347 | 407 | +1.35 | 0.05 | 9.6e-01 | no |
+
+**0 of 12 advance.** The surviving cell moves from `p = 0.0059` to
+`p = 0.0134` and no longer clears the rank-1 BH threshold of 0.00833 — so
+the corrected run reaches the same conclusion by a different route, while
+*still* carrying §3's placebo bias (S2's control is still −9.53bp).
+
+**This is a corrected run, not a restated result.** rd-g's family is
+unchanged and its stopping rule still binds; what changed is that an
+invalid statistic was made valid. The corrected p-values supersede §2's
+for H3 and H4; §2 is kept as the record of what the specification as
+written produced.
+
 ## 4. What this establishes, and what it does not
 
 **Establishes:**
@@ -110,7 +175,7 @@ control arm. **Zero of twelve survive.**
 - **That a directional exclusion rule biases a matched control.** This is
   a general result about the method, not about these three situations, and
   it applies to any future event study here.
-- **That the pre-registration did its job.** The suspicion was registered
+- **That the pre-specified suspicion did its job.** It was registered
   before the number existed; without it, `t = 2.76, p = 0.0059,
   +15.55bp` on a rare, cost-feasible, mechanically-motivated situation is
   exactly the result that becomes a headline.
@@ -133,7 +198,13 @@ control arm. **Zero of twelve survive.**
 
 1. **A corrected stage-2 needs a new specification document**, fixing the
    control construction *and* justifying it, before it runs. The evidence
-   in §3 is the input to that choice, not a licence to skip it.
+   in §3 is the input to that choice, not a licence to skip it. **It must
+   also state its own dependence handling** — §3.5 shows the disjointness
+   repair is necessary and it is not obviously sufficient, since episodes
+   that are merely non-overlapping are still not independent (CLAUDE.md's
+   `check_disjoint_intervals` reports clustering as a *warning* for
+   precisely that reason). A block bootstrap or a dependence-aware
+   permutation test is the honest instrument.
 2. **The three situations are not refuted.** rd-b §4 stage 3 asks a
    different question — *what, observable at decision time, separates the
    branches?* — and a situation with no mean shift can still have a

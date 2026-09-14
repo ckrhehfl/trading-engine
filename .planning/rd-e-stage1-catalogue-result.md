@@ -115,10 +115,15 @@ annual cost drag.
   [`rd-f`](rd-f-korean-cost-structure.md) measures it: **~32bp over the
   KR-10 window** and ~28bp today, of which **20bp is the 증권거래세 +
   농어촌특별세 charged on every sale** — raised to that level on
-  2026-01-01 — plus a **measured** spread of 9.85bp full-window median
-  (6.5bp today; the tick is a fixed 원 amount, so its cost in bp fell as
-  Korean prices rose). Re-scored, **zero of the twelve are feasible at the
-  window's own 32bp, and exactly one at today's 28bp.**
+  2026-01-01 — plus a spread of 9.85bp full-window median (6.5bp today;
+  the tick is a fixed 원 amount, so its cost in bp fell as Korean prices
+  rose). Re-scored: **zero of the twelve are feasible at 32bp, and exactly
+  one at 28bp.**
+
+  **Both are one-tick FLOOR estimates** — a GCD of daily closes measures
+  the minimum price increment, not the quoted bid-ask, so the true round
+  trip is higher and the single 28bp survivor may not survive a measured
+  spread. rd-f §1.2 says so explicitly.
 - **The situation definitions are one parameterisation each.** Penetration
   depth, lookback and percentile thresholds were chosen to match rd-b's
   existing figures, not swept. CLAUDE.md's standing rule — *never conclude

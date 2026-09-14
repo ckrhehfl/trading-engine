@@ -25,6 +25,11 @@ larger, cost structure.
 | 위탁수수료 + 유관기관제비용 | both | ~1–3 | ~1–3 | 유관기관 floor cited; tier not pinned |
 | **Round trip** | | **~32 bp** | **~28 bp** | |
 
+**Both columns apply today's 20bp tax throughout** (see §1.1 item 3) and
+**both use a one-tick spread**, which §1.2 shows is a *lower bound*. So
+both are **floor estimates**, and the true figures are higher by however
+much the real quoted spread exceeds one tick.
+
 **Against BTC's measured 12bp (`scalp-s9`), Korean spot equities cost
 roughly 2.4–2.7× as much — and about two thirds of it is a tax charged
 whether the trade won or lost.**
@@ -61,9 +66,15 @@ markets land on the same 0.20%.
 2. **It is unavoidable.** Unlike a commission it cannot be negotiated to a
    broker tier, and unlike a spread it cannot be reduced by passive
    execution.
-3. **This is a 2026 change**, so any backtest spanning 2019–2025 that
-   applies today's rate overstates historical costs, and one applying the
-   old rate understates today's. A registration must say which it uses.
+3. **The rate has changed repeatedly across the KR-10 window, and the
+   direction of the resulting bias is NOT established here.** 2026 is the
+   latest of several moves, and the earlier ones did not all go the same
+   way — KOSPI's 증권거래세 was *higher* than 0.05% earlier in the window
+   before being cut toward 0, while 농특세 stayed at 0.15%. So applying
+   today's 20bp across 2019–2026 is **a stated simplification, not a
+   conservative one**: it may understate the early years and overstate the
+   late ones. **A per-era schedule must be sourced before any Korean
+   registration**; this document does not have one and does not guess.
 
 *Sources:* [기재부 개정 보도](https://news.nate.com/view/20251201n26338) ·
 [2026 세제 변경 정리](https://www.kiwoomam.com/lounge/KI0502010102M?kijaNo=554) ·
@@ -116,9 +127,22 @@ The last 250 days, per name, for reference:
 | 028300 | HLB | 48,750 | 50 | 10.26 |
 | 051910 | LG화학 | 324,500 | 500 | 15.41 |
 
-**Median 5.45bp today, against 9.85bp over the full window.** Buying at
-the ask and selling at the bid crosses one full spread, so the tick in bp
-*is* the round-trip spread cost for a marketable order.
+**Median 5.45bp today, against 9.85bp over the full window.**
+
+**These are a LOWER BOUND on the spread, not the spread.** A tick is the
+minimum price *increment*; the quoted bid-ask can be several ticks wide,
+and daily closes cannot measure it — only quote or trade data can. So
+"one tick = the round-trip cost of crossing" is the **best case**, and
+every figure derived from it (9.85bp, 6.5bp, 32bp, 28bp) is
+correspondingly **biased low**. If the real spread is two ticks the round
+trip is ~42bp over the window, and §2's single surviving candidate does
+not survive either.
+
+Measuring the realised spread needs intraday quote or trade data, which
+[`rd-c`](rd-c-kis-flow-probe-result.md) shows is obtainable for ~250
+sessions and is **not yet collected**. Until then this section is a
+**one-tick floor scenario**, and it is labelled as such everywhere it is
+used.
 
 **Two honest limitations.** A GCD is a **lower bound** — a name that
 crossed a tick band during the 250 days reports the smaller tick (삼성전기
@@ -175,10 +199,17 @@ finds one marginal survivor. **Which column a registration uses is
 therefore not a detail — it decides the result**, and using today's number
 on historical data is the flattering choice.
 
-The frequencies are BTC's and Korean equities will differ, so the table is
-a projection rather than a measurement — but the **ordering** is a
-property of the situations, and the ceiling moves against all of them
-together.
+**The frequencies are BTC's, so this table is a projection and not a
+measurement — including its ordering.** `feasibility()` scores
+`F × round_trip`, and `F` is the only thing that differs between rows, so
+the ranking above is *entirely* BTC's event frequencies. Korean equities
+have price limits, a call-auction open and close and a 6h45m session;
+any of those can reorder `F` and therefore reorder the survivors.
+
+**So this must not be used to prioritise which situations get a Korean
+stage 2** until Korean frequencies are measured. What does carry over is
+the *level*: the ceiling moves against every situation together, by the
+ratio of the round trips.
 
 **This is the strongest statement of rd-c §2's thesis yet.** *The filter
 is the strategy* is not a preference here; on Korean spot equities a
@@ -197,7 +228,7 @@ is three quarters of the cost above.
 |---|---|---|
 | Universe | **2,718** names | ~265 underlyings |
 | 증권거래세 | **20bp per sale** | **none** |
-| Round trip | **~27bp** | materially lower, **not yet sourced** |
+| Round trip | **~32bp window / ~28bp today** (§1, one-tick floor) | no 증권거래세, otherwise **not sourced** |
 | Selection breadth | the "stocks in play" mechanism works | too narrow for it |
 | History | daily to 1991, intraday ~250 sessions | **KIS serves no expired contract at all** (MS-B §2.1) |
 | Leverage / margin | cash | exchange-set margin, ~₩10k–100k minimum |
