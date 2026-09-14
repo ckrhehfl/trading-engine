@@ -235,14 +235,26 @@ recovery rate is not an edge, and the real question is what is observable
 either. That makes it a genuinely open research question rather than
 something already solved and merely unread.
 
-**#14 — the mechanism is settled, the prediction is settled negative, and
-these are different claims.** The 2025-10-10/11 event liquidated ~$19B
-across 1.6M traders with BTC −14%. Two arXiv papers examining seven
-cascades 2022–2025 swept 39 configurations per variable per event and
-found **no variable is event-invariant**; critical slowing down was
-*absent* precisely where the shock was most abrupt; the branching ratio ran
-deeply subcritical (~0.2). **Early warning does not work** — which
-CLAUDE.md already records.
+**#14 — the mechanism is settled, one specific prediction attempt is
+settled negative, and these are different claims.** The 2025-10-10/11 event
+liquidated ~$19B across 1.6M traders with BTC −14%. Garcia Seuma,
+[arXiv:2607.27070](https://arxiv.org/abs/2607.27070) and
+[arXiv:2608.03616](https://arxiv.org/abs/2608.03616), examine **seven major
+BTC liquidation cascades, 2022–2025**, sweeping **39 configurations per
+variable per event** over the standard critical-slowing-down early-warning
+set — **rolling variance and lag-1 autocorrelation**, both computable from
+OHLCV. They find **no variable is event-invariant** across the seven;
+critical slowing down was *absent* precisely where the shock was most
+abrupt; and the branching ratio ran deeply subcritical (~0.2).
+
+**Stated at the scope the evidence actually covers**, rather than as a
+general verdict: *the OHLCV-computable critical-slowing-down early-warning
+variables tested did not give an event-invariant signal across those seven
+cascades.* That is narrower than "early warning does not work" — it says
+nothing about order-book, funding, or open-interest predictors, none of
+which were tested, and nothing about an eighth cascade. It is enough to
+stop this project pursuing the tested family, which is what CLAUDE.md
+already records.
 
 But the mechanism statement survives and is unusually clean: *"the
 liquidation engine emits forced price-insensitive sell orders"* which
@@ -508,4 +520,4 @@ rd-b §7 asked four; two are answered, and these replace them.
 
 **API reference**
 
-- [KIS Open API portal](https://apiportal.koreainvestment.com/apiservice-category) — `inquire-investor` (`FHKST01010900`, 최근 30일), `foreign-institution-total` (`FHPTJ04400000`); [official samples](https://github.com/koreainvestment/open-trading-api). **Intraday and retention figures unprobed.**
+- [KIS Open API portal](https://apiportal.koreainvestment.com/apiservice-category) — `inquire-investor` (`FHKST01010900`), `foreign-institution-total` (`FHPTJ04400000`), `inquire-time-itemchartprice` (`FHKST03010200`), `inquire-time-dailychartprice` (`FHKST03010230`); [official samples](https://github.com/koreainvestment/open-trading-api). **The portal documents the endpoints but publishes no row cap and no retention depth for any of them** — every such figure in §6 and §7 is this project's own measurement, from [`rd-c-kis-flow-probe-result.md`](rd-c-kis-flow-probe-result.md), not a quoted spec.

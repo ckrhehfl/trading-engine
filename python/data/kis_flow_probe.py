@@ -5,13 +5,18 @@ Two questions, and both are **clocks** rather than curiosities
 
 1. **투자자별 매매동향** -- KRX mandatorily discloses daily net buying by
    개인 / 기관 / 외국인 per stock, and no crypto venue and no US equity
-   feed has an equivalent. KIS's `inquire-investor` is documented as
-   "최근 30일". **If that is real, the series cannot be backfilled**, so a
-   collector has to start now or the history never exists -- exactly
+   feed has an equivalent. **Measured 2026-09-14: exactly 30 rows, and the
+   endpoint takes no date parameter at all**, so the 30 is a horizon rather
+   than a page cap and the series cannot be backfilled -- exactly
    `binance_positioning.py`'s situation.
-2. **Intraday bars** -- the KR-10 store holds daily bars only, so every
-   intraday mechanism in the catalogue is currently untestable on Korean
-   names. Retention here has never been measured.
+2. **Intraday bars** -- the KR-10 store holds daily bars only. **Measured
+   2026-09-14: past sessions go back ~250 trading days, rolling**, with the
+   boundary at 2025-09-03 (120 bars) / 2025-09-02 (none).
+
+Kept rather than deleted after answering, because both windows **roll**:
+re-running it is how a future session checks whether the answers still
+hold, and `DEFAULT_RETENTION_DATES` is set so that a later run should see
+the boundary have moved.
 
 Read-only and exploratory, deliberately **not** a pipeline, following
 `kis_probe.py`'s precedent. It writes nothing to the kline store.
@@ -24,9 +29,14 @@ ids, sends no account number, and imports nothing from the trading path.
 Credentials come from the environment and are never logged or echoed --
 presence and length only.
 
+**Paper host only**, with no flag or environment variable able to point it
+elsewhere. `kis_probe.py` may ask both hosts because MS-A §7 decision 2
+approved that specifically, for a question that was about which host serves
+quotations; this probe has neither that approval nor that question.
+
 Run (on the instance, per CLAUDE.md's "Run it where it will run"):
 
-    python -m data.kis_flow_probe --host paper
+    python -m data.kis_flow_probe
 """
 
 from __future__ import annotations
@@ -40,7 +50,6 @@ from typing import Any
 
 from data.kis_klines import (
     PAPER_HOST,
-    REAL_HOST,
     KisKlinesError,
     KisSession,
     _get_with_retry,
@@ -263,7 +272,6 @@ def _attempt(label: str, fn) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host", choices=("paper", "real"), default="paper")
     parser.add_argument("--code", default=SAMSUNG)
     parser.add_argument(
         "--hour",
@@ -289,8 +297,15 @@ def main(argv: list[str] | None = None) -> int:
     # credential-handling incident".
     print(f"credentials present: app_key len={len(key)} app_secret len={len(sec)}")
 
-    host = PAPER_HOST if args.host == "paper" else REAL_HOST
-    session = KisSession(key, sec, host=host)
+    # Paper host only, with no argument, flag or environment variable able
+    # to point it anywhere else -- the same no-configuration-surface shape
+    # as BINGX_VST_BASE_URL and KIS_PAPER_BASE_URL. `kis_probe.py` can ask
+    # both hosts because MS-A section 7 decision 2 explicitly approved it
+    # for a question that was *about* which host serves quotations. This
+    # probe has no such approval and no such question, so the production
+    # endpoint is not reachable from here at all. Verifying anything
+    # against it would be its own change, with its own approval.
+    session = KisSession(key, sec, host=PAPER_HOST)
 
     results = [
         _attempt("investor_samsung", lambda: probe_investor(session, args.code)),
@@ -306,7 +321,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
 
-    print(json.dumps({"host": args.host, "results": results}, ensure_ascii=False, indent=2))
+    print(json.dumps({"host": "paper", "results": results}, ensure_ascii=False, indent=2))
     return 0 if any(r.get("ok") for r in results) else 1
 
 
