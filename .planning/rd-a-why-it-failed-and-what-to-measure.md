@@ -82,16 +82,35 @@ the same parameters*:
 | | |
 |---|---|
 | Observed fold σ (median over 34 groups of ≥10 folds) | **2.15** |
-| Theoretical SE of an annualized Sharpe from a 30-day fold | **2.90** |
+| Theoretical SE of an annualized Sharpe from a 30-day fold | **3.49** |
 
-`SE(SR) ≈ √252 · √((1 + SR²/2)/T)`, with `T = 30` daily observations in a
-720-bar 1h fold.
+**Corrected 2026-09-14, on CodeRabbit review of PR #167, and the
+correction is in the unfavourable-to-the-original direction.** The figure
+first published here was **2.90**, which used `√252`. This project
+annualizes with **365**, not 252 — `metrics.metrics._DAYS_PER_YEAR = 365`,
+applied as `√(bars_per_day × 365)` — so every logged fold Sharpe is on the
+365 basis and the matching SE is 3.49. The original understated the noise,
+i.e. it erred toward making the instrument look *better* than it is.
 
-**The observed dispersion is *below* what pure estimation noise predicts.
-Nothing about regime change or strategy quality is needed to explain the
-fold-to-fold spread.** A true edge of 0.8 appears in such a fold as
-0.8 ± 2.9; the *sign* is near a coin flip (P(positive) = Φ(0.8/2.9) =
-0.61).
+`SE(SR_annual) = √k · √((1 + (SR/√k)²/2)/T)`, and the review's question
+about the observation unit has a clean answer: **it does not matter here.**
+
+| Basis | T | k | SE(SR_annual) | t at a true SR = 0.8 |
+|---|---|---|---|---|
+| hourly returns | 720 | 24 × 365 | 3.488 | 0.229 |
+| daily-resampled | 30 | 365 | 3.490 | 0.229 |
+| daily-resampled, 252 *(the original)* | 30 | 252 | 2.900 | 0.276 |
+
+The first two agree because a 720-bar 1h fold **is** 30 days and
+`8760/720 = 365/30`. Only the annualization constant moves the number, and
+this project's constant is 365.
+
+**The observed dispersion is *below* what pure estimation noise predicts,
+and the corrected SE widens that gap rather than closing it.** Nothing
+about regime change or strategy quality is needed to explain the
+fold-to-fold spread. A true edge of 0.8 appears in such a fold as
+0.8 ± 3.5; the *sign* is near a coin flip (P(positive) = Φ(0.8/3.49) =
+0.59).
 
 `sr-j` and S16 each derived a neighbouring fact — that an 80–90%
 fold-consistency floor is unreachable — and both framed it as *the
@@ -204,7 +223,7 @@ not a hypothesis"* — and IC is exactly the cheap screen for it.
 **The trader framing and the instrument diagnosis point the same way.**
 That agreement is the strongest reason to believe the direction, because
 they were derived independently: one from how discretionary traders
-actually work, one from `√252·√(1/T)`.
+actually work, one from `√365·√(1/T)` (§2, corrected).
 
 ## 5. The proposed program
 
@@ -280,16 +299,41 @@ universe than MS-A's**, which reasoned only about volatility and
 drawdown.
 
 The honest constraint: panel IC on KRX daily is thin at long horizons.
-`1,882 days / horizon × 10 names`:
 
-| Horizon | n | SE(IC) | t for IC = 0.05 |
-|---|---|---|---|
-| 5 days | 3,764 | 0.0163 | **3.07** |
-| 10 days | 1,882 | 0.0231 | 2.17 |
-| 20 days | 941 | 0.0326 | 1.53 |
+**Corrected 2026-09-14, on CodeRabbit review of PR #167.** The table first
+published here used `n = 1,882 / horizon × 10`, counting all ten names as
+ten independent observations — **contradicting the effective-breadth
+calculation in the paragraph immediately above it.** Ten correlated names
+are not ten observations, and this document had already computed how many
+they are. Dividing by the horizon was correct and is kept: it is what makes
+the forward windows non-overlapping in time. The error was purely
+cross-sectional, and it inflated `n` — which inflates `t`, i.e. it erred
+toward making the screen look **more** powered than it is.
 
-So a daily-horizon IC screen on KRX is usable at 5–10 days and marginal
-beyond. Stated now rather than discovered later.
+`n = 1,882 / horizon × effective breadth`, with breadth
+`10 / (1 + 9ρ)`:
+
+| Horizon | ρ = 0.157 (2018) — n / t | ρ = 0.250 (full window, MS-D) — n / t |
+|---|---|---|
+| 5 days | 1,560 / **1.97** | 1,158 / **1.70** |
+| 10 days | 780 / 1.40 | 579 / 1.20 |
+| 20 days | 390 / 0.99 | 290 / 0.85 |
+
+*(`t` is for a true IC of 0.05, `SE(IC) ≈ 1/√n`.)*
+
+**The conclusion changes, and not cosmetically.** The original read
+"usable at 5–10 days and marginal beyond." The corrected reading is that
+**only the 5-day horizon is even marginal — t ≈ 1.7–2.0 against a true
+IC of 0.05 — and 10- and 20-day horizons are underpowered outright.** The
+operative ρ is the full-window 0.250 that MS-D measured, not 2018's 0.157,
+which makes 1.70 the number to plan against.
+
+Two assumptions this still rests on, stated rather than buried: `1/√n`
+treats the residual observations as independent after the breadth
+adjustment, and a real panel would want cluster- or HAC-robust standard
+errors by date; and effective breadth assumes a single common correlation,
+where the real correlation matrix is not uniform (MS-E §4.2's chaebol
+finding is the specific counter-example).
 
 ## 7. The line that must not be blurred
 

@@ -5,6 +5,15 @@ The counts in §2 and §4 come from the local store and are **event counts
 and volatility statistics only** — no forward return of any candidate was
 measured, so nothing here spends the window for selection.
 
+**Revised 2026-09-14 on CodeRabbit review of PR #167.** Three figures
+changed, all because a counting or comparison rule was applied but never
+written down, and **two of the three moved against the original claim**:
+§1's fold t (0.28 → **0.23**), §2's counting rules (now stated: 2,656 raw
+penetrations → **1,196 episodes**, recovery on `close`), and §3.1's
+volatility claim (**"top 14%" → 76th percentile**, because the original
+measure included the event bar itself). The recomputation is counts and
+volatility statistics only and spends nothing, on the same terms as above.
+
 Supersedes §5–6 of
 [`rd-a-why-it-failed-and-what-to-measure.md`](rd-a-why-it-failed-and-what-to-measure.md),
 whose diagnosis (§1–4) stands unchanged.
@@ -26,8 +35,31 @@ a trader does.
 
 | | Instrument | n | t for a small effect |
 |---|---|---|---|
-| What 1,883 runs were scored on | 30-day fold Sharpe | 30 | **0.28** |
-| What a conditional setup needs | event study | **1,196** | **5.2** |
+| What 1,883 runs were scored on | 30-day fold Sharpe | 30 | **0.23** |
+| What a conditional setup needs | event study | **1,196 episodes** | **5.2** |
+
+**Revised 2026-09-14, on CodeRabbit review of PR #167**, which was right
+that the two columns were not on a common basis and that the table as
+published could not support the conclusion drawn from it. Both are now
+stated in full, and **neither is a standardized effect size — they are
+answers to two different questions, which is the honest framing:**
+
+| | 0.23 | 5.2 |
+|---|---|---|
+| statistic | annualized Sharpe of a 30-day fold | mean forward return over events |
+| effect assumed | SR = 0.8 annualized | m = 0.3% per event |
+| dispersion | SE 3.49 (see rd-a, corrected) | s = 2% per event |
+| n | 30 daily observations | 1,196 **episodes** (§2) |
+| annualized? | **yes**, ×√365 | **no** |
+| independence | folds are non-overlapping by construction | episodes are ≥4h apart by construction (§2) |
+
+**The two are not the same quantity and are not claimed to be.** What the
+comparison establishes is narrower and still sufficient: *for the effect
+each instrument is actually asked to detect, one lands near zero and the
+other near five.* A reader who prefers a single standardized basis should
+read the right-hand column alone — an event study over 1,196 episodes
+detects a 0.15σ effect at t ≈ 5, and no fold-based instrument on this
+window detects anything below roughly 5.7 annualized Sharpe.
 
 **A conditional setup is easier to measure than an always-on strategy,
 not harder.** rd-a said the opposite by implication.
@@ -53,7 +85,7 @@ change that was needed.
 
 It says nothing against it. What it establishes is that **this project's
 method could not have detected an edge if one were there** — 1,883
-always-on backtests on a unit with SE 2.9.
+always-on backtests on a unit with SE 3.49 (rd-a §2, corrected).
 
 Two specific claims that are *not* supported by anything in the record,
 named because they were drifting into the conclusions:
@@ -82,12 +114,41 @@ Every clause is mechanically definable:
 
 Counted on 3,661,780 Binance-futures 1m bars, 6.96 years:
 
-| Prior low | Penetration | Recovery window | Events | Recovered | Rate | Per year |
-|---|---|---|---|---|---|---|
-| 4h | 0.1% | 1h | 7,952 | 6,717 | 84.5% | 1,142 |
-| 4h | 0.3% | 4h | 2,414 | 1,984 | 82.2% | 347 |
-| 1d | 0.1% | 4h | 1,988 | 1,756 | 88.3% | 286 |
-| **1d** | **0.3%** | **4h** | **1,196** | **968** | **80.9%** | **172** |
+| Prior low | Penetration | Recovery window | Raw bars | **Episodes** | Collapse | Recovered | Rate | Episodes/yr |
+|---|---|---|---|---|---|---|---|---|
+| 4h | 0.1% | 1h | 20,774 | 7,951 | 2.6× | 6,718 | 84.5% | 1,142 |
+| 4h | 0.3% | 4h | 5,114 | 2,414 | 2.1× | 1,984 | 82.2% | 347 |
+| 1d | 0.1% | 4h | 8,083 | 1,988 | 4.1× | 1,757 | 88.4% | 286 |
+| **1d** | **0.3%** | **4h** | **2,656** | **1,196** | **2.2×** | **969** | **81.0%** | **172** |
+
+**The two right-hand-side columns are new, added 2026-09-14 on CodeRabbit
+review of PR #167**, which correctly objected that "events" with
+overlapping forward windows are not independent observations and that the
+rule had not been stated. The rule had in fact been applied — every
+`Episodes` figure above reproduces the originally published count to
+within one row — it simply was not written down, and a reader could not
+have told the two columns apart.
+
+**An episode is the first penetrating bar, with every further penetration
+inside one forward window collapsed into it**, so episodes are separated
+by at least the recovery window by construction. The raw column is shown
+precisely because it is 2–4× larger: had the raw 2,656 been used for the
+bottom row, the t in §1 would read **7.7 instead of 5.2** — which is the
+inflation the review was guarding against.
+
+**Recovery is `close` re-crossing the prior low within 240 bars** — also
+previously unstated, and the choice matters:
+
+| Recovery defined as | Rate |
+|---|---|
+| **`close` ≥ prior low** *(the definition used)* | **81.0%** |
+| `high` ≥ prior low | 85.0% |
+| `close` ≥ the penetration level | 91.7% |
+| `high` ≥ the penetration level | 95.9% |
+
+A spread of 81% to 96% across four defensible readings of the same English
+sentence is the point: **none of these is an edge (§3.2), and the fact that
+the "impressive" number can be moved 15 points by a definition is why.**
 
 **The situation the operator described is abundant and countable.** That
 alone is further than this project has ever got on a trader-shaped
@@ -103,14 +164,30 @@ number attached.
 Support penetrations do not happen at random moments. Measured on the
 1,196-event set:
 
-| | 60-minute realised volatility, median |
-|---|---|
-| All bars | 0.000558 |
-| **At an event** | **0.001101 — 1.97×** |
+**Corrected 2026-09-14, on CodeRabbit review of PR #167**, which was right
+that a ratio of two medians does not establish a percentile. Computing the
+percentile directly changed the answer, and **the original overstated the
+effect.**
 
-**Events sit in the top 14% of the volatility distribution.** Any
-comparison against an unconditional forward-return distribution reads a
-volatility difference as an edge.
+| 60-minute realised volatility window | median | vs all-bar median | **median percentile of an event** |
+|---|---|---|---|
+| All bars | 0.000559 | — | (50th by definition) |
+| **Prior 60 bars only** — what is observable at decision time | **0.000862** | **1.54×** | **75.8th** |
+| 60 bars *including the event bar* — the original measure | 0.001083 | 1.94× | 85.3rd |
+
+**"Top 14%" was the second row, and the second row uses the event bar
+itself.** That bar is, by construction, one that broke a level by 0.3% —
+a large move — so including it makes the statistic **partly a restatement
+of the event definition** rather than an independent fact about the
+regime. It is also not information a trader has before deciding.
+
+**The corrected claim: events sit around the 76th percentile of the
+volatility distribution — elevated, not extreme.** The direction survives
+and the consequence is unchanged: any comparison against an unconditional
+forward-return distribution still reads a volatility difference as an edge,
+so baseline matching remains mandatory. What changes is the magnitude, and
+it changes in the direction that made the original more striking than the
+data supports.
 
 This is not a hypothetical risk. It is the exact error CLAUDE.md already
 records as one of this project's largest: *"comparing costs to an
@@ -127,7 +204,7 @@ null by construction is harder to get wrong than an explicit adjustment.
 
 "It recovered within four hours" is known four hours later. **개미털기 is
 a label applied in hindsight.** A strategy conditioned on it is
-look-ahead, and the 80.9% recovery rate is not an edge — it is largely
+look-ahead, and the 81.0% recovery rate is not an edge — it is largely
 definitional, since price oscillates across a level it is sitting on.
 
 The tradeable question is the one a trader is actually claiming to answer
@@ -227,7 +304,7 @@ would make stage 3 sharper, not possible.
 ## 6. What this does not claim
 
 - **No strategy has been found**, and nothing here is evidence of one.
-- **The 80.9% recovery rate is not an edge.** §3.2 says why: it is a
+- **The 81.0% recovery rate is not an edge.** §3.2 says why: it is a
   hindsight label on a definitionally frequent event, measured against no
   baseline.
 - **The situation counts are not a result.** They establish that the

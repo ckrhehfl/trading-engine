@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-92 documents and counting, which is past the point where `ls` is a
+94 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -212,3 +212,5 @@ Stepping back from candidates to ask what instrument the question needs.
 
 - [`rd-a-why-it-failed-and-what-to-measure.md`](rd-a-why-it-failed-and-what-to-measure.md) — Research Direction Task A — `Discuss`: the failure was an instrument, not a strategy
 - [`rd-b-situations-not-formulas.md`](rd-b-situations-not-formulas.md) — Research Direction Task B — `Discuss`: situations, not formulas
+- [`rd-c-mechanism-catalogue.md`](rd-c-mechanism-catalogue.md) — Research Direction Task C — the mechanism catalogue
+- [`rd-c-kis-flow-probe-result.md`](rd-c-kis-flow-probe-result.md) — Research Direction Task C — KIS flow & intraday probe result
