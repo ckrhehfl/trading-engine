@@ -59,6 +59,20 @@ def test_the_prior_sum_ends_at_the_previous_bar():
     assert out[4] == 7.0
 
 
+def test_the_first_valid_prior_sum_is_at_index_w():
+    """**The boundary the off-by-one actually moved**, asserted directly.
+
+    The original bug used `idx >= w + 1`, which leaves index `w` NaN and
+    delays every volume feature by a bar. Checking only indices 3 and 4
+    would pass with the bug still in place -- the guard has to name the
+    first valid index or it is inert against the thing it exists for.
+    """
+    v = np.array([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+    out = roll_sum_prior(v, 2)
+    assert np.isnan(out[0]) and np.isnan(out[1]), "no full prior window yet"
+    assert out[2] == 3.0, "index w must carry the first full window, a[0] + a[1]"
+
+
 # ------------------------------------------------------------ episodes
 
 
