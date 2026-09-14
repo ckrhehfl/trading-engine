@@ -160,26 +160,40 @@ Benjamini–Yekutieli in place of BH.
 **Fixing the overlap made the artifact dramatically worse, and that is
 the real finding.**
 
-| Situation | h | events | **pool %** | event bp | ctrl bp | uncond | **ctrl bias** | diff bp | t | p |
+| Situation | h | events | **pool %** | event bp | ctrl bp | baseline | **ctrl bias** | diff bp | t | p |
 |---|---|---|---|---|---|---|---|---|---|---|
-| S2 resistance break | 1440 | 200 | **42%** | +57.45 | **−73.05** | +13.00 | **−86.05** | **+130.50** | **3.51** | **5.4e-04** |
-| S2 resistance break | 240 | 1,162 | 84% | +3.57 | −8.56 | +2.17 | −10.73 | +12.13 | 2.16 | 3.1e-02 |
-| S1 support penetration | 1440 | 204 | 43% | +40.34 | **+94.61** | +13.00 | **+81.62** | −54.27 | −1.92 | 5.6e-02 |
-| S3 abnormal activity | 15 | 497 | 89% | +6.56 | +1.17 | +0.14 | +1.03 | +5.39 | 1.03 | 3.0e-01 |
-| S3 abnormal activity | 1440 | 151 | 58% | +1.92 | +41.60 | +13.00 | +28.61 | −39.68 | −1.00 | 3.2e-01 |
-| S1 support penetration | 240 | 1,149 | 84% | +9.42 | +15.06 | +2.17 | +12.90 | −5.65 | −0.99 | 3.2e-01 |
-| S2 resistance break | 60 | 1,163 | 84% | +0.07 | −3.60 | +0.55 | −4.15 | +3.67 | 0.98 | 3.3e-01 |
-| S3 abnormal activity | 240 | 497 | 89% | +21.74 | +10.78 | +2.17 | +8.61 | +10.96 | 0.92 | 3.6e-01 |
-| S3 abnormal activity | 60 | 500 | 89% | +11.95 | +7.10 | +0.55 | +6.54 | +4.86 | 0.62 | 5.4e-01 |
-| S2 resistance break | 15 | 1,163 | 84% | −0.28 | −1.78 | +0.14 | −1.92 | +1.49 | 0.60 | 5.5e-01 |
-| S1 support penetration | 60 | 1,150 | 84% | +4.70 | +6.64 | +0.55 | +6.09 | −1.94 | −0.49 | 6.2e-01 |
-| S1 support penetration | 15 | 1,152 | 84% | +1.56 | +1.66 | +0.14 | +1.52 | −0.10 | −0.03 | 9.7e-01 |
+| S2 resistance break | 1440 | 200 | **42%** | +57.45 | **−73.05** | +14.71 | **−87.77** | **+130.50** | **3.51** | **5.4e-04** |
+| S2 resistance break | 240 | 1,162 | 84% | +3.57 | −8.56 | +2.27 | −10.83 | +12.13 | 2.16 | 3.1e-02 |
+| S1 support penetration | 1440 | 204 | 43% | +40.34 | **+94.61** | +17.43 | **+77.18** | −54.27 | −1.92 | 5.6e-02 |
+| S3 abnormal activity | 15 | 497 | 89% | +6.56 | +1.17 | +0.57 | +0.60 | +5.39 | 1.03 | 3.0e-01 |
+| S3 abnormal activity | 1440 | 151 | 58% | +1.92 | +41.60 | +31.51 | +10.10 | −39.68 | −1.00 | 3.2e-01 |
+| S1 support penetration | 240 | 1,149 | 84% | +9.42 | +15.06 | +3.48 | +11.59 | −5.65 | −0.99 | 3.2e-01 |
+| S2 resistance break | 60 | 1,163 | 84% | +0.07 | −3.60 | +0.74 | −4.34 | +3.67 | 0.98 | 3.3e-01 |
+| S3 abnormal activity | 240 | 497 | 89% | +21.74 | +10.78 | +7.34 | +3.43 | +10.96 | 0.92 | 3.6e-01 |
+| S3 abnormal activity | 60 | 500 | 89% | +11.95 | +7.10 | +2.37 | +4.73 | +4.86 | 0.62 | 5.4e-01 |
+| S2 resistance break | 15 | 1,163 | 84% | −0.28 | −1.78 | +0.25 | −2.03 | +1.49 | 0.60 | 5.5e-01 |
+| S1 support penetration | 60 | 1,150 | 84% | +4.70 | +6.64 | +0.97 | +5.67 | −1.94 | −0.49 | 6.2e-01 |
+| S1 support penetration | 15 | 1,152 | 84% | +1.56 | +1.66 | +0.22 | +1.44 | −0.10 | −0.03 | 9.7e-01 |
+
+**`baseline` is strata-weighted, and that matters.** `match_controls`
+draws inside each event's `(volatility decile, hour)` stratum, so
+comparing the control to the *whole-series* mean would charge the events'
+own stratum composition to the control construction. Raised on review of
+PR #169; the baseline is now the series mean reweighted to the kept
+events' strata.
+
+**It changed one row substantially, and that row is the discriminator
+again.** S3's apparent bias at h=1440 falls from **+28.61 to +10.10** —
+most of it *was* stratum composition. S1's and S2's barely move
+(+81.62 → +77.18, −86.05 → **−87.77**), because theirs is the exclusion
+rule, not the strata. **The non-directional situation is the one whose
+bias dissolves under a fair baseline.**
 
 **0 of 12 advance. One is significant and vetoed.** S2 at h=1440 posts
 `+130.50bp, t = 3.51, p = 5.4e-04` — clearing even Benjamini–Yekutieli's
-0.002685 threshold — on a control arm sitting **86bp below the
-unconditional baseline.** The claimed effect is smaller than the control's
-own displacement.
+0.002685 threshold — on a control arm sitting **87.8bp below its own strata-matched
+baseline.** The claimed effect is smaller than the control's own
+displacement.
 
 ### The design is unsound, not the parameters
 

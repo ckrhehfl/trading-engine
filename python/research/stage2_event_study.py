@@ -107,7 +107,7 @@ class EventTest:
     n_dropped: int
     event_mean: float
     control_mean: float
-    unconditional_mean: float
+    unconditional_mean: float  #: strata-weighted, see `stratified_baseline`
     pool_share: float
     difference: float
     t_statistic: float
@@ -128,6 +128,10 @@ class EventTest:
         no headline statistic exposes. rd-h: a matched placebo produced
         `+15.55bp, t = 2.76` out of nothing, and later `+130.50bp,
         t = 3.51`, purely through which bars were eligible as controls.
+
+        The baseline is **strata-weighted** (`stratified_baseline`), so
+        this measures what the *exclusion rule* did rather than what the
+        events' volatility and hour composition did.
         """
         return self.control_mean - self.unconditional_mean
 
@@ -232,6 +236,45 @@ def volatility_decile(vol: np.ndarray) -> np.ndarray:
     for e in edges:
         label[ok & np.isfinite(e) & (vol > e)] += 1
     return label
+
+
+def stratified_baseline(
+    open_px: np.ndarray,
+    horizon: int,
+    decile: np.ndarray,
+    hour: np.ndarray,
+    events: np.ndarray,
+) -> float:
+    """Mean forward return of the **whole series**, reweighted to the
+    events' own `(decile, hour)` composition.
+
+    **The whole-series mean is the wrong baseline for this comparison.**
+    `match_controls` draws inside each event's stratum, so a plain
+    unconditional mean charges the *stratum composition* to the control
+    construction: events sit in high-volatility, particular-hour bars, and
+    those bars have their own mean return whatever the exclusion rule is.
+
+    Reweighting isolates what the exclusion rule actually did, which is
+    the quantity `EventTest.control_suspect` vetoes on.
+    """
+    n = open_px.size
+    idx = np.arange(1, n - 1 - horizon)
+    if idx.size == 0 or events.size == 0:
+        return float("nan")
+    r = forward_return(open_px, idx, horizon)
+    key = decile[idx].astype(np.int64) * 24 + hour[idx].astype(np.int64)
+    ev_key = decile[events].astype(np.int64) * 24 + hour[events].astype(np.int64)
+
+    sums = np.bincount(key[key >= 0], weights=r[key >= 0])
+    counts = np.bincount(key[key >= 0])
+    total = 0.0
+    weight = 0.0
+    for k, w in zip(*np.unique(ev_key, return_counts=True)):
+        if k < 0 or k >= counts.size or counts[k] == 0:
+            continue
+        total += w * (sums[k] / counts[k])
+        weight += w
+    return float(total / weight) if weight else float("nan")
 
 
 def hour_of_day(t_ms: np.ndarray) -> np.ndarray:
@@ -547,8 +590,7 @@ def run(
             a = forward_return(o, kept, hz)
             b = forward_return(o, ctrl, hz)
             tstat, p, _ = welch(a, b)
-            all_idx = np.arange(1, n - 1 - hz)
-            uncond = float(forward_return(o, all_idx, hz).mean())
+            uncond = stratified_baseline(o, hz, decile, hour, kept)
             results.append(
                 EventTest(
                     situation=name,
@@ -575,12 +617,13 @@ def run(
 def report(results: list[EventTest]) -> None:
     print(f"family size (fixed by rd-g): {FAMILY_SIZE}   tests run: {len(results)}")
     name = "Benjamini-Yekutieli" if USE_BENJAMINI_YEKUTIELI else "Benjamini-Hochberg"
+    short = "BY" if USE_BENJAMINI_YEKUTIELI else "BH"
     pen = dependence_penalty()
     print(f"{name} q = {FDR_Q} (dependence penalty {pen:.4f}, rank-1 threshold "
           f"{FDR_Q/(FAMILY_SIZE*pen):.5f})   effect floor = {EFFECT_FLOOR*1e4:.0f}bp\n")
     print(f"{'situation':26} {'h':>5} {'events':>7} {'pool%':>6} "
-          f"{'event bp':>9} {'ctrl bp':>9} {'uncond':>8} {'ctrl bias':>10} "
-          f"{'diff bp':>9} {'t':>7} {'p':>9} {'verdict':>16}")
+          f"{'event bp':>9} {'ctrl bp':>9} {'base':>8} {'ctrl bias':>10} "
+          f"{'diff bp':>9} {'t':>7} {'p':>9} {short:>4} {'verdict':>16}")
     print("-" * 142)
     for r in sorted(results, key=lambda x: x.p_value):
         if r.advances:
@@ -596,7 +639,7 @@ def report(results: list[EventTest]) -> None:
             f"{r.event_mean*1e4:>9.2f} {r.control_mean*1e4:>9.2f} "
             f"{r.unconditional_mean*1e4:>8.2f} {r.control_bias*1e4:>10.2f} "
             f"{r.difference*1e4:>9.2f} {r.t_statistic:>7.2f} {r.p_value:>9.2e} "
-            f"{verdict:>16}"
+            f"{'yes' if r.bh_significant else 'no':>4} {verdict:>16}"
         )
     adv = [r for r in results if r.advances]
     suspect = [r for r in results if r.control_suspect and r.bh_significant]

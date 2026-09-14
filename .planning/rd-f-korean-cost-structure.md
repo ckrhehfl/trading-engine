@@ -34,13 +34,25 @@ much the real quoted spread exceeds one tick.
 roughly 2.5–2.8× as much — and about two thirds of it is a tax charged
 whether the trade won or lost.**
 
-**The two columns are the finding, not a hedge.** The spread in *basis
-points* is era-dependent: KRX's tick is a fixed number of 원 within a
-price band, so as Korean share prices rose through 2025–2026 the same
-nominal tick became a smaller fraction of price. A backtest over
-2019–2026 must use the window's own figure (**~33.4bp**), and a live
-system starting today faces **~30.0bp**. Using today's number on
-historical data understates costs by about 3.4bp on every round trip.
+**Neither column is an actual historical cost. Both are SCENARIOS**, and
+saying so is not a hedge — it is what the two open items in §1.1 and §1.2
+imply. Each applies **today's 20bp tax across the whole window** (the
+per-era schedule is unsourced, and §1.1 item 3 says the direction of that
+simplification's bias is not established) and **a one-tick spread** (§1.2
+shows that is a floor, not a measurement).
+
+So they are the **one-tick, fixed-tax floor** at two spread regimes:
+
+| scenario | spread used | round trip |
+|---|---|---|
+| **2019–2026 window** | 9.85bp, the full-window median | **~33.4bp** |
+| **2026** | 6.46bp, this year's median | **~30.0bp** |
+
+The 3.4bp between them is **arithmetic under a fixed tax and a one-tick
+assumption**, not a claim that real historical trades cost 3.4bp more than
+this year's. §2's two columns are therefore a **sensitivity analysis**
+across cost scenarios, and neither is a final Korean figure until the
+per-era tax schedule and the realised spread are measured.
 
 ### 1.1 The tax, which dominates and just went up
 
@@ -153,21 +165,31 @@ adjustment produces prices that are not multiples of any tick. That is the
 adjustment this project deliberately chose, so the exclusion is a
 consequence of a correct decision, not a data fault.
 
-### 1.3 The commission, the one component not pinned
+### 1.3 The commission, now pinned to an account and a medium
 
-KIS's schedule is published per account type, medium and volume band and
-was **not obtainable as a number** from this search; the page is
-[here](https://securities.koreainvestment.com/main/customer/guide/_static/TF04ae010000.jsp).
-What is confirmed: **유관기관제비용** (KRX + KSD + FCM) is charged to the
-customer on top, is quoted around 0.0036% per side, and is a floor no tier
-can go below.
+A first version of this document left this as an assumed 1–3bp, because
+KIS publishes the schedule per account type, medium and volume band and
+it could not be read from search results. **Raised on review of PR #169
+and since read directly from KIS's own page**, then verified independently
+before being adopted ([기준일 2025-10-27](https://securities.koreainvestment.com/main/customer/guide/_static/TF04ae010000.jsp)):
 
-**So 1–3bp round trip is a stated assumption, not a measurement**, and it
-is the smallest term. At the extremes — a zero-commission promotional
-account (0.7bp round trip, 유관기관 only) versus a full-service tier — the
-total moves between roughly 31bp and 34bp on the window figure, which
-changes no conclusion below. **It should still be pinned before a registration**, per this
-project's standing rule against inventing cost constants.
+| | per side |
+|---|---|
+| 위탁수수료 — **뱅키스(BanKIS) 온라인** account, 국내주식 (KOSPI/KOSDAQ/KONEX), HTS · 홈페이지 · 모바일 | **0.0140527%** = 1.405bp |
+| 유관기관제비용 — **KRX** | **0.0036396%** = 0.364bp (NXT: 0.0031833%) |
+| **Total per side** | **1.769bp** |
+| **Round trip** | **3.539bp** |
+
+**The account type and the order medium are part of the number**, which is
+why both are named: a 영업점 account, or the same account ordering by
+phone, is a different tier entirely. Quoting "the KIS commission" without
+them would be the same class of error as quoting a tick size without its
+price band.
+
+유관기관제비용 is charged to the customer **on top of** the commission and
+is a floor no tier goes below, so 3.539bp is close to the best case for a
+retail account. **A different account or medium moves it, and would move
+§1's totals with it.**
 
 ## 2. What this does to the stage-1 table
 
