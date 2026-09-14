@@ -198,3 +198,49 @@ def test_a_window_of_all_nans_yields_nan_rather_than_guessing():
 
     a = np.full(40, np.nan)
     assert np.isnan(trailing_quantile(a, 0.5, window=10, step=10)).all()
+
+
+# ------------------------------------------- the Korean re-scoring, executable
+
+
+#: `rd-f` §1's two cost scenarios: the one-tick, fixed-tax floor at the
+#: full-window and 2026 spread regimes. 20bp tax + spread + 3.539bp
+#: commission (뱅키스 online, KRX, 기준일 2025-10-27).
+KRX_WINDOW_ROUND_TRIP = 0.00334   # 20.0 + 9.85 + 3.54 bp
+KRX_TODAY_ROUND_TRIP = 0.00300    # 20.0 + 6.46 + 3.54 bp
+
+
+def test_the_korean_rescoring_is_reproducible():
+    """`rd-e` and `rd-f` publish a Korean re-scoring, and nothing in the
+    repo called `feasibility()` with those costs — the tables could drift
+    from the code path that is supposed to produce them. This is that call.
+    """
+    frequencies = {
+        "abnormal activity, top 1%": 113,
+        "resistance break, prior-1d high": 168,
+        "support penetration, prior-1d low": 172,
+    }
+    window = {k: feasibility(f, KRX_WINDOW_ROUND_TRIP)[1] for k, f in frequencies.items()}
+    today = {k: feasibility(f, KRX_TODAY_ROUND_TRIP)[1] for k, f in frequencies.items()}
+
+    # rd-f §2: zero feasible at the window scenario...
+    assert set(window.values()) == {"cost-hostile"}
+    # ...and exactly one at the 2026 scenario, the rarest.
+    assert today["abnormal activity, top 1%"] == "feasible"
+    assert today["resistance break, prior-1d high"] == "cost-hostile"
+    assert today["support penetration, prior-1d low"] == "cost-hostile"
+
+
+def test_the_single_korean_survivor_sits_just_inside_the_boundary():
+    """34% against a 35% line — one point, not three. Worth pinning,
+    because a small move in any component removes the last candidate."""
+    drag, verdict = feasibility(113, KRX_TODAY_ROUND_TRIP)
+    assert verdict == "feasible"
+    assert 0.33 < drag < 0.35
+
+
+def test_a_two_tick_spread_removes_the_last_korean_survivor():
+    """rd-f §1.2: the spread figures are a one-tick FLOOR. At two ticks the
+    window round trip is 20.0 + 2x9.85 + 3.54 = 43.24bp."""
+    two_tick = 0.004324
+    assert feasibility(113, two_tick)[1] == "cost-hostile"
