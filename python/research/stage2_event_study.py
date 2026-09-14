@@ -64,7 +64,7 @@ SYMBOL = "BINANCE-FUTURES:BTCUSDT"
 #: minutes and distorts both the event definition and the return. The
 #: guard fails closed on any gap that is not this one -- the same shape as
 #: `run_preregistered_holdout.verify_known_gaps`.
-KNOWN_GAP_STARTS_MS = (1567969140000,)  # last bar before it: 2019-09-08T18:59:00Z
+KNOWN_GAPS_MS = ((1567969140000, 120_000),)  # 2019-09-08T18:59:00Z, one missing bar
 
 #: rd-g §1. Fixed; extending it makes the reported FDR meaningless.
 HORIZONS = (15, 60, 240, 1440)
@@ -107,6 +107,8 @@ class EventTest:
     n_dropped: int
     event_mean: float
     control_mean: float
+    unconditional_mean: float
+    pool_share: float
     difference: float
     t_statistic: float
     p_value: float
@@ -119,8 +121,34 @@ class EventTest:
         return abs(self.difference) > EFFECT_FLOOR
 
     @property
+    def control_bias(self) -> float:
+        """How far the control arm sits from the unconditional baseline.
+
+        The single most diagnostic number in this module, and the one that
+        no headline statistic exposes. rd-h: a matched placebo produced
+        `+15.55bp, t = 2.76` out of nothing, and later `+130.50bp,
+        t = 3.51`, purely through which bars were eligible as controls.
+        """
+        return self.control_mean - self.unconditional_mean
+
+    @property
+    def control_suspect(self) -> bool:
+        """True when the control arm's own deviation from the baseline is
+        large enough to account for the difference being claimed.
+
+        **This is a veto, not a warning.** If the control has drifted
+        further from unconditional than the size of the effect, the
+        "effect" is a statement about the control construction.
+        """
+        return abs(self.control_bias) >= abs(self.difference) / 2.0
+
+    @property
     def advances(self) -> bool:
-        return self.bh_significant and self.clears_effect_floor
+        return (
+            self.bh_significant
+            and self.clears_effect_floor
+            and not self.control_suspect
+        )
 
 
 def load(db_path: str = DEFAULT_DB_PATH):
@@ -138,7 +166,7 @@ def load(db_path: str = DEFAULT_DB_PATH):
 
 
 def verify_continuity(
-    t_ms: np.ndarray, declared: tuple[int, ...] = KNOWN_GAP_STARTS_MS
+    t_ms: np.ndarray, declared: tuple[tuple[int, int], ...] = KNOWN_GAPS_MS
 ) -> None:
     """Refuse a series whose gaps are not exactly the declared ones.
 
@@ -153,14 +181,21 @@ def verify_continuity(
     if t_ms.size < 2:
         return
     steps = np.diff(t_ms)
-    found = tuple(int(x) for x in t_ms[:-1][steps != 60_000])
+    irregular = steps != 60_000
+    # The SIZE is declared, not only the position: a 3-minute gap where a
+    # 2-minute one is declared means a different number of missing bars,
+    # and row indices are read as minutes either way.
+    found = tuple(
+        (int(a), int(b)) for a, b in zip(t_ms[:-1][irregular], steps[irregular])
+    )
     if found != tuple(declared):
         extra = sorted(set(found) - set(declared))
         missing = sorted(set(declared) - set(found))
         raise ValueError(
-            f"1m gap set does not match the declaration -- undeclared {extra}, "
-            f"declared-but-absent {missing}. Row indices are read as minutes, so "
-            f"an undeclared gap silently stretches every forward window spanning it"
+            f"1m gap set does not match the declaration -- unexpected "
+            f"(start, step) {extra}, declared-but-absent {missing}. Row indices "
+            f"are read as minutes, so a gap of the wrong size stretches every "
+            f"forward window spanning it by the wrong amount"
         )
 
 
@@ -300,18 +335,30 @@ def match_controls(
         available = pool[~blocked[pool]] if min_spacing > 0 else (
             pool[~np.isin(pool, list(taken[key]))] if taken[key] else pool
         )
+        if min_spacing > 0 and available.size:
+            # Thin to a maximal spacing-valid subset BEFORE sampling.
+            # Sampling k at random and then thinning drops the event
+            # whenever the draw happens to collide, even though a valid
+            # k-subset exists -- which makes the event sample depend on
+            # the draw rather than on control availability, and inflates
+            # the reported drop count.
+            #
+            # Any subset of a spacing-valid set is itself spacing-valid,
+            # so sampling from it needs no second check.
+            srt = np.sort(available)
+            keepmask = np.ones(srt.size, bool)
+            last = srt[0]
+            for j in range(1, srt.size):
+                if srt[j] - last < min_spacing:
+                    keepmask[j] = False
+                else:
+                    last = srt[j]
+            available = srt[keepmask]
         if available.size < k:
             dropped += 1
             continue
         picked = np.sort(rng.choice(available, size=k, replace=False))
         if min_spacing > 0:
-            # The draw itself can place two controls too close together;
-            # thin them and, if that leaves fewer than k, drop the event
-            # rather than accept overlapping control windows.
-            picked = picked[np.concatenate([[True], np.diff(picked) >= min_spacing])]
-            if picked.size < k:
-                dropped += 1
-                continue
             for x in picked:
                 lo = max(0, int(x) - min_spacing + 1)
                 blocked[lo : int(x) + min_spacing] = True
@@ -480,7 +527,10 @@ def run(
             cd = effective_cooldown(hz, enforce_disjoint)
             ev_all = collapse(masks[name], cooldown=cd)
             ev = ev_all[(ev_all + 1 + hz) < n]
-            eligible = control_pool(n, hz, decile, all_events, name, rule)
+            # `cd`, not the base cooldown: an event and a control 300 bars
+            # apart have overlapping 1,440-bar forward windows, which is
+            # the same contract violation the event arm was just fixed for.
+            eligible = control_pool(n, hz, decile, all_events, name, rule, cooldown=cd)
             kept, ctrl, dropped = match_controls(
                 ev, decile, hour, eligible, rng, min_spacing=cd if enforce_disjoint else 0
             )
@@ -497,6 +547,8 @@ def run(
             a = forward_return(o, kept, hz)
             b = forward_return(o, ctrl, hz)
             tstat, p, _ = welch(a, b)
+            all_idx = np.arange(1, n - 1 - hz)
+            uncond = float(forward_return(o, all_idx, hz).mean())
             results.append(
                 EventTest(
                     situation=name,
@@ -506,6 +558,8 @@ def run(
                     n_dropped=int(dropped),
                     event_mean=float(a.mean()),
                     control_mean=float(b.mean()),
+                    unconditional_mean=uncond,
+                    pool_share=float(eligible.sum() / n),
                     difference=float(a.mean() - b.mean()),
                     t_statistic=float(tstat),
                     p_value=float(p),
@@ -524,20 +578,35 @@ def report(results: list[EventTest]) -> None:
     pen = dependence_penalty()
     print(f"{name} q = {FDR_Q} (dependence penalty {pen:.4f}, rank-1 threshold "
           f"{FDR_Q/(FAMILY_SIZE*pen):.5f})   effect floor = {EFFECT_FLOOR*1e4:.0f}bp\n")
-    print(f"{'situation':26} {'h':>5} {'events':>7} {'ctrl':>7} {'drop':>5} "
-          f"{'event bp':>9} {'ctrl bp':>9} {'diff bp':>9} {'t':>7} {'p':>9} {'BH':>4} {'verdict':>10}")
-    print("-" * 128)
+    print(f"{'situation':26} {'h':>5} {'events':>7} {'pool%':>6} "
+          f"{'event bp':>9} {'ctrl bp':>9} {'uncond':>8} {'ctrl bias':>10} "
+          f"{'diff bp':>9} {'t':>7} {'p':>9} {'verdict':>16}")
+    print("-" * 142)
     for r in sorted(results, key=lambda x: x.p_value):
-        verdict = "ADVANCE" if r.advances else ("sig, small" if r.bh_significant else "-")
+        if r.advances:
+            verdict = "ADVANCE"
+        elif r.control_suspect and r.bh_significant:
+            verdict = "CONTROL-SUSPECT"
+        elif r.bh_significant:
+            verdict = "sig, small"
+        else:
+            verdict = "-"
         print(
-            f"{r.situation:26} {r.horizon:>5} {r.n_events:>7,} {r.n_controls:>7,} "
-            f"{r.n_dropped:>5} {r.event_mean*1e4:>9.2f} {r.control_mean*1e4:>9.2f} "
+            f"{r.situation:26} {r.horizon:>5} {r.n_events:>7,} {100*r.pool_share:>5.0f}% "
+            f"{r.event_mean*1e4:>9.2f} {r.control_mean*1e4:>9.2f} "
+            f"{r.unconditional_mean*1e4:>8.2f} {r.control_bias*1e4:>10.2f} "
             f"{r.difference*1e4:>9.2f} {r.t_statistic:>7.2f} {r.p_value:>9.2e} "
-            f"{'yes' if r.bh_significant else 'no':>4} {verdict:>10}"
+            f"{verdict:>16}"
         )
     adv = [r for r in results if r.advances]
+    suspect = [r for r in results if r.control_suspect and r.bh_significant]
     print()
     print(f"{len(adv)} of {len(results)} advance to stage 3.")
+    if suspect:
+        print(f"{len(suspect)} significant test(s) VETOED: the control arm's own "
+              f"deviation from the unconditional baseline is at least half the "
+              f"difference claimed, so the 'effect' is a statement about the "
+              f"control construction. rd-h section 3.")
     print("Discovery mode: nothing here may be promoted or quoted as evidence of an edge.")
 
 

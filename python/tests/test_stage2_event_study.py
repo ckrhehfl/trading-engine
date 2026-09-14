@@ -33,10 +33,13 @@ from research.stage2_event_study import (
 )
 
 
-def _result(p, diff=0.02, **over):  # noqa: D401
+def _result(p, diff=0.02, **over):
+    """A test whose control arm sits ON the unconditional baseline, so the
+    control-bias veto does not fire unless a case sets it deliberately."""
     base = dict(
         situation="S", horizon=60, n_events=100, n_controls=500, n_dropped=0,
-        event_mean=0.0, control_mean=0.0, difference=diff,
+        event_mean=diff, control_mean=0.0, unconditional_mean=0.0,
+        pool_share=0.85, difference=diff,
         t_statistic=0.0, p_value=p,
     )
     base.update(over)
@@ -298,15 +301,27 @@ def test_a_declared_gap_that_has_vanished_is_also_refused():
 
     t = np.arange(0, 10 * 60_000, 60_000)
     with pytest.raises(ValueError, match="declared-but-absent"):
-        verify_continuity(t, declared=(300_000,))
+        verify_continuity(t, declared=((300_000, 120_000),))
 
 
 def test_a_declared_gap_is_accepted():
-    from research.stage2_event_study import KNOWN_GAP_STARTS_MS, verify_continuity
+    from research.stage2_event_study import KNOWN_GAPS_MS, verify_continuity
 
-    gap = KNOWN_GAP_STARTS_MS[0]
-    t = np.array([gap - 60_000, gap, gap + 120_000, gap + 180_000])
+    gap, step = KNOWN_GAPS_MS[0]
+    t = np.array([gap - 60_000, gap, gap + step, gap + step + 60_000])
     verify_continuity(t)  # the module default declares exactly this gap
+
+
+def test_a_gap_of_the_wrong_size_at_a_declared_position_is_refused():
+    """Declaring only the position accepts a 3-minute gap where a 2-minute
+    one was measured -- a different number of missing bars, with row
+    indices still read as minutes."""
+    from research.stage2_event_study import verify_continuity
+
+    t = np.array([0, 60_000, 240_000, 300_000])  # 3-minute gap after 60_000
+    verify_continuity(t, declared=((60_000, 180_000),))
+    with pytest.raises(ValueError, match="unexpected"):
+        verify_continuity(t, declared=((60_000, 120_000),))
 
 
 def test_the_effective_cooldown_grows_with_the_horizon():
@@ -372,3 +387,67 @@ def test_the_boundary_break_counts_as_an_event():
     lo[2000] = 100.0 * 0.997  # exactly 0.3% below the prior low
     out = situations(t, o, hi, lo, c, v)
     assert out["S1 support penetration"][2000], "an exactly-0.3% break must count"
+
+
+def test_an_event_is_kept_when_a_spacing_valid_subset_exists():
+    """Sampling k at random and then thinning drops the event whenever the
+    draw happens to collide, even though a valid k-subset exists -- making
+    the event sample depend on the draw rather than on availability."""
+    n = 100_000
+    decile, hour = np.zeros(n, np.int8), np.zeros(n, np.int8)
+    eligible = np.zeros(n, bool)
+    # Exactly CONTROLS_PER_EVENT candidates that are spacing-valid, plus
+    # many that collide with them. A draw-then-thin implementation almost
+    # always loses the event here; thin-then-draw never does.
+    valid = [i * 5000 for i in range(1, CONTROLS_PER_EVENT + 1)]
+    for base in valid:
+        eligible[base] = True
+        eligible[base + 1 : base + 40] = True
+    kept, ctrl, dropped = match_controls(
+        np.array([90_000]), decile, hour, eligible,
+        np.random.default_rng(4), min_spacing=1441,
+    )
+    assert dropped == 0 and kept.size == 1
+    assert (np.diff(np.sort(ctrl)) >= 1441).all()
+
+
+def test_the_control_pool_honours_a_horizon_specific_cooldown():
+    """An event and a control 300 bars apart have overlapping 1,440-bar
+    forward windows -- the same contract violation the event arm was
+    fixed for."""
+    episodes_by = {"up": np.array([5000])}
+    z = np.zeros(20_000, np.int8)
+    narrow = control_pool(20_000, 1440, z, episodes_by, "up", "own", cooldown=240)
+    wide = control_pool(20_000, 1440, z, episodes_by, "up", "own", cooldown=1441)
+    assert narrow[5300], "the base cooldown leaves an overlapping bar eligible"
+    assert not wide[5300], "the horizon cooldown must exclude it"
+
+
+# --------------------------------------------------- the control-bias veto
+
+
+def test_a_significant_test_with_a_drifted_control_is_vetoed():
+    """The whole rd-h finding, as a rule: if the control arm has moved
+    further from the unconditional baseline than half the difference
+    claimed, the 'effect' is a statement about the control construction.
+
+    The real case: S2 at h=1440 posted +130.50bp, t=3.51, p=5.4e-04 on a
+    control sitting 86bp below unconditional.
+    """
+    (r,) = benjamini_hochberg(
+        [_result(0.0005, diff=0.01305, control_mean=-0.007305, unconditional_mean=0.0013)]
+    )
+    assert r.bh_significant and r.clears_effect_floor
+    assert r.control_suspect and not r.advances
+
+
+def test_a_significant_test_with_an_unbiased_control_still_advances():
+    (r,) = benjamini_hochberg(
+        [_result(0.0005, diff=0.0016, control_mean=0.0002, unconditional_mean=0.0002)]
+    )
+    assert r.advances
+
+
+def test_control_bias_is_measured_against_the_unconditional_baseline():
+    r = _result(0.5, diff=0.01, control_mean=-0.004, unconditional_mean=0.001)
+    assert r.control_bias == pytest.approx(-0.005)

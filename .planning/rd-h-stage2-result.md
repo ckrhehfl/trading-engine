@@ -14,9 +14,13 @@ an edge, or reported as a pass.**
 
 ## 1. The headline
 
-> **Zero of twelve survive.** One test cleared both gates as specified,
-> and the placebo suspicion that rd-g §6 **pre-specified** shows it was an
-> artifact of how the controls were built.
+> **Zero of twelve survive, and the instrument is unsound.** One test
+> cleared both gates as specified; the placebo suspicion rd-g §6
+> **pre-specified** showed it was an artifact of how the controls were
+> built. Repairing a *second* defect — overlapping forward windows — made
+> that artifact **larger**, which is what exposed the design problem:
+> **a matched placebo built by excluding a directional situation's
+> neighbourhood cannot be unbiased at any horizon.**
 
 That pre-specified suspicion is the reason this document is not reporting
 a discovery. rd-g named the *suspicion*, not this particular diagnostic —
@@ -142,40 +146,84 @@ which cannot manufacture the "zero of twelve" conclusion. And the one
 apparently-significant cell was **H3 with a single overlapping pair out of
 1,170** — so overlap is not what produced it; §3's placebo is.
 
-### The corrected run
+### The corrected run, and what fixing it exposed
 
 Re-run with forward windows forced disjoint (episode spacing
-`max(240, h+1)`, and drawn controls held that far apart too), plus the
-other review fixes — a fail-closed data-continuity check, the `≥0.3%`
-boundary the specification actually specified, direct sampling instead of
-a rejection loop with an attempt budget, and fractional Welch df:
+`max(240, h+1)`, drawn controls held that far apart, **and the control
+pool itself excluding that radius** — an event and a control 300 bars
+apart otherwise have overlapping 1,440-bar windows), plus the other
+review fixes: a fail-closed continuity check on gap **position and size**,
+the `≥0.3%` boundary the specification actually specified, thin-then-draw
+control sampling instead of draw-then-thin, fractional Welch df, and
+Benjamini–Yekutieli in place of BH.
 
-| Situation | h | events | drop | diff bp | t | p | BH |
-|---|---|---|---|---|---|---|---|
-| S2 resistance break | 240 | 1,096 | 73 | +14.46 | 2.48 | **1.3e-02** | **no** |
-| S1 support penetration | 240 | 1,054 | 140 | −7.78 | −1.29 | 2.0e-01 | no |
-| S3 abnormal activity | 15 | 466 | 320 | +6.37 | 1.16 | 2.5e-01 | no |
-| S3 abnormal activity | 240 | 467 | 319 | +11.77 | 1.02 | 3.1e-01 | no |
-| S2 resistance break | 60 | 1,102 | 68 | +3.65 | 0.94 | 3.5e-01 | no |
-| S1 support penetration | 1440 | 349 | 407 | +11.33 | 0.52 | 6.1e-01 | no |
-| S3 abnormal activity | 1440 | 227 | 314 | −14.69 | −0.47 | 6.4e-01 | no |
-| S3 abnormal activity | 60 | 468 | 318 | +1.70 | 0.21 | 8.3e-01 | no |
-| S1 support penetration | 15 | 1,064 | 132 | +0.63 | 0.20 | 8.4e-01 | no |
-| S2 resistance break | 15 | 1,095 | 75 | +0.19 | 0.07 | 9.4e-01 | no |
-| S1 support penetration | 60 | 1,061 | 135 | −0.26 | −0.07 | 9.5e-01 | no |
-| S2 resistance break | 1440 | 347 | 407 | +1.35 | 0.05 | 9.6e-01 | no |
+**Fixing the overlap made the artifact dramatically worse, and that is
+the real finding.**
 
-**0 of 12 advance.** The surviving cell moves from `p = 0.0059` to
-`p = 0.0134`, which clears neither the BH rank-1 threshold of 0.00833 nor
-the BY one of 0.002685 — so
-the corrected run reaches the same conclusion by a different route, while
-*still* carrying §3's placebo bias (S2's control is still −9.53bp).
+| Situation | h | events | **pool %** | event bp | ctrl bp | uncond | **ctrl bias** | diff bp | t | p |
+|---|---|---|---|---|---|---|---|---|---|---|
+| S2 resistance break | 1440 | 200 | **42%** | +57.45 | **−73.05** | +13.00 | **−86.05** | **+130.50** | **3.51** | **5.4e-04** |
+| S2 resistance break | 240 | 1,162 | 84% | +3.57 | −8.56 | +2.17 | −10.73 | +12.13 | 2.16 | 3.1e-02 |
+| S1 support penetration | 1440 | 204 | 43% | +40.34 | **+94.61** | +13.00 | **+81.62** | −54.27 | −1.92 | 5.6e-02 |
+| S3 abnormal activity | 15 | 497 | 89% | +6.56 | +1.17 | +0.14 | +1.03 | +5.39 | 1.03 | 3.0e-01 |
+| S3 abnormal activity | 1440 | 151 | 58% | +1.92 | +41.60 | +13.00 | +28.61 | −39.68 | −1.00 | 3.2e-01 |
+| S1 support penetration | 240 | 1,149 | 84% | +9.42 | +15.06 | +2.17 | +12.90 | −5.65 | −0.99 | 3.2e-01 |
+| S2 resistance break | 60 | 1,163 | 84% | +0.07 | −3.60 | +0.55 | −4.15 | +3.67 | 0.98 | 3.3e-01 |
+| S3 abnormal activity | 240 | 497 | 89% | +21.74 | +10.78 | +2.17 | +8.61 | +10.96 | 0.92 | 3.6e-01 |
+| S3 abnormal activity | 60 | 500 | 89% | +11.95 | +7.10 | +0.55 | +6.54 | +4.86 | 0.62 | 5.4e-01 |
+| S2 resistance break | 15 | 1,163 | 84% | −0.28 | −1.78 | +0.14 | −1.92 | +1.49 | 0.60 | 5.5e-01 |
+| S1 support penetration | 60 | 1,150 | 84% | +4.70 | +6.64 | +0.55 | +6.09 | −1.94 | −0.49 | 6.2e-01 |
+| S1 support penetration | 15 | 1,152 | 84% | +1.56 | +1.66 | +0.14 | +1.52 | −0.10 | −0.03 | 9.7e-01 |
 
-**This is a corrected run, not a restated result.** rd-g's family is
-unchanged and its stopping rule still binds; what changed is that an
-invalid statistic was made valid. The corrected p-values supersede §2's
-for H3 and H4; §2 is kept as the record of what the specification as
-written produced.
+**0 of 12 advance. One is significant and vetoed.** S2 at h=1440 posts
+`+130.50bp, t = 3.51, p = 5.4e-04` — clearing even Benjamini–Yekutieli's
+0.002685 threshold — on a control arm sitting **86bp below the
+unconditional baseline.** The claimed effect is smaller than the control's
+own displacement.
+
+### The design is unsound, not the parameters
+
+The tension is structural and the numbers make it exact. Disjoint windows
+at H4 need a ±1,441-bar exclusion; applied around a **directional**
+situation, that is most of the series, and what survives is the opposite
+of the situation:
+
+| h = 1440, control pool | share of series | its own forward return |
+|---|---|---|
+| S1 support penetration (down-break) | 43.0% | **+113.38bp** |
+| S2 resistance break (up-break) | 43.2% | **−91.24bp** |
+| S3 abnormal activity (non-directional) | 59.1% | +20.15bp |
+| *unconditional* | 100% | **+13.00bp** |
+
+Excluding a two-day neighbourhood around every new 1-day high leaves
+mostly sustained downtrends, and vice versa. **S3 moves least because it
+is the only non-directional situation** — the same discriminator as §3.
+
+And the `ctrl bias` column shows it is not confined to H4: **the control
+arm deviates from the unconditional baseline in all twelve tests**, and in
+most of them by more than the difference being measured.
+
+> **The complement of "near an up-move" is "a down-move."** A matched
+> placebo built by excluding a directional situation's neighbourhood
+> cannot be unbiased, at any horizon, and the bias grows with the
+> exclusion radius that disjointness requires. The two constraints are in
+> direct opposition.
+
+**So the instrument needs replacing, not retuning.** A control drawn from
+the same series by *excluding* the event partitions the series by the
+event itself. A null that does not — a block bootstrap preserving
+autocorrelation, or a circular block shift preserving unconditional
+drift — does not have this failure mode. That is what the corrected
+specification must adopt.
+
+### The veto, now in the code
+
+`EventTest.control_suspect` refuses to advance any test whose control arm
+sits further from the unconditional baseline than half the difference
+claimed, and the report prints `uncond` and `ctrl bias` for every test.
+**This is §6's rule made executable**: the failure was invisible in the
+p-value, the effect size, the sample size and the multiple-testing
+correction, and visible immediately in the baselines.
 
 ## 4. What this establishes, and what it does not
 
@@ -196,12 +244,11 @@ written produced.
 
 **Does not establish:**
 
-- **That the symmetric exclusion is correct.** It is *less* obviously
-  wrong — it removes the asymmetry and returns S2's control to near the
-  unconditional mean — but "exclude every catalogued situation" is its own
-  arbitrary choice, and it makes the control pool conditional on quietness.
-  A third construction (no exclusion at all, accepting that ~15% of
-  candidate bars sit near an event) has not been tested.
+- **That the symmetric exclusion is the fix.** It removes the *asymmetry*
+  between S1 and S2 at h=240, and §3.5 shows it does not remove the
+  underlying problem: any exclusion-based control is partitioned by the
+  event, and the bias grows with the radius that disjointness demands.
+  Exclusion is the wrong family of instrument, not the wrong parameter.
 - **Any result under the symmetric rule.** The +0.96bp / t=0.17 figure
   above is a **diagnostic**, run to explain the artifact, and is not a
   stage-2 result. rd-g §4 forbids re-running the twelve with adjusted
@@ -213,12 +260,14 @@ written produced.
 1. **A corrected stage-2 needs a new specification document**, fixing the
    control construction *and* justifying it, before it runs. The evidence
    in §3 is the input to that choice, not a licence to skip it. **It must
-   also state its own dependence handling** — §3.5 shows the disjointness
-   repair is necessary and it is not obviously sufficient, since episodes
-   that are merely non-overlapping are still not independent (CLAUDE.md's
-   `check_disjoint_intervals` reports clustering as a *warning* for
-   precisely that reason). A block bootstrap or a dependence-aware
-   permutation test is the honest instrument.
+   replace the instrument rather than retune it** — §3.5 shows exclusion
+   partitions the series by the event, and that disjointness (which the
+   t-test requires) makes it worse. A **block bootstrap** preserving
+   autocorrelation, or a **circular block shift** preserving unconditional
+   drift, has no such failure mode and also answers the dependence
+   objection: episodes that merely do not overlap are still not
+   independent, which is why `check_disjoint_intervals` reports clustering
+   as a warning.
 2. **The three situations are not refuted.** rd-b §4 stage 3 asks a
    different question — *what, observable at decision time, separates the
    branches?* — and a situation with no mean shift can still have a
