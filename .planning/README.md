@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-95 documents and counting, which is past the point where `ls` is a
+96 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -215,3 +215,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-c-mechanism-catalogue.md`](rd-c-mechanism-catalogue.md) — Research Direction Task C — the mechanism catalogue
 - [`rd-c-kis-flow-probe-result.md`](rd-c-kis-flow-probe-result.md) — Research Direction Task C — KIS flow & intraday probe result
 - [`rd-d-discovery-mode-and-the-full-universe.md`](rd-d-discovery-mode-and-the-full-universe.md) — Research Direction Task D — `Discuss`: discovery mode, and what a full-universe scan actually costs
+- [`rd-e-stage1-catalogue-result.md`](rd-e-stage1-catalogue-result.md) — Research Direction Task E — stage 1 result: the ceiling, not the floor
