@@ -108,11 +108,17 @@ annual cost drag.
   trip moves them — the ceiling is a statement about κ, not about the
   situation. `feasibility()` takes `round_trip` as an argument for
   exactly that reason.
-- **κ = 12bp is BTC-specific.** MS-F recorded the KRX round trip at
-  roughly 42bp, which is 3.5× worse — so on Korean equities the ceiling
-  bites over three times harder and only the very rarest situations
-  survive. That number needs its own sourcing before any Korean stage 2
-  (MS-F §2 says so, and it is still not done).
+- **κ = 12bp is BTC-specific, and the Korean figure is now sourced.**
+  This section originally repeated MS-F's "roughly 42bp", which was a
+  **single-stock futures** figure and does not apply to the spot common
+  stock decision B3 actually chose.
+  [`rd-f`](rd-f-korean-cost-structure.md) measures it: **~32bp over the
+  KR-10 window** and ~28bp today, of which **20bp is the 증권거래세 +
+  농어촌특별세 charged on every sale** — raised to that level on
+  2026-01-01 — plus a **measured** spread of 9.85bp full-window median
+  (6.5bp today; the tick is a fixed 원 amount, so its cost in bp fell as
+  Korean prices rose). Re-scored, **zero of the twelve are feasible at the
+  window's own 32bp, and exactly one at today's 28bp.**
 - **The situation definitions are one parameterisation each.** Penetration
   depth, lookback and percentile thresholds were chosen to match rd-b's
   existing figures, not swept. CLAUDE.md's standing rule — *never conclude
@@ -130,5 +136,8 @@ annual cost drag.
    run. It is implemented as `situation_catalogue.feasibility()` and
    `rd-b` §4's stage-1 row should be read as having both a floor and a
    ceiling from here on.
-3. **Source the KRX round trip** before any Korean stage 2. At 42bp the
-   table above would leave roughly one survivor.
+3. **~~Source the KRX round trip~~ — done**, in
+   [`rd-f`](rd-f-korean-cost-structure.md): ~27bp, tax-dominated, leaving
+   exactly one survivor. What remains open there is the commission tier
+   and the spot-versus-futures instrument choice, the latter being an
+   operator decision.
