@@ -86,16 +86,45 @@ has ever held:
 
 **Do not quote 0.28.** A backtest that assumes single-stock-futures
 execution cannot start before single-stock futures existed, and KRX
-introduced them long after 1991 — believed 2008-05, **deliberately not
-asserted here**: MS-C resolves it by querying the futures endpoint for
-its own earliest bar, which is a measurement rather than a recollection.
+introduced them long after 1991.
+
+> **RESOLVED 2026-09-13, and not the way this section proposed.** The plan
+> was to query the futures endpoint for its earliest bar. That endpoint
+> now works — `FID_COND_MRKT_DIV_CODE=JF`, `tr_id=FHKIF03020100`, with the
+> real 6-character contract codes from the master (삼성전자 `A11610`); the
+> earlier zero-row result was a wrong market division plus a guessed
+> symbol. But **it cannot answer the question**:
+>
+> | Contract | Data |
+> |---|---|
+> | `A11603` / `A11606` / `A11609` / `A11612` (2026 expiries) | 46–100 bars each |
+> | Every 2018–2025 expiry tried, for 삼성전자, SK하이닉스, 현대차, LG화학 | **`rt_cd=0`, zero rows** |
+>
+> **KIS serves only currently-listed contracts.** An expired one returns a
+> clean empty result — roughly eight months of futures price history, and
+> no listing history at all.
+>
+> - **The signal is unaffected**: MS-A §4.3 computes it on adjusted
+>   *spot* closes, and 35 years of those exist.
+> - **The execution assumption cannot be verified from KIS.** Nothing in
+>   this API confirms that an underlying had a listed, liquid future on a
+>   given past date, nor measures the historical basis or realised roll
+>   cost.
+> - A backtest asserting futures execution over 2019–2026 therefore rests
+>   on a premise **KIS data can neither confirm nor refute**: that the ten
+>   most-traded names with futures listed today also had them throughout.
+>   Plausible — these are the most liquid names on the exchange — and
+>   plausible is not verified. **MS-F's pre-registration must state it as
+>   an unverified execution premise** rather than fold it into a result.
+> - Closing it needs KRX listing history, outside KIS.
 
 The window also cannot start before the **youngest constituent** has
 data, since all K members must be held simultaneously. NAVER's 2005 floor
 already binds harder than 1991.
 
 So the operative window is roughly **2008 onward, ~18 years, floor
-≈0.38** — still comfortably below the 0.4–0.8 credible-institutional-edge
+≈0.38** (start date now an assumption rather than a measurement, per the
+box above) — still comfortably below the 0.4–0.8 credible-institutional-edge
 band, and **the first window in this project's history where a realistic
 edge is detectable rather than merely not excluded.**
 

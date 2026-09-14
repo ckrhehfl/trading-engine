@@ -81,6 +81,7 @@ judgment calls.
 
 import json
 import logging
+from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -462,6 +463,105 @@ def load_holdout_klines(
     )
 
     return klines
+
+
+def load_holdout_portfolio(
+    symbols: Sequence[str],
+    start_ms: int,
+    end_ms: int,
+    *,
+    strategy_id: str,
+    i_understand_this_is_holdout_data: bool,
+    force_reclaim_reason: str | None = None,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    holdout_config_path: str | Path = DEFAULT_HOLDOUT_CONFIG_PATH,
+    runs_path: str | Path = experiment_log.DEFAULT_RUNS_PATH,
+) -> dict[str, list[Kline]]:
+    """`load_holdout_klines` for a multi-instrument portfolio: several
+    series, **exactly one** single-access claim.
+
+    Added for Multi-Asset Task F. `load_holdout_klines` takes its symbol
+    from the holdout config, which has room for one -- and calling it once
+    per constituent would consume the claim on the first and raise
+    `HoldoutAlreadyClaimedError` on the second, making a portfolio
+    unrunnable rather than merely awkward. That is the correct behaviour
+    for its own contract and the wrong shape for this one.
+
+    The invariant is unchanged and is the whole point: **a portfolio is one
+    access**. One `holdout_access` record is written, naming every symbol,
+    so a second run of the same `strategy_id` is refused exactly as it
+    would be for a single-symbol registration.
+
+    The config's own `symbol` is treated as a universe identifier here and
+    is **not** used to load anything; `symbols` supplies the real store
+    symbols. Its `interval`, `holdout_cutoff_ms` and `holdout_side` are
+    honoured exactly as `load_holdout_klines` honours them.
+
+    Returns `{symbol: klines}`. A symbol with no rows in the window comes
+    back as an empty list rather than being dropped, so a caller can tell
+    "requested and absent" from "never requested" -- and
+    `run_kr10_portfolio` refuses to score on an incomplete universe.
+    """
+    if not i_understand_this_is_holdout_data:
+        raise ValueError(
+            "load_holdout_portfolio requires i_understand_this_is_holdout_data=True "
+            "-- this loads the untouched validation holdout split; see "
+            "CLAUDE.md's Strategy Research Methodology section."
+        )
+    if not strategy_id:
+        raise ValueError("strategy_id is required and must be non-blank")
+    requested = list(symbols)
+    if not requested:
+        raise ValueError("symbols is required and must be non-empty")
+    if len(set(requested)) != len(requested):
+        raise ValueError(f"symbols contains duplicates: {requested}")
+
+    existing = _find_holdout_access(strategy_id, runs_path)
+    if existing is not None:
+        if force_reclaim_reason is None or not force_reclaim_reason.strip():
+            raise HoldoutAlreadyClaimedError(
+                f"strategy_id={strategy_id!r} already has a recorded holdout_access "
+                f"entry (accessed_at={existing.get('accessed_at')!r}) -- holdout data "
+                "may only be accessed once per strategy_id. Pass a non-blank "
+                "force_reclaim_reason if this is a deliberate, justified re-run."
+            )
+        logger.warning(
+            "load_holdout_portfolio: re-claiming holdout access for strategy_id=%r "
+            "(previous access at %r) -- force_reclaim_reason=%r",
+            strategy_id,
+            existing.get("accessed_at"),
+            force_reclaim_reason,
+        )
+
+    config = load_holdout_config(holdout_config_path)
+    cutoff_ms = config["holdout_cutoff_ms"]
+    side = resolve_holdout_side(config)
+    if side == HOLDOUT_SIDE_AFTER and start_ms < cutoff_ms:
+        raise ValueError(
+            f"start_ms={start_ms} is before holdout_cutoff_ms={cutoff_ms} -- "
+            "this config's holdout_side is 'after'."
+        )
+    if side == HOLDOUT_SIDE_BEFORE and end_ms > cutoff_ms:
+        raise ValueError(
+            f"end_ms={end_ms} is after holdout_cutoff_ms={cutoff_ms} -- "
+            "this config's holdout_side is 'before'."
+        )
+
+    loaded = {
+        symbol: _load_klines(symbol, config["interval"], start_ms, end_ms, db_path)
+        for symbol in requested
+    }
+
+    experiment_log.log_holdout_access(
+        strategy_id=strategy_id,
+        symbol=",".join(requested),
+        interval=config["interval"],
+        start_ms=start_ms,
+        end_ms=end_ms,
+        force_reclaim_reason=force_reclaim_reason,
+        runs_path=runs_path,
+    )
+    return loaded
 
 
 def _find_holdout_access(strategy_id: str, runs_path: str | Path) -> dict | None:

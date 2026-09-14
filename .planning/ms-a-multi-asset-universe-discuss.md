@@ -91,6 +91,13 @@ venue integration already exists.
 
 ### 2.4 What diversification does to the two failing gates
 
+> **SUPERSEDED 2026-09-13 by [`ms-d-korean-correlations-and-universe.md`](ms-d-korean-correlations-and-universe.md).**
+> Both correlations below are now measured, and both assumptions were
+> conservative: Korean internal is **0.250**, not 0.60/0.75, and Korea vs
+> crypto is **~0.10** properly aligned, not 0.387. The recomputed table is
+> in MS-D §4 — portfolio Sharpe 2.29 and drawdown 11.3% for Korea ×10.
+> The table below is kept as the pre-measurement record.
+
 **These are projections under assumed correlations, not measurements.**
 Two things are assumed and neither is yet measured: the Korean
 constituents' internal correlation, and their correlation with crypto —
@@ -219,7 +226,19 @@ directly on this path and must be closed — the multiplier is exactly the
 unconfirmed fact that blocks it. Second, **sector indices are attractive
 for research and useless for execution**, which is the §2.5 trap.
 
-### 4.2 The universe rule — decided 2026-09-13
+### 4.2 The universe rule — decided 2026-09-13, **then superseded**
+
+> **SUPERSEDED 2026-09-13 by [`ms-e-kr10-universe-rule.md`](ms-e-kr10-universe-rule.md).**
+> The three-per-sector cap below is **not** the operative rule. It was
+> replaced by a correlation constraint measured on 2018 (C1 mean ≤ 0.50,
+> C2 worst pair ≤ 0.80) because KOSPI and KOSDAQ use disjoint industry
+> code schemes with no mapping, so the cap could not be applied across
+> markets at all. MS-E §2–3 is the committed rule and MS-E §4 the resolved
+> universe; everything below is the pre-supersession record.
+>
+> **`Target K = 12` and the turnover ordering survive unchanged** — MS-E
+> replaces only the concentration constraint.
+
 
 The operator chose the rule over the named list, noting the names were
 only used because the symbols were unfamiliar, and asked for **turnover**
