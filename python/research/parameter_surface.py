@@ -214,6 +214,16 @@ def build_surface(
                        [f"no scored records for {strategy_id!r} with metric {metric!r}"])
 
     varying = varying_parameters(scored)
+    if axes is not None and len(set(axes)) != len(axes):
+        # One axis named twice squares its own tick set into `grid_size`
+        # while only the diagonal can ever hold a cell, so a sweep that
+        # ran every value reports coverage 1/k and a peak whose
+        # neighbours were "never run" -- both of the numbers this module
+        # exists to report, wrong in the direction that invents a hole.
+        raise ValueError(
+            f"surface axes must be distinct; got {axes}. "
+            f"A parameter cannot be plotted against itself."
+        )
     if axes is not None and len(axes) > 2:
         # `render` walks two axes and looks cells up by a 2-tuple, so a
         # third would leave every real cell unmatched and the whole grid

@@ -223,6 +223,17 @@ def test_three_axes_are_refused_rather_than_rendered_empty():
         build_surface(recs, "s", ("fast", "slow", "vol"))
 
 
+def test_a_repeated_axis_is_refused_rather_than_reported_as_a_hole():
+    """`("fast", "fast")` squares one tick set into `grid_size` while only
+    the diagonal can hold a cell. A 1-D sweep that ran every value would
+    report coverage 0.25 and `PEAK ISOLATED` -- a hole invented by the
+    axis choice, in exactly the two numbers this module exists to
+    report."""
+    recs = [_rec(value=1.0, fast=f) for f in (1, 2, 3, 4)]
+    with pytest.raises(ValueError, match="distinct"):
+        build_surface(recs, "s", ("fast", "fast"))
+
+
 def test_a_varying_parameter_that_is_not_an_axis_is_named_as_projected():
     """It is averaged over inside every cell, silently. Naming it is the
     difference between a projection and a sweep."""
