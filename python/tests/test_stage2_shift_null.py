@@ -29,7 +29,9 @@ from research.stage2_shift_null import (
     SHIFT_MODES,
     ShiftTest,
     benjamini_yekutieli,
+    event_standard_error,
     matched_null,
+    overlap_block,
     permutation_p,
     permutation_test,
     shift_offsets,
@@ -206,8 +208,8 @@ def test_the_matched_null_draws_from_the_events_own_stratum():
     px = np.concatenate([np.full(n // 2, 100.0), np.linspace(100.0, 300.0, n // 2)])
     dec, hr = _strata(n)
     events = np.array([2200, 2600, 3000])  # all in the rising stratum
-    _, null, dropped = matched_null(px, events, 50, dec, hr, np.random.default_rng(6), 200)
-    assert dropped == 0
+    _, null, keep = matched_null(px, events, 50, dec, hr, np.random.default_rng(6), 200)
+    assert keep.size == events.size
     assert (null > 0).all(), "a draw from the flat stratum would give zero"
 
 
@@ -222,10 +224,10 @@ def test_an_event_with_an_empty_stratum_is_dropped_and_counted():
     # Horizon short enough that every event has a forward window, so the
     # only reason to drop one is the empty stratum -- empty because the
     # event cannot be its own control.
-    _, _, dropped = matched_null(
-        px, np.array([1000, 1500, 2000, 3000]), 50, dec, hr, np.random.default_rng(7), 20
-    )
-    assert dropped == 1
+    events = np.array([1000, 1500, 2000, 3000])
+    _, _, keep = matched_null(px, events, 50, dec, hr, np.random.default_rng(7), 20)
+    assert events.size - keep.size == 1
+    assert 3000 not in keep, "the dropped event must be the one with no control"
 
 
 def test_an_event_is_never_drawn_as_its_own_control():
@@ -240,10 +242,10 @@ def test_an_event_is_never_drawn_as_its_own_control():
     # must land on the non-event.
     for i in (500, 600, 900):
         dec[i] = 3
-    _, null, dropped = matched_null(
+    _, null, keep = matched_null(
         px, np.array([500, 600]), 50, dec, hr, np.random.default_rng(11), 30
     )
-    assert dropped == 0
+    assert keep.size == 2
     only = (px[951] - px[901]) / px[901]
     assert null.min() == pytest.approx(only) and null.max() == pytest.approx(only), (
         "bar 900 is the only admissible control; 500 and 600 are the events"
@@ -257,10 +259,9 @@ def test_an_event_without_its_own_forward_window_is_dropped_too():
     n = 4000
     px = np.linspace(100.0, 200.0, n)
     dec, hr = np.zeros(n, np.int8), np.zeros(n, np.int8)
-    _, _, dropped = matched_null(
-        px, np.array([100, 200, 3990]), 50, dec, hr, np.random.default_rng(10), 20
-    )
-    assert dropped == 1
+    events = np.array([100, 200, 3990])
+    _, _, keep = matched_null(px, events, 50, dec, hr, np.random.default_rng(10), 20)
+    assert events.size - keep.size == 1 and 3990 not in keep
 
 
 def test_too_few_matchable_events_is_refused_rather_than_reported():
@@ -282,7 +283,7 @@ def test_the_matched_and_shift_nulls_disagree_when_strata_differ():
     events = np.array([3200, 3600, 4000, 4400])
     rng = np.random.default_rng(9)
     _, shift = permutation_test(px, events, 50, shift_offsets(n, 100, 300, rng, "free"))
-    obs, matched, _ = matched_null(px, events, 50, dec, hr, rng, 300)
+    obs, matched, _keep = matched_null(px, events, 50, dec, hr, rng, 300)
     assert obs - shift.mean() > obs - matched.mean(), (
         "the global shift must overstate the effect when events cluster in a stratum"
     )
@@ -340,3 +341,82 @@ def test_the_shift_nulls_keep_the_veto():
         r = _test(1e-5, observed=0.0030, null_mean=-0.0010, unconditional=0.0015,
                   null_mode=mode)
         assert r.null_suspect
+
+
+# ------------------------------- the event arm's own standard error
+
+
+def test_the_overlap_block_comes_from_the_two_constants():
+    """`ceil(horizon / cooldown)` -- 1 where forward windows are disjoint,
+    6 at h=1440 against the 240-bar cooldown. Derived rather than chosen,
+    so it cannot drift away from the event construction."""
+    assert overlap_block(15) == 1
+    assert overlap_block(60) == 1
+    assert overlap_block(240) == 1
+    assert overlap_block(1440) == 6
+    assert overlap_block(241) == 2
+
+
+def test_a_non_positive_cooldown_is_refused():
+    with pytest.raises(ValueError, match="cooldown must be positive"):
+        overlap_block(240, 0)
+
+
+def test_with_no_overlap_the_bootstrap_is_the_closed_form_exactly():
+    """Not approximately: at block 1 there is nothing to correct, and
+    returning a noisy bootstrap estimate instead would make the h=15/60/240
+    figures irreproducible for no gain."""
+    r = np.random.default_rng(1).normal(0, 0.01, 500)
+    assert event_standard_error(r, 1, np.random.default_rng(2)) == pytest.approx(
+        r.std(ddof=1) / np.sqrt(r.size)
+    )
+
+
+def test_the_bootstrap_widens_the_error_on_positively_correlated_returns():
+    """**The point of the correction.** Overlapping forward windows share
+    bars, so their covariance is real and positive; the closed form ignores
+    it and understates the error, which understates the cost."""
+    rng = np.random.default_rng(3)
+    base = rng.normal(0, 0.01, 200)
+    r = np.repeat(base, 6)  # six consecutive events sharing one window
+    closed = r.std(ddof=1) / np.sqrt(r.size)
+    boot = event_standard_error(r, 6, np.random.default_rng(4), draws=800)
+    assert boot > 1.5 * closed
+
+
+def test_the_bootstrap_is_close_to_the_closed_form_on_independent_draws():
+    """The correction must not inflate an error that needs no correcting,
+    or every horizon would pay for the one that does."""
+    r = np.random.default_rng(5).normal(0, 0.01, 1200)
+    closed = r.std(ddof=1) / np.sqrt(r.size)
+    boot = event_standard_error(r, 6, np.random.default_rng(6), draws=1500)
+    assert boot == pytest.approx(closed, rel=0.20)
+
+
+def test_a_block_longer_than_the_sample_is_clamped():
+    r = np.random.default_rng(7).normal(0, 0.01, 10)
+    assert event_standard_error(r, 50, np.random.default_rng(8), draws=100) > 0
+
+
+def test_a_single_return_has_no_standard_error():
+    with pytest.raises(ValueError, match="at least 2 returns"):
+        event_standard_error(np.array([0.01]), 1, np.random.default_rng(9))
+
+
+def test_the_bootstrap_does_not_disturb_the_null_draws():
+    """**A reported diagnostic must not move the result.** The first
+    version drew from the same generator the nulls use, which re-rolled
+    every shift offset after its first call and turned S3 h=1440 from
+    p=1.25e-02 into an ADVANCE at p=6.50e-03. Pinned here against the
+    generator rather than against a remembered number."""
+    rng = np.random.default_rng(42)
+    before = rng.normal(size=5).copy()
+    rng2 = np.random.default_rng(42)
+    rng2.normal(size=5)
+    state_untouched = rng2.normal(size=5)
+    event_standard_error(
+        np.random.default_rng(1).normal(0, 0.01, 100), 6,
+        np.random.default_rng(99), draws=50,
+    )
+    assert np.array_equal(before, np.random.default_rng(42).normal(size=5))
+    assert np.array_equal(state_untouched, rng.normal(size=5))

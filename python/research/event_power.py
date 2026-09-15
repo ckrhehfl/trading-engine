@@ -345,11 +345,13 @@ def power_row(
     # first version of this module did exactly that; rd-m's registered
     # prediction 4 is what caught it. `null_sd` is still carried, as the
     # diagnostic in `null_calibration`.
-    se = (
-        test.event_sd / math.sqrt(test.n_events)
-        if test.event_sd > 0
-        else test.null_sd
-    )
+    #
+    # `event_se` rather than `event_sd / sqrt(n)`: at h=1440 up to six
+    # consecutive events share a forward window, and a closed-form
+    # independent-samples error ignores that covariance -- understating the
+    # error, and so the cost, which is the unsafe direction. See
+    # `stage2_shift_null.event_standard_error`.
+    se = test.event_se if test.event_se > 0 else test.null_sd
     # **The interval is at the decision rule's own alpha, not a habitual
     # 95%.** Mixing the two put a contradiction in the first version of
     # this table: S2 at h=240 read EXCLUDED from a 95% interval while its

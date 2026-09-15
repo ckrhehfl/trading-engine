@@ -45,10 +45,10 @@ def _test(effect=0.0010, se=0.0005, n=786, p=0.064, mode="matched", null_sd=None
     null rather than set directly -- pinning the derived quantity would let
     the fixture disagree with the dataclass.
 
-    `event_sd` is set so that `event_sd / sqrt(n)` is exactly `se`, since
-    that is what `power_row` now uses. `null_sd` defaults to the same
-    value, i.e. a **perfectly calibrated** null; pass it explicitly to
-    build a mis-calibrated one.
+    `event_se` is the standard error `power_row` now uses, and `event_sd`
+    is set consistently with it. `null_sd` defaults to the same value, i.e.
+    a **perfectly calibrated** null; pass it explicitly to build a
+    mis-calibrated one.
     """
     return ShiftTest(
         situation="S3 abnormal activity",
@@ -61,6 +61,7 @@ def _test(effect=0.0010, se=0.0005, n=786, p=0.064, mode="matched", null_sd=None
         p_value=p,
         permutations=2000,
         event_sd=se * math.sqrt(n),
+        event_se=se,
         null_mode=mode,
     )
 
@@ -386,6 +387,22 @@ def test_the_row_is_frozen_so_a_reported_figure_cannot_be_edited_after():
 # ------------------------------------------------- the standard error
 
 
+def test_the_se_carries_the_overlap_correction_not_the_closed_form():
+    """`power_row` reads `event_se`, which is bootstrap-corrected at
+    h=1440. Reading `event_sd / sqrt(n)` instead would silently drop that
+    correction and understate the cost by ~1.2x there."""
+    t = ShiftTest(
+        situation="S3 abnormal activity", horizon=1440, n_events=785,
+        observed=0.002, null_mean=0.0006, null_sd=0.0015, unconditional=0.0013,
+        p_value=0.36, permutations=2000,
+        event_sd=0.0427,            # closed form would give 15.24bp
+        event_se=0.001821,          # the bootstrap's 18.21bp
+    )
+    r = power_row(t, years=6.96)
+    assert r.se == pytest.approx(0.001821)
+    assert r.se > t.event_sd / math.sqrt(t.n_events)
+
+
 def test_the_se_is_the_event_arms_own_not_the_nulls():
     """**The correction rd-m's prediction 4 caught.** rd-k's matched null
     matches on PRIOR volatility, and an event that is itself a volatility
@@ -425,8 +442,8 @@ def test_using_the_null_would_have_understated_the_cost_by_the_square():
     assert good.n_for_observed / bad == pytest.approx((0.0005 / 0.0002) ** 2)
 
 
-def test_a_test_without_an_event_sd_falls_back_to_the_null():
-    """`event_sd` is additive with a 0.0 default, so a `ShiftTest` built
+def test_a_test_without_an_event_se_falls_back_to_the_null():
+    """`event_se` is additive with a 0.0 default, so a `ShiftTest` built
     before this field existed must still produce a row rather than a
     division by zero."""
     t = ShiftTest(
@@ -434,7 +451,7 @@ def test_a_test_without_an_event_sd_falls_back_to_the_null():
         observed=0.001, null_mean=0.0, null_sd=0.0004, unconditional=0.0,
         p_value=0.2, permutations=2000,
     )
-    assert t.event_sd == 0.0
+    assert t.event_se == 0.0
     assert power_row(t, years=6.96).se == pytest.approx(0.0004)
 
 

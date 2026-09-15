@@ -78,21 +78,23 @@ is the mis-calibration, measured.**
 
 | situation | h | events | effect | se | null sd | cal | 99.73% CI | n@12bp | years | instruments | verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| S1 support penetration | 15 | 1,175 | +1.60 | 3.02 | 1.22 | 0.41 | [−7.46, +10.67] | 1,099 | 6.5 | 0.9 | **EXCLUDED** |
-| S1 support penetration | 60 | 1,175 | +4.43 | 3.95 | 2.38 | 0.60 | [−7.43, +16.29] | 1,881 | 11.1 | 1.6 | UNDERPOWERED |
-| S1 support penetration | 240 | 1,175 | +7.46 | 5.47 | 4.28 | 0.78 | [−8.96, +23.88] | 3,606 | 21.4 | 3.1 | UNDERPOWERED |
-| S1 support penetration | 1440 | 1,175 | +3.40 | 11.37 | 9.93 | 0.87 | [−30.73, +37.53] | 15,582 | 92.3 | 13.3 | UNDERPOWERED |
-| S2 resistance break | 15 | 1,165 | −0.50 | 2.43 | 1.11 | 0.46 | [−7.79, +6.79] | 705 | 4.2 | 0.6 | **EXCLUDED** |
-| S2 resistance break | 60 | 1,165 | −0.30 | 3.65 | 2.15 | 0.59 | [−11.25, +10.66] | 1,592 | 9.5 | 1.4 | **EXCLUDED** |
-| S2 resistance break | 240 | 1,165 | +1.53 | 5.40 | 4.16 | 0.77 | [−14.67, +17.74] | 3,484 | 20.8 | 3.0 | UNDERPOWERED |
-| S2 resistance break | 1440 | 1,164 | +7.92 | 11.03 | 9.73 | 0.88 | [−25.19, +41.03] | 14,528 | 86.9 | 12.5 | UNDERPOWERED |
+| S1 support penetration | 15 | 1,175 | +1.60 | 2.94 | 1.22 | 0.42 | [−7.23, +10.43] | 1,043 | 6.2 | 0.9 | **EXCLUDED** |
+| S1 support penetration | 60 | 1,175 | +4.43 | 3.82 | 2.38 | 0.62 | [−7.04, +15.89] | 1,759 | 10.4 | 1.5 | UNDERPOWERED |
+| S1 support penetration | 240 | 1,175 | +7.46 | 5.47 | 4.28 | 0.78 | [−8.97, +23.89] | 3,611 | 21.4 | 3.1 | UNDERPOWERED |
+| S1 support penetration | 1440 | 1,175 | +3.40 | 13.98 | 9.93 | 0.71 | [−38.57, +45.36] | 23,561 | 139.6 | 20.1 | UNDERPOWERED |
+| S2 resistance break | 15 | 1,165 | −0.50 | 2.43 | 1.11 | 0.46 | [−7.79, +6.79] | 704 | 4.2 | 0.6 | **EXCLUDED** |
+| S2 resistance break | 60 | 1,165 | −0.30 | 3.65 | 2.15 | 0.59 | [−11.27, +10.67] | 1,596 | 9.5 | 1.4 | **EXCLUDED** |
+| S2 resistance break | 240 | 1,165 | +1.53 | 5.41 | 4.16 | 0.77 | [−14.69, +17.76] | 3,492 | 20.9 | 3.0 | UNDERPOWERED |
+| S2 resistance break | 1440 | 1,164 | +7.92 | 13.89 | 9.73 | 0.70 | [−33.78, +49.63] | 23,046 | 137.8 | 19.8 | UNDERPOWERED |
 | S3 abnormal activity | 15 | 786 | +4.18 | 3.61 | 2.34 | 0.65 | [−6.66, +15.02] | 1,052 | 9.3 | 1.3 | UNDERPOWERED |
 | S3 abnormal activity | 60 | 786 | +5.51 | 5.53 | 4.16 | 0.75 | [−11.10, +22.11] | 2,466 | 21.8 | 3.1 | UNDERPOWERED |
 | **S3 abnormal activity** | **240** | **786** | **+13.61** | **8.35** | **7.33** | **0.88** | **[−11.45, +38.67]** | **5,619** | **49.8** | **7.1** | UNDERPOWERED |
-| S3 abnormal activity | 1440 | 785 | +13.86 | 15.24 | 14.58 | 0.96 | [−31.90, +59.61] | 18,707 | 165.9 | 23.8 | UNDERPOWERED |
+| S3 abnormal activity | 1440 | 785 | +13.86 | 18.21 | 14.58 | 0.80 | [−40.81, +68.52] | 26,707 | 236.9 | 34.0 | UNDERPOWERED |
 
 Effects, standard errors and intervals in basis points. `se` is the event
-arm's own `σ_event/√n`; `cal` is `null sd / se`, where 1.0 is a correctly
+arm's own standard error — `σ_event/√n` where the forward windows are
+disjoint, and a **moving-block bootstrap** at h=1440 where up to six
+consecutive events share one (§4.2); `cal` is `null sd / se`, where 1.0 is a correctly
 calibrated null. `n@12bp` is the event count needed to detect an effect
 exactly at the round trip; `years` converts it at the situation's own
 measured rate (113–169 events/year over the window's 6.962 years);
@@ -109,13 +111,13 @@ trade. The verdict answers *"could this pay for its round trip?"*, not
 
 | h | mean se | mean detectable effect | vs the 12bp floor | mean `cal` | excluded |
 |---|---|---|---|---|---|
-| 15 | 3.02 bp | **11.61 bp** | resolution is roughly **at** the floor | 0.50 | 2 of 3 |
-| 60 | 4.38 bp | **16.82 bp** | **above** the floor | 0.65 | 1 of 3 |
-| 240 | 6.41 bp | **24.62 bp** | well above | 0.81 | 0 of 3 |
-| 1440 | 12.55 bp | **48.22 bp** | far above | 0.90 | 0 of 3 |
+| 15 | 2.99 bp | **11.51 bp** | resolution is roughly **at** the floor | 0.51 | 2 of 3 |
+| 60 | 4.34 bp | **16.66 bp** | **above** the floor | 0.66 | 1 of 3 |
+| 240 | 6.41 bp | **24.63 bp** | well above | 0.81 | 0 of 3 |
+| 1440 | 15.36 bp | **59.04 bp** | far above | 0.74 | 0 of 3 |
 
 > **The cost floor is a constant and the measurement's noise is not.**
-> `se` grows as `h^0.31` across the family mean, so there is a horizon
+> `se` grows as `h^0.36` across the family mean, so there is a horizon
 > above which a 12bp effect sits inside the error bars no matter how many
 > events are collected in 6.96 years — and on the corrected figures it
 > falls **at h = 15 to 60**, one step shorter than the first version of
@@ -166,15 +168,16 @@ own spread:
 
 | h | mean `cal` = null sd / se | event σ vs an unconditional bar's |
 |---|---|---|
-| 15 | **0.50** | 2.5–3.1× |
-| 60 | 0.65 | 1.9–2.4× |
+| 15 | **0.51** | 2.5–3.1× |
+| 60 | 0.66 | 1.9–2.4× |
 | 240 | 0.81 | 1.4–1.8× |
-| 1440 | 0.90 | 1.2–1.4× |
+| 1440 | 0.74 | 1.2–1.4× |
 
-The ratio recovers toward 1.0 with the horizon, which is exactly the
-mechanism showing its shape: the volatility burst decays, so by h=1440 an
-event's forward window is mostly ordinary market and the matched control
-is nearly right.
+The ratio recovers toward 1.0 through h=240, which is exactly the
+mechanism showing its shape: the volatility burst decays, so the matched
+control gets steadily closer to right. It falls back at h=1440 for a
+**second, unrelated** reason — §4.2's overlap correction widens the `se`
+there and so lowers the ratio.
 
 **Three consequences, in the order they matter:**
 
@@ -187,8 +190,8 @@ is nearly right.
    anything that had advanced, which is why the flag now prints.
 2. **This document's first version understated every cost.** `n` scales
    as `se²`, so the counts were low by up to **6×** and the intervals
-   narrow by up to **2.45×**. "5 of 12 EXCLUDED" was really **3 of 12**;
-   S3 h=240's 38.3 years is really **49.8**.
+   narrow by up to **2.4×**. "5 of 12 EXCLUDED" was really **3 of 12**;
+   S3 h=240's 38.3 total years is really **49.8**.
 3. **`null_sd` is now a diagnostic rather than an input.**
    `null_calibration = null_sd / se` is reported per test, and a value
    below 0.9 prints a warning naming the direction of the resulting bias.
@@ -206,12 +209,58 @@ null is calibrated to that arm, and "matched on a prior-window statistic"
 does not calibrate a null to an event that is defined by a burst in that
 same statistic. Report the ratio; do not assume it.
 
+### 4.2 Two further corrections, both found on review of this document
+
+**(a) `σ_event / √n` is an _independent-samples_ standard error, and at
+h=1440 the samples are not independent.** Episodes are collapsed to one
+per 240 bars, so a forward window of `h` bars is shared by up to
+`ceil(h/240)` consecutive events — **1 at h=15, 60 and 240, and 6 at
+h=1440.** Ignoring that covariance understates the error, and therefore
+understates the cost, which is the unsafe direction.
+
+The `se` is now a **moving-block bootstrap** over the event sequence
+wherever the block exceeds 1, with the block length derived from the two
+constants rather than chosen. The correction is exactly where the
+arithmetic says it should be:
+
+| h | block | closed form | bootstrap | ratio |
+|---|---|---|---|---|
+| 15 / 60 / 240 | 1 | — | identical | **1.00** |
+| 1440 (S1) | 6 | 11.30 | 13.98 | 1.24 |
+| 1440 (S2) | 6 | 11.05 | 13.89 | 1.26 |
+| 1440 (S3) | 6 | 15.24 | 18.21 | 1.19 |
+
+No verdict moved — the h=1440 cells were UNDERPOWERED either way — but
+their price did: S3 h=1440 goes from 151.9 to **236.9 total years**. It
+does not claim to capture dependence *beyond* the shared window;
+volatility clustering correlates even disjoint neighbours, and that
+remains uncorrected and disclosed.
+
+**(b) The dispersion was taken over the wrong events under the matched
+null.** `matched_null` drops an event whose `(decile, hour)` stratum has
+no eligible bar, and `observed` is computed without it — but `event_sd`
+was computed over the pre-drop set, i.e. a different population from the
+statistic it is the error of. 21 events for S1 at h=15, which moved that
+cell's `se` from 3.02 to **2.94**. `matched_null` now returns the kept
+indices rather than a count, so there is one source for "the events of
+this test."
+
+**And a third thing, caught by the verification rather than by review.**
+The bootstrap first drew from the *same* generator the nulls use, which
+silently re-rolled every shift offset and matched control after its first
+call — moving S3 h=1440 from 33.07bp/p=1.25e-02 to 32.13bp/p=6.50e-03 and
+**turning a non-result into an ADVANCE.** A reported diagnostic must not
+perturb the stream the result depends on; it now has its own. What found
+it was diffing both stage-2 commands against their pre-change output, not
+reading the code — the project's own "verify against an external
+observable" rule, doing exactly what it is for.
+
 ## 5. What would settle the other nine, and what it costs
 
 | route | S3 h=240 | S3 h=1440 | comment |
 |---|---|---|---|
-| **more BTC time** | 49.8 more years | 165.9 more years | not a route |
-| **more instruments** | 7.1 independent series | 23.8 | the only arithmetically available one |
+| **more BTC time** | **49.8 total years** (42.8 more) | **236.9 total** (229.9 more) | not a route |
+| **more instruments** | 7.1 independent series | 34.0 | the only arithmetically available one |
 | **a lower cost floor** | — | — | not available; 12bp is already the measured BTC round trip (`scalp-s9`) |
 | **a longer horizon** | — | — | moves the wrong way; se grows and the floor does not |
 
@@ -261,7 +310,8 @@ EXCLUDED cells or the nine open ones. The three exclude an effect *at or
 above the round trip* at the family's own confidence level. A real,
 sub-cost effect is entirely consistent with every row in §3.
 
-**Does not establish that 5,619 events would settle S3 at h=240.** The
+**Does not establish that 5,619 events would settle S3 at h=240.** That
+is a *total*, of which the 786 already collected are part. The
 `1/se²` scaling holds only if the added events carry the same dispersion
 and stratum composition. rd-k §2.2 already showed S1 and S2 are clustered
 in 2021–22 and thin in 2025–26 — a longer window does not deliver more of
@@ -283,11 +333,23 @@ fourth attempt to resolve cells whose resolution is the problem.**
    the same events, and §4 shows the mean test has nothing left to give at
    the horizons where the mean looked interesting.
 2. **Run this calculation *before* the next family, not after.** The
-   transferable rule: **a family whose detectable effect exceeds its own
-   cost floor cannot produce a candidate, and should be re-specified or
-   not run.** That is checkable from the event arm's own dispersion and a
-   round trip alone — no result required, and therefore no result to be
-   tempted by. **Not from `null_sd`**, which §4.1 is about.
+   transferable rule, stated as two separate claims because they are two
+   different kinds of thing:
+
+   - **The statistical fact**: a family whose `detectable` exceeds its own
+     cost floor **cannot reliably detect a cost-floor-sized effect at the
+     chosen power.** It says nothing about whether a larger effect exists
+     — a study too coarse to see 12bp would see 40bp perfectly well.
+   - **The policy**: such a family should be **re-specified or not run**,
+     and that is a pre-registration decision made before any data is seen,
+     not a conclusion drawn from one. Its justification is that a family
+     which cannot resolve the smallest *useful* effect can only ever return
+     "not shown", at the cost of spending `N` and inviting a
+     winner's-curse reading of whatever it does return.
+
+   Both are checkable from the event arm's own dispersion and a round trip
+   alone — no result required, and therefore no result to be tempted by.
+   **Not from `null_sd`**, which §4.1 is about.
 3. **The cross-section argument is now quantitative**, and belongs in the
    rd-d discussion rather than being re-derived there.
 4. **Report `null_calibration` on every permutation test from here on.**
