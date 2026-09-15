@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-101 documents and counting, which is past the point where `ls` is a
+102 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -221,3 +221,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-h-stage2-result.md`](rd-h-stage2-result.md) — Research Direction Task H — stage 2 result: zero of twelve, and the one that looked real was the placebo
 - [`rd-i-what-was-adopted-from-outside.md`](rd-i-what-was-adopted-from-outside.md) — Research Direction Task I — what was adopted from an outside write-up, and what was not
 - [`rd-j-stage2-corrected-specification.md`](rd-j-stage2-corrected-specification.md) — Research Direction Task J — stage 2, corrected: a null that does not partition the series
+- [`rd-k-stage2-corrected-result.md`](rd-k-stage2-corrected-result.md) — Research Direction Task K — stage 2 corrected: 0 of 12, and the effect is a property of the null
