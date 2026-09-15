@@ -11,16 +11,39 @@ item 2 is explicit that this is cheaper to compute than another null is
 to run, and it is the calculation that should precede any further mean
 test rather than follow one.
 
-## The instrument
+## The instrument, and the correction that took two passes
 
-A permutation test compares one observed statistic against the spread of
-its own null distribution, so `null_sd` **is** the standard error of the
-statistic under the design that produced it -- overlapping forward
-windows, matched strata, the draw structure and all. Nothing has to be
-assumed about independence: whatever dependence the design carries is
-already inside that spread. From there the usual two-sided requirement:
+The question is about the sampling variability of **the statistic that was
+observed** -- the event-arm mean -- so the standard error is the event
+arm's own, `sigma_event / sqrt(n)`:
 
-    n_required = n_observed * ( (z[1-alpha/2] + z[power]) * null_sd / effect )^2
+    n_required = n_observed * ( (z[1-alpha/2] + z[power]) * se / effect )^2
+
+**The first version of this module used `null_sd` instead, and that was
+wrong.** The reasoning was that a permutation null's spread *is* the
+sampling distribution of its statistic, which is true only when the null
+is calibrated to the arm it is judging. rd-k's matched null is not: it
+matches on **prior** volatility, and an event that is itself a volatility
+burst has a more dispersed **forward** return than any bar sharing its
+prior-volatility decile. Measured on this data, the null runs **1.05x to
+2.45x narrower** than the event arm, worst at the short horizons where the
+burst has not yet decayed.
+
+That mattered twice over. Required-event counts scale as `se^2`, so they
+were understated by up to **6x**; and every interval was narrowed by the
+same ratio, which moved real verdicts.
+
+**`null_sd` is still carried, now as the diagnostic it should always have
+been** -- `null_calibration = null_sd / se`, where 1.0 is a correct null
+and below 1.0 means the reference distribution is narrower than the
+statistic it judges, so **the permutation p-value is too small.** For a
+0-of-12 result that is the safe direction; it would not have been for
+anything that advanced.
+
+**rd-m's registered prediction 4 is what caught this** -- *"the realised
+`se_diff` will be within 20% of 2 x stage 2's `se_full`"* -- and it came
+back at 2.5x. That is the third defect a registered prediction has found
+in this arc.
 
 with `alpha` the **Benjamini-Yekutieli rank-1 threshold, 0.002685**, not
 0.05 -- that is the bar rd-j's decision rule actually sets, and quoting a
@@ -159,9 +182,13 @@ def required_events(
 ) -> float:
     """Events needed to detect `effect` at `alpha` two-sided with `power`.
 
-    `se` is the observed standard error **at `n_events`** -- for a
-    permutation test, the null distribution's own standard deviation,
-    which already carries the design's dependence.
+    `se` is the observed standard error of the statistic **at
+    `n_events`** -- `sigma_event / sqrt(n)` for an event-study mean.
+
+    **Not the null distribution's standard deviation**, which is a
+    different quantity whenever the null is imperfectly calibrated: see
+    this module's own docstring for the 1.05-2.45x gap that made the
+    distinction load-bearing rather than pedantic.
 
     Returns `inf` for a zero effect, which is the true answer and a more
     useful one than an exception: no sample size establishes a null.
@@ -206,6 +233,7 @@ class PowerRow:
     n_events: int
     effect: float
     se: float
+    null_sd: float
     permutation_p: float
     normal_p: float
     ci_low: float
@@ -221,6 +249,35 @@ class PowerRow:
 
     def years_for(self, n: float) -> float:
         return math.inf if math.isinf(n) else n / self.events_per_year
+
+    @property
+    def null_calibration(self) -> float:
+        """`null_sd / se` — how well the null's spread matches the event
+        arm's own sampling error.
+
+        **1.0 is a correctly calibrated null.** Below 1.0 the reference
+        distribution is narrower than the statistic it is judging, so an
+        observed deviation looks more extreme than it is and **the
+        permutation p-value is too small**. That is the safe direction for
+        a negative result — a 0-of-12 reported against an over-significant
+        null is more robust, not less — and the unsafe one for anything
+        that had advanced.
+
+        Reported for every test on the standing rule that a guard's value
+        is visible only when its number is.
+        """
+        return self.null_sd / self.se if self.se > 0 else float("nan")
+
+    @property
+    def null_underdispersed(self) -> bool:
+        """A null more than 10% narrower than the statistic it judges.
+
+        10% rather than any gap at all, because a permutation null carries
+        its own Monte Carlo error and a few percent means nothing. On this
+        data every one of the twelve is flagged, which is the finding
+        rather than a tolerance being too tight.
+        """
+        return self.null_calibration < 0.9
 
     @property
     def verdict(self) -> str:
@@ -272,7 +329,27 @@ def power_row(
     if years <= 0:
         raise ValueError(f"years must be positive, got {years}")
     a = alpha_rank1() if alpha is None else alpha
-    se = test.null_sd
+    # **The event arm's own standard error, not the null's spread.**
+    #
+    # The question "how many events would settle this" is about the
+    # sampling variability of the statistic that was observed -- the event
+    # mean -- which is `sigma_event / sqrt(n)`. `null_sd` is the spread of
+    # the REFERENCE distribution, and the two coincide only when the null
+    # is perfectly calibrated to the event arm. On this data they do not:
+    # the matched null runs 1.05x to 2.45x narrower, because matching on
+    # PRIOR volatility does not match FORWARD volatility for an event that
+    # is itself a volatility burst.
+    #
+    # Using `null_sd` understated every required-event count by the square
+    # of that ratio -- up to 6x -- and narrowed every interval by it. The
+    # first version of this module did exactly that; rd-m's registered
+    # prediction 4 is what caught it. `null_sd` is still carried, as the
+    # diagnostic in `null_calibration`.
+    se = (
+        test.event_sd / math.sqrt(test.n_events)
+        if test.event_sd > 0
+        else test.null_sd
+    )
     # **The interval is at the decision rule's own alpha, not a habitual
     # 95%.** Mixing the two put a contradiction in the first version of
     # this table: S2 at h=240 read EXCLUDED from a 95% interval while its
@@ -292,6 +369,7 @@ def power_row(
         n_events=test.n_events,
         effect=test.effect,
         se=se,
+        null_sd=test.null_sd,
         permutation_p=test.p_value,
         normal_p=normal_p(test.effect, se),
         ci_low=lo,
@@ -348,15 +426,17 @@ def report(rows: list[PowerRow], mode: str) -> None:
     )
     print(
         f"{'situation':26} {'h':>5} {'events':>7} {'effect':>8} {'se':>7} "
+        f"{'nullsd':>7} {'cal':>5} "
         f"{'perm p':>9} {'norm p':>9} {f'{1-a:.2%} CI':>17} {'detect':>8} "
         f"{'n@obs':>10} {f'n@{floor*1e4:.0f}bp':>10} {f'yrs@{floor*1e4:.0f}bp':>9} "
         f"{'sym':>5}  {'verdict':<12}"
     )
-    print("-" * 165)
+    print("-" * 180)
     for r in sorted(rows, key=lambda x: x.permutation_p):
         print(
             f"{r.situation:26} {r.horizon:>5} {r.n_events:>7,} {r.effect*1e4:>8.2f} "
-            f"{r.se*1e4:>7.2f} {r.permutation_p:>9.2e} {r.normal_p:>9.2e} "
+            f"{r.se*1e4:>7.2f} {r.null_sd*1e4:>7.2f} {r.null_calibration:>5.2f} "
+            f"{r.permutation_p:>9.2e} {r.normal_p:>9.2e} "
             f"{f'[{r.ci_low*1e4:>6.2f},{r.ci_high*1e4:>6.2f}]':>17} "
             f"{r.detectable*1e4:>8.2f} {_n(r.n_for_observed):>10} "
             f"{_n(r.n_for_floor):>10} {_y(r.years_for(r.n_for_floor)):>9} "
@@ -364,6 +444,7 @@ def report(rows: list[PowerRow], mode: str) -> None:
         )
     excluded = [r for r in rows if r.verdict == "EXCLUDED"]
     under = [r for r in rows if r.verdict == "UNDERPOWERED"]
+    above = [r for r in rows if r.verdict == "ABOVE FLOOR"]
     print(
         f"\n{len(excluded)} of {len(rows)} already EXCLUDE a tradeable effect at "
         f"{1-a:.2%} -- their whole interval\n  lies inside "
@@ -376,8 +457,31 @@ def report(rows: list[PowerRow], mode: str) -> None:
         f"{len(under)} of {len(rows)} are UNDERPOWERED -- the interval spans the floor, "
         f"so this run cannot tell.\n  Those are the only ones more events would settle."
     )
+    # The three verdicts must partition the rows, or the summary silently
+    # stops describing part of its own table.
+    if above:
+        print(
+            f"{len(above)} of {len(rows)} lie entirely ABOVE FLOOR -- the interval "
+            f"excludes +/-{floor*1e4:.0f}bp from outside.\n  Discovery mode: that is "
+            f"still not a candidate and may not be promoted."
+        )
+    bad = [r for r in rows if r.null_underdispersed]
+    if bad:
+        print(
+            f"\n{len(bad)} of {len(rows)} were judged against a null MORE THAN 10% "
+            f"NARROWER than the statistic\n  it judges (worst cal "
+            f"{min(r.null_calibration for r in bad):.2f}). A too-narrow null makes a "
+            f"permutation p TOO SMALL,\n  so those p-values overstate their evidence -- "
+            f"the safe direction for a negative\n  result, and not for anything that had "
+            f"advanced."
+        )
     print(
-        "\nn@obs   : events to detect the OBSERVED effect -- a floor on the cost, not "
+        "\ncal     : null_sd / se. 1.00 is a correctly calibrated null; below it the "
+        "reference\n          distribution is narrower than the statistic it judges, and "
+        "the permutation p is too small."
+    )
+    print(
+        "n@obs   : events to detect the OBSERVED effect -- a floor on the cost, not "
         "an estimate;\n          an effect first seen at p ~ 0.06 is the high draw of "
         "its own distribution."
     )

@@ -106,6 +106,17 @@ class ShiftTest:
     unconditional: float
     p_value: float
     permutations: int
+    #: Standard deviation of the **individual event forward returns**, so
+    #: `event_sd / sqrt(n_events)` is the event arm's own standard error.
+    #:
+    #: **Purely additive and reported only** -- it enters no p-value, no
+    #: effect and no verdict here, so every rd-h and rd-k number is
+    #: unchanged (verified by re-running both after adding it). It exists
+    #: because `research.event_power` needs the *statistic's* sampling
+    #: error, and `null_sd` is the **null's** spread, which is a different
+    #: quantity whenever the null is imperfectly calibrated -- on this data
+    #: by a factor of 1.05 to 2.45. See `rd-l` §4.1.
+    event_sd: float = 0.0
     null_mode: str = "free"
     bh_rank: int = 0
     bh_threshold: float = 0.0
@@ -387,6 +398,7 @@ def run(
                 observed, null = permutation_test(o, ev, hz, offsets)
                 kept = int(ev.size)
             uncond = float(forward_return(o, np.arange(1, n - 1 - hz), hz).mean())
+            event_sd = float(forward_return(o, ev, hz).std(ddof=1))
             results.append(
                 ShiftTest(
                     situation=name,
@@ -398,6 +410,7 @@ def run(
                     unconditional=uncond,
                     p_value=permutation_p(observed, null),
                     permutations=int(null.size),
+                    event_sd=event_sd,
                     null_mode=mode,
                 )
             )

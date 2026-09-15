@@ -222,4 +222,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-i-what-was-adopted-from-outside.md`](rd-i-what-was-adopted-from-outside.md) — Research Direction Task I — what was adopted from an outside write-up, and what was not
 - [`rd-j-stage2-corrected-specification.md`](rd-j-stage2-corrected-specification.md) — Research Direction Task J — stage 2, corrected: a null that does not partition the series
 - [`rd-k-stage2-corrected-result.md`](rd-k-stage2-corrected-result.md) — Research Direction Task K — stage 2 corrected: 0 of 12, and the effect is a property of the null
-- [`rd-l-what-it-would-cost-to-know.md`](rd-l-what-it-would-cost-to-know.md) — Research Direction Task L — what it would cost to know: 5 of 12 are already answered, and the other 7 need decades
+- [`rd-l-what-it-would-cost-to-know.md`](rd-l-what-it-would-cost-to-know.md) — Research Direction Task L — what it would cost to know: 3 of 12 are already answered, and the instrument was under-dispersed

@@ -1,4 +1,4 @@
-# Research Direction Task L — what it would cost to know: 5 of 12 are already answered, and the other 7 need decades
+# Research Direction Task L — what it would cost to know: 3 of 12 are already answered, and the instrument was under-dispersed
 
 **Run 2026-09-15.** Module: `research/event_power.py`. Reproducible with
 
@@ -22,64 +22,82 @@ may be promoted, quoted as evidence of an edge, or reported as a pass.**
 
 > **rd-k's "0 of 12" was two different results wearing one label.**
 >
-> **5 of the 12 are settled**: their confidence interval lies entirely
+> **3 of the 12 are settled**: their confidence interval lies entirely
 > inside ±12bp, so the data are inconsistent with an effect large enough
 > to pay for its own round trip. For trading purposes that is **shown
 > absent**, which is strictly more than "not shown."
 >
-> **7 of the 12 were never answerable on this window**, and the arithmetic
+> **9 of the 12 were never answerable on this window**, and the arithmetic
 > says so without reference to any result: at h = 240 the smallest effect
-> this study could have detected is **20.2bp**, against a **12bp** cost
+> this study could have detected is **21–32bp**, against a **12bp** cost
 > floor. A tradeable effect was **below the instrument's resolution
 > before the first event was counted.**
+>
+> **And a third finding, which arrived late and corrects the other two**:
+> rd-k's matched null is **1.05× to 2.45× narrower than the statistic it
+> judges**, so every stage-2 permutation p-value is too small. §4.1.
+
+> **Corrected 2026-09-15, before this document merged.** The first version
+> read *"5 of 12 … the other 7 need decades"* and used the **null's**
+> spread as the standard error. That was wrong, by up to 2.45× in `se` and
+> so up to 6× in every event count. The correction is recorded here rather
+> than applied silently, and what found it was **rd-m's registered
+> prediction 4** — see §4.1.
 
 ## 2. The instrument, in one line
 
-A permutation test's null distribution is the sampling distribution of
-its own statistic, so `null_sd` **is** the standard error — carrying the
-overlapping forward windows, the matched strata and the draw structure
-without anything having to be assumed about independence. From there:
+The question is about the sampling variability of **the statistic that
+was observed** — the event-arm mean — so the standard error is the event
+arm's own, `σ_event / √n`:
 
 ```
-n_required = n_observed × ( (z[1−α/2] + z[power]) × null_sd / effect )²
+n_required = n_observed × ( (z[1−α/2] + z[power]) × se / effect )²
 ```
+
+**The first version of this document used `null_sd` there instead**, on
+the reasoning that a permutation null's spread *is* the sampling
+distribution of its statistic. That is true only of a null calibrated to
+the arm it judges, and rd-k's is not. §4.1.
 
 with **α = 0.002685**, the Benjamini–Yekutieli rank-1 threshold, because
 that is the bar rd-j's decision rule actually sets. A nominal α = 0.05
 would need **0.53×** these counts, so quoting one would understate the
 bill by nearly half.
 
-**The normal approximation is reported, not assumed.** `normal_p` sits
-beside the real permutation p in every row, and across all twelve the
-worst relative divergence is **8.3%** (S1 at h=15, 0.176 against 0.191);
-the two leading cells agree to ~1% (6.40e-02 against 6.31e-02). Where
-they had disagreed, the power figure beside them would have been the
-number to distrust.
+**The normal approximation is reported, not assumed** — and reporting it
+is what made §4.1 visible. `normal_p` uses the corrected `se`; the
+permutation p comes from the null's own spread. They agreed to within
+8.3% while both used `null_sd`, and once the `se` was corrected they
+diverged sharply — S1 at h=60 reads **6.40e-02** by permutation against
+**2.62e-01** normal. **That gap is not a failure of the approximation; it
+is the mis-calibration, measured.**
 
 ## 3. The twelve, priced
 
 α = 0.002685, power 80%, cost floor 12bp, `matched` null.
 
-| situation | h | events | effect | se | z | detectable | 99.73% CI | n@12bp | years | instruments | verdict |
+| situation | h | events | effect | se | null sd | cal | 99.73% CI | n@12bp | years | instruments | verdict |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| S1 support penetration | 15 | 1,175 | +1.60 | 1.22 | 1.31 | 4.70 | [−2.07, +5.28] | 180 | 1.1 | 0.2 | **EXCLUDED** |
-| S1 support penetration | 60 | 1,175 | +4.43 | 2.38 | 1.86 | 9.16 | [−2.73, +11.58] | 685 | 4.1 | 0.6 | **EXCLUDED** |
-| S1 support penetration | 240 | 1,175 | +7.46 | 4.28 | 1.74 | 16.45 | [−5.39, +20.31] | 2,209 | 13.1 | 1.9 | UNDERPOWERED |
-| S1 support penetration | 1440 | 1,175 | +3.40 | 9.93 | 0.34 | 38.15 | [−26.40, +33.19] | 11,875 | 70.4 | 10.1 | UNDERPOWERED |
-| S2 resistance break | 15 | 1,165 | −0.50 | 1.11 | −0.45 | 4.25 | [−3.82, +2.82] | 146 | 0.9 | 0.1 | **EXCLUDED** |
-| S2 resistance break | 60 | 1,165 | −0.30 | 2.15 | −0.14 | 8.28 | [−6.76, +6.17] | 555 | 3.3 | 0.5 | **EXCLUDED** |
-| S2 resistance break | 240 | 1,165 | +1.53 | 4.16 | 0.37 | 15.99 | [−10.95, +14.02] | 2,068 | 12.4 | 1.8 | UNDERPOWERED |
-| S2 resistance break | 1440 | 1,164 | +7.92 | 9.73 | 0.81 | 37.39 | [−21.28, +37.12] | 11,298 | 67.6 | 9.7 | UNDERPOWERED |
-| S3 abnormal activity | 15 | 786 | +4.18 | 2.34 | 1.79 | 8.98 | [−2.84, +11.20] | 441 | 3.9 | 0.6 | **EXCLUDED** |
-| S3 abnormal activity | 60 | 786 | +5.51 | 4.16 | 1.32 | 15.98 | [−6.97, +17.98] | 1,393 | 12.3 | 1.8 | UNDERPOWERED |
-| **S3 abnormal activity** | **240** | **786** | **+13.61** | **7.33** | **1.86** | **28.15** | **[−8.37, +35.60]** | **4,326** | **38.3** | **5.5** | UNDERPOWERED |
-| S3 abnormal activity | 1440 | 785 | +13.86 | 14.58 | 0.95 | 56.05 | [−29.92, +57.63] | 17,123 | 151.9 | 21.8 | UNDERPOWERED |
+| S1 support penetration | 15 | 1,175 | +1.60 | 3.02 | 1.22 | 0.41 | [−7.46, +10.67] | 1,099 | 6.5 | 0.9 | **EXCLUDED** |
+| S1 support penetration | 60 | 1,175 | +4.43 | 3.95 | 2.38 | 0.60 | [−7.43, +16.29] | 1,881 | 11.1 | 1.6 | UNDERPOWERED |
+| S1 support penetration | 240 | 1,175 | +7.46 | 5.47 | 4.28 | 0.78 | [−8.96, +23.88] | 3,606 | 21.4 | 3.1 | UNDERPOWERED |
+| S1 support penetration | 1440 | 1,175 | +3.40 | 11.37 | 9.93 | 0.87 | [−30.73, +37.53] | 15,582 | 92.3 | 13.3 | UNDERPOWERED |
+| S2 resistance break | 15 | 1,165 | −0.50 | 2.43 | 1.11 | 0.46 | [−7.79, +6.79] | 705 | 4.2 | 0.6 | **EXCLUDED** |
+| S2 resistance break | 60 | 1,165 | −0.30 | 3.65 | 2.15 | 0.59 | [−11.25, +10.66] | 1,592 | 9.5 | 1.4 | **EXCLUDED** |
+| S2 resistance break | 240 | 1,165 | +1.53 | 5.40 | 4.16 | 0.77 | [−14.67, +17.74] | 3,484 | 20.8 | 3.0 | UNDERPOWERED |
+| S2 resistance break | 1440 | 1,164 | +7.92 | 11.03 | 9.73 | 0.88 | [−25.19, +41.03] | 14,528 | 86.9 | 12.5 | UNDERPOWERED |
+| S3 abnormal activity | 15 | 786 | +4.18 | 3.61 | 2.34 | 0.65 | [−6.66, +15.02] | 1,052 | 9.3 | 1.3 | UNDERPOWERED |
+| S3 abnormal activity | 60 | 786 | +5.51 | 5.53 | 4.16 | 0.75 | [−11.10, +22.11] | 2,466 | 21.8 | 3.1 | UNDERPOWERED |
+| **S3 abnormal activity** | **240** | **786** | **+13.61** | **8.35** | **7.33** | **0.88** | **[−11.45, +38.67]** | **5,619** | **49.8** | **7.1** | UNDERPOWERED |
+| S3 abnormal activity | 1440 | 785 | +13.86 | 15.24 | 14.58 | 0.96 | [−31.90, +59.61] | 18,707 | 165.9 | 23.8 | UNDERPOWERED |
 
-Effects, standard errors and intervals in basis points. `n@12bp` is the
-event count needed to detect an effect exactly at the round trip; `years`
-converts it at the situation's own measured rate (113–169 events/year
-over the window's 6.962 years); `instruments` expresses the same count as
-independent series of this window's length.
+Effects, standard errors and intervals in basis points. `se` is the event
+arm's own `σ_event/√n`; `cal` is `null sd / se`, where 1.0 is a correctly
+calibrated null. `n@12bp` is the event count needed to detect an effect
+exactly at the round trip; `years` converts it at the situation's own
+measured rate (113–169 events/year over the window's 6.962 years);
+`instruments` expresses the same count as independent series of this
+window's length.
 
 **`EXCLUDED` is a claim about a *tradeable* effect and about nothing
 else.** S1 at h=15 has an interval of [−2.07, +5.28]bp, which excludes
@@ -89,18 +107,19 @@ trade. The verdict answers *"could this pay for its round trip?"*, not
 
 ## 4. The structural finding: the horizon where the question stops being askable
 
-| h | mean se | mean detectable effect | vs the 12bp floor | excluded |
-|---|---|---|---|---|
-| 15 | 1.56 bp | **5.98 bp** | resolution is **below** the floor | 3 of 3 |
-| 60 | 2.90 bp | **11.14 bp** | roughly **at** the floor | 2 of 3 |
-| 240 | 5.26 bp | **20.20 bp** | resolution is **above** the floor | 0 of 3 |
-| 1440 | 11.41 bp | **43.86 bp** | far above | 0 of 3 |
+| h | mean se | mean detectable effect | vs the 12bp floor | mean `cal` | excluded |
+|---|---|---|---|---|---|
+| 15 | 3.02 bp | **11.61 bp** | resolution is roughly **at** the floor | 0.50 | 2 of 3 |
+| 60 | 4.38 bp | **16.82 bp** | **above** the floor | 0.65 | 1 of 3 |
+| 240 | 6.41 bp | **24.62 bp** | well above | 0.81 | 0 of 3 |
+| 1440 | 12.55 bp | **48.22 bp** | far above | 0.90 | 0 of 3 |
 
 > **The cost floor is a constant and the measurement's noise is not.**
-> `se` grows roughly as `√h` (measured exponent 0.44 across the family
-> mean), so there is a horizon above which a 12bp effect sits inside the
-> error bars no matter how many events are collected in 6.96 years — and
-> on this window it falls **between h = 60 and h = 240.**
+> `se` grows as `h^0.31` across the family mean, so there is a horizon
+> above which a 12bp effect sits inside the error bars no matter how many
+> events are collected in 6.96 years — and on the corrected figures it
+> falls **at h = 15 to 60**, one step shorter than the first version of
+> this document put it.
 
 Two consequences, and the second is the uncomfortable one:
 
@@ -112,33 +131,95 @@ Two consequences, and the second is the uncomfortable one:
    volatility finding is real — but the ordering was wrong, and the
    cheapest calculation in the arc came last.
 2. **S3 at h = 240 is not "nearly significant."** Its own detectable
-   effect is **28.15bp** against an observed **13.61bp**: the study would
-   have reached the bar only if the true effect were more than **twice**
-   what was measured. A p of 0.064 there is not a near miss to be pushed
-   over the line with more permutations or a fourth null. It is a study
-   that was never powered for the effect it found.
+   effect is **32.09bp** against an observed **13.61bp**: the study would
+   have reached the bar only if the true effect were nearly **two and a
+   half times** what was measured. A p of 0.064 there is not a near miss
+   to be pushed over the line with more permutations or a fourth null. It
+   is a study that was never powered for the effect it found.
 
 **This is rd-a's finding arriving at a second instrument.** rd-a measured
 a 30-day fold Sharpe's standard error at 3.49 and concluded the
 *instrument* could not see a real edge. The event study was built to
-replace it and does so at short horizons — 5.98bp resolution against a
-12bp floor is a genuinely capable measurement, and the reason three of
-three h=15 cells are settled. It inherits the same problem at long ones.
+replace it and does so only at the shortest horizon — 11.6bp resolution
+against a 12bp floor is a measurement that barely clears its own question,
+and it is the reason two of three h=15 cells are settled and nothing
+beyond h=60 is. It inherits the same problem at long ones.
 
-## 5. What would settle the other seven, and what it costs
+### 4.1 The instrument had a second fault, and it was in the null
+
+**Found 2026-09-15 while running rd-m's stage-3 family, by the
+registered prediction that was supposed to be a formality.** rd-m §7
+prediction 4 said *"the realised `se_diff` will be within 20% of 2 ×
+stage 2's `se_full`"*, as a check on this document's own power
+projection. It came back at **2.5×**.
+
+The cause is specific and it is not a coding error:
+
+> **rd-k's matched null matches on _prior_ volatility, and the events are
+> _forward_ volatility bursts.** A bar drawn from the same prior-60-bar
+> volatility decile as a support penetration does not have that
+> penetration's forward dispersion, so the control arm is systematically
+> calmer than the event arm.
+
+Measured directly — per-event forward-return σ against the matched null's
+own spread:
+
+| h | mean `cal` = null sd / se | event σ vs an unconditional bar's |
+|---|---|---|
+| 15 | **0.50** | 2.5–3.1× |
+| 60 | 0.65 | 1.9–2.4× |
+| 240 | 0.81 | 1.4–1.8× |
+| 1440 | 0.90 | 1.2–1.4× |
+
+The ratio recovers toward 1.0 with the horizon, which is exactly the
+mechanism showing its shape: the volatility burst decays, so by h=1440 an
+event's forward window is mostly ordinary market and the matched control
+is nearly right.
+
+**Three consequences, in the order they matter:**
+
+1. **Every stage-2 permutation p-value is too small.** A reference
+   distribution narrower than the statistic it judges makes an observed
+   deviation look more extreme than it is. rd-k's smallest p of 0.064 sits
+   at **0.10** (S3 h=240) and **0.26** (S1 h=60) once the dispersion is
+   right. **This is the safe direction**: rd-k's 0-of-12 is *more*
+   comfortable than reported, not less. It would not have been safe for
+   anything that had advanced, which is why the flag now prints.
+2. **This document's first version understated every cost.** `n` scales
+   as `se²`, so the counts were low by up to **6×** and the intervals
+   narrow by up to **2.45×**. "5 of 12 EXCLUDED" was really **3 of 12**;
+   S3 h=240's 38.3 years is really **49.8**.
+3. **`null_sd` is now a diagnostic rather than an input.**
+   `null_calibration = null_sd / se` is reported per test, and a value
+   below 0.9 prints a warning naming the direction of the resulting bias.
+   The quantity that was silently wrong is now the one on display.
+
+**What it does not change**: rd-k's verdict (0 of 12, and now by a wider
+margin), rd-h's numbers, or any event count, effect or p-value in the
+stage-2 modules — `event_sd` was added as a reported field only, and both
+stage-2 commands produce byte-identical output before and after.
+
+**The transferable rule**, and it is the fourth of its kind in this arc:
+**a permutation null's spread is the standard error of its own statistic,
+not of the arm it is being compared against.** They coincide only when the
+null is calibrated to that arm, and "matched on a prior-window statistic"
+does not calibrate a null to an event that is defined by a burst in that
+same statistic. Report the ratio; do not assume it.
+
+## 5. What would settle the other nine, and what it costs
 
 | route | S3 h=240 | S3 h=1440 | comment |
 |---|---|---|---|
-| **more BTC time** | 38.3 more years | 151.9 more years | not a route |
-| **more instruments** | 5.5 independent series | 21.8 | the only arithmetically available one |
+| **more BTC time** | 49.8 more years | 165.9 more years | not a route |
+| **more instruments** | 7.1 independent series | 23.8 | the only arithmetically available one |
 | **a lower cost floor** | — | — | not available; 12bp is already the measured BTC round trip (`scalp-s9`) |
 | **a longer horizon** | — | — | moves the wrong way; se grows and the floor does not |
 
 **Only the cross-section is reachable**, and the word carrying the weight
 is *independent*. Crypto majors move together — this project has measured
 0.999955 daily log-return correlation between two venues for the same
-asset, a different pair but the same warning — so 5.5 correlated series
-buy materially less than 5.5 independent ones. The nominal count is an
+asset, a different pair but the same warning — so 7.1 correlated series
+buy materially less than 7.1 independent ones. The nominal count is an
 upper bound on what a universe delivers, never a forecast.
 
 This is the first quantitative argument this project has produced for
@@ -156,13 +237,15 @@ Same twelve tests, same data, `--cost-floor 0.0033` ([`rd-f`](rd-f-korean-cost-s
 
 | cost floor | EXCLUDED | UNDERPOWERED |
 |---|---|---|
-| 12bp (BTC, `scalp-s9`) | 5 | 7 |
+| 12bp (BTC, `scalp-s9`) | 3 | 9 |
 | 33bp (KRX, rd-f) | **8** | 4 |
 
 > **A harsher cost floor makes the question *cheaper* to settle, not
 > harder.** Ruling out a 33bp effect takes `(12/33)² = 0.13×` the events
 > of ruling out a 12bp one, because a bigger effect is easier to see. Only
-> the four h=1440 and S3 h=240 cells stay open at the Korean floor.
+> the **three** h=1440 cells and S3 h=240 stay open at the Korean floor —
+> four in total, and the count of h=1440 cells is three because there are
+> three situations.
 
 The trap in reading that as good news, stated because it is easy to
 misread: **this is BTC data.** It says a BTC effect of Korean-tradeable
@@ -173,12 +256,12 @@ that is a question a modest sample can often answer.
 
 ## 7. What this does and does not establish
 
-**Does not establish that any situation has no edge**, for the five
-EXCLUDED cells or the seven open ones. The five exclude an effect *at or
+**Does not establish that any situation has no edge**, for the three
+EXCLUDED cells or the nine open ones. The three exclude an effect *at or
 above the round trip* at the family's own confidence level. A real,
 sub-cost effect is entirely consistent with every row in §3.
 
-**Does not establish that 4,326 events would settle S3 at h=240.** The
+**Does not establish that 5,619 events would settle S3 at h=240.** The
 `1/se²` scaling holds only if the added events carry the same dispersion
 and stratum composition. rd-k §2.2 already showed S1 and S2 are clustered
 in 2021–22 and thin in 2025–26 — a longer window does not deliver more of
@@ -202,7 +285,12 @@ fourth attempt to resolve cells whose resolution is the problem.**
 2. **Run this calculation *before* the next family, not after.** The
    transferable rule: **a family whose detectable effect exceeds its own
    cost floor cannot produce a candidate, and should be re-specified or
-   not run.** That is checkable from `null_sd` and a round trip alone —
-   no result required, and therefore no result to be tempted by.
+   not run.** That is checkable from the event arm's own dispersion and a
+   round trip alone — no result required, and therefore no result to be
+   tempted by. **Not from `null_sd`**, which §4.1 is about.
 3. **The cross-section argument is now quantitative**, and belongs in the
    rd-d discussion rather than being re-derived there.
+4. **Report `null_calibration` on every permutation test from here on.**
+   §4.1's fault was invisible for three nulls and two result documents,
+   and one printed ratio would have caught it at rd-h. It costs nothing to
+   compute and it is now a column.

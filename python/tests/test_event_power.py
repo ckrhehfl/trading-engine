@@ -38,12 +38,17 @@ from research.stage2_event_study import FAMILY_SIZE, FDR_Q, dependence_penalty
 from research.stage2_shift_null import ShiftTest
 
 
-def _test(effect=0.0010, se=0.0005, n=786, p=0.064, mode="matched"):
-    """A `ShiftTest` whose `effect` and `null_sd` are what was asked for.
+def _test(effect=0.0010, se=0.0005, n=786, p=0.064, mode="matched", null_sd=None):
+    """A `ShiftTest` whose `effect` and event-arm `se` are what was asked for.
 
     `effect` is `observed - null_mean`, so the observed is built from the
-    null rather than set directly -- pinning the derived quantity would
-    let the fixture disagree with the dataclass.
+    null rather than set directly -- pinning the derived quantity would let
+    the fixture disagree with the dataclass.
+
+    `event_sd` is set so that `event_sd / sqrt(n)` is exactly `se`, since
+    that is what `power_row` now uses. `null_sd` defaults to the same
+    value, i.e. a **perfectly calibrated** null; pass it explicitly to
+    build a mis-calibrated one.
     """
     return ShiftTest(
         situation="S3 abnormal activity",
@@ -51,10 +56,11 @@ def _test(effect=0.0010, se=0.0005, n=786, p=0.064, mode="matched"):
         n_events=n,
         observed=0.0007 + effect,
         null_mean=0.0007,
-        null_sd=se,
+        null_sd=se if null_sd is None else null_sd,
         unconditional=0.0002,
         p_value=p,
         permutations=2000,
+        event_sd=se * math.sqrt(n),
         null_mode=mode,
     )
 
@@ -375,3 +381,79 @@ def test_the_row_is_frozen_so_a_reported_figure_cannot_be_edited_after():
     with pytest.raises(Exception):
         r.effect = 1.0  # type: ignore[misc]
     assert isinstance(r, PowerRow)
+
+
+# ------------------------------------------------- the standard error
+
+
+def test_the_se_is_the_event_arms_own_not_the_nulls():
+    """**The correction rd-m's prediction 4 caught.** rd-k's matched null
+    matches on PRIOR volatility, and an event that is itself a volatility
+    burst has a more dispersed FORWARD return than any bar sharing its
+    prior-volatility decile -- so the null runs up to 2.45x narrower than
+    the statistic it judges. Required counts scale as `se^2`, so using the
+    null understated them by up to 6x."""
+    r = power_row(_test(se=0.0005, n=786, null_sd=0.0002), years=6.96)
+    assert r.se == pytest.approx(0.0005)
+    assert r.null_sd == pytest.approx(0.0002)
+
+
+def test_a_narrower_null_is_reported_as_a_calibration_below_one():
+    r = power_row(_test(se=0.0005, null_sd=0.0002), years=6.96)
+    assert r.null_calibration == pytest.approx(0.4)
+    assert r.null_underdispersed
+
+
+def test_a_calibrated_null_is_not_flagged():
+    r = power_row(_test(se=0.0005), years=6.96)
+    assert r.null_calibration == pytest.approx(1.0)
+    assert not r.null_underdispersed
+
+
+def test_a_few_percent_of_monte_carlo_noise_is_not_a_finding():
+    """The flag is at 10%, not at any gap at all: a permutation null
+    carries its own Monte Carlo error."""
+    assert not power_row(_test(se=0.0005, null_sd=0.00048), years=6.96).null_underdispersed
+
+
+def test_using_the_null_would_have_understated_the_cost_by_the_square():
+    """Naming the size of the error the correction fixes, so a future
+    reader can tell it was material rather than tidy."""
+    good = power_row(_test(effect=0.0010, se=0.0005, n=786), years=6.96)
+    # what the first version computed, with the null's spread as the se
+    bad = required_events(0.0010, 0.0002, 786, good.alpha)
+    assert good.n_for_observed / bad == pytest.approx((0.0005 / 0.0002) ** 2)
+
+
+def test_a_test_without_an_event_sd_falls_back_to_the_null():
+    """`event_sd` is additive with a 0.0 default, so a `ShiftTest` built
+    before this field existed must still produce a row rather than a
+    division by zero."""
+    t = ShiftTest(
+        situation="S1 support penetration", horizon=15, n_events=100,
+        observed=0.001, null_mean=0.0, null_sd=0.0004, unconditional=0.0,
+        p_value=0.2, permutations=2000,
+    )
+    assert t.event_sd == 0.0
+    assert power_row(t, years=6.96).se == pytest.approx(0.0004)
+
+
+def test_the_report_names_an_underdispersed_null(capsys):
+    report([power_row(_test(se=0.0005, null_sd=0.0002), years=6.96)], "matched")
+    out = capsys.readouterr().out
+    assert "NARROWER" in out and "TOO SMALL" in out
+
+
+def test_the_report_accounts_for_every_verdict(capsys):
+    """The three verdicts must partition the rows. A summary that counts
+    only two silently stops describing part of its own table."""
+    rows = [
+        power_row(_test(effect=0.0001, se=0.00002), years=6.96),   # EXCLUDED
+        power_row(_test(effect=0.001361, se=0.000733), years=6.96),  # UNDERPOWERED
+        power_row(_test(effect=0.0050, se=0.0005), years=6.96),    # ABOVE FLOOR
+    ]
+    report(rows, "matched")
+    out = capsys.readouterr().out
+    assert "1 of 3 already EXCLUDE" in out
+    assert "1 of 3 are UNDERPOWERED" in out
+    assert "1 of 3 lie entirely ABOVE FLOOR" in out
