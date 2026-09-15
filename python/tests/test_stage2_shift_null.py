@@ -18,14 +18,19 @@ here pin the two that were found by measurement rather than by reading:
 
 from __future__ import annotations
 
+import sqlite3
+
 import numpy as np
 import pytest
 
+from research import stage2_shift_null
+from research.stage2_event_study import KNOWN_GAPS_MS, SYMBOL
 from research.stage2_shift_null import (
     BARS_PER_DAY,
     DEFAULT_PERMUTATIONS,
     EFFECT_FLOOR,
     FAMILY_SIZE,
+    MIN_PERMUTATIONS_FOR_VERDICT,
     SHIFT_MODES,
     ShiftTest,
     benjamini_yekutieli,
@@ -34,6 +39,7 @@ from research.stage2_shift_null import (
     overlap_block,
     permutation_p,
     permutation_test,
+    run,
     shift_offsets,
 )
 
@@ -403,20 +409,84 @@ def test_a_single_return_has_no_standard_error():
         event_standard_error(np.array([0.01]), 1, np.random.default_rng(9))
 
 
-def test_the_bootstrap_does_not_disturb_the_null_draws():
-    """**A reported diagnostic must not move the result.** The first
-    version drew from the same generator the nulls use, which re-rolled
-    every shift offset after its first call and turned S3 h=1440 from
-    p=1.25e-02 into an ADVANCE at p=6.50e-03. Pinned here against the
-    generator rather than against a remembered number."""
-    rng = np.random.default_rng(42)
-    before = rng.normal(size=5).copy()
-    rng2 = np.random.default_rng(42)
-    rng2.normal(size=5)
-    state_untouched = rng2.normal(size=5)
-    event_standard_error(
-        np.random.default_rng(1).normal(0, 0.01, 100), 6,
-        np.random.default_rng(99), draws=50,
+def _synthetic_series(tmp_path, sigma=0.002, n_half=30_000, seed=0):
+    """A 1m series `run` will accept, written to a real SQLite file.
+
+    It has to reproduce **the declared gap exactly** -- `verify_continuity`
+    fails closed on any other gap set -- and be long enough for the
+    43,200-bar trailing quantile S3's threshold needs, so this is 60,000
+    bars around the real gap rather than a toy.
+    """
+    gap_start, gap_step = KNOWN_GAPS_MS[0]
+    t = np.concatenate([
+        gap_start - np.arange(n_half - 1, -1, -1) * 60_000,   # ends AT gap_start
+        gap_start + gap_step + np.arange(n_half) * 60_000,
+    ])
+    n = t.size
+    rng = np.random.default_rng(seed)
+    c = 10_000 * np.exp(np.cumsum(rng.normal(0, sigma, n)))
+    o = np.roll(c, 1)
+    o[0] = c[0]
+    wig = np.abs(rng.normal(0, sigma * 3, n))
+    h, l = np.maximum(o, c) * (1 + wig), np.minimum(o, c) * (1 - wig)
+    v = np.abs(rng.lognormal(0, 1.0, n))
+    path = tmp_path / "klines.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE klines (symbol TEXT, interval TEXT, open_time_ms INTEGER,"
+        " open TEXT, high TEXT, low TEXT, close TEXT, volume TEXT)"
     )
-    assert np.array_equal(before, np.random.default_rng(42).normal(size=5))
-    assert np.array_equal(state_untouched, rng.normal(size=5))
+    conn.executemany(
+        "INSERT INTO klines VALUES (?,?,?,?,?,?,?,?)",
+        [
+            (SYMBOL, "1m", int(t[i]), str(o[i]), str(h[i]), str(l[i]),
+             str(c[i]), str(v[i]))
+            for i in range(n)
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return str(path)
+
+
+def test_the_synthetic_series_exercises_all_twelve_cells(tmp_path):
+    """The guard below is only a guard if `run` really runs. A fixture
+    that raised, or produced a short family, would make the next test pass
+    for the wrong reason."""
+    out = run(_synthetic_series(tmp_path), mode="matched",
+              permutations=MIN_PERMUTATIONS_FOR_VERDICT)
+    assert len(out) == FAMILY_SIZE
+    assert all(r.n_events >= 2 for r in out)
+
+
+@pytest.mark.parametrize("mode", ["matched", "free"])
+def test_the_bootstrap_does_not_disturb_run_s_null_draws(tmp_path, monkeypatch, mode):
+    """**A reported diagnostic must not move the result**, asserted at the
+    level where the regression actually happened.
+
+    The first version passed `run`'s own `rng` to `event_standard_error`,
+    so every shift offset and matched control drawn after its first call
+    was silently re-rolled -- S3 h=1440 went from 33.07bp / p=1.25e-02 to
+    32.13bp / p=6.50e-03, turning a non-result into an ADVANCE.
+
+    Testing `event_standard_error` in isolation cannot catch that, because
+    the fault is in **which generator `run` hands it**. So this replaces it
+    with a version that burns a large number of draws from whatever
+    generator it receives: if that is the null stream, every p-value moves.
+    """
+    db = _synthetic_series(tmp_path)
+    kw = dict(mode=mode, permutations=MIN_PERMUTATIONS_FOR_VERDICT)
+    baseline = run(db, **kw)
+
+    real = stage2_shift_null.event_standard_error
+
+    def greedy(returns, block, rng, draws=2000):
+        rng.integers(0, 10, 10_000)          # burn the stream it was given
+        return real(returns, block, rng, draws)
+
+    monkeypatch.setattr(stage2_shift_null, "event_standard_error", greedy)
+    after = run(db, **kw)
+
+    assert [r.p_value for r in after] == [r.p_value for r in baseline]
+    assert [r.null_mean for r in after] == [r.null_mean for r in baseline]
+    assert [r.observed for r in after] == [r.observed for r in baseline]

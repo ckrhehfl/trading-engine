@@ -442,17 +442,20 @@ def test_using_the_null_would_have_understated_the_cost_by_the_square():
     assert good.n_for_observed / bad == pytest.approx((0.0005 / 0.0002) ** 2)
 
 
-def test_a_test_without_an_event_se_falls_back_to_the_null():
-    """`event_se` is additive with a 0.0 default, so a `ShiftTest` built
-    before this field existed must still produce a row rather than a
-    division by zero."""
+def test_a_test_without_an_event_se_is_refused_not_given_the_null():
+    """**`null_sd` is not a fallback.** It is the quantity §4.1 found up
+    to 2.45x too narrow, i.e. up to 6x too few events, so substituting it
+    silently would reintroduce the exact fault this module was corrected
+    for -- for any caller holding a `ShiftTest` built before `event_se`
+    existed."""
     t = ShiftTest(
         situation="S1 support penetration", horizon=15, n_events=100,
         observed=0.001, null_mean=0.0, null_sd=0.0004, unconditional=0.0,
         p_value=0.2, permutations=2000,
     )
     assert t.event_se == 0.0
-    assert power_row(t, years=6.96).se == pytest.approx(0.0004)
+    with pytest.raises(ValueError, match="NOT a substitute"):
+        power_row(t, years=6.96)
 
 
 def test_the_report_names_an_underdispersed_null(capsys):

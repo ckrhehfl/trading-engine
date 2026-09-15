@@ -351,7 +351,20 @@ def power_row(
     # independent-samples error ignores that covariance -- understating the
     # error, and so the cost, which is the unsafe direction. See
     # `stage2_shift_null.event_standard_error`.
-    se = test.event_se if test.event_se > 0 else test.null_sd
+    if test.event_se <= 0:
+        # **No fallback to `null_sd`.** That is precisely the quantity
+        # §4.1 found wrong -- up to 2.45x too narrow, so up to 6x too few
+        # events -- and a silent substitution would reintroduce the fault
+        # for any caller holding a `ShiftTest` built before `event_se`
+        # existed. A missing standard error is a missing input, not a
+        # reason to use the diagnostic in its place.
+        raise ValueError(
+            f"{test.situation} h={test.horizon}: event_se is "
+            f"{test.event_se}, so the event arm's own standard error is "
+            f"unknown. null_sd is NOT a substitute for it (rd-l §4.1); "
+            f"re-run stage 2 to populate it."
+        )
+    se = test.event_se
     # **The interval is at the decision rule's own alpha, not a habitual
     # 95%.** Mixing the two put a contradiction in the first version of
     # this table: S2 at h=240 read EXCLUDED from a 95% interval while its

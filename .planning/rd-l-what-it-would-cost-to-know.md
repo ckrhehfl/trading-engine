@@ -102,7 +102,7 @@ measured rate (113–169 events/year over the window's 6.962 years);
 window's length.
 
 **`EXCLUDED` is a claim about a *tradeable* effect and about nothing
-else.** S1 at h=15 has an interval of [−2.07, +5.28]bp, which excludes
+else.** S1 at h=15 has an interval of [−7.23, +10.43]bp, which excludes
 12bp and is perfectly consistent with a real +3bp effect that no one can
 trade. The verdict answers *"could this pay for its round trip?"*, not
 *"is this zero?"*
@@ -183,11 +183,20 @@ there and so lowers the ratio.
 
 1. **Every stage-2 permutation p-value is too small.** A reference
    distribution narrower than the statistic it judges makes an observed
-   deviation look more extreme than it is. rd-k's smallest p of 0.064 sits
-   at **0.10** (S3 h=240) and **0.26** (S1 h=60) once the dispersion is
-   right. **This is the safe direction**: rd-k's 0-of-12 is *more*
-   comfortable than reported, not less. It would not have been safe for
-   anything that had advanced, which is why the flag now prints.
+   deviation look more extreme than it is.
+
+   **The size of that is not recomputed here, and the table's `norm p`
+   column must not be read as if it were.** Nothing recalibrates the
+   matched-null permutation distribution; `norm p` is a *normal
+   comparison*, `2Φ(−|effect| / se)`, computed from the corrected standard
+   error. For rd-k's two leading cells it reads **0.10** (S3 h=240) and
+   **0.26** (S1 h=60) against permutation values of 0.064 — an indication
+   of the direction and rough scale of the bias, **not** a corrected
+   p-value, and the permutation p of record remains 0.064.
+
+   **The direction is what matters and it is safe**: rd-k's 0-of-12 is
+   *more* comfortable than reported, not less. It would not have been safe
+   for anything that had advanced, which is why the flag now prints.
 2. **This document's first version understated every cost.** `n` scales
    as `se²`, so the counts were low by up to **6×** and the intervals
    narrow by up to **2.4×**. "5 of 12 EXCLUDED" was really **3 of 12**;
