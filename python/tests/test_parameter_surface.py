@@ -192,3 +192,46 @@ def test_the_report_names_coverage_and_the_verdict():
 
 def test_the_default_threshold_is_the_documented_one():
     assert DEFAULT_PLATEAU_RATIO == pytest.approx(0.5)
+
+
+# ------------------------------------------------- review-driven guards
+
+
+def test_a_corrupt_line_that_is_not_the_last_is_an_error(tmp_path):
+    """Only a final partial write is tolerable. A corrupt line anywhere
+    else silently drops a real run, which manufactures a false unrun cell
+    and can move both coverage and verdict -- the two numbers this module
+    exists to report."""
+    p = tmp_path / "experiments.jsonl"
+    p.write_text(
+        json.dumps(_rec(value=1.0, fast=1)) + "\n"
+        + "{ not json\n"
+        + json.dumps(_rec(value=2.0, fast=2)) + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="line 2"):
+        load_records(p)
+
+
+def test_three_axes_are_refused_rather_than_rendered_empty():
+    """`render` walks two axes and looks cells up by a 2-tuple, so a third
+    would leave every real cell unmatched and the grid would print as all
+    `?` -- a surface that looks entirely unrun."""
+    recs = [_rec(value=1.0, fast=f, slow=s, vol=v)
+            for f in (1, 2) for s in (10, 20) for v in (1, 2)]
+    with pytest.raises(ValueError, match="two-dimensional"):
+        build_surface(recs, "s", ("fast", "slow", "vol"))
+
+
+def test_a_varying_parameter_that_is_not_an_axis_is_named_as_projected():
+    """It is averaged over inside every cell, silently. Naming it is the
+    difference between a projection and a sweep."""
+    recs = [_rec(value=1.0, fast=f, slow=s, vol=v)
+            for f in (1, 2, 3) for s in (10, 20, 30) for v in (1, 2)]
+    surf = build_surface(recs, "s", ("fast", "slow"))
+    assert any("PROJECTED" in n and "vol" in n for n in surf.notes)
+
+
+def test_no_projection_note_when_every_varying_parameter_is_an_axis():
+    recs = [_rec(value=1.0, fast=f, slow=s) for f in (1, 2) for s in (10, 20)]
+    assert not any("PROJECTED" in n for n in build_surface(recs, "s", ("fast", "slow")).notes)

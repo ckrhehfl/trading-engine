@@ -82,11 +82,28 @@ offsets restricted to ±W days, keeps the null inside the event's own era:
 | ±90 days | +18.86 bp | 5.0e-04 |
 | global | +18.99 bp | 1.0e-03 |
 
-**Flat from one week to global.** And S3's events are calendar-uniform —
-its yearly shares (4.2 / 16.0 / 13.4 / 15.4 / 14.0 / 13.7 / 13.2 / 10.1%)
-track the bars' own (4.5 / 14.4 × 5 / 9.3%). S1 and S2 *are* clustered
-(2021–22 at 20.3% and 20.6% against 14.4% of bars) and neither is
-significant.
+**Flat from one week to global.** And S3's events are calendar-uniform,
+while S1's and S2's are not:
+
+| year | share of bars | S3 | S1 | S2 |
+|---|---|---|---|---|
+| 2019 | 4.5% | 4.2% | 6.6% | 3.4% |
+| 2020 | 14.4% | 16.0% | 13.1% | 18.5% |
+| 2021 | 14.4% | 13.4% | **20.3%** | **20.6%** |
+| 2022 | 14.4% | 15.4% | **20.8%** | 17.4% |
+| 2023 | 14.4% | 14.0% | 13.3% | 13.9% |
+| 2024 | 14.4% | 13.7% | 12.5% | 12.6% |
+| 2025 | 14.4% | 13.2% | 6.9% | 7.3% |
+| 2026 | 9.3% | 10.1% | 6.4% | 6.2% |
+
+*(Every column sums to 100% up to rounding; a first version of this
+paragraph wrote the bar shares as "14.4 × 5" for six full years, which
+summed to 86% and made the comparison unreproducible — caught on review
+of PR #170.)*
+
+S1 and S2 are clustered in 2021–22 and thin in 2025–26, and **neither is
+significant under any null**. S3 tracks the bars within ~1.6 points
+everywhere.
 
 ## 3. What it was: S3 is a volatility condition wearing a volume name
 
@@ -175,6 +192,15 @@ volatility problem. Its own blind spots are not known.
 
 **Does not produce a candidate.** No entry, exit, size or branch rule.
 
+**The NULL-SUSPECT threshold was ambiguous in the specification and is
+now pinned.** rd-j §4's prose said *"a gap larger than the observed
+effect"* while pointing at rd-h's rule, which is **half** the effect; the
+implementation used half, the stricter reading. **No test in the deciding
+run was vetoed by it**, so the ambiguity changed nothing here — the
+0-of-12 is entirely a significance result. rd-j carries a dated amendment
+rather than an in-place edit, because a pre-registration rewritten after
+its own run is not one.
+
 **Is not a Korean result.** [`rd-f`](rd-f-korean-cost-structure.md): the
 Korean round trip is 2.5–2.8× harsher, so even a confirmed +13.61bp would
 not clear it.
@@ -198,3 +224,22 @@ two agree within 2bp* — **right**; (4) *the most likely outcome is 0 of
 3. **The nulls stay in the tree.** `stage2_event_study` (matched,
    exclusion-based) and `stage2_shift_null` (shift + matched) are both
    kept so rd-h's and this document's numbers remain reproducible.
+
+   **The deciding table above is reproducible with one command**, which it
+   was not when this document was first written — it came from a scratch
+   script, and review of PR #170 caught that a result nobody can re-run is
+   not a reproducible result:
+
+   ```
+   python -m research.stage2_shift_null                  # matched, the default
+   python -m research.stage2_shift_null --null free      # §2's shift
+   python -m research.stage2_shift_null --null day       # the hour-preserving one
+   ```
+
+   Wiring the three nulls through one path immediately exposed a fourth
+   defect: **`null_suspect` was being applied to the matched null, where it
+   is backwards.** A shift null must reproduce the series' own mean, so a
+   gap is a fault; a *matched* null is supposed to differ from it, because
+   that difference **is** the confound being held fixed — +18.57bp at
+   h=1440. The veto is now mode-aware, and the number is still reported.
+   It vetoed nothing in this run either way.

@@ -56,8 +56,11 @@ from research.stage2_event_study import (
     collapse,
     dependence_penalty,
     forward_return,
+    hour_of_day,
     load,
+    realised_vol_prior,
     situations,
+    volatility_decile,
 )
 
 #: rd-j §2. Enough that the smallest resolvable p-value, 1/(B+1), sits an
@@ -79,6 +82,18 @@ EFFECT_FLOOR = DEFAULT_ROUND_TRIP
 SHIFT_MODES = ("free", "day")
 BARS_PER_DAY = 1440
 
+#: Every null this arc has built, selectable from one command.
+#:
+#: **`"matched"` is the one that decided rd-k**, and it was reachable only
+#: from a scratch script until review caught that -- a result nobody can
+#: reproduce with a repo command is not a reproducible result.
+NULL_MODES = SHIFT_MODES + ("matched",)
+
+#: Below this, `1/(B+1)` cannot reach the rank-1 BY threshold of
+#: 0.002685, so no test could clear the decision rule however strong it
+#: was -- the verdict would be an artefact of the permutation count.
+MIN_PERMUTATIONS_FOR_VERDICT = 372
+
 
 @dataclass(frozen=True)
 class ShiftTest:
@@ -91,6 +106,7 @@ class ShiftTest:
     unconditional: float
     p_value: float
     permutations: int
+    null_mode: str = "free"
     bh_rank: int = 0
     bh_threshold: float = 0.0
     significant: bool = False
@@ -117,6 +133,21 @@ class ShiftTest:
 
     @property
     def null_suspect(self) -> bool:
+        """`|null_bias| >= |effect| / 2`, **for a shift null only**.
+
+        A shift null relabels which return each event collects, so its
+        centre must reproduce the series' own mean; a gap means the shift
+        is not doing what it claims. That is what caught the seam.
+
+        **It does not apply to the matched null, and applying it there
+        would be backwards.** A volatility+hour matched null is *supposed*
+        to differ from the unconditional mean — that difference **is** the
+        confound being held fixed, and on the real data it reaches
+        +18.57bp at h=1440. Vetoing on it would reject a test precisely
+        for controlling the thing it was built to control.
+        """
+        if self.null_mode == "matched":
+            return False
         return abs(self.null_bias) >= abs(self.effect) / 2.0
 
     @property
@@ -317,9 +348,20 @@ def run(
     permutations: int = DEFAULT_PERMUTATIONS,
     seed: int = SEED,
 ) -> list[ShiftTest]:
+    if mode not in NULL_MODES:
+        raise ValueError(f"mode must be one of {NULL_MODES}, got {mode!r}")
+    if permutations < MIN_PERMUTATIONS_FOR_VERDICT:
+        raise ValueError(
+            f"B={permutations} cannot reach the rank-1 BY threshold "
+            f"{FDR_Q / (FAMILY_SIZE * dependence_penalty()):.6f}: the smallest "
+            f"attainable p-value is 1/(B+1)={1/(permutations+1):.6f}. "
+            f"A verdict run needs B >= {MIN_PERMUTATIONS_FOR_VERDICT}."
+        )
     t, o, h, l, c, v = load(db_path)
     n = c.size
     rng = np.random.default_rng(seed)
+    decile = volatility_decile(realised_vol_prior(c))
+    hour = hour_of_day(t)
     masks = situations(t, o, h, l, c, v)
     # Base cooldown, not the horizon-scaled one: a permutation test does
     # not need disjoint windows, and rd-g's repair had cut h=1440 event
@@ -335,20 +377,28 @@ def run(
                     f"{name} at h={hz} has {ev.size} usable episodes; the "
                     f"specification requires all {FAMILY_SIZE} tests to run"
                 )
-            offsets = shift_offsets(n, max(HORIZONS) + 1, permutations, rng, mode)
-            observed, null = permutation_test(o, ev, hz, offsets)
+            if mode == "matched":
+                observed, null, dropped = matched_null(
+                    o, ev, hz, decile, hour, rng, permutations
+                )
+                kept = int(ev.size - dropped)
+            else:
+                offsets = shift_offsets(n, max(HORIZONS) + 1, permutations, rng, mode)
+                observed, null = permutation_test(o, ev, hz, offsets)
+                kept = int(ev.size)
             uncond = float(forward_return(o, np.arange(1, n - 1 - hz), hz).mean())
             results.append(
                 ShiftTest(
                     situation=name,
                     horizon=hz,
-                    n_events=int(ev.size),
+                    n_events=kept,
                     observed=observed,
                     null_mean=float(null.mean()),
                     null_sd=float(null.std(ddof=1)),
                     unconditional=uncond,
                     p_value=permutation_p(observed, null),
-                    permutations=int(offsets.size),
+                    permutations=int(null.size),
+                    null_mode=mode,
                 )
             )
     if len(results) != FAMILY_SIZE:
@@ -356,14 +406,25 @@ def run(
     return benjamini_yekutieli(results)
 
 
+_NULL_LABEL = {
+    "free": "circular block shift, free offsets",
+    "day": "circular block shift, day-multiple offsets (hour-preserving)",
+    "matched": "volatility+hour matched, no neighbourhood exclusion",
+}
+
+
 def report(results: list[ShiftTest], mode: str) -> None:
     pen = dependence_penalty()
-    print(f"circular block shift, mode={mode!r}, B={results[0].permutations if results else 0}")
+    print(f"null: {_NULL_LABEL.get(mode, mode)}   B={results[0].permutations if results else 0}")
+    if mode == "matched":
+        print("(`nullbias` is expected to be non-zero here -- it IS the confound "
+              "being held fixed -- so NULL-SUSPECT does not apply)")
     print(f"Benjamini-Yekutieli q={FDR_Q} (penalty {pen:.4f}, rank-1 threshold "
           f"{FDR_Q/(FAMILY_SIZE*pen):.5f})   effect floor {EFFECT_FLOOR*1e4:.0f}bp\n")
     print(f"{'situation':26} {'h':>5} {'events':>7} {'observed':>9} {'null':>8} "
-          f"{'uncond':>8} {'nullbias':>9} {'effect':>8} {'p':>9} {'sig':>4} {'verdict':>14}")
-    print("-" * 136)
+          f"{'uncond':>8} {'nullbias':>9} {'effect':>8} {'p':>9} {'rank':>5} "
+          f"{'thresh':>9} {'sig':>4} {'verdict':>14}")
+    print("-" * 152)
     for r in sorted(results, key=lambda x: x.p_value):
         if r.advances:
             verdict = "ADVANCE"
@@ -375,8 +436,8 @@ def report(results: list[ShiftTest], mode: str) -> None:
             verdict = "-"
         print(f"{r.situation:26} {r.horizon:>5} {r.n_events:>7,} {r.observed*1e4:>9.2f} "
               f"{r.null_mean*1e4:>8.2f} {r.unconditional*1e4:>8.2f} {r.null_bias*1e4:>9.2f} "
-              f"{r.effect*1e4:>8.2f} {r.p_value:>9.2e} "
-              f"{'yes' if r.significant else 'no':>4} {verdict:>14}")
+              f"{r.effect*1e4:>8.2f} {r.p_value:>9.2e} {r.bh_rank:>5} "
+              f"{r.bh_threshold:>9.6f} {'yes' if r.significant else 'no':>4} {verdict:>14}")
     adv = [r for r in results if r.advances]
     print(f"\n{len(adv)} of {len(results)} advance to stage 3.")
     print("Discovery mode: nothing here may be promoted or quoted as evidence of an edge.")
@@ -385,7 +446,8 @@ def report(results: list[ShiftTest], mode: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db-path", default=DEFAULT_DB_PATH)
-    ap.add_argument("--shift", choices=SHIFT_MODES, default="free")
+    ap.add_argument("--null", dest="shift", choices=NULL_MODES, default="matched",
+                    help="'matched' is rd-k's deciding null and the default")
     ap.add_argument("--permutations", type=int, default=DEFAULT_PERMUTATIONS)
     args = ap.parse_args(argv)
     report(run(args.db_path, args.shift, args.permutations), args.shift)

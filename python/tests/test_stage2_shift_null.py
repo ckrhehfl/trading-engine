@@ -286,3 +286,57 @@ def test_the_matched_and_shift_nulls_disagree_when_strata_differ():
     assert obs - shift.mean() > obs - matched.mean(), (
         "the global shift must overstate the effect when events cluster in a stratum"
     )
+
+
+# ------------------------------------------------- review-driven guards
+
+
+def test_the_matched_null_is_reachable_from_run():
+    """rd-k's deciding result was produced by a scratch script and could
+    not be reproduced by any repo command until review caught it. A result
+    nobody can reproduce with a command is not a reproducible result."""
+    from research.stage2_shift_null import NULL_MODES
+
+    assert "matched" in NULL_MODES
+
+
+def test_a_permutation_count_that_cannot_reach_the_threshold_is_refused():
+    """`1/(B+1)` is the smallest attainable p. Below B=372 no test can
+    clear the rank-1 BY threshold of 0.002685 however strong it is, so the
+    verdict would be an artefact of the permutation count."""
+    from research.stage2_shift_null import MIN_PERMUTATIONS_FOR_VERDICT, run
+
+    # The smallest attainable p is 1/(B+1), not 1/B.
+    threshold = 0.10 / (FAMILY_SIZE * 3.1032)
+    assert 1.0 / (MIN_PERMUTATIONS_FOR_VERDICT + 1) <= threshold
+    assert 1.0 / MIN_PERMUTATIONS_FOR_VERDICT > threshold, "the constant is off by one"
+    for bad in (0, 1, 371):
+        with pytest.raises(ValueError, match="cannot reach"):
+            run(permutations=bad)
+
+
+def test_an_unknown_null_mode_is_refused_before_any_data_is_loaded():
+    from research.stage2_shift_null import run
+
+    with pytest.raises(ValueError, match="mode must be one of"):
+        run(mode="handwave")
+
+
+def test_the_null_suspect_veto_does_not_apply_to_the_matched_null():
+    """A volatility+hour matched null is SUPPOSED to differ from the
+    unconditional mean — that difference IS the confound being held fixed,
+    and it reaches +18.57bp at h=1440 on the real data. Vetoing on it
+    would reject a test precisely for controlling what it controls."""
+    shift = _test(1e-5, observed=0.0030, null_mean=-0.0010, unconditional=0.0015,
+                  null_mode="free")
+    matched = _test(1e-5, observed=0.0030, null_mean=-0.0010, unconditional=0.0015,
+                    null_mode="matched")
+    assert shift.null_suspect and not matched.null_suspect
+    assert matched.null_bias == shift.null_bias, "the number is still reported"
+
+
+def test_the_shift_nulls_keep_the_veto():
+    for mode in ("free", "day"):
+        r = _test(1e-5, observed=0.0030, null_mean=-0.0010, unconditional=0.0015,
+                  null_mode=mode)
+        assert r.null_suspect

@@ -165,13 +165,23 @@ def load_records(runs_path: str | Path = DEFAULT_RUNS_PATH) -> list[dict]:
     path = Path(runs_path)
     if not path.exists():
         return []
+    lines = [(i, l) for i, l in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+             if l.strip()]
     out = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if line.strip():
-            try:
-                out.append(json.loads(line))
-            except json.JSONDecodeError:
-                continue  # an append-only log can end mid-write
+    for pos, (lineno, line) in enumerate(lines):
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            # **Only the final line may be a partial write.** A corrupt line
+            # anywhere else silently drops a real run, which manufactures a
+            # false unrun cell and can move both `coverage` and `verdict` --
+            # the two numbers this module exists to report.
+            if pos == len(lines) - 1:
+                continue
+            raise ValueError(
+                f"{path}: line {lineno} is not valid JSON and is not the last "
+                f"line, so it is corruption rather than a partial append"
+            ) from None
     return out
 
 
@@ -204,6 +214,14 @@ def build_surface(
                        [f"no scored records for {strategy_id!r} with metric {metric!r}"])
 
     varying = varying_parameters(scored)
+    if axes is not None and len(axes) > 2:
+        # `render` walks two axes and looks cells up by a 2-tuple, so a
+        # third would leave every real cell unmatched and the whole grid
+        # would print as `?` -- a surface that looks entirely unrun.
+        raise ValueError(
+            f"a surface is two-dimensional; got {len(axes)} axes {axes}. "
+            f"Pick two, or facet the rest by filtering the records first."
+        )
     if axes is None:
         axes = tuple(sorted(varying, key=lambda k: -varying[k])[:2])
     if not axes:
@@ -213,6 +231,16 @@ def build_surface(
     missing = [a for a in axes if a not in varying]
     if missing:
         notes.append(f"axes that do not vary and so cannot form a surface: {missing}")
+    # A varying parameter that is not an axis is averaged over, silently,
+    # inside every cell. Naming it is the difference between a projection
+    # and a sweep.
+    projected = {k: n for k, n in varying.items() if k not in axes}
+    if projected:
+        notes.append(
+            f"PROJECTED, not held fixed -- each cell averages over these varying "
+            f"parameters: {projected}. Filter the records to hold them constant "
+            f"before reading the verdict as a statement about the axes alone."
+        )
 
     ticks = tuple(
         tuple(sorted({_hashable(_params(r).get(a)) for r in scored if a in _params(r)},

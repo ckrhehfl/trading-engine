@@ -117,6 +117,22 @@ centre is far from it, the shift is not doing what it claims. Reported
 per test as `null_mean` beside `unconditional`, and a gap larger than the
 observed effect is a **NULL-SUSPECT** veto on the same logic.
 
+> **Amended 2026-09-15, on review of PR #170, and amended rather than
+> edited.** The sentence above says *"larger than the observed effect"*
+> while "on the same logic" points at rd-h's `control_suspect`, which is
+> **half** the claimed effect. The implementation used **half** — the
+> stricter of the two readings — so the ambiguity was resolved toward
+> vetoing *more*, not less.
+>
+> The exact rule, for the avoidance of doubt:
+> **`|null_bias| >= |effect| / 2`**, inclusive at the boundary.
+>
+> **It changed no verdict in [`rd-k`](rd-k-stage2-corrected-result.md)**:
+> the deciding run's 0-of-12 came from significance, and no test was
+> vetoed by this rule at all. The wording is corrected here rather than in
+> place, because a pre-registration edited after its own run is not a
+> pre-registration.
+
 ## 5. The decision rule
 
 A test **advances to stage 3** only if all three hold:
