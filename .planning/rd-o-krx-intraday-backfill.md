@@ -151,9 +151,13 @@ a minute.
 
 ### 2.7 A halted stock produces legitimately empty sessions
 
-207940 (삼성바이오로직스) collected 234 sessions where every other symbol
-collected 251, and the first coverage report called the difference 17
-missing sessions inside the window.
+207940 (삼성바이오로직스) collected 233 sessions where every other symbol
+collected 250, and the first coverage report called the difference 17
+missing sessions inside the window. (Both figures are from §5's single
+`--verify` run; an earlier draft quoted 234/251 from a mid-run query
+against a reference calendar that had not yet been refreshed, which is
+exactly the kind of two-moment arithmetic this project has a checklist
+entry for.)
 
 It is not missing. **The stock was halted for 17 consecutive sessions,
 2025-10-30 to 2025-11-21** — its daily bars carry `volume = 0` and a close
@@ -271,36 +275,73 @@ hosts, which makes the same plausible here and not verified.
 
 ## 5. Result
 
-Run started 2026-09-15, ten KR-10 symbols, 260-session request against a
-reference calendar spanning **2025-08-22 … 2026-09-15**.
+**Run 2026-09-15 21:26 → 2026-09-16 01:14 KST**, ten KR-10 symbols,
+260-session request. **2,486 sessions fetched, 944,763 bars, 10,372 API
+calls, 227.6 minutes.**
 
-**The run is in flight as this is committed, and the numbers below are
-what it has produced so far rather than a final coverage table.** Said
-plainly rather than left as a placeholder: a result section that reads as
-complete when it is not is the failure this project keeps writing guards
-against.
+Coverage against a 250-trading-day reference calendar spanning
+**2025-09-05 … 2026-09-15**, from a single `--verify` run after the repair
+described below:
 
-First measurements from the live run, confirming §2.5 at session scale:
+| symbol | | bars | collected | halted | real gaps |
+|---|---|---|---|---|---|
+| 005930 | 삼성전자 | 95,296 | 250 | 0 | **0** |
+| 068270 | 셀트리온 | 95,308 | 250 | 0 | **0** |
+| 000660 | SK하이닉스 | 95,277 | 250 | 0 | **0** |
+| 009150 | 삼성전기 | 95,259 | 250 | 0 | **0** |
+| 207940 | 삼성바이오로직스 | 88,813 | 233 | **17** | **0** |
+| 000720 | 현대건설 | 95,266 | 250 | 0 | **0** |
+| 007390 | 네이처셀 | 93,625 | 250 | 0 | **0** |
+| 028300 | HLB | 95,344 | 250 | 0 | **0** |
+| 064350 | 현대로템 | 95,281 | 250 | 0 | **0** |
+| 051910 | LG화학 | 95,294 | 250 | 0 | **0** |
 
-| symbol | bars per session |
-|---|---|
-| 005930 삼성전자 | **381** |
-| 007390 네이처셀 | **351** |
+**Every trading day in the rolling window is collected for every symbol**,
+except 207940's 17 halted sessions, on which nothing traded and so nothing
+exists to fetch (§2.7). 233 + 17 = 250.
 
-Sustained throughput is lower than the burst measurement in §2.6 — about
-**25 minutes per symbol** rather than the ~13 the 0.57s average implied,
-so the full ten is roughly **4 hours**, not 2.1. The estimate was taken
-from a short burst and did not survive contact with a sustained run;
-recorded because it is the figure anyone sizing the next collection will
-reach for.
+The bar counts differ by liquidity rather than by coverage, exactly as
+§2.5 predicts: 네이처셀's 93,625 against 삼성전자's 95,296 is minutes
+without a trade, not sessions without a fetch.
 
-The final coverage table, per symbol and split by cause, is produced by:
+### 5.1 Two repairs, and both were predicted rather than discovered late
+
+The run executed the **fixed four-page tiling**, because it started before
+§2.6's finding existed. So it truncated every late-closing session, and
+that had to be repaired afterwards with the corrected paging:
+
+- **2025-11-13** (수능, closing 16:29): eight symbols recovered **60 bars
+  each, 480 in total.** 005930 had been repaired by hand when the finding
+  was made; 207940 was halted that day and correctly has none.
+- **2026-01-02** (late open, ordinary close): **unchanged everywhere**,
+  which is the negative control — the fix does not over-fetch a session
+  the old tiling already covered.
+
+And one session was lost to the tolerated-contention path, from a query I
+ran against the same store mid-run:
 
 ```
-python -m data.backfill_kis_intraday --symbols <codes> --verify
+000720 20260116 failed: database is locked
 ```
 
-and is appended to this section when the run completes.
+It was retried inside the same run and is present at 381 bars. That is the
+design working end to end: the run degraded by one session rather than
+stopping, and the session came back.
+
+### 5.2 The sizing estimate, scored
+
+| | estimate | actual |
+|---|---|---|
+| per call | 0.57s burst | ~1.3s sustained |
+| whole run | 2.1h, later revised to ~4h | **3.8h** |
+| calls | ~10,400 | **10,372** |
+
+The call count was right and the clock was not. A burst measurement of
+latency does not survive a sustained run, and the mid-run revision to 4h
+overcorrected. Recorded because it is the figure anyone sizing a
+full-universe scan will reach for — and at this rate **2,718 names would
+be roughly 43 days of continuous collection**, which is a planning fact
+rather than a detail.
 
 ## 6. What follows
 
