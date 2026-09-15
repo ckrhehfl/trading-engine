@@ -17,7 +17,12 @@ import sqlite3
 
 import pytest
 
-from data.backfill_kis_intraday import _is_contention, backfill, coverage
+from data.backfill_kis_intraday import (
+    _is_contention,
+    backfill,
+    coverage,
+    halted_days,
+)
 from data.kis_klines import KisKlinesError
 from data.store import connect
 
@@ -146,6 +151,48 @@ def test_an_extended_code_that_is_not_contention_is_still_fatal(code):
 
 
 # --------------------------------------------------------- coverage
+
+
+def _daily(conn, code, date, volume):
+    from data.kis_klines import trading_date_to_ms
+
+    conn.execute(
+        "INSERT INTO klines (symbol, interval, open_time_ms, open, high, low, "
+        "close, volume, fetched_at) VALUES (?,?,?,?,?,?,?,?,?)",
+        (f"KRX:{code}", "1d", trading_date_to_ms(date), "1", "1", "1", "1",
+         str(volume), "2026-09-15"),
+    )
+    conn.commit()
+
+
+def test_a_zero_volume_day_is_a_halt_not_a_gap(conn):
+    """**Not hypothetical.** 207940 was halted for 17 consecutive sessions,
+    2025-10-30 to 2025-11-21, which the first real run reported as 17
+    missing sessions. A coverage report that cries wolf seventeen times
+    for one symbol is a report nobody reads the eighteenth time."""
+    _daily(conn, "207940", "20251030", 0)
+    _daily(conn, "207940", "20251029", 12345)
+    assert halted_days(conn, "207940") == {"20251030"}
+
+
+def test_a_symbol_with_no_daily_bars_has_no_halts(conn):
+    """Absence of evidence is not a halt: without daily bars nothing can
+    be classified, and calling everything halted would hide real gaps."""
+    assert halted_days(conn, "005930") == set()
+
+
+def test_a_halted_session_is_not_counted_as_a_real_gap(monkeypatch, conn):
+    _daily(conn, "005930", "20260914", 0)
+    # Two collected sessions bracketing the halted one, so the observed
+    # horizon reaches back past it -- otherwise it is classified as older
+    # than the window and the halt logic is never consulted.
+    monkeypatch.setattr(
+        "data.backfill_kis_intraday.session_is_collected",
+        lambda c, symbol, date: date in {"20260915", "20260911"},
+    )
+    cov = coverage(conn, ["005930"], DATES)
+    assert cov["symbols"]["005930"]["halted"] == ["20260914"]
+    assert cov["symbols"]["005930"]["missing_in_window"] == []
 
 
 def test_coverage_splits_missing_by_cause(monkeypatch, conn):

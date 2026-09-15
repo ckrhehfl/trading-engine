@@ -39,7 +39,7 @@ scarcest and the most perishable material available.
 defined, no threshold is chosen, and no window is designated for anything
 until a specification says so.
 
-## 2. What was measured, and the six things the earlier probe did not have
+## 2. What was measured, and the seven things the earlier probe did not have
 
 Every figure below is from the live paper host on 2026-09-15, against
 real KR-10 symbols.
@@ -149,7 +149,38 @@ late-open day either.
 re-request the boundary bar and advance the walk by 59 seconds instead of
 a minute.
 
-### 2.7 Two figures that make the whole thing affordable
+### 2.7 A halted stock produces legitimately empty sessions
+
+207940 (삼성바이오로직스) collected 234 sessions where every other symbol
+collected 251, and the first coverage report called the difference 17
+missing sessions inside the window.
+
+It is not missing. **The stock was halted for 17 consecutive sessions,
+2025-10-30 to 2025-11-21** — its daily bars carry `volume = 0` and a close
+frozen at 1,796,999, and the intraday endpoint correctly returns nothing
+for a day on which nothing traded.
+
+So the pipeline was right and the *report* was wrong, which is the more
+dangerous of the two: **a coverage report that cries wolf seventeen times
+for one symbol is a report nobody reads the eighteenth time.** A missing
+session is now classified three ways rather than two —
+
+| class | meaning |
+|---|---|
+| older than the rolling window | expected, permanent |
+| **halted** | the stock did not trade; there is nothing to fetch |
+| inside the window, traded, absent | **a real failure** |
+
+— with the halt read from the daily bars' own `volume = 0`, which is the
+only local evidence that distinguishes "no trades" from "no fetch". After
+the split, 207940 reports **233 collected + 17 halted, and zero real
+gaps.**
+
+This matters more for a full-universe scan than for KR-10: ten liquid
+names produce one halted stretch, and 2,718 names would produce enough to
+drown the signal entirely.
+
+### 2.8 Two figures that make the whole thing affordable
 
 - **Latency averages 0.57s**, not the 7–10s CLAUDE.md records for
   `/oauth2/tokenP` and `inquire-balance`. Measured across all ten KR-10
@@ -199,12 +230,14 @@ moving lunar holidays `KrxMarketCalendar` still lists as unresolved.
 `store.find_missing_ranges` remains unusable here — it diffs against an
 arithmetic sequence and would report ~116 false gaps per symbol-year.
 
-**Coverage splits missing sessions by cause**, and that split is the
-point: everything older than the rolling window is missing and always will
-be, so reporting it beside a genuine failure would bury the second inside
-the expected first. The boundary is taken from the data — the oldest date
-anything was actually collected for — rather than from the nominal 250,
-because the real horizon moves daily.
+**Coverage splits missing sessions three ways**, and that split is the
+point: *older than the rolling window* is expected and permanent,
+*halted* means the stock did not trade and there is nothing to fetch, and
+only *inside the window, traded, and absent* is a failure. Reporting them
+together buries the third inside the first two. The horizon is taken from
+the data — the oldest date anything was actually collected for — rather
+than from the nominal 250, because the real boundary moves daily; the
+halt is read from the daily bars' own `volume = 0`.
 
 **No grid alignment is asserted.** 2026-01-02 really returned `:11`
 seconds on every bar where every other probed date returned `:00`, so

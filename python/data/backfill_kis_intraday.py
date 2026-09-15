@@ -207,15 +207,42 @@ def backfill(
     return stats
 
 
+def halted_days(conn, code: str) -> set[str]:
+    """Trading dates on which this symbol did not trade at all.
+
+    A halted stock has a daily bar with **volume 0** and a frozen close,
+    and no minute bars whatsoever — correctly, since there were no trades.
+    Without this, such a session is indistinguishable from a fetch that
+    failed.
+
+    It is not hypothetical: 207940 (삼성바이오로직스) was halted for **17
+    consecutive sessions**, 2025-10-30 to 2025-11-21, which the first real
+    run reported as 17 missing sessions inside the window. A coverage
+    report that cries wolf seventeen times for one symbol is a report
+    nobody reads the eighteenth time.
+    """
+    rows = conn.execute(
+        "SELECT open_time_ms, CAST(volume AS REAL) FROM klines "
+        "WHERE symbol=? AND interval=?",
+        (equity_storage_symbol(code), DAILY_INTERVAL),
+    ).fetchall()
+    return {ms_to_trading_date(ms) for ms, vol in rows if (vol or 0) == 0}
+
+
 def coverage(conn, codes: list[str], dates: list[str]) -> dict:
     """Per symbol: collected sessions, and the missing ones split by cause.
 
-    **The split is the point.** Everything older than the rolling window
-    is missing and always will be; conflating that with a session that
-    should be there and is not would hide every real failure inside an
-    expected one. The boundary is taken from the data — the oldest date
-    anything was actually collected for — rather than from the nominal
-    ~250, because the real horizon moves daily.
+    **The split is the point.** A session with no bars is one of three
+    things, and only the last is a fault:
+
+    - **older than the rolling window** — expected and permanent;
+    - **halted** — the stock did not trade, so there is nothing to fetch;
+    - **inside the window, traded, and absent** — a real failure.
+
+    Conflating them hides every real failure inside an expected one. The
+    horizon is taken from the data — the oldest date anything was actually
+    collected for — rather than from the nominal ~250, because the real
+    boundary moves daily.
     """
     collected: dict[str, list[str]] = {}
     for code in codes:
@@ -228,12 +255,13 @@ def coverage(conn, codes: list[str], dates: list[str]) -> dict:
     out = {}
     for code in codes:
         have = set(collected[code])
+        halted = halted_days(conn, code)
         missing = [d for d in dates if d not in have]
+        in_window = [d for d in missing if horizon is not None and d >= horizon]
         out[code] = {
             "collected": len(have),
-            "missing_in_window": [
-                d for d in missing if horizon is not None and d >= horizon
-            ],
+            "missing_in_window": [d for d in in_window if d not in halted],
+            "halted": [d for d in in_window if d in halted],
             "missing_older_than_window": [
                 d for d in missing if horizon is None or d < horizon
             ],
@@ -246,8 +274,9 @@ def _report(conn, codes: list[str], dates: list[str]) -> None:
     print(f"reference calendar: {len(dates)} trading days, "
           f"{dates[-1]} .. {dates[0]}")
     print(f"observed rolling horizon: {cov['horizon'] or '(nothing collected)'}\n")
-    print(f"{'symbol':12} {'collected':>10} {'missing(in)':>12} {'missing(old)':>13}  span of newest")
-    print("-" * 78)
+    print(f"{'symbol':12} {'collected':>10} {'missing(in)':>12} {'halted':>8} "
+          f"{'missing(old)':>13}  span of newest")
+    print("-" * 92)
     for code, c in cov["symbols"].items():
         newest = next((d for d in dates if session_is_collected(
             conn, equity_storage_symbol(code), d)), None)
@@ -256,7 +285,7 @@ def _report(conn, codes: list[str], dates: list[str]) -> None:
             n, first, last = stored_span(conn, equity_storage_symbol(code), newest)
             span = f"{newest} {first}..{last} ({n} bars)"
         print(f"{code:12} {c['collected']:>10} {len(c['missing_in_window']):>12} "
-              f"{len(c['missing_older_than_window']):>13}  {span}")
+              f"{len(c['halted']):>8} {len(c['missing_older_than_window']):>13}  {span}")
     bad = {k: v["missing_in_window"] for k, v in cov["symbols"].items()
            if v["missing_in_window"]}
     if bad:
@@ -265,6 +294,11 @@ def _report(conn, codes: list[str], dates: list[str]) -> None:
             print(f"  {code}: {len(days)} session(s), newest {days[0]}, oldest {days[-1]}")
     else:
         print("\nNo session is missing inside the observed rolling window.")
+    halted = {k: v["halted"] for k, v in cov["symbols"].items() if v["halted"]}
+    if halted:
+        print("\nHalted (no trades, so nothing to fetch -- not a gap):")
+        for code, days in halted.items():
+            print(f"  {code}: {len(days)} session(s), {days[-1]} .. {days[0]}")
 
 
 def main(argv: list[str] | None = None) -> int:
