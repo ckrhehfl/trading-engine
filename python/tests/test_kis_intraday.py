@@ -313,3 +313,21 @@ def test_an_empty_session_writes_nothing_and_says_so(conn, patched):
     s = patched(_FakeSession({}))
     assert sync_session(conn, s, "005930", "20250902", delay_s=0) == (0, 0)
     assert conn.execute("SELECT COUNT(*) FROM klines").fetchone()[0] == 0
+
+
+def test_a_malformed_output2_row_fails_the_page(patched):
+    """**Filtering it out would be worse than crashing.** Completeness here
+    is a span, not a count, so a dropped minute in the middle of a session
+    still spans the day, still counts as collected, and is never fetched
+    again — a permanent hole that looks like a complete session."""
+    s = patched(_FakeSession({"153000": [_bar("153000"), "not an object"]}))
+    with pytest.raises(KisKlinesError, match="row 1 is not an object"):
+        fetch_session(s, "005930", "20260911", delay_s=0)
+
+
+def test_the_previous_sessions_rows_are_still_filtered_not_refused(patched):
+    """The two are different: a row from another date is *expected* on the
+    fourth page and is dropped; a row that is not an object at all is a
+    fault and stops the page."""
+    s = patched(_FakeSession({"092000": [_bar("090000"), _bar("153000", date="20260910")]}))
+    assert len(fetch_session(s, "005930", "20260911", delay_s=0)) == 1

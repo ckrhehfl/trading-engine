@@ -1,0 +1,150 @@
+"""Tests for `data.backfill_kis_intraday`.
+
+Two properties carry this runner, and each exists because the first
+version got it wrong:
+
+- **Oldest session first.** In a rolling window the oldest expires next,
+  so an interrupted run must have secured those. The first implementation
+  went newest-first while its own docstring argued for perishability.
+- **Only contention is tolerated.** Absorbing every `OperationalError`
+  would log a schema fault 2,500 times while the run produced nothing and
+  reported a tidy list of "errors".
+"""
+
+from __future__ import annotations
+
+import sqlite3
+
+import pytest
+
+from data.backfill_kis_intraday import _is_contention, backfill, coverage
+from data.kis_klines import KisKlinesError
+from data.store import connect
+
+
+@pytest.fixture
+def conn(tmp_path):
+    return connect(str(tmp_path / "k.sqlite3"))
+
+
+DATES = ["20260915", "20260914", "20260911", "20260910"]  # newest first
+
+
+class _Recorder:
+    """Stands in for `sync_session`, recording the order it is called in."""
+
+    def __init__(self, fail_on=None, raises=None):
+        self.seen: list[tuple[str, str]] = []
+        self.fail_on = fail_on or ()
+        self.raises = raises
+
+    def __call__(self, conn, session, code, date, *, delay_s=0, force=False):
+        self.seen.append((code, date))
+        if (code, date) in self.fail_on:
+            raise self.raises
+        return 10, 10
+
+
+def _run(monkeypatch, conn, rec, codes=("005930", "000660")):
+    monkeypatch.setattr("data.backfill_kis_intraday.sync_session", rec)
+    monkeypatch.setattr(
+        "data.backfill_kis_intraday.session_is_collected", lambda *a, **k: False
+    )
+    return backfill(conn, object(), list(codes), DATES, delay_s=0)
+
+
+def test_the_oldest_session_is_fetched_first(monkeypatch, conn):
+    """The rolling window expires from the old end, so an interrupted run
+    must have secured the oldest — the newest will still be there
+    tomorrow."""
+    rec = _Recorder()
+    _run(monkeypatch, conn, rec)
+    assert [d for _, d in rec.seen][:2] == ["20260910", "20260910"]
+    assert [d for _, d in rec.seen][-2:] == ["20260915", "20260915"]
+
+
+def test_every_symbol_advances_together(monkeypatch, conn):
+    """Date-outer, so an interruption leaves ten partial symbols covering
+    one common range rather than four complete symbols and six empty."""
+    rec = _Recorder()
+    _run(monkeypatch, conn, rec)
+    # Each date is attempted for both symbols before the next date starts.
+    for i in range(0, len(rec.seen), 2):
+        assert rec.seen[i][1] == rec.seen[i + 1][1]
+
+
+def test_a_busy_database_costs_one_session_not_the_run(monkeypatch, conn):
+    busy = sqlite3.OperationalError("database is locked")
+    rec = _Recorder(fail_on=[("005930", "20260911")], raises=busy)
+    stats = _run(monkeypatch, conn, rec)
+    assert len(stats["errors"]) == 1 and "20260911" in stats["errors"][0]
+    assert stats["sessions_fetched"] == 7  # 8 attempted, 1 lost
+
+
+def test_any_other_operational_error_stops_the_run(monkeypatch, conn):
+    """**The one that matters.** A schema fault absorbed per session would
+    be logged 2,500 times while the run produced nothing and reported a
+    tidy list of 'errors'."""
+    broken = sqlite3.OperationalError("no such column: nonsense")
+    rec = _Recorder(fail_on=[("005930", "20260911")], raises=broken)
+    with pytest.raises(sqlite3.OperationalError, match="no such column"):
+        _run(monkeypatch, conn, rec)
+
+
+def test_a_kis_error_is_recorded_and_the_run_continues(monkeypatch, conn):
+    rec = _Recorder(
+        fail_on=[("000660", "20260914")], raises=KisKlinesError("rejected")
+    )
+    stats = _run(monkeypatch, conn, rec)
+    assert len(stats["errors"]) == 1
+    assert stats["sessions_fetched"] == 7
+
+
+@pytest.mark.parametrize("msg", ["database is locked", "database table is locked"])
+def test_contention_is_recognised_from_the_message_as_a_fallback(msg):
+    assert _is_contention(sqlite3.OperationalError(msg))
+
+
+def test_a_real_fault_is_not_mistaken_for_contention():
+    assert not _is_contention(sqlite3.OperationalError("no such table: klines"))
+
+
+def test_contention_prefers_the_error_name_over_the_message():
+    """`sqlite_errorname` is the reliable signal; the message check is only
+    a fallback for an interpreter that lacks it."""
+    exc = sqlite3.OperationalError("something entirely unrelated")
+    exc.sqlite_errorname = "SQLITE_BUSY"
+    assert _is_contention(exc)
+
+
+# --------------------------------------------------------- coverage
+
+
+def test_coverage_splits_missing_by_cause(monkeypatch, conn):
+    """Everything older than the rolling window is missing and always will
+    be; reporting it beside a real gap buries the second in the first."""
+    collected = {("005930", "20260915"), ("005930", "20260914"),
+                 ("000660", "20260915")}
+    monkeypatch.setattr(
+        "data.backfill_kis_intraday.session_is_collected",
+        lambda c, symbol, date: (symbol.removeprefix("KRX:"), date) in collected,
+    )
+    cov = coverage(conn, ["005930", "000660"], DATES)
+    assert cov["horizon"] == "20260914"
+    # 000660 is missing 20260914 *inside* the window -- a real gap.
+    assert cov["symbols"]["000660"]["missing_in_window"] == ["20260914"]
+    assert cov["symbols"]["000660"]["missing_older_than_window"] == [
+        "20260911", "20260910"
+    ]
+
+
+def test_with_nothing_collected_every_gap_is_outside_the_window(monkeypatch, conn):
+    """No horizon can be inferred, so nothing may be called a real gap —
+    claiming otherwise would report 2,600 failures on a fresh clone."""
+    monkeypatch.setattr(
+        "data.backfill_kis_intraday.session_is_collected", lambda *a, **k: False
+    )
+    cov = coverage(conn, ["005930"], DATES)
+    assert cov["horizon"] is None
+    assert cov["symbols"]["005930"]["missing_in_window"] == []
+    assert len(cov["symbols"]["005930"]["missing_older_than_window"]) == 4

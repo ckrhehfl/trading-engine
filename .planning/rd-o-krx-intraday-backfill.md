@@ -56,7 +56,8 @@ session is tiled backwards. For 005930 on 2026-09-11:
 | `112000` | 120 | 120 | 09:21–11:20 |
 | `092000` | 120 | **21** | 09:00–09:20 |
 
-**381 bars for a full session.** Three pages would be cheaper and wrong —
+**381 bars for a full session** — 120 + 120 + 120 + 21 for the requested
+date. Three pages would be cheaper and wrong —
 `153000`/`132000`/`112000` leaves **09:00–09:20 missing**, which reads as
 an ordinary quiet open rather than a hole.
 
@@ -100,8 +101,11 @@ historical fetch is reading today's quote.
 no trades. Confirmed at session scale in the first real run: **005930
 gives 381 bars a session, 007390 gives 351.**
 
-So **380 is an upper bound, not an expectation**, and any completeness
+So **381 is an upper bound, not an expectation**, and any completeness
 check keyed to a bar count is wrong for the illiquid half of a universe.
+(381 rather than 380: an earlier draft carried the *minute* arithmetic —
+390 minutes less a ~10-minute closing auction — which this task's own
+first measurement contradicts.)
 Completeness here is therefore a **span** — bars reaching from ≤ 09:30 to
 ≥ 15:00 — which is what actually distinguishes "all four pages landed"
 from "the run died halfway" while tolerating a late first trade.
@@ -126,10 +130,20 @@ python -m data.backfill_kis_intraday --symbols <codes> --verify
 ```
 
 **Resumable by construction.** A session already spanning the day is
-skipped without an API call, so an interrupted two-hour run costs only the
-session it died on. Sessions are fetched **newest first**, deliberately:
-the far edge is what expires next, so an interrupted run should have
-secured the most perishable material rather than the safest.
+skipped without an API call, so an interrupted run costs only the session
+it died on.
+
+**Oldest session first, and all symbols abreast of each other.** In a
+rolling window it is the *oldest* session that expires next, so an
+interrupted run must have secured those and may safely leave the newest —
+they will still be there tomorrow. Iterating date-outer keeps every symbol
+at one frontier, so an interruption leaves ten partial symbols covering a
+common range rather than four complete symbols and six empty ones.
+
+**The first implementation did the exact opposite** — newest-first,
+symbol-outer — while its own docstring argued for perishability. The
+reasoning was right and the loop contradicted it; caught on review of
+PR #174.
 
 **An empty result is reported, never interpreted.** A date outside the
 rolling window returns `rt_cd=0` with zero rows — the same convention an

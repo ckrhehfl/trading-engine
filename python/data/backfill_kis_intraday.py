@@ -98,6 +98,24 @@ def trading_days(conn, index_code: str, limit: int | None = None) -> list[str]:
     return days[:limit] if limit else days
 
 
+#: SQLite's two contention codes. Anything else is a real fault and must
+#: not be absorbed by a loop designed to survive a busy database.
+_CONTENTION = ("SQLITE_BUSY", "SQLITE_LOCKED")
+
+
+def _is_contention(exc: sqlite3.OperationalError) -> bool:
+    """Whether this error is another writer holding the file.
+
+    `sqlite_errorname` is the reliable signal (Python 3.11+); the message
+    check is a fallback so an older interpreter degrades to tolerating a
+    lock rather than to crashing on one.
+    """
+    name = getattr(exc, "sqlite_errorname", None)
+    if name is not None:
+        return name in _CONTENTION
+    return "locked" in str(exc).lower() or "busy" in str(exc).lower()
+
+
 def backfill(
     conn,
     session: KisSession,
@@ -108,18 +126,27 @@ def backfill(
 ) -> dict:
     """Fetch every `(code, date)` not already collected.
 
-    Newest first, deliberately: the far edge of the rolling window is the
-    part that expires next, so an interrupted run should have secured the
-    most perishable sessions rather than the safest ones.
+    **Oldest session first, and all symbols abreast of each other.** In a
+    rolling window it is the *oldest* session that expires next, so an
+    interrupted run must have secured those and may safely leave the newest
+    — they will still be there tomorrow. Iterating date-outer keeps every
+    symbol at the same frontier, so an interruption leaves ten partial
+    symbols covering one common range rather than four complete symbols and
+    six empty ones.
+
+    An earlier version did the exact opposite, newest-first and
+    symbol-outer, while this docstring already argued for perishability.
+    The reasoning was right and the loop contradicted it.
     """
     stats = {
         "calls": 0, "sessions_fetched": 0, "sessions_skipped": 0,
         "sessions_empty": 0, "bars_inserted": 0, "errors": [],
     }
     started = time.time()
-    for code in codes:
-        symbol = equity_storage_symbol(code)
-        for date in dates:
+    done: dict[str, int] = {code: 0 for code in codes}
+    for date in reversed(dates):  # `dates` arrives newest-first
+        for code in codes:
+            symbol = equity_storage_symbol(code)
             if session_is_collected(conn, symbol, date):
                 stats["sessions_skipped"] += 1
                 continue
@@ -127,33 +154,43 @@ def backfill(
                 fetched, inserted = sync_session(
                     conn, session, code, date, delay_s=delay_s
                 )
-            except (KisKlinesError, sqlite3.OperationalError) as exc:
+            except KisKlinesError as exc:
                 # One bad session must not end a multi-hour run; it is
-                # recorded and the report names it.
-                #
-                # `sqlite3.OperationalError` is included deliberately: this
-                # store is written concurrently by two cron collectors, and
-                # SQLite locks the whole file. Python's 5s busy timeout
-                # covers their short writes, but a run of this length
-                # should degrade by losing one session rather than by
-                # stopping — and a lost session is retried on the next run,
-                # since `session_is_collected` will still say no.
+                # recorded, the report names it, and the next run retries
+                # it because `session_is_collected` will still say no.
                 stats["errors"].append(f"{code} {date}: {exc}")
                 LOGGER.warning("%s %s failed: %s", code, date, exc)
+                continue
+            except sqlite3.OperationalError as exc:
+                # **Only contention is tolerated.** This store is written
+                # concurrently by two cron collectors and SQLite locks the
+                # whole file, so a run of this length should degrade by
+                # losing one session to a busy database rather than by
+                # stopping. Anything else — a schema fault, a full disk —
+                # would otherwise be logged 2,500 times while the run
+                # produced nothing and reported a tidy list of "errors".
+                conn.rollback()
+                if not _is_contention(exc):
+                    raise
+                stats["errors"].append(f"{code} {date}: {exc}")
+                LOGGER.warning("%s %s lost to a busy database: %s", code, date, exc)
                 continue
             stats["calls"] += len(SESSION_PAGES)
             if fetched:
                 stats["sessions_fetched"] += 1
                 stats["bars_inserted"] += inserted
+                done[code] += 1
             else:
                 stats["sessions_empty"] += 1
             conn.commit()
-        LOGGER.info(
-            "%s done: %d fetched, %d skipped, %d empty, %d bars, %.1f min elapsed",
-            code, stats["sessions_fetched"], stats["sessions_skipped"],
-            stats["sessions_empty"], stats["bars_inserted"],
-            (time.time() - started) / 60,
-        )
+        if sum(done.values()) and date == dates[0]:
+            LOGGER.info("reached the newest session %s", date)
+    LOGGER.info(
+        "%d fetched, %d skipped, %d empty, %d bars, %.1f min",
+        stats["sessions_fetched"], stats["sessions_skipped"],
+        stats["sessions_empty"], stats["bars_inserted"],
+        (time.time() - started) / 60,
+    )
     stats["minutes"] = (time.time() - started) / 60
     return stats
 

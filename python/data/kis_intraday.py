@@ -63,9 +63,14 @@ hole.
 **A minute with no trade has no bar.** 007390 (네이처셀) returned its 120
 rows spanning 13:15-15:30 where 005930's spanned 13:21-15:30 — 16 minutes
 of that window simply had no trades. So a session's bar count is a
-function of liquidity and **380 is an upper bound, not an expectation**.
-Any completeness check that assumes a fixed count will be wrong for the
-illiquid half of a universe.
+function of liquidity and **381 is an upper bound, not an expectation**:
+005930 gives 381 a session, 007390 gives 351. Any completeness check that
+assumes a fixed count will be wrong for the illiquid half of a universe.
+
+(381, not 380: the four pages contribute 120 + 120 + 120 + 21 for the
+requested date. An earlier draft carried 380 from the *minute* arithmetic
+-- 390 minutes less a ~10-minute closing auction -- and that figure is
+contradicted by this module's own first measurement.)
 """
 
 from __future__ import annotations
@@ -114,8 +119,8 @@ SESSION_PAGES = ("153000", "132000", "112000", "092000")
 #: A session is treated as already collected when the stored bars reach
 #: from at or before this time to at or after the other.
 #:
-#: **Not a bar count.** 380 is an upper bound that only a liquid name
-#: reaches, so "we have 380 rows" would refetch every illiquid symbol
+#: **Not a bar count.** 381 is an upper bound that only a liquid name
+#: reaches, so "we have 381 rows" would refetch every illiquid symbol
 #: forever. Spanning the session is what actually distinguishes "all four
 #: pages landed" from "the run died halfway", and it tolerates a name
 #: whose first trade is late or whose last is early.
@@ -210,10 +215,23 @@ def fetch_page(session: KisSession, code: str, date: str, hour: str) -> list[dic
     raw = payload.get("output2") or []
     if not isinstance(raw, list):
         raise KisKlinesError(f"output2 is not a list for {code} {date} {hour}")
-    return [
-        r for r in raw
-        if isinstance(r, dict) and str(r.get("stck_bsop_date") or "") == date
-    ]
+
+    # **A malformed row fails the whole page rather than being filtered
+    # out.** Dropping it silently loses a real minute, and completeness
+    # here is a *span* rather than a count -- so a hole in the middle of a
+    # session still spans the day, still counts as collected, and is never
+    # fetched again. Filtering is safe only where the thing filtered is
+    # known not to matter, and that is true of the previous session's rows
+    # below and not of a row that should have parsed.
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(raw):
+        if not isinstance(row, dict):
+            raise KisKlinesError(
+                f"output2 row {index} is not an object for {code} {date} {hour}"
+            )
+        if str(row.get("stck_bsop_date") or "") == date:
+            rows.append(row)
+    return rows
 
 
 def fetch_session(
