@@ -138,3 +138,99 @@ def test_the_documents_count_in_the_prose_is_the_real_count():
         f"the index prose claims {claimed} documents; there are {actual}. "
         f"Update the number in .planning/README.md."
     )
+
+
+def test_claude_md_s_document_count_is_the_real_count_too():
+    """CLAUDE.md states the same count, and nothing was checking it.
+
+    It read **77** against a real **105** on 2026-09-15 — stale by 28,
+    because twenty-eight documents had been added across many PRs and the
+    sentence two lines from "verify every figure ... then remove it" was
+    never one of the figures anyone verified.
+
+    The README's own count has had this guard since PR #159. Extending it
+    here rather than writing a second one, because the failure is
+    identical and so is the fix.
+    """
+    import re
+
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    match = re.search(r"an index of all (\d+) documents", claude)
+    assert match, (
+        "CLAUDE.md no longer states the .planning document count in the "
+        "expected form; update this test with it, do not delete the check"
+    )
+    claimed, actual = int(match.group(1)), len(on_disk())
+    assert claimed == actual, (
+        f"CLAUDE.md claims {claimed} planning documents; there are {actual}."
+    )
+
+
+def test_claude_md_s_unspent_windows_are_really_unspent():
+    """CLAUDE.md names which windows are still available for a
+    confirmation run, and the experiment log knows which have been spent.
+    Nothing compared the two.
+
+    On 2026-09-15 the clause listed **KRX daily** as unspent. It had been
+    spent on **2026-09-13** by `daily-tsmom-kr10-portfolio`, three
+    recorded `holdout_access` entries, and the sentence was written the
+    following day in a different PR — so no rule was broken, the claim was
+    simply never checked. It is the most load-bearing kind of stale fact
+    this file can carry: it tells a future session a fresh window exists
+    when it does not.
+
+    The mapping is written out rather than inferred, because a window's
+    English name and its `(symbol, interval)` in the log are different
+    vocabularies and guessing between them is how a guard goes quietly
+    inert.
+    """
+    import json
+    import re
+
+    # CLAUDE.md's name -> the (symbol substring, interval) a holdout
+    # access against that window would carry in the log.
+    WINDOW = {
+        "Binance spot 1m": ("BINANCE:BTCUSDT", "1m"),
+        "KRX daily": ("KRX:", "1d"),
+        "Binance spot 1d": ("BINANCE:BTCUSDT", "1d"),
+    }
+
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"Unspent and therefore \*not\* available\s*\n?\s*for discovery: (.+?)\.",
+        claude,
+        re.S,
+    )
+    assert match, (
+        "CLAUDE.md no longer states which windows are unspent in the "
+        "expected form; update this test with it, do not delete the check"
+    )
+    claimed = {n for n in WINDOW if n in match.group(1)}
+    assert claimed, (
+        f"no known window name found in {match.group(1)!r}; the mapping in "
+        f"this test needs the new name adding"
+    )
+
+    spent = set()
+    log = REPO_ROOT / "runs" / "experiments.jsonl"
+    for line in log.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # a truncated final write, per load_records' own rule
+        if rec.get("record_type") != "holdout_access":
+            continue
+        symbol, interval = rec.get("symbol", ""), rec.get("interval")
+        for name, (sym_part, iv) in WINDOW.items():
+            if interval == iv and sym_part in symbol:
+                spent.add(name)
+
+    wrongly_claimed = sorted(claimed & spent)
+    assert not wrongly_claimed, (
+        f"CLAUDE.md calls {wrongly_claimed} unspent, but "
+        f"runs/experiments.jsonl records a holdout access against each. "
+        f"A spent window is not available for confirmation."
+    )
