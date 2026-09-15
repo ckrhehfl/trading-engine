@@ -21,6 +21,11 @@ logs/
 # into a directory excluded via a bare trailing-slash pattern.
 runs/*
 !runs/live_signals.jsonl
+# runs/spent_windows.json is the same shape: a small COMMITTED artifact
+# derived from the gitignored experiments log by research/spent_windows.py,
+# so CI can check CLAUDE.md's "unspent window" claim against something
+# real. Without it that check passes vacuously wherever the log is absent.
+!runs/spent_windows.json
 python/data/var/
 # ...and the same store wherever a wrong working directory puts it. On
 # 2026-09-10 a `cd python && PYTHONPATH=.` invocation resolved

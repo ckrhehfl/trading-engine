@@ -1,0 +1,41 @@
+{
+  "note": "Derived from runs/experiments.jsonl by research.spent_windows. Do not hand-edit; regenerate with `python -m research.spent_windows --write`.",
+  "windows": [
+    {
+      "symbol": "BINANCE-FUTURES:BTCUSDT",
+      "interval": "1m",
+      "accesses": 1,
+      "first_access": "2026-08-26T02:20:54.732739+00:00"
+    },
+    {
+      "symbol": "BINANCE:BTCUSDT",
+      "interval": "1d",
+      "accesses": 2,
+      "first_access": "2026-08-05T08:40:35.627152+00:00"
+    },
+    {
+      "symbol": "BTC-USDT",
+      "interval": "15m",
+      "accesses": 1,
+      "first_access": "2026-07-26T03:38:14.404409+00:00"
+    },
+    {
+      "symbol": "BTC-USDT",
+      "interval": "1d",
+      "accesses": 1,
+      "first_access": "2026-07-30T05:18:08.992603+00:00"
+    },
+    {
+      "symbol": "BTC-USDT",
+      "interval": "1m",
+      "accesses": 1,
+      "first_access": "2026-08-25T09:49:46.376411+00:00"
+    },
+    {
+      "symbol": "KRX:005930,KRX:068270,KRX:000660,KRX:009150,KRX:207940,KRX:000720,KRX:007390,KRX:028300,KRX:064350,KRX:051910",
+      "interval": "1d",
+      "accesses": 3,
+      "first_access": "2026-09-13T15:29:49.516255+00:00"
+    }
+  ]
+}

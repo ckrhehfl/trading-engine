@@ -1946,10 +1946,22 @@ minimum-evidence-volume (trade count) gates, on a strategy with no
 overfitting surface to protect against — the human operator explicitly
 approved proceeding to paper trading as the next evidence-gathering step,
 rather than requiring further backtest research (e.g. multi-symbol
-expansion) first. Multi-symbol expansion was deprioritized for now on a
-separate, practical judgment (human-stated, not re-derived here): a
-survivorship-safe, comparably-liquid multi-symbol universe beyond BTC/ETH
-is not readily available from this project's current data sources.
+expansion) first. Multi-symbol expansion was deprioritized **at that
+time** on a separate, practical judgment (human-stated, not re-derived
+here): that a survivorship-safe, comparably-liquid multi-symbol universe
+beyond BTC/ETH was not readily available from this project's data sources
+**as they stood on 2026-08-05**.
+
+**That judgment has since been overtaken by events and is kept as the
+record of what was believed when the exception was granted**, not as a
+current statement: `ms-a`…`ms-f` built the KRX daily pipeline and the
+KR-10 universe rule, handling survivorship by day-one selection plus a
+pre-defined exit rule. So the universe turned out to be available, the
+expansion was run, and it came back INCONCLUSIVE — see "Strategy Attempts
+So Far". **Nothing about this exception's own scope changes**: it was
+granted on `daily-tsmom-ensemble`'s two holdout confirmations and the
+absence of a fitted parameter, neither of which the KR-10 run touches.
+
 CLAUDE.md's own multi-symbol architecture goals (see "Long-term Design
 Targets") are unaffected by this — it is a near-term sequencing choice,
 not an architectural reversal.
