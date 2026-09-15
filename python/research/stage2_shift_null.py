@@ -106,6 +106,24 @@ class ShiftTest:
     unconditional: float
     p_value: float
     permutations: int
+    #: Standard deviation of the **individual event forward returns**, of
+    #: exactly the events this test used -- the kept ones under `matched`.
+    event_sd: float = 0.0
+    #: Standard error of the event mean, **corrected for the overlap
+    #: between forward windows** by a moving-block bootstrap where there is
+    #: any (`overlap_block`). At h=15/60/240 against a 240-bar cooldown the
+    #: windows are disjoint and this is exactly `event_sd / sqrt(n)`; at
+    #: h=1440 up to 6 consecutive events share a window and the closed form
+    #: understates the error.
+    #:
+    #: **Purely additive and reported only** -- neither field enters a
+    #: p-value, an effect or a verdict here, so every rd-h and rd-k number
+    #: is unchanged (verified by re-running both). They exist because
+    #: `research.event_power` needs the *statistic's* sampling error, and
+    #: `null_sd` is the **null's** spread -- a different quantity whenever
+    #: the null is imperfectly calibrated, on this data by 1.05x to 2.45x.
+    #: See `rd-l` §4.1.
+    event_se: float = 0.0
     null_mode: str = "free"
     bh_rank: int = 0
     bh_threshold: float = 0.0
@@ -235,9 +253,16 @@ def matched_null(
     hour: np.ndarray,
     rng: np.random.Generator,
     permutations: int = DEFAULT_PERMUTATIONS,
-) -> tuple[float, np.ndarray, int]:
-    """`(observed, null_draws, dropped)` against a volatility+hour matched
-    null **with no exclusion**.
+) -> tuple[float, np.ndarray, np.ndarray]:
+    """`(observed, null_draws, kept_events)` against a volatility+hour
+    matched null **with no exclusion**.
+
+    **The kept events are returned, not just how many were dropped.**
+    `observed` and every null draw are computed from `keep`, so anything
+    else derived from "the events of this test" -- the event arm's own
+    dispersion above all -- has to come from the same indices. Returning
+    only a count let `run` compute `event_sd` over the pre-drop set, i.e.
+    over a different population than the statistic it describes.
 
     **This is rd-h section 4's named-but-untested third construction, and
     it is what decided rd-k.** It holds the confound the shift null leaves
@@ -298,7 +323,64 @@ def matched_null(
     for b in range(permutations):
         draw = np.array([pools[k][rng.integers(pools[k].size)] for k in keys])
         null[b] = forward_return(open_px, draw, horizon).mean()
-    return observed, null, dropped
+    return observed, null, keep
+
+
+def overlap_block(horizon: int, cooldown: int = COOLDOWN) -> int:
+    """How many consecutive events can share a forward window.
+
+    Episodes are collapsed to one per `cooldown` bars, and a forward
+    window spans `horizon` bars, so at most `ceil(horizon / cooldown)`
+    consecutive events overlap. **1 means none do**: at h=15, 60 and 240
+    against a 240-bar cooldown the windows are disjoint, and only h=1440
+    overlaps — up to 6 deep.
+
+    Derived from the two constants rather than chosen, so it cannot drift
+    away from the event construction it describes.
+    """
+    if cooldown <= 0:
+        raise ValueError(f"cooldown must be positive, got {cooldown}")
+    return max(1, -(-horizon // cooldown))
+
+
+def event_standard_error(
+    returns: np.ndarray,
+    block: int,
+    rng: np.random.Generator,
+    draws: int = 2000,
+) -> float:
+    """Standard error of the mean of `returns`, honest about overlap.
+
+    **`sd / sqrt(n)` is an _independent-samples_ standard error**, and
+    overlapping forward windows are not independent samples: they share
+    bars, so their covariance is real and positive, and ignoring it
+    understates the error — the unsafe direction, since it also understates
+    how many events a study needs.
+
+    With `block == 1` there is no overlap to correct and the closed form is
+    returned exactly. Otherwise a **moving-block bootstrap** over the
+    event sequence resamples blocks of `block` consecutive events, which
+    carries the overlap structure into every draw rather than assuming it
+    away.
+
+    It does not claim to capture dependence *beyond* the shared window —
+    volatility clustering makes even disjoint neighbours correlated — so
+    this is a correction for the overlap it can see, not a guarantee of
+    independence.
+    """
+    n = returns.size
+    if n < 2:
+        raise ValueError(f"need at least 2 returns, got {n}")
+    if block <= 1:
+        return float(returns.std(ddof=1) / np.sqrt(n))
+    block = min(block, n)
+    n_blocks = -(-n // block)
+    starts = n - block + 1
+    means = np.empty(draws)
+    for b in range(draws):
+        idx = rng.integers(0, starts, n_blocks)
+        means[b] = np.concatenate([returns[i : i + block] for i in idx])[:n].mean()
+    return float(means.std(ddof=1))
 
 
 def permutation_p(observed: float, null: np.ndarray) -> float:
@@ -360,6 +442,14 @@ def run(
     t, o, h, l, c, v = load(db_path)
     n = c.size
     rng = np.random.default_rng(seed)
+    # **A separate stream for the bootstrap.** `event_se` is a reported
+    # diagnostic and must not perturb the draws the nulls take, or adding
+    # it silently re-rolls every shift offset and matched control after the
+    # first bootstrap call. It did: the first version shared `rng` and moved
+    # S3 h=1440 from 33.07bp/p=1.25e-02 to 32.13bp/p=6.50e-03, turning a
+    # non-result into an ADVANCE. Caught by diffing both stage-2 commands
+    # against their pre-change output rather than by reading the code.
+    boot_rng = np.random.default_rng([seed, 0xB007])
     decile = volatility_decile(realised_vol_prior(c))
     hour = hour_of_day(t)
     masks = situations(t, o, h, l, c, v)
@@ -378,15 +468,22 @@ def run(
                     f"specification requires all {FAMILY_SIZE} tests to run"
                 )
             if mode == "matched":
-                observed, null, dropped = matched_null(
+                observed, null, keep = matched_null(
                     o, ev, hz, decile, hour, rng, permutations
                 )
-                kept = int(ev.size - dropped)
             else:
                 offsets = shift_offsets(n, max(HORIZONS) + 1, permutations, rng, mode)
                 observed, null = permutation_test(o, ev, hz, offsets)
-                kept = int(ev.size)
+                keep = ev
+            kept = int(keep.size)
             uncond = float(forward_return(o, np.arange(1, n - 1 - hz), hz).mean())
+            # From `keep`, not `ev`: under `matched` an event whose stratum
+            # is empty is dropped, and `observed` is computed without it,
+            # so a dispersion taken over `ev` would describe a different
+            # population than the statistic it is the error of.
+            ev_ret = forward_return(o, keep, hz)
+            event_sd = float(ev_ret.std(ddof=1))
+            event_se = event_standard_error(ev_ret, overlap_block(hz), boot_rng)
             results.append(
                 ShiftTest(
                     situation=name,
@@ -398,6 +495,8 @@ def run(
                     unconditional=uncond,
                     p_value=permutation_p(observed, null),
                     permutations=int(null.size),
+                    event_sd=event_sd,
+                    event_se=event_se,
                     null_mode=mode,
                 )
             )

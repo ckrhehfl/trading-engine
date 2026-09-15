@@ -18,20 +18,28 @@ here pin the two that were found by measurement rather than by reading:
 
 from __future__ import annotations
 
+import sqlite3
+
 import numpy as np
 import pytest
 
+from research import stage2_shift_null
+from research.stage2_event_study import KNOWN_GAPS_MS, SYMBOL
 from research.stage2_shift_null import (
     BARS_PER_DAY,
     DEFAULT_PERMUTATIONS,
     EFFECT_FLOOR,
     FAMILY_SIZE,
+    MIN_PERMUTATIONS_FOR_VERDICT,
     SHIFT_MODES,
     ShiftTest,
     benjamini_yekutieli,
+    event_standard_error,
     matched_null,
+    overlap_block,
     permutation_p,
     permutation_test,
+    run,
     shift_offsets,
 )
 
@@ -206,8 +214,8 @@ def test_the_matched_null_draws_from_the_events_own_stratum():
     px = np.concatenate([np.full(n // 2, 100.0), np.linspace(100.0, 300.0, n // 2)])
     dec, hr = _strata(n)
     events = np.array([2200, 2600, 3000])  # all in the rising stratum
-    _, null, dropped = matched_null(px, events, 50, dec, hr, np.random.default_rng(6), 200)
-    assert dropped == 0
+    _, null, keep = matched_null(px, events, 50, dec, hr, np.random.default_rng(6), 200)
+    assert keep.size == events.size
     assert (null > 0).all(), "a draw from the flat stratum would give zero"
 
 
@@ -222,10 +230,10 @@ def test_an_event_with_an_empty_stratum_is_dropped_and_counted():
     # Horizon short enough that every event has a forward window, so the
     # only reason to drop one is the empty stratum -- empty because the
     # event cannot be its own control.
-    _, _, dropped = matched_null(
-        px, np.array([1000, 1500, 2000, 3000]), 50, dec, hr, np.random.default_rng(7), 20
-    )
-    assert dropped == 1
+    events = np.array([1000, 1500, 2000, 3000])
+    _, _, keep = matched_null(px, events, 50, dec, hr, np.random.default_rng(7), 20)
+    assert events.size - keep.size == 1
+    assert 3000 not in keep, "the dropped event must be the one with no control"
 
 
 def test_an_event_is_never_drawn_as_its_own_control():
@@ -240,10 +248,10 @@ def test_an_event_is_never_drawn_as_its_own_control():
     # must land on the non-event.
     for i in (500, 600, 900):
         dec[i] = 3
-    _, null, dropped = matched_null(
+    _, null, keep = matched_null(
         px, np.array([500, 600]), 50, dec, hr, np.random.default_rng(11), 30
     )
-    assert dropped == 0
+    assert keep.size == 2
     only = (px[951] - px[901]) / px[901]
     assert null.min() == pytest.approx(only) and null.max() == pytest.approx(only), (
         "bar 900 is the only admissible control; 500 and 600 are the events"
@@ -257,10 +265,9 @@ def test_an_event_without_its_own_forward_window_is_dropped_too():
     n = 4000
     px = np.linspace(100.0, 200.0, n)
     dec, hr = np.zeros(n, np.int8), np.zeros(n, np.int8)
-    _, _, dropped = matched_null(
-        px, np.array([100, 200, 3990]), 50, dec, hr, np.random.default_rng(10), 20
-    )
-    assert dropped == 1
+    events = np.array([100, 200, 3990])
+    _, _, keep = matched_null(px, events, 50, dec, hr, np.random.default_rng(10), 20)
+    assert events.size - keep.size == 1 and 3990 not in keep
 
 
 def test_too_few_matchable_events_is_refused_rather_than_reported():
@@ -282,7 +289,7 @@ def test_the_matched_and_shift_nulls_disagree_when_strata_differ():
     events = np.array([3200, 3600, 4000, 4400])
     rng = np.random.default_rng(9)
     _, shift = permutation_test(px, events, 50, shift_offsets(n, 100, 300, rng, "free"))
-    obs, matched, _ = matched_null(px, events, 50, dec, hr, rng, 300)
+    obs, matched, _keep = matched_null(px, events, 50, dec, hr, rng, 300)
     assert obs - shift.mean() > obs - matched.mean(), (
         "the global shift must overstate the effect when events cluster in a stratum"
     )
@@ -340,3 +347,146 @@ def test_the_shift_nulls_keep_the_veto():
         r = _test(1e-5, observed=0.0030, null_mean=-0.0010, unconditional=0.0015,
                   null_mode=mode)
         assert r.null_suspect
+
+
+# ------------------------------- the event arm's own standard error
+
+
+def test_the_overlap_block_comes_from_the_two_constants():
+    """`ceil(horizon / cooldown)` -- 1 where forward windows are disjoint,
+    6 at h=1440 against the 240-bar cooldown. Derived rather than chosen,
+    so it cannot drift away from the event construction."""
+    assert overlap_block(15) == 1
+    assert overlap_block(60) == 1
+    assert overlap_block(240) == 1
+    assert overlap_block(1440) == 6
+    assert overlap_block(241) == 2
+
+
+def test_a_non_positive_cooldown_is_refused():
+    with pytest.raises(ValueError, match="cooldown must be positive"):
+        overlap_block(240, 0)
+
+
+def test_with_no_overlap_the_bootstrap_is_the_closed_form_exactly():
+    """Not approximately: at block 1 there is nothing to correct, and
+    returning a noisy bootstrap estimate instead would make the h=15/60/240
+    figures irreproducible for no gain."""
+    r = np.random.default_rng(1).normal(0, 0.01, 500)
+    assert event_standard_error(r, 1, np.random.default_rng(2)) == pytest.approx(
+        r.std(ddof=1) / np.sqrt(r.size)
+    )
+
+
+def test_the_bootstrap_widens_the_error_on_positively_correlated_returns():
+    """**The point of the correction.** Overlapping forward windows share
+    bars, so their covariance is real and positive; the closed form ignores
+    it and understates the error, which understates the cost."""
+    rng = np.random.default_rng(3)
+    base = rng.normal(0, 0.01, 200)
+    r = np.repeat(base, 6)  # six consecutive events sharing one window
+    closed = r.std(ddof=1) / np.sqrt(r.size)
+    boot = event_standard_error(r, 6, np.random.default_rng(4), draws=800)
+    assert boot > 1.5 * closed
+
+
+def test_the_bootstrap_is_close_to_the_closed_form_on_independent_draws():
+    """The correction must not inflate an error that needs no correcting,
+    or every horizon would pay for the one that does."""
+    r = np.random.default_rng(5).normal(0, 0.01, 1200)
+    closed = r.std(ddof=1) / np.sqrt(r.size)
+    boot = event_standard_error(r, 6, np.random.default_rng(6), draws=1500)
+    assert boot == pytest.approx(closed, rel=0.20)
+
+
+def test_a_block_longer_than_the_sample_is_clamped():
+    r = np.random.default_rng(7).normal(0, 0.01, 10)
+    assert event_standard_error(r, 50, np.random.default_rng(8), draws=100) > 0
+
+
+def test_a_single_return_has_no_standard_error():
+    with pytest.raises(ValueError, match="at least 2 returns"):
+        event_standard_error(np.array([0.01]), 1, np.random.default_rng(9))
+
+
+def _synthetic_series(tmp_path, sigma=0.002, n_half=30_000, seed=0):
+    """A 1m series `run` will accept, written to a real SQLite file.
+
+    It has to reproduce **the declared gap exactly** -- `verify_continuity`
+    fails closed on any other gap set -- and be long enough for the
+    43,200-bar trailing quantile S3's threshold needs, so this is 60,000
+    bars around the real gap rather than a toy.
+    """
+    gap_start, gap_step = KNOWN_GAPS_MS[0]
+    t = np.concatenate([
+        gap_start - np.arange(n_half - 1, -1, -1) * 60_000,   # ends AT gap_start
+        gap_start + gap_step + np.arange(n_half) * 60_000,
+    ])
+    n = t.size
+    rng = np.random.default_rng(seed)
+    c = 10_000 * np.exp(np.cumsum(rng.normal(0, sigma, n)))
+    o = np.roll(c, 1)
+    o[0] = c[0]
+    wig = np.abs(rng.normal(0, sigma * 3, n))
+    h, l = np.maximum(o, c) * (1 + wig), np.minimum(o, c) * (1 - wig)
+    v = np.abs(rng.lognormal(0, 1.0, n))
+    path = tmp_path / "klines.sqlite3"
+    conn = sqlite3.connect(path)
+    conn.execute(
+        "CREATE TABLE klines (symbol TEXT, interval TEXT, open_time_ms INTEGER,"
+        " open TEXT, high TEXT, low TEXT, close TEXT, volume TEXT)"
+    )
+    conn.executemany(
+        "INSERT INTO klines VALUES (?,?,?,?,?,?,?,?)",
+        [
+            (SYMBOL, "1m", int(t[i]), str(o[i]), str(h[i]), str(l[i]),
+             str(c[i]), str(v[i]))
+            for i in range(n)
+        ],
+    )
+    conn.commit()
+    conn.close()
+    return str(path)
+
+
+def test_the_synthetic_series_exercises_all_twelve_cells(tmp_path):
+    """The guard below is only a guard if `run` really runs. A fixture
+    that raised, or produced a short family, would make the next test pass
+    for the wrong reason."""
+    out = run(_synthetic_series(tmp_path), mode="matched",
+              permutations=MIN_PERMUTATIONS_FOR_VERDICT)
+    assert len(out) == FAMILY_SIZE
+    assert all(r.n_events >= 2 for r in out)
+
+
+@pytest.mark.parametrize("mode", ["matched", "free"])
+def test_the_bootstrap_does_not_disturb_run_s_null_draws(tmp_path, monkeypatch, mode):
+    """**A reported diagnostic must not move the result**, asserted at the
+    level where the regression actually happened.
+
+    The first version passed `run`'s own `rng` to `event_standard_error`,
+    so every shift offset and matched control drawn after its first call
+    was silently re-rolled -- S3 h=1440 went from 33.07bp / p=1.25e-02 to
+    32.13bp / p=6.50e-03, turning a non-result into an ADVANCE.
+
+    Testing `event_standard_error` in isolation cannot catch that, because
+    the fault is in **which generator `run` hands it**. So this replaces it
+    with a version that burns a large number of draws from whatever
+    generator it receives: if that is the null stream, every p-value moves.
+    """
+    db = _synthetic_series(tmp_path)
+    kw = dict(mode=mode, permutations=MIN_PERMUTATIONS_FOR_VERDICT)
+    baseline = run(db, **kw)
+
+    real = stage2_shift_null.event_standard_error
+
+    def greedy(returns, block, rng, draws=2000):
+        rng.integers(0, 10, 10_000)          # burn the stream it was given
+        return real(returns, block, rng, draws)
+
+    monkeypatch.setattr(stage2_shift_null, "event_standard_error", greedy)
+    after = run(db, **kw)
+
+    assert [r.p_value for r in after] == [r.p_value for r in baseline]
+    assert [r.null_mean for r in after] == [r.null_mean for r in baseline]
+    assert [r.observed for r in after] == [r.observed for r in baseline]
