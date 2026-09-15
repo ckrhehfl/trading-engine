@@ -77,9 +77,21 @@ PYTHONPATH=python python/.venv/bin/python -m data.backfill_kis \
     --symbols "$KR10" --index 0001 --start "$START" --end "$END" \
     --adjusted 0 >>"$LOG_FILE" 2>&1
 
-# Then the minute bars. Only the last few sessions are attempted: anything
-# older is either already collected (and skipped without a call) or older
-# than the rolling window (and would return zero rows). A wider request
-# would cost thousands of pointless calls every weekday.
+# Then the minute bars, across the WHOLE rolling window rather than the
+# last few sessions.
+#
+# `--sessions N` limits the candidate dates *before* the already-collected
+# check, so a small N is not a cap on work -- it is a cap on what can ever
+# be caught up. An earlier version passed `--sessions 5`, which meant that
+# any gap longer than five trading days (a holiday week, a machine left
+# off, a failed run nobody noticed) became PERMANENT: those sessions would
+# never be candidates again, and the rolling window would carry them off.
+# For a collector whose entire purpose is to stop exactly that, it was the
+# wrong default. Caught on review of PR #174.
+#
+# The full window costs almost nothing extra: a session already spanning
+# the day is skipped on a local index lookup with no API call, so the
+# added work is ~2,500 SQLite range queries -- under a second -- and the
+# API calls are only for sessions genuinely missing.
 PYTHONPATH=python python/.venv/bin/python -m data.backfill_kis_intraday \
-    --symbols "$KR10" --sessions 5 >>"$LOG_FILE" 2>&1
+    --symbols "$KR10" >>"$LOG_FILE" 2>&1

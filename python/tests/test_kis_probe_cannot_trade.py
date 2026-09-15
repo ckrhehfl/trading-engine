@@ -59,6 +59,22 @@ CREDENTIALED_KIS_MODULES = (
 #: forced to update is a list that stops being complete.
 _CREDENTIAL_MARKERS = ("KisSession", "KIS_APP_SECRET")
 
+
+def _discovered_credentialed_modules() -> set[str]:
+    """Every credentialed KIS client under `python/data/`, recursively.
+
+    `rglob`, not `glob`: a module in a future subpackage is exactly as
+    credentialed as one at the top level, and a direct-children-only walk
+    would let it escape this file the same way the two 2026-09-15 modules
+    escaped the hand-maintained list. Paths are relative to `_DATA` so a
+    nested module cannot collide with a top-level one of the same name.
+    """
+    return {
+        str(path.relative_to(_DATA))
+        for path in sorted(_DATA.rglob("*.py"))
+        if any(m in path.read_text(encoding="utf-8") for m in _CREDENTIAL_MARKERS)
+    }
+
 # KIS's own naming: order submission and cancellation live under /trading/,
 # and their TR ids are (V)TTO/(V)TTC-shaped. The Java adapter's real
 # constants are the reference -- ORDER_PATH, ORDER_CANCEL_PATH, VTTO1101U.
@@ -362,12 +378,11 @@ def test_every_credentialed_kis_module_is_listed():
     reads `KIS_APP_SECRET` is a credentialed KIS client and has to be held
     to the same contract.
     """
-    discovered = {
-        path.name
-        for path in sorted(_DATA.glob("*.py"))
-        if any(m in path.read_text(encoding="utf-8") for m in _CREDENTIAL_MARKERS)
+    discovered = _discovered_credentialed_modules()
+    listed = {
+        str(p.relative_to(_DATA)) if p.is_relative_to(_DATA) else p.name
+        for p in CREDENTIALED_KIS_MODULES
     }
-    listed = {p.name for p in CREDENTIALED_KIS_MODULES}
     missing = sorted(discovered - listed)
     assert not missing, (
         f"{missing} authenticate against KIS and are not in "
@@ -380,9 +395,4 @@ def test_the_discovery_rule_finds_something():
     """Without this, a marker tuple that stopped matching would make the
     check above pass on an empty set -- the inert-guard failure this
     repository keeps rediscovering."""
-    discovered = [
-        path
-        for path in sorted(_DATA.glob("*.py"))
-        if any(m in path.read_text(encoding="utf-8") for m in _CREDENTIAL_MARKERS)
-    ]
-    assert len(discovered) >= 6
+    assert len(_discovered_credentialed_modules()) >= 6

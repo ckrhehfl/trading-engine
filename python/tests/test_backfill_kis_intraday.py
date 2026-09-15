@@ -109,12 +109,40 @@ def test_a_real_fault_is_not_mistaken_for_contention():
     assert not _is_contention(sqlite3.OperationalError("no such table: klines"))
 
 
-def test_contention_prefers_the_error_name_over_the_message():
-    """`sqlite_errorname` is the reliable signal; the message check is only
+def test_contention_prefers_the_error_code_over_the_message():
+    """`sqlite_errorcode` is the reliable signal; the message check is only
     a fallback for an interpreter that lacks it."""
     exc = sqlite3.OperationalError("something entirely unrelated")
-    exc.sqlite_errorname = "SQLITE_BUSY"
+    exc.sqlite_errorcode = 5  # SQLITE_BUSY
     assert _is_contention(exc)
+
+
+@pytest.mark.parametrize(
+    "code,name",
+    [
+        (5, "SQLITE_BUSY"),
+        (6, "SQLITE_LOCKED"),
+        (261, "SQLITE_BUSY_RECOVERY"),      # 5  | (1 << 8)
+        (517, "SQLITE_BUSY_SNAPSHOT"),      # 5  | (2 << 8)
+        (262, "SQLITE_LOCKED_SHAREDCACHE"), # 6  | (1 << 8)
+    ],
+)
+def test_an_extended_contention_code_is_still_contention(code, name):
+    """**SQLite returns extended codes**, and matching exact names treats
+    `SQLITE_BUSY_SNAPSHOT` as fatal — stopping the run for precisely the
+    condition this is meant to survive. The primary code lives in the low
+    8 bits, which is the documented relationship rather than a guess about
+    naming."""
+    exc = sqlite3.OperationalError(name)
+    exc.sqlite_errorcode = code
+    assert _is_contention(exc), name
+
+
+@pytest.mark.parametrize("code", [1, 8, 11])  # ERROR, READONLY, CORRUPT
+def test_an_extended_code_that_is_not_contention_is_still_fatal(code):
+    exc = sqlite3.OperationalError("not a lock")
+    exc.sqlite_errorcode = code | (3 << 8)
+    assert not _is_contention(exc)
 
 
 # --------------------------------------------------------- coverage

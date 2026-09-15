@@ -47,7 +47,7 @@ import time
 from data._paths import DEFAULT_DB_PATH
 from data.kis_intraday import (
     INTERVAL,
-    SESSION_PAGES,
+    MAX_PAGES_PER_SESSION,
     equity_storage_symbol,
     session_is_collected,
     stored_span,
@@ -98,21 +98,31 @@ def trading_days(conn, index_code: str, limit: int | None = None) -> list[str]:
     return days[:limit] if limit else days
 
 
-#: SQLite's two contention codes. Anything else is a real fault and must
-#: not be absorbed by a loop designed to survive a busy database.
-_CONTENTION = ("SQLITE_BUSY", "SQLITE_LOCKED")
+#: SQLite's two contention codes, as primary result codes. Anything else
+#: is a real fault and must not be absorbed by a loop designed to survive
+#: a busy database.
+SQLITE_BUSY = 5
+SQLITE_LOCKED = 6
+_CONTENTION = (SQLITE_BUSY, SQLITE_LOCKED)
 
 
 def _is_contention(exc: sqlite3.OperationalError) -> bool:
     """Whether this error is another writer holding the file.
 
-    `sqlite_errorname` is the reliable signal (Python 3.11+); the message
-    check is a fallback so an older interpreter degrades to tolerating a
-    lock rather than to crashing on one.
+    **Compared on the primary result code, not the name.** SQLite returns
+    *extended* codes — `SQLITE_BUSY_SNAPSHOT`, `SQLITE_LOCKED_SHAREDCACHE`
+    — and an exact name match treats those as fatal, stopping a run for
+    exactly the condition this function exists to tolerate. The primary
+    code lives in the **low 8 bits** of the extended one, which is the
+    documented relationship rather than a guess about naming.
+
+    The message check is a fallback so an interpreter without
+    `sqlite_errorcode` (pre-3.11) degrades to tolerating a lock rather
+    than to crashing on one.
     """
-    name = getattr(exc, "sqlite_errorname", None)
-    if name is not None:
-        return name in _CONTENTION
+    code = getattr(exc, "sqlite_errorcode", None)
+    if code is not None:
+        return (code & 0xFF) in _CONTENTION
     return "locked" in str(exc).lower() or "busy" in str(exc).lower()
 
 
@@ -175,7 +185,9 @@ def backfill(
                 stats["errors"].append(f"{code} {date}: {exc}")
                 LOGGER.warning("%s %s lost to a busy database: %s", code, date, exc)
                 continue
-            stats["calls"] += len(SESSION_PAGES)
+            # An upper bound: paging stops as soon as a page adds nothing,
+            # so most sessions cost fewer than the maximum.
+            stats["calls"] += MAX_PAGES_PER_SESSION
             if fetched:
                 stats["sessions_fetched"] += 1
                 stats["bars_inserted"] += inserted
@@ -291,9 +303,10 @@ def main(argv: list[str] | None = None) -> int:
 
         session = KisSession(key, secret)
         LOGGER.info(
-            "backfilling %d symbol(s) x %d session(s); at 4 calls each that is "
-            "up to %d calls",
-            len(codes), len(dates), len(codes) * len(dates) * len(SESSION_PAGES),
+            "backfilling %d symbol(s) x %d session(s); at up to %d calls each, "
+            "at most %d calls",
+            len(codes), len(dates), MAX_PAGES_PER_SESSION,
+            len(codes) * len(dates) * MAX_PAGES_PER_SESSION,
         )
         stats = backfill(conn, session, codes, dates, delay_s=args.delay)
         conn.commit()

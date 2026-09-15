@@ -39,12 +39,12 @@ scarcest and the most perishable material available.
 defined, no threshold is chosen, and no window is designated for anything
 until a specification says so.
 
-## 2. What was measured, and the five things the earlier probe did not have
+## 2. What was measured, and the six things the earlier probe did not have
 
 Every figure below is from the live paper host on 2026-09-15, against
 real KR-10 symbols.
 
-### 2.1 A session is four calls, and the fourth is mostly waste
+### 2.1 A session is read backwards, page by page
 
 The endpoint returns the **120 bars ending at `FID_INPUT_HOUR_1`**, so a
 session is tiled backwards. For 005930 on 2026-09-11:
@@ -110,7 +110,46 @@ Completeness here is therefore a **span** — bars reaching from ≤ 09:30 to
 ≥ 15:00 — which is what actually distinguishes "all four pages landed"
 from "the run died halfway" while tolerating a late first trade.
 
-### 2.6 Two figures that make the whole thing affordable
+### 2.6 KRX sessions are not all 09:00–15:30, and a fixed tiling loses the difference
+
+**Found by the coverage report flagging two sessions inside the window**,
+which is what the split-by-cause reporting exists for. Both 005930 and
+068270 were missing 2026-01-02 and 2025-11-13 — and "missing" turned out
+to mean *stored, and wrong*:
+
+| session | why | real span | fixed tiling stored |
+|---|---|---|---|
+| **2025-11-13** | 수능, the national exam | **09:59 → 16:29** | 09:59 → 15:29, **60 bars lost** |
+| 2026-01-02 | the year's first trading day | 09:59 → 15:29 | complete, by luck |
+| an ordinary day | | 09:00 → 15:30 | complete |
+
+KRX opens an hour late on 수능일 and on the year's first trading day, and
+on 수능일 it **closes an hour late too**. A tiling anchored at `153000`
+therefore never asked for 15:30–16:29, and what it stored looked exactly
+like an ordinary session that happened to finish early. Nothing in a bar
+count, a gap check or a span check would have shown it — only a
+*calendar-relative* expectation, which is precisely what the reference
+calendar gave.
+
+So the hour boundaries are **computed from what came back**: paging starts
+above any close (16:30) and each request after the first ends one minute
+before the earliest row the previous returned, stopping when a page adds
+nothing new for the date. Asking for a later hour than the market reached
+costs nothing — an ordinary session asked at 16:30 still returns rows
+ending 15:30.
+
+**Verified by repair**, not by reasoning: forcing a refetch of 2025-11-13
+took 005930 from `(321 bars, 09:59:05 … 15:29:05)` to
+`(381, 09:59:05 … 16:29:05)`, recovering exactly the 60 lost bars, while
+2026-01-02 stayed at 321 — so the fix does not over-fetch an ordinary
+late-open day either.
+
+**The seconds matter in the arithmetic.** That session's stamps carry
+`:05`, and the next request has to end at `:05` too; zeroing them would
+re-request the boundary bar and advance the walk by 59 seconds instead of
+a minute.
+
+### 2.7 Two figures that make the whole thing affordable
 
 - **Latency averages 0.57s**, not the 7–10s CLAUDE.md records for
   `/oauth2/tokenP` and `inquire-balance`. Measured across all ten KR-10

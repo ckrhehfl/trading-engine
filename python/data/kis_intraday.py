@@ -11,26 +11,42 @@ before anything that would consume it.
 
 Full probe record: `.planning/rd-c-kis-flow-probe-result.md` §3.2.
 
-## How a session is fetched: four calls, and the fourth is mostly waste
+## How a session is fetched: page backwards until the date runs out
 
 The endpoint returns the **120 bars ending at `FID_INPUT_HOUR_1`**, so a
-session is tiled backwards. Measured on 2026-09-15 against the live paper
-host for 005930 on 2026-09-11:
+session is read backwards from above its close. Measured on 2026-09-15
+against the live paper host for 005930 on 2026-09-11:
 
     153000 -> 13:21..15:30   120 rows, all of the requested date
     132000 -> 11:21..13:20   120 rows, all of the requested date
     112000 -> 09:21..11:20   120 rows, all of the requested date
     092000 -> 09:00..09:20    21 rows of the requested date, 99 from the day before
 
-**381 bars for a full KRX session**, and the last page necessarily
-overruns into the previous session because 09:00-09:20 is only 21 minutes
-long. Those overrun rows are discarded here rather than kept: they belong
-to a session this call was not asked about, and silently folding them in
-would make "which sessions have been fetched" unanswerable.
+**381 bars for an ordinary session.** The last page necessarily overruns
+into the previous session, and those rows are discarded rather than kept:
+they belong to a session this call was not asked about, and folding them
+in would make "which sessions have been fetched" unanswerable.
 
-Three pages would be cheaper and **wrong** -- 153000/132000/112000 leaves
-09:00-09:20 missing, which looks like an ordinary quiet open rather than a
-hole.
+**The hour boundaries are computed from what came back, not fixed**, and
+that is a correction rather than a refinement. A fixed
+`153000/132000/112000/092000` tiling assumes every session runs
+09:00-15:30, and **KRX sessions do not**:
+
+| session | why | real span |
+|---|---|---|
+| 2025-11-13 | 수능, the national exam | **09:59 -> 16:29** |
+| 2026-01-02 | the year's first trading day | 09:59 -> 15:29 |
+| an ordinary day | | 09:00 -> 15:30 |
+
+The fixed tiling dropped **60 bars off the end of 2025-11-13** and stored
+a session that looked like an ordinary one which happened to finish early
+-- the exact shape of silent loss this module exists to prevent.
+
+So paging starts above any close (`SESSION_END_PROBE`) and each request
+after the first ends one minute before the earliest row the previous one
+returned, until a page yields nothing new for the date. Asking for a later
+hour than the market reached costs nothing: an ordinary session asked at
+16:30 still returns rows ending 15:30.
 
 ## Four traps, each measured rather than assumed
 
@@ -109,11 +125,19 @@ KST = dt.timezone(dt.timedelta(hours=9))
 
 ROWS_PER_CALL = 120
 
-#: The four `FID_INPUT_HOUR_1` values that tile one regular KRX session
-#: (09:00-15:30), newest first. Derived from the measured 120-rows-ending-
-#: at-the-hour behaviour, not from the session length: each page must
-#: start where the previous one ended, and the last necessarily overruns.
-SESSION_PAGES = ("153000", "132000", "112000", "092000")
+#: Where backwards paging starts: above any KRX close.
+#:
+#: **Not 15:30.** KRX runs late-open sessions -- 수능일 and the year's
+#: first trading day open at 10:00 -- and at least 수능일 also closes late.
+#: Probed directly: **2025-11-13 traded 09:59 -> 16:29**, so a tiling
+#: anchored at 15:30 silently dropped 60 bars off the end of it and the
+#: stored session looked like an ordinary one that finished early.
+SESSION_END_PROBE = "163000"
+
+#: A hard stop on backwards paging. A late-open, late-close KRX session is
+#: ~390 bars, so reaching this many pages means the loop is not
+#: terminating and the run should fail rather than spin.
+MAX_PAGES_PER_SESSION = 8
 
 
 #: A session is treated as already collected when the stored bars reach
@@ -124,7 +148,13 @@ SESSION_PAGES = ("153000", "132000", "112000", "092000")
 #: forever. Spanning the session is what actually distinguishes "all four
 #: pages landed" from "the run died halfway", and it tolerates a name
 #: whose first trade is late or whose last is early.
-COMPLETE_FROM = "093000"
+#: Tolerant of a **late open**: 수능일 and the year's first trading day
+#: begin at 10:00, so a 09:30 floor would mark every such session
+#: incomplete forever and refetch it on every run.
+#:
+#: Checking the *start* is what matters, because paging runs backwards —
+#: an interrupted fetch loses the morning, never the close.
+COMPLETE_FROM = "100500"
 COMPLETE_TO = "150000"
 
 
@@ -212,9 +242,21 @@ def fetch_page(session: KisSession, code: str, date: str, hour: str) -> list[dic
             f"msg_cd={payload.get('msg_cd')}"
         )
 
-    raw = payload.get("output2") or []
+    # **No `or []`.** That would turn a missing key, a `None` or a `{}` into
+    # a clean empty page, and an empty page is indistinguishable from a
+    # legitimately out-of-range date. Combined with span-based
+    # completeness, a page silently lost this way leaves a hole the session
+    # is never refetched to fill.
+    #
+    # Measured before removing it, because the out-of-range path depends on
+    # the answer: 2025-09-02 (outside the rolling window) returns
+    # `rt_cd=0` with `output2` present and equal to `[]`. The key is always
+    # there, so its absence is genuinely anomalous.
+    raw = payload.get("output2")
     if not isinstance(raw, list):
-        raise KisKlinesError(f"output2 is not a list for {code} {date} {hour}")
+        raise KisKlinesError(
+            f"output2 is {type(raw).__name__}, not a list, for {code} {date} {hour}"
+        )
 
     # **A malformed row fails the whole page rather than being filtered
     # out.** Dropping it silently loses a real minute, and completeness
@@ -234,6 +276,22 @@ def fetch_page(session: KisSession, code: str, date: str, hour: str) -> list[dic
     return rows
 
 
+def _one_minute_before(hhmmss: str) -> str | None:
+    """`HHMMSS` one minute earlier, or `None` at the start of the day.
+
+    Seconds are carried through rather than zeroed: a session whose stamps
+    carry `:11` (2026-01-02 did) must have its next request end at `:11`
+    too, or the boundary bar is requested twice and the walk advances by
+    59 seconds instead of a minute.
+    """
+    if len(hhmmss) != 6 or not hhmmss.isdigit():
+        raise KisKlinesError(f"expected HHMMSS, got {hhmmss!r}")
+    total = int(hhmmss[:2]) * 60 + int(hhmmss[2:4]) - 1
+    if total < 0:
+        return None
+    return f"{total // 60:02d}{total % 60:02d}{hhmmss[4:]}"
+
+
 def fetch_session(
     session: KisSession,
     code: str,
@@ -250,15 +308,37 @@ def fetch_session(
     a trading calendar can answer, and that belongs to the backfill.
     """
     by_stamp: dict[int, KlineRow] = {}
-    for index, hour in enumerate(SESSION_PAGES):
-        if index and delay_s:
+    hour = SESSION_END_PROBE
+    for page in range(MAX_PAGES_PER_SESSION):
+        if page and delay_s:
             time.sleep(delay_s)
-        for raw in fetch_page(session, code, date, hour):
+        rows = fetch_page(session, code, date, hour)
+        if not rows:
+            # Either the date is outside the rolling window (first page) or
+            # the session's open has been passed (later pages). Both mean
+            # there is nothing further back to ask for.
+            break
+        before = len(by_stamp)
+        for raw in rows:
             bar = parse_row(raw, date)
-            # Pages overlap by construction at their boundaries; last write
-            # wins and they agree, since it is the same bar from the same
-            # session.
+            # Pages meet at a boundary minute, so an overlap is normal;
+            # last write wins and they agree, being the same bar.
             by_stamp[bar.open_time_ms] = bar
+        if len(by_stamp) == before:
+            # The page returned only bars already held, so the walk is not
+            # advancing. Stopping here rather than on the hour arithmetic
+            # means a duplicate page cannot spin the loop.
+            break
+        earliest = min(r["stck_cntg_hour"] for r in rows)
+        hour = _one_minute_before(earliest)
+        if hour is None:
+            break
+    else:
+        raise KisKlinesError(
+            f"{code} {date}: still paging after {MAX_PAGES_PER_SESSION} requests "
+            f"({len(by_stamp)} bars). A KRX session is ~390 bars at most, so the "
+            f"walk is not terminating."
+        )
     return [by_stamp[k] for k in sorted(by_stamp)]
 
 

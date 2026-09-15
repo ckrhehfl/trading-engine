@@ -22,7 +22,8 @@ from data.kis_intraday import (
     COMPLETE_FROM,
     COMPLETE_TO,
     INTERVAL,
-    SESSION_PAGES,
+    MAX_PAGES_PER_SESSION,
+    SESSION_END_PROBE,
     fetch_session,
     parse_row,
     session_is_collected,
@@ -175,31 +176,57 @@ def test_an_unparseable_number_fails_closed():
 # ------------------------------------------------------ session fetch
 
 
-def test_all_four_pages_are_requested_newest_first(patched):
-    s = patched(_FakeSession({h: [_bar("0930%02d" % i)] for i, h in enumerate(SESSION_PAGES)}))
-    fetch_session(s, "005930", "20260911", delay_s=0)
-    assert s.calls == list(SESSION_PAGES)
-
-
-def test_the_fourth_pages_previous_session_rows_are_discarded(patched):
-    """**The trap the probe document did not record.** Requesting 09:20
-    returns 120 rows of which only ~21 belong to the requested date; the
-    other 99 are the previous session's tail. Keeping them would write
-    bars under a session nobody asked about, and "which sessions have I
-    fetched" would stop having an answer."""
+def test_paging_starts_above_any_close_and_walks_backwards(patched):
+    """The first request is above any KRX close; each one after ends a
+    minute before the earliest row the previous returned."""
     pages = {
-        "092000": [_bar("090000"), _bar("091000")]
-        + [_bar("152000", date="20260910"), _bar("153000", date="20260910")],
+        "163000": [_bar("153000"), _bar("150000")],
+        "145900": [_bar("145800")],
     }
     s = patched(_FakeSession(pages))
-    bars = fetch_session(s, "005930", "20260911", delay_s=0)
-    assert len(bars) == 2
-    assert all(
-        timestamp_ms("20260911", "000000")
-        <= b.open_time_ms
-        < timestamp_ms("20260912", "000000")
-        for b in bars
-    )
+    fetch_session(s, "005930", "20260911", delay_s=0)
+    assert s.calls[0] == SESSION_END_PROBE
+    assert s.calls[1] == "145900"
+
+
+def test_a_late_closing_session_is_not_truncated(patched):
+    """**The bug this replaced a fixed tiling for.** 2025-11-13 (수능) ran
+    09:59 to 16:29; a tiling anchored at 15:30 dropped 60 bars off the end
+    and stored a session that looked like an ordinary early finish."""
+    pages = {
+        "163000": [_bar("162905", date="20251113"), _bar("160000", date="20251113")],
+        "155900": [_bar("155800", date="20251113")],
+    }
+    s = patched(_FakeSession(pages))
+    bars = fetch_session(s, "005930", "20251113", delay_s=0)
+    assert len(bars) == 3
+    assert max(b.open_time_ms for b in bars) == timestamp_ms("20251113", "162905")
+
+
+def test_paging_stops_when_a_page_adds_nothing(patched):
+    """A page returning only bars already held means the walk is not
+    advancing, and stopping on that rather than on hour arithmetic means a
+    duplicate page cannot spin the loop."""
+    s = patched(_FakeSession({"163000": [_bar("153000")], "152900": [_bar("153000")]}))
+    assert len(fetch_session(s, "005930", "20260911", delay_s=0)) == 1
+    assert len(s.calls) == 2
+
+
+def test_a_walk_that_never_terminates_raises(monkeypatch):
+    """Every page returns a new, earlier bar forever. A KRX session is
+    ~390 bars at most, so this is a fault rather than a long day — and
+    without the cap the loop would page back through the whole series."""
+    calls = []
+
+    def endless(url, headers):
+        hour = url.split("FID_INPUT_HOUR_1=")[1].split("&")[0]
+        calls.append(hour)
+        return {"rt_cd": "0", "output2": [_bar(hour)]}
+
+    monkeypatch.setattr("data.kis_intraday._get_with_retry", endless)
+    with pytest.raises(KisKlinesError, match="not terminating"):
+        fetch_session(_FakeSession({}), "005930", "20260911", delay_s=0)
+    assert len(calls) == MAX_PAGES_PER_SESSION
 
 
 def test_an_out_of_range_date_is_empty_not_an_error(patched):
@@ -219,7 +246,7 @@ def test_a_real_rejection_still_raises(patched):
 
 
 def test_bars_come_back_sorted_though_the_endpoint_returns_them_newest_first(patched):
-    s = patched(_FakeSession({"153000": [_bar("153000"), _bar("132100")]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("153000"), _bar("132100")]}))
     bars = fetch_session(s, "005930", "20260911", delay_s=0)
     assert [b.open_time_ms for b in bars] == sorted(b.open_time_ms for b in bars)
 
@@ -227,7 +254,7 @@ def test_bars_come_back_sorted_though_the_endpoint_returns_them_newest_first(pat
 def test_a_bar_appearing_on_two_pages_is_stored_once(patched):
     """Adjacent pages meet at a boundary minute, so an overlap is normal
     rather than a fault."""
-    s = patched(_FakeSession({"153000": [_bar("132100")], "132000": [_bar("132100")]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("132100")], "132000": [_bar("132100")]}))
     assert len(fetch_session(s, "005930", "20260911", delay_s=0)) == 1
 
 
@@ -288,20 +315,20 @@ def test_another_days_bars_do_not_make_a_session_look_collected(conn):
 
 def test_sync_skips_a_session_already_collected(conn, patched):
     _store(conn, "20260911", "090000", "153000")
-    s = patched(_FakeSession({"153000": [_bar("153000")]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("153000")]}))
     assert sync_session(conn, s, "005930", "20260911", delay_s=0) == (0, 0)
     assert s.calls == [], "a collected session must cost no API calls"
 
 
 def test_force_refetches_a_collected_session(conn, patched):
     _store(conn, "20260911", "090000", "153000")
-    s = patched(_FakeSession({"153000": [_bar("140000")]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("140000")]}))
     fetched, inserted = sync_session(conn, s, "005930", "20260911", delay_s=0, force=True)
     assert (fetched, inserted) == (1, 1)
 
 
 def test_sync_stores_under_the_krx_symbol_convention(conn, patched):
-    s = patched(_FakeSession({"153000": [_bar("153000")]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("153000")]}))
     sync_session(conn, s, "005930", "20260911", delay_s=0)
     stored = conn.execute(
         "SELECT symbol, interval FROM klines LIMIT 1"
@@ -320,7 +347,7 @@ def test_a_malformed_output2_row_fails_the_page(patched):
     is a span, not a count, so a dropped minute in the middle of a session
     still spans the day, still counts as collected, and is never fetched
     again — a permanent hole that looks like a complete session."""
-    s = patched(_FakeSession({"153000": [_bar("153000"), "not an object"]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("153000"), "not an object"]}))
     with pytest.raises(KisKlinesError, match="row 1 is not an object"):
         fetch_session(s, "005930", "20260911", delay_s=0)
 
@@ -329,5 +356,36 @@ def test_the_previous_sessions_rows_are_still_filtered_not_refused(patched):
     """The two are different: a row from another date is *expected* on the
     fourth page and is dropped; a row that is not an object at all is a
     fault and stops the page."""
-    s = patched(_FakeSession({"092000": [_bar("090000"), _bar("153000", date="20260910")]}))
+    s = patched(_FakeSession({SESSION_END_PROBE: [_bar("090000"), _bar("153000", date="20260910")]}))
     assert len(fetch_session(s, "005930", "20260911", delay_s=0)) == 1
+
+
+@pytest.mark.parametrize("bad", [None, {}, "", 0])
+def test_a_missing_or_malformed_output2_is_not_an_empty_page(monkeypatch, bad):
+    """**`or []` would make this indistinguishable from an out-of-range
+    date**, and an empty page is how the module reports one. Combined with
+    span-based completeness, a page lost this way leaves a hole the
+    session is never refetched to fill.
+
+    Measured before removing the coalesce: 2025-09-02, genuinely outside
+    the rolling window, returns `output2` **present and equal to `[]`**.
+    The key is always there, so its absence is genuinely anomalous."""
+    from data.kis_intraday import fetch_page
+
+    def fake_get(url, headers):
+        return {"rt_cd": "0", "msg_cd": "MCA00000", "output2": bad}
+
+    monkeypatch.setattr("data.kis_intraday._get_with_retry", fake_get)
+    with pytest.raises(KisKlinesError, match="not a list"):
+        fetch_page(_FakeSession({}), "005930", "20260911", "153000")
+
+
+def test_a_genuinely_empty_page_is_still_empty(monkeypatch):
+    """The real out-of-range shape, which must keep working."""
+    from data.kis_intraday import fetch_page
+
+    monkeypatch.setattr(
+        "data.kis_intraday._get_with_retry",
+        lambda url, headers: {"rt_cd": "0", "output2": []},
+    )
+    assert fetch_page(_FakeSession({}), "005930", "20250902", "153000") == []
