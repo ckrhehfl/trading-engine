@@ -928,11 +928,34 @@ when it's safe to trim back down to a summary + pointer.
 happened and its `.planning/` document exists, this file's entry should
 come back down to conclusions plus a pointer. Skipping it is why the
 scalping section reached 730 lines — 27% of this file — recording an
-arc whose full evidence was already committed elsewhere. Trimming it
-back is a mechanical, checkable operation, not a judgement call: verify
-every figure being removed survives in the `.planning/` document, then
-remove it. `.planning/README.md` carries an index of all 77 documents,
-and `python/tests/test_planning_index.py` fails if it goes stale.
+arc whose full evidence was already committed elsewhere.
+
+**The figure-survival check is necessary and NOT sufficient, and the
+earlier wording said otherwise.** It read: *"Trimming it back is a
+mechanical, checkable operation, not a judgement call: verify every
+figure being removed survives in the `.planning/` document, then remove
+it."* Applied literally on 2026-09-15 that licenses deleting almost the
+whole scalping section — **95 of its 98 figures survive in
+`.planning/scalp-*.md`** — including the thirteen S8 rules, the
+`FEE_BPS`/`SLIPPAGE_BPS` constants and the `GUARDED_MARKET` restriction,
+which the section itself labels *"rules, not history"*. A rule that cites
+a figure is not made redundant by that figure living elsewhere: deleting
+it loses the **rule**, and the check cannot see the difference.
+
+So the operation is two steps, and only the first is mechanical:
+
+1. **Mechanical**: no figure may be removed unless it survives in the
+   `.planning/` document. A script can check this, and one is the obvious
+   next tool if trimming becomes routine.
+2. **A judgement call, which must not be skipped**: of what passes step 1,
+   remove only **narrative and evidence** — what was run, in what order,
+   and what it measured. Keep every **rule, constant, safety property and
+   standing constraint**, however well its evidence is preserved
+   elsewhere, because this file is the only place a future session reads
+   them. `.planning/README.md` carries an index of all 105 documents,
+and `python/tests/test_planning_index.py` fails if it goes stale — including
+if that count itself drifts, which it had (77 against a real 105) until
+2026-09-15.
 
 State assumptions and ask rather than silently pick between valid
 interpretations — `Discuss` makes this mandatory for R3-risk work; treat
@@ -1242,7 +1265,21 @@ is optional:**
 3. **A discovery window is named in advance and may never be used for
    confirmation.** Designated now: the **BTC-USDT 1h** window, **BingX
    1m**, and **Binance futures 1m**. Unspent and therefore *not* available
-   for discovery: **KRX daily**, **Binance spot 1m**.
+   for discovery: **Binance spot 1m**, which is the only one left.
+
+   > **Corrected 2026-09-15.** This clause originally also listed **KRX
+   > daily** as unspent. It was not: `daily-tsmom-kr10-portfolio` spent it
+   > on **2026-09-13**, with three recorded `holdout_access` entries in
+   > `runs/experiments.jsonl` — each carrying an explicit
+   > `force_reclaim_reason` naming a reporting or metrics bug rather than a
+   > re-fit, so the single-access discipline held, but the window is gone.
+   > The result is `ms-f`: **INCONCLUSIVE**, PSR 0.7698 and Sharpe 0.3263
+   > against that window's own 0.5942 floor.
+   >
+   > The error was written the day after the spend, in PR #168, while
+   > PR #166 had already landed the run — so nothing was violated, the
+   > sentence was simply never checked against the log. It is now:
+   > `test_claude_md_s_unspent_windows_are_really_unspent`.
 
    **These three are the windows already "closed to selection" elsewhere in
    this file, and that is not a contradiction — but only because of what
@@ -1278,6 +1315,31 @@ clean confirmation is not enough either — `daily-tsmom-ensemble` got two
 disjoint pre-registered confirmations plus a meta-analysis and remained
 INCONCLUSIVE. Nothing here shortens that path. It only stops the project
 from being unable to legitimately begin it.
+
+**Two rules the first three discovery stages produced, binding on any
+event-study family from here on** (derivation in `rd-l` §4.1 and §8,
+`rd-n` §3 and §5 — stated here because a future session has only this
+file):
+
+1. **A permutation null's spread is the standard error of *its own*
+   statistic, not of the arm it is compared against.** They coincide only
+   when the null is calibrated to that arm, and *"matched on a
+   prior-window statistic"* does **not** calibrate a null to an event
+   defined by a burst in that same statistic. On real data rd-k's matched
+   null ran **0.42 to 0.88** times the event arm's own error, making every
+   permutation p **too small** — safe for a negative result, and not for
+   anything that had advanced. **Report `null_sd / se` on every
+   permutation test.** A label permutation, which holds the events fixed
+   and moves only the labels, comes out at **0.98–1.02** by construction.
+2. **Compute the family's detectable effect before specifying it, from
+   the event arm's own dispersion.** Two separate claims, deliberately not
+   fused: *statistically*, a family whose detectable effect exceeds its
+   own cost floor cannot reliably detect a cost-floor-sized effect at the
+   chosen power — it says nothing about larger effects; *as policy*, such
+   a family should be re-specified or not run, decided **before** any data
+   is seen. rd-m applied this rule exactly as written and still produced
+   an unanswerable family, because it fed the rule the wrong `se` — so the
+   input matters as much as the rule.
 
 Non-negotiable once strategy research begins:
 
@@ -1769,6 +1831,8 @@ infrastructure testing.
 | Macro-conditioned signals on the untouched BTC 1d *research* split: 10-year real yield (`DFII10`, inverted), then S&P 500 trend (`SP500`, not inverted). Both zero-fitted-parameter, same 63-day lookback, same fold geometry for direct comparability | 2 attempts, pre-authorized individually | Both **INCONCLUSIVE-DATA-LIMITED** — 34 and 19 trades against a 36-trade floor. Remaining metrics are descriptive only and are **not** grounds for a directional conclusion either way. Named temptations (loosen the geometry, flip the inversion, shorten the lookback) were recorded and not acted on. | `sr-w`, `sr-x`, `sr-y` |
 | Same-asset alternate-venue replication of the identical `daily-tsmom-ensemble` hypothesis, byte-for-byte unmodified code, against Binance spot's pre-2021 "virgin" window (2017-2021) | 1 pre-registered access | **INCONCLUSIVE**, but the closest anything has come: PSR 0.9945, Sharpe 1.305 (> the 0.8503 floor), profit factor 7.68 — three of five gates clear by wide margins, all stronger than `sr-v`'s. The two misses are very narrow: **64 trades vs. a 68 floor**, and **max drawdown 20.135% vs. a 20% ceiling**. | `sr-aa`, `sr-ab` |
 | Retrospective meta-analysis of the two independent `daily-tsmom-ensemble` holdouts (no new data accessed, no new trial) | 0 new accesses | Combining two disjoint-sample significance tests via Stouffer's weighted Z gives **Z = 2.914, Φ(Z) = 0.9982** — genuinely stronger than either individual PSR. But a full PASS is **mathematically impossible**: for any chronological concatenation, combined max drawdown is provably `>= max(leg1, leg2) = 20.14%`, already over the 20% ceiling before the true figure is computed. Combined trades 90 vs. a recomputed 100 floor. | `sr-ac` |
+| **Multi-asset expansion to Korean equities** — the KR-10 universe (10 KOSPI names fixed by a day-one rule), `daily-tsmom-ensemble` unchanged, run as a pre-registered portfolio holdout on KRX daily 2019-2026 | 1 pre-registered access (3 recorded `holdout_access` entries, each with an explicit `force_reclaim_reason` naming a reporting or metrics bug, not a re-fit) | **INCONCLUSIVE, and not powered to confirm.** PSR 0.7698, Sharpe 0.3263 against that window's own 0.5942 floor, max drawdown 31.20%, profit factor 1.2761. **1,044 trades — the only gate that passed, and the one diversification was guaranteed to fix.** Mean member Sharpe +0.0184 across six positive and four negative. **This spent the KRX daily window.** | `ms-a` … `ms-f` |
+| **Situations rather than formulas** — a four-stage programme (catalogue → conditional outcome → separator → harvest) on the designated discovery window, asking *which situations are worth being present for* rather than which formula predicts direction | Stage 1 (6 situations), stage 2 (12 tests, run **twice** under different nulls), stage 3 (18 tests). Discovery mode throughout, so **none increments the promotion `N`** | **No candidate produced, and the reason is the instrument rather than the situations.** Stage 1 found the binding constraint is a **cost ceiling**, not an event-count floor. Stage 2: **0 of 12** under both a circular-shift and a volatility-matched null, with the transferable finding that *the effect is a property of the (event, null) pair* — S3 reads +18.93bp / p=5e-04 against one and +13.61bp / p=0.064 against the other, from identical events. Stage 3: **0 of 18**, with **14 of 18** splits vetoed as volatility confounds. | `rd-a` … `rd-n` |
 
 **What the meta-analysis does and does not establish**, since it is the
 strongest positive result this project has: the combined significance is
@@ -1778,23 +1842,38 @@ trade-count floor a minimum-evidence-volume requirement, both independent
 of whether a mean effect is statistically real, and neither is overridden
 by a strong Z-score answering a different question.
 
-**Two structural remedies remain open, and neither has been chosen** —
-that choice is a human `Discuss`, not something any of the above decided
-on its own authority:
+**Two structural remedies were named here. One has since been taken, and
+its result is above** — the paragraph is updated rather than replaced,
+because what it predicted is part of how to read what happened:
 
-1. **Multi-symbol expansion with survivorship-safe data.** A meaningful
-   share of the Sharpe that institutional research reports plausibly
-   comes from cross-symbol diversification a single-symbol design cannot
-   access. Touches the data pipeline's survivorship-bias handling.
-   Currently deprioritized on a practical judgment — a survivorship-safe,
-   comparably-liquid universe beyond BTC/ETH is not readily available
-   from this project's current sources — which is a sequencing choice,
-   not an architectural reversal of the multi-symbol design targets above.
-2. **A genuinely different data source or asset class.** Two macro data
-   points (`sr-x`, `sr-y`) are a first probe, not an exhaustive test.
-   `DGS10` and `DTWEXBGS` remain cached but untested; testing either
-   needs its own fresh authorization the way each macro hypothesis did.
-   On-chain data has been named but never attempted.
+1. **Multi-symbol expansion with survivorship-safe data — DONE, and it
+   did not rescue the strategy.** This entry previously read *"currently
+   deprioritized … a survivorship-safe, comparably-liquid universe beyond
+   BTC/ETH is not readily available from this project's current
+   sources."* `ms-a`…`ms-f` found one: the KRX daily pipeline and the
+   KR-10 universe rule, with survivorship handled by **day-one selection
+   plus a pre-defined exit rule** rather than by continuous listing.
+
+   **The prediction it rested on was right and insufficient.**
+   Diversification did exactly what it was expected to do — 1,044 trades
+   against a 94 floor, the one gate a single symbol could never clear —
+   and every other gate still failed, because **mean member Sharpe was
+   +0.0184.** Diversification reduces the variance of an edge; it does
+   not supply one. That is the most transferable sentence in the arc, and
+   it closes this remedy as a *remedy* while leaving the pipeline it
+   built in place.
+2. **A genuinely different data source or asset class — still open.** Two
+   macro data points (`sr-x`, `sr-y`) are a first probe, not an
+   exhaustive test. `DGS10` and `DTWEXBGS` remain cached but untested;
+   testing either needs its own fresh authorization the way each macro
+   hypothesis did. On-chain data has been named but never attempted.
+
+   **The one genuinely new source now being collected is Korean
+   투자자별 매매동향** (개인/기관/외국인 per-stock daily flow, mandatorily
+   disclosed by KRX and merely *inferred* in the entire US literature).
+   It **cannot be backfilled** — the endpoint serves a rolling 30-row
+   horizon with no date parameter — so it exists only from the moment
+   collection started. See the KIS section above and `rd-c`.
 
 **Explicitly not a live option: another search, threshold, or lookback
 set, on any timeframe, against any signal class.** `sr-u`'s
@@ -1867,10 +1946,22 @@ minimum-evidence-volume (trade count) gates, on a strategy with no
 overfitting surface to protect against — the human operator explicitly
 approved proceeding to paper trading as the next evidence-gathering step,
 rather than requiring further backtest research (e.g. multi-symbol
-expansion) first. Multi-symbol expansion was deprioritized for now on a
-separate, practical judgment (human-stated, not re-derived here): a
-survivorship-safe, comparably-liquid multi-symbol universe beyond BTC/ETH
-is not readily available from this project's current data sources.
+expansion) first. Multi-symbol expansion was deprioritized **at that
+time** on a separate, practical judgment (human-stated, not re-derived
+here): that a survivorship-safe, comparably-liquid multi-symbol universe
+beyond BTC/ETH was not readily available from this project's data sources
+**as they stood on 2026-08-05**.
+
+**That judgment has since been overtaken by events and is kept as the
+record of what was believed when the exception was granted**, not as a
+current statement: `ms-a`…`ms-f` built the KRX daily pipeline and the
+KR-10 universe rule, handling survivorship by day-one selection plus a
+pre-defined exit rule. So the universe turned out to be available, the
+expansion was run, and it came back INCONCLUSIVE — see "Strategy Attempts
+So Far". **Nothing about this exception's own scope changes**: it was
+granted on `daily-tsmom-ensemble`'s two holdout confirmations and the
+absence of a fitted parameter, neither of which the KR-10 run touches.
+
 CLAUDE.md's own multi-symbol architecture goals (see "Long-term Design
 Targets") are unaffected by this — it is a near-term sequencing choice,
 not an architectural reversal.
@@ -2271,17 +2362,21 @@ to non-overlapping samples before reporting a t-statistic, p-value or
 standard error, or state explicitly that its significance figures are
 not corrected for overlap.
 
-**The governing arithmetic, and it governs everything else here.** The best configuration above still fails, on one number: **DSR = 6.46e-11 against N = 127.** Inverting the benchmark gives the annualized Sharpe a result must post to clear DSR 0.95:
+**The governing arithmetic, and it governs everything else here.** The best configuration above still fails, on one number: **DSR = 6.46e-11 against N = 127**, the project-level count when S16 ran. Inverting the benchmark gives the annualized Sharpe a result must post to clear DSR 0.95:
 
 | N | required annualized Sharpe |
 |---|---|
 | 1 (a pre-registered holdout) | **0.63** |
 | 5 (this family) | 2.17 |
 | 50 | 3.56 |
-| **127 (this project today)** | **4.00** |
+| **129 (this project today)** | **4.00** |
 
-Credible institutional trend-following reports 0.4-0.8. **At N = 127 no
-realistic edge can clear this bar on this data, whatever it is.** This is
+Credible institutional trend-following reports 0.4-0.8. **At this `N` no
+realistic edge can clear this bar on this data, whatever it is.** (`N` is
+**129** since Trade Management Task C, and the requirement is unchanged to
+two decimals: `Phi^-1(1 - 1/N)` moves 0.24% between 127 and 129. The
+S16 DSR above is left at the count it was computed against, because a
+measurement is a record of what was run.) This is
 the same arithmetic that closed the 1h window (Configuration C needed
 4.6), and the standing rule written there now applies verbatim to the
 **Binance futures 1m window**: it stays open for *reproduction,

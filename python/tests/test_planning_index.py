@@ -138,3 +138,148 @@ def test_the_documents_count_in_the_prose_is_the_real_count():
         f"the index prose claims {claimed} documents; there are {actual}. "
         f"Update the number in .planning/README.md."
     )
+
+
+def test_claude_md_s_document_count_is_the_real_count_too():
+    """CLAUDE.md states the same count, and nothing was checking it.
+
+    It read **77** against a real **105** on 2026-09-15 — stale by 28,
+    because twenty-eight documents had been added across many PRs and the
+    sentence two lines from "verify every figure ... then remove it" was
+    never one of the figures anyone verified.
+
+    The README's own count has had this guard since PR #159. Extending it
+    here rather than writing a second one, because the failure is
+    identical and so is the fix.
+    """
+    import re
+
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    match = re.search(r"an index of all (\d+) documents", claude)
+    assert match, (
+        "CLAUDE.md no longer states the .planning document count in the "
+        "expected form; update this test with it, do not delete the check"
+    )
+    claimed, actual = int(match.group(1)), len(on_disk())
+    assert claimed == actual, (
+        f"CLAUDE.md claims {claimed} planning documents; there are {actual}."
+    )
+
+
+def _unspent_claimed_in_claude_md() -> set[str]:
+    """The window names CLAUDE.md currently calls unspent."""
+    import re
+
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    match = re.search(
+        r"Unspent and therefore \*not\* available\s*\n?\s*for discovery: (.+?)\.",
+        claude,
+        re.S,
+    )
+    assert match, (
+        "CLAUDE.md no longer states which windows are unspent in the "
+        "expected form; update this test with it, do not delete the check"
+    )
+    claimed = {n for n in WINDOW if n in match.group(1)}
+    assert claimed, (
+        f"no known window name found in {match.group(1)!r}; the mapping in "
+        f"this test needs the new name adding"
+    )
+    return claimed
+
+
+#: CLAUDE.md's English name for a window -> the (symbol substring,
+#: interval) a holdout access against it carries in the log.
+#:
+#: Written out rather than inferred: those are two different vocabularies,
+#: and guessing between them is how a guard goes quietly inert.
+WINDOW = {
+    "Binance spot 1m": ("BINANCE:BTCUSDT", "1m"),
+    "Binance spot 1d": ("BINANCE:BTCUSDT", "1d"),
+    "KRX daily": ("KRX:", "1d"),
+    "BingX 1m": ("BTC-USDT", "1m"),
+    "Binance futures 1m": ("BINANCE-FUTURES:BTCUSDT", "1m"),
+}
+
+
+def test_claude_md_s_unspent_windows_are_really_unspent():
+    """CLAUDE.md names which windows are still available for a
+    confirmation run, and the project knows which have been spent.
+    Nothing compared the two.
+
+    On 2026-09-15 the clause listed **KRX daily** as unspent. It had been
+    spent on **2026-09-13** by `daily-tsmom-kr10-portfolio`, three
+    recorded `holdout_access` entries, and the sentence was written the
+    following day in a different PR — so no rule was broken, the claim was
+    simply never checked. It is the most load-bearing kind of stale fact
+    this file can carry: it tells a future session a fresh window exists
+    when it does not.
+
+    **Checked against the committed ledger, not the log**, because
+    `runs/experiments.jsonl` is gitignored — the first version of this
+    test read it directly and so could only ever fail locally, passing in
+    CI for want of a file. `runs/spent_windows.json` is the derived,
+    committed artifact; `test_the_spent_window_ledger_matches_the_log`
+    keeps it honest wherever the log exists.
+    """
+    from research.spent_windows import load
+
+    spent = set()
+    for row in load():
+        for name, (sym_part, interval) in WINDOW.items():
+            if row["interval"] == interval and sym_part in row["symbol"]:
+                spent.add(name)
+
+    wrongly_claimed = sorted(_unspent_claimed_in_claude_md() & spent)
+    assert not wrongly_claimed, (
+        f"CLAUDE.md calls {wrongly_claimed} unspent, but "
+        f"runs/spent_windows.json records a holdout access against each. "
+        f"A spent window is not available for confirmation."
+    )
+
+
+def test_the_spent_window_ledger_matches_the_log():
+    """The ledger is derived, so it can drift from what it summarises.
+
+    Skipped where the log is absent — CI, a fresh clone — and that is
+    deliberate rather than a hole: the check above runs there instead,
+    against the ledger. Each tier is non-inert in the environment it runs
+    in, which is the property the first version of this pair lacked.
+    """
+    import pytest
+
+    from research.spent_windows import build, load
+
+    # Anchored at the repo root, not `DEFAULT_RUNS_PATH`, which is relative
+    # and so resolves against whatever directory pytest started in —
+    # `python/runs/experiments.jsonl` from here. That made this tier skip
+    # **locally too**, leaving the pair with no environment where it ran:
+    # the same inert-guard shape it was written to remove, one level up.
+    log = REPO_ROOT / "runs" / "experiments.jsonl"
+    if not log.exists():
+        pytest.skip(f"{log} is gitignored and absent here; the ledger check covers it")
+
+    # **Whole rows, not just (symbol, interval).** Comparing identity
+    # alone leaves `accesses` and `first_access` unverified, so a fourth
+    # holdout access against KRX daily would keep the ledger reporting
+    # three and this check would pass. That count is not decoration:
+    # CLAUDE.md cites "three recorded `holdout_access` entries" as the
+    # evidence that the single-access discipline held.
+    #
+    # `build` emits its rows sorted, so list equality also pins ordering
+    # as part of the ledger's contract rather than leaving it incidental.
+    fresh = build(log)["windows"]
+    committed = load()
+    assert fresh == committed, (
+        f"runs/spent_windows.json is stale. From the log: {fresh}; "
+        f"committed: {committed}. Regenerate with "
+        f"`python -m research.spent_windows --write`."
+    )
+
+
+def test_the_ledger_is_not_empty_so_the_claim_check_cannot_pass_vacuously():
+    """A broken generator would empty the ledger and make every window
+    look available — the inert-guard failure, one layer down."""
+    from research.spent_windows import load
+
+    assert len(load()) >= 5
