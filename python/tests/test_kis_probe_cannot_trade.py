@@ -43,7 +43,37 @@ CREDENTIALED_KIS_MODULES = (
     _DATA / "backfill_kis.py",
     _DATA / "kis_flow_probe.py",
     _DATA / "kis_investor_flow.py",
+    _DATA / "kis_intraday.py",
+    _DATA / "backfill_kis_intraday.py",
 )
+
+#: How a credentialed KIS client is recognised without anyone remembering
+#: to add it above: it either holds a `KisSession` (the authenticated
+#: session type) or reads the app secret from the environment.
+#:
+#: `test_every_credentialed_kis_module_is_listed` uses this, and it exists
+#: because the list was hand-maintained and **two modules escaped it** --
+#: `kis_intraday.py` and `backfill_kis_intraday.py`, added 2026-09-15,
+#: while `scripts/collect-krx-intraday.sh` was already citing this file as
+#: the thing that enforced their read-only contract. A list nobody is
+#: forced to update is a list that stops being complete.
+_CREDENTIAL_MARKERS = ("KisSession", "KIS_APP_SECRET")
+
+
+def _discovered_credentialed_modules() -> set[str]:
+    """Every credentialed KIS client under `python/data/`, recursively.
+
+    `rglob`, not `glob`: a module in a future subpackage is exactly as
+    credentialed as one at the top level, and a direct-children-only walk
+    would let it escape this file the same way the two 2026-09-15 modules
+    escaped the hand-maintained list. Paths are relative to `_DATA` so a
+    nested module cannot collide with a top-level one of the same name.
+    """
+    return {
+        str(path.relative_to(_DATA))
+        for path in sorted(_DATA.rglob("*.py"))
+        if any(m in path.read_text(encoding="utf-8") for m in _CREDENTIAL_MARKERS)
+    }
 
 # KIS's own naming: order submission and cancellation live under /trading/,
 # and their TR ids are (V)TTO/(V)TTC-shaped. The Java adapter's real
@@ -336,3 +366,33 @@ def test_every_credentialed_kis_module_exists():
 @pytest.mark.parametrize("secret", ["KIS_APP_KEY", "KIS_APP_SECRET"])
 def test_credentials_come_from_the_environment(secret):
     assert f'os.environ.get("{secret}")' in PROBE.read_text(encoding="utf-8")
+
+
+def test_every_credentialed_kis_module_is_listed():
+    """A new credentialed client must not be able to escape this file.
+
+    The list above is hand-maintained, and on 2026-09-15 two modules were
+    added without it -- while the collector script that runs them already
+    named this test as their enforcement. The rule here discovers them
+    instead: anything under `python/data/` that holds a `KisSession` or
+    reads `KIS_APP_SECRET` is a credentialed KIS client and has to be held
+    to the same contract.
+    """
+    discovered = _discovered_credentialed_modules()
+    listed = {
+        str(p.relative_to(_DATA)) if p.is_relative_to(_DATA) else p.name
+        for p in CREDENTIALED_KIS_MODULES
+    }
+    missing = sorted(discovered - listed)
+    assert not missing, (
+        f"{missing} authenticate against KIS and are not in "
+        f"CREDENTIALED_KIS_MODULES, so nothing checks that they cannot place "
+        f"an order or print a credential. Add them."
+    )
+
+
+def test_the_discovery_rule_finds_something():
+    """Without this, a marker tuple that stopped matching would make the
+    check above pass on an empty set -- the inert-guard failure this
+    repository keeps rediscovering."""
+    assert len(_discovered_credentialed_modules()) >= 6
