@@ -259,12 +259,20 @@ def test_the_spent_window_ledger_matches_the_log():
     if not log.exists():
         pytest.skip(f"{log} is gitignored and absent here; the ledger check covers it")
 
-    fresh = {(w["symbol"], w["interval"]) for w in build(log)["windows"]}
-    committed = {(w["symbol"], w["interval"]) for w in load()}
+    # **Whole rows, not just (symbol, interval).** Comparing identity
+    # alone leaves `accesses` and `first_access` unverified, so a fourth
+    # holdout access against KRX daily would keep the ledger reporting
+    # three and this check would pass. That count is not decoration:
+    # CLAUDE.md cites "three recorded `holdout_access` entries" as the
+    # evidence that the single-access discipline held.
+    #
+    # `build` emits its rows sorted, so list equality also pins ordering
+    # as part of the ledger's contract rather than leaving it incidental.
+    fresh = build(log)["windows"]
+    committed = load()
     assert fresh == committed, (
-        f"runs/spent_windows.json is stale. Only in the log: "
-        f"{sorted(fresh - committed)}; only in the ledger: "
-        f"{sorted(committed - fresh)}. Regenerate with "
+        f"runs/spent_windows.json is stale. From the log: {fresh}; "
+        f"committed: {committed}. Regenerate with "
         f"`python -m research.spent_windows --write`."
     )
 

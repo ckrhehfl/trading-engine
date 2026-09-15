@@ -152,6 +152,39 @@ def test_load_returns_the_committed_rows(tmp_path):
     assert load(p) == [{"symbol": "BTC-USDT", "interval": "1d"}]
 
 
+def test_the_rows_are_sorted_so_list_equality_is_a_stable_contract(tmp_path):
+    """`test_the_spent_window_ledger_matches_the_log` compares whole rows
+    by list equality, which only means anything if the order is fixed."""
+    out = build(
+        _log(
+            tmp_path,
+            _access(symbol="ZZZ", interval="1d"),
+            _access(symbol="AAA", interval="1m"),
+            _access(symbol="AAA", interval="1d"),
+        )
+    )["windows"]
+    assert [(w["symbol"], w["interval"]) for w in out] == [
+        ("AAA", "1d"),
+        ("AAA", "1m"),
+        ("ZZZ", "1d"),
+    ]
+
+
+def test_an_extra_access_changes_the_row_not_just_the_window_set(tmp_path):
+    """The reason the ledger check compares whole rows. A fourth access to
+    an already-spent window leaves `(symbol, interval)` identical, so an
+    identity-only comparison would call a stale ledger current — and
+    CLAUDE.md cites that count as evidence the single-access discipline
+    held."""
+    three = build(_log(tmp_path, _access(), _access(), _access()))["windows"]
+    four = build(_log(tmp_path, _access(), _access(), _access(), _access()))["windows"]
+    assert {(w["symbol"], w["interval"]) for w in three} == {
+        (w["symbol"], w["interval"]) for w in four
+    }
+    assert three != four
+    assert (three[0]["accesses"], four[0]["accesses"]) == (3, 4)
+
+
 def test_the_real_ledger_loads_and_names_the_krx_window():
     """The committed artifact itself, not a fixture — the row whose
     absence from CLAUDE.md was the finding this module was built for."""
