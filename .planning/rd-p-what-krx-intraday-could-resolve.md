@@ -167,9 +167,13 @@ every trading day.
 
 Against h = 240's band of **958 – 6,394**:
 
-- at the optimistic end, a situation firing **once per five symbol-sessions**
-  clears it, and once per symbol-session clears it two and a half times over;
-- at the pessimistic end, nothing available clears it;
+- at the **optimistic end (958)**, a situation firing **once per two
+  symbol-sessions** clears it with 1,246, and once per symbol-session
+  clears it 2.6× over. Once per five does **not** — 498 is below it, and
+  an earlier draft of this paragraph said otherwise;
+- at the **pessimistic end (6,394)**, nothing available clears it: the
+  whole collection is 2,493, so it would need either 2.6× the universe or
+  2.6 more years of the collector;
 - the honest statement is that **it depends on a quantity nobody has
   measured yet** — the event dispersion for a *Korean* situation, where
   1.2×–3.1× is borrowed from BTC.
