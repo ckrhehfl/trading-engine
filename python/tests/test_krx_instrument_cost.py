@@ -17,13 +17,18 @@ flatteringly:
 
 from __future__ import annotations
 
+import types
+
 import pytest
 
+from data.kis_klines import KisKlinesError
+from research import krx_instrument_cost
 from research.krx_instrument_cost import (
     CONTRACT_SHARES,
     SPOT_COMMISSION_BP,
     SPOT_TAX_BP,
     InstrumentCost,
+    report,
     spread_bp,
 )
 
@@ -137,6 +142,91 @@ def test_the_notional_is_what_a_real_order_must_clear():
     that ruled out KOSPI200 index futures at ₩265M against this project's
     2% max-order-notional limit."""
     assert _cost(price=1_765_000.0).contract_notional_krw == 17_650_000.0
+
+
+# ------------------------------------------------- the price must fail
+
+_SESSION = types.SimpleNamespace(host="https://example.invalid", headers=lambda tr: {})
+
+
+def _price_returning(monkeypatch, payload):
+    monkeypatch.setattr(
+        krx_instrument_cost, "_get_with_retry", lambda url, headers: payload
+    )
+
+
+def test_a_real_price_is_returned_with_its_volume(monkeypatch):
+    _price_returning(
+        monkeypatch,
+        {"rt_cd": "0", "output1": {"futs_prpr": "250000", "acml_vol": "1526025"}},
+    )
+    assert krx_instrument_cost._futures_price(_SESSION, "A11610") == (1_526_025, 250_000.0)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        pytest.param({"rt_cd": "1", "msg_cd": "EGW00123"}, id="rejected"),
+        pytest.param({"rt_cd": "0", "output1": {}}, id="empty output1"),
+        pytest.param({"rt_cd": "0", "output1": []}, id="output1 is not a dict"),
+        pytest.param({"rt_cd": "0"}, id="no output1 at all"),
+        pytest.param({"rt_cd": "0", "output1": {"futs_prpr": ""}}, id="blank price"),
+        pytest.param({"rt_cd": "0", "output1": {"futs_prpr": "n/a"}}, id="not a number"),
+        pytest.param({"rt_cd": "0", "output1": {"futs_prpr": "0"}}, id="zero"),
+        pytest.param({"rt_cd": "0", "output1": {"futs_prpr": "-1"}}, id="negative"),
+    ],
+)
+def test_a_failed_price_fetch_raises_rather_than_recording_zero(monkeypatch, payload):
+    """**The direction of the error is what makes this a blocker.** A price
+    of 0 multiplies through `contract_notional_krw` into a ₩0 contract —
+    i.e. an instrument that looks *affordable* — and the notional is exactly
+    the figure that ruled KOSPI200 index futures out at ₩265M. An empty
+    `output1` is also how KIS answers for an expired contract, which is the
+    most likely way this actually fires."""
+    _price_returning(monkeypatch, payload)
+    with pytest.raises(KisKlinesError):
+        krx_instrument_cost._futures_price(_SESSION, "A11610")
+
+
+def test_the_price_failure_is_not_shaped_like_an_empty_book(monkeypatch):
+    """`_best_quote` returns `None` for an empty book on purpose — a
+    contract nobody quotes is a fact. An absent *price* is a failed
+    measurement, so the two must not be conflated."""
+    _price_returning(monkeypatch, {"rt_cd": "0", "output1": {}})
+    with pytest.raises(KisKlinesError):
+        assert krx_instrument_cost._futures_price(_SESSION, "A11610") is None
+
+
+# ----------------------------------------------- zero is a measurement
+
+
+def _row(out: str) -> list[str]:
+    """The one table row `report` printed for `_cost`'s 005930."""
+    rows = [line.split() for line in out.splitlines() if line.startswith("005930")]
+    assert len(rows) == 1, out
+    return rows[0]
+
+
+def test_a_zero_bp_round_trip_prints_as_zero_not_as_missing(capsys):
+    """A touching book costs nothing to cross — the *best* measurement this
+    module can make, and the one that would decide the comparison. Printed
+    through a truthiness check it renders as `-`, i.e. indistinguishable
+    from an unquoted contract."""
+    report([_cost(spot=0.0, fut=0.0)])
+    columns = _row(capsys.readouterr().out)
+    assert columns[1] == "0.0", "spot spread"
+    assert columns[2] == "0.0", "futures spread"
+    assert columns[4] == "0.0", "futures round trip -- no tax, no commission"
+    assert columns[3] == f"{SPOT_TAX_BP + SPOT_COMMISSION_BP:.1f}", "spot round trip"
+    assert "-" not in columns[1:5]
+
+
+def test_an_unquoted_contract_still_prints_as_missing(capsys):
+    """The negative control for the test above: `None` and `0.0` must not
+    collapse into the same output, which is what made the bug invisible."""
+    report([_cost(spot=None, fut=None)])
+    columns = _row(capsys.readouterr().out)
+    assert columns[1:5] == ["-", "-", "-", "-"]
 
 
 # ------------------------------------------------------- the constants

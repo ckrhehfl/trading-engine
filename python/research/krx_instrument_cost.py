@@ -205,6 +205,47 @@ def spread_bp(ask: float, bid: float) -> float:
     return (ask - bid) / ((ask + bid) / 2.0) * 1e4
 
 
+def _futures_price(session: KisSession, code: str) -> tuple[int, float]:
+    """`(cumulative volume, last price)` for a futures contract.
+
+    **Fails rather than returning zero.** A rejected response, a missing
+    `output1` or an absent `futs_prpr` would otherwise be recorded as a
+    price of 0 — and `contract_notional_krw` multiplies it, so a failed
+    fetch would report a **₩0 contract**. That is not merely wrong, it is
+    wrong in the direction that makes an instrument look affordable, and
+    the notional is exactly what ruled KOSPI200 index futures out at ₩265M.
+
+    Distinct from `_best_quote`, which returns `None` for an empty book on
+    purpose: an empty *book* is a real fact about a contract nobody is
+    quoting, while an absent *price* is a failed measurement.
+    """
+    params = {"FID_COND_MRKT_DIV_CODE": "JF", "FID_INPUT_ISCD": code}
+    url = f"{session.host}{PRICE_FUTURES}?{urllib.parse.urlencode(params)}"
+    payload = _get_with_retry(url, session.headers(TR_PRICE_FUTURES))
+    if payload.get("rt_cd") != "0":
+        raise KisKlinesError(
+            f"KIS rejected the futures price for {code}: "
+            f"rt_cd={payload.get('rt_cd')} msg_cd={payload.get('msg_cd')}"
+        )
+    block = payload.get("output1")
+    if not isinstance(block, dict) or block.get("futs_prpr") in (None, ""):
+        raise KisKlinesError(
+            f"KIS returned no futures price for {code}. An empty output1 is "
+            f"how KIS answers for an expired or unlisted contract -- check the "
+            f"master file for the current expiry rather than treating this as a "
+            f"price of zero."
+        )
+    try:
+        price = float(block["futs_prpr"])
+    except (TypeError, ValueError) as exc:
+        raise KisKlinesError(
+            f"futures price for {code} is not a number: {block['futs_prpr']!r}"
+        ) from exc
+    if price <= 0:
+        raise KisKlinesError(f"futures price for {code} is {price}, not positive")
+    return int(block.get("acml_vol") or 0), price
+
+
 def measure(
     session: KisSession, universe: dict[str, str], expiry: str
 ) -> list[InstrumentCost]:
@@ -213,20 +254,14 @@ def measure(
     for code, name in universe.items():
         fcode = futures.get(code)
         spot = _best_quote(session, QUOTE_SPOT, TR_SPOT, "J", code, "askp1", "bidp1")
-        fut = price = None
-        volume = 0
+        fut = None
+        volume, price = 0, 0.0
         if fcode:
             fut = _best_quote(
                 session, QUOTE_FUTURES, TR_FUTURES, "JF", fcode,
                 "futs_askp1", "futs_bidp1",
             )
-            params = {"FID_COND_MRKT_DIV_CODE": "JF", "FID_INPUT_ISCD": fcode}
-            url = f"{session.host}{PRICE_FUTURES}?{urllib.parse.urlencode(params)}"
-            block = _get_with_retry(url, session.headers(TR_PRICE_FUTURES)).get(
-                "output1"
-            ) or {}
-            volume = int(block.get("acml_vol") or 0)
-            price = float(block.get("futs_prpr") or 0)
+            volume, price = _futures_price(session, fcode)
         out.append(
             InstrumentCost(
                 code=code,
@@ -235,7 +270,7 @@ def measure(
                 spot_spread_bp=spread_bp(*spot) if spot else None,
                 futures_spread_bp=spread_bp(*fut) if fut else None,
                 futures_volume=volume,
-                futures_price=price or 0.0,
+                futures_price=price,
             )
         )
     return out
@@ -259,8 +294,15 @@ def report(rows: list[InstrumentCost]) -> None:
     for r in rows:
         s = f"{r.spot_spread_bp:.1f}" if r.spot_spread_bp is not None else "-"
         f = f"{r.futures_spread_bp:.1f}" if r.futures_spread_bp is not None else "-"
-        srt = f"{r.spot_round_trip_bp:.1f}" if r.spot_round_trip_bp else "-"
-        frt = f"{r.futures_round_trip_bp:.1f}" if r.futures_round_trip_bp else "-"
+        # `is not None`, not truthiness: a touching book is a real 0.0bp
+        # cost and the *best* one there is, so printing it as missing would
+        # hide the most favourable measurement the module can make.
+        srt = f"{r.spot_round_trip_bp:.1f}" if r.spot_round_trip_bp is not None else "-"
+        frt = (
+            f"{r.futures_round_trip_bp:.1f}"
+            if r.futures_round_trip_bp is not None
+            else "-"
+        )
         print(
             f"{r.name:<14} {s:>9} {f:>9} {srt:>9} {frt:>9} {r.cheaper or '-':>9} "
             f"{r.futures_volume:>12,} {r.contract_notional_krw:>12,.0f}"
