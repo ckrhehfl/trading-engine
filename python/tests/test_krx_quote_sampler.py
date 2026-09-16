@@ -34,6 +34,8 @@ from data.krx_quote_sampler import (
     SPOT_PREFIX,
     QuoteSamplerError,
     _positive,
+    PRIMITIVES,
+    accepted_age_s,
     front_month,
     in_session,
     is_stale,
@@ -368,6 +370,42 @@ def test_a_stale_book_is_neither_stored_nor_counted_as_a_failure(monkeypatch):
     assert len(stale) == 1 and "KRX:005930" in stale[0]
 
 
+@pytest.mark.parametrize("accepted,when", [("100000", (12, 0)), ("090500", (15, 0))])
+def test_a_book_that_has_not_refreshED_is_kept_with_its_age(accepted, when):
+    """**Refusing an old book would be a worse error than storing one.**
+    On a thin name an old resting book is simply what the book is, and it
+    is what a taker would cross right now — which is the cost this
+    measures. Dropping it removes exactly the names whose quotes do not
+    refresh, biasing every spread median DOWNWARD: a selection effect in
+    the flattering direction, which is the error this whole arc has been
+    about."""
+    assert not is_stale(accepted, _at(*when))
+    assert accepted_age_s(accepted, _at(*when)) > 0
+
+
+def test_the_age_is_stored_so_the_analysis_can_filter_later():
+    """A stored age is a decision that can be revisited; a dropped sample
+    is gone for good, on a series nothing can backfill."""
+    assert "accepted_age_s" in PRIMITIVES
+    rows = rows_for(
+        {"ask1": 1.0, "bid1": 2.0, "ask1_qty": 3.0, "bid1_qty": 4.0,
+         "accepted": "100000", "accepted_age_s": 7200.0},
+        "", 1000,
+    )
+    assert len(rows) == 5
+    age = next(r for r in rows if r.metric.endswith("accepted_age_s"))
+    assert float(age.value) == 7200.0
+
+
+def test_an_unreadable_acceptance_time_writes_no_age_but_keeps_the_quote():
+    """The field is a check on the book, not the book."""
+    assert accepted_age_s("abc", _at(12, 0)) is None
+    rows = rows_for(
+        {"ask1": 1.0, "bid1": 2.0, "ask1_qty": 3.0, "bid1_qty": 4.0}, "", 1000
+    )
+    assert len(rows) == 4
+
+
 def test_the_acceptance_time_is_carried_but_never_stored():
     """It rides on the book so freshness can be tested, and storing it
     would put a non-numeric value into a column every other row parses as
@@ -378,7 +416,10 @@ def test_the_acceptance_time_is_carried_but_never_stored():
         "", 1000,
     )
     assert len(rows) == 4
-    assert not any("accepted" in r.metric for r in rows)
+    assert not any(r.metric.endswith("accepted") for r in rows), (
+        "the raw HHMMSS string is not a quote and must not reach a column "
+        "every other row parses as a float"
+    )
 
 
 def test_one_failure_does_not_cost_the_rest_of_the_pass(monkeypatch):
@@ -395,7 +436,7 @@ def test_one_failure_does_not_cost_the_rest_of_the_pass(monkeypatch):
     )
     assert list(books) == ["KRX:000660"], "the later symbol was still sampled"
     assert len(failures) == 1 and "KRX:005930" in failures[0]
-    assert written == [("KRX:000660", 4)]
+    assert written == [("KRX:000660", 5)], "four quote rows plus the age"
 
 
 def test_a_failure_names_the_instrument(monkeypatch):

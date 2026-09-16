@@ -127,9 +127,21 @@ PERIOD = "snapshot"
 
 METRIC_PREFIX = "krx_quote"
 
-#: The four numbers that are stored. Anything else a book carries is a
-#: check on it rather than part of it.
-PRIMITIVES = ("ask1", "bid1", "ask1_qty", "bid1_qty")
+#: What gets stored. The four quote numbers, plus **how old the book was**
+#: when it was sampled.
+#:
+#: `accepted_age_s` is stored rather than used to filter, and that is a
+#: deliberate choice against the obvious alternative of dropping an old
+#: book. Dropping one systematically removes the names whose quotes do not
+#: refresh -- the thin ones -- and biases every spread median **downward**,
+#: which is the flattering direction and the error this whole arc has been
+#: about. An old resting book is also still the book: it is what a taker
+#: would actually cross right now, which is precisely the cost being
+#: measured. So nothing is discarded, the age travels with the quote, and
+#: the analysis that computes a median decides what freshness it wants --
+#: a decision it can revisit, where a dropped sample is gone for good on a
+#: series nothing can backfill.
+PRIMITIVES = ("ask1", "bid1", "ask1_qty", "bid1_qty", "accepted_age_s")
 
 #: KRX's continuous session. The closing call auction runs 15:20-15:30
 #: with no continuous trade, so the book there is not the book this
@@ -188,6 +200,23 @@ def _seconds(hhmmss: str) -> int | None:
     return h * 3600 + m * 60 + sec
 
 
+def accepted_age_s(
+    accepted_hhmmss: str | None, now: dt.datetime | None = None
+) -> float | None:
+    """How long before `now` this book's last quote was accepted.
+
+    Negative would mean accepted *after* now, which `is_stale` refuses
+    outright; this returns the age for a book that passed it. `None` when
+    the field is unreadable, in which case no age row is written and the
+    quote rows still are.
+    """
+    accepted = _seconds(accepted_hhmmss or "")
+    if accepted is None:
+        return None
+    now = now or dt.datetime.now(KST)
+    return float(now.hour * 3600 + now.minute * 60 + now.second - accepted)
+
+
 def is_stale(accepted_hhmmss: str | None, now: dt.datetime | None = None) -> bool:
     """Is this book from an earlier session rather than from now?
 
@@ -218,6 +247,21 @@ def is_stale(accepted_hhmmss: str | None, now: dt.datetime | None = None) -> boo
     rather than 15:20. It is a narrowing, not an elimination, and pairing
     it with the weekday-and-clock gate above is what makes the residue
     small.
+
+    **Only the forward direction is refused, and that is deliberate.** A
+    book accepted at 10:00 and sampled at 12:00 is two hours old and is
+    **not** rejected: on a thin name that is simply what the book is, and
+    it is what a taker would cross right now, which is the cost this
+    measures. Refusing it would drop exactly the names whose quotes do not
+    refresh and bias every spread median downward -- a selection effect in
+    the flattering direction, worse than the staleness it removes. The age
+    is stored instead (`accepted_age_s`), so the analysis filters and
+    nothing is lost from a series nothing can backfill.
+
+    The cost of that choice, stated: on a weekday holiday, a thin name
+    whose previous session ended early enough reads as merely old rather
+    than stale, and is stored. The forward test catches every name whose
+    previous session ran to the close, which is most of them.
     """
     accepted = _seconds(accepted_hhmmss or "")
     if accepted is None:
@@ -299,8 +343,8 @@ def sample_book(
                     f"{code}: crossed book, ask1={book['ask1']} < bid1={book['bid1']}"
                 )
             # 호가접수시각, carried so the caller can ask whether this book
-            # is from now. Not a quote, so it is not stored -- see
-            # `rows_for`, which takes only the four primitives.
+            # is from now. The raw string is not stored; its derived age
+            # is -- see `PRIMITIVES`.
             book["accepted"] = block.get("aspr_acpt_hour")  # type: ignore[assignment]
             return book  # type: ignore[return-value]
     return None
@@ -385,6 +429,9 @@ def sample_once(
             # simply was not open for this instrument.
             stale.append(f"{symbol}: accepted {book.get('accepted')}")
             return
+        age = accepted_age_s(book.get("accepted"), now)  # type: ignore[arg-type]
+        if age is not None:
+            book["accepted_age_s"] = age
         books[symbol] = book
         if store:
             upsert_positioning(conn, symbol, rows_for(book, contract, at_ms))
