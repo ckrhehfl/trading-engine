@@ -229,6 +229,20 @@ def _futures_price(session: KisSession, code: str) -> tuple[int, float]:
             f"rt_cd={payload.get('rt_cd')} msg_cd={payload.get('msg_cd')}"
         )
     block = payload.get("output1")
+    if isinstance(block, dict) and (
+        isinstance(block.get("futs_prpr"), bool) or isinstance(block.get("acml_vol"), bool)
+    ):
+        # `float(True)` is 1.0 and `int(True)` is 1, so a JSON `true` would
+        # pass every check below and become a plausible measurement --
+        # ₩10 of contract notional, or one contract of volume. bool is the
+        # only type that converts silently like this, and rejecting it is
+        # the same contract as the rest of this function rather than a new
+        # one: a value that was never measured must not become a number.
+        raise KisKlinesError(
+            f"KIS returned a boolean where {code}'s price or volume belongs; "
+            f"float(True) is 1.0, so this would have been recorded as a real "
+            f"quote rather than rejected"
+        )
     if not isinstance(block, dict) or block.get("futs_prpr") in (None, ""):
         raise KisKlinesError(
             f"KIS returned no futures price for {code}. An empty output1 is "

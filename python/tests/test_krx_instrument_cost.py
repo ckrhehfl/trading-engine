@@ -238,6 +238,29 @@ def test_a_genuinely_zero_volume_is_kept(monkeypatch):
     assert krx_instrument_cost._futures_price(_SESSION, "A11610") == (0, 250_000.0)
 
 
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param({"futs_prpr": True, "acml_vol": "1"}, id="price is true"),
+        pytest.param({"futs_prpr": "250000", "acml_vol": True}, id="volume is true"),
+        pytest.param({"futs_prpr": "250000", "acml_vol": False}, id="volume is false"),
+    ],
+)
+def test_a_boolean_is_refused_rather_than_converted(monkeypatch, block):
+    """`float(True)` is 1.0 and `int(True)` is 1 — bool is the only type
+    that converts silently, so a JSON `true` would have been recorded as a
+    ₩10 contract or a volume of one rather than rejected."""
+    _price_returning(monkeypatch, {"rt_cd": "0", "output1": block})
+    with pytest.raises(KisKlinesError, match="boolean"):
+        krx_instrument_cost._futures_price(_SESSION, "A11610")
+
+
+def test_bools_really_do_convert_which_is_why_the_guard_exists():
+    """The negative control: the guard is only necessary because these
+    conversions succeed, so the property is asserted rather than assumed."""
+    assert float(True) == 1.0 and int(True) == 1 and int(False) == 0
+
+
 def test_the_price_failure_is_not_shaped_like_an_empty_book(monkeypatch):
     """`_best_quote` returns `None` for an empty book on purpose — a
     contract nobody quotes is a fact. An absent *price* is a failed
