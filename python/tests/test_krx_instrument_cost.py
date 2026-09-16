@@ -17,7 +17,9 @@ flatteringly:
 
 from __future__ import annotations
 
+import io
 import types
+import zipfile
 
 import pytest
 
@@ -25,6 +27,7 @@ from data.kis_klines import KisKlinesError
 from research import krx_instrument_cost
 from research.krx_instrument_cost import (
     CONTRACT_SHARES,
+    front_month_futures,
     SPOT_COMMISSION_BP,
     SPOT_TAX_BP,
     InstrumentCost,
@@ -124,6 +127,99 @@ def test_an_unquoted_instrument_yields_no_verdict_rather_than_a_default():
     assert _cost(fut=None).cheaper is None
     assert _cost(spot=None).cheaper is None
     assert _cost(fut=None).futures_round_trip_bp is None
+
+
+# ------------------------------------------------ the contract mapping
+#
+# `front_month_futures` is the single point at which an underlying becomes
+# a contract code, and a wrong code returns `rt_cd=0` with zero rows --
+# which this module reads as "this contract does not trade". That is how
+# six guessed index codes made KOSPI200 futures look unavailable (rd-q §4)
+# and how `A11710` made SK하이닉스 look untraded while rd-r was written.
+# So the mapping is worth a test even though the master is downloaded.
+
+_MASTER_ROWS = [
+    # The option line is deliberately FIRST: `setdefault` keeps the first
+    # match, so a filter loosened from `"F 202610"` to `"202610"` returns
+    # this call rather than the future — and the test has to notice, which
+    # it cannot if the future is found first anyway.
+    "x|B11610083|y|삼성전자   C 202610   160,000(  10)|a|b|c|005930|z",
+    "x|A11610|y|삼성전자   F 202610 (  10)|a|b|c|005930|z",
+    "x|A11611|y|삼성전자   F 202611 (  10)|a|b|c|005930|z",
+    "x|A50610|y|SK하이닉스 F 202610 (  10)|a|b|c|000660|z",
+    "x|AZZ610|y|someoneelse F 202610 (  10)|a|b|c|999999|z",
+]
+
+
+def _master_zip(rows=None) -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        archive.writestr(
+            "fo_stk_code_mts.mst",
+            "\n".join(_MASTER_ROWS if rows is None else rows).encode("cp949"),
+        )
+    return buffer.getvalue()
+
+
+def _serving(monkeypatch, payload):
+    class _Response:
+        def read(self):
+            return payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(
+        krx_instrument_cost.urllib.request, "urlopen",
+        lambda request, timeout=None: _Response(),
+    )
+
+
+def test_each_underlying_maps_to_its_own_contract_for_the_asked_expiry(monkeypatch):
+    """The codes have no arithmetic relation to the underlying or to each
+    other — `005930` is `A11610` and `000660` is `A50610` — so the master
+    is the only source and this is the mapping that uses it."""
+    _serving(monkeypatch, _master_zip())
+    assert front_month_futures({"005930", "000660"}, "202610") == {
+        "005930": "A11610", "000660": "A50610",
+    }
+
+
+def test_a_different_expiry_selects_a_different_contract(monkeypatch):
+    """The expiry is what makes a contract, and picking the wrong month is
+    indistinguishable from picking a name that does not trade."""
+    _serving(monkeypatch, _master_zip())
+    assert front_month_futures({"005930"}, "202611") == {"005930": "A11611"}
+
+
+def test_underlyings_that_were_not_asked_for_are_not_returned(monkeypatch):
+    _serving(monkeypatch, _master_zip())
+    assert front_month_futures({"005930"}, "202610") == {"005930": "A11610"}
+
+
+def test_an_option_line_is_not_mistaken_for_a_futures_contract(monkeypatch):
+    """The master is mostly options. `B11610083` is a 삼성전자 call on the
+    same underlying and the same expiry, and quoting it would measure an
+    entirely different instrument's spread."""
+    _serving(monkeypatch, _master_zip())
+    assert front_month_futures({"005930"}, "202610")["005930"] == "A11610"
+
+
+def test_an_expiry_nothing_matches_raises_rather_than_returning_empty(monkeypatch):
+    """An empty mapping would make every name look like it has no futures
+    — the exact conclusion a rolled expiry produced once already."""
+    _serving(monkeypatch, _master_zip())
+    with pytest.raises(KisKlinesError, match="no F 209912 contract"):
+        front_month_futures({"005930"}, "209912")
+
+
+def test_a_master_that_is_not_a_zip_is_refused(monkeypatch):
+    _serving(monkeypatch, b"not a zip at all")
+    with pytest.raises(KisKlinesError, match="not a readable zip"):
+        front_month_futures({"005930"}, "202610")
 
 
 # ------------------------------------------- a name with no contract
