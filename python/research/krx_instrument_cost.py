@@ -98,8 +98,14 @@ class InstrumentCost:
     futures_code: str | None
     spot_spread_bp: float | None
     futures_spread_bp: float | None
-    futures_volume: int
-    futures_price: float
+    #: `None` when the name has no listed futures contract at all --
+    #: distinct from `0`, which is a real observation about a contract
+    #: that exists and did not trade. Nullable rather than zero because
+    #: `contract_notional_krw` multiplies the price, so a missing contract
+    #: would otherwise print as a **₩0 contract** -- affordable-looking,
+    #: which is the direction that ruled KOSPI200 index futures out.
+    futures_volume: int | None
+    futures_price: float | None
 
     @property
     def spot_round_trip_bp(self) -> float | None:
@@ -126,8 +132,16 @@ class InstrumentCost:
         return "futures" if f < s else "spot"
 
     @property
-    def contract_notional_krw(self) -> float:
-        """One contract is 10 shares — the size a real order must clear."""
+    def contract_notional_krw(self) -> float | None:
+        """One contract is 10 shares — the size a real order must clear.
+
+        `None` when there is no contract. A missing instrument has no
+        notional, and reporting ₩0 answers the question this figure exists
+        to answer — *can this account hold one?* — with the most
+        encouraging number available.
+        """
+        if self.futures_price is None:
+            return None
         return self.futures_price * CONTRACT_SHARES
 
 
@@ -190,10 +204,27 @@ def _best_quote(
     for key in ("output1", "output2"):
         block = payload.get(key)
         if isinstance(block, dict) and block.get(ask_field) not in (None, "", "0"):
+            if isinstance(block.get(ask_field), bool) or isinstance(
+                block.get(bid_field), bool
+            ):
+                raise KisKlinesError(
+                    f"KIS returned a boolean quote for {code}; float(True) is 1.0, "
+                    f"so it would have been priced rather than rejected"
+                )
             try:
-                return float(block[ask_field]), float(block[bid_field])
+                ask, bid = float(block[ask_field]), float(block[bid_field])
             except (TypeError, ValueError):
                 return None
+            # `spread_bp`'s own checks cannot catch these: every comparison
+            # against `nan` is False, so a nan quote passes both the
+            # positivity and the crossed-book test and returns a nan
+            # spread, which then makes `cheaper` answer without a number.
+            if not (math.isfinite(ask) and math.isfinite(bid)):
+                raise KisKlinesError(
+                    f"KIS returned a non-finite quote for {code}: "
+                    f"ask={ask} bid={bid}"
+                )
+            return ask, bid
     return None
 
 
@@ -290,7 +321,7 @@ def measure(
         fcode = futures.get(code)
         spot = _best_quote(session, QUOTE_SPOT, TR_SPOT, "J", code, "askp1", "bidp1")
         fut = None
-        volume, price = 0, 0.0
+        volume, price = None, None
         if fcode:
             fut = _best_quote(
                 session, QUOTE_FUTURES, TR_FUTURES, "JF", fcode,
@@ -338,32 +369,41 @@ def report(rows: list[InstrumentCost]) -> None:
             if r.futures_round_trip_bp is not None
             else "-"
         )
+        vol = f"{r.futures_volume:,}" if r.futures_volume is not None else "-"
+        notional = (
+            f"{r.contract_notional_krw:,.0f}"
+            if r.contract_notional_krw is not None
+            else "-"
+        )
         print(
             f"{r.name:<14} {s:>9} {f:>9} {srt:>9} {frt:>9} {r.cheaper or '-':>9} "
-            f"{r.futures_volume:>12,} {r.contract_notional_krw:>12,.0f}"
+            f"{vol:>12} {notional:>12}"
         )
 
     wins = [r for r in rows if r.cheaper == "futures"]
     loses = [r for r in rows if r.cheaper == "spot"]
     print("-" * 92)
     if wins:
-        vol = statistics.median(r.futures_volume for r in wins)
+        vol = statistics.median(r.futures_volume or 0 for r in wins)
         rt = statistics.median(r.futures_round_trip_bp for r in wins)  # type: ignore[misc]
         print(
             f"futures cheaper for {len(wins)}: median round trip **{rt:.1f}bp**, "
             f"median futures volume {vol:,.0f}"
         )
     if loses:
-        vol = statistics.median(r.futures_volume for r in loses)
+        vol = statistics.median(r.futures_volume or 0 for r in loses)
         print(f"spot cheaper for {len(loses)}: median futures volume {vol:,.0f}")
     if wins and loses:
-        ratio = statistics.median(r.futures_volume for r in wins) / max(
-            statistics.median(r.futures_volume for r in loses), 1
+        ratio = statistics.median(r.futures_volume or 0 for r in wins) / max(
+            statistics.median(r.futures_volume or 0 for r in loses), 1
         )
         print(
-            f"\n**The split is liquidity.** The winners' futures books are "
-            f"{ratio:.0f}x deeper.\nThe universe was selected on SPOT turnover "
-            f"(ms-e), which does not predict it."
+            f"\n**The split is liquidity.** The winners trade {ratio:.0f}x the "
+            f"CUMULATIVE VOLUME of the losers.\nThat is acml_vol -- volume that "
+            f"changed hands -- and NOT resting size at the touch. Depth is on "
+            f"the\nwire (futs_askp_rsqn1..) and is not collected here, so no "
+            f"claim about book\ndepth is made. The universe was selected on SPOT "
+            f"turnover (ms-e), which\npredicts neither."
         )
     print(
         "\nOne snapshot of one session's book. rd-f's spot figure is a window "

@@ -27,14 +27,20 @@ recorded in §7 along with what it does and does not cost.
 > the futures spread is **42.9bp median against spot's 12.1bp**, and the
 > tax saving does not begin to cover it.
 >
-> **But the median hides it.** The four names whose futures books are deep
+> **But the median hides it.** The four names whose futures trade heavily
 > beat spot by **~23bp each**, and their median round trip is **13.3bp** —
-> BTC's own measured 12bp, in Korea. The six with thin books lose by 10 to
-> 118bp.
+> BTC's own measured 12bp, in Korea. The six that barely trade lose by 10
+> to 118bp.
 >
 > **The split is liquidity, and the universe was selected on the wrong
 > kind of it**: `ms-e` ranked KR-10 on **spot** 거래대금, and the winners'
-> futures books are **27× deeper** than the losers'.
+> futures trade **27× the cumulative volume** of the losers'.
+>
+> **"Volume", not "depth".** The 27× is a ratio of `acml_vol` — contracts
+> that changed hands — and says nothing about resting size at the touch.
+> An earlier draft of this paragraph said "books are 27× deeper", which is
+> a claim about a quantity this measurement never took. Depth is on the
+> same wire (`futs_askp_rsqn1..`) and is not collected here.
 
 ## 2. Measured, per name
 

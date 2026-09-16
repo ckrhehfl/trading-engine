@@ -126,6 +126,111 @@ def test_an_unquoted_instrument_yields_no_verdict_rather_than_a_default():
     assert _cost(fut=None).futures_round_trip_bp is None
 
 
+# ------------------------------------------- a name with no contract
+
+
+def test_a_name_with_no_futures_contract_has_no_notional():
+    """**The ₩0 contract, in the other branch.** `front_month_futures`
+    returns a partial mapping, so a name KIS lists no future for reaches
+    `InstrumentCost` with no price at all. Multiplied by 10 shares that
+    printed as a ₩0 contract — i.e. the most affordable instrument in
+    Korea — and affordability is exactly what the notional is consulted
+    for."""
+    r = InstrumentCost(
+        code="123456", name="123456", futures_code=None,
+        spot_spread_bp=12.0, futures_spread_bp=None,
+        futures_volume=None, futures_price=None,
+    )
+    assert r.contract_notional_krw is None
+    assert r.cheaper is None
+
+
+def test_a_real_zero_volume_is_still_distinguishable_from_no_contract():
+    """A listed contract that did not trade is an observation; a name with
+    no contract is a missing one. Collapsing them is how the bug starts."""
+    traded_nothing = _cost(volume=0)
+    assert traded_nothing.futures_volume == 0
+    assert traded_nothing.contract_notional_krw == 2_500_000.0
+
+
+def test_a_missing_contract_prints_as_missing_rather_than_zero(capsys):
+    report([
+        InstrumentCost(
+            code="005930", name="005930", futures_code=None,
+            spot_spread_bp=12.0, futures_spread_bp=None,
+            futures_volume=None, futures_price=None,
+        )
+    ])
+    columns = _row(capsys.readouterr().out)
+    assert columns[-1] == "-", "contract notional"
+    assert columns[-2] == "-", "futures volume"
+    assert "0" not in columns[-2:]
+
+
+# --------------------------------------------------- the quote itself
+
+
+def _quote_returning(monkeypatch, payload):
+    monkeypatch.setattr(
+        krx_instrument_cost, "_get_with_retry", lambda url, headers: payload
+    )
+
+
+def _best(code="005930"):
+    return krx_instrument_cost._best_quote(
+        _SESSION, "/path", "TR", "J", code, "askp1", "bidp1"
+    )
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param({"askp1": "nan", "bidp1": "100"}, id="nan ask"),
+        pytest.param({"askp1": "100", "bidp1": "nan"}, id="nan bid"),
+        pytest.param({"askp1": "inf", "bidp1": "100"}, id="inf ask"),
+    ],
+)
+def test_a_non_finite_quote_is_refused_because_spread_bp_cannot_catch_it(
+    monkeypatch, block
+):
+    """`spread_bp`'s own checks are `ask <= 0` and `ask < bid`, and every
+    comparison against `nan` is False — so a nan quote passes both and
+    returns a nan spread, which makes `cheaper` answer without a number."""
+    _quote_returning(monkeypatch, {"rt_cd": "0", "output1": block})
+    with pytest.raises(KisKlinesError, match="non-finite"):
+        _best()
+
+
+def test_spread_bp_really_cannot_catch_nan_which_is_why_the_guard_is_upstream():
+    """The negative control. Asserted rather than argued, so the guard is
+    not later moved into `spread_bp` on the belief it belongs there."""
+    nan = float("nan")
+    assert not (nan <= 0) and not (nan < 100.0)
+    assert spread_bp(nan, 100.0) != spread_bp(nan, 100.0), "nan != nan"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param({"askp1": True, "bidp1": "100"}, id="boolean ask"),
+        pytest.param({"askp1": "100", "bidp1": True}, id="boolean bid"),
+    ],
+)
+def test_a_boolean_quote_is_refused(monkeypatch, block):
+    _quote_returning(monkeypatch, {"rt_cd": "0", "output1": block})
+    with pytest.raises(KisKlinesError, match="boolean"):
+        _best()
+
+
+def test_an_empty_book_is_still_none_rather_than_an_error(monkeypatch):
+    """The whole reason `_best_quote` returns `None` at all: an expired or
+    unlisted contract answers `rt_cd=0` with nothing, and that is a fact
+    about the contract. Tightening the invalid cases must not tighten
+    this one."""
+    _quote_returning(monkeypatch, {"rt_cd": "0", "output1": {"askp1": ""}})
+    assert _best() is None
+
+
 # ------------------------------------------------------- contract size
 
 
