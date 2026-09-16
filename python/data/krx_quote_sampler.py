@@ -127,6 +127,10 @@ PERIOD = "snapshot"
 
 METRIC_PREFIX = "krx_quote"
 
+#: The four numbers that are stored. Anything else a book carries is a
+#: check on it rather than part of it.
+PRIMITIVES = ("ask1", "bid1", "ask1_qty", "bid1_qty")
+
 #: KRX's continuous session. The closing call auction runs 15:20-15:30
 #: with no continuous trade, so the book there is not the book this
 #: measures -- see the module docstring.
@@ -142,13 +146,20 @@ class QuoteSamplerError(KisKlinesError):
 def in_session(now: dt.datetime | None = None) -> bool:
     """Is the KRX continuous session open right now?
 
-    Weekday and clock only -- **holidays are not checked**, deliberately.
-    A holiday returns an empty book, which `sample_book` already skips as
-    a missing measurement, so the failure mode is a wasted call rather
-    than a wrong number. Adding a holiday table here would duplicate the
-    one `KrxMarketCalendar` already records as incomplete for moving
-    lunar dates, and would fail in the more dangerous direction if it
-    were wrong.
+    Weekday and clock only. **Holidays are handled downstream, by
+    `is_stale`, not here** -- and the reason is a correction.
+
+    An earlier version of this docstring claimed holidays needed no check
+    because "a holiday returns an empty book". **That was refuted by this
+    module's own measurement**: KIS answers outside the session with the
+    LAST book, not an empty one, so a weekday holiday at 10:00 returns
+    the previous session's quotes and every check here passes.
+
+    A holiday table would fix only holidays, and `KrxMarketCalendar`
+    already records its own as incomplete for moving lunar dates. Asking
+    the book whether it is current fixes holidays, unscheduled closures,
+    a halted symbol and a venue outage with one test, and needs no table
+    to be kept up to date.
     """
     now = now or dt.datetime.now(KST)
     if now.weekday() >= 5:
@@ -158,6 +169,62 @@ def in_session(now: dt.datetime | None = None) -> bool:
     # same exclusive boundary, and a sampler disagreeing with the venue
     # calendar by one second is a disagreement nobody would look for.
     return SESSION_OPEN <= now.timetz().replace(tzinfo=None) < SESSION_CLOSE
+
+
+#: How far ahead of the wall clock a book's acceptance time may sit
+#: before it is called stale. Absorbs clock skew between this machine and
+#: the venue; far below the ~25 minutes a stale book is actually off by,
+#: since the previous session's last quote is at or after 15:20 while any
+#: sample is taken before it.
+STALE_TOLERANCE_S = 300
+
+
+def _seconds(hhmmss: str) -> int | None:
+    if len(hhmmss) != 6 or not hhmmss.isdigit():
+        return None
+    h, m, sec = int(hhmmss[:2]), int(hhmmss[2:4]), int(hhmmss[4:])
+    if h > 23 or m > 59 or sec > 59:
+        return None
+    return h * 3600 + m * 60 + sec
+
+
+def is_stale(accepted_hhmmss: str | None, now: dt.datetime | None = None) -> bool:
+    """Is this book from an earlier session rather than from now?
+
+    KIS carries 호가접수시각 (`aspr_acpt_hour`) but **no date**, so the
+    test is on the clock alone -- and that is sufficient precisely
+    because sampling only ever happens inside 09:00-15:20. A book left
+    over from a previous session carries that session's last acceptance
+    time, which is at or after the 15:20 close (15:45 and 20:00 were both
+    observed), and so lies **ahead** of any instant this sampler runs at.
+
+    So "accepted later in the day than it is now" means the book is not
+    from today. That one test covers a weekday holiday, an unscheduled
+    closure, a halted symbol and a venue outage, none of which a holiday
+    table would catch beyond the first.
+
+    An unreadable or absent time returns `False` -- not stale. The field
+    is a check on the book, not the book itself, and refusing to store a
+    real quote because a secondary field changed shape would lose data
+    that cannot be re-fetched.
+
+    **The blind spot, stated rather than glossed.** A book whose last
+    acceptance was at the close itself is only minutes ahead of a sample
+    taken late in the window, so it falls inside the tolerance: accepted
+    15:20:00 against a 15:19 sample is not flagged. The two values
+    actually observed from a closed market -- 15:45 and 20:00 -- are
+    caught at every sampling instant, and the auction and after-hours
+    sessions are why a genuinely stale book tends to carry one of those
+    rather than 15:20. It is a narrowing, not an elimination, and pairing
+    it with the weekday-and-clock gate above is what makes the residue
+    small.
+    """
+    accepted = _seconds(accepted_hhmmss or "")
+    if accepted is None:
+        return False
+    now = now or dt.datetime.now(KST)
+    seconds_now = now.hour * 3600 + now.minute * 60 + now.second
+    return accepted > seconds_now + STALE_TOLERANCE_S
 
 
 def _positive(raw: object, field: str, code: str) -> float | None:
@@ -231,6 +298,10 @@ def sample_book(
                 raise QuoteSamplerError(
                     f"{code}: crossed book, ask1={book['ask1']} < bid1={book['bid1']}"
                 )
+            # 호가접수시각, carried so the caller can ask whether this book
+            # is from now. Not a quote, so it is not stored -- see
+            # `rows_for`, which takes only the four primitives.
+            book["accepted"] = block.get("aspr_acpt_hour")  # type: ignore[assignment]
             return book  # type: ignore[return-value]
     return None
 
@@ -243,6 +314,9 @@ def rows_for(book: dict[str, float], contract: str, at_ms: int) -> list[Position
     docstring -- while still recording exactly which contract was sampled.
     """
     suffix = f".{contract}" if contract else ""
+    # `accepted` rides along on the book so the caller can test freshness;
+    # it is a check ON the quote, not a quote, and storing it would put a
+    # non-numeric value into a column every other row parses as a float.
     return [
         PositioningRow(
             metric=f"{METRIC_PREFIX}.{name}{suffix}",
@@ -251,6 +325,7 @@ def rows_for(book: dict[str, float], contract: str, at_ms: int) -> list[Position
             value=repr(value),
         )
         for name, value in sorted(book.items())
+        if name in PRIMITIVES
     ]
 
 
@@ -272,8 +347,9 @@ def front_month(master: FuturesMaster, code: str) -> str | None:
 def sample_once(
     session: KisSession, conn, codes: list[str], master: FuturesMaster | None,
     *, pause_s: float = 0.25, now_ms: int | None = None, store: bool = True,
-) -> tuple[dict[str, dict[str, float]], list[str]]:
-    """One pass. Returns `(books by symbol, failures)`.
+    now: dt.datetime | None = None,
+) -> tuple[dict[str, dict[str, float]], list[str], list[str]]:
+    """One pass. Returns `(books by symbol, failures, stale)`.
 
     **A failure on one instrument must not cost every later one.** An
     order book cannot be backfilled at any price, so a single rejected
@@ -289,6 +365,7 @@ def sample_once(
     at_ms = now_ms if now_ms is not None else int(time.time() * 1000)
     books: dict[str, dict[str, float]] = {}
     failures: list[str] = []
+    stale: list[str] = []
 
     def attempt(symbol: str, contract: str, fetch) -> None:
         try:
@@ -300,6 +377,13 @@ def sample_once(
             failures.append(f"{symbol}: {type(exc).__name__}: {exc}")
             return
         if not book:
+            return
+        if is_stale(book.get("accepted"), now):  # type: ignore[arg-type]
+            # A leftover book from an earlier session -- a weekday
+            # holiday, an unscheduled closure, a halted symbol. Recorded
+            # separately from a failure: nothing went wrong, the market
+            # simply was not open for this instrument.
+            stale.append(f"{symbol}: accepted {book.get('accepted')}")
             return
         books[symbol] = book
         if store:
@@ -330,7 +414,7 @@ def sample_once(
             ),
         )
         time.sleep(pause_s)
-    return books, failures
+    return books, failures, stale
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -379,28 +463,24 @@ def main(argv: list[str] | None = None) -> int:
 
     master = parse_master(download_master()) if args.futures else None
     session = KisSession(key, secret)
-    books, failures = sample_once(session, conn, codes, master, store=not args.probe)
+    books, failures, stale = sample_once(
+        session, conn, codes, master, store=not args.probe
+    )
 
     for line in failures:
         print(f"FAILED {line}", file=sys.stderr)
+    for line in stale:
+        print(f"STALE  {line}", file=sys.stderr)
     print(
         f"{'probed' if args.probe else 'stored'} {len(books)} instrument books"
         + (f", {len(failures)} failed" if failures else "")
+        + (f", {len(stale)} stale" if stale else "")
     )
-    if args.probe:
-        for symbol, book in sorted(books.items()):
-            mid = (book["ask1"] + book["bid1"]) / 2
-            print(
-                f"  {symbol:<16} {book['bid1']:>12,.0f} x {book['bid1_qty']:>9,.0f}"
-                f"  |  {book['ask1']:>12,.0f} x {book['ask1_qty']:>9,.0f}"
-                f"   {(book['ask1'] - book['bid1']) / mid * 1e4:>6.1f}bp"
-            )
-        return 0
 
-    # **Partial failure is reported and tolerated; total failure is not.**
-    # A scheduler can only act on an exit code, and a pass that stored
-    # nothing at all is the case worth waking someone for -- a rejected
-    # key, an expired token, a venue outage. One dead contract is not.
+    # **Before the probe's own exit, not after.** A probe where every
+    # request was rejected -- a bad key, an expired token, a venue outage
+    # -- would otherwise report success, which is the one thing a
+    # diagnostic must never do.
     if not books:
         print("no book was sampled at all", file=sys.stderr)
         return 1
@@ -413,6 +493,17 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 1
+
+    if args.probe:
+        for symbol, book in sorted(books.items()):
+            mid = (book["ask1"] + book["bid1"]) / 2
+            print(
+                f"  {symbol:<16} {book['bid1']:>12,.0f} x {book['bid1_qty']:>9,.0f}"
+                f"  |  {book['ask1']:>12,.0f} x {book['ask1_qty']:>9,.0f}"
+                f"   {(book['ask1'] - book['bid1']) / mid * 1e4:>6.1f}bp"
+            )
+    # Partial failure is reported and tolerated; total failure was
+    # refused above. One dead contract is not worth waking anyone for.
     return 0
 
 

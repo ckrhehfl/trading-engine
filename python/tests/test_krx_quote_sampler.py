@@ -36,6 +36,7 @@ from data.krx_quote_sampler import (
     _positive,
     front_month,
     in_session,
+    is_stale,
     rows_for,
     sample_book,
     sample_once,
@@ -50,16 +51,22 @@ def _serving(monkeypatch, payload):
     )
 
 
-def _spot_block(ask="253500", bid="253000", ask_q="50157", bid_q="41329"):
-    return {"askp1": ask, "bidp1": bid, "askp_rsqn1": ask_q, "bidp_rsqn1": bid_q}
+def _spot_block(ask="253500", bid="253000", ask_q="50157", bid_q="41329",
+                accepted="120000"):
+    return {
+        "askp1": ask, "bidp1": bid, "askp_rsqn1": ask_q, "bidp_rsqn1": bid_q,
+        "aspr_acpt_hour": accepted,
+    }
 
 
-def _futures_block(ask="250500", bid="250000", ask_q="5274", bid_q="269"):
+def _futures_block(ask="250500", bid="250000", ask_q="5274", bid_q="269",
+                   accepted="120000"):
     # The real shape, measured 2026-09-16: prices carry `futs_`, the
     # quantities beside them do not.
     return {
         "futs_askp1": ask, "futs_bidp1": bid,
         "askp_rsqn1": ask_q, "bidp_rsqn1": bid_q,
+        "aspr_acpt_hour": accepted,
     }
 
 
@@ -111,7 +118,8 @@ def test_the_close_boundary_is_exclusive():
 
 
 def test_the_spot_book_reads_prices_and_sizes(monkeypatch):
-    assert _spot(monkeypatch) == {
+    book = _spot(monkeypatch)
+    assert {k: book[k] for k in ("ask1", "bid1", "ask1_qty", "bid1_qty")} == {
         "ask1": 253500.0, "bid1": 253000.0,
         "ask1_qty": 50157.0, "bid1_qty": 41329.0,
     }
@@ -121,7 +129,8 @@ def test_the_futures_quantity_fields_are_not_prefixed(monkeypatch):
     """**The wire fact this module was first wrong about.** `futs_askp1` is
     the price and `askp_rsqn1` is its size — `futs_askp_rsqn1` does not
     exist and returns `None` for every level."""
-    assert _futures(monkeypatch) == {
+    book = _futures(monkeypatch)
+    assert {k: book[k] for k in ("ask1", "bid1", "ask1_qty", "bid1_qty")} == {
         "ask1": 250500.0, "bid1": 250000.0,
         "ask1_qty": 5274.0, "bid1_qty": 269.0,
     }
@@ -294,6 +303,84 @@ def _sampling(monkeypatch, responses):
     return written
 
 
+def _at(hour, minute):
+    return dt.datetime(2026, 9, 17, hour, minute, tzinfo=KST)
+
+
+@pytest.mark.parametrize("accepted", ["154500", "200000"])
+@pytest.mark.parametrize("when", [(9, 5), (12, 0), (15, 19)])
+def test_a_leftover_book_from_a_previous_session_is_stale(accepted, when):
+    """**The holiday case, and the reason it is not a holiday table.** An
+    earlier version of this module asserted holidays needed no check
+    because "a holiday returns an empty book" — refuted by this module's
+    own measurement, since KIS answers with the LAST book. Both values a
+    closed market actually returned (15:45 and 20:00) are caught at every
+    sampling instant, and the same test also covers an unscheduled
+    closure, a halted symbol and a venue outage."""
+    assert is_stale(accepted, _at(*when))
+
+
+@pytest.mark.parametrize(
+    "accepted,when",
+    [("090500", (9, 5)), ("120000", (12, 0)), ("151900", (15, 19)),
+     ("085959", (9, 0))],
+)
+def test_a_live_book_is_not_stale(accepted, when):
+    """The negative control. A pre-open auction quote at 08:59 against a
+    09:00 sample is current, not stale."""
+    assert not is_stale(accepted, _at(*when))
+
+
+def test_the_tolerance_absorbs_clock_skew_and_not_a_session():
+    """Skew between this machine and the venue is minutes; a stale book is
+    off by 25 or more."""
+    assert not is_stale("120400", _at(12, 0))
+    assert is_stale("120600", _at(12, 0))
+
+
+def test_the_blind_spot_is_real_and_narrow():
+    """Stated rather than glossed: a book that stopped at the close itself
+    sits inside the tolerance late in the window. The observed stale
+    values do not, which is what makes the residue small."""
+    assert not is_stale("152000", _at(15, 19)), "the blind spot"
+    assert is_stale("152000", _at(12, 0)), "and it closes earlier in the day"
+
+
+@pytest.mark.parametrize("bad", [None, "", "abc", "996199", "12345"])
+def test_an_unreadable_acceptance_time_never_discards_a_quote(bad):
+    """The field is a check on the book, not the book. Losing a real quote
+    because a secondary field changed shape would lose data that cannot be
+    re-fetched at any price."""
+    assert not is_stale(bad, _at(12, 0))
+
+
+def test_a_stale_book_is_neither_stored_nor_counted_as_a_failure(monkeypatch):
+    """Nothing went wrong — the market simply was not open for that
+    instrument — so it is reported on its own line rather than as an
+    error a scheduler should act on."""
+    written = _sampling(monkeypatch, {
+        "005930": {"rt_cd": "0", "output1": _spot_block(accepted="154500")},
+    })
+    books, failures, stale = sample_once(
+        _SESSION, None, ["005930"], None, pause_s=0, now_ms=1, now=_at(12, 0)
+    )
+    assert books == {} and failures == [] and written == []
+    assert len(stale) == 1 and "KRX:005930" in stale[0]
+
+
+def test_the_acceptance_time_is_carried_but_never_stored():
+    """It rides on the book so freshness can be tested, and storing it
+    would put a non-numeric value into a column every other row parses as
+    a float."""
+    rows = rows_for(
+        {"ask1": 1.0, "bid1": 2.0, "ask1_qty": 3.0, "bid1_qty": 4.0,
+         "accepted": "120000"},
+        "", 1000,
+    )
+    assert len(rows) == 4
+    assert not any("accepted" in r.metric for r in rows)
+
+
 def test_one_failure_does_not_cost_the_rest_of_the_pass(monkeypatch):
     """**The property that matters most here.** An order book cannot be
     backfilled at any price, so a single rejected call aborting the pass
@@ -303,8 +390,8 @@ def test_one_failure_does_not_cost_the_rest_of_the_pass(monkeypatch):
         "005930": QuoteSamplerError("KIS rejected the book"),
         "000660": {"rt_cd": "0", "output1": _spot_block()},
     })
-    books, failures = sample_once(
-        _SESSION, None, ["005930", "000660"], None, pause_s=0, now_ms=1
+    books, failures, _ = sample_once(
+        _SESSION, None, ["005930", "000660"], None, pause_s=0, now_ms=1, now=_at(12, 0)
     )
     assert list(books) == ["KRX:000660"], "the later symbol was still sampled"
     assert len(failures) == 1 and "KRX:005930" in failures[0]
@@ -315,7 +402,9 @@ def test_a_failure_names_the_instrument(monkeypatch):
     """One line saying "a pass failed" cannot distinguish a dead contract
     from a rejected key."""
     _sampling(monkeypatch, {"005930": QuoteSamplerError("boom")})
-    _, failures = sample_once(_SESSION, None, ["005930"], None, pause_s=0, now_ms=1)
+    _, failures, _ = sample_once(
+        _SESSION, None, ["005930"], None, pause_s=0, now_ms=1, now=_at(12, 0)
+    )
     assert "KRX:005930" in failures[0] and "QuoteSamplerError" in failures[0]
 
 
@@ -325,8 +414,8 @@ def test_a_probe_pass_stores_nothing(monkeypatch):
     earlier `--force` did, and contaminated the series with sixteen rows
     during its own verification."""
     written = _sampling(monkeypatch, {"005930": {"rt_cd": "0", "output1": _spot_block()}})
-    books, _ = sample_once(
-        _SESSION, None, ["005930"], None, pause_s=0, now_ms=1, store=False
+    books, _, _ = sample_once(
+        _SESSION, None, ["005930"], None, pause_s=0, now_ms=1, store=False, now=_at(12, 0)
     )
     assert books, "it still fetches"
     assert written == [], "and stores nothing"
@@ -336,5 +425,7 @@ def test_an_empty_book_is_neither_stored_nor_a_failure(monkeypatch):
     """An unquoted instrument is a fact about it. Counting it as a failure
     would make a thin name look like an outage."""
     written = _sampling(monkeypatch, {"005930": {"rt_cd": "0", "output1": {}}})
-    books, failures = sample_once(_SESSION, None, ["005930"], None, pause_s=0, now_ms=1)
+    books, failures, _ = sample_once(
+        _SESSION, None, ["005930"], None, pause_s=0, now_ms=1, now=_at(12, 0)
+    )
     assert books == {} and failures == [] and written == []
