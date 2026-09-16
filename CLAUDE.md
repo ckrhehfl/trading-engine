@@ -271,6 +271,28 @@ doc.
   AWS-key-shaped test strings also went undetected, most likely because
   synthetic test values didn't match AWS's exact key format, not because
   Provider-pattern coverage is broken.
+  **The `.env` fallback in the collector scripts is a deliberate,
+  reaffirmed operator decision, not an oversight** (2026-09-16, on review
+  of PR #178, where CodeRabbit flagged it as a Major security finding).
+  `scripts/collect-krx-*.sh` each read `KIS_APP_KEY`/`KIS_APP_SECRET` as
+  `"${VAR:-$(get_env_var VAR)}"` — the environment wins, and `.env` is
+  only a fallback for an interactive or cron invocation that supplies
+  nothing. `get_env_var` **never `source`s** `.env` (so nothing in it can
+  execute), strips the CRLF this repo's `.env` actually carries, and
+  prints only presence, never a value. That CRLF stripping is the *fix*
+  for a real incident, not an instance of one: a naively sourced `.env`
+  once left a trailing `\r` on `BINGX_API_KEY` and the JDK embedded the
+  real key in an exception message.
+
+  The finding will recur on every new collector, so the standing answer
+  is recorded here rather than re-litigated each time: **an env-only
+  policy is a better posture and remains open as a project-wide operator
+  decision, but it must be taken across all collectors at once.**
+  Changing one script alone leaves two credential mechanisms in the same
+  directory, and the one that differs is the one nobody remembers. Any
+  such change also breaks a working cron at 09:00 on a trading day, on
+  series that cannot be backfilled.
+
   Given that gap, generic secrets (the private-key/credential case this
   project actually cares about) are caught locally instead: the
   `.githooks/pre-commit` hook runs `gitleaks` against every staged commit
