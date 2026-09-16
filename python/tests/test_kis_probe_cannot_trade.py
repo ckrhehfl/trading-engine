@@ -46,6 +46,7 @@ CREDENTIALED_KIS_MODULES = (
     _DATA / "kis_intraday.py",
     _DATA / "backfill_kis_intraday.py",
     _DATA / "kis_futures.py",
+    _DATA / "krx_quote_sampler.py",
 )
 
 #: How a credentialed KIS client is recognised without anyone remembering
