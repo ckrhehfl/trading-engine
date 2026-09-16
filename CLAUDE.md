@@ -271,6 +271,28 @@ doc.
   AWS-key-shaped test strings also went undetected, most likely because
   synthetic test values didn't match AWS's exact key format, not because
   Provider-pattern coverage is broken.
+  **The `.env` fallback in the collector scripts is a deliberate,
+  reaffirmed operator decision, not an oversight** (2026-09-16, on review
+  of PR #178, where CodeRabbit flagged it as a Major security finding).
+  `scripts/collect-krx-*.sh` each read `KIS_APP_KEY`/`KIS_APP_SECRET` as
+  `"${VAR:-$(get_env_var VAR)}"` — the environment wins, and `.env` is
+  only a fallback for an interactive or cron invocation that supplies
+  nothing. `get_env_var` **never `source`s** `.env` (so nothing in it can
+  execute), strips the CRLF this repo's `.env` actually carries, and
+  prints only presence, never a value. That CRLF stripping is the *fix*
+  for a real incident, not an instance of one: a naively sourced `.env`
+  once left a trailing `\r` on `BINGX_API_KEY` and the JDK embedded the
+  real key in an exception message.
+
+  The finding will recur on every new collector, so the standing answer
+  is recorded here rather than re-litigated each time: **an env-only
+  policy is a better posture and remains open as a project-wide operator
+  decision, but it must be taken across all collectors at once.**
+  Changing one script alone leaves two credential mechanisms in the same
+  directory, and the one that differs is the one nobody remembers. Any
+  such change also breaks a working cron at 09:00 on a trading day, on
+  series that cannot be backfilled.
+
   Given that gap, generic secrets (the private-key/credential case this
   project actually cares about) are caught locally instead: the
   `.githooks/pre-commit` hook runs `gitleaks` against every staged commit
@@ -943,6 +965,29 @@ design above was fake-server-verified only until then. Full account:
     these in batches — 24 names first traded 2026-04-27 and 17 more on
     2026-09-14 — so "no bars in the window" means *not yet listed*, which
     is not a statement about liquidity and must not be reported as one.
+- **The order book: depth is available, and the field map is asymmetric.**
+  Spot `.../inquire-asking-price-exp-ccn` (`FHKST01010200`, div `J`)
+  answers in **`output1`**; futures `.../inquire-asking-price`
+  (`FHMIF10010000`, div `JF`) answers in **`output2`**. On the futures
+  book the **prices carry the `futs_` prefix and the quantities do not** —
+  `futs_askp1` is the price, `askp_rsqn1` is the size beside it, and
+  `futs_askp_rsqn1` (the symmetric guess) is `None` at every level. A
+  caller that coalesces would record a book with prices and no size.
+  **Resting size at the touch had never been read by this project at all**,
+  which is how rd-q came to describe a ratio of *cumulative volume*
+  (`acml_vol`) as books being "27× deeper" — two different quantities.
+  `data/krx_quote_sampler.py` stores the four primitives; the spread is
+  derived, never stored.
+- **KIS answers a quote request outside market hours with the LAST book**,
+  not an empty one — verified at 23:00 KST, which returned 삼성전자 at
+  253,500/253,000. So an off-hours sample is plausible numbers from a
+  different market state, and any spread or depth collection must gate on
+  the continuous session (09:00–15:20 KST; the 15:20–15:30 closing call
+  auction has no continuous book) rather than trusting the response to be
+  empty. **An order book is not backfillable at any price** — there is no
+  historical endpoint for it, so unlike intraday bars (~250 rolling
+  sessions) or 투자자별 매매동향 (30 rolling rows), a sample not taken is
+  gone the same second.
 
 ## LLM Usage Policy
 
