@@ -897,6 +897,52 @@ design above was fake-server-verified only until then. Full account:
   `isdigit()` validation is wrong. The files list **currently-listed symbols
   only**, which is the open survivorship problem for a full-universe scan
   (`.planning/rd-d-discovery-mode-and-the-full-universe.md` §2.2).
+- **Single-stock futures — the instrument `rd-q` says to trade, and a
+  second decaying window.** Daily history:
+  `GET /uapi/domestic-futureoption/v1/quotations/inquire-daily-fuopchartprice`,
+  `tr_id` **`FHKIF03020100`**, `FID_COND_MRKT_DIV_CODE` **`JF`** (`F` is
+  *index* futures and returns `rt_cd=0` with zero rows for a stock
+  contract — a wrong division is indistinguishable from a dead contract).
+  Quotes and last price use `FID_COND_MRKT_DIV_CODE=JF` on
+  `.../inquire-asking-price` (`FHMIF10010000`) and `.../inquire-price`
+  (`FHMIF10000000`). Full record: `.planning/rd-r-futures-liquidity-
+  universe.md`.
+  - **283 underlyings** carry a listed single-stock future, **every one
+    10 shares** a contract, from `fo_stk_code_mts.mst.zip` (cp949,
+    pipe-delimited) on 2026-09-16. The same file also holds calls (`B`),
+    puts (`C`) and calendar spreads (`D`) for those names, so a parser
+    keyed on the code prefix alone sweeps in a different instrument's
+    turnover entirely.
+  - **A contract code has no arithmetic relation to its underlying.**
+    삼성전자 `005930` is `A11610`; SK하이닉스 `000660` is `A50610`. The
+    encoding is `A` + a two-character KIS issue id + the year's last digit
+    + the month, and **the issue id exists nowhere else in this project's
+    data**, so the master is the only source. Guessing one returns
+    `rt_cd=0` with zero rows, which reads as "this contract does not
+    trade" — the same trap that made KOSPI200 futures look unavailable
+    across six guessed index codes, sprung again one document later.
+    `FuturesMaster.contract_code` constructs a historical code only after
+    reproducing every expiry the master itself lists for that name.
+  - **KIS drops an expired contract's ENTIRE series, not its oldest
+    bars.** Measured 2026-09-16: expiries **2026-01 and later answer,
+    2025-12 and earlier return nothing at all** — contract-level, not a
+    rolling bar window, since the 2025-12 contract has bars well inside
+    the range the 2026-01 contract is still served over. The oldest bar
+    reachable was **2025-10-10**, and the **front-month** series is
+    reconstructible only from **2025-12-12**. Roughly one more month goes
+    every month, so this is a decaying window like
+    `inquire-time-dailychartprice`, and `runs/krx_futures_liquidity.json`
+    is committed because it is the only copy.
+  - **The row cap is 100 and silent**, as for equities — `rt_cd=0`,
+    newest kept. **`acml_tr_pbmn` is 원 here**, not the 백만원 that
+    투자자별 매매동향 uses: a convention is a property of an endpoint, not
+    of a venue.
+  - **A bar is printed for every session a contract is LISTED**, carrying
+    `acml_vol` 0 when nobody traded it. So counting bars measures listing
+    and not liquidity, and gives all 283 names 100% coverage. KRX lists
+    these in batches — 24 names first traded 2026-04-27 and 17 more on
+    2026-09-14 — so "no bars in the window" means *not yet listed*, which
+    is not a statement about liquidity and must not be reported as one.
 
 ## LLM Usage Policy
 
@@ -952,7 +998,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 108 documents,
+   them. `.planning/README.md` carries an index of all 109 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

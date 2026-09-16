@@ -63,7 +63,26 @@ PYTHONPATH=python python/.venv/bin/python -m data.krx_universe --snapshot >>"$LO
 # the widening date forward, and a 2,718-call burst colliding with a
 # kis-paper tick is uptime Gate A cannot recover.
 # See .planning/rd-d-discovery-mode-and-the-full-universe.md section 3.
-KR10="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940"
+# THE UNIVERSE IS THE UNION of KR-10 (ms-e, ranked on SPOT 거래대금) and
+# the futures-liquidity top 10 (rd-r, ranked on median daily front-month
+# futures 거래대금 over 2026Q1). Eighteen names: the two lists share only
+# 005930 and 000660.
+#
+# The union, not a replacement, for two separate reasons:
+#
+#  - the eight KR-10 names that are not futures-liquid are still tradeable
+#    as SPOT, at rd-q's measured ~35.6bp round trip. Dropping them would
+#    throw away a year of collected history to save nothing -- a session
+#    already stored costs zero API calls to skip.
+#  - the eight new names have NO intraday history here at all, and the
+#    endpoint only reaches back a rolling ~250 trading days. Every day
+#    they are not collected is a session that cannot be recovered later.
+#
+# rd-r's ranking is a POINT-IN-TIME selection with an exit rule (a member
+# leaves on a delisting announcement or a failure to resume, never on
+# "it got less liquid later"), so this list changes only for those
+# reasons -- not because a later quarter reshuffles the ranking.
+UNIVERSE="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940,005380,034020,006400,042700,035420,000270,402340,012450"
 
 PYTHONPATH=python python/.venv/bin/python -m data.kis_investor_flow \
-    --symbols "$KR10" >>"$LOG_FILE" 2>&1
+    --symbols "$UNIVERSE" >>"$LOG_FILE" 2>&1

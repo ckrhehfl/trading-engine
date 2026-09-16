@@ -69,12 +69,31 @@ export KIS_APP_KEY KIS_APP_SECRET
 # coverage check is judged against, so a stale calendar would silently
 # stop the newest sessions from being attempted at all. Cheap -- one call
 # per symbol for a short window.
-KR10="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940"
+# THE UNIVERSE IS THE UNION of KR-10 (ms-e, ranked on SPOT 거래대금) and
+# the futures-liquidity top 10 (rd-r, ranked on median daily front-month
+# futures 거래대금 over 2026Q1). Eighteen names: the two lists share only
+# 005930 and 000660.
+#
+# The union, not a replacement, for two separate reasons:
+#
+#  - the eight KR-10 names that are not futures-liquid are still tradeable
+#    as SPOT, at rd-q's measured ~35.6bp round trip. Dropping them would
+#    throw away a year of collected history to save nothing -- a session
+#    already stored costs zero API calls to skip.
+#  - the eight new names have NO intraday history here at all, and the
+#    endpoint only reaches back a rolling ~250 trading days. Every day
+#    they are not collected is a session that cannot be recovered later.
+#
+# rd-r's ranking is a POINT-IN-TIME selection with an exit rule (a member
+# leaves on a delisting announcement or a failure to resume, never on
+# "it got less liquid later"), so this list changes only for those
+# reasons -- not because a later quarter reshuffles the ranking.
+UNIVERSE="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940,005380,034020,006400,042700,035420,000270,402340,012450"
 START="$(date -d '10 days ago' +%Y%m%d)"
 END="$(date +%Y%m%d)"
 
 PYTHONPATH=python python/.venv/bin/python -m data.backfill_kis \
-    --symbols "$KR10" --index 0001 --start "$START" --end "$END" \
+    --symbols "$UNIVERSE" --index 0001 --start "$START" --end "$END" \
     --adjusted 0 >>"$LOG_FILE" 2>&1
 
 # Then the minute bars, across the WHOLE rolling window rather than the
@@ -94,4 +113,4 @@ PYTHONPATH=python python/.venv/bin/python -m data.backfill_kis \
 # added work is ~2,500 SQLite range queries -- under a second -- and the
 # API calls are only for sessions genuinely missing.
 PYTHONPATH=python python/.venv/bin/python -m data.backfill_kis_intraday \
-    --symbols "$KR10" >>"$LOG_FILE" 2>&1
+    --symbols "$UNIVERSE" >>"$LOG_FILE" 2>&1
