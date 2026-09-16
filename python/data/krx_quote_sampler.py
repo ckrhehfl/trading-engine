@@ -191,8 +191,17 @@ def in_session(now: dt.datetime | None = None) -> bool:
 STALE_TOLERANCE_S = 300
 
 
-def _seconds(hhmmss: str) -> int | None:
-    if len(hhmmss) != 6 or not hhmmss.isdigit():
+def _seconds(hhmmss: object) -> int | None:
+    """`"120000"` -> 43200, or `None` for anything unusable.
+
+    **Type-checked, not just format-checked.** `aspr_acpt_hour` reaches
+    here straight off the wire, and a JSON number rather than a string
+    would make `len()` raise a `TypeError` that `attempt` does not catch
+    -- aborting the whole pass and losing every later symbol's sample.
+    That is the same failure this module already fixed once for the fetch
+    itself, re-entering through a field nobody would think of as risky.
+    """
+    if not isinstance(hhmmss, str) or len(hhmmss) != 6 or not hhmmss.isdigit():
         return None
     h, m, sec = int(hhmmss[:2]), int(hhmmss[2:4]), int(hhmmss[4:])
     if h > 23 or m > 59 or sec > 59:
@@ -201,23 +210,31 @@ def _seconds(hhmmss: str) -> int | None:
 
 
 def accepted_age_s(
-    accepted_hhmmss: str | None, now: dt.datetime | None = None
+    accepted_hhmmss: object, now: dt.datetime | None = None
 ) -> float | None:
     """How long before `now` this book's last quote was accepted.
 
-    Negative would mean accepted *after* now, which `is_stale` refuses
-    outright; this returns the age for a book that passed it. `None` when
-    the field is unreadable, in which case no age row is written and the
-    quote rows still are.
+    **Never negative.** `is_stale` tolerates an acceptance time a few
+    minutes ahead of the clock, because that is skew between this machine
+    and the venue rather than a stale book -- so a book accepted at 12:04
+    against a 12:00 sample is correctly kept, and its *age* is zero, not
+    minus four minutes. Storing a negative age would put a value into the
+    series that the quantity cannot take, and any later filter written as
+    `age <= threshold` would silently treat it as the freshest sample
+    there is.
+
+    `None` when the field is unreadable, in which case no age row is
+    written and the quote rows still are.
     """
-    accepted = _seconds(accepted_hhmmss or "")
+    accepted = _seconds(accepted_hhmmss)
     if accepted is None:
         return None
     now = now or dt.datetime.now(KST)
-    return float(now.hour * 3600 + now.minute * 60 + now.second - accepted)
+    elapsed = now.hour * 3600 + now.minute * 60 + now.second - accepted
+    return float(max(elapsed, 0))
 
 
-def is_stale(accepted_hhmmss: str | None, now: dt.datetime | None = None) -> bool:
+def is_stale(accepted_hhmmss: object, now: dt.datetime | None = None) -> bool:
     """Is this book from an earlier session rather than from now?
 
     KIS carries 호가접수시각 (`aspr_acpt_hour`) but **no date**, so the
@@ -263,7 +280,7 @@ def is_stale(accepted_hhmmss: str | None, now: dt.datetime | None = None) -> boo
     than stale, and is stored. The forward test catches every name whose
     previous session ran to the close, which is most of them.
     """
-    accepted = _seconds(accepted_hhmmss or "")
+    accepted = _seconds(accepted_hhmmss)
     if accepted is None:
         return False
     now = now or dt.datetime.now(KST)

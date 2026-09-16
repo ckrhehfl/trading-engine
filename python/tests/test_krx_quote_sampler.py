@@ -333,6 +333,29 @@ def test_a_live_book_is_not_stale(accepted, when):
     assert not is_stale(accepted, _at(*when))
 
 
+def test_a_non_string_on_the_wire_does_not_abort_the_pass():
+    """**The same failure this module already fixed once, re-entering
+    through a field nobody would think of as risky.** `aspr_acpt_hour`
+    reaches the check straight off the wire; a JSON number would make
+    `len()` raise a `TypeError`, which `attempt` does not catch — aborting
+    the whole pass and losing every later symbol's sample, permanently, on
+    a series nothing can backfill."""
+    for wire in (120000, 12.5, {}, [], None, True):
+        assert is_stale(wire, _at(12, 0)) is False
+        assert accepted_age_s(wire, _at(12, 0)) is None
+
+
+def test_an_age_is_never_negative():
+    """Skew a few minutes ahead of the clock is the venue's clock, not a
+    stale book — so the quote is kept and its age is zero, not minus four
+    minutes. A negative age is a value the quantity cannot take, and a
+    later filter written `age <= threshold` would read it as the freshest
+    sample there is."""
+    assert accepted_age_s("120400", _at(12, 0)) == 0.0
+    assert accepted_age_s("120000", _at(12, 0)) == 0.0
+    assert accepted_age_s("115900", _at(12, 0)) == 60.0
+
+
 def test_the_tolerance_absorbs_clock_skew_and_not_a_session():
     """Skew between this machine and the venue is minutes; a stale book is
     off by 25 or more."""
@@ -348,12 +371,15 @@ def test_the_blind_spot_is_real_and_narrow():
     assert is_stale("152000", _at(12, 0)), "and it closes earlier in the day"
 
 
-@pytest.mark.parametrize("bad", [None, "", "abc", "996199", "12345"])
+@pytest.mark.parametrize(
+    "bad", [None, "", "abc", "996199", "12345", 120000, 12.5, {}, [], True]
+)
 def test_an_unreadable_acceptance_time_never_discards_a_quote(bad):
     """The field is a check on the book, not the book. Losing a real quote
     because a secondary field changed shape would lose data that cannot be
     re-fetched at any price."""
     assert not is_stale(bad, _at(12, 0))
+    assert accepted_age_s(bad, _at(12, 0)) is None
 
 
 def test_a_stale_book_is_neither_stored_nor_counted_as_a_failure(monkeypatch):
