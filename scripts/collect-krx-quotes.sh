@@ -59,7 +59,15 @@ mkdir -p "$(dirname "$LOG_FILE")"
 # presence is checked.
 get_env_var() {
     [ -r "$REPO_ROOT/.env" ] || return 0
-    tr -d '\r' <"$REPO_ROOT/.env" | grep -E "^${1}=" | tail -n1 | cut -d'=' -f2-
+    # `|| true` is load-bearing, not defensive noise. Under `set -euo
+    # pipefail`, grep finding no match fails the pipeline, and a failing
+    # command substitution inside an assignment kills the script THERE --
+    # before the explicit "credentials missing" check below ever runs. The
+    # one case that check exists for (a key rotated, renamed or removed)
+    # would therefore exit silently with no log line saying why, on a
+    # collector whose series cannot be backfilled. Found on review of
+    # PR #178; reproduced before fixing.
+    tr -d '\r' <"$REPO_ROOT/.env" | grep -E "^${1}=" | tail -n1 | cut -d'=' -f2- || true
 }
 
 KIS_APP_KEY="${KIS_APP_KEY:-$(get_env_var KIS_APP_KEY)}"
