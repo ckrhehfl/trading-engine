@@ -29,7 +29,9 @@ from research.krx_intraday_power import (
     HORIZONS,
     KR10,
     KRX_ROUND_TRIP,
+    BAR_MS,
     HorizonPower,
+    continuous_blocks,
     session_forward_return,
     session_labels,
     report,
@@ -111,6 +113,65 @@ def test_sessions_are_labelled_in_kst_not_utc():
     close_kst = dt.datetime(2026, 9, 11, 15, 30, tzinfo=KST)
     ms = np.array([int(open_kst.timestamp() * 1000), int(close_kst.timestamp() * 1000)])
     assert list(session_labels(ms)) == ["20260911", "20260911"]
+
+
+def test_the_closing_auction_gap_breaks_a_block_though_the_date_does_not():
+    """**The regression this module was corrected for.** 15:19 and 15:30
+    share a KST date, so a date label calls them one session and a return
+    spanning the 11-minute closing auction survives it — recorded as an
+    `h`-minute return when it is `h + 10`.
+
+    Measured on the real series before the fix: 249 such gaps on 005930,
+    260 contaminated pairs at h=1, and σ inflated by up to 13% at h=240.
+    """
+    import datetime as dt
+
+    from data.kis_intraday import KST
+
+    def ms(hh, mm):
+        return int(dt.datetime(2026, 9, 11, hh, mm, tzinfo=KST).timestamp() * 1000)
+
+    # 15:17, 15:18, 15:19, then the auction, then the 15:30 print.
+    t = np.array([ms(15, 17), ms(15, 18), ms(15, 19), ms(15, 30)])
+    assert len(set(session_labels(t))) == 1, "one KST date, by construction"
+
+    blocks = continuous_blocks(t)
+    assert blocks[2] != blocks[3], "the auction must break the block"
+    assert blocks[0] == blocks[1] == blocks[2]
+
+
+def test_a_return_does_not_span_the_closing_auction():
+    """The property the label exists for, asserted on prices rather than
+    on labels: the 15:30 auction print jumps, and a spanning pair would
+    carry that jump into an intraday statistic."""
+    import datetime as dt
+
+    from data.kis_intraday import KST
+
+    def ms(hh, mm):
+        return int(dt.datetime(2026, 9, 11, hh, mm, tzinfo=KST).timestamp() * 1000)
+
+    t = np.array([ms(15, 17), ms(15, 18), ms(15, 19), ms(15, 30)])
+    px = np.array([100.0, 100.0, 100.0, 130.0])  # a 30% auction print
+    out = session_forward_return(px, continuous_blocks(t), 1)
+    assert np.all(np.abs(out) < 1e-12), "the auction print leaked into a 1-minute return"
+
+
+def test_a_block_breaks_on_any_irregular_step_not_an_enumerated_list():
+    """One condition covers the auction, the night, the weekend, a late
+    open and a missing minute — so none of them has to be remembered."""
+    t = np.array([0, BAR_MS, 2 * BAR_MS, 13 * BAR_MS, 14 * BAR_MS], dtype=np.int64)
+    b = continuous_blocks(t)
+    assert b[0] == b[1] == b[2]
+    assert b[3] == b[4] and b[3] != b[2]
+
+
+def test_an_empty_series_has_no_blocks():
+    assert continuous_blocks(np.array([], dtype=np.int64)).size == 0
+
+
+def test_a_single_bar_is_its_own_block():
+    assert continuous_blocks(np.array([0], dtype=np.int64)).size == 1
 
 
 # ----------------------------------------------------- the arithmetic

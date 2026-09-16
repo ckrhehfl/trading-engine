@@ -30,7 +30,9 @@ this project already records gap-blindness as a real exposure affecting
 session boundary and every close** — 250 and 249 per symbol.
 
 So `session_forward_return` returns a value only where entry and exit sit
-in the same session, and drops the rest. Being explicit is the point: a
+in the same **contiguous run of 60-second bars** — not merely the same
+calendar session, which would still let a return cross the closing
+auction. Being explicit is the point: a
 KRX event study that reuses the BTC machinery unchanged is wrong, and
 wrong in a way that produces plausible numbers.
 
@@ -127,10 +129,47 @@ class HorizonPower:
         return n * EVENT_DISPERSION_LOW**2, n * EVENT_DISPERSION_HIGH**2
 
 
+#: One bar. A block breaks wherever consecutive bars are not exactly this
+#: far apart.
+BAR_MS = 60_000
+
+
+def continuous_blocks(open_time_ms: np.ndarray) -> np.ndarray:
+    """Label each bar by the **contiguous run of 60-second steps** it
+    belongs to.
+
+    **Not the KST trading date, and that distinction is the whole
+    correction.** A date label treats 15:19 and 15:30 as one session — they
+    share a date — so a return spanning the **11-minute closing auction**
+    survives it and is recorded as an `h`-minute return when it is
+    `h + 10`. Measured on 005930: 249 such gaps, 260 contaminated pairs at
+    h=1 alone, and more at every longer horizon.
+
+    That was not an oversight about an unknown feature. This module's own
+    docstring lists the auction gap **first** among the three kinds, and
+    the date-label implementation was written anyway — the documentation
+    and the code shared one wrong mental model, which is precisely why a
+    check has to run against something outside both.
+
+    A contiguous-run rule handles all four irregularities with one
+    condition: the auction gap, the overnight and weekend boundaries, the
+    late opens, and the two genuinely missing minutes. Nothing has to be
+    enumerated, so nothing can be forgotten.
+    """
+    if open_time_ms.size == 0:
+        return np.array([], dtype=np.int64)
+    step_ok = np.concatenate([[False], np.diff(open_time_ms) == BAR_MS])
+    return np.cumsum(~step_ok)
+
+
 def session_labels(open_time_ms: np.ndarray) -> np.ndarray:
     """The KST trading date each bar belongs to.
 
-    KRX trades one continuous session a day, so the date *is* the session.
+    **Reporting only — never use this to bound a forward return.** See
+    `continuous_blocks` for why: a date is one session to a human and two
+    tradeable stretches to the tape, because the closing auction sits
+    between them.
+
     Read in KST rather than UTC because a UTC date would split the session
     at 09:00 KST — exactly in the middle of it.
     """
@@ -145,17 +184,19 @@ def session_labels(open_time_ms: np.ndarray) -> np.ndarray:
 def session_forward_return(
     open_px: np.ndarray, sessions: np.ndarray, horizon: int
 ) -> np.ndarray:
-    """Forward returns that never cross a session boundary.
+    """Forward returns that never cross a break in the tape.
 
     Entry at the bar **after** the signal, exit `horizon` bars later, both
     at the open — the same convention as `stage2_event_study`. The
     difference is the mask: a pair is kept only when entry and exit carry
-    the same session label, so no return spans the closing auction, a
-    night, or a weekend.
+    the same label, so no return spans a gap.
+
+    **`sessions` must come from `continuous_blocks`, not from
+    `session_labels`.** A date label lets a return cross the 11-minute
+    closing auction, which shares its date with the rest of the day.
 
     Returns only the valid ones; the count is the caller's evidence of how
-    much the constraint costs, which at h=240 against a 381-bar session is
-    **63% of all bars.**
+    much the constraint costs.
     """
     if horizon < 1:
         raise ValueError(f"horizon must be at least 1 bar, got {horizon}")
@@ -200,7 +241,7 @@ def measure(
     a = alpha_rank1() if alpha is None else alpha
     conn = sqlite3.connect(db_path, timeout=60)
     try:
-        series = [(t, o, session_labels(t)) for t, o in
+        series = [(t, o, continuous_blocks(t)) for t, o in
                   (load_symbol(conn, c) for c in codes)]
     finally:
         conn.close()
