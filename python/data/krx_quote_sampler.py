@@ -67,14 +67,28 @@ this exists to replace.
 own module had to learn twice: an absent quote is a failed measurement,
 and a zero-priced one would be recorded as a free instrument.
 
-**Off-hours are refused.** KRX's continuous session is 09:00-15:20 KST
-and there is no continuous book outside it. A sample taken at 16:00 would
-carry the closing auction's residue or nothing at all, and pooled into a
-median it would bias the result without ever looking wrong.
+**Off-hours are refused, and there is no flag that both bypasses the
+session and writes.** KRX trades continuously 09:00-15:20 KST, and KIS
+answers outside those hours with the **last** book rather than an empty
+one -- measured at 23:00 KST, which returned 삼성전자 at 253,500/253,000.
+So an off-hours sample is not missing data, it is plausible data from a
+different market state, and pooling it into a median biases the result
+without ever looking wrong. `--probe` fetches and prints without storing,
+which is the only way to look; an earlier `--force` skipped the check and
+stored anyway, and wrote sixteen contaminated rows during its own
+verification before they were deleted.
+
+**A failure on one instrument does not cost the rest of the pass.** An
+order book cannot be backfilled at any price, so one rejected call
+aborting the run would permanently lose this tick for every symbol after
+it, for a reason unrelated to them. Failures are isolated, named and
+counted; the process exits non-zero only when *nothing* was sampled, or
+when futures were asked for and not one contract was quoted.
 
 Run:
 
-    python -m data.krx_quote_sampler --symbols 005930,000660
+    python -m data.krx_quote_sampler --symbols 005930,000660 --futures
+    python -m data.krx_quote_sampler --symbols 005930 --futures --probe
     python -m data.krx_quote_sampler --coverage
 """
 
@@ -96,6 +110,12 @@ SPOT_QUOTE = "/uapi/domestic-stock/v1/quotations/inquire-asking-price-exp-ccn"
 TR_SPOT = "FHKST01010200"
 FUTURES_QUOTE = "/uapi/domestic-futureoption/v1/quotations/inquire-asking-price"
 TR_FUTURES = "FHMIF10010000"
+
+#: Which block each endpoint answers in -- measured, not symmetric. Pinned
+#: rather than searched, because the quantity fields are unprefixed on both
+#: and so a futures block satisfies three quarters of a spot field map.
+SPOT_BLOCK = "output1"
+FUTURES_BLOCK = "output2"
 
 SPOT_PREFIX = "KRX:"
 FUTURES_PREFIX = "KRX-FUT:"
@@ -133,7 +153,11 @@ def in_session(now: dt.datetime | None = None) -> bool:
     now = now or dt.datetime.now(KST)
     if now.weekday() >= 5:
         return False
-    return SESSION_OPEN <= now.timetz().replace(tzinfo=None) <= SESSION_CLOSE
+    # Half-open. 15:20:00 is the closing call auction's FIRST instant, not
+    # the continuous session's last -- `KrxMarketCalendar.isOpen` uses the
+    # same exclusive boundary, and a sampler disagreeing with the venue
+    # calendar by one second is a disagreement nobody would look for.
+    return SESSION_OPEN <= now.timetz().replace(tzinfo=None) < SESSION_CLOSE
 
 
 def _positive(raw: object, field: str, code: str) -> float | None:
@@ -163,7 +187,7 @@ def _positive(raw: object, field: str, code: str) -> float | None:
 
 def sample_book(
     session: KisSession, path: str, tr: str, division: str, code: str,
-    price_prefix: str, qty_prefix: str = "",
+    price_prefix: str, qty_prefix: str = "", block_key: str = "output1",
 ) -> dict[str, float] | None:
     """`{ask1, bid1, ask1_qty, bid1_qty}` for one instrument, or `None`.
 
@@ -182,10 +206,14 @@ def sample_book(
             f"msg_cd={payload.get('msg_cd')}"
         )
 
-    for key in ("output1", "output2"):
-        block = payload.get(key)
-        if not isinstance(block, dict):
-            continue
+    # **One block, named by the caller.** Searching both would let a spot
+    # request read a block it did not ask for: the quantity fields are
+    # unprefixed on BOTH endpoints, so a futures-shaped `output2` satisfies
+    # a spot field map for three of its four fields and differs only in the
+    # price key. Since the block is a measured property of each endpoint
+    # (spot output1, futures output2), pin it rather than search.
+    block = payload.get(block_key)
+    if isinstance(block, dict):
         # Two prefixes, not one: see the module docstring. On the futures
         # book `futs_askp1` is the price and `askp_rsqn1` is its size.
         fields = {
@@ -226,51 +254,102 @@ def rows_for(book: dict[str, float], contract: str, at_ms: int) -> list[Position
     ]
 
 
+def front_month(master: FuturesMaster, code: str) -> str | None:
+    """The earliest expiry the master still lists for `code`.
+
+    **Resolved per run, never hardcoded.** The master carries only live
+    contracts, so its minimum expiry is the front month by construction --
+    and a hardcoded one degrades in the worst possible way once it rolls:
+    an expired contract answers with an empty book, `sample_book`
+    correctly reports that as "not quoted", and the collector goes on
+    exiting 0 while silently recording spot alone. Nothing in the log
+    would say so.
+    """
+    listed = master.contracts.get(code)
+    return min(listed) if listed else None
+
+
 def sample_once(
     session: KisSession, conn, codes: list[str], master: FuturesMaster | None,
-    expiry: str, *, pause_s: float = 0.25, now_ms: int | None = None,
-) -> dict[str, int]:
-    """One pass over the universe. Returns per-instrument row counts."""
+    *, pause_s: float = 0.25, now_ms: int | None = None, store: bool = True,
+) -> tuple[dict[str, dict[str, float]], list[str]]:
+    """One pass. Returns `(books by symbol, failures)`.
+
+    **A failure on one instrument must not cost every later one.** An
+    order book cannot be backfilled at any price, so a single rejected
+    call aborting the pass would throw away this tick's sample for every
+    symbol after it -- permanently, and for a reason unrelated to them.
+    Each fetch is isolated, its failure named and recorded, and the pass
+    continues.
+
+    `store=False` fetches and returns without writing, which is the only
+    way to look at an out-of-session book without contaminating a series
+    whose entire purpose is an unbiased median.
+    """
     at_ms = now_ms if now_ms is not None else int(time.time() * 1000)
-    written: dict[str, int] = {}
+    books: dict[str, dict[str, float]] = {}
+    failures: list[str] = []
+
+    def attempt(symbol: str, contract: str, fetch) -> None:
+        try:
+            book = fetch()
+        except (KisKlinesError, OSError) as exc:
+            # The symbol is named because the alternative -- one line
+            # saying a pass failed -- cannot distinguish a dead contract
+            # from a rejected key.
+            failures.append(f"{symbol}: {type(exc).__name__}: {exc}")
+            return
+        if not book:
+            return
+        books[symbol] = book
+        if store:
+            upsert_positioning(conn, symbol, rows_for(book, contract, at_ms))
+
     for code in codes:
-        spot = sample_book(session, SPOT_QUOTE, TR_SPOT, "J", code, "", "")
-        if spot:
-            written[SPOT_PREFIX + code] = upsert_positioning(
-                conn, SPOT_PREFIX + code, rows_for(spot, "", at_ms)
-            )
+        attempt(
+            SPOT_PREFIX + code, "",
+            lambda code=code: sample_book(
+                session, SPOT_QUOTE, TR_SPOT, "J", code, "", "", SPOT_BLOCK
+            ),
+        )
         time.sleep(pause_s)
 
         if master is None:
             continue
-        try:
-            contract = master.contract_code(code, expiry)
-        except KisKlinesError:
-            # A name with no listed future is a real answer, not an error:
-            # two of the KR-10 had none at all (rd-r §1.2).
+        expiry = front_month(master, code)
+        if expiry is None:
+            # A name with no listed future is a real answer, not a failure:
+            # two of the KR-10 had none at all (rd-r 1.2).
             continue
-        futures = sample_book(
-            session, FUTURES_QUOTE, TR_FUTURES, "JF", contract, "futs_", ""
+        contract = master.contract_code(code, expiry)
+        attempt(
+            FUTURES_PREFIX + code, contract,
+            lambda contract=contract: sample_book(
+                session, FUTURES_QUOTE, TR_FUTURES, "JF", contract,
+                "futs_", "", FUTURES_BLOCK
+            ),
         )
-        if futures:
-            written[FUTURES_PREFIX + code] = upsert_positioning(
-                conn, FUTURES_PREFIX + code, rows_for(futures, contract, at_ms)
-            )
         time.sleep(pause_s)
-    return written
+    return books, failures
 
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbols", default="", help="comma-separated 6-digit codes")
-    ap.add_argument("--expiry", default="", help="futures expiry YYYYMM; blank = spot only")
+    ap.add_argument(
+        "--futures", action="store_true",
+        help="sample the front-month future alongside spot. The expiry is "
+             "resolved from the master on every run, never passed in.",
+    )
     ap.add_argument("--coverage", action="store_true", help="what has accumulated")
     ap.add_argument("--db-path", default=DEFAULT_DB_PATH)
     ap.add_argument(
-        "--force",
-        action="store_true",
-        help="sample outside the continuous session. Off by default because a "
-             "book outside 09:00-15:20 KST is not the book this measures.",
+        "--probe", action="store_true",
+        help="fetch and print WITHOUT storing, and without the session "
+             "check. The only way to look at an out-of-session book: there "
+             "is deliberately no flag that both bypasses the session and "
+             "writes, because such a flag puts a stale book into a series "
+             "whose whole purpose is an unbiased median.",
     )
     args = ap.parse_args(argv)
 
@@ -286,7 +365,7 @@ def main(argv: list[str] | None = None) -> int:
         print("--symbols is required", file=sys.stderr)
         return 2
 
-    if not args.force and not in_session():
+    if not args.probe and not in_session():
         # Exit 0, not a failure: a cron tick outside the session is the
         # expected case, and a non-zero exit there would train whoever
         # reads the log to ignore real failures.
@@ -298,13 +377,42 @@ def main(argv: list[str] | None = None) -> int:
         print("KIS_APP_KEY / KIS_APP_SECRET are not set", file=sys.stderr)
         return 2
 
-    master = parse_master(download_master()) if args.expiry else None
+    master = parse_master(download_master()) if args.futures else None
     session = KisSession(key, secret)
-    written = sample_once(session, conn, codes, master, args.expiry)
+    books, failures = sample_once(session, conn, codes, master, store=not args.probe)
+
+    for line in failures:
+        print(f"FAILED {line}", file=sys.stderr)
     print(
-        f"sampled {len(written)} instrument books, "
-        f"{sum(written.values())} rows written"
+        f"{'probed' if args.probe else 'stored'} {len(books)} instrument books"
+        + (f", {len(failures)} failed" if failures else "")
     )
+    if args.probe:
+        for symbol, book in sorted(books.items()):
+            mid = (book["ask1"] + book["bid1"]) / 2
+            print(
+                f"  {symbol:<16} {book['bid1']:>12,.0f} x {book['bid1_qty']:>9,.0f}"
+                f"  |  {book['ask1']:>12,.0f} x {book['ask1_qty']:>9,.0f}"
+                f"   {(book['ask1'] - book['bid1']) / mid * 1e4:>6.1f}bp"
+            )
+        return 0
+
+    # **Partial failure is reported and tolerated; total failure is not.**
+    # A scheduler can only act on an exit code, and a pass that stored
+    # nothing at all is the case worth waking someone for -- a rejected
+    # key, an expired token, a venue outage. One dead contract is not.
+    if not books:
+        print("no book was sampled at all", file=sys.stderr)
+        return 1
+    if master is not None and not any(s.startswith(FUTURES_PREFIX) for s in books):
+        # The silent-degradation case a fixed expiry used to cause: spot
+        # keeps flowing, futures quietly stops, and nothing says so.
+        print(
+            "futures were requested and NOT ONE contract was quoted; the "
+            "front month may have rolled out of the master",
+            file=sys.stderr,
+        )
+        return 1
     return 0
 
 

@@ -23,17 +23,22 @@ import types
 
 import pytest
 
+from data.kis_futures import FuturesMaster
 from data.krx_quote_sampler import (
+    FUTURES_BLOCK,
     FUTURES_PREFIX,
+    SPOT_BLOCK,
     KST,
     METRIC_PREFIX,
     PERIOD,
     SPOT_PREFIX,
     QuoteSamplerError,
     _positive,
+    front_month,
     in_session,
     rows_for,
     sample_book,
+    sample_once,
 )
 
 _SESSION = types.SimpleNamespace(host="https://example.invalid", headers=lambda tr: {})
@@ -60,12 +65,12 @@ def _futures_block(ask="250500", bid="250000", ask_q="5274", bid_q="269"):
 
 def _spot(monkeypatch, block=None):
     _serving(monkeypatch, {"rt_cd": "0", "output1": block or _spot_block()})
-    return sample_book(_SESSION, "/p", "TR", "J", "005930", "", "")
+    return sample_book(_SESSION, "/p", "TR", "J", "005930", "", "", SPOT_BLOCK)
 
 
 def _futures(monkeypatch, block=None):
     _serving(monkeypatch, {"rt_cd": "0", "output2": block or _futures_block()})
-    return sample_book(_SESSION, "/p", "TR", "JF", "A11610", "futs_", "")
+    return sample_book(_SESSION, "/p", "TR", "JF", "A11610", "futs_", "", FUTURES_BLOCK)
 
 
 # ------------------------------------------------------ the session gate
@@ -76,7 +81,7 @@ def _futures(monkeypatch, block=None):
     [
         ((2026, 9, 14, 9, 0), True),
         ((2026, 9, 14, 12, 0), True),
-        ((2026, 9, 14, 15, 20), True),
+        ((2026, 9, 14, 15, 20), False),
         ((2026, 9, 14, 8, 59), False),
         ((2026, 9, 14, 15, 21), False),
         ((2026, 9, 14, 16, 0), False),
@@ -92,11 +97,13 @@ def test_only_the_continuous_session_counts(when, open_):
     assert in_session(dt.datetime(*when, tzinfo=KST)) is open_
 
 
-def test_the_close_is_the_auction_start_not_the_bell():
-    """15:20–15:30 is the closing call auction: no continuous trade, so no
-    book of the kind this measures. The same gap `rd-p` found contaminating
-    intraday returns."""
-    assert in_session(dt.datetime(2026, 9, 14, 15, 20, tzinfo=KST))
+def test_the_close_boundary_is_exclusive():
+    """15:20:00 is the closing call auction's FIRST instant, not the
+    continuous session's last. `KrxMarketCalendar.isOpen` uses the same
+    exclusive boundary, and a sampler disagreeing with the venue calendar
+    by one second is a disagreement nobody would look for."""
+    assert in_session(dt.datetime(2026, 9, 14, 15, 19, 59, tzinfo=KST))
+    assert not in_session(dt.datetime(2026, 9, 14, 15, 20, tzinfo=KST))
     assert not in_session(dt.datetime(2026, 9, 14, 15, 25, tzinfo=KST))
 
 
@@ -125,13 +132,28 @@ def test_the_symmetric_guess_yields_no_book(monkeypatch):
     quantity name finds nothing, and the result must be `None` rather than
     a book with prices and no size."""
     _serving(monkeypatch, {"rt_cd": "0", "output2": _futures_block()})
-    assert sample_book(_SESSION, "/p", "TR", "JF", "A11610", "futs_", "futs_") is None
+    assert sample_book(
+        _SESSION, "/p", "TR", "JF", "A11610", "futs_", "futs_", FUTURES_BLOCK
+    ) is None
 
 
-def test_each_endpoint_answers_in_its_own_block(monkeypatch):
-    """Spot in `output1`, futures in `output2` — neither generalises."""
+def test_only_the_endpoint_s_own_block_is_read(monkeypatch):
+    """**Searching both blocks would let a request read one it did not ask
+    for**, and the two are not distinguishable by shape: the quantity
+    fields are unprefixed on BOTH endpoints, so a futures `output2`
+    satisfies three quarters of a spot field map and differs only in the
+    price key. The block is a measured property of each endpoint, so it is
+    pinned rather than searched."""
     _serving(monkeypatch, {"rt_cd": "0", "output2": _spot_block()})
-    assert sample_book(_SESSION, "/p", "TR", "J", "005930", "", "") is not None
+    assert sample_book(_SESSION, "/p", "TR", "J", "005930", "", "", SPOT_BLOCK) is None
+    _serving(monkeypatch, {"rt_cd": "0", "output1": _futures_block()})
+    assert sample_book(
+        _SESSION, "/p", "TR", "JF", "A11610", "futs_", "", FUTURES_BLOCK
+    ) is None
+
+
+def test_the_blocks_are_the_measured_ones():
+    assert SPOT_BLOCK == "output1" and FUTURES_BLOCK == "output2"
 
 
 # --------------------------------------------------- refusals and gaps
@@ -220,3 +242,99 @@ def test_values_are_stored_as_exact_strings():
     row = rows_for({"ask1": 253500.0}, "", 1000)[0]
     assert isinstance(row.value, str)
     assert float(row.value) == 253500.0
+
+
+# ------------------------------------------------- the expiry, per run
+
+
+def _master(listed=("202610", "202611", "202703")):
+    return FuturesMaster(contracts={"005930": {e: f"A11{e[3:]}" for e in listed}})
+
+
+def test_the_front_month_is_the_earliest_listed_expiry():
+    """The master carries only live contracts, so its minimum expiry is
+    the front month by construction — which is what makes resolving it per
+    run cheaper than tracking the second Thursday of every month."""
+    assert front_month(_master(), "005930") == "202610"
+    assert front_month(_master(("202611", "202612")), "005930") == "202611"
+
+
+def test_a_name_with_no_listed_future_has_no_front_month():
+    """Two of the KR-10 had none at all (rd-r §1.2). A real answer, not a
+    failure."""
+    assert front_month(_master(), "000000") is None
+
+
+# ----------------------------------------------- one pass over the universe
+
+
+class _Recorder:
+    """A stand-in for the store that records instead of writing."""
+
+    def __init__(self):
+        self.written: list[tuple] = []
+
+
+def _sampling(monkeypatch, responses):
+    """`responses` maps an instrument code to a payload or an exception."""
+    def fake(url, headers):
+        for code, response in responses.items():
+            if code in url:
+                if isinstance(response, Exception):
+                    raise response
+                return response
+        raise AssertionError(f"unexpected url {url}")
+
+    monkeypatch.setattr("data.krx_quote_sampler._get_with_retry", fake)
+    written: list[tuple] = []
+    monkeypatch.setattr(
+        "data.krx_quote_sampler.upsert_positioning",
+        lambda conn, symbol, rows: written.append((symbol, len(rows))) or len(rows),
+    )
+    return written
+
+
+def test_one_failure_does_not_cost_the_rest_of_the_pass(monkeypatch):
+    """**The property that matters most here.** An order book cannot be
+    backfilled at any price, so a single rejected call aborting the pass
+    would permanently lose this tick for every symbol after it, for a
+    reason unrelated to them."""
+    written = _sampling(monkeypatch, {
+        "005930": QuoteSamplerError("KIS rejected the book"),
+        "000660": {"rt_cd": "0", "output1": _spot_block()},
+    })
+    books, failures = sample_once(
+        _SESSION, None, ["005930", "000660"], None, pause_s=0, now_ms=1
+    )
+    assert list(books) == ["KRX:000660"], "the later symbol was still sampled"
+    assert len(failures) == 1 and "KRX:005930" in failures[0]
+    assert written == [("KRX:000660", 4)]
+
+
+def test_a_failure_names_the_instrument(monkeypatch):
+    """One line saying "a pass failed" cannot distinguish a dead contract
+    from a rejected key."""
+    _sampling(monkeypatch, {"005930": QuoteSamplerError("boom")})
+    _, failures = sample_once(_SESSION, None, ["005930"], None, pause_s=0, now_ms=1)
+    assert "KRX:005930" in failures[0] and "QuoteSamplerError" in failures[0]
+
+
+def test_a_probe_pass_stores_nothing(monkeypatch):
+    """The only way to look at an out-of-session book. There is
+    deliberately no path that both bypasses the session and writes — an
+    earlier `--force` did, and contaminated the series with sixteen rows
+    during its own verification."""
+    written = _sampling(monkeypatch, {"005930": {"rt_cd": "0", "output1": _spot_block()}})
+    books, _ = sample_once(
+        _SESSION, None, ["005930"], None, pause_s=0, now_ms=1, store=False
+    )
+    assert books, "it still fetches"
+    assert written == [], "and stores nothing"
+
+
+def test_an_empty_book_is_neither_stored_nor_a_failure(monkeypatch):
+    """An unquoted instrument is a fact about it. Counting it as a failure
+    would make a thin name look like an outage."""
+    written = _sampling(monkeypatch, {"005930": {"rt_cd": "0", "output1": {}}})
+    books, failures = sample_once(_SESSION, None, ["005930"], None, pause_s=0, now_ms=1)
+    assert books == {} and failures == [] and written == []

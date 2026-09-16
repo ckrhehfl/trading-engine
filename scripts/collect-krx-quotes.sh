@@ -75,16 +75,16 @@ export KIS_APP_KEY KIS_APP_SECRET
 # names a strategy would actually trade.
 UNIVERSE="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940,005380,034020,006400,042700,035420,000270,402340,012450"
 
-# The front-month futures expiry. Both instruments are sampled per name,
-# because rd-q's whole finding is that the cheaper one differs BY NAME and
-# the comparison needs both sides measured at the same instant.
+# Both instruments per name, because rd-q's whole finding is that the
+# cheaper one differs BY NAME and the comparison needs both sides measured
+# at the same instant.
 #
-# This rolls: the contract expires on the second Thursday of its month, so
-# this must be advanced. An expired contract returns an empty book, which
-# the sampler records as "not quoted" rather than failing -- so a stale
-# expiry here degrades silently into spot-only collection. Check the log's
-# instrument count if the futures series stops growing.
-EXPIRY="202610"
-
+# THE EXPIRY IS NOT PASSED IN. An earlier version hardcoded one, which
+# degrades in the worst possible way once the contract rolls: an expired
+# contract answers with an empty book, the sampler correctly reports "not
+# quoted", and the collector keeps exiting 0 while silently recording spot
+# alone. Nothing in this log would have said so. --futures resolves the
+# front month from the master on every run and exits non-zero if futures
+# were asked for and not one contract was quoted.
 PYTHONPATH=python python/.venv/bin/python -m data.krx_quote_sampler \
-    --symbols "$UNIVERSE" --expiry "$EXPIRY" >>"$LOG_FILE" 2>&1
+    --symbols "$UNIVERSE" --futures >>"$LOG_FILE" 2>&1
