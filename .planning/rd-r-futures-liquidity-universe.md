@@ -26,9 +26,9 @@ be fixed before it is applied, exactly as `ms-e` fixed KR-10's."*
 >
 > **Day-one selection is meaningful here, and that had to be measured
 > rather than assumed**: the 2026Q1 ranking and the 2026Q2-to-date
-> ranking correlate at **Spearman +0.954** across 238 names, with **7 of
-> the top 10** shared. A low figure would have said no point-in-time
-> futures-liquidity selection is possible at all.
+> ranking correlate at **Spearman +0.954** across **241** names, with
+> **7 of the top 10** shared. A low figure would have said no
+> point-in-time futures-liquidity selection is possible at all.
 >
 > **The instrument is affordable, which was not obvious.** The selected
 > ten need accounts of **₩42M to ₩883M** under the 2% canary limit —
@@ -242,9 +242,31 @@ say that **no point-in-time futures-liquidity selection is possible at
 all**, which is a finding about the instrument and would have to be
 reported as one.
 
-**Spearman +0.954 across 238 names**, top-10 overlap **7 of 10**. The
+**Spearman +0.954 across 241 names**, top-10 overlap **7 of 10**. The
 three that left the top 10 went to ranks 13, 23 and 11 — a reshuffle
 inside the top quarter, not a different universe.
+
+### 5.1 The sample was first computed wrongly, and the error flattered it
+
+**Corrected on review of PR #177.** The first version required a name to
+clear the coverage floor in the **forward** window as well as the ranking
+one, which dropped three names and left 238. That is **selection on the
+outcome, inside the statistic that exists to justify selecting on the
+ranking window** — it removes exactly the names whose liquidity collapsed,
+and those are the ones that would lower the correlation.
+
+The sample is now fixed by ranking-window eligibility alone: 241 names,
+every one of them scored on whatever its forward value turned out to be.
+
+**The figure did not move**, to three decimal places, and the top-10
+overlap is unchanged. The three excluded names (000880, 183300, 456040)
+failed a *coverage* floor rather than collapsing — two of them still
+traded 97 and 99 of 115 sessions — so including them changed nothing.
+
+That is worth stating plainly in both directions: **the method was wrong
+and the result surviving it is a fact about this sample, not a defence.**
+Had one of those three been a genuine collapse, the published +0.954 would
+have been an artefact of the filter.
 
 So a rule fixed on 2026Q1 information selects substantially the same
 names a rule fitted with hindsight would, which is the property day-one

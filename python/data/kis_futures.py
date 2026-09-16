@@ -142,6 +142,13 @@ class FuturesMaster:
             raise KisKlinesError(f"{underlying} has no listed single-stock future")
         if len(expiry) != 6 or not expiry.isdigit():
             raise KisKlinesError(f"not a YYYYMM expiry: {expiry!r}")
+        if not 1 <= int(expiry[4:]) <= 12:
+            # Shape is not validity, the same reason `parse_row` checks the
+            # calendar as well as the digits. `202613` would otherwise build
+            # `A11613`, a well-formed code for a month that does not exist,
+            # and a well-formed wrong code returns zero rows -- which this
+            # module reports as "not served".
+            raise KisKlinesError(f"month {expiry[4:]} is not a month: {expiry!r}")
 
         prefixes = {code[:-3] for code in listed.values()}
         if len(prefixes) != 1:
@@ -301,9 +308,20 @@ def daily_bars(
             f"KIS rejected the futures history for {code}: "
             f"rt_cd={payload.get('rt_cd')} msg_cd={payload.get('msg_cd')}"
         )
+    if "output2" not in payload:
+        # MEASURED, not assumed (2026-09-16): KIS sends `output2` on every
+        # successful response, as `[]` both for a contract it has dropped
+        # and for a live contract asked outside its life. So an ABSENT key
+        # is not a shape this endpoint produces, and reading it as an empty
+        # series is precisely the failure rd-o hit once -- a backfill that
+        # treats `rt_cd=0` as success, records nothing, and reports a clean
+        # run.
+        raise KisKlinesError(
+            f"no output2 in a successful response for {code}. An empty series "
+            f"arrives as output2: [] -- an absent key means the response shape "
+            f"has changed, not that the contract has no bars."
+        )
     rows = payload.get("output2")
-    if rows is None:
-        return []
     if not isinstance(rows, list):
         raise KisKlinesError(f"output2 for {code} is {type(rows).__name__}, not a list")
     if len(rows) >= ROW_CAP:

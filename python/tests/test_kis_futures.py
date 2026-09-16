@@ -156,6 +156,15 @@ def test_a_malformed_expiry_is_refused(expiry):
         _master().contract_code("005930", expiry)
 
 
+@pytest.mark.parametrize("expiry", ["202613", "202600", "202699"])
+def test_a_month_that_is_not_a_month_is_refused(expiry):
+    """Shape is not validity. `202613` builds `A11613` — a well-formed code
+    for a month that does not exist — and a well-formed wrong code returns
+    zero rows, which this module reports as "not served"."""
+    with pytest.raises(KisKlinesError, match="is not a month"):
+        _master().contract_code("005930", expiry)
+
+
 # ---------------------------------------------------------------- the bar
 
 
@@ -216,6 +225,31 @@ def test_a_malformed_date_is_refused(date):
 def test_zero_rows_is_an_empty_series_rather_than_an_error(monkeypatch):
     """How KIS reports a contract it has dropped — `rt_cd=0`, nothing in
     it. The decaying window is the fact, not a failure."""
+    monkeypatch.setattr(
+        "data.kis_futures._get_with_retry",
+        lambda url, headers: {"rt_cd": "0", "output2": []},
+    )
+    assert daily_bars(_session(None), "A11512", "20250101", "20251231") == []
+
+
+def test_an_absent_output2_raises_rather_than_reading_as_no_bars(monkeypatch):
+    """**Measured, not assumed** (2026-09-16): KIS sends `output2` on every
+    successful response, as `[]` both for a dropped contract and for a live
+    one asked outside its life. So an absent key means the response shape
+    changed — and reading it as an empty series is exactly the failure rd-o
+    hit once: treat `rt_cd=0` as success, record nothing, report a clean
+    run."""
+    monkeypatch.setattr(
+        "data.kis_futures._get_with_retry",
+        lambda url, headers: {"rt_cd": "0", "output1": {}},
+    )
+    with pytest.raises(KisKlinesError, match="no output2"):
+        daily_bars(_session(None), "A11512", "20250101", "20251231")
+
+
+def test_an_explicit_empty_output2_is_still_an_empty_series(monkeypatch):
+    """The negative control: `[]` is the real no-bars answer and must stay
+    distinguishable from the absent key above."""
     monkeypatch.setattr(
         "data.kis_futures._get_with_retry",
         lambda url, headers: {"rt_cd": "0", "output2": []},

@@ -22,6 +22,7 @@ import pytest
 
 from research.krx_futures_universe import (
     FRONT_MONTH_SERIES_START,
+    report,
     MAX_ORDER_NOTIONAL_FRACTION,
     MIN_SESSION_COVERAGE,
     RANKING_WINDOW,
@@ -259,6 +260,41 @@ def test_ties_are_averaged_rather_than_ordered_arbitrarily():
     by dictionary iteration, which would make the correlation depend on
     the collection order rather than the data."""
     assert spearman([1.0, 1.0, 2.0], [5.0, 5.0, 9.0]) == 1.0
+
+
+def test_persistence_is_measured_on_the_ranking_window_s_own_sample(capsys):
+    """**Filtering the sample on FORWARD eligibility is selection on the
+    outcome**, inside the very statistic that exists to justify selecting
+    on the ranking window: it drops exactly the names whose liquidity
+    collapsed, which are the ones that would lower the correlation.
+
+    Here the collapsed name is ranked second in Q1 and last afterwards. If
+    it were excluded the two orderings would agree perfectly; included, the
+    correlation has to fall."""
+    ranking = [
+        _liquidity_for("aaa", value=300.0),
+        _liquidity_for("collapsed", value=200.0),
+        _liquidity_for("ccc", value=100.0),
+    ]
+    forward = {
+        "aaa": _liquidity_for("aaa", value=300.0),
+        # Traded on almost nothing afterwards, so it fails a forward
+        # coverage floor -- which is the whole point.
+        "collapsed": _liquidity_for("collapsed", traded=1, value=1.0),
+        "ccc": _liquidity_for("ccc", value=100.0),
+    }
+    report(ranking, forward)
+    out = capsys.readouterr().out
+    assert "across 3 names" in out, out
+    assert "+1.000" not in out, "the collapsed name was silently excluded"
+
+
+def _liquidity_for(name, traded=60, expected=60, value=1e9, close=250_000.0):
+    return Liquidity(
+        underlying=name, traded_sessions=traded, printed_sessions=expected,
+        expected_sessions=expected, median_value_krw=value,
+        median_volume=100.0, last_close=close,
+    )
 
 
 def test_a_side_with_no_spread_is_refused_rather_than_returning_zero():

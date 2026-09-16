@@ -375,8 +375,10 @@ def report(
         f"{'traded':>8} {'contract ₩':>13} {'min account ₩':>15} {'fwd rank':>9}"
     )
     print("-" * 92)
+    # Ranked within the same fixed sample, for the same reason.
+    ranking_eligible = {row.underlying for row in eligible}
     forward_order = sorted(
-        (row for row in forward.values() if row.eligible),
+        (row for row in forward.values() if row.underlying in ranking_eligible),
         key=lambda row: row.median_value_krw, reverse=True,
     )
     forward_rank = {row.underlying: i for i, row in enumerate(forward_order, 1)}
@@ -392,14 +394,17 @@ def report(
             f"{forward_rank.get(row.underlying, 0) or '-':>9}"
         )
 
-    shared = [
-        row.underlying for row in eligible
-        if row.underlying in forward and forward[row.underlying].eligible
-    ]
+    # **The sample is fixed by RANKING-window eligibility alone.** Requiring
+    # forward eligibility too would filter the persistence measurement on
+    # the future -- dropping exactly the names whose liquidity collapsed,
+    # which are the ones that would lower the correlation. Selection on the
+    # outcome, inside the statistic that exists to justify selecting on the
+    # ranking window.
+    shared = [row.underlying for row in eligible if row.underlying in forward]
     if len(shared) >= 2:
+        by_name = {row.underlying: row for row in eligible}
         rho = spearman(
-            [next(r for r in eligible if r.underlying == u).median_value_krw
-             for u in shared],
+            [by_name[u].median_value_krw for u in shared],
             [forward[u].median_value_krw for u in shared],
         )
         overlap = len(
