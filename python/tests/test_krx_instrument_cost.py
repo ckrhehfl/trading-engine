@@ -188,6 +188,56 @@ def test_a_failed_price_fetch_raises_rather_than_recording_zero(monkeypatch, pay
         krx_instrument_cost._futures_price(_SESSION, "A11610")
 
 
+@pytest.mark.parametrize("raw", ["nan", "inf", "-inf", "NaN", "Infinity"])
+def test_a_non_finite_price_is_refused(monkeypatch, raw):
+    """`float()` accepts all of these and none is caught by `price <= 0`.
+    A `nan` is the dangerous one: every comparison against it is False, so
+    `cheaper` would quietly answer "spot" for a futures cost that is not a
+    number at all, and `contract_notional_krw` would print `nan`."""
+    _price_returning(
+        monkeypatch,
+        {"rt_cd": "0", "output1": {"futs_prpr": raw, "acml_vol": "1"}},
+    )
+    with pytest.raises(KisKlinesError, match="finite"):
+        krx_instrument_cost._futures_price(_SESSION, "A11610")
+
+
+def test_nan_would_have_survived_a_positivity_check():
+    """The negative control for the test above -- it asserts the property
+    that makes the guard necessary, so the guard cannot be removed on the
+    belief that `<= 0` already covered it."""
+    assert not (float("nan") <= 0) and not (float("inf") <= 0)
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        pytest.param({"futs_prpr": "250000"}, id="no acml_vol"),
+        pytest.param({"futs_prpr": "250000", "acml_vol": ""}, id="blank"),
+        pytest.param({"futs_prpr": "250000", "acml_vol": "n/a"}, id="not a number"),
+        pytest.param({"futs_prpr": "250000", "acml_vol": "-5"}, id="negative"),
+    ],
+)
+def test_a_missing_volume_is_refused_because_zero_reads_as_illiquid(monkeypatch, block):
+    """Same direction-of-error argument as the price. rd-q's whole finding
+    is that futures liquidity splits the universe, so a missing volume
+    recorded as 0 does not merely lose a figure -- it argues the name is
+    untradeable."""
+    _price_returning(monkeypatch, {"rt_cd": "0", "output1": block})
+    with pytest.raises(KisKlinesError, match="volume"):
+        krx_instrument_cost._futures_price(_SESSION, "A11610")
+
+
+def test_a_genuinely_zero_volume_is_kept(monkeypatch):
+    """A listed contract that did not trade that day is a real observation
+    and must not be confused with a missing field."""
+    _price_returning(
+        monkeypatch,
+        {"rt_cd": "0", "output1": {"futs_prpr": "250000", "acml_vol": "0"}},
+    )
+    assert krx_instrument_cost._futures_price(_SESSION, "A11610") == (0, 250_000.0)
+
+
 def test_the_price_failure_is_not_shaped_like_an_empty_book(monkeypatch):
     """`_best_quote` returns `None` for an empty book on purpose — a
     contract nobody quotes is a fact. An absent *price* is a failed

@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import argparse
 import io
+import math
 import os
 import statistics
 import sys
@@ -241,9 +242,29 @@ def _futures_price(session: KisSession, code: str) -> tuple[int, float]:
         raise KisKlinesError(
             f"futures price for {code} is not a number: {block['futs_prpr']!r}"
         ) from exc
-    if price <= 0:
-        raise KisKlinesError(f"futures price for {code} is {price}, not positive")
-    return int(block.get("acml_vol") or 0), price
+    # `nan` and `inf` both survive `float()` and both survive `<= 0`, and
+    # `nan` then propagates silently through every comparison downstream --
+    # `cheaper` would return "spot" for a nan futures cost without anything
+    # looking wrong. Finiteness is checked before positivity for that
+    # reason, not as a formality.
+    if not math.isfinite(price) or price <= 0:
+        raise KisKlinesError(
+            f"futures price for {code} is not a finite positive number: {price}"
+        )
+    # The same fail-closed argument as the price, for the same reason: a
+    # missing volume recorded as 0 reads as an ILLIQUID name, and the
+    # liquidity split is rd-q's entire finding. `"0"` stays valid -- a
+    # listed contract that did not trade that day is a real observation.
+    try:
+        volume = int(block["acml_vol"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise KisKlinesError(
+            f"futures volume for {code} is missing or unparseable: "
+            f"{block.get('acml_vol')!r}"
+        ) from exc
+    if volume < 0:
+        raise KisKlinesError(f"futures volume for {code} is negative: {volume}")
+    return volume, price
 
 
 def measure(
