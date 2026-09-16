@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-106 documents and counting, which is past the point where `ls` is a
+107 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -226,3 +226,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-m-stage3-separator-specification.md`](rd-m-stage3-separator-specification.md) — Research Direction Task M — stage 3: what splits the branches, and why this instrument is better than stage 2's
 - [`rd-n-stage3-separator-result.md`](rd-n-stage3-separator-result.md) — Research Direction Task N — stage 3 result: 0 of 18, the null was finally right, and the family was still too small
 - [`rd-o-krx-intraday-backfill.md`](rd-o-krx-intraday-backfill.md) — Research Direction Task O — the KRX intraday backfill, because the window is expiring
+- [`rd-p-what-krx-intraday-could-resolve.md`](rd-p-what-krx-intraday-could-resolve.md) — Research Direction Task P — what KRX intraday could resolve, measured before anything is specified
