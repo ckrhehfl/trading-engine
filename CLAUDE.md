@@ -6,7 +6,50 @@ Personal, institution-style BTC/USDT futures trading system. The system may
 eventually place real trades. Treat all execution, risk, leverage, position
 mode, exchange API, deployment, and key-management changes as high-risk.
 
-## Current Scope (MVP)
+## Current Scope
+
+**Narrowed to Korean domestic equities on 2026-09-17, operator decision.
+BTC is set aside — not abandoned, and nothing about it is deleted.**
+
+Everything now runs on the GCP instance: KRX/KIS collection and research
+both. **Nothing is scheduled on the local machine**, which is what makes
+this a real narrowing rather than a preference — the Binance geo-block
+(HTTP 451) was the only thing forcing a second host, and with BTC set
+aside it no longer binds.
+
+| | status |
+|---|---|
+| KRX/KIS collection (quotes, intraday, 투자자별 매매동향) | **running**, on the instance |
+| KRX research | runs on the instance — verified, 103MB peak for the heaviest module |
+| BingX/Binance collection | **stopped** |
+| the two BTC paper-trading loops (`simulated`, `bingx-vst`) | **stopped** |
+
+**What stopping cost, stated because one part of it is irreversible:**
+
+- **Binance positioning can never be backfilled.** `collect-positioning.sh`
+  read endpoints with a rolling ~30-day window, so the gap starting
+  2026-09-17 is permanent. **138,814 rows are kept** and nothing is
+  deleted; BingX/Binance klines, funding rates and the macro series are
+  all re-fetchable and are kept too.
+- **Gate A's clock was reset by choice.** The two loops had accumulated
+  **12 consecutive daily reports (2026-09-05 … 09-16)** against a
+  15-consecutive-day requirement — three days short of a gate this
+  project has never passed. Discarding it was the operator's explicit
+  decision after being shown the cost, not an oversight.
+
+**The `kis-paper` loop is NOT a replacement for the stopped ones and is
+not running.** Its kill switch trips unconditionally at construction by
+design, and `STOCK_FUTURES` refuses to start at all because the per-stock
+contract multiplier is still unconfirmed. Standing up a Korean paper loop
+is its own piece of work, with the three open KIS gaps on its checklist.
+
+**Everything the BTC arc established still binds** — the Eligibility Bar,
+the spent windows, `N`, the scalping rules, the Trade Management
+findings. Setting the instrument aside does not retire the methodology it
+produced, and `daily-tsmom-ensemble`'s paper-trading exception is
+suspended rather than revoked: its loop is simply not running.
+
+### The MVP as originally scoped, kept for the record
 
 - Exchange: BingX (first implementation, not a hardcoded assumption)
 - Product: BTC/USDT USDT-M Perpetual Futures
@@ -718,22 +761,78 @@ just `/futures/data/` but plain `fapi/v1/klines` too — with *"Service
 unavailable from a restricted location"*, and the instance's egress IP
 geolocates to **US**. So:
 
-- **Binance collection is local-only.** `scripts/collect-positioning.sh`
-  runs on the local (Korean-IP) machine's crontab at `*/30`, and that is
-  the collector of record, not a convenience. Verified healthy on
-  2026-09-14: 118,794 rows, current to that day.
-- **The instance's `positioning` table is a stale replica, not a second
-  collector.** It held 64,848 rows stopping at 2026-09-05 and *cannot*
-  catch up. Running the collector there fails every series and exits
-  non-zero — which is the fail-closed design working, and is **not** a
-  bug to fix by retrying.
-- **KIS/KRX is the opposite**: it works from the instance and is
-  unaffected by this. A collector's home is therefore chosen per venue,
-  not once for the project.
+- **Binance collection could only ever run locally**, from a Korean IP.
+  `scripts/collect-positioning.sh` was that collector, at `*/30` on the
+  local crontab; it was **stopped on 2026-09-17** when BTC was set aside,
+  and nothing has replaced it. The constraint it existed under is
+  unchanged and would force it back to the local machine the moment BTC
+  resumes.
+- **Running the Binance collector on the instance fails every series and
+  exits non-zero** — the fail-closed design working, and **not** a bug to
+  fix by retrying.
+- **KIS/KRX is the opposite**: it works from the instance (`HTTP 200`,
+  re-verified 2026-09-17). A collector's home is therefore chosen per
+  venue, not once for the project.
 
 This is the operational consequence of the "Run it where it will run"
 lesson already recorded under Change checks, which named the 451 without
 saying what follows from it.
+
+**All KRX/KIS collection moved to the instance on 2026-09-17, and the
+split is now venue-clean.** The local machine is a laptop that is not
+reliably on during the KRX session (09:00–15:20 KST), and the quote
+sampler is the first collector that must run *during* it. On its first
+scheduled day it collected nothing: `cron` itself only came up at 17:26
+KST, after the close. One session of order-book samples was lost
+permanently — there is **no historical endpoint for a spread at any
+price**, which makes it the least recoverable series this project has.
+The intraday bars and 투자자별 매매동향 for the same day were recovered,
+because both are rolling windows.
+
+| | collects | database of record |
+|---|---|---|
+| **GCP instance** (always on, UTC) | `collect-krx-quotes.sh`, `-flow.sh`, `-intraday.sh` | **KRX/KIS** |
+| ~~**local** (Korean IP)~~ | ~~`collect-positioning.sh`~~ | ~~**Binance**~~ |
+
+**Exactly one writer per series**, which is what actually stops two
+databases drifting — not a policy of keeping one file.
+
+**The local row went away on 2026-09-17** when BTC was set aside: nothing
+is scheduled on the local machine at all now. It is struck through rather
+than deleted because the *reason* it existed — Binance's HTTP 451 — is
+unchanged and would force it back the moment BTC resumes.
+
+Three consequences a future session must not rediscover the hard way:
+
+1. **The instance runs UTC.** KRX trades 00:00–06:20 UTC, so its cron
+   reads `*/30 0-6 * * 1-5`. Getting this wrong **fails silently**: the
+   sampler gates on KST internally, so a wrong-hour entry just logs
+   *"outside the continuous session"* forever and collects nothing. The
+   crontab carries this in a comment.
+2. **The KRX data of record is the instance's copy, and research may run
+   in either place** — which is the one thing to get right, because the
+   two answers differ.
+
+   Research **on the instance** reads the record directly and needs no
+   sync. It fits: the heaviest KRX module peaks at 103MB, and the two
+   paper-trading JVMs that used to crowd it were stopped on 2026-09-17.
+   It is I/O-bound there rather than CPU-bound (8% CPU, 1:43 wall for 4s
+   of compute), so expect it to be slower, not to fail.
+
+   Research **on the local machine** — where interactive sessions
+   actually happen — reads a copy that stops advancing the moment
+   collection moved. Run **`scripts/sync-krx-from-instance.sh`** first,
+   every time. It is additive (`INSERT OR IGNORE`, never `UPDATE` or
+   `DELETE`), copies only `KRX`-prefixed rows, and is safe to re-run.
+
+   **It brings new rows down, not corrections.** `INSERT OR IGNORE` keeps
+   the local value where a primary key already exists, so a row the
+   instance later *fixed* would not propagate. That is the deliberate
+   trade for never being able to lose data in a sync; re-fetching the
+   affected range locally is the way to pick a correction up.
+3. **The repo on the instance lives under `minjun4897`**, not the SSH
+   login user, and was 16 commits behind when this was set up. Its
+   collectors are only as current as its checkout.
 
 **Computed statistics, load-bearing for how this data may be used** (not
 API facts): Binance spot vs BingX daily closes over their full 1,909-day
