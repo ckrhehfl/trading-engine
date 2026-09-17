@@ -105,6 +105,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import bisect
 import datetime as dt
 import sqlite3
 from dataclasses import dataclass
@@ -259,8 +260,9 @@ def trading_days(db_path: str = DEFAULT_DB_PATH) -> list[dt.date]:
         raise ValueError(
             f"{CALENDAR_SYMBOL} has no daily bars, so there is no trading calendar "
             f"to derive a trade-date boundary from. Refusing to fall back on "
-            f"calendar-day arithmetic: the seam is 4 days at one boundary and "
-            f"2 at another, entirely because of where the holidays fall."
+            f"calendar-day arithmetic: the trade-to-statutory gap is 4 days at "
+            f"one boundary and 5 at another, entirely because of where the "
+            f"non-trading days fall."
         )
     return [dt.datetime.fromtimestamp(ms / 1000, dt.UTC).date() for (ms,) in rows]
 
@@ -274,17 +276,22 @@ def trade_date_boundary(
     calendar's own first session -- correct, since every trade in it
     settles after the change.
 
-    `None` means the opposite end: **no** trade in this calendar settles
-    late enough, i.e. the change takes effect after the window ends. A
-    caller must treat that as "not yet in force" and not as "in force
-    throughout", which is the direction an `or calendar[0]` fallback would
-    silently get wrong for a future-dated era.
+    `None` means the opposite end: **no session in this calendar settles
+    on or after the statutory date**, i.e. the change takes effect after
+    the window ends. A caller must treat that as "not yet in force" and
+    not as "in force throughout", which is the direction an
+    `or calendar[0]` fallback would silently get wrong.
+
+    **`None` is also returned when the calendar merely stops too early to
+    see a change that did happen**, and those two cases are
+    indistinguishable from here -- which is exactly why `total_bp`
+    refuses a trade whose own settlement lies beyond the calendar rather
+    than asking this function about it.
     """
-    for i, day in enumerate(calendar):
-        settles = i + lag
-        if settles < len(calendar) and calendar[settles] >= statutory:
-            return day
-    return None
+    settles_at = bisect.bisect_left(calendar, statutory)
+    if settles_at == len(calendar):
+        return None
+    return calendar[max(settles_at - lag, 0)]
 
 
 def eras_for(market: str) -> list[TaxEra]:
@@ -310,15 +317,33 @@ def total_bp(market: str, trade_date: dt.date, calendar: list[dt.date]) -> float
         )
     if not calendar:
         raise ValueError("an empty trading calendar cannot date a boundary")
-    if not calendar[0] <= trade_date <= calendar[-1]:
-        # A trade outside the calendar gets a plausible answer from the
-        # wrong era: every boundary resolves to the calendar's own first
-        # session, so an earlier trade date compares false against all of
-        # them and silently receives the OLDEST rate in the schedule.
+    position = bisect.bisect_left(calendar, trade_date)
+    if position == len(calendar) or calendar[position] != trade_date:
+        # Not a session at all -- a weekend, a holiday, or outside the
+        # calendar entirely. An outside date is the dangerous one: every
+        # boundary resolves to the calendar's own first session, so an
+        # earlier trade date compares false against all of them and
+        # silently receives the OLDEST rate in the schedule.
         raise ValueError(
-            f"trade date {trade_date} is outside the calendar "
+            f"{trade_date} is not a session in this calendar "
             f"({calendar[0]} .. {calendar[-1]}), so no boundary in it can date "
             f"the trade. Pass the calendar that covers the trade."
+        )
+    if position + SETTLEMENT_LAG_SESSIONS >= len(calendar):
+        # **The rate is genuinely indeterminate here, not merely awkward.**
+        # This trade settles beyond the calendar's last session, so
+        # whether a change applies to it cannot be read from this data --
+        # and the failure is silent and data-dependent: the identical
+        # trade on 2024-12-27 pays 15bp against a calendar that reaches
+        # 2025-01-02 and 18bp against one that stops at 2024-12-30,
+        # because the 2025 boundary becomes unfindable and the era is
+        # skipped. Refusing is the only answer that does not depend on
+        # where the data happens to end.
+        raise ValueError(
+            f"a trade on {trade_date} settles {SETTLEMENT_LAG_SESSIONS} sessions "
+            f"later, beyond this calendar's last session ({calendar[-1]}), so its "
+            f"rate cannot be determined. Pass a calendar extending at least "
+            f"{SETTLEMENT_LAG_SESSIONS} sessions past the trade."
         )
     applicable = eras[0]
     for era in eras[1:]:
@@ -366,11 +391,24 @@ def flat_rate_error(
     schedule-level bias and the wrong one for any particular strategy: a
     strategy that traded more in 2019 is understated by more. A real
     registration applies `total_bp` per trade and does not use this.
+
+    The final `SETTLEMENT_LAG_SESSIONS` sessions are **excluded and
+    counted**, not silently dropped: their settlement lies beyond the
+    calendar, so their rate is indeterminate. `undatable_sessions` reports
+    how many, so a caller can see the aggregate is not over the whole
+    window.
     """
-    real = [total_bp(market, day, calendar) for day in calendar]
+    datable = calendar[: len(calendar) - SETTLEMENT_LAG_SESSIONS]
+    if not datable:
+        raise ValueError(
+            f"a calendar of {len(calendar)} sessions is too short to date any "
+            f"trade: every one of them settles beyond its end."
+        )
+    real = [total_bp(market, day, datable + calendar[len(datable):]) for day in datable]
     mean = sum(real) / len(real)
     return {
-        "sessions": float(len(calendar)),
+        "sessions": float(len(datable)),
+        "undatable_sessions": float(len(calendar) - len(datable)),
         "mean_real_bp": mean,
         "flat_bp": flat_bp,
         "error_bp": flat_bp - mean,

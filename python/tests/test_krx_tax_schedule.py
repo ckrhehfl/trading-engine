@@ -168,14 +168,60 @@ def test_a_change_after_the_window_has_no_boundary_and_is_not_in_force():
     assert [era.total_bp for _, _, era in spans] == [30.0, 25.0]
 
 
+def test_a_trade_whose_settlement_falls_off_the_calendar_is_refused():
+    """**A real, silent, data-dependent bug before this guard** (found on
+    review of PR #179). The identical trade on 2024-12-27 pays 15bp
+    against a calendar reaching 2025-01-02 and **18bp** against one
+    stopping at 2024-12-30 — because the 2025 boundary becomes unfindable
+    and the era is skipped, so the answer depended on where the data
+    happened to end rather than on the trade."""
+    reaching = _2024_SEAM
+    stopping = _2024_SEAM[: _2024_SEAM.index(dt.date(2024, 12, 30)) + 1]
+    assert total_bp(KOSPI, dt.date(2024, 12, 27), reaching) == 15.0
+    with pytest.raises(ValueError, match="cannot be determined"):
+        total_bp(KOSPI, dt.date(2024, 12, 27), stopping)
+
+
+def test_the_last_sessions_of_any_calendar_cannot_date_themselves():
+    """Not a special case — every calendar has this tail, because the
+    settlement of its final sessions is simply not in it."""
+    for day in _2024_SEAM[-SETTLEMENT_LAG_SESSIONS:]:
+        with pytest.raises(ValueError, match="cannot be determined"):
+            total_bp(KOSPI, day, _2024_SEAM)
+    # The session just before the tail is fine.
+    assert total_bp(KOSPI, _2024_SEAM[-3], _2024_SEAM) > 0
+
+
+def test_a_non_session_date_is_refused():
+    """A weekend or holiday inside the calendar's span is not a trade date
+    at all, and answering for it would invent a trade."""
+    with pytest.raises(ValueError, match="not a session"):
+        total_bp(KOSPI, dt.date(2024, 12, 21), _2024_SEAM)  # Saturday
+    with pytest.raises(ValueError, match="not a session"):
+        total_bp(KOSPI, dt.date(2024, 12, 25), _2024_SEAM)  # Christmas
+
+
+def test_the_aggregate_excludes_the_undatable_tail_and_says_so():
+    """Dropped sessions are counted rather than silently omitted, so the
+    aggregate cannot be read as covering the whole window."""
+    err = flat_rate_error(KOSPI, _2024_SEAM)
+    assert err["undatable_sessions"] == SETTLEMENT_LAG_SESSIONS
+    assert err["sessions"] == len(_2024_SEAM) - SETTLEMENT_LAG_SESSIONS
+
+
+def test_a_calendar_too_short_to_date_anything_is_refused():
+    with pytest.raises(ValueError, match="too short"):
+        flat_rate_error(KOSPI, _2024_SEAM[:SETTLEMENT_LAG_SESSIONS])
+
+
 def test_a_trade_outside_the_calendar_is_refused():
     """It would otherwise get a plausible answer from the wrong era: every
     boundary resolves to the calendar's own first session, so an earlier
     trade date compares false against all of them and silently receives
     the OLDEST rate in the schedule — 30bp, the highest there is."""
-    with pytest.raises(ValueError, match="outside the calendar"):
+    with pytest.raises(ValueError, match="not a session"):
         total_bp(KOSPI, dt.date(2018, 1, 2), _2019_SEAM)
-    with pytest.raises(ValueError, match="outside the calendar"):
+    with pytest.raises(ValueError, match="not a session"):
         total_bp(KOSPI, dt.date(2026, 1, 2), _2019_SEAM)
 
 
@@ -278,9 +324,10 @@ def test_the_error_is_measured_against_the_real_rates_not_asserted():
     """A two-era calendar where the arithmetic is checkable by hand: seven
     sessions at 30bp and four at 25bp against a flat 20."""
     err = flat_rate_error(KOSPI, _2019_SEAM)
-    assert err["sessions"] == 11
-    assert err["sessions_understated"] == 11, "every 2019 session exceeds 20bp"
+    assert err["sessions"] == 9, "11 sessions less the undatable tail of 2"
+    assert err["sessions_understated"] == 9, "every 2019 session exceeds 20bp"
     assert err["max_understatement_bp"] == 10.0
-    # Five sessions before the 05-30 boundary, six from it.
-    assert err["mean_real_bp"] == pytest.approx((30.0 * 5 + 25.0 * 6) / 11)
+    # Five sessions before the 05-30 boundary, four from it inside the
+    # datable span.
+    assert err["mean_real_bp"] == pytest.approx((30.0 * 5 + 25.0 * 4) / 9)
     assert err["error_bp"] < 0, "flat 20bp understates"

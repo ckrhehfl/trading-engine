@@ -32,7 +32,8 @@ measurement, like rd-f itself.
 > tax averages **21.45bp** against rd-f's flat **20.0bp** — the flat
 > figure is **1.45bp light**. It is too low on **986 sessions (52%)**, by
 > as much as **10bp**; too high on **486 (26%)**, by as much as 5bp; and
-> exactly right on **421 (22%)**.
+> exactly right on **419 (22%)**. (The window's final two sessions are
+> excluded — see §5.)
 >
 > **But the more consequential finding is not the rate — it is the date.**
 > Every statutory rate change is keyed to the **양도일 (settlement date)**,
@@ -153,6 +154,21 @@ strategy that traded more in 2019–2020 is understated by more than
 `total_bp(market, trade_date, calendar)` per trade. The aggregate exists
 to answer rd-f's question about the direction of the bias, which was
 posed at the level of the schedule.
+
+**The window's last two sessions are excluded, and counted.** A trade
+settles two sessions later, so the final two sessions of any calendar
+settle beyond it and their rate cannot be read from that data at all.
+`flat_rate_error` reports `undatable_sessions` rather than quietly
+dropping them, and `total_bp` **refuses** such a trade instead of
+answering.
+
+> That refusal replaced a real, silent, data-dependent bug, found on
+> review of PR #179: the identical trade on 2024-12-27 returned **15bp**
+> against a calendar reaching 2025-01-02 and **18bp** against one stopping
+> at 2024-12-30, because the 2025 boundary became unfindable and the era
+> was skipped. The answer depended on where the data happened to end
+> rather than on the trade — which is the failure this whole section is
+> about, reappearing one level down.
 
 ## 6. What this does not establish
 

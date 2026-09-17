@@ -155,7 +155,7 @@ as unsourced with **the direction of its bias unestablished**. That was a
 prerequisite for a Korean registration before this document and still is —
 and it now blocks a live question rather than a hypothetical one.
 
-> **Closed 2026-09-17 by [`rd-s`](rd-s-korean-tax-schedule.md).** The schedule is sourced per era; a flat 20bp understates the window by **1.45bp** session-weighted, and every statutory date turned out to be a **settlement** date two sessions after the trade date that triggers it. This paragraph is left as written because it was true when the measurement it qualifies was taken.
+> **Closed 2026-09-17 by [`rd-s`](rd-s-korean-tax-schedule.md).** The schedule is sourced per era; a flat 20bp understates the window by **1.45bp** session-weighted, and every statutory date turned out to be a **settlement (양도일)** date — the rate for a trade is the one in force at the first settlement session on or after it, two sessions later. This paragraph is left as written because it was true when the measurement it qualifies was taken.
 
 **Nothing about futures data availability.** Expired contracts return
 `rt_cd=0` with zero rows, so a futures-based backtest reads the
