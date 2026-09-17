@@ -28,12 +28,15 @@ rather than re-searched**, which is what keeps their cost at zero.
 > The axis this project could never compute before is the only one
 > carrying anything.
 
-| feature | h | kind | n | rank IC | p |
-|---|---|---|---|---|---|
-| `ret_5` | 15 | **cross-sectional** | 5,977 | **−0.0399** | 2.2e-16 |
-| `ret_15` | 15 | **cross-sectional** | 5,803 | **−0.0288** | 1.3e-08 |
-| `ret_15` | 60 | **cross-sectional** | 1,259 | **−0.0297** | 6.0e-03 |
-| `range_pos_60` | 15 | **cross-sectional** | 5,030 | **−0.0264** | 2.4e-07 |
+| feature | h | kind | n | rank IC | p naive | **p block** | SEx |
+|---|---|---|---|---|---|---|---|
+| `ret_5` | 15 | **cross-sectional** | 5,977 | **−0.0399** | 2.2e-16 | **0.0005** | 1.06 |
+| `ret_15` | 15 | **cross-sectional** | 5,803 | **−0.0288** | 1.3e-08 | **0.0005** | 0.97 |
+| `ret_15` | 60 | **cross-sectional** | 1,259 | **−0.0297** | 6.0e-03 | **0.0045** | 1.01 |
+| `range_pos_60` | 15 | **cross-sectional** | 5,030 | **−0.0264** | 2.4e-07 | **0.0005** | 0.94 |
+
+**The gate runs on `p block`, not on `p naive`** — see §5.1. The naive
+column is retained only so the size of the correction is visible.
 
 Every survivor is **negative**: the name that has risen most against its
 peers over the last 5–15 minutes tends to **underperform** them over the
@@ -66,18 +69,30 @@ That is the most consequential sentence here, because every one of the
 
 ## 3. Eight features are about three signals, and only one carries
 
-| pair | \|ρ\| | |
-|---|---|---|
-| `rvol_15` vs `rvol_60` | 0.850 | same signal |
-| `ret_60` vs `range_pos_60` | 0.788 | same signal |
-| `ret_15` vs `range_pos_60` | 0.654 | same signal |
-| `ret_5` vs `ret_15` | 0.515 | same signal |
-| `rvol_60` vs `volume_z_60` | 0.118 | independent |
+Measured as the **per-instant cross-sectional** rank correlation, averaged
+— the same construction the ICs use. The figures in brackets are what a
+correlation pooled over every (name, instant) pair reported, and every one
+of them is higher; §5.2 explains why that construction overstates
+redundancy and why it was replaced.
+
+| pair | \|ρ\| | (pooled) | |
+|---|---|---|---|
+| `rvol_15` vs `rvol_60` | **0.765** | (0.850) | same signal |
+| `ret_60` vs `range_pos_60` | **0.654** | (0.788) | same signal |
+| `ret_15` vs `range_pos_60` | **0.549** | (0.654) | same signal |
+| `ret_5` vs `ret_15` | **0.459** | (0.515) | borderline |
+| `ret_5` vs `range_pos_60` | 0.399 | | |
+| `rvol_15` vs `range_pos_60` | 0.075 | | independent |
 
 So the eight collapse to roughly **three**: *recent relative move*
 (returns and range position together), *volatility*, and *volume*. **S11
 found exactly the same collapse on BTC** — ten survivors, three signals —
 which is now a twice-observed property rather than one market's quirk.
+
+The `ret_5`/`ret_15` pair sits at 0.459 rather than the pooled 0.515, so
+it no longer crosses the 0.5 "same signal" line on its own. The grouping
+is unchanged regardless: both are tied into the same cluster through
+`range_pos_60` (0.399 and 0.549), and all four §1 survivors live in it.
 
 **Of the three, only "recent relative move" survives.** Volatility and
 volume clear neither the floor nor the correction in the cross-section.
@@ -133,6 +148,81 @@ inside one contiguous run of 60-second bars. The cost is the first
 `lookback` bars of **every session**, and it is reported rather than
 absorbed.
 
+## 5.1 The naive p-value is not a significance test, and correcting it strengthened the conclusion
+
+**Raised on review of PR #181 and it was right.** Both IC constructions
+produce samples that are not independent: ten names share a market-wide
+move at the same instant, and instants within one session share that
+session's conditions. Stepping by the horizon removes *overlap between
+forward windows* and does nothing about either. `research/ic.py` already
+said as much about its own p-values, and CLAUDE.md carries the standing
+rule — *deduplicate to independent samples before reporting a p-value, or
+state that you did not.* Feeding those p-values straight to
+Benjamini-Hochberg made the `survive` column a screening result wearing a
+significance test's clothes.
+
+Every p-value is now a **session block bootstrap**: 2,000 resamples of
+whole trading dates, at a fixed seed so the figure is reproducible.
+`SEx` — the block standard error over the naive one, the analogue of the
+`null_sd / se` ratio CLAUDE.md requires on every permutation test — is
+reported on every row.
+
+**The correction is real, and it is asymmetric in the direction that
+matters:**
+
+| | SEx median | range (h = 15, 60) | effect |
+|---|---|---|---|
+| **time-series** rows | **1.32** | **1.12 – 1.89** | naive p-values were materially too small |
+| **cross-sectional** rows | 0.99 | 0.90 – 1.06 | essentially uncorrected |
+
+The ranges exclude h=240, whose 79–137 observations make its own SEx an
+estimate with little behind it (§7 already declines to read those rows as
+measurements); the time-series minimum over all horizons is 0.94, and it
+is an h=240 row.
+
+That is not a coincidence, and it is the most interesting thing this
+correction produced. The time-series construction *pools across names at
+the same instant*, which is precisely the dependence being corrected for.
+The cross-sectional construction already collapses each instant to one
+number before averaging, so it had almost nothing left to correct.
+
+**So §1's conclusion survives the correction, and the correction is
+additional evidence for it.** The four survivors are the same four
+cross-sectional rows, at essentially unchanged p-values. What changes is
+the time-series column: `rvol_60` at h=15 moves 1.4e-03 → **0.0895**,
+`volume_z_60` at h=15 moves 3.9e-03 → **0.0325**, `rvol_15` at h=15 moves
+1.0e-02 → **0.1220**. The rows that looked closest to carrying were the
+ones being flattered most.
+
+**One defect found while building it, worth recording because a correction
+that produces a false positive is worse than no correction.** The first
+version bootstrapped the mean of per-session ICs while the `rank_ic`
+printed beside it was the pooled Spearman — two different statistics. On
+the real run it reported `p = 0.0005` where the naive p was `0.41`, which
+is how it was caught: a dependence correction is not supposed to turn a
+null result significant. The bootstrap now resamples the statistic that is
+actually reported, via per-session sufficient statistics so 2,000 draws
+over 59,698 pairs stay affordable.
+
+## 5.2 Redundancy had to be measured cross-sectionally too
+
+**Also raised on review of PR #181, and also right.** `orthogonality()`
+pooled every (name, instant) pair into a single correlation. That absorbs
+two things which have nothing to do with redundancy: the persistent level
+difference between names — this universe spans ₩84,000 to ₩1,765,000 a
+share — and the common time variation every name shares.
+
+Both inflate it, so two features whose cross-sectional *rankings*
+genuinely disagree every day could still be reported as "the same signal".
+And this is not a side diagnostic: **it is what §3 turns into the signal
+count, and the signal count is what §8 carries forward.**
+
+Since the conclusion is a cross-sectional one — *which name, right now* —
+the correlation has to be the cross-sectional one: rank the universe by
+each feature at one instant, correlate the two rankings, average over
+instants. Every pair came down, as §3 records. The qualitative grouping
+into three signals held.
+
 ## 6. The cross-sectional sample was wrong first, and the fix changed the answer
 
 The first implementation stepped by the horizon **inside each symbol**,
@@ -170,10 +260,28 @@ Bounded rather than removed: rd-r measured rank persistence at Spearman
 **h = 240 is thin.** 79–137 instants. Those rows are reported for
 completeness and should not be read as measurements.
 
-**투자자별 매매동향 is absent**, and it is the obvious third axis — the one
-information source Korea has that crypto does not. Collection started
-2026-09-14 and it cannot be backfilled, so there is one month of it. That
-is why waiting is productive here rather than idle.
+**투자자별 매매동향 is absent from every figure above**, and it is the
+obvious third axis — the one information source Korea has that crypto does
+not. What exists, measured on the instance 2026-09-18 rather than assumed:
+
+| | |
+|---|---|
+| storage | `positioning`, metrics `krx_investor_flow.{individual,institution,foreign}.{buy,sell}.{qty,value}` |
+| symbols | **18** |
+| trading dates | **33**, 2026-08-03 → 2026-09-17, no interior gap |
+| collection began | 2026-09-14 |
+
+**33 trading dates from four days of collection is not a contradiction,
+and this is the part worth stating** — a reviewer reasonably read "one
+month" as arithmetic that does not work. `inquire-investor` takes **no
+date parameter and returns a rolling 30-row lookback**, so the very first
+call on 2026-09-14 already delivered back to 2026-08-03. The series
+therefore cannot be backfilled *earlier* than that first call, and loses
+nothing from that call forward — which is exactly why the collector's
+start date matters and why it is now on the always-on instance.
+
+One month of 18 names is enough to look at and not enough to specify on.
+That is why waiting here is productive rather than idle.
 
 ## 8. What follows
 
@@ -193,3 +301,11 @@ is why waiting is productive here rather than idle.
 5. **Then a specification, committed before any confirmation run**, with
    the entry taken from outside where possible and the management policy
    adopted from Task D rather than re-searched.
+6. **Every future cross-sectional measurement in this project inherits
+   §5.1 and §5.2.** Both are construction rules rather than results: a
+   p-value over observations that share a session is not a significance
+   test, and a redundancy figure must be computed in the same
+   cross-section as the conclusion drawn from it.
+   [`rd-u`](rd-u-do-conjunctions-beat-their-parts.md) hit the first of
+   these independently, one task later, and there it moved the verdict
+   from one surviving hypothesis to none.

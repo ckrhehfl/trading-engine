@@ -75,9 +75,11 @@ Run:
 from __future__ import annotations
 
 import argparse
+import math
 import sqlite3
 import sys
 from dataclasses import dataclass
+from statistics import NormalDist
 
 import numpy as np
 
@@ -274,6 +276,170 @@ def _stats(xs: list[float], ys: list[float]) -> tuple[float | None, float | None
     return rank_ic, lin, p
 
 
+#: Resamples for the session block bootstrap. 2,000 is enough to resolve a
+#: p-value at the 0.01 scale, which is the scale the correction operates on.
+BOOTSTRAP_DRAWS = 2000
+
+#: Fixed so the reported p-value is reproducible. A bootstrap whose seed
+#: moves between runs is a figure that cannot be checked.
+BOOTSTRAP_SEED = 20260918
+
+
+def session_of(ms: int) -> int:
+    """The KRX trading date a bar belongs to, as a day index.
+
+    A KRX trading date maps exactly onto UTC midnight (the session opens
+    09:00 KST and KST is UTC+9), so integer division by a day is the
+    session key -- no calendar and no holiday table needed.
+    """
+    return int(ms) // 86_400_000
+
+
+def _draw_sums(
+    per_session: np.ndarray, draws: int, seed: int = BOOTSTRAP_SEED
+) -> np.ndarray:
+    """Sufficient statistics for `draws` session-resamples, all at once.
+
+    `per_session` is `(sessions, k)` of per-session sums. Resampling
+    sessions with replacement and re-summing is a matrix product against a
+    multinomial count matrix, so every draw is computed in one operation
+    rather than by concatenating arrays in a Python loop. That is what
+    makes a 2,000-draw bootstrap affordable on a 59,698-pair sample.
+    """
+    rng = np.random.default_rng(seed)
+    s = per_session.shape[0]
+    counts = rng.multinomial(s, np.full(s, 1.0 / s), size=draws).astype(float)
+    return counts @ per_session
+
+
+def block_bootstrap_mean_p(
+    values: list[float], sessions: list[int], draws: int = BOOTSTRAP_DRAWS
+) -> tuple[float | None, float | None]:
+    """`(two-sided p, block SE / naive SE)` for a **mean**, resampling whole
+    sessions.
+
+    **Why the naive p-value is not admissible as a significance test, and
+    this is.** Both IC constructions here produce samples that are not
+    independent: names share a market-wide move at the same instant, and
+    instants within one session share that session's conditions. Stepping
+    by the horizon removes *overlap between forward windows* and does
+    nothing about either. `research/ic.py` says as much about its own
+    p-values, and CLAUDE.md carries the standing rule -- deduplicate to
+    independent samples before reporting a p-value, or say you did not.
+
+    So the resampling unit is the session: every observation from one
+    trading date moves together, which is the dependence that exists.
+
+    The returned ratio is the analogue of the `null_sd / se` figure
+    CLAUDE.md requires on every permutation test. **A ratio above 1 means
+    the naive p-value was too small** -- and it is reported rather than
+    silently applied, because the size of the correction is itself the
+    finding.
+    """
+    if len(values) < 3 or len(values) != len(sessions):
+        return None, None
+    arr = np.asarray(values, dtype=float)
+    keys = np.asarray(sessions)
+    uniq = np.unique(keys)
+    if uniq.size < 3:
+        return None, None
+    per_session = np.array(
+        [[arr[keys == k].sum(), float((keys == k).sum())] for k in uniq]
+    )
+    observed = float(arr.mean())
+    sums = _draw_sums(per_session, draws)
+    stats = sums[:, 0] / sums[:, 1]
+    naive_se = float(arr.std(ddof=1)) / math.sqrt(arr.size)
+    return _p_and_ratio(observed, stats, naive_se, draws)
+
+
+def block_bootstrap_corr_p(
+    xs: list[float], ys: list[float], sessions: list[int],
+    draws: int = BOOTSTRAP_DRAWS,
+) -> tuple[float | None, float | None]:
+    """The same session resampling, for a pooled **rank correlation**.
+
+    **This has to test the statistic that is reported, and the first
+    version of it did not.** An earlier attempt bootstrapped the mean of
+    per-session ICs while `rank_ic` beside it was the pooled Spearman —
+    two different numbers, so a small p said nothing about the figure it
+    was printed next to. On the real run that produced `p = 0.0005` where
+    the naive p was `0.41`, which is how it was caught: a correction is
+    not supposed to make a null result significant.
+
+    Spearman is Pearson on ranks, so the ranks are taken **once** over the
+    full sample and the resample recomputes Pearson from per-session
+    sufficient statistics. Re-ranking inside every draw would be the purer
+    construction; it is also the standard approximation not to, and the
+    observed statistic it reproduces is exactly the reported one.
+    """
+    if len(xs) < 3 or len(xs) != len(ys) or len(xs) != len(sessions):
+        return None, None
+    rx = _ranks(np.asarray(xs, dtype=float))
+    ry = _ranks(np.asarray(ys, dtype=float))
+    keys = np.asarray(sessions)
+    uniq = np.unique(keys)
+    if uniq.size < 3:
+        return None, None
+    rows = []
+    for k in uniq:
+        m = keys == k
+        a, b = rx[m], ry[m]
+        rows.append(
+            [a.size, a.sum(), b.sum(), (a * a).sum(), (b * b).sum(), (a * b).sum()]
+        )
+    per_session = np.array(rows, dtype=float)
+    observed = _corr_from_sums(per_session.sum(axis=0))
+    if observed is None:
+        return None, None
+    sums = _draw_sums(per_session, draws)
+    stats = np.array([_corr_from_sums(r) or 0.0 for r in sums])
+    # The naive p implies this standard error, via t = r*sqrt((n-2)/(1-r^2)).
+    n = float(rx.size)
+    naive_se = (
+        math.sqrt((1 - observed**2) / (n - 2)) if n > 2 and abs(observed) < 1 else None
+    )
+    return _p_and_ratio(observed, stats, naive_se, draws)
+
+
+def _ranks(a: np.ndarray) -> np.ndarray:
+    """Average ranks, so ties do not bias the correlation."""
+    order = np.argsort(a, kind="mergesort")
+    ranked = np.empty(a.size, dtype=float)
+    sorted_a = a[order]
+    i = 0
+    while i < a.size:
+        j = i
+        while j + 1 < a.size and sorted_a[j + 1] == sorted_a[i]:
+            j += 1
+        ranked[order[i : j + 1]] = 0.5 * (i + j) + 1.0
+        i = j + 1
+    return ranked
+
+
+def _corr_from_sums(r: np.ndarray) -> float | None:
+    n, sx, sy, sxx, syy, sxy = r
+    if n < 3:
+        return None
+    num = n * sxy - sx * sy
+    den = math.sqrt(max(n * sxx - sx * sx, 0.0)) * math.sqrt(max(n * syy - sy * sy, 0.0))
+    return float(num / den) if den > 0 else None
+
+
+def _p_and_ratio(
+    observed: float, stats: np.ndarray, naive_se: float | None, draws: int
+) -> tuple[float, float | None]:
+    # Centre on the observed statistic: the null is "the true value is 0",
+    # so the reference distribution is the bootstrap spread about zero.
+    centred = stats - observed
+    p = float(np.mean(np.abs(centred) >= abs(observed)))
+    # A p of exactly 0 is a resolution limit, not certainty.
+    p = max(p, 1.0 / draws)
+    block_se = float(stats.std(ddof=1))
+    ratio = block_se / naive_se if naive_se and naive_se > 0 else None
+    return p, ratio
+
+
 @dataclass(frozen=True)
 class IcRow:
     feature: str
@@ -283,6 +449,12 @@ class IcRow:
     rank_ic: float | None
     pearson_ic: float | None
     p_value: float | None
+    #: Session block bootstrap. **This is the one the gate runs on**; the
+    #: naive `p_value` above is kept only so the correction's size is
+    #: visible, and is not a significance test on its own.
+    p_block: float | None = None
+    #: block SE / naive SE. Above 1 means the naive p was optimistic.
+    se_ratio: float | None = None
 
     @property
     def usable(self) -> bool:
@@ -299,6 +471,7 @@ def timeseries_ic(
     """
     xs: list[float] = []
     ys: list[float] = []
+    sessions: list[int] = []
     for bars in universe:
         f = values[bars.code]
         fwd = forward_return(bars, horizon)
@@ -309,8 +482,15 @@ def timeseries_ic(
         for i in idx[:: max(horizon, 1)]:
             xs.append(float(f[i]))
             ys.append(float(fwd[i]))
+            sessions.append(session_of(int(bars.open_time_ms[i])))
     rank_ic, lin, p = _stats(xs, ys)
-    return IcRow(feature.name, horizon, "time-series", len(xs), rank_ic, lin, p)
+    # The reported statistic is the POOLED rank correlation, so that is
+    # what the bootstrap resamples -- not some other summary of the same
+    # data. See `block_bootstrap_corr_p` for why that distinction bit.
+    p_block, ratio = block_bootstrap_corr_p(xs, ys, sessions)
+    return IcRow(
+        feature.name, horizon, "time-series", len(xs), rank_ic, lin, p, p_block, ratio
+    )
 
 
 def cross_sectional_ic(
@@ -346,6 +526,7 @@ def cross_sectional_ic(
 
     grid = sorted(all_ms)[:: max(horizon, 1)]
     per_instant: list[float] = []
+    sessions: list[int] = []
     for ms in grid:
         pairs = [usable[b.code][ms] for b in universe if ms in usable[b.code]]
         if len(pairs) < 3:
@@ -353,11 +534,9 @@ def cross_sectional_ic(
         rho = spearman([p[0] for p in pairs], [p[1] for p in pairs])
         if rho is not None:
             per_instant.append(rho)
+            sessions.append(session_of(ms))
     if not per_instant:
         return IcRow(feature.name, horizon, "cross-sectional", 0, None, None, None)
-
-    import math
-    from statistics import NormalDist
 
     mean = float(np.mean(per_instant))
     sd = float(np.std(per_instant, ddof=1)) if len(per_instant) > 1 else 0.0
@@ -365,19 +544,49 @@ def cross_sectional_ic(
     if sd > 0:
         t = mean / (sd / math.sqrt(len(per_instant)))
         p = 2 * (1 - NormalDist().cdf(abs(t)))
-    return IcRow(feature.name, horizon, "cross-sectional", len(per_instant), mean, None, p)
+    # `rank_ic` here IS the mean of the per-instant ICs, so the mean is
+    # the right statistic to bootstrap. Instants within one session are
+    # not independent draws, so sessions are the resampling unit.
+    p_block, ratio = block_bootstrap_mean_p(per_instant, sessions)
+    return IcRow(
+        feature.name, horizon, "cross-sectional", len(per_instant), mean, None,
+        p, p_block, ratio,
+    )
+
+
+#: Instants sampled when measuring redundancy, in bars. Coarse on purpose
+#: -- adjacent minutes carry nearly the same feature values, so sampling
+#: every minute adds rows without adding information.
+ORTHOGONALITY_STEP = 60
 
 
 def orthogonality(
     universe: list[SymbolBars], values: dict[str, np.ndarray],
     features: list[Feature] | None = None,
 ) -> dict[tuple[str, str], float]:
-    """Pairwise |rank correlation| between features, pooled across names.
+    """Pairwise |rank correlation| between features, **per instant** across
+    the universe, then averaged.
 
-    **This decides how many signals there are, not how many features.**
+    **This decides how many signals there are, not how many features**, so
+    the construction has to match the one the signals are measured in.
     S11's ten survivors were about three signals; expecting the same
     collapse here is the prior, and `IR ~= IC * sqrt(breadth)` takes the
     number of *independent* ones.
+
+    **An earlier version pooled every (name, instant) pair into one
+    correlation, and that measures the wrong thing.** A pooled correlation
+    absorbs two effects that have nothing to do with redundancy: the
+    persistent level difference between names (a ₩1,765,000 share and a
+    ₩84,000 share sit in different parts of a feature's range), and the
+    common time variation every name shares. Both inflate it, so two
+    features whose *cross-sectional rankings* genuinely disagree every day
+    could still be reported as "the same signal".
+
+    Since the conclusion drawn from this is a cross-sectional one -- which
+    name, right now -- the correlation must be the cross-sectional one
+    too: rank the universe by each feature at one instant, correlate the
+    two rankings, and average over instants. That is exactly what
+    `cross_sectional_ic` does for a feature against forward returns.
     """
     features = features or list(FEATURES)
     out: dict[tuple[str, str], float] = {}
@@ -385,8 +594,10 @@ def orthogonality(
     look = {f.name: f.lookback for f in features}
     for i, a in enumerate(names):
         for b in names[i + 1 :]:
-            xs: list[float] = []
-            ys: list[float] = []
+            # The same effective name set at each instant, so a pair is
+            # never compared on a cross-section one of them is missing.
+            present: dict[str, dict[int, tuple[float, float]]] = {}
+            all_ms: set[int] = set()
             for bars in universe:
                 fa, fb = values[bars.code + "|" + a], values[bars.code + "|" + b]
                 ok = (
@@ -394,12 +605,21 @@ def orthogonality(
                     & np.isfinite(fa)
                     & np.isfinite(fb)
                 )
-                for k in np.flatnonzero(ok)[::60]:
-                    xs.append(float(fa[k]))
-                    ys.append(float(fb[k]))
-            rho = spearman(xs, ys)
-            if rho is not None:
-                out[(a, b)] = abs(rho)
+                idx = np.flatnonzero(ok)
+                present[bars.code] = {
+                    int(bars.open_time_ms[k]): (float(fa[k]), float(fb[k])) for k in idx
+                }
+                all_ms.update(present[bars.code])
+            per_instant: list[float] = []
+            for ms in sorted(all_ms)[::ORTHOGONALITY_STEP]:
+                pairs = [present[bb.code][ms] for bb in universe if ms in present[bb.code]]
+                if len(pairs) < 3:
+                    continue
+                rho = spearman([p[0] for p in pairs], [p[1] for p in pairs])
+                if rho is not None:
+                    per_instant.append(rho)
+            if per_instant:
+                out[(a, b)] = abs(float(np.mean(per_instant)))
     return out
 
 
@@ -433,6 +653,18 @@ def available_features(universe: list[SymbolBars]) -> tuple[list[Feature], list[
     return keep, dropped
 
 
+def symbol_block_count(universe: list[SymbolBars]) -> int:
+    """Total contiguous blocks, counted **per symbol**.
+
+    `continuous_blocks` is called once per name and numbers from 0 each
+    time, so a set over the concatenated IDs merges every name's block 0
+    into one. On the real ten-name universe that reads **562** against a
+    real **5,381** — an order of magnitude out, in the line the run prints
+    to describe its own input.
+    """
+    return sum(int(np.unique(b.blocks).size) for b in universe)
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--symbols", default=",".join(UNIVERSE))
@@ -452,7 +684,7 @@ def main(argv: list[str] | None = None) -> int:
     bars_total = sum(b.open.size for b in universe)
     print(
         f"universe: {len(universe)} names, {bars_total:,} bars, "
-        f"{len(set(np.concatenate([b.blocks for b in universe]).tolist())):,} contiguous blocks\n"
+        f"{symbol_block_count(universe):,} symbol-specific contiguous blocks\n"
     )
 
     features, dropped = available_features(universe)
@@ -479,22 +711,43 @@ def main(argv: list[str] | None = None) -> int:
             rows.append(timeseries_ic(universe, per_feature[f.name], f, h))
             rows.append(cross_sectional_ic(universe, per_feature[f.name], f, h))
 
-    flags = benjamini_hochberg([r.p_value for r in rows])
-    print(f"{'feature':<15} {'h':>4} {'kind':<16} {'n':>9} {'rank IC':>9} {'p':>10}  ")
-    print("-" * 74)
+    # **BH runs on the block-bootstrap p, not the naive one.** The naive
+    # p-value treats correlated observations as independent draws, so it
+    # is a screening figure only; it is printed beside its correction so
+    # the size of the difference is visible rather than asserted.
+    flags = benjamini_hochberg([r.p_block for r in rows])
+    print(
+        f"{'feature':<15} {'h':>4} {'kind':<16} {'n':>9} {'rank IC':>9} "
+        f"{'p naive':>10} {'p block':>9} {'SEx':>5}  "
+    )
+    print("-" * 90)
     for row, survives in zip(rows, flags):
         ic = f"{row.rank_ic:+.4f}" if row.rank_ic is not None else "-"
         p = f"{row.p_value:.2e}" if row.p_value is not None else "-"
+        pb = f"{row.p_block:.4f}" if row.p_block is not None else "-"
+        sx = f"{row.se_ratio:.2f}" if row.se_ratio is not None else "-"
         mark = "  <<" if (survives and row.usable) else ""
         print(
             f"{row.feature:<15} {row.horizon:>4} {row.kind:<16} {row.n:>9,} "
-            f"{ic:>9} {p:>10}{mark}"
+            f"{ic:>9} {p:>10} {pb:>9} {sx:>5}{mark}"
+        )
+
+    ratios = [r.se_ratio for r in rows if r.se_ratio is not None]
+    if ratios:
+        print(
+            f"\n  SEx is the session-block standard error over the naive one "
+            f"(median {float(np.median(ratios)):.2f}, max "
+            f"{max(ratios):.2f}). Above 1 means the naive p was too small.\n"
+            f"  'p naive' is a SCREENING figure and is not a significance "
+            f"test: names share a market-wide move at one instant and "
+            f"instants share a session, so\n  its observations are not "
+            f"independent draws. The gate below runs on 'p block'."
         )
 
     kept = [r for r, s in zip(rows, flags) if s and r.usable]
     print(
         f"\n{len(kept)} of {len(rows)} clear BOTH the |IC| >= {USABLE_IC} floor and "
-        f"Benjamini-Hochberg at alpha=0.05."
+        f"Benjamini-Hochberg at alpha=0.05 on the block-bootstrap p."
     )
     if not kept:
         print(
@@ -502,7 +755,13 @@ def main(argv: list[str] | None = None) -> int:
             "market, not about the market."
         )
 
-    print("\n=== orthogonality: how many SIGNALS, not how many features ===")
+    print("\n=== redundancy: how many SIGNALS, not how many features ===")
+    print(
+        "  Per-instant cross-sectional rank correlation, averaged — the same\n"
+        "  construction the ICs are measured in. A pooled correlation over\n"
+        "  every (name, instant) pair would absorb the level difference\n"
+        "  between names and the move they share, and overstate redundancy."
+    )
     pairs = orthogonality(universe, flat, features)
     strong = sorted(pairs.items(), key=lambda kv: -kv[1])[:8]
     for (a, b), r in strong:
