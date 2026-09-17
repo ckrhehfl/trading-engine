@@ -84,8 +84,53 @@ class TableSync:
         return self.available - self.inserted
 
 
-def _columns(conn: sqlite3.Connection, table: str) -> list[str]:
-    return [row[1] for row in conn.execute(f"PRAGMA table_info({table})")]
+def _columns(conn: sqlite3.Connection, table: str, schema: str = "main") -> list[str]:
+    return [row[1] for row in conn.execute(f"PRAGMA {schema}.table_info({table})")]
+
+
+def _required_columns(
+    conn: sqlite3.Connection, table: str, schema: str = "main"
+) -> set[str]:
+    """Columns that cannot be left to a default -- NOT NULL with no default.
+
+    `PRAGMA table_info` returns `(cid, name, type, notnull, dflt_value, pk)`.
+    """
+    return {
+        row[1]
+        for row in conn.execute(f"PRAGMA {schema}.table_info({table})")
+        if row[3] and row[4] is None and not row[5]
+    }
+
+
+def shared_columns(
+    conn: sqlite3.Connection, table: str
+) -> list[str]:
+    """The columns both databases have, in the destination's order.
+
+    **The instance's schema can lag this machine's**, which is not
+    hypothetical: its checkout was 16 commits behind when collection moved
+    there, and `store.py` migrates `klines` additively -- `quote_volume`,
+    `taker_buy_base_volume` and `taker_buy_quote_volume` were each added
+    to an existing table. Projecting the destination's full column list
+    onto an older source makes SQLite raise `no such column` before the
+    merge runs at all, and `main` catches only `ValueError`, so the sync
+    would die with a traceback rather than a diagnosis.
+
+    A destination column the source lacks is simply left to its default,
+    which is exactly right for a nullable column added later. A **required**
+    one is a real incompatibility and is refused by name.
+    """
+    dest = _columns(conn, table)
+    source = set(_columns(conn, table, schema="src"))
+    missing_and_required = _required_columns(conn, table) - source
+    if missing_and_required:
+        raise ValueError(
+            f"the source's {table} is missing {sorted(missing_and_required)}, which "
+            f"this database requires and cannot default. The snapshot predates a "
+            f"schema change that was not additive -- update the instance's checkout "
+            f"and take a fresh snapshot rather than merging a partial row."
+        )
+    return [column for column in dest if column in source]
 
 
 def merge_krx(source_db: str, dest_db: str) -> list[TableSync]:
@@ -115,10 +160,10 @@ def merge_krx(source_db: str, dest_db: str) -> list[TableSync]:
             ).fetchone()[0]
             total_available += available
 
-            # Columns from the DESTINATION, so a source carrying an older
-            # or newer schema cannot shift values into the wrong columns.
-            columns = _columns(dest, table)
-            names = ", ".join(columns)
+            # The INTERSECTION, named explicitly on both sides, so a source
+            # whose schema lags cannot break the merge and a source whose
+            # schema is ahead cannot shift values into the wrong columns.
+            names = ", ".join(shared_columns(dest, table))
             before = dest.execute(f"SELECT COUNT(*) FROM main.{table}").fetchone()[0]
             dest.execute(
                 f"INSERT OR IGNORE INTO main.{table} ({names}) "

@@ -237,3 +237,61 @@ def test_the_ownership_rule_covers_every_shared_table():
     assert rules["klines"] and "KRX" in rules["klines"]
     assert rules["positioning"] and "KRX" in rules["positioning"]
     assert rules["krx_universe"] is None
+
+
+# ------------------------------------------- an older instance schema
+
+
+def _older_schema_source(tmp_path):
+    """A `klines` table as it existed before the additive migrations —
+    without `quote_volume` or the two taker-buy columns.
+
+    Not hypothetical: `store.py` adds those to an existing table, and the
+    instance's checkout was 16 commits behind this machine's when
+    collection moved there.
+    """
+    path = str(tmp_path / "old-instance.sqlite3")
+    conn = connect(path)                    # current schema, then narrow it
+    conn.executescript(
+        """
+        CREATE TABLE klines_old (
+          symbol TEXT NOT NULL, interval TEXT NOT NULL,
+          open_time_ms INTEGER NOT NULL, open TEXT NOT NULL, high TEXT NOT NULL,
+          low TEXT NOT NULL, close TEXT NOT NULL, volume TEXT NOT NULL,
+          fetched_at TEXT NOT NULL,
+          PRIMARY KEY (symbol, interval, open_time_ms)
+        );
+        INSERT INTO klines_old SELECT symbol, interval, open_time_ms, open, high,
+          low, close, volume, fetched_at FROM klines;
+        DROP TABLE klines;
+        ALTER TABLE klines_old RENAME TO klines;
+        """
+    )
+    _kline(conn, "KRX:005930", 4_000)
+    conn.commit()
+    conn.close()
+    return path
+
+
+def test_a_source_missing_a_later_column_still_merges(tmp_path, local):
+    """**The failure this guard prevents is not a wrong number, it is a
+    traceback.** Projecting the destination's full column list onto an
+    older source makes SQLite raise `no such column` before the merge runs
+    at all, and `main` catches only `ValueError` — so the sync would die
+    without a diagnosis."""
+    source = _older_schema_source(tmp_path)
+    assert "quote_volume" not in {
+        r[1] for r in sqlite3.connect(source).execute("PRAGMA table_info(klines)")
+    }, "the fixture did not actually narrow the schema"
+
+    merge_krx(source, local)
+    assert _rows(local, "SELECT 1 FROM klines WHERE open_time_ms=4000")
+
+
+def test_the_column_the_source_lacks_is_left_to_its_default(tmp_path, local):
+    """Exactly right for a nullable column added later: the row arrives,
+    and the newer column is NULL rather than absent or wrong."""
+    merge_krx(_older_schema_source(tmp_path), local)
+    assert _rows(
+        local, "SELECT quote_volume FROM klines WHERE open_time_ms=4000"
+    ) == [(None,)]
