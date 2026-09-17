@@ -103,11 +103,16 @@ def test_the_lag_is_two_sessions():
 
 
 def test_the_seam_is_not_a_fixed_number_of_calendar_days():
-    """**Why the calendar is needed at all.** Both boundaries are two
-    *sessions* before their statutory date, and that is 4 calendar days in
-    2019 and 5 in 2024 — because a weekend falls inside the first seam and
-    a weekend plus KRX's 12-31 휴장일 inside the second. A rule written in
-    calendar days is right at one boundary and wrong at the other."""
+    """**Why the calendar is needed at all.** The lag is always two
+    sessions; the calendar-day gap from the boundary to the statutory date
+    is 4 in 2019 and 5 in 2024, because a weekend falls inside the first
+    seam and a weekend plus KRX's 12-31 휴장일 inside the second.
+
+    The two cases also differ in kind, which is why the gap is measured to
+    the *statutory* date here and the settlement session is asserted
+    separately below: in 2019 settlement lands exactly on the statutory
+    date, in 2024 it lands the day after, because 2025-01-01 is itself a
+    holiday."""
     assert (dt.date(2019, 6, 3) - dt.date(2019, 5, 30)).days == 4
     assert (dt.date(2025, 1, 1) - dt.date(2024, 12, 27)).days == 5
     # Different calendar-day gaps, identical session gap.
@@ -117,6 +122,13 @@ def test_the_seam_is_not_a_fixed_number_of_calendar_days():
     assert _2024_SEAM.index(dt.date(2025, 1, 2)) - _2024_SEAM.index(
         dt.date(2024, 12, 27)
     ) == 2
+    # And the settlement sessions themselves: on the statutory date in
+    # 2019, one day past it in 2024.
+    assert _2019_SEAM[_2019_SEAM.index(dt.date(2019, 5, 30)) + 2] == dt.date(2019, 6, 3)
+    assert _2024_SEAM[_2024_SEAM.index(dt.date(2024, 12, 27)) + 2] == dt.date(2025, 1, 2)
+    assert (dt.date(2025, 1, 2) - dt.date(2024, 12, 27)).days == 6, (
+        "trade -> settlement is 6 days here, not the 5 the statutory gap is"
+    )
 
 
 def test_using_the_statutory_date_directly_would_be_wrong():

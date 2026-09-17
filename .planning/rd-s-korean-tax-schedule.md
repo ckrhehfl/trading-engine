@@ -75,22 +75,32 @@ never owes 금투세 — only this.
 trading day after execution**. Every change is therefore announced with
 *two* dates, and the Korean press reported both:
 
-| change | statutory 양도일 | published 체결일 | gap |
-|---|---|---|---|
-| 2019 cut | 2019-06-03 | **2019-05-30** | 2 sessions = 4 calendar days |
-| 2025 cut | 2025-01-01 | **2024-12-27** | 2 sessions = 5 calendar days |
+| change | published 체결일 | its T+2 settlement | statutory 양도일 | trade → statutory |
+|---|---|---|---|---|
+| 2019 cut | **2019-05-30** | 2019-06-03 | 2019-06-03 | **4 calendar days** |
+| 2025 cut | **2024-12-27** | 2025-01-02 | 2025-01-01 | **5 calendar days** |
 
-**Two sessions, two different calendar-day gaps.** What differs is which
-non-trading days fall *inside* the seam: a weekend in 2019, and a weekend
-plus KRX's year-end 휴장일 on 12-31 in 2024. So a rule written in calendar
-days is right at one boundary and wrong at the other, which is why
-`trade_date_boundary` walks the **real trading calendar** instead.
+**The lag is always two sessions; what moves is the calendar.** The
+non-trading days inside the 2024 seam are the 12-28/29 weekend and KRX's
+year-end 휴장일 on 12-31. So a rule written in calendar days is right at
+one boundary and wrong at the other, which is why `trade_date_boundary`
+walks the **real trading calendar** instead.
 
-> **Corrected on review of PR #179.** An earlier draft of this paragraph
-> named 2024-12-25 as one of the causes. It is not — Christmas falls
-> *before* the 12-27 boundary and so lies outside the seam entirely. The
-> gap is 5 days, and the test asserting 4-versus-5 was right while the
-> prose explaining it was wrong.
+**The two rows also differ in kind.** In 2019 the settlement session lands
+*exactly on* the statutory date; in 2024 it lands the day **after** it,
+because 2025-01-01 is itself a holiday. So the rule is *"the first trade
+date whose settlement falls **on or after** the statutory date"* — not
+"two sessions before the statutory date", which is true in 2019 and false
+in 2024.
+
+> **Two corrections on review of PR #179.** An earlier draft named
+> 2024-12-25 as a cause of the 5-day gap: it is not, Christmas falls
+> *before* the 12-27 boundary and lies outside the seam entirely. The same
+> draft also quoted "2 sessions = 5 calendar days" as one quantity, which
+> conflates the trade→statutory gap (5 days) with the trade→settlement gap
+> (6 days, to 2025-01-02). The assertions were right in both cases; the
+> prose explaining them was wrong — which is worth recording in the one
+> section whose entire point is that the calendar decides the answer.
 
 The calendar comes from the **KOSPI index series** already in the store —
 an index prints exactly when the market is open, so it needs no holiday

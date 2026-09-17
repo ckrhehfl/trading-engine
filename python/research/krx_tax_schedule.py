@@ -46,14 +46,26 @@ therefore announced with *two* dates, and the press reported both:
   2024-12-27** -- *five* calendar days earlier.
 
 **A backtest keys on the trade date.** Using the statutory date directly
-would apply the wrong rate to every trade in the two-session seam, and
-that seam is **not a fixed number of calendar days**: the same two
-sessions came to 4 calendar days across the 2019 change and 5 across the
-2024 year end, because of which non-trading days happen to fall inside.
-In 2019 that was a weekend; in 2024 a weekend plus KRX's year-end
-휴장일 on 12-31. (Christmas is *outside* the 2024 seam -- 12-25 precedes
-the 12-27 boundary -- and an earlier draft of this paragraph wrongly
-named it as a cause.)
+would apply the wrong rate to every trade in the seam between the two,
+and that seam is **not a fixed number of calendar days**:
+
+| change | boundary trade date | its T+2 settlement | statutory 양도일 | trade -> statutory |
+|---|---|---|---|---|
+| 2019 | 2019-05-30 | 2019-06-03 | 2019-06-03 | **4 days** |
+| 2025 | 2024-12-27 | 2025-01-02 | 2025-01-01 | **5 days** |
+
+The lag is always **two sessions**; what moves is the calendar. Note the
+two rows differ in kind as well as length: in 2019 the settlement session
+lands *exactly on* the statutory date, while in 2024 it lands the day
+after it, because 2025-01-01 is itself a holiday. The rule is therefore
+"the first trade date whose settlement falls **on or after** the statutory
+date", not "two sessions before it" -- those coincide in 2019 and do not
+in 2024.
+
+The non-trading days inside the 2024 seam are the 12-28/29 weekend and
+KRX's year-end 휴장일 on 12-31. (Christmas is *outside* it -- 12-25
+precedes the 12-27 boundary -- and an earlier draft of this paragraph
+wrongly named it as a cause.)
 
 So the boundary is **derived** from the real trading calendar rather than
 computed from a rule about calendar days -- `trade_date_boundary` walks
