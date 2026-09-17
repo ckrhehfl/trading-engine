@@ -43,14 +43,17 @@ therefore announced with *two* dates, and the press reported both:
 - the 2019 cut applied to **양도일 2019-06-03**, i.e. **매매체결일
   2019-05-30**;
 - the 2025 cut applied to **양도일 2025-01-01**, i.e. **매도체결분
-  2024-12-27** -- *five* calendar days earlier, because 12-25 and 12-31
-  are not trading days.
+  2024-12-27** -- *five* calendar days earlier.
 
 **A backtest keys on the trade date.** Using the statutory date directly
 would apply the wrong rate to every trade in the two-session seam, and
-that seam is **not a fixed number of calendar days**: two sessions came
-to 4 calendar days across the 2019 change and 5 across the 2024 year end,
-entirely because of where the holidays fell.
+that seam is **not a fixed number of calendar days**: the same two
+sessions came to 4 calendar days across the 2019 change and 5 across the
+2024 year end, because of which non-trading days happen to fall inside.
+In 2019 that was a weekend; in 2024 a weekend plus KRX's year-end
+휴장일 on 12-31. (Christmas is *outside* the 2024 seam -- 12-25 precedes
+the 12-27 boundary -- and an earlier draft of this paragraph wrongly
+named it as a cause.)
 
 So the boundary is **derived** from the real trading calendar rather than
 computed from a rule about calendar days -- `trade_date_boundary` walks
@@ -63,8 +66,8 @@ needs no holiday table and covers the moving lunar holidays
 **The T+2 lag is validated, not assumed.** It is the only lag of T+1,
 T+2, T+3 that reproduces **both** published trade-date boundaries --
 2019-05-30 and 2024-12-27 -- from their statutory dates. Two independent
-answers, five and a half years apart, one of them across a year end with
-two holidays in the seam.
+answers, five and a half years apart, one of them across a year end whose
+seam holds a weekend and KRX's 12-31 휴장일.
 
 ## What this does not cover
 
@@ -110,6 +113,66 @@ KOSPI, KOSDAQ, KONEX = "KOSPI", "KOSDAQ", "KONEX"
 
 
 @dataclass(frozen=True)
+class Source:
+    """One citation, resolvable rather than described.
+
+    rd-f refused to guess this schedule and cited every figure it did
+    publish. A replacement that carried only a label -- "금투세 도입 연계
+    단계 인하" names a policy, not a document -- would be a guess wearing a
+    citation's clothes, and a test asserting the label is non-empty would
+    pass for one.
+    """
+
+    publisher: str
+    published: str
+    url: str
+
+
+SOURCES: dict[str, Source] = {
+    "namu": Source(
+        "나무위키 — 증권거래세 (탄력세율 조항 및 세율 변천표)",
+        "n.d., read 2026-09-17",
+        "https://namu.wiki/w/%EC%A6%9D%EA%B6%8C%EA%B1%B0%EB%9E%98%EC%84%B8",
+    ),
+    "seoul-2019": Source(
+        "서울신문 — 증권거래세 30일부터 인하…코스피·코스닥 0.05%P↓ "
+        "(KOSPI 0.15->0.10, KOSDAQ 0.30->0.25, KONEX 0.30->0.10)",
+        "2019-05-22",
+        "https://www.seoul.co.kr/news/economy/securities/2019/05/22/20190522024015",
+    ),
+    "hankookilbo-2019": Source(
+        "한국일보 — 내달 3일 결제분부터 증권거래세 인하 "
+        "(the 양도일/체결일 pair, stated explicitly)",
+        "2019-05-21",
+        "https://www.hankookilbo.com/news/article/201905211157035366",
+    ),
+    "kofia-2019": Source(
+        "금융투자협회 — 증권유관기관 공동보도자료: 오늘부터 증권거래세가 인하됩니다",
+        "2019-05-30",
+        "https://www.kofia.or.kr/npboard/m_18/view.do?nttId=122270"
+        "&bbsId=BBSMSTR_000000000203&page=29",
+    ),
+    "kbthink": Source(
+        "KB — 국내 주식 세금 총정리: 양도소득세, 배당소득세, 증권거래세",
+        "2024-10",
+        "https://kbthink.com/main/asset-management/wealth-manage-tip/"
+        "kbthink-original/202410/kr-stocktax.html",
+    ),
+    "ds-2025": Source(
+        "DS투자증권 — 2025년 증권거래세율 인하 적용안내 "
+        "(체결일 기준 2024-12-27부터)",
+        "2024-12",
+        "https://ds-sec.co.kr/bbs/board.php?bo_table=sub06_10&wr_id=751&page=1",
+    ),
+    "taxtimes-2026": Source(
+        "한국세정신문 — 내년 1월부터 증권거래세율 코스피 0.05%, 코스닥 0.20%로 상향",
+        "2025-12",
+        "https://taxtimes.co.kr/news/article.html?no=272624",
+    ),
+}
+
+
+@dataclass(frozen=True)
 class TaxEra:
     """One era of the schedule, keyed on the **statutory 양도일**.
 
@@ -124,11 +187,17 @@ class TaxEra:
     market: str
     transaction_bp: float
     rural_bp: float
-    source: str
+    #: Keys into `SOURCES`. More than one where two documents independently
+    #: carry the same figure, which is why it is a tuple rather than a str.
+    sources: tuple[str, ...]
+    note: str
 
     @property
     def total_bp(self) -> float:
         return self.transaction_bp + self.rural_bp
+
+    def citations(self) -> list[Source]:
+        return [SOURCES[key] for key in self.sources]
 
 
 #: Sourced 2026-09-17. Each era carries the citation it came from.
@@ -138,24 +207,24 @@ class TaxEra:
 #: 1963 and the 0.30% level to 2017-04-01.
 SCHEDULE: tuple[TaxEra, ...] = (
     # --- KOSPI: 농특세 is 0.15% in every era and never moves.
-    TaxEra(dt.date(2017, 4, 1), KOSPI, 15.0, 15.0, "namu/증권거래세; in force at the window's open"),
-    TaxEra(dt.date(2019, 6, 3), KOSPI, 10.0, 15.0, "시행령 개정 2019-05-28; 국무회의 05-21"),
-    TaxEra(dt.date(2021, 1, 1), KOSPI, 8.0, 15.0, "금투세 도입 연계 단계 인하"),
-    TaxEra(dt.date(2023, 1, 1), KOSPI, 5.0, 15.0, "금투세 도입 연계 단계 인하"),
-    TaxEra(dt.date(2024, 1, 1), KOSPI, 3.0, 15.0, "금투세 도입 연계 단계 인하"),
-    TaxEra(dt.date(2025, 1, 1), KOSPI, 0.0, 15.0, "금투세 폐지 전 최종 인하; 체결일 2024-12-27"),
-    TaxEra(dt.date(2026, 1, 1), KOSPI, 5.0, 15.0, "2025 세제개편안; 금투세 폐지분 환원"),
+    TaxEra(dt.date(2017, 4, 1), KOSPI, 15.0, 15.0, ("namu",), "in force at the window's open"),
+    TaxEra(dt.date(2019, 6, 3), KOSPI, 10.0, 15.0, ("seoul-2019", "hankookilbo-2019", "kofia-2019"), "시행령 개정 2019-05-28"),
+    TaxEra(dt.date(2021, 1, 1), KOSPI, 8.0, 15.0, ("namu", "kbthink"), "금투세 연계 단계 인하"),
+    TaxEra(dt.date(2023, 1, 1), KOSPI, 5.0, 15.0, ("namu", "kbthink"), "금투세 연계 단계 인하"),
+    TaxEra(dt.date(2024, 1, 1), KOSPI, 3.0, 15.0, ("namu", "kbthink"), "금투세 연계 단계 인하"),
+    TaxEra(dt.date(2025, 1, 1), KOSPI, 0.0, 15.0, ("namu", "ds-2025"), "체결일 2024-12-27부터"),
+    TaxEra(dt.date(2026, 1, 1), KOSPI, 5.0, 15.0, ("taxtimes-2026", "namu"), "2025 세제개편안; 금투세 폐지분 환원"),
     # --- KOSDAQ: no 농특세, so its own rate carries the whole total.
-    TaxEra(dt.date(2017, 4, 1), KOSDAQ, 30.0, 0.0, "namu/증권거래세; in force at the window's open"),
-    TaxEra(dt.date(2019, 6, 3), KOSDAQ, 25.0, 0.0, "시행령 개정 2019-05-28"),
-    TaxEra(dt.date(2021, 1, 1), KOSDAQ, 23.0, 0.0, "금투세 도입 연계 단계 인하"),
-    TaxEra(dt.date(2023, 1, 1), KOSDAQ, 20.0, 0.0, "금투세 도입 연계 단계 인하"),
-    TaxEra(dt.date(2024, 1, 1), KOSDAQ, 18.0, 0.0, "금투세 도입 연계 단계 인하"),
-    TaxEra(dt.date(2025, 1, 1), KOSDAQ, 15.0, 0.0, "금투세 폐지 전 최종 인하"),
-    TaxEra(dt.date(2026, 1, 1), KOSDAQ, 20.0, 0.0, "2025 세제개편안; 금투세 폐지분 환원"),
+    TaxEra(dt.date(2017, 4, 1), KOSDAQ, 30.0, 0.0, ("namu",), "in force at the window's open"),
+    TaxEra(dt.date(2019, 6, 3), KOSDAQ, 25.0, 0.0, ("seoul-2019", "kofia-2019"), "시행령 개정 2019-05-28"),
+    TaxEra(dt.date(2021, 1, 1), KOSDAQ, 23.0, 0.0, ("namu", "kbthink"), "금투세 연계 단계 인하"),
+    TaxEra(dt.date(2023, 1, 1), KOSDAQ, 20.0, 0.0, ("namu", "kbthink"), "금투세 연계 단계 인하"),
+    TaxEra(dt.date(2024, 1, 1), KOSDAQ, 18.0, 0.0, ("namu", "kbthink"), "금투세 연계 단계 인하"),
+    TaxEra(dt.date(2025, 1, 1), KOSDAQ, 15.0, 0.0, ("namu", "ds-2025"), "금투세 폐지 전 최종 인하"),
+    TaxEra(dt.date(2026, 1, 1), KOSDAQ, 20.0, 0.0, ("taxtimes-2026", "namu"), "2025 세제개편안; 금투세 폐지분 환원"),
     # --- KONEX: carried so a future universe cannot inherit KOSPI's rate.
-    TaxEra(dt.date(2017, 4, 1), KONEX, 30.0, 0.0, "namu/증권거래세"),
-    TaxEra(dt.date(2019, 6, 3), KONEX, 10.0, 0.0, "시행령 개정 2019-05-28; 0.30 -> 0.10"),
+    TaxEra(dt.date(2017, 4, 1), KONEX, 30.0, 0.0, ("namu",), "in force at the window's open"),
+    TaxEra(dt.date(2019, 6, 3), KONEX, 10.0, 0.0, ("seoul-2019",), "0.30 -> 0.10"),
 )
 
 #: What rd-f applied across the whole window, and what this module exists

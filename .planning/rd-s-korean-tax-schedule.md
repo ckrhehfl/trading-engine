@@ -80,11 +80,17 @@ trading day after execution**. Every change is therefore announced with
 | 2019 cut | 2019-06-03 | **2019-05-30** | 2 sessions = 4 calendar days |
 | 2025 cut | 2025-01-01 | **2024-12-27** | 2 sessions = 5 calendar days |
 
-**Two sessions, two different calendar-day gaps** — 2024-12-25 (Christmas)
-and 2024-12-31 (KRX's year-end 휴장일) both fall inside the second seam.
-So a rule written in calendar days is right at one boundary and wrong at
-the other, which is why `trade_date_boundary` walks the **real trading
-calendar** instead.
+**Two sessions, two different calendar-day gaps.** What differs is which
+non-trading days fall *inside* the seam: a weekend in 2019, and a weekend
+plus KRX's year-end 휴장일 on 12-31 in 2024. So a rule written in calendar
+days is right at one boundary and wrong at the other, which is why
+`trade_date_boundary` walks the **real trading calendar** instead.
+
+> **Corrected on review of PR #179.** An earlier draft of this paragraph
+> named 2024-12-25 as one of the causes. It is not — Christmas falls
+> *before* the 12-27 boundary and so lies outside the seam entirely. The
+> gap is 5 days, and the test asserting 4-versus-5 was right while the
+> prose explaining it was wrong.
 
 The calendar comes from the **KOSPI index series** already in the store —
 an index prints exactly when the market is open, so it needs no holiday
@@ -96,8 +102,8 @@ lists as unresolved. That is the same index-as-calendar trick
 
 T+2 is **the only lag of T+1, T+2, T+3 that reproduces both published
 trade-date boundaries** from their statutory dates. Two independent
-answers, five and a half years apart, one of them across a year end with
-two holidays in the seam. T+1 and T+3 each miss both.
+answers, five and a half years apart, one of them across a year end whose
+seam holds a weekend and KRX's 12-31 휴장일. T+1 and T+3 each miss both.
 
 That is the check this document rests on, and it is the kind this project
 has learned to insist on: the rule was tested against two facts it did
@@ -155,7 +161,10 @@ does not revisit it.
 **Sources are secondary, not statutory.** The rates and both published
 체결일 dates come from Korean press and reference sources, cross-checked
 against each other; the 시행령 부칙 themselves were not read. Every era
-carries its citation in `SCHEDULE`. rd-f found one source
+cites one or more **resolvable** entries in `SOURCES`, each carrying a
+publisher, a date and a URL — not a descriptive label, which an earlier
+version of this module carried and which a non-emptiness test passed for
+(corrected on review of PR #179). rd-f found one source
 (TrendMetricLab) still publishing the stale 2023–2025 rates and did not
 use it; that source is still stale and still unused.
 

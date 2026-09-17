@@ -30,6 +30,7 @@ from research.krx_tax_schedule import (
     KOSPI,
     RD_F_FLAT_BP,
     SCHEDULE,
+    SOURCES,
     SETTLEMENT_LAG_SESSIONS,
     eras_for,
     flat_rate_error,
@@ -51,10 +52,12 @@ _2019_SEAM = _days(
     "2019-06-07",
 )
 
-#: Real KOSPI sessions around the 2025 cut. 2024-12-25 is Christmas and
-#: 2024-12-31 is KRX's year-end 휴장일 — both inside the seam, which is
-#: why the trade-date boundary lands four calendar days before the
-#: statutory one rather than two.
+#: Real KOSPI sessions around the 2025 cut. The seam runs from the
+#: 2024-12-27 boundary to the 2025-01-01 statutory date, and the
+#: non-trading days inside it are the 12-28/29 weekend and KRX's year-end
+#: 휴장일 on 12-31 — which is why two sessions come to five calendar days
+#: here and four in 2019. Christmas is NOT a cause: 12-25 precedes the
+#: boundary.
 _2024_SEAM = _days(
     "2024-12-18", "2024-12-19", "2024-12-20", "2024-12-23", "2024-12-24",
     "2024-12-26", "2024-12-27", "2024-12-30", "2025-01-02", "2025-01-03",
@@ -101,9 +104,10 @@ def test_the_lag_is_two_sessions():
 
 def test_the_seam_is_not_a_fixed_number_of_calendar_days():
     """**Why the calendar is needed at all.** Both boundaries are two
-    *sessions* before their statutory date, and four *calendar* days —
-    but only because holidays happened to fall inside both seams. A rule
-    written in calendar days would be right here and wrong elsewhere."""
+    *sessions* before their statutory date, and that is 4 calendar days in
+    2019 and 5 in 2024 — because a weekend falls inside the first seam and
+    a weekend plus KRX's 12-31 휴장일 inside the second. A rule written in
+    calendar days is right at one boundary and wrong at the other."""
     assert (dt.date(2019, 6, 3) - dt.date(2019, 5, 30)).days == 4
     assert (dt.date(2025, 1, 1) - dt.date(2024, 12, 27)).days == 5
     # Different calendar-day gaps, identical session gap.
@@ -201,10 +205,48 @@ def test_an_unknown_market_raises_rather_than_defaulting():
         total_bp("NASDAQ", dt.date(2024, 6, 3), _2024_SEAM)
 
 
-def test_every_era_carries_a_source():
-    """rd-f refused to guess this schedule. The replacement is not allowed
-    to be a guess either."""
-    assert all(era.source for era in SCHEDULE)
+def test_every_era_cites_a_resolvable_source():
+    """**A label is not a citation.** rd-f refused to guess this schedule
+    and cited every figure it did publish; "금투세 도입 연계 단계 인하"
+    names a policy, not a document, and an earlier version of this test —
+    which only asserted the string was non-empty — passed for it.
+
+    So every era's key must resolve, and every source it resolves to must
+    carry a publisher, a date and a URL."""
+    for era in SCHEDULE:
+        assert era.sources, f"{era.market} {era.effective} cites nothing"
+        for citation in era.citations():
+            assert citation.publisher.strip()
+            assert citation.published.strip()
+            assert citation.url.startswith("https://"), citation.url
+
+
+def test_a_source_key_that_does_not_resolve_is_a_hard_failure():
+    """The negative control for the test above: a typo'd key must raise
+    rather than silently cite nothing."""
+    bad = SCHEDULE[0].__class__(
+        dt.date(2019, 6, 3), KOSPI, 10.0, 15.0, ("no-such-source",), "x"
+    )
+    with pytest.raises(KeyError):
+        bad.citations()
+
+
+def test_every_declared_source_is_actually_cited():
+    """A source nobody references is either a leftover or a figure that
+    quietly lost its evidence."""
+    cited = {key for era in SCHEDULE for key in era.sources}
+    assert cited == set(SOURCES), f"unused: {set(SOURCES) - cited}"
+
+
+def test_the_2019_rates_are_cited_to_a_source_that_states_all_three_markets():
+    """KOSPI, KOSDAQ and KONEX all moved on the same 시행령, and the same
+    press release carries all three — so the KONEX row is not an
+    extrapolation from the other two."""
+    for market in (KOSPI, KOSDAQ, KONEX):
+        era = next(
+            e for e in eras_for(market) if e.effective == dt.date(2019, 6, 3)
+        )
+        assert "seoul-2019" in era.sources
 
 
 # ------------------------------------------- what rd-f's flat rate costs
