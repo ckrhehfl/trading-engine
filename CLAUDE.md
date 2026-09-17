@@ -722,18 +722,52 @@ geolocates to **US**. So:
   runs on the local (Korean-IP) machine's crontab at `*/30`, and that is
   the collector of record, not a convenience. Verified healthy on
   2026-09-14: 118,794 rows, current to that day.
-- **The instance's `positioning` table is a stale replica, not a second
-  collector.** It held 64,848 rows stopping at 2026-09-05 and *cannot*
-  catch up. Running the collector there fails every series and exits
-  non-zero — which is the fail-closed design working, and is **not** a
-  bug to fix by retrying.
-- **KIS/KRX is the opposite**: it works from the instance and is
-  unaffected by this. A collector's home is therefore chosen per venue,
-  not once for the project.
+- **Running the Binance collector on the instance fails every series and
+  exits non-zero** — the fail-closed design working, and **not** a bug to
+  fix by retrying.
+- **KIS/KRX is the opposite**: it works from the instance (`HTTP 200`,
+  re-verified 2026-09-17). A collector's home is therefore chosen per
+  venue, not once for the project.
 
 This is the operational consequence of the "Run it where it will run"
 lesson already recorded under Change checks, which named the 451 without
 saying what follows from it.
+
+**All KRX/KIS collection moved to the instance on 2026-09-17, and the
+split is now venue-clean.** The local machine is a laptop that is not
+reliably on during the KRX session (09:00–15:20 KST), and the quote
+sampler is the first collector that must run *during* it. On its first
+scheduled day it collected nothing: `cron` itself only came up at 17:26
+KST, after the close. One session of order-book samples was lost
+permanently — there is **no historical endpoint for a spread at any
+price**, which makes it the least recoverable series this project has.
+The intraday bars and 투자자별 매매동향 for the same day were recovered,
+because both are rolling windows.
+
+| | collects | database of record |
+|---|---|---|
+| **GCP instance** (always on, UTC) | `collect-krx-quotes.sh`, `-flow.sh`, `-intraday.sh` | **KRX/KIS** |
+| **local** (Korean IP) | `collect-positioning.sh` | **Binance** |
+
+**Exactly one writer per series**, which is what actually stops two
+databases drifting — not a policy of keeping one file.
+
+Three consequences a future session must not rediscover the hard way:
+
+1. **The instance runs UTC.** KRX trades 00:00–06:20 UTC, so its cron
+   reads `*/30 0-6 * * 1-5`. Getting this wrong **fails silently**: the
+   sampler gates on KST internally, so a wrong-hour entry just logs
+   *"outside the continuous session"* forever and collects nothing. The
+   crontab carries this in a comment.
+2. **Research still runs locally** — the instance is a 955MB e2-micro
+   already carrying two paper-trading JVMs, and a backtest does not fit.
+   Run **`scripts/sync-krx-from-instance.sh`** before any research that
+   reads KRX data, or every local KRX read stays frozen at the migration
+   snapshot. It is additive (`INSERT OR IGNORE`, never `UPDATE`/`DELETE`),
+   copies only `KRX`-prefixed rows, and is safe to re-run.
+3. **The repo on the instance lives under `minjun4897`**, not the SSH
+   login user, and was 16 commits behind when this was set up. Its
+   collectors are only as current as its checkout.
 
 **Computed statistics, load-bearing for how this data may be used** (not
 API facts): Binance spot vs BingX daily closes over their full 1,909-day
