@@ -305,6 +305,8 @@ set of names to sample, which is why it comes first.
 records as unsourced with the direction of its bias unestablished. It
 remains the blocking prerequisite for any Korean registration.
 
+> **Closed 2026-09-17 by [`rd-s`](rd-s-korean-tax-schedule.md).** The schedule is sourced per era; a flat 20bp understates the window by **1.45bp** session-weighted, and every statutory date turned out to be a **settlement (양도일)** date — the rate for a trade is the one in force at the first settlement session on or after it, two sessions later. This paragraph is left as written because it was true when the measurement it qualifies was taken.
+
 **Survivorship is bounded, not removed.** The candidate pool is the
 **currently-listed** futures master, so a name whose single-stock future
 was delisted between 2025-12 and now is absent. Over a nine-month window

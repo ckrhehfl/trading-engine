@@ -155,6 +155,8 @@ as unsourced with **the direction of its bias unestablished**. That was a
 prerequisite for a Korean registration before this document and still is —
 and it now blocks a live question rather than a hypothetical one.
 
+> **Closed 2026-09-17 by [`rd-s`](rd-s-korean-tax-schedule.md).** The schedule is sourced per era; a flat 20bp understates the window by **1.45bp** session-weighted, and every statutory date turned out to be a **settlement (양도일)** date — the rate for a trade is the one in force at the first settlement session on or after it, two sessions later. This paragraph is left as written because it was true when the measurement it qualifies was taken.
+
 **Nothing about futures data availability.** Expired contracts return
 `rt_cd=0` with zero rows, so a futures-based backtest reads the
 **underlying** and treats the basis as a disclosed approximation. `basis`
@@ -193,5 +195,6 @@ document's stated prerequisite has been satisfied.
    `ms-e` fixed KR-10's.
 3. **Then rd-p's h = 15 cell**, at a measured floor rather than an assumed
    one, with its own event dispersion reported — rd-p §7 item 2.
-4. **The per-era tax schedule is still the blocking prerequisite** for any
-   Korean registration, and it is now on the critical path.
+4. ~~**The per-era tax schedule is still the blocking prerequisite** for
+   any Korean registration, and it is now on the critical path.~~
+   **Done — [`rd-s`](rd-s-korean-tax-schedule.md), 2026-09-17.**
