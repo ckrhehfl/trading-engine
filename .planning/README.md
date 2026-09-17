@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-109 documents and counting, which is past the point where `ls` is a
+110 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -229,3 +229,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-p-what-krx-intraday-could-resolve.md`](rd-p-what-krx-intraday-could-resolve.md) — Research Direction Task P — what KRX intraday could resolve, measured before anything is specified
 - [`rd-q-which-korean-instrument.md`](rd-q-which-korean-instrument.md) — Research Direction Task Q — which Korean instrument: neither spot nor futures, but four names
 - [`rd-r-futures-liquidity-universe.md`](rd-r-futures-liquidity-universe.md) — Research Direction Task R — the universe, re-selected on futures liquidity
+- [`rd-s-korean-tax-schedule.md`](rd-s-korean-tax-schedule.md) — Research Direction Task S — the per-era Korean tax schedule, and the settlement trap inside it
