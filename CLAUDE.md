@@ -6,7 +6,50 @@ Personal, institution-style BTC/USDT futures trading system. The system may
 eventually place real trades. Treat all execution, risk, leverage, position
 mode, exchange API, deployment, and key-management changes as high-risk.
 
-## Current Scope (MVP)
+## Current Scope
+
+**Narrowed to Korean domestic equities on 2026-09-17, operator decision.
+BTC is set aside — not abandoned, and nothing about it is deleted.**
+
+Everything now runs on the GCP instance: KRX/KIS collection and research
+both. **Nothing is scheduled on the local machine**, which is what makes
+this a real narrowing rather than a preference — the Binance geo-block
+(HTTP 451) was the only thing forcing a second host, and with BTC set
+aside it no longer binds.
+
+| | status |
+|---|---|
+| KRX/KIS collection (quotes, intraday, 투자자별 매매동향) | **running**, on the instance |
+| KRX research | runs on the instance — verified, 103MB peak for the heaviest module |
+| BingX/Binance collection | **stopped** |
+| the two BTC paper-trading loops (`simulated`, `bingx-vst`) | **stopped** |
+
+**What stopping cost, stated because one part of it is irreversible:**
+
+- **Binance positioning can never be backfilled.** `collect-positioning.sh`
+  read endpoints with a rolling ~30-day window, so the gap starting
+  2026-09-17 is permanent. **138,814 rows are kept** and nothing is
+  deleted; BingX/Binance klines, funding rates and the macro series are
+  all re-fetchable and are kept too.
+- **Gate A's clock was reset by choice.** The two loops had accumulated
+  **12 consecutive daily reports (2026-09-05 … 09-16)** against a
+  15-consecutive-day requirement — three days short of a gate this
+  project has never passed. Discarding it was the operator's explicit
+  decision after being shown the cost, not an oversight.
+
+**The `kis-paper` loop is NOT a replacement for the stopped ones and is
+not running.** Its kill switch trips unconditionally at construction by
+design, and `STOCK_FUTURES` refuses to start at all because the per-stock
+contract multiplier is still unconfirmed. Standing up a Korean paper loop
+is its own piece of work, with the three open KIS gaps on its checklist.
+
+**Everything the BTC arc established still binds** — the Eligibility Bar,
+the spent windows, `N`, the scalping rules, the Trade Management
+findings. Setting the instrument aside does not retire the methodology it
+produced, and `daily-tsmom-ensemble`'s paper-trading exception is
+suspended rather than revoked: its loop is simply not running.
+
+### The MVP as originally scoped, kept for the record
 
 - Exchange: BingX (first implementation, not a hardcoded assumption)
 - Product: BTC/USDT USDT-M Perpetual Futures
@@ -747,10 +790,15 @@ because both are rolling windows.
 | | collects | database of record |
 |---|---|---|
 | **GCP instance** (always on, UTC) | `collect-krx-quotes.sh`, `-flow.sh`, `-intraday.sh` | **KRX/KIS** |
-| **local** (Korean IP) | `collect-positioning.sh` | **Binance** |
+| ~~**local** (Korean IP)~~ | ~~`collect-positioning.sh`~~ | ~~**Binance**~~ |
 
 **Exactly one writer per series**, which is what actually stops two
 databases drifting — not a policy of keeping one file.
+
+**The local row went away on 2026-09-17** when BTC was set aside: nothing
+is scheduled on the local machine at all now. It is struck through rather
+than deleted because the *reason* it existed — Binance's HTTP 451 — is
+unchanged and would force it back the moment BTC resumes.
 
 Three consequences a future session must not rediscover the hard way:
 
