@@ -51,7 +51,7 @@ def instance(tmp_path):
     rows it inherited from the migration copy."""
     path = str(tmp_path / "instance.sqlite3")
     conn = connect(path)
-    _kline(conn, "KRX:005930", 1_000)
+    _kline(conn, "KRX:005930", 1_000, close="instance-side")
     _kline(conn, "KRX:005930", 2_000)          # collected after the migration
     _kline(conn, "KRX-INDEX:0001", 1_000)
     _kline(conn, "BINANCE:BTCUSDT", 1_000, close="stale")
@@ -77,7 +77,7 @@ def local(tmp_path):
     that have advanced since."""
     path = str(tmp_path / "local.sqlite3")
     conn = connect(path)
-    _kline(conn, "KRX:005930", 1_000)          # already had this one
+    _kline(conn, "KRX:005930", 1_000, close="local-side")   # already had this one
     _kline(conn, "BINANCE:BTCUSDT", 1_000, close="fresh")
     _kline(conn, "BINANCE:BTCUSDT", 9_000, close="fresh")   # collected since
     _positioning(conn, "BTC-USDT", "open_interest", 1_000, value="fresh")
@@ -136,8 +136,17 @@ def test_an_instance_only_binance_row_does_not_arrive(instance, local):
 def test_insert_or_ignore_protects_a_row_present_in_both(instance, local):
     """A separate guarantee from the filter, and worth its own test since
     the two were conflated: where the primary key collides, the local
-    value wins and is never overwritten."""
+    value wins and is never overwritten.
+
+    **Checked on a KRX row too, not only a filtered-out Binance one.** The
+    Binance assertions below pass whatever the merge does to KRX, because
+    the filter excludes them — so on their own they could not catch a
+    `REPLACE` or an upsert reaching the rows this module actually copies."""
     merge_krx(instance, local)
+    assert _rows(
+        local, "SELECT close FROM klines WHERE symbol='KRX:005930' "
+        "AND open_time_ms=1000"
+    ) == [("local-side",)], "a colliding KRX row was overwritten"
     assert _rows(
         local, "SELECT close FROM klines WHERE symbol='BINANCE:BTCUSDT' "
         "AND open_time_ms=1000"
@@ -145,6 +154,26 @@ def test_insert_or_ignore_protects_a_row_present_in_both(instance, local):
     assert _rows(
         local, "SELECT value FROM positioning WHERE symbol='BTC-USDT'"
     ) == [("fresh",)]
+
+
+def test_a_correction_on_the_instance_does_NOT_propagate(instance, local):
+    """The honest cost of `INSERT OR IGNORE`, asserted so it is a known
+    property rather than a surprise: a row the instance later *fixed*
+    keeps its old local value, and re-fetching the range locally is the
+    only way to pick the correction up.
+
+    The same mechanism as the test above, stated as its own claim because
+    the two readings have opposite consequences for a reader — one is a
+    safety guarantee, the other is a limitation."""
+    merge_krx(instance, local)
+    closes = {c for (c,) in _rows(
+        local, "SELECT close FROM klines WHERE symbol='KRX:005930'"
+    )}
+    assert "instance-side" not in closes, (
+        "a corrected instance value reached the local row -- the sync is no "
+        "longer additive-only"
+    )
+    assert "local-side" in closes
 
 
 def test_binance_rows_the_instance_never_had_survive(instance, local):

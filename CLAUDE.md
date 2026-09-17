@@ -761,10 +761,12 @@ just `/futures/data/` but plain `fapi/v1/klines` too — with *"Service
 unavailable from a restricted location"*, and the instance's egress IP
 geolocates to **US**. So:
 
-- **Binance collection is local-only.** `scripts/collect-positioning.sh`
-  runs on the local (Korean-IP) machine's crontab at `*/30`, and that is
-  the collector of record, not a convenience. Verified healthy on
-  2026-09-14: 118,794 rows, current to that day.
+- **Binance collection could only ever run locally**, from a Korean IP.
+  `scripts/collect-positioning.sh` was that collector, at `*/30` on the
+  local crontab; it was **stopped on 2026-09-17** when BTC was set aside,
+  and nothing has replaced it. The constraint it existed under is
+  unchanged and would force it back to the local machine the moment BTC
+  resumes.
 - **Running the Binance collector on the instance fails every series and
   exits non-zero** — the fail-closed design working, and **not** a bug to
   fix by retrying.
@@ -807,12 +809,27 @@ Three consequences a future session must not rediscover the hard way:
    sampler gates on KST internally, so a wrong-hour entry just logs
    *"outside the continuous session"* forever and collects nothing. The
    crontab carries this in a comment.
-2. **Research still runs locally** — the instance is a 955MB e2-micro
-   already carrying two paper-trading JVMs, and a backtest does not fit.
-   Run **`scripts/sync-krx-from-instance.sh`** before any research that
-   reads KRX data, or every local KRX read stays frozen at the migration
-   snapshot. It is additive (`INSERT OR IGNORE`, never `UPDATE`/`DELETE`),
-   copies only `KRX`-prefixed rows, and is safe to re-run.
+2. **The KRX data of record is the instance's copy, and research may run
+   in either place** — which is the one thing to get right, because the
+   two answers differ.
+
+   Research **on the instance** reads the record directly and needs no
+   sync. It fits: the heaviest KRX module peaks at 103MB, and the two
+   paper-trading JVMs that used to crowd it were stopped on 2026-09-17.
+   It is I/O-bound there rather than CPU-bound (8% CPU, 1:43 wall for 4s
+   of compute), so expect it to be slower, not to fail.
+
+   Research **on the local machine** — where interactive sessions
+   actually happen — reads a copy that stops advancing the moment
+   collection moved. Run **`scripts/sync-krx-from-instance.sh`** first,
+   every time. It is additive (`INSERT OR IGNORE`, never `UPDATE` or
+   `DELETE`), copies only `KRX`-prefixed rows, and is safe to re-run.
+
+   **It brings new rows down, not corrections.** `INSERT OR IGNORE` keeps
+   the local value where a primary key already exists, so a row the
+   instance later *fixed* would not propagate. That is the deliberate
+   trade for never being able to lose data in a sync; re-fetching the
+   affected range locally is the way to pick a correction up.
 3. **The repo on the instance lives under `minjun4897`**, not the SSH
    login user, and was 16 commits behind when this was set up. Its
    collectors are only as current as its checkout.
