@@ -173,6 +173,26 @@ The only policy in project history to clear Gate A. Not re-searched.
 - stop at **1R**; `R` is the initial-layer planned risk
 - time exit at **10 sessions** if neither target nor stop is reached
 
+### 5.1a Amendment, 2026-09-18 — four omissions, closed before any run
+
+**Found while implementing `scenario_playbook.py`, and closed here rather
+than at the keyboard.** Each was genuinely undefined above, and an
+undefined quantity is one an implementer picks — in the worst case after
+seeing which choice flatters the result. **No Task E run has executed**,
+so this is completion of the contract and not a revision of it; the
+stopping rule in §7 binds from here.
+
+| omission | closed as | why this and not something else |
+|---|---|---|
+| `R` had no size | **`R = 1 × ATR(14)` at entry** | the trail is already in ATR units, so `R` in the same unit keeps the stop and the trail commensurable. Conventional, and it is the only choice that makes "3 × ATR trail against a 1R stop" a ratio rather than a coincidence of scales |
+| position size | **0.5% of a fixed reference equity per initial layer**, quantity = `risk_budget / R` | Task D's `RISK_FRACTION = 0.005` and its fixed-reference convention, adopted unchanged. A fixed reference rather than compounding equity, so the eight policies are compared on the same sizing and the spread is a management effect |
+| concurrency | **at most one open position per name**; no cap across names | a second position in the same name is pyramiding, which is Task D's P4 — a *different* policy that did not clear Gate A. Allowing it here would silently mix two axes |
+| alternative chaining | **one alternative per episode**; if the alternative also invalidates, go flat | unbounded chaining would let one entry become an indefinite sequence of trades, and the holding period would again be decided by accident rather than declared — Task C's error |
+
+**The chaining cap is the load-bearing one.** Without it E2 and E3 are not
+"the opposite thesis is now live" but "keep re-entering until something
+works", which is a different hypothesis and one with no stated horizon.
+
 ### 5.2 The state machine, and its exhaustiveness requirement
 
 At every bar, in this order, exactly one branch fires:

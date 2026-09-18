@@ -201,7 +201,9 @@ def relative_turnover(panel: DailyPanel) -> np.ndarray:
         with np.errstate(invalid="ignore"):
             med = np.nanmedian(window, axis=0)
         prev = qv[t - 1]
-        out[t] = np.where((med > 0) & np.isfinite(prev), prev / med, np.nan)
+        usable = (med > 0) & np.isfinite(prev) & np.isfinite(med)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            out[t] = np.where(usable, prev / np.where(usable, med, 1.0), np.nan)
     return out
 
 
@@ -303,7 +305,16 @@ def classify_branch(
 
     # 1. stop — wins a same-bar tie against the scale, per S8 §3.7's
     #    MAE/MFE contract. The pessimistic resolution is the honest one.
-    if r_adverse <= -STOP_AT_R:
+    #
+    #    **A hedged core does not re-stop, and that is the E3 hypothesis
+    #    rather than a convenience.** E3's claim is precisely "I do not
+    #    want to close here, I want to neutralise and see what happens":
+    #    the hedge supersedes the stop, and the core then runs to its time
+    #    exit. Letting STOP fire again on a hedged position would close the
+    #    core and make E3 identical to E2 -- which is what the first
+    #    implementation did, producing byte-identical results for the two
+    #    policies and a meaningless verdict on the registered prediction.
+    if r_adverse <= -STOP_AT_R and pos.hedge_contracts == 0:
         return Branch.STOP
     # 2. scale
     if not pos.scaled and r_favourable >= SCALE_AT_R:

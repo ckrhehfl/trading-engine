@@ -76,6 +76,24 @@ that has happened, so a caller measuring over data with known gaps can
 assert the count matches what it expects -- an unexpected number means
 the input is not what it was believed to be.
 
+**A market with a weekend has no single interval, so daily data needs a
+calendar instead.** The interval check above is correct for 1-minute
+crypto, which really is continuous, and **unusable on KRX daily**:
+spacing there is 1 calendar day 902 times, 3 over a weekend 220 times,
+and 2/4/5/6/7/8 across holidays. Measured on the real ten-name panel, the
+classifier logged **273 discontinuities and resolved 0 of 1,176 bars** --
+it reset every weekend and could never accumulate enough readings to
+leave warmup. Nothing in this module's own tests could have caught it:
+they run on synthetic minute bars, one interval apart by construction.
+That is CLAUDE.md's "run it where it will run", for the fourth time.
+
+`session_calendar` switches contiguity to **"the next session"**. A bar
+whose date is not in the calendar is a discontinuity, because the
+classifier cannot place it and guessing is the failure the check exists
+to prevent. Passing it alongside `expected_interval` raises rather than
+letting one definition silently win. `None` keeps the interval behaviour
+byte-for-byte, so every existing 1-minute caller is unaffected.
+
 **Look-ahead safety** is inherited: `update(kline)` reads only the
 current bar and state accumulated from bars already fed, the same
 guarantee `AverageTrueRange.update` and `AverageDirectionalIndex.update`
@@ -89,7 +107,8 @@ history of ATR readings to rank against.
 from bisect import bisect_left
 from collections import deque
 from dataclasses import dataclass
-from datetime import timedelta
+from collections.abc import Sequence
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
 
@@ -336,6 +355,8 @@ class RegimeClassifier:
         "_last_open_time",
         "_make_vol",
         "_min_dwell_bars",
+        "_session_index",
+        "_sessions",
         "_structure",
         "_structure_bars",
         "_vol",
@@ -359,6 +380,7 @@ class RegimeClassifier:
         vol_high: Decimal | None = None,
         min_dwell_bars: int | None = None,
         expected_interval: timedelta | None = None,
+        session_calendar: Sequence[date] | None = None,
     ) -> None:
         if adx_low > adx_high:
             raise ValueError(f"adx_low ({adx_low}) must not exceed adx_high ({adx_high})")
@@ -401,10 +423,55 @@ class RegimeClassifier:
         self._last_open_time = None
         self._discontinuities = 0
 
+        # **A market with a weekend has no single bar interval, and that
+        # makes the interval check above unusable on daily data.** Measured
+        # on the KRX daily panel: spacing is 1 calendar day 902 times, 3
+        # over a weekend 220 times, and 2/4/5/6/7/8 across holidays -- so
+        # the classifier logged **273 discontinuities and resolved 0 of
+        # 1,176 bars**, never accumulating enough readings to leave warm-up.
+        #
+        # Nothing in this module's own tests could have caught that: they
+        # run on synthetic minute bars, which really are one interval
+        # apart. It is CLAUDE.md's "run it where it will run" again, and
+        # the fourth instance of it.
+        #
+        # Given a calendar, contiguity becomes "the next session" instead.
+        # `None` keeps the interval behaviour byte-for-byte, so every
+        # 1-minute caller is unaffected.
+        if session_calendar is not None and len(session_calendar) < 2:
+            raise ValueError(
+                f"a session calendar needs at least 2 sessions to define "
+                f"contiguity, got {len(session_calendar)}"
+            )
+        self._sessions = None if session_calendar is None else list(session_calendar)
+        self._session_index = (
+            None if self._sessions is None
+            else {d: i for i, d in enumerate(self._sessions)}
+        )
+        if self._sessions is not None and expected_interval is not None:
+            raise ValueError(
+                "pass session_calendar or expected_interval, not both -- they are "
+                "two different definitions of contiguity and one would silently win"
+            )
+
         self._structure: Structure | None = None
         self._volatility: Volatility | None = None
         self._structure_bars = 0
         self._volatility_bars = 0
+
+    def _is_next_session(self, previous: datetime, current: datetime) -> bool:
+        """Is `current` the session immediately after `previous`?
+
+        A bar whose date is absent from the calendar is a discontinuity:
+        the classifier cannot place it, and guessing would be the failure
+        this check exists to prevent.
+        """
+        assert self._session_index is not None
+        a = self._session_index.get(previous.date())
+        b = self._session_index.get(current.date())
+        if a is None or b is None:
+            return False
+        return b == a + 1
 
     @property
     def min_dwell_bars(self) -> int:
@@ -471,7 +538,15 @@ class RegimeClassifier:
                 self._discontinuities += 1
                 self._reset()
                 return None
-            if self._expected_interval is None:
+            if self._sessions is not None:
+                # A market with a weekend has no single interval, so
+                # "contiguous" means "the next session", not "one interval
+                # later". See the constructor's `session_calendar` note.
+                if not self._is_next_session(previous, kline.open_time):
+                    self._discontinuities += 1
+                    self._reset()
+                    return None
+            elif self._expected_interval is None:
                 self._expected_interval = delta
             elif delta != self._expected_interval:
                 self._discontinuities += 1

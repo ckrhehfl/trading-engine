@@ -319,3 +319,41 @@ def test_the_policy_and_core_lists_are_closed():
     assert [p.value for p in Policy] == ["E0", "E1", "E2", "E3"]
     assert [c.value for c in Core] == ["futures", "spot"]
     assert len(list(Policy)) * len(list(Core)) == 8
+
+
+# ============================================ E3 keeps the core; E2 does not
+# A real defect, and the shape of it is the lesson: E2 and E3 came out
+# byte-identical on the first run, because the invalidation branch closed
+# the core before the policy was consulted. Identical results for two
+# policies is what exposed it — the verdict on the registered prediction
+# was meaningless, not merely wrong.
+
+
+def test_a_hedged_core_does_NOT_stop_again():
+    """**This is the E3 hypothesis, not a convenience.** E3's claim is
+    "I do not want to close here, I want to neutralise and see what
+    happens": the hedge supersedes the stop and the core runs to its time
+    exit. Letting STOP fire again would close the core and make E3
+    identical to E2, which is exactly what the first version did."""
+    hedged = _pos(hedge_contracts=5)
+    assert classify_branch(hedged, 1, 101.0, 98.0, 1.0) is Branch.HOLD
+
+    unhedged = _pos()
+    assert classify_branch(unhedged, 1, 101.0, 98.0, 1.0) is Branch.STOP
+
+
+def test_a_hedged_core_still_reaches_its_time_exit():
+    """Superseding the stop must not make the position immortal — without
+    a reachable exit the hedge would run to the end of the window on every
+    episode, which is a different policy than the one registered."""
+    hedged = _pos(hedge_contracts=5)
+    assert classify_branch(hedged, TIME_EXIT_SESSIONS, 101.0, 98.0, 1.0) is Branch.TIME
+
+
+def test_a_hedged_core_can_still_scale_and_trail():
+    """The rest of P3's management is unchanged by hedging — only the stop
+    is superseded."""
+    hedged = _pos(hedge_contracts=5)
+    assert classify_branch(hedged, 1, 102.0, 99.5, 1.0) is Branch.SCALE
+    scaled = _pos(hedge_contracts=5, scaled=True, best_px=110.0)
+    assert classify_branch(scaled, 1, 100.5, 100.0, 1.0) is Branch.TRAIL
