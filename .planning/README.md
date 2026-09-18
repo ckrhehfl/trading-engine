@@ -183,7 +183,7 @@ A second research arc on 1-minute bars, opened 2026-08-24. Closed to selection �
 - [`scalp-s8-research-methodology.md`](scalp-s8-research-methodology.md) — Scalping Strategy Research Task S8 — research methodology, rebuilt
 - [`scalp-s9-slippage-measurement.md`](scalp-s9-slippage-measurement.md) — Scalping Strategy Research Task S9 — real slippage measurement
 
-### Trade management (Tasks A–D)
+### Trade management (Tasks A–E)
 
 A multi-leg position model, built after the operator pointed out the framework could not express what they were describing.
 
@@ -193,6 +193,7 @@ A multi-leg position model, built after the operator pointed out the framework c
 - [`tm-c-confluence-hedge-specification.md`](tm-c-confluence-hedge-specification.md) — Trade Management Task C — specification for the core-plus-tactical-hedge candidate
 - [`tm-d-breakout-management-preregistration.md`](tm-d-breakout-management-preregistration.md) — Trade Management Task D — pre-registration: what does *managing* a fixed entry actually do?
 - [`tm-d-breakout-management-result.md`](tm-d-breakout-management-result.md) — Trade Management Task D — result: management is the biggest single effect this project has measured, and two policies clear Gate A
+- [`tm-e-scenario-playbook-design.md`](tm-e-scenario-playbook-design.md) — Trade Management Task E — scenarios as a state machine, not as prose
 
 ### Multi-asset expansion (`ms-*`)
 
@@ -232,4 +233,3 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-s-korean-tax-schedule.md`](rd-s-korean-tax-schedule.md) — Research Direction Task S — the per-era Korean tax schedule, and the settlement trap inside it
 - [`rd-t-korean-signal-ic.md`](rd-t-korean-signal-ic.md) — Research Direction Task T — do any Korean intraday features predict anything?
 - [`rd-u-do-conjunctions-beat-their-parts.md`](rd-u-do-conjunctions-beat-their-parts.md) — Research Direction Task U — do conditions COMBINED beat their parts?
-- [`tm-e-scenario-playbook-design.md`](tm-e-scenario-playbook-design.md) — Trade Management Task E — scenarios as a state machine, not as prose

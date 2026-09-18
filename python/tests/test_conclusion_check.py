@@ -510,14 +510,50 @@ class TestCheckClusteredObservations:
     """
 
     def test_the_rd_u_panel_blocks(self):
-        """The real shape: 11,740 name-days from 1,176 dates. Reported as
-        11,740 independent observations, it moved p from 0.016 to 0.182
-        once corrected, and took BH survivors from 1 to 0."""
+        """rd-u's panel shape: **1,176 dates x 10 names = 11,760
+        name-days** (its h=1 sample was 11,740 of those, the 20 lost to
+        the forward-return edge).
+
+        The check reads only the total and the distinct-group count, so
+        this fixture replays those two and **not** the real per-date
+        composition — stated because an earlier version of this docstring
+        claimed it reproduced the panel and then built a different total.
+        """
         keys = [d for d in range(1176) for _ in range(10)]
         finding = check_clustered_observations(keys)
         assert finding is not None
         assert finding.severity == BLOCKER
         assert "1,176" in finding.message and "11,760" in finding.message
+
+    def test_the_bound_is_right_for_UNEQUAL_groups(self):
+        """**A real error in the first version.** It quoted
+        `sqrt(n / groups)`, which is the inflation only when every group
+        is the same size. At sizes 99 and 1 that says 7.1x where the true
+        worst case is `sqrt((99^2 + 1^2) / 100)` = 9.9x — understating
+        the very thing the check warns about."""
+        keys = ["a"] * 99 + ["b"]
+        finding = check_clustered_observations(keys)
+        assert finding is not None
+        assert "9.9x" in finding.message, finding.message
+        assert "7.1x" not in finding.message
+
+    def test_the_bound_matches_the_equal_size_form_when_groups_are_equal(self):
+        """The old formula was not wrong, it was a special case. Equal
+        groups must still give sqrt(n / groups) — 100 obs in 4 groups of
+        25 is 5.0x."""
+        keys = [g for g in range(4) for _ in range(25)]
+        finding = check_clustered_observations(keys)
+        assert finding is not None and "5.0x" in finding.message
+
+    def test_no_bound_is_quoted_when_it_cannot_be_computed(self):
+        """With an explicit `reported_n` the group sizes behind that
+        statistic are not visible, so quoting a bound from `group_keys`
+        would be a number computed from the wrong sample."""
+        keys = [g for g in range(100) for _ in range(10)]
+        finding = check_clustered_observations(keys, reported_n=5000)
+        assert finding is not None
+        assert "x on the standard error" not in finding.message
+        assert "5,000" in finding.message, "it must still name what was claimed"
 
     def test_one_observation_per_group_passes(self):
         """The corrected form — collapse each session to one number

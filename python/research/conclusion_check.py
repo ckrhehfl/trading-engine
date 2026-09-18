@@ -270,8 +270,15 @@ def check_clustered_observations(
     groups, because that is a figure claiming more independent
     information than the sample contains. It cannot tell you *how much*
     the standard error is understated -- that depends on the
-    within-group correlation, and the bound quoted in the message is the
-    worst case (perfect correlation inside each group).
+    within-group correlation.
+
+    **A worst-case bound is quoted only when it can be computed from the
+    argument given.** With `reported_n` omitted the reported sample is
+    `group_keys` itself, so the group sizes are known and the bound is
+    `sqrt(sum(m_i^2) / n)` -- the inflation under perfect within-group
+    correlation. With an explicit `reported_n` that differs, the group
+    sizes behind *that* statistic are not visible here, so no bound is
+    quoted rather than one computed from the wrong sample.
 
     **Clustering is not always the right unit, and this check does not
     decide that for you.** If the observations within a group really are
@@ -281,15 +288,35 @@ def check_clustered_observations(
     justify it where the conclusion is written. The default assumes the
     dependence is there because on real market data it generally is.
     """
-    keys = list(group_keys)
+    keys = [str(k) for k in group_keys]
     if not keys:
         return None
     n_obs = len(keys)
-    n_groups = len({str(k) for k in keys})
+    sizes: dict[str, int] = {}
+    for k in keys:
+        sizes[k] = sizes.get(k, 0) + 1
+    n_groups = len(sizes)
     claimed = n_obs if reported_n is None else reported_n
     if claimed <= n_groups:
         return None
-    inflation = math.sqrt(claimed / n_groups) if n_groups else float("inf")
+
+    # **The bound is sqrt(sum(m_i^2) / n), not sqrt(n / groups).** Under
+    # perfect within-group correlation every member of group `i` carries
+    # the same value, so the pooled mean has variance
+    # `sum(m_i^2) * sigma^2 / n^2` against the naive `sigma^2 / n` --
+    # giving that ratio. The two coincide only when every group is the
+    # same size, and an earlier version of this check quoted the equal-size
+    # form for every sample: at group sizes 99 and 1 it said 7.1x where
+    # the real bound is 9.9x, understating the very thing it warns about.
+    bound: float | None = None
+    if reported_n is None:
+        bound = math.sqrt(sum(m * m for m in sizes.values()) / n_obs)
+    inflation = (
+        f" -- by up to {bound:.1f}x on the standard error if within-group "
+        f"correlation is total"
+        if bound is not None
+        else ""
+    )
     return Finding(
         check=check,
         severity=BLOCKER,
@@ -297,13 +324,11 @@ def check_clustered_observations(
             f"{n_obs:,} observations come from only {n_groups:,} distinct groups, "
             f"and the reported sample size is {claimed:,}. Observations sharing a "
             f"group are not independent draws, so a t, p-value or standard error "
-            f"computed on {claimed:,} overstates the evidence -- by up to "
-            f"{inflation:.1f}x on the standard error if within-group correlation "
-            f"is total. Compute the statistic over the {n_groups:,} groups (one "
-            f"observation per group, e.g. the mean across whatever fired that "
-            f"session), or resample whole groups in a block bootstrap, and report "
-            f"the ratio of the corrected standard error to the naive one beside "
-            f"the figure."
+            f"computed on {claimed:,} overstates the evidence{inflation}. Compute "
+            f"the statistic over the {n_groups:,} groups (one observation per "
+            f"group, e.g. the mean across whatever fired that session), or "
+            f"resample whole groups in a block bootstrap, and report the ratio of "
+            f"the corrected standard error to the naive one beside the figure."
         ),
         scar=_CLUSTER_SCAR,
     )

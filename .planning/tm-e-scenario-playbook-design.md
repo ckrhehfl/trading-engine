@@ -105,8 +105,12 @@ selector has never been tested here.** That is stated as a distinction to
 be checked rather than assumed: E1 below exists precisely to find out, and
 S10's result is a real reason to expect it may not help.
 
-**The structure axis is used only as a tie-break, never alone**, since it
-has now failed twice.
+**The structure axis is computed and recorded, and not acted on** — see
+§5.1 for the contract. An earlier draft of this section said it would be
+used "as a tie-break", which contradicted §5.1 and was worse than either
+option on its own: a two-branch selector has no tie to break, so the
+phrase described machinery that could not exist. ADX has now failed on
+both axes it could have, and branching on it would be unsupported.
 
 ## 4. The entry, fixed from outside — and it absorbs the turnover filter
 
@@ -127,6 +131,36 @@ literature's best filter is available at exactly the frequency this task
 operates at, and the operator's item ② is absorbed here rather than
 deferred.
 
+### 4.1 The filter's point-in-time cutoff — pinned, because the obvious version is look-ahead
+
+**`acml_tr_pbmn` is cumulative within the session, and that makes the
+natural reading of "abnormally active today" a look-ahead bug.** A daily
+bar's 거래대금 is the *whole* session's, including everything that traded
+after an opening-range entry. Ranking names on it and then entering at
+the open uses the outcome to pick the trade.
+
+The rule, and it is part of the registration rather than an
+implementation detail:
+
+| | |
+|---|---|
+| the filter reads | **relative 거래대금 of the PREVIOUS session** — `quote_volume[t-1]` against its own trailing median over `t-21 .. t-1` |
+| it may never read | `quote_volume[t]`, at any point in day `t`'s logic |
+| entry is at | day `t`'s opening range, decided from information dated `t-1` or earlier |
+
+**Verification, not just a rule.** The implementation must pass a test
+that shifts `quote_volume[t]` to an extreme value for the selected names
+and asserts **the selection does not change**. A filter that reads the
+forward value cannot survive that, and a filter that merely looks correct
+can. This is the same construction the project's other look-ahead guards
+use, and it is named here so it is not skipped.
+
+One consequence, disclosed: using `t-1` means the filter is one session
+stale relative to Zarattini's intraday version, which ranks on
+*that morning's* relative volume. This is a real deviation from the
+source specification, forced by what KIS serves, and it may weaken the
+filter. It is not a free choice between two equivalent options.
+
 ## 5. The four policies
 
 Entry identical across all four. Initial-layer sizing held constant, with
@@ -141,6 +175,80 @@ Entry identical across all four. Initial-layer sizing held constant, with
 
 E0 is the baseline and is not a strawman: it is the configuration that
 actually cleared Gate A on another market.
+
+**The count is 8, not 4 or 6.** Each policy runs on both a spot core and
+a futures core if §8.1 is answered "both", and the two are not the same
+experiment even for E0–E2: those policies close on invalidation, and
+closing costs **20 bp of 증권거래세 on spot against ~13 bp of futures
+round trip**, so the core changes every policy's arithmetic and not only
+E3's. An earlier draft said "4 to 6" and "four (or six)", which
+under-counts the runs and therefore the multiple-comparison burden. If
+§8.1 comes back "futures only" the count is 4; there is no combination
+that is legitimately excluded while both cores are in scope.
+
+### 5.1 The regime → playbook contract
+
+**Two branches, on the volatility axis only.** The structure axis (ADX)
+is computed and recorded and **not acted on**, because S10 measured it
+carrying nothing on both axes it could have, and branching on a dead
+signal would be unsupported machinery presented as a design.
+
+| regime | playbook |
+|---|---|
+| **EXPANSION** | breakout — the opening-range entry, held with P3 management |
+| **COMPRESSION** | fade — enter against the opening-range extreme, same management |
+
+Three behaviours that decide the result and would otherwise differ per
+implementer, so they are fixed here:
+
+1. **Warm-up (`classifier returns None`): no new entries, and any open
+   position continues under the playbook it was opened with.** Absence of
+   a regime is not a regime — fail closed, the same way
+   `regime_classifier` already resets across a gap.
+2. **A regime change does NOT switch an open position's playbook.** The
+   position lives out the contract it was opened under, exit rule
+   included; the new regime governs the next *entry* only. Switching
+   mid-position changes the exit rule under a live position, which makes
+   the policy comparison uninterpretable — and it is a close relative of
+   Task C's accident, where the exit was decided by something other than
+   the hypothesis.
+3. **Hysteresis and dwell are the classifier's, not re-specified here.**
+   ADX 20/25, the volatility 25th/90th percentile band, and the 14-bar
+   minimum dwell are `regime_classifier`'s existing constants. Task E
+   introduces no new threshold, which is what keeps the entry+selection
+   layer free of fitted parameters.
+
+### 5.2 The hedge leg's contract terms — E3 only
+
+Task D's P5 opened a reverse leg at 50% of the current position **on
+BTC-USDT perpetuals**, where quantity is continuous and there is no
+expiry. Single-stock futures are neither, so the terms are pinned:
+
+| | |
+|---|---|
+| instrument | front-month single-stock future on the same underlying |
+| contract size | **10 shares**, every one of the 283 listed names (`rd-r`, measured from `fo_stk_code_mts.mst`) |
+| hedge ratio | **50% of the current core**, matching P5 so the comparison to Task D is meaningful |
+| quantity | `floor(core_shares × 0.5 / 10)` contracts — whole contracts only |
+| **too small to hedge** | if that floors to 0, E3 **falls back to E2's behaviour** for that episode, and every such fallback is **counted and reported** |
+| roll | front month, rolled on the session **before** the final trading day; a hedge open at roll is rolled, never left to expire |
+| close order | the hedge leg closes **first**; the core persists and is closed by its own rule |
+| costs | `rd-q`'s ~13 bp round trip per futures leg; a spot core's close additionally pays `krx_tax_schedule.total_bp` for its era |
+
+**The fallback clause is not a detail.** A policy that silently cannot
+act on some episodes is not being tested on those episodes, and reporting
+its aggregate as if it were would be Task C's error in a new place —
+there, a hedge that fired twice in 2,544 bars was reported before anyone
+noticed two firings cannot be measured. The count of fallbacks is part of
+the result, not a footnote.
+
+**CLAUDE.md's `STOCK_FUTURES` refusal is not a blocker here and the
+reason matters.** `resolveKisNotionalCalculator` throws because the *Java
+runtime's* per-stock multiplier was unconfirmed when that was written.
+`rd-r` has since measured it — 10 shares, uniformly — so the research-side
+notional is defined. **This does not license resetting that Java guard**;
+closing it is its own change with its own review, and nothing in Task E
+touches the trading plane.
 
 ## 6. Registered predictions — the part that makes this falsifiable
 
@@ -225,6 +333,8 @@ may be promoted on the strength of it.
    registered prediction in §6. **Recommendation: both**, because the
    inversion is the one place this project's accumulated negative result
    on hedging might not transfer, and it is the operator's own idea.
+   **Answering "both" makes the policy count 8** (§5); "futures only"
+   makes it 4 and forecloses the §6 prediction.
 2. **Which universe?** The `rd-r` ten, or wait for the survivorship-safe
    full universe. The ten carry a known mild look-ahead (selected on
    2026Q1 futures liquidity, Spearman +0.954 rank persistence) and give a
@@ -241,9 +351,12 @@ may be promoted on the strength of it.
 1. Write the state machine over `metrics.book`, with the exhaustiveness
    property as a real test — a bar that matches no branch must raise, not
    silently hold.
+   Also the §4.1 look-ahead test: shift `quote_volume[t]` to an extreme
+   for the selected names and assert the selection does not move.
 2. Port `regime_classifier` to the daily KRX panel and verify the dwell
    and hysteresis behave on real Korean data rather than on 1-minute BTC.
-3. Implement the four (or six) policies with the entry fixed.
+3. Implement the policies with the entry fixed — **8 if §8.1 is "both",
+   4 if it is futures only** (§5).
 4. Commit the registration — entry, policy list, predictions, stopping
    rule — **before any run**.
 5. Run, report every policy including losers, and produce the
