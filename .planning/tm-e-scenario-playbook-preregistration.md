@@ -1,4 +1,4 @@
-# Trade Management Task E — pre-registration
+# Trade Management Task E — pre-registration: the contract, committed before any run
 
 **Committed 2026-09-18, before any Task E run.** Design and reasoning:
 [`tm-e-scenario-playbook-design.md`](tm-e-scenario-playbook-design.md).
