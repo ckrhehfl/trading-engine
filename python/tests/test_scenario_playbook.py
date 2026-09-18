@@ -109,10 +109,15 @@ def test_relative_turnover_uses_the_previous_bar_over_its_own_median():
     assert rel[t] == pytest.approx(p.quote_volume[t - 1] / med)
 
 
-def test_the_window_before_the_lookback_is_undefined():
+def test_the_window_before_the_lookback_is_undefined_and_NOT_one_past_it():
+    """`t = TURNOVER_LOOKBACK` is already defined — its window is
+    `qv[0:21]`, a full 21 observations, with `prev = qv[20]`. An earlier
+    version started one session later and silently discarded two usable
+    sessions per name."""
     p = _panel(days=40, names=3)
     rel = relative_turnover(p)
-    assert np.isnan(rel[: TURNOVER_LOOKBACK + 1]).all()
+    assert np.isnan(rel[:TURNOVER_LOOKBACK]).all()
+    assert np.isfinite(rel[TURNOVER_LOOKBACK]).all(), "this session IS usable"
 
 
 def test_eligibility_is_a_median_split_with_no_threshold():

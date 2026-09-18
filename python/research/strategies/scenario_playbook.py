@@ -196,7 +196,10 @@ def relative_turnover(panel: DailyPanel) -> np.ndarray:
     """
     qv = panel.quote_volume
     out = np.full(qv.shape, np.nan)
-    for t in range(TURNOVER_LOOKBACK + 1, qv.shape[0]):
+    # `t = TURNOVER_LOOKBACK` is already defined: the window is `qv[0:21]`,
+    # a full 21 observations, and `prev` is `qv[20]`. Starting one later
+    # silently discarded two usable sessions.
+    for t in range(TURNOVER_LOOKBACK, qv.shape[0]):
         window = qv[t - TURNOVER_LOOKBACK : t]        # excludes t
         with np.errstate(invalid="ignore"):
             med = np.nanmedian(window, axis=0)

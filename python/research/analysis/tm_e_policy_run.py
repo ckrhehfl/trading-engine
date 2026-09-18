@@ -31,6 +31,35 @@ Plus one that impeaches the cost model rather than the policy: **P5
 failing to replicate on the futures core.** If E3-F does not lose to
 E2-F, this project's cost model is wrong and that is investigated before
 anything here is trusted.
+
+## A named limitation: E3's hedge is priced off SPOT closes
+
+Raised on review and it is correct. The registration specifies a
+front-month single-stock future with a roll, and this module prices the
+hedge leg at `panel.close_px` -- the spot close -- because **the futures
+price history to do otherwise does not exist over this window.**
+
+Measured: `runs/krx_futures_liquidity.json` (rd-r, the only copy, since
+KIS drops an expired contract's *entire* series) spans **2025-12-12
+onward, 188 dates against this panel's 1,176 -- 16%**. There is no
+front-month series for 2021-2025 at any price.
+
+So three things are absent from E3's figures: **basis moves between spot
+and the future, roll P&L, and the cost of rolling.** The direction of
+each is stated rather than left open:
+
+- **roll costs are omitted, which FLATTERS E3** -- a hedge held up to 10
+  sessions crosses an expiry occasionally, and each crossing is a real
+  round trip this module never charges. E3 loses anyway, so the
+  conclusion is biased in the safe direction.
+- **basis change over <=10 sessions is small against a 1R move and
+  roughly mean-zero**, so it adds variance rather than a level shift.
+
+**What it does mean is that E3's magnitude is an approximation and its
+sign is not.** Pricing it properly needs either several more years of
+accumulated futures history or a sub-window of ~190 sessions, which is
+too short to carry the comparison. Neither is available now, so this is
+disclosed rather than worked around.
 """
 
 from __future__ import annotations
@@ -62,6 +91,7 @@ from research.strategies.regime_classifier import (
 from research.strategies.scenario_playbook import (
     ATR_PERIOD,
     CONTRACT_SHARES,
+    FUTURES_ROUND_TRIP_BP,
     Branch,
     Core,
     DailyPanel,
@@ -234,11 +264,20 @@ def playbook_for(policy: Policy, volatility: Volatility | None) -> Playbook | No
 
 
 def _leg_cost_krw(notional: float, core: Core, date: dt.date, calendar, closing: bool) -> float:
-    """Entry costs a futures round trip either way; a *close* on a spot core
-    additionally pays the era's 증권거래세."""
-    if not closing:
-        return notional * close_cost_bp(Core.FUTURES, date, calendar) / _BPS / 2
-    return notional * close_cost_bp(core, date, calendar) / _BPS
+    """One leg's cost in KRW.
+
+    **`FUTURES_ROUND_TRIP_BP` is a ROUND TRIP, so one leg is half of it.**
+    An earlier version charged the full 13bp on a close and half on an
+    entry, making a futures round trip 19.5bp — half again over what the
+    registration fixes. The spot core's close is the exception: 증권거래세
+    is levied once, on the sale, so it is charged whole.
+    """
+    half_round_trip = notional * FUTURES_ROUND_TRIP_BP / _BPS / 2
+    if not closing or core is Core.FUTURES:
+        return half_round_trip
+    # A spot close pays the era's transaction tax instead — that whole
+    # figure is the sell-side cost, not half of a round trip.
+    return notional * close_cost_bp(Core.SPOT, date, calendar) / _BPS
 
 
 def run_policy(
@@ -254,7 +293,7 @@ def run_policy(
     result = PolicyResult(policy, core)
     n, m = panel.shape
     open_pos: dict[int, tuple[Position, Episode]] = {}
-    start = max(TURNOVER_LOOKBACK + 2, ATR_PERIOD + 1)
+    start = max(TURNOVER_LOOKBACK, ATR_PERIOD + 1)
 
     for t in range(start, n - SETTLEMENT_SESSIONS):
         date = dt.datetime.fromtimestamp(panel.dates[t] / 1000, dt.UTC).date()
@@ -347,7 +386,10 @@ def run_policy(
                 code=panel.codes[j], policy=policy, core=core, playbook=pos.playbook,
                 direction=alt_dir, entry_index=t, entry_px=close, r_unit=r_unit,
                 shares=shares, alternative=True,
-                hedge_fallback=ep.hedge_fallback,
+                # **Not copied.** A fallback is one event on the original
+                # entry; copying it here made `PolicyResult.fallbacks`
+                # count the same event twice and report 130 where 65
+                # occurred.
             )
             alt_ep.cost_krw += _leg_cost_krw(close * shares, core, date, calendar, False)
             result.episodes.append(alt_ep)
@@ -467,8 +509,11 @@ def main(argv: list[str] | None = None) -> int:
     # the entry date; `check_clustered_observations` is run against the
     # sample rather than the claim being asserted.
     print("\n=== is any of this distinguishable from zero? ===")
-    print(f"  {'policy':<7} {'core':<9} {'episodes':>9} {'dates':>7} {'R/date':>9} {'p':>8}")
-    print("  " + "-" * 52)
+    print(
+        f"  {'policy':<7} {'core':<9} {'episodes':>9} {'dates':>7} {'R/date':>9} "
+        f"{'p':>8} {'SEx':>6}"
+    )
+    print("  " + "-" * 60)
     for r in results:
         per_date: dict[int, list[float]] = {}
         for e in r.episodes:
@@ -485,13 +530,30 @@ def main(argv: list[str] | None = None) -> int:
             2 * (1 - NormalDist().cdf(abs(arr.mean() / (sd / math.sqrt(arr.size)))))
             if sd > 0 else float("nan")
         )
+        # **CLAUDE.md requires the ratio, not just the corrected p.** The
+        # rule reads "report the ratio of the corrected standard error to
+        # the naive one beside the figure", for the same reason the
+        # permutation rule requires `null_sd / se`: the SIZE of the
+        # correction is itself the finding, and a corrected p alone hides
+        # whether the correction mattered. An earlier version of this
+        # runner reported only the p — violating the rule in its first
+        # application.
+        pooled = np.array([e.total_r for e in r.episodes])
+        naive_se = (
+            float(pooled.std(ddof=1)) / math.sqrt(pooled.size)
+            if pooled.size > 1 else float("nan")
+        )
+        clustered_se = sd / math.sqrt(arr.size) if arr.size > 1 else float("nan")
+        sex = clustered_se / naive_se if naive_se > 0 else float("nan")
         print(
             f"  {r.policy.value:<7} {r.core.value:<9} {r.n:>9,} {arr.size:>7,} "
-            f"{arr.mean():>+9.4f} {p:>8.3f}"
+            f"{arr.mean():>+9.4f} {p:>8.3f} {sex:>6.2f}"
         )
     print(
         "  R/date is the mean per entry date, not per episode — pooling episodes\n"
-        "  would claim more independent information than the sample holds."
+        "  would claim more independent information than the sample holds.\n"
+        "  SEx is the date-clustered standard error over the naive per-episode one.\n"
+        "  Above 1 means pooling episodes would have understated the error."
     )
 
     by = {(r.policy, r.core): r for r in results}

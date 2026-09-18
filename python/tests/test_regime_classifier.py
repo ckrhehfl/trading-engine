@@ -520,3 +520,41 @@ class TestSessionCalendarContiguity:
     def test_a_calendar_too_short_to_define_contiguity_is_rejected(self):
         with pytest.raises(ValueError, match="at least 2 sessions"):
             RegimeClassifier(session_calendar=[dt.date(2024, 1, 1)])
+
+    def test_an_unsorted_calendar_is_rejected(self):
+        """**Contiguity is read off positional indices, so the order IS the
+        contract.** Unsorted, `[01-01, 01-03, 01-02]` makes the 01-03 bar
+        look like index 0 -> 1 and hides that 01-02 was skipped."""
+        with pytest.raises(ValueError, match="strictly ascending"):
+            RegimeClassifier(session_calendar=[
+                dt.date(2024, 1, 1), dt.date(2024, 1, 3), dt.date(2024, 1, 2),
+            ])
+
+    def test_a_duplicated_date_is_rejected(self):
+        """A duplicate resolves to whichever index was written last, so a
+        genuinely adjacent pair would read as a discontinuity."""
+        with pytest.raises(ValueError, match="duplicates"):
+            RegimeClassifier(session_calendar=[
+                dt.date(2024, 1, 1), dt.date(2024, 1, 1), dt.date(2024, 1, 2),
+            ])
+
+    def test_an_off_calendar_FIRST_bar_is_a_discontinuity(self):
+        """The pairwise check only runs when there is a predecessor, so
+        without a separate membership check the first bar would be fed to
+        the indicators uncounted — breaking the stated contract that a bar
+        the classifier cannot place is a discontinuity."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        stray = sessions[0] - dt.timedelta(days=1)
+        assert clf.update(self._bars([stray])[0]) is None
+        assert clf.discontinuities == 1
+
+    def test_the_classifier_recovers_on_the_next_real_session(self):
+        """An off-calendar bar must not poison the reference for the bar
+        after it."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        stray = sessions[0] - dt.timedelta(days=1)
+        for bar in self._bars([stray, sessions[0], sessions[1], sessions[2]]):
+            clf.update(bar)
+        assert clf.discontinuities == 1, "only the stray bar counts"

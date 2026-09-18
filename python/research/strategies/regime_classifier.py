@@ -438,11 +438,24 @@ class RegimeClassifier:
         # Given a calendar, contiguity becomes "the next session" instead.
         # `None` keeps the interval behaviour byte-for-byte, so every
         # 1-minute caller is unaffected.
-        if session_calendar is not None and len(session_calendar) < 2:
-            raise ValueError(
-                f"a session calendar needs at least 2 sessions to define "
-                f"contiguity, got {len(session_calendar)}"
-            )
+        if session_calendar is not None:
+            if len(session_calendar) < 2:
+                raise ValueError(
+                    f"a session calendar needs at least 2 sessions to define "
+                    f"contiguity, got {len(session_calendar)}"
+                )
+            # **Contiguity is read off positional indices, so the order IS
+            # the contract.** Unsorted, `[01-01, 01-03, 01-02]` makes the
+            # 01-03 bar look like index 0 -> 1 and hides a missing session;
+            # a duplicate date resolves to whichever index the dict wrote
+            # last, so a genuinely adjacent pair reads as a discontinuity.
+            # Both are silent, so both are rejected rather than tolerated.
+            for earlier, later in zip(session_calendar, list(session_calendar)[1:]):
+                if later <= earlier:
+                    raise ValueError(
+                        f"a session calendar must be strictly ascending with no "
+                        f"duplicates; {later} follows {earlier}"
+                    )
         self._sessions = None if session_calendar is None else list(session_calendar)
         self._session_index = (
             None if self._sessions is None
@@ -524,6 +537,22 @@ class RegimeClassifier:
     def update(self, kline: Kline) -> Regime | None:
         # Contiguity check, before any state is touched -- see the module
         # docstring's fail-closed note.
+        #
+        # **The current bar's calendar membership is checked FIRST, and
+        # separately from the previous bar.** The pairwise check below runs
+        # only when there is a predecessor, so an off-calendar *first* bar
+        # would otherwise be fed to the indicators and not counted -- which
+        # breaks the stated contract that a bar the classifier cannot place
+        # is a discontinuity. It also has to happen before
+        # `_last_open_time` is updated, or the bar would become the
+        # reference for the next one.
+        if self._session_index is not None:
+            if kline.open_time.date() not in self._session_index:
+                self._discontinuities += 1
+                self._last_open_time = None
+                self._reset()
+                return None
+
         previous = self._last_open_time
         self._last_open_time = kline.open_time
         if previous is not None:

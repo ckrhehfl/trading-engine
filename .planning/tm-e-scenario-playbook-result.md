@@ -18,36 +18,44 @@ of an edge.** The promotion `N` is not incremented.
 ## 1. The headline
 
 > **Nothing is distinguishable from zero once the entry date is the unit
-> of the test.** E0's apparent **+34.9R** is **+0.0261R per date, p =
-> 0.511**. The largest policy gap in the table is real as a *comparison*
+> of the test.** E0's apparent **+73.0R** is **+0.0486R per date, p =
+> 0.221**. The largest policy gap in the table is real as a *comparison*
 > and none of its endpoints is a result.
 
-| policy | core | episodes | dates | total R | R/date | p | PF |
-|---|---|---|---|---|---|---|---|
-| **E0** | futures | 1,623 | 923 | **+34.9** | +0.0261 | 0.511 | 1.040 |
-| E1 | futures | 1,335 | 740 | −54.6 | −0.0478 | 0.263 | 0.926 |
-| E2 | futures | 1,363 | 723 | −3.0 | +0.0084 | 0.846 | 0.996 |
-| E3 | futures | 851 | 579 | −119.3 | −0.1210 | 0.100 | 0.803 |
-| E0 | spot | 1,623 | 923 | +4.6 | +0.0075 | 0.851 | 1.005 |
-| E1 | spot | 1,335 | 740 | −74.3 | −0.0626 | 0.142 | 0.901 |
-| E2 | spot | 1,363 | 723 | −23.1 | −0.0063 | 0.883 | 0.969 |
-| E3 | spot | 851 | 579 | −131.6 | −0.1354 | 0.066 | 0.785 |
+| policy | core | episodes | dates | total R | R/date | p | SEx | PF |
+|---|---|---|---|---|---|---|---|---|
+| **E0** | futures | 1,620 | 921 | **+73.0** | +0.0486 | 0.221 | 1.15 | 1.087 |
+| E1 | futures | 1,335 | 740 | −29.5 | −0.0291 | 0.496 | 1.16 | 0.959 |
+| E2 | futures | 1,363 | 723 | +22.2 | +0.0269 | 0.533 | 1.18 | 1.031 |
+| E3 | futures | 851 | 579 | −100.3 | −0.0986 | 0.180 | 1.17 | 0.831 |
+| E0 | spot | 1,620 | 921 | +11.7 | +0.0108 | 0.786 | 1.15 | 1.013 |
+| E1 | spot | 1,335 | 740 | −74.3 | −0.0626 | 0.142 | 1.16 | 0.901 |
+| E2 | spot | 1,363 | 723 | −23.1 | −0.0063 | 0.883 | 1.18 | 0.969 |
+| E3 | spot | 851 | 579 | −128.1 | −0.1314 | 0.074 | 1.17 | 0.790 |
 
 **Not one policy clears the profit-factor floor** of 1.3–1.5 pinned before
-access; the best is **1.040**. So on its own terms every one of the eight
+access; the best is **1.087**. So on its own terms every one of the eight
 fails, and the comparison below is all this run legitimately produced.
+
+**`SEx` is the date-clustered standard error over the naive per-episode
+one**, 1.15–1.18 throughout: pooling episodes would have understated the
+error by about 16%. CLAUDE.md requires that ratio beside the figure for
+the same reason the permutation rule requires `null_sd / se` — the size of
+the correction is itself the finding. **An earlier version of this run
+reported only the corrected p, violating the rule in its first
+application**, and that was caught on review.
 
 **This is the first study run under the session-clustering rule added the
 same day**, and the rule immediately did the work it was added for: total
-R would have read as "E0 made +34.9R", and the date-clustered figure says
+R would have read as "E0 made +73.0R", and the date-clustered figure says
 E0 made nothing measurable. Ten names enter on the same day and share
-that day's market-wide move; 1,623 episodes are 923 dates.
+that day's market-wide move; 1,620 episodes are 921 dates.
 
 ## 2. What the comparison says — the part that is a finding
 
-**Regime selection actively hurt, by about 90R on both cores.** E1 is the
-only change from E0, and it is worse: −54.6 against +34.9 on futures,
-−74.3 against +4.6 on spot.
+**Regime selection actively hurt, by about 100R on futures and 86R on
+spot.** E1 is the only change from E0, and it is worse: −29.5 against
++73.0 on futures, −74.3 against +11.7 on spot.
 
 **That was the registered prior and it held.** S10 measured the structure
 axis carrying nothing and discretising costing most of the volatility
@@ -61,16 +69,17 @@ COMPRESSION it inverts the direction, which is a different bet rather
 than a filtered one.
 
 **The alternative scenario recovered most of it**, and this is the one
-directionally encouraging number in the run: E2 is −3.0R against E1's
-−54.6R on futures, and −23.1R against −74.3R on spot. *"The thesis broke,
-so the opposite thesis is now live"* is worth about **+51R** relative to
-going flat. The registration recorded no prior for this, so it is the
-genuinely new observation — **and it is not significant** (p = 0.846 /
-0.883), so it is a direction to specify against, never a result.
+directionally encouraging number in the run: E2 is +22.2R against E1's
+−29.5R on futures, and −23.1R against −74.3R on spot. *"The thesis broke,
+so the opposite thesis is now live"* is worth about **+52R** relative to
+going flat, on both cores. The registration recorded no prior for this, so
+it is the genuinely new observation — **and it is not significant**
+(p = 0.533 / 0.883), so it is a direction to specify against, never a
+result.
 
 ## 3. The hedge loses on both cores, and the tax advantage does not rescue it
 
-**E3 is the worst policy on both cores** — −119.3R and −131.6R — and this
+**E3 is the worst policy on both cores** — −100.3R and −128.1R — and this
 is now the **third independent confirmation** of a finding Task C and
 Task D each produced separately.
 
@@ -80,17 +89,17 @@ the design:
 
 | | predicted | observed |
 |---|---|---|
-| futures core | **E3 < E2** by ~one round trip | **−116.2R — held** |
-| spot core | E3 **may** beat E2 by the tax differential | **−108.5R — E3 still lost** |
+| futures core | **E3 < E2** by ~one round trip | **−122.5R — held** |
+| spot core | E3 **may** beat E2 by the tax differential | **−105.0R — E3 still lost** |
 
 On a KOSPI spot core, closing pays **20 bp** (5 bp 증권거래세 + 15 bp
 농특세) where hedging with a single-stock future pays ~6.5 bp and no
 transaction tax. **Hedging is ~13 bp cheaper than closing**, which is the
 same magnitude P5 lost by on BTC where that gap is zero. A tax-driven
 inversion would show as the hedge-vs-close gap moving toward zero on
-spot. **It moved +7.8R against a −116R gap.** The structural cost
-advantage is real and it is roughly two orders of magnitude too small to
-matter.
+spot. **It moved +17.5R against a −122.5R gap.** The structural cost
+advantage is real, it moves the comparison in the predicted direction, and
+it is roughly an order of magnitude too small to cross zero.
 
 **"May beat" had no falsifying outcome, and that is a flaw in the
 registration rather than a result.** A prediction that cannot fail is not
@@ -99,7 +108,7 @@ between the cores, because the tax gap exists in one and not the other —
 and the run reports it for that reason.
 
 **The mechanism is visible in the win rate, and it is the classic
-shape.** E3 wins **46.1%** of episodes against E2's 35.8% while losing far
+shape.** E3 wins **47.0%** of episodes against E2's 36.0% while losing far
 more in total. The hedge converts a defined 1R loss into a small win more
 often, and the episodes that go wrong go much more wrong, because the core
 is no longer stopped — it runs to its time exit carrying the unhedged half.
@@ -112,13 +121,26 @@ that name for up to 10 sessions. Part of E3's deficit is therefore
 *opportunity forgone* rather than *hedge cost*, and this run does not
 separate the two.
 
-**130 of 558 invalidations were too small to hedge** and fell back to
-E2's behaviour. The registration required that count be reported rather
-than absorbed, and it is 23% — so E3 is a blend, roughly 77% hedge and
-23% alternative-scenario.
+**65 of 493 invalidations were too small to hedge** and fell back to E2's
+behaviour — 13%, so E3 is a blend, roughly 87% hedge and 13%
+alternative-scenario. The registration required that count be reported
+rather than absorbed.
 
-**65 alternatives still occurred under E3**, from those fallbacks. E3 is
-not a clean arm.
+**That figure was 130 in the first write-up, and it was double-counted**:
+the alternative episode copied the original's `hedge_fallback` flag and
+`PolicyResult.fallbacks` counted both records for one event. Caught on
+review. 65 alternatives occurred under E3, one per fallback — so **E3 is
+not a clean arm.**
+
+**E3's hedge is priced off SPOT closes, not futures**, and that is a data
+limitation rather than a choice. `runs/krx_futures_liquidity.json` — the
+only copy, since KIS drops an expired contract's entire series — spans
+**2025-12-12 onward, 188 dates against this panel's 1,176 (16%)**. There
+is no front-month series for 2021-2025 at any price. So basis moves, roll
+P&L and roll costs are all absent. **The omitted roll costs flatter E3**,
+which loses anyway, so the sign is safe and the magnitude is an
+approximation; basis change over a ≤10-session hedge is small against a 1R
+move and roughly mean-zero.
 
 ## 5. Two implementation defects, both found by the run rather than by reading
 
@@ -176,10 +198,18 @@ of the payoff, not the prediction.** A response layer cannot rescue an
 entry with no edge, and the registered expectation was that it would not.
 
 **Costs are large relative to everything measured.** E0-futures paid
-**46.6M KRW** in costs to net +17.4M — so gross was ~64M and costs took
-73% of it. At 1,623 episodes the 13 bp round trip compounds into the
-dominant term, which is `rd-u` §5.1's point in reverse: the cost is small
-against a day's *move* and large against this strategy's *edge*.
+**31.0M KRW** in costs to net +36.5M — so gross was ~67M and costs took
+46% of it; on the spot core the same entries paid **61.6M** to net 5.9M,
+i.e. 91%. At 1,620 episodes the round trip compounds into a first-order
+term, which is `rd-u` §5.1's point in reverse: the cost is small against a
+day's *move* and large against this strategy's *edge*.
+
+**An earlier version of this run charged a futures round trip of 19.5 bp
+rather than the registered 13** — half on entry and the *whole* figure
+again on close. Caught on review. Fixing it moved every futures-core
+number materially (E0 +34.9R → +73.0R, E2 −3.0R → +22.2R) and changed no
+qualitative conclusion, which is the only reason the write-up above did
+not have to be rebuilt.
 
 **The window is spent and the panel carries `rd-r`'s selection
 contamination**, unchanged from `rd-t`/`rd-u`: the ten were chosen on
