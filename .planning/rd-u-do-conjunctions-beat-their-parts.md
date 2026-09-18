@@ -186,15 +186,20 @@ Added 2026-09-18 after the operator asked whether the round trip was
 beating us because this project lacks an institution's infrastructure.
 The answer is measurable and it is no, and the measurement reframes §1.
 
+Every figure in this section is produced by `research/krx_cost_context.py`
+— `python -m research.krx_cost_context` — on the same panel, rather than
+by a one-off script. That module was written *because* this section was
+first drafted from figures with no committed generating path.
+
 **A KRX day moves about ten times the cost of trading it.** Absolute
-intraday move (`open → close`) over the same 11,550 name-days:
+intraday move (`open → close`), 11,550 usable name-days:
 
 | | move | vs the 13 bp round trip |
 |---|---|---|
-| p25 | 59.8 bp | **4.6×** |
-| **median** | **131.4 bp** | **10.1×** |
-| p75 | 251.6 bp | 19.4× |
-| p99 | 909.3 bp | 70.0× |
+| p25 | 59.7 bp | **4.59×** |
+| **median** | **131.2 bp** | **10.09×** |
+| p75 | 251.1 bp | 19.32× |
+| p99 | 908.5 bp | 69.88× |
 
 Even the **quietest decile** of days, by prior-month realised volatility,
 has a median move of 75.2 bp — **5.8×** the round trip. There is no
@@ -207,13 +212,23 @@ cost floor"* is arithmetically true and invites exactly the wrong
 inference; the honest form is **"it predicted almost none of a move that
 is enormous relative to its cost."**
 
-This also disposes of the infrastructure question directly. Latency,
-colocation and queue position buy nothing at a one-decision-per-day
-horizon, and 13 bp is not an institutional discount away from being
-payable when the move is 131 bp. **What an institution actually has that
-this project does not is breadth** — `IR ≈ IC × √breadth` over ~2,700
-names rather than 10 — and the thing blocking that here is the
-delisted-symbol gap in KIS's master files (`rd-d` §2.2), not hardware.
+**What this says about infrastructure, scoped to what was measured.** The
+moves above are computed from **printed prices** — open to close — with no
+slippage, no spread, no borrow and no size-dependent execution effect
+modelled anywhere, while the 13 bp is `rd-q`'s measured round trip. So the
+claim this evidence supports is: **there is no sign in this data that
+execution cost is the binding constraint, and therefore no evidence that
+cheaper execution would have rescued the result.** It does **not**
+establish that execution quality is irrelevant, because execution quality
+was never measured here — an earlier draft of this section said latency
+and colocation "buy nothing", which is a stronger claim than the
+measurement can carry, and it was removed on review.
+
+**The institutional advantage this analysis does point at is breadth, not
+speed** — `IR ≈ IC × √breadth` over ~2,700 names rather than 10 — and what
+blocks that here is the delisted-symbol gap in KIS's master files
+(`rd-d` §2.2). That is a data problem, and it is the one the arithmetic
+above actually implicates.
 
 **The obvious remedy was tested and does not work.** If costs are not
 binding, the natural move is to trade only the large, volatile moments —
@@ -222,11 +237,11 @@ which is the operator's own instinct and matches `scalp-s8`'s retraction
 Zarattini's "Stocks in Play". Measured here on the reversal signal, one
 cross-sectional IC per date, 1,153 dates:
 
-| prior-month volatility | dates | IC | p | median move |
+| prior-month volatility | dates | IC | p | median move that day |
 |---|---|---|---|---|
-| quiet | 384 | **+0.0177** | 0.370 | 75 bp |
-| middle | 385 | −0.0057 | 0.778 | 131 bp |
-| volatile | 384 | −0.0004 | 0.983 | 243 bp |
+| quiet | 384 | **+0.0177** | 0.370 | 106 bp |
+| middle | 384 | −0.0053 | 0.793 | 124 bp |
+| volatile | 385 | −0.0008 | 0.966 | 170 bp |
 
 **The move triples and the predictability does not follow it** — if
 anything the (insignificant) ordering runs the other way. Volatility buys
