@@ -15,6 +15,139 @@ of an edge.** The promotion `N` is not incremented.
 
 ---
 
+# CORRECTION, 2026-09-18 — four design errors, and what they cost
+
+**Added after the operator asked whether a badly-designed structure had
+been reported as a failed one. It had, in part.** Each item below was
+verified against the code and against Task D's own source, not conceded
+because the question was asked.
+
+## C1. The run did not test the registered specification
+
+**This is the finding that governs the rest.** §5.1 of the registration
+says the management is *"Task D's P3 unchanged"* and lists **"time exit
+at 10 sessions"** among its clauses. Task D's own code:
+
+```python
+# 4. Time exit — every policy except the trailing ones.
+if self.policy in (Policy.BASELINE, Policy.STOP, Policy.PYRAMID):
+```
+
+**P3 and P2 are explicitly excluded from the time exit**, and Task D
+declares no time constant at all. *"Trail the rest"* means let the runner
+run. The 10 sessions was invented here and presented as adopted.
+
+It was not cosmetic. Of the 791 positions that scaled at +1R, the runner
+ended:
+
+| | with the 10-session timer | Task D's actual P3 |
+|---|---|---|
+| **trail** | 57 (7.2%) | **288** |
+| timer | 518 (65.5%) | — |
+| stop | 215 | 181 |
+
+**P3's entire stated edge is the trailing runner, and two thirds of them
+were killed by a timer this project's own precedent excludes.**
+
+## C2. The entry is not an opening-range breakout
+
+§3 calls it *"Zarattini's 'Stocks in Play', taken as specified"* and lists
+a `range` row. The implementation reads the **overnight gap** and fills at
+the open — no range, no breakout, no waiting for a break:
+
+```python
+with_gap = 1 if open_px > prev_close else -1
+```
+
+An ORB is **not computable on daily bars at all**; it needs intraday. So
+this was not a shortcut but a claim the chosen data could never honour.
+**The literature support claimed in §3 does not transfer**: `rd-c`'s
+finding is that Zarattini's *filter* produces Sharpe 2.81 on *his entry*,
+and only the filter was carried over.
+
+## C3. `COMPRESSION → fade` was asserted, not derived
+
+S8's rule is *"do not run mean-reversion into an emerging trend"* — a
+statement about **trend**, i.e. the ADX axis. ADX was dead, so volatility
+was substituted. **Low volatility is not mean reversion**, and no
+mechanism was given. §3's disclosure covered a different worry
+(discretisation cost) and not this one. **E1's deficit may therefore be a
+statement about an arbitrary mapping rather than about regime selection.**
+
+## C4. E2 is a stop-and-reverse system, not the scenario that was asked for
+
+The operator described a *judgement* — *"어? 이건 단기로 반대방향이
+보이니까"*. What was implemented reverses on **every** stop,
+unconditionally: no confirmation, no read, no condition. That is a known
+and different mechanism. **This reproduces Task C's own confession
+verbatim** — *what was tested is not the hypothesis that was described.*
+
+## C5 (minor). Exposure ran past the risk limits and was never checked
+
+Gross notional over equity: **median 1.36×, max 2.44×**, against Risk
+Parameters' 2–5% per order and 1–2× canary leverage. Task D's
+fixed-reference convention produces this and it does not invalidate a
+research comparison, but the R figures come from a book carrying more
+exposure than the limits allow.
+
+## What the correction costs, measured rather than guessed
+
+A **diagnostic** was run with the time exit removed — mechanism diagnosis
+on a spent window, which selects nothing and produces no candidate:
+
+| | with the timer | Task D's P3 | direction |
+|---|---|---|---|
+| E0 futures | +73.0 | +56.5 (p 0.459) | unchanged, still not significant |
+| E1 futures | −29.5 | −46.9 | unchanged, still below E0 |
+| E2 futures | +22.2 | +43.7 | unchanged, still above E1 |
+| **E3 futures** | −100.3 | **−429.3** | unchanged in sign, **4× worse** |
+| E2 − E1 gap | +51.7 | **+90.6** | unchanged, larger |
+
+**So the defect was load-bearing for every magnitude and for no
+direction.**
+
+## What is withdrawn, and what stands
+
+**Withdrawn:**
+
+- every **level** in §1's table, and the profit factors — they belong to
+  a policy set that is not the registered one
+- *"E0's +73.0R"* read as a statement about **P3** — it is not P3
+- *"regime selection actively hurt"* read as a statement about **regime
+  selection** — it is a statement about this mapping (C3)
+- E2's +52R read as the value of a **trader's alternative scenario** — it
+  is the value of unconditional stop-and-reverse (C4)
+- the entry's claimed literature support (C2)
+
+**Stands:**
+
+- **nothing is distinguishable from zero.** True in both versions.
+- **the hedge is worst on both cores, including where hedging is ~13bp
+  cheaper than closing.** It is a within-run comparison whose only
+  difference is the hedge, it agrees with Task C and Task D
+  independently, and the diagnostic makes it *more* negative, not less.
+- **E2 > E1 by ~+51R to +91R on both cores** — the most robust comparison
+  in the study, holding under both exit rules.
+- both implementation defects in §5, and the classifier's weekend reset,
+  which are data facts.
+
+## The structural criticism that outranks all four
+
+**Task E tested a scenario *response* on top of a maximally
+*unselective* entry.** The activity filter is a median split — half the
+universe — and the run took **1,620 entries over 921 dates, nearly two a
+day, always on.**
+
+`rd-c` §2's finding is that **the filter is the strategy**, and
+Barber/Lee/Liu/Odean found that *concentration in a few names* is the
+second-best predictor of day-trader skill. A trader who thinks in
+scenarios takes **few** trades; that selectivity is most of what makes
+the scenarios worth anything. This study kept the entry promiscuous and
+varied only what happened afterwards — which is the opposite of the thing
+being emulated, and no amount of fixing C1–C4 addresses it.
+
+---
+
 ## 1. The headline
 
 > **Nothing is distinguishable from zero once the entry date is the unit

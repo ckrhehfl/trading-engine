@@ -293,3 +293,8 @@ Named in advance so they cannot be rationalised later:
   the cost model rather than the policy
 - **fewer than 30 episodes** on any policy, which is
   `INCONCLUSIVE-DATA-LIMITED` for that policy and not evidence against it
+- **the implementation not matching this document** — added 2026-09-18
+  after it happened. It is more fundamental than the four above and was
+  missing from them: a run that executes a different policy set is not a
+  test of this registration at all, whatever it reports. The result
+  document's CORRECTION section records the two places it occurred.
