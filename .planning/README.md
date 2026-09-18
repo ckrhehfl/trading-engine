@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-113 documents and counting, which is past the point where `ls` is a
+114 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -194,6 +194,7 @@ A multi-leg position model, built after the operator pointed out the framework c
 - [`tm-d-breakout-management-preregistration.md`](tm-d-breakout-management-preregistration.md) — Trade Management Task D — pre-registration: what does *managing* a fixed entry actually do?
 - [`tm-d-breakout-management-result.md`](tm-d-breakout-management-result.md) — Trade Management Task D — result: management is the biggest single effect this project has measured, and two policies clear Gate A
 - [`tm-e-scenario-playbook-design.md`](tm-e-scenario-playbook-design.md) — Trade Management Task E — scenarios as a state machine, not as prose
+- [`tm-e-scenario-playbook-preregistration.md`](tm-e-scenario-playbook-preregistration.md) — Trade Management Task E — pre-registration: the contract, committed before any run
 
 ### Multi-asset expansion (`ms-*`)
 
