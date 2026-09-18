@@ -92,7 +92,7 @@ Two further literature findings that bear on how to read §3:
 | mean **overnight** move (`open_t / close_{t-1} − 1`) | **+20.48 bp/day** |
 | mean **intraday** move (`close_t / open_t − 1`) | **−2.94 bp/day** |
 
-**Essentially the entire drift of these ten names over seven years
+**Essentially the entire drift of these ten names over the panel
 happened while the market was shut.** A position taken at the open and
 closed at the close captured −2.94 bp a day on average; the +20.48 bp went
 to whoever held overnight.
@@ -180,6 +180,66 @@ reporting nothing while the entire result was short. The test is now on
 the **magnitude** of the excess (`abs`), and a guard-removal check
 confirms it fails when that `abs` is taken out.
 
+## 5.1 "Does not clear the cost floor" is NOT a statement about costs
+
+Added 2026-09-18 after the operator asked whether the round trip was
+beating us because this project lacks an institution's infrastructure.
+The answer is measurable and it is no, and the measurement reframes §1.
+
+**A KRX day moves about ten times the cost of trading it.** Absolute
+intraday move (`open → close`) over the same 11,550 name-days:
+
+| | move | vs the 13 bp round trip |
+|---|---|---|
+| p25 | 59.8 bp | **4.6×** |
+| **median** | **131.4 bp** | **10.1×** |
+| p75 | 251.6 bp | 19.4× |
+| p99 | 909.3 bp | 70.0× |
+
+Even the **quietest decile** of days, by prior-month realised volatility,
+has a median move of 75.2 bp — **5.8×** the round trip. There is no
+regime in this data where the cost is the binding constraint.
+
+**So the failure is direction, not cost.** The best combination extracted
+**11.4 bp of a 131 bp median move — 8.7% of what was available**, where
+10% would have paid for the trade. Stating it as *"it did not clear the
+cost floor"* is arithmetically true and invites exactly the wrong
+inference; the honest form is **"it predicted almost none of a move that
+is enormous relative to its cost."**
+
+This also disposes of the infrastructure question directly. Latency,
+colocation and queue position buy nothing at a one-decision-per-day
+horizon, and 13 bp is not an institutional discount away from being
+payable when the move is 131 bp. **What an institution actually has that
+this project does not is breadth** — `IR ≈ IC × √breadth` over ~2,700
+names rather than 10 — and the thing blocking that here is the
+delisted-symbol gap in KIS's master files (`rd-d` §2.2), not hardware.
+
+**The obvious remedy was tested and does not work.** If costs are not
+binding, the natural move is to trade only the large, volatile moments —
+which is the operator's own instinct and matches `scalp-s8`'s retraction
+(conditioning on activity moved a 0.40× cost ratio to 2.08×) and
+Zarattini's "Stocks in Play". Measured here on the reversal signal, one
+cross-sectional IC per date, 1,153 dates:
+
+| prior-month volatility | dates | IC | p | median move |
+|---|---|---|---|---|
+| quiet | 384 | **+0.0177** | 0.370 | 75 bp |
+| middle | 385 | −0.0057 | 0.778 | 131 bp |
+| volatile | 384 | −0.0004 | 0.983 | 243 bp |
+
+**The move triples and the predictability does not follow it** — if
+anything the (insignificant) ordering runs the other way. Volatility buys
+a bigger prize and no better odds on it.
+
+**This closes one cell, not the domain**, and the distinction is this
+project's most-repeated mistake. What was tested is *one* signal
+(cross-sectional 5-day reversal), on *one* universe (10 names), at *one*
+horizon (daily), conditioned on *one* volatility measure. Zarattini's
+filter is abnormal **turnover**, not realised volatility, and rd-t §4
+records that per-bar 거래대금 is exactly what KIS does not serve — so the
+literature's strongest filter still has not been tested here at all.
+
 ## 6. h = 5 is confounded, and the module says so in the output
 
 At h=5 the baseline is **+66.4 bp** and *eleven of eleven* combinations
@@ -190,12 +250,12 @@ table rather than leaving it to a reader:
 - a 5-day window contains **4 overnight gaps**, and §3 showed the drift
   lives entirely in those gaps;
 - this universe was selected by `rd-r` on **2026Q1 futures liquidity**,
-  which correlates with having risen over 2019-2026.
+  which correlates with having risen over 2021-2026.
 
 So an "excess" there is largely a measure of **which names drifted**, not
 of what a condition predicts. Concretely: *"`vol_low_21d` clears the cost
 floor at −32.5 bp"* reduces to *"low-volatility names rose less than
-semiconductors did over seven years"*, which is close to a tautology.
+semiconductors did over 2021-2026"*, which is close to a tautology.
 
 The h=1 block is the clean read precisely because its baseline is near
 zero, so its excesses are signal rather than composition.
@@ -232,7 +292,11 @@ round trip for the futures-liquid names. A cross-sectional long-short pays
 it on both legs, and nothing here models slippage, borrow, or the
 single-stock-futures spread at size.
 
-**The panel is 1,176 dates × 10 names.** The inner join on date drops 718
+**The panel is 1,176 dates × 10 names, spanning 2021-11-29 → 2026-09-17
+(4.80 years).** An earlier draft of this document said "2019-2026" and
+"seven years" in three places, carried over from `rd-r`'s description of
+the KR-10 universe; this panel is shorter because the inner join is bound
+by the eight newer names' listing dates. Corrected 2026-09-18. The inner join on date drops 718
 dates, and — measured, not assumed — **none of them lies inside the common
 span**; every drop is an end effect from the eight newer names listing
 later. `interleaved_sessions` now refuses a run where a session *is*
