@@ -1193,7 +1193,7 @@ writing. Eight of the nine happened inside narrow, well-scoped tasks, so
 smaller scope is not the remedy — a verification step that runs against
 the conclusion's own evidence is.
 
-`python/research/conclusion_check.py` implements six checks. **Every one
+`python/research/conclusion_check.py` implements nine checks. **Every one
 exists because this project made that exact mistake, and each carries the
 citation.** That is the design constraint: a checklist of things that
 merely sound like good practice becomes theatre nobody runs.
@@ -1206,6 +1206,37 @@ merely sound like good practice becomes theatre nobody runs.
 | `check_same_population` | two figures compared across different samples | S15's stop table's `none` row |
 | `check_claim_monotonic` / `check_claim_universal` | prose contradicting its own table | "every delay is worse, monotonically" |
 | `check_dsr_agrees` | a second DSR implementation drifting | fold variance fed where trial variance belongs |
+| `check_disjoint_intervals` | the same, for variable-duration legs | `metrics.book` made one `hold_bars` the wrong tool |
+| `check_clustered_observations` | **a cross-section pooled as independent draws** | rd-u's 11,740 name-days were 1,176 dates |
+
+**The last one is the newest and the one most likely to bite next, so the
+rule is stated here and not left to the docstring** (human-approved
+2026-09-18, checkpoint #3):
+
+> **A p-value computed over observations that share a session is not a
+> significance test.** Ten names measured at the same instant share that
+> instant's market-wide move, so pooling them as ten draws understates
+> the standard error however disjoint their holding windows are. Compute
+> the statistic over **sessions** — one observation per session — or
+> resample whole sessions in a block bootstrap, and **report the ratio of
+> the corrected standard error to the naive one** beside the figure, the
+> same way the permutation rule already requires `null_sd / se`.
+
+Three things make this a rule rather than a note. **It changed a verdict**:
+in `rd-u` it moved one p from 0.016 to 0.182 and another from 0.113 to
+0.039 — *both directions*, so it is not a uniform haircut — and took the
+count of combinations surviving Benjamini-Hochberg from **1 to 0**. **Two
+tasks reached it independently within one day**, `rd-u` by construction
+and `rd-t` on review. And **the correction is asymmetric in a way that is
+not guessable**: on `rd-t` it inflated the standard error 1.12–1.89× on
+the time-series ICs, which pool names at one instant, and 0.90–1.06× on
+the cross-sectional ICs, which collapse each instant to one number first.
+So it demoted exactly the rows that had looked closest to carrying.
+
+This is the third member of a family the file already carries — S13's
+overlapping windows, Task C's variable-duration legs, and now the
+cross-section. The general form is: **name the unit that is actually
+independent before quoting any figure that assumes independence.**
 
 `require_no_blockers` **raises**, and that is deliberate — S13's inflated
 t-statistic was disclosed in prose and still became a headline number.

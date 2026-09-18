@@ -236,6 +236,79 @@ def check_disjoint_intervals(
     return None
 
 
+_CLUSTER_SCAR = (
+    "rd-u pooled 11,740 name-days drawn from 1,176 dates and fed the "
+    "resulting p-values to Benjamini-Hochberg. Clustering by date moved one "
+    "p from 0.016 to 0.182 and another from 0.113 to 0.039 -- both "
+    "directions -- and took the count of surviving combinations from 1 to "
+    "0. rd-t hit the identical defect independently, on review, the same "
+    "day: two routes to it in one day is why it is a check and not a note."
+)
+
+
+def check_clustered_observations(
+    group_keys: Sequence[Any],
+    *,
+    reported_n: int | None = None,
+    check: str = "clustered_observations",
+) -> Finding | None:
+    """Observations sharing a group are not independent draws.
+
+    `check_non_overlapping` and `check_disjoint_intervals` both ask about
+    one asset through time. **A cross-sectional panel breaks independence
+    a different way and neither of them can see it**: ten names measured
+    at the same instant share that instant's market-wide move, so pooling
+    them as ten draws understates the standard error however disjoint the
+    holding windows are.
+
+    Pass one `group_key` per observation -- the session, trading date, or
+    instant the observation belongs to. `reported_n` is the sample size
+    the significance figure was actually computed on; it defaults to the
+    observation count, which is the mistake this exists to catch.
+
+    The check blocks when `reported_n` exceeds the number of distinct
+    groups, because that is a figure claiming more independent
+    information than the sample contains. It cannot tell you *how much*
+    the standard error is understated -- that depends on the
+    within-group correlation, and the bound quoted in the message is the
+    worst case (perfect correlation inside each group).
+
+    **Clustering is not always the right unit, and this check does not
+    decide that for you.** If the observations within a group really are
+    independent -- different names on one day driven by genuinely
+    unrelated news -- then the pooled count is correct and this finding
+    is a false positive. Pass `reported_n` explicitly to say so, and
+    justify it where the conclusion is written. The default assumes the
+    dependence is there because on real market data it generally is.
+    """
+    keys = list(group_keys)
+    if not keys:
+        return None
+    n_obs = len(keys)
+    n_groups = len({str(k) for k in keys})
+    claimed = n_obs if reported_n is None else reported_n
+    if claimed <= n_groups:
+        return None
+    inflation = math.sqrt(claimed / n_groups) if n_groups else float("inf")
+    return Finding(
+        check=check,
+        severity=BLOCKER,
+        message=(
+            f"{n_obs:,} observations come from only {n_groups:,} distinct groups, "
+            f"and the reported sample size is {claimed:,}. Observations sharing a "
+            f"group are not independent draws, so a t, p-value or standard error "
+            f"computed on {claimed:,} overstates the evidence -- by up to "
+            f"{inflation:.1f}x on the standard error if within-group correlation "
+            f"is total. Compute the statistic over the {n_groups:,} groups (one "
+            f"observation per group, e.g. the mean across whatever fired that "
+            f"session), or resample whole groups in a block bootstrap, and report "
+            f"the ratio of the corrected standard error to the naive one beside "
+            f"the figure."
+        ),
+        scar=_CLUSTER_SCAR,
+    )
+
+
 # --------------------------------------------------------------------------
 # 2. A domain judged from one parameter setting
 # --------------------------------------------------------------------------
