@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 from research.conclusion_check import (
+    check_clustered_observations,
     check_disjoint_intervals,
     BLOCKER,
     _fold_win_probability,
@@ -497,3 +498,105 @@ class TestCheckDisjointIntervals:
     def test_empty_and_single_are_clean(self):
         assert check_disjoint_intervals([]) is None
         assert check_disjoint_intervals([(0, 5)], clustering_gap=24) is None
+
+
+class TestCheckClusteredObservations:
+    """A cross-sectional panel breaks independence a way the two interval
+    checks structurally cannot see.
+
+    Both of those ask about one asset through time. Ten names measured at
+    the same instant have perfectly disjoint holding windows and are still
+    not ten draws, because they share that instant's market-wide move.
+    """
+
+    def test_the_rd_u_panel_blocks(self):
+        """rd-u's panel shape: **1,176 dates x 10 names = 11,760
+        name-days** (its h=1 sample was 11,740 of those, the 20 lost to
+        the forward-return edge).
+
+        The check reads only the total and the distinct-group count, so
+        this fixture replays those two and **not** the real per-date
+        composition — stated because an earlier version of this docstring
+        claimed it reproduced the panel and then built a different total.
+        """
+        keys = [d for d in range(1176) for _ in range(10)]
+        finding = check_clustered_observations(keys)
+        assert finding is not None
+        assert finding.severity == BLOCKER
+        assert "1,176" in finding.message and "11,760" in finding.message
+
+    def test_the_bound_is_right_for_UNEQUAL_groups(self):
+        """**A real error in the first version.** It quoted
+        `sqrt(n / groups)`, which is the inflation only when every group
+        is the same size. At sizes 99 and 1 that says 7.1x where the true
+        worst case is `sqrt((99^2 + 1^2) / 100)` = 9.9x — understating
+        the very thing the check warns about."""
+        keys = ["a"] * 99 + ["b"]
+        finding = check_clustered_observations(keys)
+        assert finding is not None
+        assert "9.9x" in finding.message, finding.message
+        assert "7.1x" not in finding.message
+
+    def test_the_bound_matches_the_equal_size_form_when_groups_are_equal(self):
+        """The old formula was not wrong, it was a special case. Equal
+        groups must still give sqrt(n / groups) — 100 obs in 4 groups of
+        25 is 5.0x."""
+        keys = [g for g in range(4) for _ in range(25)]
+        finding = check_clustered_observations(keys)
+        assert finding is not None and "5.0x" in finding.message
+
+    def test_no_bound_is_quoted_when_it_cannot_be_computed(self):
+        """With an explicit `reported_n` the group sizes behind that
+        statistic are not visible, so quoting a bound from `group_keys`
+        would be a number computed from the wrong sample."""
+        keys = [g for g in range(100) for _ in range(10)]
+        finding = check_clustered_observations(keys, reported_n=5000)
+        assert finding is not None
+        assert "x on the standard error" not in finding.message
+        assert "5,000" in finding.message, "it must still name what was claimed"
+
+    def test_one_observation_per_group_passes(self):
+        """The corrected form — collapse each session to one number
+        first. This is what the check is asking for, so it must be silent
+        on it or it would be unsatisfiable."""
+        assert check_clustered_observations(list(range(500))) is None
+
+    def test_an_explicit_reported_n_at_the_group_count_passes(self):
+        """A caller who pooled the rows but computed the statistic over
+        sessions is already correct, and must not be flagged."""
+        keys = [d for d in range(100) for _ in range(10)]
+        assert check_clustered_observations(keys, reported_n=100) is None
+
+    def test_an_explicit_reported_n_above_the_group_count_still_blocks(self):
+        """Declaring the number does not make it independent — the check
+        is on the arithmetic, not on the caller's confidence."""
+        keys = [d for d in range(100) for _ in range(10)]
+        finding = check_clustered_observations(keys, reported_n=999)
+        assert finding is not None and finding.severity == BLOCKER
+
+    def test_the_message_quantifies_the_worst_case_inflation(self):
+        """A blocker that says only 'this is wrong' gets argued with. The
+        sqrt(n/groups) bound is what makes it actionable."""
+        keys = [d for d in range(100) for _ in range(100)]   # 10,000 obs, 100 groups
+        finding = check_clustered_observations(keys)
+        assert finding is not None
+        assert "10.0x" in finding.message
+
+    def test_it_names_the_two_remedies(self):
+        keys = [d for d in range(50) for _ in range(5)]
+        finding = check_clustered_observations(keys)
+        assert finding is not None
+        assert "block bootstrap" in finding.message
+        assert "ratio" in finding.message, "reporting the SE ratio is half the rule"
+
+    def test_non_integer_group_keys_work(self):
+        """Sessions are naturally dates or strings, not indices."""
+        keys = ["2026-09-17"] * 10 + ["2026-09-16"] * 10
+        finding = check_clustered_observations(keys)
+        assert finding is not None and "2 distinct groups" in finding.message
+
+    def test_empty_is_clean(self):
+        assert check_clustered_observations([]) is None
+
+    def test_a_single_group_is_the_worst_case_and_blocks(self):
+        assert check_clustered_observations(["one"] * 500) is not None

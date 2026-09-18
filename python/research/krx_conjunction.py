@@ -524,7 +524,7 @@ def main(argv: list[str] | None = None) -> int:
                 "  which correlates with having risen. So an 'excess' here is largely\n"
                 "  a measure of WHICH NAMES DRIFTED, not of what a condition predicts.\n"
                 "  'vol_low_21d clears the cost floor' reduces to 'low-volatility\n"
-                "  names rose less than semiconductors did in 2019-2026', which is\n"
+                "  names rose less than semiconductors did over 2021-2026', which is\n"
                 "  close to a tautology. The h=1 block above is the clean read: its\n"
                 "  baseline is ~0, so its excesses are signal rather than composition."
             )

@@ -236,6 +236,104 @@ def check_disjoint_intervals(
     return None
 
 
+_CLUSTER_SCAR = (
+    "rd-u pooled 11,740 name-days drawn from 1,176 dates and fed the "
+    "resulting p-values to Benjamini-Hochberg. Clustering by date moved one "
+    "p from 0.016 to 0.182 and another from 0.113 to 0.039 -- both "
+    "directions -- and took the count of surviving combinations from 1 to "
+    "0. rd-t hit the identical defect independently, on review, the same "
+    "day: two routes to it in one day is why it is a check and not a note."
+)
+
+
+def check_clustered_observations(
+    group_keys: Sequence[Any],
+    *,
+    reported_n: int | None = None,
+    check: str = "clustered_observations",
+) -> Finding | None:
+    """Observations sharing a group are not independent draws.
+
+    `check_non_overlapping` and `check_disjoint_intervals` both ask about
+    one asset through time. **A cross-sectional panel breaks independence
+    a different way and neither of them can see it**: ten names measured
+    at the same instant share that instant's market-wide move, so pooling
+    them as ten draws understates the standard error however disjoint the
+    holding windows are.
+
+    Pass one `group_key` per observation -- the session, trading date, or
+    instant the observation belongs to. `reported_n` is the sample size
+    the significance figure was actually computed on; it defaults to the
+    observation count, which is the mistake this exists to catch.
+
+    The check blocks when `reported_n` exceeds the number of distinct
+    groups, because that is a figure claiming more independent
+    information than the sample contains. It cannot tell you *how much*
+    the standard error is understated -- that depends on the
+    within-group correlation.
+
+    **A worst-case bound is quoted only when it can be computed from the
+    argument given.** With `reported_n` omitted the reported sample is
+    `group_keys` itself, so the group sizes are known and the bound is
+    `sqrt(sum(m_i^2) / n)` -- the inflation under perfect within-group
+    correlation. With an explicit `reported_n` that differs, the group
+    sizes behind *that* statistic are not visible here, so no bound is
+    quoted rather than one computed from the wrong sample.
+
+    **Clustering is not always the right unit, and this check does not
+    decide that for you.** If the observations within a group really are
+    independent -- different names on one day driven by genuinely
+    unrelated news -- then the pooled count is correct and this finding
+    is a false positive. Pass `reported_n` explicitly to say so, and
+    justify it where the conclusion is written. The default assumes the
+    dependence is there because on real market data it generally is.
+    """
+    keys = [str(k) for k in group_keys]
+    if not keys:
+        return None
+    n_obs = len(keys)
+    sizes: dict[str, int] = {}
+    for k in keys:
+        sizes[k] = sizes.get(k, 0) + 1
+    n_groups = len(sizes)
+    claimed = n_obs if reported_n is None else reported_n
+    if claimed <= n_groups:
+        return None
+
+    # **The bound is sqrt(sum(m_i^2) / n), not sqrt(n / groups).** Under
+    # perfect within-group correlation every member of group `i` carries
+    # the same value, so the pooled mean has variance
+    # `sum(m_i^2) * sigma^2 / n^2` against the naive `sigma^2 / n` --
+    # giving that ratio. The two coincide only when every group is the
+    # same size, and an earlier version of this check quoted the equal-size
+    # form for every sample: at group sizes 99 and 1 it said 7.1x where
+    # the real bound is 9.9x, understating the very thing it warns about.
+    bound: float | None = None
+    if reported_n is None:
+        bound = math.sqrt(sum(m * m for m in sizes.values()) / n_obs)
+    inflation = (
+        f" -- by up to {bound:.1f}x on the standard error if within-group "
+        f"correlation is total"
+        if bound is not None
+        else ""
+    )
+    return Finding(
+        check=check,
+        severity=BLOCKER,
+        message=(
+            f"{n_obs:,} observations come from only {n_groups:,} distinct groups, "
+            f"and the reported sample size is {claimed:,}. Observations sharing a "
+            f"group are not independent draws, so a t, p-value or standard error "
+            f"computed on {claimed:,} overstates the evidence{inflation}. Compute "
+            f"the statistic over the {n_groups:,} groups (one observation per "
+            f"group, e.g. the mean across whatever fired that session), or "
+            f"resample whole groups in a block bootstrap, and report the ratio of "
+            f"the corrected standard error to the naive one beside the figure."
+        ),
+        scar=_CLUSTER_SCAR,
+    )
+
+
 # --------------------------------------------------------------------------
 # 2. A domain judged from one parameter setting
 # --------------------------------------------------------------------------
