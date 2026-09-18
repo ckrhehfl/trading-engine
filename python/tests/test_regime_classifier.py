@@ -8,6 +8,7 @@ it should), and look-ahead safety (no bar influences its own label
 through a lookback that includes it).
 """
 
+import datetime as dt
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
@@ -428,3 +429,132 @@ def test_a_backwards_first_pair_cannot_become_the_expected_interval():
 def test_classifier_rejects_a_non_positive_expected_interval(bad):
     with pytest.raises(ValueError, match="expected_interval must be positive"):
         RegimeClassifier(expected_interval=bad)
+
+
+class TestSessionCalendarContiguity:
+    """**A market with a weekend has no single bar interval**, and the
+    interval check is unusable there.
+
+    Measured on the real KRX daily panel: 273 discontinuities and **0 of
+    1,176 bars resolved** — the classifier reset every weekend and never
+    accumulated enough readings to leave warmup. Nothing in the rest of
+    this file could have caught it, because every fixture here is
+    synthetic minute bars, one interval apart by construction. CLAUDE.md's
+    "run it where it will run", fourth instance.
+    """
+
+    @staticmethod
+    def _weekday_sessions(n: int) -> list[dt.date]:
+        out, day = [], dt.date(2024, 1, 1)          # a Monday
+        while len(out) < n:
+            if day.weekday() < 5:
+                out.append(day)
+            day += dt.timedelta(days=1)
+        return out
+
+    def _bars(self, sessions):
+        return [
+            Kline(
+                open_time=dt.datetime.combine(d, dt.time(0, 0)),
+                open=Decimal("100"), high=Decimal("101"),
+                low=Decimal("99"), close=Decimal("100"), volume=Decimal("1"),
+            )
+            for d in sessions
+        ]
+
+    def test_a_weekend_is_NOT_a_discontinuity_given_the_calendar(self):
+        sessions = self._weekday_sessions(40)
+        clf = RegimeClassifier(session_calendar=sessions)
+        for bar in self._bars(sessions):
+            clf.update(bar)
+        assert clf.discontinuities == 0, "Friday to Monday is the next session"
+
+    def test_the_same_bars_WITHOUT_a_calendar_reset_every_weekend(self):
+        """The control that makes the test above mean something — and the
+        exact failure measured on the real panel."""
+        sessions = self._weekday_sessions(40)
+        clf = RegimeClassifier()
+        for bar in self._bars(sessions):
+            clf.update(bar)
+        assert clf.discontinuities >= 7, (
+            f"8 weekends in 40 weekdays must each reset, got {clf.discontinuities}"
+        )
+
+    def test_a_skipped_session_IS_a_discontinuity(self):
+        """The calendar must not make the check permissive — a genuinely
+        missing session is still a gap."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        for bar in self._bars([sessions[0], sessions[1], sessions[5]]):
+            clf.update(bar)
+        assert clf.discontinuities == 1
+
+    def test_a_date_absent_from_the_calendar_is_a_discontinuity(self):
+        """A bar the classifier cannot place must fail closed, never be
+        guessed into position."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        saturday = sessions[4] + dt.timedelta(days=1)
+        for bar in self._bars([sessions[0], sessions[1], saturday]):
+            clf.update(bar)
+        assert clf.discontinuities == 1
+
+    def test_a_duplicate_bar_is_still_rejected_first(self):
+        """The non-positive-delta check must stay ahead of the calendar
+        branch, for the same reason it stays ahead of the inference."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        bars = self._bars([sessions[0], sessions[1]])
+        clf.update(bars[0])
+        clf.update(bars[1])
+        clf.update(bars[1])
+        assert clf.discontinuities == 1
+
+    def test_both_definitions_of_contiguity_cannot_be_passed(self):
+        with pytest.raises(ValueError, match="not both"):
+            RegimeClassifier(
+                session_calendar=self._weekday_sessions(5),
+                expected_interval=dt.timedelta(days=1),
+            )
+
+    def test_a_calendar_too_short_to_define_contiguity_is_rejected(self):
+        with pytest.raises(ValueError, match="at least 2 sessions"):
+            RegimeClassifier(session_calendar=[dt.date(2024, 1, 1)])
+
+    def test_an_unsorted_calendar_is_rejected(self):
+        """**Contiguity is read off positional indices, so the order IS the
+        contract.** Unsorted, `[01-01, 01-03, 01-02]` makes the 01-03 bar
+        look like index 0 -> 1 and hides that 01-02 was skipped."""
+        with pytest.raises(ValueError, match="strictly ascending"):
+            RegimeClassifier(session_calendar=[
+                dt.date(2024, 1, 1), dt.date(2024, 1, 3), dt.date(2024, 1, 2),
+            ])
+
+    def test_a_duplicated_date_is_rejected(self):
+        """A duplicate resolves to whichever index was written last, so a
+        genuinely adjacent pair would read as a discontinuity."""
+        with pytest.raises(ValueError, match="duplicates"):
+            RegimeClassifier(session_calendar=[
+                dt.date(2024, 1, 1), dt.date(2024, 1, 1), dt.date(2024, 1, 2),
+            ])
+
+    def test_an_off_calendar_FIRST_bar_is_a_discontinuity(self):
+        """The pairwise check only runs when there is a predecessor, so
+        without a separate membership check the first bar would be fed to
+        the indicators uncounted — breaking the stated contract that a bar
+        the classifier cannot place is a discontinuity."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        stray = sessions[0] - dt.timedelta(days=1)
+        assert clf.update(self._bars([stray])[0]) is None
+        assert clf.discontinuities == 1
+
+    def test_the_classifier_recovers_on_the_next_real_session(self):
+        """An off-calendar bar must not poison the reference for the bar
+        after it."""
+        sessions = self._weekday_sessions(20)
+        clf = RegimeClassifier(session_calendar=sessions)
+        stray = sessions[0] - dt.timedelta(days=1)
+        for bar in self._bars([stray, sessions[0], sessions[1], sessions[2]]):
+            clf.update(bar)
+        assert clf.discontinuities == 1, "only the stray bar counts"
