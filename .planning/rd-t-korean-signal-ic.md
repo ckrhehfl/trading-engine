@@ -11,6 +11,8 @@ python -m research.krx_signal_ic
 here may be promoted, quoted as evidence of an edge, or reported as a
 pass. The only legitimate output is a written specification.
 
+> **Bounded by [`rd-v`](rd-v-payoff-geometry-and-the-universe-drift.md), measured 2026-09-19.** This universe returned **+694% equal-weight over the panel, +54%/yr, against KOSPI's +19%/yr — a selection premium of 3.4x the index.** `rd-r` picked these ten on 2026Q1 futures liquidity, and a name becomes liquid enough to carry a listed future *because* it has gone up 10-25x, so the criterion and the return are the same fact. **Any long-only or drift-exposed figure below is partly that.** The cross-sectional and h=1 framings used here are the defence, and they defend against the *level*, not the dispersion.
+
 This is `scalp-s11`'s question asked in Korea. It is also the **one piece
 of the five-part plan that needed new work** — the CSTI structure (S8),
 the leg vocabulary (Task A), the volatility conditioner (S10) and the
