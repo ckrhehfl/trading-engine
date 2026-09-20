@@ -83,6 +83,17 @@ _KLINES_ADDITIVE_COLUMNS = (
     "quote_volume",
 )
 
+# The same mechanism, for the two KRX universe tables. `standard_code` is
+# the 12-character 표준코드 (ISIN) -- present in both upstream sources all
+# along and discarded by both until 2026-09-20, and the ONLY field that
+# separates 보통주 from 우선주. KIS's 증권그룹구분코드 `ST` does not: 114
+# of its 2,718 rows are preferred lines. See `data.krx_instrument`.
+#
+# Additive and nullable, so every row written before this stays valid and
+# reads back as an unknown issue type rather than as common stock.
+_KRX_UNIVERSE_ADDITIVE_COLUMNS = ("standard_code",)
+_KRX_DELISTED_ADDITIVE_COLUMNS = ("standard_code",)
+
 
 def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
     """Add any of `_KLINES_ADDITIVE_COLUMNS` missing from the real
@@ -110,10 +121,22 @@ def _ensure_klines_columns(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA busy_timeout = 5000")  # wait, don't fail-fast, on real lock contention
     conn.execute("BEGIN IMMEDIATE")
     try:
-        existing = {row[1] for row in conn.execute("PRAGMA table_info(klines)").fetchall()}
-        for column in _KLINES_ADDITIVE_COLUMNS:
-            if column not in existing:
-                conn.execute(f"ALTER TABLE klines ADD COLUMN {column} TEXT")
+        # One transaction covering every table, so the concurrency
+        # argument above holds for all of them rather than leaving a
+        # second, unprotected check-then-ALTER window per table.
+        for table, columns in (
+            ("klines", _KLINES_ADDITIVE_COLUMNS),
+            ("krx_universe", _KRX_UNIVERSE_ADDITIVE_COLUMNS),
+            ("krx_delisted", _KRX_DELISTED_ADDITIVE_COLUMNS),
+        ):
+            existing = {
+                row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            if not existing:
+                continue  # table not created yet; its CREATE carries the column
+            for column in columns:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} TEXT")
         conn.commit()
     except Exception:
         conn.rollback()
@@ -194,6 +217,7 @@ CREATE TABLE IF NOT EXISTS krx_universe (
   name TEXT NOT NULL,
   group_code TEXT NOT NULL,
   fetched_at TEXT NOT NULL,
+  standard_code TEXT,
   PRIMARY KEY (snapshot_date, code)
 );
 """
@@ -225,6 +249,7 @@ CREATE TABLE IF NOT EXISTS krx_delisted (
   market TEXT NOT NULL,
   name TEXT NOT NULL,
   fetched_at TEXT NOT NULL,
+  standard_code TEXT,
   PRIMARY KEY (snapshot_date, code)
 );
 """
@@ -848,10 +873,10 @@ def fetch_positioning(
 def upsert_krx_universe(
     conn: sqlite3.Connection,
     snapshot_date: str,
-    rows: Iterable[tuple[str, str, str, str]],
+    rows: Iterable[tuple[str, str, str, str, str]],
 ) -> int:
     """Record one day's listed universe. `rows` are
-    `(code, market, name, group_code)`.
+    `(code, market, name, group_code, standard_code)`.
 
     `INSERT OR IGNORE` like every other upsert here, so re-running a
     snapshot for a date already captured is a no-op rather than a
@@ -877,12 +902,12 @@ def upsert_krx_universe(
             f"snapshot_date must be a real YYYY-MM-DD date, got {snapshot_date!r}"
         )
     fetched_at = datetime.now(timezone.utc).isoformat()
-    params = [(snapshot_date, c, m, n, g, fetched_at) for c, m, n, g in rows]
+    params = [(snapshot_date, c, m, n, g, fetched_at, s) for c, m, n, g, s in rows]
     try:
         cursor = conn.executemany(
             "INSERT OR IGNORE INTO krx_universe "
-            "(snapshot_date, code, market, name, group_code, fetched_at) "
-            "VALUES (?, ?, ?, ?, ?, ?)",
+            "(snapshot_date, code, market, name, group_code, fetched_at, standard_code) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
             params,
         )
         conn.commit()
@@ -896,36 +921,52 @@ def fetch_krx_universe(
     conn: sqlite3.Connection,
     snapshot_date: str,
     group_code: str | None = "ST",
-) -> list[tuple[str, str, str, str]]:
-    """One snapshot's `(code, market, name, group_code)`, ascending by code.
+    common_stock_only: bool = False,
+) -> list[tuple[str, str, str, str, str | None]]:
+    """One snapshot's `(code, market, name, group_code, standard_code)`,
+    ascending by code.
 
-    `group_code` defaults to `"ST"` (common stock) because that is what a
-    universe scan means -- over half the KOSPI master file is ETFs and
-    ETNs, which would swamp any relative-volume ranking. Pass `None` for
-    the unfiltered snapshot.
+    `group_code` defaults to `"ST"`, which drops the ETFs and ETNs that are
+    over half the KOSPI master file and would swamp any relative-volume
+    ranking. **`ST` is NOT the same as common stock**, and the docstring
+    here said it was until 2026-09-20: 삼성전자 `005930` and 삼성전자우
+    `005935` both carry it, and **114 of its 2,718 rows are preferred
+    lines**.
+
+    `common_stock_only=True` additionally requires the ISIN to positively
+    say 보통주 (`data.krx_instrument`). It is not the default because that
+    would silently change what every existing caller receives, and because
+    a row written before `standard_code` existed reads back as `NULL` --
+    which this correctly refuses rather than guesses at, so an un-migrated
+    snapshot returns nothing rather than something wrong.
     """
     if group_code is None:
         cursor = conn.execute(
-            "SELECT code, market, name, group_code FROM krx_universe "
+            "SELECT code, market, name, group_code, standard_code FROM krx_universe "
             "WHERE snapshot_date = ? ORDER BY code",
             (snapshot_date,),
         )
     else:
         cursor = conn.execute(
-            "SELECT code, market, name, group_code FROM krx_universe "
+            "SELECT code, market, name, group_code, standard_code FROM krx_universe "
             "WHERE snapshot_date = ? AND group_code = ? ORDER BY code",
             (snapshot_date, group_code),
         )
-    return cursor.fetchall()
+    rows = cursor.fetchall()
+    if common_stock_only:
+        from data.krx_instrument import is_common_stock
+
+        rows = [r for r in rows if is_common_stock(r[4])]
+    return rows
 
 
 def upsert_krx_delisted(
     conn: sqlite3.Connection,
     snapshot_date: str,
-    rows: Iterable[tuple[str, str, str]],
+    rows: Iterable[tuple[str, str, str, str]],
 ) -> int:
     """Record one day's delisted universe. `rows` are
-    `(code, market, name)`.
+    `(code, market, name, standard_code)`.
 
     `INSERT OR IGNORE` on `(snapshot_date, code)`, the same as every other
     upsert here, so a cron firing twice is a no-op rather than a
@@ -948,12 +989,12 @@ def upsert_krx_delisted(
             f"snapshot_date must be a real YYYY-MM-DD date, got {snapshot_date!r}"
         )
     fetched_at = datetime.now(timezone.utc).isoformat()
-    params = [(snapshot_date, c, m, n, fetched_at) for c, m, n in rows]
+    params = [(snapshot_date, c, m, n, fetched_at, s) for c, m, n, s in rows]
     try:
         cursor = conn.executemany(
             "INSERT OR IGNORE INTO krx_delisted "
-            "(snapshot_date, code, market, name, fetched_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "(snapshot_date, code, market, name, fetched_at, standard_code) "
+            "VALUES (?, ?, ?, ?, ?, ?)",
             params,
         )
         conn.commit()
@@ -966,19 +1007,28 @@ def upsert_krx_delisted(
 def fetch_krx_delisted(
     conn: sqlite3.Connection,
     snapshot_date: str,
-) -> list[tuple[str, str, str]]:
-    """One snapshot's `(code, market, name)`, ascending by code.
+    common_stock_only: bool = False,
+) -> list[tuple[str, str, str, str | None]]:
+    """One snapshot's `(code, market, name, standard_code)`, ascending by
+    code.
 
-    Unfiltered on purpose: the finder mixes rights, 신주 and fund classes
-    in with common stock and publishes no instrument-type field, so any
-    filtering is the caller's own decision and has to be visible at the
-    call site rather than hidden here.
+    Unfiltered by default on purpose: the finder mixes rights, 신주 and
+    fund classes in with common stock, so any filtering is the caller's own
+    decision and has to be visible at the call site rather than hidden
+    here. `common_stock_only=True` keeps only the issues whose ISIN
+    positively says 보통주 -- **312 of the 2,350 plain 6-digit delisted
+    codes are not**.
     """
-    return conn.execute(
-        "SELECT code, market, name FROM krx_delisted "
+    rows = conn.execute(
+        "SELECT code, market, name, standard_code FROM krx_delisted "
         "WHERE snapshot_date = ? ORDER BY code",
         (snapshot_date,),
     ).fetchall()
+    if common_stock_only:
+        from data.krx_instrument import is_common_stock
+
+        rows = [r for r in rows if is_common_stock(r[3])]
+    return rows
 
 
 def krx_delisted_snapshots(conn: sqlite3.Connection) -> list[tuple]:

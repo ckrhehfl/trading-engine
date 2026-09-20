@@ -230,17 +230,50 @@ def test_explicit_symbols_win_over_the_universe(tmp_path):
 
 
 def test_the_universe_resolves_to_common_stock_only(tmp_path):
+    """**This test asserted the opposite until 2026-09-20**, and its own
+    name is why it is worth reading.
+
+    It expected `["005930", "900110"]` on the strength of both carrying
+    증권그룹구분코드 `ST` — but `ST` is not common stock. 딥커머스 `900110`
+    is a foreign-domiciled KOSDAQ listing whose ISIN is
+    `HK0000057197`, and a preferred line like 삼성전자우 carries `ST` too.
+    The group code drops the ETFs and nothing else.
+
+    So the resolver now requires the ISIN to positively say 보통주, and
+    what falls out is the correction: of KIS's 2,718 `ST` rows, **114 are
+    preferred** and the real figure is 2,604.
+    """
     conn = connect(tmp_path / "k.sqlite3")
     upsert_krx_universe(
         conn,
         "2026-09-14",
         [
-            ("005930", "KOSPI", "삼성전자", "ST"),
-            ("069500", "KOSPI", "KODEX 200", "EF"),
-            ("900110", "KOSDAQ", "딥커머스", "ST"),
+            ("005930", "KOSPI", "삼성전자", "ST", "KR7005930003"),
+            ("005935", "KOSPI", "삼성전자우", "ST", "KR7005931001"),
+            ("069500", "KOSPI", "KODEX 200", "EF", "KR7069500007"),
+            ("900110", "KOSDAQ", "딥커머스", "ST", "HK0000057197"),
         ],
     )
-    assert resolve_symbols(conn, _Args()) == ["005930", "900110"]
+    assert resolve_symbols(conn, _Args()) == ["005930"]
+    conn.close()
+
+
+def test_a_pre_migration_snapshot_resolves_to_nothing_rather_than_wrongly(tmp_path):
+    """**Fail closed, and loudly.** A snapshot written before
+    `standard_code` existed reads back as `NULL`, which is not evidence of
+    common stock. Collecting 투자자별 매매동향 for the wrong universe is
+    unrecoverable — the endpoint serves a 30-row rolling horizon — so an
+    empty resolution that trips the existing fail-closed check beats a
+    plausible one."""
+    conn = connect(tmp_path / "k.sqlite3")
+    conn.execute(
+        "INSERT INTO krx_universe "
+        "(snapshot_date, code, market, name, group_code, fetched_at) "
+        "VALUES ('2026-09-14', '005930', 'KOSPI', '삼성전자', 'ST', 'x')"
+    )
+    conn.commit()
+    with pytest.raises(InvestorFlowError):
+        resolve_symbols(conn, _Args())
     conn.close()
 
 

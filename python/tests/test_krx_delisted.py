@@ -28,6 +28,7 @@ from data.krx_delisted import (
     Delisting,
     KrxDelistedError,
     fetch_delistings,
+    common_stock,
     plain_codes,
     snapshot,
 )
@@ -42,16 +43,24 @@ from data.store import (
 # 2026-09-20, including the non-plain codes that make `plain_codes` a real
 # question rather than a formality.
 DELISTED_ROWS = [
-    {"short_code": "117930", "codeName": "한진해운", "marketName": "유가증권"},
-    {"short_code": "103130", "codeName": "웅진에너지", "marketName": "코스닥"},
-    {"short_code": "085370", "codeName": "루트로닉", "marketName": "코스닥"},
-    {"short_code": "3686001G", "codeName": "아이씨에이치 5R", "marketName": "코스닥"},
-    {"short_code": "702071KB", "codeName": "윈윈하이일드(A5)", "marketName": "유가증권"},
-    {"short_code": "007121", "codeName": "국제전자공업1신", "marketName": "코스닥"},
+    {"short_code": "117930", "codeName": "한진해운", "marketName": "유가증권",
+     "full_code": "KR7117930008"},
+    {"short_code": "103130", "codeName": "웅진에너지", "marketName": "코스닥",
+     "full_code": "KR7103130004"},
+    {"short_code": "085370", "codeName": "루트로닉", "marketName": "코스닥",
+     "full_code": "KR7085370000"},
+    {"short_code": "3686001G", "codeName": "아이씨에이치 5R", "marketName": "코스닥",
+     "full_code": "KR43686001G6"},
+    {"short_code": "702071KB", "codeName": "윈윈하이일드(A5)", "marketName": "유가증권",
+     "full_code": "KR5702071KB8"},
+    {"short_code": "007121", "codeName": "국제전자공업1신", "marketName": "코스닥",
+     "full_code": "KR7007121008"},
 ]
 LISTED_ROWS = [
-    {"short_code": "005930", "codeName": "삼성전자", "marketName": "유가증권"},
-    {"short_code": "000660", "codeName": "SK하이닉스", "marketName": "유가증권"},
+    {"short_code": "005930", "codeName": "삼성전자", "marketName": "유가증권",
+     "full_code": "KR7005930003"},
+    {"short_code": "000660", "codeName": "SK하이닉스", "marketName": "유가증권",
+     "full_code": "KR7000660001"},
 ]
 
 
@@ -114,7 +123,8 @@ def test_the_two_finders_are_checked_for_overlap_rather_than_trusted(monkeypatch
     biases a scan in the *opposite* direction to survivorship and is just
     as wrong. The endpoint's name cannot establish this; the data can."""
     overlapping = DELISTED_ROWS + [
-        {"short_code": "005930", "codeName": "삼성전자", "marketName": "유가증권"}
+        {"short_code": "005930", "codeName": "삼성전자", "marketName": "유가증권",
+         "full_code": "KR7005930003"}
     ]
     _install(monkeypatch, overlapping, LISTED_ROWS)
     with pytest.raises(KrxDelistedError, match="BOTH the delisted and listed"):
@@ -136,7 +146,7 @@ def test_a_clean_fetch_keeps_every_row_including_the_odd_codes(monkeypatch):
     _install(monkeypatch, DELISTED_ROWS, LISTED_ROWS)
     out = fetch_delistings()
     assert len(out) == len(DELISTED_ROWS)
-    assert Delisting("117930", "유가증권", "한진해운") in out
+    assert Delisting("117930", "유가증권", "한진해운", "KR7117930008") in out
     assert any(d.code == "3686001G" for d in out), "rights entitlement dropped"
 
 
@@ -194,8 +204,33 @@ def test_no_session_cookie_is_its_own_error(monkeypatch):
 
 
 def test_plain_codes_drops_rights_and_fund_classes():
-    out = plain_codes([Delisting(r["short_code"], "", "") for r in DELISTED_ROWS])
+    out = plain_codes([Delisting(r["short_code"], "", "", r["full_code"])
+                       for r in DELISTED_ROWS])
     assert {d.code for d in out} == {"117930", "103130", "085370", "007121"}
+
+
+def test_common_stock_is_narrower_than_plain_codes():
+    """**312 of the 2,350 plain 6-digit delisted codes are not common
+    stock.** `plain_codes` is documented as a floor; this is the filter,
+    and it reads the ISIN rather than the code or the name."""
+    rows = [
+        Delisting("117930", "유가증권", "한진해운", "KR7117930008"),
+        Delisting("002365", "유가증권", "SH에너지화학우", "KR7002361001"),
+        Delisting("900010", "코스닥", "3노드디지탈", "KYG887121070"),
+        Delisting("3686001G", "코스닥", "아이씨에이치 5R", "KR43686001G6"),
+    ]
+    assert [d.code for d in common_stock(rows)] == ["117930"]
+
+
+def test_common_stock_CANNOT_drop_a_delisted_etf_or_spac():
+    """**Stated as a test because the opposite is the tempting reading.**
+    The ISIN's issue type separates 보통주 from 우선주 and says nothing
+    about instrument class -- KODEX 200 is `KR7069500007`. On the live
+    side KIS's 증권그룹구분코드 supplies that; **the delisted finder
+    publishes no group code at all**, so a delisted SPAC or ETF passes
+    this filter and the gap is real rather than closed."""
+    spac = Delisting("223040", "코스닥", "교보5호스팩", "KR7223040007")
+    assert common_stock([spac]) == [spac]
 
 
 def test_plain_codes_KEEPS_preferred_shares_and_spacs():
@@ -206,9 +241,9 @@ def test_plain_codes_KEEPS_preferred_shares_and_spacs():
     output as a common-stock universe is wrong, and this pins that."""
     out = plain_codes(
         [
-            Delisting("002365", "유가증권", "SH에너지화학우"),   # preferred
-            Delisting("223040", "코스닥", "교보5호스팩"),       # SPAC
-            Delisting("117930", "유가증권", "한진해운"),        # common
+            Delisting("002365", "유가증권", "SH에너지화학우", "KR7002361001"),
+            Delisting("223040", "코스닥", "교보5호스팩", "KR7223040007"),
+            Delisting("117930", "유가증권", "한진해운", "KR7117930008"),
         ]
     )
     assert len(out) == 3
@@ -223,7 +258,7 @@ def test_a_snapshot_round_trips(monkeypatch):
     date, written, plain = snapshot(conn, "2026-09-20")
     assert (date, written, plain) == ("2026-09-20", len(DELISTED_ROWS), 4)
     rows = fetch_krx_delisted(conn, "2026-09-20")
-    assert ("117930", "유가증권", "한진해운") in rows
+    assert ("117930", "유가증권", "한진해운", "KR7117930008") in rows
 
 
 def test_re_running_a_snapshot_is_a_no_op(monkeypatch):
@@ -240,7 +275,7 @@ def test_re_running_a_snapshot_is_a_no_op(monkeypatch):
 def test_an_unreal_snapshot_date_is_rejected(bad):
     conn = connect(":memory:")
     with pytest.raises(ValueError, match="real YYYY-MM-DD"):
-        upsert_krx_delisted(conn, bad, [("117930", "유가증권", "한진해운")])
+        upsert_krx_delisted(conn, bad, [("117930", "유가증권", "한진해운", "KR7117930008")])
 
 
 def test_the_coverage_report_counts_plain_codes():
@@ -248,7 +283,8 @@ def test_the_coverage_report_counts_plain_codes():
     upsert_krx_delisted(
         conn,
         "2026-09-20",
-        [("117930", "유가증권", "한진해운"), ("3686001G", "코스닥", "아이씨에이치 5R")],
+        [("117930", "유가증권", "한진해운", "KR7117930008"),
+         ("3686001G", "코스닥", "아이씨에이치 5R", "KR43686001G6")],
     )
     assert krx_delisted_snapshots(conn) == [("2026-09-20", 2, 1)]
 
@@ -295,5 +331,6 @@ def test_a_failed_write_rolls_back():
 
     conn = _Failing(connect(":memory:"))
     with pytest.raises(sqlite3.OperationalError):
-        upsert_krx_delisted(conn, "2026-09-20", [("117930", "유가증권", "한진해운")])
+        upsert_krx_delisted(conn, "2026-09-20",
+                            [("117930", "유가증권", "한진해운", "KR7117930008")])
     assert conn.rolled_back

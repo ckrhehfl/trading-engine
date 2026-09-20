@@ -40,6 +40,7 @@ import zipfile
 from dataclasses import dataclass
 
 from data._paths import DEFAULT_DB_PATH
+from data.krx_instrument import is_common_stock
 from data.store import connect, fetch_krx_universe, krx_universe_snapshots, upsert_krx_universe
 
 KOSPI_URL = "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip"
@@ -75,6 +76,12 @@ class Listing:
     market: str
     name: str
     group_code: str
+    #: The 12-character 표준코드 (ISIN). Present in the master row all
+    #: along and parsed over until 2026-09-20 -- it is the only field that
+    #: separates 보통주 from 우선주, which `group_code` does NOT
+    #: (`005930` 삼성전자 and `005935` 삼성전자우 are both `ST`). See
+    #: `data.krx_instrument`.
+    standard_code: str = ""
 
 
 def _download(url: str) -> bytes:
@@ -112,11 +119,12 @@ def parse_master(data: bytes, market: str) -> list[Listing]:
         if len(row) <= offset + 2:
             continue
         code = row[:SHORT_CODE_LEN].strip()
+        standard_code = row[SHORT_CODE_LEN : SHORT_CODE_LEN + STANDARD_CODE_LEN].strip()
         name = row[SHORT_CODE_LEN + STANDARD_CODE_LEN : -offset].strip()
         group_code = row[-offset : -offset + 2]
         if not code:
             continue
-        listings.append(Listing(code, market, name, group_code))
+        listings.append(Listing(code, market, name, group_code, standard_code))
 
     if not listings:
         raise KrxUniverseError(f"{market} master file parsed to zero rows")
@@ -152,9 +160,20 @@ def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:
     )
     listings = fetch_universe()
     written = upsert_krx_universe(
-        conn, date, [(x.code, x.market, x.name, x.group_code) for x in listings]
+        conn,
+        date,
+        [(x.code, x.market, x.name, x.group_code, x.standard_code) for x in listings],
     )
-    common = sum(1 for x in listings if x.group_code == COMMON_STOCK)
+    # **Both filters, because they are orthogonal.** `COMMON_STOCK`
+    # (`ST`) drops the ETFs and ETNs but counts 우선주 -- 114 of its 2,718
+    # rows. The ISIN drops the preferred lines but says `0` for an ETF too
+    # (KODEX 200 is `KR7069500007`). Either alone overstates; measured
+    # 2026-09-20 the real figure is 2,604.
+    common = sum(
+        1
+        for x in listings
+        if x.group_code == COMMON_STOCK and is_common_stock(x.standard_code)
+    )
     return date, written, common
 
 
@@ -191,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
         if date is None:
             print("no snapshots on record; run --snapshot first", file=sys.stderr)
             return 1
-        for code, market, name, _ in fetch_krx_universe(conn, date):
+        for code, market, name, _, _ in fetch_krx_universe(conn, date):
             print(f"{code}\t{market}\t{name}")
         return 0
     finally:

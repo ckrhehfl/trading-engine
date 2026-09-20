@@ -29,13 +29,22 @@ from data.krx_universe import (
 from data.store import connect, fetch_krx_universe, krx_universe_snapshots
 
 
-def _row(code: str, name: str, group: str, market: str) -> str:
+def _isin(code: str, issue: str = "0") -> str:
+    """A real-shaped 표준코드: `KR7` + 5-char issuer + issue-type + `00` +
+    check, 12 characters. The layout is not decorative -- position 8 is
+    what separates 보통주 from 우선주, so a fixture that gets the width
+    wrong classifies as UNKNOWN and proves nothing.
+    Real: 삼성전자 `KR7005930003`, 삼성전자우 `KR7005931001`."""
+    return f"KR7{code[:5]}{issue}00{code[-1]}"
+
+
+def _row(code: str, name: str, group: str, market: str, issue: str = "0") -> str:
     """A synthetic master row with the real layout: 단축코드(9) +
     표준코드(12) + variable-length name + a fixed tail whose first two
     characters are the group code."""
     tail_len = GROUP_CODE_OFFSET[market]
     tail = group + "X" * (tail_len - 2)
-    return f"{code:<9}{'KR' + code + '00':<12}{name}{tail}"
+    return f"{code:<9}{_isin(code, issue):<12}{name}{tail}"
 
 
 def _zip(rows: list[str]) -> bytes:
@@ -58,13 +67,13 @@ def _kosdaq(rows):
 
 def test_a_kospi_row_parses_into_its_fields():
     (listing,) = parse_master(_kospi([("005930", "삼성전자", "ST")]), "KOSPI")
-    assert listing == Listing("005930", "KOSPI", "삼성전자", "ST")
+    assert listing == Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930"))
 
 
 def test_a_kosdaq_row_parses_at_its_own_offset():
     """The whole point: KOSDAQ's tail is 6 bytes shorter than KOSPI's."""
     (listing,) = parse_master(_kosdaq([("900110", "딥커머스", "ST")]), "KOSDAQ")
-    assert listing == Listing("900110", "KOSDAQ", "딥커머스", "ST")
+    assert listing == Listing("900110", "KOSDAQ", "딥커머스", "ST", _isin("900110"))
 
 
 def test_the_two_markets_do_not_share_an_offset():
@@ -119,17 +128,55 @@ def test_a_snapshot_records_both_markets(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "data.krx_universe.fetch_universe",
         lambda: [
-            Listing("005930", "KOSPI", "삼성전자", "ST"),
-            Listing("069500", "KOSPI", "KODEX 200", "EF"),
-            Listing("900110", "KOSDAQ", "딥커머스", "ST"),
+            Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930")),
+            Listing("069500", "KOSPI", "KODEX 200", "EF", _isin("069500")),
+            Listing("900110", "KOSDAQ", "딥커머스", "ST", _isin("900110")),
         ],
     )
     date, written, common = snapshot(conn, "2026-09-14")
     assert (date, written, common) == ("2026-09-14", 3, 2)
-    assert [c for c, _, _, _ in fetch_krx_universe(conn, "2026-09-14")] == [
+    assert [c for c, _, _, _, _ in fetch_krx_universe(conn, "2026-09-14")] == [
         "005930",
         "900110",
     ]
+    conn.close()
+
+
+def test_the_common_count_needs_BOTH_filters(tmp_path, monkeypatch):
+    """**Either filter alone overstates, and they fail differently.**
+
+    `ST` drops the ETFs and counts 우선주; the ISIN drops 우선주 and says
+    `0` for an ETF as well (KODEX 200 really is `KR7069500007`). Measured
+    on the real master files: 2,718 `ST` rows, of which **114 are
+    preferred**, so the real common-stock count is **2,604** — the figure
+    CLAUDE.md carried as 2,718 until 2026-09-20.
+    """
+    conn = connect(tmp_path / "k.sqlite3")
+    monkeypatch.setattr(
+        "data.krx_universe.fetch_universe",
+        lambda: [
+            Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930")),
+            # same issuer, preferred line — `ST` lets this through
+            Listing("005935", "KOSPI", "삼성전자우", "ST", _isin("005935", issue="1")),
+            # an ETF whose ISIN issue type is `0` — the ISIN lets this through
+            Listing("069500", "KOSPI", "KODEX 200", "EF", _isin("069500")),
+        ],
+    )
+    _, _, common = snapshot(conn, "2026-09-14")
+    assert common == 1, "only 삼성전자 is common stock"
+
+    both = fetch_krx_universe(conn, "2026-09-14", common_stock_only=True)
+    assert [r[0] for r in both] == ["005930"]
+    # and each filter on its own lets one impostor through
+    assert [r[0] for r in fetch_krx_universe(conn, "2026-09-14")] == [
+        "005930",
+        "005935",
+    ]
+    assert [
+        r[0]
+        for r in fetch_krx_universe(conn, "2026-09-14", group_code=None,
+                                    common_stock_only=True)
+    ] == ["005930", "069500"]
     conn.close()
 
 
@@ -138,7 +185,7 @@ def test_rerunning_a_snapshot_is_a_no_op(tmp_path, monkeypatch):
     conn = connect(tmp_path / "k.sqlite3")
     monkeypatch.setattr(
         "data.krx_universe.fetch_universe",
-        lambda: [Listing("005930", "KOSPI", "삼성전자", COMMON_STOCK)],
+        lambda: [Listing("005930", "KOSPI", "삼성전자", COMMON_STOCK, _isin("005930"))],
     )
     assert snapshot(conn, "2026-09-14")[1] == 1
     assert snapshot(conn, "2026-09-14")[1] == 0
@@ -152,14 +199,14 @@ def test_snapshots_on_different_dates_are_separate_records(tmp_path, monkeypatch
     conn = connect(tmp_path / "k.sqlite3")
     monkeypatch.setattr(
         "data.krx_universe.fetch_universe",
-        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST")],
+        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930"))],
     )
     snapshot(conn, "2026-09-14")
     monkeypatch.setattr(
         "data.krx_universe.fetch_universe",
         lambda: [
-            Listing("005930", "KOSPI", "삼성전자", "ST"),
-            Listing("123456", "KOSDAQ", "신규상장", "ST"),
+            Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930")),
+            Listing("123456", "KOSDAQ", "신규상장", "ST", _isin("123456")),
         ],
     )
     snapshot(conn, "2026-09-15")
@@ -173,7 +220,7 @@ def test_a_malformed_snapshot_date_is_refused(tmp_path, monkeypatch):
     conn = connect(tmp_path / "k.sqlite3")
     monkeypatch.setattr(
         "data.krx_universe.fetch_universe",
-        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST")],
+        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930"))],
     )
     with pytest.raises(ValueError, match="YYYY-MM-DD"):
         snapshot(conn, "20260914")
@@ -200,7 +247,7 @@ def test_an_impossible_calendar_date_is_refused(tmp_path, monkeypatch, bad):
     conn = connect(tmp_path / "k.sqlite3")
     monkeypatch.setattr(
         "data.krx_universe.fetch_universe",
-        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST")],
+        lambda: [Listing("005930", "KOSPI", "삼성전자", "ST", _isin("005930"))],
     )
     with pytest.raises(ValueError):
         snapshot(conn, bad)
