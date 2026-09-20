@@ -259,6 +259,48 @@ def clustered_p(per_date: dict[int, list[float]]) -> tuple[int, float, float]:
     return a.size, float(a.mean()), _t_distribution_two_sided_p_value(t, a.size - 1)
 
 
+def drift_removed_panel(panel: DailyPanel) -> DailyPanel:
+    """The same panel with each name's own mean log drift stripped out.
+
+    **A diagnostic control, and never a tradeable path.** It divides every
+    bar by `exp(mu_j * t)`, where `mu_j` is name `j`'s mean log return over
+    the *whole* window — so it uses the future by construction and is
+    disqualified as a feature under this file's own look-ahead rule. It is
+    legitimate here for the one thing a control is for: running the
+    identical rule on a series whose only difference is that it does not
+    go up.
+
+    **Why the long/short sum is not enough on its own.** The sum cancels
+    drift exactly for a *linear* payoff. A barrier rule is not linear:
+    upward drift makes a long's distant target reachable while pushing a
+    short's distant target out of reach, so drift survives the subtraction
+    in a way that looks like asymmetry. Scaling every OHLC of a day by one
+    factor leaves that day's high/low/close *ratios* — and so its ATR in
+    relative terms and every barrier crossing measured against the entry —
+    unchanged, which is what makes the comparison a like-for-like one.
+    """
+    n, m = panel.close_px.shape
+    factor = np.ones((n, m))
+    steps = np.arange(n)
+    for j in range(m):
+        close = panel.close_px[:, j]
+        live = np.flatnonzero(np.isfinite(close) & (close > 0))
+        if live.size < 2:
+            continue
+        first, last = live[0], live[-1]
+        mu = (math.log(close[last]) - math.log(close[first])) / (last - first)
+        factor[:, j] = np.exp(-mu * steps)
+    return DailyPanel(
+        panel.dates,
+        panel.codes,
+        panel.open_px * factor,
+        panel.high_px * factor,
+        panel.low_px * factor,
+        panel.close_px * factor,
+        panel.quote_volume,
+    )
+
+
 #: The payoff sweep's stop, in ATR(14) units, and its holding horizon in
 #: sessions. Both adopted rather than searched: 1 ATR is the stop every
 #: other daily module here uses, and 10 sessions is Task E's declared
@@ -273,6 +315,11 @@ class SweepRow:
     direction: int
     trades: int
     mean_r: float
+    #: The round trip in R, averaged over **this row's own entries**. The
+    #: conversion is per-entry (`cost x entry / unit`), so a panel-wide
+    #: median ATR is a different number from this one — which is why the
+    #: driftless anchor is built from this field and not from that median.
+    mean_cost_r: float
 
 
 def payoff_sweep(
@@ -299,6 +346,7 @@ def payoff_sweep(
     """
     n, m = panel.shape
     out: list[float] = []
+    costs: list[float] = []
     for t in range(1, n - SWEEP_HOLD_SESSIONS - 1):
         for j in range(m):
             unit = atr[t - 1, j]
@@ -317,7 +365,21 @@ def payoff_sweep(
                 hit_stop = low <= stop_px if direction > 0 else high >= stop_px
                 hit_target = high >= target_px if direction > 0 else low <= target_px
                 if hit_stop:                       # stop wins the tie, S8 §3.7
-                    result = -SWEEP_STOP_ATR
+                    # A bar that GAPS through the stop fills at its open, not
+                    # at the stop price, so the realised loss exceeds 1R. Same
+                    # rule as `barrier_trades`; on the entry bar the open IS
+                    # the entry, so this can only bind from `t + 1` onward.
+                    op = panel.open_px[s, j]
+                    gapped = (
+                        direction * (op - entry) / unit
+                        if math.isfinite(op) and op > 0
+                        else None
+                    )
+                    result = (
+                        -SWEEP_STOP_ATR
+                        if gapped is None
+                        else min(-SWEEP_STOP_ATR, gapped)
+                    )
                     break
                 if hit_target:
                     result = payoff
@@ -328,9 +390,14 @@ def payoff_sweep(
                     continue
                 result = direction * (final - entry) / unit
             # The round trip converted to R using this entry's own ATR.
-            out.append(result - (cost_bp / _BPS) * entry / unit)
+            cost_r = (cost_bp / _BPS) * entry / unit
+            out.append(result - cost_r)
+            costs.append(cost_r)
     arr = np.array(out) if out else np.array([np.nan])
-    return SweepRow(payoff, direction, len(out), float(np.mean(arr)))
+    cost_arr = np.array(costs) if costs else np.array([np.nan])
+    return SweepRow(
+        payoff, direction, len(out), float(np.mean(arr)), float(np.mean(cost_arr))
+    )
 
 
 def breakeven_win_rate(payoff: float, cost_in_r: float) -> float:
@@ -429,31 +496,59 @@ def main(argv: list[str] | None = None) -> int:
         f"  and the short leg says most of it is the basket."
     )
 
+    # ---- 2a. the same rule on a series whose only difference is the drift
+    flat_panel = drift_removed_panel(panel)
+    print("\n  -- control: the identical rule on the drift-removed panel --")
+    flat_results = {d: barrier_trades(flat_panel, d) for d in (1, -1)}
+    for d, label in ((1, "LONG"), (-1, "SHORT")):
+        r = flat_results[d]
+        print(
+            f"  {label:<6} {r.trades:>6,} trades  win {r.win_rate:>5.1%}  "
+            f"E[trade] {r.mean_net:>+8.4%}"
+        )
+    flat_both = flat_results[1].mean_net + flat_results[-1].mean_net
+    print(
+        f"  sum {flat_both:+.4%} against the same {drift_only:+.4%} anchor.\n"
+        f"  The long/short sum cancels drift only for a LINEAR payoff; a barrier\n"
+        f"  rule is not one, so this control is what actually settles it."
+    )
+
     # ---- 2b. the payoff sweep, and the sum that removes drift
     print("\n=== 2b. the payoff sweep — the sum is what removes drift ===")
     from research.strategies.scenario_playbook import wilder_atr
 
     atr = wilder_atr(panel)
-    drift_only = -2 * COST_FLOOR_BP / _BPS
-    print(f"  {'payoff':>8} {'LONG':>10} {'SHORT':>10} {'sum':>10} "
-          f"{'vs driftless':>13}")
-    print("  " + "-" * 56)
+    flat_atr = wilder_atr(flat_panel)
+    print(f"  {'payoff':>8} {'LONG':>9} {'SHORT':>9} {'sum':>9} {'vs anchor':>10}"
+          f"  | drift-removed: {'LONG':>7} {'SHORT':>7} {'vs anchor':>10}")
+    print("  " + "-" * 92)
+    anchor_at_1to1 = float("nan")
     for ratio in PAYOFF_RATIOS:
         rows = {d: payoff_sweep(panel, ratio, d, atr) for d in (1, -1)}
+        flat_rows = {d: payoff_sweep(flat_panel, ratio, d, flat_atr) for d in (1, -1)}
         total = rows[1].mean_r + rows[-1].mean_r
-        # `drift_only` is in return units; the sweep is in R. Convert using
-        # the same median ATR the horizon table uses, so the anchor and the
-        # rows are on one scale.
-        rel = float(np.nanmedian((atr / panel.close_px)[ATR_PERIOD:]))
-        anchor = drift_only / rel
+        # The anchor is the two round trips **this row's own entries** paid,
+        # not a panel-wide median ATR converted separately: the sweep filters
+        # entries on a valid `atr[t-1]` and `open[t]` and charges each one
+        # `cost x entry / unit`, so any other aggregation is a different
+        # number and would misstate the column it is subtracted from.
+        anchor = -(rows[1].mean_cost_r + rows[-1].mean_cost_r)
+        flat_total = flat_rows[1].mean_r + flat_rows[-1].mean_r
+        flat_anchor = -(flat_rows[1].mean_cost_r + flat_rows[-1].mean_cost_r)
+        if ratio == 1.0:
+            anchor_at_1to1 = anchor
         print(
-            f"  {ratio:>7.1f}:1 {rows[1].mean_r:>+10.3f} {rows[-1].mean_r:>+10.3f} "
-            f"{total:>+10.3f} {total - anchor:>+13.3f}"
+            f"  {ratio:>7.1f}:1 {rows[1].mean_r:>+9.3f} {rows[-1].mean_r:>+9.3f} "
+            f"{total:>+9.3f} {total - anchor:>+10.3f}  | "
+            f"{flat_rows[1].mean_r:>+16.3f} {flat_rows[-1].mean_r:>+7.3f} "
+            f"{flat_total - flat_anchor:>+10.3f}"
         )
     print(
-        f"\n  A driftless process must return {anchor:+.3f}R at 1:1 — just the two\n"
-        f"  round trips. The sum rising above that at higher payoffs is the\n"
-        f"  asymmetry, present in BOTH directions, rather than the basket.\n"
+        f"\n  A driftless process must return {anchor_at_1to1:+.3f}R at 1:1 — just the\n"
+        f"  two round trips. **The right-hand block is what makes the rise readable**:\n"
+        f"  it survives removing the drift almost unchanged, and there BOTH legs\n"
+        f"  improve with the payoff ratio, where on the real panel the short leg\n"
+        f"  deteriorates. That one-sidedness is the drift, not the payoff geometry.\n"
         f"  **No p-value is reported here**: this sweep enters every name every\n"
         f"  session with a {SWEEP_HOLD_SESSIONS}-session hold, so its positions "
         f"overlap (S13's error).\n  The directions are the finding; significance "
@@ -527,7 +622,7 @@ def _intraday_moves(panel: DailyPanel, db_path: str) -> list[tuple[str, float]]:
         if vals:
             out.append((f"{mins} min", float(np.median(np.concatenate(vals)))))
 
-    from research.strategies.scenario_playbook import ATR_PERIOD, wilder_atr
+    from research.strategies.scenario_playbook import wilder_atr
 
     atr = wilder_atr(panel)
     rel = (atr / panel.close_px)[ATR_PERIOD:]

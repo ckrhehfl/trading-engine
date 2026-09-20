@@ -70,57 +70,108 @@ position per name at a time, 13bp round trip:
 
 | | trades | win | E[trade] net | median hold | dates | p |
 |---|---|---|---|---|---|---|
-| **LONG** | 1,291 | **30.0%** | **+0.8654%** | 5 sessions | 668 | 0.0003 |
-| SHORT | 1,157 | 21.5% | −0.8258% | 5 sessions | 665 | 0.0000 |
+| **LONG** | 1,291 | **30.0%** | **+0.7155%** | 5 sessions | 668 | 0.0016 |
+| SHORT | 1,157 | 21.5% | −1.0577% | 5 sessions | 665 | 0.0000 |
 
 **The arithmetic works exactly as the framing promises.** Breakeven at 3:1
 is 25.0%; the long side achieves 30.0%. Five points of margin on 1,291
-non-overlapping trades, p = 0.0003 clustered by entry date.
+non-overlapping trades, p = 0.0016 clustered by entry date.
 
 **And the short leg is what says it is the basket.** A mirror-image rule
-loses almost precisely what the long side makes. Sum of the two
-directions **+0.0396%**, against the **−0.2600%** a driftless process must
-give — that being just the two round trips.
+loses rather more than the long side makes: the sum of the two directions
+is **−0.3422%**, against the **−0.2600%** a driftless process must give —
+that being just the two round trips.
 
-So the decomposition is roughly **85% drift, 15% genuine asymmetry.**
+**So the rule has no asymmetry of its own at all.** The residual beyond
+drift and cost is **−0.0822%**, i.e. on the wrong side of zero. An earlier
+version of this document read **+0.0396%** here and called the split "85%
+drift, 15% genuine asymmetry"; that 15% was an artifact of filling a
+gapped stop *at the stop price*. Charging the real open (§2.1) removes it
+entirely.
 
-**Nothing but the short control could have caught this.** The long side's
+**And a second, independent control agrees.** Running the identical rule
+on a panel with each name's own mean log drift divided out —
+`drift_removed_panel`, a diagnostic that uses the future by construction
+and is therefore disqualified as a feature, never a tradeable path:
+
+| drift-removed | trades | win | E[trade] net |
+|---|---|---|---|
+| LONG | 1,302 | 26.0% | −0.0944% |
+| SHORT | 1,141 | 26.2% | −0.1295% |
+
+**Both legs land on the 25.0% breakeven and both lose after costs**, and
+the sum (−0.2239%) sits essentially on the −0.2600% anchor. Take the drift
+away and the rule has nothing left.
+
+**That control is not redundant with the short leg, and this is the
+methodological point worth carrying.** *The long/short sum cancels drift
+only for a **linear** payoff.* A barrier rule is not linear: upward drift
+makes a long's distant target reachable while pushing a short's distant
+target out of reach, so drift survives the subtraction *disguised as
+asymmetry*. §3 is where that would have bitten.
+
+**Nothing but a control could have caught any of this.** The long side's
 win rate, expectancy, trade count, holding period and p-value are all
 individually reasonable. This is the fifth entry in this project's
 "the measurement passed every check and answered the wrong question"
 list, and it is the first where the control was run *before* the write-up
 rather than after.
 
+### 2.1 A gapped stop does not fill at the stop, and it moved every number here
+
+The first version of this module recorded exactly `−5%` whenever a bar
+traded through the stop, including when it **opened** below it. S8 §3.7
+requires the real fill. Charging the open instead moved the long side from
++0.8654% to **+0.7155%** and the short from −0.8258% to **−1.0577%** — and
+it is what flipped the residual above from positive to negative.
+
+It shows up in the sweep too, in the one row built to be diagnostic: at
+1:1 the sum sits **0.055R below** the driftless anchor rather than on it.
+A symmetric 1:1 barrier system on a martingale must return exactly minus
+two round trips; this one loses about **0.028R per leg more than that**,
+which is the gap overshoot and nothing else. **A 1-ATR stop in this market
+does not cost 1R — it costs about 1.03R.**
+
 ## 3. The asymmetry that is genuinely there, isolated
 
-Sweeping the payoff ratio with a 1 ATR stop, and reading the **sum** of
-long and short, which removes drift by construction:
+Sweeping the payoff ratio with a 1 ATR stop, on the real panel and on the
+drift-removed one side by side. The anchor is the two round trips **the
+sweep's own entries** paid (−0.076R), not a panel-median conversion:
 
-| payoff | LONG | SHORT | sum | vs the driftless −0.072R |
-|---|---|---|---|---|
-| 1:1 | −0.003R | −0.079R | **−0.082R** | **−0.009 — at the anchor** |
-| 2:1 | +0.071R | −0.077R | −0.006R | +0.067 |
-| 3:1 | +0.131R | −0.095R | +0.036R | +0.108 |
-| 5:1 | +0.198R | −0.107R | **+0.090R** | **+0.163** |
+| payoff | LONG | SHORT | sum | vs anchor | | drift-removed LONG | SHORT | vs anchor |
+|---|---|---|---|---|---|---|---|---|
+| 1:1 | −0.025R | −0.107R | −0.131R | **−0.055** | | −0.090R | −0.040R | **−0.055** |
+| 2:1 | +0.044R | −0.113R | −0.069R | +0.007 | | −0.062R | −0.004R | +0.009 |
+| 3:1 | +0.102R | −0.133R | −0.031R | +0.045 | | −0.033R | +0.003R | +0.045 |
+| 5:1 | +0.168R | −0.146R | +0.023R | **+0.099** | | +0.017R | +0.000R | **+0.092** |
 
-**At 1:1 the sum sits on the driftless anchor** — within 0.009R of the
-two round trips a symmetric process must give, which is what makes the
-rest of the column readable. **The sum then rises monotonically with the
-payoff ratio**, and that rise is not drift: it appears in *both*
-directions.
+**The right-hand block is what makes the left-hand one readable, and
+without it this section would have said something false.** Two things only
+the control shows:
 
-**So "letting winners run" pays here, in both directions, and it is
-small** — about **+0.15% per trade**, roughly 1.2× the round trip.
-Positive, real, and thin.
+1. **The rise is real.** It survives removing the drift almost unchanged —
+   −0.055 → +0.092 against −0.055 → +0.099. Whatever it is, the basket's
+   +54%/yr is not it.
+2. **But on the real panel it is one-sided, and that one-sidedness is the
+   drift.** The long leg rises +0.193R across the sweep while the short leg
+   *deteriorates* by 0.039R. Drift-removed, **both legs improve**
+   (+0.107R and +0.040R). A draft of this section claimed the rise
+   "appears in both directions" while its own table showed the short leg
+   falling — the claim was right about the mechanism and wrong about this
+   panel, and only the control separates them.
 
-> **A caveat on these four rows specifically.** This sweep enters every
-> name every session with a 10-session hold, so positions from different
-> entry dates overlap heavily — S13's error, reproduced here deliberately
-> and **labelled rather than fixed**, because the rows are what the
-> document reports. **No p-value is computed for it at all**, in the
-> module or here; the *directions* are the finding and no significance is
-> claimed. §2's figures do not share the defect: one position per name at
-> a time, verified with `check_disjoint_intervals`.
+**So "letting winners run" pays here, and it is thin** — about +0.15R
+across the 1:1→5:1 span, roughly 1.2× the round trip, present in both
+directions once the basket's drift is out of the way.
+
+> **A caveat on these rows specifically.** This sweep enters every name
+> every session with a 10-session hold, so positions from different entry
+> dates overlap heavily — S13's error, reproduced here deliberately and
+> **labelled rather than fixed**, because the rows are what the document
+> reports. **No p-value is computed for it at all**, in the module or
+> here; the *directions* are the finding and no significance is claimed.
+> §2's figures do not share the defect: one position per name at a time,
+> verified with `check_disjoint_intervals`.
 
 ## 4. Why a fixed percentage is the wrong barrier
 
@@ -204,10 +255,20 @@ not carried into the implementation.
 3. **Daily or multi-hour, not minutes.** §5 gives the cost of each
    horizon in the only unit that matters, and the daily row is ~9× cheaper
    than the 240-minute one.
-4. **Nothing further is measured on this universe without the short
-   control beside it.** §2 is the demonstration: every single-sided
-   statistic looked sound.
-5. **The universe remains the binding constraint**, and §1 is the
+4. **Nothing further is measured on this universe without BOTH controls
+   beside it** — the mirrored short leg *and* the drift-removed panel.
+   §2 is the demonstration that one is not enough: every single-sided
+   statistic looked sound, and the short leg alone still left a "15%
+   genuine asymmetry" on the page that was not there. **A long/short sum
+   cancels drift only for a linear payoff, and nothing this project
+   trades is linear** — every barrier, stop, target and time exit breaks
+   it. `drift_removed_panel` is cheap and belongs in every future
+   measurement on a basket that rose.
+5. **A stop is not worth 1R, and a backtest that says it is has not read
+   the open.** §2.1: the gapped fill costs ~0.03R per trade here, which
+   is a quarter of a round trip and arrives specifically on the days that
+   hurt most.
+6. **The universe remains the binding constraint**, and §1 is the
    sharpest statement of it this project has. A strict filter needs
    enough names to still leave a sample, and a drift-free test needs
    names that were not chosen for having risen. Both point at the

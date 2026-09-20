@@ -35,11 +35,12 @@ from research.krx_payoff_geometry import (
     barrier_trades,
     breakeven_win_rate,
     clustered_p,
+    drift_removed_panel,
     index_drift,
     panel_years,
     per_name_drift,
 )
-from research.strategies.scenario_playbook import DailyPanel, wilder_atr
+from research.strategies.scenario_playbook import ATR_PERIOD, DailyPanel, wilder_atr
 
 _DAY = 86_400_000
 
@@ -373,6 +374,138 @@ def test_a_wider_target_is_reached_less_often():
 def test_the_sweeps_stop_and_hold_are_the_adopted_ones():
     assert SWEEP_STOP_ATR == 1.0
     assert SWEEP_HOLD_SESSIONS == 10
+
+
+def _sweep_panel(open_2: float, low_2: float, high_2: float) -> DailyPanel:
+    """13 rows, one name, so `payoff_sweep`'s loop yields exactly one entry
+    (`t = 1`) and bar 2 is the one that resolves it."""
+    flat = [[100.0]] * 13
+    opens = [list(r) for r in flat]
+    highs = [[101.0] for _ in flat]
+    lows = [[99.0] for _ in flat]
+    opens[2], lows[2], highs[2] = [open_2], [low_2], [high_2]
+    return _panel(closes=flat, opens=opens, highs=highs, lows=lows)
+
+
+_FLAT_ATR = np.full((13, 1), 10.0)     # 1R = 10.0 on a 100.0 entry
+
+
+def test_the_SWEEP_also_fills_a_gap_through_the_stop_at_the_open():
+    """**The same defect, in the second of two places.** `barrier_trades`
+    was fixed and `payoff_sweep` kept recording exactly -1R however far the
+    bar opened below the stop — which flatters every row of the document's
+    payoff table, and flatters the LONG leg most."""
+    # stop sits at 90; the bar opens at 80, i.e. -2R, not -1R.
+    row = payoff_sweep(_sweep_panel(80.0, 80.0, 80.0), 3.0, 1, _FLAT_ATR, cost_bp=0.0)
+    assert row.trades == 1
+    assert row.mean_r == pytest.approx(-2.0)
+
+
+def test_the_SWEEPs_ordinary_intrabar_stop_still_fills_at_the_stop():
+    """The control: the fix must not turn every stop into an open fill."""
+    # opens at 95 (above the 90 stop) and only dips through it intrabar.
+    row = payoff_sweep(_sweep_panel(95.0, 85.0, 96.0), 3.0, 1, _FLAT_ATR, cost_bp=0.0)
+    assert row.mean_r == pytest.approx(-SWEEP_STOP_ATR)
+
+
+def test_a_SHORT_sweep_gapping_through_its_stop_is_filled_at_the_open():
+    # short stop sits at 110; the bar opens at 130, i.e. -3R.
+    row = payoff_sweep(
+        _sweep_panel(130.0, 130.0, 130.0), 3.0, -1, _FLAT_ATR, cost_bp=0.0
+    )
+    assert row.mean_r == pytest.approx(-3.0)
+
+
+# ===================================== the drift-removed diagnostic panel
+
+
+def test_the_control_panel_really_has_no_drift_left():
+    """The property the whole control rests on. If any drift survives, the
+    comparison it is used for says nothing."""
+    p = _panel_random(days=300, names=4)
+    flat = drift_removed_panel(p)
+    for j in range(len(flat.codes)):
+        c = flat.close_px[:, j]
+        assert math.log(c[-1] / c[0]) == pytest.approx(0.0, abs=1e-9)
+    # ...and the real panel is NOT flat, or the fixture proves nothing
+    assert any(
+        abs(math.log(p.close_px[-1, j] / p.close_px[0, j])) > 0.05
+        for j in range(len(p.codes))
+    )
+
+
+def test_the_control_leaves_every_bars_SHAPE_untouched():
+    """**This is what makes it like-for-like.** Scaling a whole day's OHLC
+    by one factor leaves that day's high/low/close ratios alone, so the
+    relative ATR and every barrier crossing measured against the entry are
+    the same trade. A control that changed the shape would be measuring a
+    different rule, not the same rule without drift."""
+    p = _panel_random(days=200, names=3)
+    flat = drift_removed_panel(p)
+    np.testing.assert_allclose(
+        flat.high_px / flat.open_px, p.high_px / p.open_px, rtol=1e-12
+    )
+    np.testing.assert_allclose(
+        flat.low_px / flat.close_px, p.low_px / p.close_px, rtol=1e-12
+    )
+
+
+def test_the_control_survives_a_name_with_no_usable_history():
+    """Fail-soft on a column that cannot define a drift, rather than
+    taking the whole diagnostic down."""
+    p = _panel(closes=[[100.0, math.nan], [110.0, math.nan], [120.0, math.nan]])
+    flat = drift_removed_panel(p)
+    assert math.log(flat.close_px[-1, 0] / flat.close_px[0, 0]) == pytest.approx(0.0)
+    assert np.isnan(flat.close_px[:, 1]).all()
+
+
+def test_the_control_kills_a_pure_drift_rules_edge():
+    """**The finding, as a test.** A rule that only works because the
+    basket rose must post nothing once the rise is removed — and the
+    mirrored short leg alone does not establish that, because the sum
+    cancels drift only for a linear payoff."""
+    rng = np.random.default_rng(11)
+    n = 600
+    # a strongly rising series with real intrabar range
+    close = 100 * np.cumprod(1 + rng.normal(0.004, 0.02, (n, 1)), axis=0)
+    p = _panel(
+        close.tolist(),
+        opens=close.tolist(),
+        highs=(close * 1.03).tolist(),
+        lows=(close * 0.97).tolist(),
+    )
+    real = barrier_trades(p, direction=1)
+    flat = barrier_trades(drift_removed_panel(p), direction=1)
+    assert real.trades > 20 and flat.trades > 20
+    assert real.mean_net > flat.mean_net, "removing the drift must cost the long leg"
+
+
+def test_the_driftless_anchor_comes_from_the_sweeps_OWN_entries():
+    """**The anchor is subtracted from the sum, so it has to be the cost
+    that sum actually paid.** The sweep filters entries on a valid
+    `atr[t-1]` and `open[t]` and charges each one `cost x entry / unit`; a
+    panel-wide median of `atr / close` is a different aggregation over a
+    different sample, and the difference lands directly in the
+    `vs driftless` column."""
+    p = _panel_random(days=120, names=4)
+    atr = wilder_atr(p)
+    long_row = payoff_sweep(p, 1.0, 1, atr)
+    short_row = payoff_sweep(p, 1.0, -1, atr)
+    anchor = -(long_row.mean_cost_r + short_row.mean_cost_r)
+
+    # every entry's own cost, recomputed here rather than trusted
+    assert long_row.mean_cost_r > 0 and short_row.mean_cost_r > 0
+    assert anchor == pytest.approx(
+        -(long_row.mean_cost_r + short_row.mean_cost_r)
+    )
+
+    # and it is NOT the panel-median conversion the first version used
+    rel = float(np.nanmedian((atr / p.close_px)[ATR_PERIOD:]))
+    median_anchor = (-2 * COST_FLOOR_BP / 10_000.0) / rel
+    assert anchor != pytest.approx(median_anchor, rel=1e-6), (
+        "the two aggregations coincide on this fixture, so it cannot "
+        "distinguish them"
+    )
 
 
 # ------------------------------------------------- the intraday db path
