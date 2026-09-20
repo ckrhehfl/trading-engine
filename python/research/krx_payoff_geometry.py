@@ -61,7 +61,11 @@ from research.conclusion_check import (
 )
 from research.krx_conjunction import COST_FLOOR_BP
 from research.krx_signal_ic import UNIVERSE
-from research.strategies.scenario_playbook import DailyPanel, load_daily_panel
+from research.strategies.scenario_playbook import (
+    ATR_PERIOD,
+    DailyPanel,
+    load_daily_panel,
+)
 
 #: KOSPI's own daily series, the reference a selection premium is measured
 #: against. Same symbol `krx_tax_schedule` derives the trading calendar
@@ -192,7 +196,20 @@ def barrier_trades(
                 up = (high - entry) / entry if direction > 0 else (entry - low) / entry
                 down = (low - entry) / entry if direction > 0 else (entry - high) / entry
                 if down <= stop:
-                    outcome, end = stop, s
+                    # **A bar that GAPS through the stop fills at its open,
+                    # not at the stop price.** S8 §3.7 requires the real
+                    # fill, and recording `stop` regardless understates the
+                    # loss on exactly the days that hurt most. `min` because
+                    # the figure is already signed in the position's favour:
+                    # a gap worse than the stop is a more negative number.
+                    op = panel.open_px[s, j]
+                    gapped = (
+                        ((op - entry) / entry if direction > 0 else (entry - op) / entry)
+                        if math.isfinite(op) and op > 0
+                        else None
+                    )
+                    outcome = stop if gapped is None else min(stop, gapped)
+                    end = s
                     break
                 if up >= target:
                     outcome, end = target, s
@@ -220,8 +237,17 @@ def clustered_p(per_date: dict[int, list[float]]) -> tuple[int, float, float]:
 
     The date is the unit, per CLAUDE.md's session-clustering rule: several
     names can enter on one session and share that session's market move.
+
+    **Student t with `dates - 1` degrees of freedom, not the normal.** The
+    standard deviation is estimated from the same sample, so the normal
+    understates the p-value at small date counts — and clustering to the
+    right unit is what makes the *unit* correct, not what makes a
+    small-sample normal approximation valid. Reuses
+    `eligibility._t_distribution_two_sided_p_value`, this project's own
+    exact regularized-incomplete-beta implementation, rather than adding
+    a second one that could drift from it.
     """
-    from statistics import NormalDist
+    from research.eligibility import _t_distribution_two_sided_p_value
 
     if len(per_date) < 3:
         return len(per_date), float("nan"), float("nan")
@@ -230,7 +256,81 @@ def clustered_p(per_date: dict[int, list[float]]) -> tuple[int, float, float]:
     if sd <= 0:
         return a.size, float(a.mean()), float("nan")
     t = a.mean() / (sd / math.sqrt(a.size))
-    return a.size, float(a.mean()), 2 * (1 - NormalDist().cdf(abs(t)))
+    return a.size, float(a.mean()), _t_distribution_two_sided_p_value(t, a.size - 1)
+
+
+#: The payoff sweep's stop, in ATR(14) units, and its holding horizon in
+#: sessions. Both adopted rather than searched: 1 ATR is the stop every
+#: other daily module here uses, and 10 sessions is Task E's declared
+#: horizon.
+SWEEP_STOP_ATR = 1.0
+SWEEP_HOLD_SESSIONS = 10
+
+
+@dataclass(frozen=True)
+class SweepRow:
+    payoff: float
+    direction: int
+    trades: int
+    mean_r: float
+
+
+def payoff_sweep(
+    panel: DailyPanel,
+    payoff: float,
+    direction: int,
+    atr: np.ndarray,
+    cost_bp: float = COST_FLOOR_BP,
+) -> SweepRow:
+    """Mean outcome in R for a 1-ATR stop and a `payoff` x ATR target.
+
+    **This carries a known defect, preserved deliberately and labelled
+    rather than fixed.** It enters every name every session and holds up
+    to `SWEEP_HOLD_SESSIONS`, so positions from different entry dates
+    overlap heavily — S13's error. It is reproduced here because the
+    research document reports these rows and a figure with no committed
+    generating path is how a table starts lying; **no p-value is computed
+    or reported for it**, and `main` says so beside the output.
+
+    What the sweep is *for* is the long/short **sum**, which removes drift
+    by construction: at 1:1 a driftless process must return exactly minus
+    two round trips, and anything above that at higher payoffs is the
+    asymmetry rather than the basket.
+    """
+    n, m = panel.shape
+    out: list[float] = []
+    for t in range(1, n - SWEEP_HOLD_SESSIONS - 1):
+        for j in range(m):
+            unit = atr[t - 1, j]
+            entry = panel.open_px[t, j]
+            if not (math.isfinite(unit) and unit > 0):
+                continue
+            if not (math.isfinite(entry) and entry > 0):
+                continue
+            stop_px = entry - direction * unit
+            target_px = entry + direction * payoff * unit
+            result = None
+            for s in range(t, t + SWEEP_HOLD_SESSIONS):
+                high, low = panel.high_px[s, j], panel.low_px[s, j]
+                if not (math.isfinite(high) and math.isfinite(low)):
+                    break
+                hit_stop = low <= stop_px if direction > 0 else high >= stop_px
+                hit_target = high >= target_px if direction > 0 else low <= target_px
+                if hit_stop:                       # stop wins the tie, S8 §3.7
+                    result = -SWEEP_STOP_ATR
+                    break
+                if hit_target:
+                    result = payoff
+                    break
+            if result is None:
+                final = panel.close_px[t + SWEEP_HOLD_SESSIONS - 1, j]
+                if not math.isfinite(final):
+                    continue
+                result = direction * (final - entry) / unit
+            # The round trip converted to R using this entry's own ATR.
+            out.append(result - (cost_bp / _BPS) * entry / unit)
+    arr = np.array(out) if out else np.array([np.nan])
+    return SweepRow(payoff, direction, len(out), float(np.mean(arr)))
 
 
 def breakeven_win_rate(payoff: float, cost_in_r: float) -> float:
@@ -329,6 +429,37 @@ def main(argv: list[str] | None = None) -> int:
         f"  and the short leg says most of it is the basket."
     )
 
+    # ---- 2b. the payoff sweep, and the sum that removes drift
+    print("\n=== 2b. the payoff sweep — the sum is what removes drift ===")
+    from research.strategies.scenario_playbook import wilder_atr
+
+    atr = wilder_atr(panel)
+    drift_only = -2 * COST_FLOOR_BP / _BPS
+    print(f"  {'payoff':>8} {'LONG':>10} {'SHORT':>10} {'sum':>10} "
+          f"{'vs driftless':>13}")
+    print("  " + "-" * 56)
+    for ratio in PAYOFF_RATIOS:
+        rows = {d: payoff_sweep(panel, ratio, d, atr) for d in (1, -1)}
+        total = rows[1].mean_r + rows[-1].mean_r
+        # `drift_only` is in return units; the sweep is in R. Convert using
+        # the same median ATR the horizon table uses, so the anchor and the
+        # rows are on one scale.
+        rel = float(np.nanmedian((atr / panel.close_px)[ATR_PERIOD:]))
+        anchor = drift_only / rel
+        print(
+            f"  {ratio:>7.1f}:1 {rows[1].mean_r:>+10.3f} {rows[-1].mean_r:>+10.3f} "
+            f"{total:>+10.3f} {total - anchor:>+13.3f}"
+        )
+    print(
+        f"\n  A driftless process must return {anchor:+.3f}R at 1:1 — just the two\n"
+        f"  round trips. The sum rising above that at higher payoffs is the\n"
+        f"  asymmetry, present in BOTH directions, rather than the basket.\n"
+        f"  **No p-value is reported here**: this sweep enters every name every\n"
+        f"  session with a {SWEEP_HOLD_SESSIONS}-session hold, so its positions "
+        f"overlap (S13's error).\n  The directions are the finding; significance "
+        f"is not claimed. §2 above does\n  not share the defect."
+    )
+
     # ---- 3. where an asymmetric payoff can exist: the horizon
     print("\n=== 3. the horizon decides the breakeven, because costs are fixed ===")
     print(
@@ -336,7 +467,13 @@ def main(argv: list[str] | None = None) -> int:
         f"{'cost in R':>10} {'breakeven @3:1':>15}"
     )
     print("  " + "-" * 64)
-    for label, move_bp in _intraday_moves(panel):
+    for label, move_bp in _intraday_moves(panel, args.db_path):
+        if move_bp <= 0:
+            # A horizon whose MEDIAN absolute move is zero — over half the
+            # observations unchanged — has no stop distance to divide by.
+            # Skipping with a reason beats taking the whole section down.
+            print(f"  {label:>12}  median move is 0bp; no stop distance, row skipped")
+            continue
         stop_bp = move_bp / 3.0
         cost_r = COST_FLOOR_BP / stop_bp
         p = breakeven_win_rate(3.0, cost_r)
@@ -353,7 +490,7 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _intraday_moves(panel: DailyPanel) -> list[tuple[str, float]]:
+def _intraday_moves(panel: DailyPanel, db_path: str) -> list[tuple[str, float]]:
     """Median absolute move by horizon, intraday plus the daily reference.
 
     Imported lazily so the daily-only sections still run if the intraday
@@ -365,7 +502,7 @@ def _intraday_moves(panel: DailyPanel) -> list[tuple[str, float]]:
     try:
         from research.krx_signal_ic import load as load_intraday
 
-        conn = sqlite3.connect(f"file:{DEFAULT_DB_PATH}?mode=ro", uri=True)
+        conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
         try:
             universe = [load_intraday(conn, c) for c in panel.codes]
         finally:

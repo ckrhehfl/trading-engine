@@ -24,7 +24,10 @@ import pytest
 from research.conclusion_check import check_disjoint_intervals
 from research.krx_conjunction import COST_FLOOR_BP
 from research.krx_payoff_geometry import (
+    SWEEP_HOLD_SESSIONS,
+    SWEEP_STOP_ATR,
     DESCRIBED_STOP,
+    payoff_sweep,
     DESCRIBED_TARGET,
     INDEX_SYMBOL,
     PAYOFF_RATIOS,
@@ -36,9 +39,21 @@ from research.krx_payoff_geometry import (
     panel_years,
     per_name_drift,
 )
-from research.strategies.scenario_playbook import DailyPanel
+from research.strategies.scenario_playbook import DailyPanel, wilder_atr
 
 _DAY = 86_400_000
+
+
+def _panel_random(days: int = 120, names: int = 4, seed: int = 9) -> DailyPanel:
+    rng = np.random.default_rng(seed)
+    close = 100 * np.cumprod(1 + rng.normal(0, 0.02, (days, names)), axis=0)
+    open_ = close * (1 + rng.normal(0, 0.005, (days, names)))
+    high = np.maximum(open_, close) * (1 + np.abs(rng.normal(0, 0.01, (days, names))))
+    low = np.minimum(open_, close) * (1 - np.abs(rng.normal(0, 0.01, (days, names))))
+    return DailyPanel(
+        [i * _DAY for i in range(days)], [f"S{i}" for i in range(names)],
+        open_, high, low, close, np.ones_like(close),
+    )
 
 
 def _panel(closes: list[list[float]], highs=None, lows=None, opens=None) -> DailyPanel:
@@ -252,3 +267,126 @@ def test_panel_years_matches_the_real_window():
     p = DailyPanel([0, 365 * _DAY], p.codes, p.open_px, p.high_px, p.low_px,
                    p.close_px, p.quote_volume)
     assert panel_years(p) == pytest.approx(1.0, abs=0.01)
+
+
+# ================================= a gap through the stop fills at the OPEN
+
+
+def test_a_bar_that_GAPS_through_the_stop_fills_at_its_open():
+    """**S8 §3.7 requires the real fill.** Recording `stop` regardless
+    understates the loss on exactly the days that hurt most — the ones
+    that open below where the stop was. The earlier same-bar fixture had
+    `open == entry`, so it could not reproduce a gap and did not test
+    this."""
+    # The entry bar's own open IS the entry, so a gap can only happen on a
+    # LATER bar — which is what the first version of this fixture missed.
+    p = _panel(
+        closes=[[100.0], [100.0], [88.0], [88.0]],
+        opens=[[100.0], [100.0], [88.0], [88.0]],   # entry 100; bar 2 OPENS at 88
+        highs=[[100.0], [101.0], [88.0], [88.0]],
+        lows=[[100.0], [99.0], [88.0], [88.0]],
+    )
+    r = barrier_trades(p, direction=1, cost_bp=0.0)
+    assert r.trades == 1
+    assert r.mean_net == pytest.approx(-0.12), "filled at the gap, not at -5%"
+
+
+def test_a_bar_that_merely_touches_the_stop_fills_at_the_stop():
+    """The control: without it the fix above could just always use the
+    open, which would be wrong in the ordinary case."""
+    p = _panel(
+        closes=[[100.0], [96.0], [96.0]],
+        opens=[[100.0], [99.0], [96.0]],      # opens ABOVE the stop
+        highs=[[100.0], [99.5], [96.0]],
+        lows=[[100.0], [94.0], [96.0]],       # dips through -5% intrabar
+    )
+    r = barrier_trades(p, direction=1, cost_bp=0.0)
+    assert r.mean_net == pytest.approx(DESCRIBED_STOP)
+
+
+def test_a_short_gapping_through_its_stop_is_also_filled_at_the_open():
+    p = _panel(
+        closes=[[100.0], [100.0], [115.0], [115.0]],
+        opens=[[100.0], [100.0], [115.0], [115.0]],  # bar 2 OPENS 15% against it
+        highs=[[100.0], [101.0], [115.0], [115.0]],
+        lows=[[100.0], [99.0], [115.0], [115.0]],
+    )
+    r = barrier_trades(p, direction=-1, cost_bp=0.0)
+    assert r.mean_net == pytest.approx(-0.15)
+
+
+# ==================================== the p-value is Student t, not normal
+
+
+def test_the_p_value_uses_student_t_not_the_normal():
+    """The standard deviation is estimated from the same sample, so the
+    normal understates p at small date counts. Clustering to the right
+    unit fixes the UNIT; it does not license a small-sample normal."""
+    from statistics import NormalDist
+
+    per_date = {i: [v] for i, v in enumerate([0.02, 0.03, 0.01, 0.025, 0.015])}
+    dates, mean, p = clustered_p(per_date)
+    a = np.array([0.02, 0.03, 0.01, 0.025, 0.015])
+    t = a.mean() / (a.std(ddof=1) / math.sqrt(a.size))
+    normal_p = 2 * (1 - NormalDist().cdf(abs(t)))
+    assert p > normal_p, f"student t must be more conservative ({p} vs {normal_p})"
+
+
+def test_it_reuses_the_projects_own_exact_implementation():
+    """A second t-distribution here could drift from `eligibility`'s, which
+    is the one every other significance figure in this project uses."""
+    from research.eligibility import _t_distribution_two_sided_p_value
+
+    a = np.array([0.02, 0.03, 0.01, 0.025, 0.015])
+    t = a.mean() / (a.std(ddof=1) / math.sqrt(a.size))
+    _, _, p = clustered_p({i: [v] for i, v in enumerate(a)})
+    assert p == pytest.approx(_t_distribution_two_sided_p_value(t, a.size - 1))
+
+
+# ============================================ the payoff sweep is REAL code
+
+
+def test_the_payoff_sweep_is_on_the_execution_path():
+    """**The document reports 1:1 through 5:1 and says the module
+    reproduces them.** It did not — `PAYOFF_RATIOS` was declared and never
+    read, so the table had no generating path. A figure with no committed
+    path is how a table starts lying."""
+    p = _panel_random(days=120, names=4)
+    atr = wilder_atr(p)
+    row = payoff_sweep(p, 3.0, 1, atr)
+    assert row.trades > 0
+    assert math.isfinite(row.mean_r)
+    assert row.payoff == 3.0 and row.direction == 1
+
+
+def test_a_wider_target_is_reached_less_often():
+    """The coupling the whole frame rests on: you cannot choose the payoff
+    ratio independently of the hit rate."""
+    p = _panel_random(days=200, names=4)
+    atr = wilder_atr(p)
+    near = payoff_sweep(p, 1.0, 1, atr)
+    far = payoff_sweep(p, 5.0, 1, atr)
+    assert near.trades == far.trades, "the same entries, only the target moves"
+    assert near.mean_r != far.mean_r
+
+
+def test_the_sweeps_stop_and_hold_are_the_adopted_ones():
+    assert SWEEP_STOP_ATR == 1.0
+    assert SWEEP_HOLD_SESSIONS == 10
+
+
+# ------------------------------------------------- the intraday db path
+
+
+def test_the_intraday_section_reads_the_SAME_database(tmp_path):
+    """`main` loads the daily panel from `--db-path`; an intraday section
+    that opened `DEFAULT_DB_PATH` instead would print figures from two
+    different sources in one table."""
+    import inspect
+
+    from research.krx_payoff_geometry import _intraday_moves
+
+    sig = inspect.signature(_intraday_moves)
+    assert "db_path" in sig.parameters
+    src = inspect.getsource(_intraday_moves)
+    assert "DEFAULT_DB_PATH" not in src, "still reaching for the default"

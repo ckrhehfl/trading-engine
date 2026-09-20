@@ -96,29 +96,31 @@ rather than after.
 Sweeping the payoff ratio with a 1 ATR stop, and reading the **sum** of
 long and short, which removes drift by construction:
 
-| payoff | LONG | SHORT | sum | vs the driftless −2×cost |
+| payoff | LONG | SHORT | sum | vs the driftless −0.072R |
 |---|---|---|---|---|
-| 1:1 | −0.006R | −0.073R | **−0.079R** | **exactly drift** |
-| 2:1 | +0.070R | −0.071R | −0.001R | +0.071 |
-| 3:1 | +0.125R | −0.093R | +0.033R | +0.105 |
-| 5:1 | +0.192R | −0.104R | **+0.088R** | **+0.160** |
+| 1:1 | −0.003R | −0.079R | **−0.082R** | **−0.009 — at the anchor** |
+| 2:1 | +0.071R | −0.077R | −0.006R | +0.067 |
+| 3:1 | +0.131R | −0.095R | +0.036R | +0.108 |
+| 5:1 | +0.198R | −0.107R | **+0.090R** | **+0.163** |
 
-**At 1:1 the sum is exactly minus two round trips** — the signature of a
-driftless coin, and the anchor that makes the rest readable. **The sum
-then rises monotonically with the payoff ratio**, and that rise is not
-drift: it appears in *both* directions.
+**At 1:1 the sum sits on the driftless anchor** — within 0.009R of the
+two round trips a symmetric process must give, which is what makes the
+rest of the column readable. **The sum then rises monotonically with the
+payoff ratio**, and that rise is not drift: it appears in *both*
+directions.
 
 **So "letting winners run" pays here, in both directions, and it is
 small** — about **+0.15% per trade**, roughly 1.2× the round trip.
 Positive, real, and thin.
 
-> **A caveat on these four rows specifically.** This sweep entered every
-> name every day with a 10-session hold, so positions from different
-> entry dates overlap heavily and **its p-values are not admissible** —
-> S13's error, reproduced here and caught before publication. The
-> *directions* are reported; no significance is claimed for them. §2's
-> figures do not share the defect: one position per name at a time,
-> verified with `check_disjoint_intervals`.
+> **A caveat on these four rows specifically.** This sweep enters every
+> name every session with a 10-session hold, so positions from different
+> entry dates overlap heavily — S13's error, reproduced here deliberately
+> and **labelled rather than fixed**, because the rows are what the
+> document reports. **No p-value is computed for it at all**, in the
+> module or here; the *directions* are the finding and no significance is
+> claimed. §2's figures do not share the defect: one position per name at
+> a time, verified with `check_disjoint_intervals`.
 
 ## 4. Why a fixed percentage is the wrong barrier
 
