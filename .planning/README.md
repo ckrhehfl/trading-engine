@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-116 documents and counting, which is past the point where `ls` is a
+117 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -236,3 +236,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-t-korean-signal-ic.md`](rd-t-korean-signal-ic.md) — Research Direction Task T — do any Korean intraday features predict anything?
 - [`rd-u-do-conjunctions-beat-their-parts.md`](rd-u-do-conjunctions-beat-their-parts.md) — Research Direction Task U — do conditions COMBINED beat their parts?
 - [`rd-v-payoff-geometry-and-the-universe-drift.md`](rd-v-payoff-geometry-and-the-universe-drift.md) — Research Direction Task V — the universe drifts at 54%/yr, and what an asymmetric payoff can and cannot fix
+- [`rd-w-the-delisted-universe.md`](rd-w-the-delisted-universe.md) — Research Direction Task W — the survivorship blocker is not a blocker
