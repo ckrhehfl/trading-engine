@@ -7,11 +7,16 @@
 # currently-listed symbols only, so a snapshot not taken today can never be
 # reconstructed. Same argument as collect-positioning.sh, different venue.
 #
-# RUNS LOCALLY, NOT ON THE INSTANCE -- but for the opposite reason to
-# collect-positioning.sh. That one is local-only because Binance returns
-# HTTP 451 to the GCP instance's US IP. This one *could* run on the
-# instance (KIS works fine from there), and is kept local anyway so there
-# is a single database of record rather than two that must be reconciled.
+# RUNS ON THE INSTANCE. This header said the opposite until 2026-09-20 --
+# "RUNS LOCALLY, NOT ON THE INSTANCE ... kept local so there is a single
+# database of record" -- which was true when written and was overtaken by
+# the 2026-09-17 decision that moved ALL KRX/KIS collection to the
+# instance and left nothing scheduled locally. The single-database-of-
+# record argument is unchanged and is now satisfied the other way round:
+# the instance owns KRX/KIS, and a local session reads a copy via
+# scripts/sync-krx-from-instance.sh. Corrected rather than deleted,
+# because a comment that contradicts the crontab is how a future session
+# ends up running a second writer.
 #
 # AFTER THE CLOSE, deliberately. 투자자별 매매동향 is 가집계 (provisional)
 # during the session and finalised only afterwards; a mid-session snapshot
@@ -94,3 +99,24 @@ UNIVERSE="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940,
 
 PYTHONPATH=python python/.venv/bin/python -m data.kis_investor_flow \
     --symbols "$UNIVERSE" >>"$LOG_FILE" 2>&1
+
+# The delisted universe LAST, and allowed to fail. Two deliberate
+# differences from everything above it, both about not letting a
+# nice-to-have take down the thing that cannot be backfilled:
+#
+#  - IT RUNS LAST. Under `set -euo pipefail` any step that fails aborts
+#    the script, so putting this first or in the middle would mean a KRX
+#    portal outage silently costing that day's 투자자별 매매동향 -- a
+#    series with a 30-row rolling horizon and no way back.
+#  - IT MAY FAIL. `|| echo` keeps the exit status clean, because unlike
+#    every other series here this one IS re-fetchable: the finder
+#    publishes the whole delisted history every day and only grows. A
+#    missed day costs a dated row, not data.
+#
+# Why snapshot it at all, then: the finder carries no delisting date, so
+# the first date a name appears here is the only bound this project has
+# on when KRX published it as delisted -- which matters for a name KIS
+# has stopped serving. See .planning/rd-w-the-delisted-universe.md.
+PYTHONPATH=python python/.venv/bin/python -m data.krx_delisted --snapshot \
+    >>"$LOG_FILE" 2>&1 \
+    || echo "$(date -Is) WARNING: krx_delisted snapshot failed; re-fetchable tomorrow, not a data loss" >>"$LOG_FILE"
