@@ -1651,10 +1651,30 @@ Non-negotiable once strategy research begins:
   and they bind on any full-universe work:
 
   1. **Membership comes from the price series, never from a delisting
-     date.** A name was in the pool on day `D` exactly when it has a bar
-     on day `D`. No delisting-date table exists or is needed — KIS's
-     100-row cap keeps the *newest* rows, so an over-wide window returns
-     a dead name's final sessions.
+     date** — and **an absent bar is not evidence of absence unless the
+     fetch that produced it is known complete.** No delisting-date table
+     exists or is needed, but the naive reading of this rule reintroduces
+     survivorship bias by a different door, so two conditions are part of
+     the rule rather than caveats on it:
+
+     - **A zero-row answer is ambiguous by construction.** A real dead
+       name and a code that never existed both return `rt_cd=0` with zero
+       rows (see the KIS section). So a symbol-day with no bar resolves to
+       **UNKNOWN, never to "not listed"**, until a nonsense-code negative
+       control in the same run shows the request itself was well-formed.
+       Dropping a real name from the pool is the exact bias this clause
+       exists to prevent.
+     - **The 100-row cap has two incompatible uses, and they must not be
+       mixed.** Asking *over-wide on purpose* is how a dead name's final
+       session is read — the cap keeps the newest rows, so the last bar is
+       the delisting date. Asking over-wide to establish *per-day
+       membership across a window* is wrong for the same reason: every
+       session before the newest 100 is silently truncated away and would
+       read as "not in the pool". A membership scan therefore pages in
+       windows under the cap, and **a response at or over the cap that
+       claims to cover the whole range is a failure, not data** — which is
+       what `kis_klines.fetch_daily_page` already refuses, and why the
+       delisting-date probe has to bypass it deliberately.
   2. **An exit price comes from its last bar, never from the delisting
      event.** **Delisting is not failure**: 루트로닉 left at 36,700 and
      락앤락 at 8,660 (take-privates), 조흥은행 and 우리은행 through
