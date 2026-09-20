@@ -1016,8 +1016,45 @@ design above was fake-server-verified only until then. Full account:
   a file that yields zero common stock. **Stock codes are no longer all
   numeric** — KOSDAQ now issues alphanumeric codes such as `0001A0`, so any
   `isdigit()` validation is wrong. The files list **currently-listed symbols
-  only**, which is the open survivorship problem for a full-universe scan
-  (`.planning/rd-d-discovery-mode-and-the-full-universe.md` §2.2).
+  only**, which was the open survivorship problem for a full-universe scan
+  (`.planning/rd-d-discovery-mode-and-the-full-universe.md` §2.2) — see the
+  next entry, which supplies the other half.
+- **The DELISTED universe is enumerable, and KIS still prices it**
+  (measured 2026-09-20; `data/krx_delisted.py`, full account
+  `.planning/rd-w-the-delisted-universe.md`). This is the source the
+  survivorship clause under Strategy Research Methodology previously said
+  did not exist.
+  - **KRX's own portal, not KIS**:
+    `POST http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd`,
+    `bld=dbms/comm/finder/finder_listdelisu`, answering in `block1`.
+    **4,182 delisted issues** (유가증권 2,133 / 코스닥 1,928 / 코넥스 121)
+    against `finder_stkisu`'s 2,869 listed ones, with **zero overlap** —
+    so it is delisted-*only*. No credentials; it needs a `JSESSIONID`
+    from the loader page, and **every request without one answers
+    `HTTP 400` with the body `LOGOUT`**, which reads like an auth failure
+    and is not. Every `MDCSTAT*` statistics `bld` still answers `LOGOUT`
+    *with* a session, so only the finders are reachable this way.
+  - **An unknown `bld` answers HTTP 200 with an HTML body**, not an
+    error — `finder_dellistisu`, `finder_delisu` and `finder_deallistisu`
+    all did while probing. A status-code check alone takes any of them for
+    data; this is the KIS wrong-contract-code trap in a second venue, so
+    a non-JSON 200 must be rejected explicitly.
+  - **KIS serves a dead name's daily bars to its last session.**
+    한진해운 `117930` runs to **2017-03-06, final close 12 KRW** (from
+    3,540 a year earlier), then returns nothing at all for any later
+    window. **21 of 25** randomly sampled plain 6-digit codes are
+    retained, final bars spanning 2000 to 2026; all four misses were
+    신주/우선주 legacy instruments rather than common stock.
+  - **The 100-row cap is the delisting-date mechanism, not an obstacle.**
+    It keeps the **newest** rows, so an over-wide window (e.g.
+    `19900101`..`20261231`) returns a dead name's last 100 sessions and
+    the final bar is its last trading day. `kis_klines.fetch_daily_page`
+    deliberately *refuses* a capped page, which is right for a backfill
+    and wrong here — ask the endpoint directly for this.
+  - **A zero-row answer is still ambiguous**, exactly as everywhere else
+    in this section: `999999` and `ZZZZZZ` both return `rt_cd=0` with zero
+    rows, identical to a name KIS has dropped. Any probe here needs a
+    nonsense-code negative control in the same run.
 - **Single-stock futures — the instrument `rd-q` says to trade, and a
   second decaying window.** Daily history:
   `GET /uapi/domestic-futureoption/v1/quotations/inquire-daily-fuopchartprice`,
@@ -1601,13 +1638,36 @@ Non-negotiable once strategy research begins:
   because the 2018 ordering could not see 2019–2026.
 
   **A full-universe scan (KOSPI + KOSDAQ, ~2,700 names) reopens it much
-  more sharply, and is not solved.** The selection step there is
-  *per-day*, so a delisted name must be present in the pool on every day
-  it actually traded or the scan is biased upward by construction — and
-  KIS's master files enumerate **currently-listed symbols only**. Until a
-  delisted-symbol source exists, a full-universe result is
-  survivorship-contaminated and must be reported as such, not quietly
-  scoped away. See `.planning/rd-d-*.md`.
+  more sharply.** The selection step there is *per-day*, so a delisted
+  name must be present in the pool on every day it actually traded or the
+  scan is biased upward by construction — and KIS's master files
+  enumerate **currently-listed symbols only**. See
+  `.planning/rd-d-*.md`.
+
+  **The data half of that is solved as of 2026-09-20** (`rd-w`,
+  `data/krx_delisted.py`), replacing this clause's previous *"until a
+  delisted-symbol source exists"*: KRX's own portal enumerates the
+  delisted issues and KIS still prices them. Three standing rules follow,
+  and they bind on any full-universe work:
+
+  1. **Membership comes from the price series, never from a delisting
+     date.** A name was in the pool on day `D` exactly when it has a bar
+     on day `D`. No delisting-date table exists or is needed — KIS's
+     100-row cap keeps the *newest* rows, so an over-wide window returns
+     a dead name's final sessions.
+  2. **An exit price comes from its last bar, never from the delisting
+     event.** **Delisting is not failure**: 루트로닉 left at 36,700 and
+     락앤락 at 8,660 (take-privates), 조흥은행 and 우리은행 through
+     merger. Booking −100% on delisting is wrong in the *opposite*
+     direction to survivorship bias, and by more on a tender offer than
+     survivorship bias costs.
+  3. **Instrument type is still unknown for dead names, and that gap is
+     not closed.** The finder publishes no type field, so the 2,350 plain
+     6-digit codes include preferred shares and SPACs;
+     `krx_delisted.plain_codes` is documented as a **floor, not a
+     filter**. A common-stock-only historical universe needs a source for
+     this first. Until then a full-universe result is still reported with
+     that limitation named, rather than quietly scoped away.
 - **No further parameter searching on the `BTC-USDT` 1h research window
   (2024-04-27T10:00Z → 2026-02-26T07:00Z, 16,078 bars).** (Added
   2026-07-29, human-approved; derivation in
