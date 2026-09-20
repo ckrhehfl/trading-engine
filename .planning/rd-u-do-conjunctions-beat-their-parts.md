@@ -11,6 +11,8 @@ python -m research.krx_conjunction
 here may be promoted, quoted as evidence of an edge, or reported as a
 pass. The only legitimate output is a written specification.
 
+> **Bounded by [`rd-v`](rd-v-payoff-geometry-and-the-universe-drift.md), measured 2026-09-19.** This universe returned **+694% equal-weight over the panel, +54%/yr, against KOSPI's +19%/yr — a selection premium of 3.4x the index.** `rd-r` picked these ten on 2026Q1 futures liquidity, and a name becomes liquid enough to carry a listed future *because* it has gone up 10-25x, so the criterion and the return are the same fact. **Any long-only or drift-exposed figure below is partly that.** The cross-sectional and h=1 framings used here are the defence, and they defend against the *level*, not the dispersion.
+
 This is the question [`rd-t`](rd-t-korean-signal-ic.md) did not ask.
 rd-t measured **eight single features** and closed the door on seven of
 them. It is tempting to read that as *"Korea does not work"* — and this
@@ -265,7 +267,9 @@ table rather than leaving it to a reader:
 - a 5-day window contains **4 overnight gaps**, and §3 showed the drift
   lives entirely in those gaps;
 - this universe was selected by `rd-r` on **2026Q1 futures liquidity**,
-  which correlates with having risen over 2021-2026.
+  which correlates with having risen over 2021-2026. **`rd-v` later put a
+  number on that and it is +54%/yr equal-weight, 3.4x KOSPI — so this
+  bullet was right and understated by an order of magnitude.**
 
 So an "excess" there is largely a measure of **which names drifted**, not
 of what a condition predicts. Concretely: *"`vol_low_21d` clears the cost
