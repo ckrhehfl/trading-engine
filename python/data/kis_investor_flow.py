@@ -280,7 +280,29 @@ def resolve_symbols(conn, args) -> list[str]:
             "--universe needs a krx_universe snapshot; "
             "run `python -m data.krx_universe --snapshot` first"
         )
-    return [code for code, _, _, _ in fetch_krx_universe(conn, date)]
+    # **Common stock, by ISIN.** `group_code='ST'` alone lets 우선주
+    # through -- 114 of its 2,718 rows -- and a flow series collected
+    # for 삼성전자우 beside 삼성전자 is two lines of the same issuer.
+    codes = [
+        code
+        for code, _, _, _, _ in fetch_krx_universe(
+            conn, date, common_stock_only=True
+        )
+    ]
+    if not codes:
+        # A snapshot existing is not the same as a snapshot being usable,
+        # and the check above only covered the first. The live cause is a
+        # snapshot taken before `standard_code` was captured: every row
+        # reads back `NULL`, no row can be confirmed 보통주, and the
+        # collector would otherwise report a clean run having fetched
+        # nothing -- on a 30-row rolling series where the day is then gone.
+        raise InvestorFlowError(
+            f"the krx_universe snapshot for {date} yielded no confirmable "
+            f"common stock. A snapshot taken before 표준코드 was captured "
+            f"has no ISIN to read; re-run "
+            f"`python -m data.krx_universe --snapshot`"
+        )
+    return codes
 
 
 def main(argv: list[str] | None = None) -> int:

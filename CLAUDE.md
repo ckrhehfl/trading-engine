@@ -1004,11 +1004,37 @@ design above was fake-server-verified only until then. Full account:
   backfill treating `rt_cd=0` as success records nothing and reports a clean
   run; and **bar timestamps are not uniformly on the minute grid** (2026-01-02
   returned `:11`-second stamps where every other probed date returned `:00`).
-- **The listed universe is 2,718 common stocks** — KOSPI 915 + KOSDAQ 1,803,
-  counted from KIS's own master files (`kospi_code.mst`, `kosdaq_code.mst`,
-  증권그룹구분코드 `ST`) on 2026-09-14. Over half the KOSPI file is ETFs and
-  ETNs (`EF` 1,168, `EN` 375), which would swamp any relative-volume
-  ranking. **The two files carry fixed tails of different lengths — KOSPI
+- **The listed universe is 2,604 common stocks, not 2,718 — 증권그룹구분코드
+  `ST` is NOT common stock.** This entry read *"2,718 common stocks"* until
+  2026-09-20, counted from `ST` alone; **114 of those 2,718 rows are
+  우선주**. 삼성전자 `005930` and 삼성전자우 `005935` both carry `ST`, so
+  any relative-volume or turnover ranking over an `ST` pool ranks an
+  issuer's preferred line beside the issuer.
+
+  **What actually separates them is the 12-character 표준코드 (ISIN),
+  present in the master row all along and parsed over by
+  `krx_universe.py` until it was captured**: `KR7005930003` vs
+  `KR7005931001` — **position 8 is the issue type, `0` = 보통주**.
+  `data.krx_instrument` implements it; the rule was validated against an
+  independent label with every disagreement explained (112 issues contain
+  우 as an ordinary syllable — 다우기술, LX하우시스, AP우주통신 — and 22
+  are foreign-domiciled listings carrying a Hong Kong or Cayman ISIN,
+  where position 8 means nothing, which is why the `KR` prefix is part of
+  the rule).
+
+  **The two filters are orthogonal and a stock universe needs both.** The
+  ISIN does not separate stock from ETF — KODEX 200 is `KR7069500007`,
+  issue type `0` — and `ST` does not separate 보통주 from 우선주. Either
+  alone overstates. **The delisted finder publishes no group code at all**,
+  so on that side only the ISIN filter exists and a delisted SPAC or ETF
+  passes it; that gap is open, not closed.
+
+  Real counts, 2026-09-20: live **2,604** common + 114 preferred;
+  delisted plain codes **2,036** common, 302 not-common, 12 unreadable —
+  a **combined survivorship-safe common-stock pool of 4,640**.
+
+  KOSPI 915 + KOSDAQ 1,803 was the `ST` split. Over half the KOSPI file is
+  ETFs and ETNs (`EF` 1,168, `EN` 375), which `ST` does correctly exclude. **The two files carry fixed tails of different lengths — KOSPI
   228 bytes, KOSDAQ 222** — so one shared offset silently reads the wrong
   two characters for one market and every group code comes back as
   whitespace, while the download, the unzip and the row count all look

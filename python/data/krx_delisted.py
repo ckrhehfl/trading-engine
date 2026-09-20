@@ -65,6 +65,7 @@ import urllib.request
 from dataclasses import dataclass
 
 from data._paths import DEFAULT_DB_PATH
+from data.krx_instrument import is_common_stock
 from data.store import (
     connect,
     fetch_krx_delisted,
@@ -102,6 +103,11 @@ class Delisting:
     code: str
     market: str
     name: str
+    #: The finder's `full_code`, i.e. the 12-character 표준코드 (ISIN).
+    #: The only field here that separates 보통주 from 우선주 -- 312 of
+    #: the 2,350 plain-code delisted issues are not common stock. See
+    #: `data.krx_instrument`.
+    standard_code: str = ""
 
 
 def _opener() -> urllib.request.OpenerDirector:
@@ -178,9 +184,10 @@ def fetch_delistings() -> list[Delisting]:
         code = str(row.get("short_code", "")).strip()
         name = str(row.get("codeName", "")).strip()
         market = str(row.get("marketName", "")).strip()
+        standard_code = str(row.get("full_code", "")).strip()
         if not code:
             continue
-        delistings.append(Delisting(code, market, name))
+        delistings.append(Delisting(code, market, name, standard_code))
 
     overlap = {d.code for d in delistings} & listed
     if overlap:
@@ -207,6 +214,22 @@ def plain_codes(delistings: list[Delisting]) -> list[Delisting]:
     return [d for d in delistings if len(d.code) == SHORT_CODE_LEN and d.code.isdigit()]
 
 
+def common_stock(delistings: list[Delisting]) -> list[Delisting]:
+    """The plain-coded issues whose ISIN positively says 보통주.
+
+    **This is the filter `plain_codes` is only the floor for**, and it is
+    not a formality: **312 of the 2,350 plain 6-digit delisted codes are
+    preferred lines or foreign listings** (measured 2026-09-20). A scan
+    that skips this ranks 삼성전자우-shaped names beside their own commons.
+
+    Fails closed: an ISIN this cannot read is dropped rather than assumed
+    common. Use `krx_instrument.classify` where the *count* of those
+    matters, because dropping names silently is itself a survivorship
+    hazard.
+    """
+    return [d for d in plain_codes(delistings) if is_common_stock(d.standard_code)]
+
+
 def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:
     """Record today's delisted universe. `(date, rows_written, plain_codes)`.
 
@@ -222,7 +245,9 @@ def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:
     )
     delistings = fetch_delistings()
     written = upsert_krx_delisted(
-        conn, date, [(d.code, d.market, d.name) for d in delistings]
+        conn,
+        date,
+        [(d.code, d.market, d.name, d.standard_code) for d in delistings],
     )
     return date, written, len(plain_codes(delistings))
 
@@ -266,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
             print("no snapshots on record; run --snapshot first", file=sys.stderr)
             return 1
         try:
-            for code, market, name in fetch_krx_delisted(conn, date):
+            for code, market, name, _ in fetch_krx_delisted(conn, date):
                 if args.plain_only and not (
                     len(code) == SHORT_CODE_LEN and code.isdigit()
                 ):
