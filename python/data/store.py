@@ -218,6 +218,44 @@ than trust that it was.
 """
 
 
+KRX_DELISTED_SCHEMA = """
+CREATE TABLE IF NOT EXISTS krx_delisted (
+  snapshot_date TEXT NOT NULL,
+  code TEXT NOT NULL,
+  market TEXT NOT NULL,
+  name TEXT NOT NULL,
+  fetched_at TEXT NOT NULL,
+  PRIMARY KEY (snapshot_date, code)
+);
+"""
+"""Dated snapshots of the KRX **delisted** universe -- the other half of
+the survivorship record.
+
+`krx_universe` above says it "fixes the future, not the past". This table
+is what fixes the past: KRX's own portal publishes the delisted-issue
+finder, so the names missing from every current master file are
+enumerable today rather than only from the day collection started.
+
+**Deliberately a separate table, not a `delisted` flag on `krx_universe`.**
+The two answer different questions and come from different sources -- one
+is "who was listed on date D", the other is "who has ever been delisted,
+as known on date D" -- and a name's absence from a `krx_universe` snapshot
+means "not listed then", which is not the same claim. Keeping them apart
+means neither can be silently read as the other.
+
+**There is no delisting date here, and none is needed.** The finder does
+not carry one, but KIS's daily bars end on the final trading session, so
+membership on any past day is answerable from the price series itself: a
+name was in the pool on day D exactly when it has a bar on day D. Storing
+a date KRX does not publish would mean inventing one.
+
+`market` is KRX's own 유가증권/코스닥/코넥스. Instrument type is *not*
+stored because the finder does not publish it -- see
+`krx_delisted.plain_codes` for what can and cannot be inferred from the
+code alone.
+"""
+
+
 def connect(db_path: str | Path) -> sqlite3.Connection:
     """Open (creating if needed) the local market-data cache and ensure
     every schema exists. `db_path` may be `":memory:"` for
@@ -238,6 +276,7 @@ def connect(db_path: str | Path) -> sqlite3.Connection:
     conn.execute(MACRO_SCHEMA)
     conn.execute(POSITIONING_SCHEMA)
     conn.execute(KRX_UNIVERSE_SCHEMA)
+    conn.execute(KRX_DELISTED_SCHEMA)
     conn.commit()
     _ensure_klines_columns(conn)
     return conn
@@ -878,6 +917,83 @@ def fetch_krx_universe(
             (snapshot_date, group_code),
         )
     return cursor.fetchall()
+
+
+def upsert_krx_delisted(
+    conn: sqlite3.Connection,
+    snapshot_date: str,
+    rows: Iterable[tuple[str, str, str]],
+) -> int:
+    """Record one day's delisted universe. `rows` are
+    `(code, market, name)`.
+
+    `INSERT OR IGNORE` on `(snapshot_date, code)`, the same as every other
+    upsert here, so a cron firing twice is a no-op rather than a
+    duplicate.
+    """
+    rows = list(rows)
+    if not rows:
+        return 0
+    # Same validation as `upsert_krx_universe`, and for the same reason:
+    # the value lands straight in the primary key, where "2026-02-31"
+    # corrupts ordering and every snapshot lookup.
+    try:
+        parsed = date.fromisoformat(snapshot_date)
+    except (ValueError, TypeError):
+        raise ValueError(
+            f"snapshot_date must be a real YYYY-MM-DD date, got {snapshot_date!r}"
+        ) from None
+    if parsed.isoformat() != snapshot_date:
+        raise ValueError(
+            f"snapshot_date must be a real YYYY-MM-DD date, got {snapshot_date!r}"
+        )
+    fetched_at = datetime.now(timezone.utc).isoformat()
+    params = [(snapshot_date, c, m, n, fetched_at) for c, m, n in rows]
+    try:
+        cursor = conn.executemany(
+            "INSERT OR IGNORE INTO krx_delisted "
+            "(snapshot_date, code, market, name, fetched_at) "
+            "VALUES (?, ?, ?, ?, ?)",
+            params,
+        )
+        conn.commit()
+        return cursor.rowcount
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def fetch_krx_delisted(
+    conn: sqlite3.Connection,
+    snapshot_date: str,
+) -> list[tuple[str, str, str]]:
+    """One snapshot's `(code, market, name)`, ascending by code.
+
+    Unfiltered on purpose: the finder mixes rights, 신주 and fund classes
+    in with common stock and publishes no instrument-type field, so any
+    filtering is the caller's own decision and has to be visible at the
+    call site rather than hidden here.
+    """
+    return conn.execute(
+        "SELECT code, market, name FROM krx_delisted "
+        "WHERE snapshot_date = ? ORDER BY code",
+        (snapshot_date,),
+    ).fetchall()
+
+
+def krx_delisted_snapshots(conn: sqlite3.Connection) -> list[tuple]:
+    """`(snapshot_date, rows, plain_6_digit_rows)` per snapshot, ascending.
+
+    The second column matters because only plain 6-digit codes are
+    accepted by KIS's equity daily endpoint -- the rest of the finder is
+    instruments a price request cannot ask for.
+    """
+    return conn.execute(
+        "SELECT snapshot_date, COUNT(*), "
+        "SUM(CASE WHEN LENGTH(code) = 6 AND code GLOB '[0-9][0-9][0-9][0-9][0-9][0-9]' "
+        "THEN 1 ELSE 0 END) "
+        "FROM krx_delisted GROUP BY snapshot_date ORDER BY snapshot_date"
+    ).fetchall()
 
 
 def krx_universe_snapshots(conn: sqlite3.Connection) -> list[tuple]:
