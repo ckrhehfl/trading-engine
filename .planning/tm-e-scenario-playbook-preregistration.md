@@ -293,8 +293,45 @@ Named in advance so they cannot be rationalised later:
   the cost model rather than the policy
 - **fewer than 30 episodes** on any policy, which is
   `INCONCLUSIVE-DATA-LIMITED` for that policy and not evidence against it
-- **the implementation not matching this document** — added 2026-09-18
-  after it happened. It is more fundamental than the four above and was
-  missing from them: a run that executes a different policy set is not a
-  test of this registration at all, whatever it reports. The result
-  document's CORRECTION section records the two places it occurred.
+- **the implementation not matching this document**, **or this document
+  not matching the reference specification it names** — added 2026-09-18
+  after the first of those happened, and **revised 2026-09-20 on review**
+  because the second had happened too and the original wording could not
+  see it.
+
+  It is more fundamental than the five above and was missing from them: a
+  run that executes a different policy set is not a test of this
+  registration at all, whatever it reports.
+
+  **(a) One direction was not enough.** The implementation *did* match
+  this document's 10-session time exit; what diverged was this document
+  against the thing it claims to adopt unchanged. **Task D's P3 does not
+  take a time exit at all** — `_manage()` applies it only to
+  `Policy.BASELINE`, `Policy.STOP` and `Policy.PYRAMID`, so the trailing
+  policies run until the trail fires. So "implementation ≠ document"
+  would never have caught C1, and the reference is pinned here to make
+  the other direction checkable:
+
+  > **The Task D P3 referred to throughout this document is
+  > `research/strategies/breakout_management.py`'s `Policy.SCALE_OUT`
+  > branch of `BreakoutManagementStrategy._manage()`, at commit
+  > `ee2627e` — the commit that produced
+  > [`tm-d-breakout-management-result.md`](tm-d-breakout-management-result.md),
+  > and the only commit that file has ever had.** Any clause here
+  > claiming to adopt P3 unchanged must be verifiable against that code,
+  > not against a description of it.
+
+  **(b) This condition does not apply retroactively to the Task E run,
+  and saying so is the point.** §8 opens *"Named in advance so they
+  cannot be rationalised later"*, and this item was added after the run.
+  Voiding that run by it would be judging a completed experiment against
+  a criterion chosen once the result was visible — which is the exact
+  move this section exists to prevent, and it does not become acceptable
+  because the criterion is a strict one. **The Task E run's standing is
+  what its own result document records: a `CORRECTION` naming four design
+  errors and measuring what the largest of them cost** (the time exit
+  suppressed 65.5% of the runners; the trail fired 57 times against 288
+  without it). That is a post-run correction, not a pre-registered void.
+
+  This condition binds from the **next** registration onward, where it
+  can be named before the data is touched.

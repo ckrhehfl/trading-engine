@@ -131,6 +131,20 @@ direction.**
 - both implementation defects in §5, and the classifier's weekend reset,
   which are data facts.
 
+**The run's procedural standing, stated because the obvious answer is
+wrong** (added 2026-09-20 on review). C1 is a divergence from the
+registration's own reference specification, and the registration's §8 now
+lists that as a void condition — so the tempting reading is that this run
+is void. **It is not, and applying it here would be the error §8 exists to
+prevent.** That condition was written after this run, with its result
+already visible; §8 opens *"Named in advance so they cannot be
+rationalised later"*, and a criterion chosen after seeing the outcome
+cannot be applied to that outcome in either direction — voiding is as much
+a post-hoc judgement as passing. **This run's standing is exactly what
+this section says it is: a post-run correction, with the levels withdrawn
+and the comparisons that survive named.** The void condition binds from
+the next registration.
+
 ## The structural criticism that outranks all four
 
 **Task E tested a scenario *response* on top of a maximally
