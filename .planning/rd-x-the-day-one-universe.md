@@ -26,41 +26,81 @@ delisted source.
 
 ## 1. The headline
 
-> **Same window, same construction, only the selection date moved — and
-> the premium goes from +27%/yr to −2%/yr.**
+> **Move only the selection date — same turnover field, same candidate
+> pool, same window, same construction — and the premium over KOSPI goes
+> from −2%/yr to +20%/yr, the median member from +8% to +290%.**
 
-| selection rule | equal-weight | per yr | vs KOSPI | median name |
-|---|---|---|---|---|
-| **`rd-r`: 2026Q1 futures turnover** | 16.55x | **+44%/yr** | **4.92x, +27%/yr** | **+797%** |
-| **day-one: 2019-01 spot turnover** | 2.86x | **+15%/yr** | **0.85x, −2%/yr** | **+8%** |
-| KOSPI 2019-2026 | 3.36x | +17%/yr | — | — |
+| arm | ranked on | source | pool | equal-weight | per yr | vs KOSPI | median name |
+|---|---|---|---|---|---|---|---|
+| **A** | **2019-01** | spot | 4,643 candidates | 2.86x | +15% | **0.85x, −2%/yr** | **+8%** |
+| **B** | **2026Q1** | spot | A's 2,183 ranked | 11.21x | +37% | **3.33x, +20%/yr** | **+290%** |
+| `rd-r` | 2026Q1 | **futures** | 283 futures names | 16.55x | +44% | 4.92x, +27%/yr | +797% |
+| KOSPI | — | — | — | 3.36x | +17% | — | — |
 
-**The median name is the sharper number**: +797% against +8%, a factor of
-roughly a hundred. `rd-v` §1's diagnosis is confirmed — the drift was the
-selection date and nothing about Korean equities.
+**A against B is the controlled comparison**, and it decomposes the
+premium into two parts rather than one:
+
+- **the selection date is worth −2 → +20%/yr.** Nothing differs between
+  the two arms except *when* the ranking was computed.
+- **the remaining +20 → +27%/yr is the source and the pool.** `rd-r`
+  ranked **futures** turnover among the 283 names that carry a listed
+  single-stock future, which is a further concentration on top of the
+  date.
+
+`rd-v` §1's diagnosis is confirmed and now quantified: the drift is
+overwhelmingly the selection date, with a real but smaller contribution
+from ranking on futures liquidity.
 
 **The day-one basket slightly *under*performs the index**, which is what
 an equal-weight basket of 2019's most-traded names should do: 2019's
-turnover leaders included the speculative names that then collapsed.
-Six of the thirty lost 70% or more.
+turnover leaders included the speculative names that then collapsed —
+six of the thirty lost 70% or more. **The 2026Q1 arm picks that era's
+winners instead**: 두산에너빌리티, 한화에어로스페이스, 에코프로,
+한미반도체, 알테오젠, HD현대일렉트릭. **Only 11 of 30 members are common
+to the two arms.**
 
-## 2. Why the comparison had to be re-run rather than quoted
+## 2. What had to be held fixed, and why each one
 
-`rd-v` §1 reports 7.94x / +54%/yr against a KOSPI of 2.31x / +19%/yr.
-Those come from the `rd-r` ten's **own inner-join panel**, 2021-11-29 to
-2026-09-17, **4.80 years**. This document's panel is 2019-01-02 to
-2026-09-18, **7.71 years**.
+**An earlier version of this document compared A against `rd-r` directly
+and called it "only the selection date moved". That was wrong**, and the
+error is instructive: `rd-r` ranks **futures** turnover and A ranks
+**spot** turnover, so two things differed. Ranking 2019 futures turnover
+is not possible — KIS drops an expired contract's entire series and the
+oldest reachable bar is 2025-10 (`rd-r` §3) — so the control runs the
+other way: **arm B ranks 2026Q1 spot turnover**, which holds the field
+fixed and moves only the date.
 
-**So quoting +54% beside +15% would be changing two things at once.**
-`--compare` re-measures the `rd-r` ten over *this* window, which makes
-the only difference the selection rule. That is why the table above says
-+44%/yr for `rd-r` rather than `rd-v`'s +54%: a longer window, the same
-names, a lower annualised figure. Both are correct about their own
-window; only one pair is a comparison.
+**The pool is held fixed too**, via `--pool-from`. Without it a later
+window additionally admits every name that listed in between — `402340`
+SK스퀘어 first traded 2021-11-29 — so the arms would differ in
+membership as well as ranking date. **The honest cost, stated because it
+cuts the other way**: a genuine 2026 selection *would* include those
+later listings, as `rd-r`'s did, so the pool-matched arm **understates**
+how different a real late selection is. The measured date effect is
+therefore a lower bound.
 
-A name that listed after 2019-01 starts at its own first bar — `402340`
-SK스퀘어 begins 2021-11-29 — which is the same treatment a delisted
-member gets at the other end.
+**The window is held fixed at 2019-01-02 .. 2026-09-18, 7.71 years.**
+`rd-v` §1's own figures (7.94x, +54%/yr, 3.4x the index) come from the
+`rd-r` ten's inner-join panel, 2021-11-29 to 2026-09-17, **4.80 years**.
+Quoting +54% beside +15% would change the window as well, so `--compare`
+re-measures the same ten here — which is why the table reads +44%/yr for
+`rd-r` rather than +54%. Both are correct about their own window; only
+one set is a comparison.
+
+A name that listed after 2019-01 starts at its own first bar, the same
+treatment a delisted member gets at the other end.
+
+**Arm B is reproducible from committed inputs and is therefore not
+committed itself**: its pool comes from `runs/krx_dayone_universe.json`,
+which is, and the 2026Q1 bars are stable.
+
+```
+python -m research.krx_dayone_universe --rank \
+    --window 20260102..20260331 \
+    --pool-from runs/krx_dayone_universe.json --out <arm-b.json>
+python -m research.krx_dayone_drift --fetch   --universe <arm-b.json>
+python -m research.krx_dayone_drift --measure --universe <arm-b.json>
+```
 
 ## 3. The universe, and what selecting in 2019 actually picks
 
@@ -69,11 +109,15 @@ member gets at the other end.
 
 | | |
 |---|---|
-| candidates | **4,640** (2,604 live + 2,036 delisted common stock, from `rd-w`) |
-| ranked | 2,180 |
+| candidates | **4,643** (2,604 live + 2,039 delisted common stock, from `rd-w`) |
+| ranked | 2,183 |
 | absent from the window | 2,458 |
-| too thin to rank (<15 sessions) | 2 |
+| too thin to rank (<15 valid turnover values) | 2 |
 | **errors** | **0** |
+
+Arm B, over the 2,183 A ranked: **1,936 ranked, 240 absent, 7 thin, 0
+errors** — and **0 of its thirty delisted during the window**, which is
+what a late selection does by construction.
 
 The members a 2026-informed rule would never have chosen are the point:
 신라젠, 헬릭스미스, 아난티, 좋은사람들, 신화프리텍, 한국내화 — all
@@ -154,10 +198,21 @@ specification and is not tested here.
 **The halt fact is measured on three names**, not systematically across
 the 4,640. The rate at which KRX names carry frozen stretches is unknown.
 
-**The comparison arm re-uses the `rd-r` ten**, which were selected on
-information from inside the window. That is the whole point of the
-comparison and also means the +44%/yr figure is not a claim about
-anything except what that selection rule produces.
+**The comparison arms re-use selections made from inside the window.**
+That is the whole point, and it also means neither +37%/yr nor +44%/yr is
+a claim about anything except what a late selection rule produces on data
+it can already see.
+
+**The date effect is a lower bound, not a point estimate.** Holding the
+pool fixed excludes post-2019 listings from arm B, and a real 2026
+selection would include them — `rd-r`'s did. It is stated as a bound
+rather than corrected because correcting it would reintroduce the
+membership difference the control exists to remove.
+
+**Two arms is not a dose-response curve.** 2019-01 and 2026Q1 are two
+points; nothing here measures how the premium behaves at dates in
+between, or whether it is monotone in the gap between ranking and
+measurement.
 
 ## 7. What follows
 
@@ -171,6 +226,18 @@ anything except what that selection rule produces.
 3. **The index field map is a per-endpoint property**, like the row cap
    before it. Reading one endpoint's names against another's gives NULLs,
    not errors.
-4. **The full-universe scan is the next step and is now unblocked** —
-   4,640 survivorship-safe common-stock candidates, ~0.7s per call
-   measured, and the two traps above named before it starts.
+4. **Run a scan after the close, not during the session.** Sustained
+   throughput against KIS's quotation endpoints was measured across one
+   day at **10.5/s in a short burst, 1.4/s sustained, and 0.3/s during
+   the KRX session**, recovering to **0.5-0.7/s within minutes of the
+   15:20 KST close. The instance's own collectors share this app key**,
+   and they collect series that cannot be backfilled, so a long scan
+   during market hours degrades the thing that matters more than it.
+5. **A long pass must be resumable before it is started.** One
+   `KisKlinesError` at candidate 2,844 of 4,643 discarded two and a half
+   hours of real calls, because the artifact guard — correctly — refuses
+   to write an incomplete universe. `--cache` plus a retry pass is the
+   answer, and the full-universe scan is roughly twenty times this.
+6. **The full-universe scan is the next step and is now unblocked** —
+   4,643 survivorship-safe common-stock candidates, the throughput
+   measured above, and the traps in §4 and §5 named before it starts.
