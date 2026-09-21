@@ -36,6 +36,18 @@ runs/*
 # medians, because a different question needs the bars. See
 # .planning/rd-r-futures-liquidity-universe.md §3.3.
 !runs/krx_futures_liquidity.json
+# runs/krx_dayone_universe.json is committed for a THIRD reason, and the
+# distinction matters because the obvious one does not apply: the 2019-01
+# bars it ranks on are stable and KIS serves them indefinitely, so unlike
+# the futures file above this is not the only copy of decaying data. What
+# cannot be reconstructed is the CANDIDATE POOL -- it is today's live
+# universe plus today's delisted list, and the delisted list only grows,
+# so a re-run in a year ranks a larger pool and may return a different
+# thirty. A point-in-time selection whose inputs move is not reproducible
+# by re-running it. ~450KB: the chosen thirty plus all 2,180 ranked
+# candidates, the second so a later reader can check the ranking rather
+# than trust it. See .planning/rd-x-the-day-one-universe.md §3.
+!runs/krx_dayone_universe.json
 python/data/var/
 # ...and the same store wherever a wrong working directory puts it. On
 # 2026-09-10 a `cd python && PYTHONPATH=.` invocation resolved
