@@ -232,7 +232,11 @@ def verify_negative_controls(
     for code in NEGATIVE_CONTROLS:
         time.sleep(_REQUEST_SPACING_S)
         try:
-            rows = _fetch_window(session, code)
+            # **The window it was GIVEN.** This took `start`/`end` and then
+            # called with the defaults, so a `--window` run validated the
+            # 2019 request shape and never its own. A control that checks a
+            # different question is not a control.
+            rows = _fetch_window(session, code, start, end)
         except Exception as exc:  # noqa: BLE001
             # **Deliberately every exception, not just `KisKlinesError`.**
             # The control's whole job is to prove the request shape works;
@@ -253,7 +257,7 @@ def verify_negative_controls(
             )
 
 
-def load_cache(path: Path | None) -> dict[str, Candidate]:
+def load_cache(path: Path | None, window: str | None = None) -> dict[str, Candidate]:
     """Candidates already measured, keyed by code.
 
     **A ranking pass is hours long and a single transient failure must not
@@ -273,6 +277,15 @@ def load_cache(path: Path | None) -> dict[str, Candidate]:
         row = json.loads(line)
         if row.get("outcome") == Outcome.ERROR.value:
             continue
+        # **A cached row is only valid for the window that produced it.**
+        # Without this a second arm pointed at the first arm's cache
+        # silently returns the FIRST window's medians and makes no API
+        # call at all -- "a control that differs only in the date" would
+        # be a copy of the other date, with nothing in the output saying
+        # so. Rows from another window are ignored, not merged.
+        if window is not None and row.pop("window", None) != window:
+            continue
+        row.pop("window", None)
         out[row["code"]] = Candidate(**row)
     return out
 
@@ -291,7 +304,7 @@ def rank(
     Median rather than mean: one block trade in a thin name moves a mean
     by an order of magnitude, and this is a liquidity ranking.
     """
-    cached = load_cache(cache_path)
+    cached = load_cache(cache_path, f"{start}..{end}")
     out: list[Candidate] = []
     handle = cache_path.open("a", encoding="utf-8") if cache_path else None
     for i, (code, name, market, listed_now) in enumerate(pool):
@@ -354,7 +367,8 @@ def rank(
         # candidates that failed. Caching a failure would make it
         # permanent, which is the opposite of what the cache is for.
         if handle is not None and out[-1].outcome != Outcome.ERROR.value:
-            handle.write(json.dumps(asdict(out[-1]), ensure_ascii=False) + "\n")
+            record = asdict(out[-1]) | {"window": f"{start}..{end}"}
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
             handle.flush()
         if progress and i % 200 == 0:
             progress(i, code, out[-1].outcome)

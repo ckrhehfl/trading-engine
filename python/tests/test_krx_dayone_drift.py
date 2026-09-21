@@ -266,3 +266,68 @@ def test_measure_refuses_a_partial_panel(conn, tmp_path, monkeypatch):
     monkeypatch.setattr("research.krx_dayone_drift.connect", lambda *_a: conn)
     with pytest.raises(DayOneDriftError, match="no usable series"):
         main(["--measure", "--universe", str(path), "--db-path", str(tmp_path / "x")])
+
+
+def test_the_annualisation_span_follows_the_panel_constants():
+    """**It was typed as `7.71` in two places.** Moving `PANEL_START` or
+    `PANEL_END` would then leave the totals describing the new window and
+    the annualised figures describing the old one, with nothing in the
+    output showing the mismatch."""
+    import datetime as dt
+
+    from research.krx_dayone_drift import panel_years
+
+    a = dt.datetime.strptime(PANEL_START, "%Y%m%d").date()
+    b = dt.datetime.strptime(PANEL_END, "%Y%m%d").date()
+    assert panel_years() == pytest.approx((b - a).days / 365.25)
+    assert panel_years() == pytest.approx(7.71, abs=0.01), "the current panel"
+
+
+def test_one_unstorable_series_does_not_kill_the_fetch(
+    tmp_path, monkeypatch, conn, capsys
+):
+    """**`store_series` validates every OHLC value and raises.** Called
+    outside the `try`, that killed the loop before the remaining names,
+    the KOSPI fetch, the failure summary and the explicit close — so a
+    single bad row aborted the whole pass and reported nothing."""
+    import json
+
+    from research.krx_dayone_drift import main
+
+    good = _rows([("20190102", 100), ("20190103", 101)])
+    bad = _rows([("20190102", 100), ("20190103", 101)])
+    bad[1]["stck_clpr"] = None
+
+    index_rows = [
+        {"stck_bsop_date": "20190102", "bstp_nmix_oprc": "2000",
+         "bstp_nmix_hgpr": "2010", "bstp_nmix_lwpr": "1990",
+         "bstp_nmix_prpr": "2005", "acml_tr_pbmn": "1"},
+        {"stck_bsop_date": "20190103", "bstp_nmix_oprc": "2005",
+         "bstp_nmix_hgpr": "2020", "bstp_nmix_lwpr": "2000",
+         "bstp_nmix_prpr": "2015", "acml_tr_pbmn": "1"},
+    ]
+
+    def fake_fetch(session, code, *, is_index=False):  # noqa: ARG001
+        if is_index:
+            return index_rows
+        return bad if code == "BAD001" else good
+
+    monkeypatch.setattr("research.krx_dayone_drift.fetch_series", fake_fetch)
+    monkeypatch.setattr("research.krx_dayone_drift.KisSession",
+                        lambda *a, **k: object())
+    monkeypatch.setattr("research.krx_dayone_drift.connect", lambda *_a: conn)
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+    path = tmp_path / "u.json"
+    path.write_text(json.dumps({"universe": [
+        {"code": "BAD001", "name": "bad", "listed_now": True},
+        {"code": "GOOD01", "name": "good", "listed_now": True},
+    ]}), encoding="utf-8")
+
+    assert main(["--fetch", "--universe", str(path), "--db-path", str(tmp_path / "x")]) == 1
+    # `main` closes the connection, so the observable is its own output.
+    out = capsys.readouterr()
+    assert "BAD001 FAILED" in out.out
+    assert "GOOD01" in out.out, "the name AFTER the failure was never fetched"
+    assert "KOSPI 2 bars" in out.out, "the index fetch was never reached"
+    assert "1 series failed: BAD001" in out.err, "the summary never ran"

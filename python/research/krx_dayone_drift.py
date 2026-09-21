@@ -67,6 +67,21 @@ from research.krx_dayone_universe import DEFAULT_OUT, DEFAULT_SCRATCH_DB
 PANEL_START = "20190102"
 PANEL_END = "20260918"
 
+
+def panel_years() -> float:
+    """The annualisation span, derived from the panel rather than typed.
+
+    It was hardcoded as `7.71` in two places. Moving `PANEL_START` or
+    `PANEL_END` would then leave the totals describing the new window and
+    the annualised figures describing the old one, with nothing in the
+    output showing the mismatch.
+    """
+    import datetime as dt
+
+    a = dt.datetime.strptime(PANEL_START, "%Y%m%d").date()
+    b = dt.datetime.strptime(PANEL_END, "%Y%m%d").date()
+    return (b - a).days / 365.25
+
 #: KIS caps an equity daily request at 100 rows and keeps the NEWEST,
 #: silently. Pages are sized well under it -- a capped page would be a
 #: different window than the one asked for.
@@ -330,12 +345,16 @@ def main(argv: list[str] | None = None) -> int:
         for i, row in enumerate(universe, 1):
             try:
                 rows = fetch_series(session, row["code"])
+                # **Inside the try.** `store_series` validates every OHLC
+                # value and raises; outside, that killed the loop before
+                # the remaining names, the KOSPI fetch, the failure
+                # summary and the explicit close.
+                n = store_series(conn, row["code"], rows)
             except Exception as exc:  # noqa: BLE001
                 print(f"  [{i:>2}/{len(universe)}] {row['code']} FAILED "
                       f"{type(exc).__name__}: {exc}", flush=True)
                 failed.append(row["code"])
                 continue
-            n = store_series(conn, row["code"], rows)
             print(f"  [{i:>2}/{len(universe)}] {row['code']} {row['name']:<18} "
                   f"{n:>5} bars  {rows[0]['stck_bsop_date']}..{rows[-1]['stck_bsop_date']}",
                   flush=True)
@@ -418,7 +437,7 @@ def main(argv: list[str] | None = None) -> int:
                 "the KOSPI series stored but produced no drift; refusing to "
                 "quote a premium against nothing"
             )
-        years = 7.71
+        years = panel_years()
         eq = statistics.fmean(d.ratio for d in arm)
         med = statistics.median(d.ratio for d in arm)
         print(f"\n  rd-r ten, 2019-2026: {eq:.2f}x = {eq - 1:+.0%}, "
@@ -454,7 +473,7 @@ def main(argv: list[str] | None = None) -> int:
     idx = drift_for(conn, f"IDX{INDEX_CODE}", "KOSPI", True)
     conn.close()
 
-    years = 7.71  # 2019-01-02 .. 2026-09-18, the panel rd-v §1 uses
+    years = panel_years()
     eq = statistics.fmean(d.ratio for d in drifts)
     med = statistics.median(d.ratio for d in drifts)
     dead = [d for d in drifts if not d.listed_now]

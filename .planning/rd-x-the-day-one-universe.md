@@ -40,8 +40,12 @@ delisted source.
 **A against B is the controlled comparison**, and it decomposes the
 premium into two parts rather than one:
 
-- **the selection date is worth −2 → +20%/yr.** Nothing differs between
-  the two arms except *when* the ranking was computed.
+- **the selection date is worth −2 → +20%/yr.** The input pool, the
+  turnover field, the window and the construction are identical; only the
+  ranking date differs. **What is *not* identical is the effective set**:
+  A ranked 2,183 of its pool and B ranked 1,931 of that same 2,183,
+  because 247 names had stopped trading or gone thin by 2026Q1. §2.1
+  measures whether that matters — it does not.
 - **the remaining +20 → +27%/yr is the source and the pool.** `rd-r`
   ranked **futures** turnover among the 283 names that carry a listed
   single-stock future, which is a further concentration on top of the
@@ -89,6 +93,32 @@ one set is a comparison.
 
 A name that listed after 2019-01 starts at its own first bar, the same
 treatment a delisted member gets at the other end.
+
+### 2.1 The effective sets differ, and it changes nothing
+
+Holding the *input* pool fixed does not make the *ranked* sets equal: A
+ranks 2,183 and B ranks 1,931 of those, the 247-name gap being names that
+stopped trading or went thin by 2026Q1. So "identical candidates" would
+be too strong.
+
+Recomputing arm A over only the 1,931 both arms ranked swaps exactly one
+member — 셀트리온헬스케어 out, 롯데케미칼 in — and moves the result by
+almost nothing:
+
+| arm A | equal-weight | per yr | vs KOSPI | median name |
+|---|---|---|---|---|
+| full ranked set (2,183) | 2.86x | +15% | **0.85x, −2%/yr** | +8% |
+| common ranked set (1,931) | 2.83x | +14% | **0.84x, −3%/yr** | +1% |
+
+**So the date effect is −3 → +20%/yr rather than −2 → +20%/yr**, and the
+conclusion is insensitive to which set is used.
+
+**The common-set version is reported as a sensitivity check and not as
+the headline, deliberately.** Restricting arm A to names that were still
+rankable in 2026Q1 conditions the 2019 selection on *having survived to
+2026* — which is the survivorship bias this whole document exists to
+remove. It is the cleaner comparison in one respect and a contaminated
+one in another, so both are given and neither is hidden.
 
 **Arm B is reproducible from committed inputs and is therefore not
 committed itself**: its pool comes from `runs/krx_dayone_universe.json`,

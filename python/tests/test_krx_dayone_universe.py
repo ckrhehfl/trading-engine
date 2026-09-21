@@ -467,3 +467,62 @@ def test_load_cache_ignores_an_ERROR_row_it_finds(tmp_path):
         encoding="utf-8",
     )
     assert set(load_cache(cache)) == {"005930"}
+
+
+def test_the_negative_control_checks_the_WINDOW_IT_WAS_GIVEN(monkeypatch):
+    """**It took `start`/`end` and called `_fetch_window` without them**,
+    so a `--window` run validated the 2019 request shape and never its
+    own. A control that checks a different question is not a control."""
+    from research.krx_dayone_universe import verify_negative_controls
+
+    seen = []
+
+    def fake_get(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        q = parse_qs(urlparse(url).query)
+        seen.append((q["FID_INPUT_DATE_1"][0], q["FID_INPUT_DATE_2"][0]))
+        return {"rt_cd": "0", "output2": []}
+
+    monkeypatch.setattr("research.krx_dayone_universe._get_with_retry", fake_get)
+    monkeypatch.setattr("research.krx_dayone_universe.time.sleep", lambda *_: None)
+    verify_negative_controls(_FakeSession({}), "20260102", "20260331")
+    assert set(seen) == {("20260102", "20260331")}, seen
+
+
+def test_a_cache_row_from_another_WINDOW_is_ignored(monkeypatch, tmp_path):
+    """**Two arms sharing a cache file would make the second one a copy of
+    the first**, with no API call and nothing in the output saying so —
+    the exact confound the second arm exists to remove."""
+    from research.krx_dayone_universe import rank as rank_fn
+
+    cache = tmp_path / "c.jsonl"
+    session = _FakeSession({"005930": _bars(20, 1e12)})
+    _install(monkeypatch, session)
+    pool = [("005930", "삼성전자", "KOSPI", True)]
+
+    first = rank_fn(session, pool, cache_path=cache, start="20190102", end="20190131")
+    assert len(session.asked) == 1
+    assert first[0].median_turnover == pytest.approx(1e12)
+
+    # the same cache, a different window: it must ask again, not reuse
+    session.by_bld = None  # unused; the fake answers from by_code
+    session.by_code = {"005930": _bars(20, 7e11)}
+    session.asked.clear()
+    second = rank_fn(session, pool, cache_path=cache, start="20260102", end="20260331")
+    assert session.asked == ["005930"], "a row from another window was reused"
+    assert second[0].median_turnover == pytest.approx(7e11)
+
+
+def test_the_same_window_still_reuses_its_cache(monkeypatch, tmp_path):
+    """The control above must not disable caching altogether."""
+    from research.krx_dayone_universe import rank as rank_fn
+
+    cache = tmp_path / "c.jsonl"
+    session = _FakeSession({"005930": _bars(20, 1e12)})
+    _install(monkeypatch, session)
+    pool = [("005930", "삼성전자", "KOSPI", True)]
+    rank_fn(session, pool, cache_path=cache, start="20190102", end="20190131")
+    session.asked.clear()
+    rank_fn(session, pool, cache_path=cache, start="20190102", end="20190131")
+    assert session.asked == []
