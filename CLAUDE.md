@@ -1022,16 +1022,36 @@ design above was fake-server-verified only until then. Full account:
   where position 8 means nothing, which is why the `KR` prefix is part of
   the rule).
 
-  **The two filters are orthogonal and a stock universe needs both.** The
-  ISIN does not separate stock from ETF — KODEX 200 is `KR7069500007`,
-  issue type `0` — and `ST` does not separate 보통주 from 우선주. Either
-  alone overstates. **The delisted finder publishes no group code at all**,
-  so on that side only the ISIN filter exists and a delisted SPAC or ETF
-  passes it; that gap is open, not closed.
+  **Three filters, and none subsumes the others.** The ISIN's issue type
+  does not separate stock from ETF — KODEX 200 is `KR7069500007`, issue
+  type `0`. `ST` does not separate 보통주 from 우선주. **And a SPAC passes
+  both**: it is legally a 주식회사, so it carries `ST` *and* a `KR7...0`
+  ISIN — 70 live names were counted as common stock until 2026-09-21.
 
-  Real counts, 2026-09-20: live **2,604** common + 114 preferred;
-  delisted plain codes **2,036** common, 302 not-common, 12 unreadable —
-  a **combined survivorship-safe common-stock pool of 4,640**.
+  **The ISIN's THIRD character gives the instrument class**, measured by
+  joining 증권그룹구분코드 onto 표준코드 across all 4,398 live rows:
+  `7` 주식+ETF+리츠, `G` ETN, `5` 펀드, `8` DR, `A` 신주인수권, non-`KR`
+  foreign. **This is what the delisted side has instead of a group code**,
+  and it is what removes ETNs and funds from a pool `plain_codes` alone
+  keeps.
+
+  **SPAC and REIT are name rules and are deliberately weaker.** A SPAC's
+  name is regulated (`스팩`/`기업인수목적`): 70 live hits, all 70 `ST`. A
+  bare `리츠` match is **unusable** — 116 live hits of which 23 are REITs,
+  75 ETNs, 14 ETFs, plus 메리츠종금, the same substring failure 다우기술
+  showed for 우선주 — so an anchored form is used (25 hits, all 23 live
+  REITs). They are kept separate from the ISIN rules in
+  `data.krx_instrument` because a name is weaker evidence than a
+  structural field.
+
+  **An unbranded delisted ETF would still pass, and that is disclosed
+  rather than closed.** The evidence it is a small residue: **zero** of
+  the 2,335 KR7 plain delisted names carry any ETF-shaped word, where
+  **569 of 1,172 live ETFs do**.
+
+  Real counts, 2026-09-21: live 2,718 `ST` → **2,604** common → **2,534**
+  excluding SPACs; delisted 2,353 plain → 2,039 common → **1,846**
+  excluding 179 SPACs and 14 REITs. **Combined pool 4,380.**
 
   KOSPI 915 + KOSDAQ 1,803 was the `ST` split. Over half the KOSPI file is
   ETFs and ETNs (`EF` 1,168, `EN` 375), which `ST` does correctly exclude. **The two files carry fixed tails of different lengths — KOSPI

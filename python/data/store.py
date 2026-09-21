@@ -934,7 +934,11 @@ def fetch_krx_universe(
     lines**.
 
     `common_stock_only=True` additionally requires the ISIN to positively
-    say 보통주 (`data.krx_instrument`). It is not the default because that
+    say 보통주 **and the name not to be a SPAC** (`data.krx_instrument`).
+    The SPAC clause is not tidiness: a SPAC is legally a 주식회사, so it
+    carries `ST` *and* a `KR7...0` ISIN and passes every structural
+    filter. **70 live names were being returned as common stock** until
+    2026-09-21. REITs need no clause here -- their group code is `RT`. It is not the default because that
     would silently change what every existing caller receives, and because
     a row written before `standard_code` existed reads back as `NULL` --
     which this correctly refuses rather than guesses at, so an un-migrated
@@ -954,9 +958,9 @@ def fetch_krx_universe(
         )
     rows = cursor.fetchall()
     if common_stock_only:
-        from data.krx_instrument import is_common_stock
+        from data.krx_instrument import is_common_stock, is_spac
 
-        rows = [r for r in rows if is_common_stock(r[4])]
+        rows = [r for r in rows if is_common_stock(r[4]) and not is_spac(r[2])]
     return rows
 
 

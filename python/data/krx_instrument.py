@@ -54,6 +54,7 @@ silently dropping a name is how survivorship bias gets back in —
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 
 ISIN_LENGTH = 12
@@ -109,3 +110,101 @@ def is_common_stock(isin: str | None) -> bool:
     cannot tell the two rejections apart.
     """
     return classify(isin) is IssueType.COMMON
+
+
+class InstrumentClass(Enum):
+    """What KIND of instrument an ISIN describes, from its 3rd character.
+
+    Separate from `IssueType` and answering a different question:
+    `classify` says 보통주 or not *within* 주식, this says whether the code
+    is 주식 at all.
+    """
+
+    #: 주식 -- and ETFs and REITs, which share `KR7` with common stock.
+    STOCK_LIKE = "stock_like"
+    ETN = "etn"
+    FUND = "fund"
+    DEPOSITARY_RECEIPT = "dr"
+    WARRANT = "warrant"
+    FOREIGN = "foreign"
+    UNKNOWN = "unknown"
+
+
+#: Measured 2026-09-21 by joining KIS's 증권그룹구분코드 onto the 표준코드
+#: for all 4,398 live rows. Each letter was exclusive to its group in that
+#: join; `7` is the one that is NOT exclusive -- `EF` (ETF) and `RT`
+#: (REIT) carry it too, which is why `STOCK_LIKE` is named that and not
+#: `STOCK`.
+_CLASS_BY_ISIN_PREFIX_CHAR = {
+    "7": InstrumentClass.STOCK_LIKE,   # ST 2,718 + EF 1,172 + RT 23
+    "G": InstrumentClass.ETN,          # EN 369
+    "5": InstrumentClass.FUND,         # BC 84
+    "8": InstrumentClass.DEPOSITARY_RECEIPT,  # DR 10
+    "A": InstrumentClass.WARRANT,      # SW 4 + SR 1
+}
+_CLASS_INDEX = 2
+
+
+def instrument_class(isin: str | None) -> InstrumentClass:
+    """`InstrumentClass` for one 표준코드.
+
+    **This is what the delisted side has instead of a group code.** KRX's
+    delisted finder publishes no 증권그룹구분코드 at all, so the ISIN is
+    the only structural signal there -- and it gets ETN, fund, DR and
+    warrant out of the pool, which `plain_codes` alone does not.
+
+    It does **not** separate 주식 from ETF or REIT. Those share `KR7`.
+
+    **`FOREIGN` is "twelve characters that do not start `KR`", and cannot
+    tell a genuine foreign ISIN from a malformed string** -- a country
+    code is two letters and so is garbage, and no country table is
+    consulted. Both are excluded from a Korean stock universe, which is
+    what the caller needs; a caller *counting* foreign listings should not
+    lean on it.
+    """
+    if not isin:
+        return InstrumentClass.UNKNOWN
+    isin = isin.strip()
+    if len(isin) != ISIN_LENGTH:
+        return InstrumentClass.UNKNOWN
+    if not isin.startswith(KOREAN_ISIN_PREFIX):
+        return InstrumentClass.FOREIGN
+    return _CLASS_BY_ISIN_PREFIX_CHAR.get(isin[_CLASS_INDEX], InstrumentClass.UNKNOWN)
+
+
+#: A SPAC's trading name is regulated: `…스팩` or `…기업인수목적…`.
+#: **Validated against live ground truth 2026-09-21**: 70 live hits, all
+#: 70 carrying 증권그룹구분코드 `ST` -- i.e. the pattern catches no
+#: non-stock, and a SPAC is invisible to every structural filter because
+#: legally it *is* a 주식회사 with a `KR7…0` ISIN.
+_SPAC_PATTERN = re.compile(r"스팩|기업인수목적")
+
+#: **A naive `리츠` match is unusable and that is measured, not guessed.**
+#: It returns 116 live names of which only 23 are REITs: 75 are ETNs and
+#: 14 ETFs *named* 리츠, and 메리츠종금 is a securities firm. This form is
+#: anchored instead -- 25 live hits, 23 of them the complete set of live
+#: REITs (recall 23/23), the 2 misses being ETFs.
+_REIT_PATTERN = re.compile(r"리츠$|리츠[0-9]|코크렙|위탁관리부동산|자기관리부동산")
+
+
+def is_spac(name: str | None) -> bool:
+    """A blank-cheque acquisition vehicle, by its regulated name.
+
+    **Weaker evidence than the ISIN rules above, and deliberately kept
+    separate from them.** Those read a structural field; this reads a
+    name, and 우선주 already showed what a substring match does to
+    다우기술 and 하우시스. What makes it usable here is that the naming is
+    regulated rather than incidental, and that it was checked against
+    every live name.
+    """
+    return bool(name) and bool(_SPAC_PATTERN.search(name))
+
+
+def is_reit(name: str | None) -> bool:
+    """A real-estate investment trust, by an anchored name match.
+
+    Same weaker-evidence caveat as `is_spac`. On the live side the group
+    code `RT` answers this properly and this function is unnecessary; it
+    exists for the delisted side, which has no group code.
+    """
+    return bool(name) and bool(_REIT_PATTERN.search(name))
