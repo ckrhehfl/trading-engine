@@ -2,9 +2,9 @@
   "window": "20190102..20190131",
   "universe_size": 30,
   "min_ranking_bars": 15,
-  "candidates": 4640,
+  "candidates": 4643,
   "outcomes": {
-    "ranked": 2180,
+    "ranked": 2183,
     "absent": 2458,
     "thin": 2
   },
@@ -17499,6 +17499,15 @@
       "median_turnover": 7727057.5
     },
     {
+      "code": "008290",
+      "name": "원풍물산",
+      "market": "코스닥",
+      "listed_now": false,
+      "outcome": "ranked",
+      "bars": 22,
+      "median_turnover": 333190270.0
+    },
+    {
       "code": "008500",
       "name": "일정실업",
       "market": "유가증권",
@@ -17940,6 +17949,15 @@
       "median_turnover": 1340075870.0
     },
     {
+      "code": "046070",
+      "name": "코다코",
+      "market": "코스닥",
+      "listed_now": false,
+      "outcome": "ranked",
+      "bars": 22,
+      "median_turnover": 352527700.0
+    },
+    {
       "code": "046110",
       "name": "한일네트웍스",
       "market": "코스닥",
@@ -18316,6 +18334,15 @@
       "outcome": "ranked",
       "bars": 22,
       "median_turnover": 465914045.0
+    },
+    {
+      "code": "082660",
+      "name": "코스나인",
+      "market": "코스닥",
+      "listed_now": false,
+      "outcome": "ranked",
+      "bars": 22,
+      "median_turnover": 190819297.0
     },
     {
       "code": "083370",

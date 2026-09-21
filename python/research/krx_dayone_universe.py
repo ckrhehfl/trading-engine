@@ -253,6 +253,30 @@ def verify_negative_controls(
             )
 
 
+def load_cache(path: Path | None) -> dict[str, Candidate]:
+    """Candidates already measured, keyed by code.
+
+    **A ranking pass is hours long and a single transient failure must not
+    cost all of it.** The artifact guard correctly refuses to write an
+    incomplete universe, which at 4,643 candidates and ~0.5/s means one
+    `KisKlinesError` two thirds of the way through discards two and a half
+    hours of real API calls. The cache makes a re-run resume instead --
+    and `ERROR` rows are deliberately NOT cached, so a re-run retries
+    exactly the candidates that failed.
+    """
+    if path is None or not path.exists():
+        return {}
+    out: dict[str, Candidate] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if row.get("outcome") == Outcome.ERROR.value:
+            continue
+        out[row["code"]] = Candidate(**row)
+    return out
+
+
 def rank(
     session: KisSession,
     pool,
@@ -260,23 +284,37 @@ def rank(
     progress=None,
     start: str = RANKING_START,
     end: str = RANKING_END,
+    cache_path: Path | None = None,
 ) -> list[Candidate]:
     """Median 거래대금 over the ranking window, per candidate.
 
     Median rather than mean: one block trade in a thin name moves a mean
     by an order of magnitude, and this is a liquidity ranking.
     """
+    cached = load_cache(cache_path)
     out: list[Candidate] = []
+    handle = cache_path.open("a", encoding="utf-8") if cache_path else None
     for i, (code, name, market, listed_now) in enumerate(pool):
+        if code in cached:
+            out.append(cached[code])
+            continue
         time.sleep(_REQUEST_SPACING_S)
         try:
             rows = _fetch_window(session, code, start, end)
         except Exception as exc:  # noqa: BLE001 - recorded, never merged into ABSENT
+            # **Falls through to the single write site below**, where the
+            # cache guard decides. An earlier version `continue`d here,
+            # which skipped that site entirely and made the guard dead
+            # code -- the test for "an ERROR is never cached" passed with
+            # the guard deleted, because the `continue` was doing the work
+            # and nothing said so.
             out.append(Candidate(code, name, market, listed_now, Outcome.ERROR.value))
             if progress:
                 progress(i, code, f"ERROR {type(exc).__name__}")
-            continue
-        if not rows:
+            rows = None
+        if rows is None:
+            pass
+        elif not rows:
             out.append(Candidate(code, name, market, listed_now, Outcome.ABSENT.value))
         elif len(rows) < MIN_RANKING_BARS:
             out.append(
@@ -312,8 +350,16 @@ def rank(
                         len(rows), statistics.median(turnovers),
                     )
                 )
+        # **An ERROR is never cached**, so a re-run retries exactly the
+        # candidates that failed. Caching a failure would make it
+        # permanent, which is the opposite of what the cache is for.
+        if handle is not None and out[-1].outcome != Outcome.ERROR.value:
+            handle.write(json.dumps(asdict(out[-1]), ensure_ascii=False) + "\n")
+            handle.flush()
         if progress and i % 200 == 0:
             progress(i, code, out[-1].outcome)
+    if handle is not None:
+        handle.close()
     return out
 
 
@@ -336,6 +382,20 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--show", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="rank only the first N (probe)")
     ap.add_argument(
+        "--cache",
+        default=None,
+        help="append each measured candidate here and skip it on a re-run. "
+        "A full pass is hours of real API calls; without this one transient "
+        "failure discards all of them.",
+    )
+    ap.add_argument(
+        "--pool-from",
+        default=None,
+        help="restrict the candidate pool to the codes another run RANKED. "
+        "This is what makes a second arm a control: both arms then rank the "
+        "identical set of names and only the date differs.",
+    )
+    ap.add_argument(
         "--window",
         default=f"{RANKING_START}..{RANKING_END}",
         help="the ranking window, YYYYMMDD..YYYYMMDD. Overriding it needs an "
@@ -355,7 +415,9 @@ def main(argv: list[str] | None = None) -> int:
     # `--limit` ranks a slice of the pool and `--window` ranks a different
     # question; either landing in runs/krx_dayone_universe.json would hand
     # the drift measurement a corrupted universe that looks canonical.
-    if (args.limit or args.window != default_window) and args.out == str(DEFAULT_OUT):
+    if (
+        args.limit or args.window != default_window or args.pool_from
+    ) and args.out == str(DEFAULT_OUT):
         print(
             "--limit and --window produce a non-canonical universe; pass an "
             "explicit --out so it cannot overwrite "
@@ -382,6 +444,30 @@ def main(argv: list[str] | None = None) -> int:
     conn = connect(args.universe_db or args.db_path)
     pool = candidates(conn)
     conn.close()
+    if args.pool_from:
+        # **Holding the pool fixed is what isolates the date.** Without it a
+        # later window additionally admits every name that listed in
+        # between -- `402340` SK스퀘어 first traded 2021-11-29 -- so the two
+        # arms would differ in their membership as well as their ranking
+        # date, which is the confound this exists to remove.
+        #
+        # The honest cost, stated because it cuts the other way: a REAL
+        # 2026 selection would include those later listings (rd-r's did),
+        # so a pool-matched arm understates how different a genuine
+        # late selection is.
+        ranked_before = {
+            row["code"]
+            for row in json.loads(
+                Path(args.pool_from).read_text(encoding="utf-8")
+            )["all_ranked"]
+        }
+        if not ranked_before:
+            print(f"{args.pool_from} lists no ranked candidates", file=sys.stderr)
+            return 2
+        before = len(pool)
+        pool = [p for p in pool if p[0] in ranked_before]
+        print(f"pool restricted to {len(pool):,} of {before:,} candidates that "
+              f"{Path(args.pool_from).name} ranked", flush=True)
     if args.limit:
         pool = pool[: args.limit]
     print(f"{len(pool):,} candidates ({sum(1 for p in pool if p[3]):,} listed now, "
@@ -399,7 +485,27 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  [{done:>5}/{len(pool)}] {code} {outcome}  "
               f"{rate:.1f}/s  eta {(len(pool)-done)/max(rate,1e-9)/60:.0f}m", flush=True)
 
-    ranked = rank(session, pool, progress=progress, start=win_start, end=win_end)
+    cache_path = Path(args.cache) if args.cache else None
+    ranked = rank(session, pool, progress=progress, start=win_start,
+                  end=win_end, cache_path=cache_path)
+
+    # **One retry pass before refusing the whole run.** The artifact guard
+    # below is right that an unranked candidate might have belonged in the
+    # thirty -- but discarding hours of real API calls over one transient
+    # `KisKlinesError` is its own failure. Retry only the errors, once,
+    # then let the guard decide on what is left.
+    errored = [c for c in ranked if c.outcome == Outcome.ERROR.value]
+    if errored:
+        print(f"\nretrying {len(errored)} candidate(s) that failed", flush=True)
+        by_code = {c.code: c for c in ranked}
+        retry_pool = [
+            (c.code, c.name, c.market, c.listed_now) for c in errored
+        ]
+        for fixed in rank(session, retry_pool, start=win_start, end=win_end,
+                          cache_path=cache_path):
+            by_code[fixed.code] = fixed
+        ranked = [by_code[c.code] for c in ranked]
+
     chosen = select(ranked)
     outcomes: dict[str, int] = {}
     for c in ranked:

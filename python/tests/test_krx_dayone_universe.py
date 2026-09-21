@@ -377,3 +377,93 @@ def test_the_window_is_threaded_into_the_request(monkeypatch):
     monkeypatch.setattr("research.krx_dayone_universe._get_with_retry", fake_get)
     _fetch_window(_FakeSession({}), "005930", "20260102", "20260331")
     assert seen == {"start": "20260102", "end": "20260331"}
+
+
+def test_a_pool_matched_arm_is_what_isolates_the_date(monkeypatch, tmp_path, capsys):
+    """**Two arms that differ in their membership as well as their ranking
+    date are not a control.** A later window otherwise admits every name
+    that listed in between — `402340` SK스퀘어 first traded 2021-11-29 —
+    so `--pool-from` restricts the second arm to the codes the first one
+    ranked."""
+    import json
+
+    from research.krx_dayone_universe import main
+
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+    # it is a non-canonical arm, so it must still demand its own --out
+    prior = tmp_path / "prior.json"
+    prior.write_text(json.dumps({"all_ranked": [{"code": "005930"}]}), encoding="utf-8")
+    assert main(["--rank", "--pool-from", str(prior)]) == 2
+    assert "non-canonical" in capsys.readouterr().err
+
+
+def test_a_cached_candidate_is_not_asked_again(monkeypatch, tmp_path):
+    """**A full pass is hours of real API calls.** Without a cache, one
+    transient failure two thirds of the way through discards all of them —
+    which is what happened on the first corrected re-run, at candidate
+    2,844 of 4,643."""
+    from research.krx_dayone_universe import rank as rank_fn
+
+    cache = tmp_path / "c.jsonl"
+    session = _FakeSession({"005930": _bars(20, 1e12), "000660": _bars(20, 5e11)})
+    _install(monkeypatch, session)
+    pool = [("005930", "삼성전자", "KOSPI", True), ("000660", "SK하이닉스", "KOSPI", True)]
+    first = rank_fn(session, pool, cache_path=cache)
+    assert len(session.asked) == 2
+
+    session.asked.clear()
+    second = rank_fn(session, pool, cache_path=cache)
+    assert session.asked == [], "a cached candidate must not be re-asked"
+    assert [c.code for c in second] == [c.code for c in first]
+    assert [c.median_turnover for c in second] == [c.median_turnover for c in first]
+
+
+def test_an_ERROR_is_never_WRITTEN_to_the_cache(monkeypatch, tmp_path):
+    """Caching a failure would make it permanent, which is the opposite of
+    what the cache is for.
+
+    **This asserts on the FILE, not on `load_cache`.** The two guards —
+    not writing an error, and ignoring one on read — mask each other, so a
+    test going through `load_cache` passes with either deleted. That is
+    how the first version of this test was inert.
+    """
+    import json as _json
+
+    from research.krx_dayone_universe import rank as rank_fn
+
+    cache = tmp_path / "c.jsonl"
+    session = _FakeSession({"005930": _bars(20, 1e12)}, fail={"117930"})
+    _install(monkeypatch, session)
+    pool = [("005930", "삼성전자", "KOSPI", True), ("117930", "한진해운", "유가증권", False)]
+    out = rank_fn(session, pool, cache_path=cache)
+    assert {c.code: c.outcome for c in out}["117930"] == Outcome.ERROR.value
+
+    written = [
+        _json.loads(line)
+        for line in cache.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [row["code"] for row in written] == ["005930"]
+    assert all(row["outcome"] != Outcome.ERROR.value for row in written)
+
+
+def test_load_cache_ignores_an_ERROR_row_it_finds(tmp_path):
+    """The read side is defensive, for a cache file written by an earlier
+    version or edited by hand. Tested separately from the write side
+    precisely because either one alone would hide the other."""
+    import json as _json
+
+    from research.krx_dayone_universe import load_cache
+
+    cache = tmp_path / "c.jsonl"
+    cache.write_text(
+        _json.dumps({"code": "005930", "name": "a", "market": "KOSPI",
+                     "listed_now": True, "outcome": Outcome.RANKED.value,
+                     "bars": 20, "median_turnover": 1e12}) + "\n"
+        + _json.dumps({"code": "117930", "name": "b", "market": "KOSPI",
+                       "listed_now": False, "outcome": Outcome.ERROR.value,
+                       "bars": 0, "median_turnover": 0.0}) + "\n",
+        encoding="utf-8",
+    )
+    assert set(load_cache(cache)) == {"005930"}
