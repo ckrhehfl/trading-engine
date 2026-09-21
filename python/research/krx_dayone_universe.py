@@ -40,9 +40,19 @@ the naive version breaks:**
 file, because CLAUDE.md's "exactly one writer per series" makes the
 instance the only writer of `KRX:` klines, and `sync-krx-from-instance.sh`
 is `INSERT OR IGNORE` -- a locally-written row would never be corrected by
-a later sync. The committed artifact is the ranking JSON, on the same
-argument as `runs/krx_futures_liquidity.json`: it is a point-in-time
-measurement and re-running it later cannot reproduce it.
+a later sync.
+
+**The committed artifact is the ranking JSON**, and for a different
+reason than `runs/krx_futures_liquidity.json`'s. That one is the only
+copy of decaying data; the 2019-01 bars here are stable and KIS serves
+them indefinitely. What cannot be reconstructed is the **candidate
+pool** -- today's live universe plus today's delisted list, and the
+delisted list only grows -- so a re-run in a year ranks a larger pool and
+may return a different thirty. `.gitignore` carries a matching
+`!runs/krx_dayone_universe.json`, because `runs/*` is an allowlist and a
+docstring claiming a file is committed does not commit it. That is how
+this one was wrong for a commit: the claim was written and never checked
+against `git status`.
 
 **Discovery mode.** KRX daily was spent by `ms-f` on 2026-09-13. Nothing
 produced here may be promoted, quoted as evidence of an edge, or reported
