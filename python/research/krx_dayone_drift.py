@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import sqlite3
 import statistics
@@ -91,6 +92,22 @@ class NameDrift:
     @property
     def ratio(self) -> float:
         return self.last_close / self.first_open if self.first_open > 0 else float("nan")
+
+
+def _is_number(value) -> bool:
+    """A price that can actually be measured against.
+
+    `None`, `""`, a non-numeric string, `NaN` and a non-positive price are
+    all rejected -- a zero or negative price is a data error here, not a
+    small number.
+    """
+    if value is None or value == "":
+        return False
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return False
+    return math.isfinite(number) and number > 0
 
 
 class DayOneDriftError(RuntimeError):
@@ -186,15 +203,30 @@ def store_series(
          r.get("acml_tr_pbmn"))
         for r in rows
     ]
-    missing = sum(1 for p in params if p[2] is None or p[5] is None)
-    if missing == len(params) and params:
-        # Every price NULL means the field names are wrong for this
-        # endpoint, not that the market was closed. Storing it would be a
-        # silently empty series.
+    # **Every row, not just "are they all NULL".** An earlier version only
+    # refused when the whole series parsed to NULL, which catches a wrong
+    # endpoint mapping and nothing else. A single NULL open on the FIRST
+    # row silently moves the measurement's start date, because `drift_for`
+    # filters those rows out; a NULL close on the LAST row survives the
+    # filter and makes `NameDrift.ratio` divide by None. Neither announces
+    # itself.
+    bad = [
+        row
+        for row in params
+        if not all(_is_number(v) for v in (row[2], row[3], row[4], row[5]))
+    ]
+    if bad:
+        if len(bad) == len(params):
+            raise DayOneDriftError(
+                f"{code}: all {len(params)} rows parsed to unusable prices "
+                f"using the {'index' if is_index else 'equity'} field names "
+                f"-- wrong endpoint mapping, not missing data"
+            )
         raise DayOneDriftError(
-            f"{code}: all {len(params)} rows parsed to NULL prices using the "
-            f"{'index' if is_index else 'equity'} field names -- wrong "
-            f"endpoint mapping, not missing data"
+            f"{code}: {len(bad)} of {len(params)} rows carry a missing or "
+            f"non-numeric OHLC value (first at {bad[0][1]}). Storing them "
+            f"would move the measurement's start date or divide by None, "
+            f"silently either way"
         )
     conn.executemany(
         "INSERT OR IGNORE INTO dayone_bars "
@@ -227,8 +259,10 @@ def frozen_sessions(conn: sqlite3.Connection, code: str) -> int:
 
     This is the equity counterpart of the single-stock-futures fact
     CLAUDE.md already records, and it is more dangerous: a return series
-    reads 603 zeros, which deflates volatility and inflates any Sharpe
-    computed over it; a backtest holds a position it could not have exited
+    reads 603 zeros, which deflates realised volatility and so MAY inflate
+    a Sharpe computed over it -- the direction depends on the return
+    sample, the annualisation and how the resumption gap is handled, none
+    of which this module measures; a backtest holds a position it could not have exited
     for two and a half years; and the resumption gap is taken as a
     tradeable one-day return. **A bar is not evidence the name was
     tradeable** -- only that it was listed.
@@ -292,12 +326,14 @@ def main(argv: list[str] | None = None) -> int:
             print("KIS_APP_KEY / KIS_APP_SECRET must both be set", file=sys.stderr)
             return 2
         session = KisSession(key, secret, host=PAPER_HOST)
+        failed: list[str] = []
         for i, row in enumerate(universe, 1):
             try:
                 rows = fetch_series(session, row["code"])
             except Exception as exc:  # noqa: BLE001
                 print(f"  [{i:>2}/{len(universe)}] {row['code']} FAILED "
                       f"{type(exc).__name__}: {exc}", flush=True)
+                failed.append(row["code"])
                 continue
             n = store_series(conn, row["code"], rows)
             print(f"  [{i:>2}/{len(universe)}] {row['code']} {row['name']:<18} "
@@ -309,7 +345,19 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  KOSPI {len(idx)} bars")
         except Exception as exc:  # noqa: BLE001
             print(f"  KOSPI FAILED {type(exc).__name__}: {exc}")
+            failed.append(INDEX_CODE)
         conn.close()
+        if failed:
+            # **A partial panel must not exit clean.** `--measure`
+            # aggregates whatever is in the database, so a fetch that
+            # quietly dropped six names would produce a mean and a median
+            # that read as the full thirty.
+            print(
+                f"\n{len(failed)} series failed: {', '.join(failed)}. Re-run "
+                f"--fetch; the measurement refuses an incomplete panel.",
+                file=sys.stderr,
+            )
+            return 1
         return 0
 
     if args.compare:
@@ -340,10 +388,36 @@ def main(argv: list[str] | None = None) -> int:
                 arm.append(d)
                 print(f"  {d.code}  {d.first_date}..{d.last_date}  "
                       f"{d.ratio - 1:>+8.0%}", flush=True)
+        # **The index is fetched here, not assumed present.** On a fresh
+        # scratch database `--compare` would otherwise find no `IDX0001`,
+        # set `idx` to None, print no premium and exit 0 -- a comparison
+        # silently missing the thing it compares against. On an existing
+        # database it would reuse whatever index rows were there without
+        # checking they span this window.
+        try:
+            idx_rows = fetch_series(session, INDEX_CODE, is_index=True)
+            store_series(conn, f"IDX{INDEX_CODE}", idx_rows, is_index=True)
+        except Exception as exc:  # noqa: BLE001
+            conn.close()
+            raise DayOneDriftError(
+                f"the KOSPI series could not be fetched ({type(exc).__name__}: "
+                f"{exc}); a selection premium has nothing to be measured "
+                f"against"
+            ) from None
         idx = drift_for(conn, f"IDX{INDEX_CODE}", "KOSPI", True)
         conn.close()
         if not arm:
             raise DayOneDriftError("no rd-r series fetched")
+        if len(arm) < len(RD_R_TEN):
+            raise DayOneDriftError(
+                f"only {len(arm)} of {len(RD_R_TEN)} comparison names have a "
+                f"usable series; a partial arm is not a comparison"
+            )
+        if idx is None:
+            raise DayOneDriftError(
+                "the KOSPI series stored but produced no drift; refusing to "
+                "quote a premium against nothing"
+            )
         years = 7.71
         eq = statistics.fmean(d.ratio for d in arm)
         med = statistics.median(d.ratio for d in arm)
@@ -359,12 +433,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     drifts = []
+    absent: list[str] = []
     for row in universe:
         d = drift_for(conn, row["code"], row["name"], row["listed_now"])
-        if d is not None:
+        if d is None:
+            absent.append(f"{row['code']} {row['name']}")
+        else:
             drifts.append(d)
-    if not drifts:
-        raise DayOneDriftError("no series stored; run --fetch first")
+    if absent:
+        # **Every member, or no figure.** An equal-weight mean over
+        # whichever names happen to be stored is not the universe's
+        # return, and nothing in the output would say so.
+        raise DayOneDriftError(
+            f"{len(absent)} of {len(universe)} universe members have no "
+            f"usable series ({', '.join(absent[:5])}"
+            f"{' ...' if len(absent) > 5 else ''}). Run --fetch; an "
+            f"equal-weight mean over a subset is not this universe's return"
+        )
 
     idx = drift_for(conn, f"IDX{INDEX_CODE}", "KOSPI", True)
     conn.close()

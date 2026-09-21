@@ -258,3 +258,122 @@ def test_a_delisted_name_can_win_a_place():
 
 def test_the_universe_size_is_declared_not_derived():
     assert UNIVERSE_SIZE == 30
+
+
+# ============================ review findings, PR #190
+
+
+def test_a_candidate_needs_MIN_RANKING_BARS_of_valid_turnover(monkeypatch):
+    """**`len(rows)` is not the same check.** Twenty bars carrying three
+    usable 거래대금 values would rank a candidate on the median of three
+    numbers, which is not a liquidity measure — and `bars` in the artifact
+    would say 20."""
+    rows = _bars(20, 1e12)
+    for r in rows[3:]:
+        r["acml_tr_pbmn"] = ""          # only 3 usable values remain
+    session = _FakeSession({"005930": rows})
+    _install(monkeypatch, session)
+    assert rank(session, [("005930", "삼성전자", "KOSPI", True)])[0].outcome == (
+        Outcome.THIN.value
+    )
+
+
+@pytest.mark.parametrize("bad", ["nan", "-1", "abc", "inf"])
+def test_an_unusable_turnover_value_is_excluded_not_coerced(monkeypatch, bad):
+    """NaN, a negative, a non-numeric string and an infinity are data
+    errors, not small numbers. Coercing any of them to 0.0 would rank the
+    name lower rather than decline to rank it."""
+    rows = _bars(MIN_RANKING_BARS + 2, 1e12)
+    for r in rows:
+        r["acml_tr_pbmn"] = bad
+    session = _FakeSession({"005930": rows})
+    _install(monkeypatch, session)
+    assert rank(session, [("005930", "삼성전자", "KOSPI", True)])[0].outcome == (
+        Outcome.THIN.value
+    )
+
+
+def test_a_probe_or_second_arm_cannot_overwrite_the_canonical_artifact(
+    monkeypatch, capsys
+):
+    """**`--limit` and `--window` both produce a different universe.**
+    Either landing in `runs/krx_dayone_universe.json` hands the drift
+    measurement a corrupted universe that looks canonical.
+
+    **The first version of this test was inert**: it asserted only on the
+    exit code, and `main` returns 2 for missing credentials as well — so
+    deleting the guard changed nothing it could see. The credentials are
+    now set, which makes the guard the only remaining source of a 2, and
+    the message is asserted on.
+    """
+    from research.krx_dayone_universe import DEFAULT_OUT, main
+
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+
+    assert main(["--rank", "--limit", "5"]) == 2
+    assert "non-canonical" in capsys.readouterr().err
+
+    assert main(["--rank", "--window", "20260102..20260131"]) == 2
+    assert "non-canonical" in capsys.readouterr().err
+
+    assert str(DEFAULT_OUT).endswith("krx_dayone_universe.json")
+
+
+def test_an_ERROR_refuses_to_write_an_artifact(monkeypatch, tmp_path, db):
+    """A candidate whose turnover was never read might have belonged in the
+    thirty, and nothing here can say. Writing anyway makes a partial pass
+    indistinguishable from a complete one."""
+    from research.krx_dayone_universe import DayOneUniverseError, main
+
+    session = _FakeSession({"005930": _bars(20, 1e12)}, fail={"117930"})
+    _install(monkeypatch, session)
+    monkeypatch.setattr("research.krx_dayone_universe.KisSession",
+                        lambda *a, **k: session)
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+    monkeypatch.setattr("research.krx_dayone_universe.connect", lambda *_a: db)
+    out = tmp_path / "u.json"
+    with pytest.raises(DayOneUniverseError, match="failed to rank"):
+        main(["--rank", "--out", str(out), "--db-path", str(tmp_path / "x.db")])
+    assert not out.exists(), "a partial universe must leave no artifact"
+
+
+def test_a_short_universe_refuses_to_write(monkeypatch, tmp_path, db):
+    """Fewer than `UNIVERSE_SIZE` places filled means the pool or the
+    window is wrong; a short universe written as canonical reads as
+    complete."""
+    from research.krx_dayone_universe import DayOneUniverseError, main
+
+    session = _FakeSession({"005930": _bars(20, 1e12)})
+    _install(monkeypatch, session)
+    monkeypatch.setattr("research.krx_dayone_universe.KisSession",
+                        lambda *a, **k: session)
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+    monkeypatch.setattr("research.krx_dayone_universe.connect", lambda *_a: db)
+    out = tmp_path / "u.json"
+    with pytest.raises(DayOneUniverseError, match="places filled"):
+        main(["--rank", "--out", str(out), "--db-path", str(tmp_path / "x.db")])
+    assert not out.exists()
+
+
+def test_the_window_is_threaded_into_the_request(monkeypatch):
+    """A second arm holding the turnover SOURCE fixed and moving only the
+    date is the only way to isolate the selection-date effect — so the
+    window has to reach the request rather than being a constant."""
+    from research.krx_dayone_universe import _fetch_window
+
+    seen = {}
+
+    def fake_get(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        q = parse_qs(urlparse(url).query)
+        seen["start"] = q["FID_INPUT_DATE_1"][0]
+        seen["end"] = q["FID_INPUT_DATE_2"][0]
+        return {"rt_cd": "0", "output2": []}
+
+    monkeypatch.setattr("research.krx_dayone_universe._get_with_retry", fake_get)
+    _fetch_window(_FakeSession({}), "005930", "20260102", "20260331")
+    assert seen == {"start": "20260102", "end": "20260331"}

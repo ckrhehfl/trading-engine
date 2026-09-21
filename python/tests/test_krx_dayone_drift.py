@@ -181,3 +181,88 @@ def test_storing_is_idempotent(conn):
     assert conn.execute(
         "SELECT COUNT(*) FROM dayone_bars WHERE code='X'"
     ).fetchone()[0] == 2
+
+
+# ============================ review findings, PR #190
+
+
+def test_a_partial_NULL_row_is_refused_not_stored(conn):
+    """**An all-NULL check catches a wrong endpoint mapping and nothing
+    else.** A single NULL open on the FIRST row silently moves the
+    measurement's start date, because `drift_for` filters it out; a NULL
+    close on the LAST row survives that filter and divides by None."""
+    from research.krx_dayone_drift import DayOneDriftError
+
+    rows = _rows([("20190102", 100), ("20190103", 101)])
+    rows[0]["stck_oprc"] = None
+    with pytest.raises(DayOneDriftError, match="missing or"):
+        store_series(conn, "X", rows)
+    assert conn.execute("SELECT COUNT(*) FROM dayone_bars").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("bad", [None, "", "abc", "0", "-5", "nan"])
+def test_every_unusable_price_shape_is_refused(conn, bad):
+    from research.krx_dayone_drift import DayOneDriftError
+
+    rows = _rows([("20190102", 100), ("20190103", 101)])
+    rows[1]["stck_clpr"] = bad
+    with pytest.raises(DayOneDriftError):
+        store_series(conn, "X", rows)
+
+
+def test_an_all_null_series_names_the_endpoint_mapping(conn):
+    """Kept distinct from the partial case: every row NULL is a wrong
+    field map, not missing data, and the message has to say which."""
+    from research.krx_dayone_drift import DayOneDriftError
+
+    rows = _rows([("20190102", 100), ("20190103", 101)])
+    for r in rows:
+        r["stck_oprc"] = r["stck_clpr"] = r["stck_hgpr"] = r["stck_lwpr"] = None
+    with pytest.raises(DayOneDriftError, match="wrong endpoint mapping"):
+        store_series(conn, "X", rows)
+
+
+def test_the_index_field_names_are_used_for_an_index(conn):
+    """`bstp_nmix_*` against `stck_*` was the real defect: every price
+    stored NULL, the `open IS NOT NULL` filter removed every row, and
+    nothing threw."""
+    idx = [
+        {"stck_bsop_date": "20190102", "bstp_nmix_oprc": "2000",
+         "bstp_nmix_hgpr": "2010", "bstp_nmix_lwpr": "1990",
+         "bstp_nmix_prpr": "2005", "acml_tr_pbmn": "1"},
+        {"stck_bsop_date": "20190103", "bstp_nmix_oprc": "2005",
+         "bstp_nmix_hgpr": "2020", "bstp_nmix_lwpr": "2000",
+         "bstp_nmix_prpr": "2015", "acml_tr_pbmn": "1"},
+    ]
+    store_series(conn, "IDX0001", idx, is_index=True)
+    d = drift_for(conn, "IDX0001", "KOSPI", True)
+    assert d is not None and d.ratio == pytest.approx(2015 / 2000)
+
+
+def test_reading_equity_names_against_an_index_response_now_raises(conn):
+    from research.krx_dayone_drift import DayOneDriftError
+
+    idx = [{"stck_bsop_date": "20190102", "bstp_nmix_oprc": "2000",
+            "bstp_nmix_hgpr": "2010", "bstp_nmix_lwpr": "1990",
+            "bstp_nmix_prpr": "2005", "acml_tr_pbmn": "1"}]
+    with pytest.raises(DayOneDriftError, match="wrong endpoint mapping"):
+        store_series(conn, "IDX0001", idx)      # equity names, index rows
+
+
+def test_measure_refuses_a_partial_panel(conn, tmp_path, monkeypatch):
+    """**An equal-weight mean over whichever names happen to be stored is
+    not the universe's return**, and nothing in the output would say so."""
+    import json
+
+    from research.krx_dayone_drift import DayOneDriftError, main
+
+    store_series(conn, "005930", _rows([("20190102", 100), ("20260918", 300)]))
+    universe = {"universe": [
+        {"code": "005930", "name": "삼성전자", "listed_now": True},
+        {"code": "000660", "name": "SK하이닉스", "listed_now": True},
+    ]}
+    path = tmp_path / "u.json"
+    path.write_text(json.dumps(universe), encoding="utf-8")
+    monkeypatch.setattr("research.krx_dayone_drift.connect", lambda *_a: conn)
+    with pytest.raises(DayOneDriftError, match="no usable series"):
+        main(["--measure", "--universe", str(path), "--db-path", str(tmp_path / "x")])

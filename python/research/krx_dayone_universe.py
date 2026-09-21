@@ -68,6 +68,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import statistics
 import sys
@@ -188,12 +189,14 @@ def candidates(conn, snapshot_date: str | None = None) -> list[tuple[str, str, s
     return live + dead
 
 
-def _fetch_window(session: KisSession, code: str) -> list[dict]:
+def _fetch_window(
+    session: KisSession, code: str, start: str = RANKING_START, end: str = RANKING_END
+) -> list[dict]:
     params = {
         "FID_COND_MRKT_DIV_CODE": "J",
         "FID_INPUT_ISCD": code,
-        "FID_INPUT_DATE_1": RANKING_START,
-        "FID_INPUT_DATE_2": RANKING_END,
+        "FID_INPUT_DATE_1": start,
+        "FID_INPUT_DATE_2": end,
         "FID_PERIOD_DIV_CODE": "D",
         "FID_ORG_ADJ_PRC": ADJUSTED,
     }
@@ -216,7 +219,9 @@ def _fetch_window(session: KisSession, code: str) -> list[dict]:
     return rows
 
 
-def verify_negative_controls(session: KisSession) -> None:
+def verify_negative_controls(
+    session: KisSession, start: str = RANKING_START, end: str = RANKING_END
+) -> None:
     """Refuse the whole run unless a nonsense code really answers empty.
 
     **Without this, `ABSENT` is unreadable.** If the request shape were
@@ -248,7 +253,14 @@ def verify_negative_controls(session: KisSession) -> None:
             )
 
 
-def rank(session: KisSession, pool, *, progress=None) -> list[Candidate]:
+def rank(
+    session: KisSession,
+    pool,
+    *,
+    progress=None,
+    start: str = RANKING_START,
+    end: str = RANKING_END,
+) -> list[Candidate]:
     """Median 거래대금 over the ranking window, per candidate.
 
     Median rather than mean: one block trade in a thin name moves a mean
@@ -258,7 +270,7 @@ def rank(session: KisSession, pool, *, progress=None) -> list[Candidate]:
     for i, (code, name, market, listed_now) in enumerate(pool):
         time.sleep(_REQUEST_SPACING_S)
         try:
-            rows = _fetch_window(session, code)
+            rows = _fetch_window(session, code, start, end)
         except Exception as exc:  # noqa: BLE001 - recorded, never merged into ABSENT
             out.append(Candidate(code, name, market, listed_now, Outcome.ERROR.value))
             if progress:
@@ -271,12 +283,25 @@ def rank(session: KisSession, pool, *, progress=None) -> list[Candidate]:
                 Candidate(code, name, market, listed_now, Outcome.THIN.value, len(rows))
             )
         else:
-            turnovers = [
-                float(r["acml_tr_pbmn"])
-                for r in rows
-                if r.get("acml_tr_pbmn") not in (None, "")
-            ]
-            if not turnovers:
+            # **Every value validated, and counted against the same floor
+            # as the bars.** `len(rows) >= MIN_RANKING_BARS` with one
+            # usable 거래대금 would rank a candidate on a single number.
+            # A non-numeric, NaN, infinite or negative turnover is a data
+            # error rather than a small value, so it is excluded from the
+            # count rather than coerced.
+            turnovers = []
+            for r in rows:
+                raw = r.get("acml_tr_pbmn")
+                if raw in (None, ""):
+                    continue
+                try:
+                    value = float(raw)
+                except (TypeError, ValueError):
+                    continue
+                if not math.isfinite(value) or value < 0:
+                    continue
+                turnovers.append(value)
+            if len(turnovers) < MIN_RANKING_BARS:
                 out.append(
                     Candidate(code, name, market, listed_now, Outcome.THIN.value, len(rows))
                 )
@@ -310,7 +335,34 @@ def main(argv: list[str] | None = None) -> int:
     group.add_argument("--rank", action="store_true")
     group.add_argument("--show", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="rank only the first N (probe)")
+    ap.add_argument(
+        "--window",
+        default=f"{RANKING_START}..{RANKING_END}",
+        help="the ranking window, YYYYMMDD..YYYYMMDD. Overriding it needs an "
+        "explicit --out: a second arm is a different universe, not a new "
+        "version of the canonical one.",
+    )
     args = ap.parse_args(argv)
+
+    default_window = f"{RANKING_START}..{RANKING_END}"
+    try:
+        win_start, win_end = args.window.split("..")
+    except ValueError:
+        print("--window must be YYYYMMDD..YYYYMMDD", file=sys.stderr)
+        return 2
+
+    # **A probe or a second arm must not overwrite the canonical artifact.**
+    # `--limit` ranks a slice of the pool and `--window` ranks a different
+    # question; either landing in runs/krx_dayone_universe.json would hand
+    # the drift measurement a corrupted universe that looks canonical.
+    if (args.limit or args.window != default_window) and args.out == str(DEFAULT_OUT):
+        print(
+            "--limit and --window produce a non-canonical universe; pass an "
+            "explicit --out so it cannot overwrite "
+            f"{DEFAULT_OUT.name}",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.show:
         data = json.loads(Path(args.out).read_text(encoding="utf-8"))
@@ -336,7 +388,7 @@ def main(argv: list[str] | None = None) -> int:
           f"{sum(1 for p in pool if not p[3]):,} delisted since)", flush=True)
 
     session = KisSession(key, secret, host=PAPER_HOST)
-    verify_negative_controls(session)
+    verify_negative_controls(session, win_start, win_end)
     print("negative controls pass: an empty answer really means empty", flush=True)
 
     started = time.monotonic()
@@ -347,14 +399,34 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  [{done:>5}/{len(pool)}] {code} {outcome}  "
               f"{rate:.1f}/s  eta {(len(pool)-done)/max(rate,1e-9)/60:.0f}m", flush=True)
 
-    ranked = rank(session, pool, progress=progress)
+    ranked = rank(session, pool, progress=progress, start=win_start, end=win_end)
     chosen = select(ranked)
     outcomes: dict[str, int] = {}
     for c in ranked:
         outcomes[c.outcome] = outcomes.get(c.outcome, 0) + 1
 
+    # **An incomplete ranking is not a universe.** An `ERROR` is a
+    # candidate whose turnover was never read, so it could have belonged in
+    # the thirty and nothing here can say. Writing the artifact anyway
+    # makes a partial pass indistinguishable from a complete one to every
+    # downstream reader -- the `check_reported_from_actual` shape.
+    errors = outcomes.get(Outcome.ERROR.value, 0)
+    if errors:
+        raise DayOneUniverseError(
+            f"{errors} candidate(s) failed to rank. A candidate whose "
+            f"turnover was never read might have belonged in the {UNIVERSE_SIZE}, "
+            f"so no artifact is written; re-run rather than accept a partial "
+            f"universe"
+        )
+    if len(chosen) < UNIVERSE_SIZE:
+        raise DayOneUniverseError(
+            f"only {len(chosen)} of {UNIVERSE_SIZE} places filled "
+            f"(outcomes {outcomes}); the pool or the window is wrong, and a "
+            f"short universe written as canonical would be read as complete"
+        )
+
     payload = {
-        "window": f"{RANKING_START}..{RANKING_END}",
+        "window": f"{win_start}..{win_end}",
         "universe_size": UNIVERSE_SIZE,
         "min_ranking_bars": MIN_RANKING_BARS,
         "candidates": len(pool),

@@ -104,7 +104,10 @@ LISTED, carrying `acml_vol` 0 when nobody traded it"*), and it is more
 dangerous on three counts:
 
 1. **A return series reads 603 zeros**, which deflates realised
-   volatility and inflates any Sharpe computed over it.
+   volatility. Whether a Sharpe computed over it comes out *higher* also
+   depends on the return sample, the annualisation constant and whether
+   the resumption gap is included — **none of which is measured here**, so
+   the claim is that it may inflate, not that it does.
 2. **A backtest holds a position it could not have exited for two and a
    half years**, and nothing in the bar stream says so.
 3. **The resumption gap is taken as a tradeable one-day return.** It was
