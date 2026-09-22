@@ -62,6 +62,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -308,12 +309,14 @@ def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
     full-universe scan) is not exempt either: it keeps the modules it
     imported, exactly as a JVM keeps its classes.
 
-    **This function detects neither of those.** It has no notion of the
-    remote, so a checkout behind `origin` is invisible to it, and it
-    looks at no Python process. Adding a `stale_checkout` alert is a real
-    follow-up and is deliberately not bundled into the review fix that
-    found this; CLAUDE.md's Development Methodology carries the
-    two-condition rule in the meantime.
+    **`stale_checkout` closes the first half of that** (added
+    2026-09-22): the checkout is compared against its own upstream, which
+    is the link the chain comment below already named and nothing
+    actually checked. The second half — whether a long-running Python
+    process has restarted — is still not detected here, and there is no
+    general way to ask it: a process's loaded modules are not observable
+    from outside it. What bounds that is the two-condition rule in
+    CLAUDE.md's Development Methodology, not this function.
 
     **The mtime comparison is a real content signal, not a proxy.**
     Verified on this box: Gradle rewrites a class file only when its
@@ -324,6 +327,8 @@ def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
     """
     root = Path(repo_root)
     alerts: list[Alert] = []
+
+    alerts.extend(_checkout_alerts(root))
 
     dirty = _git(root, "status", "--porcelain")
     if dirty:
@@ -382,6 +387,81 @@ def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
                 )
             )
     return alerts
+
+
+#: Hours an unpulled commit may sit on the remote before the checkout is
+#: CRITICAL rather than merely behind. The collectors run daily, so past
+#: this at least one collection has already produced data from code the
+#: repository had superseded — which is exactly what 2026-09-21 cost.
+#: Below it, "behind" is the ordinary state of a box between a merge and
+#: its deploy, and a CRITICAL there is the false positive that gets a
+#: check switched off.
+STALE_CHECKOUT_HOURS = 24.0
+
+
+def _checkout_alerts(root: Path) -> list[Alert]:
+    """Is the checkout itself behind what has been merged?
+
+    **The link in the chain nothing was watching.** The comment below
+    attributes "merged but not pulled" to the deploy script's own fetch —
+    true for Java, where a deploy is a deliberate act, and false for
+    everything cron runs, which nobody deploys at all. On 2026-09-21 the
+    instance sat **11 PRs behind** while its collectors re-exec'd
+    faithfully every day, recording a common-stock count on a rule this
+    project had already replaced twice.
+
+    **Severity scales with how long the gap has been open, not with how
+    many commits it is.** One commit behind is what every box looks like
+    between a merge and its deploy; a day behind means a scheduled job has
+    already run on superseded code.
+
+    **A failed fetch is reported, not swallowed** — but only when the
+    cached comparison says "current", because that is the one case where
+    an unreachable remote and a current checkout are indistinguishable. If
+    the cached refs already prove the checkout is behind, that is a fact
+    regardless of whether the fetch succeeded, and the stronger alert is
+    the one worth printing.
+    """
+    upstream = _git(root, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}")
+    if not upstream:
+        # No upstream at all: a local-only or detached checkout cannot be
+        # "behind" anything, and inventing an alert for it would fire on
+        # every developer machine.
+        return []
+
+    fetched = _git(root, "fetch", "--quiet", upstream.split("/", 1)[0]) is not None
+    behind_raw = _git(root, "rev-list", "--count", f"HEAD..{upstream}")
+    if behind_raw is None or not behind_raw.isdigit():
+        return []
+    behind = int(behind_raw)
+
+    if behind == 0:
+        if not fetched:
+            return [
+                Alert(
+                    "checkout_freshness_unknown",
+                    WARNING,
+                    f"could not fetch {upstream}, so 'not behind' here means "
+                    f"'not behind as of the last successful fetch' — the one "
+                    f"case where unreachable and current look identical",
+                )
+            ]
+        return []
+
+    oldest = _git(root, "log", "--format=%ct", f"HEAD..{upstream}")
+    lines = [x for x in (oldest or "").splitlines() if x.strip().isdigit()]
+    age_h = (time.time() - int(lines[-1])) / 3600 if lines else 0.0
+    severity = CRITICAL if age_h >= STALE_CHECKOUT_HOURS else WARNING
+    return [
+        Alert(
+            "stale_checkout",
+            severity,
+            f"the checkout is {behind} commit(s) behind {upstream}, the "
+            f"oldest unpulled for {age_h:.1f} hours. Everything cron runs "
+            f"here is running that older code — cron re-execs the file, not "
+            f"the repository.",
+        )
+    ]
 
 
 def _java_source_newer_than(root: Path, built: float) -> str | None:

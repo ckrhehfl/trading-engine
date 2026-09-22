@@ -890,3 +890,126 @@ class TestDeploymentCheck:
         from live.health_check import check_deployment
 
         assert check_deployment(tmp_path / "not-a-repo") == []
+
+
+class TestStaleCheckout:
+    """**The link in the chain nothing was watching.**
+
+    On 2026-09-21 the instance's checkout sat 11 PRs behind while its
+    collectors re-exec'd faithfully every day, recording a common-stock
+    count on a rule this project had replaced twice — and the delisted
+    snapshot the whole survivorship argument rests on had never been taken
+    on the host that is the database of record.
+
+    Every test here drives a **real** git remote rather than a stubbed
+    `_git`, because the thing being checked is git's own notion of
+    "behind" and a stub would confirm my understanding of it rather than
+    test it.
+    """
+
+    def _clone(self, tmp_path, *, behind: int = 0, age_hours: float = 0.0):
+        """A clone plus `behind` commits pushed to its remote afterwards."""
+        import subprocess as sp
+
+        origin = tmp_path / "origin.git"
+        work = tmp_path / "work"
+        clone = tmp_path / "clone"
+        sp.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        sp.run(["git", "clone", "-q", str(origin), str(work)], check=True)
+        for d in (work,):
+            sp.run(["git", "-C", str(d), "config", "user.email", "t@t"], check=True)
+            sp.run(["git", "-C", str(d), "config", "user.name", "t"], check=True)
+        (work / "a.txt").write_text("x")
+        sp.run(["git", "-C", str(work), "add", "-A"], check=True)
+        sp.run(["git", "-C", str(work), "commit", "-qm", "init"], check=True)
+        sp.run(["git", "-C", str(work), "push", "-q", "-u", "origin", "main"],
+               check=True)
+        sp.run(["git", "clone", "-q", str(origin), str(clone)], check=True)
+
+        env = dict(os.environ)
+        if age_hours:
+            when = datetime.now(timezone.utc) - timedelta(hours=age_hours)
+            stamp = when.strftime("%Y-%m-%dT%H:%M:%S%z")
+            env["GIT_AUTHOR_DATE"] = env["GIT_COMMITTER_DATE"] = stamp
+        for i in range(behind):
+            (work / f"b{i}.txt").write_text("y")
+            sp.run(["git", "-C", str(work), "add", "-A"], check=True)
+            sp.run(["git", "-C", str(work), "commit", "-qm", f"ahead {i}"],
+                   check=True, env=env)
+        if behind:
+            sp.run(["git", "-C", str(work), "push", "-q", "origin", "main"], check=True)
+        return clone
+
+    def test_a_current_checkout_is_silent(self, tmp_path):
+        from live.health_check import check_deployment
+
+        assert check_deployment(self._clone(tmp_path)) == []
+
+    def test_a_recently_behind_checkout_is_a_WARNING(self, tmp_path):
+        """One commit behind is what every box looks like between a merge
+        and its deploy. A CRITICAL there is the false positive that gets a
+        check switched off."""
+        from live.health_check import check_deployment
+
+        alerts = check_deployment(self._clone(tmp_path, behind=2))
+        assert [a.key for a in alerts] == ["stale_checkout"]
+        assert alerts[0].severity == WARNING
+        assert "2 commit(s) behind" in alerts[0].detail
+
+    def test_a_checkout_behind_for_over_a_DAY_is_CRITICAL(self, tmp_path):
+        """Past a day a scheduled job has already run on superseded code,
+        which is what 2026-09-21 actually cost."""
+        from live import health_check
+
+        alerts = health_check.check_deployment(
+            self._clone(tmp_path, behind=1,
+                        age_hours=health_check.STALE_CHECKOUT_HOURS + 6)
+        )
+        assert [a.key for a in alerts] == ["stale_checkout"]
+        assert alerts[0].severity == CRITICAL
+
+    def test_a_checkout_with_no_upstream_is_silent(self, tmp_path):
+        """Otherwise it fires on every developer machine, and a check that
+        always fires is a check nobody reads."""
+        import subprocess as sp
+
+        from live.health_check import check_deployment
+
+        root = tmp_path / "local"
+        sp.run(["git", "init", "-q", "-b", "main", str(root)], check=True)
+        sp.run(["git", "-C", str(root), "config", "user.email", "t@t"], check=True)
+        sp.run(["git", "-C", str(root), "config", "user.name", "t"], check=True)
+        (root / "a.txt").write_text("x")
+        sp.run(["git", "-C", str(root), "add", "-A"], check=True)
+        sp.run(["git", "-C", str(root), "commit", "-qm", "init"], check=True)
+        assert check_deployment(root) == []
+
+    def test_an_unreachable_remote_on_a_CURRENT_checkout_is_disclosed(self, tmp_path):
+        """The one case where unreachable and current look identical, so
+        silence there would be a guard that quietly does nothing."""
+        import shutil as sh
+
+        from live.health_check import check_deployment
+
+        clone = self._clone(tmp_path)
+        sh.rmtree(tmp_path / "origin.git")
+        alerts = check_deployment(clone)
+        assert [a.key for a in alerts] == ["checkout_freshness_unknown"]
+        assert alerts[0].severity == WARNING
+
+    def test_an_unreachable_remote_does_NOT_hide_a_known_gap(self, tmp_path):
+        """Behind is a fact whether or not the fetch succeeded, and the
+        stronger alert is the one worth printing."""
+        import shutil as sh
+
+        from live.health_check import check_deployment
+
+        clone = self._clone(tmp_path, behind=3)
+        # fetch once so the cached refs know about the gap, then break it
+        import subprocess as sp
+
+        sp.run(["git", "-C", str(clone), "fetch", "-q", "origin"], check=True)
+        sh.rmtree(tmp_path / "origin.git")
+        alerts = check_deployment(clone)
+        assert [a.key for a in alerts] == ["stale_checkout"]
+        assert "3 commit(s) behind" in alerts[0].detail
