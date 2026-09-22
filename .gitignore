@@ -60,4 +60,14 @@ python/data/var/
 # (python/live/generate_daily_signal.py) -- the signal file(s) it writes,
 # mirroring python/data/var/'s existing gitignore treatment for the kline
 # cache above.
-var/live/
+#
+# **Unanchored, for the same reason `**/data/var/` above is** — and the
+# anchored form had the same defect, found on 2026-09-22 on the instance.
+# A pattern containing a slash is anchored at the repository root, so
+# `var/live/` never matched `python/var/live/`, which is exactly where a
+# `cd python` invocation puts it: `health_check --dry-run` took its lock
+# there and left an untracked `python/var/`, which then tripped
+# `check_deployment`'s own `uncommitted_changes` alert. A check firing on
+# an artifact of running that check is the kind of false positive that
+# gets a check switched off.
+**/var/live/
