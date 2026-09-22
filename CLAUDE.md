@@ -1103,7 +1103,15 @@ design above was fake-server-verified only until then. Full account:
   perfect. `krx_universe.py` pins the offsets per market and fails closed on
   a file that yields zero common stock. **Stock codes are no longer all
   numeric** — KOSDAQ now issues alphanumeric codes such as `0001A0`, so any
-  `isdigit()` validation is wrong. The files list **currently-listed symbols
+  `isdigit()` validation is wrong. **KIS prices them normally** (measured
+  2026-09-22: `0001A0`, `0004V0`, `0004Y0` each return a full page from
+  the daily endpoint), so the format is not a data gap — but all **80** of
+  them are 2026 listings with zero bars before that year, and the delisted
+  side still filters on `isdigit()` (`krx_delisted.plain_codes`, and
+  `krx_scan.candidates` after it). That is correct today, because KRX only
+  began issuing the format in 2026 and nothing carrying one has delisted
+  yet; it will silently drop the first one that does. The files list
+  **currently-listed symbols
   only**, which was the open survivorship problem for a full-universe scan
   (`.planning/rd-d-discovery-mode-and-the-full-universe.md` §2.2) — see the
   next entry, which supplies the other half.
