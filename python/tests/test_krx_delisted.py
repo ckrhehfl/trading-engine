@@ -232,15 +232,19 @@ def test_common_stock_now_drops_SPACs_and_REITs(monkeypatch):
     Two **name** rules close it, validated against live ground truth:
     `스팩`/`기업인수목적` matched 70 live names, all 70 carrying `ST`; an
     anchored 리츠 form matched 25 live names covering all 23 live REITs.
-    Measured over the real delisted list, they remove **179 SPACs and 14
-    REITs** from 2,039.
+    Measured over the real delisted list 2026-09-22, they remove **178
+    SPACs and 14 REITs** from the 2,033 the two ISIN rules leave.
+
+    아스팩오일 is in here because it is the name that made the SPAC rule
+    anchored: a 코넥스 oil company that a bare `스팩` substring removed.
     """
     rows = [
         Delisting("223040", "코스닥", "교보5호스팩", "KR7223040007"),
         Delisting("088260", "유가증권", "이리츠코크렙", "KR7088260005"),
+        Delisting("232360", "코넥스", "아스팩오일", "KR7232360008"),
         Delisting("117930", "유가증권", "한진해운", "KR7117930008"),
     ]
-    assert [d.code for d in common_stock(rows)] == ["117930"]
+    assert [d.code for d in common_stock(rows)] == ["232360", "117930"]
 
 
 def test_a_securities_firm_named_메리츠_is_NOT_dropped_as_a_REIT():

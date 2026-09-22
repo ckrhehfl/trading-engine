@@ -172,12 +172,22 @@ def instrument_class(isin: str | None) -> InstrumentClass:
     return _CLASS_BY_ISIN_PREFIX_CHAR.get(isin[_CLASS_INDEX], InstrumentClass.UNKNOWN)
 
 
-#: A SPAC's trading name is regulated: `…스팩` or `…기업인수목적…`.
-#: **Validated against live ground truth 2026-09-21**: 70 live hits, all
-#: 70 carrying 증권그룹구분코드 `ST` -- i.e. the pattern catches no
+#: A SPAC's trading name is regulated: `…스팩`, `…스팩N호` or
+#: `…기업인수목적…`. **Validated against live ground truth 2026-09-21**:
+#: every hit carries 증권그룹구분코드 `ST` -- i.e. the pattern catches no
 #: non-stock, and a SPAC is invisible to every structural filter because
 #: legally it *is* a 주식회사 with a `KR7…0` ISIN.
-_SPAC_PATTERN = re.compile(r"스팩|기업인수목적")
+#:
+#: **Anchored, for the same reason 우선주's rule is** (corrected on review
+#: of PR #192, then measured across both universes rather than argued).
+#: A bare `스팩` substring is 다우기술 again: it takes **아스팩오일**, a
+#: 코넥스 oil company, for a blank-cheque vehicle. But the obvious anchor
+#: -- 스팩 at the end, or 스팩 then a digit -- drops **미래에셋대우스팩
+#: 5호**, which puts a *space* before its 호수, so the whitespace is part
+#: of the rule and not tidiness. Measured 2026-09-22: identical to the
+#: substring form on all 4,403 live rows (72 hits either way), and on the
+#: 4,185 delisted ones it releases exactly 아스팩오일 (179 -> 178).
+_SPAC_PATTERN = re.compile(r"스팩\s*$|스팩\s*[0-9]|기업인수목적")
 
 #: **A naive `리츠` match is unusable and that is measured, not guessed.**
 #: It returns 116 live names of which only 23 are REITs: 75 are ETNs and

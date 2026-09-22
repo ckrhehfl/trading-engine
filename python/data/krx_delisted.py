@@ -234,12 +234,14 @@ def common_stock(delistings: list[Delisting]) -> list[Delisting]:
     hazard.
 
     **Four filters, and only two of them are structural.** Measured
-    2026-09-21 over the 2,353 plain codes: the ISIN's issue type removes
-    **314** 우선주, its instrument class removes the ETNs, funds and DRs,
-    and then two **name** rules remove **179 SPACs and 14 REITs** --
-    weaker evidence, kept separate in `krx_instrument` for that reason.
-    A SPAC passes every structural test because it legally is a 주식회사
-    with a `KR7...0` ISIN. **2,353 -> 1,846.**
+    2026-09-22 over the 2,353 plain codes, each step against the pool the
+    step before it left: the ISIN's issue type removes **314** 우선주
+    (2,353 -> 2,039), its instrument class a further **6** ETNs, funds and
+    DRs (-> 2,033), and then two **name** rules remove **178 SPACs and 14
+    REITs** (-> **1,841**). The name rules are weaker evidence and are
+    kept separate in `krx_instrument` for that reason. A SPAC passes every
+    structural test because it legally is a 주식회사 with a `KR7...0`
+    ISIN.
     """
     return [
         d

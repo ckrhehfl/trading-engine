@@ -194,20 +194,43 @@ def test_a_SPAC_is_invisible_to_every_structural_filter():
 
 
 @pytest.mark.parametrize(
-    "name", ["KB제32호스팩", "교보18호스팩", "엘에스스팩1호", "디비금융제14호스팩"]
+    "name",
+    [
+        "KB제32호스팩",
+        "교보18호스팩",
+        "엘에스스팩1호",
+        "디비금융제14호스팩",
+        # the space is real, and an anchor written without `\s*` drops it
+        "미래에셋대우스팩 5호",
+        "대우증권그린코리아기업인수목적",
+    ],
 )
 def test_the_regulated_spac_name_is_matched(name):
     assert is_spac(name)
 
 
-@pytest.mark.parametrize("name", ["삼성전자", "다우기술", "스팩토리"])
+@pytest.mark.parametrize("name", ["삼성전자", "다우기술", "스팩토리", "아스팩오일"])
 def test_an_ordinary_name_is_not_a_spac(name):
-    """`스팩토리` is deliberate: a substring rule would have to be lucky,
-    and this records that the check was made rather than assumed."""
-    assert is_spac(name) is (name == "스팩토리"), (
-        "a real false positive is disclosed here rather than hidden; "
-        "no live or delisted name matches it today"
-    )
+    """**아스팩오일 is the real one**, a 코넥스 oil company the substring
+    form took for a blank-cheque vehicle — 다우기술's lesson recurring one
+    rule later. `스팩토리` is the constructed counterpart: the rule has to
+    survive a name that merely *starts* with the token."""
+    assert not is_spac(name)
+
+
+def test_the_spac_rule_is_anchored_rather_than_a_substring_search():
+    """Remove the anchors and this fails — the guard is the anchoring, so
+    it is verified against the pattern itself rather than trusted.
+
+    Both directions, because each has a real name behind it: a bare
+    substring over-matches (아스팩오일), and an anchor without `\\s*`
+    under-matches (미래에셋대우스팩 5호).
+    """
+    from data.krx_instrument import _SPAC_PATTERN
+
+    assert _SPAC_PATTERN.search("미래에셋대우스팩 5호")
+    assert not _SPAC_PATTERN.search("아스팩오일")
+    assert not _SPAC_PATTERN.search("스팩토리")
 
 
 def test_the_naive_REIT_rule_is_rejected_and_the_measurement_says_why():
