@@ -21,6 +21,8 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # Extensions that are always build output or local state, never source.
@@ -111,4 +113,53 @@ def test_no_binary_artifact_is_tracked():
     assert not found, (
         "these build/state artifacts are tracked in git and should not be:\n"
         + "\n".join(f"  {p}   fix: git rm --cached {p}" for p in found)
+    )
+
+
+# ------------------------------------------------- the ignore rules themselves
+
+
+def _is_ignored(path: str) -> bool:
+    """`git check-ignore`, which answers for a path that need not exist.
+
+    Asking git rather than re-implementing `.gitignore` matching is the
+    whole point: the defect below is a property of git's own anchoring
+    rule, so a hand-rolled matcher would reproduce my misunderstanding of
+    it instead of catching it.
+    """
+    done = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "check-ignore", "-q", path],
+        capture_output=True, text=True, check=False,
+    )
+    return done.returncode == 0
+
+
+# Each entry is a real path a real invocation produced, not a constructed
+# one -- the point of the rule is that *depth* must not defeat it, and
+# depth is what a wrong working directory adds.
+NESTED_RUNTIME_PATHS = (
+    # 2026-09-10: `cd python && PYTHONPATH=.` resolved the relative
+    # DEFAULT_DB_PATH against `python/` itself.
+    "python/python/data/var/klines.sqlite3",
+    "python/data/var/klines.sqlite3",
+    # 2026-09-22, on the instance: the same shape one directory over.
+    # `health_check --dry-run` took its lock under the relative STATE_PATH
+    # and left an untracked `python/var/`, which then tripped
+    # `check_deployment`'s own `uncommitted_changes` alert.
+    "python/var/live/health-state.json.lock",
+    "var/live/daily_signal.json",
+)
+
+
+@pytest.mark.parametrize("path", NESTED_RUNTIME_PATHS)
+def test_runtime_state_is_ignored_at_any_depth(path):
+    """**A pattern containing a slash is anchored at the repository
+    root**, which is the defect both incidents share. `var/live/` reads
+    like "any `var/live` anywhere" and means "`<root>/var/live`" — so the
+    rule has to be written `**/var/live/` to mean what it looks like.
+    """
+    assert _is_ignored(path), (
+        f"{path} is not ignored. A rule containing a slash is anchored at "
+        f"the repo root unless written `**/...`, and a wrong working "
+        f"directory adds exactly the depth that defeats the anchored form."
     )
