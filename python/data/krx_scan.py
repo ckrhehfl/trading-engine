@@ -7,8 +7,11 @@ worth +20%/yr of pure artefact. A per-day rule is the honest version of
 that, and it cannot be run without the whole pool's history.
 
 **The cost, stated before anything starts, because it decides how this is
-built.** 4,643 candidates over 2019-01-02..2026-09-18 is ~24 pages each
-and **~111,000 real API calls**. At the throughput measured in `rd-x` --
+built.** ~4,400 candidates over 2019-01-02..2026-09-18 is ~24 pages each
+and **~105,000 real API calls**. (The first pass ran against 4,643, before
+the SPAC and instrument-class rules narrowed both sides of the pool; a
+resumed pass simply fetches fewer, since coverage is read back from the
+database.) At the throughput measured in `rd-x` --
 0.5-0.7/s after the KRX close, 0.3/s during the session -- that is **two
 to three days of continuous fetching**. Every property below follows from
 that number rather than from taste:
@@ -79,7 +82,13 @@ from data.kis_klines import (
     KisSession,
     _get_with_retry,
 )
-from data.krx_instrument import is_common_stock
+from data.krx_instrument import (
+    InstrumentClass,
+    instrument_class,
+    is_common_stock,
+    is_reit,
+    is_spac,
+)
 from data.store import connect, fetch_krx_delisted, fetch_krx_universe
 
 PANEL_START = "20190102"
@@ -144,7 +153,14 @@ def in_continuous_session(now: dt.datetime | None = None) -> bool:
 
 
 def candidates(conn) -> list[tuple[str, str, bool]]:
-    """Every survivorship-safe common-stock code: live plus delisted."""
+    """Every survivorship-safe common-stock code: live plus delisted.
+
+    **The two sides apply the SAME four filters**, which they did not when
+    the SPAC rule landed: `fetch_krx_universe(common_stock_only=True)`
+    picked it up on the live side immediately, leaving the delisted side
+    with its 178 SPACs still in. Half a filter is worse than none, because
+    the pool then looks filtered.
+    """
     u_date = conn.execute("SELECT MAX(snapshot_date) FROM krx_universe").fetchone()[0]
     d_date = conn.execute("SELECT MAX(snapshot_date) FROM krx_delisted").fetchone()[0]
     if not u_date:
@@ -164,7 +180,12 @@ def candidates(conn) -> list[tuple[str, str, bool]]:
     dead = [
         (code, name, False)
         for code, _m, name, isin in fetch_krx_delisted(conn, d_date)
-        if len(code) == 6 and code.isdigit() and is_common_stock(isin)
+        if len(code) == 6
+        and code.isdigit()
+        and is_common_stock(isin)
+        and instrument_class(isin) is InstrumentClass.STOCK_LIKE
+        and not is_spac(name)
+        and not is_reit(name)
     ]
     return live + dead
 
@@ -297,6 +318,7 @@ def scan(
         [c for c, _n, _l in pool if c in done]
     )}
     started = time.monotonic()
+    paused = 0.0
     todo = [c for c in pool if c[0] not in done]
     for i, (code, name, _listed) in enumerate(todo):
         # **Pause for the session, do not merely refuse to start in it.**
@@ -304,10 +326,23 @@ def scan(
         # next day's session otherwise, which is exactly the contention
         # the start-up guard exists to avoid -- the guard would have been
         # protecting only the first eight hours of three days.
+        paused_at = None
         while not allow_in_session and in_continuous_session():
-            if progress:
-                progress(i, len(todo), code, "PAUSED for the KRX session", 0.0)
+            if paused_at is None:
+                paused_at = time.monotonic()
+                if progress:
+                    # Once on entry, not once per poll: a six-hour session
+                    # is ~360 identical lines otherwise, and the run that
+                    # produced them read as a hang rather than a pause.
+                    progress(i, len(todo), code, "PAUSED for the KRX session", None)
             time.sleep(_SESSION_POLL_S)
+        if paused_at is not None:
+            # **Paused time is not work time.** Leaving it in the divisor
+            # made the post-pause ETA read in the billions of hours, which
+            # is a reported figure taken from the wrong denominator.
+            paused += time.monotonic() - paused_at
+            if progress:
+                progress(i, len(todo), code, "resumed after the session", None)
         rows: list[dict] = []
         failed = False
         for start, end in _pages(PANEL_START, PANEL_END, PAGE_DAYS):
@@ -332,8 +367,8 @@ def scan(
             record_progress(conn, code, "absent")
             counts["absent"] += 1
         if progress and i % 50 == 0:
-            rate = (i + 1) / max(1e-9, time.monotonic() - started)
-            progress(i, len(todo), code, name, rate)
+            worked = time.monotonic() - started - paused
+            progress(i, len(todo), code, name, (i + 1) / max(1e-9, worked))
     return counts
 
 
@@ -416,9 +451,13 @@ def main(argv: list[str] | None = None) -> int:
     print("negative controls pass: an empty answer really means empty", flush=True)
 
     def progress(i, n, code, name, rate):
-        eta = (n - i - 1) * 24 / max(rate * 24, 1e-9) / 3600
-        print(f"  [{i + 1:>5}/{n}] {code} {name[:14]:<14} "
-              f"{rate:.2f} sym/s  eta {eta:.1f}h", flush=True)
+        # `rate is None` is a state change (paused, resumed), not a
+        # measurement -- printing an ETA there invents one.
+        tail = (
+            "" if rate is None
+            else f"  {rate:.2f} sym/s  eta {(n - i - 1) / max(rate, 1e-9) / 3600:.1f}h"
+        )
+        print(f"  [{i + 1:>5}/{n}] {code} {name[:28]:<28}{tail}", flush=True)
 
     counts = scan(session, conn, pool, progress=progress,
                   allow_in_session=args.in_session)

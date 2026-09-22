@@ -26,7 +26,12 @@ from data.krx_universe import (
     parse_master,
     snapshot,
 )
-from data.store import connect, fetch_krx_universe, krx_universe_snapshots
+from data.store import (
+    connect,
+    fetch_krx_universe,
+    krx_universe_snapshots,
+    upsert_krx_universe,
+)
 
 
 def _isin(code: str, issue: str = "0") -> str:
@@ -251,4 +256,24 @@ def test_an_impossible_calendar_date_is_refused(tmp_path, monkeypatch, bad):
     )
     with pytest.raises(ValueError):
         snapshot(conn, bad)
+    conn.close()
+
+
+def test_common_stock_only_ALSO_excludes_a_SPAC(tmp_path):
+    """**A SPAC passes every structural filter.** It is legally a
+    주식회사, so its group code is `ST` and its ISIN is `KR7...0` — and
+    **70 live names were being returned as common stock** until
+    2026-09-21. Only the regulated name betrays it, so the read-time
+    filter has to carry a name rule alongside the ISIN one."""
+    conn = connect(tmp_path / "k.sqlite3")
+    upsert_krx_universe(conn, "2026-09-21", [
+        ("005930", "KOSPI", "삼성전자", "ST", "KR7005930003"),
+        ("223040", "KOSDAQ", "교보5호스팩", "ST", "KR7223040007"),
+    ])
+    assert [r[0] for r in fetch_krx_universe(conn, "2026-09-21")] == [
+        "005930", "223040",
+    ], "unfiltered, both are ST"
+    assert [
+        r[0] for r in fetch_krx_universe(conn, "2026-09-21", common_stock_only=True)
+    ] == ["005930"]
     conn.close()

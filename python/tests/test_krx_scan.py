@@ -128,6 +128,25 @@ def test_the_pool_is_live_PLUS_delisted_common_stock(db):
     assert {c[0] for c in candidates(db)} == {"005930", "117930"}
 
 
+def test_BOTH_sides_of_the_pool_apply_the_SAME_four_filters(db):
+    """**Half a filter is worse than none, because the pool looks
+    filtered.** When the SPAC rule landed, the live side picked it up
+    through `fetch_krx_universe(common_stock_only=True)` while the delisted
+    side still carried its 178 SPACs — and the pool's own docstring called
+    itself survivorship-safe common stock throughout."""
+    upsert_krx_universe(db, "2026-09-21", [
+        ("005930", "KOSPI", "삼성전자", "ST", "KR7005930003"),
+        ("223040", "KOSDAQ", "교보5호스팩", "ST", "KR7223040007"),
+    ])
+    upsert_krx_delisted(db, "2026-09-21", [
+        ("117930", "유가증권", "한진해운", "KR7117930008"),
+        ("232040", "코스닥", "하나머스트7호스팩", "KR7232040008"),
+        ("088260", "유가증권", "이리츠코크렙", "KR7088260005"),
+        ("500006", "코스닥", "an ETN", "KRG500000671"),
+    ])
+    assert {c[0] for c in candidates(db)} == {"005930", "117930"}
+
+
 def test_no_delisted_snapshot_is_refused(db):
     upsert_krx_universe(db, "2026-09-21",
                         [("005930", "KOSPI", "삼성전자", "ST", "KR7005930003")])
@@ -275,6 +294,60 @@ def test_the_scan_PAUSES_for_the_session_not_just_refuses_to_start(monkeypatch, 
     from data.krx_scan import _SESSION_POLL_S
 
     assert _SESSION_POLL_S in slept, "it never waited for the session to close"
+
+
+def test_a_pause_is_reported_ONCE_and_carries_no_rate(monkeypatch, db):
+    """The real run logged `PAUSED … 0.00 sym/s eta 20786666666.7h`, once
+    every poll. Two defects in one line: a state change printed as a
+    measurement, and an ETA invented from a rate of zero. A reader of that
+    log cannot tell a pause from a hang."""
+    session = _FakeSession({"005930": _bars(5)})
+    _install(monkeypatch, session)
+    states = iter([True, True, True, False])
+    monkeypatch.setattr("data.krx_scan.in_continuous_session",
+                        lambda *_a: next(states, False))
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda _s: None)
+
+    seen: list[tuple[str, float | None]] = []
+    scan(session, db, [("005930", "a", True)], allow_in_session=False,
+         progress=lambda i, n, code, name, rate: seen.append((name, rate)))
+
+    paused = [r for name, r in seen if name.startswith("PAUSED")]
+    assert len(paused) == 1, f"one line per pause, not per poll: {seen}"
+    assert paused == [None], "a pause has no throughput to report"
+    assert any(name.startswith("resumed") for name, _ in seen), (
+        "the resume must be logged too, or the pause looks unbounded"
+    )
+
+
+def test_paused_time_is_excluded_from_the_reported_rate(monkeypatch, db):
+    """**A reported figure taken from the wrong denominator** — the same
+    shape as Task C's `+45` that was really `−97`. Six hours of waiting in
+    the divisor is what produced the billion-hour ETA."""
+    session = _FakeSession({"005930": _bars(5)})
+    _install(monkeypatch, session)
+    # **After `_install`, which patches `time.sleep` itself.** Setting the
+    # clock first left it frozen, `worked` at 0 either way, and this test
+    # passing with the fix deleted -- the sixth inert guard this arc.
+    clock = [0.0]
+    monkeypatch.setattr("data.krx_scan.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("data.krx_scan.time.sleep",
+                        lambda s: clock.__setitem__(0, clock[0] + s))
+    states = iter([True, True, False])
+    monkeypatch.setattr("data.krx_scan.in_continuous_session",
+                        lambda *_a: next(states, False))
+
+    seen: list[tuple[str, float | None]] = []
+    scan(session, db, [("005930", "a", True)], allow_in_session=False,
+         progress=lambda i, n, code, name, rate: seen.append((name, rate)))
+
+    from data.krx_scan import _SESSION_POLL_S
+
+    rates = [r for name, r in seen if r is not None]
+    assert rates, "the per-symbol progress line never fired"
+    assert rates[0] > 1.0 / _SESSION_POLL_S, (
+        f"the {2 * _SESSION_POLL_S:.0f}s pause is still in the divisor: {rates}"
+    )
 
 
 def test_the_override_skips_the_pause(monkeypatch, db):

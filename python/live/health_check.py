@@ -296,10 +296,24 @@ def check_deployment(repo_root: Path | str = ".") -> list[Alert]:
     have reported that** — not a dashboard, not the watchdog, not a log
     line.
 
-    Python and shell are exempt by construction: cron re-execs them every
-    tick, so a merged change is live on its next run. A JVM keeps the
-    classes it loaded at startup, so an OMS, Risk Gateway or adapter fix
-    sits there doing nothing until the loop restarts.
+    A JVM keeps the classes it loaded at startup, so an OMS, Risk Gateway
+    or adapter fix sits there doing nothing until the loop restarts.
+
+    **Cron-invoked Python and shell are exempt, and the exemption is
+    about cron rather than about the language** — corrected 2026-09-22.
+    It re-execs the file every tick, so a merged change is live on its
+    next run; it does **not** re-clone the repository, and on 2026-09-21
+    the instance's checkout sat 11 PRs behind while its collectors ran
+    faithfully every day. A long-running Python process (the
+    full-universe scan) is not exempt either: it keeps the modules it
+    imported, exactly as a JVM keeps its classes.
+
+    **This function detects neither of those.** It has no notion of the
+    remote, so a checkout behind `origin` is invisible to it, and it
+    looks at no Python process. Adding a `stale_checkout` alert is a real
+    follow-up and is deliberately not bundled into the review fix that
+    found this; CLAUDE.md's Development Methodology carries the
+    two-condition rule in the meantime.
 
     **The mtime comparison is a real content signal, not a proxy.**
     Verified on this box: Gradle rewrites a class file only when its

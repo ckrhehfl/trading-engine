@@ -40,7 +40,7 @@ import zipfile
 from dataclasses import dataclass
 
 from data._paths import DEFAULT_DB_PATH
-from data.krx_instrument import is_common_stock
+from data.krx_instrument import is_common_stock, is_spac
 from data.store import connect, fetch_krx_universe, krx_universe_snapshots, upsert_krx_universe
 
 KOSPI_URL = "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip"
@@ -164,15 +164,19 @@ def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:
         date,
         [(x.code, x.market, x.name, x.group_code, x.standard_code) for x in listings],
     )
-    # **Both filters, because they are orthogonal.** `COMMON_STOCK`
-    # (`ST`) drops the ETFs and ETNs but counts 우선주 -- 114 of its 2,718
-    # rows. The ISIN drops the preferred lines but says `0` for an ETF too
-    # (KODEX 200 is `KR7069500007`). Either alone overstates; measured
-    # 2026-09-20 the real figure is 2,604.
+    # **Three filters, because none of them subsumes the others.**
+    # `COMMON_STOCK` (`ST`) drops the ETFs and ETNs but counts 우선주 --
+    # 114 of its 2,718 rows. The ISIN drops the preferred lines but says
+    # `0` for an ETF too (KODEX 200 is `KR7069500007`). And **a SPAC
+    # passes both**: it is legally a 주식회사, so it carries `ST` and a
+    # `KR7...0` ISIN, and 70 live names were counted here until
+    # 2026-09-21. Measured: 2,718 -> 2,604 -> **2,534**.
     common = sum(
         1
         for x in listings
-        if x.group_code == COMMON_STOCK and is_common_stock(x.standard_code)
+        if x.group_code == COMMON_STOCK
+        and is_common_stock(x.standard_code)
+        and not is_spac(x.name)
     )
     return date, written, common
 

@@ -117,3 +117,147 @@ def test_UNKNOWN_is_not_silently_either_side():
     to stay reachable, and this pins that it is."""
     assert is_common_stock("HK0000307485") == is_common_stock("KR7005931001") is False
     assert classify("HK0000307485") is not classify("KR7005931001")
+
+
+# ============================ instrument CLASS, a different question
+
+
+from data.krx_instrument import (  # noqa: E402
+    InstrumentClass,
+    instrument_class,
+    is_reit,
+    is_spac,
+)
+
+#: Real 표준코드 observed 2026-09-21, one per class the live join produced.
+CLASS_CASES = [
+    ("KR7005930003", "005930", "삼성전자", InstrumentClass.STOCK_LIKE),
+    ("KR7069500007", "069500", "KODEX 200 (an ETF)", InstrumentClass.STOCK_LIKE),
+    ("KR7088260005", "088260", "이리츠코크렙 (a REIT)", InstrumentClass.STOCK_LIKE),
+    ("KRG500000671", "Q500067", "신한 레버리지 ETN", InstrumentClass.ETN),
+    ("KR5701000303", "F70100030", "한투한미핵심성장포커스1", InstrumentClass.FUND),
+    ("HK0000057197", "900110", "딥커머스", InstrumentClass.FOREIGN),
+    ("KYG5307W1015", "900140", "엘브이엠씨홀딩스", InstrumentClass.FOREIGN),
+]
+
+
+@pytest.mark.parametrize("isin,code,name,expected", CLASS_CASES)
+def test_the_isin_third_character_gives_the_instrument_class(isin, code, name, expected):
+    assert instrument_class(isin) is expected, f"{code} {name}"
+
+
+def test_STOCK_LIKE_really_does_include_ETFs_and_REITs():
+    """**Named `STOCK_LIKE` rather than `STOCK` because of exactly this.**
+    ETFs and REITs share `KR7` with common stock, so this field cannot
+    separate them and a name that implied otherwise would be a lie."""
+    assert instrument_class("KR7069500007") is InstrumentClass.STOCK_LIKE
+    assert instrument_class("KR7088260005") is InstrumentClass.STOCK_LIKE
+    assert instrument_class("KR7005930003") is InstrumentClass.STOCK_LIKE
+
+
+def test_the_class_is_what_the_delisted_side_has_instead_of_a_group_code():
+    """KRX's delisted finder publishes no 증권그룹구분코드, so the ISIN is
+    the only structural signal there — and it is what gets ETN, fund, DR
+    and warrant out of a pool that `plain_codes` alone would keep."""
+    for isin in ("KRG500000671", "KR5701000303"):
+        assert instrument_class(isin) is not InstrumentClass.STOCK_LIKE
+
+
+@pytest.mark.parametrize("bad", [None, "", "KR700", "KR7005930"])
+def test_a_wrong_LENGTH_isin_has_no_class(bad):
+    assert instrument_class(bad) is InstrumentClass.UNKNOWN
+
+
+def test_a_twelve_char_non_KR_string_reads_as_FOREIGN_even_if_it_is_junk():
+    """**Stated because the test caught it and the alternative is a lie.**
+    A country code is two letters and so is garbage, so without a country
+    table these are indistinguishable. Both are excluded from a Korean
+    stock universe — which is what a caller needs — but a caller
+    *counting* foreign listings would over-count."""
+    assert instrument_class("HK0000057197") is InstrumentClass.FOREIGN
+    assert instrument_class("x" * 12) is InstrumentClass.FOREIGN
+    assert not is_common_stock("x" * 12), "excluded either way, which is the point"
+
+
+# ============================ SPAC and REIT: name rules, weaker on purpose
+
+
+def test_a_SPAC_is_invisible_to_every_structural_filter():
+    """**The finding this exists for.** A SPAC is legally a 주식회사: its
+    group code is `ST` and its ISIN is `KR7…0`, so it passes both the
+    class filter and the issue-type filter. 70 live names were being
+    counted as common stock by the filter shipped one day earlier."""
+    spac_isin = "KR7223040007"
+    assert instrument_class(spac_isin) is InstrumentClass.STOCK_LIKE
+    assert is_common_stock(spac_isin)
+    assert is_spac("교보5호스팩")
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "KB제32호스팩",
+        "교보18호스팩",
+        "엘에스스팩1호",
+        "디비금융제14호스팩",
+        # the space is real, and an anchor written without `\s*` drops it
+        "미래에셋대우스팩 5호",
+        "대우증권그린코리아기업인수목적",
+    ],
+)
+def test_the_regulated_spac_name_is_matched(name):
+    assert is_spac(name)
+
+
+@pytest.mark.parametrize(
+    "name", ["삼성전자", "다우기술", "스팩토리", "아스팩오일", "아스팩\n5호"]
+)
+def test_an_ordinary_name_is_not_a_spac(name):
+    """**아스팩오일 is the real one**, a 코넥스 oil company the substring
+    form took for a blank-cheque vehicle — 다우기술's lesson recurring one
+    rule later. `스팩토리` is the constructed counterpart: the rule has to
+    survive a name that merely *starts* with the token."""
+    assert not is_spac(name)
+
+
+def test_the_spac_rule_is_anchored_rather_than_a_substring_search():
+    """Remove the anchors and this fails — the guard is the anchoring, so
+    it is verified against the pattern itself rather than trusted.
+
+    Both directions, because each has a real name behind it: a bare
+    substring over-matches (아스팩오일), and an anchor without `\\s*`
+    under-matches (미래에셋대우스팩 5호).
+    """
+    from data.krx_instrument import _SPAC_PATTERN
+
+    assert _SPAC_PATTERN.search("미래에셋대우스팩 5호")
+    assert not _SPAC_PATTERN.search("아스팩오일")
+    assert not _SPAC_PATTERN.search("스팩토리")
+    # `\s` would span this and drop the name; a separator inside one
+    # trading name is a space or a tab.
+    assert not _SPAC_PATTERN.search("아스팩\n5호")
+
+
+def test_the_naive_REIT_rule_is_rejected_and_the_measurement_says_why():
+    """**A bare `리츠` match returns 116 live names of which 23 are
+    REITs** — 75 ETNs and 14 ETFs *named* 리츠, plus 메리츠종금, which is a
+    securities firm. Anchoring takes it to 25 hits with all 23 REITs."""
+    assert not is_reit("메리츠종금"), "the substring rule's worst case"
+    assert not is_reit("메리츠화재")
+    assert is_reit("이리츠코크렙")
+    assert is_reit("대신밸류리츠")
+
+
+def test_the_two_name_rules_are_kept_separate_from_the_isin_rules():
+    """They are weaker evidence — a regulated naming convention rather
+    than a structural field — and composing them into one function would
+    hide that. 우선주 already showed what a substring match does."""
+    import inspect
+
+    from data import krx_instrument
+
+    src = inspect.getsource(krx_instrument)
+    assert "def is_spac" in src and "def is_reit" in src
+    assert "def is_common_stock" in src
+    # no single call that silently does all of it
+    assert "def is_tradeable" not in src

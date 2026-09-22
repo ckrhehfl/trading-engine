@@ -65,7 +65,13 @@ import urllib.request
 from dataclasses import dataclass
 
 from data._paths import DEFAULT_DB_PATH
-from data.krx_instrument import is_common_stock
+from data.krx_instrument import (
+    InstrumentClass,
+    instrument_class,
+    is_common_stock,
+    is_reit,
+    is_spac,
+)
 from data.store import (
     connect,
     fetch_krx_delisted,
@@ -226,8 +232,25 @@ def common_stock(delistings: list[Delisting]) -> list[Delisting]:
     common. Use `krx_instrument.classify` where the *count* of those
     matters, because dropping names silently is itself a survivorship
     hazard.
+
+    **Four filters, and only two of them are structural.** Measured
+    2026-09-22 over the 2,353 plain codes, each step against the pool the
+    step before it left: the ISIN's issue type removes **314** 우선주
+    (2,353 -> 2,039), its instrument class a further **6** ETNs, funds and
+    DRs (-> 2,033), and then two **name** rules remove **178 SPACs and 14
+    REITs** (-> **1,841**). The name rules are weaker evidence and are
+    kept separate in `krx_instrument` for that reason. A SPAC passes every
+    structural test because it legally is a 주식회사 with a `KR7...0`
+    ISIN.
     """
-    return [d for d in plain_codes(delistings) if is_common_stock(d.standard_code)]
+    return [
+        d
+        for d in plain_codes(delistings)
+        if is_common_stock(d.standard_code)
+        and instrument_class(d.standard_code) is InstrumentClass.STOCK_LIKE
+        and not is_spac(d.name)
+        and not is_reit(d.name)
+    ]
 
 
 def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:

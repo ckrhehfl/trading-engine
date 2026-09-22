@@ -935,6 +935,34 @@ design above was fake-server-verified only until then. Full account:
   implies a ~0.28 detection floor, but the operative figure is lower:
   a backtest assuming single-stock-futures execution cannot start before
   those futures existed, nor before the youngest constituent has data.
+- **KIS prints a bar for every session a HALTED name is listed, and it
+  looks like a quiet day rather than a stoppage.** `O == H == L == C`
+  with zero volume and zero turnover, repeated for as long as the halt
+  lasts: 신라젠 carries **604 consecutive** such sessions, 좋은사람들
+  **832**. Measured 2026-09-21 across the full-universe scan. **A bar is
+  therefore not evidence the name was tradeable**, which matters
+  precisely where it is least visible — a per-day selection rule ranking
+  on turnover sees a legitimate zero, and a returns series sees a
+  flat stretch it will read as low volatility. They are stored, because
+  they are what the tape said, and **counted separately** in the scan's
+  coverage report (`data/krx_scan.py`) so a reader can subtract them.
+
+  **What follows for analysis, split into the part that is decided and
+  the part that is not**, because "stored and counted" is not a rule:
+
+  - **Decided, and it follows directly from the measurement: a frozen bar
+    may never make a name eligible.** Any selection, ranking or liquidity
+    screen — turnover, relative volume, spread, anything answering *was
+    this tradeable* — must exclude it. A halt reads as a legitimate zero
+    otherwise, and the scan's whole purpose is a per-day selection rule.
+  - **Not decided, and deliberately left open: what a return computed
+    across a halt means.** Booking the full gap on the resumption bar and
+    treating the flat stretch as zero-volatility are both wrong in
+    different directions, and choosing between them is a research
+    decision with its own `Discuss`, not a data-layer default. Until it is
+    taken, **any statistic computed over a window containing frozen bars
+    states which side it took**, and the count is available to state it
+    with.
 - **A KRX trading date maps exactly onto UTC midnight.** The continuous
   session opens 09:00 KST and KST is UTC+9, so a bar dated `20240502`
   opens at `2024-05-02T00:00:00Z`. An equality, not a rounding -- verified
@@ -1022,16 +1050,47 @@ design above was fake-server-verified only until then. Full account:
   where position 8 means nothing, which is why the `KR` prefix is part of
   the rule).
 
-  **The two filters are orthogonal and a stock universe needs both.** The
-  ISIN does not separate stock from ETF — KODEX 200 is `KR7069500007`,
-  issue type `0` — and `ST` does not separate 보통주 from 우선주. Either
-  alone overstates. **The delisted finder publishes no group code at all**,
-  so on that side only the ISIN filter exists and a delisted SPAC or ETF
-  passes it; that gap is open, not closed.
+  **Three filters, and none subsumes the others.** The ISIN's issue type
+  does not separate stock from ETF — KODEX 200 is `KR7069500007`, issue
+  type `0`. `ST` does not separate 보통주 from 우선주. **And a SPAC passes
+  both**: it is legally a 주식회사, so it carries `ST` *and* a `KR7...0`
+  ISIN — 70 live names were counted as common stock until 2026-09-21.
 
-  Real counts, 2026-09-20: live **2,604** common + 114 preferred;
-  delisted plain codes **2,036** common, 302 not-common, 12 unreadable —
-  a **combined survivorship-safe common-stock pool of 4,640**.
+  **The ISIN's THIRD character gives the instrument class**, measured by
+  joining 증권그룹구분코드 onto 표준코드 across all 4,398 live rows:
+  `7` 주식+ETF+리츠, `G` ETN, `5` 펀드, `8` DR, `A` 신주인수권, non-`KR`
+  foreign. **This is what the delisted side has instead of a group code**,
+  and it is what removes ETNs and funds from a pool `plain_codes` alone
+  keeps.
+
+  **SPAC and REIT are name rules and are deliberately weaker, and both
+  must be anchored.** A SPAC's name is regulated
+  (`스팩`/`스팩N호`/`기업인수목적`): 70 live hits, all 70 `ST`. A bare
+  `리츠` match is **unusable** — 116 live hits of which 23 are REITs, 75
+  ETNs, 14 ETFs, plus 메리츠종금, the same substring failure 다우기술
+  showed for 우선주 — so an anchored form is used (25 hits, all 23 live
+  REITs). **The SPAC rule needed the same correction one day later**: a
+  bare `스팩` takes **아스팩오일**, a 코넥스 oil company, for a
+  blank-cheque vehicle — while the obvious anchor drops **미래에셋대우스팩
+  5호**, whose 호수 is preceded by a *space*. So the whitespace is part of
+  the rule, and a name rule is not finished until it has been run against
+  both universes in both directions. They are kept separate from the ISIN
+  rules in `data.krx_instrument` because a name is weaker evidence than a
+  structural field.
+
+  **An unbranded delisted ETF would still pass, and that is disclosed
+  rather than closed.** The evidence it is a small residue: **zero** of
+  the 2,335 KR7 plain delisted names carry any ETF-shaped word, where
+  **569 of 1,172 live ETFs do**.
+
+  Real counts, 2026-09-22, each step taken against the pool the step
+  before it left: live 2,719 `ST` → **2,605** common → **2,533** excluding
+  72 SPACs; delisted 2,353 plain → 2,039 after the issue type → 2,033
+  after the instrument class → **1,841** excluding 178 SPACs and 14 REITs.
+  **Combined pool 4,374.** The live side drifts by a name or two a day as
+  KRX lists and delists, so treat these as a dated measurement rather than
+  a constant — what is stable is the *chain*, and an earlier version of
+  this line quoted 1,846 by skipping the instrument-class step's six.
 
   KOSPI 915 + KOSDAQ 1,803 was the `ST` split. Over half the KOSPI file is
   ETFs and ETNs (`EF` 1,168, `EN` 375), which `ST` does correctly exclude. **The two files carry fixed tails of different lengths — KOSPI
@@ -1225,6 +1284,39 @@ log line could have reported it.
 Python and shell are exempt by construction: cron re-execs them every
 tick. A JVM keeps the classes it loaded at startup, so an OMS, Risk
 Gateway, adapter or `TradingLoop` fix does nothing until a restart.
+
+**That exemption assumes the checkout is current, and on 2026-09-21 it
+was not.** The instance's clone sat **11 PRs behind**, so its collectors
+re-exec'd faithfully every day — running the code of eleven PRs ago.
+Concretely: `collect-krx-flow.sh` recorded "2,718 common stock" on a rule
+this project had already replaced twice, and the delisted snapshot the
+whole survivorship argument rests on had **never been taken on the host
+that is the database of record**. Nothing reported it, for the same
+reason the Java case had nothing to report it: a process that is running
+looks identical whichever commit it came from.
+
+So the rule generalises, and the generalised form is the one to apply:
+**cron re-execs the file, not the repository.** A change to anything the
+instance runs — Python, shell, or Java — is not deployed until **both**
+of these hold, and neither implies the other:
+
+1. **The checkout contains the merge commit.** `git -C <checkout> log -1`
+   against the sha that was merged, on the instance. This is the half
+   that failed on 2026-09-21 and the half nothing was watching.
+2. **Every process that already loaded the changed code has restarted.**
+   A cron-invoked script satisfies this at its next tick by construction —
+   that is the real content of the old "Python and shell are exempt"
+   claim, and it is a statement about *cron*, not about Python. A
+   long-running Python process does **not**: the full-universe scan keeps
+   the modules it imported exactly as a JVM keeps its classes, so a fix
+   merged and pulled mid-run applies from the next run, not to the one in
+   flight.
+
+**`live.health_check`'s `check_deployment` covers neither.** It compares
+Java class mtimes against loop start times and flags uncommitted changes —
+it never asks whether the checkout is behind its remote, and it knows
+nothing about Python processes. Treating a green health check as evidence
+of either condition above is the mistake this paragraph exists to stop.
 
 So a session that merges a change under `java/` is **not finished when
 the PR merges**. It must additionally run `scripts/vps-deploy.sh` — or

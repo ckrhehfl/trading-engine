@@ -22,6 +22,7 @@ import urllib.parse
 
 import pytest
 
+from data.krx_instrument import is_common_stock
 from data.krx_delisted import (
     DELISTED_BLD,
     LISTED_BLD,
@@ -222,15 +223,68 @@ def test_common_stock_is_narrower_than_plain_codes():
     assert [d.code for d in common_stock(rows)] == ["117930"]
 
 
-def test_common_stock_CANNOT_drop_a_delisted_etf_or_spac():
-    """**Stated as a test because the opposite is the tempting reading.**
-    The ISIN's issue type separates 보통주 from 우선주 and says nothing
-    about instrument class -- KODEX 200 is `KR7069500007`. On the live
-    side KIS's 증권그룹구분코드 supplies that; **the delisted finder
-    publishes no group code at all**, so a delisted SPAC or ETF passes
-    this filter and the gap is real rather than closed."""
-    spac = Delisting("223040", "코스닥", "교보5호스팩", "KR7223040007")
-    assert common_stock([spac]) == [spac]
+def test_common_stock_now_drops_SPACs_and_REITs(monkeypatch):
+    """**This test asserted the opposite on 2026-09-20**, and its own name
+    said so: `test_common_stock_CANNOT_drop_a_delisted_etf_or_spac`. The
+    gap was real then — a SPAC is legally a 주식회사, so its group code is
+    `ST` and its ISIN is `KR7...0`, and it passed every structural test.
+
+    Two **name** rules close it, validated against live ground truth:
+    `스팩`/`기업인수목적` matched 70 live names, all 70 carrying `ST`; an
+    anchored 리츠 form matched 25 live names covering all 23 live REITs.
+    Measured over the real delisted list 2026-09-22, they remove **178
+    SPACs and 14 REITs** from the 2,033 the two ISIN rules leave.
+
+    아스팩오일 is in here because it is the name that made the SPAC rule
+    anchored: a 코넥스 oil company that a bare `스팩` substring removed.
+    """
+    rows = [
+        Delisting("223040", "코스닥", "교보5호스팩", "KR7223040007"),
+        Delisting("088260", "유가증권", "이리츠코크렙", "KR7088260005"),
+        Delisting("232360", "코넥스", "아스팩오일", "KR7232360008"),
+        Delisting("117930", "유가증권", "한진해운", "KR7117930008"),
+    ]
+    assert [d.code for d in common_stock(rows)] == ["232360", "117930"]
+
+
+def test_a_securities_firm_named_메리츠_is_NOT_dropped_as_a_REIT():
+    """The anchored form exists because a bare `리츠` match takes 메리츠종금
+    with it — the same substring failure 다우기술 showed for 우선주."""
+    rows = [Delisting("008560", "유가증권", "메리츠종금", "KR7008560006")]
+    assert [d.code for d in common_stock(rows)] == ["008560"]
+
+
+def test_an_ETN_or_fund_with_a_plain_code_is_dropped_by_its_ISIN_CLASS():
+    """`plain_codes` keeps them and the issue type says nothing about
+    them; the ISIN's third character is what puts them out."""
+    # **The code must be plain 6-digit or `plain_codes` drops it first
+    # and this proves nothing** — the first fixture used `Q50006`, which
+    # is six characters and not six digits, so the class filter was never
+    # reached. Real ETN ISIN: `KRG...`, and note it passes
+    # `is_common_stock` (position 8 is `0`), so only the class catches it.
+    etn = Delisting("500006", "코스닥", "an ETN", "KRG500000671")
+    assert is_common_stock(etn.standard_code), "the issue type does not object"
+    rows = [etn, Delisting("117930", "유가증권", "한진해운", "KR7117930008")]
+    assert [d.code for d in common_stock(rows)] == ["117930"]
+
+
+def test_an_unbranded_delisted_ETF_would_STILL_pass_and_that_is_disclosed():
+    """**What is not closed.** An ETF shares `KR7` with common stock and
+    carries no group code on the delisted side, so only its name betrays
+    it. The evidence that this is empty rather than merely unhandled is
+    quantified and indirect: **zero** of the 2,335 KR7 plain delisted
+    names carry any ETF-shaped word, where **569 of 1,172 live ETFs do**.
+    If delisted ETFs were present at that rate, P(seeing none) is under a
+    percent for even ten of them — so the count is small, not provably
+    zero."""
+    # position 8 must be `0` or the issue-type filter drops it for the
+    # wrong reason and the test proves nothing — the first fixture here
+    # had a `1` there.
+    fake_etf = Delisting("999000", "유가증권", "어떤성장액티브", "KR7999000005")
+    assert common_stock([fake_etf]) == [fake_etf], (
+        "an unbranded ETF is not detectable here, and pretending otherwise "
+        "would be worse than saying so"
+    )
 
 
 def test_plain_codes_KEEPS_preferred_shares_and_spacs():
