@@ -38,15 +38,26 @@ aside it no longer binds.
   decision after being shown the cost, not an oversight.
 
 **`live.health_check` is scheduled again on the instance (`*/15`, via
-`scripts/paper-trading-health-check.sh`) and three of its alerts are
+`scripts/paper-trading-health-check.sh`) and FIVE of its alerts are
 EXPECTED while this holds.** Recorded here so a future session — human or
 AI — reads the alert history without chasing them:
-`missing_daily_report:simulated`, `missing_daily_report:vst` and
-`signal_stale` are **true statements about a deliberate state**, not
-faults. The loops really are stopped and `generate_daily_signal.py`
-really is not running; the JSONL's own gap confirms it, with the previous
-entries ending 2026-09-17 and `signal_stale`'s hour count resolving to
-that same day.
+`missing_daily_report:simulated`, `missing_daily_report:vst`,
+`signal_stale`, and one `consecutive_dead` per loop are **true statements
+about a deliberate state**, not faults. The loops really are stopped and
+`generate_daily_signal.py` really is not running; the JSONL's own gap
+confirms it, with the previous entries ending 2026-09-17 and
+`signal_stale`'s hour count resolving to that same day.
+
+**One of those five carries a detail line that is now false, and it is
+left alone deliberately**: `consecutive_dead` says *"The watchdog
+restarts a dead session within 5 minutes, so it is not recovering this
+one"* — true when it was written, and wrong here, because
+`paper-trading-watchdog.sh` is **not scheduled at all** on this box. It
+reads as "supervision is trying and failing" when nothing is trying, by
+design. Correcting the wording needs the module to know whether a
+watchdog is scheduled, which is the same declaration rejected below, so
+the honest handling is to write down that the sentence does not apply
+rather than to build config for it.
 
 They are left standing rather than configured away. A "which loops are
 expected" declaration is the obvious fix and fails in the **unsafe**

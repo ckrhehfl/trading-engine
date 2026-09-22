@@ -38,12 +38,13 @@ set -euo pipefail
 
 MODE="simulated"
 INSTALL_CRON=0
+INSTALL_BTC_CRON=0
 MOCK_SIGNALS=0
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
     cat <<'USAGE'
-usage: vps-bootstrap.sh [--mode MODE] [--install-cron]
+usage: vps-bootstrap.sh [--mode MODE] [--install-cron] [--install-btc-cron]
 
   --mode simulated   the internal PaperBroker loop. Needs NO credentials.
                      This is what Gate A requires -- Gate A explicitly
@@ -63,6 +64,21 @@ usage: vps-bootstrap.sh [--mode MODE] [--install-cron]
                      default so the script can be run once to check the
                      machine before anything is scheduled on it.
 
+                     Installs the CURRENT scope only: the three KRX
+                     collectors and the read-only health check. It does
+                     NOT schedule anything that can start a trading loop.
+
+  --install-btc-cron additionally schedule the four BTC-era jobs, which
+                     are stopped by operator decision (2026-09-17). One
+                     of them is `paper-trading-watchdog.sh`, which
+                     RESTARTS whichever BTC loop is missing -- both are
+                     missing deliberately, so this resumes order
+                     submission to the VST demo venue within five
+                     minutes. Separate flag precisely so that cannot be
+                     a side effect of provisioning. `collect-positioning
+                     .sh` also needs a Korean IP (Binance answers HTTP
+                     451 here), so this flag alone does not make it work.
+
   --mock-signals     write PAPER_TRADING_MOCK_SIGNALS=1 into the crontab,
                      turning on Gate A's order-event generator. cron
                      inherits nothing from your shell, so exporting the
@@ -79,6 +95,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --mode) MODE="${2:?--mode needs a value}"; shift 2 ;;
         --install-cron) INSTALL_CRON=1; shift ;;
+        --install-btc-cron) INSTALL_BTC_CRON=1; shift ;;
         --mock-signals) MOCK_SIGNALS=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -333,12 +350,57 @@ CRON_ENV=("PAPER_TRADING_LAUNCHER=java")
 if ((MOCK_SIGNALS)); then
     CRON_ENV+=("PAPER_TRADING_MOCK_SIGNALS=1")
 fi
+# **What `--install-cron` schedules is the CURRENT scope, not the BTC one**
+# (split 2026-09-22). Before the split this array still held the four
+# BTC-era jobs and none of the three KRX collectors, so running
+# `--install-cron` on today's instance would have:
+#
+#   - re-added `paper-trading-watchdog.sh` at */5, which **restarts
+#     whichever of the two BTC loops is missing** -- both are missing
+#     deliberately (operator decision, 2026-09-17), so it would have
+#     resumed order submission to the VST demo venue inside five minutes
+#     without a human choosing that;
+#   - re-added `generate-mock-signal.sh` to feed them;
+#   - re-added `collect-positioning.sh`, which is a Binance collector and
+#     answers HTTP 451 from this instance -- it fails every series and
+#     exits non-zero, which CLAUDE.md records as the fail-closed design
+#     working and explicitly NOT a bug to fix by retrying;
+#
+# and would still not have scheduled a single thing that is supposed to
+# be running. A provisioning script that silently restarts a deliberately
+# stopped trading loop is the hazard here; the doc mismatch was the
+# symptom.
+#
+# The KRX hours are UTC and getting them wrong FAILS SILENTLY: the quote
+# sampler gates on KST internally, so a wrong-hour entry just logs
+# "outside the continuous session" forever and collects nothing. The
+# comment goes into the crontab itself rather than staying here, because
+# that is where the next person edits it.
 CRON_LINES=(
+    "# KRX trades 00:00-06:20 UTC. These hours are UTC, not KST -- a wrong"
+    "# hour collects NOTHING and says so only in the sampler's own log."
+    "*/30 0-6 * * 1-5 $REPO_ROOT/scripts/collect-krx-quotes.sh"
+    "10 7 * * 1-5 $REPO_ROOT/scripts/collect-krx-flow.sh"
+    "20 7 * * 1-5 $REPO_ROOT/scripts/collect-krx-intraday.sh"
+    "# Read-only: it cannot start, stop or signal a loop and places no"
+    "# order. Its missing_daily_report/signal_stale lines are EXPECTED"
+    "# while the BTC loops are stopped -- see CLAUDE.md's Current Scope."
+    "*/15 * * * * $REPO_ROOT/scripts/paper-trading-health-check.sh"
+)
+# **Kept, not deleted** -- the same treatment CLAUDE.md gives the struck
+# -through local-machine row, and for the same reason: BTC is set aside,
+# not abandoned. Resuming it is one deliberate flag rather than a silent
+# side effect of provisioning. `collect-positioning.sh` additionally
+# belongs on a Korean IP, so restoring it here is not sufficient for it.
+BTC_CRON_LINES=(
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-daily-signal.sh"
     "*/5 * * * * $REPO_ROOT/scripts/paper-trading-watchdog.sh"
     "*/30 * * * * $REPO_ROOT/scripts/collect-positioning.sh"
     "*/5 * * * * $REPO_ROOT/scripts/generate-mock-signal.sh"
 )
+if ((INSTALL_BTC_CRON)); then
+    CRON_LINES+=("${BTC_CRON_LINES[@]}")
+fi
 if ((INSTALL_CRON)); then
     current="$(crontab -l 2>/dev/null || true)"
     added=0
@@ -390,13 +452,24 @@ cat <<EOF
   mode: $MODE
 
   Next, in order:
-    1. Verify by hand once:   $REPO_ROOT/scripts/paper-trading-watchdog.sh
-    2. Watch a tick appear:   tail -f $REPO_ROOT/var/live/sessions/paper-trading.log
-    3. Re-run with --install-cron once step 2 looks right.
-    4. Check uptime after 24h: the daily report's
-       ticks_succeeded / ticks_attempted must be >= 0.99 for Gate A.
+    1. Re-run with --install-cron to schedule the KRX collectors and the
+       read-only health check.
+    2. Confirm cron itself came up:  journalctl -u cron --since '-1h'
+       A missing cron daemon looks exactly like a quiet system, and on
+       2026-09-17 that cost one session of order-book samples, which are
+       the one series with no historical endpoint at any price.
+    3. Watch the first collection:
+       tail -f $REPO_ROOT/var/live/krx-*.log
 
-  Gate A needs 15 CONSECUTIVE days. The clock restarts on any missing
-  daily report, so the thing to watch is not the strategy -- it is
-  whether var/live/reports/daily/ gains exactly one file per UTC day.
+  The BTC paper-trading loops are STOPPED by operator decision
+  (2026-09-17) and nothing above starts them. To resume that arc
+  deliberately -- and only then -- re-run with --install-btc-cron, and
+  read CLAUDE.md's Current Scope first: one of those jobs restarts a loop
+  within five minutes, and collect-positioning.sh additionally needs a
+  Korean IP that this instance does not have.
+
+  If and when they do resume, Gate A needs 15 CONSECUTIVE days and its
+  clock restarts on any missing daily report -- so the thing to watch is
+  not the strategy, it is whether var/live/reports/daily/ gains exactly
+  one file per UTC day.
 EOF
