@@ -436,18 +436,42 @@ if ((INSTALL_CRON)); then
     # install the current scope has to mean the BTC scope is not
     # installed, not merely that it is not added again.
     #
-    # Matched on the script's own filename rather than the whole line, so
-    # a hand-edited schedule (`*/10` instead of `*/5`) is still caught —
-    # that variant is exactly as capable of restarting the loop. Comment
-    # lines are left alone: they carry no job.
+    # **Matched on the basename of the COMMAND token**, which is the only
+    # form that gets both halves of this right, and neither of the two
+    # obvious forms does:
+    #
+    #   - a substring search for the filename deletes an operator's own
+    #     job that merely mentions it, and `…watchdog.sh.backup` with it;
+    #   - the exact `$REPO_ROOT/scripts/…` path misses a line pointing at
+    #     a DIFFERENT checkout, which is precisely the stale crontab this
+    #     removal exists for.
+    #
+    # Field 6 is the command in a standard entry, field 2 after an
+    # `@reboot`-style shortcut; anything with fewer fields (an env
+    # assignment) has no command and is left alone. So a hand-edited
+    # schedule (`*/10` instead of `*/5`) is still caught — that variant is
+    # exactly as capable of restarting the loop — while the same filename
+    # appearing as an *argument* is not our business.
     removed=0
     if ((INSTALL_BTC_CRON == 0)) && [[ -n "$current" ]]; then
         kept=""
         while IFS= read -r cron_line; do
+            # Leading whitespace is legal before a comment marker, and
+            # `\#*` alone does not see it.
+            trimmed="${cron_line#"${cron_line%%[![:space:]]*}"}"
             drop=0
-            if [[ "$cron_line" != \#* ]]; then
+            if [[ -n "$trimmed" && "$trimmed" != \#* ]]; then
+                read -r -a cron_fields <<<"$trimmed"
+                if [[ "${cron_fields[0]}" == @* ]]; then
+                    cron_cmd="${cron_fields[1]:-}"
+                else
+                    cron_cmd="${cron_fields[5]:-}"
+                fi
                 for btc in "${BTC_CRON_LINES[@]}"; do
-                    if [[ "$cron_line" == *"${btc##*/}"* ]]; then drop=1; break; fi
+                    if [[ -n "$cron_cmd" && "${cron_cmd##*/}" == "${btc##*/}" ]]; then
+                        drop=1
+                        break
+                    fi
                 done
             fi
             if ((drop)); then

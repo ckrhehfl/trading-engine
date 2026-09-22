@@ -213,3 +213,52 @@ def test_the_btc_flag_implies_install_rather_than_silently_doing_nothing():
         capture_output=True, text=True, check=True,
     )
     assert done.stdout.strip() == "cron=1 btc=1", done.stdout
+
+
+# --------------------------- what removal must NOT touch (PR #197 review)
+
+
+@pytest.mark.parametrize(
+    "seed, why",
+    [
+        (
+            "*/5 * * * * /R/scripts/paper-trading-watchdog.sh.backup",
+            "a different file whose name merely starts with the managed one",
+        ),
+        (
+            "0 3 * * * /home/me/archive.sh paper-trading-watchdog.sh",
+            "the operator's own job, passing the name as an ARGUMENT",
+        ),
+        (
+            # **No space after the `#`, deliberately.** The first version
+            # of this case wrote `# */5 ...` and was INERT: the `#` token
+            # shifts every field right by one, so the command lands at
+            # index 6 and the index-5 lookup finds a bare `*` whether or
+            # not the line was recognised as a comment. Only the unspaced
+            # form actually exercises the leading-whitespace trim.
+            "   #*/5 * * * * /R/scripts/paper-trading-watchdog.sh",
+            "a commented-out line -- leading whitespace is legal before #",
+        ),
+        (
+            "PAPER_TRADING_WATCHDOG=/R/scripts/paper-trading-watchdog.sh",
+            "an env assignment, which has no command field at all",
+        ),
+    ],
+)
+def test_removal_leaves_lines_it_does_not_manage(seed, why):
+    """Deleting a line this script does not own is destructive, and a
+    provisioning script gets exactly one chance to be trusted with a
+    crontab. Every case here defeats a plain substring search."""
+    assert seed in _run_install(seed, install_btc=0), why
+
+
+def test_removal_still_catches_a_DIFFERENT_checkout_path():
+    """The reason the match is on the command's basename rather than on
+    `$REPO_ROOT/scripts/...`: a stale crontab is exactly the one likely to
+    point at an older clone, and that line restarts the loop just the
+    same."""
+    seed = "*/5 * * * * /home/old/trading-engine/scripts/paper-trading-watchdog.sh"
+    out = _run_install(seed, install_btc=0)
+    assert "/home/old/" not in out, (
+        f"a watchdog in another checkout survived:\n{out}"
+    )
