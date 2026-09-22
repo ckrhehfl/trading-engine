@@ -1033,7 +1033,10 @@ design above was fake-server-verified only until then. Full account:
   run; and **bar timestamps are not uniformly on the minute grid** (2026-01-02
   returned `:11`-second stamps where every other probed date returned `:00`).
 - **The listed universe is 2,604 common stocks, not 2,718 — 증권그룹구분코드
-  `ST` is NOT common stock.** This entry read *"2,718 common stocks"* until
+  `ST` is NOT common stock.** Full record, including the two corrections
+  this rule took after it was first written and the pool's remaining open
+  gap: `.planning/rd-y-the-full-universe-scan.md`. This entry read
+  *"2,718 common stocks"* until
   2026-09-20, counted from `ST` alone; **114 of those 2,718 rows are
   우선주**. 삼성전자 `005930` and 삼성전자우 `005935` both carry `ST`, so
   any relative-volume or turnover ranking over an `ST` pool ranks an
@@ -1264,7 +1267,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 118 documents,
+   them. `.planning/README.md` carries an index of all 119 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
