@@ -935,6 +935,17 @@ design above was fake-server-verified only until then. Full account:
   implies a ~0.28 detection floor, but the operative figure is lower:
   a backtest assuming single-stock-futures execution cannot start before
   those futures existed, nor before the youngest constituent has data.
+- **KIS prints a bar for every session a HALTED name is listed, and it
+  looks like a quiet day rather than a stoppage.** `O == H == L == C`
+  with zero volume and zero turnover, repeated for as long as the halt
+  lasts: 신라젠 carries **604 consecutive** such sessions, 좋은사람들
+  **832**. Measured 2026-09-21 across the full-universe scan. **A bar is
+  therefore not evidence the name was tradeable**, which matters
+  precisely where it is least visible — a per-day selection rule ranking
+  on turnover sees a legitimate zero, and a returns series sees a
+  flat stretch it will read as low volatility. They are stored, because
+  they are what the tape said, and **counted separately** in the scan's
+  coverage report (`data/krx_scan.py`) so a reader can subtract them.
 - **A KRX trading date maps exactly onto UTC midnight.** The continuous
   session opens 09:00 KST and KST is UTC+9, so a bar dated `20240502`
   opens at `2024-05-02T00:00:00Z`. An equality, not a rounding -- verified
@@ -1256,6 +1267,24 @@ log line could have reported it.
 Python and shell are exempt by construction: cron re-execs them every
 tick. A JVM keeps the classes it loaded at startup, so an OMS, Risk
 Gateway, adapter or `TradingLoop` fix does nothing until a restart.
+
+**That exemption assumes the checkout is current, and on 2026-09-21 it
+was not.** The instance's clone sat **11 PRs behind**, so its collectors
+re-exec'd faithfully every day — running the code of eleven PRs ago.
+Concretely: `collect-krx-flow.sh` recorded "2,718 common stock" on a rule
+this project had already replaced twice, and the delisted snapshot the
+whole survivorship argument rests on had **never been taken on the host
+that is the database of record**. Nothing reported it, for the same
+reason the Java case had nothing to report it: a process that is running
+looks identical whichever commit it came from.
+
+So the rule generalises, and the generalised form is the one to apply:
+**cron re-execs the file, not the repository.** A change to anything the
+instance runs — Python, shell, or Java — is not deployed until that
+checkout is confirmed to contain it. `git -C <checkout> log -1` on the
+instance is the whole check, and a long-running Python process (the
+full-universe scan) additionally keeps the modules it imported, exactly
+like a JVM.
 
 So a session that merges a change under `java/` is **not finished when
 the PR merges**. It must additionally run `scripts/vps-deploy.sh` — or
