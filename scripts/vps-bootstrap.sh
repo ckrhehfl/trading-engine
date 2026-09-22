@@ -68,8 +68,9 @@ usage: vps-bootstrap.sh [--mode MODE] [--install-cron] [--install-btc-cron]
                      collectors and the read-only health check. It does
                      NOT schedule anything that can start a trading loop.
 
-  --install-btc-cron additionally schedule the four BTC-era jobs, which
-                     are stopped by operator decision (2026-09-17). One
+  --install-btc-cron also schedule the four BTC-era jobs. IMPLIES
+                     --install-cron, so it works on its own. These are
+                     stopped by operator decision (2026-09-17). One
                      of them is `paper-trading-watchdog.sh`, which
                      RESTARTS whichever BTC loop is missing -- both are
                      missing deliberately, so this resumes order
@@ -95,7 +96,10 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --mode) MODE="${2:?--mode needs a value}"; shift 2 ;;
         --install-cron) INSTALL_CRON=1; shift ;;
-        --install-btc-cron) INSTALL_BTC_CRON=1; shift ;;
+        # Implies --install-cron: a flag whose whole purpose is to
+        # schedule something, that silently schedules nothing when
+        # passed alone, is the guard-that-does-nothing shape.
+        --install-btc-cron) INSTALL_BTC_CRON=1; INSTALL_CRON=1; shift ;;
         --mock-signals) MOCK_SIGNALS=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
@@ -422,15 +426,48 @@ if ((INSTALL_CRON)); then
         grep -Fqx "$assignment" <<<"$current" || added=$((added + 1))
         current="$assignment${current:+$'\n'$current}"
     done
+    # **Removal, for the same reason the assignments above are stripped:
+    # appending alone protects a fresh box and leaves every existing one
+    # exactly as dangerous.** A crontab provisioned before 2026-09-22 —
+    # or by `--install-btc-cron` — already carries
+    # `paper-trading-watchdog.sh`, and a later plain `--install-cron`
+    # would add the current scope beside it and leave it restarting a
+    # deliberately stopped loop within five minutes. Being told to
+    # install the current scope has to mean the BTC scope is not
+    # installed, not merely that it is not added again.
+    #
+    # Matched on the script's own filename rather than the whole line, so
+    # a hand-edited schedule (`*/10` instead of `*/5`) is still caught —
+    # that variant is exactly as capable of restarting the loop. Comment
+    # lines are left alone: they carry no job.
+    removed=0
+    if ((INSTALL_BTC_CRON == 0)) && [[ -n "$current" ]]; then
+        kept=""
+        while IFS= read -r cron_line; do
+            drop=0
+            if [[ "$cron_line" != \#* ]]; then
+                for btc in "${BTC_CRON_LINES[@]}"; do
+                    if [[ "$cron_line" == *"${btc##*/}"* ]]; then drop=1; break; fi
+                done
+            fi
+            if ((drop)); then
+                removed=$((removed + 1))
+                warn "removing BTC-era cron line (stopped 2026-09-17): $cron_line"
+                continue
+            fi
+            kept="${kept:+$kept$'\n'}$cron_line"
+        done <<<"$current"
+        current="$kept"
+    fi
     for line in "${CRON_LINES[@]}"; do
         if ! grep -Fqx "$line" <<<"$current"; then
             current="${current:+$current$'\n'}$line"
             added=$((added + 1))
         fi
     done
-    if ((added)); then
+    if ((added || removed)); then
         printf '%s\n' "$current" | crontab -
-        ok "installed $added cron line(s)"
+        ok "installed $added cron line(s), removed $removed"
     else
         ok "cron already up to date"
     fi

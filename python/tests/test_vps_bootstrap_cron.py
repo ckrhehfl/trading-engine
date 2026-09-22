@@ -26,6 +26,7 @@ already paid for three times (`test_conftest_isolation.py`).
 from __future__ import annotations
 
 import subprocess
+import tempfile
 from pathlib import Path
 
 import pytest
@@ -132,3 +133,83 @@ def test_both_flags_are_documented_in_usage(flag):
     src = SCRIPT.read_text(encoding="utf-8")
     usage = src[src.find("usage() {"):src.find("USAGE\n}")]
     assert flag in usage, f"{flag} is not in the usage text"
+
+
+# ------------------------------------------- the install block, really run
+
+
+def _run_install(seed: str, install_btc: int) -> str:
+    """Execute the script's real crontab-install block against a seeded
+    crontab, with `crontab` itself stubbed.
+
+    Appending alone protects a fresh box and leaves every existing one
+    exactly as dangerous, so what has to be tested is the **migration**:
+    a crontab that already carries the watchdog. Building the expected
+    output by hand would test my reading of the block, not the block.
+    """
+    src = SCRIPT.read_text(encoding="utf-8")
+    arrays = src[src.index("CRON_ENV=("):src.index("if ((INSTALL_CRON)); then")]
+    block = src[src.index("if ((INSTALL_CRON)); then"):src.index('say "ready"')]
+    with tempfile.TemporaryDirectory() as tmp:
+        seed_f, out_f = Path(tmp) / "seed", Path(tmp) / "out"
+        seed_f.write_text(seed, encoding="utf-8")
+        prog = (
+            "REPO_ROOT=/R\nINSTALL_CRON=1\n"
+            f"INSTALL_BTC_CRON={install_btc}\nMOCK_SIGNALS=0\n"
+            "ok(){ :; }; warn(){ :; }; systemctl(){ return 1; }\n"
+            'crontab() { if [ "$1" = "-l" ]; then cat ' f'"{seed_f}"'
+            '; else cat > ' f'"{out_f}"' '; fi; }\n'
+            f"{arrays}\n{block}\n"
+        )
+        subprocess.run(["bash", "-c", prog], check=True, capture_output=True)
+        return out_f.read_text(encoding="utf-8") if out_f.exists() else seed
+
+
+def test_a_plain_install_REMOVES_an_existing_watchdog_line():
+    """**The migration hazard.** A box provisioned before 2026-09-22 —
+    or by `--install-btc-cron` — already carries the watchdog. Being told
+    to install the current scope has to mean the BTC scope is not
+    installed, not merely that it is not added again."""
+    seed = "*/5 * * * * /R/scripts/paper-trading-watchdog.sh"
+    out = _run_install(seed, install_btc=0)
+    assert RESTARTS_A_LOOP not in out, (
+        f"the watchdog survived a plain --install-cron:\n{out}"
+    )
+    assert "collect-krx-quotes.sh" in out, "the current scope was not installed"
+
+
+def test_removal_matches_a_HAND_EDITED_schedule_too():
+    """Matched on the filename, not the whole line: `*/10` instead of
+    `*/5` is exactly as capable of restarting the loop."""
+    seed = "*/10 * * * * /R/scripts/paper-trading-watchdog.sh"
+    assert RESTARTS_A_LOOP not in _run_install(seed, install_btc=0)
+
+
+def test_the_BTC_flag_keeps_an_existing_watchdog_line():
+    """Removal must be the consequence of *not* asking for BTC, never an
+    unconditional purge — otherwise resuming the arc fights the script."""
+    seed = "*/5 * * * * /R/scripts/paper-trading-watchdog.sh"
+    assert RESTARTS_A_LOOP in _run_install(seed, install_btc=1)
+
+
+def test_an_unrelated_cron_line_is_never_touched():
+    """The operator's own jobs are not this script's to manage."""
+    seed = "0 3 * * * /home/me/backup.sh"
+    assert "/home/me/backup.sh" in _run_install(seed, install_btc=0)
+
+
+def test_the_btc_flag_implies_install_rather_than_silently_doing_nothing():
+    """It set `INSTALL_BTC_CRON` without `INSTALL_CRON`, so passing it
+    alone built the array and then printed "cron not touched" — a flag
+    whose whole purpose is to schedule something, scheduling nothing."""
+    src = SCRIPT.read_text(encoding="utf-8")
+    parser = src[src.index("while [[ $# -gt 0 ]]; do"):src.index('case "$MODE" in')]
+    done = subprocess.run(
+        ["bash", "-c",
+         "INSTALL_CRON=0; INSTALL_BTC_CRON=0; MOCK_SIGNALS=0; MODE=simulated\n"
+         "usage(){ :; }\n"
+         f"set -- --install-btc-cron\n{parser}\n"
+         'echo "cron=$INSTALL_CRON btc=$INSTALL_BTC_CRON"'],
+        capture_output=True, text=True, check=True,
+    )
+    assert done.stdout.strip() == "cron=1 btc=1", done.stdout
