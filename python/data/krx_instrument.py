@@ -187,7 +187,12 @@ def instrument_class(isin: str | None) -> InstrumentClass:
 #: of the rule and not tidiness. Measured 2026-09-22: identical to the
 #: substring form on all 4,403 live rows (72 hits either way), and on the
 #: 4,185 delisted ones it releases exactly 아스팩오일 (179 -> 178).
-_SPAC_PATTERN = re.compile(r"스팩\s*$|스팩\s*[0-9]|기업인수목적")
+#:
+#: The separator is `[ \t]`, not `\s`, for the same reason the anchor is
+#: there at all: `\s` also spans a newline, so `아스팩\n5호` would match
+#: and the name would be dropped from the pool. A separator inside a
+#: trading name is a space or a tab; anything else is not one name.
+_SPAC_PATTERN = re.compile(r"스팩[ \t]*$|스팩[ \t]*[0-9]|기업인수목적")
 
 #: **A naive `리츠` match is unusable and that is measured, not guessed.**
 #: It returns 116 live names of which only 23 are REITs: 75 are ETNs and

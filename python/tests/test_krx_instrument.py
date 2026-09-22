@@ -209,7 +209,9 @@ def test_the_regulated_spac_name_is_matched(name):
     assert is_spac(name)
 
 
-@pytest.mark.parametrize("name", ["삼성전자", "다우기술", "스팩토리", "아스팩오일"])
+@pytest.mark.parametrize(
+    "name", ["삼성전자", "다우기술", "스팩토리", "아스팩오일", "아스팩\n5호"]
+)
 def test_an_ordinary_name_is_not_a_spac(name):
     """**아스팩오일 is the real one**, a 코넥스 oil company the substring
     form took for a blank-cheque vehicle — 다우기술's lesson recurring one
@@ -231,6 +233,9 @@ def test_the_spac_rule_is_anchored_rather_than_a_substring_search():
     assert _SPAC_PATTERN.search("미래에셋대우스팩 5호")
     assert not _SPAC_PATTERN.search("아스팩오일")
     assert not _SPAC_PATTERN.search("스팩토리")
+    # `\s` would span this and drop the name; a separator inside one
+    # trading name is a space or a tab.
+    assert not _SPAC_PATTERN.search("아스팩\n5호")
 
 
 def test_the_naive_REIT_rule_is_rejected_and_the_measurement_says_why():

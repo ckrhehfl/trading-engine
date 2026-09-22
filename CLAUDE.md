@@ -946,6 +946,23 @@ design above was fake-server-verified only until then. Full account:
   flat stretch it will read as low volatility. They are stored, because
   they are what the tape said, and **counted separately** in the scan's
   coverage report (`data/krx_scan.py`) so a reader can subtract them.
+
+  **What follows for analysis, split into the part that is decided and
+  the part that is not**, because "stored and counted" is not a rule:
+
+  - **Decided, and it follows directly from the measurement: a frozen bar
+    may never make a name eligible.** Any selection, ranking or liquidity
+    screen — turnover, relative volume, spread, anything answering *was
+    this tradeable* — must exclude it. A halt reads as a legitimate zero
+    otherwise, and the scan's whole purpose is a per-day selection rule.
+  - **Not decided, and deliberately left open: what a return computed
+    across a halt means.** Booking the full gap on the resumption bar and
+    treating the flat stretch as zero-volatility are both wrong in
+    different directions, and choosing between them is a research
+    decision with its own `Discuss`, not a data-layer default. Until it is
+    taken, **any statistic computed over a window containing frozen bars
+    states which side it took**, and the count is available to state it
+    with.
 - **A KRX trading date maps exactly onto UTC midnight.** The continuous
   session opens 09:00 KST and KST is UTC+9, so a bar dated `20240502`
   opens at `2024-05-02T00:00:00Z`. An equality, not a rounding -- verified
@@ -1280,11 +1297,26 @@ looks identical whichever commit it came from.
 
 So the rule generalises, and the generalised form is the one to apply:
 **cron re-execs the file, not the repository.** A change to anything the
-instance runs — Python, shell, or Java — is not deployed until that
-checkout is confirmed to contain it. `git -C <checkout> log -1` on the
-instance is the whole check, and a long-running Python process (the
-full-universe scan) additionally keeps the modules it imported, exactly
-like a JVM.
+instance runs — Python, shell, or Java — is not deployed until **both**
+of these hold, and neither implies the other:
+
+1. **The checkout contains the merge commit.** `git -C <checkout> log -1`
+   against the sha that was merged, on the instance. This is the half
+   that failed on 2026-09-21 and the half nothing was watching.
+2. **Every process that already loaded the changed code has restarted.**
+   A cron-invoked script satisfies this at its next tick by construction —
+   that is the real content of the old "Python and shell are exempt"
+   claim, and it is a statement about *cron*, not about Python. A
+   long-running Python process does **not**: the full-universe scan keeps
+   the modules it imported exactly as a JVM keeps its classes, so a fix
+   merged and pulled mid-run applies from the next run, not to the one in
+   flight.
+
+**`live.health_check`'s `check_deployment` covers neither.** It compares
+Java class mtimes against loop start times and flags uncommitted changes —
+it never asks whether the checkout is behind its remote, and it knows
+nothing about Python processes. Treating a green health check as evidence
+of either condition above is the mistake this paragraph exists to stop.
 
 So a session that merges a change under `java/` is **not finished when
 the PR merges**. It must additionally run `scripts/vps-deploy.sh` — or
