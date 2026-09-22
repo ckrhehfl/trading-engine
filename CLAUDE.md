@@ -1315,11 +1315,21 @@ of these hold, and neither implies the other:
    merged and pulled mid-run applies from the next run, not to the one in
    flight.
 
-**`live.health_check`'s `check_deployment` covers neither.** It compares
-Java class mtimes against loop start times and flags uncommitted changes —
-it never asks whether the checkout is behind its remote, and it knows
-nothing about Python processes. Treating a green health check as evidence
-of either condition above is the mistake this paragraph exists to stop.
+**`live.health_check`'s `check_deployment` now covers condition 1 and
+cannot cover condition 2.** `stale_checkout` (added 2026-09-22) fetches
+the checkout's own upstream and reports how far behind it is, at
+**WARNING** below `STALE_CHECKOUT_HOURS` (24) and **CRITICAL** above —
+because one commit behind is what every box looks like between a merge and
+its deploy, while a day behind means a scheduled job has already run on
+superseded code. A failed fetch is disclosed as
+`checkout_freshness_unknown`, but only when the cached refs say "current",
+since that is the one case where unreachable and current are
+indistinguishable.
+
+Condition 2 has no general check and is not going to get one: a process's
+loaded modules are not observable from outside it. **That half stays a
+human obligation** — whoever merges a change to something long-running
+confirms the restart.
 
 So a session that merges a change under `java/` is **not finished when
 the PR merges**. It must additionally run `scripts/vps-deploy.sh` — or
