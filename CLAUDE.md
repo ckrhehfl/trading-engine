@@ -37,6 +37,31 @@ aside it no longer binds.
   project has never passed. Discarding it was the operator's explicit
   decision after being shown the cost, not an oversight.
 
+**`live.health_check` is scheduled again on the instance (`*/15`, via
+`scripts/paper-trading-health-check.sh`) and three of its alerts are
+EXPECTED while this holds.** Recorded here so a future session — human or
+AI — reads the alert history without chasing them:
+`missing_daily_report:simulated`, `missing_daily_report:vst` and
+`signal_stale` are **true statements about a deliberate state**, not
+faults. The loops really are stopped and `generate_daily_signal.py`
+really is not running; the JSONL's own gap confirms it, with the previous
+entries ending 2026-09-17 and `signal_stale`'s hour count resolving to
+that same day.
+
+They are left standing rather than configured away. A "which loops are
+expected" declaration is the obvious fix and fails in the **unsafe**
+direction: the moment someone restarts a loop and forgets to add it, that
+loop's death goes silent. If it is ever built, the default for an absent
+declaration must be today's noisy behaviour.
+
+What the schedule is actually for is the two checks that have nothing to
+do with BTC — **`stale_checkout`**, which is the only thing watching the
+link that failed on 2026-09-21 (11 PRs behind while the collectors ran
+faithfully), and **`check_disk`**, which is not free on a 955 MB / 30 GB
+instance carrying a multi-million-row scan. There is still **no outbound
+channel, by deliberate decision (2026-09-06)** — the value is the durable
+history in `var/live/health-alerts.jsonl`, not a notification.
+
 **The `kis-paper` loop is NOT a replacement for the stopped ones and is
 not running.** Its kill switch trips unconditionally at construction by
 design, and `STOCK_FUTURES` refuses to start at all because the per-stock
