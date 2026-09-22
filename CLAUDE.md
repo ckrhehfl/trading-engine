@@ -948,6 +948,20 @@ design above was fake-server-verified only until then. Full account:
   daily-indexchartprice`, `FHKUP03500100`, division `U`, codes `0001`
   KOSPI / `1001` KOSDAQ / `2001` KOSPI200. Same `tr_id` on paper and
   production, unlike the trading TRs' `V`-prefix convention.
+- **The INDEX endpoint intermittently rejects a valid request, and the
+  equity one did not.** A real `HTTP 200` carrying `rt_cd=1
+  msg_cd=OPSQ0003` for a window that answers normally on the next
+  attempt. Measured 2026-09-22 with 15 identical calls per window:
+  **index 3 of 15 on one window, 0 of 15 on another; equity 0 of 15 on
+  the same range** — so it is per-call and random rather than a property
+  of the window, and 15 equity calls is not proof the equity endpoint
+  never does it. **This is not a nicety to handle**: a 47-call reference
+  backfill at that rate completes with probability ~3e-5, and the first
+  real attempt died on its 32nd call. `kis_klines.fetch_daily_page`
+  retries it, bounded, from an **allowlist** (`_RETRYABLE_MSG_CD`) — every
+  other non-zero `rt_cd` this project has met is permanent (a wrong TR
+  id, a wrong market division, a code that does not exist) and retrying
+  into one is the mistake already recorded for Binance's HTTP 418.
 - **The two endpoints cap at DIFFERENT row counts, and both truncate
   silently.** Equities **100** rows per call; indices **50**. Both return
   `rt_cd=0` and keep the **newest** rows, dropping the oldest -- BingX's
