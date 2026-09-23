@@ -164,6 +164,41 @@ def test_a_symbol_that_never_completed_is_not_silently_judged():
         coverage_for(scan, "A", ref)
 
 
+def test_a_run_that_judges_NOTHING_is_refused(tmp_path, capsys):
+    """**The symmetric case to an empty reference**, and it was missed on
+    the first version. `reference_days` already refuses an empty calendar
+    because it makes every symbol look complete; an empty symbol list
+    makes the whole panel look complete the same way — zero gaps out of
+    zero judged, printed as a clean report and exit 0.
+
+    A verification that cannot fail is not evidence, which is the rule
+    `change_check.check_script_fails_closed` exists for.
+    """
+    import sqlite3
+
+    from research.krx_panel_coverage import main
+
+    ref, scan = tmp_path / "ref.sqlite3", tmp_path / "scan.sqlite3"
+    rc = sqlite3.connect(ref)
+    rc.execute("CREATE TABLE klines (symbol TEXT, interval TEXT, open_time_ms INTEGER)")
+    rc.executemany("INSERT INTO klines VALUES ('KRX-INDEX:0001','1d',?)",
+                   [(trading_date_to_ms(d),) for d in DAYS])
+    rc.commit(); rc.close()
+
+    sc = sqlite3.connect(scan)
+    sc.execute("CREATE TABLE scan_bars (code TEXT, bsop_date TEXT)")
+    sc.execute(
+        "CREATE TABLE scan_progress (code TEXT PRIMARY KEY, first_date TEXT, "
+        "last_date TEXT, bars INTEGER, frozen INTEGER, status TEXT, fetched_at TEXT)"
+    )
+    # a scan that has only failures -- exactly what a broken pass looks like
+    sc.execute("INSERT INTO scan_progress VALUES ('005930',NULL,NULL,0,0,'failed:X','t')")
+    sc.commit(); sc.close()
+
+    assert main(["--scan-db", str(scan), "--reference-db", str(ref)]) == 1
+    assert "REFUSED" in capsys.readouterr().err
+
+
 def test_frozen_bars_are_carried_through_rather_than_rediscovered():
     """They are the opposite failure to a gap -- present, and not evidence
     the name was tradeable -- so the count travels with the coverage."""

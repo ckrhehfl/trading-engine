@@ -215,6 +215,18 @@ def main(argv: list[str] | None = None) -> int:
     try:
         reference = reference_days(ref_conn, args.index)
         rows = panel_coverage(scan_conn, reference, limit=args.limit or None)
+        if not rows:
+            # **The symmetric case to an empty reference, and it was
+            # missed.** `reference_days` already refuses an empty calendar
+            # because it would make every symbol look complete; an empty
+            # symbol list makes the *panel* look complete for the same
+            # reason -- zero gaps out of zero judged, reported as success.
+            # A verification that cannot fail is not evidence.
+            raise PanelCoverageError(
+                "no symbol has status 'done' in this scan database, so "
+                "nothing was judged. A coverage report over zero symbols "
+                "is not a verified panel."
+            )
     except (PanelCoverageError, ReferenceCalendarError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 1
