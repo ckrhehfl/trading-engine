@@ -1311,7 +1311,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 119 documents,
+   them. `.planning/README.md` carries an index of all 120 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1956,7 +1956,7 @@ buy statistical power):
 | 1d early-window holdout | ~0.96 |
 | Binance spot 1d "virgin" holdout | ~0.85 |
 | BingX 1m (full 631.98-day window) | ~1.25 |
-| Binance futures 1m (full 6.96-year window) | **~0.62** — the best this project has, and still unspent |
+| Binance futures 1m (full 6.96-year window) | **~0.62** — the best this project has, and **spent** (first access 2026-08-26; a designated discovery window, so it is closed to confirmation) |
 
 **The `1d` holdout is inverted, deliberately** (`sr-t`): every logged
 backtest run starts at or after 2024-04-27T10:00Z (1h retention's floor),

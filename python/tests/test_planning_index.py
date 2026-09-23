@@ -238,6 +238,64 @@ def test_claude_md_s_unspent_windows_are_really_unspent():
     )
 
 
+def test_NO_paragraph_of_claude_md_calls_a_spent_window_unspent():
+    """The check above reads **one** paragraph. This reads every line.
+
+    Found by an external audit on 2026-09-23. The detection-floor table
+    described the Binance futures 1m window as *"the best this project
+    has, and still unspent"*, while the ledger records its first access on
+    **2026-08-26** and four other paragraphs correctly treat it as spent
+    and as a designated discovery window.
+
+    The canonical-paragraph check could not see it, and this is the row a
+    researcher reaches for first: its floor (~0.62) is the best on the
+    table. A scoped guard that leaves the attractive claim outside its
+    scope is the shape this repository keeps paying for.
+    """
+    from research.spent_windows import load
+
+    spent = set()
+    for row in load():
+        for name, (sym_part, interval) in WINDOW.items():
+            if row["interval"] == interval and sym_part in row["symbol"]:
+                spent.add(name)
+
+    import re
+
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+
+    # **The two checks partition the file rather than overlapping.** The
+    # canonical paragraph is the other test's job, and it must be excluded
+    # by span rather than by wording: it wraps so that a *designated
+    # discovery* window's name lands on the same physical line as
+    # "Unspent and therefore", which a line-based rule reads as a breach.
+    canonical = re.search(
+        r"Unspent and therefore \*not\* available\s*\n?\s*for discovery: .+?\.",
+        claude,
+        re.S,
+    )
+    assert canonical, "the canonical paragraph moved; repair both checks together"
+    lo = claude.count("\n", 0, canonical.start()) + 1
+    hi = claude.count("\n", 0, canonical.end()) + 1
+
+    offenders = []
+    for n, line in enumerate(claude.splitlines(), start=1):
+        if lo <= n <= hi:
+            continue
+        low = line.lower()
+        if "unspent" not in low and "untouched" not in low:
+            continue
+        for name in spent:
+            # a line that says "**spent**" is the correction, not a breach
+            if name in line and "**spent**" not in line:
+                offenders.append((n, name, line.strip()[:100]))
+    assert not offenders, (
+        "CLAUDE.md describes a SPENT window as unspent/untouched outside "
+        "the canonical paragraph:\n"
+        + "\n".join(f"  line {n}: {name} -- {txt}" for n, name, txt in offenders)
+    )
+
+
 def test_the_spent_window_ledger_matches_the_log():
     """The ledger is derived, so it can drift from what it summarises.
 
