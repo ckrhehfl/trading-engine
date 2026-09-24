@@ -168,11 +168,69 @@ def test_the_real_audit_finds_orphans_and_they_may_never_be_trimmed():
 
 
 def test_the_audit_can_be_scoped_to_one_section():
+    """**The boundaries are asserted, not merely the fact that filtering
+    happened.** The first version checked only that the scoped result was a
+    non-empty proper subset — which any heading would satisfy, so the test
+    passed without establishing that the *right* section was selected.
+    Reported on review, and it is the same shape as a verification that
+    shares an assumption with its implementation.
+
+    The span is derived from the committed file rather than hardcoded, because
+    a line number rots on the next edit; what is pinned is that every scoped
+    line falls inside the section's own heading boundaries and that a line
+    from a different section does not.
+    """
+    from research.figure_survival import CLAUDE_MD, section_span
+
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    lo, hi = section_span(text, "Scalping")
+    assert "scalping" in text.splitlines()[lo - 1].lower()
+    assert text.splitlines()[hi].startswith("#"), "the span does not end at a heading"
+
     whole = audit()
     scoped = audit("Scalping")
     assert scoped, "the section filter matched nothing"
-    assert len(scoped) < len(whole)
+    assert all(lo <= v.number <= hi for v in scoped), (
+        f"a scoped line fell outside {lo}..{hi}: "
+        f"{[v.number for v in scoped if not lo <= v.number <= hi]}"
+    )
     assert {v.number for v in scoped} <= {v.number for v in whole}
+
+    # And a figure line from a DIFFERENT section is excluded, so the filter is
+    # selecting rather than merely truncating.
+    risk_lo, risk_hi = section_span(text, "Risk Parameters")
+    assert risk_hi < lo or risk_lo > hi, "the two sections overlap; pick another"
+    assert not any(risk_lo <= v.number <= risk_hi for v in scoped)
+
+
+def test_a_section_that_matches_nothing_RAISES():
+    """A filter that matches nothing and reports nothing is the inert-guard
+    shape this repo has paid for three times."""
+    from research.figure_survival import KisSectionError
+
+    with pytest.raises(KisSectionError, match="no heading"):
+        audit("a heading that does not exist anywhere")
+
+
+def test_a_hash_inside_a_FENCED_BLOCK_does_not_end_a_section():
+    """**A real defect in the first version**, which toggled on any line
+    starting with `#`: a `#` comment inside a fenced code block ended the
+    section silently, and `CLAUDE.md` contains both fences and `#` comments.
+    Subsection headings did the same, which is why the span is depth-aware."""
+    from research.figure_survival import section_span
+
+    doc = "\n".join([
+        "## Wanted",            # 1
+        "PSR 0.9705",           # 2
+        "```bash",              # 3
+        "# a comment, not a heading",  # 4
+        "```",                  # 5
+        "### A subsection",     # 6  -- deeper, so still inside
+        "Sharpe 0.716",         # 7
+        "## Next",              # 8  -- same depth, so the end
+        "4,374",                # 9
+    ])
+    assert section_span(doc, "Wanted") == (1, 7)
 
 
 def test_the_tool_reads_the_committed_file_not_a_copy():

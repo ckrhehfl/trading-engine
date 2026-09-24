@@ -176,17 +176,54 @@ def _survives(figure: str, corpus_norm: str) -> bool:
     return False
 
 
+def section_span(text: str, section: str) -> tuple[int, int]:
+    """1-indexed `(first, last)` lines of the section whose heading matches.
+
+    **Depth-aware and fence-aware, and both of those are fixes rather than
+    polish.** The first version toggled on any line starting with `#`, so a
+    subsection heading inside the wanted section silently ended it, and a `#`
+    comment inside a fenced code block did the same — `CLAUDE.md` contains
+    both. A section runs until the next heading at the **same or shallower**
+    depth, which is what a reader means by a section.
+
+    Raises rather than returning an empty span: a filter that matches nothing
+    and reports nothing is the inert-guard shape this repo has paid for.
+    """
+    lines = text.splitlines()
+    depth = None
+    start = None
+    fenced = False
+    for i, line in enumerate(lines, start=1):
+        if line.lstrip().startswith("```"):
+            fenced = not fenced
+            continue
+        if fenced or not line.startswith("#"):
+            continue
+        this_depth = len(line) - len(line.lstrip("#"))
+        if start is None:
+            if section.lower() in line.lower():
+                depth, start = this_depth, i
+            continue
+        if this_depth <= depth:
+            return start, i - 1
+    if start is None:
+        raise KisSectionError(f"no heading in CLAUDE.md matches {section!r}")
+    return start, len(lines)
+
+
+class KisSectionError(ValueError):
+    """No heading matched — never silently an empty audit."""
+
+
 def audit(section: str | None = None) -> list[LineVerdict]:
     text = CLAUDE_MD.read_text(encoding="utf-8")
     corpus_norm = _normalise(_planning_corpus())
 
+    lo, hi = (1, len(text.splitlines())) if section is None else section_span(text, section)
     lines = text.splitlines()
     verdicts: list[LineVerdict] = []
-    in_section = section is None
     for i, line in enumerate(lines, start=1):
-        if section is not None and line.startswith("#"):
-            in_section = section.lower() in line.lower()
-        if not in_section:
+        if not (lo <= i <= hi):
             continue
         figs = figures_in(line)
         if not figs:
