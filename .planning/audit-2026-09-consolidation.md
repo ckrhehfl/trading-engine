@@ -95,17 +95,25 @@ The affected studies become **unevaluable on that axis**, not reversed.
 
 ### D3 — What `krx_conjunction` trades: **outright**
 
-The module currently computes three different quantities and prints them
-as one recommendation:
+The module **computed** three different quantities and printed them as one
+recommendation. This is the defect as found; it was fixed on 2026-09-24
+(PR #203), so the table is a historical record and not a description of the
+module today:
 
-| | quantity |
+| | quantity, **as found** |
 |---|---|
 | `p_value` | conditional raw return vs **zero** |
 | `direction` | sign of (conditional − unconditional panel mean) |
 | `clears_cost` | \|conditional − panel mean\| > 13 bp |
 
-So a basket rising 20 bp in a panel rising 50 bp prints
+So a basket rising 20 bp in a panel rising 50 bp printed
 `<< SHORT, clears 13bp`, and shorting it loses.
+
+**As it stands now**, `direction` and `clears_cost` both read `mean_bp`, so
+the cost bar is **`|mean_bp| > 13 bp`** and `excess_bp` survives only as a
+reported diagnostic. Every `11.4 bp` and `8.7%` below is an **excess**
+figure and belongs to the combination effect or to the diagnostic, never to
+a cost verdict; the cost verdict's own figures are `−14.4 bp` and `11.0%`.
 
 **Outright is the settled definition**, for three reasons:
 

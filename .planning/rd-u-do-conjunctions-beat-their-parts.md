@@ -210,8 +210,17 @@ bites this study at all.
 
 ## 5. The clean read: held 1 day, entered at the next open
 
-Baseline (unconditional) **−3.0 bp**, 1,174 dates. The bar is
-`|excess| > 13 bp`, since a round trip is paid in either direction.
+Baseline (unconditional) **−3.0 bp**, 1,174 dates.
+
+> **The bar below is the one this run applied and it is NOT the bar any
+> more** (§0, 2026-09-24). It read `|excess| > 13 bp`; the current bar is
+> **`|mean_bp| > 13 bp`**, because a round trip is paid on the raw move.
+> The `excess` column stays, as a drift-removed **diagnostic** — it is the
+> right unit for the superadditivity finding and the wrong one for what a
+> trade earns. Read the `mean` column for anything about cost.
+
+The bar this run applied was `|excess| > 13 bp`, since a round trip is paid
+in either direction.
 
 | combination | name-days | dates | mean bp | excess | p | BH |
 |---|---|---|---|---|---|---|
@@ -249,7 +258,7 @@ first drafted from figures with no committed generating path.
 **A KRX day moves about ten times the cost of trading it.** Absolute
 intraday move (`open → close`), 11,550 usable name-days:
 
-| | move | vs the 13 bp round trip |
+| | move | vs the 13 bp round trip (**on the raw mean** — §0) |
 |---|---|---|
 | p25 | 59.7 bp | **4.59×** |
 | **median** | **131.2 bp** | **10.09×** |
@@ -267,13 +276,20 @@ cost floor"* is arithmetically true and invites exactly the wrong
 inference; the honest form is **"it predicted almost none of a move that
 is enormous relative to its cost."**
 
-> **Corrected 2026-09-24 (§0), and this paragraph's own arithmetic is the
-> second independent route to the correction.** The figure to compare is
-> the **raw** mean, 14.4 bp, not the 11.4 bp of excess: **14.4 / 131 =
-> 11.0%**, against a cost floor that is itself 13.0 / 131 = **9.9%** of
-> the same move — the "10% would have paid for the trade" in this very
-> sentence. So it did pay for the trade, which is the reversal §0 records,
-> reached here without going near the cost floor in bp.
+> **Two figures above are superseded and one sentence above is now false**
+> (§0, 2026-09-24) — **and this paragraph's own arithmetic is the second
+> independent route to the correction.**
+>
+> **11.4 bp and 8.7% are EXCESS figures**, belonging to the combination
+> effect and the diagnostic, never to a cost verdict. The figure to compare
+> against a round trip is the **raw** mean, −14.4 bp: **14.4 / 131 =
+> 11.0%**, against a cost floor that is itself 13.0 / 131 = **9.9%** of the
+> same move — the *"10% would have paid for the trade"* in this very
+> sentence. So it did pay for the trade, reached here without going near the
+> floor in bp.
+>
+> Which makes *"it did not clear the cost floor"* **not** arithmetically
+> true after all, where this paragraph calls it so.
 >
 > **The claim this paragraph is actually making survives, and is
 > strengthened.** *"It predicted almost none of a move that is enormous
@@ -435,6 +451,12 @@ re-run. **Seven of seven produce a failure**, verified rather than read:
 | entry at the **next** open | `o[t+1]` → `o[t]` | 2 failed |
 | a median split needs 3+ names | `if ok.sum() < 3` → `if False` | 1 failed |
 | the cost test is sign-agnostic | `abs(excess)` → `excess` | 1 failed |
+
+> **Superseded, 2026-09-24 (§0).** That mutation is against the version of
+> the cost test that read the **excess**. The current test is
+> `abs(mean_bp)`, and `python/tests/test_krx_conjunction.py` carries its own
+> mutation record — four mutations, four caught, including the excess-based
+> form as the defect.
 | the overnight leg gaps from the previous row | compare against `prev_close` | 1 failed |
 | an end effect is not a hole | drop the `lo < d < hi` bound | 1 failed |
 | no combination measured twice | `sorted({2, n})` → `(2, n)` | 1 failed |
