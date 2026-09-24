@@ -176,38 +176,78 @@ def _survives(figure: str, corpus_norm: str) -> bool:
     return False
 
 
+#: A real ATX heading: one to six `#`, then whitespace or end of line.
+#: **`#103-#106).` is not one**, and it is the only such line in `CLAUDE.md`
+#: (measured) — a `startswith("#")` test read it as a depth-1 heading and
+#: truncated the `## Architecture` section at line 187 instead of 318,
+#: silently dropping both `₩250,000` lines. Reported on review.
+_ATX = re.compile(r"^(#{1,6})(?:\s|$)")
+
+#: A fence's opening run length, so a shorter run inside it does not close it:
+#: a block opened with ```` ```` ```` contains ``` ``` ``` lines legitimately.
+#: Tilde fences are deliberately out of scope — the contract here does not
+#: define them, and adding them would be a guess rather than a fix.
+_FENCE = re.compile(r"^(`{3,})")
+
+
+def _heading_depth(line: str) -> int | None:
+    """The heading depth of a line, or `None` if it is not a heading."""
+    m = _ATX.match(line)
+    return len(m.group(1)) if m else None
+
+
 def section_span(text: str, section: str) -> tuple[int, int]:
     """1-indexed `(first, last)` lines of the section whose heading matches.
 
-    **Depth-aware and fence-aware, and both of those are fixes rather than
-    polish.** The first version toggled on any line starting with `#`, so a
-    subsection heading inside the wanted section silently ended it, and a `#`
-    comment inside a fenced code block did the same — `CLAUDE.md` contains
-    both. A section runs until the next heading at the **same or shallower**
-    depth, which is what a reader means by a section.
+    A section runs until the next heading at the **same or shallower** depth,
+    which is what a reader means by a section. Three properties, each a fix
+    for a real miss rather than polish:
+
+    - **Depth-aware.** The first version ended a section at any heading, so a
+      subsection inside it silently truncated it.
+    - **Fence-aware, by fence length.** A `#` comment inside a fenced code
+      block is not a heading. The fence's own opening run length is recorded,
+      so a three-backtick line inside a four-backtick block does not close it.
+    - **A heading is ATX-validated.** `#103-#106).` starts with `#` and is
+      prose; reading it as a heading cut `## Architecture` short at 187.
+
+    **Matching is by substring and takes the LAST-OPENED match at the
+    shallowest depth, which is a choice and is disclosed**: `"Architecture"`
+    matches both `## Architecture` and `## Long-term Design Targets (shape the
+    architecture now, not built now)`. Preferring an exact heading-text match
+    resolves the common case; where none exists the first substring match
+    wins, and a caller wanting the other one names it more precisely.
 
     Raises rather than returning an empty span: a filter that matches nothing
     and reports nothing is the inert-guard shape this repo has paid for.
     """
     lines = text.splitlines()
-    depth = None
-    start = None
-    fenced = False
+    fence: str | None = None
+    headings: list[tuple[int, int, str]] = []  # (line, depth, text)
     for i, line in enumerate(lines, start=1):
-        if line.lstrip().startswith("```"):
-            fenced = not fenced
+        m = _FENCE.match(line.lstrip())
+        if m:
+            if fence is None:
+                fence = m.group(1)
+            elif len(m.group(1)) >= len(fence):
+                fence = None
             continue
-        if fenced or not line.startswith("#"):
+        if fence is not None:
             continue
-        this_depth = len(line) - len(line.lstrip("#"))
-        if start is None:
-            if section.lower() in line.lower():
-                depth, start = this_depth, i
-            continue
-        if this_depth <= depth:
-            return start, i - 1
-    if start is None:
+        depth = _heading_depth(line)
+        if depth is not None:
+            headings.append((i, depth, line[depth:].strip()))
+
+    wanted = section.lower()
+    exact = [h for h in headings if h[2].lower() == wanted]
+    matches = exact or [h for h in headings if wanted in h[2].lower()]
+    if not matches:
         raise KisSectionError(f"no heading in CLAUDE.md matches {section!r}")
+
+    start, depth, _ = matches[0]
+    for line_no, other_depth, _ in headings:
+        if line_no > start and other_depth <= depth:
+            return start, line_no - 1
     return start, len(lines)
 
 

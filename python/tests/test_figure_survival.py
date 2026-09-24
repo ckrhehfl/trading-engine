@@ -239,3 +239,89 @@ def test_the_tool_reads_the_committed_file_not_a_copy():
     assert CLAUDE_MD.exists()
     assert CLAUDE_MD.name == "CLAUDE.md"
     assert (CLAUDE_MD.parent / ".planning").is_dir()
+
+
+# ------------------------- what counts as a heading, and as a fence
+
+
+def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
+    """**Reported on review, with the consequence measured.**
+    `CLAUDE.md:188` reads `#103-#106). Full design record, ...` — prose, and
+    the only such line in the file. Read as a depth-1 heading it cut the
+    `## Architecture` section off at 187 instead of 318, silently dropping
+    both `₩250,000` lines (255 and 300). Markdown requires whitespace or end
+    of line after the `#` run.
+    """
+    from research.figure_survival import CLAUDE_MD, audit, section_span
+
+    text = CLAUDE_MD.read_text(encoding="utf-8")
+    assert section_span(text, "Architecture") == (116, 318)
+    inside = {v.number for v in audit("Architecture")}
+    assert {255, 300} <= inside, (
+        "the ₩250,000 lines fell outside the Architecture span again"
+    )
+
+
+@pytest.mark.parametrize(
+    "line, depth",
+    [
+        ("# Title", 1),
+        ("## Two", 2),
+        ("###### Six", 6),
+        ("#", 1),
+        ("#103-#106). prose", None),
+        ("#hashtag", None),
+        ("####### seven is too many", None),
+        ("  ## indented is not ATX", None),
+        ("text # not at the start", None),
+    ],
+)
+def test_heading_depth_follows_markdown(line, depth):
+    from research.figure_survival import _heading_depth
+
+    assert _heading_depth(line) == depth
+
+
+def test_a_LONGER_fence_is_not_closed_by_a_shorter_run_inside_it():
+    """**Reported on review.** A block opened with four backticks legitimately
+    contains three-backtick lines; toggling on every ``` would close it early
+    and then read the following `##` code line as a section boundary. Narrow
+    today — `CLAUDE.md` uses three everywhere — and pinned so it stays fixed.
+
+    Tilde fences are deliberately out of scope: the contract here does not
+    define them and adding them would be a guess rather than a fix.
+    """
+    from research.figure_survival import section_span
+
+    doc = "\n".join([
+        "## Wanted",                 # 1
+        "````markdown",              # 2  opens with FOUR
+        "```",                       # 3  three -- must NOT close it
+        "## this is sample text, not a heading",  # 4
+        "```",                       # 5  three -- still must not close it
+        "````",                      # 6  four -- closes
+        "PSR 0.9705",                # 7
+        "## Next",                   # 8
+    ])
+    assert section_span(doc, "Wanted") == (1, 7)
+
+
+def test_an_EXACT_heading_match_wins_over_a_substring_one():
+    """Matching is by substring, which is genuinely ambiguous in this file:
+    `"Architecture"` occurs in `## Architecture` and in `## Long-term Design
+    Targets (shape the architecture now, not built now)`. Before this,
+    `audit("Architecture")` silently returned the second one. Disclosed rather
+    than hidden — where no exact match exists the first substring hit wins,
+    and a caller wanting the other names it more precisely.
+    """
+    from research.figure_survival import section_span
+
+    doc = "\n".join([
+        "## Shaping the architecture later",  # 1
+        "0.9705",                             # 2
+        "## Architecture",                    # 3
+        "0.716",                              # 4
+        "## Next",                            # 5
+    ])
+    assert section_span(doc, "Architecture") == (3, 4)
+    assert section_span(doc, "Shaping") == (1, 2)
