@@ -61,7 +61,7 @@ import urllib.request
 import zipfile
 from dataclasses import dataclass
 
-from data.kis_klines import KisKlinesError, KisSession, _get_with_retry
+from data.kis_klines import KisKlinesError, KisSession, _get_with_retry, validated_output2
 
 #: KIS's own single-stock-futures symbol master. Same host, encoding and
 #: pipe-delimited shape as the equity masters `krx_universe.py` reads.
@@ -321,19 +321,14 @@ def daily_bars(
             f"arrives as output2: [] -- an absent key means the response shape "
             f"has changed, not that the contract has no bars."
         )
-    rows = payload.get("output2")
-    if not isinstance(rows, list):
-        raise KisKlinesError(f"output2 for {code} is {type(rows).__name__}, not a list")
-    if len(rows) >= ROW_CAP:
-        raise KisKlinesError(
-            f"{code} returned {len(rows)} rows for {start}-{end}, at or over the "
-            f"silent {ROW_CAP}-row cap. KIS keeps the NEWEST rows and drops the "
-            f"oldest with rt_cd=0, so this series is truncated at an unknown "
-            f"point -- narrow the range rather than reading it as complete."
-        )
-    bars = [parse_row(row) for row in rows if isinstance(row, dict)]
-    if len(bars) != len(rows):
-        raise KisKlinesError(f"a non-dict row in output2 for {code}")
+    # This reader already had the cap-before-filter order right, unlike the
+    # two it now shares an implementation with. It is routed through the
+    # same contract anyway, because the defect D1 addresses is the
+    # DUPLICATION -- the SPAC filter reached one copy of a rule and not the
+    # other for exactly this reason, and a fourth reader written next year
+    # should be correct without having to rediscover the ordering.
+    rows = validated_output2(payload, cap=ROW_CAP, what=f"{code} {start}-{end}")
+    bars = [parse_row(row) for row in rows]
     bars.sort(key=lambda bar: bar.date)
     return bars
 

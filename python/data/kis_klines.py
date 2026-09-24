@@ -280,9 +280,35 @@ class KisSession:
         self._app_key = app_key
         self._app_secret = app_secret
         self.host = host
+        # Resolved here so construction still fails fast on a bad key, and
+        # re-resolved per request by `headers` -- see its docstring.
         self._token = issue_token(host, app_key, app_secret)
 
     def headers(self, tr_id: str) -> dict[str, str]:
+        """Auth headers, with the token re-resolved through the cache.
+
+        **A session used to hold its first token for its whole life**, and
+        the lifetimes here are long: the full-universe scan ran one session
+        for ~50 hours and every backfill runs for hours. The token cache
+        already enforces a freshness bound (`TOKEN_REUSE_S`), so the
+        session was the one place that bound did not apply -- it kept a
+        string the cache would have refused to hand out.
+
+        Rather than give the session a second, independent notion of
+        freshness, it asks the cache every time. `issue_token` returns the
+        cached token while it is fresh and issues a new one when it is not,
+        so there is exactly one definition of "still good" and a concurrent
+        process (the `kis-paper` JVM shares this app key's allowance)
+        benefits from the same single issuance. The cost is one 0600 file
+        read per request against a call that takes 7-10 seconds.
+
+        Latent rather than live when fixed, and that was checked rather
+        than assumed: the scan's 199 failures are spread evenly across
+        every hour of its run (1-22 per hour, 2026-09-21 … 09-23) instead
+        of bursting at a token boundary, and bars accumulated to the final
+        symbol.
+        """
+        self._token = issue_token(self.host, self._app_key, self._app_secret)
         return {
             "authorization": f"Bearer {self._token}",
             "appkey": self._app_key,
@@ -458,6 +484,76 @@ def _parse_row(row: dict[str, Any], *, is_index: bool) -> KlineRow:
 # --------------------------------------------------------------- fetching
 
 
+# ------------------------------------------------- one page-read contract
+
+
+def validated_output2(
+    payload: dict[str, Any], *, cap: int, what: str
+) -> list[dict[str, Any]]:
+    """`output2` as row dicts, or a refusal. **The only correct order.**
+
+    Four separate readers in this package carried the same defect, which
+    is why this exists as one function rather than four careful copies:
+    they filtered malformed rows out of `output2` and *then* compared the
+    surviving count against the endpoint's silent row cap. A genuinely
+    truncated 100-row page carrying one unparseable row therefore
+    presented as an uncapped 99-row page and was read as complete. The
+    cap is a statement about the **response**; the shape of a row is a
+    statement about that row. So the cap is checked first, on the array
+    KIS actually sent, and nothing is dropped before it.
+
+    **A malformed row raises rather than being filtered, and that is safe
+    because KIS does not pad.** Measured 2026-09-24 against the live paper
+    host across five real pages -- both endpoints at their caps (equity
+    100, index 50), a narrow window, and a delisted name's final page:
+    every one returned `raw == kept`, with zero non-dict entries, zero
+    dicts missing `stck_bsop_date`, and zero empty dicts. The filter was
+    therefore defending against a shape the venue never produces, while
+    defeating `_parse_row`'s fail-closed contract and miscounting the cap.
+    If KIS ever does begin padding, this raises loudly on the first page
+    instead of quietly shortening a series.
+
+    `what` names the request in the message -- a bare refusal that does
+    not say which symbol and window produced it is not diagnosable in a
+    4,000-symbol scan.
+    """
+    raw = payload.get("output2")
+    if raw is None:
+        raise KisKlinesError(
+            f"no output2 in a successful response for {what}. An empty series "
+            f"arrives as output2: [] -- an absent key means the response shape "
+            f"has changed, not that there are no bars."
+        )
+    if not isinstance(raw, list):
+        raise KisKlinesError(f"output2 is {type(raw).__name__}, not a list, for {what}")
+
+    # The cap FIRST, on the unfiltered array. Reversing these two blocks
+    # is the defect described above, and it is invisible at the call site.
+    if len(raw) >= cap:
+        raise KisKlinesError(
+            f"{what} returned {len(raw)} rows, at or over this endpoint's "
+            f"{cap}-row cap. KIS truncates silently and keeps the NEWEST "
+            f"rows, so this page cannot be assumed complete -- narrow the "
+            f"window. (A cap is a property of an endpoint, not of a venue: "
+            f"equity {EQUITY_ROWS_PER_CALL_CAP}, index {INDEX_ROWS_PER_CALL_CAP}.)"
+        )
+
+    rows: list[dict[str, Any]] = []
+    for index, row in enumerate(raw):
+        if not isinstance(row, dict):
+            raise KisKlinesError(
+                f"output2 row {index} is {type(row).__name__}, not an object, for {what}"
+            )
+        if not str(row.get("stck_bsop_date") or "").strip():
+            raise KisKlinesError(
+                f"output2 row {index} carries no stck_bsop_date for {what}. "
+                f"Dropping it would shorten this page silently, which is how a "
+                f"real session becomes an unrecoverable hole."
+            )
+        rows.append(row)
+    return rows
+
+
 def fetch_daily_page(
     session: KisSession,
     code: str,
@@ -515,19 +611,11 @@ def fetch_daily_page(
             f"rt_cd={payload.get('rt_cd')} msg_cd={payload.get('msg_cd')}"
         )
 
-    raw_rows = payload.get("output2") or []
-    if not isinstance(raw_rows, list):
-        raise KisKlinesError(f"output2 is not a list for {code} {start}..{end}")
-    rows = [r for r in raw_rows if isinstance(r, dict) and r.get("stck_bsop_date")]
-
-    cap = rows_per_call_cap(is_index=is_index)
-    if len(rows) >= cap:
-        raise KisKlinesError(
-            f"{code} {start}..{end} returned {len(rows)} rows, at or over this "
-            f"endpoint's {cap}-row cap. KIS truncates silently and keeps the "
-            f"NEWEST rows, so this page cannot be assumed complete -- narrow "
-            f"the window."
-        )
+    rows = validated_output2(
+        payload,
+        cap=rows_per_call_cap(is_index=is_index),
+        what=f"{code} {start}..{end}",
+    )
 
     parsed = [_parse_row(r, is_index=is_index) for r in rows]
     parsed.sort(key=lambda k: k.open_time_ms)

@@ -263,10 +263,33 @@ def fetch_daily(
     payload = _get_json(
         host + path, params, _quote_headers(token, app_key, app_secret, tr)
     )
-    rows = payload.get("output2") or []
+    # **Deliberately its own check, not `kis_klines.validated_output2`.**
+    # This module verifies what the endpoint really does, and a
+    # verification that imports the implementation it checks confirms that
+    # implementation's assumptions instead of testing them -- this repo has
+    # paid for that three times over (`test_conftest_isolation.py`). What
+    # is shared is the reasoning, not the code.
+    #
+    # It still fails closed, because the previous form turned a non-list
+    # `output2` into `[]`, which is indistinguishable from a real empty
+    # series -- and telling those two apart is the entire job of a probe
+    # against an endpoint that answers `rt_cd=0` with zero rows for a
+    # nonsense code, a dead name, and an out-of-range window alike.
+    rows = payload.get("output2")
+    if rows is None:
+        raise ProbeError(f"no output2 key in a successful response for {code}")
     if not isinstance(rows, list):
-        rows = []
-    return payload, [r for r in rows if isinstance(r, dict) and r.get("stck_bsop_date")]
+        raise ProbeError(
+            f"output2 is {type(rows).__name__}, not a list, for {code}"
+        )
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            raise ProbeError(f"output2 row {index} is not an object for {code}")
+        if not str(row.get("stck_bsop_date") or "").strip():
+            raise ProbeError(
+                f"output2 row {index} carries no stck_bsop_date for {code}"
+            )
+    return payload, rows
 
 
 # ---------------------------------------------------------------- probes

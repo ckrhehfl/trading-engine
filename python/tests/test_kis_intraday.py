@@ -389,3 +389,54 @@ def test_a_genuinely_empty_page_is_still_empty(monkeypatch):
         lambda url, headers: {"rt_cd": "0", "output2": []},
     )
     assert fetch_page(_FakeSession({}), "005930", "20250902", "153000") == []
+
+
+# ------------------------------- a row with no date at all (audit F-1)
+
+from data.kis_intraday import fetch_page  # noqa: E402
+
+
+def test_a_row_with_no_date_fails_the_page_rather_than_being_dropped(patched):
+    """**Audit F-1.** `fetch_page` drops rows belonging to the *previous*
+    session, which is legitimate and documented. A row carrying a blank or
+    missing `stck_bsop_date` failed the `== date` comparison and went down
+    that same path -- so a malformed minute was discarded silently.
+
+    That is unrecoverable here in a way it is not for daily bars.
+    Completeness on this series is a **span**: the surrounding minutes
+    still bracket the day, `session_is_collected` therefore reports the
+    session as collected, nothing ever requests it again, and the
+    endpoint's rolling ~250 trading days eventually carries the real
+    minute away for good. A row may only be dropped when it positively
+    identifies itself as a different session.
+    """
+    for bad in ({}, {"stck_cntg_hour": "100000"}):
+        row = dict(_bar("100000"))
+        row.pop("stck_bsop_date")
+        row.update(bad)
+        s = patched(_FakeSession({"163000": [row]}))
+        with pytest.raises(KisKlinesError, match="no stck_bsop_date"):
+            fetch_page(s, "005930", "20260911", "163000")
+
+
+@pytest.mark.parametrize("blank", ["", "   ", None])
+def test_a_blank_date_is_not_read_as_the_previous_session(patched, blank):
+    row = _bar("100000")
+    row["stck_bsop_date"] = blank
+    s = patched(_FakeSession({"163000": [row]}))
+    with pytest.raises(KisKlinesError, match="no stck_bsop_date"):
+        fetch_page(s, "005930", "20260911", "163000")
+
+
+def test_a_row_from_a_DIFFERENT_real_session_is_still_dropped(patched):
+    """The other half, so the fix above cannot be mistaken for "never drop
+    anything". A dated row from yesterday is exactly what the walk expects
+    to see once it steps past the open, and dropping it is how the walk
+    terminates."""
+    s = patched(
+        _FakeSession(
+            {"163000": [_bar("100000", date="20260910"), _bar("100100")]}
+        )
+    )
+    rows = fetch_page(s, "005930", "20260911", "163000")
+    assert [r["stck_cntg_hour"] for r in rows] == ["100100"]

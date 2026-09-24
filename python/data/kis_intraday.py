@@ -271,7 +271,27 @@ def fetch_page(session: KisSession, code: str, date: str, hour: str) -> list[dic
             raise KisKlinesError(
                 f"output2 row {index} is not an object for {code} {date} {hour}"
             )
-        if str(row.get("stck_bsop_date") or "") == date:
+        row_date = str(row.get("stck_bsop_date") or "").strip()
+        # **A row carrying no date at all is malformed, not "the previous
+        # session".** The comment above already argued that a malformed row
+        # must fail the page, and the non-dict branch honours it -- but a
+        # dict with a blank or missing `stck_bsop_date` failed the `== date`
+        # comparison and was dropped down the previous-session path, which
+        # is the one branch here that is allowed to discard a row silently.
+        # Completeness on this series is a **span**, so the lost minute
+        # still sits inside a day that counts as collected and is never
+        # requested again -- and the endpoint's rolling ~250 sessions
+        # eventually carry it off for good. The only rows that may be
+        # dropped are ones that positively identify themselves as a
+        # different session.
+        if not row_date:
+            raise KisKlinesError(
+                f"output2 row {index} carries no stck_bsop_date for {code} "
+                f"{date} {hour}; dropping it would leave a minute-shaped hole "
+                f"inside a session that still spans the day and so would "
+                f"never be fetched again"
+            )
+        if row_date == date:
             rows.append(row)
     return rows
 
