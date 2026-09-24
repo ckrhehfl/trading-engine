@@ -271,7 +271,12 @@ _AVAILABILITY_PHRASES = (
 #: would be flagged: a deliberate choice, since **this check prefers a
 #: false positive to a false negative** -- a missed claim sends a
 #: researcher to spent data, while a spurious one is loud and cheap.
-_NEGATORS = ("not", "no longer", "cannot")
+#:
+#: **Matched on word boundaries**, which is not cosmetic: substring
+#: matching found the `not` inside `another`, so
+#: `X, unlike another window, is still available` read as negated and was
+#: reported clean. Found on review of PR #199 and reproduced before fixing.
+_NEGATORS = (r"\bnot\b", r"\bno longer\b", r"\bcannot\b")
 _NEGATION_LOOKBACK = 25
 
 
@@ -363,7 +368,7 @@ def _asserts_availability(flat: str) -> bool:
     for phrase in _AVAILABILITY_PHRASES:
         for match in re.finditer(re.escape(phrase), flat):
             before = flat[max(0, match.start() - _NEGATION_LOOKBACK) : match.start()]
-            if not any(neg in before for neg in _NEGATORS):
+            if not any(re.search(neg, before) for neg in _NEGATORS):
                 return True
     return False
 
@@ -435,6 +440,12 @@ def test_NO_unit_of_claude_md_calls_a_spent_window_available():
         (
             "| BINANCE FUTURES 1M | remains available |",
             "upper case, and in a table row",
+        ),
+        (
+            "Binance futures 1m, unlike another window, is still "
+            "available for confirmation.",
+            "`another` contains `not` -- a substring negator check read "
+            "this as negated and reported it clean",
         ),
     ],
 )
