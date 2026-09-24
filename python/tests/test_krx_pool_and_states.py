@@ -408,20 +408,42 @@ def test_the_rejection_refusal_this_module_raises_classifies_as_REJECTED(monkeyp
 # ------------------------------------------- the wide probe and its verdicts
 
 
-def _probe_env(monkeypatch, payload):
+#: Not the positive control's code, deliberately. Using `005930` made the
+#: symbol under test *be* the control, so a fake keyed on the code answered
+#: the control's payload for both and the branch under test never ran.
+SUBJECT = "000660"
+
+
+def _probe_env(monkeypatch, payload, *, control=None):
+    """Answer `_wide_probe` with `payload`, and the positive control
+    separately.
+
+    The control answers with a real bar by default, so a test can exercise the
+    verdict branches without the control's own refusal firing first. A test
+    that wants the control to fail passes `control=`.
+    """
     from data import krx_scan as S
+
+    if control is None:
+        control = {"rt_cd": "0", "output2": [{"stck_bsop_date": "19910828"}]}
 
     class _S:
         def headers(self, tr):  # noqa: ARG002
             return {}
 
-    monkeypatch.setattr(S, "_get_with_retry", lambda url, headers: payload)
+    def answer(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        code = parse_qs(urlparse(url).query)["FID_INPUT_ISCD"][0]
+        return control if code == S.WIDE_PROBE_POSITIVE_CONTROL else payload
+
+    monkeypatch.setattr(S, "_get_with_retry", answer)
     monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
     monkeypatch.setattr(S.time, "sleep", lambda *_: None)
     return _S()
 
 
-def _seeded(tmp_path, code="005930"):
+def _seeded(tmp_path, code=SUBJECT):
     tmp_path = __import__("pathlib").Path(tmp_path)
     tmp_path.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(tmp_path / "s.sqlite3")
@@ -512,11 +534,23 @@ def test_an_unresolvable_negative_control_stops_the_whole_pass(monkeypatch, tmp_
             return {}
 
     def boom(session):
-        raise S.KrxScanError("a control could not be asked")
+        raise S.KrxScanError("THE NEGATIVE CONTROL could not be asked")
+
+    def must_not_be_called(url, headers):  # noqa: ARG001
+        raise AssertionError(
+            "the resolver made a request before the negative control had run"
+        )
 
     monkeypatch.setattr(S, "verify_negative_controls", boom)
+    monkeypatch.setattr(S, "_get_with_retry", must_not_be_called)
     conn = _seeded(tmp_path)
-    with pytest.raises(S.KrxScanError, match="control"):
+    # **The match string is deliberately specific**, and the loose `"control"`
+    # it replaces is why this test was INERT: deleting the negative-control
+    # call let the POSITIVE control run instead, whose own refusal message also
+    # contains "control", so the test passed for the wrong reason. The stubbed
+    # transport is the second half -- it makes any request at all a hard
+    # failure rather than something a message can imitate.
+    with pytest.raises(S.KrxScanError, match="THE NEGATIVE CONTROL"):
         S.resolve_absences(_S(), conn)
     status = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
     assert status == Absence.UNKNOWN.value, "a symbol was resolved anyway"
@@ -675,6 +709,14 @@ def test_BOTH_passes_record_an_unclassifiable_failure_the_same_way(
             return {}
 
     def odd(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        code = parse_qs(urlparse(url).query)["FID_INPUT_ISCD"][0]
+        # The control has to answer, or it refuses the pass before the
+        # failure under test can be recorded -- which is the control working,
+        # not a problem with it.
+        if code == S.WIDE_PROBE_POSITIVE_CONTROL:
+            return {"rt_cd": "0", "output2": [{"stck_bsop_date": "19910828"}]}
         raise ZeroDivisionError("nothing anticipated this")
 
     monkeypatch.setattr(S, "_get_with_retry", odd)
@@ -684,7 +726,7 @@ def test_BOTH_passes_record_an_unclassifiable_failure_the_same_way(
     scan_conn = sqlite3.connect(tmp_path / "a.sqlite3")
     scan_conn.executescript(SCAN_SCHEMA)
     scan_conn.commit()
-    S.scan(_S(), scan_conn, [("005930", "삼성전자", Listing.LIVE)])
+    S.scan(_S(), scan_conn, [(SUBJECT, "SK하이닉스", Listing.LIVE)])
 
     probe_conn = _seeded(tmp_path / "b")
     S.resolve_absences(_S(), probe_conn)
@@ -693,3 +735,174 @@ def test_BOTH_passes_record_an_unclassifiable_failure_the_same_way(
     for label, conn in (("scan", scan_conn), ("resolve_absences", probe_conn)):
         got = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
         assert got == expected, f"{label} recorded {got!r}, not {expected!r}"
+
+
+# ------------------- the wide probe needs a POSITIVE control, not only a negative
+
+
+def test_the_resolver_refuses_when_the_wide_probe_returns_nothing_for_005930(
+    monkeypatch, tmp_path
+):
+    """**Reported on review, and it is the survivorship direction.**
+
+    `verify_negative_controls` proves a nonsense code answers empty on a
+    NARROW `_page` request. That is a different request from `_wide_probe`'s
+    `19900101`..today, and it cannot prove that an empty wide answer means
+    "not served" -- an endpoint that answered empty for *everything* passes a
+    negative control by construction, because empty is what it expects. Every
+    `absent:unknown` would then be recorded `NEVER_SERVED`, removing real
+    names from the pool as "KIS does not price this".
+    """
+    from data import krx_scan as S
+
+    # An endpoint answering empty for EVERY code, the control included --
+    # which is precisely the state a negative control cannot detect.
+    empty = {"rt_cd": "0", "output2": []}
+    session = _probe_env(monkeypatch, empty, control=empty)
+    # `_probe_env` stubs the negative controls out, which is the whole point:
+    # they pass here and must not be enough on their own.
+    conn = _seeded(tmp_path)
+    with pytest.raises(S.KrxScanError, match="no bars for 005930"):
+        S.resolve_absences(session, conn)
+    status = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
+    assert status == Absence.UNKNOWN.value, (
+        "a symbol was resolved to NEVER_SERVED on an answer the probe gives "
+        "for everything"
+    )
+
+
+def test_a_positive_control_that_cannot_be_asked_also_refuses(monkeypatch, tmp_path):
+    from data import krx_scan as S
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    def boom(url, headers):  # noqa: ARG001
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(S, "_get_with_retry", boom)
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError, match="could not be asked"):
+        S.resolve_absences(_S(), _seeded(tmp_path))
+
+
+def test_the_positive_control_passing_lets_the_pass_proceed(monkeypatch, tmp_path):
+    """The control must not be a refusal that always fires -- a guard that
+    always blocks teaches nothing either."""
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def answer(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        code = parse_qs(urlparse(url).query)["FID_INPUT_ISCD"][0]
+        calls["n"] += 1
+        if code == S.WIDE_PROBE_POSITIVE_CONTROL:
+            return {"rt_cd": "0", "output2": [{"stck_bsop_date": "19910828"}]}
+        return {"rt_cd": "0", "output2": []}
+
+    monkeypatch.setattr(S, "_get_with_retry", answer)
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    counts = S.resolve_absences(_S(), _seeded(tmp_path))
+    assert counts[Absence.NEVER_SERVED.value] == 1
+    assert calls["n"] == 2, "the control and the symbol, one call each"
+    assert S.WIDE_PROBE_POSITIVE_CONTROL != SUBJECT, (
+        "the subject must not be the control, or the fake answers both the same"
+    )
+
+
+# ------------------------------------------- a truncated probe is undecidable
+
+
+def test_a_capped_probe_entirely_after_the_panel_stays_UNKNOWN(monkeypatch, tmp_path):
+    """**Reported on review; latent, not live.** `_wide_probe` keeps only the
+    newest rows. Coming back FULL with every date after the panel means older
+    rows were dropped, and some of them may be in-panel bars -- so this is not
+    "outside the window", it is "we cannot see". Recording `OUTSIDE_WINDOW`
+    would file a real hole as an expected absence and `already_done` would
+    call the code complete.
+
+    Unreachable today, since `PANEL_END` is a handful of sessions back.
+    Reachable once a second pass runs ~100 sessions after it.
+    """
+    import datetime as dt
+
+    from data import krx_scan as S
+    from data.kis_klines import EQUITY_ROWS_PER_CALL_CAP
+
+    start = dt.datetime.strptime(S.PANEL_END, "%Y%m%d").date() + dt.timedelta(days=1)
+    rows = [
+        {"stck_bsop_date": (start + dt.timedelta(days=i)).strftime("%Y%m%d")}
+        for i in range(EQUITY_ROWS_PER_CALL_CAP)
+    ]
+    assert len(rows) == EQUITY_ROWS_PER_CALL_CAP
+
+    def answer(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        code = parse_qs(urlparse(url).query)["FID_INPUT_ISCD"][0]
+        if code == S.WIDE_PROBE_POSITIVE_CONTROL:
+            return {"rt_cd": "0", "output2": [{"stck_bsop_date": "19910828"}]}
+        return {"rt_cd": "0", "output2": rows}
+
+    monkeypatch.setattr(S, "_get_with_retry", answer)
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    conn = _seeded(tmp_path)
+    counts = S.resolve_absences(_S(), conn)
+    assert counts["truncated"] == 1
+    assert counts[Absence.OUTSIDE_WINDOW.value] == 0
+    assert conn.execute(
+        "SELECT status FROM scan_progress"
+    ).fetchone()[0] == Absence.UNKNOWN.value
+
+
+def test_an_UNDER_cap_page_after_the_panel_is_still_OUTSIDE_WINDOW(
+    monkeypatch, tmp_path
+):
+    """The boundary in the other direction, so the truncation branch cannot
+    swallow the ordinary later-listing case it sits next to."""
+    import datetime as dt
+
+    from data import krx_scan as S
+    from data.kis_klines import EQUITY_ROWS_PER_CALL_CAP
+
+    start = dt.datetime.strptime(S.PANEL_END, "%Y%m%d").date() + dt.timedelta(days=1)
+    rows = [
+        {"stck_bsop_date": (start + dt.timedelta(days=i)).strftime("%Y%m%d")}
+        for i in range(EQUITY_ROWS_PER_CALL_CAP - 1)
+    ]
+
+    def answer(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        code = parse_qs(urlparse(url).query)["FID_INPUT_ISCD"][0]
+        if code == S.WIDE_PROBE_POSITIVE_CONTROL:
+            return {"rt_cd": "0", "output2": [{"stck_bsop_date": "19910828"}]}
+        return {"rt_cd": "0", "output2": rows}
+
+    monkeypatch.setattr(S, "_get_with_retry", answer)
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    counts = S.resolve_absences(_S(), _seeded(tmp_path))
+    assert counts[Absence.OUTSIDE_WINDOW.value] == 1
+    assert counts["truncated"] == 0

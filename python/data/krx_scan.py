@@ -77,6 +77,7 @@ from pathlib import Path
 
 from data.kis_klines import (
     ADJUSTED,
+    EQUITY_ROWS_PER_CALL_CAP,
     DAILY_ITEM_PATH,
     PAPER_HOST,
     TR_DAILY_ITEM,
@@ -97,6 +98,22 @@ PANEL_END = "20260918"
 PAGE_DAYS = 120
 
 NEGATIVE_CONTROLS = ("999999", "ZZZZZZ", "000000")
+
+#: The wide probe's **positive** control. 삼성전자 is served back to
+#: 1991-08-28, which is KIS's own floor rather than a listing date, so an
+#: empty answer for it cannot mean "this name has no bars".
+#:
+#: A negative control alone is the wrong shape for `_wide_probe`. It proves a
+#: nonsense code answers empty on a NARROW `_page` request, which is a
+#: different request: different date range, and the probe deliberately asks
+#: `19900101`..today. If KIS ever answers a wide request with `rt_cd=0` and an
+#: empty `output2` for every code -- a range limit, a date-format change, an
+#: `FID_ORG_ADJ_PRC` interaction -- the negative control still passes, because
+#: empty is what it expects, and every `absent:unknown` is then recorded
+#: `NEVER_SERVED`. That removes real names from the pool as "KIS does not
+#: price this", which is the survivorship direction this universe exists to
+#: remove. Caught on review.
+WIDE_PROBE_POSITIVE_CONTROL = "005930"
 
 #: KRX's continuous session in KST. Outside it the endpoint is not
 #: competing with the instance's collectors.
@@ -579,6 +596,7 @@ def resolve_absences(
     letting the pass guess.
     """
     verify_negative_controls(session)
+    verify_wide_probe_positive_control(session)
 
     todo = [
         row[0]
@@ -596,6 +614,9 @@ def resolve_absences(
     #: Probed bars land inside the panel the first pass found empty. Not an
     #: absence at all -- see the branch that increments it.
     counts["contradicted"] = 0
+    #: The probe came back at its row cap with every date after the panel, so
+    #: older in-panel rows may have been truncated away unseen.
+    counts["truncated"] = 0
     for i, code in enumerate(todo):
         time.sleep(_SPACING_S)
         try:
@@ -606,6 +627,22 @@ def resolve_absences(
             continue
         if not dates:
             status = Absence.NEVER_SERVED
+        elif len(dates) >= EQUITY_ROWS_PER_CALL_CAP and min(dates) > PANEL_END:
+            # **Truncated, so undecidable.** The probe keeps only the newest
+            # rows. If it came back full AND every date is after the panel,
+            # then older rows were dropped and some of them may be in-panel
+            # bars -- so this is not "outside the window", it is "we cannot
+            # see". Recording OUTSIDE_WINDOW would file a real hole as an
+            # expected absence and `already_done` would call the code
+            # complete.
+            #
+            # Not reachable today: `PANEL_END` is a handful of sessions back,
+            # so 100 newest rows cannot all postdate it. It becomes reachable
+            # once a second pass runs ~100 sessions after `PANEL_END`, which
+            # is exactly the kind of latent condition that surfaces when
+            # nobody is looking for it. Caught on review.
+            status = Absence.UNKNOWN
+            counts["truncated"] += 1
         elif any(PANEL_START <= d <= PANEL_END for d in dates):
             # **The probe contradicts the scan, so nothing is resolved.**
             # KIS prices this code inside the very panel the pass found no
@@ -624,6 +661,35 @@ def resolve_absences(
         if progress and i % 50 == 0:
             progress(i, len(todo), code, status.value, None)
     return counts
+
+
+def verify_wide_probe_positive_control(session: KisSession) -> None:
+    """Refuse the resolver unless the wide probe really returns bars.
+
+    The counterpart to `verify_negative_controls`, and not a duplicate of it:
+    that one proves an empty answer is possible, this one proves a non-empty
+    answer is. Both are needed before an empty answer may be read as
+    `NEVER_SERVED`, because an instrument that answers empty for everything
+    passes the negative control by construction.
+    """
+    time.sleep(_SPACING_S)
+    try:
+        dates = _wide_probe(session, WIDE_PROBE_POSITIVE_CONTROL)
+    except Exception as exc:  # noqa: BLE001
+        raise KrxScanError(
+            f"the wide probe's positive control "
+            f"({WIDE_PROBE_POSITIVE_CONTROL}) could not be asked: "
+            f"{type(exc).__name__}. Until it answers, an empty probe result "
+            f"cannot be read as 'KIS does not price this code'."
+        ) from None
+    if not dates:
+        raise KrxScanError(
+            f"the wide probe returned no bars for "
+            f"{WIDE_PROBE_POSITIVE_CONTROL}, which KIS serves back to 1991. "
+            f"Every absent:unknown would be recorded NEVER_SERVED on the "
+            f"strength of an answer the probe gives for everything, removing "
+            f"real names from the pool."
+        )
 
 
 def _wide_probe(session: KisSession, code: str) -> list[str]:

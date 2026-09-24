@@ -105,12 +105,24 @@ UNIVERSE="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940,
 # reported it: the collector re-exec'd faithfully every day and looked only
 # at a window the hole had already left.
 #
-# It costs almost nothing, for the same measured reason the minute-bar
-# comment below gives: `backfill_symbol` skips a window whose expected
-# trading days are already stored **without an API call**, so the added work
-# is a handful of SQLite range queries per symbol. The one real cost is the
-# reference index itself, which is fetched with no reference to compare
-# against and so re-fetches its own ~4 pages daily instead of 1.
+# It costs almost nothing for the 18 symbols, for the same measured reason
+# the minute-bar comment below gives: `backfill_symbol` skips a window whose
+# expected trading days are already stored **without an API call**, so the
+# added work there is a handful of SQLite range queries.
+#
+# **The reference index is the one real cost, and the arithmetic is stated
+# rather than estimated** (asked for on review of PR #202). It is fetched
+# with no `reference_days` to compare against, so every one of its windows is
+# re-requested daily. Its window is `DEFAULT_INDEX_WINDOW_DAYS = 60`, not the
+# equities' 120, so 400 days is **7 pages/day against the previous 1 -- six
+# extra calls**, not the ~4 an earlier version of this comment guessed at.
+#
+# Six calls a day is inside the headroom by a wide margin: this same script
+# already makes hundreds (18 symbols x ~380 minute-bars per session at 120
+# rows per call, plus the daily pages), and the limit that actually bites on
+# this key is `/oauth2/tokenP`'s EGW00133 -- roughly three issuances a minute
+# -- which these six do not touch at all, because `KisSession` resolves one
+# token through the cache for the whole run.
 #
 # 400 days rather than the whole reachable history because the endpoint
 # pages back to 1991 and this is a daily catch-up, not a backfill: an
