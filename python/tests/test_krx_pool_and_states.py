@@ -602,9 +602,24 @@ def test_bars_only_AFTER_the_panel_resolve_to_OUTSIDE_WINDOW(monkeypatch, tmp_pa
     does not price a name it prices perfectly well. That is the pool losing a
     real name, which is the survivorship bias this universe exists to remove.
     """
-    from data.krx_scan import PANEL_END, resolve_absences
+    import datetime as dt
 
-    later = str(int(PANEL_END[:4]) + 1) + PANEL_END[4:]
+    from data.krx_scan import KST, PANEL_END, resolve_absences
+
+    # **The day after `PANEL_END`, not a year after it.** An earlier version
+    # used 2027, which `_wide_probe` -- ending at today -- would never actually
+    # request, so the test proved `OUTSIDE_WINDOW` from a response the real
+    # code could not receive. `_probe_env` answers regardless of the window it
+    # was asked for, which is exactly the "right verdict for the wrong reason"
+    # this file's own probe-range test was added to guard against, and it
+    # caught me here one commit later. Reported on review.
+    later = (
+        dt.datetime.strptime(PANEL_END, "%Y%m%d").date() + dt.timedelta(days=1)
+    ).strftime("%Y%m%d")
+    assert later <= dt.datetime.now(KST).strftime("%Y%m%d"), (
+        f"{later} is past today, so _wide_probe would not request it and this "
+        f"test would be validating an unreachable response again"
+    )
     session = _probe_env(
         monkeypatch,
         {"rt_cd": "0", "output2": [{"stck_bsop_date": later}]},
