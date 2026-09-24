@@ -382,3 +382,76 @@ def test_a_closing_fence_carries_only_whitespace_after_its_run():
         "## Next",                   # 7
     ])
     assert section_span(doc, "Wanted") == (1, 6)
+
+
+# ------------------- survival is matched on number tokens, not substrings
+
+
+@pytest.mark.parametrize(
+    "figure, corpus, why",
+    [
+        ("4374", "row id 4963594374 against", "inside a longer integer"),
+        ("0.999999", "PSR : 0.99999900692081", "inside a longer decimal"),
+        ("1.250", "floor : 1.250042", "a rounded form of a longer decimal"),
+        ("20", "measured 2026-09-24 and 2026-08", "inside a date"),
+        ("0.62", "the floor 10.625 here", "inside another decimal"),
+        ("250", "a 2500 row table", "inside a longer integer"),
+        ("95", "PSR 0.95 cleared", "after a decimal point"),
+    ],
+)
+def test_a_substring_is_NOT_a_survival(figure, corpus, why):
+    """**Reported on review, and it is the unsafe direction for this tool.**
+    A bare `needle in corpus` test found `20` inside `2026-09-24`, `0.62`
+    inside `10.625` and `250` inside `2500` — every one a **false survival**,
+    which shrinks the orphan list and makes a line read as carrying nothing to
+    lose.
+
+    The first three cases are real occurrences from `.planning/`: the row id
+    `4963594374`, a PSR printed at full precision, and a floor stored as
+    `1.250042` where `CLAUDE.md` rounds it to `1.250`. That last one is a
+    **rounded figure reported as an orphan**, which is conservative: it blocks
+    a trim rather than permitting one.
+    """
+    from research.figure_survival import _normalise, _survives
+
+    assert not _survives(figure, _normalise(corpus)), why
+
+
+@pytest.mark.parametrize(
+    "figure, corpus",
+    [
+        # `_normalise` strips a needle's `+`, so the sign in the corpus has to
+        # be CONSUMED rather than forbidden. Forbidding it reported `+79.2`,
+        # `+0.0184` and `+61.8` as existing nowhere when all three are in
+        # `.planning/` — a false ORPHAN, found by checking the count rather
+        # than by reading the regex.
+        ("+79.2", "+73.5R of +79.2R and 4"),
+        ("+0.0184", "member Sharpe +0.0184** six"),
+        ("+61.8", "| 464 | +61.8% | **13"),
+        ("-14.4", "raw mean -14.4 bp against"),
+        # A trailing `.` is sentence punctuation unless a digit follows it.
+        ("4,374", "Combined pool 4,374."),
+        ("0.95", "clears 0.95."),
+        # And the ordinary cases still work.
+        ("20", "exactly 20 rows"),
+        ("1,901", "1,901 bars, zero gaps"),
+    ],
+)
+def test_a_real_occurrence_IS_a_survival(figure, corpus):
+    from research.figure_survival import _normalise, _survives
+
+    assert _survives(figure, _normalise(corpus)), f"{figure!r} vs {corpus!r}"
+
+
+def test_the_sign_conflation_limitation_is_real_and_disclosed():
+    """An unsigned needle matches a signed occurrence, so `20` survives on a
+    corpus of `-20`. A false survival, the unsafe direction, accepted rather
+    than fixed because distinguishing them needs the sign to be part of the
+    figure and this file's own prose writes the same quantity both ways.
+
+    Pinned so it is a known limitation rather than a surprise, and so closing
+    it has to update this test on purpose.
+    """
+    from research.figure_survival import _normalise, _survives
+
+    assert _survives("20", _normalise("a -20 reading"))

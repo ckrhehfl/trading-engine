@@ -157,23 +157,56 @@ def _planning_corpus() -> str:
 
 
 def _survives(figure: str, corpus_norm: str) -> bool:
-    """Is this figure present anywhere in `.planning/`?
+    """Is this figure present anywhere in `.planning/`, as a whole number?
 
-    Compared on the normalised form **and** with comma grouping restored,
-    because a document may spell 4,374 either way and a miss here reads as a
-    figure that would be lost.
+    **Matched on number-token boundaries, not as a substring**, and that is a
+    correctness fix in the unsafe direction rather than a nicety. A bare
+    `bare in corpus_norm` test found:
+
+    | looking for | matched inside |
+    |---|---|
+    | `20` | `2026-09-24` |
+    | `0.62` | `10.625` |
+    | `250` | `2500` |
+
+    Every one of those is a **false survival**, which shrinks the orphan list
+    and makes a line read as carrying nothing to lose. For a tool whose whole
+    job is to say which figures exist only in `CLAUDE.md`, that is the
+    direction that matters. Reported on review.
+
+    The comma-grouping branch this replaces was **dead code**: the corpus is
+    passed through `_normalise`, which strips commas, so a comma-bearing needle
+    could never match it. It was written to handle `4374` vs `4,374` and the
+    normalisation already handles that.
     """
     bare = _normalise(figure)
-    if bare in corpus_norm:
-        return True
-    # 4374 -> 4,374
-    if bare.lstrip("-").isdigit() and len(bare.lstrip("-")) > 3:
-        sign = "-" if bare.startswith("-") else ""
-        digits = bare.lstrip("-")
-        grouped = f"{int(digits):,}"
-        if sign + grouped in corpus_norm or grouped in corpus_norm:
-            return True
-    return False
+    if not bare:
+        return False
+    # **Two corrections the first boundary attempt needed, both measured.**
+    #
+    # A leading sign must be CONSUMED, not forbidden: `_normalise` strips a
+    # needle's `+`, so forbidding a preceding `+` made `79.2` fail against the
+    # corpus's own `+79.2R`. That reported `+79.2`, `+0.0184` and `+61.8` as
+    # figures existing nowhere when all three are in `.planning/`.
+    #
+    # A trailing `.` is sentence punctuation unless a digit follows it, so the
+    # lookahead rejects `\.?\d` rather than `[\d.]` — otherwise a figure
+    # ending a sentence (`4,374.`) reads as absent.
+    #
+    # What it correctly still rejects, verified against the real corpus:
+    # `4374` inside the row id `4963594374`, `0.999999` inside
+    # `0.99999900692081`, and `1.250` inside `1.250042` — different numbers,
+    # every one of which a substring test called a survival.
+    #
+    # **Disclosed limitation**: an unsigned needle matches a signed occurrence,
+    # so `20` would survive on a corpus `-20`. That is a false survival, the
+    # unsafe direction, and it is accepted rather than fixed because
+    # distinguishing them needs the sign to be part of the figure and this
+    # file's own prose writes the same quantity both ways.
+    pattern = re.compile(
+        r"(?<![\d.])[-+−]?" + re.escape(bare) + r"(?!\.?\d)"
+    )
+    return pattern.search(corpus_norm) is not None
 
 
 #: A real ATX heading, to CommonMark: **up to three** spaces of indentation,
