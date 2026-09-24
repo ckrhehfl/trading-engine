@@ -272,7 +272,15 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
         ("#103-#106). prose", None),
         ("#hashtag", None),
         ("####### seven is too many", None),
-        ("  ## indented is not ATX", None),
+        # CommonMark allows up to THREE spaces of indentation on an ATX
+        # heading; four makes it an indented code block. Requiring column zero
+        # made a legal heading read as prose and lost a section boundary, and
+        # was inconsistent with the fence rule beside it, which accepted any
+        # indentation. Reported on review.
+        (" # one space", 1),
+        ("   ### three spaces", 3),
+        ("    #### four spaces is a code block", None),
+        ("\t## a tab is not 0-3 spaces", None),
         ("text # not at the start", None),
     ],
 )
@@ -325,3 +333,52 @@ def test_an_EXACT_heading_match_wins_over_a_substring_one():
     ])
     assert section_span(doc, "Architecture") == (3, 4)
     assert section_span(doc, "Shaping") == (1, 2)
+
+
+@pytest.mark.parametrize(
+    "opener, opens",
+    [
+        ("```", True),
+        ("```python", True),
+        ("   ```bash", True),
+        ("    ```four spaces is not a fence", False),
+        # **An info string may not contain a backtick**, so this is an inline
+        # code span, not a fence. Opening one here skips every heading until
+        # the next backtick line, which extends a section SILENTLY — the exact
+        # failure this module exists to catch. Reported on review.
+        ("```foo``` and some text", False),
+        ("`inline`", False),
+        ("``two``", False),
+    ],
+)
+def test_what_opens_a_fence_follows_commonmark(opener, opens):
+    from research.figure_survival import section_span
+
+    doc = "\n".join(["## Wanted", "0.9705", opener, "## Inside or a heading?",
+                     "```", "0.716", "## Next", "4,374"])
+    lo, hi = section_span(doc, "Wanted")
+    if opens:
+        # The `##` on line 4 is inside the block, so the section runs past it
+        # and ends at the real `## Next` on line 7.
+        assert (lo, hi) == (1, 6), f"{opener!r} should have opened a fence"
+    else:
+        # Line 4 is a real heading, so the section ends there.
+        assert (lo, hi) == (1, 3), f"{opener!r} should NOT have opened a fence"
+
+
+def test_a_closing_fence_carries_only_whitespace_after_its_run():
+    """A line whose backtick run is long enough but which carries trailing
+    text is not a closer. Closing early puts the rest of the block back in
+    play as headings. Reported on review."""
+    from research.figure_survival import section_span
+
+    doc = "\n".join([
+        "## Wanted",                 # 1
+        "```",                       # 2  opens
+        "``` trailing text",         # 3  NOT a closer
+        "## still inside the block", # 4
+        "```   ",                    # 5  closes (whitespace only)
+        "0.9705",                    # 6
+        "## Next",                   # 7
+    ])
+    assert section_span(doc, "Wanted") == (1, 6)

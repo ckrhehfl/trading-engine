@@ -176,18 +176,36 @@ def _survives(figure: str, corpus_norm: str) -> bool:
     return False
 
 
-#: A real ATX heading: one to six `#`, then whitespace or end of line.
-#: **`#103-#106).` is not one**, and it is the only such line in `CLAUDE.md`
-#: (measured) — a `startswith("#")` test read it as a depth-1 heading and
-#: truncated the `## Architecture` section at line 187 instead of 318,
-#: silently dropping both `₩250,000` lines. Reported on review.
-_ATX = re.compile(r"^(#{1,6})(?:\s|$)")
+#: A real ATX heading, to CommonMark: **up to three** spaces of indentation,
+#: one to six `#`, then whitespace or end of line. Four spaces makes it an
+#: indented code block instead.
+#:
+#: Two findings live in this one pattern, both reported on review:
+#:
+#: - **`#103-#106).` is not a heading**, and it is the only such line in
+#:   `CLAUDE.md` (measured). A `startswith("#")` test read it as depth 1 and
+#:   truncated `## Architecture` at line 187 instead of 318, silently dropping
+#:   both `₩250,000` lines.
+#: - **an indented heading IS one.** Requiring column zero made a legal
+#:   heading read as prose, losing a section boundary — and it was inconsistent
+#:   with the fence rule beside it, which accepted any indentation at all.
+_ATX = re.compile(r"^ {0,3}(#{1,6})(?:\s|$)")
 
-#: A fence's opening run length, so a shorter run inside it does not close it:
-#: a block opened with ```` ```` ```` contains ``` ``` ``` lines legitimately.
-#: Tilde fences are deliberately out of scope — the contract here does not
+#: A fenced code block, to CommonMark, with the same 0-3 space indent rule as
+#: `_ATX` so the two agree:
+#:
+#: - the opening run's **length** is recorded, because a block opened with
+#:   ```` ```` ```` legitimately contains ``` ``` ``` lines;
+#: - a backtick fence's **info string may not contain a backtick**, so
+#:   ``` ```foo``` text ``` is an inline code span rather than a fence. Opening
+#:   one there skips every heading until the next backtick line, which extends
+#:   a section **silently** — the exact failure this module exists to catch;
+#: - a **closing** fence carries only whitespace after its run.
+#:
+#: Tilde fences are deliberately out of scope: the contract here does not
 #: define them, and adding them would be a guess rather than a fix.
-_FENCE = re.compile(r"^(`{3,})")
+_FENCE_OPEN = re.compile(r"^ {0,3}(`{3,})([^`]*)$")
+_FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,})\s*$")
 
 
 def _heading_depth(line: str) -> int | None:
@@ -225,18 +243,19 @@ def section_span(text: str, section: str) -> tuple[int, int]:
     fence: str | None = None
     headings: list[tuple[int, int, str]] = []  # (line, depth, text)
     for i, line in enumerate(lines, start=1):
-        m = _FENCE.match(line.lstrip())
-        if m:
-            if fence is None:
-                fence = m.group(1)
-            elif len(m.group(1)) >= len(fence):
+        if fence is None:
+            opened = _FENCE_OPEN.match(line)
+            if opened:
+                fence = opened.group(1)
+                continue
+        else:
+            closed = _FENCE_CLOSE.match(line)
+            if closed and len(closed.group(1)) >= len(fence):
                 fence = None
             continue
-        if fence is not None:
-            continue
-        depth = _heading_depth(line)
-        if depth is not None:
-            headings.append((i, depth, line[depth:].strip()))
+        m = _ATX.match(line)
+        if m:
+            headings.append((i, len(m.group(1)), line[m.end():].strip()))
 
     wanted = section.lower()
     exact = [h for h in headings if h[2].lower() == wanted]
