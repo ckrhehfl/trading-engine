@@ -249,15 +249,22 @@ def classify_failure(exc: BaseException) -> Failure:
     if isinstance(exc, (TimeoutError, OSError, http.client.HTTPException)):
         return Failure.TRANSPORT
     text = str(exc)
-    # Two spellings, because two call sites raise the cap refusal and a
-    # classifier keyed to a message must match the message its own callers
-    # actually produce. `kis_klines.validated_output2` says "at or over this
-    # endpoint"; `krx_scan._page` said "rows at the 100-row cap" until it was
-    # routed through the shared contract. The test for this obtains the
-    # string by TRIGGERING the refusal rather than by quoting it -- quoting
-    # is what let the mismatch through, since it confirmed my own wording
-    # instead of the caller's.
-    if "at or over this endpoint" in text or "row cap" in text:
+    # **One spelling, and a test that produces it rather than quotes it.**
+    # This matched only `kis_klines.validated_output2`'s wording while
+    # `_page` -- the function `scan()` calls -- raised its own "rows at the
+    # 100-row cap", so a cap breach filed as `OTHER` and the scan path could
+    # never record `CAPPED`. Reported on review.
+    #
+    # The second spelling was added here as a fix and is deliberately gone
+    # again: routing `_page` through the shared contract left it with no
+    # caller, and a branch nothing can reach is a guard that silently does
+    # nothing. What protects this instead is
+    # `test_the_cap_refusal_this_MODULE_raises_classifies_as_CAPPED`, which
+    # obtains the message by TRIGGERING the refusal. Quoting a message is
+    # what let the mismatch through -- it confirmed my own wording instead
+    # of the caller's -- so a future wording drift fails that test rather
+    # than passing an unreachable `or`.
+    if "at or over this endpoint" in text:
         return Failure.CAPPED
     if "request failed after" in text:
         return Failure.TRANSPORT
