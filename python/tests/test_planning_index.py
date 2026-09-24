@@ -240,12 +240,50 @@ def test_claude_md_s_unspent_windows_are_really_unspent():
     )
 
 
-#: Words that assert a window is still available. **`virgin` is
-#: deliberately absent**: `Binance spot 1d "virgin" holdout` is that
-#: window's own label in the detection-floor table, not a claim about its
-#: availability, so including it made every adjacent table row a false
-#: positive.
-_AVAILABILITY_WORDS = ("unspent", "untouched", "never been touched")
+#: Phrases that assert a window is still available for use.
+#:
+#: **`virgin` is deliberately absent**: `Binance spot 1d "virgin" holdout`
+#: is that window's own label in the detection-floor table, not a claim
+#: about its availability, so including it made every adjacent table row a
+#: false positive.
+#:
+#: The `available` forms were added on review of PR #199 --
+#: `X is still available for confirmation` asserts exactly what this check
+#: exists to catch and contains none of the earlier words. A bare
+#: `available` is far too broad (18 unrelated uses in CLAUDE.md, from
+#: `availableMargin` to *"Service unavailable from a restricted
+#: location"*), so the phrases are specific.
+_AVAILABILITY_PHRASES = (
+    "unspent",
+    "untouched",
+    "never been touched",
+    "still available",
+    "remains available",
+    "available for confirmation",
+)
+
+#: What turns an availability phrase into a *true* statement. `*not*
+#: available for discovery` is how the canonical paragraph words it, so
+#: markdown emphasis is stripped before this is applied.
+#:
+#: **`never` is NOT a negator here**, because `never been touched` is
+#: itself one of the phrases above. The cost is that `never available`
+#: would be flagged: a deliberate choice, since **this check prefers a
+#: false positive to a false negative** -- a missed claim sends a
+#: researcher to spent data, while a spurious one is loud and cheap.
+_NEGATORS = ("not", "no longer", "cannot")
+_NEGATION_LOOKBACK = 25
+
+
+def _normalise(text: str) -> str:
+    """Lowercase, strip markdown emphasis, collapse whitespace.
+
+    Case normalisation was added on review of PR #199: `binance futures 1m
+    is still unspent` matched the phrase and **not** the window name, so
+    an ordinary lowercase spelling walked past the check. Both sides are
+    normalised the same way now.
+    """
+    return re.sub(r"\s+", " ", re.sub(r"[*_`]", "", text)).lower()
 
 
 def _claim_units(text: str) -> list[str]:
@@ -311,13 +349,23 @@ def spent_window_claims(text: str, spent: set[str]) -> list[tuple[str, str]]:
 
     offenders = []
     for unit in _claim_units(text):
-        low = unit.lower()
-        if not any(w in low for w in _AVAILABILITY_WORDS):
+        flat = _normalise(unit)
+        if not _asserts_availability(flat):
             continue
         for name in spent:
-            if name in unit:
+            if _normalise(name) in flat:
                 offenders.append((name, unit[:160]))
     return offenders
+
+
+def _asserts_availability(flat: str) -> bool:
+    """`True` if a normalised unit makes a *positive* availability claim."""
+    for phrase in _AVAILABILITY_PHRASES:
+        for match in re.finditer(re.escape(phrase), flat):
+            before = flat[max(0, match.start() - _NEGATION_LOOKBACK) : match.start()]
+            if not any(neg in before for neg in _NEGATORS):
+                return True
+    return False
 
 
 def _spent_window_names() -> set[str]:
@@ -376,6 +424,18 @@ def test_NO_unit_of_claude_md_calls_a_spent_window_available():
             "KRX daily has never been touched by any decision.",
             "a different availability wording, on a different window",
         ),
+        (
+            "Binance futures 1m is still available for confirmation.",
+            "a positive availability claim with none of the earlier words",
+        ),
+        (
+            "binance futures 1m is still unspent.",
+            "an ordinary lowercase spelling of the window name",
+        ),
+        (
+            "| BINANCE FUTURES 1M | remains available |",
+            "upper case, and in a table row",
+        ),
     ],
 )
 def test_the_check_catches_a_claim_however_it_is_worded(claim, why):
@@ -386,6 +446,22 @@ def test_the_check_catches_a_claim_however_it_is_worded(claim, why):
     claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
     offenders = spent_window_claims(claude + "\n\n" + claim, _spent_window_names())
     assert offenders, f"not caught ({why}): {claim!r}"
+
+
+@pytest.mark.parametrize(
+    "phrasing",
+    [
+        "Binance futures 1m is *not* available for confirmation.",
+        "Binance futures 1m is no longer available for confirmation.",
+        "| Binance futures 1m | cannot be available for confirmation |",
+    ],
+)
+def test_a_NEGATED_availability_statement_is_not_a_false_positive(phrasing):
+    """The corrections are the point, so they must not trip the check.
+    `*not* available for discovery` is how the canonical paragraph words
+    it, which is why emphasis is stripped before the negator lookback."""
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    assert not spent_window_claims(claude + "\n\n" + phrasing, _spent_window_names())
 
 
 def test_the_spent_window_ledger_matches_the_log():
