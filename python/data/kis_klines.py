@@ -114,6 +114,28 @@ INTER_REQUEST_DELAY_S = 0.2
 _MAX_RETRIES = 4
 _RETRY_BASE_DELAY_S = 1.0
 
+#: **A venue rejection that is transient at the application layer.** The
+#: index endpoint returns a real HTTP 200 carrying `rt_cd=1
+#: msg_cd=OPSQ0003` for a request that answers normally on the next
+#: attempt. Measured 2026-09-22 with 15 identical calls per window: the
+#: **index** endpoint failed 3 of 15 on one window and 0 of 15 on
+#: another, and the **equity** endpoint failed 0 of 15 on the same range.
+#: So it is per-call and random rather than a property of the window.
+#:
+#: This is not a nicety. A 47-call reference backfill at that rate
+#: completes with probability ~3e-5, and the first real attempt died on
+#: its 32nd call -- the same shape as `rd-x` losing two and a half hours.
+#:
+#: **An allowlist, deliberately.** Every other non-zero `rt_cd` this
+#: project has met is a real, permanent error -- a wrong TR id, a wrong
+#: market division, a code that does not exist -- and retrying into one
+#: is the mistake CLAUDE.md already records for Binance's HTTP 418. A new
+#: code earns its place here by being measured, not by resembling this
+#: one.
+_RETRYABLE_MSG_CD = frozenset({"OPSQ0003"})
+_REJECTION_ATTEMPTS = 4
+_REJECTION_BACKOFF_S = 0.4
+
 MS_PER_DAY = 86_400_000
 
 
@@ -472,7 +494,20 @@ def fetch_daily_page(
     path = DAILY_INDEX_PATH if is_index else DAILY_ITEM_PATH
     tr = TR_DAILY_INDEX if is_index else TR_DAILY_ITEM
     url = f"{session.host}{path}?{urllib.parse.urlencode(params)}"
-    payload = _get_with_retry(url, session.headers(tr))
+
+    # `_get_with_retry` covers transport failures. This covers a venue
+    # rejection that is **transient at the application layer** -- a real
+    # HTTP 200 carrying `rt_cd=1` for a request that answers normally on
+    # the next attempt. See `_RETRYABLE_MSG_CD`.
+    payload = None
+    for attempt in range(_REJECTION_ATTEMPTS):
+        payload = _get_with_retry(url, session.headers(tr))
+        if payload.get("rt_cd") == "0":
+            break
+        if payload.get("msg_cd") not in _RETRYABLE_MSG_CD:
+            break
+        if attempt + 1 < _REJECTION_ATTEMPTS:
+            time.sleep(_REJECTION_BACKOFF_S * (attempt + 1))
 
     if payload.get("rt_cd") != "0":
         raise KisKlinesError(

@@ -212,6 +212,52 @@ def test_an_application_error_raises_rather_than_returning_nothing(session, resp
         fetch_daily_page(session, "005930", "20240501", "20240510", adjusted=ADJUSTED)
 
 
+def test_a_TRANSIENT_rejection_is_retried_rather_than_aborting(session, responses,
+                                                               monkeypatch):
+    """**`OPSQ0003` is a real HTTP 200 carrying `rt_cd=1` for a request
+    that answers normally next time.** Measured 2026-09-22: the index
+    endpoint failed 3 of 15 identical calls on one window. A 47-call
+    reference backfill at that rate completes with probability ~3e-5, and
+    the first real attempt died on its 32nd call.
+    """
+    monkeypatch.setattr("data.kis_klines.time.sleep", lambda _s: None)
+    queued, _ = responses
+    queued.append({"rt_cd": "1", "msg_cd": "OPSQ0003", "output2": []})
+    queued.append({"rt_cd": "1", "msg_cd": "OPSQ0003", "output2": []})
+    queued.append({"rt_cd": "0", "output2": [_equity_row("20240502")]})
+    rows = fetch_daily_page(session, "005930", "20240501", "20240510", adjusted=ADJUSTED)
+    assert [ms_to_trading_date(r.open_time_ms) for r in rows] == ["20240502"]
+    assert not queued, "it stopped retrying as soon as the call succeeded"
+
+
+def test_a_PERMANENT_rejection_is_NOT_retried(session, responses, monkeypatch):
+    """**An allowlist, and this is what it buys.** `OPSQ0002` is "no such
+    service code" -- a wrong TR id answers that way every time, and
+    retrying into a real error is the mistake CLAUDE.md already records
+    for Binance's HTTP 418. Exactly one call must be made."""
+    monkeypatch.setattr("data.kis_klines.time.sleep", lambda _s: None)
+    queued, seen = responses
+    queued.append({"rt_cd": "1", "msg_cd": "OPSQ0002", "output2": []})
+    with pytest.raises(KisKlinesError, match="rt_cd=1"):
+        fetch_daily_page(session, "005930", "20240501", "20240510", adjusted=ADJUSTED)
+    assert len(seen) == 1, f"a permanent error was retried {len(seen)} times"
+
+
+def test_a_transient_rejection_that_never_clears_still_raises(session, responses,
+                                                             monkeypatch):
+    """Bounded. A retry that never gives up turns a venue outage into a
+    hang, and the caller can no longer tell the two apart."""
+    from data.kis_klines import _REJECTION_ATTEMPTS
+
+    monkeypatch.setattr("data.kis_klines.time.sleep", lambda _s: None)
+    queued, seen = responses
+    for _ in range(_REJECTION_ATTEMPTS):
+        queued.append({"rt_cd": "1", "msg_cd": "OPSQ0003", "output2": []})
+    with pytest.raises(KisKlinesError, match="OPSQ0003"):
+        fetch_daily_page(session, "005930", "20240501", "20240510", adjusted=ADJUSTED)
+    assert len(seen) == _REJECTION_ATTEMPTS
+
+
 def test_a_page_at_the_row_cap_raises_because_kis_truncates_silently(session, responses):
     """The probe measured a ~5-year request returning exactly 100 rows with
     `rt_cd=0` -- BingX's silent-cap behaviour, not Binance futures' real
