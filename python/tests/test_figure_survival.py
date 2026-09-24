@@ -275,14 +275,42 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
     both `₩250,000` lines (255 and 300). Markdown requires whitespace or end
     of line after the `#` run.
     """
-    from research.figure_survival import CLAUDE_MD, audit, section_span
+    from research.figure_survival import CLAUDE_MD, section_span
 
     text = CLAUDE_MD.read_text(encoding="utf-8")
-    assert section_span(text, "Architecture") == (116, 318)
-    inside = {v.number for v in audit("Architecture")}
-    assert {255, 300} <= inside, (
-        "the ₩250,000 lines fell outside the Architecture span again"
+    lines = text.splitlines()
+    lo, hi = section_span(text, "Architecture")
+
+    # **Asserted as properties, not as line numbers.** An earlier version
+    # pinned `(116, 318)` — the literal span at the time — in the one test
+    # whose own docstring says a line number rots on the next edit. It rotted
+    # on the next edit: the 2026-09-25 documentation split moved the section's
+    # body to `docs/architecture.md` and every number shifted.
+    assert lines[lo - 1].strip() == "## Architecture"
+    assert hi == len(lines) or lines[hi].startswith("## "), (
+        f"the span does not end immediately before a top-level heading: "
+        f"line {hi + 1} is {lines[hi][:60]!r}"
     )
+
+    # The section must still reach its own last paragraph rather than being
+    # truncated by something that merely looks like a heading.
+    body = "\n".join(lines[lo - 1 : hi])
+    assert "Still out of scope" in body, (
+        "the Architecture section was cut short of its final block"
+    )
+
+    # **The `#`-prefixed prose line this test was written for is no longer in
+    # `CLAUDE.md`.** `#103-#106).` began a line until the documentation split
+    # rewrote that paragraph, so the real-file half can no longer exercise the
+    # defect. Recorded rather than quietly dropped: the parser guard now lives
+    # entirely in `test_heading_depth_follows_markdown`, which carries the
+    # exact string as a synthetic case and does not depend on the file keeping
+    # it.
+    import re as _re
+
+    assert not [
+        l for l in lines if l.startswith("#") and not _re.match(r"^#{1,6}(\s|$)", l)
+    ], "a #-prefixed prose line is back -- re-point the real-file assertion at it"
 
 
 @pytest.mark.parametrize(
