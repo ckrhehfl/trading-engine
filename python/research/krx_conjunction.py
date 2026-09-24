@@ -301,17 +301,54 @@ class Outcome:
         """
         return None if self.mean_bp is None else self.mean_bp - base_bp
 
-    def clears_cost(self, base_bp: float) -> bool:
-        """A round trip is paid in either direction, so the test is on the
-        magnitude of the excess -- never on its sign."""
-        excess = self.excess_bp(base_bp)
-        return excess is not None and abs(excess) > COST_FLOOR_BP
+    def clears_cost(self) -> bool:
+        """Is the **raw** conditional move bigger than a round trip?
 
-    def direction(self, base_bp: float) -> str:
-        excess = self.excess_bp(base_bp)
-        if excess is None:
+        **On `mean_bp`, not `excess_bp`** -- decided 2026-09-23 (operator
+        decision D3, `.planning/audit-2026-09-consolidation.md`) after an
+        external audit found this module computing three different quantities
+        and printing them as one recommendation:
+
+        | | measured against |
+        |---|---|
+        | `p_value` | the conditional raw return vs **zero** |
+        | `direction` | the sign of (conditional - unconditional) |
+        | `clears_cost` | the magnitude of (conditional - unconditional) |
+
+        So a basket rising 20bp inside a panel rising 50bp printed
+        `<< SHORT, clears 13bp`, and shorting it loses 20bp plus costs. The
+        three were coherent only if the recommendation meant *hedged against
+        the panel* -- and that reading is not implementable as computed,
+        because `base_bp` is the unconditional mean of this same ~2,700-name
+        panel, which is not an instrument. A real hedge needs KOSPI200
+        futures, whose constituents and weights differ, which changes the
+        number rather than interpreting it.
+
+        **Outright is the settled definition**, and the significance test was
+        already correct for it, so one change here replaces three. Sign
+        awareness is preserved by testing `|mean_bp|`, which is what
+        `excess_bp`'s own incident was actually about: an earlier version
+        tested `mean - base > COST_FLOOR` and recognised a long edge only,
+        while every conditional mean in the first real run was negative.
+
+        `excess_bp` is **kept as a reported diagnostic**. It removes common
+        panel drift, which is the right unit for the superadditivity finding.
+        What changed is only that the `<<` recommendation may be derived from
+        a quantity that can actually be traded.
+        """
+        return self.mean_bp is not None and abs(self.mean_bp) > COST_FLOOR_BP
+
+    def direction(self) -> str:
+        """LONG or SHORT on the **raw** conditional move -- see `clears_cost`.
+
+        A basket that rises reads LONG even inside a panel that rises more.
+        That is the point: a trade in this panel is taken outright, so what is
+        earned is the raw move, and whether the panel beat it is a separate
+        (and real) question that `excess_bp` answers.
+        """
+        if self.mean_bp is None:
             return "-"
-        return "SHORT" if excess < 0 else "LONG"
+        return "SHORT" if self.mean_bp < 0 else "LONG"
 
 
 def _summarise(label: str, forward: np.ndarray, selected: np.ndarray) -> Outcome:
@@ -544,9 +581,9 @@ def main(argv: list[str] | None = None) -> int:
             pv = f"{row.p_value:.3f}" if row.p_value is not None else "-"
             flag = "ok" if keep else "no"
             mark = ""
-            if row.clears_cost(base) and keep:
-                mark = f"  << {row.direction(base)}, clears {COST_FLOOR_BP:.0f}bp"
-            elif row.clears_cost(base):
+            if row.clears_cost() and keep:
+                mark = f"  << {row.direction()}, clears {COST_FLOOR_BP:.0f}bp"
+            elif row.clears_cost():
                 mark = "  (clears cost, fails BH)"
             print(
                 f"{row.label:<62} {row.firings:>9,} {row.dates:>6,} {m:>9} "
@@ -558,13 +595,28 @@ def main(argv: list[str] | None = None) -> int:
             key=lambda r: abs(r.excess_bp(base) or 0.0),
         )
         kept = sum(survives)
+        biggest = max(
+            (r for r in conditional if r.mean_bp is not None),
+            key=lambda r: abs(r.mean_bp or 0.0),
+        )
         print(
-            f"\n  baseline {base:+.1f}bp; the bar is |excess| > {COST_FLOOR_BP:.0f}bp, "
-            f"since a round trip is paid in either direction.\n"
-            f"  largest excess: {best.excess_bp(base):+.1f}bp "
-            f"({best.label}) — "
-            f"{'CLEARS' if abs(best.excess_bp(base) or 0) > COST_FLOOR_BP else 'does NOT clear'}"
+            f"\n  the bar is |raw mean| > {COST_FLOOR_BP:.0f}bp, since a round "
+            f"trip is paid in either direction and a trade here is taken "
+            f"OUTRIGHT (operator decision D3, 2026-09-23).\n"
+            f"  largest raw move: {biggest.mean_bp:+.1f}bp "
+            f"({biggest.label}) — "
+            f"{'CLEARS' if biggest.clears_cost() else 'does NOT clear'}"
             f" the cost floor."
+        )
+        # `excess_bp` is reported beside it and never used to recommend a
+        # trade: it removes common panel drift, which is the right unit for
+        # the superadditivity finding and the wrong unit for "what would this
+        # earn", because the unconditional mean of a 2,700-name panel is not
+        # an instrument you can be short of.
+        print(
+            f"  for reference, baseline {base:+.1f}bp and largest |excess| "
+            f"{best.excess_bp(base):+.1f}bp ({best.label}) — a drift-removed "
+            f"diagnostic, not a tradeable quantity."
         )
         # Two separate tests, and a combination has to pass both. Saying how
         # many of the eleven survived is the part a reader needs in order to

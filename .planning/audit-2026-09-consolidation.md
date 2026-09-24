@@ -71,8 +71,20 @@ rules are scattered.
 
 ### D2 — Published conclusions touched by F-6/F-7: **withdraw, do not recompute**
 
-`rd-u` (conjunctions) and `rd-v` (payoff geometry) are merged and their
-conclusions sit in `CLAUDE.md`.
+`rd-u` (conjunctions) and `rd-v` (payoff geometry) are merged.
+
+> **Corrected 2026-09-24: their conclusions do NOT sit in `CLAUDE.md`, and
+> this sentence was never checked against the file.** Measured: the only
+> `rd-u` material in `CLAUDE.md` is the `check_clustered_observations`
+> row and the clustering rule's own evidence paragraph (p 0.016 → 0.182,
+> p 0.113 → 0.039, BH 1 → 0), all of which are statements about the
+> **clustering correction** and are untouched by F-7 — those p-values are
+> raw-return-vs-zero tests, the quantity D3 settles on. `rd-v` appears in
+> `CLAUDE.md` not at all.
+>
+> So **D2's withdrawal lands in the planning documents only**, and
+> `CLAUDE.md` needs no edit for it. That is a smaller change than this
+> plan assumed, and the assumption is exactly the kind F-12 was about.
 
 Withdraw the affected claims; **do not manufacture corrected historical
 figures.** This follows the audit's own recommendation and this project's
@@ -83,17 +95,25 @@ The affected studies become **unevaluable on that axis**, not reversed.
 
 ### D3 — What `krx_conjunction` trades: **outright**
 
-The module currently computes three different quantities and prints them
-as one recommendation:
+The module **computed** three different quantities and printed them as one
+recommendation. This is the defect as found; it was fixed on 2026-09-24
+(PR #203), so the table is a historical record and not a description of the
+module today:
 
-| | quantity |
+| | quantity, **as found** |
 |---|---|
 | `p_value` | conditional raw return vs **zero** |
 | `direction` | sign of (conditional − unconditional panel mean) |
 | `clears_cost` | \|conditional − panel mean\| > 13 bp |
 
-So a basket rising 20 bp in a panel rising 50 bp prints
+So a basket rising 20 bp in a panel rising 50 bp printed
 `<< SHORT, clears 13bp`, and shorting it loses.
+
+**As it stands now**, `direction` and `clears_cost` both read `mean_bp`, so
+the cost bar is **`|mean_bp| > 13 bp`** and `excess_bp` survives only as a
+reported diagnostic. Every `11.4 bp` and `8.7%` below is an **excess**
+figure and belongs to the combination effect or to the diagnostic, never to
+a cost verdict; the cost verdict's own figures are `−14.4 bp` and `11.0%`.
 
 **Outright is the settled definition**, for three reasons:
 
@@ -116,14 +136,29 @@ drift, which is the right unit for the superadditivity finding. What
 changes is that the `<<` recommendation may only be derived from a
 quantity that can actually be traded.
 
-**What this does to `rd-u`, stated precisely:**
+**What this does to `rd-u`.** The table below is what this plan predicted.
+**Two of its four rows were wrong, in both directions, and the corrected
+disposition is in `rd-u` §0** (written 2026-09-24, when the fix was
+applied and the code was read rather than the plan re-read).
 
-| claim | disposition |
-|---|---|
-| "0 of 11 survive Benjamini-Hochberg" | **withdrawn** — the gate mixed a raw-return null with an excess-based direction and cost test. Not reversed; unestablished. |
-| "does not clear the cost floor" | **survives either definition.** Under a hedged reading the bar would double (two round trips); under outright the comparison changes target, and §5.1 already supersedes it. |
-| §5.1 "the failure is direction, not cost" (8.7% of an available move) | **kept** — does not depend on the p-values. |
-| superadditivity, 2.8× / 1.56× | **kept**, with its unit named. A statement about how conditions combine, not a trade. |
+| claim | this plan predicted | what the code actually does |
+|---|---|---|
+| "0 of 11 survive Benjamini-Hochberg" | **withdrawn** — the gate mixed a raw-return null with an excess-based direction and cost test | **WRONG: it stands, untouched.** BH runs on the p-values alone — `benjamini_hochberg([r.p_value for r in conditional])`, `krx_conjunction.py:547` — and a `p_value` is the raw return against zero, exactly the quantity D3 settles on. BH and the cost test are two separate counts; only the cost half read the excess. |
+| "does not clear the cost floor" | **survives either definition** | **WRONG: withdrawn, and it reverses.** The best pair's raw mean is **−14.4 bp** (rd-u §5's own table) against rd-q's **13.0 bp** round trip, so outright it clears. rd-u had compared **−11.4 bp of excess** to that floor. §5.1's own share arithmetic agrees independently: 14.4/131 = 11.0% against a floor of 9.9%. |
+| §5.1 "the failure is direction, not cost" (8.7% of an available move) | **kept** | **kept, and strengthened** — the share moves to 11.0%, and the paragraph's warning that *"it did not clear the cost floor"* invites the wrong inference turns out to have been warning about a statement that was not arithmetically true either. |
+| superadditivity, 2.8× / 1.56× | **kept**, with its unit named | **kept**, unit named: both are ratios of **excess**. |
+
+**Net effect on `rd-u`: its headline had two independent reasons to stop
+and now has one.** The surviving one is the stronger — p = 0.008 on the
+best pair is precisely the value that does not survive eleven looks — and
+discovery mode's first guard forbids quoting any of it as evidence of an
+edge regardless. **No figure was recomputed**; the corrected comparison
+reads a number rd-u already published.
+
+**Recorded rather than quietly fixed, because the failure mode is this
+consolidation's own subject**: a plan sentence that was never checked
+against the code it describes. It is the same shape as F-12, where
+CLAUDE.md called a spent window unspent, and as the premise below.
 
 ### D4 — Raw price storage: **basis becomes part of symbol identity**
 

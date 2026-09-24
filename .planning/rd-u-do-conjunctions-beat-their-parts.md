@@ -27,6 +27,54 @@ and discovery mode means no penalty attaches.
 
 ---
 
+## 0. Correction, 2026-09-24 — the cost verdict is withdrawn and it reverses
+
+**One of this document's two reasons to stop was computed against the
+wrong quantity, and correcting it removes that reason.** Found by the
+2026-09-23 external audit (finding F-7) and settled as operator decision
+**D3** in `.planning/audit-2026-09-consolidation.md`. Nothing here was
+re-run and no figure is new: every number below is already in §5's own
+table.
+
+`research/krx_conjunction.py` computed three different quantities and
+printed them as one recommendation — `p_value` tested the **raw**
+conditional return against zero, while `direction` and `clears_cost` were
+taken from the **excess** over the unconditional panel mean. The cost
+floor is a round trip, and a round trip is paid on the raw move. D3
+settles the traded quantity as **outright**, because the hedged reading
+is not implementable as computed: `base_bp` is the unconditional mean of
+the same ~2,700-name panel, which is not an instrument.
+
+| claim | disposition |
+|---|---|
+| "it still does not clear the cost floor" | **WITHDRAWN, and it reverses.** §5's best pair has a raw mean of **−14.4 bp** against rd-q's **13.0 bp** round trip. \|−14.4\| > 13.0, so it clears. This document compared **−11.4 bp of excess** to that floor. |
+| "0 of 11 survive Benjamini-Hochberg" | **STANDS, untouched.** BH runs on the p-values alone (`benjamini_hochberg([r.p_value for r in conditional])`), and a `p_value` here is the raw return against zero — exactly the quantity D3 settles on. |
+| §1's "the conjunction really does beat its parts — by about 2.8×" and §5.1's superadditivity 1.56× | **KEPT, with the unit named**: both are ratios of **excess**, which is the right unit for a statement about how conditions combine and the wrong one for what a trade earns. |
+| §5.1 "the failure is direction, not cost" | **the direction half is kept; its share figure moves.** The predicted move is 14.4 bp of a 131 bp median move, **11.0%** rather than 8.7%. Still almost none of it. |
+
+**So the headline's "two independent reasons to stop" is now one.** The
+surviving one is sufficient and is the stronger of the two: the best
+pair's p = 0.008 is precisely the value that does not survive
+multiple-testing across eleven looks, and §8's other limitations are
+unaffected — this is discovery mode, so nothing here may be promoted or
+quoted as evidence of an edge regardless.
+
+**What is deliberately NOT done here**: no recomputation. The corrected
+cost comparison is a reading of a number this document already published,
+not a new run. Every other figure, the h=5 confounding banner, and the
+§6 `*** CONFOUNDED ***` verdict stand exactly as written.
+
+**And two rows of D3's own disposition table were wrong**, recorded
+because a plan that was never checked against the code is the same defect
+this consolidation exists to fix. It predicted that "0 of 11 survive BH"
+would be withdrawn and that "does not clear the cost floor" would survive
+either definition. Both are the opposite of what the code does: BH and
+the cost test are two separate counts, and only the cost half read the
+excess. Verified by reading `benjamini_hochberg`'s argument at
+`krx_conjunction.py:547` rather than by re-reading the plan.
+
+---
+
 ## 1. The headline, in two parts that point opposite ways
 
 > **The conjunction really does beat its parts — by about 2.8× — and it
@@ -50,6 +98,11 @@ it, because every one of them measured a single formula.
 The verdict is equally real: **−11.4 bp against a 13 bp round trip is a
 loss**, and `0 of 11` combinations survive Benjamini-Hochberg. Two
 independent reasons to stop, in the same table.
+
+> **Withdrawn in part, 2026-09-24 — see §0.** The cost half of that
+> sentence compares an **excess** to a round trip that is paid on the
+> **raw** move. The raw mean is −14.4 bp, which clears the 13.0 bp floor,
+> so this is one reason to stop rather than two. The BH half stands.
 
 ## 2. Where the conditions came from — none of them from a search
 
@@ -157,8 +210,17 @@ bites this study at all.
 
 ## 5. The clean read: held 1 day, entered at the next open
 
-Baseline (unconditional) **−3.0 bp**, 1,174 dates. The bar is
-`|excess| > 13 bp`, since a round trip is paid in either direction.
+Baseline (unconditional) **−3.0 bp**, 1,174 dates.
+
+> **The bar below is the one this run applied and it is NOT the bar any
+> more** (§0, 2026-09-24). It read `|excess| > 13 bp`; the current bar is
+> **`|mean_bp| > 13 bp`**, because a round trip is paid on the raw move.
+> The `excess` column stays, as a drift-removed **diagnostic** — it is the
+> right unit for the superadditivity finding and the wrong one for what a
+> trade earns. Read the `mean` column for anything about cost.
+
+The bar this run applied was `|excess| > 13 bp`, since a round trip is paid
+in either direction.
 
 | combination | name-days | dates | mean bp | excess | p | BH |
 |---|---|---|---|---|---|---|
@@ -196,7 +258,7 @@ first drafted from figures with no committed generating path.
 **A KRX day moves about ten times the cost of trading it.** Absolute
 intraday move (`open → close`), 11,550 usable name-days:
 
-| | move | vs the 13 bp round trip |
+| | move | vs the 13 bp round trip (**on the raw mean** — §0) |
 |---|---|---|
 | p25 | 59.7 bp | **4.59×** |
 | **median** | **131.2 bp** | **10.09×** |
@@ -213,6 +275,29 @@ regime in this data where the cost is the binding constraint.
 cost floor"* is arithmetically true and invites exactly the wrong
 inference; the honest form is **"it predicted almost none of a move that
 is enormous relative to its cost."**
+
+> **Two figures above are superseded and one sentence above is now false**
+> (§0, 2026-09-24) — **and this paragraph's own arithmetic is the second
+> independent route to the correction.**
+>
+> **11.4 bp and 8.7% are EXCESS figures**, belonging to the combination
+> effect and the diagnostic, never to a cost verdict. The figure to compare
+> against a round trip is the **raw** mean, −14.4 bp: **14.4 / 131 =
+> 11.0%**, against a cost floor that is itself 13.0 / 131 = **9.9%** of the
+> same move — the *"10% would have paid for the trade"* in this very
+> sentence. So it did pay for the trade, reached here without going near the
+> floor in bp.
+>
+> Which makes *"it did not clear the cost floor"* **not** arithmetically
+> true after all, where this paragraph calls it so.
+>
+> **The claim this paragraph is actually making survives, and is
+> strengthened.** *"It predicted almost none of a move that is enormous
+> relative to its cost"* is true of 11.0% exactly as it was of 8.7%, and
+> the sentence's own warning — that *"it did not clear the cost floor"*
+> invites the wrong inference — turns out to have been warning about a
+> statement that was not even arithmetically true. The failure is
+> direction. It was never cost.
 
 **What this says about infrastructure, scoped to what was measured.** The
 moves above are computed from **printed prices** — open to close — with no
@@ -302,9 +387,11 @@ the sum of its parts is a separate, real observation about conjunctions.
 **It is not evidence of an edge and may not be quoted as one.** Discovery
 mode's first guard.
 
-**The result is negative on its own terms, twice over.** −11.4 bp against
-a 13 bp round trip, and `0 of 11` surviving BH. Neither number is close
-enough to a pass to describe this as marginal.
+**The result is negative on its own terms** — and **once, not twice
+over**, corrected 2026-09-24 (§0). `0 of 11` surviving BH is the reason
+that stands, and it stands on the raw-return p-values D3 settles on. The
+cost comparison is withdrawn: −14.4 bp raw clears a 13.0 bp round trip,
+and the −11.4 bp quoted here is an excess.
 
 **Costs are the floor, not the whole cost model.** rd-q's ~13 bp is a
 round trip for the futures-liquid names. A cross-sectional long-short pays
@@ -364,6 +451,12 @@ re-run. **Seven of seven produce a failure**, verified rather than read:
 | entry at the **next** open | `o[t+1]` → `o[t]` | 2 failed |
 | a median split needs 3+ names | `if ok.sum() < 3` → `if False` | 1 failed |
 | the cost test is sign-agnostic | `abs(excess)` → `excess` | 1 failed |
+
+> **Superseded, 2026-09-24 (§0).** That mutation is against the version of
+> the cost test that read the **excess**. The current test is
+> `abs(mean_bp)`, and `python/tests/test_krx_conjunction.py` carries its own
+> mutation record — four mutations, four caught, including the excess-based
+> form as the defect.
 | the overnight leg gaps from the previous row | compare against `prev_close` | 1 failed |
 | an end effect is not a hole | drop the `lo < d < hi` bound | 1 failed |
 | no combination measured twice | `sorted({2, n})` → `(2, n)` | 1 failed |
