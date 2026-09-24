@@ -151,30 +151,90 @@ def test_holding_longer_spans_the_overnight_gaps():
 # --------------------------------------------- the cost test's direction
 
 
-def test_the_cost_test_is_on_the_MAGNITUDE_of_the_excess():
-    """**A real defect in the first version.** It tested `mean - base >
-    floor`, so it recognised a long edge only — and every conditional mean
-    in the first real run was negative. The whole result was short, and
-    the report showed nothing."""
+def test_the_cost_test_is_on_the_MAGNITUDE_of_the_RAW_move():
+    """**Two defects, one after the other, and the sign lesson survives both.**
+
+    The first version tested `mean - base > floor`, so it recognised a long
+    edge only -- and every conditional mean in the first real run was
+    negative, so the whole result was short and the report showed nothing.
+    That is why the test is on a magnitude.
+
+    The second, found by the 2026-09-23 external audit (F-7): the magnitude
+    was taken of the **excess**, while the p-value tested the **raw** move
+    against zero. So a basket rising 20bp in a panel rising 50bp printed
+    `<< SHORT, clears 13bp`, and shorting it loses. Operator decision D3
+    settles the traded quantity as **outright**, so both the direction and the
+    cost test now read `mean_bp`.
+    """
     short = Outcome("x", 500, 250, -20.0, -3.0, 0.001)
-    assert short.excess_bp(-3.0) == pytest.approx(-17.0)
-    assert short.clears_cost(-3.0), "a short edge must count"
-    assert short.direction(-3.0) == "SHORT"
+    assert short.clears_cost(), "a short edge must count"
+    assert short.direction() == "SHORT"
 
     long_ = Outcome("y", 500, 250, +20.0, 3.0, 0.001)
-    assert long_.clears_cost(3.0) and long_.direction(3.0) == "LONG"
+    assert long_.clears_cost() and long_.direction() == "LONG"
 
 
-def test_an_excess_under_the_floor_does_not_clear_in_either_direction():
-    """The real h=1 result sits here: −11.4bp of excess against a 13bp
-    round trip. Close is not clearing."""
-    near = Outcome("x", 2360, 1139, -14.4, None, 0.008)
-    assert abs(near.excess_bp(-3.0)) == pytest.approx(11.4)
-    assert not near.clears_cost(-3.0)
+def test_a_riser_inside_a_bigger_riser_is_LONG_not_SHORT():
+    """**The audit's own example** (F-7). Under the excess-based test this
+    printed SHORT, and shorting a basket that rises 20bp loses 20bp plus two
+    spreads. What the panel did is a real and separate question, which
+    `excess_bp` still answers -- it is just not what a trade here earns."""
+    riser = Outcome("x", 500, 250, +20.0, 4.0, 0.001)
+    panel = +50.0
+    assert riser.excess_bp(panel) == pytest.approx(-30.0)
+    assert riser.direction() == "LONG", "the traded quantity is the raw move"
+    assert riser.clears_cost()
+
+
+def test_the_REAL_h1_result_clears_the_cost_floor_on_the_raw_move():
+    """**The measured consequence of D3, and it reverses a published
+    verdict** — so it is pinned in a test rather than left in prose.
+
+    `rd-u` §5's own table, the best pair `overnight_strong_1m &
+    vol_low_21d`: 2,360 firings over 1,139 dates, raw mean **−14.4 bp**,
+    excess **−11.4 bp** against a **−3.0 bp** baseline, p = 0.008. rd-u
+    reported *"−11.4 bp against a 13 bp round trip is a loss"* — an
+    **excess** compared against a round trip that is paid on the **raw**
+    move.
+
+    Outright, |−14.4| > 13.0, so it clears. That does not make rd-u
+    positive: its other reason to stop is untouched, because Benjamini-
+    Hochberg runs on the p-values alone (`benjamini_hochberg([r.p_value
+    ...])`) and a p-value here tests the raw return against zero, which is
+    exactly the quantity D3 settles on. **0 of 11 surviving BH stands.**
+    What changes is that rd-u's headline had two independent reasons to
+    stop and now has one.
+
+    An earlier version of this test wrote `-11.4` as the *mean*, which is
+    the same category error the module had: it compared an excess to a raw
+    cost floor and concluded "does not clear".
+    """
+    real = Outcome("overnight_strong_1m & vol_low_21d", 2360, 1139, -14.4, None, 0.008)
+    assert real.excess_bp(-3.0) == pytest.approx(-11.4)
+    assert real.clears_cost(), (
+        "the raw move is 14.4bp against a 13.0bp round trip -- under the "
+        "outright definition this clears, and rd-u's cost verdict is withdrawn"
+    )
+    assert real.direction() == "SHORT"
+
+    # The excess, which is what rd-u compared, would NOT have cleared --
+    # this is the arithmetic of the reversal, stated as a test.
+    as_excess = Outcome("x", 2360, 1139, -11.4, None, 0.008)
+    assert not as_excess.clears_cost()
+
+
+def test_excess_bp_survives_as_a_diagnostic():
+    """Kept deliberately, not left behind: it removes common panel drift,
+    which is the right unit for the superadditivity finding and the wrong one
+    for "what would this earn"."""
+    row = Outcome("x", 500, 250, -20.0, -3.0, 0.001)
+    assert row.excess_bp(-3.0) == pytest.approx(-17.0)
+    assert row.excess_bp(0.0) == pytest.approx(-20.0)
+    assert Outcome("y", 1, 1, None, None, None).excess_bp(1.0) is None
 
 
 def test_an_unmeasurable_outcome_clears_nothing():
-    assert not Outcome("x", 1, 1, None, None, None).clears_cost(0.0)
+    assert not Outcome("x", 1, 1, None, None, None).clears_cost()
 
 
 # ----------------------------------- the date is the unit of the test
