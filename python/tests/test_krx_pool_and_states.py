@@ -518,3 +518,76 @@ def test_an_unresolvable_negative_control_stops_the_whole_pass(monkeypatch, tmp_
         S.resolve_absences(_S(), conn)
     status = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
     assert status == Absence.UNKNOWN.value, "a symbol was resolved anyway"
+
+
+def test_a_live_only_code_with_an_EMPTY_name_does_not_kill_the_pool(tmp_path):
+    """**Reported on review.** `live.get(code) or dead[code]` branched on
+    truthiness rather than membership, so a live-only code whose name is the
+    empty string fell through to `dead[code]` and raised `KeyError` -- which
+    takes the whole pool build down and stops the scan from starting at all.
+    `parse_master` strips names, so it does not rule an empty one out."""
+    conn = _universe(
+        tmp_path,
+        live=[("005930", "", "KR7005930003"), ("000660", "SK하이닉스", "KR7000660001")],
+        dead=[("117930", "한진해운", "KR7117930004")],
+    )
+    pool = candidates(conn)
+    assert {c for c, _, _ in pool} == {"005930", "000660", "117930"}
+    assert dict((c, n) for c, n, _ in pool)["005930"] == ""
+
+
+def test_a_LEAVING_code_falls_back_to_the_delisted_name_when_live_is_blank(tmp_path):
+    """The one place a fallback is legitimate: the code really is on both
+    lists, so the other side's name is a better answer than nothing."""
+    conn = _universe(
+        tmp_path,
+        live=[("006380", "", "KR7006380000")],
+        dead=[("006380", "카프로", "KR7006380000")],
+    )
+    pool = candidates(conn)
+    assert pool == [("006380", "카프로", Listing.LEAVING)]
+
+
+def test_the_coverage_report_groups_failure_kinds_without_truncating_them(tmp_path):
+    """**Reported on review.** `substr(status, 1, 14)` printed
+    `failed:rejecte`, cut `failed:transport` and `failed:malformed` short, and
+    split `failed:other:<Type>` into one group per exception type's first
+    letter. Deciding whether to run a second pass means reading this report.
+    """
+    import io
+    from contextlib import redirect_stdout
+
+    from data.krx_scan import coverage
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCAN_SCHEMA)
+    conn.executemany(
+        "INSERT INTO scan_progress (code, bars, frozen, status, fetched_at) "
+        "VALUES (?, 0, 0, ?, '2026-09-24T00:00:00+00:00')",
+        [
+            ("A", Failure.REJECTED.value),
+            ("B", Failure.TRANSPORT.value),
+            ("C", Failure.MALFORMED.value),
+            ("D", Failure.CAPPED.value),
+            ("E", f"{Failure.OTHER.value}:ZeroDivisionError"),
+            ("F", f"{Failure.OTHER.value}:KeyError"),
+            ("G", Absence.UNKNOWN.value),
+            ("H", Absence.NEVER_SERVED.value),
+        ],
+    )
+    conn.commit()
+
+    buffer = io.StringIO()
+    with redirect_stdout(buffer):
+        coverage(conn)
+    printed = buffer.getvalue()
+
+    for kind in (
+        "failed:rejected", "failed:transport", "failed:malformed",
+        "failed:capped", "absent:unknown", "absent:never_served",
+    ):
+        assert kind in printed, f"{kind} is not reported under its own name"
+    # The two `other` rows collapse into one group rather than splitting by
+    # exception type, and neither exception name reaches the report.
+    assert "failed:other" in printed
+    assert "ZeroDivisionError" not in printed and "KeyError" not in printed

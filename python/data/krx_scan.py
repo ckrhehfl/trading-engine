@@ -322,13 +322,22 @@ def candidates(conn) -> list[tuple[str, str, Listing]]:
 
     pool: list[tuple[str, str, Listing]] = []
     for code in sorted(live.keys() | dead.keys()):
+        # Membership, never truthiness. `live.get(code) or dead[code]` looked
+        # equivalent and is not: a live-only code whose name is the empty
+        # string falls through to `dead[code]` and raises `KeyError`, which
+        # takes the whole pool build down and so stops the scan from starting
+        # at all. `parse_master` strips names, so it does not rule an empty
+        # one out. Caught on review.
         if code in live and code in dead:
             status = Listing.LEAVING
+            name = live[code] or dead[code]
         elif code in live:
             status = Listing.LIVE
+            name = live[code]
         else:
             status = Listing.DELISTED
-        pool.append((code, live.get(code) or dead[code], status))
+            name = dead[code]
+        pool.append((code, name, status))
     return pool
 
 
@@ -680,8 +689,16 @@ def coverage(conn: sqlite3.Connection) -> None:
     bars = conn.execute("SELECT COUNT(*) FROM scan_bars").fetchone()[0]
     print(f"symbols recorded {total:,}   bars {bars:,}")
     for status, n, b in conn.execute(
-        "SELECT CASE WHEN status LIKE 'failed:%' THEN substr(status, 1, 14) "
-        "WHEN status LIKE 'absent%' THEN status ELSE status END, "
+        # Grouped on the KIND, not on a character count. A previous version
+        # used `substr(status, 1, 14)`, whose arithmetic did not match the
+        # status names this change introduced: `failed:rejected` printed as
+        # `failed:rejecte`, `failed:transport` and `failed:malformed` both
+        # lost their last character, and `failed:other:<Type>` split into one
+        # group per exception type's first letter. Deciding whether to run a
+        # second pass means reading this report, so it has to show the retry
+        # kinds exactly.
+        "SELECT CASE WHEN status LIKE 'failed:other:%' THEN 'failed:other' "
+        "ELSE status END, "
         "COUNT(*), SUM(bars) FROM scan_progress GROUP BY 1 ORDER BY 2 DESC"
     ):
         print(f"  {status:<10} {n:>6,} symbols  {b or 0:>10,} bars")
