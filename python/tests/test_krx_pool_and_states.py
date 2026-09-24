@@ -422,6 +422,8 @@ def _probe_env(monkeypatch, payload):
 
 
 def _seeded(tmp_path, code="005930"):
+    tmp_path = __import__("pathlib").Path(tmp_path)
+    tmp_path.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(tmp_path / "s.sqlite3")
     conn.executescript(SCAN_SCHEMA)
     conn.execute(
@@ -591,3 +593,88 @@ def test_the_coverage_report_groups_failure_kinds_without_truncating_them(tmp_pa
     # exception type, and neither exception name reaches the report.
     assert "failed:other" in printed
     assert "ZeroDivisionError" not in printed and "KeyError" not in printed
+
+
+def test_bars_only_AFTER_the_panel_resolve_to_OUTSIDE_WINDOW(monkeypatch, tmp_path):
+    """**Reported on review, and the unsafe direction.** `_wide_probe` used to
+    end at `PANEL_END`, so a name listed after it returned zero rows exactly as
+    it had in the first pass and was recorded `NEVER_SERVED` -- asserting KIS
+    does not price a name it prices perfectly well. That is the pool losing a
+    real name, which is the survivorship bias this universe exists to remove.
+    """
+    from data.krx_scan import PANEL_END, resolve_absences
+
+    later = str(int(PANEL_END[:4]) + 1) + PANEL_END[4:]
+    session = _probe_env(
+        monkeypatch,
+        {"rt_cd": "0", "output2": [{"stck_bsop_date": later}]},
+    )
+    conn = _seeded(tmp_path)
+    counts = resolve_absences(session, conn)
+    assert counts[Absence.OUTSIDE_WINDOW.value] == 1
+    assert counts[Absence.NEVER_SERVED.value] == 0
+    assert counts["contradicted"] == 0
+
+
+def test_the_wide_probe_asks_past_the_panel_end(monkeypatch):
+    """Asserted on the request itself, not only on the verdict: the verdict
+    can be reached for the wrong reason if a fake answers regardless of the
+    window it was asked for."""
+    import datetime as dt
+
+    from data import krx_scan as S
+
+    seen = {}
+
+    def capture(url, headers):  # noqa: ARG001
+        from urllib.parse import parse_qs, urlparse
+
+        seen.update({k: v[0] for k, v in parse_qs(urlparse(url).query).items()})
+        return {"rt_cd": "0", "output2": []}
+
+    monkeypatch.setattr(S, "_get_with_retry", capture)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    S._wide_probe(_S(), "005930")
+    assert seen["FID_INPUT_DATE_2"] > S.PANEL_END, (
+        f"the probe asked only to {seen['FID_INPUT_DATE_2']}, so a name listed "
+        f"after {S.PANEL_END} cannot be distinguished from one KIS never prices"
+    )
+    assert seen["FID_INPUT_DATE_2"] == dt.datetime.now(S.KST).strftime("%Y%m%d")
+
+
+def test_BOTH_passes_record_an_unclassifiable_failure_the_same_way(
+    monkeypatch, tmp_path
+):
+    """**Reported on review.** `scan()` appended the exception type and
+    `resolve_absences()` did not, so a probe-path `OTHER` lost the only clue it
+    had -- and `OTHER` is exactly the kind that is never retried, so manual
+    diagnosis is all it gets."""
+    from data import krx_scan as S
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    def odd(url, headers):  # noqa: ARG001
+        raise ZeroDivisionError("nothing anticipated this")
+
+    monkeypatch.setattr(S, "_get_with_retry", odd)
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+
+    scan_conn = sqlite3.connect(tmp_path / "a.sqlite3")
+    scan_conn.executescript(SCAN_SCHEMA)
+    scan_conn.commit()
+    S.scan(_S(), scan_conn, [("005930", "삼성전자", Listing.LIVE)])
+
+    probe_conn = _seeded(tmp_path / "b")
+    S.resolve_absences(_S(), probe_conn)
+
+    expected = f"{Failure.OTHER.value}:ZeroDivisionError"
+    for label, conn in (("scan", scan_conn), ("resolve_absences", probe_conn)):
+        got = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
+        assert got == expected, f"{label} recorded {got!r}, not {expected!r}"

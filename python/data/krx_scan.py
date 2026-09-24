@@ -226,6 +226,21 @@ class Failure(Enum):
     OTHER = "failed:other"
 
 
+def failure_detail(exc: BaseException) -> str:
+    """The status string a failure is recorded as, for **either** pass.
+
+    `scan()` and `resolve_absences()` each wrote this themselves and only one
+    of them appended the exception type, so a probe-path `OTHER` lost the only
+    clue it had -- and `OTHER` is precisely the kind that is never retried, so
+    manual diagnosis is all it gets. One formatter, on the same reasoning as
+    the pool predicate and the page contract.
+    """
+    kind = classify_failure(exc)
+    if kind is Failure.OTHER:
+        return f"{kind.value}:{type(exc).__name__}"
+    return kind.value
+
+
 #: Which failures a second pass may retry. An allowlist, not a blocklist --
 #: a blocklist bets on having thought of every kind, and this project has
 #: already recorded that bet losing (`change_check.check_guard_is_an_allowlist`).
@@ -512,13 +527,7 @@ def scan(
                 # covered a transient rejection, a row-cap breach and a
                 # parse refusal alike, so a second pass could not tell
                 # which of the 193 it should retry.
-                kind = classify_failure(exc)
-                detail = (
-                    f"{kind.value}:{type(exc).__name__}"
-                    if kind is Failure.OTHER
-                    else kind.value
-                )
-                record_progress(conn, code, detail)
+                record_progress(conn, code, failure_detail(exc))
                 counts["failed"] += 1
                 failed = True
                 break
@@ -592,7 +601,7 @@ def resolve_absences(
         try:
             dates = _wide_probe(session, code)
         except Exception as exc:  # noqa: BLE001
-            record_progress(conn, code, classify_failure(exc).value)
+            record_progress(conn, code, failure_detail(exc))
             counts["failed"] += 1
             continue
         if not dates:
@@ -629,7 +638,21 @@ def _wide_probe(session: KisSession, code: str) -> list[str]:
         "FID_COND_MRKT_DIV_CODE": "J",
         "FID_INPUT_ISCD": code,
         "FID_INPUT_DATE_1": "19900101",
-        "FID_INPUT_DATE_2": PANEL_END,
+        # **Today, not `PANEL_END`.** This asks whether KIS prices the code at
+        # all, which is a different question from what the panel covers. Ending
+        # at `PANEL_END` meant a name listed after it returned zero rows here
+        # exactly as it had in the first pass, and got recorded
+        # `NEVER_SERVED` -- asserting KIS does not price a name it prices
+        # perfectly well. That is the unsafe direction: it is the pool losing a
+        # real name, which is the survivorship bias this whole universe exists
+        # to remove. With today as the end, such a name comes back with dates
+        # entirely after `PANEL_END` and resolves to `OUTSIDE_WINDOW`, which is
+        # what it is. Caught on review.
+        #
+        # KST rather than UTC because a KRX trading date maps exactly onto UTC
+        # midnight, so during 00:00-09:00 KST the UTC date is still yesterday
+        # and would exclude a session that has already opened.
+        "FID_INPUT_DATE_2": dt.datetime.now(KST).strftime("%Y%m%d"),
         "FID_PERIOD_DIV_CODE": "D",
         "FID_ORG_ADJ_PRC": ADJUSTED,
     }
