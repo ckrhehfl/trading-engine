@@ -146,7 +146,30 @@ def test_a_rule_line_is_flagged_even_when_its_figures_survive():
         rule_markers=["= "],
     )
     assert rule.survives and rule.looks_like_a_rule
-    assert "step 2 must keep these" in report([rule])
+    # **The COUNT, not the fixed phrase.** `"step 2 must keep these"` is
+    # printed unconditionally, so asserting only that would pass with a rule
+    # count of zero. Reported on review.
+    text = report([rule])
+    assert "1 survive step 1 and read as a rule" in text, text
+    assert "0 survive step 1 and read as narrative" in text, text
+
+
+def test_an_ORPHAN_is_not_counted_as_a_trim_candidate():
+    """**Reported on review**, and the two figures contradicted each other on
+    the same screen: a two-way rule/narrative split counted orphan narrative
+    lines as trim candidates while the report also said they cannot be
+    trimmed. Orphans are now counted only as orphans."""
+    verdicts = [
+        LineVerdict(1, "measured 0.716 once", ["0.716"], missing=["0.716"]),
+        LineVerdict(2, "measured 0.9705 once", ["0.9705"]),
+        LineVerdict(3, "FEE_BPS = 5 and must not be tuned", ["5"],
+                    rule_markers=["= "]),
+    ]
+    text = report(verdicts)
+    assert "1 carry a figure found nowhere else" in text, text
+    assert "1 survive step 1 and read as a rule" in text, text
+    assert "1 survive step 1 and read as narrative" in text, text
+    assert "Only that last figure -- 1 --" in text, text
 
 
 # ------------------------------------------------ against the real file

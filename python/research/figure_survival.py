@@ -366,18 +366,33 @@ def report(verdicts: list[LineVerdict], *, orphans_only: bool = False) -> str:
             out.append(f"         {v.text[:110]}")
         return "\n".join(out)
 
+    # **Three-way, and the third number is the only candidate pool.** A
+    # two-way rule/narrative split counted orphan narrative lines as trim
+    # candidates while the same report said they cannot be trimmed -- the two
+    # figures contradicted each other on the same screen. Reported on review.
+    # Orphans are counted only as orphans, so nothing is double-counted.
     counts = Counter()
     for v in verdicts:
-        counts["rule" if v.looks_like_a_rule else "narrative"] += 1
+        if not v.survives:
+            counts["orphan"] += 1
+        elif v.looks_like_a_rule:
+            counts["rule"] += 1
+        else:
+            counts["narrative"] += 1
     out.append(
         "Of every line carrying a figure: "
-        f"{counts['rule']:,} read as a rule/constant/constraint, "
-        f"{counts['narrative']:,} read as narrative."
+        f"{counts['orphan']:,} carry a figure found nowhere else (step 1 "
+        f"forbids removing these), "
+        f"{counts['rule']:,} survive step 1 and read as a "
+        f"rule/constant/constraint (step 2 must keep these), "
+        f"{counts['narrative']:,} survive step 1 and read as narrative."
     )
     out.append("")
     out.append(
-        "The second number is the trim candidate POOL, not the trim. Run with "
-        "--orphans to see what may never be removed."
+        f"Only that last figure -- {counts['narrative']:,} -- is the trim "
+        "candidate POOL, and it is a pool rather than a trim: step 2 is a "
+        "judgement call this script does not make. Run with --orphans to see "
+        "what may never be removed."
     )
     return "\n".join(out)
 
