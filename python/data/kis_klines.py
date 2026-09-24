@@ -75,7 +75,39 @@ TR_DAILY_INDEX = "FHKUP03500100"
 ADJUSTED = "0"  # 수정주가 -- split-adjusted
 RAW = "1"  # 원주가 -- what KIS's own sample defaults to; see the module docstring
 
+#: **Everything except a series explicitly fetched raw.** Stated that way
+#: rather than as "수정주가", because it has to cover three kinds of series
+#: and only one of them involves a choice:
+#:
+#: - daily bars fetched with `FID_ORG_ADJ_PRC=0` -- genuinely 수정주가;
+#: - **minute bars**, whose endpoint (`inquire-time-dailychartprice`) takes
+#:   no `FID_ORG_ADJ_PRC` at all, so there is no basis to select and this
+#:   project has not measured which one KIS serves. Calling them "adjusted"
+#:   would assert something unmeasured; what is true is that they are not
+#:   the raw series, because no caller can ask for one;
+#: - 투자자별 매매동향, which is quantities and values rather than prices.
+#:
+#: **Unchanged, and that is the migration plan**: every existing KRX row in
+#: the store is one of those three -- the collectors pass `--adjusted 0` and
+#: `krx_scan` hardcodes `ADJUSTED` -- so keeping this prefix leaves 4.6M
+#: rows alone and only the raw series moves.
 KRX_EQUITY_PREFIX = "KRX:"
+
+#: 원주가 (raw). **The basis is part of the symbol's identity**, because
+#: sharing one primary key between the two bases is a silent corruption
+#: rather than a mix-up: `backfill_kis --adjusted 1` used to write raw bars
+#: under `KRX:005930`, and a later reader asking for adjusted prices got
+#: them with no way to tell. Measured across 삼성전자's 50:1 split
+#: (2018-05-04): adjusted 53,000 -> 51,900, raw 2,650,000 -> 51,900. A
+#: momentum signal reads that second series as a -98% single day.
+#:
+#: Audit finding F-4, operator decision D4. The alternatives were rejected:
+#: a separate database splits the store, and refusing raw prices forecloses
+#: corporate-action research. `DEFAULT_DB_PATH` stays resolved from
+#: `__file__` and must NOT become environment-overridable -- `data/_paths.py`
+#: exists because two relative conventions once produced a second, parallel
+#: database and 3,600 rows went to the wrong one.
+KRX_EQUITY_RAW_PREFIX = "KRX-RAW:"
 KRX_INDEX_PREFIX = "KRX-INDEX:"
 
 # The row caps, per endpoint, and they are NOT the same -- measured
@@ -390,9 +422,50 @@ def _get_with_retry(url: str, headers: dict[str, str]) -> dict[str, Any]:
 # -------------------------------------------------------------- symbols
 
 
-def equity_storage_symbol(code: str) -> str:
-    """`005930` -> `KRX:005930`."""
-    return f"{KRX_EQUITY_PREFIX}{code}"
+def equity_storage_symbol(code: str, *, adjusted: str) -> str:
+    """`005930` -> `KRX:005930` adjusted, `KRX-RAW:005930` raw.
+
+    **`adjusted` is keyword-only and has no default, deliberately**, the same
+    discipline `fetch_daily_page` already applies to the same argument and for
+    the same reason: KIS's own published sample defaults `FID_ORG_ADJ_PRC` to
+    `1` (raw), so a default here would be a default on the most dangerous
+    parameter in this module.
+
+    Making it required is the whole fix. The basis cannot be forgotten at a
+    call site, and the two bases cannot collide in the store, because they are
+    different symbols rather than the same symbol written twice.
+    """
+    if adjusted == ADJUSTED:
+        return f"{KRX_EQUITY_PREFIX}{code}"
+    if adjusted == RAW:
+        return f"{KRX_EQUITY_RAW_PREFIX}{code}"
+    raise KisKlinesError(
+        f"adjusted must be {ADJUSTED!r} (수정주가) or {RAW!r} (원주가) to name a "
+        f"storage symbol; a series whose basis is unknown must not be stored"
+    )
+
+
+def storage_symbol_basis(symbol: str) -> str:
+    """The basis a storage symbol declares, or a refusal.
+
+    The inverse of `equity_storage_symbol`, so a reader can check what it is
+    holding rather than assume.
+
+    **The order of the two `startswith` tests is immaterial today, and saying
+    so is more honest than implying it is a guard.** `KRX-RAW:` does not start
+    with `KRX:` — the colon differs — so swapping them changes nothing, which
+    a mutation run confirmed by swapping them and watching the suite stay
+    green. It is written raw-first only because that is the order a reader
+    would expect to matter; if a future prefix ever makes one a prefix of the
+    other, the test asserting the namespaces are mutually non-prefixing
+    (`test_storage_symbols_keep_equities_and_indices_in_separate_namespaces`)
+    is what fails, and it fails before this function can be wrong.
+    """
+    if symbol.startswith(KRX_EQUITY_RAW_PREFIX):
+        return RAW
+    if symbol.startswith(KRX_EQUITY_PREFIX):
+        return ADJUSTED
+    raise KisKlinesError(f"not a KRX equity storage symbol: {symbol!r}")
 
 
 def index_storage_symbol(code: str) -> str:

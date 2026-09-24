@@ -54,6 +54,7 @@ from data.kis_intraday import (
     sync_session,
 )
 from data.kis_klines import (
+    ADJUSTED,
     INTER_REQUEST_DELAY_S,
     KisKlinesError,
     KisSession,
@@ -156,7 +157,7 @@ def backfill(
     done: dict[str, int] = {code: 0 for code in codes}
     for date in reversed(dates):  # `dates` arrives newest-first
         for code in codes:
-            symbol = equity_storage_symbol(code)
+            symbol = equity_storage_symbol(code, adjusted=ADJUSTED)
             if session_is_collected(conn, symbol, date):
                 stats["sessions_skipped"] += 1
                 continue
@@ -224,7 +225,7 @@ def halted_days(conn, code: str) -> set[str]:
     rows = conn.execute(
         "SELECT open_time_ms, CAST(volume AS REAL) FROM klines "
         "WHERE symbol=? AND interval=?",
-        (equity_storage_symbol(code), DAILY_INTERVAL),
+        (equity_storage_symbol(code, adjusted=ADJUSTED), DAILY_INTERVAL),
     ).fetchall()
     return {ms_to_trading_date(ms) for ms, vol in rows if (vol or 0) == 0}
 
@@ -246,7 +247,7 @@ def coverage(conn, codes: list[str], dates: list[str]) -> dict:
     """
     collected: dict[str, list[str]] = {}
     for code in codes:
-        symbol = equity_storage_symbol(code)
+        symbol = equity_storage_symbol(code, adjusted=ADJUSTED)
         collected[code] = [d for d in dates if session_is_collected(conn, symbol, d)]
 
     horizon = min(
@@ -279,10 +280,10 @@ def _report(conn, codes: list[str], dates: list[str]) -> None:
     print("-" * 92)
     for code, c in cov["symbols"].items():
         newest = next((d for d in dates if session_is_collected(
-            conn, equity_storage_symbol(code), d)), None)
+            conn, equity_storage_symbol(code, adjusted=ADJUSTED), d)), None)
         span = ""
         if newest:
-            n, first, last = stored_span(conn, equity_storage_symbol(code), newest)
+            n, first, last = stored_span(conn, equity_storage_symbol(code, adjusted=ADJUSTED), newest)
             span = f"{newest} {first}..{last} ({n} bars)"
         print(f"{code:12} {c['collected']:>10} {len(c['missing_in_window']):>12} "
               f"{len(c['halted']):>8} {len(c['missing_older_than_window']):>13}  {span}")

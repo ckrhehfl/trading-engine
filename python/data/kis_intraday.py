@@ -101,6 +101,7 @@ from typing import Any
 
 from data.bingx_klines import KlineRow
 from data.kis_klines import (
+    ADJUSTED,
     INTER_REQUEST_DELAY_S,
     KisKlinesError,
     KisSession,
@@ -409,7 +410,7 @@ def sync_session(
     makes a multi-hour backfill resumable after an interruption without
     re-spending thousands of calls.
     """
-    symbol = equity_storage_symbol(code)
+    symbol = equity_storage_symbol(code, adjusted=ADJUSTED)
     if not force and session_is_collected(conn, symbol, date):
         return 0, 0
     bars = fetch_session(session, code, date, delay_s=delay_s)

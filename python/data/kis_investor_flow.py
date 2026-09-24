@@ -51,6 +51,7 @@ from typing import Any
 
 from data._paths import DEFAULT_DB_PATH
 from data.kis_klines import (
+    ADJUSTED,
     PAPER_HOST,
     KisKlinesError,
     KisSession,
@@ -265,7 +266,7 @@ def sync_symbol(
         )
         for p in points
     ]
-    return upsert_positioning(conn, equity_storage_symbol(code), rows)
+    return upsert_positioning(conn, equity_storage_symbol(code, adjusted=ADJUSTED), rows)
 
 
 def resolve_symbols(conn, args) -> list[str]:

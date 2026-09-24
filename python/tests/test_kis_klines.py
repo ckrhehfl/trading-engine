@@ -133,9 +133,18 @@ def test_a_malformed_range_bound_raises_this_modules_error_type(session, bad):
 
 
 def test_storage_symbols_keep_equities_and_indices_in_separate_namespaces():
-    assert equity_storage_symbol("005930") == "KRX:005930"
+    from data.kis_klines import RAW
+
+    assert equity_storage_symbol("005930", adjusted=ADJUSTED) == "KRX:005930"
     assert index_storage_symbol("2001") == "KRX-INDEX:2001"
-    assert equity_storage_symbol("005930") != index_storage_symbol("005930")
+    assert equity_storage_symbol("005930", adjusted=ADJUSTED) != index_storage_symbol("005930")
+    # Three namespaces now, and the index shares with neither. `KRX-RAW:` is
+    # not a prefix of `KRX:` and vice versa, which is what keeps a
+    # `startswith` reader from crossing them.
+    assert equity_storage_symbol("005930", adjusted=RAW) != index_storage_symbol("005930")
+    assert not "KRX-RAW:005930".startswith("KRX:")
+    assert not "KRX:005930".startswith("KRX-RAW:")
+    assert not "KRX-INDEX:2001".startswith(("KRX:", "KRX-RAW:"))
 
 
 # ----------------------------------------------------------------- parsing
@@ -489,3 +498,99 @@ def test_a_session_refuses_to_build_without_credentials():
         KisSession("", "secret")
     with pytest.raises(KisKlinesError):
         KisSession("key", "")
+
+
+# --------------------- the basis is part of the symbol (audit F-4 / D4)
+
+
+def test_the_two_bases_are_DIFFERENT_symbols():
+    """**The defect this closes.** Raw and split-adjusted prices shared a
+    storage symbol and primary key with no provenance, so
+    `backfill_kis --adjusted 1` wrote 원주가 under `KRX:005930` and a later
+    reader asking for adjusted prices got them with no way to tell.
+
+    Measured across 삼성전자's 50:1 split (2018-05-04): adjusted
+    53,000 -> 51,900, raw 2,650,000 -> 51,900. A momentum signal reads that
+    second series as a -98% single day.
+    """
+    from data.kis_klines import RAW, equity_storage_symbol
+
+    adj = equity_storage_symbol("005930", adjusted=ADJUSTED)
+    raw = equity_storage_symbol("005930", adjusted=RAW)
+    assert adj != raw, "the two bases can still collide under one primary key"
+    assert adj == "KRX:005930"
+    assert raw == "KRX-RAW:005930"
+
+
+def test_the_adjusted_prefix_is_UNCHANGED_so_nothing_migrates():
+    """4.6M existing rows sit under `KRX:`. Every one of them is either a
+    daily bar fetched `--adjusted 0`, a minute bar (whose endpoint offers no
+    basis at all), or 투자자별 매매동향 (quantities, not prices) -- so only the
+    raw series moves and the migration is empty."""
+    from data.kis_klines import equity_storage_symbol
+
+    assert equity_storage_symbol("005930", adjusted=ADJUSTED) == "KRX:005930"
+
+
+def test_the_basis_has_no_DEFAULT():
+    """Keyword-only and required, the same discipline `fetch_daily_page`
+    already applies to the same argument: KIS's own published sample defaults
+    `FID_ORG_ADJ_PRC` to `1` (raw), so a default here would be a default on
+    the most dangerous parameter in this module. Making it required is the
+    fix -- the basis cannot be forgotten at a call site."""
+    import inspect
+
+    from data.kis_klines import equity_storage_symbol
+
+    sig = inspect.signature(equity_storage_symbol)
+    param = sig.parameters["adjusted"]
+    assert param.kind is inspect.Parameter.KEYWORD_ONLY
+    assert param.default is inspect.Parameter.empty, "the basis acquired a default"
+    with pytest.raises(TypeError):
+        equity_storage_symbol("005930")
+
+
+@pytest.mark.parametrize("bad", ["2", "", "adjusted", None, "00"])
+def test_an_unknown_basis_cannot_name_a_symbol(bad):
+    """A series whose basis is unknown must not be stored at all -- storing
+    it is what created the ambiguity in the first place."""
+    from data.kis_klines import KisKlinesError, equity_storage_symbol
+
+    with pytest.raises(KisKlinesError, match="basis is unknown|adjusted must be"):
+        equity_storage_symbol("005930", adjusted=bad)
+
+
+def test_a_symbol_can_be_asked_what_basis_it_declares():
+    """So a reader can check rather than assume, which is the half of F-4
+    that a prefix alone does not give you."""
+    from data.kis_klines import (
+        RAW,
+        KisKlinesError,
+        equity_storage_symbol,
+        index_storage_symbol,
+        storage_symbol_basis,
+    )
+
+    assert storage_symbol_basis(equity_storage_symbol("005930", adjusted=ADJUSTED)) == ADJUSTED
+    assert storage_symbol_basis(equity_storage_symbol("005930", adjusted=RAW)) == RAW
+    for other in (index_storage_symbol("2001"), "BTC-USDT", "", "KRX", "kRX:005930"):
+        with pytest.raises(KisKlinesError, match="not a KRX equity storage symbol"):
+            storage_symbol_basis(other)
+
+
+def test_no_module_builds_a_KRX_equity_symbol_by_hand():
+    """A formatted prefix bypasses the required argument entirely, which is
+    how a rule in one place gets ignored in another -- the same failure the
+    pool predicate had."""
+    import pathlib
+
+    root = pathlib.Path(__file__).resolve().parents[1] / "data"
+    for path in root.glob("*.py"):
+        if path.name == "kis_klines.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        for bad in ('f"KRX:{', "'KRX:' +", '"KRX:" +', 'f"KRX-RAW:{'):
+            assert bad not in text, (
+                f"{path.name} formats a KRX equity symbol by hand ({bad!r}) "
+                f"instead of calling equity_storage_symbol"
+            )

@@ -81,30 +81,30 @@ def fake_fetch(monkeypatch):
 
 
 def test_a_symbol_missing_a_reference_day_is_reported(conn):
-    upsert_klines(conn, equity_storage_symbol("005930"), "1d",
+    upsert_klines(conn, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d",
                   [_row(d) for d in TRADING if d != "20240104"])
     reference = {trading_date_to_ms(d) for d in TRADING}
-    missing = verify_symbol(conn, "005930", reference, "20240101", "20240131")
+    missing = verify_symbol(conn, "005930", reference, "20240101", "20240131", adjusted=ADJUSTED)
     assert [m for m in missing] == [trading_date_to_ms("20240104")]
 
 
 def test_a_complete_symbol_reports_nothing(conn):
-    upsert_klines(conn, equity_storage_symbol("005930"), "1d", [_row(d) for d in TRADING])
+    upsert_klines(conn, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d", [_row(d) for d in TRADING])
     reference = {trading_date_to_ms(d) for d in TRADING}
-    assert verify_symbol(conn, "005930", reference, "20240101", "20240131") == []
+    assert verify_symbol(conn, "005930", reference, "20240101", "20240131", adjusted=ADJUSTED) == []
 
 
 def test_weekends_and_holidays_are_not_gaps(conn):
     """The whole reason this module exists. An arithmetic grid over
     2024-01-02..01-08 expects seven days; the market opened on five."""
-    upsert_klines(conn, equity_storage_symbol("005930"), "1d", [_row(d) for d in TRADING])
+    upsert_klines(conn, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d", [_row(d) for d in TRADING])
     reference = {trading_date_to_ms(d) for d in TRADING}
-    assert verify_symbol(conn, "005930", reference, "20240101", "20240131") == []
+    assert verify_symbol(conn, "005930", reference, "20240101", "20240131", adjusted=ADJUSTED) == []
 
     from data.store import find_missing_ranges
 
     arithmetic = find_missing_ranges(
-        conn, equity_storage_symbol("005930"), "1d",
+        conn, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d",
         trading_date_to_ms("20240102"), trading_date_to_ms("20240109"),
     )
     assert arithmetic, "the arithmetic grid must disagree, or this module is unnecessary"
@@ -114,11 +114,11 @@ def test_a_symbol_trading_when_the_reference_did_not_fails_closed(conn):
     """A stock cannot print on a day the market index did not. If it looks
     like it did, the reference is truncated -- which is exactly what a
     silently capped index fetch produces."""
-    upsert_klines(conn, equity_storage_symbol("005930"), "1d",
+    upsert_klines(conn, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d",
                   [_row(d) for d in TRADING])
     truncated = {trading_date_to_ms(d) for d in TRADING[2:]}
     with pytest.raises(ReferenceCalendarError):
-        verify_symbol(conn, "005930", truncated, "20240101", "20240131")
+        verify_symbol(conn, "005930", truncated, "20240101", "20240131", adjusted=ADJUSTED)
 
 
 # ---------------------------------------------------------------- sync
@@ -157,7 +157,7 @@ def test_a_fully_covered_window_is_not_refetched(conn, fake_fetch):
 def test_a_partially_covered_window_is_refetched(conn, fake_fetch):
     s = _FakeSession({"005930": TRADING})
     fake_fetch(s)
-    upsert_klines(conn, equity_storage_symbol("005930"), "1d", [_row(TRADING[0])])
+    upsert_klines(conn, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d", [_row(TRADING[0])])
     reference = {trading_date_to_ms(d) for d in TRADING}
     sync_symbol(s, conn, "005930", "20240101", "20240131",
                 adjusted=ADJUSTED, reference_days=reference)
@@ -181,7 +181,7 @@ def test_without_a_reference_every_window_is_fetched(conn, fake_fetch):
 def test_verify_refuses_an_empty_reference(conn, tmp_path, caplog):
     db = tmp_path / "k.sqlite3"
     connect(db).close()
-    rc = main(["--verify", "--symbols", "005930", "--index", "0001",
+    rc = main(["--verify", "--adjusted", "0", "--symbols", "005930", "--index", "0001",
                "--start", "2024-01-01", "--end", "2024-01-31", "--db-path", str(db)])
     assert rc == 1, "an empty calendar must not yield a clean verdict"
 
@@ -190,10 +190,10 @@ def test_verify_exits_nonzero_when_a_symbol_is_incomplete(tmp_path):
     db = tmp_path / "k.sqlite3"
     c = connect(db)
     upsert_klines(c, index_storage_symbol("0001"), "1d", [_row(d) for d in TRADING])
-    upsert_klines(c, equity_storage_symbol("005930"), "1d",
+    upsert_klines(c, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d",
                   [_row(d) for d in TRADING if d != "20240104"])
     c.close()
-    rc = main(["--verify", "--symbols", "005930", "--index", "0001",
+    rc = main(["--verify", "--adjusted", "0", "--symbols", "005930", "--index", "0001",
                "--start", "2024-01-01", "--end", "2024-01-31", "--db-path", str(db)])
     assert rc == 1
 
@@ -202,9 +202,9 @@ def test_verify_exits_zero_when_complete(tmp_path):
     db = tmp_path / "k.sqlite3"
     c = connect(db)
     upsert_klines(c, index_storage_symbol("0001"), "1d", [_row(d) for d in TRADING])
-    upsert_klines(c, equity_storage_symbol("005930"), "1d", [_row(d) for d in TRADING])
+    upsert_klines(c, equity_storage_symbol("005930", adjusted=ADJUSTED), "1d", [_row(d) for d in TRADING])
     c.close()
-    rc = main(["--verify", "--symbols", "005930", "--index", "0001",
+    rc = main(["--verify", "--adjusted", "0", "--symbols", "005930", "--index", "0001",
                "--start", "2024-01-01", "--end", "2024-01-31", "--db-path", str(db)])
     assert rc == 0
 
@@ -217,13 +217,34 @@ def test_adjusted_is_required_for_a_fetch(tmp_path):
     assert exc.value.code == 2
 
 
-def test_adjusted_is_not_required_for_verify(tmp_path):
+def test_adjusted_IS_now_required_for_verify(tmp_path):
+    """**Deliberately reversed** (audit F-4 / decision D4). This asserted that
+    `--verify` ran without `--adjusted`, which was true and is no longer
+    wanted: the basis is part of the storage symbol now, so the two bases are
+    two different series, and a coverage verdict that does not say which one
+    it read is a verdict about an unnamed thing.
+
+    Kept as a renamed test rather than deleted, because a reversal that
+    disappears from the suite teaches nothing about why it happened.
+    """
+    db = tmp_path / "k.sqlite3"
+    connect(db).close()
+    with pytest.raises(SystemExit) as exc:
+        # **No `--adjusted`, deliberately** -- that omission is the whole test.
+        main(["--verify", "--symbols", "005930", "--index", "0001",
+              "--start", "2024-01-01", "--end", "2024-01-31",
+              "--db-path", str(db)])
+    assert exc.value.code == 2, "argparse should refuse, not run"
+
+
+def test_verify_runs_once_the_basis_is_named(tmp_path):
+    """The other half: requiring it must not make `--verify` unusable."""
     db = tmp_path / "k.sqlite3"
     connect(db).close()
     # Reaches the empty-reference check rather than dying in argparse.
-    assert main(["--verify", "--symbols", "005930", "--index", "0001",
-                 "--start", "2024-01-01", "--end", "2024-01-31",
-                 "--db-path", str(db)]) == 1
+    assert main(["--verify", "--adjusted", "0", "--symbols", "005930",
+                 "--index", "0001", "--start", "2024-01-01",
+                 "--end", "2024-01-31", "--db-path", str(db)]) == 1
 
 
 @pytest.mark.parametrize("bad", ["2", "adjusted", ""])
@@ -232,3 +253,38 @@ def test_an_unknown_adjusted_value_is_rejected(tmp_path, bad):
         main(["--symbols", "005930", "--index", "0001", "--adjusted", bad,
               "--start", "2024-01-01", "--end", "2024-01-31",
               "--db-path", str(tmp_path / "k.sqlite3")])
+
+
+def test_a_RAW_backfill_lands_under_the_raw_symbol(tmp_path, monkeypatch):
+    """**The F-4 defect driven end to end**, which nothing else covered: a
+    mutation replacing `adjusted=adjusted` with a hardcoded `"0"` in
+    `backfill_symbol` left the whole suite green, so no test had ever run a
+    raw backfill and checked where its rows went.
+
+    `backfill_kis --adjusted 1` is a real, reachable invocation — the CLI
+    accepts `1` — and before D4 it wrote 원주가 into `KRX:005930` beside
+    수정주가 under the same primary key.
+    """
+    from data.kis_klines import RAW, equity_storage_symbol
+
+    db = tmp_path / "k.sqlite3"
+    conn = connect(db)
+    seen: list[str] = []
+
+    def fake_iter(sess, code, start, end, *, adjusted, is_index=False, window_days=None):
+        seen.append(adjusted)
+        yield _row(TRADING[0])
+
+    monkeypatch.setattr("data.backfill_kis.iter_daily_range", fake_iter)
+
+    s = _FakeSession({"005930": TRADING})
+    for basis in (ADJUSTED, RAW):
+        sync_symbol(s, conn, "005930", "20240101", "20240131", adjusted=basis)
+
+    stored = {r[0] for r in conn.execute("SELECT symbol FROM klines")}
+    assert stored == {
+        equity_storage_symbol("005930", adjusted=ADJUSTED),
+        equity_storage_symbol("005930", adjusted=RAW),
+    }, f"the two bases did not land under separate symbols: {stored}"
+    assert stored == {"KRX:005930", "KRX-RAW:005930"}
+    assert seen == [ADJUSTED, RAW], "the basis did not reach the fetch"
