@@ -322,8 +322,13 @@ class TestTrialSharpeRatios:
             candidate_index=0,
             total_candidates=1,
         )
-        # The historical shape: standalone AND single-fold.
-        _log_run(runs_path, strategy_id="ensemble-momentum", run_id="probe-historical", fold_sharpes=[8.0])
+        # The historical one-fold shape is deliberately NOT used here.
+        # It is now bounded to audited legacy records (a legacy
+        # `strategy_id` logged before 2026-07-28), because classifying
+        # *any* standalone one-fold record as a probe made a new run
+        # contribute zero to `N` -- unsafe, since a smaller `N` inflates
+        # every DSR. A test written against a shape a new run cannot
+        # produce would stop describing this module's real behaviour.
         _log_run(runs_path, strategy_id="ensemble-momentum", run_id="real", fold_sharpes=[1.0, -1.0])
 
         assert trial_sharpe_ratios(list(experiment_log.read_records(runs_path))) == {"trend-momentum": [0.0]}
