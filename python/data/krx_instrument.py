@@ -223,3 +223,60 @@ def is_reit(name: str | None) -> bool:
     exists for the delisted side, which has no group code.
     """
     return bool(name) and bool(_REIT_PATTERN.search(name))
+
+
+# ------------------------------------------------- the four filters, once
+
+
+#: The length of a plain KRX equity code. A code longer than this, or one
+#: carrying letters in a position the delisted side still filters on, is a
+#: rights issue, a 신주 line or a fund class rather than a tradeable share.
+SHORT_CODE_LEN = 6
+
+
+def is_common_stock_issue(name: str | None, isin: str | None) -> bool:
+    """The complete common-stock test: two structural filters, two name ones.
+
+    **This exists because the rule was implemented three times and a fix
+    reached one copy.** `store.fetch_krx_universe(common_stock_only=True)`,
+    `krx_delisted.common_stock` and `krx_scan.candidates` each carried their
+    own version; when the SPAC rule landed the live side picked it up
+    immediately and the delisted side kept its 178 SPACs, so the pool looked
+    filtered and was not. Half a filter is worse than none.
+
+    The four, in the order they were discovered, each forced by a
+    measurement and each a narrowing -- **and none subsumes the others**:
+
+    1. the ISIN's **issue type** (position 8 == `0`) separates 보통주 from
+       우선주. It does *not* separate a stock from an ETF: KODEX 200 is
+       `KR7069500007`, issue type `0`.
+    2. the ISIN's **instrument class** (position 3) removes ETNs, funds and
+       DRs. This is what the delisted side has instead of a group code.
+    3. **not a SPAC.** A SPAC is legally a 주식회사, so it carries `ST`
+       *and* a `KR7...0` ISIN and passes both structural tests. 70 live
+       names were counted as common stock until 2026-09-21.
+    4. **not a REIT.**
+
+    The two name rules are weaker evidence than a structural field and stay
+    separately callable for that reason; what this function fixes is that
+    nobody has to remember to call all four.
+    """
+    return (
+        is_common_stock(isin)
+        and instrument_class(isin) is InstrumentClass.STOCK_LIKE
+        and not is_spac(name)
+        and not is_reit(name)
+    )
+
+
+def has_plain_equity_code(code: str | None) -> bool:
+    """A plain 6-digit code, which is what a delisted-side equity request
+    accepts.
+
+    **A floor, not a filter**, and its own known expiry: KOSDAQ now issues
+    alphanumeric codes such as `0001A0`, which KIS prices normally. All 80
+    of them are 2026 listings and nothing carrying one has delisted yet, so
+    requiring digits is correct for the delisted universe *today* and will
+    silently drop the first alphanumeric code that delists.
+    """
+    return bool(code) and len(code) == SHORT_CODE_LEN and code.isdigit()

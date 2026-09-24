@@ -958,9 +958,18 @@ def fetch_krx_universe(
         )
     rows = cursor.fetchall()
     if common_stock_only:
-        from data.krx_instrument import is_common_stock, is_spac
+        # `krx_instrument.is_common_stock_issue` is the one implementation of
+        # this rule, after it had been spelled out in four places and the
+        # SPAC fix reached only some of them. Routing this call site through
+        # it is a **measured** zero-behaviour change rather than a hopeful
+        # one: over the real 2026-09-23 snapshot's 2,719 `ST` rows, the
+        # previous two-clause form and the full four-filter predicate both
+        # return **2,534**, with zero rows dropped. The two extra clauses
+        # are no-ops for an `ST` row -- `ST` already excludes the ETFs and
+        # ETNs the instrument class removes, and a live REIT carries `RT`.
+        from data.krx_instrument import is_common_stock_issue
 
-        rows = [r for r in rows if is_common_stock(r[4]) and not is_spac(r[2])]
+        rows = [r for r in rows if is_common_stock_issue(r[2], r[4])]
     return rows
 
 
