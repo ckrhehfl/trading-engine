@@ -906,3 +906,302 @@ def test_an_UNDER_cap_page_after_the_panel_is_still_OUTSIDE_WINDOW(
     counts = S.resolve_absences(_S(), _seeded(tmp_path))
     assert counts[Absence.OUTSIDE_WINDOW.value] == 1
     assert counts["truncated"] == 0
+
+
+# ------------- a control that cannot be ASKED is not a control that FAILED
+
+
+def _control_env(monkeypatch, answers):
+    """Answer `_page` from a per-call script: an exception is raised, a list
+    is returned."""
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def fake_page(session, code, start, end):  # noqa: ARG001
+        i = calls["n"]
+        calls["n"] += 1
+        outcome = answers[min(i, len(answers) - 1)]
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+    monkeypatch.setattr(S, "_page", fake_page)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    return calls
+
+
+def test_a_control_that_fails_then_ANSWERS_lets_the_pass_proceed(monkeypatch):
+    """**The fix, and it cost two aborted multi-hour launches.**
+
+    Measured 2026-09-24, 25 consecutive calls to `999999`: 18 returned
+    `rt_cd=0` with zero rows, 5 raised `HTTPError 500`, 2 timed out, and
+    **none returned rows**. So the control's premise was never contradicted;
+    what failed was reaching the endpoint. Refusing a scan on that is refusing
+    on evidence the run does not have.
+    """
+    from data import krx_scan as S
+
+    calls = _control_env(
+        monkeypatch,
+        [TimeoutError("timed out"), OSError("500"), []],
+    )
+    S.verify_negative_controls(object())
+    assert calls["n"] >= 3, "the failures were not retried"
+
+
+def test_a_control_that_RETURNS_BARS_is_never_retried(monkeypatch):
+    """The other half of the asymmetry, and the half that keeps this a fix
+    rather than a weakening. A control carrying bars is the real signal the
+    check exists to catch; retrying it would be sampling until the answer is
+    convenient."""
+    from data import krx_scan as S
+
+    calls = _control_env(
+        monkeypatch,
+        [[{"stck_bsop_date": "20190102"}], []],
+    )
+    with pytest.raises(S.KrxScanError, match="returned 1 bars"):
+        S.verify_negative_controls(object())
+    assert calls["n"] == 1, "an ANSWER was retried"
+
+
+def test_a_rt_cd_REJECTION_of_a_control_is_not_retried(monkeypatch):
+    """**Reported on review, and it corrects this fix's own framing.** A
+    `rt_cd` rejection is a *completed answer* from the venue, not a failure to
+    reach it, so the asymmetry this function is built on forbids retrying it.
+    The first version retried any exception at all.
+
+    The consequence is stated rather than papered over: **the `rt_cd=1` abort
+    that prompted the fix is therefore not covered by it.** Covering it would
+    mean allowlisting the `msg_cd` behind it the way `fetch_daily_page` does
+    for the measured-transient `OPSQ0003`, and 25 probe calls never reproduced
+    a `rt_cd=1` — so there is no code to allowlist, and adding one on a guess
+    is the mistake already recorded for Binance's HTTP 418.
+    """
+    from data import krx_scan as S
+
+    calls = _control_env(
+        monkeypatch,
+        [KisKlinesError("999999 20190102..20190430: rt_cd=1"), []],
+    )
+    with pytest.raises(S.KrxScanError, match="not retried after 1"):
+        S.verify_negative_controls(object())
+    assert calls["n"] == 1, "a venue answer was retried"
+
+
+def test_a_MALFORMED_control_response_is_not_retried(monkeypatch):
+    """Same reasoning: a response whose shape is wrong is an answer."""
+    from data import krx_scan as S
+
+    calls = _control_env(
+        monkeypatch,
+        [KisKlinesError("output2 row 0 carries no stck_bsop_date for X"), []],
+    )
+    with pytest.raises(S.KrxScanError, match="not retried after 1"):
+        S.verify_negative_controls(object())
+    assert calls["n"] == 1
+
+
+def test_a_control_that_can_NEVER_be_asked_still_refuses(monkeypatch):
+    """The bound is real. A consistently unreachable control leaves every
+    `absent` unreadable exactly as before, so the pass must still stop."""
+    from data import krx_scan as S
+
+    calls = _control_env(monkeypatch, [TimeoutError("always")])
+    with pytest.raises(S.KrxScanError, match="retried 4 times"):
+        S.verify_negative_controls(object())
+    assert calls["n"] == S._CONTROL_ATTEMPTS, (
+        f"asked {calls['n']} times, not {S._CONTROL_ATTEMPTS}"
+    )
+
+
+def test_the_positive_control_retries_a_failure_to_ask_too(monkeypatch):
+    from data import krx_scan as S
+
+    seq = [OSError("500"), OSError("500"), ["19910828"]]
+    calls = {"n": 0}
+
+    def fake_probe(session, code):  # noqa: ARG001
+        i = calls["n"]
+        calls["n"] += 1
+        out = seq[min(i, len(seq) - 1)]
+        if isinstance(out, Exception):
+            raise out
+        return out
+
+    monkeypatch.setattr(S, "_wide_probe", fake_probe)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    S.verify_wide_probe_positive_control(object())
+    assert calls["n"] == 3
+
+
+def test_the_positive_control_gives_up_after_exactly_FOUR_transport_failures(
+    monkeypatch,
+):
+    """**Reported on review.** Only the fail-then-succeed path was covered, so
+    neither an infinite retry nor an early give-up would have been caught."""
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def always_fails(session, code):  # noqa: ARG001
+        calls["n"] += 1
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(S, "_wide_probe", always_fails)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError, match="could not be asked"):
+        S.verify_wide_probe_positive_control(object())
+    assert calls["n"] == S._CONTROL_ATTEMPTS == 4, (
+        f"asked {calls['n']} times, not {S._CONTROL_ATTEMPTS}"
+    )
+
+
+def test_a_rt_cd_rejection_of_the_POSITIVE_control_is_not_retried(monkeypatch):
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def rejected(session, code):  # noqa: ARG001
+        calls["n"] += 1
+        raise KisKlinesError("KIS rejected the request for 005930: rt_cd=1")
+
+    monkeypatch.setattr(S, "_wide_probe", rejected)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError, match="could not be asked"):
+        S.verify_wide_probe_positive_control(object())
+    assert calls["n"] == 1, "a venue answer was retried"
+
+
+def test_an_EMPTY_positive_control_answer_is_not_retried(monkeypatch):
+    """An empty answer from 삼성전자 is the signal, not a transport problem."""
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def fake_probe(session, code):  # noqa: ARG001
+        calls["n"] += 1
+        return []
+
+    monkeypatch.setattr(S, "_wide_probe", fake_probe)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError, match="no bars for 005930"):
+        S.verify_wide_probe_positive_control(object())
+    assert calls["n"] == 1, "an empty answer was retried"
+
+
+# ----------------------------------- the count, against the pool not a total
+
+
+def test_the_todo_count_is_computed_against_the_POOL(monkeypatch, tmp_path, capsys):
+    """**It printed "-9 to fetch" on a run with 257 failures to retry.**
+    `len(pool) - len(done)` is the wrong arithmetic once `done` can hold codes
+    that are no longer candidates — the progress table still carries rows from
+    the pre-deduplication pool of 4,643. A negative count is obvious; a wrong
+    positive one would not have been."""
+    from data import krx_scan as S
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCAN_SCHEMA)
+    conn.executemany(
+        "INSERT INTO scan_progress (code, bars, frozen, status, fetched_at) "
+        "VALUES (?, 0, 0, ?, '2026-09-24T00:00:00+00:00')",
+        [("A", "done"), ("B", "done"), ("GONE1", "done"), ("GONE2", "absent:unknown"),
+         ("C", Failure.REJECTED.value)],
+    )
+    conn.commit()
+
+    pool = [("A", "a", Listing.LIVE), ("B", "b", Listing.LIVE), ("C", "c", Listing.LIVE)]
+    monkeypatch.setattr(S, "candidates", lambda c: pool)
+    monkeypatch.setattr(S, "connect", lambda p: conn)
+    monkeypatch.setattr(S, "KisSession", lambda *a, **k: object())
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S, "scan", lambda *a, **k: {"failed": 0})
+    monkeypatch.setattr(S, "coverage", lambda c: None)
+    monkeypatch.setattr(S, "in_continuous_session", lambda *a: False)
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+
+    S.main(["--scan", "--db-path", str(tmp_path / "s.sqlite3")])
+    printed = capsys.readouterr().out
+    assert "3 candidates, 2 already complete, 1 to fetch" in printed, printed
+    assert "2 recorded codes are not in this candidate selection" in printed, printed
+
+
+def test_the_outside_count_does_not_call_a_LIMITED_code_delisted(
+    monkeypatch, tmp_path, capsys
+):
+    """**Reported on review.** `--limit` truncates the pool, so a completed
+    code can be a perfectly current candidate that simply falls outside this
+    run's slice. Calling it "no longer a candidate" is a wrong statement rather
+    than a vague one."""
+    from data import krx_scan as S
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCAN_SCHEMA)
+    conn.executemany(
+        "INSERT INTO scan_progress (code, bars, frozen, status, fetched_at) "
+        "VALUES (?, 0, 0, 'done', '2026-09-24T00:00:00+00:00')",
+        [("A",), ("B",)],
+    )
+    conn.commit()
+
+    pool = [("A", "a", Listing.LIVE), ("B", "b", Listing.LIVE), ("C", "c", Listing.LIVE)]
+    monkeypatch.setattr(S, "candidates", lambda c: pool)
+    monkeypatch.setattr(S, "connect", lambda p: conn)
+    monkeypatch.setattr(S, "KisSession", lambda *a, **k: object())
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S, "scan", lambda *a, **k: {"failed": 0})
+    monkeypatch.setattr(S, "coverage", lambda c: None)
+    monkeypatch.setattr(S, "in_continuous_session", lambda *a: False)
+    monkeypatch.setenv("KIS_APP_KEY", "k")
+    monkeypatch.setenv("KIS_APP_SECRET", "s")
+
+    # --limit 1 slices the pool to ["A"], so B is complete and outside the
+    # selection while remaining a live candidate.
+    S.main(["--scan", "--limit", "1", "--db-path", str(tmp_path / "s.sqlite3")])
+    printed = capsys.readouterr().out
+    assert "no longer" not in printed, printed
+    assert "not in this candidate selection" in printed, printed
+
+
+def test_a_control_refusal_carries_the_REAL_attempt_count_and_the_cause(monkeypatch):
+    """**Reported on review, and it was working against the plan beside it.**
+    The positive control's refusal said "in 4 attempts" even when a `rt_cd`
+    rejection stopped it after one, and dropped the underlying message —
+    losing the `rt_cd`/`msg_cd` that is the exact diagnostic `_ask_control`'s
+    docstring says to capture if the abort recurs.
+
+    Both controls now share one message, so they cannot drift apart.
+    """
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def rejected(session, code):  # noqa: ARG001
+        calls["n"] += 1
+        raise KisKlinesError("KIS rejected the request for 005930: rt_cd=1 msg_cd=OPSQ9999")
+
+    monkeypatch.setattr(S, "_wide_probe", rejected)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError) as exc:
+        S.verify_wide_probe_positive_control(object())
+
+    message = str(exc.value)
+    assert "not retried after 1" in message, message
+    assert "4 attempts" not in message, "the message still claims four tries"
+    assert "OPSQ9999" in message, "the msg_cd needed to decide an allowlist was dropped"
+    assert calls["n"] == 1
+
+
+def test_a_TRANSPORT_refusal_reports_the_full_attempt_count(monkeypatch):
+    from data import krx_scan as S
+
+    def timeout(session, code):  # noqa: ARG001
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(S, "_wide_probe", timeout)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError, match="retried 4 times"):
+        S.verify_wide_probe_positive_control(object())

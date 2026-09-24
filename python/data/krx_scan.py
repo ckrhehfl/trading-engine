@@ -406,22 +406,104 @@ def _page(session: KisSession, code: str, start: str, end: str) -> list[dict]:
     )
 
 
+#: How many times a control may fail to be *asked* before the pass refuses.
+#: Not a weakening of the control: see `_ask_control`'s asymmetry.
+_CONTROL_ATTEMPTS = 4
+_CONTROL_BACKOFF_S = 2.0
+
+
+def _control_refusal(what: str, code: str, last: BaseException, *, attempts: int) -> str:
+    """One refusal message for both controls, so they cannot drift apart.
+
+    **It carries the real attempt count and the underlying message.** The
+    positive control's own version said "in 4 attempts" even when a `rt_cd`
+    rejection stopped it after one, and dropped `last` entirely — losing the
+    `rt_cd`/`msg_cd` that is the exact diagnostic needed to decide whether the
+    code belongs on `_RETRYABLE_MSG_CD`. That is the open item `_ask_control`'s
+    own docstring names, so the message throwing it away was working against
+    the plan written beside it. Reported on review.
+    """
+    kind = classify_failure(last)
+    why = (
+        f"retried {attempts} time{'s' if attempts != 1 else ''}"
+        if kind is Failure.TRANSPORT
+        else f"not retried after {attempts}: {kind.value} is an answer from the "
+        f"venue, not a failure to reach it"
+    )
+    return (
+        f"{what} {code} could not be asked ({type(last).__name__}: {last}); "
+        f"{why}"
+    )
+
+
+def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
+    """Ask one control, retrying a failure to **ask** but never an answer.
+
+    **The asymmetry is the whole design, and it is measured rather than
+    assumed.** A control answers the question *"does a nonsense code return
+    rows?"*, and 25 consecutive calls to `999999` on 2026-09-24 returned:
+
+    | | |
+    |---|---|
+    | `rt_cd=0`, **zero rows** | 18 |
+    | `HTTPError 500` | 5 |
+    | `TimeoutError` | 2 |
+    | **rows returned** | **0** |
+
+    So the control's premise was never once contradicted; what failed was
+    reaching the endpoint at all. Refusing the pass on that is refusing on
+    evidence the run does not have — and it cost two multi-hour scan launches,
+    aborted at startup seconds in.
+
+    Hence: **a failure to ask is retried; an answer is never retried.** If a
+    control comes back carrying bars, that is the real signal the pass exists
+    to catch and it refuses immediately — retrying it would be sampling until
+    the answer is convenient. If it cannot be asked after
+    `_CONTROL_ATTEMPTS`, it still refuses, because a control that is
+    consistently unreachable leaves every `absent` unreadable exactly as
+    before.
+
+    **Only `Failure.TRANSPORT` counts as a failure to ask, and that is
+    narrower than the abort which prompted this.** A `rt_cd` rejection is a
+    *completed answer* from the venue, not a transport failure, so by this
+    function's own asymmetry it may not be retried — reported on review, and
+    the reviewer is right against the first version of this code, which
+    retried any exception at all.
+
+    **The consequence is stated rather than papered over: the `rt_cd=1` abort
+    observed on 2026-09-24 is NOT covered by this fix.** Covering it would
+    mean allowlisting the `msg_cd` behind it the way `fetch_daily_page` does
+    for the measured-transient `OPSQ0003`, and 25 probe calls never reproduced
+    a `rt_cd=1` at all — so there is no `msg_cd` to allowlist and adding one on
+    a guess is the mistake this project already recorded for Binance's HTTP
+    418. What *is* covered is the transport class, 7 of those 25 calls. If the
+    `rt_cd=1` abort recurs, capture its `msg_cd` and decide then.
+    """
+    last: Exception | None = None
+    for attempt in range(_CONTROL_ATTEMPTS):
+        time.sleep(_SPACING_S)
+        try:
+            return _page(session, code, PANEL_START, "20190430")
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if classify_failure(exc) is not Failure.TRANSPORT:
+                break
+            if attempt + 1 < _CONTROL_ATTEMPTS:
+                time.sleep(_CONTROL_BACKOFF_S * (attempt + 1))
+    raise KrxScanError(
+        _control_refusal(what, code, last, attempts=attempt + 1)
+        + "; a zero-row answer from a real candidate would be unreadable"
+    ) from None
+
+
 def verify_negative_controls(session: KisSession) -> None:
     """Refuse the scan unless a nonsense code really answers empty.
 
-    Without this every `absent` in a 4,643-name pass is unreadable, and
-    the pass would report a clean run having learned nothing.
+    Without this every `absent` in a 4,371-name pass is unreadable, and the
+    pass would report a clean run having learned nothing.
     """
     for code in NEGATIVE_CONTROLS:
-        time.sleep(_SPACING_S)
-        try:
-            rows = _page(session, code, PANEL_START, "20190430")
-        except Exception as exc:  # noqa: BLE001
-            raise KrxScanError(
-                f"negative control {code} could not be asked "
-                f"({type(exc).__name__}: {exc}); a zero-row answer from a "
-                f"real candidate would be unreadable"
-            ) from None
+        rows = _ask_control(session, code, "negative control")
         if rows:
             raise KrxScanError(
                 f"negative control {code} returned {len(rows)} bars; the "
@@ -672,15 +754,32 @@ def verify_wide_probe_positive_control(session: KisSession) -> None:
     `NEVER_SERVED`, because an instrument that answers empty for everything
     passes the negative control by construction.
     """
-    time.sleep(_SPACING_S)
-    try:
-        dates = _wide_probe(session, WIDE_PROBE_POSITIVE_CONTROL)
-    except Exception as exc:  # noqa: BLE001
+    # Same asymmetry as the negative controls -- see `_ask_control`. A failure
+    # to reach the endpoint is retried; an empty ANSWER is not, because that is
+    # the signal this control exists to catch.
+    last: Exception | None = None
+    dates: list[str] | None = None
+    for attempt in range(_CONTROL_ATTEMPTS):
+        time.sleep(_SPACING_S)
+        try:
+            dates = _wide_probe(session, WIDE_PROBE_POSITIVE_CONTROL)
+            break
+        except Exception as exc:  # noqa: BLE001
+            last = exc
+            if classify_failure(exc) is not Failure.TRANSPORT:
+                break
+            if attempt + 1 < _CONTROL_ATTEMPTS:
+                time.sleep(_CONTROL_BACKOFF_S * (attempt + 1))
+    if dates is None:
         raise KrxScanError(
-            f"the wide probe's positive control "
-            f"({WIDE_PROBE_POSITIVE_CONTROL}) could not be asked: "
-            f"{type(exc).__name__}. Until it answers, an empty probe result "
-            f"cannot be read as 'KIS does not price this code'."
+            _control_refusal(
+                "the wide probe's positive control",
+                WIDE_PROBE_POSITIVE_CONTROL,
+                last,
+                attempts=attempt + 1,
+            )
+            + ". Until it answers, an empty probe result cannot be read as "
+            "'KIS does not price this code'."
         ) from None
     if not dates:
         raise KrxScanError(
@@ -913,9 +1012,24 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit:
         pool = pool[: args.limit]
     done = already_done(conn)
-    print(f"{len(pool):,} candidates, {len(done):,} already complete, "
-          f"{len(pool) - len(done):,} to fetch "
-          f"(~{(len(pool) - len(done)) * 24 / 0.6 / 3600:.0f}h at 0.6/s)",
+    # **Counted against the pool, not by subtracting two totals.** `done` can
+    # hold codes that are no longer candidates -- the progress table still
+    # carries rows from the pre-deduplication pool of 4,643 -- so
+    # `len(pool) - len(done)` printed "-9 to fetch" on a run that had 257
+    # failures to retry. A negative count is obvious; a wrong positive one
+    # would not have been.
+    todo_count = len([c for c, _n, _s in pool if c not in done])
+    # **"not in this selection", not "no longer candidates."** `--limit`
+    # truncates the pool, so a completed code can be a perfectly current
+    # candidate that simply falls outside this run's slice -- calling it
+    # delisted would be a wrong statement rather than a vague one. Reported on
+    # review.
+    outside = len(done) - (len(pool) - todo_count)
+    print(f"{len(pool):,} candidates, {len(pool) - todo_count:,} already "
+          f"complete, {todo_count:,} to fetch "
+          f"(~{todo_count * 24 / 0.6 / 3600:.1f}h at 0.6/s)"
+          + (f"; {outside:,} recorded codes are not in this candidate selection"
+             if outside else ""),
           flush=True)
 
     session = KisSession(key, secret, host=PAPER_HOST)
