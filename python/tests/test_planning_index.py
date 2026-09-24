@@ -16,6 +16,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PLANNING = REPO_ROOT / ".planning"
 README = PLANNING / "README.md"
@@ -238,8 +240,99 @@ def test_claude_md_s_unspent_windows_are_really_unspent():
     )
 
 
-def test_NO_paragraph_of_claude_md_calls_a_spent_window_unspent():
-    """The check above reads **one** paragraph. This reads every line.
+#: Words that assert a window is still available. **`virgin` is
+#: deliberately absent**: `Binance spot 1d "virgin" holdout` is that
+#: window's own label in the detection-floor table, not a claim about its
+#: availability, so including it made every adjacent table row a false
+#: positive.
+_AVAILABILITY_WORDS = ("unspent", "untouched", "never been touched")
+
+
+def _claim_units(text: str) -> list[str]:
+    """Split CLAUDE.md into units a single claim can live in.
+
+    **Physical lines are the wrong unit**, and that was the first
+    version's defect: a claim wrapping as `Binance futures 1m` /
+    `is still unspent for confirmation` put the window name and the
+    assertion on different lines, and a per-line rule saw neither.
+
+    So a table row is one unit (the name is in one cell and the claim in
+    the next), and prose is joined across newlines and then split into
+    sentences. Whitespace is collapsed inside every unit, which is what
+    makes a wrapped claim visible.
+    """
+    units: list[str] = []
+    para: list[str] = []
+
+    def flush() -> None:
+        if not para:
+            return
+        joined = re.sub(r"\s+", " ", " ".join(para)).strip()
+        if joined:
+            units.extend(
+                u.strip() for u in re.split(r"(?<=[.!?])\s+", joined) if u.strip()
+            )
+        para.clear()
+
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("|"):
+            flush()
+            units.append(re.sub(r"\s+", " ", stripped))
+        elif not stripped:
+            flush()
+        else:
+            para.append(stripped)
+    flush()
+    return units
+
+
+def spent_window_claims(text: str, spent: set[str]) -> list[tuple[str, str]]:
+    """Every unit that asserts one of `spent` is still available.
+
+    The canonical paragraph is excised **by span** first — it is the other
+    test's job, and it legitimately lists designated *discovery* windows
+    immediately before the word "Unspent", so any rule that reads it will
+    fire.
+
+    **There is no exemption for the word `spent`.** The first version
+    skipped any unit containing `**spent**`, which let
+    `X is **spent** for discovery but still unspent for confirmation`
+    through — a sentence carrying both a correction and a false claim.
+    A correct correction simply contains no availability word.
+    """
+    canonical = re.search(
+        r"Unspent and therefore \*not\* available\s*\n?\s*for discovery: .+?\.",
+        text,
+        re.S,
+    )
+    assert canonical, "the canonical paragraph moved; repair both checks together"
+    text = text[: canonical.start()] + "\n\n" + text[canonical.end() :]
+
+    offenders = []
+    for unit in _claim_units(text):
+        low = unit.lower()
+        if not any(w in low for w in _AVAILABILITY_WORDS):
+            continue
+        for name in spent:
+            if name in unit:
+                offenders.append((name, unit[:160]))
+    return offenders
+
+
+def _spent_window_names() -> set[str]:
+    from research.spent_windows import load
+
+    spent = set()
+    for row in load():
+        for name, (sym_part, interval) in WINDOW.items():
+            if row["interval"] == interval and sym_part in row["symbol"]:
+                spent.add(name)
+    return spent
+
+
+def test_NO_unit_of_claude_md_calls_a_spent_window_available():
+    """The other check reads **one** paragraph. This reads the whole file.
 
     Found by an external audit on 2026-09-23. The detection-floor table
     described the Binance futures 1m window as *"the best this project
@@ -252,48 +345,47 @@ def test_NO_paragraph_of_claude_md_calls_a_spent_window_unspent():
     table. A scoped guard that leaves the attractive claim outside its
     scope is the shape this repository keeps paying for.
     """
-    from research.spent_windows import load
-
-    spent = set()
-    for row in load():
-        for name, (sym_part, interval) in WINDOW.items():
-            if row["interval"] == interval and sym_part in row["symbol"]:
-                spent.add(name)
-
-    import re
-
     claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-
-    # **The two checks partition the file rather than overlapping.** The
-    # canonical paragraph is the other test's job, and it must be excluded
-    # by span rather than by wording: it wraps so that a *designated
-    # discovery* window's name lands on the same physical line as
-    # "Unspent and therefore", which a line-based rule reads as a breach.
-    canonical = re.search(
-        r"Unspent and therefore \*not\* available\s*\n?\s*for discovery: .+?\.",
-        claude,
-        re.S,
-    )
-    assert canonical, "the canonical paragraph moved; repair both checks together"
-    lo = claude.count("\n", 0, canonical.start()) + 1
-    hi = claude.count("\n", 0, canonical.end()) + 1
-
-    offenders = []
-    for n, line in enumerate(claude.splitlines(), start=1):
-        if lo <= n <= hi:
-            continue
-        low = line.lower()
-        if "unspent" not in low and "untouched" not in low:
-            continue
-        for name in spent:
-            # a line that says "**spent**" is the correction, not a breach
-            if name in line and "**spent**" not in line:
-                offenders.append((n, name, line.strip()[:100]))
+    offenders = spent_window_claims(claude, _spent_window_names())
     assert not offenders, (
-        "CLAUDE.md describes a SPENT window as unspent/untouched outside "
-        "the canonical paragraph:\n"
-        + "\n".join(f"  line {n}: {name} -- {txt}" for n, name, txt in offenders)
+        "CLAUDE.md asserts a SPENT window is still available:\n"
+        + "\n".join(f"  {name} -- {unit}" for name, unit in offenders)
     )
+
+
+@pytest.mark.parametrize(
+    "claim, why",
+    [
+        (
+            "| Binance futures 1m (full 6.96-year window) | **~0.62** — the "
+            "best this project has, and still unspent |",
+            "the real defect: a table row",
+        ),
+        (
+            "The floor for Binance futures 1m\nis still unspent for "
+            "confirmation, so it is available.",
+            "the claim WRAPS -- a per-line rule sees neither half",
+        ),
+        (
+            "Binance futures 1m is **spent** for discovery but still "
+            "unspent for confirmation.",
+            "a correction and a false claim in one sentence; `spent` must "
+            "not exempt it",
+        ),
+        (
+            "KRX daily has never been touched by any decision.",
+            "a different availability wording, on a different window",
+        ),
+    ],
+)
+def test_the_check_catches_a_claim_however_it_is_worded(claim, why):
+    """Each case is one CodeRabbit raised against the first version, plus
+    the original defect. Constructed rather than measured, which is the
+    point: the detector is a pure function so a counterexample needs no
+    edit to the real file."""
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    offenders = spent_window_claims(claude + "\n\n" + claim, _spent_window_names())
+    assert offenders, f"not caught ({why}): {claim!r}"
 
 
 def test_the_spent_window_ledger_matches_the_log():

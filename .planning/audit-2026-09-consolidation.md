@@ -27,7 +27,7 @@ and that reading is correct, but the cause is not design churn.** Measured:
 | | |
 |---|---|
 | `CLAUDE.md` | 3,473 → 1,696 at the 2026-08-26 reorganisation → **3,506 today** |
-| growth since | **+1,810 lines in 27 days**, i.e. larger than before the cleanup |
+| growth since | **+1,810 lines in the 28 days to 2026-09-23**, i.e. larger than before the cleanup |
 | `.planning/` | 120 documents |
 | merged PRs in 7 days | 23 |
 
