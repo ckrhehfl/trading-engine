@@ -131,6 +131,7 @@ import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any, Mapping
 
 from research import experiment_log
@@ -227,8 +228,20 @@ def _holdout_run_ids(runs_path: str | Path) -> set[str]:
     the exclusion below is provably a no-op against every prior computed
     result).
     """
+    return holdout_run_ids_from_records(experiment_log.read_records(runs_path))
+
+
+def holdout_run_ids_from_records(records: Iterable[Mapping[str, Any]]) -> set[str]:
+    """The same set, from records already in hand.
+
+    Two entry points, **one implementation**: `retrospective
+    .trial_sharpe_ratios` receives records rather than a path, and needs
+    the identical exclusion so that `V_hat`'s trial set is the set `N`
+    counts. Computing it twice is how the two drifted -- see that
+    function's own docstring.
+    """
     ids: set[str] = set()
-    for record in experiment_log.read_records(runs_path):
+    for record in records:
         if record.get("record_type") != "backtest_run":
             continue
         if record.get("is_holdout_run") is True:
@@ -498,6 +511,25 @@ class TrialKind(StrEnum):
     REPRODUCTION = "reproduction"
 
 
+#: The three `strategy_id`s whose standalone single-fold records really
+#: are sr-g sensitivity neighbours. **An allowlist, so a new id defaults
+#: to SELECTION** -- the safe direction, since understating `N` inflates
+#: DSR. Measured against the real log: these account for 382 records,
+#: reconciling with each run's own recorded neighbour evaluations.
+_LEGACY_SENSITIVITY_STRATEGY_IDS = frozenset({
+    "ensemble-momentum",
+    "single-lookback-momentum",
+    "ma-crossover-task-g-sensitivity-demo-v2",
+})
+
+#: All 382 of those were logged between 2026-07-26T13:26 and
+#: 2026-07-27T07:21. The cutoff exists **in addition to** the allowlist
+#: because the allowlist alone would misclassify a future one-fold
+#: selection trial that reused a legacy `strategy_id`; 232 later records
+#: for those same ids already exist, none of them standalone-and-one-fold.
+_LEGACY_SENSITIVITY_CUTOFF = "2026-07-28"
+
+
 def classify_trial_kind(record: Mapping[str, Any]) -> TrialKind:
     """Classify one `backtest_run` record as a selection trial or a
     parameter-sensitivity probe.
@@ -513,26 +545,50 @@ def classify_trial_kind(record: Mapping[str, Any]) -> TrialKind:
        a standalone record with **exactly one fold** is a sensitivity
        probe; a standalone multi-fold record is a real walk-forward run.
 
-    Rule 2 is an **empirical fact about *this* project's
-    `runs/experiments.jsonl`, not a general invariant** -- stated that way
-    deliberately. It was verified exhaustively against the real 1,839-record
-    log: exactly 382 records are standalone-and-single-fold, they belong to
-    exactly three `strategy_id`s (`ensemble-momentum` 190,
-    `single-lookback-momentum` 165,
-    `ma-crossover-task-g-sensitivity-demo-v2` 27), and exactly those three
-    ran `check_parameter_sensitivity` under sr-g's post-wiring-fix
-    configuration. Each count reconciles exactly with that run's own
-    recorded neighbour evaluations (e.g. `ensemble-momentum`'s two
-    sensitivity-enabled runs: 2 x 19 folds x (1 winner + 4 neighbours) =
-    190). Zero counterexamples across the whole log. Rule 1 makes rule 2
-    unnecessary for anything logged from now on.
+    Rule 2 is an **empirical fact about a bounded set of *historical*
+    records, not a general invariant**, and it is now restricted to
+    exactly that set -- see `_LEGACY_SENSITIVITY_STRATEGY_IDS` and
+    `_LEGACY_SENSITIVITY_CUTOFF`.
+
+    **Its original wording was false in executable behaviour, and an
+    external audit caught that on 2026-09-23.** It claimed *"rule 1 makes
+    rule 2 unnecessary for anything logged from now on"* -- but rule 1
+    only fires on a `parent_run_id` carrying the sensitivity prefix, and a
+    **new standalone run still defaults to `parent_run_id=None`**. So any
+    new one-fold run fell through to rule 2 and was classified a probe,
+    contributing **zero** to `N`. The direction is unsafe: understating
+    `N` inflates every DSR computed against it, which is the same harm
+    this module's `"unmapped"` family rule already fails closed on.
+
+    **What the log actually holds, re-measured 2026-09-24** rather than
+    trusted from the original note: **386** standalone-and-single-fold
+    records across **six** `strategy_id`s, not 382 across three. The
+    three legacy ids below account for 382 of them, all logged inside an
+    18-hour window (2026-07-26T13:26 … 2026-07-27T07:21), and each count
+    reconciles with that run's own recorded neighbour evaluations (e.g.
+    `ensemble-momentum`'s two sensitivity-enabled runs: 2 x 19 folds x
+    (1 winner + 4 neighbours) = 190). The **four** newer ones are
+    `daily-tsmom-ensemble` x2, `vwap-mid-reversion` and `ofi-momentum` --
+    every one `is_holdout_run=True`, which this module excludes anyway, so
+    **no `N` was ever wrong**; the defect was latent, not live.
+    `research_selection_trials` reads 129 before and after this change.
+
+    **Selection is the conservative default.** A standalone one-fold
+    record is a probe only if its `strategy_id` is in the audited legacy
+    allowlist *and* it predates the cutoff. Both bounds are needed: the
+    allowlist alone would misclassify a future one-fold selection trial
+    that happened to reuse a legacy `strategy_id`.
     """
     parent_run_id = record.get("parent_run_id")
     if isinstance(parent_run_id, str) and parent_run_id.startswith(SENSITIVITY_PARENT_RUN_ID_PREFIX):
         return TrialKind.SENSITIVITY_PROBE
     if parent_run_id is not None:
         return TrialKind.SELECTION
-    if len(record.get("fold_results") or []) == 1:
+    if (
+        len(record.get("fold_results") or []) == 1
+        and record.get("strategy_id") in _LEGACY_SENSITIVITY_STRATEGY_IDS
+        and str(record.get("logged_at") or "") < _LEGACY_SENSITIVITY_CUTOFF
+    ):
         return TrialKind.SENSITIVITY_PROBE
     return TrialKind.SELECTION
 

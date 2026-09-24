@@ -15,6 +15,7 @@ never report a *lower* risk tier than fewer combinations / more data).
 
 from datetime import datetime, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 
@@ -441,12 +442,21 @@ def _two_year_span() -> tuple[int, int]:
     return start, start + 730 * MS_PER_DAY
 
 
-def test_classify_trial_kind_treats_a_standalone_single_fold_record_as_a_sensitivity_probe():
-    # The empirical rule over THIS log (see `.planning/sr-p-trial-
-    # accounting.md`): every standalone one-fold record in
-    # runs/experiments.jsonl is a check_parameter_sensitivity evaluation,
-    # never a selection trial. Not a general invariant.
-    record = {"parent_run_id": None, "fold_results": [{"fold_index": 0}]}
+def test_classify_trial_kind_treats_an_AUDITED_LEGACY_single_fold_record_as_a_probe():
+    # The empirical rule over a BOUNDED set of historical records (see
+    # `.planning/sr-p-trial-accounting.md`, and the F-3 correction of
+    # 2026-09-24): the 382 standalone one-fold records belonging to three
+    # `strategy_id`s inside one 18-hour window are real
+    # check_parameter_sensitivity evaluations.
+    #
+    # This test previously asserted the rule held for ANY standalone
+    # one-fold record, which is what let a new run contribute zero to `N`.
+    record = {
+        "parent_run_id": None,
+        "strategy_id": "ensemble-momentum",
+        "logged_at": "2026-07-26T13:26:01.700738+00:00",
+        "fold_results": [{"fold_index": 0}],
+    }
 
     assert classify_trial_kind(record) is TrialKind.SENSITIVITY_PROBE
 
@@ -475,6 +485,9 @@ def test_check_project_combination_count_excludes_sensitivity_probes_from_n(tmp_
     _log_run_record(
         runs_path, strategy_id="ensemble-momentum", run_id="wf-1", start_ms=start, end_ms=end, mean_sharpe=0.1
     )
+    # Rule 1 -- the explicit, forward-looking marker -- rather than the
+    # legacy one-fold heuristic, which is now bounded to audited historical
+    # records and would (correctly) classify these as selection trials.
     for i in range(9):
         _log_run_record(
             runs_path,
@@ -485,6 +498,7 @@ def test_check_project_combination_count_excludes_sensitivity_probes_from_n(tmp_
             fold_count=1,
             params={"fast": 10 + i, "slow": 40},
             mean_sharpe=0.1,
+            parent_run_id=f"{SENSITIVITY_PARENT_RUN_ID_PREFIX}wf-1",
         )
 
     result = check_project_combination_count(runs_path=runs_path)
@@ -492,7 +506,15 @@ def test_check_project_combination_count_excludes_sensitivity_probes_from_n(tmp_
 
     assert family.sensitivity_probe_trials == 9
     assert family.selection_trials == 1
-    assert family.naive_total_combinations == 10  # what the old flat +1-per-record rule gives
+    # `naive_total_combinations` is not asserted here any more, and the
+    # reason is a property of the counter rather than a loosening: it
+    # groups *parented* records with their parent and counts only
+    # standalone ones individually. Marking these probes with rule 1's
+    # explicit parent -- which is what a new run should do -- therefore
+    # collapses them into one group, so the 10-vs-1 contrast this line
+    # used to show is an artefact of the old construction. The exclusion
+    # itself is proven by the two assertions above, and the naive-count
+    # contrast is carried by the 400-probe risk-level test below.
 
 
 def test_check_project_combination_count_groups_renamed_strategy_ids_into_one_family(tmp_path):
@@ -738,6 +760,7 @@ def test_check_project_combination_count_risk_level_uses_selection_trials_not_th
             end_ms=end,
             fold_count=1,
             params={"obv_ma_period": i},
+            parent_run_id=f"{SENSITIVITY_PARENT_RUN_ID_PREFIX}wf-1",
         )
 
     result = check_project_combination_count(runs_path=runs_path)
@@ -779,3 +802,140 @@ def test_check_combination_count_is_unchanged_by_the_new_trial_accounting(tmp_pa
         )
 
     assert check_combination_count("obv-trend", runs_path=runs_path).total_combinations_tried == 10
+
+# ------------------- rule 2 is bounded to audited legacy records (F-3)
+
+
+def _standalone(strategy_id: str, logged_at: str, folds: int = 1) -> dict:
+    return {
+        "record_type": "backtest_run",
+        "strategy_id": strategy_id,
+        "parent_run_id": None,
+        "logged_at": logged_at,
+        "fold_results": [{"annualized_sharpe": 0.1}] * folds,
+    }
+
+
+def test_a_NEW_standalone_one_fold_run_counts_as_a_selection_trial():
+    """**The defect an external audit found on 2026-09-23.** The heuristic
+    for historical records classified *every* parentless one-fold record a
+    sensitivity probe, and a new standalone run still defaults to
+    `parent_run_id=None` — so a real look contributed **zero** to `N`.
+
+    The direction is unsafe: understating `N` inflates every DSR computed
+    against it, which is the same harm this module's `"unmapped"` family
+    rule already fails closed on. The docstring claimed rule 1 made rule 2
+    unnecessary for new records; that was false in executable behaviour.
+    """
+    from research.overfitting_check import TrialKind, classify_trial_kind
+
+    rec = _standalone("krx-per-day-selection", "2026-10-01T00:00:00+00:00")
+    assert classify_trial_kind(rec) is TrialKind.SELECTION
+
+
+def test_a_legacy_strategy_id_AFTER_the_cutoff_is_also_a_selection_trial():
+    """The allowlist alone is not enough: a future one-fold selection trial
+    reusing a legacy `strategy_id` would be misclassified. 232 later
+    records for those ids already exist."""
+    from research.overfitting_check import TrialKind, classify_trial_kind
+
+    rec = _standalone("ensemble-momentum", "2026-10-01T00:00:00+00:00")
+    assert classify_trial_kind(rec) is TrialKind.SELECTION
+
+
+def test_an_audited_legacy_record_is_still_a_sensitivity_probe():
+    """The fix must not reclassify history. These really are sr-g
+    neighbour evaluations, all logged inside one 18-hour window."""
+    from research.overfitting_check import TrialKind, classify_trial_kind
+
+    rec = _standalone("ensemble-momentum", "2026-07-26T13:26:01.700738+00:00")
+    assert classify_trial_kind(rec) is TrialKind.SENSITIVITY_PROBE
+
+
+def test_the_real_log_s_selection_count_is_unchanged_by_the_fix():
+    """**The regression that matters.** `N` is load-bearing for every DSR
+    in this project, so a correctness fix here must be a no-op on recorded
+    history. Measured: 129 before and after.
+
+    Skipped where the log is absent (CI, a fresh clone) — the unit cases
+    above run there instead.
+    """
+    import pytest
+
+    from research.overfitting_check import check_project_combination_count
+
+    log = Path(__file__).resolve().parents[2] / "runs" / "experiments.jsonl"
+    if not log.exists():
+        pytest.skip("runs/experiments.jsonl is gitignored and absent here")
+    result = check_project_combination_count(runs_path=str(log))
+    assert result.research_selection_trials == 129, (
+        "the historical selection count moved; this fix was supposed to "
+        "change only how NEW records are classified"
+    )
+
+def _backdate(runs_path, run_ids: set[str], when: str) -> None:
+    """Rewrite `logged_at` on named records, in place.
+
+    The only way to construct the **historical** shape rule 2 is bounded
+    to: `log_run` stamps `logged_at` itself, and the bound is deliberately
+    a date. Rewriting one field keeps every other part of the record real
+    rather than hand-building JSON that could drift from the schema.
+    """
+    import json
+
+    lines = []
+    for line in runs_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        if rec.get("run_id") in run_ids:
+            rec["logged_at"] = when
+        lines.append(json.dumps(rec))
+    runs_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_risk_level_uses_selection_trials_even_when_the_NAIVE_count_is_high(tmp_path):
+    """**The assertion the 400-probe test above can no longer make.**
+
+    Raised on review of PR #200: once those probes carry rule 1's explicit
+    `sensitivity:` parent, the naive counter groups them with their parent,
+    so `naive_total_combinations` is low too — and `risk_level == "low"`
+    would pass even if the tier were computed from the naive count. The
+    assertion stopped constraining the thing it names.
+
+    This fixture restores the constraint using the **audited legacy**
+    shape, which the naive counter does count individually: 100 standalone
+    single-fold records with a legacy `strategy_id`, backdated before the
+    cutoff. Naive is then 101 over 2 years — **50.5/year, past the >30
+    HIGH boundary** — while `N` is 1, at 0.5/year.
+
+    If `_compute_risk_level` were ever fed the naive count, this reads
+    HIGH and the test fails.
+    """
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(
+        runs_path, strategy_id="ensemble-momentum", run_id="wf-1",
+        start_ms=start, end_ms=end, mean_sharpe=0.1,
+    )
+    probe_ids = set()
+    for i in range(100):
+        run_id = f"legacy-probe-{i}"
+        probe_ids.add(run_id)
+        _log_run_record(
+            runs_path, strategy_id="ensemble-momentum", run_id=run_id,
+            start_ms=start, end_ms=end, fold_count=1,
+            params={"fast": 10 + i, "slow": 40}, mean_sharpe=0.1,
+        )
+    _backdate(runs_path, probe_ids, "2026-07-26T13:26:01.700738+00:00")
+
+    family = check_project_combination_count(runs_path=runs_path).families["trend-momentum"]
+
+    assert family.sensitivity_probe_trials == 100
+    assert family.selection_trials == 1
+    # the premise: the naive ratio really is past the HIGH boundary
+    assert family.naive_total_combinations == 101
+    assert family.data_span_years is not None
+    assert family.naive_total_combinations / family.data_span_years > 30.0
+    # and the tier is computed from N, not from that
+    assert family.risk_level == "low"
