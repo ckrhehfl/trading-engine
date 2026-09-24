@@ -102,7 +102,11 @@ def sync_symbol(
     reference index itself — every window is fetched, since there is
     nothing yet to say which days should exist.
     """
-    storage = index_storage_symbol(code) if is_index else equity_storage_symbol(code)
+    storage = (
+        index_storage_symbol(code)
+        if is_index
+        else equity_storage_symbol(code, adjusted=adjusted)
+    )
     have = _stored_days(conn, storage, start, end)
     window = default_window_days(is_index=is_index)
 
@@ -139,14 +143,29 @@ def sync_symbol(
     return inserted
 
 
-def verify_symbol(conn, code: str, reference_days: set[int], start: str, end: str) -> list[int]:
+def verify_symbol(
+    conn,
+    code: str,
+    reference_days: set[int],
+    start: str,
+    end: str,
+    *,
+    adjusted: str,
+) -> list[int]:
     """Trading days the reference has and this symbol does not.
 
     Raises `ReferenceCalendarError` if the symbol has bars the reference
     lacks — that is proof the *reference* is incomplete, not a fact about
     the symbol, and every "no gaps" verdict against it would be worthless.
+
+    **`adjusted` says which series is being verified**, and is required for
+    the same reason it is required to name a storage symbol at all (audit
+    F-4 / decision D4): the two bases are two different series now, so a
+    coverage verdict that does not say which one it examined is a verdict
+    about an unnamed thing. `--verify` therefore also requires `--adjusted`,
+    where it previously did not.
     """
-    have = _stored_days(conn, equity_storage_symbol(code), start, end)
+    have = _stored_days(conn, equity_storage_symbol(code, adjusted=adjusted), start, end)
     return missing_trading_days(reference_days, have)
 
 
@@ -171,8 +190,10 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
         help="check stored coverage against the reference index; fetch nothing",
     )
     args = p.parse_args(argv)
-    if not args.verify and args.adjusted is None:
-        p.error("--adjusted is required unless --verify")
+    if args.adjusted is None:
+        # **Required for --verify too**, since F-4/D4 made the basis part of
+        # the symbol: a coverage verdict has to say which series it read.
+        p.error("--adjusted is required, including with --verify")
     return args
 
 
@@ -200,7 +221,9 @@ def main(argv: list[str] | None = None) -> int:
             bad = 0
             for code in codes:
                 try:
-                    missing = verify_symbol(conn, code, reference, start, end)
+                    missing = verify_symbol(
+                        conn, code, reference, start, end, adjusted=args.adjusted
+                    )
                 except ReferenceCalendarError as exc:
                     LOGGER.error("%s: %s", code, exc)
                     return 1
