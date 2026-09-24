@@ -181,3 +181,54 @@ def test_a_token_another_process_wrote_wins_over_the_session_own(issuances):
     issuances["cached"] = "token-from-the-JVM"
     assert session.headers("TR")["authorization"] == "Bearer token-from-the-JVM"
     assert issuances["issued"] == 1, "an external renewal caused an issuance"
+
+
+def test_a_late_cache_HIT_does_not_extend_the_token_beyond_the_bound(
+    issuances, monkeypatch
+):
+    """**The extension bug, from the other end** (caught on review).
+
+    The first version of the ceiling refreshed `_token_at` whenever it
+    adopted a cached token. Read a cached token one second before the cache
+    would have expired it and the session then served that same token for a
+    further full `TOKEN_REUSE_S` after the cache had given up on it -- so the
+    effective life became `cache age + TOKEN_REUSE_S`, which is the
+    extension the ceiling exists to prevent.
+
+    The order here is what the previous tests missed: they emptied the cache
+    *before* moving the clock, so the late-hit path was never taken.
+    """
+    clock = {"t": 0.0}
+    monkeypatch.setattr(K.time, "monotonic", lambda: clock["t"])
+    session = K.KisSession("key", "secret")
+    assert issuances["issued"] == 1
+
+    # A cache HIT just before the bound. `_token_at` must not move.
+    clock["t"] = K.TOKEN_REUSE_S - 1
+    assert session.headers("TR")["authorization"] == "Bearer token-1"
+    assert issuances["issued"] == 1
+
+    # The cache now expires. One second later the session is already past
+    # its own bound, so it must issue -- not serve token-1 for another
+    # full bound.
+    issuances["cached"] = None
+    clock["t"] = K.TOKEN_REUSE_S
+    assert session.headers("TR")["authorization"] == "Bearer token-2", (
+        "the session extended its token past the bound by looking at the cache"
+    )
+    assert issuances["issued"] == 2
+
+
+def test_the_session_clock_measures_issuance_not_lookups(issuances, monkeypatch):
+    """Stated as its own property because it is the whole distinction: a
+    lookup is not an issuance, so a busy session cannot postpone renewal by
+    being busy."""
+    clock = {"t": 0.0}
+    monkeypatch.setattr(K.time, "monotonic", lambda: clock["t"])
+    session = K.KisSession("key", "secret")
+    for step in range(1, 40):
+        clock["t"] = step * (K.TOKEN_REUSE_S / 40)
+        session.headers("TR")
+    assert session._token_at == 0.0, (
+        "a cache lookup moved the issuance clock"
+    )

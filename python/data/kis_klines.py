@@ -323,8 +323,16 @@ class KisSession:
         """
         cached = _read_cached_token(self.host, self._app_key)
         if cached:
+            # **`_token_at` is deliberately NOT refreshed here.** It records
+            # when this session last *issued*, not when it last looked. The
+            # first version refreshed it, which silently extended a token's
+            # effective life to `cache age + TOKEN_REUSE_S`: read a cached
+            # token one second before the cache would have expired it, and
+            # the session then served that same token for a further full
+            # bound after the cache had given up on it. Caught on review --
+            # it reintroduced the very extension the ceiling exists to
+            # prevent, from the other end.
             self._token = cached
-            self._token_at = time.monotonic()
         elif time.monotonic() - self._token_at >= TOKEN_REUSE_S:
             self._token = issue_token(self.host, self._app_key, self._app_secret)
             self._token_at = time.monotonic()
