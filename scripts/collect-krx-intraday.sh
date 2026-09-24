@@ -97,7 +97,29 @@ export KIS_APP_KEY KIS_APP_SECRET
 # "it got less liquid later"), so this list changes only for those
 # reasons -- not because a later quarter reshuffles the ranking.
 UNIVERSE="005930,000660,000720,007390,009150,028300,051910,064350,068270,207940,005380,034020,006400,042700,035420,000270,402340,012450"
-START="$(date -d '10 days ago' +%Y%m%d)"
+# **Not a few days.** A ten-day start was a cap on what could ever be
+# caught up, not a cap on work -- the same defect `--sessions 5` was for the
+# minute bars, fixed in PR #174, and the daily half kept it. A daily hole
+# older than ten days (a holiday week plus an outage, a failed run nobody
+# noticed, or a malformed row) was never a candidate again, and nothing
+# reported it: the collector re-exec'd faithfully every day and looked only
+# at a window the hole had already left.
+#
+# It costs almost nothing, for the same measured reason the minute-bar
+# comment below gives: `backfill_symbol` skips a window whose expected
+# trading days are already stored **without an API call**, so the added work
+# is a handful of SQLite range queries per symbol. The one real cost is the
+# reference index itself, which is fetched with no reference to compare
+# against and so re-fetches its own ~4 pages daily instead of 1.
+#
+# 400 days rather than the whole reachable history because the endpoint
+# pages back to 1991 and this is a daily catch-up, not a backfill: an
+# outage long enough to outlast a year is a deliberate re-run
+# (`data.backfill_kis --start`), not something a cron job should quietly
+# repair. Daily bars are re-fetchable at any time, unlike the minute bars
+# and the order book, so the horizon is a convenience rather than a
+# deadline.
+START="$(date -d '400 days ago' +%Y%m%d)"
 END="$(date +%Y%m%d)"
 
 PYTHONPATH=python python/.venv/bin/python -m data.backfill_kis \

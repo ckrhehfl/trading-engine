@@ -40,7 +40,7 @@ import zipfile
 from dataclasses import dataclass
 
 from data._paths import DEFAULT_DB_PATH
-from data.krx_instrument import is_common_stock, is_spac
+from data.krx_instrument import is_common_stock_issue
 from data.store import connect, fetch_krx_universe, krx_universe_snapshots, upsert_krx_universe
 
 KOSPI_URL = "https://new.real.download.dws.co.kr/common/master/kospi_code.mst.zip"
@@ -175,8 +175,7 @@ def snapshot(conn, snapshot_date: str | None = None) -> tuple[str, int, int]:
         1
         for x in listings
         if x.group_code == COMMON_STOCK
-        and is_common_stock(x.standard_code)
-        and not is_spac(x.name)
+        and is_common_stock_issue(x.name, x.standard_code)
     )
     return date, written, common
 

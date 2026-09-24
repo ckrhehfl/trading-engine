@@ -66,11 +66,13 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import http.client
 import os
 import sqlite3
 import sys
 import time
 import urllib.parse
+from enum import Enum
 from pathlib import Path
 
 from data.kis_klines import (
@@ -84,13 +86,7 @@ from data.kis_klines import (
     rows_per_call_cap,
     validated_output2,
 )
-from data.krx_instrument import (
-    InstrumentClass,
-    instrument_class,
-    is_common_stock,
-    is_reit,
-    is_spac,
-)
+from data.krx_instrument import has_plain_equity_code, is_common_stock_issue
 from data.store import connect, fetch_krx_delisted, fetch_krx_universe
 
 PANEL_START = "20190102"
@@ -154,14 +150,138 @@ def in_continuous_session(now: dt.datetime | None = None) -> bool:
     return SESSION_OPEN_KST <= now.timetz().replace(tzinfo=None) <= SESSION_CLOSE_KST
 
 
-def candidates(conn) -> list[tuple[str, str, bool]]:
-    """Every survivorship-safe common-stock code: live plus delisted.
+class Listing(Enum):
+    """Where a pool member stands, from the two sources that disagree.
+
+    Two-valued `is_live` could not express the third case, and the third
+    case is real: **four codes appear on KIS's live master AND on KRX's
+    delisted finder, with the same name, market and ISIN on both**
+    (카프로 `006380`, 원풍물산 `008290`, 코다코 `046070`, 코스나인 `082660`
+    -- measured 2026-09-24 against the 2026-09-23 snapshots). The most
+    likely reading is a 상장폐지 already published by the finder while the
+    name still trades.
+
+    **This does not contradict `rd-w`'s "zero overlap" measurement**, which
+    compared the finder against KRX's own `finder_stkisu`. `krx_universe`
+    reads the **KIS master files** instead, and those two listed sources
+    disagree about these four names. Both measurements stand; they are
+    about different sources.
+
+    The flag's only job is to interpret a missing bar, so a contradictory
+    value is not a cosmetic duplicate -- `LIVE` says an absence is UNKNOWN
+    and `DELISTED` says it is an exit. `LEAVING` says the series may stop at
+    any session and must still never be dropped from the pool.
+    """
+
+    LIVE = "live"
+    DELISTED = "delisted"
+    LEAVING = "delisting_announced"
+
+
+class Absence(Enum):
+    """Why a symbol produced no bars. **`absent` conflated all three.**
+
+    A symbol-day with no bar must resolve to UNKNOWN rather than to "not
+    listed" until the request itself is known well-formed, because dropping
+    a real name from the pool is precisely the survivorship bias the
+    delisted universe exists to remove. A single `absent` bucket cannot say
+    which of these it holds, so a 1,524-symbol bucket was unreadable.
+    """
+
+    #: KIS serves no bar in any window, and a nonsense-code negative
+    #: control in the same run answered empty too -- so the request shape
+    #: was fine and this code really is one KIS does not price.
+    NEVER_SERVED = "absent:never_served"
+    #: Bars exist; none fall inside the requested panel. A later listing,
+    #: normally.
+    OUTSIDE_WINDOW = "absent:outside_window"
+    #: Cannot tell the two apart. **The default**, and what every first-pass
+    #: `absent` becomes on read, because `rt_cd=0` with zero rows is the
+    #: same answer for a dead name, an out-of-range window and a code that
+    #: never existed.
+    UNKNOWN = "absent:unknown"
+
+
+class Failure(Enum):
+    """Why a symbol failed, at the granularity a retry decision needs.
+
+    `failed:KisKlinesError` was recorded for 193 of the first pass's 199
+    failures, which is the exception *type* and not the *kind*: it covers a
+    transient venue rejection (retry), a row-cap breach (a bug in the
+    paging, never retry blindly) and a parse refusal (the response shape
+    changed) alike. A second pass cannot decide what to do with one bucket.
+    """
+
+    #: `rt_cd != 0` after the bounded rejection retry -- the transient case.
+    REJECTED = "failed:rejected"
+    #: A page reached the endpoint's silent row cap. Paging is wrong, or the
+    #: name trades far denser than the window assumed. Not transient.
+    CAPPED = "failed:capped"
+    #: `output2` or a row inside it did not have the shape this module
+    #: requires. A venue-side change, not a transient.
+    MALFORMED = "failed:malformed"
+    #: Transport: a timeout, a reset, a truncated read.
+    TRANSPORT = "failed:transport"
+    #: Anything else, carrying the exception type as before.
+    OTHER = "failed:other"
+
+
+#: Which failures a second pass may retry. An allowlist, not a blocklist --
+#: a blocklist bets on having thought of every kind, and this project has
+#: already recorded that bet losing (`change_check.check_guard_is_an_allowlist`).
+RETRYABLE_FAILURES = frozenset({Failure.REJECTED, Failure.TRANSPORT})
+
+
+def classify_failure(exc: BaseException) -> Failure:
+    """An exception to the kind a retry decision can be made from.
+
+    Matched on the refusal text this package itself writes, which is why
+    `validated_output2`'s messages are stable strings rather than free
+    prose. A message change that breaks this shows up as `OTHER`, which is
+    the safe direction: `OTHER` is not retried.
+    """
+    # `http.client.HTTPException` covers `IncompleteRead`, which is not an
+    # `OSError` and so fell through to the type-name bucket -- 6 of the
+    # first pass's 199 failures were literally a truncated read, the most
+    # retryable thing there is. Making `_get_with_retry` itself retry it is
+    # the deeper fix and is deliberately not bundled here, because that
+    # function is being changed in the page-read contract PR.
+    if isinstance(exc, (TimeoutError, OSError, http.client.HTTPException)):
+        return Failure.TRANSPORT
+    text = str(exc)
+    if "at or over this endpoint" in text:
+        return Failure.CAPPED
+    if "request failed after" in text:
+        return Failure.TRANSPORT
+    if "KIS rejected the request" in text or "rt_cd=" in text:
+        return Failure.REJECTED
+    if (
+        "output2" in text
+        or "stck_bsop_date" in text
+        or "not an object" in text
+        or "not a list" in text
+    ):
+        return Failure.MALFORMED
+    return Failure.OTHER
+
+
+def candidates(conn) -> list[tuple[str, str, Listing]]:
+    """Every survivorship-safe common-stock code, once each.
 
     **The two sides apply the SAME four filters**, which they did not when
     the SPAC rule landed: `fetch_krx_universe(common_stock_only=True)`
     picked it up on the live side immediately, leaving the delisted side
     with its 178 SPACs still in. Half a filter is worse than none, because
-    the pool then looks filtered.
+    the pool then looks filtered. Both now call the one predicate,
+    `krx_instrument.is_common_stock_issue`.
+
+    **And the two sides overlap, which a concatenation could not express.**
+    `live + dead` returned 4,375 rows over 4,371 distinct codes, with four
+    codes carrying `is_live=True` on one row and `False` on the other --
+    contradictory, because that flag is what decides whether a missing bar
+    is an unknown or an exit. They resolve to `Listing.LEAVING`; see its
+    docstring for the measurement and for why it is not an error in either
+    source.
     """
     u_date = conn.execute("SELECT MAX(snapshot_date) FROM krx_universe").fetchone()[0]
     d_date = conn.execute("SELECT MAX(snapshot_date) FROM krx_delisted").fetchone()[0]
@@ -173,23 +293,28 @@ def candidates(conn) -> list[tuple[str, str, bool]]:
             "survivorship-contaminated by construction. Run "
             "data.krx_delisted --snapshot"
         )
-    live = [
-        (code, name, True)
+    live = {
+        code: name
         for code, _m, name, _g, _i in fetch_krx_universe(
             conn, u_date, common_stock_only=True
         )
-    ]
-    dead = [
-        (code, name, False)
+    }
+    dead = {
+        code: name
         for code, _m, name, isin in fetch_krx_delisted(conn, d_date)
-        if len(code) == 6
-        and code.isdigit()
-        and is_common_stock(isin)
-        and instrument_class(isin) is InstrumentClass.STOCK_LIKE
-        and not is_spac(name)
-        and not is_reit(name)
-    ]
-    return live + dead
+        if has_plain_equity_code(code) and is_common_stock_issue(name, isin)
+    }
+
+    pool: list[tuple[str, str, Listing]] = []
+    for code in sorted(live.keys() | dead.keys()):
+        if code in live and code in dead:
+            status = Listing.LEAVING
+        elif code in live:
+            status = Listing.LIVE
+        else:
+            status = Listing.DELISTED
+        pool.append((code, live.get(code) or dead[code], status))
+    return pool
 
 
 def _pages(start: str, end: str, span_days: int):
@@ -279,7 +404,13 @@ def already_done(conn: sqlite3.Connection) -> set[str]:
     return {
         row[0]
         for row in conn.execute(
-            "SELECT code FROM scan_progress WHERE status IN ('done', 'absent')"
+            # `absent:%` as well as the bare legacy `absent`, so a pass
+            # already recorded under the old single bucket still resumes.
+            # `failed:%` is deliberately absent from this set -- a failure is
+            # what a second pass exists to retry, and `RETRYABLE_FAILURES`
+            # decides which.
+            "SELECT code FROM scan_progress WHERE status = 'done' "
+            "OR status = 'absent' OR status LIKE 'absent:%'"
         )
     }
 
@@ -320,7 +451,7 @@ def scan(
     started = time.monotonic()
     paused = 0.0
     todo = [c for c in pool if c[0] not in done]
-    for i, (code, name, _listed) in enumerate(todo):
+    for i, (code, name, _listing) in enumerate(todo):
         # **Pause for the session, do not merely refuse to start in it.**
         # A 64-hour pass begun after one close runs straight through the
         # next day's session otherwise, which is exactly the contention
@@ -353,7 +484,17 @@ def scan(
                 # **Recorded, not fatal.** A pass this long must survive a
                 # transient failure; the coverage report is what stops a
                 # partial scan being read as a complete one.
-                record_progress(conn, code, f"failed:{type(exc).__name__}")
+                # The KIND, not the exception type. `failed:KisKlinesError`
+                # covered a transient rejection, a row-cap breach and a
+                # parse refusal alike, so a second pass could not tell
+                # which of the 193 it should retry.
+                kind = classify_failure(exc)
+                detail = (
+                    f"{kind.value}:{type(exc).__name__}"
+                    if kind is Failure.OTHER
+                    else kind.value
+                )
+                record_progress(conn, code, detail)
                 counts["failed"] += 1
                 failed = True
                 break
@@ -364,7 +505,12 @@ def scan(
             record_progress(conn, code, "done")
             counts["done"] += 1
         else:
-            record_progress(conn, code, "absent")
+            # UNKNOWN, never "not listed". `rt_cd=0` with zero rows is the
+            # same answer for a dead name, an out-of-range window and a
+            # code that never existed, and resolving that needs a separate
+            # over-wide probe plus a negative control -- which is what a
+            # second pass does, not something a first pass may assume.
+            record_progress(conn, code, Absence.UNKNOWN.value)
             counts["absent"] += 1
         if progress and i % 50 == 0:
             worked = time.monotonic() - started - paused
@@ -372,12 +518,118 @@ def scan(
     return counts
 
 
+
+def resolve_absences(
+    session: KisSession,
+    conn: sqlite3.Connection,
+    *,
+    progress=None,
+    limit: int | None = None,
+) -> dict:
+    """Turn each `absent:unknown` into one of the two answers it hides.
+
+    **The over-wide request, used for the one job it is right for.** KIS's
+    100-row cap keeps the NEWEST rows, so an intentionally over-wide window
+    returns a name's last 100 sessions whatever its span -- which is how a
+    delisted name's final trading day is read. It is the wrong tool for
+    per-day membership across a window, because every session before the
+    newest 100 is truncated away and would read as "not in the pool", and
+    `fetch_daily_page` refuses a capped page for exactly that reason. Here
+    the question is only *does KIS price this code at all*, so the
+    truncation is irrelevant and the refusal has to be bypassed
+    deliberately.
+
+    The negative controls run first, in this same pass. Without them a
+    zero-row answer cannot be read at all -- `999999` and `ZZZZZZ` return
+    `rt_cd=0` with zero rows exactly as a dead name does -- so an
+    unresolvable control leaves every symbol at `UNKNOWN` rather than
+    letting the pass guess.
+    """
+    verify_negative_controls(session)
+
+    todo = [
+        row[0]
+        for row in conn.execute(
+            "SELECT code FROM scan_progress WHERE status = ? OR status = 'absent' "
+            "ORDER BY code",
+            (Absence.UNKNOWN.value,),
+        )
+    ]
+    if limit is not None:
+        todo = todo[:limit]
+
+    counts = {a.value: 0 for a in Absence}
+    counts["failed"] = 0
+    for i, code in enumerate(todo):
+        time.sleep(_SPACING_S)
+        try:
+            rows = _wide_probe(session, code)
+        except Exception as exc:  # noqa: BLE001
+            record_progress(conn, code, classify_failure(exc).value)
+            counts["failed"] += 1
+            continue
+        status = Absence.OUTSIDE_WINDOW if rows else Absence.NEVER_SERVED
+        record_progress(conn, code, status.value)
+        counts[status.value] += 1
+        if progress and i % 50 == 0:
+            progress(i, len(todo), code, status.value, None)
+    return counts
+
+
+def _wide_probe(session: KisSession, code: str) -> list[dict]:
+    """Does KIS price this code at all? One deliberately capped request.
+
+    Bypasses the page contract's cap refusal on purpose -- see
+    `resolve_absences`. It returns the rows rather than a bool so a caller
+    can read the final trading day off the last one without a second call.
+    """
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": code,
+        "FID_INPUT_DATE_1": "19900101",
+        "FID_INPUT_DATE_2": PANEL_END,
+        "FID_PERIOD_DIV_CODE": "D",
+        "FID_ORG_ADJ_PRC": ADJUSTED,
+    }
+    url = f"{PAPER_HOST}{DAILY_ITEM_PATH}?{urllib.parse.urlencode(params)}"
+    payload = _get_with_retry(url, session.headers(TR_DAILY_ITEM))
+    if payload.get("rt_cd") != "0":
+        raise KisKlinesError(
+            f"KIS rejected the request for {code} (wide probe): "
+            f"rt_cd={payload.get('rt_cd')} msg_cd={payload.get('msg_cd')}"
+        )
+    raw = payload.get("output2")
+    if raw is None or not isinstance(raw, list):
+        raise KisKlinesError(f"output2 is not a list for {code} (wide probe)")
+    return [r for r in raw if isinstance(r, dict)]
+
+
+def retryable_failures(conn: sqlite3.Connection) -> list[str]:
+    """The codes a second pass may legitimately retry.
+
+    An allowlist of failure kinds, so a kind nobody anticipated is left
+    alone rather than retried into whatever caused it. `failed:capped` in
+    particular must not be retried: it means the paging is wrong, and
+    retrying reproduces it at the same cost.
+    """
+    allowed = tuple(f.value for f in RETRYABLE_FAILURES)
+    return [
+        row[0]
+        for row in conn.execute(
+            "SELECT code FROM scan_progress WHERE status IN "
+            f"({','.join('?' * len(allowed))}) ORDER BY code",
+            allowed,
+        )
+    ]
+
+
 def coverage(conn: sqlite3.Connection) -> None:
     total = conn.execute("SELECT COUNT(*) FROM scan_progress").fetchone()[0]
     bars = conn.execute("SELECT COUNT(*) FROM scan_bars").fetchone()[0]
     print(f"symbols recorded {total:,}   bars {bars:,}")
     for status, n, b in conn.execute(
-        "SELECT CASE WHEN status LIKE 'failed:%' THEN 'failed' ELSE status END, "
+        "SELECT CASE WHEN status LIKE 'failed:%' THEN substr(status, 1, 14) "
+        "WHEN status LIKE 'absent%' THEN status ELSE status END, "
         "COUNT(*), SUM(bars) FROM scan_progress GROUP BY 1 ORDER BY 2 DESC"
     ):
         print(f"  {status:<10} {n:>6,} symbols  {b or 0:>10,} bars")
@@ -390,6 +642,22 @@ def coverage(conn: sqlite3.Connection) -> None:
           "was listed.")
 
 
+
+def progress_printer():
+    """The one progress line, shared by both passes."""
+
+    def progress(i, n, code, name, rate):
+        # `rate is None` is a state change (paused, resumed), not a
+        # measurement -- printing an ETA there invents one.
+        tail = (
+            "" if rate is None
+            else f"  {rate:.2f} sym/s  eta {(n - i - 1) / max(rate, 1e-9) / 3600:.1f}h"
+        )
+        print(f"  [{i + 1:>5}/{n}] {code} {name[:28]:<28}{tail}", flush=True)
+
+    return progress
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db-path", default=str(DEFAULT_SCAN_DB))
@@ -398,6 +666,13 @@ def main(argv: list[str] | None = None) -> int:
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument("--scan", action="store_true")
     group.add_argument("--coverage", action="store_true")
+    group.add_argument(
+        "--second-pass",
+        action="store_true",
+        help="resolve every absent:unknown into never_served or "
+        "outside_window, and retry the failures whose kind is retryable. "
+        "Reads the same database; adds no new candidates.",
+    )
     ap.add_argument("--limit", type=int, default=0, help="first N candidates (probe)")
     ap.add_argument(
         "--in-session",
@@ -434,6 +709,45 @@ def main(argv: list[str] | None = None) -> int:
         conn.close()
         return 2
 
+    if args.second_pass:
+        session = KisSession(key, secret, host=PAPER_HOST)
+        retry = retryable_failures(conn)
+        print(
+            f"second pass: {len(retry):,} retryable failures, then every "
+            f"absent:unknown",
+            flush=True,
+        )
+        if retry:
+            # Re-fetched through the ordinary path, so a retry is subject to
+            # the same page contract as a first fetch. `pool` entries are
+            # rebuilt from the progress table rather than the universe, so a
+            # code KRX has since delisted is still retried.
+            universe = connect(args.universe_db) if args.universe_db else conn
+            by_code = {c: (n, st) for c, n, st in candidates(universe)}
+            if args.universe_db:
+                universe.close()
+            missing = [c for c in retry if c not in by_code]
+            if missing:
+                print(
+                    f"  {len(missing)} retryable code(s) are no longer in the "
+                    f"pool and are left alone: {', '.join(missing[:5])}"
+                    f"{' …' if len(missing) > 5 else ''}",
+                    flush=True,
+                )
+            again = [(c, by_code[c][0], by_code[c][1]) for c in retry if c in by_code]
+            # The status has to be cleared first, or `already_done` -- which
+            # counts `absent:%` as complete -- would skip a code whose retry
+            # is the entire point of this pass.
+            conn.executemany(
+                "DELETE FROM scan_progress WHERE code = ?", [(c,) for c, _, _ in again]
+            )
+            conn.commit()
+            print(f"{scan(session, conn, again, progress=progress_printer())}", flush=True)
+        print(f"{resolve_absences(session, conn, progress=progress_printer())}", flush=True)
+        coverage(conn)
+        conn.close()
+        return 0
+
     universe = connect(args.universe_db) if args.universe_db else conn
     pool = candidates(universe)
     if args.universe_db:
@@ -450,16 +764,7 @@ def main(argv: list[str] | None = None) -> int:
     verify_negative_controls(session)
     print("negative controls pass: an empty answer really means empty", flush=True)
 
-    def progress(i, n, code, name, rate):
-        # `rate is None` is a state change (paused, resumed), not a
-        # measurement -- printing an ETA there invents one.
-        tail = (
-            "" if rate is None
-            else f"  {rate:.2f} sym/s  eta {(n - i - 1) / max(rate, 1e-9) / 3600:.1f}h"
-        )
-        print(f"  [{i + 1:>5}/{n}] {code} {name[:28]:<28}{tail}", flush=True)
-
-    counts = scan(session, conn, pool, progress=progress,
+    counts = scan(session, conn, pool, progress=progress_printer(),
                   allow_in_session=args.in_session)
     print(f"\n{counts}")
     coverage(conn)

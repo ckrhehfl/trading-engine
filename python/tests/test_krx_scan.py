@@ -229,7 +229,12 @@ def test_absent_is_recorded_distinctly_from_failed(monkeypatch, db):
     counts = scan(session, db, [("000020", "absent", True), ("117930", "fail", False)])
     assert counts["absent"] == 1 and counts["failed"] == 1
     statuses = dict(db.execute("SELECT code, status FROM scan_progress"))
-    assert statuses["000020"] == "absent"
+    # `absent:unknown`, not a bare `absent`: the bucket was split because
+    # `rt_cd=0` with zero rows is the same answer for a dead name, an
+    # out-of-range window and a code that never existed, and a first pass
+    # cannot tell which. What this test was written for is unchanged -- an
+    # absence is still a different fact from a failure.
+    assert statuses["000020"] == "absent:unknown"
     assert statuses["117930"].startswith("failed:")
 
 
