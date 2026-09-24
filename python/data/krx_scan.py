@@ -81,6 +81,8 @@ from data.kis_klines import (
     KisKlinesError,
     KisSession,
     _get_with_retry,
+    rows_per_call_cap,
+    validated_output2,
 )
 from data.krx_instrument import (
     InstrumentClass,
@@ -212,17 +214,15 @@ def _page(session: KisSession, code: str, start: str, end: str) -> list[dict]:
     payload = _get_with_retry(url, session.headers(TR_DAILY_ITEM))
     if payload.get("rt_cd") != "0":
         raise KisKlinesError(f"{code} {start}..{end}: rt_cd={payload.get('rt_cd')}")
-    rows = [
-        r
-        for r in (payload.get("output2") or [])
-        if isinstance(r, dict) and r.get("stck_bsop_date")
-    ]
-    if len(rows) >= 100:
-        raise KisKlinesError(
-            f"{code} {start}..{end}: {len(rows)} rows at the 100-row cap; "
-            f"silently truncated, so this page is not data"
-        )
-    return rows
+    # One contract, not a second copy of it. This module's own version
+    # filtered malformed rows before comparing the count against a
+    # hardcoded 100, so a truncated page with one bad row read as
+    # complete -- see `kis_klines.validated_output2`.
+    return validated_output2(
+        payload,
+        cap=rows_per_call_cap(is_index=False),
+        what=f"{code} {start}..{end}",
+    )
 
 
 def verify_negative_controls(session: KisSession) -> None:
