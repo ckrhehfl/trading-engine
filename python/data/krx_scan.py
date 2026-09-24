@@ -249,7 +249,15 @@ def classify_failure(exc: BaseException) -> Failure:
     if isinstance(exc, (TimeoutError, OSError, http.client.HTTPException)):
         return Failure.TRANSPORT
     text = str(exc)
-    if "at or over this endpoint" in text:
+    # Two spellings, because two call sites raise the cap refusal and a
+    # classifier keyed to a message must match the message its own callers
+    # actually produce. `kis_klines.validated_output2` says "at or over this
+    # endpoint"; `krx_scan._page` said "rows at the 100-row cap" until it was
+    # routed through the shared contract. The test for this obtains the
+    # string by TRIGGERING the refusal rather than by quoting it -- quoting
+    # is what let the mismatch through, since it confirmed my own wording
+    # instead of the caller's.
+    if "at or over this endpoint" in text or "row cap" in text:
         return Failure.CAPPED
     if "request failed after" in text:
         return Failure.TRANSPORT
@@ -560,15 +568,32 @@ def resolve_absences(
 
     counts = {a.value: 0 for a in Absence}
     counts["failed"] = 0
+    #: Probed bars land inside the panel the first pass found empty. Not an
+    #: absence at all -- see the branch that increments it.
+    counts["contradicted"] = 0
     for i, code in enumerate(todo):
         time.sleep(_SPACING_S)
         try:
-            rows = _wide_probe(session, code)
+            dates = _wide_probe(session, code)
         except Exception as exc:  # noqa: BLE001
             record_progress(conn, code, classify_failure(exc).value)
             counts["failed"] += 1
             continue
-        status = Absence.OUTSIDE_WINDOW if rows else Absence.NEVER_SERVED
+        if not dates:
+            status = Absence.NEVER_SERVED
+        elif any(PANEL_START <= d <= PANEL_END for d in dates):
+            # **The probe contradicts the scan, so nothing is resolved.**
+            # KIS prices this code inside the very panel the pass found no
+            # bars for, which is not "outside the window" -- it means a
+            # session that should have been fetched was not. Calling it
+            # OUTSIDE_WINDOW would file a real hole as an expected absence,
+            # which is the survivorship direction. It stays UNKNOWN, and is
+            # counted separately so it is visible rather than merely
+            # unresolved.
+            status = Absence.UNKNOWN
+            counts["contradicted"] += 1
+        else:
+            status = Absence.OUTSIDE_WINDOW
         record_progress(conn, code, status.value)
         counts[status.value] += 1
         if progress and i % 50 == 0:
@@ -576,12 +601,13 @@ def resolve_absences(
     return counts
 
 
-def _wide_probe(session: KisSession, code: str) -> list[dict]:
+def _wide_probe(session: KisSession, code: str) -> list[str]:
     """Does KIS price this code at all? One deliberately capped request.
 
     Bypasses the page contract's cap refusal on purpose -- see
-    `resolve_absences`. It returns the rows rather than a bool so a caller
-    can read the final trading day off the last one without a second call.
+    `resolve_absences`. It returns the bars' **dates** rather than a bool so
+    a caller can read the final trading day off the newest one without a
+    second call, and can check whether any of them fall inside the panel.
     """
     params = {
         "FID_COND_MRKT_DIV_CODE": "J",
@@ -601,7 +627,26 @@ def _wide_probe(session: KisSession, code: str) -> list[dict]:
     raw = payload.get("output2")
     if raw is None or not isinstance(raw, list):
         raise KisKlinesError(f"output2 is not a list for {code} (wide probe)")
-    return [r for r in raw if isinstance(r, dict)]
+    # **A dateless row must not count as a bar.** This function's answer is
+    # "does KIS price this code at all", and `rows` being non-empty is the
+    # whole test -- so a placeholder dict would resolve a genuinely
+    # never-served code to `OUTSIDE_WINDOW`, which is the wrong direction:
+    # it asserts the name existed. Every other reader in this package
+    # requires the date; this one skipped it. Caught on review.
+    dates = []
+    for index, row in enumerate(raw):
+        if not isinstance(row, dict):
+            raise KisKlinesError(
+                f"output2 row {index} is not an object for {code} (wide probe)"
+            )
+        date = str(row.get("stck_bsop_date") or "").strip()
+        if not date:
+            raise KisKlinesError(
+                f"output2 row {index} carries no stck_bsop_date for {code} "
+                f"(wide probe)"
+            )
+        dates.append(date)
+    return dates
 
 
 def retryable_failures(conn: sqlite3.Connection) -> list[str]:

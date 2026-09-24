@@ -345,3 +345,176 @@ def test_an_unclassifiable_failure_still_records_its_exception_type(monkeypatch,
         "SELECT status FROM scan_progress WHERE code = '005930'"
     ).fetchone()[0]
     assert status == f"{Failure.OTHER.value}:ZeroDivisionError"
+
+
+# ------------- the classifier against the message its callers really raise
+
+
+def test_the_cap_refusal_this_MODULE_raises_classifies_as_CAPPED(monkeypatch):
+    """**Obtained by triggering the refusal, not by quoting it.**
+
+    Every other case in this file hands `classify_failure` a string I wrote,
+    which confirms my own wording rather than the caller's -- and that let a
+    real mismatch through: `krx_scan._page` raised "... rows at the 100-row
+    cap" while the classifier matched only `kis_klines`'s "at or over this
+    endpoint", so `Failure.CAPPED` was never recorded from the actual scan
+    path. Reported on review of this PR.
+
+    The direction was safe (it filed as `OTHER`, which is not retried) and
+    the defect was still real: the PR's whole point is telling a cap breach
+    apart from a transient, and the scan path could not.
+    """
+    from data import krx_scan as S
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    monkeypatch.setattr(
+        S,
+        "_get_with_retry",
+        lambda url, headers: {
+            "rt_cd": "0",
+            "output2": [{"stck_bsop_date": f"2019{i:04d}"} for i in range(1, 101)],
+        },
+    )
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+
+    with pytest.raises(Exception) as exc:
+        S._page(_S(), "005930", "20190102", "20190430")
+    assert classify_failure(exc.value) is Failure.CAPPED, (
+        f"the refusal this module actually raises classifies as "
+        f"{classify_failure(exc.value).value}: {exc.value}"
+    )
+
+
+def test_the_rejection_refusal_this_module_raises_classifies_as_REJECTED(monkeypatch):
+    from data import krx_scan as S
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    monkeypatch.setattr(
+        S, "_get_with_retry",
+        lambda url, headers: {"rt_cd": "1", "msg_cd": "OPSQ0003"},
+    )
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(Exception) as exc:
+        S._page(_S(), "005930", "20190102", "20190430")
+    assert classify_failure(exc.value) is Failure.REJECTED
+
+
+# ------------------------------------------- the wide probe and its verdicts
+
+
+def _probe_env(monkeypatch, payload):
+    from data import krx_scan as S
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    monkeypatch.setattr(S, "_get_with_retry", lambda url, headers: payload)
+    monkeypatch.setattr(S, "verify_negative_controls", lambda s: None)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    return _S()
+
+
+def _seeded(tmp_path, code="005930"):
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCAN_SCHEMA)
+    conn.execute(
+        "INSERT INTO scan_progress (code, bars, frozen, status, fetched_at) "
+        "VALUES (?, 0, 0, ?, '2026-09-24T00:00:00+00:00')",
+        (code, Absence.UNKNOWN.value),
+    )
+    conn.commit()
+    return conn
+
+
+def test_a_dateless_placeholder_does_not_make_a_code_look_served(
+    monkeypatch, tmp_path
+):
+    """**Reported on review.** The probe checked only `isinstance(row, dict)`,
+    so a placeholder would resolve a genuinely never-served code to
+    `OUTSIDE_WINDOW` -- which asserts the name existed. Every other reader
+    here requires the date; this one skipped it."""
+    from data.krx_scan import resolve_absences
+
+    session = _probe_env(monkeypatch, {"rt_cd": "0", "output2": [{}, {"a": 1}]})
+    conn = _seeded(tmp_path)
+    counts = resolve_absences(session, conn)
+    assert counts["failed"] == 1, "a dateless row was accepted as a bar"
+    assert counts[Absence.OUTSIDE_WINDOW.value] == 0
+
+
+def test_no_bars_at_all_resolves_to_NEVER_SERVED(monkeypatch, tmp_path):
+    from data.krx_scan import resolve_absences
+
+    session = _probe_env(monkeypatch, {"rt_cd": "0", "output2": []})
+    conn = _seeded(tmp_path)
+    counts = resolve_absences(session, conn)
+    assert counts[Absence.NEVER_SERVED.value] == 1
+    status = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
+    assert status == Absence.NEVER_SERVED.value
+
+
+def test_bars_entirely_before_the_panel_resolve_to_OUTSIDE_WINDOW(
+    monkeypatch, tmp_path
+):
+    from data.krx_scan import resolve_absences
+
+    session = _probe_env(
+        monkeypatch,
+        {"rt_cd": "0", "output2": [{"stck_bsop_date": d} for d in
+                                   ("19991201", "19991202")]},
+    )
+    conn = _seeded(tmp_path)
+    counts = resolve_absences(session, conn)
+    assert counts[Absence.OUTSIDE_WINDOW.value] == 1
+
+
+def test_bars_INSIDE_the_panel_are_a_contradiction_and_stay_UNKNOWN(
+    monkeypatch, tmp_path
+):
+    """**Reported on review, and the more important half.** KIS pricing this
+    code inside the very panel the pass found empty is not "outside the
+    window" -- a session that should have been fetched was not. Filing that
+    as an expected absence is the survivorship direction, so it stays
+    UNKNOWN and is counted separately to stay visible."""
+    from data.krx_scan import PANEL_START, resolve_absences
+
+    session = _probe_env(
+        monkeypatch,
+        {"rt_cd": "0", "output2": [{"stck_bsop_date": "20000103"},
+                                   {"stck_bsop_date": PANEL_START}]},
+    )
+    conn = _seeded(tmp_path)
+    counts = resolve_absences(session, conn)
+    assert counts["contradicted"] == 1
+    assert counts[Absence.OUTSIDE_WINDOW.value] == 0
+    status = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
+    assert status == Absence.UNKNOWN.value, (
+        "a contradiction was resolved into an expected absence"
+    )
+
+
+def test_an_unresolvable_negative_control_stops_the_whole_pass(monkeypatch, tmp_path):
+    """Without the controls a zero-row answer cannot be read at all, so the
+    pass must refuse rather than resolve every symbol on a guess."""
+    from data import krx_scan as S
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    def boom(session):
+        raise S.KrxScanError("a control could not be asked")
+
+    monkeypatch.setattr(S, "verify_negative_controls", boom)
+    conn = _seeded(tmp_path)
+    with pytest.raises(S.KrxScanError, match="control"):
+        S.resolve_absences(_S(), conn)
+    status = conn.execute("SELECT status FROM scan_progress").fetchone()[0]
+    assert status == Absence.UNKNOWN.value, "a symbol was resolved anyway"
