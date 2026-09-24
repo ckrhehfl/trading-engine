@@ -219,14 +219,24 @@ def _survives(figure: str, corpus_norm: str) -> bool:
     # unsafe direction, and it is accepted rather than fixed because
     # distinguishing them needs the sign to be part of the figure and this
     # file's own prose writes the same quantity both ways.
-    # `(?!-\d)` as well, so a needle can never be satisfied by the year
-    # fragment of a date: `2026` must not match inside `2026-09-24`. Reported
-    # on review, and kept as a second line of defence even though the
-    # provenance rule above now strips bare years before they become figures --
-    # the two guard different steps, and this one also stops a match landing on
-    # the left half of a range like `13-15`.
+    # **A hyphen has to be rejected on BOTH sides, and the first attempt only
+    # did one.** `(?!-\d)` blocks the *left* fragment of a date, so `2026`
+    # cannot match inside `2026-09-24`. It does nothing for the *right*
+    # fragment: `_normalise("20%")` is `"20"`, and in a corpus containing
+    # `2026-08-20` that `20` sits after a `-`, which `(?<![\d.])` permits. So
+    # every integer percentage from `10%` to `31%` could survive on a date's
+    # DAY — and `.planning/` puts a date in nearly every paragraph, while
+    # `CLAUDE.md` is full of `20%` ceilings and `25-30%` thresholds. Reported on
+    # review; the earlier docstring claimed the date case was fixed while
+    # `2026-09-20` still vouched for `20%`, and the test corpus happened to
+    # carry no date ending in 20.
+    #
+    # `(?<!\d-)` is the symmetric guard. It leaves sign consumption intact
+    # (`-14.4`, `+79.2R`) because those are preceded by a space, and it rejects
+    # the right half of a range like `13-15` exactly as `(?!-\d)` already
+    # rejects the left.
     pattern = re.compile(
-        r"(?<![\d.])[-+−]?" + re.escape(bare) + r"(?!\.?\d)(?!-\d)"
+        r"(?<![\d.])(?<!\d-)[-+−]?" + re.escape(bare) + r"(?!\.?\d)(?!-\d)"
     )
     return pattern.search(corpus_norm) is not None
 

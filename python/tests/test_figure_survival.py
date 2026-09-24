@@ -531,3 +531,43 @@ def test_a_years_DATE_cannot_satisfy_a_bare_year_needle():
     assert not _survives("13", _normalise("the 13-15 bp band"))
     # And an ordinary figure is unaffected.
     assert _survives("0.95", _normalise("PSR 0.95 cleared"))
+
+
+@pytest.mark.parametrize(
+    "figure, corpus, why",
+    [
+        # **The gap the first hyphen guard left**, reported on review: `(?!-\d)`
+        # blocks a date's YEAR but not its DAY. `_normalise("20%")` is `"20"`,
+        # and `.planning/` puts a date in nearly every paragraph while
+        # `CLAUDE.md` is full of `20%` ceilings — so integer percentages from
+        # 10% to 31% could all survive on a day number. The earlier test corpus
+        # happened to carry no date ending in 20, which is why it passed.
+        ("20%", "a run on 2026-08-20 here", "a date's DAY fragment"),
+        ("24%", "measured 2026-09-24 against", "a date's DAY fragment"),
+        ("9%", "measured 2026-09-24 against", "a date's MONTH fragment"),
+        ("2026", "measured 2026-09-24", "a date's YEAR fragment"),
+        ("15", "the 13-15 bp band", "the RIGHT half of a range"),
+        ("13", "the 13-15 bp band", "the LEFT half of a range"),
+    ],
+)
+def test_neither_side_of_a_hyphen_can_vouch_for_a_figure(figure, corpus, why):
+    from research.figure_survival import _normalise, _survives
+
+    assert not _survives(figure, _normalise(corpus)), why
+
+
+@pytest.mark.parametrize(
+    "figure, corpus",
+    [
+        # The symmetric guard must not break sign consumption, which is
+        # preceded by whitespace rather than by a digit-hyphen.
+        ("-14.4", "raw mean -14.4 bp against"),
+        ("+79.2", "of +79.2R and 4"),
+        ("20%", "exactly 20% drawdown"),
+        ("0.95", "PSR 0.95 cleared"),
+    ],
+)
+def test_the_symmetric_guard_leaves_real_occurrences_alone(figure, corpus):
+    from research.figure_survival import _normalise, _survives
+
+    assert _survives(figure, _normalise(corpus)), f"{figure!r} vs {corpus!r}"
