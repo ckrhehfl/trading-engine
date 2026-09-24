@@ -283,6 +283,9 @@ class KisSession:
         # Resolved here so construction still fails fast on a bad key, and
         # re-resolved per request by `headers` -- see its docstring.
         self._token = issue_token(host, app_key, app_secret)
+        # A ceiling on issuance, not a second freshness policy -- see
+        # `headers`. Set here so the bound starts at construction.
+        self._token_at = time.monotonic()
 
     def headers(self, tr_id: str) -> dict[str, str]:
         """Auth headers, with the token re-resolved through the cache.
@@ -294,13 +297,23 @@ class KisSession:
         session was the one place that bound did not apply -- it kept a
         string the cache would have refused to hand out.
 
-        Rather than give the session a second, independent notion of
-        freshness, it asks the cache every time. `issue_token` returns the
-        cached token while it is fresh and issues a new one when it is not,
-        so there is exactly one definition of "still good" and a concurrent
-        process (the `kis-paper` JVM shares this app key's allowance)
-        benefits from the same single issuance. The cost is one 0600 file
-        read per request against a call that takes 7-10 seconds.
+        It asks the **cache** first on every request, so a token another
+        process has renewed is picked up rather than shadowed by the
+        session's own copy. The cost is one 0600 file read against a call
+        that takes 7-10 seconds.
+
+        **And it keeps its own clock purely as a ceiling on issuance**,
+        which is less a second notion of freshness than the failure case of
+        the first. `_read_cached_token` returns `None` for an expired token,
+        a key mismatch, a permission problem and an unparseable file alike,
+        and `_write_cached_token` swallows `OSError` -- so on a box where the
+        cache cannot be written, "ask the cache every time" means **issue
+        every time**, which exhausts `EGW00133` within a minute and takes
+        the `kis-paper` JVM's own renewal down with it. Found on review of
+        this change, and it is the exact failure the cache exists to
+        prevent. So a cache miss falls back to the session's own token while
+        that token is younger than `TOKEN_REUSE_S`, bounding issuance to
+        once per bound even with the cache entirely broken.
 
         Latent rather than live when fixed, and that was checked rather
         than assumed: the scan's 199 failures are spread evenly across
@@ -308,7 +321,13 @@ class KisSession:
         of bursting at a token boundary, and bars accumulated to the final
         symbol.
         """
-        self._token = issue_token(self.host, self._app_key, self._app_secret)
+        cached = _read_cached_token(self.host, self._app_key)
+        if cached:
+            self._token = cached
+            self._token_at = time.monotonic()
+        elif time.monotonic() - self._token_at >= TOKEN_REUSE_S:
+            self._token = issue_token(self.host, self._app_key, self._app_secret)
+            self._token_at = time.monotonic()
         return {
             "authorization": f"Bearer {self._token}",
             "appkey": self._app_key,

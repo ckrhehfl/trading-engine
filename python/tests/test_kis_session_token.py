@@ -30,8 +30,15 @@ from data import kis_klines as K
 
 @pytest.fixture
 def issuances(monkeypatch):
-    """Count real issuances and control what the cache reports."""
-    state = {"issued": 0, "cached": None}
+    """Count real issuances and control the cache independently of them.
+
+    The two are separate on purpose. `_read_cached_token` returning `None`
+    is not only "expired" -- it is also a permission problem, an
+    unparseable file, or a `_write_cached_token` whose `OSError` was
+    swallowed. `writable=False` reproduces that box, which is what the
+    issuance ceiling exists for.
+    """
+    state = {"issued": 0, "cached": None, "writable": True}
 
     def fake_urlopen(*a, **k):  # pragma: no cover - never reached
         raise AssertionError("a real token request escaped the fixture")
@@ -43,24 +50,30 @@ def issuances(monkeypatch):
             return state["cached"]
         state["issued"] += 1
         token = f"token-{state['issued']}"
-        state["cached"] = token
+        if state["writable"]:
+            state["cached"] = token
         return token
 
     monkeypatch.setattr(K, "issue_token", fake_issue)
+    monkeypatch.setattr(K, "_read_cached_token", lambda host, key: state["cached"])
     return state
 
 
-def test_a_session_re_resolves_its_token_on_every_request(issuances):
-    """Not "issues on every request" — the cache absorbs that. What must be
-    true is that the *cache* is consulted, so a token it has replaced is
-    picked up instead of the session's own copy."""
+def test_a_session_re_resolves_its_token_on_every_request(issuances, monkeypatch):
+    """Not "issues on every request" -- the cache absorbs that, and the
+    issuance ceiling bounds what happens when the cache cannot answer. What
+    must be true is that the session does not serve a token past the bound
+    the cache itself enforces, which is the F-2 defect.
+    """
+    clock = {"t": 0.0}
+    monkeypatch.setattr(K.time, "monotonic", lambda: clock["t"])
     session = K.KisSession("key", "secret")
     first = session.headers("TR")["authorization"]
     assert issuances["issued"] == 1
 
-    # The cache moves on, as it does when it expires or another process
-    # renews it.
+    # The cache expires, exactly as it does after `TOKEN_REUSE_S`.
     issuances["cached"] = None
+    clock["t"] = K.TOKEN_REUSE_S + 1
     second = session.headers("TR")["authorization"]
 
     assert issuances["issued"] == 2, "the session kept its own stale token"
@@ -110,3 +123,61 @@ def test_the_token_cache_bound_is_shorter_than_KIS_own_validity():
     venue's expiry. Stated as an assertion so a future edit that raises it
     past a day has to argue with a test rather than with a comment."""
     assert 0 < K.TOKEN_REUSE_S < 86_400
+
+
+# ------------------------------- the ceiling, found on review of this change
+
+
+def test_an_UNWRITABLE_cache_cannot_turn_into_an_issuance_per_request(
+    issuances, monkeypatch
+):
+    """**A regression this change introduced, caught on review.**
+
+    `_read_cached_token` returns `None` for an expired token, a key
+    mismatch, a permission problem and an unparseable file alike, and
+    `_write_cached_token` swallows `OSError`. So "ask the cache every
+    request" means "issue every request" on a box where the cache cannot be
+    written -- which exhausts `EGW00133` within a minute and takes the
+    `kis-paper` JVM's own renewal down with it. Exactly the failure the
+    cache exists to prevent.
+    """
+    issuances["writable"] = False
+    session = K.KisSession("key", "secret")
+    assert issuances["issued"] == 1
+
+    for _ in range(200):
+        session.headers("TR")
+
+    assert issuances["issued"] == 1, (
+        f"issued {issuances['issued']} times against a broken cache -- the "
+        f"session's own clock is not bounding issuance"
+    )
+
+
+def test_the_ceiling_still_lets_a_token_be_renewed_once_the_bound_passes(
+    issuances, monkeypatch
+):
+    """The other direction: the ceiling must not pin a token forever, which
+    is the original F-2 defect wearing a different hat."""
+    issuances["writable"] = False
+    session = K.KisSession("key", "secret")
+    clock = {"t": 0.0}
+    monkeypatch.setattr(K.time, "monotonic", lambda: clock["t"])
+    session._token_at = 0.0
+
+    clock["t"] = K.TOKEN_REUSE_S - 1
+    session.headers("TR")
+    assert issuances["issued"] == 1, "renewed early"
+
+    clock["t"] = K.TOKEN_REUSE_S
+    session.headers("TR")
+    assert issuances["issued"] == 2, "never renewed at all"
+
+
+def test_a_token_another_process_wrote_wins_over_the_session_own(issuances):
+    """The whole point of consulting the cache: the `kis-paper` JVM shares
+    this app key, and whichever process renews first should serve both."""
+    session = K.KisSession("key", "secret")
+    issuances["cached"] = "token-from-the-JVM"
+    assert session.headers("TR")["authorization"] == "Bearer token-from-the-JVM"
+    assert issuances["issued"] == 1, "an external renewal caused an issuance"

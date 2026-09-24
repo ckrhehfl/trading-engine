@@ -275,6 +275,15 @@ def fetch_daily(
     # series -- and telling those two apart is the entire job of a probe
     # against an endpoint that answers `rt_cd=0` with zero rows for a
     # nonsense code, a dead name, and an out-of-range window alike.
+    # **The application error comes first.** A probe's whole output is a
+    # `Finding`, and `probe_endpoint_exists`/`probe_row_cap` read a real
+    # `rt_cd != "0"` out of the payload and report it. Validating the row
+    # shape ahead of that turned the very case these probes exist to
+    # characterise -- a rejection, which may omit `output2` entirely -- into
+    # an exception, so the finding was lost instead of returned.
+    if str(payload.get("rt_cd") or "") != "0":
+        return payload, []
+
     rows = payload.get("output2")
     if rows is None:
         raise ProbeError(f"no output2 key in a successful response for {code}")
