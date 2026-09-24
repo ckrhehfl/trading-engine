@@ -438,6 +438,22 @@ def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
     `_CONTROL_ATTEMPTS`, it still refuses, because a control that is
     consistently unreachable leaves every `absent` unreadable exactly as
     before.
+
+    **Only `Failure.TRANSPORT` counts as a failure to ask, and that is
+    narrower than the abort which prompted this.** A `rt_cd` rejection is a
+    *completed answer* from the venue, not a transport failure, so by this
+    function's own asymmetry it may not be retried — reported on review, and
+    the reviewer is right against the first version of this code, which
+    retried any exception at all.
+
+    **The consequence is stated rather than papered over: the `rt_cd=1` abort
+    observed on 2026-09-24 is NOT covered by this fix.** Covering it would
+    mean allowlisting the `msg_cd` behind it the way `fetch_daily_page` does
+    for the measured-transient `OPSQ0003`, and 25 probe calls never reproduced
+    a `rt_cd=1` at all — so there is no `msg_cd` to allowlist and adding one on
+    a guess is the mistake this project already recorded for Binance's HTTP
+    418. What *is* covered is the transport class, 7 of those 25 calls. If the
+    `rt_cd=1` abort recurs, capture its `msg_cd` and decide then.
     """
     last: Exception | None = None
     for attempt in range(_CONTROL_ATTEMPTS):
@@ -446,12 +462,14 @@ def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
             return _page(session, code, PANEL_START, "20190430")
         except Exception as exc:  # noqa: BLE001
             last = exc
+            if classify_failure(exc) is not Failure.TRANSPORT:
+                break
             if attempt + 1 < _CONTROL_ATTEMPTS:
                 time.sleep(_CONTROL_BACKOFF_S * (attempt + 1))
     raise KrxScanError(
-        f"{what} {code} could not be asked in {_CONTROL_ATTEMPTS} attempts "
-        f"({type(last).__name__}: {last}); a zero-row answer from a real "
-        f"candidate would be unreadable"
+        f"{what} {code} could not be asked ({type(last).__name__}: {last}); a "
+        f"zero-row answer from a real candidate would be unreadable. "
+        f"{'Retried ' + str(_CONTROL_ATTEMPTS) + ' times' if classify_failure(last) is Failure.TRANSPORT else 'Not retried: ' + classify_failure(last).value + ' is an answer from the venue, not a failure to reach it'}."
     ) from None
 
 
@@ -725,6 +743,8 @@ def verify_wide_probe_positive_control(session: KisSession) -> None:
             break
         except Exception as exc:  # noqa: BLE001
             last = exc
+            if classify_failure(exc) is not Failure.TRANSPORT:
+                break
             if attempt + 1 < _CONTROL_ATTEMPTS:
                 time.sleep(_CONTROL_BACKOFF_S * (attempt + 1))
     if dates is None:
@@ -973,11 +993,17 @@ def main(argv: list[str] | None = None) -> int:
     # failures to retry. A negative count is obvious; a wrong positive one
     # would not have been.
     todo_count = len([c for c, _n, _s in pool if c not in done])
-    stale = len(done) - (len(pool) - todo_count)
+    # **"not in this selection", not "no longer candidates."** `--limit`
+    # truncates the pool, so a completed code can be a perfectly current
+    # candidate that simply falls outside this run's slice -- calling it
+    # delisted would be a wrong statement rather than a vague one. Reported on
+    # review.
+    outside = len(done) - (len(pool) - todo_count)
     print(f"{len(pool):,} candidates, {len(pool) - todo_count:,} already "
           f"complete, {todo_count:,} to fetch "
           f"(~{todo_count * 24 / 0.6 / 3600:.1f}h at 0.6/s)"
-          + (f"; {stale:,} recorded codes are no longer candidates" if stale else ""),
+          + (f"; {outside:,} recorded codes are not in this candidate selection"
+             if outside else ""),
           flush=True)
 
     session = KisSession(key, secret, host=PAPER_HOST)
