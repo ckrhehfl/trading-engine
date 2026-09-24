@@ -161,8 +161,10 @@ from research.lineage import FamilyResolution, resolve_family
 from research.overfitting_check import (
     SENSITIVITY_PARENT_RUN_ID_PREFIX,
     TrialKind,
+    _is_holdout_related,
     check_project_combination_count,
     classify_trial_kind,
+    holdout_run_ids_from_records,
 )
 
 _MS_PER_DAY = 86_400_000
@@ -425,6 +427,16 @@ def trial_sharpe_ratios(records: Iterable[Mapping[str, Any]]) -> dict[str, list[
       its Sharpe is its aggregate mean fold Sharpe.
     - `TrialKind.SENSITIVITY_PROBE` records are excluded, exactly as they
       are from `N`.
+    - **Holdout-related records are excluded too**, by the same
+      `overfitting_check` helpers `N` uses, so the two really do read the
+      same pool. This was wrong until 2026-09-24: `N` excluded a holdout
+      confirmation and its nested sub-records, and this function did not,
+      so `btc-scalping` offered **7** Sharpe values against **5** counted
+      trials and `daily-tsmom` offered **2** for a family `N` omits
+      entirely. Bounding rule 2's one-fold heuristic (F-3) reclassified
+      four holdout records from probe to selection and widened the same gap
+      to 9-vs-5 and 4-vs-0, which is how it was found — the gap predated
+      that change by exactly the pre-existing 2 per family.
 
     Verified against the real log: this yields 97 / 8 / 8 / 4 / 19 values for
     `trend-momentum` / `mean-reversion` / `funding` / `volume` /
@@ -444,8 +456,16 @@ def trial_sharpe_ratios(records: Iterable[Mapping[str, Any]]) -> dict[str, list[
     grid: dict[str, dict[tuple[str, Any], list[float | None]]] = {}
     standalone: dict[str, list[float | None]] = {}
 
+    # Materialised because the holdout set needs its own pass: a nested
+    # sub-record can be logged before its parent, so membership cannot be
+    # decided from one record in isolation.
+    records = list(records)
+    holdout_run_ids = holdout_run_ids_from_records(records)
+
     for record in records:
         if record.get("record_type") != "backtest_run":
+            continue
+        if _is_holdout_related(record, holdout_run_ids):
             continue
         if classify_trial_kind(record) is TrialKind.SENSITIVITY_PROBE:
             continue

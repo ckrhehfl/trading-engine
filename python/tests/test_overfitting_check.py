@@ -872,3 +872,70 @@ def test_the_real_log_s_selection_count_is_unchanged_by_the_fix():
         "the historical selection count moved; this fix was supposed to "
         "change only how NEW records are classified"
     )
+
+def _backdate(runs_path, run_ids: set[str], when: str) -> None:
+    """Rewrite `logged_at` on named records, in place.
+
+    The only way to construct the **historical** shape rule 2 is bounded
+    to: `log_run` stamps `logged_at` itself, and the bound is deliberately
+    a date. Rewriting one field keeps every other part of the record real
+    rather than hand-building JSON that could drift from the schema.
+    """
+    import json
+
+    lines = []
+    for line in runs_path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        rec = json.loads(line)
+        if rec.get("run_id") in run_ids:
+            rec["logged_at"] = when
+        lines.append(json.dumps(rec))
+    runs_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def test_risk_level_uses_selection_trials_even_when_the_NAIVE_count_is_high(tmp_path):
+    """**The assertion the 400-probe test above can no longer make.**
+
+    Raised on review of PR #200: once those probes carry rule 1's explicit
+    `sensitivity:` parent, the naive counter groups them with their parent,
+    so `naive_total_combinations` is low too — and `risk_level == "low"`
+    would pass even if the tier were computed from the naive count. The
+    assertion stopped constraining the thing it names.
+
+    This fixture restores the constraint using the **audited legacy**
+    shape, which the naive counter does count individually: 100 standalone
+    single-fold records with a legacy `strategy_id`, backdated before the
+    cutoff. Naive is then 101 over 2 years — **50.5/year, past the >30
+    HIGH boundary** — while `N` is 1, at 0.5/year.
+
+    If `_compute_risk_level` were ever fed the naive count, this reads
+    HIGH and the test fails.
+    """
+    runs_path = tmp_path / "experiments.jsonl"
+    start, end = _two_year_span()
+    _log_run_record(
+        runs_path, strategy_id="ensemble-momentum", run_id="wf-1",
+        start_ms=start, end_ms=end, mean_sharpe=0.1,
+    )
+    probe_ids = set()
+    for i in range(100):
+        run_id = f"legacy-probe-{i}"
+        probe_ids.add(run_id)
+        _log_run_record(
+            runs_path, strategy_id="ensemble-momentum", run_id=run_id,
+            start_ms=start, end_ms=end, fold_count=1,
+            params={"fast": 10 + i, "slow": 40}, mean_sharpe=0.1,
+        )
+    _backdate(runs_path, probe_ids, "2026-07-26T13:26:01.700738+00:00")
+
+    family = check_project_combination_count(runs_path=runs_path).families["trend-momentum"]
+
+    assert family.sensitivity_probe_trials == 100
+    assert family.selection_trials == 1
+    # the premise: the naive ratio really is past the HIGH boundary
+    assert family.naive_total_combinations == 101
+    assert family.data_span_years is not None
+    assert family.naive_total_combinations / family.data_span_years > 30.0
+    # and the tier is computed from N, not from that
+    assert family.risk_level == "low"

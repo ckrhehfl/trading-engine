@@ -131,6 +131,7 @@ import json
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
+from collections.abc import Iterable
 from typing import Any, Mapping
 
 from research import experiment_log
@@ -227,8 +228,20 @@ def _holdout_run_ids(runs_path: str | Path) -> set[str]:
     the exclusion below is provably a no-op against every prior computed
     result).
     """
+    return holdout_run_ids_from_records(experiment_log.read_records(runs_path))
+
+
+def holdout_run_ids_from_records(records: Iterable[Mapping[str, Any]]) -> set[str]:
+    """The same set, from records already in hand.
+
+    Two entry points, **one implementation**: `retrospective
+    .trial_sharpe_ratios` receives records rather than a path, and needs
+    the identical exclusion so that `V_hat`'s trial set is the set `N`
+    counts. Computing it twice is how the two drifted -- see that
+    function's own docstring.
+    """
     ids: set[str] = set()
-    for record in experiment_log.read_records(runs_path):
+    for record in records:
         if record.get("record_type") != "backtest_run":
             continue
         if record.get("is_holdout_run") is True:

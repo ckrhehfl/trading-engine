@@ -25,6 +25,8 @@ import json
 from dataclasses import replace
 from decimal import Decimal
 
+from pathlib import Path
+
 import pytest
 
 from research import experiment_log, retrospective
@@ -89,6 +91,7 @@ def _log_run(
     total_candidates: int | None = None,
     strategy_family: str | None = None,
     walk_forward_config: dict | None = None,
+    is_holdout_run: bool = False,
 ) -> dict:
     folds = [_fold(s, index=i) for i, s in enumerate(fold_sharpes)]
     defined = [s for s in fold_sharpes if s is not None]
@@ -112,7 +115,7 @@ def _log_run(
         or {"train_bars": 2160, "validate_bars": 720, "step_bars": 720, "fold_count": len(folds)},
         fee_bps=Decimal("5"),
         slippage_bps=Decimal("2"),
-        is_holdout_run=False,
+        is_holdout_run=is_holdout_run,
         parent_run_id=parent_run_id,
         candidate_index=candidate_index,
         total_candidates=total_candidates,
@@ -788,3 +791,82 @@ class TestRenderMarkdownTable:
         body = [line for line in render_markdown_table(report).splitlines() if line.startswith("|")][2:]
 
         assert len(body) == 2
+
+# ------------- V_hat's trial pool must be the pool N counts (PR #200 review)
+
+
+def test_a_holdout_confirmation_is_excluded_from_the_sharpe_sample(tmp_path):
+    """**`V_hat` and `N` must read the same trials**, and they did not.
+
+    Bailey's `V_hat` is the variance across the `N` trials, so the sample
+    has to be that set. `check_project_combination_count` excluded a
+    holdout confirmation and its nested sub-records; this function excluded
+    only sensitivity probes. Measured on the real log before the fix:
+    `btc-scalping` offered **7** Sharpe values against **5** counted
+    trials, and `daily-tsmom` offered **2** for a family `N` omits
+    entirely.
+
+    Bounding rule 2's one-fold heuristic (F-3) reclassified four holdout
+    records from probe to selection and widened that to 9-vs-5 and 4-vs-0,
+    which is how it surfaced — the gap predated the change by exactly the
+    2 per family above. Both helpers are now shared with
+    `overfitting_check` rather than reimplemented, which is what let them
+    drift.
+    """
+    runs_path = tmp_path / "experiments.jsonl"
+    _log_run(runs_path, strategy_id="ensemble-momentum", run_id="real",
+             fold_sharpes=[1.0, -1.0])
+    _log_run(runs_path, strategy_id="ensemble-momentum", run_id="holdout-1",
+             fold_sharpes=[9.0], is_holdout_run=True)
+
+    assert trial_sharpe_ratios(list(experiment_log.read_records(runs_path))) == {
+        "trend-momentum": [0.0]
+    }
+
+
+def test_a_NESTED_sub_record_of_a_holdout_is_excluded_too(tmp_path):
+    """A sub-record can be logged with `is_holdout_run=False` even though
+    its parent is a holdout — a real, previously-latent shape — so
+    membership is decided from the parent, which needs its own pass over
+    the records."""
+    runs_path = tmp_path / "experiments.jsonl"
+    _log_run(runs_path, strategy_id="ensemble-momentum", run_id="real",
+             fold_sharpes=[1.0, -1.0])
+    _log_run(runs_path, strategy_id="ensemble-momentum", run_id="hold",
+             fold_sharpes=[5.0], is_holdout_run=True)
+    _log_run(runs_path, strategy_id="ensemble-momentum", run_id="hold-child",
+             fold_sharpes=[7.0], parent_run_id="hold",
+             candidate_index=0, total_candidates=1)
+
+    assert trial_sharpe_ratios(list(experiment_log.read_records(runs_path))) == {
+        "trend-momentum": [0.0]
+    }
+
+
+def test_the_real_log_reconciles_family_by_family():
+    """The property the docstring claims, checked rather than asserted in
+    prose: one Sharpe value per counted selection trial, for **every**
+    family. Skipped where the gitignored log is absent."""
+    import pytest
+
+    from research.overfitting_check import check_project_combination_count
+
+    log = Path(__file__).resolve().parents[2] / "runs" / "experiments.jsonl"
+    if not log.exists():
+        pytest.skip("runs/experiments.jsonl is gitignored and absent here")
+
+    by_family = trial_sharpe_ratios(list(experiment_log.read_records(log)))
+    project = check_project_combination_count(runs_path=str(log))
+    mismatches = {}
+    for family in sorted(set(by_family) | set(project.families)):
+        counted = (
+            project.families[family].selection_trials
+            if family in project.families
+            else 0
+        )
+        got = len(by_family.get(family, []))
+        if got != counted:
+            mismatches[family] = (got, counted)
+    assert not mismatches, (
+        f"V_hat's Sharpe sample and N read different trial pools: {mismatches}"
+    )
