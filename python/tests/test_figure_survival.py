@@ -478,3 +478,56 @@ def test_the_sign_conflation_limitation_is_real_and_disclosed():
     from research.figure_survival import _normalise, _survives
 
     assert _survives("20", _normalise("a -20 reading"))
+
+
+# ------------------------- a year is provenance, and a date is not a figure
+
+
+@pytest.mark.parametrize(
+    "text, why",
+    [
+        ("them are 2026 listings with zero bars", "a year in prose"),
+        ("`2001` KOSPI200. Same tr_id", "the KOSPI200 INDEX CODE, not a year"),
+        ("Bailey & López de Prado 2014,", "a citation year"),
+        ("(Alexander & Fabozzi 2026) over the mean", "a citation year"),
+        ("spanning 2000 to 2026; all four", "a year range"),
+        ("the 2018 ordering could not see 2019–2026", "three years in one line"),
+    ],
+)
+def test_a_standalone_four_digit_year_is_not_a_figure(text, why):
+    """**Reported on review.** `2026` in "2026 listings" was extracted as a
+    figure and then counted as *surviving* on the strength of a **date**
+    elsewhere (`2026-09-24`) — so a figure existing nowhere read as one that
+    does, the unsafe direction.
+
+    All 24 such tokens in `CLAUDE.md` were read before excluding them: years in
+    prose, citation years, or the KOSPI200 index code `2001`. Not one is a
+    measurement.
+    """
+    assert figures_in(text) == [], why
+
+
+def test_a_COMMA_GROUPED_count_in_the_year_range_is_still_a_figure():
+    """The exclusion is narrower than it looks, and this file's own convention
+    is what makes it safe: a count is written `1,901`, a year `1901`. So
+    `1,901 bars` survives as a figure while `1901` alone would not.
+
+    **Disclosed limitation**: an uncomma'd count in 1900-2100 is invisible.
+    Accepted for the same reason the two-digit exclusion is — the alternative
+    is 24 false survivals on every run.
+    """
+    assert figures_in("1,901 bars, zero gaps") == ["1,901"]
+    assert figures_in("1901 bars") == []
+
+
+def test_a_years_DATE_cannot_satisfy_a_bare_year_needle():
+    """The second line of defence, kept even though the provenance rule now
+    strips bare years before they become figures: the two guard different
+    steps, and this one also stops a match landing on the left half of a
+    range."""
+    from research.figure_survival import _normalise, _survives
+
+    assert not _survives("2026", _normalise("measured 2026-09-24"))
+    assert not _survives("13", _normalise("the 13-15 bp band"))
+    # And an ordinary figure is unaffected.
+    assert _survives("0.95", _normalise("PSR 0.95 cleared"))

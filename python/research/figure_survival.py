@@ -102,6 +102,22 @@ _PROVENANCE = re.compile(
     r"\b(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\b"  # YYYYMMDD
     r"|\b\d{4}-\d{2}(?:-\d{2})?\b"
     r"|#\d+|\bPR\s*#|\bv?\d+\.\d+\.\d+\b"
+    # A **standalone four-digit year or index code**. Reported on review:
+    # `2026` in "2026 listings" was extracted as a figure and then counted as
+    # surviving on the strength of a *date* elsewhere (`2026-09-24`), so a
+    # figure existing nowhere read as one that does.
+    #
+    # Measured before excluding them rather than assumed: all 24 such tokens in
+    # `CLAUDE.md` are years in prose ("excluding 2021", "2017-2021", "spanning
+    # 2000 to 2026"), citation years (Bailey & Lopez de Prado 2014, Alexander &
+    # Fabozzi 2026), or the KOSPI200 **index code** `2001`. Not one is a
+    # measurement.
+    #
+    # **Disclosed limitation**: a genuine count that happens to land in
+    # 1900-2100 is now invisible, which is the unsafe direction, and it is
+    # accepted for the same reason the two-digit exclusion is -- the
+    # alternative is 24 false survivals on every run.
+    r"|(?<![\d.\-/])(?:19|20)\d{2}(?![\d.\-/])"
 )
 
 #: Lines that state a rule, a constant, a constraint or a safety property.
@@ -203,8 +219,14 @@ def _survives(figure: str, corpus_norm: str) -> bool:
     # unsafe direction, and it is accepted rather than fixed because
     # distinguishing them needs the sign to be part of the figure and this
     # file's own prose writes the same quantity both ways.
+    # `(?!-\d)` as well, so a needle can never be satisfied by the year
+    # fragment of a date: `2026` must not match inside `2026-09-24`. Reported
+    # on review, and kept as a second line of defence even though the
+    # provenance rule above now strips bare years before they become figures --
+    # the two guard different steps, and this one also stops a match landing on
+    # the left half of a range like `13-15`.
     pattern = re.compile(
-        r"(?<![\d.])[-+−]?" + re.escape(bare) + r"(?!\.?\d)"
+        r"(?<![\d.])[-+−]?" + re.escape(bare) + r"(?!\.?\d)(?!-\d)"
     )
     return pattern.search(corpus_norm) is not None
 
