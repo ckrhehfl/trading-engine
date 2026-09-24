@@ -412,6 +412,30 @@ _CONTROL_ATTEMPTS = 4
 _CONTROL_BACKOFF_S = 2.0
 
 
+def _control_refusal(what: str, code: str, last: BaseException, *, attempts: int) -> str:
+    """One refusal message for both controls, so they cannot drift apart.
+
+    **It carries the real attempt count and the underlying message.** The
+    positive control's own version said "in 4 attempts" even when a `rt_cd`
+    rejection stopped it after one, and dropped `last` entirely — losing the
+    `rt_cd`/`msg_cd` that is the exact diagnostic needed to decide whether the
+    code belongs on `_RETRYABLE_MSG_CD`. That is the open item `_ask_control`'s
+    own docstring names, so the message throwing it away was working against
+    the plan written beside it. Reported on review.
+    """
+    kind = classify_failure(last)
+    why = (
+        f"retried {attempts} time{'s' if attempts != 1 else ''}"
+        if kind is Failure.TRANSPORT
+        else f"not retried after {attempts}: {kind.value} is an answer from the "
+        f"venue, not a failure to reach it"
+    )
+    return (
+        f"{what} {code} could not be asked ({type(last).__name__}: {last}); "
+        f"{why}"
+    )
+
+
 def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
     """Ask one control, retrying a failure to **ask** but never an answer.
 
@@ -467,9 +491,8 @@ def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
             if attempt + 1 < _CONTROL_ATTEMPTS:
                 time.sleep(_CONTROL_BACKOFF_S * (attempt + 1))
     raise KrxScanError(
-        f"{what} {code} could not be asked ({type(last).__name__}: {last}); a "
-        f"zero-row answer from a real candidate would be unreadable. "
-        f"{'Retried ' + str(_CONTROL_ATTEMPTS) + ' times' if classify_failure(last) is Failure.TRANSPORT else 'Not retried: ' + classify_failure(last).value + ' is an answer from the venue, not a failure to reach it'}."
+        _control_refusal(what, code, last, attempts=attempt + 1)
+        + "; a zero-row answer from a real candidate would be unreadable"
     ) from None
 
 
@@ -749,11 +772,14 @@ def verify_wide_probe_positive_control(session: KisSession) -> None:
                 time.sleep(_CONTROL_BACKOFF_S * (attempt + 1))
     if dates is None:
         raise KrxScanError(
-            f"the wide probe's positive control "
-            f"({WIDE_PROBE_POSITIVE_CONTROL}) could not be asked in "
-            f"{_CONTROL_ATTEMPTS} attempts: {type(last).__name__}. Until it "
-            f"answers, an empty probe result cannot be read as 'KIS does not "
-            f"price this code'."
+            _control_refusal(
+                "the wide probe's positive control",
+                WIDE_PROBE_POSITIVE_CONTROL,
+                last,
+                attempts=attempt + 1,
+            )
+            + ". Until it answers, an empty probe result cannot be read as "
+            "'KIS does not price this code'."
         ) from None
     if not dates:
         raise KrxScanError(

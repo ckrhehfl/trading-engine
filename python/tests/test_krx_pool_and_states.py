@@ -985,7 +985,7 @@ def test_a_rt_cd_REJECTION_of_a_control_is_not_retried(monkeypatch):
         monkeypatch,
         [KisKlinesError("999999 20190102..20190430: rt_cd=1"), []],
     )
-    with pytest.raises(S.KrxScanError, match="not a failure to reach it"):
+    with pytest.raises(S.KrxScanError, match="not retried after 1"):
         S.verify_negative_controls(object())
     assert calls["n"] == 1, "a venue answer was retried"
 
@@ -998,7 +998,7 @@ def test_a_MALFORMED_control_response_is_not_retried(monkeypatch):
         monkeypatch,
         [KisKlinesError("output2 row 0 carries no stck_bsop_date for X"), []],
     )
-    with pytest.raises(S.KrxScanError, match="not a failure to reach it"):
+    with pytest.raises(S.KrxScanError, match="not retried after 1"):
         S.verify_negative_controls(object())
     assert calls["n"] == 1
 
@@ -1009,7 +1009,7 @@ def test_a_control_that_can_NEVER_be_asked_still_refuses(monkeypatch):
     from data import krx_scan as S
 
     calls = _control_env(monkeypatch, [TimeoutError("always")])
-    with pytest.raises(S.KrxScanError, match="Retried 4 times"):
+    with pytest.raises(S.KrxScanError, match="retried 4 times"):
         S.verify_negative_controls(object())
     assert calls["n"] == S._CONTROL_ATTEMPTS, (
         f"asked {calls['n']} times, not {S._CONTROL_ATTEMPTS}"
@@ -1164,3 +1164,44 @@ def test_the_outside_count_does_not_call_a_LIMITED_code_delisted(
     printed = capsys.readouterr().out
     assert "no longer" not in printed, printed
     assert "not in this candidate selection" in printed, printed
+
+
+def test_a_control_refusal_carries_the_REAL_attempt_count_and_the_cause(monkeypatch):
+    """**Reported on review, and it was working against the plan beside it.**
+    The positive control's refusal said "in 4 attempts" even when a `rt_cd`
+    rejection stopped it after one, and dropped the underlying message —
+    losing the `rt_cd`/`msg_cd` that is the exact diagnostic `_ask_control`'s
+    docstring says to capture if the abort recurs.
+
+    Both controls now share one message, so they cannot drift apart.
+    """
+    from data import krx_scan as S
+
+    calls = {"n": 0}
+
+    def rejected(session, code):  # noqa: ARG001
+        calls["n"] += 1
+        raise KisKlinesError("KIS rejected the request for 005930: rt_cd=1 msg_cd=OPSQ9999")
+
+    monkeypatch.setattr(S, "_wide_probe", rejected)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError) as exc:
+        S.verify_wide_probe_positive_control(object())
+
+    message = str(exc.value)
+    assert "not retried after 1" in message, message
+    assert "4 attempts" not in message, "the message still claims four tries"
+    assert "OPSQ9999" in message, "the msg_cd needed to decide an allowlist was dropped"
+    assert calls["n"] == 1
+
+
+def test_a_TRANSPORT_refusal_reports_the_full_attempt_count(monkeypatch):
+    from data import krx_scan as S
+
+    def timeout(session, code):  # noqa: ARG001
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(S, "_wide_probe", timeout)
+    monkeypatch.setattr(S.time, "sleep", lambda *_: None)
+    with pytest.raises(S.KrxScanError, match="retried 4 times"):
+        S.verify_wide_probe_positive_control(object())
