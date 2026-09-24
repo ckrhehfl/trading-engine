@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-119 documents and counting, which is past the point where `ls` is a
+120 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -239,3 +239,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-w-the-delisted-universe.md`](rd-w-the-delisted-universe.md) — Research Direction Task W — the survivorship blocker is not a blocker
 - [`rd-x-the-day-one-universe.md`](rd-x-the-day-one-universe.md) — Research Direction Task X — the +54%/yr was the selection date, and moving it removes the premium
 - [`rd-y-the-full-universe-scan.md`](rd-y-the-full-universe-scan.md) — Research Direction Task Y — the full-universe scan, and what "common stock" turned out to mean
+- [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
