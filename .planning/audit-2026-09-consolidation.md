@@ -210,3 +210,102 @@ Two severity calls differ from the audit's:
   **zero interior gaps across 3,408,780 symbol-days**. Fix it; it does not
   invalidate collected data.
 - **F-3 matters more than its listing suggests**, for the reason in §4.
+
+---
+
+## Appendix: the documentation split, and what `docs/` did five times
+
+Added 2026-09-25, during PR #207. The operator asked for a conventional
+project documentation structure and chose a **lifetime-based three-way split**:
+invariants in `CLAUDE.md` (auto-loaded into every AI session), current
+structure in `docs/` (replaced when reality changes), and the decision record
+in `.planning/` (append-only). `docs/architecture.md` and a rewritten
+`README.md` were the first half of that; the Exchange API facts are the second
+and are deferred to their own PR.
+
+**The finding worth keeping is not the split — it is what the new document did
+to itself.** `docs/architecture.md`'s own header states that it holds no
+invariant, no safety property and no Non-negotiable Rule, because `CLAUDE.md`
+is the file a session is guaranteed to have read. Its first draft then broke
+that rule **five times**, and every one was caught in review rather than by the
+check written for it:
+
+| where | what it restated |
+|---|---|
+| §1 two planes | that Python may not place live orders; that no order may bypass the Risk Gateway |
+| §3 layering | the `OrderExecutor` implementation count, verbatim as a blockquote |
+| §4 execution modes | the `kis-paper` unconditional kill-switch trip, as a table column |
+| §4 venue hosts | "no environment variable, argument, or other configuration surface" |
+| §5 instrument identity | the options scope decision |
+
+Two of the five were found three lines below the sentence promising not to do
+it, and `CLAUDE.md`'s own Architecture section says in as many words that none
+of what it holds *"is repeated in `docs/`"* — which the draft made false.
+
+**So the transferable statement is a tendency, not an incident**: a structure
+document describing a system whose rules live elsewhere drifts toward restating
+them, because the rule is the most natural thing to say next after describing
+what it governs. Writing "does not duplicate" in the header does not stop it.
+
+**How it was closed, after four rounds of not closing it.** Each of the first
+four fixes added the phrase that got through to a blocklist of phrases that had
+got through, which converges one incident at a time.
+`python/tests/test_docs_do_not_duplicate_claude_md.py` now instead **derives**
+the prohibition from `_CLAUDE_MD_INVARIANTS`, the list it already kept for the
+opposite assertion — that those phrases are still *in* `CLAUDE.md`. One list,
+both directions: an invariant worth pinning into `CLAUDE.md` is by definition
+one `docs/` must not carry a second copy of. The remaining blocklists
+(`_SAFETY_PHRASES`, `_INVARIANT_PHRASES`, `_RISK_PARAMETER_LABELS`) are kept
+and labelled as what they are — known phrases, not the category.
+
+**A second, unrelated lesson from the same PR**, recorded because it cost eight
+review rounds: `OrderExecutorImplementationCountTest` enforces the two-executor
+invariant by **scanning Java source text**, and every round found the same
+defect in a new costume — a text scan meeting a construct it did not model
+(files not classes, `class` but not `record`, generics, comments, string
+literals, text blocks, type-use annotations, `permits`, annotation array
+values, anonymous classes). Thirty-four mutations were run against it and it is
+now correct as far as anything found, but the surface is unbounded by
+construction.
+
+**The design that ends it is reflection, not a better scanner.** The invariant
+is about types, so assert it over types: `OrderExecutor.class.isAssignableFrom`
+catches named, anonymous, nested, sealed **and indirect** implementations — the
+last being the one gap the text scan discloses it cannot close — with no
+parsing at all. It cannot live in `:execution`, whose test would need `:runtime`
+on its classpath and that is the dependency the other way round; `:runtime`
+depends on every module (verified against the six `build.gradle.kts` files), so
+that is where it belongs. **Not done in PR #207**: it is a `java/` structural
+change that deserves its own review rather than a fifteenth commit on a
+documentation PR, and it is the operator's call.
+
+**The tendency showed up in the other two documents too, which is what makes it
+a tendency.** `README.md` explained, in the Safety section, that its own first
+draft had claimed not to summarise the Non-negotiable Rules and then summarised
+three of them — and in Merge policy, that its path list had been missing
+`.coderabbit.yaml` until review. `docs/paper-trading-runbook.md` opened a
+paragraph with *"reading them as one is what this line used to do."* All three
+are drafting history in a **living** document, i.e. the same misfiling as the
+six paragraphs above, committed while fixing those six. They were removed and
+the rules they carried kept: `CLAUDE.md` is binding and the README's list is
+orientation; the path list is now test-enforced rather than explained.
+
+**What the runbook's paragraph was actually for survived the trim and is worth
+restating, because it is the only operationally load-bearing part:**
+`VstPreflight` has two unhappy outcomes that look nothing alike from outside —
+a non-`VST` balance asset throws and there is no process, while a pre-existing
+non-zero position *starts* the loop with its kill switch tripped. An operator
+asking "did it start?" gets opposite readings, so the runbook now gives the two
+as a table instead of a sentence listing both as reasons it "declines", which
+is what it said before review and was simply false.
+
+**And a real drift, found while removing the account of the drift.** Both
+`README.md` and `docs/architecture.md` stated *"121 documents"* for `.planning/`
+while `.planning/README.md` said *"120 documents and counting"* — and 120 is
+right: there are 121 `.md` files there and one of them is the index. Two copies
+of a count, wrong the same way, in the pair of files whose whole subject is that
+a figure in two places drifts. Neither was caught by the duplicate-figure check,
+because that check deliberately treats a bare integer as prose (`section 3`,
+`two planes`) and must keep doing so. Both copies are gone and
+`test_nothing_outside_planning_states_how_many_planning_documents_there_are`
+now blocks a third.

@@ -273,6 +273,37 @@ _FENCE_OPEN = re.compile(r"^ {0,3}(`{3,})([^`]*)$")
 _FENCE_CLOSE = re.compile(r"^ {0,3}(`{3,})\s*$")
 
 
+def prose_lines(text: str) -> list[str]:
+    """Lines outside every fenced code block.
+
+    Extracted so the exclusion can be tested on a synthetic document instead
+    of on whatever `CLAUDE.md` happens to contain. It was inline in a test,
+    which made it **inert**: the file carries no `#` line inside a fence
+    today, so deleting the exclusion changed nothing and the guard could not
+    be proved. A guard that cannot fail is not a guard, and this one is purely
+    defensive — it exists for whoever adds the first ```bash block with a
+    shebang or a `#` comment.
+
+    Uses the same fence rules as `section_span`: 0-3 spaces of indent, and a
+    run closed only by one at least as long.
+    """
+    out: list[str] = []
+    fence: str | None = None
+    for line in text.splitlines():
+        if fence is None:
+            opened = _FENCE_OPEN.match(line)
+            if opened:
+                fence = opened.group(1)
+                continue
+        else:
+            closed = _FENCE_CLOSE.match(line)
+            if closed and len(closed.group(1)) >= len(fence):
+                fence = None
+            continue
+        out.append(line)
+    return out
+
+
 def _heading_depth(line: str) -> int | None:
     """The heading depth of a line, or `None` if it is not a heading."""
     m = _ATX.match(line)

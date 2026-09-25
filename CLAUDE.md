@@ -115,112 +115,82 @@ multi-user SaaS, Kubernetes, Kafka/Aeron/Chronicle Queue.
 
 ## Architecture
 
-```text
-Python Research Plane
-- data research, deterministic backtesting, strategy experiments
-- feature engineering, ML training/evaluation, scheduled retraining (later)
-- report generation, deployment candidate generation
-- must not place live orders directly
+**The structure itself now lives in [`docs/architecture.md`](docs/architecture.md)** —
+the two planes, the Gradle module graph, the **seam list**
+(`ExchangeAdapter`, `OrderExecutor`, `SubmissionListener`, `PriceFeed`,
+`TradingCalendar`, `AccountStateProvider`, `NotionalCalculator`), the three
+execution modes, and what a new venue actually costs.
 
-Java Trading Plane
-- OMS, Risk Gateway, Execution Service
-- ExchangeAdapter interface (BingX is the first implementation)
-- position reconciliation, kill switch, paper/live runtime
-- all live orders must pass through the Java Risk Gateway
-```
+It moved because that is a **living** description — it is replaced when the
+structure changes — while this file holds **invariants**, which are what an
+AI session must have read before it touches anything. Keeping both here is
+how PR #105 ended up arguing *inside this file* that adding a seam did not
+violate this file's own rule: there was nowhere to keep the seam list as a
+current fact. `.planning/` could not take it either, being an append-only
+record organised by work-arc.
 
-Java scope is intentionally narrow: OMS / Risk / Execution / Exchange
-Adapter / Reconciliation / Kill Switch only. No Spring/Kafka/K8s/Aeron.
-Start with Java 21 + Gradle + JUnit + Jackson + SLF4J only. Strategy
-research, backtesting, ML, and reporting stay in Python.
+**What stays here is everything that binds**, and it is below in full: the
+layering invariant, the KIS safety properties, the three open gaps, and what
+is still out of scope. None of it is repeated in `docs/`.
+
+### The layering invariant
+
+`engine.runtime.TradingLoop` depends only on
+`engine.execution.OrderExecutor`, never on a concrete implementation. **There
+are, and must only ever be, exactly two implementations — full stop, no
+decorator or wrapper exception**: `PaperBroker` (the internal simulator) and
+`ExchangeOrderExecutor` (venue-agnostic, wrapping the `ExchangeAdapter`
+**interface**, never a concrete adapter).
+
+**A new venue means writing a new `ExchangeAdapter` implementation; it never
+means writing a new `OrderExecutor` implementation.** A cross-cutting concern
+is composed **into** `ExchangeOrderExecutor` via an injectable collaborator
+(`engine.execution.SubmissionListener`), not layered on top — an earlier
+version of Task H tried the decorator approach
+(`engine.runtime.PersistentSubmissionOrderExecutor`, since removed) and real
+CodeRabbit review found it genuinely violated this. That is why the count is
+now asserted by `OrderExecutorImplementationCountTest` rather than trusted to
+prose.
 
 A new venue or asset class means writing a new `ExchangeAdapter`
 implementation, not modifying OMS/Risk/Execution. Shared schemas
-(order-intent, risk-decision, etc.) should stay exchange- and
-asset-class-agnostic where practical.
+(order-intent, risk-decision, etc.) stay exchange- and asset-class-agnostic
+where practical.
 
-Reassess the Python/Java split if: solo-dev burden becomes excessive, a
-Python prototype proves sufficient on its own, or Python/Java schema drift
-keeps recurring.
+### The venue hosts have no configuration surface
 
-**`OrderExecutor`/`ExchangeAdapter` layering rule** (added when the BingX
-VST integration effort gave this a second real implementation to prove the
-seam against — Paper Trading Bridge Tasks F-H, `.planning/paper-trading-f-
-order-executor.md` through `-h-vst-integration.md`). `engine.runtime.
-TradingLoop` depends only on `engine.execution.OrderExecutor` (`submit` +
-`pollFills` + `pendingOrders` + `cancel`), never on a concrete
-implementation. There are, and must only ever be, **exactly two**
-implementations, full stop — no decorator/wrapper exception: `PaperBroker`
-(the internal simulator — resolves fills synchronously from an injected
-price) and `ExchangeOrderExecutor` (venue-agnostic, wraps the
-`ExchangeAdapter` **interface**, never a concrete adapter — polls
-`queryOrder` for real, asynchronous fills). **A new venue means writing a
-new `ExchangeAdapter` implementation; it never means writing a new
-`OrderExecutor` implementation.** A cross-cutting concern (e.g. durable
-submission-outcome marking) is composed into `ExchangeOrderExecutor` via
-an injectable collaborator interface (`engine.execution.
-SubmissionListener`), not layered on top as a third `OrderExecutor`
-implementation — an earlier version of Task H tried the wrapper/decorator
-approach for exactly this (`engine.runtime.
-PersistentSubmissionOrderExecutor`, since removed) and, on real CodeRabbit
-review, found it genuinely violated this invariant; `SubmissionListener`
-is the corrected design, not an exception carved out to keep it. See
-`OrderExecutor`'s own Javadoc for the full "Extensibility invariant" and
-`.planning/paper-trading-h-vst-integration.md` for the real review finding
-and correction.
+`PAPER_TRADING_EXECUTION_MODE` (`simulated` default | `bingx-vst` |
+`kis-paper`) selects which graph is built at startup, pointed at **hardcoded
+Java constants** (`BINGX_VST_BASE_URL`, `KIS_PAPER_BASE_URL`) with **no
+environment variable, argument, or other configuration surface** able to
+route them anywhere else. The modes are meant to run as independent processes
+— distinct `PAPER_TRADING_REPORTS_DIR`, independent `KillSwitch` — never as a
+runtime toggle on one running process.
 
-`engine.runtime.PaperTradingApp`'s `PAPER_TRADING_EXECUTION_MODE`
-(`simulated` default | `bingx-vst`) selects which `OrderExecutor` gets
-built at startup — `simulated` builds the exact `PaperBroker` graph this
-project has always run; `bingx-vst` builds a real `BingXAdapter`-backed
-`ExchangeOrderExecutor`, given a real `SubmissionListener` (`engine.
-runtime.MarkerRecordingSubmissionListener`) for durable
-`SUBMISSION_UNKNOWN` handling — see `.planning/paper-trading-h-vst-
-integration.md`), pointed at a hardcoded VST-host Java constant with
-**no environment variable, argument, or other configuration surface**
-able to route it anywhere else. The two modes are meant to run as two
-independent processes (distinct `PAPER_TRADING_REPORTS_DIR`, independent
-`KillSwitch`), not a runtime toggle on one running process — see that
-same planning doc for why, and for the still-open human decision on which
-loop's clock counts toward the Paper Trading Pass Criteria below.
+### KIS/KOSPI200 venue integration, Phase 1
 
-**KIS/KOSPI200 venue integration, Phase 1 — built and merged** (PRs
-#103-#106). Full design record, every review-driven correction, and the
-real-API verification account: `.planning/kis-phase1-venue-integration.md`.
-The shared-account-ledger work that followed it is a separate effort,
-recorded in `.planning/kis-ledger-a-*.md` through `-d-*.md`.
+Built and merged (PRs #103-#106). Full design record, every review-driven
+correction, and the real-API verification account:
+`.planning/kis-phase1-venue-integration.md`. The shared-account-ledger work
+that followed is `.planning/kis-ledger-a-*.md` through `-d-*.md`.
 
-This was the first real test of the "multi-exchange / multi-symbol /
-equities expansion **without refactoring** OMS, Risk Gateway, or
-Execution" target above: 한국투자증권 (Korea Investment & Securities,
-"KIS") REST API for KOSPI200 index futures, running as a third
-independent paper-trading loop alongside the two BingX ones — own
-process, own `PAPER_TRADING_REPORTS_DIR`, own `KillSwitch`, the same
-pattern `bingx-vst` established relative to `simulated`.
+**Scope: futures only; options explicitly deferred.** `OrderIntent` / `Order`
+/ `Fill` / `SubmissionMarker` identify an instrument with a single free-form
+`String symbol`, and that string carries **both the underlying and the
+delivery month** — a futures contract needs both, and the earlier wording
+here said "fully identified by its expiry month", which is true only where
+the underlying is implied. It is not: KRX lists a single-stock future per
+underlying, so 삼성전자 and SK하이닉스 at the same expiry are different
+contracts, and their KIS codes (`A11610`, `A50610`) encode an issue id the
+month alone does not give. Caught on review of PR #207, where a
+generalisation from "a KOSPI200 futures contract" broke a sentence that had
+been correct about index futures only.
 
-**Scope: futures only; options explicitly deferred.** `OrderIntent` /
-`Order` / `Fill` / `SubmissionMarker` identify an instrument with a
-single free-form `String symbol`. A KOSPI200 futures contract is fully
-identified by its expiry month, so that stays sufficient and the "zero
-schema change" claim holds. An option additionally needs strike, expiry,
-and call/put — none of which a bare symbol string round-trips — so
-options need a canonical symbol format designed and tested first, and are
-out of scope until then.
-
-**What it added**: `KisAdapter implements ExchangeAdapter` and
-`KisTokenProvider` (OAuth2 app-key/secret → cached access token —
-genuinely new, with no `BingXSigner` precedent, since BingX's scheme is
-stateless per-request HMAC) and `KisPriceFeed`; an
-`engine.runtime.PriceFeed` interface, extracted because `TradingLoop` was
-hard-typed to the concrete `BingXPriceFeed`; an
-`engine.runtime.TradingCalendar` interface (`AlwaysOpenTradingCalendar`
-for `simulated`/`bingx-vst`, `KrxMarketCalendar` for real KST hours); and
-`PaperTradingApp` wiring — `PAPER_TRADING_EXECUTION_MODE=kis-paper`,
-`forKisPaper()`, `KIS_APP_KEY`/`KIS_APP_SECRET`, an optional
-`KIS_MARKET_DIVISION` (`INDEX_FUTURES` default | `STOCK_FUTURES`), and a
-hardcoded `KIS_PAPER_BASE_URL` Java constant with no environment-variable
-override, the same no-config-surface pattern as `BINGX_VST_BASE_URL` —
-plus `KisPreflight`.
+So the "zero schema change" claim holds for futures because one string can
+carry two facts, not because there is only one. An option needs **three**:
+strike, expiry and call/put, none of which a bare symbol string round-trips
+— so options need a canonical symbol format designed and tested first, and
+are out of scope until then.
 
 **Safety properties. Do not weaken any of these without reading the full
 record first**:
@@ -286,21 +256,6 @@ any future decision to reset that kill switch**:
    reach `submitOrder` at all. Found during the 2026-08-26 documentation
    reorganization; fixing it touches `RiskGateway` and the `PriceFeed`
    interface, so it needs its own `Discuss` pass.
-
-**`RiskGateway` gained a `NotionalCalculator` seam (PR #105), and that
-does not violate this section's own rule.** `RiskGateway.java` genuinely
-changed — a second constructor, a new dependency. The rule's real intent,
-evidenced by every other seam here (`PriceFeed`, `TradingCalendar`,
-`AccountStateProvider`, `OrderExecutor` itself), is "no per-venue branch
-or hardcoded venue fact inside OMS/Risk/Execution's own logic," not "the
-file's text may never be touched again." Each of those seams took exactly
-one one-time interface extraction, after which every further venue
-implements the interface with zero additional change to the depending
-class. `RiskGateway` contains no KOSPI or KIS name, string, or number
-anywhere; the real ₩250,000 lives in `PaperTradingApp` (`:runtime`), the
-same layer `BINGX_VST_BASE_URL` already occupies. The original
-one-argument constructor remains a zero-behavior-change delegation to
-`SimpleNotionalCalculator`, used unchanged by every BTC-USDT loop.
 
 **Still out of scope, still not done**: KOSPI200 options; the night
 session; any real KOSPI200 strategy (this phase built infrastructure

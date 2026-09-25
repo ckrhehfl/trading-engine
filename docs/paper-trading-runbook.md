@@ -107,9 +107,18 @@ tmux capture-pane -t =paper-trading-vst -p
 
 Look for `starting paper trading loop` and a `tick complete` line for
 each. For the VST session specifically, look for
-`VstPreflight: real VST balance=...` and confirm `asset=VST` — if
-`VstPreflight` refuses to start, it will say exactly why (wrong asset,
-a pre-existing position, etc.) rather than starting silently broken.
+`VstPreflight: real VST balance=...` and confirm `asset=VST`. When
+`VstPreflight` is unhappy it says exactly why in the log, rather than the loop
+starting silently broken — but **it has two different unhappy outcomes and
+they look nothing alike from outside**:
+
+| what it found | what you see |
+|---|---|
+| a balance asset that is not `VST` | it throws; **no process** |
+| a pre-existing non-zero position | the loop **starts**, kill switch already tripped, and submits nothing until a human resets it |
+
+So "did it start?" is the wrong question on its own. What each outcome
+guarantees is a safety property and is stated in `CLAUDE.md`, not here.
 
 ## 4. Scheduled jobs (cron)
 

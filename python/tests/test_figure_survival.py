@@ -275,14 +275,65 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
     both `₩250,000` lines (255 and 300). Markdown requires whitespace or end
     of line after the `#` run.
     """
-    from research.figure_survival import CLAUDE_MD, audit, section_span
+    from research.figure_survival import CLAUDE_MD, _heading_depth, section_span
 
     text = CLAUDE_MD.read_text(encoding="utf-8")
-    assert section_span(text, "Architecture") == (116, 318)
-    inside = {v.number for v in audit("Architecture")}
-    assert {255, 300} <= inside, (
-        "the ₩250,000 lines fell outside the Architecture span again"
+    lines = text.splitlines()
+    lo, hi = section_span(text, "Architecture")
+
+    # **Asserted as properties, not as line numbers.** An earlier version
+    # pinned `(116, 318)` — the literal span at the time — in the one test
+    # whose own docstring says a line number rots on the next edit. It rotted
+    # on the next edit: the 2026-09-25 documentation split moved the section's
+    # body to `docs/architecture.md` and every number shifted.
+    assert lines[lo - 1].strip() == "## Architecture"
+
+    # **The terminator is any heading at or above this section's depth, which
+    # is what `section_span` promises — not a `## ` specifically.** Asserting
+    # the narrower form would have failed the day `CLAUDE.md` gained a `# `
+    # heading after `## Architecture`, on a span the function had computed
+    # correctly. Reported on review; a test stricter than the contract it
+    # checks reports a false defect, which is how a guard gets switched off.
+    depth = _heading_depth(lines[lo - 1])
+    assert depth == 2
+    if hi != len(lines):
+        terminator = _heading_depth(lines[hi])
+        assert terminator is not None and terminator <= depth, (
+            f"the span does not end immediately before a heading at depth "
+            f"<= {depth}: line {hi + 1} is {lines[hi][:60]!r}"
+        )
+
+    # The section must still reach its own last paragraph rather than being
+    # truncated by something that merely looks like a heading.
+    body = "\n".join(lines[lo - 1 : hi])
+    assert "Still out of scope" in body, (
+        "the Architecture section was cut short of its final block"
     )
+
+    # **The `#`-prefixed prose line this test was written for is no longer in
+    # `CLAUDE.md`.** `#103-#106).` began a line until the documentation split
+    # rewrote that paragraph, so the real-file half can no longer exercise the
+    # defect. Recorded rather than quietly dropped: the parser guard now lives
+    # entirely in `test_heading_depth_follows_markdown`, which carries the
+    # exact string as a synthetic case and does not depend on the file keeping
+    # it.
+    #
+    # **Fenced blocks are excluded, and the first version was not** — it would
+    # have fired on a `#!/bin/sh` shebang or a `#` comment inside a ```bash
+    # block, neither of which is a heading. That made the assertion contradict
+    # the very parser it guards, since `section_span` correctly ignores fenced
+    # lines. `CLAUDE.md` carries no such block today, so this was a trap laid
+    # for whoever adds the first one. Reported on review of PR #207.
+    import re as _re
+
+    from research.figure_survival import prose_lines
+
+    prose = prose_lines(text)
+    assert not [
+        line
+        for line in prose
+        if line.startswith("#") and not _re.match(r"^#{1,6}(\s|$)", line)
+    ], "a #-prefixed prose line is back -- re-point the real-file assertion at it"
 
 
 @pytest.mark.parametrize(
@@ -571,3 +622,29 @@ def test_the_symmetric_guard_leaves_real_occurrences_alone(figure, corpus):
     from research.figure_survival import _normalise, _survives
 
     assert _survives(figure, _normalise(corpus)), f"{figure!r} vs {corpus!r}"
+
+
+def test_prose_lines_excludes_every_fenced_block():
+    """**The fence exclusion, proved synthetically.** It was inline in the
+    assertion above and therefore inert: `CLAUDE.md` carries no `#` line
+    inside a fence today, so deleting the exclusion changed nothing. Tested
+    here on a document that does, so the guard can fail."""
+    from research.figure_survival import prose_lines
+
+    doc = "\n".join([
+        "## Heading",           # kept
+        "```bash",
+        "#!/bin/sh",            # excluded -- a shebang, not a heading
+        "# a comment",          # excluded
+        "```",
+        "prose",                # kept
+        "````markdown",
+        "```",                  # excluded -- shorter run cannot close a longer fence
+        "## sample text",       # excluded
+        "````",
+        "   ```cron",
+        "# */30 0-6 * * 1-5",   # excluded -- indented fence still a fence
+        "   ```",
+        "tail",                 # kept
+    ])
+    assert prose_lines(doc) == ["## Heading", "prose", "tail"]
