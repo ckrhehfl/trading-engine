@@ -298,3 +298,14 @@ non-zero position *starts* the loop with its kill switch tripped. An operator
 asking "did it start?" gets opposite readings, so the runbook now gives the two
 as a table instead of a sentence listing both as reasons it "declines", which
 is what it said before review and was simply false.
+
+**And a real drift, found while removing the account of the drift.** Both
+`README.md` and `docs/architecture.md` stated *"121 documents"* for `.planning/`
+while `.planning/README.md` said *"120 documents and counting"* — and 120 is
+right: there are 121 `.md` files there and one of them is the index. Two copies
+of a count, wrong the same way, in the pair of files whose whole subject is that
+a figure in two places drifts. Neither was caught by the duplicate-figure check,
+because that check deliberately treats a bare integer as prose (`section 3`,
+`two planes`) and must keep doing so. Both copies are gone and
+`test_nothing_outside_planning_states_how_many_planning_documents_there_are`
+now blocks a third.

@@ -19,7 +19,7 @@ than by topic. Knowing which is which is the fastest way to find anything.
 |---|---|---|
 | **[`CLAUDE.md`](CLAUDE.md)** | what may never be violated — rules, risk parameters, promotion gates, verified exchange API facts | edited in place; loaded into every AI coding session |
 | **[`docs/`](docs/)** | what things look like **now** | **replaced** when reality changes |
-| **[`.planning/`](.planning/README.md)** | what was decided when, and what was rejected | **append-only**; 121 documents, index enforced by a test |
+| **[`.planning/`](.planning/README.md)** | what was decided when, and what was rejected | **append-only**; indexed in its own README, which a test keeps honest |
 
 - [`docs/architecture.md`](docs/architecture.md) — the two planes, the seam
   list, execution modes, what a new venue actually costs

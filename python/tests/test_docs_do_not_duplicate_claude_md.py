@@ -415,6 +415,27 @@ def test_claude_md_points_at_the_living_architecture():
     )
 
 
+def test_nothing_outside_planning_states_how_many_planning_documents_there_are():
+    """The count of `.planning/` documents has one home and a test on it.
+
+    **This caught a live error rather than a hypothetical one.** `README.md` and
+    `docs/architecture.md` both said *121 documents* while `.planning/README.md`
+    said *120*, and 120 was right: there are 121 `.md` files there and one of
+    them is the index. Two copies of a count, both wrong the same way, which is
+    the exact drift this module exists to stop — and neither was caught by the
+    figure check, because a bare integer is prose by that rule and must stay so.
+    Reported on review of PR #207 as drafting history; the count went with it.
+    """
+    for path in [REPO / "README.md", *_docs_files()]:
+        text = path.read_text(encoding="utf-8")
+        hits = re.findall(r"\b\d{2,4}\s+(?:documents?|docs)\b", text)
+        assert not hits, (
+            f"{path.name} states a .planning/ document count {hits}. That count "
+            f"lives in .planning/README.md, where test_planning_index.py checks "
+            f"it -- a second copy has nothing keeping it true."
+        )
+
+
 def test_the_README_names_every_CODEOWNERS_path():
     """A path list copied into prose is the same drift this module is about.
 

@@ -12,13 +12,12 @@ document and they had been collapsed into two:
 |---|---|---|
 | what may never be violated? | **invariant**, needed in every session | `CLAUDE.md` |
 | what does the structure look like **now**? | **living**, replaced | **this file** |
-| what was decided when, and why? | **append-only** log | `.planning/` (121 docs, indexed) |
+| what was decided when, and why? | **append-only** log | `.planning/`, indexed in its own README |
 
 `.planning/` is organised by work-arc and only ever grows, so it structurally
-cannot answer "now". Before this file existed, nothing could: PR #105 had to
-argue *inside `CLAUDE.md`* that adding a `NotionalCalculator` seam did not
-violate `CLAUDE.md`'s own rule, because there was nowhere to keep the seam
-list as a current fact.
+cannot answer "now", and before this file existed nothing could — which is why
+the seam list in §2 lives here. What went wrong without it, and why the split
+was made this way, is in `.planning/audit-2026-09-consolidation.md`.
 
 **What is deliberately NOT here**: the safety properties, the three open KIS
 gaps, and the Non-negotiable Rules. Those are invariants and they stay in
@@ -27,11 +26,6 @@ Where this document names one, it points rather than repeats — a number or a
 rule written in two places is a contradiction waiting to happen, and this
 project has already shipped one (a window called "unspent" in `CLAUDE.md`
 while `runs/spent_windows.json` and four other paragraphs said otherwise).
-
-**Five paragraphs of this document's own first draft broke that rule**, each
-caught in review. The account is in `.planning/audit-2026-09-consolidation.md`
-— not here, because how this file came to say what it says is append-only
-record, and this file is replaced when the structure changes.
 
 ---
 
