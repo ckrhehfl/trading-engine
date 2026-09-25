@@ -139,7 +139,17 @@ def test_what_counts_as_a_duplicable_figure(text, expected):
 #: So it is labelled for what it is: it catches these known phrases, not the
 #: category. The general case stays a judgement call at review time, exactly
 #: as this module's docstring says.
+#: **Matched against `_flat()`ed text, and the phrases are written for that.**
+#: This test read the raw source while the layering-invariant one beside it read
+#: the flattened form — so the weaker normalisation was the one guarding the
+#: older list. `CLAUDE.md`'s own wording is ``trips `KillSwitch`
+#: unconditionally``, whose backticks defeat a raw search for
+#: `trips unconditionally`, and a line wrap between any two words of any phrase
+#: here would have done the same. Reported on review of PR #207: not a live
+#: safety failure, a check that could be walked past by copying the sentence
+#: verbatim.
 _SAFETY_PHRASES = (
+    "trips killswitch unconditionally",
     "trips unconditionally",
     "trips the kill switch",
     "fails closed",
@@ -191,6 +201,21 @@ def test_a_docs_file_does_not_restate_the_layering_invariant(path: pathlib.Path)
     )
 
 
+def test_the_safety_blocklist_survives_CLAUDE_MDs_own_formatting():
+    """The verbatim sentence must be caught, backticks and line wrap included.
+
+    Pinned because copying `CLAUDE.md`'s wording into `docs/` is the exact move
+    this check is for, and its own markup was enough to get past the raw
+    search that used to run here.
+    """
+    verbatim = "**`forKisPaper()` trips `KillSwitch` unconditionally** at construction"
+    wrapped = "`forKisPaper()` trips `KillSwitch`\nunconditionally at construction"
+    for text in (verbatim, wrapped):
+        assert [p for p in _SAFETY_PHRASES if p in _flat(text).lower()] == [
+            "trips killswitch unconditionally"
+        ], f"CLAUDE.md's own phrasing got past the blocklist: {text!r}"
+
+
 def test_what_the_invariant_blocklist_catches():
     """Pinned so the narrowness is visible rather than asserted.
 
@@ -219,7 +244,7 @@ def test_what_the_invariant_blocklist_catches():
 @pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
 def test_a_docs_file_does_not_restate_a_safety_property(path: pathlib.Path):
     """A safety property is stated once, in the file every AI session reads."""
-    text = path.read_text(encoding="utf-8").lower()
+    text = _flat(path.read_text(encoding="utf-8")).lower()
     found = [phrase for phrase in _SAFETY_PHRASES if phrase in text]
     assert not found, (
         f"{path.name} restates safety-property language {found}. State it in "
