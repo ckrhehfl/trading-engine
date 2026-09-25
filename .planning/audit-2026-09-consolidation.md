@@ -210,3 +210,71 @@ Two severity calls differ from the audit's:
   **zero interior gaps across 3,408,780 symbol-days**. Fix it; it does not
   invalidate collected data.
 - **F-3 matters more than its listing suggests**, for the reason in §4.
+
+---
+
+## Appendix: the documentation split, and what `docs/` did five times
+
+Added 2026-09-25, during PR #207. The operator asked for a conventional
+project documentation structure and chose a **lifetime-based three-way split**:
+invariants in `CLAUDE.md` (auto-loaded into every AI session), current
+structure in `docs/` (replaced when reality changes), and the decision record
+in `.planning/` (append-only). `docs/architecture.md` and a rewritten
+`README.md` were the first half of that; the Exchange API facts are the second
+and are deferred to their own PR.
+
+**The finding worth keeping is not the split — it is what the new document did
+to itself.** `docs/architecture.md`'s own header states that it holds no
+invariant, no safety property and no Non-negotiable Rule, because `CLAUDE.md`
+is the file a session is guaranteed to have read. Its first draft then broke
+that rule **five times**, and every one was caught in review rather than by the
+check written for it:
+
+| where | what it restated |
+|---|---|
+| §1 two planes | that Python may not place live orders; that no order may bypass the Risk Gateway |
+| §3 layering | the `OrderExecutor` implementation count, verbatim as a blockquote |
+| §4 execution modes | the `kis-paper` unconditional kill-switch trip, as a table column |
+| §4 venue hosts | "no environment variable, argument, or other configuration surface" |
+| §5 instrument identity | the options scope decision |
+
+Two of the five were found three lines below the sentence promising not to do
+it, and `CLAUDE.md`'s own Architecture section says in as many words that none
+of what it holds *"is repeated in `docs/`"* — which the draft made false.
+
+**So the transferable statement is a tendency, not an incident**: a structure
+document describing a system whose rules live elsewhere drifts toward restating
+them, because the rule is the most natural thing to say next after describing
+what it governs. Writing "does not duplicate" in the header does not stop it.
+
+**How it was closed, after four rounds of not closing it.** Each of the first
+four fixes added the phrase that got through to a blocklist of phrases that had
+got through, which converges one incident at a time.
+`python/tests/test_docs_do_not_duplicate_claude_md.py` now instead **derives**
+the prohibition from `_CLAUDE_MD_INVARIANTS`, the list it already kept for the
+opposite assertion — that those phrases are still *in* `CLAUDE.md`. One list,
+both directions: an invariant worth pinning into `CLAUDE.md` is by definition
+one `docs/` must not carry a second copy of. The remaining blocklists
+(`_SAFETY_PHRASES`, `_INVARIANT_PHRASES`, `_RISK_PARAMETER_LABELS`) are kept
+and labelled as what they are — known phrases, not the category.
+
+**A second, unrelated lesson from the same PR**, recorded because it cost eight
+review rounds: `OrderExecutorImplementationCountTest` enforces the two-executor
+invariant by **scanning Java source text**, and every round found the same
+defect in a new costume — a text scan meeting a construct it did not model
+(files not classes, `class` but not `record`, generics, comments, string
+literals, text blocks, type-use annotations, `permits`, annotation array
+values, anonymous classes). Thirty-four mutations were run against it and it is
+now correct as far as anything found, but the surface is unbounded by
+construction.
+
+**The design that ends it is reflection, not a better scanner.** The invariant
+is about types, so assert it over types: `OrderExecutor.class.isAssignableFrom`
+catches named, anonymous, nested, sealed **and indirect** implementations — the
+last being the one gap the text scan discloses it cannot close — with no
+parsing at all. It cannot live in `:execution`, whose test would need `:runtime`
+on its classpath and that is the dependency the other way round; `:runtime`
+depends on every module (verified against the six `build.gradle.kts` files), so
+that is where it belongs. **Not done in PR #207**: it is a `java/` structural
+change that deserves its own review rather than a fifteenth commit on a
+documentation PR, and it is the operator's call.

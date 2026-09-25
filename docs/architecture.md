@@ -28,6 +28,11 @@ rule written in two places is a contradiction waiting to happen, and this
 project has already shipped one (a window called "unspent" in `CLAUDE.md`
 while `runs/spent_windows.json` and four other paragraphs said otherwise).
 
+**Five paragraphs of this document's own first draft broke that rule**, each
+caught in review. The account is in `.planning/audit-2026-09-consolidation.md`
+— not here, because how this file came to say what it says is append-only
+record, and this file is replaced when the structure changes.
+
 ---
 
 ## 1. Two planes
@@ -50,13 +55,7 @@ Java Trading Plane
 
 **Those two lines describe the code; the corresponding permissions are
 `CLAUDE.md`'s.** That Python may never place live orders directly and that no
-order may bypass the Risk Gateway are Non-negotiable Rules, stated there. This
-is the **third** place in this document where a first draft restated a rule
-instead of pointing at it — after §3's invariant blockquote and §4's
-kill-switch column — and all three were caught by review rather than by the
-check that exists for it. A structure document describing a system whose rules
-live elsewhere apparently drifts toward restating them, so the pointer is
-worth more than the sentence it replaces.
+order may bypass the Risk Gateway are Non-negotiable Rules, stated there.
 
 Java's scope is intentionally narrow: OMS / Risk / Execution / Exchange
 Adapter / Reconciliation / Kill Switch only. Java 21 + Gradle + JUnit +
@@ -149,17 +148,6 @@ because a rule that has already been broken once and is enforced only by
 prose will be broken again. Full record:
 `.planning/paper-trading-h-vst-integration.md`.
 
-**This section restated the invariant verbatim in its first draft**, as a
-blockquote, three sections below the header promising it would not — the same
-defect as the execution-modes kill-switch column in §4, and `CLAUDE.md`'s own
-Architecture section says in as many words that none of what it holds *"is
-repeated in `docs/`"*, which that draft made false. Caught on review of
-PR #207, by a human reviewer rather than by
-`python/tests/test_docs_do_not_duplicate_claude_md.py` — whose docstring
-already disclosed that it catches a duplicated *figure* and cannot see a
-restated *rule*. The blocklist there now carries these phrases too, which
-narrows the gap by exactly the two sentences that got through and no further.
-
 ---
 
 ## 4. Execution modes
@@ -175,12 +163,9 @@ processes** — distinct `PAPER_TRADING_REPORTS_DIR`, independent
 | `bingx-vst` | `ExchangeOrderExecutor` → `BingXAdapter` | `BINGX_VST_BASE_URL` |
 | `kis-paper` | `ExchangeOrderExecutor` → `KisAdapter` | `KIS_PAPER_BASE_URL` |
 
-**Each mode's kill-switch behaviour at construction is a safety property and
-is stated only in `CLAUDE.md`'s Architecture section.** A "kill switch"
-column stood here in the first draft and restated the `kis-paper`
-unconditional trip — this document's own header says it does not duplicate
-safety properties, and it was breaking that rule three lines below writing
-it. Caught on review of PR #207.
+**Each mode's kill-switch behaviour at construction, and the three open gaps
+bearing on it, are safety properties recorded in `CLAUDE.md`'s Architecture
+section** — including in this sentence, which is why it names no behaviour.
 
 Both venue hosts are Java constants — `BINGX_VST_BASE_URL` and
 `KIS_PAPER_BASE_URL`, in `:runtime`. **That they may have no configuration
@@ -189,18 +174,10 @@ that the code reads constants today. A project-specific `PreToolUse` hook
 blocks edits that would source `BINGX_VST_BASE_URL` from an environment
 variable.
 
-**Each mode's kill-switch behaviour, and the three open gaps bearing on it,
-are safety properties recorded in `CLAUDE.md`'s Architecture section.** Not
-repeated here — including in the sentence that points at them, which is why
-this one names no behaviour. The first draft of this paragraph did, and the
-check that enforces the rule caught it on its own first run.
-
 Current operational state — which of these is actually running — is in
 `CLAUDE.md`'s Current Scope, because it changes on operator decision rather
-than on structure. **Deliberately not restated here**, for the reason the
-sentence gives: a state that changes by decision, written in two files,
-becomes two different answers. The first draft named the state in the very
-next clause; caught on review of PR #207.
+than on structure. **Deliberately not restated here**: a state that changes
+by decision, written in two files, becomes two different answers.
 
 ---
 
@@ -223,8 +200,7 @@ It is **not** sufficient for options, which need **three** facts — strike,
 expiry and call/put — none of which a bare symbol string round-trips. So the
 current model does not represent an option at all, and carrying one would need
 a canonical symbol format designed and tested first. **Whether options are in
-scope is a scope decision, and it is `CLAUDE.md`'s** — the fourth thing in this
-document that a first draft stated instead of pointing at.
+scope is a scope decision, and it is `CLAUDE.md`'s.**
 
 On the Python side the same question has a second answer worth keeping
 beside this one: a **price basis** is part of a storage symbol's identity
