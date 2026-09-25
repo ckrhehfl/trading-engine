@@ -278,3 +278,23 @@ depends on every module (verified against the six `build.gradle.kts` files), so
 that is where it belongs. **Not done in PR #207**: it is a `java/` structural
 change that deserves its own review rather than a fifteenth commit on a
 documentation PR, and it is the operator's call.
+
+**The tendency showed up in the other two documents too, which is what makes it
+a tendency.** `README.md` explained, in the Safety section, that its own first
+draft had claimed not to summarise the Non-negotiable Rules and then summarised
+three of them — and in Merge policy, that its path list had been missing
+`.coderabbit.yaml` until review. `docs/paper-trading-runbook.md` opened a
+paragraph with *"reading them as one is what this line used to do."* All three
+are drafting history in a **living** document, i.e. the same misfiling as the
+six paragraphs above, committed while fixing those six. They were removed and
+the rules they carried kept: `CLAUDE.md` is binding and the README's list is
+orientation; the path list is now test-enforced rather than explained.
+
+**What the runbook's paragraph was actually for survived the trim and is worth
+restating, because it is the only operationally load-bearing part:**
+`VstPreflight` has two unhappy outcomes that look nothing alike from outside —
+a non-`VST` balance asset throws and there is no process, while a pre-existing
+non-zero position *starts* the loop with its kill switch tripped. An operator
+asking "did it start?" gets opposite readings, so the runbook now gives the two
+as a table instead of a sentence listing both as reasons it "declines", which
+is what it said before review and was simply false.

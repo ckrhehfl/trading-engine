@@ -48,12 +48,8 @@ runs/        experiment log and committed research artifacts
 **`CLAUDE.md`'s Non-negotiable Rules are the binding text.** The three
 below are an orientation list — enough to know what kind of project this is
 before opening it — and are not the rule: where the two differ, `CLAUDE.md`
-is right and this file is stale.
-
-Said that way because the first draft claimed not to summarise the rules and
-then summarised three of them in the next sentence. Caught on review of
-PR #207. A front door has to name them; what it must not do is pretend the
-naming is authoritative.
+is right and this file is stale. A front door has to name them; what it must
+not do is pretend the naming is authoritative.
 
 - Live trading is never enabled without explicit human approval.
 - Every live order passes through the Java Risk Gateway. Python never places
@@ -69,8 +65,10 @@ that backstops it. The repo is public.
 
 `.github/CODEOWNERS` **names** the high-risk paths — `java/`, `schemas/`,
 `configs/`, `.github/`, `CLAUDE.md`, `.coderabbit.yaml` — and everything else
-auto-merges once CI and CodeRabbit pass. That is all six; the list read five
-until review of PR #207 caught the review-rules file missing from it.
+auto-merges once CI and CodeRabbit pass. That is all six, and
+`python/tests/test_docs_do_not_duplicate_claude_md.py` asserts it stays all
+six — a list of protected paths copied into prose drifts, and an omission here
+understates what needs a human decision.
 
 **It is not a server-side gate today, and saying it "gates" them would
 overstate the protection.** GitHub does not raise a required-review when the
