@@ -48,7 +48,19 @@ DOCS = REPO / "docs"
 #: order notional or `99%` uptime floor and this check would have passed.
 #: Reported on review; every one of those is a Risk-Parameter-class figure
 #: that must exist in exactly one file.
-_FIGURE = re.compile(r"(?<![\w.])[-−+]?\d+(?:[.,]\d+)*%|(?<![\w.])[-−+]?\d+(?:[.,]\d+)+")
+#: **The `x`-suffixed leverage multiplier was the second missing form.** The
+#: percent case was added on the first review round of this file; `2x` and `3x`
+#: were still invisible, and they are how every leverage limit in `CLAUDE.md` is
+#: written — canary max `2x`, stable max `3x`, and
+#: `RiskLimits.ABSOLUTE_MAX_LEVERAGE`'s own `2x` entry gate. A `docs/` file could
+#: have copied any of them. Reported on review of PR #207.
+#:
+#: The `x` branch carries a trailing non-word guard the `%` branch does not need,
+#: so a hex-looking `0x1F` is not read as the figure `0x`.
+_FIGURE = re.compile(
+    r"(?<![\w.])[-−+]?\d+(?:[.,]\d+)*(?:%|[xX](?!\w))"
+    r"|(?<![\w.])[-−+]?\d+(?:[.,]\d+)+"
+)
 
 #: Documents that are allowed to carry figures because their whole job is
 #: operational numbers a human types at a prompt. The runbook's ports, sleep
@@ -108,6 +120,14 @@ def test_a_docs_file_carries_no_figure_claude_md_owns(path: pathlib.Path):
         ("uptime >= 99%", ["99%"]),
         ("max drawdown 20.135%", ["20.135%"]),
         ("-0.5% daily loss limit", ["-0.5%"]),
+        # The leverage forms, which were the second missing case.
+        ("leverage hard max 2x", ["2x"]),
+        ("documented max 3x", ["3x"]),
+        ("account-wide leverage at 20X", ["20X"]),
+        ("1.5x the stop distance", ["1.5x"]),
+        # ...but not an identifier or a hex-looking token that merely ends in x.
+        ("0x1F is a byte", []),
+        ("the 2xl breakpoint", []),
         # Decimals and comma groups, unchanged.
         ("PSR 0.9705", ["0.9705"]),
         ("Combined pool 4,374", ["4,374"]),
@@ -158,6 +178,65 @@ _SAFETY_PHRASES = (
     "must not be weakened",
     "do not weaken",
 )
+
+
+#: Labels from `CLAUDE.md`'s Risk Parameters. **No `docs/` file may name one,
+#: including a figure-exempt one**, which is the hole this closes: the runbook is
+#: exempt from the figure check for its ports and cron minutes, so
+#: `max order notional 2%` written there would have carried a Risk Parameter past
+#: every check in this module. It has no reason to name one — an operator reads
+#: limits from `CLAUDE.md` or from `RiskLimits`, and a second copy in a runbook is
+#: the drift this whole module exists to prevent. Reported on review of PR #207.
+#:
+#: Labels rather than numbers, deliberately: a bare `2%` in a runbook could be
+#: anything, while `max order notional` can only be the risk parameter. Generic
+#: words (`weekly`, `monthly`) are left out for the opposite reason — a cron
+#: schedule is allowed to say them.
+_RISK_PARAMETER_LABELS = (
+    "base leverage",
+    "max leverage",
+    "max order notional",
+    "daily loss limit",
+    "weekly loss limit",
+    "monthly loss limit",
+    "hard stop",
+    "emergency stop",
+    "absolute_max_leverage",
+)
+
+
+@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+def test_no_docs_file_names_a_risk_parameter(path: pathlib.Path):
+    """Risk Parameters live in `CLAUDE.md` and in `RiskLimits`, nowhere else.
+
+    Applies to **every** file, the figure-exempt runbook included — that
+    exemption is for operational numbers a human types at a prompt, and a risk
+    limit is not one.
+    """
+    text = _flat(path.read_text(encoding="utf-8")).lower()
+    found = [label for label in _RISK_PARAMETER_LABELS if label in text]
+    assert not found, (
+        f"{path.name} names risk parameter(s) {found}. Changing one of these "
+        f"needs explicit human approval, which a second copy in docs/ quietly "
+        f"routes around -- point at CLAUDE.md's Risk Parameters instead."
+    )
+
+
+def test_the_risk_parameter_check_covers_the_figure_exempt_file():
+    """The hole, asserted rather than assumed.
+
+    A file excused from one check silently leaving the others is the inert-guard
+    shape this repo has paid for repeatedly, so the coverage is pinned: the
+    exempt file is in the risk-parameter check's own parameter list.
+    """
+    assert _FIGURE_EXEMPT, "nothing is exempt, so this test proves nothing"
+    checked = {p.name for p in _docs_files()}
+    assert _FIGURE_EXEMPT <= checked, (
+        f"{_FIGURE_EXEMPT - checked} is figure-exempt and reaches no other check"
+    )
+    assert not _FIGURE_EXEMPT <= {p.name for p in _figure_checked_files()}, (
+        "the figure exemption does nothing, so it is not the exemption under test"
+    )
 
 
 #: The same idea for the **layering invariant**, which is an invariant rather

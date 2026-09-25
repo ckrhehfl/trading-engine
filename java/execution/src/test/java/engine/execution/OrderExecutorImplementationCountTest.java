@@ -372,6 +372,72 @@ final class OrderExecutorImplementationCountTest {
                         + " extends clause before it must not hide a real"
                         + " implementation");
 
+        // **An ordinary Javadoc sentence used to invent a declaration out of
+        // prose**, and it failed in the direction that blocks a legitimate
+        // change: `class simulating` matched inside the comment, the scan ran
+        // through `*/` into the real declaration below, found its genuine
+        // `implements OrderExecutor`, and reported three implementations where
+        // there are two. Reported on review.
+        String javadocProse =
+                """
+                /** A paper class simulating fills. */
+                public final class PaperBroker implements OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("PaperBroker"),
+                declaredImplementors(javadocProse),
+                "prose in a comment is not a declaration -- this one fails by"
+                        + " blocking a legitimate change, which is how a guard gets"
+                        + " switched off");
+
+        // The two shapes this file used to disclose as unhandled, now closed by
+        // neutralising the whole source rather than only the clause.
+        String commentInsideDeclaration =
+                """
+                public final class Third /* the name is after me */ implements OrderExecutor {
+                }
+                final class Fourth implements /* and here */ OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("Third", "Fourth"),
+                declaredImplementors(commentInsideDeclaration),
+                "a comment inside the declaration must not hide it");
+
+        // **An anonymous implementation is a third implementation**, and
+        // `DECLARATION` finds only named ones, so this was invisible.
+        String anonymous =
+                """
+                final class Factory {
+                    OrderExecutor create() {
+                        return new OrderExecutor() { };
+                    }
+                    OrderExecutor qualified() {
+                        return new engine.execution.OrderExecutor() { };
+                    }
+                }
+                """;
+        assertEquals(
+                List.of("<anonymous OrderExecutor>", "<anonymous OrderExecutor>"),
+                declaredImplementors(anonymous),
+                "an anonymous direct implementation must be counted -- it is a"
+                        + " third executor reachable from a one-line factory");
+
+        // And it must not be invented out of a comment or a string, which is the
+        // reason the anonymous scan runs on neutralised source too.
+        String anonymousInProse =
+                """
+                final class Doc {
+                    // return new OrderExecutor() {
+                    String sample = "new OrderExecutor() {";
+                }
+                """;
+        assertEquals(
+                List.of(),
+                declaredImplementors(anonymousInProse),
+                "a comment or string mentioning the shape is not an implementation");
+
         String parameterOnly =
                 """
                 public final class Reconciler {
@@ -404,15 +470,89 @@ final class OrderExecutorImplementationCountTest {
      * fails before the test does and demonstrates nothing.
      */
     static List<String> declaredImplementors(String src) {
+        String clean = neutralise(src);
         List<String> names = new ArrayList<>();
-        Matcher declaration = DECLARATION.matcher(src);
+        Matcher declaration = DECLARATION.matcher(clean);
         while (declaration.find()) {
-            String clause = implementsClause(src, declaration.end());
+            String clause = implementsClause(clean, declaration.end());
             if (clause != null && topLevelTypes(clause).contains(INTERFACE)) {
                 names.add(declaration.group(1));
             }
         }
+        Matcher anonymous = ANONYMOUS_NEW.matcher(clean);
+        while (anonymous.find()) {
+            names.add(ANONYMOUS_NAME);
+        }
         return names;
+    }
+
+    /**
+     * An anonymous direct implementation, {@code new OrderExecutor() { … }}.
+     *
+     * <p>{@link #DECLARATION} finds only <em>named</em> declarations, so this
+     * shape was invisible — and it is a third implementation in exactly the sense
+     * the invariant means, reachable from a one-line factory method. None exists
+     * in {@code src/main} today, which is why the miss was latent rather than
+     * live. Reported on review.
+     *
+     * <p>Counted by a fixed name rather than by a declaration name, because it
+     * has none; the point is that the count moves off two, not what the third is
+     * called.
+     */
+    private static final Pattern ANONYMOUS_NEW =
+            Pattern.compile("\\bnew\\s+(?:\\w+\\.)*" + INTERFACE + "\\s*\\([^)]*\\)\\s*\\{");
+
+    /** What an anonymous implementation is reported as. */
+    private static final String ANONYMOUS_NAME = "<anonymous " + INTERFACE + ">";
+
+    /**
+     * Comments become one space and literals become {@code _}; everything else is
+     * kept, so offsets stay usable and no line is merged into another.
+     *
+     * <p><strong>Applied to the whole source, which is a correction to where this
+     * ran before.</strong> It ran inside {@link #implementsClause}, i.e. only
+     * after a declaration had already been matched — so {@link #DECLARATION}
+     * itself still read raw text, and a Javadoc sentence was enough to invent a
+     * declaration out of prose. {@code /** A paper class simulating fills. *&#47;}
+     * above {@code PaperBroker} matched {@code class simulating}, whose scan then
+     * ran straight through {@code *&#47;} into the real declaration below and
+     * found a genuine {@code implements OrderExecutor} — reporting three
+     * implementations where there are two. **That fails in the direction that
+     * blocks a legitimate change**, which this class's own Javadoc says gets a
+     * guard switched off, and the trigger is one ordinary Javadoc sentence.
+     * Reported on review.
+     *
+     * <p>Doing both jobs here, in one pass, in this order, is also what makes the
+     * whole-source version safe: the earlier objection to stripping comments over
+     * the whole file was that a {@code "https://…"} literal would be truncated
+     * and could merge lines into a phantom declaration, and neutralising literals
+     * in the same pass answers exactly that. It additionally closes the two
+     * shapes this file had disclosed as unhandled — a comment between
+     * {@code class} and its name, and a comment carrying the word
+     * {@code implements}.
+     */
+    private static String neutralise(String src) {
+        StringBuilder out = new StringBuilder(src.length());
+        int i = 0;
+        while (i < src.length()) {
+            char c = src.charAt(i);
+            if (src.startsWith("//", i)) {
+                int end = src.indexOf('\n', i);
+                i = end < 0 ? src.length() : end;
+                out.append(' ');
+            } else if (src.startsWith("/*", i)) {
+                int end = src.indexOf("*/", i + 2);
+                i = end < 0 ? src.length() : end + 2;
+                out.append(' ');
+            } else if (c == '"' || c == '\'') {
+                i = endOfLiteral(src, i);
+                out.append('_');
+            } else {
+                out.append(c);
+                i++;
+            }
+        }
+        return out.toString();
     }
 
     /**
@@ -448,38 +588,21 @@ final class OrderExecutorImplementationCountTest {
      * and the comment strip respectively, and every one of those failures drops
      * a real implementation. Text blocks are handled for the same reason.
      *
-     * <p><strong>Two shapes remain unhandled, and are disclosed rather than
-     * chased</strong>: a comment between {@code class} and its name
-     * ({@code class /*x*&#47; Third}), which breaks the declaration pattern
-     * itself, and a comment carrying the word {@code implements} before a body.
-     * Both would need real lexing, and a declaration written either way is
-     * strange enough that the honest handling is to say so.
+     * <p><strong>Takes already-{@link #neutralise}d source</strong>, which is why
+     * this is now a stop-at-the-body loop and nothing more. Both jobs lived here
+     * at first, and that was the defect: running them from {@code from} onwards
+     * left {@link #DECLARATION} itself reading raw text.
      */
     private static String implementsClause(String src, int from) {
-        StringBuilder head = new StringBuilder();
-        int i = from;
-        while (i < src.length()) {
+        int body = src.length();
+        for (int i = from; i < src.length(); i++) {
             char c = src.charAt(i);
             if (c == '{' || c == ';') {
+                body = i;
                 break;
             }
-            if (src.startsWith("//", i)) {
-                int end = src.indexOf('\n', i);
-                i = end < 0 ? src.length() : end;
-                head.append(' ');
-            } else if (src.startsWith("/*", i)) {
-                int end = src.indexOf("*/", i + 2);
-                i = end < 0 ? src.length() : end + 2;
-                head.append(' ');
-            } else if (c == '"' || c == '\'') {
-                i = endOfLiteral(src, i);
-                head.append('_');
-            } else {
-                head.append(c);
-                i++;
-            }
         }
-        String clause = head.toString();
+        String clause = src.substring(from, body);
         Matcher keyword = IMPLEMENTS.matcher(clause);
         if (!keyword.find()) {
             return null;

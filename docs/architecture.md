@@ -218,10 +218,11 @@ give. So the "zero schema change" claim holds across BTC-USDT perpetuals and
 both kinds of KRX futures.
 
 It is **not** sufficient for options, which need **three** facts — strike,
-expiry and call/put — none of which a bare symbol string round-trips. Options
-are therefore out of scope until a canonical symbol format is designed and
-tested, and that is a scope decision recorded in `CLAUDE.md`, not a thing
-this file may relax.
+expiry and call/put — none of which a bare symbol string round-trips. So the
+current model does not represent an option at all, and carrying one would need
+a canonical symbol format designed and tested first. **Whether options are in
+scope is a scope decision, and it is `CLAUDE.md`'s** — the fourth thing in this
+document that a first draft stated instead of pointing at.
 
 On the Python side the same question has a second answer worth keeping
 beside this one: a **price basis** is part of a storage symbol's identity
