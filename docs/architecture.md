@@ -142,10 +142,14 @@ CodeRabbit review found that violated the invariant, and the shipped design
 is the `SubmissionListener` collaborator injected into
 `ExchangeOrderExecutor` instead.
 
-The count is machine-checked by
-`java/execution/src/test/java/engine/execution/OrderExecutorImplementationCountTest.java`,
-because a rule that has already been broken once and is enforced only by
-prose will be broken again. Full record:
+`java/execution/src/test/java/engine/execution/OrderExecutorImplementationCountTest.java`
+machine-checks this, because a rule that has already been broken once and is
+enforced only by prose will be broken again. **What it counts is production
+types that declare `implements OrderExecutor` directly, plus anonymous ones**
+— stated precisely because it does *not* see an implementation reached
+indirectly, through a sub-interface or by extending an existing executor, and
+reading it as a guarantee about the total would misplace confidence. The test
+discloses the same limitation in its own Javadoc. Full record:
 `.planning/paper-trading-h-vst-integration.md`.
 
 ---

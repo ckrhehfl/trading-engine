@@ -521,6 +521,33 @@ _CLAUDE_MD_INVARIANTS = (
 )
 
 
+@pytest.mark.parametrize(
+    "written, caught",
+    [
+        (
+            "and we never let python place live orders directly.",
+            "Never let Python place live orders directly",
+        ),
+        (
+            "nothing may never bypass the java risk gateway",
+            "Never bypass the Java Risk Gateway",
+        ),
+    ],
+)
+def test_the_invariant_prohibition_ignores_case(written, caught):
+    """A lower-cased copy is still a copy.
+
+    These two are the ones it matters for: neither appears in any other
+    blocklist here, so case was the whole of what stood between a restated
+    Non-negotiable Rule and passing. Reported on review of PR #207.
+
+    A *paraphrase* is still not caught and is not claimed to be — this checks a
+    phrase, and only the exact one, however it is capitalised.
+    """
+    text = _flat(written).lower()
+    assert [i for i in _CLAUDE_MD_INVARIANTS if _flat(i).lower() in text] == [caught]
+
+
 def test_the_invariants_did_not_move_out_of_claude_md():
     """The move's whole risk in one test. These are what an AI session must
     have read; if they are only in `docs/`, they are read only when opened."""
@@ -540,8 +567,12 @@ def test_a_docs_file_carries_no_invariant_claude_md_must_keep(path: pathlib.Path
     to disagree with the first, and the one a reader believes is whichever they
     opened.
     """
-    text = _flat(path.read_text(encoding="utf-8"))
-    found = [i for i in _CLAUDE_MD_INVARIANTS if _flat(i) in text]
+    # Case-insensitive on this side only. The presence assertion above stays
+    # exact, so a change to `CLAUDE.md`'s own wording still surfaces there; a
+    # `docs/` copy, on the other hand, is just as much a second answer when it
+    # opens a sentence in lower case. Reported on review of PR #207.
+    text = _flat(path.read_text(encoding="utf-8")).lower()
+    found = [i for i in _CLAUDE_MD_INVARIANTS if _flat(i).lower() in text]
     assert not found, (
         f"{path.name} restates invariant(s) {found} that CLAUDE.md owns. "
         f"Describe what the code does and point at CLAUDE.md for what is "
