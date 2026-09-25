@@ -37,14 +37,26 @@ Python Research Plane
 - data research, deterministic backtesting, strategy experiments
 - feature engineering, ML training/evaluation, scheduled retraining (later)
 - report generation, deployment candidate generation
-- must not place live orders directly
+- holds no venue order-placement code; it writes a signal file the trading
+  plane reads
 
 Java Trading Plane
 - OMS, Risk Gateway, Execution Service
 - ExchangeAdapter interface (BingX is the first implementation)
 - position reconciliation, kill switch, paper/live runtime
-- all live orders must pass through the Java Risk Gateway
+- `engine.runtime.OrderPipeline` is the one path from an `OrderIntent` to an
+  `Order`, and it builds one only from a `RiskGateway.evaluate()` decision
 ```
+
+**Those two lines describe the code; the corresponding permissions are
+`CLAUDE.md`'s.** That Python may never place live orders directly and that no
+order may bypass the Risk Gateway are Non-negotiable Rules, stated there. This
+is the **third** place in this document where a first draft restated a rule
+instead of pointing at it — after §3's invariant blockquote and §4's
+kill-switch column — and all three were caught by review rather than by the
+check that exists for it. A structure document describing a system whose rules
+live elsewhere apparently drifts toward restating them, so the pointer is
+worth more than the sentence it replaces.
 
 Java's scope is intentionally narrow: OMS / Risk / Execution / Exchange
 Adapter / Reconciliation / Kill Switch only. Java 21 + Gradle + JUnit +

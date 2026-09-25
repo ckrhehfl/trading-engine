@@ -290,6 +290,66 @@ final class OrderExecutorImplementationCountTest {
                         + " is the direction that lets a violation through, and the"
                         + " qualified form is the one an anchored strip misses");
 
+        // **Each of these is a real implementation that one structural character
+        // inside a string literal was enough to hide**, and the URL is the one
+        // review found: `//` began a line comment that took `OrderExecutor` with
+        // it. The rest were latent behind the same false premise -- that a clause
+        // contains no literal -- so they are pinned together, since neutralising
+        // the literal is what fixes all of them at once.
+        String literalInAnnotation =
+                """
+                public final class Url implements @Marker("https://venue.example") OrderExecutor {
+                }
+                final class Brace implements @Marker("{") OrderExecutor {
+                }
+                final class Semicolon implements @Marker("a;b") OrderExecutor {
+                }
+                final class Comma implements @Marker("a,b") OrderExecutor {
+                }
+                final class Paren implements @Marker("a)b") OrderExecutor {
+                }
+                final class Angle implements @Marker("a<b") OrderExecutor {
+                }
+                final class BlockOpen implements @Marker("/*") OrderExecutor {
+                }
+                final class Escaped implements @Marker("a\\"//b") OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of(
+                        "Url",
+                        "Brace",
+                        "Semicolon",
+                        "Comma",
+                        "Paren",
+                        "Angle",
+                        "BlockOpen",
+                        "Escaped"),
+                declaredImplementors(literalInAnnotation),
+                "a string literal in the clause must not hide a real"
+                        + " implementation -- every one of these characters reaches a"
+                        + " different part of the scan, and all of them drop it");
+
+        // **The lone `"` inside is what makes this case discriminating, and the
+        // first version of it was inert without one.** Read as three separate
+        // quotes, an even number of them pairs up by accident and the
+        // declaration is still counted, so removing the text-block branch
+        // changed nothing and the mutation survived. One unpaired quote leaves
+        // the final `"""` opening an unterminated literal that swallows the rest
+        // of the source, `OrderExecutor` included.
+        String textBlockInAnnotation =
+                """
+                public final class TextBlock implements @Marker(\"""
+                        say "hi
+                        \""") OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("TextBlock"),
+                declaredImplementors(textBlockInAnnotation),
+                "a text block is a legal annotation argument and must be"
+                        + " neutralised as one literal, not read as three quotes");
+
         String parameterOnly =
                 """
                 public final class Reconciler {
@@ -337,45 +397,91 @@ final class OrderExecutorImplementationCountTest {
      * The {@code implements} clause following a declaration, or {@code null} if
      * it has none. Stops at the body or the statement end, so a later
      * declaration's clause cannot be attributed to this one.
-     */
-    private static String implementsClause(String src, int from) {
-        int body = src.length();
-        for (int i = from; i < src.length(); i++) {
-            char c = src.charAt(i);
-            if (c == '{' || c == ';') {
-                body = i;
-                break;
-            }
-        }
-        String head = COMMENT.matcher(src.substring(from, body)).replaceAll(" ");
-        int at = head.indexOf("implements");
-        return at < 0 ? null : head.substring(at + "implements".length());
-    }
-
-    /**
-     * Java comments, stripped from the clause before it is parsed.
      *
-     * <p>{@code implements OrderExecutor /* note *&#47; } left the type name as
-     * {@code "OrderExecutor /* note *&#47;"}, which exact comparison misses — so a
-     * real third implementation carrying a trailing comment would have gone
-     * <strong>uncounted</strong>. That is the missing direction, and the one this
-     * whole test exists to prevent. Reported on review.
+     * <p><strong>Comments are dropped and string literals are neutralised in the
+     * same pass, and it has to be one pass.</strong> Both jobs were regexes
+     * before, and both were wrong for the same reason — each treated the other's
+     * territory as ordinary text:
      *
-     * <p>Applied to the clause only, never to the whole file: a clause sits
-     * between {@code implements} and the body and cannot contain a string
-     * literal, so there is nothing for a naive {@code //} strip to damage. Over
-     * the whole file a {@code "https://…"} literal would be truncated and could
-     * merge lines into a phantom declaration.
+     * <ul>
+     *   <li>{@code implements OrderExecutor /* note *&#47;} left the type name as
+     *       {@code "OrderExecutor /* note *&#47;"}, which exact comparison
+     *       misses, so a real third implementation carrying a trailing comment
+     *       went <strong>uncounted</strong>;
+     *   <li>and the comment strip that fixed it was justified here in writing by
+     *       the claim that a clause <em>"cannot contain a string literal"</em>.
+     *       <strong>That claim is false</strong>, and
+     *       {@code implements @Marker("https://venue.example") OrderExecutor} is
+     *       the counterexample: the {@code //} inside the URL took the rest of
+     *       the line, {@code OrderExecutor} with it. Reported on review, and it
+     *       is the same missing direction the comment fix had just closed.
+     * </ul>
+     *
+     * <p>A literal becomes a single {@code _} rather than being parsed, because
+     * <strong>its contents are never needed to identify a type</strong> — in a
+     * clause a literal can only be an annotation argument. That is what makes
+     * this one fix rather than four: {@code "} can smuggle {@code &#123;},
+     * {@code ;}, {@code ,}, {@code <}, {@code )} and {@code //} past the body
+     * scan, the top-level comma split, {@link #TYPE_ANNOTATION}'s argument group
+     * and the comment strip respectively, and every one of those failures drops
+     * a real implementation. Text blocks are handled for the same reason.
      *
      * <p><strong>Two shapes remain unhandled, and are disclosed rather than
      * chased</strong>: a comment between {@code class} and its name
      * ({@code class /*x*&#47; Third}), which breaks the declaration pattern
      * itself, and a comment carrying the word {@code implements} before a body.
-     * Both would need lexing rather than scanning, and a declaration written
-     * either way is strange enough that the honest handling is to say so.
+     * Both would need real lexing, and a declaration written either way is
+     * strange enough that the honest handling is to say so.
      */
-    private static final Pattern COMMENT =
-            Pattern.compile("/\\*.*?\\*/|//[^\\n]*", Pattern.DOTALL);
+    private static String implementsClause(String src, int from) {
+        StringBuilder head = new StringBuilder();
+        int i = from;
+        while (i < src.length()) {
+            char c = src.charAt(i);
+            if (c == '{' || c == ';') {
+                break;
+            }
+            if (src.startsWith("//", i)) {
+                int end = src.indexOf('\n', i);
+                i = end < 0 ? src.length() : end;
+                head.append(' ');
+            } else if (src.startsWith("/*", i)) {
+                int end = src.indexOf("*/", i + 2);
+                i = end < 0 ? src.length() : end + 2;
+                head.append(' ');
+            } else if (c == '"' || c == '\'') {
+                i = endOfLiteral(src, i);
+                head.append('_');
+            } else {
+                head.append(c);
+                i++;
+            }
+        }
+        String clause = head.toString();
+        int at = clause.indexOf("implements");
+        return at < 0 ? null : clause.substring(at + "implements".length());
+    }
+
+    /**
+     * The index just past the string, character or text-block literal opening at
+     * {@code open}; the end of the source if it is unterminated.
+     */
+    private static int endOfLiteral(String src, int open) {
+        if (src.startsWith("\"\"\"", open)) {
+            int end = src.indexOf("\"\"\"", open + 3);
+            return end < 0 ? src.length() : end + 3;
+        }
+        char quote = src.charAt(open);
+        for (int i = open + 1; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (c == '\\') {
+                i++;
+            } else if (c == quote) {
+                return i + 1;
+            }
+        }
+        return src.length();
+    }
 
     /**
      * The clause's top-level type names, generics stripped.

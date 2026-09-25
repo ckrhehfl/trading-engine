@@ -275,7 +275,7 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
     both `₩250,000` lines (255 and 300). Markdown requires whitespace or end
     of line after the `#` run.
     """
-    from research.figure_survival import CLAUDE_MD, section_span
+    from research.figure_survival import CLAUDE_MD, _heading_depth, section_span
 
     text = CLAUDE_MD.read_text(encoding="utf-8")
     lines = text.splitlines()
@@ -287,10 +287,21 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
     # on the next edit: the 2026-09-25 documentation split moved the section's
     # body to `docs/architecture.md` and every number shifted.
     assert lines[lo - 1].strip() == "## Architecture"
-    assert hi == len(lines) or lines[hi].startswith("## "), (
-        f"the span does not end immediately before a top-level heading: "
-        f"line {hi + 1} is {lines[hi][:60]!r}"
-    )
+
+    # **The terminator is any heading at or above this section's depth, which
+    # is what `section_span` promises — not a `## ` specifically.** Asserting
+    # the narrower form would have failed the day `CLAUDE.md` gained a `# `
+    # heading after `## Architecture`, on a span the function had computed
+    # correctly. Reported on review; a test stricter than the contract it
+    # checks reports a false defect, which is how a guard gets switched off.
+    depth = _heading_depth(lines[lo - 1])
+    assert depth == 2
+    if hi != len(lines):
+        terminator = _heading_depth(lines[hi])
+        assert terminator is not None and terminator <= depth, (
+            f"the span does not end immediately before a heading at depth "
+            f"<= {depth}: line {hi + 1} is {lines[hi][:60]!r}"
+        )
 
     # The section must still reach its own last paragraph rather than being
     # truncated by something that merely looks like a heading.
