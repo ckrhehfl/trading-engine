@@ -108,8 +108,10 @@ tmux capture-pane -t =paper-trading-vst -p
 Look for `starting paper trading loop` and a `tick complete` line for
 each. For the VST session specifically, look for
 `VstPreflight: real VST balance=...` and confirm `asset=VST` — if
-`VstPreflight` refuses to start, it will say exactly why (wrong asset,
-a pre-existing position, etc.) rather than starting silently broken.
+`VstPreflight` declines, the log says exactly why (wrong asset, a
+pre-existing position, etc.) rather than the loop starting silently broken.
+Why it declines in each case is a safety property, and it is stated in
+`CLAUDE.md` rather than here.
 
 ## 4. Scheduled jobs (cron)
 

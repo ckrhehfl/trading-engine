@@ -265,6 +265,31 @@ final class OrderExecutorImplementationCountTest {
                         + " implementation -- this is the direction that lets a"
                         + " violation through");
 
+        // **The same missing direction one shape further out**, reported on the
+        // round after the comment case: a `TYPE_USE` annotation is legal on an
+        // implemented type, and the type name then arrives as
+        // "@Marker OrderExecutor". **The qualified form is the half a leading
+        // strip misses** -- Java puts the annotation on the simple name, so
+        // `engine.execution.@Marker OrderExecutor` survives an anchored strip
+        // and then survives the last-dot split too.
+        String annotatedInterface =
+                """
+                public final class Annotated implements @Marker OrderExecutor {
+                }
+                final class AnnotatedQualified
+                        implements engine.execution.@Marker OrderExecutor {
+                }
+                final class AnnotatedWithArgument
+                        implements @Marker("a.b") OrderExecutor, AutoCloseable {
+                }
+                """;
+        assertEquals(
+                List.of("Annotated", "AnnotatedQualified", "AnnotatedWithArgument"),
+                declaredImplementors(annotatedInterface),
+                "a type-use annotation must not hide a real implementation -- this"
+                        + " is the direction that lets a violation through, and the"
+                        + " qualified form is the one an anchored strip misses");
+
         String parameterOnly =
                 """
                 public final class Reconciler {
@@ -379,10 +404,41 @@ final class OrderExecutorImplementationCountTest {
         return types;
     }
 
-    /** {@code engine.execution.OrderExecutor} and {@code OrderExecutor} are one type. */
+    /**
+     * A {@code TYPE_USE} annotation, which may legally sit on an implemented
+     * type: {@code implements @Marker OrderExecutor}.
+     *
+     * <p><strong>Stripped anywhere in the type, not only at its front.</strong>
+     * Annotating a <em>qualified</em> type puts the annotation on the simple
+     * name rather than ahead of the package —
+     * {@code engine.execution.@Marker OrderExecutor} is the legal form — so a
+     * leading-anchored strip leaves the annotation exactly where the last-dot
+     * split will keep it, and the declaration still goes uncounted. Both shapes
+     * are in the synthetic cases.
+     *
+     * <p><strong>One shape stays unhandled and disclosed</strong>: an annotation
+     * whose arguments contain a top-level comma
+     * ({@code @Marker(a = 1, b = 2) OrderExecutor}) is split by
+     * {@link #topLevelTypes} as if it were two interfaces, because that split
+     * tracks angle brackets and not parentheses. Left alone rather than chased —
+     * an annotation on an {@code implements} type is already rare, and one with
+     * multiple arguments would need the depth tracking generalised to a second
+     * bracket kind for a declaration nothing in this repo writes.
+     */
+    private static final Pattern TYPE_ANNOTATION =
+            Pattern.compile("@(?:\\w+\\.)*\\w+(?:\\([^)]*\\))?");
+
+    /**
+     * {@code engine.execution.OrderExecutor}, {@code @Marker OrderExecutor} and
+     * {@code OrderExecutor} are one type.
+     *
+     * <p>Replacing an annotation with a space rather than nothing is deliberate:
+     * {@code @A@B OrderExecutor} would otherwise be free to fuse into one token,
+     * and the trailing trim removes the space again.
+     */
     private static String bareName(String type) {
-        String trimmed = type.trim();
-        int dot = trimmed.lastIndexOf('.');
-        return dot < 0 ? trimmed : trimmed.substring(dot + 1);
+        String unannotated = TYPE_ANNOTATION.matcher(type).replaceAll(" ");
+        int dot = unannotated.lastIndexOf('.');
+        return (dot < 0 ? unannotated : unannotated.substring(dot + 1)).trim();
     }
 }

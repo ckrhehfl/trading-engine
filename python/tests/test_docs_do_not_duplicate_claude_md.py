@@ -53,21 +53,36 @@ _FIGURE = re.compile(r"(?<![\w.])[-−+]?\d+(?:[.,]\d+)*%|(?<![\w.])[-−+]?\d+(
 #: Documents that are allowed to carry figures because their whole job is
 #: operational numbers a human types at a prompt. The runbook's ports, sleep
 #: intervals and cron minutes are not claims about the system's behaviour.
-_EXEMPT = {"paper-trading-runbook.md"}
+#:
+#: **Scoped to the figure check only, which it was not.** One exemption set
+#: filtered `_docs_files()` itself, so exempting the runbook for its cron
+#: minutes also quietly exempted it from both *rule* checks below — and it was
+#: restating a fail-closed property when that was noticed. A file excused from
+#: one check silently leaving the others is the inert-guard shape this repo has
+#: paid for repeatedly, so the two lists are now separate and the rule checks
+#: see every document.
+_FIGURE_EXEMPT = {"paper-trading-runbook.md"}
 
 
 def _docs_files() -> list[pathlib.Path]:
-    return sorted(p for p in DOCS.glob("*.md") if p.name not in _EXEMPT)
+    return sorted(DOCS.glob("*.md"))
+
+
+def _figure_checked_files() -> list[pathlib.Path]:
+    return [p for p in _docs_files() if p.name not in _FIGURE_EXEMPT]
 
 
 def test_docs_exists_and_is_not_empty():
     """A guard over an empty directory passes vacuously, which is the inert
     shape this repo has paid for three times."""
     assert DOCS.is_dir(), "docs/ is missing"
-    assert _docs_files(), "no non-exempt docs/*.md to check -- this test is inert"
+    assert _docs_files(), "no docs/*.md at all -- every check here is inert"
+    assert _figure_checked_files(), (
+        "every docs/*.md is figure-exempt -- the figure check is inert"
+    )
 
 
-@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+@pytest.mark.parametrize("path", _figure_checked_files(), ids=lambda p: p.name)
 def test_a_docs_file_carries_no_figure_claude_md_owns(path: pathlib.Path):
     """A figure belongs to exactly one file.
 
@@ -133,6 +148,72 @@ _SAFETY_PHRASES = (
     "must not be weakened",
     "do not weaken",
 )
+
+
+#: The same idea for the **layering invariant**, which is an invariant rather
+#: than a safety property and so gets its own list rather than being filed
+#: under one.
+#:
+#: **Both phrases are here because both got through.** `docs/architecture.md`
+#: §3 restated the implementation count as a verbatim blockquote — *"must only
+#: ever be, exactly two"* — and restated *"it never means writing a new
+#: `OrderExecutor`"* nine lines later, in a document whose own header says it
+#: does not repeat invariants and while `CLAUDE.md` says in as many words that
+#: none of what it holds *"is repeated in `docs/`"*. A human reviewer caught
+#: it on PR #207; this module's docstring had already disclosed why nothing
+#: mechanical would.
+#:
+#: **So this narrows the disclosed gap by exactly the two sentences that got
+#: through, and claims nothing more.** A blocklist grown one incident at a
+#: time is still a blocklist: the category — a rule restated in prose no
+#: regex anticipated — stays a judgement call at review time.
+_INVARIANT_PHRASES = (
+    "must only ever",
+    "never means writing",
+)
+
+
+@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+def test_a_docs_file_does_not_restate_the_layering_invariant(path: pathlib.Path):
+    """A binding count is stated once, where it binds.
+
+    `docs/` may say *which* implementations exist — that is the structure, and
+    keeping it current is why the file was split out. What it may not say is
+    how many are **permitted**, because two copies of a limit drift and the
+    copy a reader believes is whichever they opened.
+    """
+    text = _flat(path.read_text(encoding="utf-8")).lower()
+    found = [phrase for phrase in _INVARIANT_PHRASES if phrase in text]
+    assert not found, (
+        f"{path.name} restates invariant language {found}. Describe what the "
+        f"code is and point at CLAUDE.md's layering invariant for what is "
+        f"permitted -- a count written in two files becomes two counts."
+    )
+
+
+def test_what_the_invariant_blocklist_catches():
+    """Pinned so the narrowness is visible rather than asserted.
+
+    The first phrase alone would have passed the second sentence, which is the
+    whole reason a blocklist cannot be trusted as a category check.
+    """
+    got_through = (
+        "There are, and must only ever be, exactly two `OrderExecutor` "
+        "implementations -- full stop."
+    )
+    second = "A new venue means writing a new `ExchangeAdapter`. It never means writing a new `OrderExecutor`."
+    describing = "Two exist, both in `:execution`: `PaperBroker` and `ExchangeOrderExecutor`."
+
+    assert [p for p in _INVARIANT_PHRASES if p in _flat(got_through).lower()] == [
+        "must only ever"
+    ]
+    assert [p for p in _INVARIANT_PHRASES if p in _flat(second).lower()] == [
+        "never means writing"
+    ]
+    assert not [p for p in _INVARIANT_PHRASES if p in _flat(describing).lower()], (
+        "describing which implementations exist must stay allowed -- that is "
+        "the living-structure content the docs/ split exists to hold"
+    )
 
 
 @pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)

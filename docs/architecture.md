@@ -69,11 +69,13 @@ Implementation Priority #10, because the work has not started and
 
 ## 2. The seams — the list this file exists to keep
 
-A new venue or asset class means **writing a new implementation of an
-existing interface**, never modifying OMS / Risk / Execution. Each seam cost
-exactly one one-time interface extraction; after it, every further venue
-implements the interface with **zero** additional change to the depending
-class.
+Each row below is a place where a venue-specific fact was lifted out of
+OMS / Risk / Execution and behind an interface. **That this is how a venue
+gets added is a rule, and the rule is `CLAUDE.md`'s**; the list of where it
+has actually been done is this file's job, and is the thing that had nowhere
+to live. Each seam cost exactly one one-time extraction; after it, every
+further venue implements the interface with **zero** additional change to the
+depending class.
 
 | seam | module | production implementations | extracted because |
 |---|---|---|---|
@@ -106,12 +108,14 @@ constructor remains a zero-behaviour-change delegation to
 
 ## 3. The `OrderExecutor` / `ExchangeAdapter` layering rule
 
-`engine.runtime.TradingLoop` depends only on
-`engine.execution.OrderExecutor` (`submit` + `pollFills` + `pendingOrders` +
-`cancel`), never on a concrete implementation.
+**The binding rule is `CLAUDE.md`'s layering invariant and is not restated
+here** — how many implementations may exist, and that no decorator or wrapper
+is an exception to that count, are normative and belong to the file every AI
+session has read. What follows is only what the code looks like today.
 
-> **There are, and must only ever be, exactly two `OrderExecutor`
-> implementations — full stop, with no decorator or wrapper exception.**
+`engine.runtime.TradingLoop` depends on `engine.execution.OrderExecutor`
+(`submit` + `pollFills` + `pendingOrders` + `cancel`) and on no concrete
+implementation. Two exist, both in `:execution`:
 
 - **`PaperBroker`** — the internal simulator. Resolves fills synchronously
   from an injected price.
@@ -119,22 +123,30 @@ constructor remains a zero-behaviour-change delegation to
   **interface**, never a concrete adapter, and polls `queryOrder` for real,
   asynchronous fills.
 
-**A new venue means writing a new `ExchangeAdapter`. It never means writing
-a new `OrderExecutor`.**
+Durable submission-outcome marking is why the difference between composing a
+concern **in** and layering it **on** is visible in the code rather than only
+in the rule: an earlier version of Paper Trading Task H did it as a decorator
+(`engine.runtime.PersistentSubmissionOrderExecutor`, since removed), real
+CodeRabbit review found that violated the invariant, and the shipped design
+is the `SubmissionListener` collaborator injected into
+`ExchangeOrderExecutor` instead.
 
-A cross-cutting concern is composed **in** via an injectable collaborator,
-not layered **on** as a third implementation. Durable submission-outcome
-marking is the worked example: an earlier version of Paper Trading Task H
-tried the decorator approach (`engine.runtime
-.PersistentSubmissionOrderExecutor`, since removed) and real CodeRabbit
-review found it genuinely violated this invariant. `SubmissionListener` is
-the corrected design — not an exception carved out to keep the wrapper.
-
-The invariant is machine-checked by
+The count is machine-checked by
 `java/execution/src/test/java/engine/execution/OrderExecutorImplementationCountTest.java`,
 because a rule that has already been broken once and is enforced only by
 prose will be broken again. Full record:
 `.planning/paper-trading-h-vst-integration.md`.
+
+**This section restated the invariant verbatim in its first draft**, as a
+blockquote, three sections below the header promising it would not — the same
+defect as the execution-modes kill-switch column in §4, and `CLAUDE.md`'s own
+Architecture section says in as many words that none of what it holds *"is
+repeated in `docs/`"*, which that draft made false. Caught on review of
+PR #207, by a human reviewer rather than by
+`python/tests/test_docs_do_not_duplicate_claude_md.py` — whose docstring
+already disclosed that it catches a duplicated *figure* and cannot see a
+restated *rule*. The blocklist there now carries these phrases too, which
+narrows the gap by exactly the two sentences that got through and no further.
 
 ---
 
