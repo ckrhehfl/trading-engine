@@ -174,6 +174,13 @@ _SAFETY_PHRASES = (
     "trips the kill switch",
     "fails closed",
     "fail closed",
+    # `_flat()` collapses whitespace and strips markup; it does not normalise a
+    # hyphen, and `fail-closed` is the adjectival form this project actually
+    # writes most often. Reported on review — pinned as two more phrases rather
+    # than by hyphen-normalising `_flat()`, which is shared and where a hyphen
+    # is load-bearing (`daily-tsmom-ensemble`, `INCONCLUSIVE-DATA-LIMITED`).
+    "fails-closed",
+    "fail-closed",
     "refuses to start",
     "must not be weakened",
     "do not weaken",
@@ -280,6 +287,20 @@ def test_a_docs_file_does_not_restate_the_layering_invariant(path: pathlib.Path)
     )
 
 
+@pytest.mark.parametrize(
+    "written, caught",
+    [
+        ("KrxMarketCalendar fails closed.", "fails closed"),
+        ("a fail-closed design", "fail-closed"),
+        ("every parsing failure mode is fails-closed", "fails-closed"),
+    ],
+)
+def test_both_spellings_of_fail_closed_are_caught(written, caught):
+    """The hyphenated form is the one this project writes most, and `_flat()`
+    does not normalise a hyphen. Reported on review of PR #207."""
+    assert caught in [p for p in _SAFETY_PHRASES if p in _flat(written).lower()]
+
+
 def test_the_safety_blocklist_survives_CLAUDE_MDs_own_formatting():
     """The verbatim sentence must be caught, backticks and line wrap included.
 
@@ -363,6 +384,44 @@ def test_claude_md_points_at_the_living_architecture():
     assert "docs/architecture.md" in section, (
         "CLAUDE.md's Architecture section no longer points at the living "
         "document, so a reader following a .planning reference lands nowhere"
+    )
+
+
+def test_the_README_names_every_CODEOWNERS_path():
+    """A path list copied into prose is the same drift this module is about.
+
+    `README.md` named five of the six CODEOWNERS paths and omitted
+    `.coderabbit.yaml` — the file holding the review rules. Caught on review of
+    PR #207, i.e. by a human reading two files side by side, which is what this
+    replaces. Asserted against `.github/CODEOWNERS` itself rather than against
+    `CLAUDE.md`'s copy of the list, because the file is the source of truth and
+    a check against a second copy only proves the copies agree.
+
+    **Scoped to the Merge policy section, and the first version was not.** It
+    searched the whole README, where the sentence explaining *why* the list had
+    been wrong named the missing path again — so restoring the defect left the
+    substring present and the mutation survived. That is the inert-guard shape
+    twice over in this one module: the same accident as the earlier
+    `"safety propert"` assertion that passed on an unrelated occurrence.
+    """
+    from research.figure_survival import section_span
+
+    codeowners = (REPO / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
+    paths = [
+        line.split()[0].strip("/")
+        for line in codeowners.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+    assert paths, "CODEOWNERS has no entries -- this test would pass vacuously"
+
+    raw = (REPO / "README.md").read_text(encoding="utf-8")
+    lo, hi = section_span(raw, "Merge policy")
+    readme = _flat("\n".join(raw.splitlines()[lo - 1 : hi]))
+    missing = [p for p in paths if p not in readme]
+    assert not missing, (
+        f"README.md's merge-policy list omits CODEOWNERS path(s) {missing}. A "
+        f"reader takes that list as the set of paths needing a human decision, "
+        f"so an omission understates what is protected."
     )
 
 

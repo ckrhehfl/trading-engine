@@ -68,8 +68,9 @@ that backstops it. The repo is public.
 ## Merge policy
 
 `.github/CODEOWNERS` **names** the high-risk paths — `java/`, `schemas/`,
-`configs/`, `.github/`, `CLAUDE.md` — and everything else auto-merges once CI
-and CodeRabbit pass.
+`configs/`, `.github/`, `CLAUDE.md`, `.coderabbit.yaml` — and everything else
+auto-merges once CI and CodeRabbit pass. That is all six; the list read five
+until review of PR #207 caught the review-rules file missing from it.
 
 **It is not a server-side gate today, and saying it "gates" them would
 overstate the protection.** GitHub does not raise a required-review when the

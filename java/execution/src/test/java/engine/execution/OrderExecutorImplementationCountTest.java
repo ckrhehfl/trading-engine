@@ -337,6 +337,24 @@ final class OrderExecutorImplementationCountTest {
         // changed nothing and the mutation survived. One unpaired quote leaves
         // the final `"""` opening an unterminated literal that swallows the rest
         // of the source, `OrderExecutor` included.
+        // The shape this file disclosed as unhandled one round earlier. It is
+        // fixed rather than disclosed because the fix was two characters, which
+        // is the wrong side of the line a disclosure is for.
+        String annotationWithSeveralArguments =
+                """
+                public final class MultiArg implements @Marker(a = 1, b = 2) OrderExecutor {
+                }
+                final class MultiArgAndMore
+                        implements @Marker(a = 1, b = 2) OrderExecutor, AutoCloseable {
+                }
+                """;
+        assertEquals(
+                List.of("MultiArg", "MultiArgAndMore"),
+                declaredImplementors(annotationWithSeveralArguments),
+                "a comma inside annotation arguments must not split the implemented"
+                        + " type, and a real second interface after it must still"
+                        + " split");
+
         String textBlockInAnnotation =
                 """
                 public final class TextBlock implements @Marker(\"""
@@ -669,15 +687,21 @@ final class OrderExecutorImplementationCountTest {
      * <p>Depth tracking is the whole point: {@code Map<String, OrderExecutor>}
      * is one top-level type named {@code Map}, and splitting on every comma
      * would read {@code OrderExecutor} out of its type arguments.
+     *
+     * <p><strong>Parentheses count as depth for the same reason as angle
+     * brackets</strong>, and for one more: an annotation's argument list may hold
+     * a top-level comma ({@code @Marker(a = 1, b = 2) OrderExecutor}) and its
+     * contents never name a type, so nothing inside it should reach
+     * {@link #bareName} either way. Reported on review.
      */
     private static List<String> topLevelTypes(String clause) {
         List<String> types = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         int depth = 0;
         for (char c : clause.toCharArray()) {
-            if (c == '<') {
+            if (c == '<' || c == '(') {
                 depth++;
-            } else if (c == '>') {
+            } else if (c == '>' || c == ')') {
                 depth--;
             } else if (c == ',' && depth == 0) {
                 types.add(bareName(current.toString()));
@@ -702,14 +726,14 @@ final class OrderExecutorImplementationCountTest {
      * split will keep it, and the declaration still goes uncounted. Both shapes
      * are in the synthetic cases.
      *
-     * <p><strong>One shape stays unhandled and disclosed</strong>: an annotation
-     * whose arguments contain a top-level comma
-     * ({@code @Marker(a = 1, b = 2) OrderExecutor}) is split by
-     * {@link #topLevelTypes} as if it were two interfaces, because that split
-     * tracks angle brackets and not parentheses. Left alone rather than chased —
-     * an annotation on an {@code implements} type is already rare, and one with
-     * multiple arguments would need the depth tracking generalised to a second
-     * bracket kind for a declaration nothing in this repo writes.
+     * <p>An annotation whose arguments hold a top-level comma
+     * ({@code @Marker(a = 1, b = 2) OrderExecutor}) was disclosed here as
+     * unhandled, on the grounds that fixing it meant generalising the depth
+     * tracking to a second bracket kind. <strong>That was the wrong call and the
+     * disclosure is withdrawn</strong>: the generalisation is two characters in
+     * {@link #topLevelTypes}, and the shape drops a real implementation. Reported
+     * on review, with the fix — a disclosure is for what would cost real work to
+     * reach, not for what is cheaper to fix than to write down.
      */
     private static final Pattern TYPE_ANNOTATION =
             Pattern.compile("@(?:\\w+\\.)*\\w+(?:\\([^)]*\\))?");
