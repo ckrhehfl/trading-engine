@@ -73,28 +73,42 @@ _FIGURE = re.compile(
 #: one check silently leaving the others is the inert-guard shape this repo has
 #: paid for repeatedly, so the two lists are now separate and the rule checks
 #: see every document.
-_FIGURE_EXEMPT = {"paper-trading-runbook.md"}
+#:
+#: **Keyed by path, not by file name, because the glob below is recursive.** A
+#: name-keyed exemption would excuse *any* nested `paper-trading-runbook.md`
+#: from the figure check, which is not what was decided about this one file.
+_FIGURE_EXEMPT = {DOCS / "paper-trading-runbook.md"}
 
 
 def _docs_files() -> list[pathlib.Path]:
-    return sorted(DOCS.glob("*.md"))
+    """Every Markdown file under `docs/`, at any depth.
+
+    **`glob` was not enough and the difference is not cosmetic.** Nothing in
+    `README.md` or `CLAUDE.md` says a structure document must sit directly in
+    `docs/`, so a non-recursive glob let a nested one escape every check in this
+    module -- figures, Risk Parameter labels, safety phrases and the layering
+    invariant alike. There are no subdirectories today, which is exactly when to
+    fix it: the first nested document would otherwise arrive unchecked and
+    nothing would say so. Reported on review of PR #207.
+    """
+    return sorted(DOCS.rglob("*.md"))
 
 
 def _figure_checked_files() -> list[pathlib.Path]:
-    return [p for p in _docs_files() if p.name not in _FIGURE_EXEMPT]
+    return [p for p in _docs_files() if p not in _FIGURE_EXEMPT]
 
 
 def test_docs_exists_and_is_not_empty():
     """A guard over an empty directory passes vacuously, which is the inert
     shape this repo has paid for three times."""
     assert DOCS.is_dir(), "docs/ is missing"
-    assert _docs_files(), "no docs/*.md at all -- every check here is inert"
+    assert _docs_files(), "no docs/**/*.md at all -- every check here is inert"
     assert _figure_checked_files(), (
-        "every docs/*.md is figure-exempt -- the figure check is inert"
+        "every docs/**/*.md is figure-exempt -- the figure check is inert"
     )
 
 
-@pytest.mark.parametrize("path", _figure_checked_files(), ids=lambda p: p.name)
+@pytest.mark.parametrize("path", _figure_checked_files(), ids=lambda p: str(p.relative_to(DOCS)))
 def test_a_docs_file_carries_no_figure_claude_md_owns(path: pathlib.Path):
     """A figure belongs to exactly one file.
 
@@ -212,7 +226,7 @@ _RISK_PARAMETER_LABELS = (
 )
 
 
-@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: str(p.relative_to(DOCS)))
 def test_no_docs_file_names_a_risk_parameter(path: pathlib.Path):
     """Risk Parameters live in `CLAUDE.md` and in `RiskLimits`, nowhere else.
 
@@ -237,11 +251,11 @@ def test_the_risk_parameter_check_covers_the_figure_exempt_file():
     exempt file is in the risk-parameter check's own parameter list.
     """
     assert _FIGURE_EXEMPT, "nothing is exempt, so this test proves nothing"
-    checked = {p.name for p in _docs_files()}
+    checked = set(_docs_files())
     assert _FIGURE_EXEMPT <= checked, (
         f"{_FIGURE_EXEMPT - checked} is figure-exempt and reaches no other check"
     )
-    assert not _FIGURE_EXEMPT <= {p.name for p in _figure_checked_files()}, (
+    assert not _FIGURE_EXEMPT <= set(_figure_checked_files()), (
         "the figure exemption does nothing, so it is not the exemption under test"
     )
 
@@ -269,7 +283,7 @@ _INVARIANT_PHRASES = (
 )
 
 
-@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: str(p.relative_to(DOCS)))
 def test_a_docs_file_does_not_restate_the_layering_invariant(path: pathlib.Path):
     """A binding count is stated once, where it binds.
 
@@ -341,7 +355,7 @@ def test_what_the_invariant_blocklist_catches():
     )
 
 
-@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: str(p.relative_to(DOCS)))
 def test_a_docs_file_does_not_restate_a_safety_property(path: pathlib.Path):
     """A safety property is stated once, in the file every AI session reads."""
     text = _flat(path.read_text(encoding="utf-8")).lower()
@@ -378,9 +392,23 @@ def test_claude_md_points_at_the_living_architecture():
     """And the reverse, so the pointer is not one-way. ~70 `.planning`
     back-references name `CLAUDE.md`'s Architecture section by heading; the
     heading therefore stays, and has to say where the body went."""
+    from research.figure_survival import section_span
+
     raw = CLAUDE_MD.read_text(encoding="utf-8")
-    assert "## Architecture" in raw, "the referenced heading was removed"
-    section = _flat(raw.split("## Architecture", 1)[1].split("\n## ", 1)[0])
+    lines = raw.splitlines()
+
+    # **`section_span` rather than string splitting, which was wrong twice
+    # over.** `"## Architecture" in raw` is satisfied by a `### Architecture`
+    # subsection, and `split("\n## ", 1)` does not stop at a `# ` heading -- so
+    # the "section" could have begun at the wrong heading and run past its own
+    # end, where any later mention of `docs/architecture.md` would satisfy the
+    # assertion instead of the real pointer. Reported on review of PR #207.
+    lo, hi = section_span(raw, "Architecture")
+    assert lines[lo - 1].strip() == "## Architecture", (
+        f"the Architecture heading is not the expected level-2 heading: "
+        f"{lines[lo - 1]!r}"
+    )
+    section = _flat("\n".join(lines[lo - 1 : hi]))
     assert "docs/architecture.md" in section, (
         "CLAUDE.md's Architecture section no longer points at the living "
         "document, so a reader following a .planning reference lands nowhere"

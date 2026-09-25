@@ -81,7 +81,17 @@ final class OrderExecutorImplementationCountTest {
                             .filter(p -> p.toString().endsWith(".java"))
                             // Production source only. Test doubles are free to
                             // implement it; the invariant is about the shipped graph.
-                            .filter(p -> p.toString().replace('\\', '/').contains("/src/main/"))
+                            //
+                            // **Judged on the path relative to java/, not the
+                            // absolute one.** A checkout whose own directories
+                            // spell `/src/main/` would have let every test double
+                            // through, and this filter is the only thing keeping
+                            // them out. The leading slash is added back so the
+                            // boundary still anchors on a whole segment —
+                            // `execution/src/main/…` has no leading one, and
+                            // matching without it would exclude production files
+                            // instead. Reported on review.
+                            .filter(p -> isProductionSource(java, p))
                             .flatMap(OrderExecutorImplementationCountTest::implementingClasses)
                             .sorted()
                             .collect(Collectors.toList());
@@ -98,6 +108,43 @@ final class OrderExecutorImplementationCountTest {
                                 + "never layered on as a third executor. See "
                                 + "docs/architecture.md section 3. Found classes: "
                                 + names);
+    }
+
+    /**
+     * Whether {@code file} is production source, judged on its path
+     * <strong>relative to {@code javaRoot}</strong>.
+     *
+     * <p>This filter is the only thing keeping test doubles out of the count, and
+     * it used to read the absolute path — so a checkout whose own directories
+     * spelled {@code /src/main/} would have admitted every one of them. Extracted
+     * from the stream rather than fixed in place because a defect that needs an
+     * unusual checkout path to appear cannot be demonstrated by running the test
+     * where it lives, and an undemonstrable guard is the inert shape this repo has
+     * paid for. Reported on review.
+     *
+     * <p>The leading slash is added back so the match still anchors on a whole
+     * path segment: a relative path reads {@code execution/src/main/…} and has
+     * none, and matching {@code /src/main/} against it would exclude production
+     * files instead — the naive repair, and wrong in the opposite direction.
+     */
+    static boolean isProductionSource(Path javaRoot, Path file) {
+        String relative = javaRoot.relativize(file).toString().replace('\\', '/');
+        return ("/" + relative).contains("/src/main/");
+    }
+
+    @Test
+    @DisplayName("the production-source filter reads the path relative to java/")
+    void theProductionFilterIgnoresTheCheckoutsOwnDirectories() {
+        Path root = Path.of("/home/dev/src/main/checkout/java");
+        assertTrue(
+                isProductionSource(root, root.resolve("execution/src/main/java/A.java")),
+                "a real production file must pass");
+        assertEquals(
+                false,
+                isProductionSource(root, root.resolve("execution/src/test/java/FakeA.java")),
+                "a test double must not pass merely because the checkout path"
+                        + " happens to contain /src/main/ -- this filter is the only"
+                        + " thing keeping test doubles out of the count");
     }
 
     /**
@@ -458,6 +505,73 @@ final class OrderExecutorImplementationCountTest {
                 "an anonymous direct implementation must be counted -- it is a"
                         + " third executor reachable from a one-line factory");
 
+        // **The annotated forms**, which the regex version missed — including the
+        // one a wider regex still could not express, an annotation whose own
+        // arguments are parenthesised or nested.
+        String annotatedAnonymous =
+                """
+                final class Factory {
+                    OrderExecutor plain() {
+                        return new @Marker OrderExecutor() { };
+                    }
+                    OrderExecutor qualified() {
+                        return new engine.execution.@Marker OrderExecutor() { };
+                    }
+                    OrderExecutor flatArguments() {
+                        return new @Marker(a = 1, b = 2) OrderExecutor() { };
+                    }
+                    OrderExecutor nestedArguments() {
+                        return new @Marker(value = @Inner(1)) OrderExecutor() { };
+                    }
+                    OrderExecutor withConstructorArguments() {
+                        return new @Marker OrderExecutor(someArg(1, 2)) { };
+                    }
+                }
+                """;
+        assertEquals(
+                List.of(
+                        "<anonymous OrderExecutor>",
+                        "<anonymous OrderExecutor>",
+                        "<anonymous OrderExecutor>",
+                        "<anonymous OrderExecutor>",
+                        "<anonymous OrderExecutor>"),
+                declaredImplementors(annotatedAnonymous),
+                "an annotated anonymous implementation must be counted, arguments"
+                        + " and nesting included -- balance is why this is a scan and"
+                        + " not a pattern");
+
+        // And the near misses, so the scan is not simply permissive.
+        String notAnonymousImplementations =
+                """
+                final class Factory {
+                    OrderExecutor delegate() {
+                        return new PaperBroker();
+                    }
+                    Object other() {
+                        return new OrderExecutorRegistry() { };
+                    }
+                    Object supplier() {
+                        return new Supplier<OrderExecutor>() { };
+                    }
+                    // Not legal Java -- an interface cannot be instantiated without
+                    // a body -- and included deliberately, because the body
+                    // requirement is otherwise unprovable: every *legal* near miss
+                    // fails on the type name first, so deleting the check changed
+                    // nothing and the mutation survived. The scanner reads whatever
+                    // text it is given, so what it does with this is a real
+                    // property of it.
+                    OrderExecutor notAClass() {
+                        return new OrderExecutor();
+                    }
+                }
+                """;
+        assertEquals(
+                List.of(),
+                declaredImplementors(notAnonymousImplementations),
+                "a constructor call with no body, a different type whose name merely"
+                        + " starts with the interface's, and the interface as a type"
+                        + " argument are none of them anonymous implementations");
+
         // And it must not be invented out of a comment or a string, which is the
         // reason the anonymous scan runs on neutralised source too.
         String anonymousInProse =
@@ -513,9 +627,11 @@ final class OrderExecutorImplementationCountTest {
                 names.add(declaration.group(1));
             }
         }
-        Matcher anonymous = ANONYMOUS_NEW.matcher(clean);
+        Matcher anonymous = NEW_KEYWORD.matcher(clean);
         while (anonymous.find()) {
-            names.add(ANONYMOUS_NAME);
+            if (opensAnonymousImplementation(clean, anonymous.end())) {
+                names.add(ANONYMOUS_NAME);
+            }
         }
         return names;
     }
@@ -532,12 +648,108 @@ final class OrderExecutorImplementationCountTest {
      * <p>Counted by a fixed name rather than by a declaration name, because it
      * has none; the point is that the count moves off two, not what the third is
      * called.
+     *
+     * <p><strong>A scan from the keyword rather than one regex for the whole
+     * expression.</strong> The regex version accepted only a bare or qualified
+     * type name, so {@code new @Marker OrderExecutor() { }} was missed — and the
+     * obvious repair, widening the pattern to allow annotations, cannot express an
+     * annotation whose arguments contain parentheses. Nesting is what regular
+     * expressions do not do, and this is the eighth round of a text scan meeting a
+     * Java construct it did not model, so the shape is scanned instead: skip
+     * annotations (arguments and all, by balance), collect the type, and require a
+     * balanced argument list followed by {@code &#123;}. {@link #bareName} then
+     * settles identity, which is the same code the declaration path already
+     * trusts. Reported on review.
      */
-    private static final Pattern ANONYMOUS_NEW =
-            Pattern.compile("\\bnew\\s+(?:\\w+\\.)*" + INTERFACE + "\\s*\\([^)]*\\)\\s*\\{");
+    private static final Pattern NEW_KEYWORD = Pattern.compile("\\bnew\\b");
 
     /** What an anonymous implementation is reported as. */
     private static final String ANONYMOUS_NAME = "<anonymous " + INTERFACE + ">";
+
+    /**
+     * Whether the {@code new} ending at {@code from} opens an anonymous
+     * {@link #INTERFACE} — i.e. {@code new [annotations] [pkg.]OrderExecutor(…)
+     * &#123;}.
+     *
+     * <p>Takes {@link #neutralise}d source, so every bracket it meets is
+     * structural. A type argument list ({@code new Foo<Bar>() &#123;}) is not
+     * accepted and does not need to be: {@code OrderExecutor} is not generic, and
+     * treating an unexpected character as "not this" keeps the failure on the safe
+     * side of a scan that is deliberately not a parser.
+     */
+    private static boolean opensAnonymousImplementation(String src, int from) {
+        StringBuilder type = new StringBuilder();
+        int i = from;
+        while (i < src.length()) {
+            char c = src.charAt(i);
+            if (Character.isWhitespace(c)) {
+                type.append(' ');
+                i++;
+            } else if (c == '@') {
+                i = endOfAnnotation(src, i);
+                if (i < 0) {
+                    return false;
+                }
+            } else if (Character.isJavaIdentifierPart(c) || c == '.') {
+                type.append(c);
+                i++;
+            } else if (c == '(') {
+                int close = matchingParen(src, i);
+                if (close < 0) {
+                    return false;
+                }
+                int after = close + 1;
+                while (after < src.length() && Character.isWhitespace(src.charAt(after))) {
+                    after++;
+                }
+                return after < src.length()
+                        && src.charAt(after) == '{'
+                        && INTERFACE.equals(bareName(type.toString()));
+            } else {
+                return false;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * The index just past the annotation starting at {@code at}, or {@code -1} if
+     * it is malformed. Its argument list is skipped <strong>by balance</strong>, so
+     * a nested annotation value is handled where a {@code [^)]*} pattern is not.
+     */
+    private static int endOfAnnotation(String src, int at) {
+        int i = at + 1;
+        while (i < src.length()
+                && (Character.isJavaIdentifierPart(src.charAt(i)) || src.charAt(i) == '.')) {
+            i++;
+        }
+        if (i == at + 1) {
+            return -1;
+        }
+        int probe = i;
+        while (probe < src.length() && Character.isWhitespace(src.charAt(probe))) {
+            probe++;
+        }
+        if (probe < src.length() && src.charAt(probe) == '(') {
+            int close = matchingParen(src, probe);
+            return close < 0 ? -1 : close + 1;
+        }
+        return i;
+    }
+
+    /** The index of the {@code )} matching the {@code (} at {@code open}, or -1. */
+    private static int matchingParen(String src, int open) {
+        int depth = 0;
+        for (int i = open; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (c == '(') {
+                depth++;
+            } else if (c == ')' && --depth == 0) {
+                return i;
+            }
+        }
+        return -1;
+    }
 
     /**
      * Comments become one space and literals become {@code _}; everything else is
