@@ -245,6 +245,26 @@ final class OrderExecutorImplementationCountTest {
                 "the interface may be the first of several, and splitting the"
                         + " clause on top-level commas is what makes that work");
 
+        // **The missing direction**, and the one this whole test exists to
+        // prevent: a real third implementation that simply carries a trailing
+        // comment. Exact comparison read the type name as
+        // "OrderExecutor /* note */" and skipped it. Reported on review.
+        String withComments =
+                """
+                public final class Commented implements OrderExecutor /* the third */ {
+                }
+                final class LineCommented
+                        implements OrderExecutor // trailing note
+                {
+                }
+                """;
+        assertEquals(
+                List.of("Commented", "LineCommented"),
+                declaredImplementors(withComments),
+                "a comment in or after the implements clause must not hide a real"
+                        + " implementation -- this is the direction that lets a"
+                        + " violation through");
+
         String parameterOnly =
                 """
                 public final class Reconciler {
@@ -302,10 +322,35 @@ final class OrderExecutorImplementationCountTest {
                 break;
             }
         }
-        String head = src.substring(from, body);
+        String head = COMMENT.matcher(src.substring(from, body)).replaceAll(" ");
         int at = head.indexOf("implements");
         return at < 0 ? null : head.substring(at + "implements".length());
     }
+
+    /**
+     * Java comments, stripped from the clause before it is parsed.
+     *
+     * <p>{@code implements OrderExecutor /* note *&#47; } left the type name as
+     * {@code "OrderExecutor /* note *&#47;"}, which exact comparison misses — so a
+     * real third implementation carrying a trailing comment would have gone
+     * <strong>uncounted</strong>. That is the missing direction, and the one this
+     * whole test exists to prevent. Reported on review.
+     *
+     * <p>Applied to the clause only, never to the whole file: a clause sits
+     * between {@code implements} and the body and cannot contain a string
+     * literal, so there is nothing for a naive {@code //} strip to damage. Over
+     * the whole file a {@code "https://…"} literal would be truncated and could
+     * merge lines into a phantom declaration.
+     *
+     * <p><strong>Two shapes remain unhandled, and are disclosed rather than
+     * chased</strong>: a comment between {@code class} and its name
+     * ({@code class /*x*&#47; Third}), which breaks the declaration pattern
+     * itself, and a comment carrying the word {@code implements} before a body.
+     * Both would need lexing rather than scanning, and a declaration written
+     * either way is strange enough that the honest handling is to say so.
+     */
+    private static final Pattern COMMENT =
+            Pattern.compile("/\\*.*?\\*/|//[^\\n]*", Pattern.DOTALL);
 
     /**
      * The clause's top-level type names, generics stripped.
