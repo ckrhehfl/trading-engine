@@ -34,7 +34,7 @@ already shipped one.
 
 ## Layout
 
-```
+```text
 java/        OMS · Risk Gateway · Execution · ExchangeAdapter · Reconciler · KillSwitch
 python/      research plane — data collection, backtesting, metrics, live signal runner
 schemas/     cross-language wire schemas (JSON fixtures, mirrored in both planes)
@@ -61,8 +61,17 @@ that backstops it. The repo is public.
 
 ## Merge policy
 
-`.github/CODEOWNERS` gates high-risk paths — `java/`, `schemas/`,
-`configs/`, `.github/`, `CLAUDE.md` — behind owner review; everything else
-auto-merges once CI and CodeRabbit pass. Details and the real blocking
-mechanism (unresolved review threads, not CODEOWNERS) are in `CLAUDE.md`'s
-Branch and Merge section.
+`.github/CODEOWNERS` **names** the high-risk paths — `java/`, `schemas/`,
+`configs/`, `.github/`, `CLAUDE.md` — and everything else auto-merges once CI
+and CodeRabbit pass.
+
+**It is not a server-side gate today, and saying it "gates" them would
+overstate the protection.** GitHub does not raise a required-review when the
+PR author is also the sole code owner, which is the situation here; that was
+tested empirically. What actually blocks a merge is
+`required_conversation_resolution` — an unresolved CodeRabbit thread — plus
+any standing `CHANGES_REQUESTED`. So the CODEOWNERS boundary is enforced
+**procedurally** on those paths, and branch protection stays on because it
+does bind a future second collaborator or bot identity. Full mechanism, and
+how to diagnose a `BLOCKED` PR that looks green: `CLAUDE.md`'s Branch and
+Merge section.

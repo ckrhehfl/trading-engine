@@ -309,7 +309,9 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
     import re as _re
 
     assert not [
-        l for l in lines if l.startswith("#") and not _re.match(r"^#{1,6}(\s|$)", l)
+        line
+        for line in lines
+        if line.startswith("#") and not _re.match(r"^#{1,6}(\s|$)", line)
     ], "a #-prefixed prose line is back -- re-point the real-file assertion at it"
 
 

@@ -176,11 +176,21 @@ that followed is `.planning/kis-ledger-a-*.md` through `-d-*.md`.
 
 **Scope: futures only; options explicitly deferred.** `OrderIntent` / `Order`
 / `Fill` / `SubmissionMarker` identify an instrument with a single free-form
-`String symbol`. A futures contract is fully identified by its expiry month,
-so that stays sufficient and the "zero schema change" claim holds. An option
-additionally needs strike, expiry and call/put — none of which a bare symbol
-string round-trips — so options need a canonical symbol format designed and
-tested first, and are out of scope until then.
+`String symbol`, and that string carries **both the underlying and the
+delivery month** — a futures contract needs both, and the earlier wording
+here said "fully identified by its expiry month", which is true only where
+the underlying is implied. It is not: KRX lists a single-stock future per
+underlying, so 삼성전자 and SK하이닉스 at the same expiry are different
+contracts, and their KIS codes (`A11610`, `A50610`) encode an issue id the
+month alone does not give. Caught on review of PR #207, where a
+generalisation from "a KOSPI200 futures contract" broke a sentence that had
+been correct about index futures only.
+
+So the "zero schema change" claim holds for futures because one string can
+carry two facts, not because there is only one. An option needs **three**:
+strike, expiry and call/put, none of which a bare symbol string round-trips
+— so options need a canonical symbol format designed and tested first, and
+are out of scope until then.
 
 **Safety properties. Do not weaken any of these without reading the full
 record first**:

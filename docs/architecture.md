@@ -172,11 +172,16 @@ than on structure. As of 2026-09-17 none of them is.
 with a single free-form `String symbol`. Shared schemas stay exchange- and
 asset-class-agnostic.
 
-That is sufficient for **futures**: a KOSPI200 or single-stock futures
-contract is fully identified by its expiry month, so the "zero schema
-change" claim holds across BTC-USDT perpetuals and KRX futures alike.
+That is sufficient for **futures**, because one string can carry the two
+facts a futures contract needs: **the underlying and the delivery month.**
+Stated that way because the shorter version — "identified by its expiry
+month" — is true of index futures and false of single-stock futures, where
+삼성전자 and SK하이닉스 at the same expiry are different contracts and the
+KIS codes (`A11610`, `A50610`) encode an issue id the month alone does not
+give. So the "zero schema change" claim holds across BTC-USDT perpetuals and
+both kinds of KRX futures.
 
-It is **not** sufficient for options, which additionally need strike,
+It is **not** sufficient for options, which need **three** facts — strike,
 expiry and call/put — none of which a bare symbol string round-trips. Options
 are therefore out of scope until a canonical symbol format is designed and
 tested, and that is a scope decision recorded in `CLAUDE.md`, not a thing
