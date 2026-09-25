@@ -45,14 +45,20 @@ runs/        experiment log and committed research artifacts
 
 ## Safety
 
-The rules are in `CLAUDE.md` and are not summarised here, because a summary
-of a safety rule is a second copy of it. The three that shape everything
-else:
+**`CLAUDE.md`'s Non-negotiable Rules are the binding text.** The three
+below are an orientation list — enough to know what kind of project this is
+before opening it — and are not the rule: where the two differ, `CLAUDE.md`
+is right and this file is stale.
 
-- **Live trading is never enabled without explicit human approval.**
-- **Every live order passes through the Java Risk Gateway.** Python never
-  places one.
-- **No MCP server, skill or plugin capable of placing exchange orders** is
+Said that way because the first draft claimed not to summarise the rules and
+then summarised three of them in the next sentence. Caught on review of
+PR #207. A front door has to name them; what it must not do is pretend the
+naming is authoritative.
+
+- Live trading is never enabled without explicit human approval.
+- Every live order passes through the Java Risk Gateway. Python never places
+  one.
+- No MCP server, skill or plugin capable of placing exchange orders is
   connected to any AI session operating on this repo.
 
 Secrets are caught locally by a `gitleaks` pre-commit hook

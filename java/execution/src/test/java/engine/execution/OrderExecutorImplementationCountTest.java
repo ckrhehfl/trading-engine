@@ -43,9 +43,20 @@ import org.junit.jupiter.api.Test;
  */
 final class OrderExecutorImplementationCountTest {
 
-    /** The two, by name, so a swap is as visible as an addition. */
+    /**
+     * The two, by <strong>class</strong> name, so a swap is as visible as an
+     * addition.
+     *
+     * <p><strong>Class, not file</strong> — the first version compared file
+     * names and could be defeated by putting a third implementation inside an
+     * existing file. Java allows a second non-public top-level class per file,
+     * and a nested one needs no permission at all; either way
+     * {@code Matcher.find()} returned one {@code true} for the file and the
+     * list still matched. A guard on the wrong unit is not a guard. Reported
+     * on review of PR #207.
+     */
     private static final List<String> EXPECTED =
-            List.of("ExchangeOrderExecutor.java", "PaperBroker.java");
+            List.of("ExchangeOrderExecutor", "PaperBroker");
 
     private static Path repoRoot() {
         // The test runs with the module directory as its working directory.
@@ -61,21 +72,18 @@ final class OrderExecutorImplementationCountTest {
     @DisplayName("exactly two production classes implement OrderExecutor")
     void exactlyTwoProductionImplementations() throws IOException {
         Path java = repoRoot().resolve("java");
-        List<Path> found;
+        List<String> names;
         try (Stream<Path> walk = Files.walk(java)) {
-            found =
+            names =
                     walk.filter(Files::isRegularFile)
                             .filter(p -> p.toString().endsWith(".java"))
                             // Production source only. Test doubles are free to
                             // implement it; the invariant is about the shipped graph.
                             .filter(p -> p.toString().replace('\\', '/').contains("/src/main/"))
-                            .filter(OrderExecutorImplementationCountTest::declaresOrderExecutor)
+                            .flatMap(OrderExecutorImplementationCountTest::implementingClasses)
                             .sorted()
                             .collect(Collectors.toList());
         }
-
-        List<String> names =
-                found.stream().map(p -> p.getFileName().toString()).sorted().toList();
 
         assertEquals(
                 EXPECTED,
@@ -86,28 +94,88 @@ final class OrderExecutorImplementationCountTest {
                                 + "new ExchangeAdapter; a cross-cutting concern is composed in "
                                 + "via an injectable collaborator such as SubmissionListener, "
                                 + "never layered on as a third executor. See "
-                                + "docs/architecture.md section 3. Found: "
+                                + "docs/architecture.md section 3. Found classes: "
                                 + names);
     }
 
     /**
-     * Matches an {@code implements} clause naming the interface, and nothing
-     * else.
+     * Captures the name of every class whose {@code implements} clause names
+     * the interface.
      *
-     * <p>The first version of this also accepted {@code ", OrderExecutor"} and
-     * {@code "OrderExecutor,"} anywhere in the file, meaning to catch a
-     * multi-interface declaration. Run against the real tree it counted
-     * {@code PaperTradingApp} and {@code Reconciler}, which merely <em>take</em>
-     * an {@code OrderExecutor} as a method parameter — two false positives out
-     * of four results. A guard that reports a violation where there is none
-     * gets switched off, so the match is on the declaration itself.
+     * <p>Two corrections live in this one pattern, both found by running it:
+     *
+     * <ul>
+     *   <li>it must match an {@code implements} <em>clause</em>, not the
+     *       interface name anywhere in the file. A looser first version counted
+     *       {@code PaperTradingApp} and {@code Reconciler}, which merely
+     *       <em>take</em> an {@code OrderExecutor} as a method parameter — two
+     *       false positives out of four results, and a guard that reports a
+     *       violation where there is none gets switched off;
+     *   <li>it must capture the <em>class</em>, not just answer yes/no per
+     *       file, or a third implementation added to an existing file passes.
+     * </ul>
      */
-    private static final Pattern IMPLEMENTS_CLAUSE =
-            Pattern.compile("implements\\s+[^{;]*\\bOrderExecutor\\b");
+    private static final Pattern IMPLEMENTING_CLASS =
+            Pattern.compile(
+                    "\\bclass\\s+(\\w+)[^{;]*?\\bimplements\\b[^{;]*?\\bOrderExecutor\\b");
 
-    private static boolean declaresOrderExecutor(Path file) {
+    @Test
+    @DisplayName("the matcher counts CLASSES, so a third one hidden in an existing file is caught")
+    void theMatcherCountsClassesNotFiles() {
+        // **Proved on synthetic source rather than by editing production code.**
+        // The obvious experiment -- add a third implementation to
+        // PaperBroker.java and watch the test fail -- cannot run: a class
+        // implementing OrderExecutor with no method bodies does not compile, so
+        // the build fails before the test does and proves nothing. The regex is
+        // what is under test, not javac.
+        String twoTopLevelClassesInOneFile =
+                """
+                package engine.execution;
+                public final class PaperBroker implements OrderExecutor {
+                }
+                final class SneakyThirdExecutor implements OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("PaperBroker", "SneakyThirdExecutor"),
+                IMPLEMENTING_CLASS.matcher(twoTopLevelClassesInOneFile).results()
+                        .map(m -> m.group(1))
+                        .toList(),
+                "a second top-level class in the same file must be counted -- this is"
+                        + " legal Java and is exactly what the file-level check missed");
+
+        String nested =
+                """
+                public final class Outer {
+                    private static final class Inner implements OrderExecutor {
+                    }
+                }
+                """;
+        assertEquals(
+                List.of("Inner"),
+                IMPLEMENTING_CLASS.matcher(nested).results().map(m -> m.group(1)).toList(),
+                "a nested implementation must be counted too");
+
+        String parameterOnly =
+                """
+                public final class Reconciler {
+                    Reconciler(OrderExecutor executor, OrderStore store) {}
+                    void run(OrderExecutor executor) {}
+                }
+                """;
+        assertEquals(
+                List.of(),
+                IMPLEMENTING_CLASS.matcher(parameterOnly).results().map(m -> m.group(1)).toList(),
+                "taking one as a parameter is not implementing it -- the looser first"
+                        + " matcher counted Reconciler and PaperTradingApp this way");
+    }
+
+    private static Stream<String> implementingClasses(Path file) {
         try {
-            return IMPLEMENTS_CLAUSE.matcher(Files.readString(file)).find();
+            return IMPLEMENTING_CLASS.matcher(Files.readString(file)).results()
+                    .map(m -> m.group(1))
+                    .toList()
+                    .stream();
         } catch (IOException e) {
             throw new IllegalStateException("could not read " + file, e);
         }
