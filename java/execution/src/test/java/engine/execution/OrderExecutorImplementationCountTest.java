@@ -112,12 +112,42 @@ final class OrderExecutorImplementationCountTest {
      *       false positives out of four results, and a guard that reports a
      *       violation where there is none gets switched off;
      *   <li>it must capture the <em>class</em>, not just answer yes/no per
-     *       file, or a third implementation added to an existing file passes.
+     *       file, or a third implementation added to an existing file passes;
+     *   <li>it must accept every declaration kind that can implement an
+     *       interface — {@code class}, {@code record} and {@code enum}. Matching
+     *       {@code class} alone let a third implementation declared as a record
+     *       or an enum pass, and both are legal and can define the four
+     *       interface methods.
      * </ul>
+     *
+     * <p><strong>Three rounds of the same mistake on one guard</strong>, each
+     * caught on review and each a wider version of the last: the wrong unit
+     * (file, not class), then the wrong unit again (class, not declaration).
+     * The transferable part is that "count the implementations" needs the set of
+     * things that can <em>be</em> one enumerated, not assumed.
+     *
+     * <p>A sub-{@code interface} extending {@code OrderExecutor} is
+     * deliberately <em>not</em> matched: it cannot be instantiated, so it is not
+     * an implementation. <strong>Two independent guards exclude it and either
+     * alone suffices</strong> — the declaration-kind alternation omits
+     * {@code interface}, and the pattern requires {@code implements} where a
+     * sub-interface says {@code extends}.
+     *
+     * <p>That is stated because it has a consequence for how the synthetic case
+     * below should be read: <strong>no single mutation can make it fail</strong>,
+     * and a mutation run confirmed both singly are no-ops. Loosening both at
+     * once is caught. So that case documents the intent rather than isolating a
+     * mechanism, which is a legitimate thing for a test to do as long as nobody
+     * mistakes its survival for coverage.
+     *
+     * <p>A class implementing such a sub-interface would be a real
+     * implementation, and reaching it is the indirect case this test already
+     * discloses it cannot see.
      */
     private static final Pattern IMPLEMENTING_CLASS =
             Pattern.compile(
-                    "\\bclass\\s+(\\w+)[^{;]*?\\bimplements\\b[^{;]*?\\bOrderExecutor\\b");
+                    "\\b(?:class|record|enum)\\s+(\\w+)"
+                            + "[^{;]*?\\bimplements\\b[^{;]*?\\bOrderExecutor\\b");
 
     @Test
     @DisplayName("the matcher counts CLASSES, so a third one hidden in an existing file is caught")
@@ -155,6 +185,39 @@ final class OrderExecutorImplementationCountTest {
                 List.of("Inner"),
                 IMPLEMENTING_CLASS.matcher(nested).results().map(m -> m.group(1)).toList(),
                 "a nested implementation must be counted too");
+
+        String recordAndEnum =
+                """
+                package engine.execution;
+                record RecordExecutor(String id) implements OrderExecutor {
+                }
+                enum EnumExecutor implements OrderExecutor {
+                    INSTANCE;
+                }
+                """;
+        assertEquals(
+                List.of("RecordExecutor", "EnumExecutor"),
+                IMPLEMENTING_CLASS.matcher(recordAndEnum).results()
+                        .map(m -> m.group(1))
+                        .toList(),
+                "a record and an enum can each implement the interface and define"
+                        + " its four methods -- matching `class` alone let a third"
+                        + " implementation declared either way pass");
+
+        String subInterface =
+                """
+                interface FancyOrderExecutor extends OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of(),
+                IMPLEMENTING_CLASS.matcher(subInterface).results()
+                        .map(m -> m.group(1))
+                        .toList(),
+                "a sub-interface cannot be instantiated, so it is not an"
+                        + " implementation -- and what excludes it is the required"
+                        + " `implements` keyword, since a sub-interface says"
+                        + " `extends`");
 
         String parameterOnly =
                 """
