@@ -350,6 +350,28 @@ final class OrderExecutorImplementationCountTest {
                 "a text block is a legal annotation argument and must be"
                         + " neutralised as one literal, not read as three quotes");
 
+        // **A `permits` clause, which is the miss that matters most here**: the
+        // sealed parent is the direct implementor, its subclasses are only
+        // indirect ones this scan already discloses it cannot see, so the whole
+        // hierarchy was invisible -- and a hierarchy is how a decorator would be
+        // written today. The second declaration is the substring case: a
+        // component named `implementsList` cut the clause at the wrong word.
+        String sealedAndSubstring =
+                """
+                public sealed abstract class Wrapping implements OrderExecutor permits A, B {
+                }
+                record Plan(java.util.List<String> implementsList) implements OrderExecutor {
+                }
+                final class Extending extends Base implements OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("Wrapping", "Plan", "Extending"),
+                declaredImplementors(sealedAndSubstring),
+                "a permits clause, an identifier containing 'implements', or an"
+                        + " extends clause before it must not hide a real"
+                        + " implementation");
+
         String parameterOnly =
                 """
                 public final class Reconciler {
@@ -458,9 +480,44 @@ final class OrderExecutorImplementationCountTest {
             }
         }
         String clause = head.toString();
-        int at = clause.indexOf("implements");
-        return at < 0 ? null : clause.substring(at + "implements".length());
+        Matcher keyword = IMPLEMENTS.matcher(clause);
+        if (!keyword.find()) {
+            return null;
+        }
+        String rest = clause.substring(keyword.end());
+        Matcher permits = PERMITS.matcher(rest);
+        return permits.find() ? rest.substring(0, permits.start()) : rest;
     }
+
+    /**
+     * {@code implements} as a <strong>keyword</strong>, not as a substring.
+     *
+     * <p>{@code record Plan(List<String> implementsList) implements OrderExecutor}
+     * cut the clause at the component name, leaving
+     * {@code "List) implements OrderExecutor"} as one type, and {@code Plan} went
+     * uncounted. Reported on review — literals are already neutralised by then,
+     * so a word boundary is safe here and would not have been before.
+     */
+    private static final Pattern IMPLEMENTS = Pattern.compile("\\bimplements\\b");
+
+    /**
+     * A {@code sealed} declaration's {@code permits} clause, which ends the
+     * {@code implements} list.
+     *
+     * <p><strong>The miss this closes is the exact shape the whole test exists
+     * for.</strong> Java writes {@code extends}, then {@code implements}, then
+     * {@code permits}, so
+     * {@code sealed abstract class Wrapping implements OrderExecutor permits A, B}
+     * gave a clause of {@code "OrderExecutor permits A, B"}; the top-level comma
+     * split then made the first type {@code "OrderExecutor permits A"}, which
+     * matches nothing, and {@code Wrapping} went uncounted. Its subclasses are
+     * <em>indirect</em> implementations, which this scan already discloses it
+     * cannot see — so an entire executor hierarchy would have been invisible,
+     * and a hierarchy is what a decorator like the removed
+     * {@code PersistentSubmissionOrderExecutor} would be written as today.
+     * Reported on review.
+     */
+    private static final Pattern PERMITS = Pattern.compile("\\bpermits\\b");
 
     /**
      * The index just past the string, character or text-block literal opening at
