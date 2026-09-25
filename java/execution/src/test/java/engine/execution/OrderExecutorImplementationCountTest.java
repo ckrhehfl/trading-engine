@@ -355,6 +355,22 @@ final class OrderExecutorImplementationCountTest {
                         + " type, and a real second interface after it must still"
                         + " split");
 
+        // **An annotation array value's braces are not the declaration body**, and
+        // a record component carrying one is an ordinary Jackson idiom rather than
+        // a contrived case.
+        String braceInsideParentheses =
+                """
+                record Venue(@JsonAlias({"a", "b"}) String id) implements OrderExecutor {
+                }
+                final class ArrayArg implements @Marker({1, 2}) OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("Venue", "ArrayArg"),
+                declaredImplementors(braceInsideParentheses),
+                "a brace inside parentheses is an annotation array value, not the"
+                        + " body, and must not hide a real implementation");
+
         String textBlockInAnnotation =
                 """
                 public final class TextBlock implements @Marker(\"""
@@ -610,12 +626,28 @@ final class OrderExecutorImplementationCountTest {
      * this is now a stop-at-the-body loop and nothing more. Both jobs lived here
      * at first, and that was the defect: running them from {@code from} onwards
      * left {@link #DECLARATION} itself reading raw text.
+     *
+     * <p><strong>The body is the first {@code &#123;} at parenthesis depth
+     * zero</strong>, not the first one at all. An annotation array value is
+     * written with braces inside parentheses, so
+     * {@code record Venue(@JsonAlias(&#123;"a", "b"&#125;) String id) implements
+     * OrderExecutor} ended the clause at the annotation and never reached the
+     * keyword, and {@code Venue} went uncounted. Literals are neutralised before
+     * this point, so every remaining bracket is structural. Reported on review —
+     * the same root cause as the parenthesis depth {@link #topLevelTypes} needed,
+     * one place further along, which is why the fix there was not enough on its
+     * own.
      */
     private static String implementsClause(String src, int from) {
         int body = src.length();
+        int parens = 0;
         for (int i = from; i < src.length(); i++) {
             char c = src.charAt(i);
-            if (c == '{' || c == ';') {
+            if (c == '(') {
+                parens++;
+            } else if (c == ')') {
+                parens--;
+            } else if (parens == 0 && (c == '{' || c == ';')) {
                 body = i;
                 break;
             }

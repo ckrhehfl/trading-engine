@@ -397,31 +397,59 @@ def test_the_README_names_every_CODEOWNERS_path():
     `CLAUDE.md`'s copy of the list, because the file is the source of truth and
     a check against a second copy only proves the copies agree.
 
-    **Scoped to the Merge policy section, and the first version was not.** It
-    searched the whole README, where the sentence explaining *why* the list had
-    been wrong named the missing path again — so restoring the defect left the
-    substring present and the mutation survived. That is the inert-guard shape
-    twice over in this one module: the same accident as the earlier
-    `"safety propert"` assertion that passed on an unrelated occurrence.
+    **Compares the list as a set, and it took three attempts to get there** —
+    each earlier one a substring search that some *other* mention of the same
+    path satisfied:
+
+    1. over the whole README, where the sentence explaining why the list had
+       been wrong named the missing path again;
+    2. over the Merge policy section, which opens with
+       ``.github/CODEOWNERS **names** …`` and closes by pointing at
+       ``CLAUDE.md``'s Branch and Merge section — so dropping **either** of
+       those two paths from the list still passed, and they are the
+       supply-chain surface and the risk-policy source of truth;
+    3. this one, which extracts the em-dash-delimited list itself.
+
+    Set equality rather than containment, so an **extra** path is caught too —
+    a README claiming a path is protected when CODEOWNERS does not name it
+    overstates the protection, which is the more dangerous direction.
+
+    The same accident as the earlier `"safety propert"` assertion in this
+    module, three more times. The lesson is not that a needle was badly chosen:
+    **a substring search over prose is not a check**, and the only reliable fix
+    was to parse the structure being asserted.
     """
     from research.figure_survival import section_span
 
     codeowners = (REPO / ".github" / "CODEOWNERS").read_text(encoding="utf-8")
-    paths = [
+    owned = {
         line.split()[0].strip("/")
         for line in codeowners.splitlines()
         if line.strip() and not line.lstrip().startswith("#")
-    ]
-    assert paths, "CODEOWNERS has no entries -- this test would pass vacuously"
+    }
+    assert owned, "CODEOWNERS has no entries -- this test would pass vacuously"
 
     raw = (REPO / "README.md").read_text(encoding="utf-8")
     lo, hi = section_span(raw, "Merge policy")
-    readme = _flat("\n".join(raw.splitlines()[lo - 1 : hi]))
-    missing = [p for p in paths if p not in readme]
-    assert not missing, (
-        f"README.md's merge-policy list omits CODEOWNERS path(s) {missing}. A "
-        f"reader takes that list as the set of paths needing a human decision, "
-        f"so an omission understates what is protected."
+    section = _flat("\n".join(raw.splitlines()[lo - 1 : hi]))
+
+    # A loud failure if the sentence is reworded is the right failure: it says
+    # the list could not be found, rather than silently checking nothing.
+    match = re.search(r"high-risk paths\s*—(.*?)—", section)
+    assert match, (
+        "could not find README.md's em-dash-delimited high-risk path list in "
+        "its Merge policy section. If the wording changed, update this test -- "
+        "do not leave it matching nothing."
+    )
+    listed = {item.strip().strip("/") for item in match.group(1).split(",")}
+    listed.discard("")
+
+    assert listed == owned, (
+        f"README.md's merge-policy list and .github/CODEOWNERS disagree. "
+        f"Only in CODEOWNERS: {sorted(owned - listed)}. Only in README: "
+        f"{sorted(listed - owned)}. A reader takes that list as the set of "
+        f"paths needing a human decision, so an omission understates what is "
+        f"protected and an extra overstates it."
     )
 
 
