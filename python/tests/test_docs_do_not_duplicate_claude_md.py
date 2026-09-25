@@ -495,17 +495,55 @@ def _flat(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("*", "").replace("`", ""))
 
 
+#: Invariants that must be in `CLAUDE.md` — and, by exactly the same reasoning,
+#: must **not** be in `docs/`.
+#:
+#: **One list feeding both directions, rather than a second blocklist.** Every
+#: round of review on PR #207 found another of these restated in
+#: `docs/architecture.md` — the layering invariant, then the two Non-negotiable
+#: Rules in the two-planes block, then the options scope decision, then the
+#: no-host-configuration surface, five in all — and each time the fix was to add
+#: the phrase that got through to a list of phrases that had got through. That
+#: converges one incident at a time and never faster.
+#:
+#: These phrases are already enumerated for the opposite assertion, so deriving
+#: the prohibition from them costs nothing and covers every future one: an
+#: invariant that is worth pinning *into* `CLAUDE.md` is by definition one
+#: `docs/` must not carry a second copy of.
+_CLAUDE_MD_INVARIANTS = (
+    "Safety properties. Do not weaken",
+    "trips `KillSwitch` unconditionally",
+    "Three open gaps, none closed",
+    "must only ever be, exactly two implementations",
+    "Never bypass the Java Risk Gateway",
+    "Never let Python place live orders directly",
+    "no environment variable, argument, or other configuration surface",
+)
+
+
 def test_the_invariants_did_not_move_out_of_claude_md():
     """The move's whole risk in one test. These are what an AI session must
     have read; if they are only in `docs/`, they are read only when opened."""
     text = _flat(CLAUDE_MD.read_text(encoding="utf-8"))
-    for invariant in (
-        "Safety properties. Do not weaken",
-        "trips `KillSwitch` unconditionally",
-        "Three open gaps, none closed",
-        "must only ever be, exactly two implementations",
-        "Never bypass the Java Risk Gateway",
-        "Never let Python place live orders directly",
-        "no environment variable, argument, or other configuration surface",
-    ):
+    for invariant in _CLAUDE_MD_INVARIANTS:
         assert _flat(invariant) in text, f"{invariant!r} left CLAUDE.md"
+
+
+@pytest.mark.parametrize(
+    "path", _docs_files(), ids=lambda p: str(p.relative_to(DOCS))
+)
+def test_a_docs_file_carries_no_invariant_claude_md_must_keep(path: pathlib.Path):
+    """The same list, read the other way.
+
+    An invariant lives in the file every AI session is guaranteed to have read.
+    A second copy in `docs/` is not extra safety — it is a second answer waiting
+    to disagree with the first, and the one a reader believes is whichever they
+    opened.
+    """
+    text = _flat(path.read_text(encoding="utf-8"))
+    found = [i for i in _CLAUDE_MD_INVARIANTS if _flat(i) in text]
+    assert not found, (
+        f"{path.name} restates invariant(s) {found} that CLAUDE.md owns. "
+        f"Describe what the code does and point at CLAUDE.md for what is "
+        f"permitted."
+    )

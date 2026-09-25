@@ -182,10 +182,12 @@ unconditional trip — this document's own header says it does not duplicate
 safety properties, and it was breaking that rule three lines below writing
 it. Caught on review of PR #207.
 
-Both venue hosts are **hardcoded Java constants with no environment
-variable, argument, or other configuration surface** able to route them
-anywhere else. A project-specific `PreToolUse` hook blocks edits that would
-source `BINGX_VST_BASE_URL` from an environment variable.
+Both venue hosts are Java constants — `BINGX_VST_BASE_URL` and
+`KIS_PAPER_BASE_URL`, in `:runtime`. **That they may have no configuration
+surface at all is an invariant and it is `CLAUDE.md`'s**; what is here is only
+that the code reads constants today. A project-specific `PreToolUse` hook
+blocks edits that would source `BINGX_VST_BASE_URL` from an environment
+variable.
 
 **Each mode's kill-switch behaviour, and the three open gaps bearing on it,
 are safety properties recorded in `CLAUDE.md`'s Architecture section.** Not
