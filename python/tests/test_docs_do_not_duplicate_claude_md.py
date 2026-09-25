@@ -38,9 +38,17 @@ CLAUDE_MD = REPO / "CLAUDE.md"
 DOCS = REPO / "docs"
 
 #: A figure precise enough that having two copies is a real contradiction
-#: risk: a decimal, or a comma-grouped integer. A bare small integer ("two
-#: planes", "section 3") is prose and is deliberately not matched.
-_FIGURE = re.compile(r"(?<![\w.])[-−+]?\d+(?:[.,]\d+)+%?")
+#: risk: a decimal, a comma-grouped integer, **or any integer carrying a
+#: percent sign**. A bare small integer ("two planes", "section 3") is prose
+#: and is deliberately not matched.
+#:
+#: **The percent case was missing, and it is the one this repo's limits are
+#: written in.** The first version required a decimal or a comma group, so
+#: `docs/` could have copied `CLAUDE.md`'s `20%` drawdown ceiling, `2%` max
+#: order notional or `99%` uptime floor and this check would have passed.
+#: Reported on review; every one of those is a Risk-Parameter-class figure
+#: that must exist in exactly one file.
+_FIGURE = re.compile(r"(?<![\w.])[-−+]?\d+(?:[.,]\d+)*%|(?<![\w.])[-−+]?\d+(?:[.,]\d+)+")
 
 #: Documents that are allowed to carry figures because their whole job is
 #: operational numbers a human types at a prompt. The runbook's ports, sleep
@@ -73,6 +81,69 @@ def test_a_docs_file_carries_no_figure_claude_md_owns(path: pathlib.Path):
         f"{path.name} carries {found}. A figure lives in exactly one file: "
         f"state it in CLAUDE.md and point here, or the two will drift and a "
         f"reader will believe whichever they opened first."
+    )
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # The percent forms, which is what this repo's limits are written in.
+        ("a 20% drawdown ceiling", ["20%"]),
+        ("max order notional 2%", ["2%"]),
+        ("uptime >= 99%", ["99%"]),
+        ("max drawdown 20.135%", ["20.135%"]),
+        ("-0.5% daily loss limit", ["-0.5%"]),
+        # Decimals and comma groups, unchanged.
+        ("PSR 0.9705", ["0.9705"]),
+        ("Combined pool 4,374", ["4,374"]),
+        # Prose integers stay out, or every line becomes a figure line.
+        ("two planes and three seams", []),
+        ("section 3, item 7", []),
+        ("Java 21 + Gradle", []),
+    ],
+)
+def test_what_counts_as_a_duplicable_figure(text, expected):
+    """Pinned because the percent case was **missing** and it is the form this
+    repo's limits use: `20%` drawdown ceiling, `2%` max order notional, `99%`
+    uptime floor. `docs/` could have copied any of them and this check would
+    have passed. Reported on review of PR #207."""
+    assert _FIGURE.findall(text) == expected
+
+
+#: Phrases that are the *signature* of a safety property `CLAUDE.md` owns.
+#:
+#: **This is a blocklist and cannot be complete**, which this project normally
+#: treats as a reason to reject a guard. It is kept anyway, narrowly, because
+#: the failure it catches was live: `docs/architecture.md`'s first execution-
+#: modes table carried a "kill switch at construction" column restating the
+#: `kis-paper` unconditional trip — three lines below the same document's own
+#: statement that it does not duplicate safety properties. A human reviewer
+#: caught it; nothing mechanical could, because a duplicated *figure* is
+#: detectable and a restated *rule* is not.
+#:
+#: So it is labelled for what it is: it catches these known phrases, not the
+#: category. The general case stays a judgement call at review time, exactly
+#: as this module's docstring says.
+_SAFETY_PHRASES = (
+    "trips unconditionally",
+    "trips the kill switch",
+    "fails closed",
+    "fail closed",
+    "refuses to start",
+    "must not be weakened",
+    "do not weaken",
+)
+
+
+@pytest.mark.parametrize("path", _docs_files(), ids=lambda p: p.name)
+def test_a_docs_file_does_not_restate_a_safety_property(path: pathlib.Path):
+    """A safety property is stated once, in the file every AI session reads."""
+    text = path.read_text(encoding="utf-8").lower()
+    found = [phrase for phrase in _SAFETY_PHRASES if phrase in text]
+    assert not found, (
+        f"{path.name} restates safety-property language {found}. State it in "
+        f"CLAUDE.md and point here — an AI session is guaranteed to have read "
+        f"that file and is not guaranteed to have opened this one."
     )
 
 

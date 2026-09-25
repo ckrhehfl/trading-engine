@@ -145,20 +145,29 @@ which graph is built at startup. They are meant to run as **independent
 processes** — distinct `PAPER_TRADING_REPORTS_DIR`, independent
 `KillSwitch` — never as a runtime toggle on one running process.
 
-| mode | executor | venue host | kill switch at construction |
-|---|---|---|---|
-| `simulated` (default) | `PaperBroker` | none | normal |
-| `bingx-vst` | `ExchangeOrderExecutor` → `BingXAdapter` | `BINGX_VST_BASE_URL` | trips on a preflight or marker problem |
-| `kis-paper` | `ExchangeOrderExecutor` → `KisAdapter` | `KIS_PAPER_BASE_URL` | **trips unconditionally, by design** |
+| mode | executor | venue host |
+|---|---|---|
+| `simulated` (default) | `PaperBroker` | none |
+| `bingx-vst` | `ExchangeOrderExecutor` → `BingXAdapter` | `BINGX_VST_BASE_URL` |
+| `kis-paper` | `ExchangeOrderExecutor` → `KisAdapter` | `KIS_PAPER_BASE_URL` |
+
+**Each mode's kill-switch behaviour at construction is a safety property and
+is stated only in `CLAUDE.md`'s Architecture section.** A "kill switch"
+column stood here in the first draft and restated the `kis-paper`
+unconditional trip — this document's own header says it does not duplicate
+safety properties, and it was breaking that rule three lines below writing
+it. Caught on review of PR #207.
 
 Both venue hosts are **hardcoded Java constants with no environment
 variable, argument, or other configuration surface** able to route them
 anywhere else. A project-specific `PreToolUse` hook blocks edits that would
 source `BINGX_VST_BASE_URL` from an environment variable.
 
-**Why `kis-paper` trips unconditionally, and the three open gaps that are
-reasons not to reset it, are safety properties and live in `CLAUDE.md`'s
-Architecture section.** They are not repeated here.
+**Each mode's kill-switch behaviour, and the three open gaps bearing on it,
+are safety properties recorded in `CLAUDE.md`'s Architecture section.** Not
+repeated here — including in the sentence that points at them, which is why
+this one names no behaviour. The first draft of this paragraph did, and the
+check that enforces the rule caught it on its own first run.
 
 Current operational state — which of these is actually running — is in
 `CLAUDE.md`'s Current Scope, because it changes on operator decision rather

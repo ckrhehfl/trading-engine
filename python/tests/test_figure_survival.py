@@ -306,11 +306,21 @@ def test_a_line_starting_with_HASH_is_not_automatically_a_heading():
     # entirely in `test_heading_depth_follows_markdown`, which carries the
     # exact string as a synthetic case and does not depend on the file keeping
     # it.
+    #
+    # **Fenced blocks are excluded, and the first version was not** — it would
+    # have fired on a `#!/bin/sh` shebang or a `#` comment inside a ```bash
+    # block, neither of which is a heading. That made the assertion contradict
+    # the very parser it guards, since `section_span` correctly ignores fenced
+    # lines. `CLAUDE.md` carries no such block today, so this was a trap laid
+    # for whoever adds the first one. Reported on review of PR #207.
     import re as _re
 
+    from research.figure_survival import prose_lines
+
+    prose = prose_lines(text)
     assert not [
         line
-        for line in lines
+        for line in prose
         if line.startswith("#") and not _re.match(r"^#{1,6}(\s|$)", line)
     ], "a #-prefixed prose line is back -- re-point the real-file assertion at it"
 
@@ -601,3 +611,29 @@ def test_the_symmetric_guard_leaves_real_occurrences_alone(figure, corpus):
     from research.figure_survival import _normalise, _survives
 
     assert _survives(figure, _normalise(corpus)), f"{figure!r} vs {corpus!r}"
+
+
+def test_prose_lines_excludes_every_fenced_block():
+    """**The fence exclusion, proved synthetically.** It was inline in the
+    assertion above and therefore inert: `CLAUDE.md` carries no `#` line
+    inside a fence today, so deleting the exclusion changed nothing. Tested
+    here on a document that does, so the guard can fail."""
+    from research.figure_survival import prose_lines
+
+    doc = "\n".join([
+        "## Heading",           # kept
+        "```bash",
+        "#!/bin/sh",            # excluded -- a shebang, not a heading
+        "# a comment",          # excluded
+        "```",
+        "prose",                # kept
+        "````markdown",
+        "```",                  # excluded -- shorter run cannot close a longer fence
+        "## sample text",       # excluded
+        "````",
+        "   ```cron",
+        "# */30 0-6 * * 1-5",   # excluded -- indented fence still a fence
+        "   ```",
+        "tail",                 # kept
+    ])
+    assert prose_lines(doc) == ["## Heading", "prose", "tail"]
