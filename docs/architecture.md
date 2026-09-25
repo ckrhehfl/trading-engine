@@ -171,7 +171,10 @@ check that enforces the rule caught it on its own first run.
 
 Current operational state — which of these is actually running — is in
 `CLAUDE.md`'s Current Scope, because it changes on operator decision rather
-than on structure. As of 2026-09-17 none of them is.
+than on structure. **Deliberately not restated here**, for the reason the
+sentence gives: a state that changes by decision, written in two files,
+becomes two different answers. The first draft named the state in the very
+next clause; caught on review of PR #207.
 
 ---
 

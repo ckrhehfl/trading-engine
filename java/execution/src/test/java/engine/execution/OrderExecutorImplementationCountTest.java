@@ -6,7 +6,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -99,55 +101,37 @@ final class OrderExecutorImplementationCountTest {
     }
 
     /**
-     * Captures the name of every class whose {@code implements} clause names
-     * the interface.
+     * Every {@code class}/{@code record}/{@code enum} whose {@code implements}
+     * clause names {@code OrderExecutor} <strong>directly</strong>.
      *
-     * <p>Two corrections live in this one pattern, both found by running it:
+     * <p><strong>A scanner rather than one regex, after four review rounds of
+     * the regex being not-quite-right.</strong> Each round was a wider version
+     * of the last, and the sequence is kept because the shape of the mistake is
+     * the transferable part:
      *
-     * <ul>
-     *   <li>it must match an {@code implements} <em>clause</em>, not the
-     *       interface name anywhere in the file. A looser first version counted
-     *       {@code PaperTradingApp} and {@code Reconciler}, which merely
-     *       <em>take</em> an {@code OrderExecutor} as a method parameter — two
-     *       false positives out of four results, and a guard that reports a
-     *       violation where there is none gets switched off;
-     *   <li>it must capture the <em>class</em>, not just answer yes/no per
-     *       file, or a third implementation added to an existing file passes;
-     *   <li>it must accept every declaration kind that can implement an
-     *       interface — {@code class}, {@code record} and {@code enum}. Matching
-     *       {@code class} alone let a third implementation declared as a record
-     *       or an enum pass, and both are legal and can define the four
-     *       interface methods.
-     * </ul>
+     * <ol>
+     *   <li>counted <em>files</em> — a third class inside an existing file
+     *       passed;
+     *   <li>counted only {@code class} — a {@code record} or {@code enum}
+     *       passed;
+     *   <li>matched {@code OrderExecutor} anywhere in the clause, so
+     *       {@code implements Supplier<OrderExecutor>} counted as an
+     *       implementation. That one fails in the <em>other</em> direction: it
+     *       blocks a legitimate declaration rather than letting a violation
+     *       through, and a guard that does that gets switched off.
+     * </ol>
      *
-     * <p><strong>Three rounds of the same mistake on one guard</strong>, each
-     * caught on review and each a wider version of the last: the wrong unit
-     * (file, not class), then the wrong unit again (class, not declaration).
-     * The transferable part is that "count the implementations" needs the set of
-     * things that can <em>be</em> one enumerated, not assumed.
-     *
-     * <p>A sub-{@code interface} extending {@code OrderExecutor} is
-     * deliberately <em>not</em> matched: it cannot be instantiated, so it is not
-     * an implementation. <strong>Two independent guards exclude it and either
-     * alone suffices</strong> — the declaration-kind alternation omits
-     * {@code interface}, and the pattern requires {@code implements} where a
-     * sub-interface says {@code extends}.
-     *
-     * <p>That is stated because it has a consequence for how the synthetic case
-     * below should be read: <strong>no single mutation can make it fail</strong>,
-     * and a mutation run confirmed both singly are no-ops. Loosening both at
-     * once is caught. So that case documents the intent rather than isolating a
-     * mechanism, which is a legitimate thing for a test to do as long as nobody
-     * mistakes its survival for coverage.
-     *
-     * <p>A class implementing such a sub-interface would be a real
-     * implementation, and reaching it is the indirect case this test already
-     * discloses it cannot see.
+     * <p>Generic depth and top-level commas are all it needs, so this is a small
+     * state machine and not a Java parser. What it still cannot see is an
+     * <em>indirect</em> implementation — a class implementing a sub-interface of
+     * {@code OrderExecutor} — and that stays disclosed rather than chased,
+     * because reaching it would need real type resolution.
      */
-    private static final Pattern IMPLEMENTING_CLASS =
-            Pattern.compile(
-                    "\\b(?:class|record|enum)\\s+(\\w+)"
-                            + "[^{;]*?\\bimplements\\b[^{;]*?\\bOrderExecutor\\b");
+    private static final Pattern DECLARATION =
+            Pattern.compile("\\b(?:class|record|enum)\\s+(\\w+)");
+
+    /** The interface whose implementations are counted. */
+    private static final String INTERFACE = "OrderExecutor";
 
     @Test
     @DisplayName("the matcher counts CLASSES, so a third one hidden in an existing file is caught")
@@ -168,9 +152,7 @@ final class OrderExecutorImplementationCountTest {
                 """;
         assertEquals(
                 List.of("PaperBroker", "SneakyThirdExecutor"),
-                IMPLEMENTING_CLASS.matcher(twoTopLevelClassesInOneFile).results()
-                        .map(m -> m.group(1))
-                        .toList(),
+                declaredImplementors(twoTopLevelClassesInOneFile),
                 "a second top-level class in the same file must be counted -- this is"
                         + " legal Java and is exactly what the file-level check missed");
 
@@ -183,7 +165,7 @@ final class OrderExecutorImplementationCountTest {
                 """;
         assertEquals(
                 List.of("Inner"),
-                IMPLEMENTING_CLASS.matcher(nested).results().map(m -> m.group(1)).toList(),
+                declaredImplementors(nested),
                 "a nested implementation must be counted too");
 
         String recordAndEnum =
@@ -197,9 +179,7 @@ final class OrderExecutorImplementationCountTest {
                 """;
         assertEquals(
                 List.of("RecordExecutor", "EnumExecutor"),
-                IMPLEMENTING_CLASS.matcher(recordAndEnum).results()
-                        .map(m -> m.group(1))
-                        .toList(),
+                declaredImplementors(recordAndEnum),
                 "a record and an enum can each implement the interface and define"
                         + " its four methods -- matching `class` alone let a third"
                         + " implementation declared either way pass");
@@ -211,13 +191,59 @@ final class OrderExecutorImplementationCountTest {
                 """;
         assertEquals(
                 List.of(),
-                IMPLEMENTING_CLASS.matcher(subInterface).results()
-                        .map(m -> m.group(1))
-                        .toList(),
+                declaredImplementors(subInterface),
                 "a sub-interface cannot be instantiated, so it is not an"
                         + " implementation -- and what excludes it is the required"
                         + " `implements` keyword, since a sub-interface says"
                         + " `extends`");
+
+        // **The round-3 finding, and it fails in the OTHER direction**: neither
+        // declaration implements the interface, and counting them would block a
+        // legitimate production class rather than let a violation through.
+        String asTypeArgument =
+                """
+                import java.util.function.Supplier;
+                public final class ExecutorFactory implements Supplier<OrderExecutor> {
+                }
+                final class Registry implements Map<String, OrderExecutor> {
+                }
+                """;
+        assertEquals(
+                List.of(),
+                declaredImplementors(asTypeArgument),
+                "OrderExecutor as a type ARGUMENT is not an implementation -- depth"
+                        + " tracking is what separates the two, and splitting on every"
+                        + " comma would read it out of Map's type arguments");
+
+        String qualifiedAndAlongsideAnother =
+                """
+                public final class Both
+                        implements AutoCloseable, engine.execution.OrderExecutor {
+                }
+                """;
+        assertEquals(
+                List.of("Both"),
+                declaredImplementors(qualifiedAndAlongsideAnother),
+                "a fully qualified name is the same type, and it may sit beside"
+                        + " other interfaces");
+
+        // **Listed FIRST, which is the shape that needs the top-level comma
+        // split.** Found by a mutation: disabling the split left every other
+        // case passing, because `bareName` takes the text after the LAST dot and
+        // `AutoCloseable, engine.execution.OrderExecutor` still ends in the right
+        // name. Put the interface first and that accident disappears.
+        String listedFirst =
+                """
+                import java.util.function.Supplier;
+                public final class FirstInList
+                        implements OrderExecutor, Supplier<String> {
+                }
+                """;
+        assertEquals(
+                List.of("FirstInList"),
+                declaredImplementors(listedFirst),
+                "the interface may be the first of several, and splitting the"
+                        + " clause on top-level commas is what makes that work");
 
         String parameterOnly =
                 """
@@ -228,19 +254,90 @@ final class OrderExecutorImplementationCountTest {
                 """;
         assertEquals(
                 List.of(),
-                IMPLEMENTING_CLASS.matcher(parameterOnly).results().map(m -> m.group(1)).toList(),
+                declaredImplementors(parameterOnly),
                 "taking one as a parameter is not implementing it -- the looser first"
                         + " matcher counted Reconciler and PaperTradingApp this way");
     }
 
     private static Stream<String> implementingClasses(Path file) {
         try {
-            return IMPLEMENTING_CLASS.matcher(Files.readString(file)).results()
-                    .map(m -> m.group(1))
-                    .toList()
-                    .stream();
+            return declaredImplementors(Files.readString(file)).stream();
         } catch (IOException e) {
             throw new IllegalStateException("could not read " + file, e);
         }
+    }
+
+    /**
+     * Visible for testing: the same scan over a source string.
+     *
+     * <p>Synthetic source is the only way this is provable. The obvious
+     * experiment — add a third implementation to {@code PaperBroker.java} and
+     * watch the test fail — cannot run, because a class implementing
+     * {@code OrderExecutor} with no method bodies does not compile: the build
+     * fails before the test does and demonstrates nothing.
+     */
+    static List<String> declaredImplementors(String src) {
+        List<String> names = new ArrayList<>();
+        Matcher declaration = DECLARATION.matcher(src);
+        while (declaration.find()) {
+            String clause = implementsClause(src, declaration.end());
+            if (clause != null && topLevelTypes(clause).contains(INTERFACE)) {
+                names.add(declaration.group(1));
+            }
+        }
+        return names;
+    }
+
+    /**
+     * The {@code implements} clause following a declaration, or {@code null} if
+     * it has none. Stops at the body or the statement end, so a later
+     * declaration's clause cannot be attributed to this one.
+     */
+    private static String implementsClause(String src, int from) {
+        int body = src.length();
+        for (int i = from; i < src.length(); i++) {
+            char c = src.charAt(i);
+            if (c == '{' || c == ';') {
+                body = i;
+                break;
+            }
+        }
+        String head = src.substring(from, body);
+        int at = head.indexOf("implements");
+        return at < 0 ? null : head.substring(at + "implements".length());
+    }
+
+    /**
+     * The clause's top-level type names, generics stripped.
+     *
+     * <p>Depth tracking is the whole point: {@code Map<String, OrderExecutor>}
+     * is one top-level type named {@code Map}, and splitting on every comma
+     * would read {@code OrderExecutor} out of its type arguments.
+     */
+    private static List<String> topLevelTypes(String clause) {
+        List<String> types = new ArrayList<>();
+        StringBuilder current = new StringBuilder();
+        int depth = 0;
+        for (char c : clause.toCharArray()) {
+            if (c == '<') {
+                depth++;
+            } else if (c == '>') {
+                depth--;
+            } else if (c == ',' && depth == 0) {
+                types.add(bareName(current.toString()));
+                current.setLength(0);
+            } else if (depth == 0) {
+                current.append(c);
+            }
+        }
+        types.add(bareName(current.toString()));
+        return types;
+    }
+
+    /** {@code engine.execution.OrderExecutor} and {@code OrderExecutor} are one type. */
+    private static String bareName(String type) {
+        String trimmed = type.trim();
+        int dot = trimmed.lastIndexOf('.');
+        return dot < 0 ? trimmed : trimmed.substring(dot + 1);
     }
 }
