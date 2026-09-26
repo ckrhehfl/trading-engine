@@ -62,9 +62,19 @@ _FIGURE = re.compile(
     r"|(?<![\w.])[-−+]?\d+(?:[.,]\d+)+"
 )
 
-#: Documents that are allowed to carry figures because their whole job is
-#: operational numbers a human types at a prompt. The runbook's ports, sleep
-#: intervals and cron minutes are not claims about the system's behaviour.
+#: Documents that are allowed to carry figures. Two different reasons, and the
+#: second one arrived later and is the more important of the two:
+#:
+#: - the runbook's ports, sleep intervals and cron minutes are operational
+#:   numbers a human types at a prompt, not claims about the system's behaviour;
+#: - `exchange-api.md` is the **owner** of every venue measurement, not an
+#:   exception to a rule. A row cap, a retention depth or an observed latency is
+#:   a *living* fact — it changes when the venue changes — so it belongs in the
+#:   file that gets replaced, and `CLAUDE.md` keeps only the rule each one
+#:   produced. Calling that an exemption understates it: the discipline is
+#:   asserted from the other side instead, by
+#:   `test_a_claude_md_section_with_a_docs_owner_carries_no_figure`, which is
+#:   where ownership is unambiguous.
 #:
 #: **Scoped to the figure check only, which it was not.** One exemption set
 #: filtered `_docs_files()` itself, so exempting the runbook for its cron
@@ -77,7 +87,7 @@ _FIGURE = re.compile(
 #: **Keyed by path, not by file name, because the glob below is recursive.** A
 #: name-keyed exemption would excuse *any* nested `paper-trading-runbook.md`
 #: from the figure check, which is not what was decided about this one file.
-_FIGURE_EXEMPT = {DOCS / "paper-trading-runbook.md"}
+_FIGURE_EXEMPT = {DOCS / "paper-trading-runbook.md", DOCS / "exchange-api.md"}
 
 
 def _docs_files() -> list[pathlib.Path]:
@@ -412,6 +422,66 @@ def test_claude_md_points_at_the_living_architecture():
     assert "docs/architecture.md" in section, (
         "CLAUDE.md's Architecture section no longer points at the living "
         "document, so a reader following a .planning reference lands nowhere"
+    )
+
+
+#: `CLAUDE.md` section heading -> the `docs/` file that owns its figures.
+#:
+#: **A moved measurement must actually leave.** Checking `docs/` for figures
+#: cannot express this: the moment a `docs/` file becomes a figure's rightful
+#: home, that check has to be switched off for it, and switching it off says
+#: nothing about whether the old copy is still in `CLAUDE.md`. Asserted here
+#: instead, where it is unambiguous — the section that handed its measurements
+#: away carries none.
+#:
+#: Rules may still *cite* a measurement; they point at the owning file rather
+#: than repeating the number. That is what makes this mechanical: a figure in the
+#: section is a duplication or a leftover, never a legitimate citation.
+_SECTIONS_WITH_A_DOCS_OWNER = {
+    "Exchange API Facts": "exchange-api.md",
+}
+
+
+@pytest.mark.parametrize(
+    "section, owner", sorted(_SECTIONS_WITH_A_DOCS_OWNER.items()), ids=lambda v: str(v)
+)
+def test_a_claude_md_section_with_a_docs_owner_carries_no_figure(section, owner):
+    """The other half of the split, and the half that can actually go wrong.
+
+    `CLAUDE.md`'s Exchange API Facts section was 775 lines and 22.4% of the file
+    on 2026-09-26, most of it measurements. They moved to `docs/exchange-api.md`
+    and the section kept the rules. If a figure reappears here, either it was
+    never removed or it has been copied back — and a venue figure in two places
+    drifts, which is the whole hazard this module exists for.
+
+    **A bare integer measurement is NOT caught, and the row caps are exactly
+    that.** `_FIGURE` treats a bare integer as prose on purpose — otherwise
+    `section 3` and `two planes` become figures, which the pinned cases above
+    assert — so "KIS caps equities at 100 rows and indices at 50" copied back
+    into this section passes. Found by mutating this very check and watching the
+    mutation survive, which is the only way it would have been found: reading it
+    gives no hint. Disclosed rather than closed, because widening the pattern
+    trades a rare duplication for a permanent stream of false positives, and the
+    figure classes that *are* caught — decimals, comma groups, percentages,
+    `x`-multipliers — cover every venue measurement that has actually drifted
+    here.
+    """
+    from research.figure_survival import section_span
+
+    raw = CLAUDE_MD.read_text(encoding="utf-8")
+    assert (DOCS / owner).is_file(), f"{owner} is missing, so this check is inert"
+
+    lo, hi = section_span(raw, section)
+    lines = raw.splitlines()
+    body = "\n".join(lines[lo - 1 : hi])
+    found = sorted(set(_FIGURE.findall(body)))
+    assert not found, (
+        f"CLAUDE.md's '{section}' section carries {found}, but docs/{owner} owns "
+        f"its measurements. Move the figure there and have the rule point at it."
+    )
+    assert owner in body, (
+        f"CLAUDE.md's '{section}' section does not point at docs/{owner}, so a "
+        f"reader has no route from the rule to the measurement behind it"
     )
 
 

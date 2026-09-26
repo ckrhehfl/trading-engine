@@ -453,778 +453,325 @@ contradiction. Enforced in code via `RiskLimits.ABSOLUTE_MAX_LEVERAGE`
 
 ## Exchange API Facts
 
-Operational reference. **Verify before relying on any of it** — every
-figure here was true when observed and several are known to drift. Full
-investigation detail for each finding lives in the `.planning/` doc
-cited beside it.
+**The measurements now live in [`docs/exchange-api.md`](docs/exchange-api.md)** —
+every endpoint, envelope shape, retention figure, row cap, observed latency and
+real-order account, with the date each was taken.
 
-Three venues, three different roles: **BingX** is the first and only
-`ExchangeAdapter` with a paper/live path. **Binance** is a read-only
-historical-data source for research — no credentials, no order
-placement, and no plan to become a trading venue. **KIS** is the third
-paper-trading loop (KOSPI200 index futures), kill-switch-tripped by
-design.
+They moved because a venue's behaviour is a **living** fact: it changes when the
+venue changes, and this file's own header says every figure here "was true when
+observed and several are known to drift". What stays below is what **binds** —
+the rule each of those measurements produced, and the operational split that is
+an operator decision rather than a venue property. **Verify a measurement before
+relying on it; a rule holds until it is changed here.**
 
-### BingX — verified against the live public API
+Three venues, three roles: **BingX** is the first and only `ExchangeAdapter`
+with a paper/live path; **Binance** is a read-only historical-data source for
+research, with no credentials, no order placement and no plan to become a
+trading venue; **KIS** is the third paper-trading loop (KOSPI200 index
+futures), kill-switch-tripped by design.
 
-| Item | Value |
-|---|---|
-| Symbol | `BTC-USDT` |
-| Recent trades | `GET /openApi/swap/v2/quote/trades` |
-| Klines | `GET /openApi/swap/v3/quote/klines` |
-| Range semantics | `startTime`/`endTime` half-open (`startTime <= t < endTime`), must align to the interval grid (e.g. 900,000ms for 15m), max 1000 candles per request |
-| `limit` | **Not a count guarantee** — requests over 1000 are silently capped. Verify the returned count in code. |
-| Over-limit capping | Keeps the **newest** rows (closest to `endTime`) |
+### Rules that came out of a wire fact
 
-**Historical kline retention is granularity-dependent, and *not*
-monotonic in granularity** — a real BingX-side property, re-measured
-rather than extrapolated. Expect every figure to drift forward; re-run
-`backfill.py` rather than trust these as permanent.
+**A cap is a property of an endpoint, not of a venue.** KIS's equity and index
+daily-chart endpoints cap at different row counts and **both truncate
+silently**, returning `rt_cd=0` and keeping the newest rows. A pipeline whose
+guard assumed one shared cap let a truncated window through. **So is a unit
+convention**: `tr_pbmn` on 투자자별 매매동향 is denominated in 백만원 while
+`acml_tr_pbmn` on the futures daily endpoint is in 원, and KIS documents
+neither. Read the first as 원 and it is off by a factor of a million — an error
+that does not look wrong, merely small.
 
-| Interval | Earliest bar | Span / count | Verification |
-|---|---|---|---|
-| `1d` | 2021-05-14T00:00:00Z | 5.21 y, **1,901 bars, zero gaps** | full backfill (`sr-t`); bars on the UTC-midnight 86,400,000ms grid — BingX does *not* open its daily candle at a local offset |
-| `1h` | 2024-04-27T10:00:00Z | 819.9 d, **19,678 bars, zero gaps** | full backfill (`sr-f`) |
-| `1m` | 2024-11-30T16:00:00Z | 631.98 d, **910,040 bars, 2 real gaps** | full backfill (`scalp-s0-s3`); binary-search estimate was *exact*, reproduced bar for bar |
-| `15m` | ~2025-11-16 | ~8.3 months | probe (`sr-a`) |
-| `5m` | ~2026-05-02 | ~3 months | probe only, never backfilled |
+**`FID_ORG_ADJ_PRC` is the single most dangerous parameter this project
+touches**, and **KIS's own published Python sample defaults to the wrong
+value** — `1` = 원주가, where a 50:1 split reads as a near-total single-day
+collapse that a momentum signal takes for a crash (the measured pair is in
+`docs/exchange-api.md`). `data/kis_klines.py` therefore takes
+`adjusted` as a **required argument with no default**. Separately, **KIS adjusts
+for splits but not dividends**, so what comes back is a price return, not a
+total return.
 
-`1m` is **deeper than both `15m` and `5m` despite being finer**, which
-retires the earlier "finer granularity means shorter retention" reading
-of the four coarser intervals. No extrapolation to an unmeasured
-granularity is safe without its own probe.
+**Retry only from an allowlist.** The KIS index endpoint intermittently returns
+a real `HTTP 200` carrying `rt_cd=1 msg_cd=OPSQ0003` for a window that answers
+normally on the next attempt, and at the measured rate a multi-call backfill
+essentially cannot complete without retrying it. `kis_klines.fetch_daily_page`
+retries it, bounded, from `_RETRYABLE_MSG_CD`. **Every other non-zero `rt_cd`
+this project has met is permanent** — a wrong TR id, a wrong market division, a
+code that does not exist — and retrying into one is the same mistake already
+recorded for Binance's `HTTP 418`, which is a temporary-IP-ban signal and is
+treated as non-retryable on the "don't retry into an active ban" principle.
 
-**The two real `1m` gaps** (half-open, matching this project's
-convention): `[2025-04-25T06:54:00Z, 2025-04-25T06:57:00Z)` (3 bars) and
-`[2026-02-13T20:32:00Z, 2026-02-13T20:36:00Z)` (4 bars). Confirmed
-genuinely absent via 5 consecutive retries each, not a fetch artifact.
+**A zero-row answer is ambiguous by construction, so any probe needs a
+nonsense-code negative control in the same run.** A nonexistent code and a name
+KIS has dropped return the identical `rt_cd=0` with zero rows. The same
+convention covers an out-of-range intraday date and an expired futures
+contract — **so a backfill treating `rt_cd=0` as success records nothing and
+reports a clean run**.
 
-**Gap-blindness, a real and still-open exposure**: neither
-`research/walkforward.py`'s fold generation nor `python/backtest/`'s bar
-iteration detects a timestamp gap — both are pure positional arithmetic,
-so the bar after a gap is silently treated as one `interval_ms` step
-later. Never an issue for the zero-gap `1d`/`1h` data, so `1m` introduces
-it fresh. Bounded and disclosed rather than fixed: `simulate_fill`
-selects the fill bar positionally (`signal_bar_index + 1`), so exactly
-**one** signal position per gap is affected, with a computable delay (4
-and 5 real minutes for the two gaps above); `_sharpe_ratio` sees 2
-distorted observations; `resample_equity_to_daily` drifts bucket
-boundaries by ≤7 minutes cumulatively. Holding-period tracking is
-**not** affected — `ClosedTrade.entry_time`/`exit_time` are real
+**A non-JSON `200` is rejected explicitly.** An unknown `bld` on KRX's portal
+answers `HTTP 200` with an HTML body rather than an error, so a status-code
+check alone takes it for data. Relatedly, **a missing `JSESSIONID` answers
+`HTTP 400` with the body `LOGOUT`, which reads like an auth failure and is
+not.**
+
+**A wrong `FID_COND_MRKT_DIV_CODE` is indistinguishable from a dead contract**
+— `F` is index futures and returns zero rows for a stock contract, which reads
+as "this does not trade". **A single-stock-futures contract code has no
+arithmetic relation to its underlying**, and the KIS issue id it encodes exists
+nowhere else in this project's data, so the master file is the only source;
+`FuturesMaster.contract_code` constructs a historical code only after
+reproducing every expiry the master itself lists for that name. Guessing one is
+what made KOSPI200 futures look unavailable across six guessed index codes.
+
+**Counting bars measures listing, not liquidity.** KIS prints a bar for every
+session a futures contract is listed, carrying zero volume when nobody traded
+it, so every listed name shows full coverage. "No bars in the window" means
+*not yet listed*, which is not a statement about liquidity and must not be
+reported as one.
+
+**A halted name's bar looks like a quiet day rather than a stoppage** —
+`O == H == L == C`, zero volume, zero turnover, for as long as the halt lasts.
+They are stored, because they are what the tape said, and **counted separately**
+in the scan's coverage report (`data/krx_scan.py`) so a reader can subtract
+them. What follows splits into the part that is decided and the part that is
+not:
+
+- **Decided, and it follows directly from the measurement: a frozen bar may
+  never make a name eligible.** Any selection, ranking or liquidity screen —
+  turnover, relative volume, spread, anything answering *was this tradeable* —
+  must exclude it. A halt reads as a legitimate zero otherwise, and a per-day
+  selection rule is the whole point of the scan.
+- **Not decided, and deliberately left open: what a return computed across a
+  halt means.** Booking the full gap on the resumption bar and treating the flat
+  stretch as zero-volatility are both wrong in different directions, and
+  choosing between them is a research decision with its own `Discuss`, not a
+  data-layer default. Until it is taken, **any statistic computed over a window
+  containing frozen bars states which side it took**, and the count is available
+  to state it with.
+
+**`store.find_missing_ranges` is unusable for KRX.** It diffs against an
+arithmetic sequence, so a market trading ~245 days a year shows false gaps by
+the hundred. Expected trading days come from an **index series** instead: an
+index prints exactly when the market is open, so it needs no holiday table, it
+covers the moving lunar holidays `KrxMarketCalendar` still lists as unresolved,
+and it separates a market closure from a stock-specific halt. **The check must
+run both directions** — a symbol printing on a day the reference lacks means the
+reference is truncated, and comparing one direction only once reported "zero
+gaps" against a reference that was itself missing days.
+
+**`acml_tr_pbmn` (거래대금) is returned on the same call as the prices**, which
+is what the KR-10 universe rule ranks on; **`close * volume` is not a
+substitute**. Stored in `klines.quote_volume`, a nullable column added
+additively.
+
+**투자자별 매매동향 cannot be backfilled.** The endpoint serves a rolling
+lookback with **no date parameter at all**, so the series exists only from the
+moment collection started and a gap in it is permanent. **The three investor
+types also do not sum to market turnover** — the residual is
+기타법인 / 내국인 / 국가·지자체, which this endpoint does not break out, so a
+"share of volume" computed from the three alone is overstated by roughly that
+much.
+
+**Intraday bar timestamps are not uniformly on the minute grid.** One probed
+date returned second-offset stamps where every other returned `:00`.
+
+**An order book is not backfillable at any price.** There is no historical
+endpoint for it, so unlike intraday bars or 투자자별 매매동향 — both rolling
+windows — a sample not taken is gone the same second. And **KIS answers a quote
+request outside market hours with the LAST book, not an empty one**, so any
+spread or depth collection must gate on the continuous session
+(09:00–15:20 KST; the 15:20–15:30 closing call auction has no continuous book)
+rather than trusting the response to be empty. **Do not coalesce the futures
+book's field names**: the prices carry a `futs_` prefix and the quantities do
+not, and the symmetric guess is `None` at every level, so a caller that
+coalesces records a book with prices and no size.
+
+**A KRX trading date maps exactly onto UTC midnight** — an equality, not a
+rounding, since the continuous session opens 09:00 KST and KST is UTC+9. This is
+why `1d`'s existing grid alignment needs no KRX special case.
+
+### The universe rules
+
+Full record, including the two corrections this took after it was first
+written: `.planning/rd-y-the-full-universe-scan.md`.
+
+**증권그룹구분코드 `ST` is NOT common stock** — it includes 우선주, so any
+relative-volume or turnover ranking over an `ST` pool ranks an issuer's
+preferred line beside the issuer. **What separates them is the 12-character
+표준코드 (ISIN), whose position 8 is the issue type, `0` = 보통주**, and whose
+**third character gives the instrument class** (`7` 주식+ETF+리츠, `G` ETN, `5`
+펀드, `8` DR, `A` 신주인수권, non-`KR` foreign). The instrument class is what the
+delisted side has instead of a group code, and what removes ETNs and funds from
+a pool that plain codes alone would keep. The `KR` prefix is part of the rule,
+because a foreign-domiciled listing carries a Hong Kong or Cayman ISIN where
+position 8 means nothing.
+
+**Three filters, and none subsumes the others.** The issue type does not
+separate stock from ETF; `ST` does not separate 보통주 from 우선주; **and a SPAC
+passes both**, being legally a 주식회사.
+
+**SPAC and REIT are name rules, deliberately weaker, and both must be
+anchored** — a bare `리츠` match is unusable, and a bare `스팩` takes a 코넥스
+oil company for a blank-cheque vehicle while the obvious anchor drops a 호수
+preceded by a space, **so the whitespace is part of the rule**. They are kept
+separate from the ISIN rules in `data.krx_instrument` because a name is weaker
+evidence than a structural field. **A name rule is not finished until it has
+been run against both universes in both directions.**
+
+**An unbranded delisted ETF would still pass, and that is disclosed rather than
+closed.**
+
+**Stock codes are no longer all numeric** — KOSDAQ now issues alphanumeric
+codes, so any `isdigit()` validation is wrong. KIS prices them normally, so the
+format is not a data gap; but the **delisted side still filters on `isdigit()`**
+(`krx_delisted.plain_codes`, and `krx_scan.candidates` after it). That is
+correct today, because KRX only began issuing the format in 2026 and nothing
+carrying one has delisted yet; **it will silently drop the first one that does.**
+
+**The two master files carry fixed tails of different lengths**, so one shared
+offset silently reads the wrong two characters for one market and every group
+code comes back as whitespace — while the download, the unzip and the row count
+all look perfect. `krx_universe.py` pins the offsets per market and fails closed
+on a file that yields zero common stock.
+
+### Safety properties of the adapters
+
+**Do not weaken any of these without reading the record first.**
+
+- **`ExchangeOrderExecutor.submit` never trusts a submit-response status.** It
+  returns `Optional.empty()` and resolves only via a later
+  `pollFills`/`queryOrder`, even when the venue's own submit response already
+  says `FILLED`.
+- **BingX silently TRUNCATES an over-precise quantity rather than rejecting
+  one**, and that is the most load-bearing wire fact this project has learned,
+  because the failure mode is invisible at the point of submission: the order
+  reports `FILLED` at the venue while our approved quantity is larger. Every
+  downstream refusal worked as designed on 2026-09-08 and **none could prevent
+  the malformed order**, so **the guard has to be upstream of `Order`
+  construction** — it lives in `SteppedNotionalCalculator` behind
+  `RiskGateway`'s existing `quantityRejectionReason` hook, never in
+  `BingXAdapter`.
+- **`VstPreflight` fails closed.** It sets exchange-side leverage for both
+  `LONG` and `SHORT` to the canary base on every clean start; if a pre-existing
+  non-zero position is found, leverage enforcement is **skipped** — exchanges
+  commonly reject a change with a position open — and the kill switch **starts
+  tripped** instead, requiring a deliberate human reset. A `setLeverage` failure
+  propagates and refuses to start. `runWithRetry` retries **only**
+  `ExchangeException`, never the not-a-demo-account refusal.
+- **A `timestamp is invalid` error is not necessarily clock drift.** It has been
+  observed with a verified-good clock, caused by startup contention losing
+  BingX's signing window. **Check load before suspecting the clock.**
+- **Credentials are stripped at the adapter boundary.** A CRLF-terminated `.env`
+  once left a trailing `\r` on a key, and the JDK rejects a raw `\r` in a header
+  with an exception **whose message embeds the offending value verbatim**.
+  `BingXAdapter`'s constructor `.strip()`s both credentials, with a regression
+  test. Nothing reached any committed file, git history or public surface;
+  rotating the two exposed keys remains a cheap precaution.
+- **Every KIS response-parsing failure mode is fail-closed**, tightened over
+  five real review rounds: a missing or malformed `output1`/`output2`, a missing
+  required field, or a mutually inconsistent quantity triple all throw rather
+  than produce a `null` amount, an empty symbol, or a misclassified status. This
+  matters because **Jackson cannot distinguish a missing field from a
+  wrong-cased one**, and KIS's casing is per-endpoint — the original
+  implementation's two wrong guesses parsed every field as silently `null`.
+- **No exception message anywhere in `KisAdapter`/`KisPriceFeed` embeds raw
+  response content.** A real KIS response carries account numbers and balances,
+  and these exceptions land in a persisted `kis-paper.log`.
+- **`getPositions()` fails closed** rather than return a silently incomplete
+  position list: `inquire-balance` genuinely paginates, and the first
+  implementation read only the first page. **Both continuation loops continue
+  only on `tr_cont` `"M"`** — anything else, including the real observed `"F"`,
+  means stop — **and both fail closed on `"M"` paired with a blank continuation
+  key.**
+- **`balance` from `getBalance()` is load-bearing, not informational**:
+  `forKisPaper()` bootstraps `SharedKisAccountLedger`'s entire
+  `allocatedVirtualCapital` from it, matching `BingXAdapter`'s own raw-balance
+  convention.
+- **Funding P&L sign convention**, verified against BingX's own docs and
+  implemented as
+  `payment = -sign(position_qty) × |position_qty| × markPrice × fundingRate`
+  using the funding row's own historical mark price (`metrics/position.py`).
+
+### Gap-blindness, a real and still-open exposure
+
+Neither `research/walkforward.py`'s fold generation nor `python/backtest/`'s bar
+iteration detects a timestamp gap — both are pure positional arithmetic, so the
+bar after a gap is silently treated as one `interval_ms` step later. Never an
+issue for the zero-gap `1d`/`1h` data, so `1m` introduces it fresh.
+
+**Bounded and disclosed rather than fixed**: `simulate_fill` selects the fill
+bar positionally, so exactly **one** signal position per gap is affected with a
+computable delay; `_sharpe_ratio` sees two distorted observations;
+`resample_equity_to_daily` drifts bucket boundaries cumulatively. Holding-period
+tracking is **not** affected — `ClosedTrade.entry_time`/`exit_time` are real
 timestamps, not bar arithmetic. The guard is
-`run_preregistered_holdout.py`'s `verify_known_gaps`, which fails closed
-when the real gap set differs from a registration's declared one.
+`run_preregistered_holdout.py`'s `verify_known_gaps`, which **fails closed** when
+the real gap set differs from a registration's declared one. Not "fail on any
+gap" — the known gaps are real and permanent — but a guard against an
+*unexpected* one appearing.
 
-**Funding rate**: `GET /openApi/swap/v2/quote/fundingRate?symbol=BTC-USDT`
-(v2, public). Same `{"code","msg","data"}` envelope as everything else
-**except an empty result is `data: null`, not `[]`**. Newest-first,
-silently capped on an over-wide request — but `limit` over 1000 is a hard
-server error (`code: 109400`), unlike klines' silent clamp. `data: null`
-is **flaky near the retention edge**: a range with known-good data
-returned `null` on ~1-in-6 to 1-in-2 of identical repeated calls
-(2026-07-27), and worse on re-probe a day later (15/15 nulls for a range
-already cached locally) — consistent with a rolling window genuinely
-moving, not just a flaky server. Real depth reaches **2020-11-29T12:00:00Z
-(6,199 rows)**, far deeper than klines at any granularity; 3 small gaps
-(4-16h) at that earliest boundary survived 3+ reruns and are treated as
-genuinely gone. **Historical `fundingTime` is not always on the modern
-8h/28,800,000ms grid** — a 2020-11-29 to 2021-01-05 stretch settles 4h
-off it, plus one isolated row — so range validation for this endpoint
-deliberately does not enforce grid alignment the way klines does. Sign
-convention, verified against BingX's own docs: `fundingRate > 0` → longs
-pay shorts; `< 0` → shorts pay longs. Implemented as
-`payment = -sign(position_qty) × |position_qty| × markPrice × fundingRate`
-using the funding row's own historical mark price. Detail: `sr-m`,
-`metrics/position.py`.
-
-### BingX — verified against the live VST (demo) API with a real key
-
-Envelope is `{"code": 0, "msg": "", "data": ...}`, sometimes with a
-top-level `timestamp`.
-
-| Call | Real observed shape |
-|---|---|
-| `GET /openApi/swap/v3/user/balance` | `data` is an **array** of per-asset objects (`userId`, `asset`, `balance`, `equity`, `unrealizedProfit`, `realizedProfit`, `availableMargin`, `usedMargin`, `frozenMargin`, `shortUid`) — not a single object. Parsing must index into it. |
-| `GET /openApi/swap/v2/user/positions` | Also an array; `[]` when flat |
-| `GET`/`POST /openApi/swap/v1/positionSide/dual` | `dualSidePosition` came back `"true"` on a fresh key — **hedge mode is the default**, previously undocumented. Set it explicitly at startup anyway; a default can change. |
-
-**A real order was placed, filled, and cancelled through the full
-OMS-mediated path** (`OrderIntent → OrderPipeline → RiskGateway → Order →
-ExchangeOrderExecutor → BingXAdapter`), 2026-08-09 — detail in
-`.planning/paper-trading-h-vst-integration.md`:
-
-- `POST /openApi/swap/v2/trade/order`'s **submit** response already
-  reported `"status":"FILLED"` for a market order. `ExchangeOrderExecutor
-  .submit` deliberately never trusts that (always returns
-  `Optional.empty()`, resolving only via a later `pollFills`/`queryOrder`),
-  so the ~1.5s ack-to-fill latency observed reflects **this project's own
-  polling cadence**, not real exchange latency.
-- `queryOrder` carries a real **`commission`** field (e.g.
-  `"-0.032441"`, negative = fee charged), confirming a real fee figure is
-  available on the wire. For that trade it landed within ~5bps of this
-  project's modeled `FEE_BPS=5` (0.03244075 modeled vs 0.032441 real) —
-  one data point, not proof the two always agree.
-- `DELETE /openApi/swap/v2/trade/order` on an unfilled limit order
-  returned the status token **`"CANCELLED"`** (double-L), confirming the
-  REST half of the documented REST/WebSocket casing inconsistency.
-  WebSocket's `"CANCELED"` remains unverified — no WS call has ever been
-  made by this project.
-- **Duplicate `clientOrderID` is rejected server-side**:
-  `{"code":101400,"msg":"clientOrderID unique check failed"}`, from a
-  genuinely separate graph simulating a restarted process. Real evidence
-  BingX's own idempotency is an additional safety layer on top of — not a
-  substitute for — this project's software-side protections. Observed,
-  not officially documented.
-- **Account-wide leverage was originally observed at `"20X"`** on a fresh
-  VST account, unenforced by `RiskGateway`, because nothing called
-  `POST /openApi/swap/v2/trade/leverage`. Since fixed: `VstPreflight` now
-  sets leverage for both `LONG` and `SHORT` to
-  `RiskLimits.canary().baseLeverage()` on every clean start. **Fails
-  closed** — if a pre-existing non-zero position is found, leverage
-  enforcement is skipped (exchanges commonly reject a change with a
-  position open) and the kill switch starts tripped instead, requiring a
-  deliberate human reset. A `setLeverage` failure propagates and refuses
-  to start. **Real per-call HTTP verification is now done** (2026-08-26,
-  observed directly in a live VST startup log while restoring the paper
-  loops) — previously outstanding, because the account still held a
-  position from the original run and this codebase's OMS path has no way
-  to close one (in hedge mode a `SHORT` opens a second position rather
-  than closing the `LONG`). That position is gone, so the clean-start
-  branch finally executed against the real API:
-  `VstPreflight: real VST balance=96224.4301 … no pre-existing non-zero
-  positions found, clean start … real exchange-side leverage for BTC-USDT
-  set to 1x (LONG and SHORT, hedge mode)`. The fail-closed
-  pre-existing-position branch remains fake-adapter-verified only — it
-  cannot be exercised without deliberately opening a position first.
-
-**BingX silently TRUNCATES an over-precise quantity — it does not reject
-one.** The single most load-bearing wire fact this project has learned,
-because it caused a real incident on 2026-09-08 and the failure mode is
-invisible at the point of submission. `BTC-USDT`'s published contract
-spec (`GET /openApi/swap/v2/quote/contracts`, re-verified live
-2026-09-08): `size` **0.0001**, `quantityPrecision` **4**,
-`tradeMinQuantity` **0.0001**, `tradeMinUSDT` **2**.
-
-A 29-fractional-digit quantity was **accepted**, then filled at exactly
-that value truncated to 4dp. The order therefore reported `FILLED` at the
-venue while this project's own `approvedQuantity` was larger, so
-`ExchangeOrderExecutor` correctly refused to reconcile the two, the
-`Reconciler` found `ORPHANED_IN_BROKER`, and the kill switch tripped and
-stayed tripped. **Every one of those refusals worked as designed and none
-could prevent the malformed order** — the guard has to be upstream of
-`Order` construction, which is why the fix lives in
-`SteppedNotionalCalculator` behind `RiskGateway`'s existing
-`quantityRejectionReason` hook and not in `BingXAdapter`. Full account:
-`.planning/quantity-precision-discuss.md` (GitHub issue #151, PRs #153-#155).
-
-**Verified end to end against the real VST venue, 2026-09-09**, both
-directions through the full `OrderIntent → OrderPipeline → RiskGateway →
-Order → ExchangeOrderExecutor → BingXAdapter` path: the incident's own
-29-digit quantity is now **rejected before any venue call**, and a
-step-valid `0.0001` order reached `FILLED` with BingX's own record
-(`amt=0.0001 avgPrice=79380.8 leverage=1`) identical to the approved
-quantity. This is the second real order this project has placed, and the
-first where our state and the venue's were confirmed to agree.
-
-**`code=109400 msg=timestamp is invalid` is not necessarily clock drift.**
-Observed on 2026-09-09 when both loop JVMs cold-started together on the
-955 MB instance while the previous Gradle JVMs were still winding down.
-The clock was fine — 392 ms from BingX's own `serverTime`, NTP
-synchronised — and the identical `getBalance` call succeeded seconds
-later once load eased. BingX's 5s signing window was simply lost to
-startup contention. `VstPreflight.runWithRetry` now retries **only**
-`ExchangeException`, never the not-a-demo-account refusal. Check load
-before suspecting the clock.
-
-**A real credential-handling incident, root-caused and fixed.** A
-CRLF-terminated `.env` sourced naively left a trailing `\r` on
-`BINGX_API_KEY`; the JDK's `HttpRequest.Builder#header` rejects a raw
-`\r` (RFC 7230) with an exception **whose message embeds the offending
-value verbatim** — writing the real key into a local gitignored scratch
-log. A separate `cat -A` diagnostic similarly surfaced `FRED_API_KEY` in
-a tool transcript. **Neither reached any committed file, git history, or
-public surface.** Fixed at the root rather than merely disclosed:
-`BingXAdapter`'s constructor now `.strip()`s both credentials, with a
-regression test. `BINGX_API_SECRET` was never used as a header value
-(HMAC only, never transmitted) and was confirmed unaffected. Rotating the
-two exposed keys remains a cheap precaution — both are low-stakes
-(VST-only, no withdrawal permission; and a free read-only data key).
-
-### BingX — documented but NOT empirically verified
-
-Read from BingX's docs, never called with a real key. Treat with less
-confidence than everything above.
-
-- **Base URLs**: `https://open-api.bingx.com` (production) vs
-  `https://open-api-vst.bingx.com` (VST demo — virtual USDT, same signing
-  scheme, real matching behaviour). A key made through the normal API
-  Management flow authenticates against VST; whether the same key *also*
-  works against production is untested and deliberately not tested.
-- **Auth**: `X-BX-APIKEY` header + HMAC-SHA256 over all params including
-  `timestamp`, sorted alphabetically, joined `key=value&…`, hex uppercase,
-  appended as `&signature=…`. Requests must be within 5s of server time
-  (`GET /openApi/swap/v2/server/time`).
-- **Orders**: `POST /openApi/swap/v2/trade/order` (type field selects
-  MARKET/LIMIT/etc.); `POST .../order/test` validates without executing;
-  `DELETE /openApi/swap/v2/trade/order` cancels.
-- **Position mode** is account-wide, not per-symbol, and cannot change
-  while any position or open order exists. Leverage takes `side=BOTH` in
-  one-way mode, `LONG`/`SHORT` in hedge mode.
-- **Endpoint versions are mixed within the same family on purpose**:
-  balance v3, positions/order/leverage v2, position-mode v1 — matching
-  klines (v3) vs trades (v2).
-- **Private WebSocket** shares the public market-data host with
-  `?listenKey=…`, from `POST /openApi/user/auth/userDataStream` (1h TTL,
-  `PUT` to refresh).
-- **Rate limits** are per-account (UID): order place/cancel 10/s, order
-  query 30/s, positions 10/s, balance 5/s, leverage 5/s. A changelog
-  claims IP-based limits were removed 2025-12-16 while the docs UI still
-  shows legacy numbers — trust neither without testing.
-- **Known internal doc contradictions**, to test rather than trust: order
-  status casing `CANCELLED` (REST) vs `CANCELED` (WS); the listen-key
-  sample omits signature params its own metadata requires; the WS
-  connection limit is stated as both 60/IP and 240/IP.
-
-### Binance — data-research source only
-
-**Not a trading venue and not planned to become one.** No credentials, no
-order placement, read-only public klines (`data/binance_klines.py`,
-`backfill_binance.py`; `sr-z`, `scalp-s5`). This section exists for the
-same verify-before-relying reason as BingX's, not because a second live
-surface is being added.
-
-| Item | Value |
-|---|---|
-| Symbol | `BTCUSDT` (no dash — differs from BingX) |
-| Spot klines | `GET https://api.binance.com/api/v3/klines` |
-| USDT-M futures klines | `GET https://fapi.binance.com/fapi/v1/klines` |
-| Response | A **bare JSON array of arrays, by position** — not an object envelope: `[open_time_ms, open, high, low, close, volume, close_time_ms, quote_asset_volume, num_trades, taker_buy_base_volume, taker_buy_quote_volume, ignore]`. Timestamps and `num_trades` are bare integers; OHLCV are quoted strings. |
-| `endTime` | **INCLUSIVE**, not half-open — confirmed by a `startTime == endTime` request returning exactly one row. A real wire-level divergence from this project's `[start, end)` convention everywhere else, which `binance_klines.py` absorbs via `endTime = end_ms - 1`. |
-| Over-limit capping | Keeps the **OLDEST** rows (closest to `startTime`) — the opposite of BingX. Consequently rows come back **ascending**, not newest-first. |
-| Max `limit` | Spot **1000**, silently capped. Futures **1500**, enforced as a real `HTTP 400` (`-1130`) — futures rejects, spot does not. |
-| Pre-listing range | Returns `[]`, not an error and not padded |
-| Errors | A real non-2xx status with `{"code": <int>, "msg": "…"}` — never a `200` carrying an embedded error the way BingX works |
-
-**Retention, by full backfill with independently verified gap counts**:
-
-| Market / interval | Earliest bar | Count | Gaps |
-|---|---|---|---|
-| Spot `1d` | 2017-08-17T00:00:00Z | 3,275 | **0** |
-| Futures `1d` | 2019-09-08T00:00:00Z | 2,523 | **0** |
-| Futures `1m` | 2019-09-08T17:57:00Z | **3,661,780** | **1** (`[2019-09-08T19:00:00Z, 2019-09-08T19:01:00Z)`) |
-
-Futures `1m` reaching essentially the market's own launch means it is
-**not a rolling window at all** — a genuine structural difference from
-every other retention figure in this file. Its 6.962-year span implies a
-PSR/DSR detection floor of **~0.623**, the best this project has. Spot
-`1d`'s ~8.97 years gives ~0.55, versus BingX's own best (`1d`, 5.21y) at
-~0.72. All three sit **inside** the 0.4-0.8 credible-institutional-edge
-range; the difference is where: BingX's ~0.72 makes only the range's top
-sliver detectable, Binance's ~0.55 makes roughly its top two-thirds
-detectable. Real power gain, not a change from undetectable to
-detectable outright.
-
-**`taker_buy_base_volume`/`taker_buy_quote_volume` (wire indices 9/10)**
-are real, populated, order-flow-relevant fields, silently discarded by
-`_parse_row` from `sr-z` until `scalp-s5` captured them into two additive
-nullable `klines` columns (`NULL` for every BingX row — that wire has no
-buyer/seller breakdown at all — and every pre-`scalp-s5` Binance row).
-Non-`NULL` for all 3,661,780 futures `1m` rows, with zero
-`taker_buy_base_volume > volume` violations. **Disclosed, unresolved
-assumption**: this project does not trade on Binance, so using Binance
-futures order flow as a proxy for BTC market-wide (or BingX-specific)
-flow carries a real cross-venue transferability assumption.
-
-**Rate limits are real, numeric, and live-confirmed** — a first for this
-pipeline, fetched from each host's own `GET .../exchangeInfo`
-`rateLimits`: spot `REQUEST_WEIGHT` **6000/min** per IP, futures
-**2400/min** per IP. Per-request weight costs (spot flat 2; futures
-tiered 1/2/5/10 by `limit` bucket) come from Binance's docs rather than
-re-derived here, so are held to slightly lower confidence. **HTTP 418** is
-Binance's documented temporary-IP-ban signal, distinct from `429`; not
-observed live, and treated as non-retryable on the same "don't retry into
-an active ban" principle.
+### Where the collectors run, and which copy is the record
 
 **Binance geo-blocks the GCP instance entirely, and this decides where
-collectors run.** Verified 2026-09-14 from `paper-trading`
-(us-central1-a): **every** Binance endpoint returns **HTTP 451** — not
-just `/futures/data/` but plain `fapi/v1/klines` too — with *"Service
-unavailable from a restricted location"*, and the instance's egress IP
-geolocates to **US**. So:
+collectors run.** Every Binance endpoint returns `HTTP 451` from there. So:
 
 - **Binance collection could only ever run locally**, from a Korean IP.
-  `scripts/collect-positioning.sh` was that collector, at `*/30` on the
-  local crontab; it was **stopped on 2026-09-17** when BTC was set aside,
-  and nothing has replaced it. The constraint it existed under is
-  unchanged and would force it back to the local machine the moment BTC
-  resumes.
-- **Running the Binance collector on the instance fails every series and
-  exits non-zero** — the fail-closed design working, and **not** a bug to
-  fix by retrying.
-- **KIS/KRX is the opposite**: it works from the instance (`HTTP 200`,
-  re-verified 2026-09-17). A collector's home is therefore chosen per
-  venue, not once for the project.
+  `scripts/collect-positioning.sh` was that collector; it was **stopped on
+  2026-09-17** when BTC was set aside, and nothing has replaced it. The
+  constraint is unchanged and would force it back to the local machine the
+  moment BTC resumes.
+- **Running the Binance collector on the instance fails every series and exits
+  non-zero** — the fail-closed design working, and **not** a bug to fix by
+  retrying.
+- **KIS/KRX is the opposite**: it works from the instance. **A collector's home
+  is therefore chosen per venue, not once for the project.**
 
-This is the operational consequence of the "Run it where it will run"
-lesson already recorded under Change checks, which named the 451 without
-saying what follows from it.
-
-**All KRX/KIS collection moved to the instance on 2026-09-17, and the
-split is now venue-clean.** The local machine is a laptop that is not
-reliably on during the KRX session (09:00–15:20 KST), and the quote
-sampler is the first collector that must run *during* it. On its first
-scheduled day it collected nothing: `cron` itself only came up at 17:26
-KST, after the close. One session of order-book samples was lost
-permanently — there is **no historical endpoint for a spread at any
-price**, which makes it the least recoverable series this project has.
-The intraday bars and 투자자별 매매동향 for the same day were recovered,
-because both are rolling windows.
+**All KRX/KIS collection moved to the instance on 2026-09-17, and the split is
+now venue-clean.** The local machine is a laptop that is not reliably on during
+the KRX session, and the quote sampler is the first collector that must run
+*during* it. On its first scheduled day it collected nothing, because `cron`
+itself only came up after the close. **One session of order-book samples was
+lost permanently** — there is no historical endpoint for a spread at any price,
+which makes it the least recoverable series this project has. The intraday bars
+and 투자자별 매매동향 for the same day were recovered, both being rolling
+windows.
 
 | | collects | database of record |
 |---|---|---|
 | **GCP instance** (always on, UTC) | `collect-krx-quotes.sh`, `-flow.sh`, `-intraday.sh` | **KRX/KIS** |
 | ~~**local** (Korean IP)~~ | ~~`collect-positioning.sh`~~ | ~~**Binance**~~ |
 
-**Exactly one writer per series**, which is what actually stops two
-databases drifting — not a policy of keeping one file.
-
-**The local row went away on 2026-09-17** when BTC was set aside: nothing
-is scheduled on the local machine at all now. It is struck through rather
-than deleted because the *reason* it existed — Binance's HTTP 451 — is
-unchanged and would force it back the moment BTC resumes.
+**Exactly one writer per series**, which is what actually stops two databases
+drifting — not a policy of keeping one file. The local row is struck through
+rather than deleted because the *reason* it existed is unchanged.
 
 Three consequences a future session must not rediscover the hard way:
 
-1. **The instance runs UTC.** KRX trades 00:00–06:20 UTC, so its cron
-   reads `*/30 0-6 * * 1-5`. Getting this wrong **fails silently**: the
-   sampler gates on KST internally, so a wrong-hour entry just logs
-   *"outside the continuous session"* forever and collects nothing. The
-   crontab carries this in a comment.
-2. **The KRX data of record is the instance's copy, and research may run
-   in either place** — which is the one thing to get right, because the
-   two answers differ.
+1. **The instance runs UTC.** KRX trades 00:00–06:20 UTC, so its cron reads
+   `*/30 0-6 * * 1-5`. Getting this wrong **fails silently**: the sampler gates
+   on KST internally, so a wrong-hour entry just logs *"outside the continuous
+   session"* forever and collects nothing. The crontab carries this in a
+   comment.
+2. **The KRX data of record is the instance's copy, and research may run in
+   either place** — which is the one thing to get right, because the two answers
+   differ. Research **on the instance** reads the record directly and needs no
+   sync; it is I/O-bound there rather than CPU-bound, so expect it to be slower,
+   not to fail. Research **on the local machine** — where interactive sessions
+   actually happen — reads a copy that stopped advancing when collection moved.
+   Run **`scripts/sync-krx-from-instance.sh`** first, **every time**. It is
+   additive (`INSERT OR IGNORE`, never `UPDATE` or `DELETE`), copies only
+   `KRX`-prefixed rows, and is safe to re-run. **It brings new rows down, not
+   corrections** — a row the instance later *fixed* does not propagate, which is
+   the deliberate trade for never being able to lose data in a sync; re-fetching
+   the affected range locally is how a correction is picked up.
+3. **The repo on the instance lives under `minjun4897`**, not the SSH login
+   user. Its collectors are only as current as its checkout.
 
-   Research **on the instance** reads the record directly and needs no
-   sync. It fits: the heaviest KRX module peaks at 103MB, and the two
-   paper-trading JVMs that used to crowd it were stopped on 2026-09-17.
-   It is I/O-bound there rather than CPU-bound (8% CPU, 1:43 wall for 4s
-   of compute), so expect it to be slower, not to fail.
-
-   Research **on the local machine** — where interactive sessions
-   actually happen — reads a copy that stops advancing the moment
-   collection moved. Run **`scripts/sync-krx-from-instance.sh`** first,
-   every time. It is additive (`INSERT OR IGNORE`, never `UPDATE` or
-   `DELETE`), copies only `KRX`-prefixed rows, and is safe to re-run.
-
-   **It brings new rows down, not corrections.** `INSERT OR IGNORE` keeps
-   the local value where a primary key already exists, so a row the
-   instance later *fixed* would not propagate. That is the deliberate
-   trade for never being able to lose data in a sync; re-fetching the
-   affected range locally is the way to pick a correction up.
-3. **The repo on the instance lives under `minjun4897`**, not the SSH
-   login user, and was 16 commits behind when this was set up. Its
-   collectors are only as current as its checkout.
-
-**Computed statistics, load-bearing for how this data may be used** (not
-API facts): Binance spot vs BingX daily closes over their full 1,909-day
-overlap correlate at **1.000000**; daily log-returns at **0.999955**.
-That shows the two **price series** are tightly linked — it does **not**
-show a signal developed on one transfers profitably to the other, which
-also depends on volume, funding, basis, execution costs, and timing, none
-of which a price correlation measures. Binance spot-vs-futures basis over
-2,523 common days: mean `(futures-spot)/spot` −0.0154%, stdev 0.0652%,
-range −0.74% to +1.80%, narrowing over time — consistent with a maturing
-derivatives market, not a data-quality problem.
-
-### KIS — verified against the live paper (모의투자) API
-
-First real contact 2026-08-21/24 (PR #103); everything in the Phase 1
-design above was fake-server-verified only until then. Full account:
-`.planning/kis-phase1-venue-integration.md`.
-
-- **Response field-name casing is per-endpoint, not one convention.**
-  `order` (submit) responds UPPERCASE (`ODNO`); `inquire-balance` and
-  `inquire-ccnl` respond lowercase (`pdno`, `cblc_qty`, `odno`,
-  `ord_qty`, `tot_ccld_qty`, …). Request parameters are always UPPERCASE
-  regardless. The original implementation guessed uppercase for all
-  three; the two wrong guesses parsed **every field as silently `null`**
-  rather than throwing, since Jackson cannot distinguish a missing field
-  from a wrong-cased one.
-- **`inquire-deposit` (`CTRP6550R`) has no working paper TR id at all.**
-  The real id returns `HTTP 500`/`EGW00205`; a `V`-prefixed variant
-  following KIS's own real→paper convention returns `OPSQ0002` ("no such
-  service code"). `getBalance()` no longer calls it — it reuses
-  `inquire-balance`/`VTFO6118R` and reads `output2`.
-- **`inquire-balance` requires `CTX_AREA_FK200`/`CTX_AREA_NK200` even on
-  a call that never paginates** — omitting either gives `OPSQ2001`.
-- **`inquire-balance` genuinely paginates** (max 20 rows per call).
-  `getPositions()` originally read only the first page. It now follows a
-  bounded continuation loop (`MAX_INQUIRE_PAGES = 10`, shared with
-  `queryOrder`) and **fails closed** rather than return a silently
-  incomplete position list.
-- **`tr_cont` convention**: `"M"` means more pages; anything else,
-  including the real observed `"F"`, means stop. A latent bug treated
-  `"F"` as continue — masked in `queryOrder` by its own early exit, and
-  surfaced only when `getPositions()` exhausted a fake server's queued
-  responses. Both loops now continue only on `"M"`, and both fail closed
-  on `"M"` paired with a blank continuation key.
-- **Real observed latency is 7-10 seconds** for both `POST /oauth2/tokenP`
-  and `inquire-balance` — the actual cause of intermittent
-  `HttpTimeoutException`s against the original 10s timeout, since widened
-  to 20s. Treat KIS's paper host as meaningfully slower than BingX's.
-- **`/oauth2/tokenP` has a real rate limit** (`EGW00133`), triggered by
-  repeated token requests within roughly a minute. `KisTokenProvider`
-  caches per JVM process, so repeated restarts while debugging can
-  exhaust it. Space restarts ~60-90s apart; it self-resolves and is not a
-  credential or code problem.
-- **`getBalance()`'s `output2` → `BalanceSnapshot` mapping** (KIS's own
-  column names; no exact 1:1 semantic match for every field):
-  `tot_dncl_amt` (총예수금액) → `balance`; `prsm_dpast_amt` (추정예탁자산금액)
-  → `equity`; `ord_psbl_cash` (주문가능현금) → `availableMargin`;
-  `mgna_tota` (증거금총액) → `usedMargin`; `evlu_pfls_amt_smtl`
-  (평가손익금액합계) → `unrealizedProfit`. **`balance` is load-bearing, not
-  informational**: `forKisPaper()` bootstraps `SharedKisAccountLedger`'s
-  entire `allocatedVirtualCapital` from it, matching `BingXAdapter`'s own
-  raw-balance convention.
-- **Every response-parsing failure mode is fail-closed** (tightened over
-  five real review rounds): a missing or malformed `output1`/`output2`, a
-  missing `cblc_qty`/`pdno`/`ord_qty`/`tot_ccld_qty`/`qty`, or a mutually
-  inconsistent `ord_qty`/`tot_ccld_qty`/`qty` triple all throw rather than
-  produce a `null` amount, an empty symbol, or a misclassified status.
-  **No exception message anywhere in `KisAdapter`/`KisPriceFeed` embeds
-  raw response content** — a real KIS response carries account numbers and
-  balances, and these exceptions land in a persisted `kis-paper.log`.
-- **Historical daily bars are available on the paper host**, and this is
-  the data path Multi-Asset Task B/C opened
-  (`.planning/ms-b-kis-history-probe-result.md`,
-  `.planning/ms-c-kis-data-pipeline.md`). Equities:
-  `GET /uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice`,
-  `tr_id` `FHKST03010100`, market division `J`. Indices: `.../inquire-
-  daily-indexchartprice`, `FHKUP03500100`, division `U`, codes `0001`
-  KOSPI / `1001` KOSDAQ / `2001` KOSPI200. Same `tr_id` on paper and
-  production, unlike the trading TRs' `V`-prefix convention.
-- **The INDEX endpoint intermittently rejects a valid request, and the
-  equity one did not.** A real `HTTP 200` carrying `rt_cd=1
-  msg_cd=OPSQ0003` for a window that answers normally on the next
-  attempt. Measured 2026-09-22 with 15 identical calls per window:
-  **index 3 of 15 on one window, 0 of 15 on another; equity 0 of 15 on
-  the same range** — so it is per-call and random rather than a property
-  of the window, and 15 equity calls is not proof the equity endpoint
-  never does it. **This is not a nicety to handle**: a 47-call reference
-  backfill at that rate completes with probability ~3e-5, and the first
-  real attempt died on its 32nd call. `kis_klines.fetch_daily_page`
-  retries it, bounded, from an **allowlist** (`_RETRYABLE_MSG_CD`) — every
-  other non-zero `rt_cd` this project has met is permanent (a wrong TR
-  id, a wrong market division, a code that does not exist) and retrying
-  into one is the mistake already recorded for Binance's HTTP 418.
-- **The two endpoints cap at DIFFERENT row counts, and both truncate
-  silently.** Equities **100** rows per call; indices **50**. Both return
-  `rt_cd=0` and keep the **newest** rows, dropping the oldest -- BingX's
-  direction, not Binance futures', which returns a real HTTP 400. A
-  120-day KOSPI request came back with 50 bars covering only the newest
-  73 days of it, and a pipeline whose guard assumed one shared cap of 100
-  let that through. **A cap is a property of an endpoint, not of a
-  venue.** `FID_PW_DATA_INCU_YN` is not the cause and makes no difference
-  at `Y`, `N`, or absent.
-- **`FID_ORG_ADJ_PRC` is the single most dangerous parameter here**:
-  `0` = 수정주가 (split-adjusted), `1` = 원주가 (raw), and **KIS's own
-  published Python sample defaults to `1`**. Measured across 삼성전자's
-  50:1 split (2018-05-04): adjusted 53,000 -> 51,900; raw 2,650,000 ->
-  51,900, i.e. a -98% single day that a momentum signal reads as a crash.
-  `data/kis_klines.py` therefore takes `adjusted` as a required argument
-  with no default. Separately, **KIS adjusts for splits but not
-  dividends**, so what comes back is a price return, not a total return.
-- **Daily history reaches 1991-08-28** for both 삼성전자 and 현대차 -- the
-  same date to the day, so that is KIS's own floor rather than a listing
-  date. SK하이닉스 begins 2000-08-01, NAVER 2005-08-09. A ~35-year span
-  implies a ~0.28 detection floor, but the operative figure is lower:
-  a backtest assuming single-stock-futures execution cannot start before
-  those futures existed, nor before the youngest constituent has data.
-- **KIS prints a bar for every session a HALTED name is listed, and it
-  looks like a quiet day rather than a stoppage.** `O == H == L == C`
-  with zero volume and zero turnover, repeated for as long as the halt
-  lasts: 신라젠 carries **604 consecutive** such sessions, 좋은사람들
-  **832**. Measured 2026-09-21 across the full-universe scan. **A bar is
-  therefore not evidence the name was tradeable**, which matters
-  precisely where it is least visible — a per-day selection rule ranking
-  on turnover sees a legitimate zero, and a returns series sees a
-  flat stretch it will read as low volatility. They are stored, because
-  they are what the tape said, and **counted separately** in the scan's
-  coverage report (`data/krx_scan.py`) so a reader can subtract them.
-
-  **What follows for analysis, split into the part that is decided and
-  the part that is not**, because "stored and counted" is not a rule:
-
-  - **Decided, and it follows directly from the measurement: a frozen bar
-    may never make a name eligible.** Any selection, ranking or liquidity
-    screen — turnover, relative volume, spread, anything answering *was
-    this tradeable* — must exclude it. A halt reads as a legitimate zero
-    otherwise, and the scan's whole purpose is a per-day selection rule.
-  - **Not decided, and deliberately left open: what a return computed
-    across a halt means.** Booking the full gap on the resumption bar and
-    treating the flat stretch as zero-volatility are both wrong in
-    different directions, and choosing between them is a research
-    decision with its own `Discuss`, not a data-layer default. Until it is
-    taken, **any statistic computed over a window containing frozen bars
-    states which side it took**, and the count is available to state it
-    with.
-- **A KRX trading date maps exactly onto UTC midnight.** The continuous
-  session opens 09:00 KST and KST is UTC+9, so a bar dated `20240502`
-  opens at `2024-05-02T00:00:00Z`. An equality, not a rounding -- verified
-  across a real 121-bar fetch -- which is why `1d`'s existing
-  86,400,000 ms grid alignment needs no KRX special case.
-- **`store.find_missing_ranges` is unusable for KRX.** It diffs against an
-  arithmetic sequence, so a market trading ~245 days a year shows ~116
-  false gaps per symbol per year (58 measured over six months). Expected
-  trading days come from an **index series** instead: an index prints
-  exactly when the market is open, so it needs no holiday table, it covers
-  the moving lunar holidays `KrxMarketCalendar` still lists as unresolved,
-  and it separates a market closure from a stock-specific halt. The check
-  must run **both directions** -- a symbol printing on a day the reference
-  lacks means the reference is truncated, and comparing one direction
-  reported "zero gaps" against a reference that was missing 31 days.
-- **`acml_tr_pbmn` (거래대금) is returned on the same call as the prices**,
-  which is what the KR-10 universe rule ranks on; `close * volume` is not
-  a substitute. Stored in `klines.quote_volume`, a nullable column added
-  additively for this (`NULL` for every pre-existing row; migration
-  verified against a copy of the real 4,620,925-row database).
-- **First real end-to-end run, 2026-08-24**, symbol `A01609`: real balance
-  50,000,000 KRW, no pre-existing positions, ledger bootstrapped from that
-  balance, clean reconciliation (`ledgerExposure=0 realExposure=0
-  mismatch=0`), a real tick completed. **The kill switch starts tripped by
-  design**, so no order was or could be submitted.
-- **투자자별 매매동향 — the one data source Korea has that crypto and US
-  equities do not**, and three facts about it, all measured 2026-09-14
-  (`.planning/rd-c-kis-flow-probe-result.md`, `data/kis_investor_flow.py`).
-  KRX *mandatorily discloses* daily per-stock buying and selling by
-  개인 / 기관 / 외국인; the entire US literature on retail order flow exists
-  because researchers there had to **infer** it.
-  - `GET /uapi/domestic-stock/v1/quotations/inquire-investor`, `tr_id`
-    `FHKST01010900`, `FID_COND_MRKT_DIV_CODE=J`. **Returns exactly 30 rows
-    and accepts no date parameter at all**, so 30 is a *horizon*, not a
-    page cap — unlike the daily-chart endpoints, which cap at 100/50 but
-    page backwards through years. **This series cannot be backfilled.** The
-    window is a rolling lookback, so a collector starting within ~30
-    trading days loses nothing *from its start date forward*.
-  - **`tr_pbmn` (거래대금) is denominated in 백만원, not 원, and KIS
-    documents this nowhere.** Confirmed two independent ways on 삼성전자:
-    the implied price `value × 1e6 / qty` lands within a few percent of
-    that day's close on every overlapping day (259,516 vs 261,000;
-    266,670 vs 266,000), and the three types' summed buy value is a steady
-    **86–90%** of the same day's `klines.quote_volume`, which is in 원.
-    Read as 원 it is off by a factor of a million — an error that does not
-    look wrong, merely small. `kis_investor_flow.py` converts to 원 on
-    ingest so this column and `quote_volume` are directly comparable.
-  - **The three types do not sum to market turnover.** The residual
-    10–14% is 기타법인 / 내국인 / 국가·지자체, which this endpoint does not
-    break out. A "share of volume" computed from these three alone is
-    overstated by roughly that much. `foreign-institution-total`
-    (`FHPTJ04400000`) returns the cross-sectional counterpart with a finer
-    institutional breakdown (`fund_`, `insu_`, `bank_`, `ivtr_`, …).
-- **Intraday bars: two endpoints, and only one has history.**
-  `inquire-time-itemchartprice` (`FHKST03010200`) returns 30 rows and takes
-  a time but **no date**, so it can only ever describe the current session.
-  `inquire-time-dailychartprice` (`FHKST03010230`) takes `FID_INPUT_DATE_1`
-  and serves past sessions at **120 rows per call, back ~250 trading days,
-  rolling** — the boundary pinned to the day on 2026-09-14: **2025-09-03
-  served 120 bars, 2025-09-02 served none.** ~251 trading days, so it is a
-  **trading-day count, not a calendar cutoff**, and the far edge advances
-  one session per session. A full regular session is ~380 bars (390 minutes
-  less the ~10-minute 15:20–15:30 closing call auction, during which there
-  is no continuous trade and so no bar), i.e. **~4 calls per symbol-session**.
-  **Two traps**: an out-of-range date returns `rt_cd=0` with **zero rows**,
-  not an error — the same convention expired futures contracts return, so a
-  backfill treating `rt_cd=0` as success records nothing and reports a clean
-  run; and **bar timestamps are not uniformly on the minute grid** (2026-01-02
-  returned `:11`-second stamps where every other probed date returned `:00`).
-- **The listed universe is 2,604 common stocks, not 2,718 — 증권그룹구분코드
-  `ST` is NOT common stock.** Full record, including the two corrections
-  this rule took after it was first written and the pool's remaining open
-  gap: `.planning/rd-y-the-full-universe-scan.md`. This entry read
-  *"2,718 common stocks"* until
-  2026-09-20, counted from `ST` alone; **114 of those 2,718 rows are
-  우선주**. 삼성전자 `005930` and 삼성전자우 `005935` both carry `ST`, so
-  any relative-volume or turnover ranking over an `ST` pool ranks an
-  issuer's preferred line beside the issuer.
-
-  **What actually separates them is the 12-character 표준코드 (ISIN),
-  present in the master row all along and parsed over by
-  `krx_universe.py` until it was captured**: `KR7005930003` vs
-  `KR7005931001` — **position 8 is the issue type, `0` = 보통주**.
-  `data.krx_instrument` implements it; the rule was validated against an
-  independent label with every disagreement explained (112 issues contain
-  우 as an ordinary syllable — 다우기술, LX하우시스, AP우주통신 — and 22
-  are foreign-domiciled listings carrying a Hong Kong or Cayman ISIN,
-  where position 8 means nothing, which is why the `KR` prefix is part of
-  the rule).
-
-  **Three filters, and none subsumes the others.** The ISIN's issue type
-  does not separate stock from ETF — KODEX 200 is `KR7069500007`, issue
-  type `0`. `ST` does not separate 보통주 from 우선주. **And a SPAC passes
-  both**: it is legally a 주식회사, so it carries `ST` *and* a `KR7...0`
-  ISIN — 70 live names were counted as common stock until 2026-09-21.
-
-  **The ISIN's THIRD character gives the instrument class**, measured by
-  joining 증권그룹구분코드 onto 표준코드 across all 4,398 live rows:
-  `7` 주식+ETF+리츠, `G` ETN, `5` 펀드, `8` DR, `A` 신주인수권, non-`KR`
-  foreign. **This is what the delisted side has instead of a group code**,
-  and it is what removes ETNs and funds from a pool `plain_codes` alone
-  keeps.
-
-  **SPAC and REIT are name rules and are deliberately weaker, and both
-  must be anchored.** A SPAC's name is regulated
-  (`스팩`/`스팩N호`/`기업인수목적`): 70 live hits, all 70 `ST`. A bare
-  `리츠` match is **unusable** — 116 live hits of which 23 are REITs, 75
-  ETNs, 14 ETFs, plus 메리츠종금, the same substring failure 다우기술
-  showed for 우선주 — so an anchored form is used (25 hits, all 23 live
-  REITs). **The SPAC rule needed the same correction one day later**: a
-  bare `스팩` takes **아스팩오일**, a 코넥스 oil company, for a
-  blank-cheque vehicle — while the obvious anchor drops **미래에셋대우스팩
-  5호**, whose 호수 is preceded by a *space*. So the whitespace is part of
-  the rule, and a name rule is not finished until it has been run against
-  both universes in both directions. They are kept separate from the ISIN
-  rules in `data.krx_instrument` because a name is weaker evidence than a
-  structural field.
-
-  **An unbranded delisted ETF would still pass, and that is disclosed
-  rather than closed.** The evidence it is a small residue: **zero** of
-  the 2,335 KR7 plain delisted names carry any ETF-shaped word, where
-  **569 of 1,172 live ETFs do**.
-
-  Real counts, 2026-09-22, each step taken against the pool the step
-  before it left: live 2,719 `ST` → **2,605** common → **2,533** excluding
-  72 SPACs; delisted 2,353 plain → 2,039 after the issue type → 2,033
-  after the instrument class → **1,841** excluding 178 SPACs and 14 REITs.
-  **Combined pool 4,374.** The live side drifts by a name or two a day as
-  KRX lists and delists, so treat these as a dated measurement rather than
-  a constant — what is stable is the *chain*, and an earlier version of
-  this line quoted 1,846 by skipping the instrument-class step's six.
-
-  KOSPI 915 + KOSDAQ 1,803 was the `ST` split. Over half the KOSPI file is
-  ETFs and ETNs (`EF` 1,168, `EN` 375), which `ST` does correctly exclude. **The two files carry fixed tails of different lengths — KOSPI
-  228 bytes, KOSDAQ 222** — so one shared offset silently reads the wrong
-  two characters for one market and every group code comes back as
-  whitespace, while the download, the unzip and the row count all look
-  perfect. `krx_universe.py` pins the offsets per market and fails closed on
-  a file that yields zero common stock. **Stock codes are no longer all
-  numeric** — KOSDAQ now issues alphanumeric codes such as `0001A0`, so any
-  `isdigit()` validation is wrong. **KIS prices them normally** (measured
-  2026-09-22: `0001A0`, `0004V0`, `0004Y0` each return a full page from
-  the daily endpoint), so the format is not a data gap — but all **80** of
-  them are 2026 listings with zero bars before that year, and the delisted
-  side still filters on `isdigit()` (`krx_delisted.plain_codes`, and
-  `krx_scan.candidates` after it). That is correct today, because KRX only
-  began issuing the format in 2026 and nothing carrying one has delisted
-  yet; it will silently drop the first one that does. The files list
-  **currently-listed symbols
-  only**, which was the open survivorship problem for a full-universe scan
-  (`.planning/rd-d-discovery-mode-and-the-full-universe.md` §2.2) — see the
-  next entry, which supplies the other half.
-- **The DELISTED universe is enumerable, and KIS still prices it**
-  (measured 2026-09-20; `data/krx_delisted.py`, full account
-  `.planning/rd-w-the-delisted-universe.md`). This is the source the
-  survivorship clause under Strategy Research Methodology previously said
-  did not exist.
-  - **KRX's own portal, not KIS**:
-    `POST http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd`,
-    `bld=dbms/comm/finder/finder_listdelisu`, answering in `block1`.
-    **4,182 delisted issues** (유가증권 2,133 / 코스닥 1,928 / 코넥스 121)
-    against `finder_stkisu`'s 2,869 listed ones, with **zero overlap** —
-    so it is delisted-*only*. No credentials; it needs a `JSESSIONID`
-    from the loader page, and **every request without one answers
-    `HTTP 400` with the body `LOGOUT`**, which reads like an auth failure
-    and is not. Every `MDCSTAT*` statistics `bld` still answers `LOGOUT`
-    *with* a session, so only the finders are reachable this way.
-  - **An unknown `bld` answers HTTP 200 with an HTML body**, not an
-    error — `finder_dellistisu`, `finder_delisu` and `finder_deallistisu`
-    all did while probing. A status-code check alone takes any of them for
-    data; this is the KIS wrong-contract-code trap in a second venue, so
-    a non-JSON 200 must be rejected explicitly.
-  - **KIS serves a dead name's daily bars to its last session.**
-    한진해운 `117930` runs to **2017-03-06, final close 12 KRW** (from
-    3,540 a year earlier), then returns nothing at all for any later
-    window. **21 of 25** randomly sampled plain 6-digit codes are
-    retained, final bars spanning 2000 to 2026; all four misses were
-    신주/우선주 legacy instruments rather than common stock.
-  - **The 100-row cap is the delisting-date mechanism, not an obstacle.**
-    It keeps the **newest** rows, so an over-wide window (e.g.
-    `19900101`..`20261231`) returns a dead name's last 100 sessions and
-    the final bar is its last trading day. `kis_klines.fetch_daily_page`
-    deliberately *refuses* a capped page, which is right for a backfill
-    and wrong here — ask the endpoint directly for this.
-  - **A zero-row answer is still ambiguous**, exactly as everywhere else
-    in this section: `999999` and `ZZZZZZ` both return `rt_cd=0` with zero
-    rows, identical to a name KIS has dropped. Any probe here needs a
-    nonsense-code negative control in the same run.
-- **Single-stock futures — the instrument `rd-q` says to trade, and a
-  second decaying window.** Daily history:
-  `GET /uapi/domestic-futureoption/v1/quotations/inquire-daily-fuopchartprice`,
-  `tr_id` **`FHKIF03020100`**, `FID_COND_MRKT_DIV_CODE` **`JF`** (`F` is
-  *index* futures and returns `rt_cd=0` with zero rows for a stock
-  contract — a wrong division is indistinguishable from a dead contract).
-  Quotes and last price use `FID_COND_MRKT_DIV_CODE=JF` on
-  `.../inquire-asking-price` (`FHMIF10010000`) and `.../inquire-price`
-  (`FHMIF10000000`). Full record: `.planning/rd-r-futures-liquidity-
-  universe.md`.
-  - **283 underlyings** carry a listed single-stock future, **every one
-    10 shares** a contract, from `fo_stk_code_mts.mst.zip` (cp949,
-    pipe-delimited) on 2026-09-16. The same file also holds calls (`B`),
-    puts (`C`) and calendar spreads (`D`) for those names, so a parser
-    keyed on the code prefix alone sweeps in a different instrument's
-    turnover entirely.
-  - **A contract code has no arithmetic relation to its underlying.**
-    삼성전자 `005930` is `A11610`; SK하이닉스 `000660` is `A50610`. The
-    encoding is `A` + a two-character KIS issue id + the year's last digit
-    + the month, and **the issue id exists nowhere else in this project's
-    data**, so the master is the only source. Guessing one returns
-    `rt_cd=0` with zero rows, which reads as "this contract does not
-    trade" — the same trap that made KOSPI200 futures look unavailable
-    across six guessed index codes, sprung again one document later.
-    `FuturesMaster.contract_code` constructs a historical code only after
-    reproducing every expiry the master itself lists for that name.
-  - **KIS drops an expired contract's ENTIRE series, not its oldest
-    bars.** Measured 2026-09-16: expiries **2026-01 and later answer,
-    2025-12 and earlier return nothing at all** — contract-level, not a
-    rolling bar window, since the 2025-12 contract has bars well inside
-    the range the 2026-01 contract is still served over. The oldest bar
-    reachable was **2025-10-10**, and the **front-month** series is
-    reconstructible only from **2025-12-12**. Roughly one more month goes
-    every month, so this is a decaying window like
-    `inquire-time-dailychartprice`, and `runs/krx_futures_liquidity.json`
-    is committed because it is the only copy.
-  - **The row cap is 100 and silent**, as for equities — `rt_cd=0`,
-    newest kept. **`acml_tr_pbmn` is 원 here**, not the 백만원 that
-    투자자별 매매동향 uses: a convention is a property of an endpoint, not
-    of a venue.
-  - **A bar is printed for every session a contract is LISTED**, carrying
-    `acml_vol` 0 when nobody traded it. So counting bars measures listing
-    and not liquidity, and gives all 283 names 100% coverage. KRX lists
-    these in batches — 24 names first traded 2026-04-27 and 17 more on
-    2026-09-14 — so "no bars in the window" means *not yet listed*, which
-    is not a statement about liquidity and must not be reported as one.
-- **The order book: depth is available, and the field map is asymmetric.**
-  Spot `.../inquire-asking-price-exp-ccn` (`FHKST01010200`, div `J`)
-  answers in **`output1`**; futures `.../inquire-asking-price`
-  (`FHMIF10010000`, div `JF`) answers in **`output2`**. On the futures
-  book the **prices carry the `futs_` prefix and the quantities do not** —
-  `futs_askp1` is the price, `askp_rsqn1` is the size beside it, and
-  `futs_askp_rsqn1` (the symmetric guess) is `None` at every level. A
-  caller that coalesces would record a book with prices and no size.
-  **Resting size at the touch had never been read by this project at all**,
-  which is how rd-q came to describe a ratio of *cumulative volume*
-  (`acml_vol`) as books being "27× deeper" — two different quantities.
-  `data/krx_quote_sampler.py` stores the four primitives; the spread is
-  derived, never stored.
-- **KIS answers a quote request outside market hours with the LAST book**,
-  not an empty one — verified at 23:00 KST, which returned 삼성전자 at
-  253,500/253,000. So an off-hours sample is plausible numbers from a
-  different market state, and any spread or depth collection must gate on
-  the continuous session (09:00–15:20 KST; the 15:20–15:30 closing call
-  auction has no continuous book) rather than trusting the response to be
-  empty. **An order book is not backfillable at any price** — there is no
-  historical endpoint for it, so unlike intraday bars (~250 rolling
-  sessions) or 투자자별 매매동향 (30 rolling rows), a sample not taken is
-  gone the same second.
+**One computed statistic, load-bearing for how the data may be used**: Binance
+and BingX daily price series are near-identical (figures in
+`docs/exchange-api.md`). That shows the two **price series** are tightly linked
+— it does **not** show a signal developed on one transfers profitably to the
+other, which also depends on volume, funding, basis, execution costs and
+timing, none of which a price correlation measures.
 
 ## LLM Usage Policy
 
@@ -1273,8 +820,22 @@ it loses the **rule**, and the check cannot see the difference.
 So the operation is two steps, and only the first is mechanical:
 
 1. **Mechanical**: no figure may be removed unless it survives in the
-   `.planning/` document. A script can check this, and one is the obvious
-   next tool if trimming becomes routine.
+   `.planning/` document — **or in the `docs/` file that now owns it**, which is
+   the second legitimate home and did not exist when this rule was written. A
+   script checks it: `python/research/figure_survival.py`, built for exactly
+   this and first used on a real trim on 2026-09-26.
+
+   **Read the script's losses, do not trust them.** On that trim it reported 5
+   figures as surviving nowhere and **4 of the 5 were false losses**, in two
+   shapes it cannot see past and should not be loosened to: a figure
+   `CLAUDE.md` had **rounded** (`1.250` against `.planning/`'s own
+   `1.250042` — genuinely different numbers, and the guard exists because
+   `4374` once "survived" inside a row id `4963594374`), and a **range
+   endpoint** where the identical range survives verbatim (`0.010` against
+   `0.010-0.028 BTC`, which the both-sides hyphen guard rejects so a date's day
+   cannot vouch for a `20%` ceiling). Both failures are in the **safe**
+   direction — it over-reports loss — so the rule is to check each reported
+   loss by hand and keep the script strict.
 2. **A judgement call, which must not be skipped**: of what passes step 1,
    remove only **narrative and evidence** — what was run, in what order,
    and what it measured. Keep every **rule, constant, safety property and
@@ -2430,384 +1991,30 @@ exception without a comparably strong multi-window independent
 replication AND zero fitted parameters is not following this precedent
 correctly.
 
-### Scalping Strategy Research — Tasks S0-S16; the 1m window is now closed to selection, and the reason is arithmetic
+### Scalping Strategy Research — Tasks S0-S16; the 1m windows are closed to selection, and the reason is arithmetic
 
-A second research direction alongside `daily-tsmom-ensemble`, opened
-2026-08-24 at the human operator's request: **retail scalping** (minutes
-to tens of minutes holding period) on BTC-USDT, explicitly asked for as a
-methodology-first effort after several ad hoc "find me a strategy"
-attempts had failed. Full records — `.planning/scalp-s0-s3-methodology.md`
-(the design, the real 1m retention probe, the cost gate, the statistical
-design decision, plus the investigation that ruled out two candidates),
-then `scalp-s4-vwap-mid-reversion.md` and its `-result.md`,
-`scalp-s5-binance-1m-orderflow-infra.md`,
-`scalp-s6-ofi-momentum.md` and its `-result.md`, and
-`scalp-s7-backtest-insolvency-floor.md`.
+A second research direction alongside `daily-tsmom-ensemble`, opened 2026-08-24
+at the operator's request: **retail scalping** (minutes to tens of minutes
+holding period) on BTC-USDT, asked for as a methodology-first effort after
+several ad hoc "find me a strategy" attempts had failed.
 
-**Scope, decided and not to be widened silently**: 1-minute bars and
-coarser only. No tick or trade-level data, no true HFT — this stays
-inside the permanent "HFT / co-location / tick-level strategies" non-goal
-above. "Tens of seconds" was considered and rejected for this phase; it
-would need a trade/tick collection layer this project does not have.
+**Seventeen tasks, no candidate.** The arc, every measurement and every
+retraction is in `.planning/scalp-s0-s3-methodology.md` through
+`scalp-s16-*.md` — what is below is only what **binds** a future candidate.
 
-**Standing constraints these tasks set. These are rules, not history —
-a future scalping candidate must obey them or justify a change here
-first**:
+**Scope, decided and not to be widened silently**: 1-minute bars and coarser
+only. No tick or trade-level data, no true HFT — this stays inside the permanent
+"HFT / co-location / tick-level strategies" non-goal above. "Tens of seconds"
+was considered and rejected for this phase; it needs a trade/tick collection
+layer this project does not have.
 
-- **`bars_per_day = 1440`** wherever the Eligibility Bar's formulas need
-  it, following the same one-constant-per-timeframe convention
-  `DEFAULT_BARS_PER_DAY` already establishes (96 = 15m, 24 = 1h, 1 = 1d).
-- **`FEE_BPS = 5`** — BingX's and Binance's own published VIP0 taker fee
-  for USDT-M perpetual futures, re-verified for this use rather than
-  inherited from the daily strategy. (Their *spot* VIP0 taker fee is
-  0.10% = 10bps; irrelevant to this project's futures-only scope, but it
-  did surface that `sr-ab`'s Binance **spot** holdout used 5bps and so
-  understated its own costs. That access is spent and its result already
-  disclosed; editing the spent config now would misrepresent history.)
-- **`SLIPPAGE_BPS = 1`** for scalping `GUARDED_MARKET` preregistrations,
-  **revised down from 10 on a real measurement (Task S9,
-  `.planning/scalp-s9-slippage-measurement.md`)**. S2's original 10 was
-  ~2.5x a cited ~4bps "typical BTC-USDT spread", disclosed at the time
-  as a reasoned estimate rather than a measurement. Measured against
-  public Binance `aggTrades` across three days spanning a 22x volatility
-  range (1.5M direction-flip observations), **the median direction-flip
-  price difference on BTCUSDT perpetual futures is 0.014-0.015bps — one
-  tick — in every regime**, with the 99th percentile on the most
-  volatile day still only 2.4bps. Stated as the observed statistic
-  rather than as "the true effective spread" deliberately: the estimator
-  is not a guaranteed upper bound, since price movement between the two
-  trades can offset the spread as easily as add to it. It is
-  corroborated independently by the tick-multiple distribution (98.3%
-  of pairs at exactly one tick on the quiet day) and by live BingX
-  quotes at 0.026-0.038bps, neither of which uses that estimator. So the
-  cited ~4bps figure does not describe this instrument on a major venue;
-  it was two to three orders of magnitude too wide. Market impact is
-  separately negligible **on Binance** at canary size (0.03 BTC against
-  a minimum ±0.20% depth of 101 BTC on the most volatile day); **on
-  BingX it is about one tick**, since the live samples showed a thin
-  best ask (0.010-0.028 BTC) that a 0.03 BTC order can clear — a real
-  venue difference, not merged into the Binance figure.
-  `SLIPPAGE_BPS = 1` is still ~65x the measured half-spread,
-  deliberately, to absorb the BingX-vs-Binance gap and regime variation
-  three days cannot capture. Revising either constant needs its own
-  justification here, never silent per-strategy tuning to make a
-  marginal candidate pass.
-- **Consequence: the taker fee now dominates the cost structure
-  entirely** — 5bps against a ~0.015bps spread, roughly 330x. Round trip
-  is **~12bps, not 30**. Two things follow. First, *reducing the number
-  of round trips* matters far more than improving execution precision;
-  both prior candidates traded ~70 and ~89 times per day. Second, the
-  taker-vs-maker fee gap becomes a first-order design question rather
-  than a detail, which is a real argument for revisiting the
-  `GUARDED_MARKET`-only restriction below — though that restriction
-  exists because of `fill.py`'s optimistic limit-fill model, which this
-  measurement does not address and which would have to be hardened
-  first.
-- **`GUARDED_MARKET` execution only.** `fill.py` applies slippage
-  *exclusively* to `GUARDED_MARKET` orders; a `LIMIT` order fills 100% at
-  the exact limit price the instant a bar's high/low touches it,
-  completely unaffected by `slippage_bps`. Declaring a higher
-  `slippage_bps` for a limit-order candidate would silently do nothing
-  and manufacture false conservatism. This is a **policy exclusion, not
-  an engine limitation** — `simulate_fill` has a real, working `LIMIT`
-  branch; this project chooses not to trust its optimistic
-  fill-on-touch model for scalping validation until that model is
-  hardened. It is also a research-scope decision only, and never a
-  live-or-paper submission approval: the Live Entry Criteria's separate,
-  still-unverified "market-order guard enabled" requirement stands
-  regardless, and every real order still passes through the Java
-  `RiskGateway` in full.
-- **Cost gate, evaluated before or alongside statistical significance.**
-  A candidate must show mean profit factor **> 1.0** (not merely
-  positive — profit factor is a ratio of two non-negative magnitudes, so
-  "positive" excludes nothing) and positive mean Sharpe under those
-  constants. For a research-split candidate the gate runs on the research
-  folds *before* any walk-forward/DSR test; for a single pre-registered
-  holdout there is no prior access to spend, so the same criteria are
-  evaluated **from that one access**, alongside the Eligibility Bar's
-  single-window checks. Failing it is reported as **cost-disqualified**
-  and takes reporting priority over a PSR-based pass — a high PSR on a
-  cost-disqualified run is an artifact of the assumed fee/slippage
-  figures, not evidence of a tradeable edge. A cost-disqualified run is
-  still logged via `log_run` and still counts toward the project-level
-  selection-trial `N`: it was a real attempt to find a viable
-  configuration, and excluding it would understate how much searching
-  happened.
-- **1-minute research uses a single whole-window pre-registered
-  holdout**, not a research/validate split — decided 2026-08-25 with the
-  human operator, on a real computed finding. PSR/DSR resample to *daily*
-  granularity before computing significance, so the detection floor
-  depends on **calendar span, not bar count** (~`1.6449/sqrt(years)`).
-  BingX's full 631.98-day 1m window therefore floors at ~1.25 — barely
-  better than the already-spent 1h window's ~1.21 — and any split would
-  push the holdout's own floor higher still. A single access, evaluated
-  once under the Eligibility Bar's Holdout confirmation (single-window
-  variant), follows `daily-tsmom-ensemble`'s own `sr-u`/`sr-v`/`sr-aa`/
-  `sr-ab` precedent rather than inventing a mechanism. Such a holdout
-  contributes **zero** to the project-level `N`, not one —
-  `overfitting_check.py` excludes holdout runs and their children by
-  design, since a holdout was never searched over.
-- **Gap-aware pre-access check, fail-closed.** `1m` data has real
-  timestamp gaps, and neither `walkforward.py`'s fold generation nor the
-  backtest engine's bar iteration detects one — both are pure positional
-  arithmetic. A registration declaring `data.known_gaps` is verified by
-  `run_preregistered_holdout.py`'s `verify_known_gaps` *before* any data
-  loads, and fails closed if the real gap set differs from the declared
-  one. Not "fail on any gap" — the known gaps are real and permanent —
-  but a guard against an *unexpected* one appearing.
+#### The governing arithmetic, and it governs everything else here
 
-**What each task settled.** Full record, evidence and every retraction
-in the `.planning/scalp-*.md` document named on each row — these are
-conclusions, and the arithmetic behind them lives there.
-
-| Task | What it was | Outcome |
-|---|---|---|
-| S0-S3 | methodology, real 1m retention probe, cost gate | the design; `scalp-s0-s3-methodology.md` |
-| S4 | `vwap-mid-reversion` — 20-period VWAP, 2-SD band, **no risk control at all** | **INCONCLUSIVE.** PSR 0.999999 but drawdown 10,619%, profit factor 0.0012, Sharpe 0.392 under the window's 1.250 floor. 44,344 trades at a **1.13% win rate**. Lesson: *zero free parameters* and *zero risk controls* are different disciplines — hold-until-reversal is defensible for trend-following and does not transfer to mean-reversion |
-| S5 | Binance 1m + taker-buy-volume infrastructure | the only order-flow source this project has |
-| S6 | `ofi-momentum` — 15-bar OFI, 2-SD band, real ATR stop/target | **INCONCLUSIVE.** Sharpe 0.640 cleared the 0.623 floor — a statement about *power*, not significance — while PSR 0.823 failed against the registered 0.95. Drawdown 239,161%. Lesson: **a per-trade stop is necessary and demonstrably not sufficient**; it bounded each trade and could not bound their sum, because `compute_position_size` sizes against a fixed `reference_equity` |
-| S7 | backtest insolvency floor | the **circuit-breaker half** of what S4/S6 exposed. Equity-aware *sizing* stayed undone until S15 |
-| S8 | methodology rebuilt, after operator pushback | the eleven binding rules below. Retracted two of this section's own prior claims |
-| S9 | real slippage measurement | `SLIPPAGE_BPS` 10 → **1**; see the constants above |
-| S10 | two-axis regime classifier | volatility axis fixed (ratio → **absolute** ATR: 1.22x → 5.21x separation); **structure axis (ADX) carries nothing** and has now failed on both axes it could have |
-| S11 | per-feature IC | 10 of 26 feature×horizon combinations clear; **Every price and momentum IC is negative** — mean reversion at the hour scale, consistently signed across four different formulations; order flow is **uncorrelated with every price feature, \|r\| ≤ 0.006** — the first two genuinely independent information sources this project has held at once. Those 10 features are about **3 signals** |
-| S12 | MAE/MFE | a 1.5 ATR stop destroys **40.9% of eventual winners**; Sweeney's boundary near **2.65 ATR**. The bigger finding: that entry's gross mean is **+0.95bps** and **−11.05bps net**, and **even a ~2bps maker round trip still loses** |
-| S13 | holding-period sweep, then selectivity sweep | holding period does not help (peaks at 1h, inverts at 2h). **Selectivity does**, monotonically. The t-statistics were **retracted** — see the overlapping-window rule below |
-| S14 | `selective-reversion`, first CSTI candidate through real walk-forward | **REJECTED**, and conclusively — 721 trades, the first scalping run to clear the trade-count floor. Mean fold Sharpe −1.471, DSR 0.000 |
-| S15 | the three remedies S14 named | enter later: **no** — every delay tested is worse on gross, net and t, and none recovers. A better stop: **no** — at every width 1.5-12 ATR the stop realises a *larger* loss than the position would have taken alone, so it manufactures losses rather than avoiding them. Equity-aware sizing: **built**, ~neutral here, which is evidence sizing was not what was wrong. Removing the stop is worth **4.4x on mean Sharpe**, the largest single improvement in the arc, and still not an edge |
-| S16 | audit of S15, at the operator's request | found three real defects in S15's *reasoning*. The verdict survived; its stated reason did not. Best configuration posts **t = +2.388, p = 0.0098 — the first significance test any scalping candidate here has cleared** — plus PSR 0.9905, drawdown 9.93%, 181 trades, profit factor 6.44, and is **not** 2021-dependent. It still fails, for the reason below |
-
-**The one finding from S14/S15 that transfers to any future design**:
-**the adverse excursion is not a cost paid before the edge; it *is* the
-edge.** Removing S14's stop moved the full-window result from −134% to
-−0.20%, and no width helps because the edge lives precisely in the
-excursion a stop cuts off. S12 had already observed the mechanism
-("winners digging 1.86 ATR on average says the entry is early") without
-drawing the conclusion. A systematically-early mean-reversion entry
-needs a later entry or a risk control that is **not** a fixed
-adverse-excursion stop — a real design question, not a tuning knob. The
-CSTI structure and the R:R gate are **not** implicated and should be
-reused; the signal underneath them was not there. Independently
-confirmed a third time by Trade Management Task C, where a *selective,
-conjunction-gated* reduction behaved no differently from an
-unconditional one.
-
-**Four findings from S16 that outlive the candidate**, because each is a
-methodological rule rather than a result:
-
-1. **The conclusion was drawn from the weaker of two surviving cells.**
-   Every walk-forward S14 and S15 ran used `entry_z=5.0`; the `|z|≥6`
-   cell was never tested and "the signal is not there" was declared
-   anyway. Running it reverses the sign. This is the **fifth** instance
-   of the single-parameter-setting error below, committed at the most
-   expensive stage to commit it.
-2. **Fold-based criteria are uninformative below ~20-30 trades per
-   fold.** At `|z|≥6` the median fold holds 2 trades, so a fold's sign
-   is near a coin flip and the 80% consistency floor is unreachable: a
-   strategy whose folds are positive 60% of the time clears 67-of-83
-   with probability **4.6e-05**. `sr-j` made this argument for fold
-   *counts*; it had not been made for trades *per fold*. **Do not report
-   fold consistency or the sign test as evidence in either direction
-   below that density.**
-3. **Risk-based sizing neutralised the regime concentration.** S13
-   warned the edge was 2021-dependent; S16's walk-forward contradicts it
-   (**+26.12% of the +32.42% survives excluding 2021**, six of eight
-   years positive). Not a contradiction to resolve by picking one — S13
-   measured mean bps per position, where 2021's violent moves dominate,
-   while the walk-forward compounds equity under ATR-inverse sizing that
-   gives those same moves a *small* position. **Which statistic you
-   measure decides whether a regime looks concentrated.**
-4. **`s14_eligibility.py` fed DSR the wrong variance** — its own run's
-   per-fold Sharpes, where the benchmark wants the variance across other
-   *trials*. It now delegates DSR/PSR/trial counts to
-   `research/retrospective.py` rather than keeping a second
-   implementation.
-
-**A scoring weakness, and a reporting fix rather than a gate change.**
-S15's no-stop cell cleared the profit-factor floor on a **mean of 2.55
-while its median fold was 1.18**. One fold with almost no losing trades
-can drag the mean across the floor by itself. CLAUDE.md sets the floor
-without naming which statistic it applies to and `walkforward`
-aggregates the mean, so the mean remains what is scored — changing that
-is a gate change needing its own approval. `s14_eligibility.py` now
-prints the median beside it and flags **FRAGILE** when the mean passes
-and the median does not.
-
-Liquidation cascades, the one remaining named candidate from the original
-list, was investigated and found to lack a usable foundation: the real
-papers propose no trading rule, their OHLCV-computable early-warning
-signal is silent in 2 of 7 studied cascades, they sweep 39 configurations
-with no reusable convention, and no post-cascade reversion pattern is
-documented anywhere in that literature.
-
-**What S8 changes, binding on any future scalping candidate.** Thirteen
-rules. The measurement behind each is in the `.planning/` document
-named; what is stated here is the rule, which is what binds.
-
-- **Decompose the strategy** into direction / entry-exit / sizing and
-  research them separately. Both failed candidates fused all three into
-  one threshold rule.
-- **A hypothesis must name a mechanism** — who is on the other side and
-  why they lose. "20-period VWAP, 2 SD" is a formula, not a hypothesis.
-- **A regime layer comes before signals**: two-axis (direction ×
-  volatility), hysteresis, minimum dwell time, computed only from
-  information available at bar close. Running mean-reversion into an
-  emerging trend is the documented classic blowup and is exactly what
-  `vwap-mid-reversion` did. **Use the continuous absolute-volatility
-  measure as a conditioner, not the discrete label** — discretising
-  costs most of the signal (5.2x separation becomes ~1.5x) — and do not
-  rely on the structure axis at all (`scalp-s10-regime-classifier.md`).
-- **Measure signals as signals (IC) before assembling a strategy.**
-  Usable ICs are small: 0.02-0.05 is genuinely useful, so individual
-  features will look unimpressive and that is normal
-  (`scalp-s11-feature-ic.md`).
-- **Orthogonality decides how many signals you have, not their count.**
-  S11's 10 features are about 3. Combine the three, not the ten, and
-  treat `sqrt(3)` as an upper bound rather than a forecast.
-- **Combine weak, uncorrelated signals.** Grinold's `IR ≈ IC × √breadth`
-  makes **orthogonality, not individual signal strength, the binding
-  constraint** — a design principle and upper bound, never a performance
-  forecast; the law is known to overstate achievable IR.
-- **Place stops and targets from MAE/MFE distributions**, not
-  convention. S6's `stop_multiplier=1.5` was never measured against
-  anything (`scalp-s12-mae-mfe.md`). The MAE/MFE calculation contract is
-  pinned in S8 §3.7 — measurement starts at the fill bar, net of costs,
-  stop-wins on a same-bar tie, planned-risk R denominator, forced closes
-  flagged as censored — so the same trades cannot yield two different
-  stop boundaries.
-- **Derive the risk budget first**: ruin threshold (25-30%, not 50% —
-  recovery is asymmetric) → acceptable risk of ruin (<1% institutional,
-  >5% means reduce size) → risk per trade → quantity via stop distance.
-  Reject any strategy that cannot live inside the budget rather than
-  widening it. **The risk-of-ruin calculation is only defined once its
-  contract is pinned** (S8 §3.6): which closed form (the additive one
-  for fixed dollar risk, the logarithmic one for equity-compounding
-  risk — they differ, and using the additive form for compounding
-  overstates survivable units), what counts as the ruin event
-  (peak-to-trough drawdown, not loss from starting capital), the
-  horizon, that returns are **net**, how serial dependence is handled,
-  and the confidence level. Both closed forms assume i.i.d. trades with
-  a fixed payoff ratio; where payoffs vary or trades are dependent — true
-  here — the closed form is a first screen and the real number comes
-  from Monte Carlo over the actual trade distribution.
-- **Add Sortino, Calmar, expectancy, MAE/MFE, MFE capture rate,
-  turnover, order rate, and risk of ruin** to the metrics in use.
-  **Turnover and order rate are two different metrics, not one under two
-  names**: turnover is traded notional over capital, an *exposure*
-  measure; order rate is orders per unit time, a *runaway-loop* measure.
-  Each needs its own threshold and **neither is defined yet** — doing so
-  requires naming what is counted (orders or filled trades), the window,
-  the limit, and the fail-closed action on breach.
-- **Structure a candidate as Condition / Setup / Trigger /
-  Invalidation (CSTI)**, and sequence the risk decision as **stop first,
-  then reward-to-risk against a structural target, then qualify, then
-  size**. A trade whose structure offers poor odds is *declined*, never
-  resized into. A stop belongs at a level that **invalidates the
-  thesis**, not at a round distance or a convenient ATR multiple; and
-  **asymmetry substitutes for win rate** — 40% at 3:1 is profitable, 60%
-  at 0.5:1 loses — so a win-rate figure quoted without its payoff ratio
-  says nothing. Floor 2:1, prefer 3:1. **Check the coupling before
-  tuning either side**: widening the stop mechanically fails an R:R gate
-  whose denominator *is* that stop distance, silently turning "safer
-  stop" into "stop trading" (S14: at 8 ATR it declined 2,831 of 2,869
-  setups).
-- **Judge stability by year, not only in aggregate.** Report the number
-  of positive years alongside the pooled statistic, and treat an edge
-  concentrated in one regime as unconfirmed until shown outside it.
-  Where the sample supports it, prefer worst-regime performance
-  (Alexander & Fabozzi 2026) over the mean as the figure a sizing
-  decision is made against, and bootstrap the year-level spread rather
-  than quoting a single pooled standard error.
-- **Deduplicate overlapping windows before reporting any significance
-  figure.** A hard requirement, not a preference — see the fourth error
-  shape below.
-- **Use a research split, not another single-shot holdout.** The two
-  spent 1m windows are research data now; Binance **spot** 1m stays
-  reserved and untouched. Search freely, count every trial, deflate with
-  DSR — that is what the machinery is for. Avoiding search to keep `N`
-  low avoids the penalty and also avoids all learning.
-
-**Two corrections S8 made to this section's own earlier claims**, kept
-because a retraction that is quietly deleted teaches nothing
-(`scalp-s8-research-methodology.md`, `scalp-s9-slippage-measurement.md`):
-
-1. **"Minutes-scale scalping is arithmetically impossible after costs"
-   was false** — an artefact of comparing costs to the *unconditional*
-   median move, i.e. the move from entering at a uniformly random
-   moment. A strategy does not enter at random. Conditioning on recent
-   activity, 15-minute holding reaches 1.09x the round trip in the top
-   10% of activity and 2.08x in the top 1%. **This shows the move is
-   large enough that a round trip could be covered, not that direction
-   is predictable** — an absolute move is unsigned. "Viable" stays
-   reserved for a candidate that has cleared signed-return evidence, a
-   measured win rate, real execution costs, and out-of-sample
-   validation. **This still says nothing about direction.**
-2. **That conclusion was fragile to `SLIPPAGE_BPS`, in the wrong
-   direction** — such a strategy deliberately enters when spreads widen,
-   and the assumed 10bps was calibrated against a ~4bps "typical"
-   spread. **Shorter horizons are structurally more exposed to this
-   assumption**, which is why S8 put measuring real slippage ahead of
-   any signal research. S9 measured it instead and resolved the fragility favourably:
-   at the real ~12bps round trip, 15-minute holding moves from 0.40x to
-   **0.99x unconditionally** and 2.73x in the top 10%; 30-minute clears
-   at **1.37x even unconditionally**. What changed is only which
-   horizons are ruled out before the real work begins.
-
-**Live-side controls S8 names as prerequisites — these are hard gates,
-not a wishlist.** All are currently missing or unverified, and they are
-distinct from backtest cost assumptions. Each is an additional required
-item alongside the Live Entry Criteria's existing "market-order guard
-enabled" and "kill switch verified" lines, and **all must be implemented
-and verified before live activation, and before `GUARDED_MARKET` is used
-against any real account. Absent or unverified means fail closed — no
-live order.** Every live order still passes through the Java Trading
-Plane and the Java Risk Gateway in full, per the Non-negotiable Rules;
-nothing here creates an exception to that.
-
-1. **Wire-level price guard.** `GUARDED_MARKET` currently maps to a
-   plain `"MARKET"` order with no price cap on both `BingXAdapter` and
-   `KisAdapter` — the guard is a name only today.
-2. **Stale-data check.** `PriceFeed#latestPrice` returns a bare value
-   with no timestamp (interface-level, so every venue is affected).
-   Acting on a stale price creates risk rather than managing it.
-3. **Turnover ceiling** and **order-rate anomaly trigger** — separate
-   thresholds on separate metrics, per the distinction above.
-4. **Drawdown circuit breakers** at daily/weekly/total resolution that
-   halt automatically and require **manual review before restart**.
-5. **Pre-trade checks run in full without short-circuiting**, so the
-   audit log records every failure rather than only the first.
-
-A bounded exception exists for measuring real slippage (S8 Part 4 item
-1): a **BingX VST demo** fill experiment against virtual funds, through
-the full `OrderIntent → OrderPipeline → RiskGateway → Order →
-ExchangeOrderExecutor → BingXAdapter` path, with its own human approval
-and an explicit acceptance of which of the above are still absent. It
-authorises nothing on a production endpoint and relaxes no Live Entry
-Criterion.
-
-**The error pattern this exposed, recorded so it stops recurring**: three
-of this arc's largest errors share one shape — a result from a single
-arbitrary configuration generalised to a whole domain (costs vs. the
-*unconditional* move distribution → "minutes-scale impossible"; a
-*directional* hypothesis tested by *magnitude* → "levels carry nothing";
-one operating point at 57 trades/day → "scalping cannot clear costs").
-All three were false and none was caught by reasoning alone. **Never
-conclude about a domain from one parameter setting — sweep it first.**
-
-**A fourth, different shape, added by S14 and binding on any future
-measurement here**: *a statistic computed over overlapping windows is not
-a statistic over independent observations.* S13's t = 7.0-8.0 came from
-overlapping 60-minute excursions treated as independent, and correcting
-it cut t roughly threefold. The tooling to avoid this already existed in
-this repo — `research/ic.py` enforces non-overlapping sampling and S11
-documented why — and was simply not applied to the excursion sweep.
-**Building the right tool does not protect you if the next analysis does
-not use it**: any overlapping-window measurement must either deduplicate
-to non-overlapping samples before reporting a t-statistic, p-value or
-standard error, or state explicitly that its significance figures are
-not corrected for overlap.
-
-**The governing arithmetic, and it governs everything else here.** The best configuration above still fails, on one number: **DSR = 6.46e-11 against N = 127**, the project-level count when S16 ran. Inverting the benchmark gives the annualized Sharpe a result must post to clear DSR 0.95:
+The best configuration the arc produced cleared a real significance test — the
+first any scalping candidate here has — and still fails, on one number: a
+**Deflated Sharpe of 6.46e-11** against the project-level `N` when it ran.
+Inverting the benchmark gives the annualized Sharpe a result must post to clear
+DSR 0.95:
 
 | N | required annualized Sharpe |
 |---|---|
@@ -2817,47 +2024,304 @@ not corrected for overlap.
 | **129 (this project today)** | **4.00** |
 
 Credible institutional trend-following reports 0.4-0.8. **At this `N` no
-realistic edge can clear this bar on this data, whatever it is.** (`N` is
-**129** since Trade Management Task C, and the requirement is unchanged to
-two decimals: `Phi^-1(1 - 1/N)` moves 0.24% between 127 and 129. The
-S16 DSR above is left at the count it was computed against, because a
-measurement is a record of what was run.) This is
-the same arithmetic that closed the 1h window (Configuration C needed
-4.6), and the standing rule written there now applies verbatim to the
-**Binance futures 1m window**: it stays open for *reproduction,
-diagnosis and infrastructure testing*, and is **closed to selection**,
+realistic edge can clear this bar on this data, whatever it is.** This is the
+same arithmetic that closed the 1h window, and the standing rule written there
+applies verbatim to **BingX 1m and Binance futures 1m**: open for
+*reproduction, diagnosis and infrastructure testing*, **closed to selection**,
 because raising `N` can only lower the DSR of any future result there.
 
-**The one number that changes the sequencing**: at `N = 1` the
-requirement is **0.63**, and the observed research-window Sharpe is
-**0.899**. Binance **spot** 1m has never been touched and is not in the
-local store; a single pre-registered confirmation there faces `N = 1` by
-construction.
+**At `N = 1` the requirement is 0.63 and the observed research-window Sharpe was
+0.899.** Binance **spot** 1m has never been touched. But **`N = 1` removes the
+selection penalty, not the replication question, and this must not be
+policy-ised into "one holdout confirms a strategy"**: `daily-tsmom-ensemble` got
+two disjoint pre-registered confirmations plus a combined-significance
+meta-analysis and stayed INCONCLUSIVE. Options, none chosen here and each
+needing its own `Discuss` plus a pre-registration committed before any data is
+fetched: a **research split on an unsearched window** (the ordinary discipline,
+and it spends no one-shot resource); an **independent replication source**; or
+spending the spot-1m holdout, accepting it can at best say "not contradicted
+here" — spot-against-perpetual microstructure differences make that a
+*replication attempt* rather than a continuation.
 
-**But `N = 1` removes the selection penalty, not the replication
-question, and this must not be policy-ised into "one holdout confirms a
-strategy."** A lone clean result is one draw. This project's own
-precedent settles it: `daily-tsmom-ensemble` got **two** disjoint
-pre-registered confirmations plus a combined-significance meta-analysis
-and the verdict was still INCONCLUSIVE. Options — none chosen here, each
-needing its own `Discuss` and a pre-registration committed before any
-data is fetched: define a **research split on an unsearched window**
-first (the ordinary discipline, and it does not spend a one-shot
-resource); find an **independent replication source**; or spend the
-spot-1m holdout, accepting it can at best say "not contradicted here".
-Spot-vs-perpetual microstructure differences (fee schedule, no funding,
-different participants) make that last one a *replication attempt*
-rather than a continuation. Nothing here affects
-`daily-tsmom-ensemble`, which trades at a frequency where a 12bps round
-trip is negligible and remains in paper trading under its own approved
-exception.
+#### Constants and execution policy — rules, not history
 
-**Out of scope this phase**: tick/trade-level data, true HFT,
-co-location; promoting any scalping strategy to paper trading (the
-Eligibility Bar and human-approval discipline apply in full first);
-rebuilding `fill.py`'s fill model with order-book depth and
-partial-fill/queue-position awareness (a disclosed possible follow-up,
-never committed to).
+- **`bars_per_day = 1440`** wherever the Eligibility Bar's formulas need it,
+  following the one-constant-per-timeframe convention `DEFAULT_BARS_PER_DAY`
+  already establishes.
+- **`FEE_BPS = 5`** — BingX's and Binance's own published VIP0 taker fee for
+  USDT-M perpetual futures, re-verified for this use rather than inherited.
+  (Their *spot* VIP0 taker fee is twice that; irrelevant to this project's
+  futures-only scope, but it did surface that `sr-ab`'s Binance **spot** holdout
+  used the futures figure and so understated its own costs. That access is spent
+  and its result already disclosed; editing the spent config now would
+  misrepresent history.)
+- **`SLIPPAGE_BPS = 1`** for scalping `GUARDED_MARKET` pre-registrations,
+  **revised down from 10 on a real measurement** (`scalp-s9`). The original was
+  calibrated against a cited "typical spread" that turned out to be two to three
+  orders of magnitude too wide for this instrument on a major venue. The
+  surviving value is still tens of times the measured half-spread,
+  deliberately, to absorb the BingX-against-Binance venue gap and regime
+  variation three days cannot capture. **Market impact is a real venue
+  difference and is not merged**: negligible on Binance at canary size, about
+  one tick on BingX, whose best ask is thin enough for a canary order to clear
+  it.
+- **Revising either constant needs its own justification here, never silent
+  per-strategy tuning to make a marginal candidate pass.**
+- **Consequence: the taker fee dominates the cost structure entirely**, by
+  roughly two and a half orders of magnitude over the spread. Two things follow.
+  *Reducing the number of round trips* matters far more than improving execution
+  precision — both failed candidates traded tens of times a day. And the
+  taker-against-maker gap becomes a first-order design question rather than a
+  detail, which is a real argument for revisiting the `GUARDED_MARKET`
+  restriction below — though that restriction exists because of `fill.py`'s
+  optimistic limit-fill model, which the measurement does not address and which
+  would have to be hardened first.
+- **`GUARDED_MARKET` execution only.** `fill.py` applies slippage *exclusively*
+  to `GUARDED_MARKET` orders; a `LIMIT` order fills 100% at the exact limit
+  price the instant a bar's high or low touches it, completely unaffected by
+  `slippage_bps`. **Declaring a higher `slippage_bps` for a limit-order
+  candidate would silently do nothing and manufacture false conservatism.** This
+  is a **policy exclusion, not an engine limitation** — `simulate_fill` has a
+  real, working `LIMIT` branch; this project chooses not to trust its
+  fill-on-touch model for scalping validation until that model is hardened. It
+  is a research-scope decision only and never a submission approval: the Live
+  Entry Criteria's separate, still-unverified "market-order guard enabled"
+  requirement stands regardless.
+- **Cost gate, evaluated before or alongside statistical significance.** A
+  candidate must show mean profit factor **> 1.0** — not merely positive, since
+  profit factor is a ratio of two non-negative magnitudes and "positive"
+  excludes nothing — and positive mean Sharpe under those constants. For a
+  research-split candidate the gate runs on the research folds *before* any
+  walk-forward/DSR test; for a single pre-registered holdout the same criteria
+  are evaluated from that one access. Failing it is reported as
+  **cost-disqualified** and **takes reporting priority over a PSR-based pass** —
+  a high PSR on a cost-disqualified run is an artifact of the assumed
+  fee/slippage figures, not evidence of a tradeable edge. Such a run is still
+  logged and still counts toward `N`: it was a real attempt to find a viable
+  configuration.
+- **1-minute research uses a single whole-window pre-registered holdout**, not a
+  research/validate split — decided 2026-08-25 with the operator on a real
+  computed finding. PSR/DSR resample to *daily* granularity before computing
+  significance, so the detection floor depends on **calendar span, not bar
+  count**; a 1m window therefore floors barely better than the already-spent 1h
+  window, and any split would push the holdout's own floor higher still. Such a
+  holdout contributes **zero** to `N`, not one — `overfitting_check.py` excludes
+  holdout runs and their children by design, since a holdout was never searched
+  over.
+- **The gap-aware pre-access check is fail-closed**, and the exposure it guards
+  is under Exchange API Facts' gap-blindness entry rather than repeated here.
+
+#### The thirteen S8 rules, binding on any future scalping candidate
+
+S8 rebuilt the methodology after operator pushback. The measurement behind each
+rule is in the `.planning/scalp-*.md` document for its task; what binds is the
+rule.
+
+- **Decompose the strategy** into direction / entry-exit / sizing and research
+  them separately. Both failed candidates fused all three into one threshold
+  rule.
+- **A hypothesis must name a mechanism** — who is on the other side and why they
+  lose. "20-period VWAP, 2 SD" is a formula, not a hypothesis.
+- **A regime layer comes before signals**: two-axis (direction × volatility),
+  hysteresis, minimum dwell time, computed only from information available at
+  bar close. Running mean-reversion into an emerging trend is the documented
+  classic blowup and is exactly what the first candidate did. **Use the
+  continuous absolute-volatility measure as a conditioner, not the discrete
+  label** — discretising costs most of the signal — and **do not rely on the
+  structure axis at all**: ADX carries nothing and has now failed on both axes
+  it could have (`scalp-s10`).
+- **Measure signals as signals (IC) before assembling a strategy.** Usable ICs
+  are small — 0.02-0.05 is genuinely useful — so individual features will look
+  unimpressive and that is normal (`scalp-s11`).
+- **Orthogonality decides how many signals you have, not their count.** S11's
+  ten clearing feature×horizon combinations are about **three** signals. Combine
+  the three, not the ten, and treat `sqrt(3)` as an upper bound rather than a
+  forecast.
+- **Combine weak, uncorrelated signals.** Grinold's `IR ≈ IC × √breadth` makes
+  **orthogonality, not individual signal strength, the binding constraint** — a
+  design principle and upper bound, never a performance forecast; the law is
+  known to overstate achievable IR.
+- **Place stops and targets from MAE/MFE distributions**, not convention. The
+  stop multiplier of the second candidate was never measured against anything.
+  **The MAE/MFE calculation contract is pinned in S8 §3.7** — measurement starts
+  at the fill bar, net of costs, stop-wins on a same-bar tie, planned-risk R
+  denominator, forced closes flagged as censored — so the same trades cannot
+  yield two different stop boundaries.
+- **Derive the risk budget first**: ruin threshold (25-30%, not 50% — recovery
+  is asymmetric) → acceptable risk of ruin (<1% institutional, >5% means reduce
+  size) → risk per trade → quantity via stop distance. **Reject any strategy
+  that cannot live inside the budget rather than widening it.** The
+  risk-of-ruin calculation is only defined once its contract is pinned (S8
+  §3.6): which closed form (the additive one for fixed dollar risk, the
+  logarithmic one for equity-compounding risk — they differ, and using the
+  additive form for compounding overstates survivable units), what counts as the
+  ruin event (peak-to-trough drawdown, not loss from starting capital), the
+  horizon, that returns are **net**, how serial dependence is handled, and the
+  confidence level. Both closed forms assume i.i.d. trades with a fixed payoff
+  ratio; where payoffs vary or trades are dependent — true here — the closed
+  form is a first screen and the real number comes from Monte Carlo over the
+  actual trade distribution.
+- **Add Sortino, Calmar, expectancy, MAE/MFE, MFE capture rate, turnover, order
+  rate and risk of ruin** to the metrics in use. **Turnover and order rate are
+  two different metrics, not one under two names**: turnover is traded notional
+  over capital, an *exposure* measure; order rate is orders per unit time, a
+  *runaway-loop* measure. Each needs its own threshold and **neither is defined
+  yet** — doing so requires naming what is counted (orders or filled trades),
+  the window, the limit, and the fail-closed action on breach.
+- **Structure a candidate as Condition / Setup / Trigger / Invalidation
+  (CSTI)**, and sequence the risk decision as **stop first, then
+  reward-to-risk against a structural target, then qualify, then size**. A
+  trade whose structure offers poor odds is *declined*, never resized into. A
+  stop belongs at a level that **invalidates the thesis**, not at a round
+  distance or a convenient ATR multiple. **Asymmetry substitutes for win
+  rate** — 40% at 3:1 is profitable, 60% at 0.5:1 loses — so a win-rate figure
+  quoted without its payoff ratio says nothing. Floor 2:1, prefer 3:1. **Check
+  the coupling before tuning either side**: widening the stop mechanically fails
+  an R:R gate whose denominator *is* that stop distance, silently turning "safer
+  stop" into "stop trading" — at the widest setting S14 tested it declined all
+  but a few dozen of its own setups.
+- **Judge stability by year, not only in aggregate.** Report the number of
+  positive years alongside the pooled statistic, and treat an edge concentrated
+  in one regime as unconfirmed until shown outside it. Where the sample supports
+  it, prefer worst-regime performance (Alexander & Fabozzi 2026) over the mean
+  as the figure a sizing decision is made against, and bootstrap the year-level
+  spread rather than quoting a single pooled standard error.
+- **Deduplicate overlapping windows before reporting any significance figure.**
+  A hard requirement, not a preference — see the error shapes below.
+- **Use a research split, not another single-shot holdout.** The two spent 1m
+  windows are research data now; Binance **spot** 1m stays reserved and
+  untouched. Search freely, count every trial, deflate with DSR — that is what
+  the machinery is for. **Avoiding search to keep `N` low avoids the penalty and
+  also avoids all learning.**
+
+#### The findings that outlive the candidates
+
+**The adverse excursion is not a cost paid before the edge; it *is* the edge.**
+Removing S14's stop moved the full-window result by two orders of magnitude, and
+no width helps, because the edge lives precisely in the excursion a stop cuts
+off. S12 had already observed the mechanism — winners digging deep says the
+entry is early — without drawing the conclusion. **A systematically-early
+mean-reversion entry needs a later entry or a risk control that is *not* a fixed
+adverse-excursion stop** — a real design question, not a tuning knob. The CSTI
+structure and the R:R gate are **not** implicated and should be reused; the
+signal underneath them was not there. Independently confirmed a third time by
+Trade Management Task C, where a *selective, conjunction-gated* reduction
+behaved no differently from an unconditional one.
+
+**Order flow is the first genuinely independent information source this project
+has held.** S11 measured it as uncorrelated with every price feature, and found
+**every price and momentum IC negative** — mean reversion at the hour scale,
+consistently signed across four different formulations.
+
+**Four methodological rules from S16's audit of S15:**
+
+1. **The conclusion was drawn from the weaker of two surviving cells.** Every
+   walk-forward S14 and S15 ran used one entry threshold; the adjacent cell was
+   never tested and "the signal is not there" was declared anyway. Running it
+   reverses the sign. This is the **fifth** instance of the
+   single-parameter-setting error below, committed at the most expensive stage
+   to commit it.
+2. **Fold-based criteria are uninformative below ~20-30 trades per fold.** At
+   the untested cell the median fold holds 2 trades, so a fold's sign is near a
+   coin flip and the 80% consistency floor is unreachable. `sr-j` made this
+   argument for fold *counts*; it had not been made for trades *per fold*. **Do
+   not report fold consistency or the sign test as evidence in either direction
+   below that density.**
+3. **Which statistic you measure decides whether a regime looks concentrated.**
+   S13 warned the edge was 2021-dependent; S16's walk-forward contradicts it,
+   with most of the return surviving 2021's exclusion and six of eight years
+   positive. Not a contradiction to resolve by picking one — S13 measured mean
+   bps per position, where violent moves dominate, while the walk-forward
+   compounds equity under ATR-inverse sizing that gives those same moves a
+   *small* position.
+4. **Delegate a statistic rather than reimplementing it.** `s14_eligibility.py`
+   fed DSR its own run's per-fold Sharpes where the benchmark wants the variance
+   across other *trials*. It now delegates DSR/PSR/trial counts to
+   `research/retrospective.py`.
+
+**A scoring weakness, and a reporting fix rather than a gate change.** A cell
+cleared the profit-factor floor on a **mean** while its **median fold** sat
+below it — one fold with almost no losing trades can drag the mean across by
+itself. CLAUDE.md sets the floor without naming which statistic it applies to
+and `walkforward` aggregates the mean, so **the mean remains what is scored**;
+changing that is a gate change needing its own approval. `s14_eligibility.py`
+prints the median beside it and flags **FRAGILE** when the mean passes and the
+median does not.
+
+**Two closed directions, recorded so they are not silently reopened.**
+*Liquidation cascades* was investigated and found to lack a usable foundation:
+the real papers propose no trading rule, their OHLCV-computable early-warning
+signal is silent in two of the seven cascades they study, they sweep dozens of
+configurations with no reusable convention, and no post-cascade reversion
+pattern is documented anywhere in that literature. *Two of this section's own
+earlier claims were retracted* by S8 and S9 — "minutes-scale scalping is
+arithmetically impossible after costs" was an artefact of comparing costs to the
+**unconditional** move distribution, i.e. the move from entering at a uniformly
+random moment, which a strategy does not do; and that conclusion was fragile to
+the slippage assumption in the unsafe direction, since such a strategy
+deliberately enters when spreads widen. **Shorter horizons are structurally more
+exposed to that assumption**, which is why S8 put measuring real slippage ahead
+of any signal research. Both retractions are kept because a retraction that is
+quietly deleted teaches nothing — and **neither says anything about direction**:
+an absolute move is unsigned.
+
+#### The error shapes, binding on any future measurement here
+
+**Three of this arc's largest errors share one shape**: a result from a single
+arbitrary configuration generalised to a whole domain — costs against the
+*unconditional* move distribution → "minutes-scale impossible"; a *directional*
+hypothesis tested by *magnitude* → "levels carry nothing"; one operating point
+at dozens of trades a day → "scalping cannot clear costs". All three were false
+and none was caught by reasoning alone. **Never conclude about a domain from one
+parameter setting — sweep it first.**
+
+**A fourth, different shape**: *a statistic computed over overlapping windows is
+not a statistic over independent observations.* S13's t-statistic came from
+overlapping excursions treated as independent, and correcting it cut t roughly
+threefold. **The tooling to avoid this already existed in this repo** —
+`research/ic.py` enforces non-overlapping sampling and S11 documented why — and
+was simply not applied. **Building the right tool does not protect you if the
+next analysis does not use it**: any overlapping-window measurement must either
+deduplicate to non-overlapping samples before reporting a t-statistic, p-value
+or standard error, or state explicitly that its significance figures are not
+corrected for overlap.
+
+#### Live-side controls S8 names as prerequisites — hard gates, not a wishlist
+
+All are currently missing or unverified, and they are distinct from backtest cost
+assumptions. Each is an additional required item alongside the Live Entry
+Criteria's existing "market-order guard enabled" and "kill switch verified"
+lines, and **all must be implemented and verified before live activation, and
+before `GUARDED_MARKET` is used against any real account. Absent or unverified
+means fail closed — no live order.** Every live order still passes through the
+Java Trading Plane and the Java Risk Gateway in full; nothing here creates an
+exception to that.
+
+1. **Wire-level price guard.** `GUARDED_MARKET` currently maps to a plain
+   `"MARKET"` order with no price cap on both `BingXAdapter` and `KisAdapter` —
+   the guard is a name only today.
+2. **Stale-data check.** `PriceFeed#latestPrice` returns a bare value with no
+   timestamp (interface-level, so every venue is affected). Acting on a stale
+   price creates risk rather than managing it.
+3. **Turnover ceiling** and **order-rate anomaly trigger** — separate thresholds
+   on separate metrics, per the distinction above.
+4. **Drawdown circuit breakers** at daily/weekly/total resolution that halt
+   automatically and require **manual review before restart**.
+5. **Pre-trade checks run in full without short-circuiting**, so the audit log
+   records every failure rather than only the first.
+
+A bounded exception exists for measuring real slippage (S8 Part 4 item 1): a
+**BingX VST demo** fill experiment against virtual funds, through the full
+OMS-mediated path, with its own human approval and an explicit acceptance of
+which of the above are still absent. It authorises nothing on a production
+endpoint and relaxes no Live Entry Criterion.
+
+**Out of scope this phase**: tick/trade-level data, true HFT, co-location;
+promoting any scalping strategy to paper trading (the Eligibility Bar and
+human-approval discipline apply in full first); rebuilding `fill.py`'s fill
+model with order-book depth and partial-fill/queue-position awareness (a
+disclosed possible follow-up, never committed to).
+
 ### Trade Management Tasks A-C — a position model that can express trader-style management, and the first candidate built on it, REJECTED
 
 Opened 2026-08-28 at the operator's request, after sustained and correct
