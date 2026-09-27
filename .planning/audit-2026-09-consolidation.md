@@ -309,3 +309,111 @@ because that check deliberately treats a bare integer as prose (`section 3`,
 `two planes`) and must keep doing so. Both copies are gone and
 `test_nothing_outside_planning_states_how_many_planning_documents_there_are`
 now blocks a third.
+
+---
+
+## Appendix: the four decisions of 2026-09-26, and the second half of the split
+
+The operator was given four open decisions with options and trade-offs, and
+settled all four. Recorded here because three of them govern work that has not
+started, and a future session reading `CLAUDE.md` alone would see the results
+without the reasoning that chose them.
+
+| # | decision | chosen |
+|---|---|---|
+| 1 | how much to trim `CLAUDE.md` | **the larger option**: move the Exchange API measurements to `docs/exchange-api.md` **and** trim the Scalping section |
+| 2 | restart Gate A | **no** — check the two preconditions only |
+| 3 | research sequencing | **declare which KRX windows are spent first**, then reserve the forward-collected series for confirmation, then run discovery on KRX daily |
+| 4 | the implementation-count test | **rewrite as reflection in `:runtime`**, its own PR |
+
+### Decision 1, as executed
+
+`CLAUDE.md` 3,461 → 2,911 lines. Exchange API Facts 775 → 322; Scalping 428 →
+331.
+
+**What moved and what stayed is one line**: a *measurement* went to
+`docs/exchange-api.md`, a *rule* stayed. Every trap in the venue sections had
+produced a standing rule, and the rule is what a future session must have read;
+the number behind it changes when the venue changes, which is the `docs/`
+lifetime by definition. `docs/exchange-api.md` §6 is the index from measurement
+to rule.
+
+**131 figures left the Exchange API section and 0 were lost.** Of the 68 that
+left the Scalping section, **one** was genuinely lost — `0.24%`, the amount the
+DSR-0.95 requirement moves between `N` 127 and 129 — and it went with the
+sentence it existed to justify, so nothing is now unsupported.
+
+**The guard the trim exposed, and it belongs to the tool rather than to this
+trim.** `figure_survival._survives` reported 5 losses in the Scalping section
+and **4 were false**, in two shapes:
+
+- **a rounded figure.** `CLAUDE.md` wrote `1.250` and `0.823`; `.planning/`
+  holds `1.250042` and `0.8231000423093435`. The guard treats those as
+  different numbers, and it is right to — it exists because a substring test
+  once called `4374` a survival inside the row id `4963594374`.
+- **a range endpoint.** `0.010` and `0.026` appear in `.planning/` only inside
+  `0.010-0.028 BTC` and `0.026-0.038bps`, and the both-sides hyphen guard
+  rejects them so that a date's day cannot vouch for a `20%` ceiling.
+
+Both are the **safe** direction — the script over-reports loss — so the rule
+added to `CLAUDE.md` is to check each reported loss by hand and keep the script
+strict. Loosening either guard reintroduces a false *survival*, which is the
+direction that quietly licenses deleting a figure that exists nowhere.
+
+**And the figure check had to be turned around.** `docs/` could not carry a
+figure at all, which was right while the only `docs/` files were a
+figure-free architecture document and an exempt runbook — and becomes
+incoherent the moment a `docs/` file is a figure's rightful *owner*. Exempting
+it says nothing about whether the old copy is still in `CLAUDE.md`, which is
+the thing that actually matters, so the assertion moved to the side where
+ownership is unambiguous: **the `CLAUDE.md` section that handed its
+measurements away carries none**, and it must point at the file that took them
+(`test_a_claude_md_section_with_a_docs_owner_carries_no_figure`). A rule may
+still cite a measurement; it points rather than repeating, which is what makes
+the check mechanical.
+
+### Decision 2, and why "no" is not "later"
+
+Gate A is at zero: both BTC loops are stopped and `kis-paper` is
+kill-switch-tripped by design, so nothing is accumulating evidence. Restarting
+the `simulated` loop with mock signals is the cheap option — Gate A's own
+wording makes the signal source irrelevant and allows a mock generator, and
+`PaperBroker` needs no venue at all, so it needs neither BTC nor a key.
+
+It was declined because Gate A alone cannot open live trading (Gate B is a
+separate gate resting on strategy evidence that does not exist), and the
+instance's memory is currently the thing letting KRX research run at all.
+
+**Two preconditions were carried forward instead, because each one costs 15 days
+if discovered late:**
+
+1. Gate A requires the **`SUBMISSION_UNKNOWN` path verified**. `PaperBroker`
+   resolves fills synchronously from an injected price, so whether that path is
+   reachable in `simulated` mode at all needs checking *before* the 15 days, not
+   after.
+2. `paper-trading-watchdog.sh` is **not scheduled on this box**, and Gate A
+   requires 15 *consecutive* days with zero critical crashes. One unattended
+   session death ends the run.
+
+### Decision 3, and the constraint that drove it
+
+**The KRX daily window is spent** — `daily-tsmom-kr10-portfolio` used it on
+2026-09-13 (`ms-f`, INCONCLUSIVE). A spent window is closed to selecting
+anything for promotion and open to discovery, so per-day selection research
+there produces a *specification*, not a candidate, and the specification then
+needs a window no decision has touched. The only unspent window on record is
+Binance spot 1m, which has nothing to do with Korean equities.
+
+Running Phase H without settling that first reproduces `ms-f` exactly: a result
+arrives and cannot be promoted. So the order is **declare, reserve, then
+search** — and the declaration is mechanical rather than a matter of memory,
+because `test_claude_md_s_unspent_windows_are_really_unspent` already exists and
+was written after this file called a spent window unspent for a day in PR #168.
+
+### Decision 4
+
+Deferred to its own PR by the operator's choice and this file's own rule against
+scope creep in `java/`. The reasoning is in the appendix above: the invariant is
+about *types*, `isAssignableFrom` sees the indirect implementations a text scan
+discloses it cannot, and `:runtime` depends on every module so the check cannot
+be silently inert there.
