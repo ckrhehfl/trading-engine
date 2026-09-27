@@ -1438,3 +1438,98 @@ def test_claim_panel_validates_even_when_called_directly(tmp_path):
     conn = sqlite3.connect(tmp_path / "s.sqlite3")
     with pytest.raises(KrxScanError, match="not a real calendar date"):
         claim_panel(conn, Panel("20260230", "20261231"))
+
+
+class _BlindOnce:
+    """A connection that reports NO panel row the first time it is asked.
+
+    This is how both writers come to believe they are first: each ran its SELECT
+    before the other committed. SQLite serialises the statements, so a test using
+    two ordinary connections never reaches the branch -- the second one simply
+    reads the row. Lying once is the smallest faithful way to reproduce the
+    interleaving without threads.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._lied = False
+
+    def execute(self, sql, *a, **k):
+        cur = self._conn.execute(sql, *a, **k)
+        if not self._lied and "FROM scan_panel" in sql:
+            self._lied = True
+
+            class _Empty:
+                def fetchone(self_inner):  # noqa: N805
+                    return None
+
+            return _Empty()
+        return cur
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_a_second_writer_that_also_saw_no_panel_row_gets_the_real_message(tmp_path):
+    """**Both can see no row**, and the loser's plain INSERT raised a bare
+    `IntegrityError` on the primary key instead of the message naming which panel
+    the file holds. Reported on review of PR #209.
+
+    With `INSERT OR IGNORE` and a re-read, the loser compares against whatever
+    the winner recorded — which is the answer that matters.
+    """
+    from data.krx_scan import KrxScanError, Panel, claim_panel
+
+    db = tmp_path / "s.sqlite3"
+    winner = sqlite3.connect(db)
+    claim_panel(winner, Panel("19910828", "20181231"))
+
+    loser = _BlindOnce(sqlite3.connect(db))
+    with pytest.raises(KrxScanError, match="was asked for"):
+        claim_panel(loser, Panel("20190102", "20260918"))
+
+
+def test_a_second_writer_agreeing_with_the_winner_is_accepted(tmp_path):
+    """The same interleaving, same panel: no error, and the row is the winner's."""
+    from data.krx_scan import Panel, claim_panel
+
+    db = tmp_path / "s.sqlite3"
+    claim_panel(sqlite3.connect(db), Panel("19910828", "20181231"))
+    claim_panel(_BlindOnce(sqlite3.connect(db)), Panel("19910828", "20181231"))
+    rows = sqlite3.connect(db).execute("SELECT start, end FROM scan_panel").fetchall()
+    assert rows == [("19910828", "20181231")], rows
+
+
+def test_the_page_count_comes_from_the_panel_not_a_constant():
+    """The printed estimate used a hardcoded 24 — the default panel's page
+    count — so a pre-2019 run would have advertised an ETA 3.5x too low.
+
+    Counted through `_pages`, the generator the scan itself iterates, so the
+    estimate and the fetching loop cannot drift apart.
+    """
+    from data.krx_scan import DEFAULT_PANEL, PAGE_DAYS, Panel, _pages, pages_per_code
+
+    assert pages_per_code(Panel(*DEFAULT_PANEL)) == 24
+    pre = Panel("19910828", "20181231")
+    assert pages_per_code(pre) == 84
+    assert pages_per_code(pre) == len(list(_pages(pre.start, pre.end, PAGE_DAYS))), (
+        "the count and the generator disagree, which is the drift this exists "
+        "to prevent"
+    )
+
+
+def test_the_printed_ETA_scales_with_the_panel(tmp_path):
+    """The estimate itself, not just the page count it should use.
+
+    A test asserting `pages_per_code` alone left the print free to keep its
+    hardcoded 24 — the mutation survived. `eta_hours` is what the print calls, so
+    asserting it pins the figure a reader actually sees.
+    """
+    from data.krx_scan import DEFAULT_PANEL, Panel, eta_hours
+
+    default = eta_hours(1000, Panel(*DEFAULT_PANEL))
+    pre2019 = eta_hours(1000, Panel("19910828", "20181231"))
+    assert pre2019 / default == pytest.approx(84 / 24, rel=1e-9), (
+        f"the estimate does not scale with the panel: {default:.1f}h against "
+        f"{pre2019:.1f}h for a window 3.5x longer"
+    )

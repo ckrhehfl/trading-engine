@@ -984,6 +984,32 @@ def progress_printer():
     return progress
 
 
+#: Throughput measured after the KRX close. In-session is roughly half.
+_ASSUMED_RATE_PER_S = 0.6
+
+
+def eta_hours(todo_count: int, panel: Panel) -> float:
+    """Hours to fetch `todo_count` codes over `panel`, at the measured rate.
+
+    **Pages come from the panel, not from a constant.** The printed estimate used
+    a hardcoded 24, which is the *default* panel's page count -- so a pre-2019
+    run, 84 pages per code over 27 years, would have advertised an ETA 3.5x too
+    low. Extracted from the print so the figure can be asserted without running
+    a scan: a number that can only be seen by doing the work it estimates is a
+    number nothing checks.
+    """
+    return todo_count * pages_per_code(panel) / _ASSUMED_RATE_PER_S / 3600
+
+
+def pages_per_code(panel: Panel) -> int:
+    """How many requests one code costs over `panel`.
+
+    Counted through `_pages` rather than divided out, so the estimate and the
+    loop that fetches cannot disagree.
+    """
+    return sum(1 for _ in _pages(panel.start, panel.end, PAGE_DAYS))
+
+
 def claim_panel(conn: sqlite3.Connection, panel: Panel) -> None:
     """Bind this database to one panel, and refuse any other.
 
@@ -1015,12 +1041,19 @@ def claim_panel(conn: sqlite3.Connection, panel: Panel) -> None:
             "SELECT 1 FROM scan_bars LIMIT 1"
         ).fetchone() or conn.execute("SELECT 1 FROM scan_progress LIMIT 1").fetchone()
         recorded = Panel(*DEFAULT_PANEL) if populated else panel
+        # **`OR IGNORE` then re-read, because two connections can both see no
+        # row.** Two CLIs against one `--db-path`, or two callers of the public
+        # functions, would both reach this branch; the loser's plain INSERT
+        # raised a bare `IntegrityError` on the primary key instead of the
+        # `KrxScanError` that says which panel the file is. Re-reading compares
+        # against whatever the winner recorded, which is the answer that
+        # matters. Reported on review of PR #209.
         conn.execute(
-            "INSERT INTO scan_panel (id, start, end) VALUES (1, ?, ?)",
+            "INSERT OR IGNORE INTO scan_panel (id, start, end) VALUES (1, ?, ?)",
             (recorded.start, recorded.end),
         )
         conn.commit()
-        row = (recorded.start, recorded.end)
+        row = conn.execute("SELECT start, end FROM scan_panel WHERE id = 1").fetchone()
     if tuple(row) != tuple(panel):
         raise KrxScanError(
             f"this database is the {row[0]}..{row[1]} panel and was asked for "
@@ -1161,7 +1194,7 @@ def main(argv: list[str] | None = None) -> int:
     outside = len(done) - (len(pool) - todo_count)
     print(f"{len(pool):,} candidates, {len(pool) - todo_count:,} already "
           f"complete, {todo_count:,} to fetch "
-          f"(~{todo_count * 24 / 0.6 / 3600:.1f}h at 0.6/s)"
+          f"(~{eta_hours(todo_count, panel):.1f}h at {_ASSUMED_RATE_PER_S}/s)"
           + (f"; {outside:,} recorded codes are not in this candidate selection"
              if outside else ""),
           flush=True)
