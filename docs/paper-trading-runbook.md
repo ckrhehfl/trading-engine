@@ -417,6 +417,69 @@ for why: hedge mode means submitting the opposite side opens a second
 position rather than closing the first). Close via the BingX app/site
 directly if needed.
 
+## 8b. Taking the pre-2019 KRX panel (the reserved confirmation window)
+
+`CLAUDE.md`'s Discovery/Confirmation subsection reserves **KRX daily before
+2019-01-02** as a confirmation window. This is how it is filled. Read that
+clause first — the three conditions it attaches, including that a confirmation
+there is a **cash-equity** claim, are not repeated here.
+
+**It goes in its own database file, and the scan refuses to put it anywhere
+else.** `scan_progress` keys on `code` alone, so a second panel in the shared
+file would skip every code the first pass finished and fetch nothing;
+`_refuse_a_second_panel` stops that. The separation is also the reservation: an
+analysis pointed at the spent window cannot read the reserved one by forgetting
+a date filter.
+
+Run it from the instance, in a `tmux` session so a dropped connection does not
+end it, outside the KRX session (the scan pauses itself if one opens):
+
+```bash
+tmux new -s krx-pre2019
+cd ~/trading-engine/python
+set -a; . ../.env; set +a
+python3 -m data.krx_scan --scan   --panel-start 19910828 --panel-end 20181231   --db-path data/var/krx_scan_pre2019.sqlite3   --universe-db data/var/klines.sqlite3
+```
+
+It is **resumable** — `already_done` reads the database, not a sidecar — so
+detaching, rebooting or killing it costs only the code in flight.
+
+### What it costs, derived rather than guessed
+
+120 calendar days per request, so **84 pages per code** against the existing
+panel's 24 — the pre-2019 window is 27.35 years against 7.71. Over the 4,638
+codes the pool resolves to, that is **~390,000 requests**, and throughput was
+measured at 0.5–0.7/s after the close. So **roughly 155–216 hours, six to nine
+days**, in line with the existing panel's own 44–62 hour arithmetic.
+
+### A 53% shortcut exists, was measured, and is deliberately NOT taken
+
+The existing scan already knows a lot about these codes, and three of its
+recorded states look like they rule out earlier history:
+
+| recorded state | count | looks skippable because |
+|---|---|---|
+| `done`, `first_date` after 2019-01-02 | 866 | its earliest served bar is later than the old panel's start |
+| `absent:outside_window` | 1,152 | its bars lie entirely after the old panel |
+| `absent:never_served` | 434 | KIS does not price the code at all |
+
+That is **2,452 of 4,638, and skipping them would halve the run**. Only the last
+group may be skipped, and the reason is the difference between a measurement and
+an inference.
+
+`never_served` came from the **wide probe**, which spans 1990 to today and
+returned nothing — a statement about every era. The other two rest on a request
+**that was never made**: the old panel *started* at 2019-01-02, so it never asked
+about 1995, and "no bars before 2022" is an inference from silence. `CLAUDE.md`'s
+survivorship rule is explicit that an absent bar is not evidence of absence
+unless the fetch that produced it is known complete, and a code that traded in
+the 1990s, delisted, and was later reissued is exactly the case that inference
+drops.
+
+**Dropping one real name from a survivorship-safe pool defeats the only reason
+this window is worth having**, so the full pool is scanned and the days are
+paid. Skipping the 434 alone saves about 8% and is not worth a special case.
+
 ## 9. Known, disclosed limitations (not blocking, but worth knowing)
 
 - No OS-level process supervision beyond the watchdog above — a full
