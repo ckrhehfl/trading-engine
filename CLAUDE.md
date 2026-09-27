@@ -1240,10 +1240,9 @@ is optional:**
    | window | span | dates | status |
    |---|---|---|---|
    | KRX daily | 2019-01-02 .. 2026-09-23 | 1,898 | **spent twice** — `ms-f` confirmation holdout, and `rd-u` discovery |
-   | KRX intraday `1m` | 2025-09-04 .. 2026-09-23 | 257 | **spent** — `rd-t`, discovery |
-   | 투자자별 flow | 2026-08-03 .. 2026-09-17 | 33 | **spent** — `rd-t`, discovery |
-   | 투자자별 flow, tail | 2026-09-18 .. 2026-09-23 | 4 | unspent |
-   | futures quotes / depth | 2026-09-18 .. 2026-09-23 | 4 | unspent |
+   | KRX intraday | 2025-09-04 .. 2026-09-23 | 257 | **spent** — `rd-t`, discovery |
+   | KRX investor flow | 2026-08-03 .. 2026-09-17 | 33 | **spent** — `rd-t`, discovery. The four dates after it, to 2026-09-23, have not been selected on |
+   | KRX futures quotes | 2026-09-18 .. 2026-09-23 | 4 | not selected on |
    | **KRX daily before 2019** | KIS floor 1991-08-28 .. 2018-12-31 | ~6,700 | **RESERVED for confirmation** |
 
    **The forward-collected series are unspent and unusable, and both halves

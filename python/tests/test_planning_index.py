@@ -216,6 +216,10 @@ WINDOW = {
     # it is a window this check cannot see.
     "KRX intraday": ("KRX:", "1m", None),
     "KRX investor flow": ("KRX:", "flow", None),
+    # Never selected on, so it appears in neither ledger -- and it is here
+    # precisely so that a future claim about it is READABLE. A window missing
+    # from this map is one both availability checks pass over in silence.
+    "KRX futures quotes": ("KRX-QUOTE:", "quote", None),
     "BingX 1m": ("BTC-USDT", "1m", None),
     "Binance futures 1m": ("BINANCE-FUTURES:BTCUSDT", "1m", None),
 }
@@ -242,6 +246,34 @@ def _row_touches(row: dict, sym_part: str, interval: str, before: str | None) ->
 #: `KRX daily` is a substring of `KRX daily before 2019`, and matching the
 #: shorter one first reported the reserved window as the spent one.
 WINDOW_BY_SPECIFICITY = sorted(WINDOW, key=len, reverse=True)
+
+
+def test_the_documented_window_names_are_all_in_the_vocabulary():
+    """**A name the map does not know is a claim the checks cannot read.**
+    CLAUDE.md's own inventory table wrote `투자자별 flow` while the map held
+    `KRX investor flow`, so every row of it was invisible to both checks --
+    including the two it declares spent. Reported on review of PR #210.
+
+    Asserted over the inventory table rather than the whole file, because prose
+    elsewhere legitimately names a window in passing.
+    """
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    start = claude.index("#### The KRX windows, declared because nothing recorded them")
+    table = claude[start : claude.index("\n\n", claude.index("| **KRX daily before 2019**", start))]
+    rows = [
+        line.split("|")[1].strip()
+        for line in table.splitlines()
+        if line.strip().startswith("|") and "---" not in line
+    ][1:]
+    unknown = [
+        r for r in rows
+        if not _named_windows(_normalise(r)) and r.lower() != "window"
+    ]
+    assert not unknown, (
+        f"CLAUDE.md's window inventory names {unknown}, which the WINDOW map "
+        f"does not know -- so a claim about any of them is unreadable by both "
+        f"availability checks. Add the name, or use the canonical one."
+    )
 
 
 def _named_windows(haystack_flat: str) -> set[str]:
@@ -462,6 +494,22 @@ def _spent_window_names() -> set[str]:
     return spent
 
 
+def _availability_offenders(text: str) -> list[tuple[str, str]]:
+    """Units of `text` that call a spent window available, against BOTH ledgers.
+
+    **One function so the real check and its test cannot diverge.** The derived
+    ledger records confirmation spends only, so passing it alone left a
+    discovery-spent window free to be called available anywhere in the file
+    (reported on review of PR #210). The first fix inlined the union in the real
+    check and proved it in a test that called `spent_window_claims` itself — so
+    reverting the real check changed nothing the test could see, and the mutation
+    survived. Both now go through here.
+    """
+    return spent_window_claims(
+        text, _spent_window_names() | _discovery_spent_window_names()
+    )
+
+
 def test_NO_unit_of_claude_md_calls_a_spent_window_available():
     """The other check reads **one** paragraph. This reads the whole file.
 
@@ -477,7 +525,7 @@ def test_NO_unit_of_claude_md_calls_a_spent_window_available():
     scope is the shape this repository keeps paying for.
     """
     claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    offenders = spent_window_claims(claude, _spent_window_names())
+    offenders = _availability_offenders(claude)
     assert not offenders, (
         "CLAUDE.md asserts a SPENT window is still available:\n"
         + "\n".join(f"  {name} -- {unit}" for name, unit in offenders)
@@ -598,3 +646,34 @@ def test_the_ledger_is_not_empty_so_the_claim_check_cannot_pass_vacuously():
     from research.spent_windows import load
 
     assert len(load()) >= 5
+
+
+def test_only_the_UNION_of_both_ledgers_catches_a_discovery_spent_claim():
+    """**The derived ledger cannot see a discovery spend, so passing it alone
+    leaves one unreadable.** Reported on review of PR #210 — and a mutation then
+    showed the fix was untested, because CLAUDE.md happens to make no such claim
+    today. Asserted against synthetic text, which is the only way a guard for a
+    claim nobody has written yet can be proved to work.
+
+    Both halves matter: the union flags it, and the derived ledger alone does
+    not. Without the second assertion this test would pass on a union that was
+    doing nothing.
+    """
+    derived = _spent_window_names()
+    # `spent_window_claims` excises the canonical paragraph by span and asserts
+    # it is there, so synthetic text has to carry one.
+    text = (
+        "Unspent and therefore *not* available for discovery: **Binance spot 1m**.\n\n"
+        "KRX intraday is still available for confirmation.\n"
+    )
+    assert "KRX intraday" not in derived, (
+        "KRX intraday now appears in the derived ledger, so this test no longer "
+        "distinguishes the two sources -- pick a window that is discovery-spent only"
+    )
+    assert _availability_offenders(text), (
+        "a claim that a discovery-spent window is available went unflagged"
+    )
+    assert not spent_window_claims(text, derived), (
+        "the derived ledger alone flagged it, so the union is not what catches "
+        "this and the mutation proving otherwise was right"
+    )
