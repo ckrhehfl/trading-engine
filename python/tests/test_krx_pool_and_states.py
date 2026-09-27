@@ -1205,3 +1205,155 @@ def test_a_TRANSPORT_refusal_reports_the_full_attempt_count(monkeypatch):
     monkeypatch.setattr(S.time, "sleep", lambda *_: None)
     with pytest.raises(S.KrxScanError, match="retried 4 times"):
         S.verify_wide_probe_positive_control(object())
+
+
+# --------------------------------------------------- the panel is a parameter
+
+
+def test_the_scan_pages_over_the_GIVEN_panel_not_the_module_constant(monkeypatch, tmp_path):
+    """The whole point of the parameter, asserted against the requests made.
+
+    `PANEL_START`/`PANEL_END` stay the default because `krx_dayone_drift` and
+    its tests derive figures from them — so the risk is not that the constants
+    move, it is that `scan` keeps reading them while a caller believes it asked
+    for something else. That failure is silent: a pre-2019 pass would refetch
+    2019-2026 and report a clean run.
+    """
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA, Panel, scan
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.commit()
+
+    asked: list[str] = []
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    def record(url, headers):  # noqa: ARG001
+        asked.append(url)
+        return {"rt_cd": "0", "output2": []}
+
+    monkeypatch.setattr("data.krx_scan._get_with_retry", record)
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+
+    scan(_S(), conn, [("005930", "x", Listing.LIVE)],
+         panel=Panel("19960101", "19960630"))
+
+    assert asked, "the scan made no request at all, so this proves nothing"
+    joined = " ".join(asked)
+    assert "1996" in joined, (
+        f"no request mentioned 1996, so the panel argument was ignored: "
+        f"{asked[:2]}"
+    )
+    assert "2019" not in joined and "2026" not in joined, (
+        f"the scan still paged over the module constants: {asked[:2]}"
+    )
+
+
+def test_the_default_panel_is_still_the_module_constants():
+    """Because every committed figure describes that window, and a default that
+    drifted would restate them all without touching a single number."""
+    from data.krx_scan import DEFAULT_PANEL, PANEL_END, PANEL_START
+
+    assert DEFAULT_PANEL == (PANEL_START, PANEL_END)
+
+
+def _seeded_bars(tmp_path, code, dates):
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.executemany(
+        "INSERT INTO scan_bars (code, bsop_date) VALUES (?, ?)",
+        [(code, d) for d in dates],
+    )
+    conn.commit()
+    return conn
+
+
+def test_a_disjoint_panel_is_refused_rather_than_sharing_a_database(tmp_path):
+    """**The failure it prevents is a scan that cannot fail.** `scan_progress`
+    keys on `code` alone and `already_done` skips any code already `done`, so an
+    earlier panel run into the same file would skip the entire pool, fetch
+    nothing, and print a clean summary.
+    """
+    from data.krx_scan import KrxScanError, Panel, _refuse_a_second_panel
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20260918"])
+    with pytest.raises(KrxScanError, match="outside the requested panel"):
+        _refuse_a_second_panel(conn, Panel("19910828", "20181231"), "s.sqlite3")
+
+
+def test_an_empty_database_accepts_any_panel(tmp_path):
+    """A fresh file is what a second window is supposed to use."""
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA, Panel, _refuse_a_second_panel
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.commit()
+    _refuse_a_second_panel(conn, Panel("19910828", "20181231"), "s.sqlite3")
+
+
+def test_resuming_the_same_panel_is_allowed(tmp_path):
+    """Containment, not equality: a partial pass holds a subset of its panel."""
+    from data.krx_scan import Panel, _refuse_a_second_panel
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20200102"])
+    _refuse_a_second_panel(conn, Panel("20190102", "20260918"), "s.sqlite3")
+
+
+def test_extending_the_panel_FORWARD_passes_the_guard_and_is_disclosed(tmp_path):
+    """Pinned because it is the guard's disclosed limit, not an oversight.
+
+    Advancing only the end date passes containment and still fetches nothing,
+    because `already_done` is keyed on `code`. If someone later makes advancing
+    the end work, this test should fail and be rewritten — which is the point of
+    asserting a limitation rather than describing it.
+    """
+    from data.krx_scan import Panel, _refuse_a_second_panel, already_done
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20260918"])
+    conn.execute(
+        "INSERT INTO scan_progress (code, first_date, last_date, bars, frozen, "
+        "status, fetched_at) VALUES ('005930','20190102','20260918',2,0,'done','x')"
+    )
+    conn.commit()
+
+    _refuse_a_second_panel(conn, Panel("20190102", "20271231"), "s.sqlite3")
+    assert "005930" in already_done(conn), (
+        "if this code is no longer skipped, advancing the panel end now works "
+        "and the guard's disclosed limitation is stale"
+    )
+
+
+def test_a_panel_that_starts_AFTER_the_stored_bars_is_also_refused(tmp_path):
+    """The symmetric half, and it needs its own case.
+
+    The first version of this guard was written against one direction — an
+    earlier panel meeting a 2019-2026 file — and `hi > panel.end` alone catches
+    that. Nothing then exercised `lo < panel.start`, so deleting it left the
+    suite green while a file holding pre-panel bars could be scanned as if it
+    held only the panel's.
+    """
+    from data.krx_scan import KrxScanError, Panel, _refuse_a_second_panel
+
+    conn = _seeded_bars(tmp_path, "005930", ["20150102", "20200102"])
+    with pytest.raises(KrxScanError, match="outside the requested panel"):
+        _refuse_a_second_panel(conn, Panel("20190102", "20260918"), "s.sqlite3")
+
+
+def test_a_database_with_NO_SCHEMA_YET_accepts_any_panel(tmp_path):
+    """The path `main` actually takes on a fresh `--db-path`, and the one the
+    first version of this guard crashed on.
+
+    `_refuse_a_second_panel` runs *before* the schema is applied, so that a
+    refusal costs nothing. The empty-database test above applies the schema
+    first and therefore never exercised this. The full suite caught it; reading
+    the guard did not.
+    """
+    from data.krx_scan import Panel, _refuse_a_second_panel
+
+    conn = sqlite3.connect(tmp_path / "fresh.sqlite3")
+    _refuse_a_second_panel(conn, Panel("19910828", "20181231"), "fresh.sqlite3")

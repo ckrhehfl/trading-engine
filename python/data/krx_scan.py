@@ -74,6 +74,7 @@ import time
 import urllib.parse
 from enum import Enum
 from pathlib import Path
+from typing import NamedTuple
 
 from data.kis_klines import (
     ADJUSTED,
@@ -92,6 +93,33 @@ from data.store import connect, fetch_krx_delisted, fetch_krx_universe
 
 PANEL_START = "20190102"
 PANEL_END = "20260918"
+
+
+class Panel(NamedTuple):
+    """The date window one pass covers, inclusive on both ends.
+
+    **A parameter rather than a constant, so a second, earlier window can be
+    scanned without redefining what the first one measured.** The module
+    constants above stay the default and stay exported: `krx_dayone_drift` and
+    its tests derive figures from them, and moving their *values* would silently
+    restate what those figures describe.
+
+    The panel deliberately does **not** reach `scan_progress`, which keys on
+    `code` alone and recomputes `first_date`/`last_date`/`bars`/`frozen` from
+    `scan_bars`. Two panels in one database would therefore share one progress
+    row, and `already_done` — which skips any code already `done` — would skip
+    the whole pool on the second pass. **So a different panel goes in a
+    different database file**, which is also what makes a reserved window
+    reserved: a confirmation window in its own file cannot be read by accident
+    by an analysis pointed at the spent one, where a date filter could be
+    forgotten.
+    """
+
+    start: str
+    end: str
+
+
+DEFAULT_PANEL = Panel(PANEL_START, PANEL_END)
 
 #: Calendar days per request. ~82 trading days, comfortably under the
 #: equity endpoint's silent 100-row cap.
@@ -483,6 +511,11 @@ def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
     for attempt in range(_CONTROL_ATTEMPTS):
         time.sleep(_SPACING_S)
         try:
+            # **Panel-independent on purpose.** This asks whether a nonsense
+            # code returns rows, and a nonsense code returns none for any
+            # window, so the probe does not need to land inside the panel being
+            # scanned. The positive control is the one that must, and it reaches
+            # KST today rather than either end of the panel.
             return _page(session, code, PANEL_START, "20190430")
         except Exception as exc:  # noqa: BLE001
             last = exc
@@ -581,6 +614,7 @@ def scan(
     *,
     progress=None,
     allow_in_session: bool = True,
+    panel: Panel = DEFAULT_PANEL,
 ) -> dict:
     done = already_done(conn)
     counts = {"done": 0, "absent": 0, "failed": 0, "skipped": len(
@@ -614,7 +648,7 @@ def scan(
                 progress(i, len(todo), code, "resumed after the session", None)
         rows: list[dict] = []
         failed = False
-        for start, end in _pages(PANEL_START, PANEL_END, PAGE_DAYS):
+        for start, end in _pages(panel.start, panel.end, PAGE_DAYS):
             time.sleep(_SPACING_S)
             try:
                 rows.extend(_page(session, code, start, end))
@@ -657,6 +691,7 @@ def resolve_absences(
     *,
     progress=None,
     limit: int | None = None,
+    panel: Panel = DEFAULT_PANEL,
 ) -> dict:
     """Turn each `absent:unknown` into one of the two answers it hides.
 
@@ -678,6 +713,9 @@ def resolve_absences(
     letting the pass guess.
     """
     verify_negative_controls(session)
+    # No panel: `_wide_probe` deliberately reaches KST today rather than the
+    # panel's end, so that a name listed after the panel is classified as
+    # OUTSIDE_WINDOW instead of reading as never served.
     verify_wide_probe_positive_control(session)
 
     todo = [
@@ -709,7 +747,7 @@ def resolve_absences(
             continue
         if not dates:
             status = Absence.NEVER_SERVED
-        elif len(dates) >= EQUITY_ROWS_PER_CALL_CAP and min(dates) > PANEL_END:
+        elif len(dates) >= EQUITY_ROWS_PER_CALL_CAP and min(dates) > panel.end:
             # **Truncated, so undecidable.** The probe keeps only the newest
             # rows. If it came back full AND every date is after the panel,
             # then older rows were dropped and some of them may be in-panel
@@ -725,7 +763,7 @@ def resolve_absences(
             # nobody is looking for it. Caught on review.
             status = Absence.UNKNOWN
             counts["truncated"] += 1
-        elif any(PANEL_START <= d <= PANEL_END for d in dates):
+        elif any(panel.start <= d <= panel.end for d in dates):
             # **The probe contradicts the scan, so nothing is resolved.**
             # KIS prices this code inside the very panel the pass found no
             # bars for, which is not "outside the window" -- it means a
@@ -915,6 +953,52 @@ def progress_printer():
     return progress
 
 
+def _refuse_a_second_panel(
+    conn: sqlite3.Connection, panel: Panel, db_path: str
+) -> None:
+    """Refuse a panel whose bars would share a file with a different panel's.
+
+    **`scan_progress` keys on `code` alone**, and `already_done` skips any code
+    already `done`. So a second pass over an earlier window in the same file
+    would skip the entire pool and report a clean run having fetched nothing —
+    a scan that cannot fail, which is the shape this repo has paid for
+    repeatedly. `record_progress` would also recompute `first_date`/`bars` over
+    both panels at once, leaving one row describing a window neither pass
+    covered.
+
+    The test is containment of what is already stored, because the panel itself
+    is not recorded anywhere: a file holding bars outside the requested window
+    was filled by a different panel, whatever it was called.
+
+    **What this does NOT fix, stated so it is not mistaken for solved**:
+    extending a panel *forward* passes the containment test and still fetches
+    nothing, because `already_done` is code-keyed. Advancing the panel end needs
+    its own mechanism; this guard only stops two windows quietly sharing a file.
+    """
+    # **The table may not exist yet**, because this runs before the schema is
+    # applied -- deliberately, so a refusal costs nothing. Asked of
+    # `sqlite_master` rather than by catching `OperationalError`, which would
+    # also swallow a real corruption. Found by the suite: the first version of
+    # the empty-database test applied the schema first and so never took this
+    # path, while `main` on a fresh `--db-path` always does.
+    if not conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scan_bars'"
+    ).fetchone():
+        return
+    row = conn.execute("SELECT MIN(bsop_date), MAX(bsop_date) FROM scan_bars").fetchone()
+    lo, hi = (row or (None, None))
+    if lo is None:
+        return
+    if lo < panel.start or hi > panel.end:
+        raise KrxScanError(
+            f"{db_path} already holds bars {lo}..{hi}, which is outside the "
+            f"requested panel {panel.start}..{panel.end}. scan_progress keys on "
+            f"code alone, so a second panel in this file would skip every code "
+            f"the first pass finished and fetch nothing. Use a separate "
+            f"--db-path for a separate window."
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db-path", default=str(DEFAULT_SCAN_DB))
@@ -930,6 +1014,16 @@ def main(argv: list[str] | None = None) -> int:
         "outside_window, and retry the failures whose kind is retryable. "
         "Reads the same database; adds no new candidates.",
     )
+    ap.add_argument(
+        "--panel-start",
+        default=PANEL_START,
+        help="first date of the window to scan, YYYYMMDD. Defaults to the "
+        "panel every figure in .planning/rd-y and krx_dayone_drift describes. "
+        "A DIFFERENT panel needs a DIFFERENT --db-path: scan_progress keys on "
+        "code alone, so two panels in one file share one progress row and the "
+        "second pass skips the whole pool. Refused rather than allowed.",
+    )
+    ap.add_argument("--panel-end", default=PANEL_END, help="last date, YYYYMMDD")
     ap.add_argument("--limit", type=int, default=0, help="first N candidates (probe)")
     ap.add_argument(
         "--in-session",
@@ -941,7 +1035,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
+    panel = Panel(args.panel_start, args.panel_end)
+    if panel.start > panel.end:
+        ap.error(f"--panel-start {panel.start} is after --panel-end {panel.end}")
     conn = connect(args.db_path)
+    _refuse_a_second_panel(conn, panel, args.db_path)
     conn.executescript(SCAN_SCHEMA)
     conn.commit()
 
@@ -999,8 +1097,8 @@ def main(argv: list[str] | None = None) -> int:
                 "DELETE FROM scan_progress WHERE code = ?", [(c,) for c, _, _ in again]
             )
             conn.commit()
-            print(f"{scan(session, conn, again, progress=progress_printer())}", flush=True)
-        print(f"{resolve_absences(session, conn, progress=progress_printer())}", flush=True)
+            print(f"{scan(session, conn, again, progress=progress_printer(), panel=panel)}", flush=True)
+        print(f"{resolve_absences(session, conn, progress=progress_printer(), panel=panel)}", flush=True)
         coverage(conn)
         conn.close()
         return 0
@@ -1037,7 +1135,7 @@ def main(argv: list[str] | None = None) -> int:
     print("negative controls pass: an empty answer really means empty", flush=True)
 
     counts = scan(session, conn, pool, progress=progress_printer(),
-                  allow_in_session=args.in_session)
+                  allow_in_session=args.in_session, panel=panel)
     print(f"\n{counts}")
     coverage(conn)
     conn.close()
