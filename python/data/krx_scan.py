@@ -78,14 +78,15 @@ from typing import NamedTuple
 
 from data.kis_klines import (
     ADJUSTED,
-    EQUITY_ROWS_PER_CALL_CAP,
     DAILY_ITEM_PATH,
-    PAPER_HOST,
-    TR_DAILY_ITEM,
+    EQUITY_ROWS_PER_CALL_CAP,
     KisKlinesError,
     KisSession,
+    PAPER_HOST,
+    TR_DAILY_ITEM,
     _get_with_retry,
     rows_per_call_cap,
+    trading_date_to_ms,
     validated_output2,
 )
 from data.krx_instrument import has_plain_equity_code, is_common_stock_issue
@@ -117,6 +118,29 @@ class Panel(NamedTuple):
 
     start: str
     end: str
+
+    def validated(self) -> "Panel":
+        """Refuse a panel that is not two real dates in order.
+
+        **String ordering is not date validation.** `20260230` compares fine and
+        is not a date; the first scan would only discover it when `_pages` tried
+        to parse it, and `--second-pass` with nothing to retry would never parse
+        it at all -- it would compare absence records against a nonsense string
+        and record an answer. Reported on review of PR #209.
+
+        `trading_date_to_ms` is reused rather than reimplemented: it already
+        refuses both a wrong shape and eight digits that are not a date.
+        """
+        for label, value in (("--panel-start", self.start), ("--panel-end", self.end)):
+            try:
+                trading_date_to_ms(value)
+            except Exception as exc:  # noqa: BLE001
+                raise KrxScanError(f"{label} {value!r}: {exc}") from None
+        if self.start > self.end:
+            raise KrxScanError(
+                f"--panel-start {self.start} is after --panel-end {self.end}"
+            )
+        return self
 
 
 DEFAULT_PANEL = Panel(PANEL_START, PANEL_END)
@@ -159,6 +183,11 @@ CREATE TABLE IF NOT EXISTS scan_bars (
   bsop_date TEXT NOT NULL,
   open TEXT, high TEXT, low TEXT, close TEXT, volume TEXT, turnover TEXT,
   PRIMARY KEY (code, bsop_date)
+);
+CREATE TABLE IF NOT EXISTS scan_panel (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  start TEXT NOT NULL,
+  end TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS scan_progress (
   code TEXT PRIMARY KEY,
@@ -616,6 +645,7 @@ def scan(
     allow_in_session: bool = True,
     panel: Panel = DEFAULT_PANEL,
 ) -> dict:
+    claim_panel(conn, panel)
     done = already_done(conn)
     counts = {"done": 0, "absent": 0, "failed": 0, "skipped": len(
         [c for c, _n, _l in pool if c in done]
@@ -712,6 +742,7 @@ def resolve_absences(
     unresolvable control leaves every symbol at `UNKNOWN` rather than
     letting the pass guess.
     """
+    claim_panel(conn, panel)
     verify_negative_controls(session)
     # No panel: `_wide_probe` deliberately reaches KST today rather than the
     # panel's end, so that a name listed after the panel is classified as
@@ -953,48 +984,49 @@ def progress_printer():
     return progress
 
 
-def _refuse_a_second_panel(
-    conn: sqlite3.Connection, panel: Panel, db_path: str
-) -> None:
-    """Refuse a panel whose bars would share a file with a different panel's.
+def claim_panel(conn: sqlite3.Connection, panel: Panel) -> None:
+    """Bind this database to one panel, and refuse any other.
 
-    **`scan_progress` keys on `code` alone**, and `already_done` skips any code
-    already `done`. So a second pass over an earlier window in the same file
-    would skip the entire pool and report a clean run having fetched nothing —
-    a scan that cannot fail, which is the shape this repo has paid for
-    repeatedly. `record_progress` would also recompute `first_date`/`bars` over
-    both panels at once, leaving one row describing a window neither pass
-    covered.
+    **Recorded, not inferred.** The first version compared the panel against the
+    date range of the bars already stored, and containment is not the right test
+    — review of PR #209 named two holes and both are silent:
 
-    The test is containment of what is already stored, because the panel itself
-    is not recorded anywhere: a file holding bars outside the requested window
-    was filled by a different panel, whatever it was called.
+    - `scan_bars` can be empty while `scan_progress` already holds finished
+      `absent` codes, so there is no range to contain and any panel passed while
+      `already_done` skipped those codes;
+    - a **wider** panel contains every stored bar and passed for that reason,
+      which is the forward-extension case an earlier test wrongly pinned as
+      allowed. `already_done` is keyed on `code`, so it fetches nothing.
 
-    **What this does NOT fix, stated so it is not mistaken for solved**:
-    extending a panel *forward* passes the containment test and still fetches
-    nothing, because `already_done` is code-keyed. Advancing the panel end needs
-    its own mechanism; this guard only stops two windows quietly sharing a file.
+    Both end the same way: a scan that reports a clean run having collected none
+    of the window it was asked for. So the panel is written down on first use and
+    compared exactly afterwards.
+
+    **A database with no `scan_panel` row is assumed to hold the default panel**,
+    because that is what filled the one that exists. The assumption is only ever
+    made about a file that already has content; a genuinely fresh file records
+    what it was asked for.
     """
-    # **The table may not exist yet**, because this runs before the schema is
-    # applied -- deliberately, so a refusal costs nothing. Asked of
-    # `sqlite_master` rather than by catching `OperationalError`, which would
-    # also swallow a real corruption. Found by the suite: the first version of
-    # the empty-database test applied the schema first and so never took this
-    # path, while `main` on a fresh `--db-path` always does.
-    if not conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'scan_bars'"
-    ).fetchone():
-        return
-    row = conn.execute("SELECT MIN(bsop_date), MAX(bsop_date) FROM scan_bars").fetchone()
-    lo, hi = (row or (None, None))
-    if lo is None:
-        return
-    if lo < panel.start or hi > panel.end:
+    panel = panel.validated()
+    conn.executescript(SCAN_SCHEMA)
+    row = conn.execute("SELECT start, end FROM scan_panel WHERE id = 1").fetchone()
+    if row is None:
+        populated = conn.execute(
+            "SELECT 1 FROM scan_bars LIMIT 1"
+        ).fetchone() or conn.execute("SELECT 1 FROM scan_progress LIMIT 1").fetchone()
+        recorded = Panel(*DEFAULT_PANEL) if populated else panel
+        conn.execute(
+            "INSERT INTO scan_panel (id, start, end) VALUES (1, ?, ?)",
+            (recorded.start, recorded.end),
+        )
+        conn.commit()
+        row = (recorded.start, recorded.end)
+    if tuple(row) != tuple(panel):
         raise KrxScanError(
-            f"{db_path} already holds bars {lo}..{hi}, which is outside the "
-            f"requested panel {panel.start}..{panel.end}. scan_progress keys on "
-            f"code alone, so a second panel in this file would skip every code "
-            f"the first pass finished and fetch nothing. Use a separate "
+            f"this database is the {row[0]}..{row[1]} panel and was asked for "
+            f"{panel.start}..{panel.end}. scan_progress keys on code alone, so a "
+            f"second panel here would skip every code the first pass finished "
+            f"and collect none of the window requested. Use a separate "
             f"--db-path for a separate window."
         )
 
@@ -1035,11 +1067,15 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    panel = Panel(args.panel_start, args.panel_end)
-    if panel.start > panel.end:
-        ap.error(f"--panel-start {panel.start} is after --panel-end {panel.end}")
+    try:
+        panel = Panel(args.panel_start, args.panel_end).validated()
+    except KrxScanError as exc:
+        ap.error(str(exc))
     conn = connect(args.db_path)
-    _refuse_a_second_panel(conn, panel, args.db_path)
+    # Claimed before any work, so a mismatch costs nothing. `scan` and
+    # `resolve_absences` claim it again -- they are public, and the CLI is not the
+    # only caller.
+    claim_panel(conn, panel)
     conn.executescript(SCAN_SCHEMA)
     conn.commit()
 
