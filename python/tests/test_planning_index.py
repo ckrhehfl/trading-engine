@@ -182,7 +182,7 @@ def _unspent_claimed_in_claude_md() -> set[str]:
         "CLAUDE.md no longer states which windows are unspent in the "
         "expected form; update this test with it, do not delete the check"
     )
-    claimed = {n for n in WINDOW if n in match.group(1)}
+    claimed = _named_windows(_normalise(match.group(1)))
     assert claimed, (
         f"no known window name found in {match.group(1)!r}; the mapping in "
         f"this test needs the new name adding"
@@ -195,13 +195,65 @@ def _unspent_claimed_in_claude_md() -> set[str]:
 #:
 #: Written out rather than inferred: those are two different vocabularies,
 #: and guessing between them is how a guard goes quietly inert.
+#: **The era is part of the identity, and it was not.** The map was
+#: name -> (symbol, interval), so `KRX daily` matched the spent 2019-2026
+#: holdout and the reserved pre-2019 window indistinguishably -- a shape this
+#: project already relies on, since `sr-t` reserved the EARLY 1d window while
+#: the later one was spent. `runs/spent_windows.json` now carries a `span`, so
+#: a window is (symbol, interval, era) and the two can be told apart.
+#:
+#: `before` is the cut-off date a reserved era ends at, or `None` for a window
+#: whose whole history is in play. A ledger row marks a name spent only when its
+#: span actually overlaps that name's era.
 WINDOW = {
-    "Binance spot 1m": ("BINANCE:BTCUSDT", "1m"),
-    "Binance spot 1d": ("BINANCE:BTCUSDT", "1d"),
-    "KRX daily": ("KRX:", "1d"),
-    "BingX 1m": ("BTC-USDT", "1m"),
-    "Binance futures 1m": ("BINANCE-FUTURES:BTCUSDT", "1m"),
+    "Binance spot 1m": ("BINANCE:BTCUSDT", "1m", None),
+    "Binance spot 1d": ("BINANCE:BTCUSDT", "1d", None),
+    "KRX daily": ("KRX:", "1d", None),
+    "KRX daily before 2019": ("KRX:", "1d", "2019-01-02"),
+    # Both spent in discovery mode and recorded nowhere else, so they are here
+    # for the discovery ledger to bind to. Without an entry a claim about either
+    # would pass unread -- the map is the vocabulary, and a window missing from
+    # it is a window this check cannot see.
+    "KRX intraday": ("KRX:", "1m", None),
+    "KRX investor flow": ("KRX:", "flow", None),
+    "BingX 1m": ("BTC-USDT", "1m", None),
+    "Binance futures 1m": ("BINANCE-FUTURES:BTCUSDT", "1m", None),
 }
+
+
+def _row_touches(row: dict, sym_part: str, interval: str, before: str | None) -> bool:
+    """Does this ledger row spend the era `before` describes?
+
+    A row with no `span` counts against every era of its symbol: an access whose
+    dates are unknown must not leave some other era reading as free.
+    """
+    if row["interval"] != interval or sym_part not in row["symbol"]:
+        return False
+    if before is None:
+        return True
+    span = row.get("span")
+    if not span:
+        return True
+    start = span.split("..")[0]
+    return start < before
+
+
+#: Longest name first, so a specific era beats the general name it contains.
+#: `KRX daily` is a substring of `KRX daily before 2019`, and matching the
+#: shorter one first reported the reserved window as the spent one.
+WINDOW_BY_SPECIFICITY = sorted(WINDOW, key=len, reverse=True)
+
+
+def _named_windows(haystack_flat: str) -> set[str]:
+    """Window names present in already-normalised text, longest match first."""
+    found: set[str] = set()
+    remaining = haystack_flat
+    for name in WINDOW_BY_SPECIFICITY:
+        flat = _normalise(name)
+        if flat in remaining:
+            found.add(name)
+            remaining = remaining.replace(flat, " ")
+    return found
 
 
 def test_claude_md_s_unspent_windows_are_really_unspent():
@@ -224,14 +276,7 @@ def test_claude_md_s_unspent_windows_are_really_unspent():
     committed artifact; `test_the_spent_window_ledger_matches_the_log`
     keeps it honest wherever the log exists.
     """
-    from research.spent_windows import load
-
-    spent = set()
-    for row in load():
-        for name, (sym_part, interval) in WINDOW.items():
-            if row["interval"] == interval and sym_part in row["symbol"]:
-                spent.add(name)
-
+    spent = _spent_window_names() | _discovery_spent_window_names()
     wrongly_claimed = sorted(_unspent_claimed_in_claude_md() & spent)
     assert not wrongly_claimed, (
         f"CLAUDE.md calls {wrongly_claimed} unspent, but "
@@ -357,8 +402,8 @@ def spent_window_claims(text: str, spent: set[str]) -> list[tuple[str, str]]:
         flat = _normalise(unit)
         if not _asserts_availability(flat):
             continue
-        for name in spent:
-            if _normalise(name) in flat:
+        for name in _named_windows(flat) & spent:
+            if True:
                 offenders.append((name, unit[:160]))
     return offenders
 
@@ -373,13 +418,46 @@ def _asserts_availability(flat: str) -> bool:
     return False
 
 
+def _discovery_spent_window_names() -> set[str]:
+    """Windows spent in DISCOVERY mode, from the hand-maintained ledger.
+
+    **The derived ledger cannot see these.** A discovery analysis is not a
+    backtest run, so `research.experiment_log` never records it, and
+    `runs/spent_windows.json` therefore reports only confirmation spends. Until
+    2026-09-27 nothing recorded the rest, so KRX intraday and 투자자별 flow —
+    both selected on by `rd-t` — read as available.
+
+    Raises on a missing or empty file for the same reason `spent_windows.load`
+    does: an empty answer here would make every window look free, which is the
+    failure this exists to remove.
+    """
+    import json
+
+    path = REPO_ROOT / "runs" / "discovery_windows.json"
+    assert path.exists(), (
+        f"{path} is missing. It is a committed artifact recording the windows "
+        f"spent in discovery mode, which the derived ledger cannot see."
+    )
+    rows = json.loads(path.read_text(encoding="utf-8")).get("windows")
+    assert rows, (
+        f"{path} lists no discovery-spent windows. Several have been spent, so "
+        f"an empty list means the file is broken, not that they are available."
+    )
+    names = set()
+    for row in rows:
+        for name, (sym_part, interval, before) in WINDOW.items():
+            if _row_touches(row, sym_part, interval, before):
+                names.add(name)
+    return names
+
+
 def _spent_window_names() -> set[str]:
     from research.spent_windows import load
 
     spent = set()
     for row in load():
-        for name, (sym_part, interval) in WINDOW.items():
-            if row["interval"] == interval and sym_part in row["symbol"]:
+        for name, (sym_part, interval, before) in WINDOW.items():
+            if _row_touches(row, sym_part, interval, before):
                 spent.add(name)
     return spent
 

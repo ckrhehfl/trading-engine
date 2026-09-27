@@ -1228,7 +1228,64 @@ is optional:**
 3. **A discovery window is named in advance and may never be used for
    confirmation.** Designated now: the **BTC-USDT 1h** window, **BingX
    1m**, and **Binance futures 1m**. Unspent and therefore *not* available
-   for discovery: **Binance spot 1m**, which is the only one left.
+   for discovery: **Binance spot 1m**, and **KRX daily before 2019-01-02**.
+
+   #### The KRX windows, declared because nothing recorded them
+
+   Measured on the instance 2026-09-27, operator decision the same day. Written
+   down because **the ledger records confirmation spends only**: a discovery
+   analysis is not a backtest run, so `research.experiment_log` never saw the
+   Korean work and every window it consumed read as available.
+
+   | window | span | dates | status |
+   |---|---|---|---|
+   | KRX daily | 2019-01-02 .. 2026-09-23 | 1,898 | **spent twice** — `ms-f` confirmation holdout, and `rd-u` discovery |
+   | KRX intraday `1m` | 2025-09-04 .. 2026-09-23 | 257 | **spent** — `rd-t`, discovery |
+   | 투자자별 flow | 2026-08-03 .. 2026-09-17 | 33 | **spent** — `rd-t`, discovery |
+   | 투자자별 flow, tail | 2026-09-18 .. 2026-09-23 | 4 | unspent |
+   | futures quotes / depth | 2026-09-18 .. 2026-09-23 | 4 | unspent |
+   | **KRX daily before 2019** | KIS floor 1991-08-28 .. 2018-12-31 | ~6,700 | **RESERVED for confirmation** |
+
+   **The forward-collected series are unspent and unusable, and both halves
+   matter.** Four sessions floor at an annualized Sharpe of **14.06**; reaching
+   even 1.0 takes 2.7 years. Reserving them is right and waiting for them is
+   not a plan.
+
+   **KRX daily before 2019 is reserved, and it is this project's best-powered
+   window by a wide margin.** Nothing has touched it: the store's earliest KRX
+   bar is 2019-01-02 and the full-universe scan runs `20190102..20260918`, so it
+   is untouched by construction rather than by policy. Floors, from
+   `retrospective.detection_floor_sharpe`: **0.315** over the full 27.3 years,
+   0.377 from 2000, 0.496 from 2008 — against **0.592** for the spent KRX window
+   and ~0.62 for the best window this project has ever held. This is the `sr-t`
+   move — reserve the *early* window, because that is the data no decision has
+   seen — applied to KRX.
+
+   **It is served for casualties as well as survivors**, which is what makes a
+   survivorship-safe scan possible there and was verified rather than assumed
+   (each probe carrying a nonsense-code control that returned zero in the same
+   run): 삼성전자 1996 Q1 **97 bars**, 기아 1999 Q1 80, a mid-cap 2005 Q1 80;
+   한진해운 — delisted 2017 — full depth back to 2010 at the live control's own
+   density, its blank 2008 being the listing date of that code rather than a
+   retention floor; 조흥은행, merged away in 2006, **72 bars in 1998 Q1**.
+
+   **Three conditions on using it, and the first is a scope change:**
+
+   - **Single-stock futures did not exist for most of it**, so a confirmation
+     there is a **cash-equity** claim, not the contract-based instrument `rd-q`
+     chose. That changes the cost structure — 거래세, and no retail shorting —
+     and a registration must say which instrument it is claiming.
+   - **The delisted instrument-type gap is still open.** `krx_delisted
+     .plain_codes` is a floor, not a filter, so a pre-2019 pool carries preferred
+     shares and SPACs until a type source exists.
+   - **Data quality before 2000 is unverified** beyond the probes above.
+
+   **It lives in its own database file, and that is the reservation.**
+   `krx_scan`'s `scan_progress` keys on `code` alone, so a second panel in the
+   shared file would skip every finished code and fetch nothing;
+   `_refuse_a_second_panel` refuses it. The same separation is what stops an
+   analysis pointed at the spent window reading the reserved one, where a
+   forgotten date filter would be enough.
 
    > **Corrected 2026-09-15.** This clause originally also listed **KRX
    > daily** as unspent. It was not: `daily-tsmom-kr10-portfolio` spent it

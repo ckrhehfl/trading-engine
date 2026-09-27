@@ -190,3 +190,79 @@ def test_the_real_ledger_loads_and_names_the_krx_window():
     absence from CLAUDE.md was the finding this module was built for."""
     rows = load()
     assert any(r["symbol"].startswith("KRX:") and r["interval"] == "1d" for r in rows)
+
+
+# ------------------------------------------- the write path cannot un-spend
+
+
+def test_regenerating_from_an_absent_log_refuses_to_shrink_the_ledger(tmp_path):
+    """**The defect this was written for, reproduced.** `DEFAULT_RUNS_PATH` is
+    the relative `runs/experiments.jsonl` — deliberately, so `conftest.py` can
+    redirect it and keep tests out of the real log — while the ledger path is
+    absolute. Running the documented regeneration command from `python/` rather
+    than the repository root therefore read nothing and **overwrote the
+    committed ledger with an empty one**. `load` refuses an empty ledger; nothing
+    refused writing one.
+    """
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [{"symbol": "KRX:005930", "interval": "1d"}]}),
+        encoding="utf-8",
+    )
+    before = ledger.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="would shrink"):
+        main([
+            "--write",
+            "--runs-path", str(tmp_path / "absent.jsonl"),
+            "--ledger-path", str(ledger),
+        ])
+
+    assert ledger.read_text(encoding="utf-8") == before, (
+        "the ledger changed even though the write was refused"
+    )
+
+
+def test_a_ledger_that_does_not_shrink_is_written(tmp_path):
+    """The guard must not block the ordinary case, or it gets removed."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(json.dumps({"windows": []}), encoding="utf-8")
+    log = _log(tmp_path, _access())
+
+    assert main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)]) == 0
+    assert json.loads(ledger.read_text(encoding="utf-8"))["windows"], (
+        "a legitimate regeneration wrote nothing"
+    )
+
+
+def test_an_unreadable_existing_ledger_refuses_rather_than_overwriting(tmp_path):
+    """An unreadable ledger is not evidence that nothing is spent."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text("{ not json", encoding="utf-8")
+    log = _log(tmp_path, _access())
+
+    with pytest.raises(ValueError, match="could not be read"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+def test_every_span_names_the_era_its_accesses_covered(tmp_path):
+    """`span` is what lets one symbol hold a spent era and a reserved one.
+
+    `sr-t` reserved the EARLY 1d window while the later one was spent, and KRX
+    daily is now the same shape. A ledger keyed on (symbol, interval) alone
+    reports the whole symbol spent and makes the reserved era unnameable.
+    """
+    from research.spent_windows import build
+
+    log = _log(tmp_path, _access())
+    row = build(log)["windows"][0]
+    assert "span" in row, "the ledger no longer records which era was spent"
+    if row["span"] is not None:
+        a, _, b = row["span"].partition("..")
+        assert a and b and a <= b, f"malformed span {row['span']!r}"
