@@ -473,6 +473,19 @@ def test_a_claude_md_section_with_a_docs_owner_carries_no_figure(section, owner)
 
     lo, hi = section_span(raw, section)
     lines = raw.splitlines()
+
+    # **The heading is asserted exactly, because `section_span` falls back to a
+    # substring match when no exact heading exists.** Rename the section to
+    # `## Archived Exchange API Facts` and this check would silently examine
+    # *that* section instead, passing on a figure-free archive while the live
+    # section carried measurements again. The Architecture check beside this one
+    # already pins its heading; this one did not. Reported on review of PR #208.
+    assert lines[lo - 1].strip() == f"## {section}", (
+        f"expected '## {section}' at line {lo}, found {lines[lo - 1]!r} -- "
+        f"section_span matched a different heading, so this check would be "
+        f"examining the wrong section"
+    )
+
     body = "\n".join(lines[lo - 1 : hi])
     found = sorted(set(_FIGURE.findall(body)))
     assert not found, (
