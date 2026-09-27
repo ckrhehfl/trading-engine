@@ -1105,17 +1105,23 @@ def main(argv: list[str] | None = None) -> int:
     except KrxScanError as exc:
         ap.error(str(exc))
     conn = connect(args.db_path)
-    # Claimed before any work, so a mismatch costs nothing. `scan` and
-    # `resolve_absences` claim it again -- they are public, and the CLI is not the
-    # only caller.
-    claim_panel(conn, panel)
     conn.executescript(SCAN_SCHEMA)
     conn.commit()
 
     if args.coverage:
+        # **Read-only, so it claims nothing.** Claiming before this return meant
+        # `--coverage` on a fresh file RECORDED the default panel, and a later,
+        # perfectly valid `--scan --panel-start 19910828` against that same file
+        # was then refused for a panel nothing had ever fetched. Reported on
+        # review of PR #209.
         coverage(conn)
         conn.close()
         return 0
+
+    # Claimed before any fetching, so a mismatch costs nothing. `scan` and
+    # `resolve_absences` claim it again -- they are public, and the CLI is not
+    # the only caller.
+    claim_panel(conn, panel)
 
     if in_continuous_session() and not args.in_session:
         print(

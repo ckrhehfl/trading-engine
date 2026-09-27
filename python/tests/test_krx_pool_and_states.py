@@ -1533,3 +1533,24 @@ def test_the_printed_ETA_scales_with_the_panel(tmp_path):
         f"the estimate does not scale with the panel: {default:.1f}h against "
         f"{pre2019:.1f}h for a window 3.5x longer"
     )
+
+
+def test_coverage_is_read_only_and_claims_no_panel(tmp_path, capsys):
+    """**A read-only path must not decide what the file is for.** Claiming before
+    the `--coverage` early return recorded the default panel on a fresh file, so
+    a later and perfectly valid `--scan --panel-start 19910828` against it was
+    refused for a panel nothing had ever fetched. Reported on review of PR #209.
+    """
+    from data.krx_scan import main
+
+    db = tmp_path / "s.sqlite3"
+    assert main(["--coverage", "--db-path", str(db)]) == 0
+    capsys.readouterr()
+
+    rows = sqlite3.connect(db).execute(
+        "SELECT count(*) FROM scan_panel"
+    ).fetchone()[0]
+    assert rows == 0, (
+        "--coverage recorded a panel, so this file is now claimed for whatever "
+        "the default is and a different window cannot be scanned into it"
+    )
