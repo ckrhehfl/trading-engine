@@ -1755,3 +1755,67 @@ def test_a_NON_POSITIVE_width_is_refused_rather_than_looping_forever():
             eta_hours(10, pan, bad)
 
     assert len(list(_pages("19910101", "19910105", 1))) == 5
+
+
+def test_a_RESCAN_recovers_a_capped_code_and_a_second_pass_does_not(monkeypatch, tmp_path):
+    """The recovery procedure, pinned because the runbook first got it backwards.
+
+    It said to delete the `failed:%` rows before restarting. That is wrong in a
+    way reading the query does not reveal: `already_done` holds only `done` and
+    `absent:%`, so a plain `--scan` was always going to pick a failed code back
+    up. Deleting would have been unnecessary — and, paired with `--second-pass`,
+    actively harmful, since `retryable_failures` then finds nothing at all.
+
+    Both halves are asserted, because the trap is that the pass whose name sounds
+    like the answer is the one that cannot give it: `failed:capped` is excluded
+    from `RETRYABLE_FAILURES` on purpose, an identical request returning an
+    identical capped answer.
+    """
+    from data.krx_scan import (
+        SCAN_SCHEMA as SCHEMA,
+        Listing as L,
+        Panel,
+        already_done,
+        claim_panel,
+        record_progress,
+        retryable_failures,
+        scan,
+    )
+
+    pan = Panel("19910101", "19910430")
+    conn = sqlite3.connect(tmp_path / "r.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.commit()
+    claim_panel(conn, pan)
+    record_progress(conn, "000010", "failed:capped")
+    record_progress(conn, "000020", "done")
+    record_progress(conn, "000030", "failed:rejected")
+    conn.commit()
+
+    assert already_done(conn) == {"000020"}, (
+        "a failed code counted as done would make the width fix unrecoverable "
+        "without a manual DELETE"
+    )
+    assert retryable_failures(conn) == ["000030"], (
+        "--second-pass must not claim to cover a capped code"
+    )
+
+    asked: list[str] = []
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+    monkeypatch.setattr(
+        "data.krx_scan._get_with_retry",
+        lambda url, headers: (asked.append(url), {"rt_cd": "0", "output2": []})[1],
+    )
+    scan(_S(), conn, [(c, "x", L.LIVE) for c in ("000010", "000020", "000030")],
+         panel=pan)
+
+    fetched = {u.split("FID_INPUT_ISCD=")[1][:6] for u in asked}
+    assert fetched == {"000010", "000030"}, (
+        f"a re-scan fetched {sorted(fetched)}; it must re-fetch both failures "
+        f"and skip the completed code"
+    )

@@ -469,24 +469,35 @@ credential mechanisms in one procedure, where the one that differs is the one
 nobody remembers, is the cost `CLAUDE.md` names; the cheapest way to avoid it in
 a manual procedure is not to introduce a second one.
 
-**There is a second mechanism on the instance, and it is disclosed here
-rather than left to be found.** `~/.krx_pre2019_runner.sh` (mode `0700`) does
-the same run non-interactively: it reads the two values with the collectors'
-own `.env` fallback — never `source`, CRLF stripped, environment winning — and
-`exec`s the scan. It exists because the command above cannot be typed by a
-session that has no terminal, and putting `KIS_APP_KEY=…` on a `tmux
-new-session` command line instead — which an earlier attempt did — puts the
-real key in a process's argv where `ps` shows it to any local reader. So the
-choice was between the collectors' documented fallback and argv exposure, and
-this is the first of those.
+**Typing them is the operator's step, and there is no non-interactive
+substitute here.** An AI session working on this repo has no terminal to type
+into, and both ways around that are worse than asking: putting `KIS_APP_KEY=…`
+on a `tmux new-session` command line puts the real key in a process's argv,
+where `ps` shows it to any local reader, and a helper script reading `.env`
+adds an unreviewed credential consumer outside the collectors that `CLAUDE.md`'s
+reaffirmed fallback covers. Both were tried while getting this backfill started;
+the first was caught locally, the second on review, and **neither remains** —
+the `~/.krx_pre2019_runner.sh` that did it has been removed from the instance.
 
-It passes no `--page-days`, which is the point of deriving the width from the
-panel: the runner needs no edit to pick the right one up.
+That leaves a one-time human step at the start of the run and at each resume,
+which is where `CLAUDE.md` already puts entering a credential. It costs a few
+seconds against a run measured in days.
 
-Read it before trusting it, and prefer the typed form above when there is a
-terminal. Two credential mechanisms in one directory is the cost `CLAUDE.md`
-names, and this is one; what keeps it honest is that it is the *same* mechanism
-the collectors already use, not a third one.
+**Removing that one script did not make the instance clean of the pattern, and
+saying so is the point of this paragraph.** Four pre-existing helpers in
+`/home/minjun4897/` read `.env` the same way — `run_scan.sh` (the full-universe
+scan's launcher, `KIS_*`), `drive.sh` and `verify-markers.sh` (both `BINGX_*`,
+from the Gate A verification work), and `launch_scan.sh` which starts the first
+of them. None `source`s the file and all strip CRLF, so each is the collectors'
+reaffirmed mechanism rather than a new one; none is removed here, because they
+are pre-existing, at least one is still the way a 64-hour scan gets started, and
+deleting a working operational script unasked is not this document's call.
+
+They are listed so that the project-wide env-only decision `CLAUDE.md` holds
+open has a complete inventory to be taken against. That decision has to cover
+all of them at once, which is the whole reason it is still open — and an
+inventory nobody wrote down is why it would otherwise be taken against three of
+five.
 
 An earlier draft of this section told the operator to **source `.env`
 wholesale**. Named without repeating it, so nobody copies it back out: that
@@ -498,17 +509,25 @@ it had already been typed at a prompt.
 It is **resumable** — `already_done` reads the database, not a sidecar — so
 detaching, rebooting or killing it costs only the code in flight.
 
-**One exception to that, and it is the one this backfill actually hit.** A code
-recorded `failed:capped` is **not** retried by a second pass —
-`RETRYABLE_FAILURES` holds only `failed:rejected` and `failed:transport`,
-because an identical request returns an identical capped answer, so retrying
-one is a request that cannot succeed. That is right when the cap was hit on the
-data, and wrong when it was hit on the *width*: fixing the width does not
-un-skip a code already recorded against the old one. So a run that failed this
-way leaves rows that resumption will honour as decided.
+**Recovering from a run that failed on the width: re-run `--scan`, and delete
+nothing.** `already_done` holds only `done` and `absent:%` — `failed:%` is
+deliberately outside it — so a plain `--scan` at the corrected width picks every
+failed code back up and overwrites its row, while skipping the completed ones.
+Verified against a seeded database rather than read off the query: a
+`failed:capped` row was re-fetched and a `done` row skipped.
 
-After a width change, clear the failures before restarting — and read the bar
-count first, because that is what decides whether clearing is free:
+**What does not recover it is `--second-pass`**, and this is the trap worth
+stating, because it is the pass whose name sounds like the answer.
+`retryable_failures` selects `failed:rejected` and `failed:transport` only —
+`failed:capped` is excluded on purpose, since an identical request returns an
+identical capped answer, so retrying one is a request that cannot succeed. That
+is right when the cap was hit on the data and unhelpful when it was hit on the
+*width*. Deleting the failed rows first does not help either; it makes
+`--second-pass` find nothing at all.
+
+So the order is **`--scan` at the new width, then `--second-pass`** — the first
+recovers the codes the width lost, the second resolves what is genuinely
+transient or absent. Read the counts first, to know which you are looking at:
 
 ```bash
 sqlite3 data/var/krx_scan_pre2019.sqlite3 \
@@ -516,10 +535,12 @@ sqlite3 data/var/krx_scan_pre2019.sqlite3 \
           status, count(*) FROM scan_progress GROUP BY status;'
 ```
 
-With `bars = 0` the file holds no data at all and deleting it is the simplest
-thing that can be correct. With bars present, delete only the failed rows —
-`DELETE FROM scan_progress WHERE status LIKE 'failed:%'` — never the completed
-ones, which are the days of fetching you are keeping.
+An earlier version of this section said to delete the failed rows before
+restarting. It is wrong — `already_done` never treated them as done — and it is
+recorded rather than quietly replaced because deleting rows on a series that
+cannot be refetched cheaply is the kind of instruction worth being wrong about
+loudly. The one case where deleting is *harmless* is `bars = 0`, which is what
+the pre-2019 file held: nothing to lose either way.
 
 ### What it costs, derived rather than guessed
 
