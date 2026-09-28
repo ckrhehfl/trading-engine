@@ -145,9 +145,26 @@ class Panel(NamedTuple):
 
 DEFAULT_PANEL = Panel(PANEL_START, PANEL_END)
 
-#: Calendar days per request. ~82 trading days, comfortably under the
-#: equity endpoint's silent 100-row cap.
+#: Calendar days per request, for the default panel. ~82 trading days,
+#: comfortably under the equity endpoint's silent 100-row cap.
+#:
+#: **It is calibrated on the post-2000 trading calendar and is WRONG before it.**
+#: KRX traded Saturdays until 2000, so the same width holds far more sessions:
+#: measured 2026-09-28 against 삼성전자, a 120-day page returns up to **99** rows
+#: in 1991-1999 against ~81-84 from 2001 on. The cap is 100 and
+#: `validated_output2` refuses a page at or over it -- correctly, since a capped
+#: page may have dropped its oldest rows unseen -- and `failed:capped` is
+#: deliberately NOT retryable, because an identical request returns an identical
+#: capped answer. So the first pre-2019 pass refused essentially every page.
+#:
+#: A code cannot trade more often than the market, and 삼성전자 traded every
+#: session, so that count IS the session count and the measurement is the worst
+#: case rather than a sample.
 PAGE_DAYS = 120
+
+#: Safe for the Saturday era: 25 probed pages across 1991-1999 returned at most
+#: **76** rows, leaving real margin under the 100-row cap.
+SATURDAY_ERA_PAGE_DAYS = 90
 
 NEGATIVE_CONTROLS = ("999999", "ZZZZZZ", "000000")
 
@@ -644,6 +661,7 @@ def scan(
     progress=None,
     allow_in_session: bool = True,
     panel: Panel = DEFAULT_PANEL,
+    page_days: int = PAGE_DAYS,
 ) -> dict:
     claim_panel(conn, panel)
     done = already_done(conn)
@@ -678,7 +696,7 @@ def scan(
                 progress(i, len(todo), code, "resumed after the session", None)
         rows: list[dict] = []
         failed = False
-        for start, end in _pages(panel.start, panel.end, PAGE_DAYS):
+        for start, end in _pages(panel.start, panel.end, page_days):
             time.sleep(_SPACING_S)
             try:
                 rows.extend(_page(session, code, start, end))
@@ -988,7 +1006,7 @@ def progress_printer():
 _ASSUMED_RATE_PER_S = 0.6
 
 
-def eta_hours(todo_count: int, panel: Panel) -> float:
+def eta_hours(todo_count: int, panel: Panel, page_days: int = PAGE_DAYS) -> float:
     """Hours to fetch `todo_count` codes over `panel`, at the measured rate.
 
     **Pages come from the panel, not from a constant.** The printed estimate used
@@ -998,16 +1016,34 @@ def eta_hours(todo_count: int, panel: Panel) -> float:
     a scan: a number that can only be seen by doing the work it estimates is a
     number nothing checks.
     """
-    return todo_count * pages_per_code(panel) / _ASSUMED_RATE_PER_S / 3600
+    return todo_count * pages_per_code(panel, page_days) / _ASSUMED_RATE_PER_S / 3600
 
 
-def pages_per_code(panel: Panel) -> int:
-    """How many requests one code costs over `panel`.
+def default_page_days(panel: Panel) -> int:
+    """The widest page safe for `panel`, which is a property of its ERA.
+
+    A panel reaching before 2000 spans the Saturday-trading calendar, where a
+    120-day page returns up to 99 sessions against a silent 100-row cap -- and a
+    capped page is refused rather than truncated, and is deliberately not
+    retryable. So the width is derived rather than left to the caller to
+    remember: the failure mode of forgetting is that **every** page is refused.
+
+    Chosen per panel rather than per page on purpose. Narrowing only the dense
+    stretch would be less wasteful and needs the fetch loop to react to a
+    `CAPPED` answer by splitting the window, which is the better fix and a
+    change to the loop this is not.
+    """
+    return SATURDAY_ERA_PAGE_DAYS if panel.start < "20000101" else PAGE_DAYS
+
+
+def pages_per_code(panel: Panel, page_days: int = PAGE_DAYS) -> int:
+    """How many requests one code costs over `panel` at `page_days` per page.
 
     Counted through `_pages` rather than divided out, so the estimate and the
-    loop that fetches cannot disagree.
+    loop that fetches cannot disagree -- including on the page width, which the
+    first version hardcoded and which is now the thing that varies.
     """
-    return sum(1 for _ in _pages(panel.start, panel.end, PAGE_DAYS))
+    return sum(1 for _ in _pages(panel.start, panel.end, page_days))
 
 
 def claim_panel(conn: sqlite3.Connection, panel: Panel) -> None:
@@ -1089,6 +1125,17 @@ def main(argv: list[str] | None = None) -> int:
         "second pass skips the whole pool. Refused rather than allowed.",
     )
     ap.add_argument("--panel-end", default=PANEL_END, help="last date, YYYYMMDD")
+    ap.add_argument(
+        "--page-days",
+        type=int,
+        default=0,
+        help="calendar days per request. Default: %d, or %d for a panel reaching "
+        "before 2000, because KRX traded Saturdays until then and a %d-day page "
+        "returns up to 99 rows there against a silent 100-row cap. A capped page "
+        "is refused and is NOT retryable, so getting this wrong refuses every "
+        "page rather than truncating data."
+        % (PAGE_DAYS, SATURDAY_ERA_PAGE_DAYS, PAGE_DAYS),
+    )
     ap.add_argument("--limit", type=int, default=0, help="first N candidates (probe)")
     ap.add_argument(
         "--in-session",
@@ -1104,6 +1151,9 @@ def main(argv: list[str] | None = None) -> int:
         panel = Panel(args.panel_start, args.panel_end).validated()
     except KrxScanError as exc:
         ap.error(str(exc))
+    page_days = args.page_days or default_page_days(panel)
+    if page_days < 1:
+        ap.error(f"--page-days must be positive, got {page_days}")
     conn = connect(args.db_path)
     conn.executescript(SCAN_SCHEMA)
     conn.commit()
@@ -1172,7 +1222,7 @@ def main(argv: list[str] | None = None) -> int:
                 "DELETE FROM scan_progress WHERE code = ?", [(c,) for c, _, _ in again]
             )
             conn.commit()
-            print(f"{scan(session, conn, again, progress=progress_printer(), panel=panel)}", flush=True)
+            print(f"{scan(session, conn, again, progress=progress_printer(), panel=panel, page_days=page_days)}", flush=True)
         print(f"{resolve_absences(session, conn, progress=progress_printer(), panel=panel)}", flush=True)
         coverage(conn)
         conn.close()
@@ -1200,7 +1250,8 @@ def main(argv: list[str] | None = None) -> int:
     outside = len(done) - (len(pool) - todo_count)
     print(f"{len(pool):,} candidates, {len(pool) - todo_count:,} already "
           f"complete, {todo_count:,} to fetch "
-          f"(~{eta_hours(todo_count, panel):.1f}h at {_ASSUMED_RATE_PER_S}/s)"
+          f"(~{eta_hours(todo_count, panel, page_days):.1f}h at "
+          f"{_ASSUMED_RATE_PER_S}/s, {page_days}d pages)"
           + (f"; {outside:,} recorded codes are not in this candidate selection"
              if outside else ""),
           flush=True)
@@ -1210,7 +1261,8 @@ def main(argv: list[str] | None = None) -> int:
     print("negative controls pass: an empty answer really means empty", flush=True)
 
     counts = scan(session, conn, pool, progress=progress_printer(),
-                  allow_in_session=args.in_session, panel=panel)
+                  allow_in_session=args.in_session, panel=panel,
+                  page_days=page_days)
     print(f"\n{counts}")
     coverage(conn)
     conn.close()

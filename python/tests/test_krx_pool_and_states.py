@@ -1554,3 +1554,96 @@ def test_coverage_is_read_only_and_claims_no_panel(tmp_path, capsys):
         "--coverage recorded a panel, so this file is now claimed for whatever "
         "the default is and a different window cannot be scanned into it"
     )
+
+
+# ------------------------------- the page width is an era property, not a constant
+
+
+def test_a_panel_reaching_before_2000_gets_a_NARROWER_default_page(tmp_path):
+    """**The first pre-2019 pass refused essentially every page**, and this is
+    why. `PAGE_DAYS = 120` was calibrated on the post-2000 calendar — KRX traded
+    Saturdays until then, so measured against 삼성전자 on 2026-09-28 a 120-day
+    page returns up to **99** rows in 1991-1999 against ~81-84 from 2001 on. The
+    cap is 100, `validated_output2` refuses a page at or over it, and
+    `failed:capped` is deliberately not retryable because an identical request
+    returns an identical capped answer.
+
+    A code cannot trade more often than the market and 삼성전자 traded every
+    session, so that count is the session count — the measurement is the worst
+    case, not a sample.
+    """
+    from data.krx_scan import (
+        PAGE_DAYS,
+        SATURDAY_ERA_PAGE_DAYS,
+        Panel,
+        default_page_days,
+    )
+
+    assert default_page_days(Panel("19910828", "20181231")) == SATURDAY_ERA_PAGE_DAYS
+    assert default_page_days(Panel("19991231", "20181231")) == SATURDAY_ERA_PAGE_DAYS
+    assert default_page_days(Panel("20000101", "20181231")) == PAGE_DAYS
+    assert default_page_days(Panel("20190102", "20260918")) == PAGE_DAYS
+
+
+def test_the_narrow_width_really_stays_under_the_row_cap():
+    """The margin, asserted from the measurement rather than trusted.
+
+    25 probed pages across 1991-1999 returned at most 76 rows at 90 days. The
+    density that produced that is ~0.825 sessions per calendar day, which is what
+    this pins — a future widening has to show its own measurement.
+    """
+    from data.krx_scan import EQUITY_ROWS_PER_CALL_CAP, SATURDAY_ERA_PAGE_DAYS
+
+    worst_sessions_per_day = 99 / 120  # measured, the Saturday era's densest page
+    assert SATURDAY_ERA_PAGE_DAYS * worst_sessions_per_day < EQUITY_ROWS_PER_CALL_CAP - 15, (
+        f"{SATURDAY_ERA_PAGE_DAYS}d at the measured density leaves too little "
+        f"margin under the {EQUITY_ROWS_PER_CALL_CAP}-row cap"
+    )
+
+
+def test_the_scan_pages_at_the_GIVEN_width(monkeypatch, tmp_path):
+    """The width has to reach the fetching loop, not just the estimate — the
+    panel's own first version wired the parameter and left the print on a
+    constant, and the mutation survived."""
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA, Panel, scan
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.commit()
+    asked: list[str] = []
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    monkeypatch.setattr("data.krx_scan._get_with_retry",
+                        lambda url, headers: (asked.append(url), {"rt_cd": "0", "output2": []})[1])
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+
+    scan(_S(), conn, [("005930", "x", Listing.LIVE)],
+         panel=Panel("19910101", "19911231"), page_days=30)
+    wide = len(asked)
+    asked.clear()
+
+    conn2 = sqlite3.connect(tmp_path / "t.sqlite3")
+    conn2.executescript(SCHEMA)
+    conn2.commit()
+    scan(_S(), conn2, [("005930", "x", Listing.LIVE)],
+         panel=Panel("19910101", "19911231"), page_days=120)
+    narrow = len(asked)
+
+    assert wide > narrow, (
+        f"30-day pages made {wide} requests and 120-day pages {narrow}; the width "
+        f"is not reaching the loop"
+    )
+
+
+def test_the_printed_estimate_uses_the_SAME_width_as_the_loop():
+    """Otherwise the operator is told a duration derived from a page size the run
+    does not use — which is what the hardcoded 24 did before."""
+    from data.krx_scan import Panel, eta_hours, pages_per_code
+
+    pan = Panel("19910828", "20181231")
+    assert eta_hours(1000, pan, 90) / eta_hours(1000, pan, 120) == pytest.approx(
+        pages_per_code(pan, 90) / pages_per_code(pan, 120), rel=1e-9
+    )

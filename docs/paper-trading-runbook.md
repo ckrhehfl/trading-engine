@@ -481,11 +481,21 @@ detaching, rebooting or killing it costs only the code in flight.
 
 ### What it costs, derived rather than guessed
 
-120 calendar days per request, so **84 pages per code** against the existing
-panel's 24 — the pre-2019 window is 27.35 years against 7.71. Over the 4,638
-codes the pool resolves to, that is **~390,000 requests**, and throughput was
-measured at 0.5–0.7/s after the close. So **roughly 155–216 hours, six to nine
-days**, in line with the existing panel's own 44–62 hour arithmetic.
+**90 calendar days per request, not the default 120**, which the scan chooses
+itself for any panel reaching before 2000 — and getting it wrong is not a
+slow run but a failed one. KRX traded **Saturdays** until 2000, so a 120-day page
+returns up to **99** sessions there against ~81–84 from 2001 on, against a silent
+**100-row cap**; `validated_output2` refuses a page at or over it, and
+`failed:capped` is deliberately **not** retryable because an identical request
+returns an identical capped answer. The first attempt at this backfill refused
+essentially every page for exactly that reason. At 90 days, 25 probed pages
+across 1991–1999 returned at most **76** rows.
+
+So **111 pages per code** against the existing panel's 24, over the **4,371**
+codes the pool resolves to: **~485,000 requests**, at a throughput measured at
+0.5–0.7/s after the close — **roughly 190–270 hours, eight to eleven days**. The
+scan prints its own estimate, derived from the width it will actually use, and it
+is resumable, so that is wall time rather than a single sitting.
 
 ### A 53% shortcut exists, was measured, and is deliberately NOT taken
 
