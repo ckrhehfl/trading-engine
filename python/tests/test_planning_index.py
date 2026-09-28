@@ -182,7 +182,7 @@ def _unspent_claimed_in_claude_md() -> set[str]:
         "CLAUDE.md no longer states which windows are unspent in the "
         "expected form; update this test with it, do not delete the check"
     )
-    claimed = {n for n in WINDOW if n in match.group(1)}
+    claimed = _named_windows(_normalise(match.group(1)))
     assert claimed, (
         f"no known window name found in {match.group(1)!r}; the mapping in "
         f"this test needs the new name adding"
@@ -195,13 +195,107 @@ def _unspent_claimed_in_claude_md() -> set[str]:
 #:
 #: Written out rather than inferred: those are two different vocabularies,
 #: and guessing between them is how a guard goes quietly inert.
+#: **The era is part of the identity, and it was not.** The map was
+#: name -> (symbol, interval), so `KRX daily` matched the spent 2019-2026
+#: holdout and the reserved pre-2019 window indistinguishably -- a shape this
+#: project already relies on, since `sr-t` reserved the EARLY 1d window while
+#: the later one was spent. `runs/spent_windows.json` now carries a `span`, so
+#: a window is (symbol, interval, era) and the two can be told apart.
+#:
+#: `before` is the cut-off date a reserved era ends at, or `None` for a window
+#: whose whole history is in play. A ledger row marks a name spent only when its
+#: span actually overlaps that name's era.
 WINDOW = {
-    "Binance spot 1m": ("BINANCE:BTCUSDT", "1m"),
-    "Binance spot 1d": ("BINANCE:BTCUSDT", "1d"),
-    "KRX daily": ("KRX:", "1d"),
-    "BingX 1m": ("BTC-USDT", "1m"),
-    "Binance futures 1m": ("BINANCE-FUTURES:BTCUSDT", "1m"),
+    "Binance spot 1m": ("BINANCE:BTCUSDT", "1m", None),
+    "Binance spot 1d": ("BINANCE:BTCUSDT", "1d", None),
+    "KRX daily": ("KRX:", "1d", None),
+    "KRX daily before 2019": ("KRX:", "1d", "2019-01-02"),
+    # Both spent in discovery mode and recorded nowhere else, so they are here
+    # for the discovery ledger to bind to. Without an entry a claim about either
+    # would pass unread -- the map is the vocabulary, and a window missing from
+    # it is a window this check cannot see.
+    "KRX intraday": ("KRX:", "1m", None),
+    "KRX investor flow": ("KRX:", "flow", None),
+    # Never selected on, so it appears in neither ledger -- and it is here
+    # precisely so that a future claim about it is READABLE. A window missing
+    # from this map is one both availability checks pass over in silence.
+    "KRX futures quotes": ("KRX-QUOTE:", "quote", None),
+    "BingX 1m": ("BTC-USDT", "1m", None),
+    "Binance futures 1m": ("BINANCE-FUTURES:BTCUSDT", "1m", None),
 }
+
+
+def _row_touches(row: dict, sym_part: str, interval: str, before: str | None) -> bool:
+    """Does this ledger row spend the era `before` describes?
+
+    A row with no `span` counts against every era of its symbol: an access whose
+    dates are unknown must not leave some other era reading as free.
+    """
+    if row["interval"] != interval or sym_part not in row["symbol"]:
+        return False
+    if before is None:
+        return True
+    span = row.get("span")
+    if not span:
+        return True
+    # **An era that cannot be parsed is an UNKNOWN era, so it touches every
+    # one.** `split("..")[0]` on the hand-written `"within 2019-01-02..."` gives
+    # `"within 2019-01-02"`, and `"w"` sorts above every digit, so
+    # `start < before` was always False -- the row marked nothing spent. It gave
+    # the right answer here by accident, and a later `"within 2010-..."` row
+    # would have left `KRX daily before 2019` reading as available while it had
+    # been selected on. That is the leakage direction. Reported on review of
+    # PR #210.
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})", span.strip())
+    if not m:
+        return True
+    return m.group(1) < before
+
+
+#: Longest name first, so a specific era beats the general name it contains.
+#: `KRX daily` is a substring of `KRX daily before 2019`, and matching the
+#: shorter one first reported the reserved window as the spent one.
+WINDOW_BY_SPECIFICITY = sorted(WINDOW, key=len, reverse=True)
+
+
+def test_the_documented_window_names_are_all_in_the_vocabulary():
+    """**A name the map does not know is a claim the checks cannot read.**
+    CLAUDE.md's own inventory table wrote `투자자별 flow` while the map held
+    `KRX investor flow`, so every row of it was invisible to both checks --
+    including the two it declares spent. Reported on review of PR #210.
+
+    Asserted over the inventory table rather than the whole file, because prose
+    elsewhere legitimately names a window in passing.
+    """
+    claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
+    start = claude.index("#### The KRX windows, declared because nothing recorded them")
+    table = claude[start : claude.index("\n\n", claude.index("| **KRX daily before 2019**", start))]
+    rows = [
+        line.split("|")[1].strip()
+        for line in table.splitlines()
+        if line.strip().startswith("|") and "---" not in line
+    ][1:]
+    unknown = [
+        r for r in rows
+        if not _named_windows(_normalise(r)) and r.lower() != "window"
+    ]
+    assert not unknown, (
+        f"CLAUDE.md's window inventory names {unknown}, which the WINDOW map "
+        f"does not know -- so a claim about any of them is unreadable by both "
+        f"availability checks. Add the name, or use the canonical one."
+    )
+
+
+def _named_windows(haystack_flat: str) -> set[str]:
+    """Window names present in already-normalised text, longest match first."""
+    found: set[str] = set()
+    remaining = haystack_flat
+    for name in WINDOW_BY_SPECIFICITY:
+        flat = _normalise(name)
+        if flat in remaining:
+            found.add(name)
+            remaining = remaining.replace(flat, " ")
+    return found
 
 
 def test_claude_md_s_unspent_windows_are_really_unspent():
@@ -224,14 +318,7 @@ def test_claude_md_s_unspent_windows_are_really_unspent():
     committed artifact; `test_the_spent_window_ledger_matches_the_log`
     keeps it honest wherever the log exists.
     """
-    from research.spent_windows import load
-
-    spent = set()
-    for row in load():
-        for name, (sym_part, interval) in WINDOW.items():
-            if row["interval"] == interval and sym_part in row["symbol"]:
-                spent.add(name)
-
+    spent = _spent_window_names() | _discovery_spent_window_names()
     wrongly_claimed = sorted(_unspent_claimed_in_claude_md() & spent)
     assert not wrongly_claimed, (
         f"CLAUDE.md calls {wrongly_claimed} unspent, but "
@@ -357,8 +444,8 @@ def spent_window_claims(text: str, spent: set[str]) -> list[tuple[str, str]]:
         flat = _normalise(unit)
         if not _asserts_availability(flat):
             continue
-        for name in spent:
-            if _normalise(name) in flat:
+        for name in _named_windows(flat) & spent:
+            if True:
                 offenders.append((name, unit[:160]))
     return offenders
 
@@ -373,15 +460,64 @@ def _asserts_availability(flat: str) -> bool:
     return False
 
 
+def _discovery_spent_window_names() -> set[str]:
+    """Windows spent in DISCOVERY mode, from the hand-maintained ledger.
+
+    **The derived ledger cannot see these.** A discovery analysis is not a
+    backtest run, so `research.experiment_log` never records it, and
+    `runs/spent_windows.json` therefore reports only confirmation spends. Until
+    2026-09-27 nothing recorded the rest, so KRX intraday and 투자자별 flow —
+    both selected on by `rd-t` — read as available.
+
+    Raises on a missing or empty file for the same reason `spent_windows.load`
+    does: an empty answer here would make every window look free, which is the
+    failure this exists to remove.
+    """
+    import json
+
+    path = REPO_ROOT / "runs" / "discovery_windows.json"
+    assert path.exists(), (
+        f"{path} is missing. It is a committed artifact recording the windows "
+        f"spent in discovery mode, which the derived ledger cannot see."
+    )
+    rows = json.loads(path.read_text(encoding="utf-8")).get("windows")
+    assert rows, (
+        f"{path} lists no discovery-spent windows. Several have been spent, so "
+        f"an empty list means the file is broken, not that they are available."
+    )
+    names = set()
+    for row in rows:
+        for name, (sym_part, interval, before) in WINDOW.items():
+            if _row_touches(row, sym_part, interval, before):
+                names.add(name)
+    return names
+
+
 def _spent_window_names() -> set[str]:
     from research.spent_windows import load
 
     spent = set()
     for row in load():
-        for name, (sym_part, interval) in WINDOW.items():
-            if row["interval"] == interval and sym_part in row["symbol"]:
+        for name, (sym_part, interval, before) in WINDOW.items():
+            if _row_touches(row, sym_part, interval, before):
                 spent.add(name)
     return spent
+
+
+def _availability_offenders(text: str) -> list[tuple[str, str]]:
+    """Units of `text` that call a spent window available, against BOTH ledgers.
+
+    **One function so the real check and its test cannot diverge.** The derived
+    ledger records confirmation spends only, so passing it alone left a
+    discovery-spent window free to be called available anywhere in the file
+    (reported on review of PR #210). The first fix inlined the union in the real
+    check and proved it in a test that called `spent_window_claims` itself — so
+    reverting the real check changed nothing the test could see, and the mutation
+    survived. Both now go through here.
+    """
+    return spent_window_claims(
+        text, _spent_window_names() | _discovery_spent_window_names()
+    )
 
 
 def test_NO_unit_of_claude_md_calls_a_spent_window_available():
@@ -399,7 +535,7 @@ def test_NO_unit_of_claude_md_calls_a_spent_window_available():
     scope is the shape this repository keeps paying for.
     """
     claude = (REPO_ROOT / "CLAUDE.md").read_text(encoding="utf-8")
-    offenders = spent_window_claims(claude, _spent_window_names())
+    offenders = _availability_offenders(claude)
     assert not offenders, (
         "CLAUDE.md asserts a SPENT window is still available:\n"
         + "\n".join(f"  {name} -- {unit}" for name, unit in offenders)
@@ -520,3 +656,70 @@ def test_the_ledger_is_not_empty_so_the_claim_check_cannot_pass_vacuously():
     from research.spent_windows import load
 
     assert len(load()) >= 5
+
+
+def test_only_the_UNION_of_both_ledgers_catches_a_discovery_spent_claim():
+    """**The derived ledger cannot see a discovery spend, so passing it alone
+    leaves one unreadable.** Reported on review of PR #210 — and a mutation then
+    showed the fix was untested, because CLAUDE.md happens to make no such claim
+    today. Asserted against synthetic text, which is the only way a guard for a
+    claim nobody has written yet can be proved to work.
+
+    Both halves matter: the union flags it, and the derived ledger alone does
+    not. Without the second assertion this test would pass on a union that was
+    doing nothing.
+    """
+    derived = _spent_window_names()
+    # `spent_window_claims` excises the canonical paragraph by span and asserts
+    # it is there, so synthetic text has to carry one.
+    text = (
+        "Unspent and therefore *not* available for discovery: **Binance spot 1m**.\n\n"
+        "KRX intraday is still available for confirmation.\n"
+    )
+    assert "KRX intraday" not in derived, (
+        "KRX intraday now appears in the derived ledger, so this test no longer "
+        "distinguishes the two sources -- pick a window that is discovery-spent only"
+    )
+    assert _availability_offenders(text), (
+        "a claim that a discovery-spent window is available went unflagged"
+    )
+    assert not spent_window_claims(text, derived), (
+        "the derived ledger alone flagged it, so the union is not what catches "
+        "this and the mutation proving otherwise was right"
+    )
+
+
+@pytest.mark.parametrize(
+    "span, why",
+    [
+        ("within 2010-01-02..2026-09-23", "the prose form the ledger once used"),
+        ("2010-01-02", "one date, no range"),
+        ("", "empty"),
+        ("sometime in the 1990s", "free text"),
+        ("2010/01/02..2026/09/23", "the wrong separator"),
+    ],
+)
+def test_an_UNPARSEABLE_era_counts_as_touching_every_era(span, why):
+    """**The leakage direction, and it was live.** `split("..")[0]` on
+    `"within 2010-01-02..."` yields `"within 2010-01-02"`, and `"w"` sorts above
+    every digit — so `start < before` was always False and the row marked
+    nothing spent. It gave the right answer for the row that existed only by
+    accident; a `within 2010-…` row would have left `KRX daily before 2019`
+    reading as available after being selected on. Reported on review of PR #210.
+    """
+    assert _row_touches(
+        {"symbol": "KRX:005930", "interval": "1d", "span": span},
+        "KRX:", "1d", "2019-01-02",
+    ), f"an unreadable span ({why}) was treated as bounded, so some era reads free"
+
+
+def test_a_WELL_FORMED_era_before_the_cut_off_still_marks_it_spent():
+    """The other side, so the strict parser did not simply stop discriminating."""
+    assert _row_touches(
+        {"symbol": "KRX:", "interval": "1d", "span": "2010-01-02..2026-09-23"},
+        "KRX:", "1d", "2019-01-02",
+    )
+    assert not _row_touches(
+        {"symbol": "KRX:", "interval": "1d", "span": "2019-01-02..2026-09-23"},
+        "KRX:", "1d", "2019-01-02",
+    ), "the spent 2019+ era must not mark the reserved pre-2019 one"

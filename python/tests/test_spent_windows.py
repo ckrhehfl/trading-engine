@@ -39,6 +39,21 @@ def _access(symbol="BTC-USDT", interval="1d", at="2026-07-30T05:18:08+00:00"):
     }
 
 
+def _ranged(y1, m1, d1, y2, m2, d2, symbol="KRX:005930", interval="1d"):
+    """A holdout access that carries the era it touched, which `_access` does
+    not — the span is derived from `start_ms`/`end_ms`, and an access without
+    them is deliberately read as an UNKNOWN era."""
+    import datetime as _dt
+
+    def _ms(y, m, d):
+        return int(_dt.datetime(y, m, d, tzinfo=_dt.timezone.utc).timestamp() * 1000)
+
+    row = _access(symbol=symbol, interval=interval)
+    row["start_ms"] = _ms(y1, m1, d1)
+    row["end_ms"] = _ms(y2, m2, d2)
+    return row
+
+
 def test_a_holdout_access_marks_its_window_spent(tmp_path):
     out = build(_log(tmp_path, _access()))["windows"]
     assert [(w["symbol"], w["interval"]) for w in out] == [("BTC-USDT", "1d")]
@@ -190,3 +205,202 @@ def test_the_real_ledger_loads_and_names_the_krx_window():
     absence from CLAUDE.md was the finding this module was built for."""
     rows = load()
     assert any(r["symbol"].startswith("KRX:") and r["interval"] == "1d" for r in rows)
+
+
+# ------------------------------------------- the write path cannot un-spend
+
+
+def test_regenerating_from_an_absent_log_refuses_to_shrink_the_ledger(tmp_path):
+    """**The defect this was written for, reproduced.** `DEFAULT_RUNS_PATH` is
+    the relative `runs/experiments.jsonl` — deliberately, so `conftest.py` can
+    redirect it and keep tests out of the real log — while the ledger path is
+    absolute. Running the documented regeneration command from `python/` rather
+    than the repository root therefore read nothing and **overwrote the
+    committed ledger with an empty one**. `load` refuses an empty ledger; nothing
+    refused writing one.
+    """
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [{"symbol": "KRX:005930", "interval": "1d"}]}),
+        encoding="utf-8",
+    )
+    before = ledger.read_text(encoding="utf-8")
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main([
+            "--write",
+            "--runs-path", str(tmp_path / "absent.jsonl"),
+            "--ledger-path", str(ledger),
+        ])
+
+    assert ledger.read_text(encoding="utf-8") == before, (
+        "the ledger changed even though the write was refused"
+    )
+
+
+def test_a_ledger_that_does_not_shrink_is_written(tmp_path):
+    """The guard must not block the ordinary case, or it gets removed."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(json.dumps({"windows": []}), encoding="utf-8")
+    log = _log(tmp_path, _access())
+
+    assert main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)]) == 0
+    assert json.loads(ledger.read_text(encoding="utf-8"))["windows"], (
+        "a legitimate regeneration wrote nothing"
+    )
+
+
+def test_an_unreadable_existing_ledger_refuses_rather_than_overwriting(tmp_path):
+    """An unreadable ledger is not evidence that nothing is spent."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text("{ not json", encoding="utf-8")
+    log = _log(tmp_path, _access())
+
+    with pytest.raises(ValueError, match="could not be read"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+def test_every_span_names_the_era_its_accesses_covered(tmp_path):
+    """`span` is what lets one symbol hold a spent era and a reserved one.
+
+    `sr-t` reserved the EARLY 1d window while the later one was spent, and KRX
+    daily is now the same shape. A ledger keyed on (symbol, interval) alone
+    reports the whole symbol spent and makes the reserved era unnameable.
+    """
+    from research.spent_windows import build
+
+    log = _log(tmp_path, _access())
+    row = build(log)["windows"][0]
+    assert "span" in row, "the ledger no longer records which era was spent"
+    if row["span"] is not None:
+        a, _, b = row["span"].partition("..")
+        assert a and b and a <= b, f"malformed span {row['span']!r}"
+
+
+def test_a_regeneration_that_swaps_one_window_for_another_is_refused(tmp_path):
+    """**Counting rows was not enough.** Dropping one window while adding another
+    leaves the count equal, so the count-based guard passed it and the dropped
+    spend was erased. Reported on review of PR #210."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [
+            {"symbol": "KRX:005930", "interval": "1d", "span": "2019-01-02..2026-09-02"},
+        ]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _access(symbol="BTC-USDT", interval="1m"))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+def test_a_regeneration_that_NARROWS_an_era_is_refused(tmp_path):
+    """The other half the count could not see: the same window, the same row
+    count, a smaller span. The era outside the new span would read as available."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [
+            {"symbol": "KRX:005930", "interval": "1d", "span": "2010-01-02..2026-09-02"},
+        ]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+def test_replacing_an_UNKNOWN_era_with_a_finite_one_is_refused(tmp_path):
+    """`span: null` is the widest claim there is — the era was unknown, so every
+    era counts as spent. A finite replacement narrows it."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [
+            {"symbol": "KRX:005930", "interval": "1d", "span": None},
+        ]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+def test_ONE_access_without_a_range_makes_the_whole_window_unknown(tmp_path):
+    """**The conservative direction, and the first version got it backwards.**
+    Taking the bounds of only the records that carry a range reported a finite
+    span covering less than was actually accessed, so an era outside it read as
+    unspent — a reserved window that is not. Reported on review of PR #210."""
+    from research.spent_windows import build
+
+    rows = build(
+        _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2),
+             _access(symbol="KRX:005930", interval="1d"))
+    )["windows"]
+    assert len(rows) == 1, rows
+    assert rows[0]["span"] is None, (
+        f"span {rows[0]['span']!r} claims a finite era while one access had no "
+        f"range at all, so some era reads as available that was accessed"
+    )
+
+
+def test_a_regeneration_that_LOSES_an_ACCESS_is_refused(tmp_path):
+    """**The count of accesses is evidence, and it can fall while everything
+    else matches.** CLAUDE.md cites `ms-f`'s three recorded `holdout_access`
+    entries as what shows the single-access discipline held — a partial log
+    reducing that to one erases the evidence with the same window and the same
+    era. Reported on review of PR #210."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [{
+            "symbol": "KRX:005930", "interval": "1d", "accesses": 3,
+            "span": "2019-01-02..2026-09-02",
+        }]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+@pytest.mark.parametrize(
+    "existing_span",
+    ["within 2010-01-02..2026-09-23", "2010-01-02", "sometime in the 1990s"],
+)
+def test_an_UNREADABLE_existing_era_refuses_a_finite_replacement(tmp_path, existing_span):
+    """**The same leakage shape as `_row_touches`, in the write guard.** The
+    first version compared `partition("..")` results directly, so a hand-edited
+    `"within 2010-01-02..."` gave `was_a = "within 2010-01-02"` — and `"w"` sorts
+    above every digit, making `now_a > was_a` always False. A genuinely narrowed
+    era was therefore accepted and the wider spend erased. Reported on review of
+    PR #210.
+    """
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [{
+            "symbol": "KRX:005930", "interval": "1d", "accesses": 1,
+            "span": existing_span,
+        }]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])

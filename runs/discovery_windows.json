@@ -1,0 +1,35 @@
+{
+  "note": "HAND-MAINTAINED, unlike runs/spent_windows.json which is derived from runs/experiments.jsonl. It records windows spent in DISCOVERY mode, which the derived ledger cannot see: a discovery analysis is not a backtest run and does not go through research.experiment_log, so nothing writes it down. Add a row when an analysis selects on a window; cite the .planning document that did it.",
+  "why_this_file_exists": "CLAUDE.md's Discovery/Confirmation split says a designated discovery window is deliberately and permanently spent. Only confirmation spends were recorded anywhere, so a discovery-spent window read as available -- the same class of stale claim that once called KRX daily unspent the day after it was spent.",
+  "known_gap": "Being hand-maintained, this file can go stale exactly as that sentence did. The real fix is CLAUDE.md guard 5's requirement that discovery trials be logged, which the rd-* Korean analyses do not meet: log_run expects fold results and an IC scan has none. Closing that needs its own change.",
+  "windows": [
+    {
+      "symbol": "KRX:",
+      "interval": "1m",
+      "span": "2025-09-04..2026-09-23",
+      "universe": "the rd-r ten",
+      "spent_by": ".planning/rd-t-korean-signal-ic.md",
+      "what_it_selected": "feature x horizon information coefficients",
+      "measured_on": "2026-09-18"
+    },
+    {
+      "symbol": "KRX:",
+      "interval": "1d",
+      "span": "2019-01-02..2026-09-23",
+      "universe": "the rd-r ten",
+      "spent_by": ".planning/rd-u-do-conjunctions-beat-their-parts.md",
+      "what_it_selected": "11 conjunction combinations under Benjamini-Hochberg",
+      "measured_on": "2026-09-18",
+      "span_note": "the widest era the analysis could have read -- the store's own KRX daily range. The exact subset rd-u sampled is not recorded, and an upper bound is the safe direction."
+    },
+    {
+      "symbol": "KRX:",
+      "interval": "flow",
+      "span": "2026-08-03..2026-09-17",
+      "universe": "the rd-r ten",
+      "spent_by": ".planning/rd-t-korean-signal-ic.md",
+      "what_it_selected": "investor-flow features in the same IC scan",
+      "measured_on": "2026-09-18"
+    }
+  ]
+}
