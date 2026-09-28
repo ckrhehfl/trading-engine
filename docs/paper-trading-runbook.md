@@ -479,6 +479,29 @@ it had already been typed at a prompt.
 It is **resumable** — `already_done` reads the database, not a sidecar — so
 detaching, rebooting or killing it costs only the code in flight.
 
+**One exception to that, and it is the one this backfill actually hit.** A code
+recorded `failed:capped` is **not** retried by a second pass —
+`RETRYABLE_FAILURES` holds only `failed:rejected` and `failed:transport`,
+because an identical request returns an identical capped answer, so retrying
+one is a request that cannot succeed. That is right when the cap was hit on the
+data, and wrong when it was hit on the *width*: fixing the width does not
+un-skip a code already recorded against the old one. So a run that failed this
+way leaves rows that resumption will honour as decided.
+
+After a width change, clear the failures before restarting — and read the bar
+count first, because that is what decides whether clearing is free:
+
+```bash
+sqlite3 data/var/krx_scan_pre2019.sqlite3 \
+  'SELECT (SELECT count(*) FROM scan_bars) AS bars,
+          status, count(*) FROM scan_progress GROUP BY status;'
+```
+
+With `bars = 0` the file holds no data at all and deleting it is the simplest
+thing that can be correct. With bars present, delete only the failed rows —
+`DELETE FROM scan_progress WHERE status LIKE 'failed:%'` — never the completed
+ones, which are the days of fetching you are keeping.
+
 ### What it costs, derived rather than guessed
 
 **90 calendar days per request, not the default 120**, which the scan chooses
