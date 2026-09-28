@@ -1507,15 +1507,29 @@ def test_the_page_count_comes_from_the_panel_not_a_constant():
     Counted through `_pages`, the generator the scan itself iterates, so the
     estimate and the fetching loop cannot drift apart.
     """
-    from data.krx_scan import DEFAULT_PANEL, PAGE_DAYS, Panel, _pages, pages_per_code
+    from data.krx_scan import (
+        DEFAULT_PANEL,
+        Panel,
+        _pages,
+        default_page_days,
+        pages_per_code,
+    )
 
     assert pages_per_code(Panel(*DEFAULT_PANEL)) == 24
     pre = Panel("19910828", "20181231")
-    assert pages_per_code(pre) == 84
-    assert pages_per_code(pre) == len(list(_pages(pre.start, pre.end, PAGE_DAYS))), (
-        "the count and the generator disagree, which is the drift this exists "
-        "to prevent"
-    )
+    #: 111, not the 84 this asserted while the default width was the post-2000
+    #: 120 for every panel. The figure moved because the pre-2019 panel now
+    #: resolves the 90-day width its era needs, which is the whole point of the
+    #: change: at 120 the run does not take 84 pages, it takes zero.
+    assert pages_per_code(pre) == 111
+    for panel in (Panel(*DEFAULT_PANEL), pre):
+        width = default_page_days(panel)
+        assert pages_per_code(panel) == len(
+            list(_pages(panel.start, panel.end, width))
+        ), (
+            "the count and the generator disagree at the width the scan will "
+            "actually use, which is the drift this exists to prevent"
+        )
 
 
 def test_the_printed_ETA_scales_with_the_panel(tmp_path):
@@ -1529,10 +1543,14 @@ def test_the_printed_ETA_scales_with_the_panel(tmp_path):
 
     default = eta_hours(1000, Panel(*DEFAULT_PANEL))
     pre2019 = eta_hours(1000, Panel("19910828", "20181231"))
-    assert pre2019 / default == pytest.approx(84 / 24, rel=1e-9), (
+    assert pre2019 / default == pytest.approx(111 / 24, rel=1e-9), (
         f"the estimate does not scale with the panel: {default:.1f}h against "
         f"{pre2019:.1f}h for a window 3.5x longer"
     )
+    #: 111/24, not 84/24: the ratio is no longer the span ratio alone, because
+    #: the pre-2019 panel also pages narrower. That is the honest figure — a
+    #: reader is being told how long the run they are about to start takes, and
+    #: it pages at 90 days.
 
 
 def test_coverage_is_read_only_and_claims_no_panel(tmp_path, capsys):
@@ -1647,3 +1665,93 @@ def test_the_printed_estimate_uses_the_SAME_width_as_the_loop():
     assert eta_hours(1000, pan, 90) / eta_hours(1000, pan, 120) == pytest.approx(
         pages_per_code(pan, 90) / pages_per_code(pan, 120), rel=1e-9
     )
+
+
+def test_an_OMITTED_width_still_gets_the_panel_s_era_default(monkeypatch, tmp_path):
+    """The CLI is not the only caller, and the wrong width fails every page.
+
+    `--page-days` resolved the era default, so a run started from the command
+    line was safe — but the public functions still defaulted to the post-2000
+    120, so `scan(conn, pool, panel=pre_2019)` from a script or a notebook got
+    the width that refuses everything. The error direction is what makes this
+    worth a test rather than a docstring: `failed:capped` is deliberately not
+    retryable, so a caller who forgets loses the whole run, not some rows.
+    """
+    from data.krx_scan import (
+        SATURDAY_ERA_PAGE_DAYS,
+        SCAN_SCHEMA as SCHEMA,
+        Panel,
+        eta_hours,
+        pages_per_code,
+        scan,
+    )
+
+    pan = Panel("19910828", "20181231")
+    assert pages_per_code(pan) == pages_per_code(pan, SATURDAY_ERA_PAGE_DAYS)
+    assert eta_hours(1000, pan) == eta_hours(1000, pan, SATURDAY_ERA_PAGE_DAYS)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+    counted: list[int] = []
+    for width in (None, SATURDAY_ERA_PAGE_DAYS):
+        asked: list[str] = []
+        monkeypatch.setattr(
+            "data.krx_scan._get_with_retry",
+            lambda url, headers, _a=asked: (
+                _a.append(url), {"rt_cd": "0", "output2": []})[1],
+        )
+        conn = sqlite3.connect(tmp_path / f"w{width}.sqlite3")
+        conn.executescript(SCHEMA)
+        conn.commit()
+        kwargs = {} if width is None else {"page_days": width}
+        scan(_S(), conn, [("005930", "x", Listing.LIVE)],
+             panel=Panel("19910101", "19941231"), **kwargs)
+        counted.append(len(asked))
+
+    assert counted[0] == counted[1], (
+        f"an omitted width made {counted[0]} requests and the era default "
+        f"{counted[1]}; `scan` is still defaulting to the post-2000 width"
+    )
+
+
+def test_a_NON_POSITIVE_width_is_refused_rather_than_looping_forever():
+    """`_pages` advances by `span_days - 1` days plus one, so at 0 it never
+    advances: `stop` lands the day before `a`, `a` comes back to itself, and the
+    generator yields a reversed window for ever. The CLI rejected it; nothing
+    else did.
+
+    Two guards, and each is asserted where it lives rather than through a caller
+    that the other one would also cover. `resolve_page_days` refuses at the
+    boundary, so `scan` never touches the database on a bad width; `_pages`
+    refuses in the loop, which is what makes the non-advancing state
+    unreachable for any future caller that does not go through the boundary.
+    Asserting only via `pages_per_code` would let either guard be deleted while
+    the other kept the test green.
+
+    `_pages` is checked with a single `next`, not by draining it: before the fix
+    it yields for ever, and a test that hangs on a regression reports nothing.
+    """
+    from data.krx_scan import (
+        KrxScanError,
+        Panel,
+        _pages,
+        eta_hours,
+        pages_per_code,
+        resolve_page_days,
+    )
+
+    pan = Panel("19910828", "20181231")
+    for bad in (0, -1, -90):
+        with pytest.raises(KrxScanError, match="page width"):
+            resolve_page_days(pan, bad)
+        with pytest.raises(KrxScanError, match="page width"):
+            next(iter(_pages(pan.start, pan.end, bad)))
+        with pytest.raises(KrxScanError, match="page width"):
+            pages_per_code(pan, bad)
+        with pytest.raises(KrxScanError, match="page width"):
+            eta_hours(10, pan, bad)
+
+    assert len(list(_pages("19910101", "19910105", 1))) == 5

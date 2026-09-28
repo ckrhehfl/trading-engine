@@ -448,6 +448,23 @@ def candidates(conn) -> list[tuple[str, str, Listing]]:
 
 
 def _pages(start: str, end: str, span_days: int):
+    """Walk `start..end` in `span_days`-wide windows.
+
+    **A width below 1 is refused here, in the loop itself.** At 0 this advanced
+    by `span_days - 1` days and then one more, i.e. not at all: `stop` landed the
+    day *before* `a`, `a` came back to itself, and it yielded the same reversed
+    window for ever -- measured at 300,000 yields of `19910828..19910827`. The
+    caller feeds each window straight to `_page`, so the consequence was an
+    unbounded stream of malformed requests at the venue, not merely a process
+    that does not finish. The boundary check in `resolve_page_days` gives a
+    caller a better message; this one is what makes the state unreachable.
+    """
+    if span_days < 1:
+        raise KrxScanError(
+            f"page width must be at least 1 day, got {span_days}: a narrower "
+            f"window never advances and would re-request one reversed range "
+            f"for ever"
+        )
     a = dt.datetime.strptime(start, "%Y%m%d").date()
     b = dt.datetime.strptime(end, "%Y%m%d").date()
     while a <= b:
@@ -661,8 +678,9 @@ def scan(
     progress=None,
     allow_in_session: bool = True,
     panel: Panel = DEFAULT_PANEL,
-    page_days: int = PAGE_DAYS,
+    page_days: int | None = None,
 ) -> dict:
+    page_days = resolve_page_days(panel, page_days)
     claim_panel(conn, panel)
     done = already_done(conn)
     counts = {"done": 0, "absent": 0, "failed": 0, "skipped": len(
@@ -1006,7 +1024,7 @@ def progress_printer():
 _ASSUMED_RATE_PER_S = 0.6
 
 
-def eta_hours(todo_count: int, panel: Panel, page_days: int = PAGE_DAYS) -> float:
+def eta_hours(todo_count: int, panel: Panel, page_days: int | None = None) -> float:
     """Hours to fetch `todo_count` codes over `panel`, at the measured rate.
 
     **Pages come from the panel, not from a constant.** The printed estimate used
@@ -1036,14 +1054,36 @@ def default_page_days(panel: Panel) -> int:
     return SATURDAY_ERA_PAGE_DAYS if panel.start < "20000101" else PAGE_DAYS
 
 
-def pages_per_code(panel: Panel, page_days: int = PAGE_DAYS) -> int:
+def resolve_page_days(panel: Panel, page_days: int | None) -> int:
+    """The width to use: the caller's if given and usable, else `panel`'s era's.
+
+    Every public entry point goes through this, because **the CLI was not the
+    only caller.** `--page-days` already resolved the era default, so a run
+    started from the command line was safe; `scan`, `eta_hours` and
+    `pages_per_code` still defaulted to the post-2000 120, so the same panel
+    driven from a script or a notebook got the width that refuses every page.
+    The error direction is what makes a shared resolver worth it over a
+    docstring: `failed:capped` is deliberately not retryable, so a caller who
+    forgets loses the entire run rather than some rows.
+    """
+    if page_days is None:
+        return default_page_days(panel)
+    if page_days < 1:
+        raise KrxScanError(
+            f"page width must be at least 1 day, got {page_days}"
+        )
+    return page_days
+
+
+def pages_per_code(panel: Panel, page_days: int | None = None) -> int:
     """How many requests one code costs over `panel` at `page_days` per page.
 
     Counted through `_pages` rather than divided out, so the estimate and the
     loop that fetches cannot disagree -- including on the page width, which the
     first version hardcoded and which is now the thing that varies.
     """
-    return sum(1 for _ in _pages(panel.start, panel.end, page_days))
+    return sum(1 for _ in _pages(panel.start, panel.end,
+                                 resolve_page_days(panel, page_days)))
 
 
 def claim_panel(conn: sqlite3.Connection, panel: Panel) -> None:
@@ -1128,7 +1168,7 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--page-days",
         type=int,
-        default=0,
+        default=None,
         help="calendar days per request. Default: %d, or %d for a panel reaching "
         "before 2000, because KRX traded Saturdays until then and a %d-day page "
         "returns up to 99 rows there against a silent 100-row cap. A capped page "
@@ -1151,9 +1191,10 @@ def main(argv: list[str] | None = None) -> int:
         panel = Panel(args.panel_start, args.panel_end).validated()
     except KrxScanError as exc:
         ap.error(str(exc))
-    page_days = args.page_days or default_page_days(panel)
-    if page_days < 1:
-        ap.error(f"--page-days must be positive, got {page_days}")
+    try:
+        page_days = resolve_page_days(panel, args.page_days)
+    except KrxScanError as exc:
+        ap.error(str(exc))
     conn = connect(args.db_path)
     conn.executescript(SCAN_SCHEMA)
     conn.commit()
