@@ -1205,3 +1205,352 @@ def test_a_TRANSPORT_refusal_reports_the_full_attempt_count(monkeypatch):
     monkeypatch.setattr(S.time, "sleep", lambda *_: None)
     with pytest.raises(S.KrxScanError, match="retried 4 times"):
         S.verify_wide_probe_positive_control(object())
+
+
+# --------------------------------------------------- the panel is a parameter
+
+
+def test_the_scan_pages_over_the_GIVEN_panel_not_the_module_constant(monkeypatch, tmp_path):
+    """The whole point of the parameter, asserted against the requests made.
+
+    `PANEL_START`/`PANEL_END` stay the default because `krx_dayone_drift` and
+    its tests derive figures from them — so the risk is not that the constants
+    move, it is that `scan` keeps reading them while a caller believes it asked
+    for something else. That failure is silent: a pre-2019 pass would refetch
+    2019-2026 and report a clean run.
+    """
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA, Panel, scan
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.commit()
+
+    asked: list[str] = []
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    def record(url, headers):  # noqa: ARG001
+        asked.append(url)
+        return {"rt_cd": "0", "output2": []}
+
+    monkeypatch.setattr("data.krx_scan._get_with_retry", record)
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+
+    scan(_S(), conn, [("005930", "x", Listing.LIVE)],
+         panel=Panel("19960101", "19960630"))
+
+    assert asked, "the scan made no request at all, so this proves nothing"
+    joined = " ".join(asked)
+    assert "1996" in joined, (
+        f"no request mentioned 1996, so the panel argument was ignored: "
+        f"{asked[:2]}"
+    )
+    assert "2019" not in joined and "2026" not in joined, (
+        f"the scan still paged over the module constants: {asked[:2]}"
+    )
+
+
+def test_the_default_panel_is_still_the_module_constants():
+    """Because every committed figure describes that window, and a default that
+    drifted would restate them all without touching a single number."""
+    from data.krx_scan import DEFAULT_PANEL, PANEL_END, PANEL_START
+
+    assert DEFAULT_PANEL == (PANEL_START, PANEL_END)
+
+
+def _seeded_bars(tmp_path, code, dates):
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.executemany(
+        "INSERT INTO scan_bars (code, bsop_date) VALUES (?, ?)",
+        [(code, d) for d in dates],
+    )
+    conn.commit()
+    return conn
+
+
+def test_a_disjoint_panel_is_refused_rather_than_sharing_a_database(tmp_path):
+    """**The failure it prevents is a scan that cannot fail.** `scan_progress`
+    keys on `code` alone and `already_done` skips any code already `done`, so an
+    earlier panel run into the same file would skip the entire pool, fetch
+    nothing, and print a clean summary.
+    """
+    from data.krx_scan import KrxScanError, Panel, claim_panel
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20260918"])
+    with pytest.raises(KrxScanError, match="was asked for"):
+        claim_panel(conn, Panel("19910828", "20181231"))
+
+
+def test_an_empty_database_records_the_panel_it_is_first_asked_for(tmp_path):
+    """A fresh file is what a second window is supposed to use, and it becomes
+    that window's file by being asked."""
+    from data.krx_scan import Panel, claim_panel
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    claim_panel(conn, Panel("19910828", "20181231"))
+    assert conn.execute("SELECT start, end FROM scan_panel").fetchone() == (
+        "19910828",
+        "20181231",
+    )
+    claim_panel(conn, Panel("19910828", "20181231"))
+
+
+def test_a_POPULATED_database_with_no_recorded_panel_is_assumed_to_be_the_default(tmp_path):
+    """The legacy convention, and it is only ever applied to a file with
+    content: the 413 MB scan predates the `scan_panel` table, and the default is
+    what filled it."""
+    from data.krx_scan import DEFAULT_PANEL, KrxScanError, Panel, claim_panel
+
+    conn = _seeded_bars(tmp_path, "005930", ["20200102"])
+    claim_panel(conn, Panel(*DEFAULT_PANEL))
+    with pytest.raises(KrxScanError, match="was asked for"):
+        claim_panel(conn, Panel("19910828", "20181231"))
+
+
+def test_an_EMPTY_scan_bars_with_finished_progress_rows_still_refuses(tmp_path):
+    """**One of the two holes containment left**, reported on review of PR #209.
+    A pass whose codes all resolved to `absent` writes no bars at all, so there
+    was no date range to contain and every panel passed — while `already_done`
+    skipped exactly those codes."""
+    from data.krx_scan import SCAN_SCHEMA as SCHEMA, KrxScanError, Panel, claim_panel
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    conn.executescript(SCHEMA)
+    conn.execute(
+        "INSERT INTO scan_progress (code, first_date, last_date, bars, frozen, "
+        "status, fetched_at) VALUES ('005930',NULL,NULL,0,0,'absent:never_served','x')"
+    )
+    conn.commit()
+    with pytest.raises(KrxScanError, match="was asked for"):
+        claim_panel(conn, Panel("19910828", "20181231"))
+
+
+def test_extending_the_panel_FORWARD_is_now_REFUSED(tmp_path):
+    """**This test previously asserted the opposite**, and the expectation was
+    the defect rather than the code.
+
+    A wider panel contains every stored bar, so containment passed it — and
+    `already_done` is keyed on `code`, so the run fetched nothing and reported a
+    clean pass. Recording the panel and comparing exactly refuses it. Advancing a
+    panel's end still needs its own mechanism; what changed is that it now fails
+    loudly instead of quietly.
+    """
+    from data.krx_scan import KrxScanError, Panel, claim_panel
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20260918"])
+    claim_panel(conn, Panel("20190102", "20260918"))
+    with pytest.raises(KrxScanError, match="was asked for"):
+        claim_panel(conn, Panel("20190102", "20271231"))
+
+
+@pytest.mark.parametrize(
+    "start, end, why",
+    [
+        ("20260230", "20261231", "eight digits that are not a date"),
+        ("2026123", "20261231", "the wrong shape"),
+        ("20261231", "20190101", "start after end"),
+    ],
+)
+def test_a_panel_that_is_not_two_real_dates_in_order_is_refused(start, end, why):
+    """String ordering is not date validation. `--second-pass` with nothing to
+    retry would never parse the panel at all, and would compare absence records
+    against a nonsense string. Reported on review of PR #209."""
+    from data.krx_scan import KrxScanError, Panel
+
+    with pytest.raises(KrxScanError):
+        Panel(start, end).validated()
+
+
+def test_a_database_with_NO_SCHEMA_YET_is_claimed_rather_than_crashing(tmp_path):
+    """The path `main` actually takes on a fresh `--db-path`, and the one the
+    first version of this guard crashed on.
+
+    The claim runs before any work so that a mismatch costs nothing, which means
+    it must create the schema it reads. The empty-database test used to apply the
+    schema itself and therefore never exercised this; the full suite caught it,
+    reading the guard did not.
+    """
+    from data.krx_scan import Panel, claim_panel
+
+    conn = sqlite3.connect(tmp_path / "fresh.sqlite3")
+    claim_panel(conn, Panel("19910828", "20181231"))
+    assert conn.execute("SELECT start, end FROM scan_panel").fetchone() == (
+        "19910828",
+        "20181231",
+    )
+
+
+def test_scan_ITSELF_refuses_a_foreign_panel_not_only_the_CLI(monkeypatch, tmp_path):
+    """**`scan` is a public entry point and the CLI is not its only caller.**
+    The first version claimed the panel in `main` alone, so a test, a script or
+    any future code calling `scan(..., panel=...)` against a populated database
+    got silently skipped codes and a clean-looking summary. Reported on review of
+    PR #209 — and three mutations then showed that moving the claim into `scan`
+    was itself untested.
+    """
+    from data.krx_scan import KrxScanError, Panel, scan
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20260918"])
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    with pytest.raises(KrxScanError, match="was asked for"):
+        scan(_S(), conn, [("005930", "x", Listing.LIVE)],
+             panel=Panel("19910828", "20181231"))
+
+
+def test_resolve_absences_ITSELF_refuses_a_foreign_panel(monkeypatch, tmp_path):
+    """The same for the second pass, which compares dates against the panel and
+    would otherwise record absences measured against a window the file does not
+    hold."""
+    from data.krx_scan import KrxScanError, Panel, resolve_absences
+
+    conn = _seeded_bars(tmp_path, "005930", ["20190102", "20260918"])
+    monkeypatch.setattr("data.krx_scan.time.sleep", lambda *_: None)
+
+    def never_called(*_a, **_k):
+        raise AssertionError("the panel must be refused before any venue call")
+
+    monkeypatch.setattr("data.krx_scan._get_with_retry", never_called)
+
+    class _S:
+        def headers(self, tr):  # noqa: ARG002
+            return {}
+
+    with pytest.raises(KrxScanError, match="was asked for"):
+        resolve_absences(_S(), conn, panel=Panel("19910828", "20181231"))
+
+
+def test_claim_panel_validates_even_when_called_directly(tmp_path):
+    """`main` validates before claiming, but `scan` and `resolve_absences` pass
+    whatever they were handed — so the claim validates too, or an invalid panel
+    reaches the date comparisons through the public path."""
+    from data.krx_scan import KrxScanError, Panel, claim_panel
+
+    conn = sqlite3.connect(tmp_path / "s.sqlite3")
+    with pytest.raises(KrxScanError, match="not a real calendar date"):
+        claim_panel(conn, Panel("20260230", "20261231"))
+
+
+class _BlindOnce:
+    """A connection that reports NO panel row the first time it is asked.
+
+    This is how both writers come to believe they are first: each ran its SELECT
+    before the other committed. SQLite serialises the statements, so a test using
+    two ordinary connections never reaches the branch -- the second one simply
+    reads the row. Lying once is the smallest faithful way to reproduce the
+    interleaving without threads.
+    """
+
+    def __init__(self, conn):
+        self._conn = conn
+        self._lied = False
+
+    def execute(self, sql, *a, **k):
+        cur = self._conn.execute(sql, *a, **k)
+        if not self._lied and "FROM scan_panel" in sql:
+            self._lied = True
+
+            class _Empty:
+                def fetchone(self_inner):  # noqa: N805
+                    return None
+
+            return _Empty()
+        return cur
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+
+def test_a_second_writer_that_also_saw_no_panel_row_gets_the_real_message(tmp_path):
+    """**Both can see no row**, and the loser's plain INSERT raised a bare
+    `IntegrityError` on the primary key instead of the message naming which panel
+    the file holds. Reported on review of PR #209.
+
+    With `INSERT OR IGNORE` and a re-read, the loser compares against whatever
+    the winner recorded — which is the answer that matters.
+    """
+    from data.krx_scan import KrxScanError, Panel, claim_panel
+
+    db = tmp_path / "s.sqlite3"
+    winner = sqlite3.connect(db)
+    claim_panel(winner, Panel("19910828", "20181231"))
+
+    loser = _BlindOnce(sqlite3.connect(db))
+    with pytest.raises(KrxScanError, match="was asked for"):
+        claim_panel(loser, Panel("20190102", "20260918"))
+
+
+def test_a_second_writer_agreeing_with_the_winner_is_accepted(tmp_path):
+    """The same interleaving, same panel: no error, and the row is the winner's."""
+    from data.krx_scan import Panel, claim_panel
+
+    db = tmp_path / "s.sqlite3"
+    claim_panel(sqlite3.connect(db), Panel("19910828", "20181231"))
+    claim_panel(_BlindOnce(sqlite3.connect(db)), Panel("19910828", "20181231"))
+    rows = sqlite3.connect(db).execute("SELECT start, end FROM scan_panel").fetchall()
+    assert rows == [("19910828", "20181231")], rows
+
+
+def test_the_page_count_comes_from_the_panel_not_a_constant():
+    """The printed estimate used a hardcoded 24 — the default panel's page
+    count — so a pre-2019 run would have advertised an ETA 3.5x too low.
+
+    Counted through `_pages`, the generator the scan itself iterates, so the
+    estimate and the fetching loop cannot drift apart.
+    """
+    from data.krx_scan import DEFAULT_PANEL, PAGE_DAYS, Panel, _pages, pages_per_code
+
+    assert pages_per_code(Panel(*DEFAULT_PANEL)) == 24
+    pre = Panel("19910828", "20181231")
+    assert pages_per_code(pre) == 84
+    assert pages_per_code(pre) == len(list(_pages(pre.start, pre.end, PAGE_DAYS))), (
+        "the count and the generator disagree, which is the drift this exists "
+        "to prevent"
+    )
+
+
+def test_the_printed_ETA_scales_with_the_panel(tmp_path):
+    """The estimate itself, not just the page count it should use.
+
+    A test asserting `pages_per_code` alone left the print free to keep its
+    hardcoded 24 — the mutation survived. `eta_hours` is what the print calls, so
+    asserting it pins the figure a reader actually sees.
+    """
+    from data.krx_scan import DEFAULT_PANEL, Panel, eta_hours
+
+    default = eta_hours(1000, Panel(*DEFAULT_PANEL))
+    pre2019 = eta_hours(1000, Panel("19910828", "20181231"))
+    assert pre2019 / default == pytest.approx(84 / 24, rel=1e-9), (
+        f"the estimate does not scale with the panel: {default:.1f}h against "
+        f"{pre2019:.1f}h for a window 3.5x longer"
+    )
+
+
+def test_coverage_is_read_only_and_claims_no_panel(tmp_path, capsys):
+    """**A read-only path must not decide what the file is for.** Claiming before
+    the `--coverage` early return recorded the default panel on a fresh file, so
+    a later and perfectly valid `--scan --panel-start 19910828` against it was
+    refused for a panel nothing had ever fetched. Reported on review of PR #209.
+    """
+    from data.krx_scan import main
+
+    db = tmp_path / "s.sqlite3"
+    assert main(["--coverage", "--db-path", str(db)]) == 0
+    capsys.readouterr()
+
+    rows = sqlite3.connect(db).execute(
+        "SELECT count(*) FROM scan_panel"
+    ).fetchone()[0]
+    assert rows == 0, (
+        "--coverage recorded a panel, so this file is now claimed for whatever "
+        "the default is and a different window cannot be scanned into it"
+    )
