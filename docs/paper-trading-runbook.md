@@ -434,25 +434,40 @@ a date filter.
 Run it from the instance, in a `tmux` session so a dropped connection does not
 end it, outside the KRX session (the scan pauses itself if one opens):
 
+**Pass the two credentials in the environment.** `data.krx_scan` needs
+`KIS_APP_KEY` and `KIS_APP_SECRET` and nothing else:
+
 ```bash
 tmux new -s krx-pre2019
 cd ~/trading-engine/python
+read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo
+read -rs -p 'KIS_APP_SECRET: ' KIS_APP_SECRET; echo
+export KIS_APP_KEY KIS_APP_SECRET
 
-# Two named values, never `source`. CLAUDE.md's credential rule is that
-# `get_env_var` NEVER sources `.env` — so nothing in it can execute — strips the
-# CRLF this repo's `.env` really carries, and lets the environment win. Sourcing
-# the file instead executes all of it, exports everything, and hands a
-# CRLF-bearing key straight through; that trailing `\r` is what once reached a
-# JDK exception message with the real key inside it.
-from_env() { tr -d '\r' <../.env | grep -E "^$1=" | tail -n1 | cut -d= -f2- || true; }
-
-env KIS_APP_KEY="${KIS_APP_KEY:-$(from_env KIS_APP_KEY)}" \
-    KIS_APP_SECRET="${KIS_APP_SECRET:-$(from_env KIS_APP_SECRET)}" \
-  python3 -m data.krx_scan --scan \
-    --panel-start 19910828 --panel-end 20181231 \
-    --db-path data/var/krx_scan_pre2019.sqlite3 \
-    --universe-db data/var/klines.sqlite3
+python3 -m data.krx_scan --scan \
+  --panel-start 19910828 --panel-end 20181231 \
+  --db-path data/var/krx_scan_pre2019.sqlite3 \
+  --universe-db data/var/klines.sqlite3
 ```
+
+`read -rs` keeps the value out of the shell history and off the screen, which a
+`KIS_APP_KEY=…` on the command line would not.
+
+**Why this reads nothing from `.env`, while the collectors do.** The collectors'
+`.env` fallback is a deliberate, reaffirmed operator decision — `CLAUDE.md`
+records it, and why it may only be revisited across all collectors at once — and
+it exists for *cron*, which supplies no environment. This command is typed by a
+human, so the environment is always available and the fallback buys nothing. Two
+credential mechanisms in one procedure, where the one that differs is the one
+nobody remembers, is the cost `CLAUDE.md` names; the cheapest way to avoid it in
+a manual procedure is not to introduce a second one.
+
+An earlier draft of this section told the operator to **source `.env`
+wholesale**. Named without repeating it, so nobody copies it back out: that
+executes the whole file, exports everything in it, and passes a CRLF-bearing key
+straight through — the last of those being what once put a real key into a JDK
+exception message. Recorded because the pattern reached a *document* only after
+it had already been typed at a prompt.
 
 It is **resumable** — `already_done` reads the database, not a sidecar — so
 detaching, rebooting or killing it costs only the code in flight.

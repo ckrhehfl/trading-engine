@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import datetime as dt
 from collections import defaultdict
 from pathlib import Path
@@ -41,6 +42,10 @@ from research.experiment_log import DEFAULT_RUNS_PATH, read_records
 DEFAULT_LEDGER_PATH = (
     Path(__file__).resolve().parents[2] / "runs" / "spent_windows.json"
 )
+
+
+#: `YYYY-MM-DD..YYYY-MM-DD`, and nothing else counts as a readable era.
+_SPAN_RE = re.compile(r"(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})")
 
 
 def _span(start_ms: int | None, end_ms: int | None) -> str | None:
@@ -218,9 +223,19 @@ def _refuse_to_unspend(ledger_path: str, fresh: dict, runs_path: str) -> None:
             continue
         if now is None:
             continue  # wider than before: unknown covers every era
-        was_a, _, was_b = was.partition("..")
-        now_a, _, now_b = now.partition("..")
-        if now_a > was_a or now_b < was_b:
+        # **Both eras are parsed strictly, and an unreadable one refuses.** The
+        # first version compared `partition("..")` results directly, so a
+        # hand-edited `"within 2010-01-02..."` gave `was_a = "within 2010-01-02"`
+        # -- and `"w"` sorts above every digit, making `now_a > was_a` always
+        # False, so a genuinely narrowed era was accepted. `_row_touches` already
+        # treats an unparseable era as unknown; this follows the same rule, and
+        # refuses a finite replacement for one. Reported on review of PR #210.
+        mw = _SPAN_RE.fullmatch(str(was).strip())
+        mn = _SPAN_RE.fullmatch(str(now).strip())
+        if not mw or not mn:
+            narrowed.append((key, was, now))
+            continue
+        if mn.group(1) > mw.group(1) or mn.group(2) < mw.group(2):
             narrowed.append((key, was, now))
 
     if lost or narrowed:

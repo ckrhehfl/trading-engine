@@ -376,3 +376,31 @@ def test_a_regeneration_that_LOSES_an_ACCESS_is_refused(tmp_path):
 
     with pytest.raises(ValueError, match="would erase spends"):
         main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
+
+
+@pytest.mark.parametrize(
+    "existing_span",
+    ["within 2010-01-02..2026-09-23", "2010-01-02", "sometime in the 1990s"],
+)
+def test_an_UNREADABLE_existing_era_refuses_a_finite_replacement(tmp_path, existing_span):
+    """**The same leakage shape as `_row_touches`, in the write guard.** The
+    first version compared `partition("..")` results directly, so a hand-edited
+    `"within 2010-01-02..."` gave `was_a = "within 2010-01-02"` — and `"w"` sorts
+    above every digit, making `now_a > was_a` always False. A genuinely narrowed
+    era was therefore accepted and the wider spend erased. Reported on review of
+    PR #210.
+    """
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [{
+            "symbol": "KRX:005930", "interval": "1d", "accesses": 1,
+            "span": existing_span,
+        }]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])
