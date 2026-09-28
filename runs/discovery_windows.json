@@ -15,11 +15,12 @@
     {
       "symbol": "KRX:",
       "interval": "1d",
-      "span": "within 2019-01-02..2026-09-23",
+      "span": "2019-01-02..2026-09-23",
       "universe": "the rd-r ten",
       "spent_by": ".planning/rd-u-do-conjunctions-beat-their-parts.md",
       "what_it_selected": "11 conjunction combinations under Benjamini-Hochberg",
-      "measured_on": "2026-09-18"
+      "measured_on": "2026-09-18",
+      "span_note": "the widest era the analysis could have read -- the store's own KRX daily range. The exact subset rd-u sampled is not recorded, and an upper bound is the safe direction."
     },
     {
       "symbol": "KRX:",

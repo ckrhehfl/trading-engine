@@ -238,8 +238,18 @@ def _row_touches(row: dict, sym_part: str, interval: str, before: str | None) ->
     span = row.get("span")
     if not span:
         return True
-    start = span.split("..")[0]
-    return start < before
+    # **An era that cannot be parsed is an UNKNOWN era, so it touches every
+    # one.** `split("..")[0]` on the hand-written `"within 2019-01-02..."` gives
+    # `"within 2019-01-02"`, and `"w"` sorts above every digit, so
+    # `start < before` was always False -- the row marked nothing spent. It gave
+    # the right answer here by accident, and a later `"within 2010-..."` row
+    # would have left `KRX daily before 2019` reading as available while it had
+    # been selected on. That is the leakage direction. Reported on review of
+    # PR #210.
+    m = re.fullmatch(r"(\d{4}-\d{2}-\d{2})\.\.(\d{4}-\d{2}-\d{2})", span.strip())
+    if not m:
+        return True
+    return m.group(1) < before
 
 
 #: Longest name first, so a specific era beats the general name it contains.
@@ -677,3 +687,39 @@ def test_only_the_UNION_of_both_ledgers_catches_a_discovery_spent_claim():
         "the derived ledger alone flagged it, so the union is not what catches "
         "this and the mutation proving otherwise was right"
     )
+
+
+@pytest.mark.parametrize(
+    "span, why",
+    [
+        ("within 2010-01-02..2026-09-23", "the prose form the ledger once used"),
+        ("2010-01-02", "one date, no range"),
+        ("", "empty"),
+        ("sometime in the 1990s", "free text"),
+        ("2010/01/02..2026/09/23", "the wrong separator"),
+    ],
+)
+def test_an_UNPARSEABLE_era_counts_as_touching_every_era(span, why):
+    """**The leakage direction, and it was live.** `split("..")[0]` on
+    `"within 2010-01-02..."` yields `"within 2010-01-02"`, and `"w"` sorts above
+    every digit — so `start < before` was always False and the row marked
+    nothing spent. It gave the right answer for the row that existed only by
+    accident; a `within 2010-…` row would have left `KRX daily before 2019`
+    reading as available after being selected on. Reported on review of PR #210.
+    """
+    assert _row_touches(
+        {"symbol": "KRX:005930", "interval": "1d", "span": span},
+        "KRX:", "1d", "2019-01-02",
+    ), f"an unreadable span ({why}) was treated as bounded, so some era reads free"
+
+
+def test_a_WELL_FORMED_era_before_the_cut_off_still_marks_it_spent():
+    """The other side, so the strict parser did not simply stop discriminating."""
+    assert _row_touches(
+        {"symbol": "KRX:", "interval": "1d", "span": "2010-01-02..2026-09-23"},
+        "KRX:", "1d", "2019-01-02",
+    )
+    assert not _row_touches(
+        {"symbol": "KRX:", "interval": "1d", "span": "2019-01-02..2026-09-23"},
+        "KRX:", "1d", "2019-01-02",
+    ), "the spent 2019+ era must not mark the reserved pre-2019 one"
