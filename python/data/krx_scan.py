@@ -1047,7 +1047,9 @@ def default_page_days(panel: Panel) -> int:
     120-day page returns up to 99 sessions against a silent 100-row cap -- and a
     capped page is refused rather than truncated, and is deliberately not
     retryable. So the width is derived rather than left to the caller to
-    remember: the failure mode of forgetting is that **every** page is refused.
+    remember: forgetting costs the codes, not some rows. Only the dense pages
+    breach the cap, and one is enough -- `scan` `break`s a code at its first
+    failed page and discards that code's whole window.
 
     Chosen per panel rather than per page on purpose. Narrowing only the dense
     stretch would be less wasteful and needs the fetch loop to react to a
@@ -1175,8 +1177,8 @@ def main(argv: list[str] | None = None) -> int:
         help="calendar days per request. Default: %d, or %d for a panel reaching "
         "before 2000, because KRX traded Saturdays until then and a %d-day page "
         "returns up to 99 rows there against a silent 100-row cap. A capped page "
-        "is refused and is NOT retryable, so getting this wrong refuses every "
-        "page rather than truncating data."
+        "is refused and is NOT retryable, so getting this wrong discards a "
+        "code at its first dense page rather than truncating its data."
         % (PAGE_DAYS, SATURDAY_ERA_PAGE_DAYS, PAGE_DAYS),
     )
     ap.add_argument("--limit", type=int, default=0, help="first N candidates (probe)")

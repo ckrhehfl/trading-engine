@@ -1673,7 +1673,7 @@ def test_an_OMITTED_width_still_gets_the_panel_s_era_default(monkeypatch, tmp_pa
     `--page-days` resolved the era default, so a run started from the command
     line was safe — but the public functions still defaulted to the post-2000
     120, so `scan(conn, pool, panel=pre_2019)` from a script or a notebook got
-    the width that refuses everything. The error direction is what makes this
+    the width that loses the codes. The error direction is what makes this
     worth a test rather than a docstring: `failed:capped` is deliberately not
     retryable, so a caller who forgets loses the whole run, not some rows.
     """
