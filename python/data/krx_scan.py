@@ -74,17 +74,19 @@ import time
 import urllib.parse
 from enum import Enum
 from pathlib import Path
+from typing import NamedTuple
 
 from data.kis_klines import (
     ADJUSTED,
-    EQUITY_ROWS_PER_CALL_CAP,
     DAILY_ITEM_PATH,
-    PAPER_HOST,
-    TR_DAILY_ITEM,
+    EQUITY_ROWS_PER_CALL_CAP,
     KisKlinesError,
     KisSession,
+    PAPER_HOST,
+    TR_DAILY_ITEM,
     _get_with_retry,
     rows_per_call_cap,
+    trading_date_to_ms,
     validated_output2,
 )
 from data.krx_instrument import has_plain_equity_code, is_common_stock_issue
@@ -92,6 +94,56 @@ from data.store import connect, fetch_krx_delisted, fetch_krx_universe
 
 PANEL_START = "20190102"
 PANEL_END = "20260918"
+
+
+class Panel(NamedTuple):
+    """The date window one pass covers, inclusive on both ends.
+
+    **A parameter rather than a constant, so a second, earlier window can be
+    scanned without redefining what the first one measured.** The module
+    constants above stay the default and stay exported: `krx_dayone_drift` and
+    its tests derive figures from them, and moving their *values* would silently
+    restate what those figures describe.
+
+    The panel deliberately does **not** reach `scan_progress`, which keys on
+    `code` alone and recomputes `first_date`/`last_date`/`bars`/`frozen` from
+    `scan_bars`. Two panels in one database would therefore share one progress
+    row, and `already_done` — which skips any code already `done` — would skip
+    the whole pool on the second pass. **So a different panel goes in a
+    different database file**, which is also what makes a reserved window
+    reserved: a confirmation window in its own file cannot be read by accident
+    by an analysis pointed at the spent one, where a date filter could be
+    forgotten.
+    """
+
+    start: str
+    end: str
+
+    def validated(self) -> "Panel":
+        """Refuse a panel that is not two real dates in order.
+
+        **String ordering is not date validation.** `20260230` compares fine and
+        is not a date; the first scan would only discover it when `_pages` tried
+        to parse it, and `--second-pass` with nothing to retry would never parse
+        it at all -- it would compare absence records against a nonsense string
+        and record an answer. Reported on review of PR #209.
+
+        `trading_date_to_ms` is reused rather than reimplemented: it already
+        refuses both a wrong shape and eight digits that are not a date.
+        """
+        for label, value in (("--panel-start", self.start), ("--panel-end", self.end)):
+            try:
+                trading_date_to_ms(value)
+            except Exception as exc:  # noqa: BLE001
+                raise KrxScanError(f"{label} {value!r}: {exc}") from None
+        if self.start > self.end:
+            raise KrxScanError(
+                f"--panel-start {self.start} is after --panel-end {self.end}"
+            )
+        return self
+
+
+DEFAULT_PANEL = Panel(PANEL_START, PANEL_END)
 
 #: Calendar days per request. ~82 trading days, comfortably under the
 #: equity endpoint's silent 100-row cap.
@@ -131,6 +183,11 @@ CREATE TABLE IF NOT EXISTS scan_bars (
   bsop_date TEXT NOT NULL,
   open TEXT, high TEXT, low TEXT, close TEXT, volume TEXT, turnover TEXT,
   PRIMARY KEY (code, bsop_date)
+);
+CREATE TABLE IF NOT EXISTS scan_panel (
+  id INTEGER PRIMARY KEY CHECK (id = 1),
+  start TEXT NOT NULL,
+  end TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS scan_progress (
   code TEXT PRIMARY KEY,
@@ -483,6 +540,11 @@ def _ask_control(session: KisSession, code: str, what: str) -> list[dict]:
     for attempt in range(_CONTROL_ATTEMPTS):
         time.sleep(_SPACING_S)
         try:
+            # **Panel-independent on purpose.** This asks whether a nonsense
+            # code returns rows, and a nonsense code returns none for any
+            # window, so the probe does not need to land inside the panel being
+            # scanned. The positive control is the one that must, and it reaches
+            # KST today rather than either end of the panel.
             return _page(session, code, PANEL_START, "20190430")
         except Exception as exc:  # noqa: BLE001
             last = exc
@@ -581,7 +643,9 @@ def scan(
     *,
     progress=None,
     allow_in_session: bool = True,
+    panel: Panel = DEFAULT_PANEL,
 ) -> dict:
+    claim_panel(conn, panel)
     done = already_done(conn)
     counts = {"done": 0, "absent": 0, "failed": 0, "skipped": len(
         [c for c, _n, _l in pool if c in done]
@@ -614,7 +678,7 @@ def scan(
                 progress(i, len(todo), code, "resumed after the session", None)
         rows: list[dict] = []
         failed = False
-        for start, end in _pages(PANEL_START, PANEL_END, PAGE_DAYS):
+        for start, end in _pages(panel.start, panel.end, PAGE_DAYS):
             time.sleep(_SPACING_S)
             try:
                 rows.extend(_page(session, code, start, end))
@@ -657,6 +721,7 @@ def resolve_absences(
     *,
     progress=None,
     limit: int | None = None,
+    panel: Panel = DEFAULT_PANEL,
 ) -> dict:
     """Turn each `absent:unknown` into one of the two answers it hides.
 
@@ -677,7 +742,11 @@ def resolve_absences(
     unresolvable control leaves every symbol at `UNKNOWN` rather than
     letting the pass guess.
     """
+    claim_panel(conn, panel)
     verify_negative_controls(session)
+    # No panel: `_wide_probe` deliberately reaches KST today rather than the
+    # panel's end, so that a name listed after the panel is classified as
+    # OUTSIDE_WINDOW instead of reading as never served.
     verify_wide_probe_positive_control(session)
 
     todo = [
@@ -709,7 +778,7 @@ def resolve_absences(
             continue
         if not dates:
             status = Absence.NEVER_SERVED
-        elif len(dates) >= EQUITY_ROWS_PER_CALL_CAP and min(dates) > PANEL_END:
+        elif len(dates) >= EQUITY_ROWS_PER_CALL_CAP and min(dates) > panel.end:
             # **Truncated, so undecidable.** The probe keeps only the newest
             # rows. If it came back full AND every date is after the panel,
             # then older rows were dropped and some of them may be in-panel
@@ -725,7 +794,7 @@ def resolve_absences(
             # nobody is looking for it. Caught on review.
             status = Absence.UNKNOWN
             counts["truncated"] += 1
-        elif any(PANEL_START <= d <= PANEL_END for d in dates):
+        elif any(panel.start <= d <= panel.end for d in dates):
             # **The probe contradicts the scan, so nothing is resolved.**
             # KIS prices this code inside the very panel the pass found no
             # bars for, which is not "outside the window" -- it means a
@@ -915,6 +984,86 @@ def progress_printer():
     return progress
 
 
+#: Throughput measured after the KRX close. In-session is roughly half.
+_ASSUMED_RATE_PER_S = 0.6
+
+
+def eta_hours(todo_count: int, panel: Panel) -> float:
+    """Hours to fetch `todo_count` codes over `panel`, at the measured rate.
+
+    **Pages come from the panel, not from a constant.** The printed estimate used
+    a hardcoded 24, which is the *default* panel's page count -- so a pre-2019
+    run, 84 pages per code over 27 years, would have advertised an ETA 3.5x too
+    low. Extracted from the print so the figure can be asserted without running
+    a scan: a number that can only be seen by doing the work it estimates is a
+    number nothing checks.
+    """
+    return todo_count * pages_per_code(panel) / _ASSUMED_RATE_PER_S / 3600
+
+
+def pages_per_code(panel: Panel) -> int:
+    """How many requests one code costs over `panel`.
+
+    Counted through `_pages` rather than divided out, so the estimate and the
+    loop that fetches cannot disagree.
+    """
+    return sum(1 for _ in _pages(panel.start, panel.end, PAGE_DAYS))
+
+
+def claim_panel(conn: sqlite3.Connection, panel: Panel) -> None:
+    """Bind this database to one panel, and refuse any other.
+
+    **Recorded, not inferred.** The first version compared the panel against the
+    date range of the bars already stored, and containment is not the right test
+    — review of PR #209 named two holes and both are silent:
+
+    - `scan_bars` can be empty while `scan_progress` already holds finished
+      `absent` codes, so there is no range to contain and any panel passed while
+      `already_done` skipped those codes;
+    - a **wider** panel contains every stored bar and passed for that reason,
+      which is the forward-extension case an earlier test wrongly pinned as
+      allowed. `already_done` is keyed on `code`, so it fetches nothing.
+
+    Both end the same way: a scan that reports a clean run having collected none
+    of the window it was asked for. So the panel is written down on first use and
+    compared exactly afterwards.
+
+    **A database with no `scan_panel` row is assumed to hold the default panel**,
+    because that is what filled the one that exists. The assumption is only ever
+    made about a file that already has content; a genuinely fresh file records
+    what it was asked for.
+    """
+    panel = panel.validated()
+    conn.executescript(SCAN_SCHEMA)
+    row = conn.execute("SELECT start, end FROM scan_panel WHERE id = 1").fetchone()
+    if row is None:
+        populated = conn.execute(
+            "SELECT 1 FROM scan_bars LIMIT 1"
+        ).fetchone() or conn.execute("SELECT 1 FROM scan_progress LIMIT 1").fetchone()
+        recorded = Panel(*DEFAULT_PANEL) if populated else panel
+        # **`OR IGNORE` then re-read, because two connections can both see no
+        # row.** Two CLIs against one `--db-path`, or two callers of the public
+        # functions, would both reach this branch; the loser's plain INSERT
+        # raised a bare `IntegrityError` on the primary key instead of the
+        # `KrxScanError` that says which panel the file is. Re-reading compares
+        # against whatever the winner recorded, which is the answer that
+        # matters. Reported on review of PR #209.
+        conn.execute(
+            "INSERT OR IGNORE INTO scan_panel (id, start, end) VALUES (1, ?, ?)",
+            (recorded.start, recorded.end),
+        )
+        conn.commit()
+        row = conn.execute("SELECT start, end FROM scan_panel WHERE id = 1").fetchone()
+    if tuple(row) != tuple(panel):
+        raise KrxScanError(
+            f"this database is the {row[0]}..{row[1]} panel and was asked for "
+            f"{panel.start}..{panel.end}. scan_progress keys on code alone, so a "
+            f"second panel here would skip every code the first pass finished "
+            f"and collect none of the window requested. Use a separate "
+            f"--db-path for a separate window."
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--db-path", default=str(DEFAULT_SCAN_DB))
@@ -930,6 +1079,16 @@ def main(argv: list[str] | None = None) -> int:
         "outside_window, and retry the failures whose kind is retryable. "
         "Reads the same database; adds no new candidates.",
     )
+    ap.add_argument(
+        "--panel-start",
+        default=PANEL_START,
+        help="first date of the window to scan, YYYYMMDD. Defaults to the "
+        "panel every figure in .planning/rd-y and krx_dayone_drift describes. "
+        "A DIFFERENT panel needs a DIFFERENT --db-path: scan_progress keys on "
+        "code alone, so two panels in one file share one progress row and the "
+        "second pass skips the whole pool. Refused rather than allowed.",
+    )
+    ap.add_argument("--panel-end", default=PANEL_END, help="last date, YYYYMMDD")
     ap.add_argument("--limit", type=int, default=0, help="first N candidates (probe)")
     ap.add_argument(
         "--in-session",
@@ -941,14 +1100,28 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
+    try:
+        panel = Panel(args.panel_start, args.panel_end).validated()
+    except KrxScanError as exc:
+        ap.error(str(exc))
     conn = connect(args.db_path)
     conn.executescript(SCAN_SCHEMA)
     conn.commit()
 
     if args.coverage:
+        # **Read-only, so it claims nothing.** Claiming before this return meant
+        # `--coverage` on a fresh file RECORDED the default panel, and a later,
+        # perfectly valid `--scan --panel-start 19910828` against that same file
+        # was then refused for a panel nothing had ever fetched. Reported on
+        # review of PR #209.
         coverage(conn)
         conn.close()
         return 0
+
+    # Claimed before any fetching, so a mismatch costs nothing. `scan` and
+    # `resolve_absences` claim it again -- they are public, and the CLI is not
+    # the only caller.
+    claim_panel(conn, panel)
 
     if in_continuous_session() and not args.in_session:
         print(
@@ -999,8 +1172,8 @@ def main(argv: list[str] | None = None) -> int:
                 "DELETE FROM scan_progress WHERE code = ?", [(c,) for c, _, _ in again]
             )
             conn.commit()
-            print(f"{scan(session, conn, again, progress=progress_printer())}", flush=True)
-        print(f"{resolve_absences(session, conn, progress=progress_printer())}", flush=True)
+            print(f"{scan(session, conn, again, progress=progress_printer(), panel=panel)}", flush=True)
+        print(f"{resolve_absences(session, conn, progress=progress_printer(), panel=panel)}", flush=True)
         coverage(conn)
         conn.close()
         return 0
@@ -1027,7 +1200,7 @@ def main(argv: list[str] | None = None) -> int:
     outside = len(done) - (len(pool) - todo_count)
     print(f"{len(pool):,} candidates, {len(pool) - todo_count:,} already "
           f"complete, {todo_count:,} to fetch "
-          f"(~{todo_count * 24 / 0.6 / 3600:.1f}h at 0.6/s)"
+          f"(~{eta_hours(todo_count, panel):.1f}h at {_ASSUMED_RATE_PER_S}/s)"
           + (f"; {outside:,} recorded codes are not in this candidate selection"
              if outside else ""),
           flush=True)
@@ -1037,7 +1210,7 @@ def main(argv: list[str] | None = None) -> int:
     print("negative controls pass: an empty answer really means empty", flush=True)
 
     counts = scan(session, conn, pool, progress=progress_printer(),
-                  allow_in_session=args.in_session)
+                  allow_in_session=args.in_session, panel=panel)
     print(f"\n{counts}")
     coverage(conn)
     conn.close()
