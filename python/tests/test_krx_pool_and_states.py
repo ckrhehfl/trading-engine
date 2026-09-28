@@ -1579,16 +1579,18 @@ def test_coverage_is_read_only_and_claims_no_panel(tmp_path, capsys):
 
 def test_a_panel_reaching_before_2000_gets_a_NARROWER_default_page(tmp_path):
     """**The first pre-2019 pass lost 14 of 16 codes with 0 bars**, and this is
-    why. `PAGE_DAYS = 120` was calibrated on the post-2000 calendar — KRX traded
-    Saturdays until then, so measured against 삼성전자 on 2026-09-28 a 120-day
-    page returns up to **99** rows in 1991-1999 against ~81-84 from 2001 on. The
-    cap is 100, `validated_output2` refuses a page at or over it, and
-    `failed:capped` is deliberately not retryable because an identical request
-    returns an identical capped answer.
+    why. `PAGE_DAYS = 120` was calibrated on the post-2000 calendar. KRX traded
+    Saturdays until 2000 — six sessions a week — so a 120-day page there holds
+    about `120 * 6/7 = 103` sessions gross and lands ON the 100-row cap net of
+    holidays, where `validated_output2` refuses it at `>= 100` and
+    `failed:capped` is deliberately not retryable.
 
-    A code cannot trade more often than the market and 삼성전자 traded every
-    session, so that count is the session count — the measurement is the worst
-    case, not a sample.
+    **The two measurements only make sense together, and that is the correction
+    worth keeping.** 25 probed pages on 삼성전자 across 1991-1999 topped out at
+    **99** rows — one short, which is why probing never tripped the cap — while
+    the real run recorded `failed:capped` 14 times, a status only the `>= 100`
+    refusal produces. So 99 is not the worst case; the width simply sits at the
+    cap with no margin, over on some windows and under on others.
     """
     from data.krx_scan import (
         PAGE_DAYS,
@@ -1604,17 +1606,34 @@ def test_a_panel_reaching_before_2000_gets_a_NARROWER_default_page(tmp_path):
 
 
 def test_the_narrow_width_really_stays_under_the_row_cap():
-    """The margin, asserted from the measurement rather than trusted.
+    """The margin, from the calendar rather than from the pages that happened to
+    be probed.
 
-    25 probed pages across 1991-1999 returned at most 76 rows at 90 days. The
-    density that produced that is ~0.825 sessions per calendar day, which is what
-    this pins — a future widening has to show its own measurement.
+    The probe's own maximum is the wrong input here: at 120 days it reached 99,
+    one short of the cap, and the real run still hit `failed:capped` 14 times. So
+    the bound comes from the era's session density instead — **six** sessions a
+    week while KRX traded Saturdays, i.e. `6/7` per calendar day before holidays,
+    which is an upper bound no page can exceed rather than the largest one anyone
+    happened to fetch.
+
+    At that density 120 days is ~103 and over the cap, which is the defect, and
+    90 days is ~77 with real margin. A future widening has to clear this with the
+    gross figure, not with a measurement that got lucky.
     """
-    from data.krx_scan import EQUITY_ROWS_PER_CALL_CAP, SATURDAY_ERA_PAGE_DAYS
+    from data.krx_scan import (
+        EQUITY_ROWS_PER_CALL_CAP,
+        PAGE_DAYS,
+        SATURDAY_ERA_PAGE_DAYS,
+    )
 
-    worst_sessions_per_day = 99 / 120  # measured, the Saturday era's densest page
-    assert SATURDAY_ERA_PAGE_DAYS * worst_sessions_per_day < EQUITY_ROWS_PER_CALL_CAP - 15, (
-        f"{SATURDAY_ERA_PAGE_DAYS}d at the measured density leaves too little "
+    gross_sessions_per_day = 6 / 7  # Mon-Sat, before holidays: an upper bound
+    assert PAGE_DAYS * gross_sessions_per_day > EQUITY_ROWS_PER_CALL_CAP, (
+        f"if {PAGE_DAYS}d were under the {EQUITY_ROWS_PER_CALL_CAP}-row cap at "
+        f"the Saturday era's density, the narrower default would have no reason "
+        f"to exist"
+    )
+    assert SATURDAY_ERA_PAGE_DAYS * gross_sessions_per_day < EQUITY_ROWS_PER_CALL_CAP - 15, (
+        f"{SATURDAY_ERA_PAGE_DAYS}d at six sessions a week leaves too little "
         f"margin under the {EQUITY_ROWS_PER_CALL_CAP}-row cap"
     )
 
@@ -1673,7 +1692,7 @@ def test_an_OMITTED_width_still_gets_the_panel_s_era_default(monkeypatch, tmp_pa
     `--page-days` resolved the era default, so a run started from the command
     line was safe — but the public functions still defaulted to the post-2000
     120, so `scan(conn, pool, panel=pre_2019)` from a script or a notebook got
-    the width that loses the codes. The error direction is what makes this
+    the width that loses the codes in the current pool. The error direction is what makes this
     worth a test rather than a docstring: `failed:capped` is deliberately not
     retryable, so a caller who forgets loses the whole run, not some rows.
     """

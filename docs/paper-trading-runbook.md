@@ -455,7 +455,7 @@ cd ~/trading-engine/python
 Two details in that shape, both deliberate. `read -rs` keeps the value out of
 shell history and off the screen, which a `KIS_APP_KEY=…` on the command line
 would not. **The subshell scopes the credentials to the scan**: this session
-outlives a six-to-nine-day run by definition, and an `export` in the interactive
+outlives an eight-to-eleven-day run by definition, and an `export` in the interactive
 shell would be inherited by everything typed in it afterwards. Re-entering them
 on resume is the right cost — the same `--db-path` is what resumes, not the
 environment.
@@ -483,22 +483,6 @@ That leaves a one-time human step at the start of the run and at each resume,
 which is where `CLAUDE.md` already puts entering a credential. It costs a few
 seconds against a run measured in days.
 
-**Removing that one script did not make the instance clean of the pattern, and
-saying so is the point of this paragraph.** Four pre-existing helpers in
-`/home/minjun4897/` read `.env` the same way — `run_scan.sh` (the full-universe
-scan's launcher, `KIS_*`), `drive.sh` and `verify-markers.sh` (both `BINGX_*`,
-from the Gate A verification work), and `launch_scan.sh` which starts the first
-of them. None `source`s the file and all strip CRLF, so each is the collectors'
-reaffirmed mechanism rather than a new one; none is removed here, because they
-are pre-existing, at least one is still the way a 64-hour scan gets started, and
-deleting a working operational script unasked is not this document's call.
-
-They are listed so that the project-wide env-only decision `CLAUDE.md` holds
-open has a complete inventory to be taken against. That decision has to cover
-all of them at once, which is the whole reason it is still open — and an
-inventory nobody wrote down is why it would otherwise be taken against three of
-five.
-
 An earlier draft of this section told the operator to **source `.env`
 wholesale**. Named without repeating it, so nobody copies it back out: that
 executes the whole file, exports everything in it, and passes a CRLF-bearing key
@@ -511,8 +495,15 @@ detaching, rebooting or killing it costs only the code in flight.
 
 **Recovering from a run that failed on the width: re-run `--scan`, and delete
 nothing.** `already_done` holds only `done` and `absent:%` — `failed:%` is
-deliberately outside it — so a plain `--scan` at the corrected width picks every
+deliberately outside it — so a plain `--scan` at the corrected width picks a
 failed code back up and overwrites its row, while skipping the completed ones.
+
+**Scoped to the current candidate pool, which is the one caveat.** `--scan`
+iterates the pool `candidates()` builds from the universe database, so a
+`failed:%` row for a code that pool no longer contains is not revisited by
+either pass — `--second-pass` leaves it alone for the same reason. The recorded
+codes outside the selection are counted and printed on the way in, which is where
+to notice it.
 Verified against a seeded database rather than read off the query: a
 `failed:capped` row was re-fetched and a `done` row skipped.
 
@@ -549,21 +540,30 @@ panel reaching before 2000 — so the width below is what the command above
 already uses, and passing `--page-days 120` here would override it back to the
 value that fails. Getting it wrong is not a slow run but a failed one.
 
-KRX traded **Saturdays** until 2000, so a 120-day page returns up to **99**
-sessions there against ~81–84 from 2001 on, against a silent **100-row cap**;
-`validated_output2` refuses a page at or over it, and `failed:capped` is
-deliberately **not** retryable because an identical request returns an identical
-capped answer.
+KRX traded **Saturdays** until 2000 — six sessions a week, not five — so a
+120-day page there holds about `120 × 6/7 ≈ 103` sessions gross, and once
+holidays are taken out it lands **on** the endpoint's silent **100-row cap**
+rather than under it. From 2001 the same width holds ~81–84. `validated_output2`
+refuses a page at `len(output2) >= 100`, and `failed:capped` is deliberately
+**not** retryable because an identical request returns an identical capped
+answer.
 
-**What that cost the first attempt, stated as measured rather than as feared**:
-14 of 16 recorded codes `failed:capped`, **0 bars**. Not every 120-day page in
-that era breaches the cap — only the dense ones do, and 99 is the worst measured
-page, not the typical one. One is enough: the fetch loop `break`s a code at its
-first failed page, so a single dense stretch anywhere in 1991–2018 discards that
-code's whole window. That is why the failure is per *code* and near-total, from a
-page-level breach that is only occasional.
+**Two measurements, and reading them together is the point.** 25 probed pages on
+삼성전자 across 1991–1999 topped out at **99** rows — one short of the cap, which
+is why probing alone never tripped it. The real run did trip it: **14 of 16
+recorded codes `failed:capped`, 0 bars**, and that status is only reachable
+through `validated_output2`'s `>= 100` refusal, since `classify_failure` requires
+that exact message. So the honest reading is not "99 is the worst case" but **a
+120-day page in that era sits at the cap with no margin**, over on some windows
+and under on others.
 
-At 90 days, 25 probed pages across 1991–1999 returned at most **76** rows.
+That is also why the loss is per *code* rather than per page: the fetch loop
+`break`s a code at its first failed page, so one dense stretch anywhere in
+1991–2018 discards that code's whole window. An intermittent page-level breach
+becomes a near-total loss of codes.
+
+At 90 days the same arithmetic gives `90 × 6/7 ≈ 77`, and 25 probed pages across
+1991–1999 returned at most **76** rows — about 24 rows of real margin.
 
 So **111 pages per code** against the existing panel's 24, over the **4,371**
 codes the pool resolves to: **~485,000 requests**, at a throughput measured at

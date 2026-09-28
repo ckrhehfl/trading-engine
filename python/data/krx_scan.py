@@ -149,20 +149,24 @@ DEFAULT_PANEL = Panel(PANEL_START, PANEL_END)
 #: comfortably under the equity endpoint's silent 100-row cap.
 #:
 #: **It is calibrated on the post-2000 trading calendar and is WRONG before it.**
-#: KRX traded Saturdays until 2000, so the same width holds far more sessions:
-#: measured 2026-09-28 against 삼성전자, a 120-day page returns up to **99** rows
-#: in 1991-1999 against ~81-84 from 2001 on. The cap is 100 and
-#: `validated_output2` refuses a page at or over it -- correctly, since a capped
-#: page may have dropped its oldest rows unseen -- and `failed:capped` is
-#: deliberately NOT retryable, because an identical request returns an identical
-#: capped answer. So the first pre-2019 pass lost 14 of the 16 codes it
-#: recorded, with 0 bars. Per *code*, not per page: only the dense pages
-#: breach the cap, and one is enough, because the fetch loop `break`s a code
-#: at its first failed page and discards that code's whole window.
+#: KRX traded Saturdays until 2000 -- six sessions a week, not five -- so a
+#: 120-day page there holds about `120 * 6/7 = 103` sessions gross, and net of
+#: holidays lands ON the 100-row cap rather than under it. `validated_output2`
+#: refuses a page at `len(output2) >= 100` -- correctly, since a capped page may
+#: have dropped its oldest rows unseen -- and `failed:capped` is deliberately NOT
+#: retryable, because an identical request returns an identical capped answer.
 #:
-#: A code cannot trade more often than the market, and 삼성전자 traded every
-#: session, so that count IS the session count and the measurement is the worst
-#: case rather than a sample.
+#: **Two measurements, read together.** 25 probed pages on 삼성전자 across
+#: 1991-1999 topped out at **99** rows, one short of the cap, which is why
+#: probing never tripped it; the real run did, recording `failed:capped` for 14
+#: of the 16 codes it reached, with 0 bars. That status is only reachable through
+#: the `>= 100` refusal, since `classify_failure` matches on its exact message.
+#: So the reading is not "99 is the worst case" but that a 120-day page in that
+#: era sits at the cap with no margin, over on some windows and under on others.
+#:
+#: The loss is per *code* rather than per page because `scan` `break`s a code at
+#: its first failed page, so one dense stretch discards that code's whole
+#: window.
 PAGE_DAYS = 120
 
 #: Safe for the Saturday era: 25 probed pages across 1991-1999 returned at most
@@ -1044,9 +1048,9 @@ def default_page_days(panel: Panel) -> int:
     """The widest page safe for `panel`, which is a property of its ERA.
 
     A panel reaching before 2000 spans the Saturday-trading calendar, where a
-    120-day page returns up to 99 sessions against a silent 100-row cap -- and a
-    capped page is refused rather than truncated, and is deliberately not
-    retryable. So the width is derived rather than left to the caller to
+    120-day page holds ~103 sessions gross against a silent 100-row cap, landing
+    on it net of holidays -- and a capped page is refused rather than truncated,
+    and is deliberately not retryable. So the width is derived rather than left to the caller to
     remember: forgetting costs the codes, not some rows. Only the dense pages
     breach the cap, and one is enough -- `scan` `break`s a code at its first
     failed page and discards that code's whole window.
@@ -1176,7 +1180,7 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="calendar days per request. Default: %d, or %d for a panel reaching "
         "before 2000, because KRX traded Saturdays until then and a %d-day page "
-        "returns up to 99 rows there against a silent 100-row cap. A capped page "
+        "lands on the silent 100-row cap there rather than under it. A capped page "
         "is refused and is NOT retryable, so getting this wrong discards a "
         "code at its first dense page rather than truncating its data."
         % (PAGE_DAYS, SATURDAY_ERA_PAGE_DAYS, PAGE_DAYS),
