@@ -195,12 +195,22 @@ def _refuse_to_unspend(ledger_path: str, fresh: dict, runs_path: str) -> None:
         ) from None
 
     after = {(w["symbol"], w["interval"]): w.get("span") for w in fresh["windows"]}
+    counts = {(w["symbol"], w["interval"]): w.get("accesses", 0) for w in fresh["windows"]}
     lost, narrowed = [], []
     for old in before:
         key = (old["symbol"], old["interval"])
         if key not in after:
             lost.append(key)
             continue
+        # **The access count is evidence too, and it can fall while the window
+        # and its era stay identical.** CLAUDE.md cites `ms-f`'s "three recorded
+        # `holdout_access` entries" as what shows the single-access discipline
+        # held; a partial log reducing that to one erases the evidence while
+        # every other field matches. Reported on review of PR #210.
+        if counts[key] < old.get("accesses", 0):
+            narrowed.append(
+                (key, f"accesses {old.get('accesses')}", f"accesses {counts[key]}")
+            )
         was, now = old.get("span"), after[key]
         if was is None:
             if now is not None:

@@ -354,3 +354,25 @@ def test_ONE_access_without_a_range_makes_the_whole_window_unknown(tmp_path):
         f"span {rows[0]['span']!r} claims a finite era while one access had no "
         f"range at all, so some era reads as available that was accessed"
     )
+
+
+def test_a_regeneration_that_LOSES_an_ACCESS_is_refused(tmp_path):
+    """**The count of accesses is evidence, and it can fall while everything
+    else matches.** CLAUDE.md cites `ms-f`'s three recorded `holdout_access`
+    entries as what shows the single-access discipline held — a partial log
+    reducing that to one erases the evidence with the same window and the same
+    era. Reported on review of PR #210."""
+    from research.spent_windows import main
+
+    ledger = tmp_path / "spent_windows.json"
+    ledger.write_text(
+        json.dumps({"windows": [{
+            "symbol": "KRX:005930", "interval": "1d", "accesses": 3,
+            "span": "2019-01-02..2026-09-02",
+        }]}),
+        encoding="utf-8",
+    )
+    log = _log(tmp_path, _ranged(2019, 1, 2, 2026, 9, 2))
+
+    with pytest.raises(ValueError, match="would erase spends"):
+        main(["--write", "--runs-path", str(log), "--ledger-path", str(ledger)])

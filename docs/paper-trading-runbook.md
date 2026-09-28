@@ -437,8 +437,21 @@ end it, outside the KRX session (the scan pauses itself if one opens):
 ```bash
 tmux new -s krx-pre2019
 cd ~/trading-engine/python
-set -a; . ../.env; set +a
-python3 -m data.krx_scan --scan   --panel-start 19910828 --panel-end 20181231   --db-path data/var/krx_scan_pre2019.sqlite3   --universe-db data/var/klines.sqlite3
+
+# Two named values, never `source`. CLAUDE.md's credential rule is that
+# `get_env_var` NEVER sources `.env` — so nothing in it can execute — strips the
+# CRLF this repo's `.env` really carries, and lets the environment win. Sourcing
+# the file instead executes all of it, exports everything, and hands a
+# CRLF-bearing key straight through; that trailing `\r` is what once reached a
+# JDK exception message with the real key inside it.
+from_env() { tr -d '\r' <../.env | grep -E "^$1=" | tail -n1 | cut -d= -f2- || true; }
+
+env KIS_APP_KEY="${KIS_APP_KEY:-$(from_env KIS_APP_KEY)}" \
+    KIS_APP_SECRET="${KIS_APP_SECRET:-$(from_env KIS_APP_SECRET)}" \
+  python3 -m data.krx_scan --scan \
+    --panel-start 19910828 --panel-end 20181231 \
+    --db-path data/var/krx_scan_pre2019.sqlite3 \
+    --universe-db data/var/klines.sqlite3
 ```
 
 It is **resumable** — `already_done` reads the database, not a sidecar — so
