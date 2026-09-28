@@ -77,3 +77,18 @@ python/data/var/
 # an artifact of running that check is the kind of false positive that
 # gets a check switched off.
 **/var/live/
+
+# A log written under any `var/` directory. Same failure as the line above and
+# found the same way -- on the instance, by a deploy refusing to run.
+#
+# `scripts/vps-deploy.sh` fails closed on ANY output from
+# `git status --porcelain`, untracked files included, and `live.health_check`
+# raises `uncommitted_changes` on the same signal. So redirecting a long run's
+# output to `var/<something>.log` inside the checkout does not just leave a
+# stray file: it blocks the next deploy and fires an alert. The pre-2019
+# backfill's own log did exactly that on 2026-09-28.
+#
+# Unanchored for the reason the `var/live/` comment above gives at length: a
+# pattern containing a slash is anchored at the repository root, and a run
+# started from `python/` writes `python/var/`.
+**/var/*.log

@@ -493,6 +493,26 @@ it had already been typed at a prompt.
 It is **resumable** — `already_done` reads the database, not a sidecar — so
 detaching, rebooting or killing it costs only the code in flight.
 
+**Log it outside the checkout, or under a name `.gitignore` covers.** A run this
+long outgrows `tmux` scrollback, so its output wants a file — and a file inside
+the checkout is not free: `scripts/vps-deploy.sh` refuses to run on **any**
+`git status --porcelain` output, untracked files included, and
+`live.health_check` raises `uncommitted_changes` on the same signal. The first attempt at this
+backfill wrote `var/krx_pre2019_scan.log` and so blocked the next deploy. Both
+halves are now handled — `**/var/*.log` is ignored, and the command above
+appends outside the repo — but the general rule is the one to remember, because
+it already caught `python/var/` once on 2026-09-22.
+
+```bash
+    ... 2>&1 | tee -a ~/krx_pre2019_scan.log
+```
+
+The credential prompts are unaffected, and for a simpler reason than a claim
+about which stream a prompt uses: the pipe is attached to the **python command's
+own stdout**, while the two `read`s are separate commands earlier in the
+subshell, whose stdin and stdout are still the terminal. Nothing about them is
+inside the pipeline.
+
 **Recovering from a run that failed on the width: re-run `--scan`, and delete
 nothing.** `already_done` holds only `done` and `absent:%` — `failed:%` is
 deliberately outside it — so a plain `--scan` at the corrected width picks a
