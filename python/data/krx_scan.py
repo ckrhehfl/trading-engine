@@ -155,7 +155,10 @@ DEFAULT_PANEL = Panel(PANEL_START, PANEL_END)
 #: `validated_output2` refuses a page at or over it -- correctly, since a capped
 #: page may have dropped its oldest rows unseen -- and `failed:capped` is
 #: deliberately NOT retryable, because an identical request returns an identical
-#: capped answer. So the first pre-2019 pass refused essentially every page.
+#: capped answer. So the first pre-2019 pass lost 14 of the 16 codes it
+#: recorded, with 0 bars. Per *code*, not per page: only the dense pages
+#: breach the cap, and one is enough, because the fetch loop `break`s a code
+#: at its first failed page and discards that code's whole window.
 #:
 #: A code cannot trade more often than the market, and 삼성전자 traded every
 #: session, so that count IS the session count and the measurement is the worst
@@ -1061,7 +1064,7 @@ def resolve_page_days(panel: Panel, page_days: int | None) -> int:
     only caller.** `--page-days` already resolved the era default, so a run
     started from the command line was safe; `scan`, `eta_hours` and
     `pages_per_code` still defaulted to the post-2000 120, so the same panel
-    driven from a script or a notebook got the width that refuses every page.
+    driven from a script or a notebook got the width that loses the run.
     The error direction is what makes a shared resolver worth it over a
     docstring: `failed:capped` is deliberately not retryable, so a caller who
     forgets loses the entire run rather than some rows.

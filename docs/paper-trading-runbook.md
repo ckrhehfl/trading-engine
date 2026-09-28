@@ -504,15 +504,26 @@ ones, which are the days of fetching you are keeping.
 
 ### What it costs, derived rather than guessed
 
-**90 calendar days per request, not the default 120**, which the scan chooses
-itself for any panel reaching before 2000 — and getting it wrong is not a
-slow run but a failed one. KRX traded **Saturdays** until 2000, so a 120-day page
-returns up to **99** sessions there against ~81–84 from 2001 on, against a silent
-**100-row cap**; `validated_output2` refuses a page at or over it, and
-`failed:capped` is deliberately **not** retryable because an identical request
-returns an identical capped answer. The first attempt at this backfill refused
-essentially every page for exactly that reason. At 90 days, 25 probed pages
-across 1991–1999 returned at most **76** rows.
+**90 calendar days per request**, which `default_page_days` returns for any
+panel reaching before 2000 — so the width below is what the command above
+already uses, and passing `--page-days 120` here would override it back to the
+value that fails. Getting it wrong is not a slow run but a failed one.
+
+KRX traded **Saturdays** until 2000, so a 120-day page returns up to **99**
+sessions there against ~81–84 from 2001 on, against a silent **100-row cap**;
+`validated_output2` refuses a page at or over it, and `failed:capped` is
+deliberately **not** retryable because an identical request returns an identical
+capped answer.
+
+**What that cost the first attempt, stated as measured rather than as feared**:
+14 of 16 recorded codes `failed:capped`, **0 bars**. Not every 120-day page in
+that era breaches the cap — only the dense ones do, and 99 is the worst measured
+page, not the typical one. One is enough: the fetch loop `break`s a code at its
+first failed page, so a single dense stretch anywhere in 1991–2018 discards that
+code's whole window. That is why the failure is per *code* and near-total, from a
+page-level breach that is only occasional.
+
+At 90 days, 25 probed pages across 1991–1999 returned at most **76** rows.
 
 So **111 pages per code** against the existing panel's 24, over the **4,371**
 codes the pool resolves to: **~485,000 requests**, at a throughput measured at

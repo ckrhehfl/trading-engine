@@ -1578,7 +1578,7 @@ def test_coverage_is_read_only_and_claims_no_panel(tmp_path, capsys):
 
 
 def test_a_panel_reaching_before_2000_gets_a_NARROWER_default_page(tmp_path):
-    """**The first pre-2019 pass refused essentially every page**, and this is
+    """**The first pre-2019 pass lost 14 of 16 codes with 0 bars**, and this is
     why. `PAGE_DAYS = 120` was calibrated on the post-2000 calendar — KRX traded
     Saturdays until then, so measured against 삼성전자 on 2026-09-28 a 120-day
     page returns up to **99** rows in 1991-1999 against ~81-84 from 2001 on. The
@@ -1668,7 +1668,7 @@ def test_the_printed_estimate_uses_the_SAME_width_as_the_loop():
 
 
 def test_an_OMITTED_width_still_gets_the_panel_s_era_default(monkeypatch, tmp_path):
-    """The CLI is not the only caller, and the wrong width fails every page.
+    """The CLI is not the only caller, and the wrong width loses the run.
 
     `--page-days` resolved the era default, so a run started from the command
     line was safe — but the public functions still defaulted to the post-2000
