@@ -469,6 +469,25 @@ credential mechanisms in one procedure, where the one that differs is the one
 nobody remembers, is the cost `CLAUDE.md` names; the cheapest way to avoid it in
 a manual procedure is not to introduce a second one.
 
+**There is a second mechanism on the instance, and it is disclosed here
+rather than left to be found.** `~/.krx_pre2019_runner.sh` (mode `0700`) does
+the same run non-interactively: it reads the two values with the collectors'
+own `.env` fallback — never `source`, CRLF stripped, environment winning — and
+`exec`s the scan. It exists because the command above cannot be typed by a
+session that has no terminal, and putting `KIS_APP_KEY=…` on a `tmux
+new-session` command line instead — which an earlier attempt did — puts the
+real key in a process's argv where `ps` shows it to any local reader. So the
+choice was between the collectors' documented fallback and argv exposure, and
+this is the first of those.
+
+It passes no `--page-days`, which is the point of deriving the width from the
+panel: the runner needs no edit to pick the right one up.
+
+Read it before trusting it, and prefer the typed form above when there is a
+terminal. Two credential mechanisms in one directory is the cost `CLAUDE.md`
+names, and this is one; what keeps it honest is that it is the *same* mechanism
+the collectors already use, not a third one.
+
 An earlier draft of this section told the operator to **source `.env`
 wholesale**. Named without repeating it, so nobody copies it back out: that
 executes the whole file, exports everything in it, and passes a CRLF-bearing key
