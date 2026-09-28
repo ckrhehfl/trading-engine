@@ -440,18 +440,25 @@ end it, outside the KRX session (the scan pauses itself if one opens):
 ```bash
 tmux new -s krx-pre2019
 cd ~/trading-engine/python
-read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo
-read -rs -p 'KIS_APP_SECRET: ' KIS_APP_SECRET; echo
-export KIS_APP_KEY KIS_APP_SECRET
+(
+  read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo
+  read -rs -p 'KIS_APP_SECRET: ' KIS_APP_SECRET; echo
+  export KIS_APP_KEY KIS_APP_SECRET
 
-python3 -m data.krx_scan --scan \
-  --panel-start 19910828 --panel-end 20181231 \
-  --db-path data/var/krx_scan_pre2019.sqlite3 \
-  --universe-db data/var/klines.sqlite3
+  python3 -m data.krx_scan --scan \
+    --panel-start 19910828 --panel-end 20181231 \
+    --db-path data/var/krx_scan_pre2019.sqlite3 \
+    --universe-db data/var/klines.sqlite3
+)
 ```
 
-`read -rs` keeps the value out of the shell history and off the screen, which a
-`KIS_APP_KEY=…` on the command line would not.
+Two details in that shape, both deliberate. `read -rs` keeps the value out of
+shell history and off the screen, which a `KIS_APP_KEY=…` on the command line
+would not. **The subshell scopes the credentials to the scan**: this session
+outlives a six-to-nine-day run by definition, and an `export` in the interactive
+shell would be inherited by everything typed in it afterwards. Re-entering them
+on resume is the right cost — the same `--db-path` is what resumes, not the
+environment.
 
 **Why this reads nothing from `.env`, while the collectors do.** The collectors'
 `.env` fallback is a deliberate, reaffirmed operator decision — `CLAUDE.md`
