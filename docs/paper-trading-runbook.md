@@ -308,10 +308,14 @@ isn't running at all."
 ## 6b. Deploying a change — and why `git pull` alone is not enough
 
 ```bash
-./scripts/vps-deploy.sh --check    # report only, change nothing
-./scripts/vps-deploy.sh            # deploy, ask before restarting
-./scripts/vps-deploy.sh --yes      # deploy and restart without asking
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/vps-deploy.sh --check'  # report only
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/vps-deploy.sh'          # ask before restarting
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/vps-deploy.sh --yes'    # restart without asking
 ```
+
+No `cd` first: the script resolves its own checkout from `BASH_SOURCE[0]`, so a
+home-relative path is enough. Verified from `/tmp` — `--check` reported
+`HEAD 35934c2` correctly.
 
 **Python and shell changes are live on their next cron tick.** Cron
 starts a fresh process every time, so a merged change to
@@ -347,8 +351,8 @@ recent trades, tick-error summaries, and (for the VST loop) a real BingX
 balance cross-check -- is the dashboard:
 
 ```bash
-cd python && .venv/bin/python -m live.dashboard        # human-readable
-cd python && .venv/bin/python -m live.dashboard --json # machine-readable
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && .venv/bin/python -m live.dashboard'
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && .venv/bin/python -m live.dashboard --json'
 ```
 
 It's read-only and makes no exchange call of its own -- it only reads
@@ -377,7 +381,7 @@ command above is always available as a fallback):
 dashboard, and the watchdog/cron log tail, side by side in one terminal:
 
 ```bash
-scripts/paper-trading-monitor.sh
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/paper-trading-monitor.sh'
 ```
 
 Opens (or re-attaches to, if already running) a separate `paper-trading-
@@ -396,7 +400,7 @@ equity chart, and a recent-trades table, all in a browser tab that
 refreshes itself every 30 seconds:
 
 ```bash
-cd python && .venv/bin/streamlit run live/web_dashboard.py
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && .venv/bin/streamlit run live/web_dashboard.py'
 ```
 
 Then open the printed `http://127.0.0.1:8501` URL. Binds to
@@ -523,7 +527,15 @@ end it, outside the KRX session (the scan pauses itself if one opens):
 `KIS_APP_KEY` and `KIS_APP_SECRET` and nothing else:
 
 ```bash
-sudo -u minjun4897 -H bash -lc 'tmux new -s krx-pre2019'   # then, inside it:
+sudo -u minjun4897 -H bash -lc 'tmux new -s krx-pre2019'
+```
+
+That attaches you to a `tmux` session **already running as `minjun4897`**, so
+everything typed inside it is in that user's own shell and needs no further
+`sudo`. Inside that session:
+
+```bash
+# already minjun4897 -- this is typed inside the tmux session opened above
 cd ~/trading-engine/python
 (
   read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo

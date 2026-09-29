@@ -73,6 +73,52 @@ _TILDE_PATH = re.compile(r"~/trading-engine\b")
 _TMUX = re.compile(r"\btmux\s+(?!-)[a-z]")
 
 
+#: A block typed inside a shell that already belongs to `OWNER` -- the `tmux`
+#: session §8b opens. Marked explicitly rather than inferred: the commands there
+#: carry no `sudo`, correctly, because the session is already that user's, and no
+#: scan of the block itself can tell that from an unwrapped command. The marker
+#: is useful to a reader for the same reason it is needed here.
+_ALREADY_OWNER = re.compile(rf"^#\s*already\s+{OWNER}\b", re.M)
+
+#: Sections whose commands run on the LOCAL machine, not the deployment: the
+#: prerequisites, the fresh-clone setup, and the sync that pulls the audit trail
+#: down over `gcloud`. An allowlist rather than a blocklist, so a section added
+#: later is treated as the deployment's and has to say otherwise — the noisy
+#: direction, which is the one `CLAUDE.md` asks for when a declaration is absent.
+_LOCAL_SECTIONS = frozenset({"1", "2", "7b"})
+
+#: Invoking something by a path relative to the checkout, or its virtualenv.
+#: This is the shape that slips past every other rule here: `scripts/x.sh` and
+#: `cd python && .venv/bin/python -m live.dashboard` name no user, no `~` and no
+#: `tmux`, so nothing else in this file sees them. Three such commands survived
+#: the first mutation run for exactly that reason.
+_CHECKOUT_RELATIVE = re.compile(r"(?:^|[\s;&|(])(?:\./)?scripts/\S+\.sh|\.venv/bin/")
+
+
+def _path_escapes_the_quoted_command(line: str) -> bool:
+    """True when a checkout path sits OUTSIDE `-lc`'s command string.
+
+    `sudo -u minjun4897 -H bash -lc 'cat' ~/trading-engine/x` carries the correct
+    prefix and still fails the contract: `bash -lc` takes exactly one argument as
+    the command string, so `~/trading-engine/x` becomes `$0` — and the caller's
+    shell expanded that tilde before `sudo` ran. The prefix check alone accepts
+    it, because the prefix really is there; what is wrong is where the path is.
+
+    A line whose quote never closes is the multi-line form, where the shell stays
+    open for the lines below and a path there is inside it. That is not an
+    offender, so an unclosed quote returns False rather than guessing.
+    """
+    opening = re.search(r"-lc\s+(['\"])", line)
+    if opening is None:
+        return False
+    quote = opening.group(1)
+    rest = line[opening.end():]
+    close = rest.find(quote)
+    if close == -1:
+        return False
+    return "~/" in rest[close + 1:]
+
+
 def _code_lines() -> list[tuple[int, str]]:
     """Every line inside a fenced block, with its 1-based file line number.
 
@@ -92,6 +138,56 @@ def _code_lines() -> list[tuple[int, str]]:
     return out
 
 
+def _fenced_blocks_by_section() -> list[tuple[str, str]]:
+    """Every ```bash block paired with the `## N.` section it sits in."""
+    out: list[tuple[str, str]] = []
+    section = "(preamble)"
+    buf: list[str] | None = None
+    for line in RUNBOOK.read_text(encoding="utf-8").splitlines():
+        if line.startswith("## "):
+            section = line[3:].split(".")[0].strip()
+            continue
+        if line.startswith("```bash"):
+            buf = []
+            continue
+        if line.startswith("```") and buf is not None:
+            out.append((section, "\n".join(buf)))
+            buf = None
+            continue
+        if buf is not None:
+            buf.append(line)
+    return out
+
+
+def checkout_relative_offenders(section: str, block: str) -> list[str]:
+    """Lines in `block` that invoke the checkout from outside the owner's shell.
+
+    Exposed, and used by both the real check and its own synthetic test, because
+    a guard whose only evidence is the document it was written against proves
+    nothing: removing it would still pass while the document happens to be
+    clean. `CLAUDE.md` records that shape — three inert fixtures in a row, each
+    passing its own tests.
+    """
+    if section in _LOCAL_SECTIONS or _ALREADY_OWNER.search(block):
+        return []
+    offenders: list[str] = []
+    inside = False
+    for line in block.splitlines():
+        if _OPENS_SHELL.search(line):
+            inside = True
+            continue
+        if inside and line.strip() == "'":
+            inside = False
+            continue
+        bare = line.split("#", 1)[0]
+        if not _CHECKOUT_RELATIVE.search(bare):
+            continue
+        if inside or (_CORRECT.search(line) and not _path_escapes_the_quoted_command(line)):
+            continue
+        offenders.append(line.strip())
+    return offenders
+
+
 def test_the_runbook_has_fenced_commands_to_check():
     """Otherwise every assertion below passes over an empty list.
 
@@ -107,15 +203,52 @@ def test_the_runbook_has_fenced_commands_to_check():
     )
 
 
+def sudo_form_offenders(lines: list[str]) -> list[str]:
+    """Lines invoking `sudo -u OWNER` in a form that mis-resolves a path.
+
+    Extracted for the same reason `checkout_relative_offenders` is: the document
+    currently contains none of these, so a check that only reads the document
+    passes whether or not it still calls
+    `_path_escapes_the_quoted_command`. Removing that call survived a mutation
+    run until this function existed to be given synthetic input — which is the
+    gap CodeRabbit named: a negative case proves the predicate rejects the bad
+    form, never that anything still consults it.
+    """
+    return [
+        line.strip()
+        for line in lines
+        if _ANY_SUDO.search(line)
+        and (not _CORRECT.search(line) or _path_escapes_the_quoted_command(line))
+    ]
+
+
+@pytest.mark.parametrize(
+    "line,offending",
+    [
+        ("sudo -u minjun4897 -H bash -lc 'cat ~/trading-engine/x'", False),
+        ("sudo -u minjun4897 cat ~/trading-engine/x", True),
+        ("sudo -u minjun4897 -H cat ~/trading-engine/x", True),
+        # The form the escape guard exists for: prefix right, path outside.
+        ("sudo -u minjun4897 -H bash -lc 'bash' ~/trading-engine/x", True),
+        ('sudo -u minjun4897 -H bash -lc "bash" ~/trading-engine/x', True),
+        # Not addressed to the owner at all, so not this rule's business.
+        ("tmux capture-pane -t =paper-trading -p", False),
+    ],
+)
+def test_what_the_sudo_form_check_rejects(line, offending):
+    assert bool(sudo_form_offenders([line])) is offending
+
+
 def test_every_command_run_as_the_owner_uses_the_login_shell_form():
     offenders = [
         (n, line.strip())
         for n, line in _code_lines()
-        if _ANY_SUDO.search(line) and not _CORRECT.search(line)
+        if sudo_form_offenders([line])
     ]
     assert not offenders, (
-        f"these commands run as {OWNER} without `-H bash -lc`, so `~` and "
-        f"`$HOME` resolve as the SSH login user instead:\n"
+        f"these commands run as {OWNER} but let the caller's shell expand a "
+        f"checkout path -- either no `-H bash -lc`, or a path left outside its "
+        f"quoted command string:\n"
         + "\n".join(f"  line {n}: {t}" for n, t in offenders)
     )
 
@@ -130,7 +263,7 @@ def test_no_tilde_path_into_the_checkout_is_left_to_the_login_shell():
     text = RUNBOOK.read_text(encoding="utf-8")
     offenders: list[str] = []
     for block in re.findall(r"```bash\n(.*?)```", text, re.S):
-        if not _TILDE_PATH.search(block):
+        if not _TILDE_PATH.search(block) or _ALREADY_OWNER.search(block):
             continue
         if not _CORRECT.search(block):
             offenders.append(block.strip().splitlines()[0])
@@ -162,6 +295,8 @@ def test_every_tmux_command_reaches_the_owners_socket():
     text = RUNBOOK.read_text(encoding="utf-8")
     offenders: list[str] = []
     for block in re.findall(r"```bash\n(.*?)```", text, re.S):
+        if _ALREADY_OWNER.search(block):
+            continue
         inside = False
         for line in block.splitlines():
             if _OPENS_SHELL.search(line):
@@ -170,12 +305,72 @@ def test_every_tmux_command_reaches_the_owners_socket():
             if inside and line.strip() == "'":
                 inside = False
                 continue
-            if _TMUX.search(line) and not inside and not _CORRECT.search(line):
+            # Comments only, never commands: "inside the tmux session opened
+            # above" is prose about tmux, not a call to it, and the first version
+            # of this check flagged it.
+            bare = line.split("#", 1)[0]
+            if _TMUX.search(bare) and not inside and not _CORRECT.search(line):
                 offenders.append(line.strip())
     assert not offenders, (
         f"these tmux commands do not reach {OWNER}'s socket, which is per-UID:\n"
         + "\n".join(f"  {b}" for b in offenders)
     )
+
+
+def test_no_checkout_relative_command_runs_outside_the_owners_shell():
+    """The rule the other three cannot see, and the one that mattered most.
+
+    `./scripts/vps-deploy.sh --check` and
+    `cd python && .venv/bin/python -m live.dashboard` name no user, no `~` and no
+    `tmux`. All three predicates above pass them, and all three commands fail on
+    the deployment because `minju` has no checkout. They survived this file's
+    first mutation run untouched.
+    """
+    offenders = [
+        f"§{section}: {line}"
+        for section, block in _fenced_blocks_by_section()
+        for line in checkout_relative_offenders(section, block)
+    ]
+    assert not offenders, (
+        "these invoke the checkout without becoming "
+        f"{OWNER} first, so they run against /home/minju:\n"
+        + "\n".join(f"  {o}" for o in offenders)
+    )
+
+
+@pytest.mark.parametrize(
+    "section,block,expected",
+    [
+        # The three shapes that survived, each now an offender.
+        ("6b", "./scripts/vps-deploy.sh --check", 1),
+        ("7", "cd python && .venv/bin/python -m live.dashboard", 1),
+        ("7", "scripts/paper-trading-monitor.sh", 1),
+        # Correct: wrapped, and the path inside the command string.
+        ("6b", "sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/x.sh'", 0),
+        # Correct: inside a shell an earlier line opened.
+        ("7", "sudo -u minjun4897 -H bash -lc '\ncd ~/trading-engine\nscripts/x.sh\n'", 0),
+        # A path that escapes the quotes is the OTHER rule's business -- it is
+        # not checkout-relative, it is an absolute path the caller expanded.
+        # `test_every_command_run_as_the_owner_uses_the_login_shell_form`
+        # rejects it, verified by mutation.
+        # A local section is exempt, which is what keeps the fresh-clone setup
+        # and the gcloud-side sync from being rewritten into nonsense.
+        ("2", "cd python && uv sync && cd ..", 0),
+        # The marker exempts a block typed inside the owner's own session.
+        ("8b", "# already minjun4897\ncd ~/trading-engine/python\npython3 -m data.krx_scan", 0),
+        ("7b", "PYTHONPATH=python python/.venv/bin/python -m live.sync_live_signals", 0),
+        # A mention inside a comment is not an invocation.
+        ("4", "# see scripts/paper-trading-daily-signal.sh for why", 0),
+    ],
+)
+def test_what_counts_as_a_checkout_relative_offender(section, block, expected):
+    """The predicate on synthetic input, so deleting its use in the real check
+    fails here even while the document itself is clean.
+
+    That is the whole point: a negative case alone would only prove the current
+    implementation rejects the bad form, not that anything still calls it.
+    """
+    assert len(checkout_relative_offenders(section, block)) == expected
 
 
 def test_every_bash_block_parses():
@@ -253,3 +448,21 @@ def test_what_the_form_check_accepts(command, ok):
     reads as a fix and is not one.
     """
     assert bool(_CORRECT.search(command)) is ok
+
+
+@pytest.mark.parametrize(
+    "command,escapes",
+    [
+        # The prefix is right and the path is still outside the command string,
+        # so the caller's shell expands it. CodeRabbit caught this one.
+        ("sudo -u minjun4897 -H bash -lc 'cat' ~/trading-engine/x", True),
+        ('sudo -u minjun4897 -H bash -lc "cat" ~/trading-engine/x', True),
+        ("sudo -u minjun4897 -H bash -lc 'cat ~/trading-engine/x'", False),
+        # The multi-line form: the quote stays open, so the lines below are
+        # inside the owner's shell.
+        ("sudo -u minjun4897 -H bash -lc '", False),
+        ("sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && ls'", False),
+    ],
+)
+def test_a_path_outside_the_quoted_command_is_an_offender(command, escapes):
+    assert _path_escapes_the_quoted_command(command) is escapes
