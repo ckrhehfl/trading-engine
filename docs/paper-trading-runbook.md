@@ -22,6 +22,39 @@ higher-bar decision gated by CLAUDE.md's Live Entry Criteria.
   cron specifically)
 - `git`
 
+### On the GCP instance, you are not the user that owns the repo
+
+**Every command in this document that touches the deployment must be run as
+`minjun4897`, and `gcloud compute ssh` does not log you in as them.** Measured
+2026-09-29: the login lands as `minju`, `$HOME` is `/home/minju`, and
+`~/trading-engine` **does not exist** for that user.
+
+That makes `~` the trap rather than the user, because it expands in the wrong
+place *twice over* and neither is obvious:
+
+| form | `~` expands | result |
+|---|---|---|
+| `sudo -u minjun4897 cat ~/x` | in the **caller's** shell, before `sudo` runs | `/home/minju/x` — fails |
+| `ssh --command='sudo -u minjun4897 cat ~/x'` | in the **remote login** shell, still as `minju` | `/home/minju/x` — fails |
+| `sudo -u minjun4897 -H bash -lc 'cat ~/x'` | inside the target user's own login shell | `/home/minjun4897/x` — correct |
+
+So the form to use, everywhere below:
+
+```bash
+sudo -u minjun4897 -H bash -lc '<the command>'
+```
+
+`-H` sets `HOME`, and `bash -lc` is what makes `~` and `$HOME` resolve as that
+user rather than as whoever typed it. An absolute path works too and is the
+better choice inside a script; `~` is kept in the interactive commands below
+because it is what a person types, which is exactly why the expansion rule
+needs stating once here rather than being rediscovered per command.
+
+`CLAUDE.md` already records the underlying fact — *"the repo on the instance
+lives under `minjun4897`, not the SSH login user"* — and this document's
+commands contradicted it until 2026-09-29, so a reader following them got
+`No such file or directory` with nothing to explain it.
+
 ## 2. First-time setup on a new machine
 
 ```bash
@@ -72,9 +105,11 @@ problem in one (e.g. a `KillSwitch` trip) can never affect the other.
 **Simulated (internal fill simulator, no real network writes)**:
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
 tmux new-session -d -s paper-trading -c ~/trading-engine/java \
     env BINGX_BASE_URL=https://open-api.bingx.com \
     ./gradlew -q :runtime:runPaperTradingApp
+'
 ```
 
 **BingX VST (real demo-trading network calls, virtual funds)** — do
@@ -83,15 +118,42 @@ this by hand at least once so you actually see the startup log
 position, confirms leverage got set) before relying on the watchdog to
 restart it silently later:
 
+**Start it through the launcher, not by hand**, because this is the one loop
+that needs credentials and the runbook is the wrong place to keep a second copy
+of how they are obtained:
+
 ```bash
-tmux new-session -d -s paper-trading-vst -c ~/trading-engine/java \
-    env BINGX_API_KEY="$(grep -E '^BINGX_API_KEY=' ~/trading-engine/.env | cut -d= -f2-)" \
-        BINGX_API_SECRET="$(grep -E '^BINGX_API_SECRET=' ~/trading-engine/.env | cut -d= -f2-)" \
-        PAPER_TRADING_EXECUTION_MODE=bingx-vst \
-        BINGX_BASE_URL=https://open-api.bingx.com \
-        PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
-    ./gradlew -q :runtime:runPaperTradingApp
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/paper-trading-watchdog.sh'
 ```
+
+It starts whichever session is not already running, so it doubles as the manual
+start. `start_vst` reads `BINGX_API_KEY`/`BINGX_API_SECRET` through
+`get_env_var` — never `source`, CRLF stripped, the value never logged — and
+will not launch the session at all when either is missing. It is not scheduled on this
+box, so running it is a one-shot start, not an enrolment.
+
+The startup log you wanted to see by hand is more durable this way than a pane:
+`pipe_session_log` attaches the session to
+`~/trading-engine/var/live/sessions/paper-trading-vst.log`, which survives the
+scrollback and a detach.
+
+> **A credential exposure in that launcher, measured 2026-09-29 and left for the
+> operator to decide on.** `start_vst` passes the key and secret as
+> `env KEY=value` arguments to `tmux new-session`, and **tmux stores the start
+> command**: `tmux list-panes -F '#{pane_start_command}'` prints the value back,
+> and it is in the process argv for `ps`. Verified with a sentinel value rather
+> than a real one.
+>
+> **The obvious fix does not work, which is why this is not fixed here.**
+> Exporting the variables first and letting `tmux` inherit them keeps
+> `pane_start_command` clean — but only when no `tmux` server is already
+> running. Measured: with a server already up (which it is, because the
+> simulated session starts first), the second session's child saw **nothing**,
+> so the loop would start with no credentials at all. A real fix needs
+> `tmux new-session -e`, or the launched process reading the values itself the
+> way `scripts/kis-paper.sh` does. That is a change to a credential path on a
+> loop that is currently stopped, so it belongs to the operator and to its own
+> change, not to a documentation fix about `~`.
 
 (In practice, easier to just run `scripts/paper-trading-watchdog.sh`
 once by hand — it does exactly this, for both sessions, only starting
@@ -101,8 +163,22 @@ Check it actually started cleanly (`=name` forces an exact session
 match — see §5's note on why a bare, unprefixed target is unsafe here):
 
 ```bash
-tmux capture-pane -t =paper-trading -p
-tmux capture-pane -t =paper-trading-vst -p
+sudo -u minjun4897 -H bash -lc 'tmux capture-pane -t =paper-trading -p'
+sudo -u minjun4897 -H bash -lc 'tmux capture-pane -t =paper-trading-vst -p'
+```
+
+**The user matters here for a second reason beyond file paths: `tmux`'s default
+socket is per-UID.** Measured 2026-09-29 — the sessions live on
+`/tmp/tmux-1001` (`minjun4897`), and the same `tmux ls` as the login user
+answers `error connecting to /tmp/tmux-1002/default (No such file or
+directory)`. A `capture-pane` run as `minju` does not show an empty pane; it
+cannot see the session at all.
+
+The durable alternative, which does not depend on scrollback still holding the
+startup lines:
+
+```bash
+sudo -u minjun4897 -H bash -lc 'tail -40 ~/trading-engine/var/live/sessions/paper-trading-vst.log'
 ```
 
 Look for `starting paper trading loop` and a `tick complete` line for
@@ -232,10 +308,14 @@ isn't running at all."
 ## 6b. Deploying a change — and why `git pull` alone is not enough
 
 ```bash
-./scripts/vps-deploy.sh --check    # report only, change nothing
-./scripts/vps-deploy.sh            # deploy, ask before restarting
-./scripts/vps-deploy.sh --yes      # deploy and restart without asking
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/vps-deploy.sh --check'  # report only
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/vps-deploy.sh'          # ask before restarting
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/vps-deploy.sh --yes'    # restart without asking
 ```
+
+No `cd` first: the script resolves its own checkout from `BASH_SOURCE[0]`, so a
+home-relative path is enough. Verified from `/tmp` — `--check` reported
+`HEAD 35934c2` correctly.
 
 **Python and shell changes are live on their next cron tick.** Cron
 starts a fresh process every time, so a merged change to
@@ -271,8 +351,8 @@ recent trades, tick-error summaries, and (for the VST loop) a real BingX
 balance cross-check -- is the dashboard:
 
 ```bash
-cd python && .venv/bin/python -m live.dashboard        # human-readable
-cd python && .venv/bin/python -m live.dashboard --json # machine-readable
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && .venv/bin/python -m live.dashboard'
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && .venv/bin/python -m live.dashboard --json'
 ```
 
 It's read-only and makes no exchange call of its own -- it only reads
@@ -301,7 +381,7 @@ command above is always available as a fallback):
 dashboard, and the watchdog/cron log tail, side by side in one terminal:
 
 ```bash
-scripts/paper-trading-monitor.sh
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/paper-trading-monitor.sh'
 ```
 
 Opens (or re-attaches to, if already running) a separate `paper-trading-
@@ -320,7 +400,7 @@ equity chart, and a recent-trades table, all in a browser tab that
 refreshes itself every 30 seconds:
 
 ```bash
-cd python && .venv/bin/streamlit run live/web_dashboard.py
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && .venv/bin/streamlit run live/web_dashboard.py'
 ```
 
 Then open the printed `http://127.0.0.1:8501` URL. Binds to
@@ -334,13 +414,16 @@ for detail and for why the refresh is a plain page reload rather than a
 For raw detail beyond what the dashboard summarizes:
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
+cd ~/trading-engine
 tmux ls                                     # both sessions alive?
 tmux capture-pane -t =paper-trading -p | tail -20
 tmux capture-pane -t =paper-trading-vst -p | tail -20
 cat var/live/cron.log | tail -20            # daily signal generation history
 cat var/live/watchdog.log                   # any restarts needed?
-ls var/live/reports/daily/                  # simulated loop's daily reports
-ls var/live/reports/vst/                    # VST loop's daily reports
+ls var/live/reports/daily/                  # daily reports, simulated loop
+ls var/live/reports/vst/                    # daily reports, VST loop
+'
 ```
 
 ## 7b. Bringing the deployment's audit trail back into the repository
@@ -362,11 +445,11 @@ set -Eeuo pipefail                       # so step 1 failing stops the rest
 #    audit trail stays safe (the tool is append-only) but the operator
 #    is told the sync is done when records are missing.
 gcloud compute ssh paper-trading --zone=us-central1-a \
-  --command='sudo -u minjun4897 cat ~/trading-engine/var/live/live_signals.jsonl' \
+  --command='sudo -u minjun4897 -H bash -lc "cat ~/trading-engine/var/live/live_signals.jsonl"' \
   > /tmp/from-vps.jsonl
 
 REMOTE_LINES=$(gcloud compute ssh paper-trading --zone=us-central1-a \
-  --command='sudo -u minjun4897 wc -l < ~/trading-engine/var/live/live_signals.jsonl')
+  --command='sudo -u minjun4897 -H bash -lc "wc -l < ~/trading-engine/var/live/live_signals.jsonl"')
 LOCAL_LINES=$(wc -l < /tmp/from-vps.jsonl)
 [ "$REMOTE_LINES" -eq "$LOCAL_LINES" ] || {
   echo "download is short: remote $REMOTE_LINES, local $LOCAL_LINES"; exit 1; }
@@ -403,9 +486,15 @@ will still have the old behaviour until it is updated.
 ## 8. Stopping everything
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
 tmux kill-session -t =paper-trading
 tmux kill-session -t =paper-trading-vst
+'
 ```
+
+As the login user these two answer `error connecting to /tmp/tmux-1002/default`
+and stop nothing, which is the worst place in this document to be told the wrong
+thing — see §1 on the per-UID socket.
 
 Remove the two crontab lines (`crontab -e`) if you want the watchdog to
 stop bringing them back.
@@ -438,7 +527,15 @@ end it, outside the KRX session (the scan pauses itself if one opens):
 `KIS_APP_KEY` and `KIS_APP_SECRET` and nothing else:
 
 ```bash
-tmux new -s krx-pre2019
+sudo -u minjun4897 -H bash -lc 'tmux new -s krx-pre2019'
+```
+
+That attaches you to a `tmux` session **already running as `minjun4897`**, so
+everything typed inside it is in that user's own shell and needs no further
+`sudo`. Inside that session:
+
+```bash
+# already minjun4897 -- this is typed inside the tmux session opened above
 cd ~/trading-engine/python
 (
   read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo
