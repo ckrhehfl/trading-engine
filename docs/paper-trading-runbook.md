@@ -118,22 +118,42 @@ this by hand at least once so you actually see the startup log
 position, confirms leverage got set) before relying on the watchdog to
 restart it silently later:
 
+**Start it through the launcher, not by hand**, because this is the one loop
+that needs credentials and the runbook is the wrong place to keep a second copy
+of how they are obtained:
+
 ```bash
-sudo -u minjun4897 -H bash -lc '
-tmux new-session -d -s paper-trading-vst -c ~/trading-engine/java \
-    env BINGX_API_KEY="$(grep -E "^BINGX_API_KEY=" ~/trading-engine/.env | cut -d= -f2- | tr -d "\r")" \
-        BINGX_API_SECRET="$(grep -E "^BINGX_API_SECRET=" ~/trading-engine/.env | cut -d= -f2- | tr -d "\r")" \
-        PAPER_TRADING_EXECUTION_MODE=bingx-vst \
-        BINGX_BASE_URL=https://open-api.bingx.com \
-        PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
-    ./gradlew -q :runtime:runPaperTradingApp
-'
+sudo -u minjun4897 -H bash -lc '~/trading-engine/scripts/paper-trading-watchdog.sh'
 ```
 
-The `tr -d "\r"` is not cosmetic. This repo's `.env` really carries CRLF, and
-a trailing `\r` on a key is what once reached a JDK exception message with the
-real value inside it — `BingXAdapter`'s constructor now strips both credentials
-for that reason, and stripping here too means the bad value never travels.
+It starts whichever session is not already running, so it doubles as the manual
+start. `start_vst` reads `BINGX_API_KEY`/`BINGX_API_SECRET` through
+`get_env_var` — never `source`, CRLF stripped, the value never logged — and
+will not launch the session at all when either is missing. It is not scheduled on this
+box, so running it is a one-shot start, not an enrolment.
+
+The startup log you wanted to see by hand is more durable this way than a pane:
+`pipe_session_log` attaches the session to
+`~/trading-engine/var/live/sessions/paper-trading-vst.log`, which survives the
+scrollback and a detach.
+
+> **A credential exposure in that launcher, measured 2026-09-29 and left for the
+> operator to decide on.** `start_vst` passes the key and secret as
+> `env KEY=value` arguments to `tmux new-session`, and **tmux stores the start
+> command**: `tmux list-panes -F '#{pane_start_command}'` prints the value back,
+> and it is in the process argv for `ps`. Verified with a sentinel value rather
+> than a real one.
+>
+> **The obvious fix does not work, which is why this is not fixed here.**
+> Exporting the variables first and letting `tmux` inherit them keeps
+> `pane_start_command` clean — but only when no `tmux` server is already
+> running. Measured: with a server already up (which it is, because the
+> simulated session starts first), the second session's child saw **nothing**,
+> so the loop would start with no credentials at all. A real fix needs
+> `tmux new-session -e`, or the launched process reading the values itself the
+> way `scripts/kis-paper.sh` does. That is a change to a credential path on a
+> loop that is currently stopped, so it belongs to the operator and to its own
+> change, not to a documentation fix about `~`.
 
 (In practice, easier to just run `scripts/paper-trading-watchdog.sh`
 once by hand — it does exactly this, for both sessions, only starting
@@ -143,8 +163,22 @@ Check it actually started cleanly (`=name` forces an exact session
 match — see §5's note on why a bare, unprefixed target is unsafe here):
 
 ```bash
-tmux capture-pane -t =paper-trading -p
-tmux capture-pane -t =paper-trading-vst -p
+sudo -u minjun4897 -H bash -lc 'tmux capture-pane -t =paper-trading -p'
+sudo -u minjun4897 -H bash -lc 'tmux capture-pane -t =paper-trading-vst -p'
+```
+
+**The user matters here for a second reason beyond file paths: `tmux`'s default
+socket is per-UID.** Measured 2026-09-29 — the sessions live on
+`/tmp/tmux-1001` (`minjun4897`), and the same `tmux ls` as the login user
+answers `error connecting to /tmp/tmux-1002/default (No such file or
+directory)`. A `capture-pane` run as `minju` does not show an empty pane; it
+cannot see the session at all.
+
+The durable alternative, which does not depend on scrollback still holding the
+startup lines:
+
+```bash
+sudo -u minjun4897 -H bash -lc 'tail -40 ~/trading-engine/var/live/sessions/paper-trading-vst.log'
 ```
 
 Look for `starting paper trading loop` and a `tick complete` line for
@@ -376,13 +410,16 @@ for detail and for why the refresh is a plain page reload rather than a
 For raw detail beyond what the dashboard summarizes:
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
+cd ~/trading-engine
 tmux ls                                     # both sessions alive?
 tmux capture-pane -t =paper-trading -p | tail -20
 tmux capture-pane -t =paper-trading-vst -p | tail -20
 cat var/live/cron.log | tail -20            # daily signal generation history
 cat var/live/watchdog.log                   # any restarts needed?
-ls var/live/reports/daily/                  # simulated loop's daily reports
-ls var/live/reports/vst/                    # VST loop's daily reports
+ls var/live/reports/daily/                  # daily reports, simulated loop
+ls var/live/reports/vst/                    # daily reports, VST loop
+'
 ```
 
 ## 7b. Bringing the deployment's audit trail back into the repository
@@ -445,9 +482,15 @@ will still have the old behaviour until it is updated.
 ## 8. Stopping everything
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
 tmux kill-session -t =paper-trading
 tmux kill-session -t =paper-trading-vst
+'
 ```
+
+As the login user these two answer `error connecting to /tmp/tmux-1002/default`
+and stop nothing, which is the worst place in this document to be told the wrong
+thing — see §1 on the per-UID socket.
 
 Remove the two crontab lines (`crontab -e`) if you want the watchdog to
 stop bringing them back.
