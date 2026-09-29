@@ -22,6 +22,39 @@ higher-bar decision gated by CLAUDE.md's Live Entry Criteria.
   cron specifically)
 - `git`
 
+### On the GCP instance, you are not the user that owns the repo
+
+**Every command in this document that touches the deployment must be run as
+`minjun4897`, and `gcloud compute ssh` does not log you in as them.** Measured
+2026-09-29: the login lands as `minju`, `$HOME` is `/home/minju`, and
+`~/trading-engine` **does not exist** for that user.
+
+That makes `~` the trap rather than the user, because it expands in the wrong
+place *twice over* and neither is obvious:
+
+| form | `~` expands | result |
+|---|---|---|
+| `sudo -u minjun4897 cat ~/x` | in the **caller's** shell, before `sudo` runs | `/home/minju/x` — fails |
+| `ssh --command='sudo -u minjun4897 cat ~/x'` | in the **remote login** shell, still as `minju` | `/home/minju/x` — fails |
+| `sudo -u minjun4897 -H bash -lc 'cat ~/x'` | inside the target user's own login shell | `/home/minjun4897/x` — correct |
+
+So the form to use, everywhere below:
+
+```bash
+sudo -u minjun4897 -H bash -lc '<the command>'
+```
+
+`-H` sets `HOME`, and `bash -lc` is what makes `~` and `$HOME` resolve as that
+user rather than as whoever typed it. An absolute path works too and is the
+better choice inside a script; `~` is kept in the interactive commands below
+because it is what a person types, which is exactly why the expansion rule
+needs stating once here rather than being rediscovered per command.
+
+`CLAUDE.md` already records the underlying fact — *"the repo on the instance
+lives under `minjun4897`, not the SSH login user"* — and this document's
+commands contradicted it until 2026-09-29, so a reader following them got
+`No such file or directory` with nothing to explain it.
+
 ## 2. First-time setup on a new machine
 
 ```bash
@@ -72,9 +105,11 @@ problem in one (e.g. a `KillSwitch` trip) can never affect the other.
 **Simulated (internal fill simulator, no real network writes)**:
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
 tmux new-session -d -s paper-trading -c ~/trading-engine/java \
     env BINGX_BASE_URL=https://open-api.bingx.com \
     ./gradlew -q :runtime:runPaperTradingApp
+'
 ```
 
 **BingX VST (real demo-trading network calls, virtual funds)** — do
@@ -84,14 +119,21 @@ position, confirms leverage got set) before relying on the watchdog to
 restart it silently later:
 
 ```bash
+sudo -u minjun4897 -H bash -lc '
 tmux new-session -d -s paper-trading-vst -c ~/trading-engine/java \
-    env BINGX_API_KEY="$(grep -E '^BINGX_API_KEY=' ~/trading-engine/.env | cut -d= -f2-)" \
-        BINGX_API_SECRET="$(grep -E '^BINGX_API_SECRET=' ~/trading-engine/.env | cut -d= -f2-)" \
+    env BINGX_API_KEY="$(grep -E "^BINGX_API_KEY=" ~/trading-engine/.env | cut -d= -f2- | tr -d "\r")" \
+        BINGX_API_SECRET="$(grep -E "^BINGX_API_SECRET=" ~/trading-engine/.env | cut -d= -f2- | tr -d "\r")" \
         PAPER_TRADING_EXECUTION_MODE=bingx-vst \
         BINGX_BASE_URL=https://open-api.bingx.com \
         PAPER_TRADING_REPORTS_DIR=var/live/reports/vst \
     ./gradlew -q :runtime:runPaperTradingApp
+'
 ```
+
+The `tr -d "\r"` is not cosmetic. This repo's `.env` really carries CRLF, and
+a trailing `\r` on a key is what once reached a JDK exception message with the
+real value inside it — `BingXAdapter`'s constructor now strips both credentials
+for that reason, and stripping here too means the bad value never travels.
 
 (In practice, easier to just run `scripts/paper-trading-watchdog.sh`
 once by hand — it does exactly this, for both sessions, only starting
@@ -362,11 +404,11 @@ set -Eeuo pipefail                       # so step 1 failing stops the rest
 #    audit trail stays safe (the tool is append-only) but the operator
 #    is told the sync is done when records are missing.
 gcloud compute ssh paper-trading --zone=us-central1-a \
-  --command='sudo -u minjun4897 cat ~/trading-engine/var/live/live_signals.jsonl' \
+  --command='sudo -u minjun4897 -H bash -lc "cat ~/trading-engine/var/live/live_signals.jsonl"' \
   > /tmp/from-vps.jsonl
 
 REMOTE_LINES=$(gcloud compute ssh paper-trading --zone=us-central1-a \
-  --command='sudo -u minjun4897 wc -l < ~/trading-engine/var/live/live_signals.jsonl')
+  --command='sudo -u minjun4897 -H bash -lc "wc -l < ~/trading-engine/var/live/live_signals.jsonl"')
 LOCAL_LINES=$(wc -l < /tmp/from-vps.jsonl)
 [ "$REMOTE_LINES" -eq "$LOCAL_LINES" ] || {
   echo "download is short: remote $REMOTE_LINES, local $LOCAL_LINES"; exit 1; }
@@ -438,7 +480,7 @@ end it, outside the KRX session (the scan pauses itself if one opens):
 `KIS_APP_KEY` and `KIS_APP_SECRET` and nothing else:
 
 ```bash
-tmux new -s krx-pre2019
+sudo -u minjun4897 -H bash -lc 'tmux new -s krx-pre2019'   # then, inside it:
 cd ~/trading-engine/python
 (
   read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo
