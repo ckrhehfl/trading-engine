@@ -455,7 +455,7 @@ cd ~/trading-engine/python
 Two details in that shape, both deliberate. `read -rs` keeps the value out of
 shell history and off the screen, which a `KIS_APP_KEY=…` on the command line
 would not. **The subshell scopes the credentials to the scan**: this session
-outlives a six-to-nine-day run by definition, and an `export` in the interactive
+outlives an eight-to-eleven-day run by definition, and an `export` in the interactive
 shell would be inherited by everything typed in it afterwards. Re-entering them
 on resume is the right cost — the same `--db-path` is what resumes, not the
 environment.
@@ -469,6 +469,20 @@ credential mechanisms in one procedure, where the one that differs is the one
 nobody remembers, is the cost `CLAUDE.md` names; the cheapest way to avoid it in
 a manual procedure is not to introduce a second one.
 
+**Typing them is the operator's step, and there is no non-interactive
+substitute here.** An AI session working on this repo has no terminal to type
+into, and both ways around that are worse than asking: putting `KIS_APP_KEY=…`
+on a `tmux new-session` command line puts the real key in a process's argv,
+where `ps` shows it to any local reader, and a helper script reading `.env`
+adds an unreviewed credential consumer outside the collectors that `CLAUDE.md`'s
+reaffirmed fallback covers. Both were tried while getting this backfill started;
+the first was caught locally, the second on review, and **neither remains** —
+the `~/.krx_pre2019_runner.sh` that did it has been removed from the instance.
+
+That leaves a one-time human step at the start of the run and at each resume,
+which is where `CLAUDE.md` already puts entering a credential. It costs a few
+seconds against a run measured in days.
+
 An earlier draft of this section told the operator to **source `.env`
 wholesale**. Named without repeating it, so nobody copies it back out: that
 executes the whole file, exports everything in it, and passes a CRLF-bearing key
@@ -479,13 +493,103 @@ it had already been typed at a prompt.
 It is **resumable** — `already_done` reads the database, not a sidecar — so
 detaching, rebooting or killing it costs only the code in flight.
 
+**Log it outside the checkout, or under a name `.gitignore` covers.** A run this
+long outgrows `tmux` scrollback, so its output wants a file — and a file inside
+the checkout is not free: `scripts/vps-deploy.sh` refuses to run on **any**
+`git status --porcelain` output, untracked files included, and
+`live.health_check` raises `uncommitted_changes` on the same signal. The first attempt at this
+backfill wrote `var/krx_pre2019_scan.log` and so blocked the next deploy. Both
+halves are now handled — `**/var/*.log` is ignored, and the command above
+appends outside the repo — but the general rule is the one to remember, because
+it already caught `python/var/` once on 2026-09-22.
+
+```bash
+    ... 2>&1 | tee -a ~/krx_pre2019_scan.log
+```
+
+The credential prompts are unaffected, and for a simpler reason than a claim
+about which stream a prompt uses: the pipe is attached to the **python command's
+own stdout**, while the two `read`s are separate commands earlier in the
+subshell, whose stdin and stdout are still the terminal. Nothing about them is
+inside the pipeline.
+
+**Recovering from a run that failed on the width: re-run `--scan`, and delete
+nothing.** `already_done` holds only `done` and `absent:%` — `failed:%` is
+deliberately outside it — so a plain `--scan` at the corrected width picks a
+failed code back up and overwrites its row, while skipping the completed ones.
+
+**Scoped to the current candidate pool, which is the one caveat.** `--scan`
+iterates the pool `candidates()` builds from the universe database, so a
+`failed:%` row for a code that pool no longer contains is not revisited by
+either pass — `--second-pass` leaves it alone for the same reason. The recorded
+codes outside the selection are counted and printed on the way in, which is where
+to notice it.
+Verified against a seeded database rather than read off the query: a
+`failed:capped` row was re-fetched and a `done` row skipped.
+
+**What does not recover it is `--second-pass`**, and this is the trap worth
+stating, because it is the pass whose name sounds like the answer.
+`retryable_failures` selects `failed:rejected` and `failed:transport` only —
+`failed:capped` is excluded on purpose, since an identical request returns an
+identical capped answer, so retrying one is a request that cannot succeed. That
+is right when the cap was hit on the data and unhelpful when it was hit on the
+*width*. Deleting the failed rows first does not help either; it makes
+`--second-pass` find nothing at all.
+
+So the order is **`--scan` at the new width, then `--second-pass`** — the first
+recovers the codes the width lost, the second resolves what is genuinely
+transient or absent. Read the counts first, to know which you are looking at:
+
+```bash
+sqlite3 data/var/krx_scan_pre2019.sqlite3 \
+  'SELECT (SELECT count(*) FROM scan_bars) AS bars,
+          status, count(*) FROM scan_progress GROUP BY status;'
+```
+
+An earlier version of this section said to delete the failed rows before
+restarting. It is wrong — `already_done` never treated them as done — and it is
+recorded rather than quietly replaced because deleting rows on a series that
+cannot be refetched cheaply is the kind of instruction worth being wrong about
+loudly. The one case where deleting is *harmless* is `bars = 0`, which is what
+the pre-2019 file held: nothing to lose either way.
+
 ### What it costs, derived rather than guessed
 
-120 calendar days per request, so **84 pages per code** against the existing
-panel's 24 — the pre-2019 window is 27.35 years against 7.71. Over the 4,638
-codes the pool resolves to, that is **~390,000 requests**, and throughput was
-measured at 0.5–0.7/s after the close. So **roughly 155–216 hours, six to nine
-days**, in line with the existing panel's own 44–62 hour arithmetic.
+**90 calendar days per request**, which `default_page_days` returns for any
+panel reaching before 2000 — so the width below is what the command above
+already uses, and passing `--page-days 120` here would override it back to the
+value that fails. Getting it wrong is not a slow run but a failed one.
+
+KRX traded **Saturdays** until 2000 — six sessions a week, not five — so a
+120-day page there holds about `120 × 6/7 ≈ 103` sessions gross, and once
+holidays are taken out it lands **on** the endpoint's silent **100-row cap**
+rather than under it. From 2001 the same width holds ~81–84. `validated_output2`
+refuses a page at `len(output2) >= 100`, and `failed:capped` is deliberately
+**not** retryable because an identical request returns an identical capped
+answer.
+
+**Two measurements, and reading them together is the point.** 25 probed pages on
+삼성전자 across 1991–1999 topped out at **99** rows — one short of the cap, which
+is why probing alone never tripped it. The real run did trip it: **14 of 16
+recorded codes `failed:capped`, 0 bars**, and that status is only reachable
+through `validated_output2`'s `>= 100` refusal, since `classify_failure` requires
+that exact message. So the honest reading is not "99 is the worst case" but **a
+120-day page in that era sits at the cap with no margin**, over on some windows
+and under on others.
+
+That is also why the loss is per *code* rather than per page: the fetch loop
+`break`s a code at its first failed page, so one dense stretch anywhere in
+1991–2018 discards that code's whole window. An intermittent page-level breach
+becomes a near-total loss of codes.
+
+At 90 days the same arithmetic gives `90 × 6/7 ≈ 77`, and 25 probed pages across
+1991–1999 returned at most **76** rows — about 24 rows of real margin.
+
+So **111 pages per code** against the existing panel's 24, over the **4,371**
+codes the pool resolves to: **~485,000 requests**, at a throughput measured at
+0.5–0.7/s after the close — **roughly 190–270 hours, eight to eleven days**. The
+scan prints its own estimate, derived from the width it will actually use, and it
+is resumable, so that is wall time rather than a single sitting.
 
 ### A 53% shortcut exists, was measured, and is deliberately NOT taken
 
