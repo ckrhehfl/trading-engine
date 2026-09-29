@@ -95,6 +95,50 @@ _LOCAL_SECTIONS = frozenset({"1", "2", "7b"})
 _CHECKOUT_RELATIVE = re.compile(r"(?:^|[\s;&|(])(?:\./)?scripts/\S+\.sh|\.venv/bin/")
 
 
+def split_commands(line: str) -> list[str]:
+    """Split a line into the commands a shell would run, ignoring separators
+    inside quotes.
+
+    **A line is not a command, and treating it as one exempts the wrong half.**
+    `./scripts/x.sh; sudo -u OWNER -H bash -lc '...'` has the correct form
+    somewhere on the line, so any per-line rule clears the unprotected command
+    in front of it. The separators inside a quoted `-lc` string are part of that
+    command and must not split it, which is why this tracks quote state instead
+    of calling `re.split`.
+    """
+    parts: list[str] = []
+    buf: list[str] = []
+    quote: str | None = None
+    i = 0
+    while i < len(line):
+        ch = line[i]
+        if quote is not None:
+            buf.append(ch)
+            if ch == quote:
+                quote = None
+            i += 1
+            continue
+        if ch in "'\"":
+            quote = ch
+            buf.append(ch)
+            i += 1
+            continue
+        if line.startswith("&&", i) or line.startswith("||", i):
+            parts.append("".join(buf))
+            buf = []
+            i += 2
+            continue
+        if ch in ";|&":
+            parts.append("".join(buf))
+            buf = []
+            i += 1
+            continue
+        buf.append(ch)
+        i += 1
+    parts.append("".join(buf))
+    return [p.strip() for p in parts if p.strip()]
+
+
 def _path_escapes_the_quoted_command(line: str) -> bool:
     """True when a checkout path sits OUTSIDE `-lc`'s command string.
 
@@ -179,12 +223,15 @@ def checkout_relative_offenders(section: str, block: str) -> list[str]:
         if inside and line.strip() == "'":
             inside = False
             continue
-        bare = line.split("#", 1)[0]
-        if not _CHECKOUT_RELATIVE.search(bare):
-            continue
-        if inside or (_CORRECT.search(line) and not _path_escapes_the_quoted_command(line)):
-            continue
-        offenders.append(line.strip())
+        for command in split_commands(line.split("#", 1)[0]):
+            if not _CHECKOUT_RELATIVE.search(command):
+                continue
+            if inside or (
+                _CORRECT.search(command)
+                and not _path_escapes_the_quoted_command(command)
+            ):
+                continue
+            offenders.append(command)
     return offenders
 
 
@@ -215,10 +262,14 @@ def sudo_form_offenders(lines: list[str]) -> list[str]:
     form, never that anything still consults it.
     """
     return [
-        line.strip()
+        command
         for line in lines
-        if _ANY_SUDO.search(line)
-        and (not _CORRECT.search(line) or _path_escapes_the_quoted_command(line))
+        for command in split_commands(line)
+        if _ANY_SUDO.search(command)
+        and (
+            not _CORRECT.search(command)
+            or _path_escapes_the_quoted_command(command)
+        )
     ]
 
 
@@ -233,6 +284,19 @@ def sudo_form_offenders(lines: list[str]) -> list[str]:
         ('sudo -u minjun4897 -H bash -lc "bash" ~/trading-engine/x', True),
         # Not addressed to the owner at all, so not this rule's business.
         ("tmux capture-pane -t =paper-trading -p", False),
+        # Two commands on one line: a correct second one used to clear the
+        # first, because the check read the whole line.
+        (
+            "sudo -u minjun4897 cat ~/trading-engine/x"
+            " && sudo -u minjun4897 -H bash -lc 'true'",
+            True,
+        ),
+        # The same shape where BOTH are correct stays clean.
+        (
+            "sudo -u minjun4897 -H bash -lc 'cat ~/x'"
+            " && sudo -u minjun4897 -H bash -lc 'true'",
+            False,
+        ),
     ],
 )
 def test_what_the_sudo_form_check_rejects(line, offending):
@@ -253,24 +317,83 @@ def test_every_command_run_as_the_owner_uses_the_login_shell_form():
     )
 
 
-def test_no_tilde_path_into_the_checkout_is_left_to_the_login_shell():
-    """A `~/trading-engine` path is only correct inside the owner's own shell.
+def tilde_path_offenders(block: str) -> list[str]:
+    """Commands using a `~/trading-engine` path from outside the owner's shell.
 
-    Checked per fenced *block* rather than per line, because the correct form
-    opens a quoted shell on one line and the paths follow on later ones — which
-    is exactly what the two loop-start commands look like.
+    **Per command, not per block**, which it was until CodeRabbit pointed out
+    that a correct sibling then vouches for a bare one — the identical defect
+    the tmux rule already had and had already been narrowed for. A block-scoped
+    check passes `cat ~/trading-engine/x` on its own line as long as some other
+    line in the block carries the right prefix.
     """
-    text = RUNBOOK.read_text(encoding="utf-8")
+    if _ALREADY_OWNER.search(block):
+        return []
     offenders: list[str] = []
-    for block in re.findall(r"```bash\n(.*?)```", text, re.S):
-        if not _TILDE_PATH.search(block) or _ALREADY_OWNER.search(block):
+    inside = False
+    for line in block.splitlines():
+        if _OPENS_SHELL.search(line):
+            inside = True
             continue
-        if not _CORRECT.search(block):
-            offenders.append(block.strip().splitlines()[0])
+        if inside and line.strip() == "'":
+            inside = False
+            continue
+        if inside:
+            continue
+        for command in split_commands(line.split("#", 1)[0]):
+            if not _TILDE_PATH.search(command):
+                continue
+            if _CORRECT.search(command) and not _path_escapes_the_quoted_command(command):
+                continue
+            offenders.append(command)
+    return offenders
+
+
+def test_no_tilde_path_into_the_checkout_is_left_to_the_login_shell():
+    offenders = [
+        o
+        for block in re.findall(
+            r"```bash\n(.*?)```", RUNBOOK.read_text(encoding="utf-8"), re.S
+        )
+        for o in tilde_path_offenders(block)
+    ]
     assert not offenders, (
-        "these blocks use a ~/trading-engine path without first becoming "
-        f"{OWNER} via `-H bash -lc`:\n" + "\n".join(f"  {b}" for b in offenders)
+        f"these use a ~/trading-engine path without becoming {OWNER} via "
+        f"`-H bash -lc`:\n" + "\n".join(f"  {b}" for b in offenders)
     )
+
+
+@pytest.mark.parametrize(
+    "block,expected",
+    [
+        # The hole: a correct command later in the block used to clear this one.
+        ("cat ~/trading-engine/x\nsudo -u minjun4897 -H bash -lc 'true'", 1),
+        # And the same on one line, separated by `;`.
+        ("cat ~/trading-engine/x; sudo -u minjun4897 -H bash -lc 'true'", 1),
+        ("sudo -u minjun4897 -H bash -lc 'cat ~/trading-engine/x'", 0),
+        # A separator inside the quoted command string must not split it.
+        ("sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine && ls'", 0),
+        # The multi-line form keeps the shell open for the lines below.
+        ("sudo -u minjun4897 -H bash -lc '\ncat ~/trading-engine/x\n'", 0),
+        ("# already minjun4897\ncat ~/trading-engine/x", 0),
+    ],
+)
+def test_what_counts_as_a_tilde_offender(block, expected):
+    assert len(tilde_path_offenders(block)) == expected
+
+
+@pytest.mark.parametrize(
+    "line,parts",
+    [
+        ("a; b", ["a", "b"]),
+        ("a && b || c", ["a", "b", "c"]),
+        ("cat x | tail -3", ["cat x", "tail -3"]),
+        # Separators inside quotes belong to the quoted command.
+        ("sudo -u x -H bash -lc 'cd y && ls; pwd'", ["sudo -u x -H bash -lc 'cd y && ls; pwd'"]),
+        ('sh -c "a; b" && c', ['sh -c "a; b"', "c"]),
+    ],
+)
+def test_how_a_line_splits_into_commands(line, parts):
+    assert split_commands(line) == parts
 
 
 #: A line that *opens* the owner's shell for the lines that follow: the correct
