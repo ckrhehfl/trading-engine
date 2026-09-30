@@ -120,6 +120,32 @@ def split_commands(line: str) -> list[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
+def strip_comment(line: str) -> str:
+    """Drop a shell comment, respecting quotes and word boundaries.
+
+    **Splitting on the first `#` fails OPEN**, which is why this exists.
+    `grep '#' log; ./scripts/vps-deploy.sh --check` becomes `grep '` that way,
+    so the unwrapped command after it is never examined and the check passes on
+    a line that would run as the wrong user. Found on review.
+
+    Two rules, both from the shell: a `#` inside quotes is data, and a `#` that
+    is not at the start of a word is part of that word (`echo a#b` has no
+    comment).
+    """
+    quote: str | None = None
+    for i, ch in enumerate(line):
+        if quote is not None:
+            if ch == quote:
+                quote = None
+            continue
+        if ch in "'\"":
+            quote = ch
+            continue
+        if ch == "#" and (i == 0 or line[i - 1] in " \t"):
+            return line[:i]
+    return line
+
+
 def _path_escapes_the_quoted_command(line: str) -> bool:
     """True when a path sits OUTSIDE `-lc`'s command string.
 
@@ -212,7 +238,7 @@ def offenders_in_block(section: str, block: str) -> list[str]:
             continue
         if inside:
             continue
-        bare = line.split("#", 1)[0].strip()
+        bare = strip_comment(line).strip()
         if not bare:
             continue
         for command in split_commands(bare):
@@ -245,7 +271,7 @@ def unlocked_scan_offenders(
         f"§{section}: {command.strip()}"
         for section, block in blocks
         for command in block.splitlines()
-        if _UNLOCKED_SCAN.search(command.split("#", 1)[0])
+        if _UNLOCKED_SCAN.search(strip_comment(command))
     ]
 
 
@@ -376,6 +402,54 @@ def test_the_scan_is_always_reached_through_the_launcher():
 )
 def test_what_counts_as_an_unlocked_scan(block, expected):
     assert len(unlocked_scan_offenders([("8b", block)])) == expected
+
+
+@pytest.mark.parametrize(
+    "line,stripped",
+    [
+        ("./scripts/x.sh  # why", "./scripts/x.sh  "),
+        # A `#` inside quotes is data, not a comment. The first two are also
+        # rejected by the word-boundary rule (the char before `#` is a quote),
+        # so they do NOT exercise the quote tracking -- the third does, and it
+        # is the one a mutation removing that tracking fails.
+        ("grep '#' log; ./scripts/x.sh", "grep '#' log; ./scripts/x.sh"),
+        ('grep "#" log; ./scripts/x.sh', 'grep "#" log; ./scripts/x.sh'),
+        ("grep 'a #b' log; ./scripts/x.sh", "grep 'a #b' log; ./scripts/x.sh"),
+        ('sed "s/ #x/y/" f; tmux ls', 'sed "s/ #x/y/" f; tmux ls'),
+        # Mid-word `#` is part of the word, as in the shell.
+        ("echo a#b", "echo a#b"),
+        ("# whole line", ""),
+    ],
+)
+def test_how_a_comment_is_stripped(line, stripped):
+    assert strip_comment(line) == stripped
+
+
+@pytest.mark.parametrize(
+    "block,must_be_named",
+    [
+        ("grep 'a #b' log; ./scripts/vps-deploy.sh --check", "vps-deploy.sh"),
+        ("grep 'a #b' log; tmux ls", "tmux ls"),
+    ],
+)
+def test_a_quoted_hash_does_not_hide_the_rest_of_the_line(block, must_be_named):
+    """The guard failed open here, which is the direction that matters: a
+    deployment command running as the login user, and a green test.
+
+    **Asserted on which command is named, not on the count.** Under the naive
+    split the surviving fragment (`grep '`) is itself an offender, so a
+    non-empty list stayed green while the command after the quoted `#` went
+    unexamined -- the mutation survived until this named it.
+    """
+    found = offenders_in_block("7", block)
+    assert any(must_be_named in o for o in found), (
+        f"{must_be_named!r} was not examined; got {found}"
+    )
+
+
+def test_a_quoted_hash_does_not_hide_an_unlocked_scan():
+    found = unlocked_scan_offenders([("8b", "echo 'a #b'; python3 -m data.krx_scan")])
+    assert any("data.krx_scan" in o for o in found), found
 
 
 def test_every_bash_block_parses():

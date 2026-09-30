@@ -234,8 +234,10 @@ def _command_lines() -> str:
     prose. Same shape as the sibling-vouches-for-sibling defect the runbook
     guard hit three times.
     """
+    from test_runbook_commands import strip_comment
+
     return "\n".join(
-        line.split("#", 1)[0] for line in SCRIPT.read_text(encoding="utf-8").splitlines()
+        strip_comment(line) for line in SCRIPT.read_text(encoding="utf-8").splitlines()
     )
 
 
