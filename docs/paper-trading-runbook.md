@@ -566,6 +566,31 @@ credential mechanisms in one procedure, where the one that differs is the one
 nobody remembers, is the cost `CLAUDE.md` names; the cheapest way to avoid it in
 a manual procedure is not to introduce a second one.
 
+### The unattended way, and why it is the one to use
+
+`scripts/collect-krx-pre2019.sh` does the same pass from cron, so a nine-day run
+does not need a human present for each restart:
+
+```bash
+sudo -u minjun4897 -H bash -lc 'crontab -l; echo "17 * * * * /home/minjun4897/trading-engine/scripts/collect-krx-pre2019.sh"'
+```
+
+Add that line with `crontab -e` once it reads right. Hourly is not a retry
+storm: the script takes a `flock` and exits 0 when a pass already holds it, and
+it asks whether KRX is open before starting one. A finished panel re-invoked
+skips every completed code and exits in seconds, which is also how a remaining
+`failed:rejected` set stays visible instead of being declared done.
+
+**Operator decision, 2026-09-30.** The typed procedure below works and reads
+nothing from `.env`, but it puts a human on every restart of a nine-day run, and
+the failure mode is not a lost session — it is nobody noticing for a day. The
+script therefore uses the collectors' own `.env` fallback, which `CLAUDE.md`
+records as a reaffirmed decision for exactly this case: cron supplies no
+environment. The standing answer is unchanged — an env-only policy is better
+posture and must be taken across all collectors at once.
+
+### The typed way, for a first run you want to watch
+
 **Typing them is the operator's step, and there is no non-interactive
 substitute here.** An AI session working on this repo has no terminal to type
 into, and both ways around that are worse than asking: putting `KIS_APP_KEY=…`
