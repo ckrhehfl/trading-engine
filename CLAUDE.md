@@ -671,13 +671,23 @@ on a file that yields zero common stock.
   `env KEY=value` arguments to `tmux new-session`, and tmux keeps the start
   command: `tmux list-panes -F '#{pane_start_command}'` prints the value back.
   Latent today only because that loop is stopped — **so anyone restarting a VST
-  loop inherits this.** The obvious fix is wrong and that is the part worth
-  having written down: exporting the variables first and letting tmux inherit
-  them keeps `pane_start_command` clean **but delivers nothing at all when a tmux
-  server is already running**, which it always is because the simulated session
-  starts first — measured, the second session's child saw an empty value. A real
-  fix needs `tmux new-session -e`, or the launched process reading the values
-  itself the way `scripts/kis-paper.sh` does.
+  loop inherits this.** Two candidate fixes were measured and **neither is
+  sufficient**, which is the part worth having written down, because each looks
+  like a one-line answer:
+
+  - **Exporting the variables and letting tmux inherit them delivers nothing at
+    all when a tmux server is already running**, which it always is because the
+    simulated session starts first. Measured: the second session's child saw an
+    empty value, so the loop would start with no credentials.
+  - **`tmux new-session -e KEY=value` does deliver** — into an already-running
+    server too — and does keep `pane_start_command` clean. It is still not a
+    fix: `tmux show-environment` prints the value straight back, so anyone who
+    can reach that tmux socket still reads it, which is the exposure itself
+    rather than a detail of how the value was passed.
+
+  So the only sufficient fix is **the launched process reading the values
+  itself**, the way `scripts/kis-paper.sh` does — a design change on a stopped
+  loop, which is why this is recorded rather than applied.
 - **`VstPreflight` fails closed.** It sets exchange-side leverage for both
   `LONG` and `SHORT` to the canary base on every clean start; if a pre-existing
   non-zero position is found, leverage enforcement is **skipped** — exchanges
