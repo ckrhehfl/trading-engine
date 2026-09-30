@@ -76,19 +76,36 @@ python/data/var/
 # `check_deployment`'s own `uncommitted_changes` alert. A check firing on
 # an artifact of running that check is the kind of false positive that
 # gets a check switched off.
-**/var/live/
-
-# A log written under any `var/` directory. Same failure as the line above and
-# found the same way -- on the instance, by a deploy refusing to run.
+# ...which is why the rule is now the whole directory rather than the
+# extensions of the artifacts found so far. **Three incidents, one shape**, and
+# the third is what made a per-extension rule obviously the wrong instrument:
 #
-# `scripts/vps-deploy.sh` fails closed on ANY output from
-# `git status --porcelain`, untracked files included, and `live.health_check`
-# raises `uncommitted_changes` on the same signal. So redirecting a long run's
-# output to `var/<something>.log` inside the checkout does not just leave a
-# stray file: it blocks the next deploy and fires an alert. The pre-2019
-# backfill's own log did exactly that on 2026-09-28.
+#  1. `2026-09-22` — `health_check --dry-run` took its lock in `python/var/`,
+#     and `check_deployment`'s own `uncommitted_changes` alert fired on an
+#     artifact of running that check. A check firing on itself is the kind of
+#     false positive that gets a check switched off.
+#  2. `2026-09-28` — the pre-2019 backfill's log at `var/krx-pre2019.log`
+#     blocked the next deploy outright: `scripts/vps-deploy.sh` refuses to run
+#     on ANY `git status --porcelain` output, untracked files included.
+#  3. `2026-09-30` — `collect-krx-pre2019.sh`'s `flock` file. Caught on review
+#     before it reached the instance, and it is a `.lock`, which the `.log`
+#     rule that answered (2) does not match.
 #
-# Unanchored for the reason the `var/live/` comment above gives at length: a
-# pattern containing a slash is anchored at the repository root, and a run
-# started from `python/` writes `python/var/`.
-**/var/*.log
+# **Nothing under any `var/` is tracked** (`git ls-files | grep var/` is
+# empty), so this loses nothing today, and a file that ever does need
+# committing can be un-ignored with a `!` line at that point. The alternative —
+# adding an extension per incident — is a blocklist betting on having thought
+# of every artifact, which this project has already recorded losing.
+#
+# **The `**/` is for a reader, not for git** -- and the first draft of this
+# comment said otherwise, so the correction is the note worth keeping.
+# `var/` and `**/var/` are equivalent: a pattern is anchored at the repository
+# root only when it contains a slash somewhere other than the end, so a
+# trailing-slash-only pattern matches at every level. Measured: with `var/`
+# alone, `python/var/x.lock` IS ignored.
+#
+# What the anchoring rule really bit in (1) is `var/live/`, whose slash is in
+# the middle: that one is anchored and genuinely never matched
+# `python/var/live/`. The `**/` prefix stays here for consistency with the
+# `**/data/var/` and `**/var/live/` lines above, where it does real work.
+**/var/

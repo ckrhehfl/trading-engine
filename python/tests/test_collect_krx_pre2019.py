@@ -231,3 +231,62 @@ def test_errexit_is_lifted_in_exactly_one_place():
     )
     assert text.count("set +e") == 1
     assert "rc=$?" in text and 'if [ "$rc" -ne 0 ]' in text
+
+
+def test_the_runtime_artifacts_are_all_gitignored():
+    """A file this script leaves in the checkout blocks the next deploy.
+
+    `scripts/vps-deploy.sh` refuses to run on ANY `git status --porcelain`
+    output, untracked files included, and `live.health_check` raises
+    `uncommitted_changes` on the same signal. That has now bitten three times
+    in one shape: a lock in `python/var/` (2026-09-22), this backfill's log
+    (2026-09-28), and this script's own `flock` file, caught on review
+    (2026-09-30).
+
+    **The lock file is deliberately not deleted** — `flock` releases on fd
+    close, and unlinking a file another process holds open is how the lock
+    stops meaning anything. So the artifact stays and the ignore rule is what
+    has to cover it, which is why this asserts the rule rather than a cleanup.
+
+    Checked through `git check-ignore` rather than by reading `.gitignore`,
+    because the anchoring rule is easy to state wrongly -- this file's own first
+    draft did. A pattern is anchored at the repository root only when it holds a
+    slash somewhere other than the end, so `var/` alone matches at every level
+    (measured: `python/var/x.lock` is ignored by it) while `var/live/` is
+    anchored and never matched `python/var/live/`. That second form is what the
+    2026-09-22 incident was.
+    """
+    repo = Path(__file__).resolve().parents[2]
+    artifacts = [
+        "var/krx-pre2019.lock",
+        "var/krx-pre2019.log",
+        # The `cd python` form, which is where the anchored rule failed.
+        "python/var/krx-pre2019.lock",
+        "python/var/live/latest.json",
+    ]
+    not_ignored = [
+        a
+        for a in artifacts
+        if subprocess.run(
+            ["git", "check-ignore", "-q", a], cwd=repo, capture_output=True
+        ).returncode
+        != 0
+    ]
+    assert not not_ignored, (
+        f"these would be left in the checkout and block the next deploy: {not_ignored}"
+    )
+
+
+def test_the_script_leaves_its_lock_file_rather_than_racing_to_remove_it():
+    """Stated as a test because "why not just delete it" is the obvious
+    question and the answer is not obvious.
+
+    Deleting the lock would let a second invocation create a fresh file and
+    take a lock on it while the first still holds the old inode — two writers
+    against one `scan_progress`, which is what the lock exists to prevent.
+    """
+    text = _command_lines()
+    assert 'exec 9>"$LOCK_FILE"' in text
+    assert "rm" not in text.replace("$REPO_ROOT", ""), (
+        "the script removes something; a lock file removal reopens the race"
+    )
