@@ -388,7 +388,21 @@ strategy."
   risk-gateway bypasses**
 - **no missing daily reports** across those 15 days
 - **kill switch verified** by a deliberate trip and recovery, not by waiting
-- **ambiguous-submission recovery verified** — the `SUBMISSION_UNKNOWN` path
+- **ambiguous-submission recovery verified** — the `SUBMISSION_UNKNOWN` path.
+  **This one clause is not satisfiable by the `simulated` loop, however long it
+  runs** (verified 2026-09-29): `MarkerRecordingSubmissionListener` is wired only
+  into `forBingXVst()` and `forKisPaper()`, and the simulated graph is a bare
+  `PaperBroker` with no `SubmissionListener` and no network, so no marker is ever
+  written. `PaperBroker.submit` does return `Optional.empty()`, but only for a
+  limit order a bar did not touch — an ordinary unfilled order, not an ambiguous
+  submission. Written down because the other seven clauses really are satisfied
+  by operating the system, so the list reads as "run it for 15 days" and a future
+  session would spend those days before finding out. What satisfies it is the
+  `bingx-vst` graph. **No committed script does it**: `scripts/verify-gate-a-kill-switch.sh`
+  covers the kill-switch clause, not this one, and the marker verification that
+  has been run lives only as an uncommitted `~/verify-markers.sh` on the
+  instance — so satisfying this clause starts with committing that, or it is
+  evidence nobody else can reproduce.
 
 ### Gate B — Strategy edge
 
@@ -650,6 +664,45 @@ on a file that yields zero common stock.
   construction** — it lives in `SteppedNotionalCalculator` behind
   `RiskGateway`'s existing `quantityRejectionReason` hook, never in
   `BingXAdapter`.
+- **The VST loop's credentials are visible to anything that can read its
+  `tmux` server or `ps`, and this is recorded rather than fixed** (measured
+  2026-09-29 with a sentinel value; operator decision to defer, 2026-09-30).
+  `scripts/paper-trading-watchdog.sh`'s `start_vst` passes the key and secret as
+  `env KEY=value` arguments to `tmux new-session`, and tmux keeps the start
+  command: `tmux list-panes -F '#{pane_start_command}'` prints the value back.
+  Latent today only because that loop is stopped — **so anyone restarting a VST
+  loop inherits this.** Two candidate fixes were measured and **neither is
+  sufficient**, which is the part worth having written down, because each looks
+  like a one-line answer:
+
+  - **Exporting the variables and letting tmux inherit them delivers nothing at
+    all when a tmux server is already running**, which it always is because the
+    simulated session starts first. Measured: the second session's child saw an
+    empty value, so the loop would start with no credentials.
+  - **`tmux new-session -e KEY=value` does deliver** — into an already-running
+    server too — and does keep `pane_start_command` clean. It is still not a
+    fix: `tmux show-environment` prints the value straight back, so anyone who
+    can reach that tmux socket still reads it, which is the exposure itself
+    rather than a detail of how the value was passed.
+
+  **The same exposure is in `scripts/kis-paper.sh`, which was almost cited here
+  as the safe example.** It is not one: it reads the four values with
+  `get_env_var` and then passes them to `tmux new-session` as `env` argv, so
+  they are in `ps aux` and `/proc/<pid>/cmdline` for the process's lifetime.
+  That script already says so in its own comment, disclosed on an earlier
+  CodeRabbit review, and names the fix it did not apply — writing the
+  credentials to a restricted-permission file the child reads itself.
+
+  **What is actually safe in this repo is `scripts/collect-krx-*.sh`**, which
+  `export`s and lets the child inherit, so nothing reaches argv. It is not
+  transferable to either loop launcher: both start their process under
+  `tmux new-session`, and inheritance measurably does not cross a tmux server
+  that is already running.
+
+  So the exposure is common to **both** launchers, no committed example of the
+  safe pattern for a tmux-started process exists, and the fix is the redesign
+  `kis-paper.sh`'s comment already describes — on loops that are currently
+  stopped, which is why this is recorded rather than applied.
 - **`VstPreflight` fails closed.** It sets exchange-side leverage for both
   `LONG` and `SHORT` to the canary base on every clean start; if a pre-existing
   non-zero position is found, leverage enforcement is **skipped** — exchanges
