@@ -685,9 +685,24 @@ on a file that yields zero common stock.
     can reach that tmux socket still reads it, which is the exposure itself
     rather than a detail of how the value was passed.
 
-  So the only sufficient fix is **the launched process reading the values
-  itself**, the way `scripts/kis-paper.sh` does — a design change on a stopped
-  loop, which is why this is recorded rather than applied.
+  **The same exposure is in `scripts/kis-paper.sh`, which was almost cited here
+  as the safe example.** It is not one: it reads the four values with
+  `get_env_var` and then passes them to `tmux new-session` as `env` argv, so
+  they are in `ps aux` and `/proc/<pid>/cmdline` for the process's lifetime.
+  That script already says so in its own comment, disclosed on an earlier
+  CodeRabbit review, and names the fix it did not apply — writing the
+  credentials to a restricted-permission file the child reads itself.
+
+  **What is actually safe in this repo is `scripts/collect-krx-*.sh`**, which
+  `export`s and lets the child inherit, so nothing reaches argv. It is not
+  transferable to either loop launcher: both start their process under
+  `tmux new-session`, and inheritance measurably does not cross a tmux server
+  that is already running.
+
+  So the exposure is common to **both** launchers, no committed example of the
+  safe pattern for a tmux-started process exists, and the fix is the redesign
+  `kis-paper.sh`'s comment already describes — on loops that are currently
+  stopped, which is why this is recorded rather than applied.
 - **`VstPreflight` fails closed.** It sets exchange-side leverage for both
   `LONG` and `SHORT` to the canary base on every clean start; if a pre-existing
   non-zero position is found, leverage enforcement is **skipped** — exchanges
