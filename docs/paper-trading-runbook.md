@@ -536,18 +536,25 @@ everything typed inside it is in that user's own shell and needs no further
 
 ```bash
 # already minjun4897 -- this is typed inside the tmux session opened above
-cd ~/trading-engine/python
 (
   read -rs -p 'KIS_APP_KEY: '    KIS_APP_KEY;    echo
   read -rs -p 'KIS_APP_SECRET: ' KIS_APP_SECRET; echo
   export KIS_APP_KEY KIS_APP_SECRET
 
-  python3 -m data.krx_scan --scan \
-    --panel-start 19910828 --panel-end 20181231 \
-    --db-path data/var/krx_scan_pre2019.sqlite3 \
-    --universe-db data/var/klines.sqlite3
+  ~/trading-engine/scripts/collect-krx-pre2019.sh
 )
 ```
+
+**Through the launcher, not `python3 -m data.krx_scan` directly, and the reason
+is the lock.** The CLI takes no lock of its own, so a hand-run pass and an
+hourly cron tick would both write `scan_progress` — which keys on `code`, so
+each would record outcomes for codes the other is still fetching. Running the
+launcher means the typed pass and the scheduled one contend for the same
+`flock` and exactly one wins.
+
+The credentials still come from the environment here: the launcher prefers it
+and only falls back to `.env` when it is empty, so this form reads nothing from
+the file.
 
 Two details in that shape, both deliberate. `read -rs` keeps the value out of
 shell history and off the screen, which a `KIS_APP_KEY=…` on the command line
@@ -565,6 +572,41 @@ human, so the environment is always available and the fallback buys nothing. Two
 credential mechanisms in one procedure, where the one that differs is the one
 nobody remembers, is the cost `CLAUDE.md` names; the cheapest way to avoid it in
 a manual procedure is not to introduce a second one.
+
+### The unattended way, and why it is the one to use
+
+`scripts/collect-krx-pre2019.sh` does the same pass from cron, so a nine-day run
+does not need a human present for each restart:
+
+```bash
+sudo -u minjun4897 -H bash -lc 'crontab -l; echo "17 * * * * /home/minjun4897/trading-engine/scripts/collect-krx-pre2019.sh"'
+```
+
+Once it reads right, add it:
+
+```bash
+sudo -u minjun4897 -H crontab -e
+```
+
+A crontab belongs to an account, so editing it as the login user would schedule
+the job for `minju`, who has no checkout. It is a block rather than a sentence
+for a duller reason: the guard on this document reads commands out of fenced
+blocks, and an instruction written inline is one it cannot see — which is how
+this line got in unwrapped. Hourly is not a retry
+storm: the script takes a `flock` and exits 0 when a pass already holds it, and
+it asks whether KRX is open before starting one. A finished panel re-invoked
+skips every completed code and exits in seconds, which is also how a remaining
+`failed:rejected` set stays visible instead of being declared done.
+
+**Operator decision, 2026-09-30.** The typed procedure below works and reads
+nothing from `.env`, but it puts a human on every restart of a nine-day run, and
+the failure mode is not a lost session — it is nobody noticing for a day. The
+script therefore uses the collectors' own `.env` fallback, which `CLAUDE.md`
+records as a reaffirmed decision for exactly this case: cron supplies no
+environment. The standing answer is unchanged — an env-only policy is better
+posture and must be taken across all collectors at once.
+
+### The typed way, for a first run you want to watch
 
 **Typing them is the operator's step, and there is no non-interactive
 substitute here.** An AI session working on this repo has no terminal to type
@@ -600,7 +642,7 @@ halves are now handled — `**/var/*.log` is ignored, and the command above
 appends outside the repo — but the general rule is the one to remember, because
 it already caught `python/var/` once on 2026-09-22.
 
-```bash
+```text
     ... 2>&1 | tee -a ~/krx_pre2019_scan.log
 ```
 
@@ -638,9 +680,7 @@ recovers the codes the width lost, the second resolves what is genuinely
 transient or absent. Read the counts first, to know which you are looking at:
 
 ```bash
-sqlite3 data/var/krx_scan_pre2019.sqlite3 \
-  'SELECT (SELECT count(*) FROM scan_bars) AS bars,
-          status, count(*) FROM scan_progress GROUP BY status;'
+sudo -u minjun4897 -H bash -lc 'cd ~/trading-engine/python && sqlite3 data/var/krx_scan_pre2019.sqlite3 "SELECT (SELECT count(*) FROM scan_bars) AS bars, status, count(*) FROM scan_progress GROUP BY status;"'
 ```
 
 An earlier version of this section said to delete the failed rows before
