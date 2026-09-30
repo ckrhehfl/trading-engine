@@ -63,12 +63,28 @@ PY=(env PYTHONPATH=python python/.venv/bin/python)
 # would record outcomes for codes the first is still fetching. Hourly cron
 # makes an overlap the normal case rather than an unlucky one.
 #
-# `flock -n` and exit 0: an already-running pass is this script working, not
-# failing, and a non-zero exit here would mail the operator every hour.
+# `-E 200` SEPARATES CONTENTION FROM A BROKEN LOCK, and without it the two are
+# indistinguishable. `flock` returns its own non-zero status for its own
+# failures -- measured: a bad file descriptor gives **65** -- so treating every
+# non-zero as "already running" would turn an unusable lock file into a silent
+# exit 0 for ever, on a pass nobody is watching. With `-E 200`, contention is
+# exactly 200 and anything else is a real failure that says so.
+#
+# Exit 0 on contention, though: an already-running pass is this script working,
+# not failing, and hourly cron would otherwise mail the operator every hour.
+# `|| lock_rc=$?`, NOT `if ! flock ...; then rc=$?`. The second form reads
+# naturally and throws the status away: `$?` there is the status of `! flock`,
+# which is 0 whenever flock failed. Caught by running it -- the first version of
+# this block reported `rc=0` for both contention and a bad descriptor.
 exec 9>"$LOCK_FILE"
-if ! flock -n 9; then
+lock_rc=0
+flock -n -E 200 9 || lock_rc=$?
+if [ "$lock_rc" -eq 200 ]; then
     log "a pass already holds the lock -- nothing to do"
     exit 0
+elif [ "$lock_rc" -ne 0 ]; then
+    log "ERROR: flock failed with $lock_rc (not contention) -- refusing to run without the lock"
+    exit "$lock_rc"
 fi
 
 # CREDENTIALS COME FROM THE ENVIRONMENT IF IT SUPPLIES THEM. The .env read

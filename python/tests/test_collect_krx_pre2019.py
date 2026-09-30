@@ -127,6 +127,48 @@ def test_a_pass_already_holding_the_lock_is_a_no_op_not_a_failure(tmp_path):
     assert "already holds the lock" in log
 
 
+def test_a_flock_failure_that_is_NOT_contention_refuses_to_run(tmp_path):
+    """`flock` returns its own status for its own failures, and treating every
+    non-zero as "already running" would turn a broken lock into a silent exit 0
+    for ever — on a pass nobody is watching.
+
+    Measured statuses: contention with `-E 200` is **200**, a bad file
+    descriptor is **65**. So the branch is real, and this exercises it with a
+    `flock` stub on `PATH` rather than by argument, because nothing else makes
+    `flock` fail for a reason other than contention on demand.
+    """
+    repo = _repo(tmp_path)
+    binstub = repo / "binstub"
+    binstub.mkdir()
+    (binstub / "flock").write_text("#!/usr/bin/env bash\nexit 65\n", encoding="utf-8")
+    (binstub / "flock").chmod(0o755)
+
+    calls = repo / "calls.txt"
+    env = {
+        **os.environ,
+        "PATH": f"{binstub}:{os.environ['PATH']}",
+        "CALL_LOG": str(calls),
+        "SESSION_RC": "1",
+        "SCAN_RC": "0",
+        "KIS_APP_KEY": "",
+        "KIS_APP_SECRET": "",
+    }
+    proc = subprocess.run(
+        ["bash", str(repo / "scripts" / SCRIPT.name)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    log = (repo / "var" / "krx-pre2019.log").read_text()
+    assert proc.returncode == 65, f"a broken lock must propagate, got {proc.returncode}: {log}"
+    assert "not contention" in log, log
+    recorded = calls.read_text().split() if calls.exists() else []
+    assert "module:data.krx_scan" not in recorded, (
+        f"the scan ran without a lock: {recorded}"
+    )
+
+
 def test_the_session_is_asked_about_directly_and_stops_a_new_pass(tmp_path):
     """The KRX collectors share this app key, so a burst during the session is
     contention on series that cannot be backfilled.
