@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-120 documents and counting, which is past the point where `ls` is a
+123 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -240,3 +240,6 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-x-the-day-one-universe.md`](rd-x-the-day-one-universe.md) — Research Direction Task X — the +54%/yr was the selection date, and moving it removes the premium
 - [`rd-y-the-full-universe-scan.md`](rd-y-the-full-universe-scan.md) — Research Direction Task Y — the full-universe scan, and what "common stock" turned out to mean
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
+- [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
+- [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
+- [`xr-c-evaluation-rubric.md`](xr-c-evaluation-rubric.md) — External Review — how the Phase 1 reply gets judged, fixed before it exists
