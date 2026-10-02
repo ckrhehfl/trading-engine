@@ -894,7 +894,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 123 documents,
+   them. `.planning/README.md` carries an index of all 125 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1309,7 +1309,30 @@ is optional:**
    is untouched by construction rather than by policy. Floors, from
    `retrospective.detection_floor_sharpe`: **0.315** over the full 27.3 years,
    0.377 from 2000, 0.496 from 2008 — against **0.592** for the spent KRX window
-   and ~0.62 for the best window this project has ever held. This is the `sr-t`
+   and ~0.62 for the best window this project has ever held.
+
+   **A detection floor is not a powered design, and this project had only ever
+   computed the floor** (added 2026-10-02, from the external blind review). The
+   floor is the one-sided α=0.05 boundary — the point at which a result stops
+   being indistinguishable from noise. The span needed to *detect* a specified
+   true effect with 80% probability carries the power quantile as well:
+
+       Y_floor  = (1.6449 / S)^2          Y_80%  = ((1.6449 + 0.8416) / S)^2
+
+   so the two differ by a factor of 2.28 in required years. On this window:
+
+   | | floor (α=0.05) | smallest effect detectable at 80% power |
+   |---|---|---|
+   | pre-2019 KRX, 27.35y | **0.315** | **0.475** |
+   | KRX daily 2019-2026, 7.71y | 0.592 | 0.895 |
+   | Binance futures 1m, 6.96y | 0.623 | 0.943 |
+
+   **So the lower half of the 0.4-0.8 range this file keeps citing is still not
+   visible even here**: a true 0.4 Sharpe needs 38.6 years at 80% power against
+   the 27.35 available, and only 0.5 and above fit. Quote the floor when saying
+   what a result must *exceed*; quote the 80% figure when deciding whether a
+   study is worth running at all. The second is what a pre-registration should
+   be sized against, and nothing before this date was. This is the `sr-t`
    move — reserve the *early* window, because that is the data no decision has
    seen — applied to KRX.
 
@@ -2131,6 +2154,48 @@ DSR 0.95:
 | 5 (this family) | 2.17 |
 | 50 | 3.56 |
 | **129 (this project today)** | **4.00** |
+
+**Those figures are a function of three inputs, not of `N` alone, and the
+column heading hid two of them** (found 2026-10-02 by an external blind review
+of this project's search design, then reproduced here from the log). The
+requirement decomposes as
+
+    required Sharpe  =  SR0(N, sigma_trials)  +  1.6449 / sqrt(Y)
+
+where `sigma_trials` is the standard deviation of the logged trial Sharpes and
+`Y` is the candidate window's calendar span. Measured from
+`runs/experiments.jsonl`: **sigma_trials = 1.2940** over 144 trial Sharpes, so
+`SR0(129) = 3.389`, and the two figures this file already quotes are **window-
+specific rather than general**:
+
+| window | Y | SR0 + floor | where this file quotes it |
+|---|---|---|---|
+| 1h research | 1.84y | 3.389 + 1.213 = **4.60** | "would have needed an annualized Sharpe of 4.6" |
+| Binance futures 1m | 6.96y | 3.389 + 0.623 = **4.01** | the **4.00** row above |
+
+So **4.00 is the 1-minute window's number**, not this project's. Applying it to
+a different window is wrong in whichever direction that window is longer or
+shorter, and the fix is to recompute rather than to quote.
+
+**The load-bearing consequence, which neither this file nor the external review
+had stated: `SR0` does not shrink with more data.** It depends on `N` and
+`sigma_trials` only, so the selection penalty is **identical on a 1-year window
+and a 27-year one**. On the reserved pre-2019 panel (27.35y, floor 0.315):
+
+| N | SR0 | required Sharpe there | inside a realistic 0.4-0.8 edge? |
+|---|---|---|---|
+| **1** | 0.000 | **0.315** | **yes** |
+| 2 | 0.673 | 0.987 | borderline |
+| 6 | 1.682 | 1.997 | no |
+| 12 | 2.154 | 2.469 | no |
+| 129 | 3.389 | 3.703 | no |
+
+**At `N` = 2 the requirement is already outside the plausible range.** That is
+why the reservation of that window for a *single pre-registered confirmation*
+is not merely a convention inherited from `sr-t`: `N` = 1 is the only setting at
+which the window's own power is what decides the outcome. A walk-forward
+qualification campaign on the same data, carrying the project `N`, would need
+**3.703** and could not pass whatever it found.
 
 Credible institutional trend-following reports 0.4-0.8. **At this `N` no
 realistic edge can clear this bar on this data, whatever it is.** This is the

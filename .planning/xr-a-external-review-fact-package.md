@@ -370,7 +370,14 @@ Criteria:
 **The selection-trial count is `N` = 129** research trials (plus 19
 infrastructure trials and 66 reproductions, which do not count). By family:
 trend-momentum 97, funding 8, mean-reversion 8, btc-scalping 5, macro-conditioned
-4, volume 4, trade-management 2.
+4, volume 4, trade-management 2, and **one single-member family that is a test
+artifact** (a suite once appended to the live log) — summing to 129. The
+artifact is counted anyway, because an inflated `N` can only lower a later DSR
+and the log is append-only.
+
+**The standard deviation of those trial Sharpes is 1.2940**, over 144 logged
+Sharpe values in annualized units. A selection correction needs both that and
+`N`.
 
 **DSR must fail closed on `N`.** A strategy whose family cannot be resolved
 resolves to its own single-member family, which *understates* `N` — and a smaller
@@ -423,24 +430,20 @@ Measured floors, by window:
 Each was adopted after this project made the error it prevents.
 
 - **A statistic over overlapping windows is not a statistic over independent
-  observations.** One t-statistic computed from overlapping excursions fell
-  roughly threefold when corrected. Deduplicate to non-overlapping samples
-  before reporting any t, p or standard error — or state explicitly that the
-  figures are uncorrected.
+  observations.** Deduplicate to non-overlapping samples before reporting any t,
+  p or standard error — or state explicitly that the figures are uncorrected.
 - **A p-value over observations that share a session is not a significance
   test.** Ten names measured at the same instant share that instant's
   market-wide move, so pooling them as ten draws understates the standard error
   however disjoint their holding windows are. Compute over **sessions**, or
   block-bootstrap whole sessions, and **report the ratio of corrected to naive
-  standard error**. Applied once, this moved one p-value from 0.016 to 0.182 and
-  another from 0.113 to 0.039 — both directions, so it is not a uniform haircut —
-  and took the count surviving Benjamini-Hochberg from 1 to 0.
+  standard error**. The correction is **not** a uniform haircut: it can move a
+  p-value in either direction.
 - **A permutation null's spread is the standard error of its own statistic, not
   of the arm it is compared against.** They coincide only when the null is
   calibrated to that arm, and "matched on a prior-window statistic" does not
-  calibrate a null to an event defined by a burst in that same statistic. On real
-  data one matched null ran 0.42–0.88× the event arm's own error, making every
-  permutation p too small. **Report null_sd / se on every permutation test.**
+  calibrate a null to an event defined by a burst in that same statistic.
+  **Report null_sd / se on every permutation test.**
 - **Compute the family's detectable effect before specifying it**, from the event
   arm's own dispersion, and decide before any data is seen whether the family can
   detect an effect of the size that would matter.
