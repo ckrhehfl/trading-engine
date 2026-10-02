@@ -2171,15 +2171,33 @@ requirement decomposes as
     required Sharpe  =  SR0(N, sigma_trials)  +  1.6449 / sqrt(Y)
 
 where `sigma_trials` is the standard deviation of the logged trial Sharpes and
-`Y` is the candidate window's calendar span. Measured from
-`runs/experiments.jsonl`: **sigma_trials = 1.2940** over 144 trial Sharpes, so
-`SR0(129) = 3.389`, and the two figures this file already quotes are **window-
-specific rather than general**:
+`Y` is the candidate window's calendar span.
+
+**The dispersion input has a provenance trap and the first draft fell into it**
+(corrected on review of PR #215, which asked why 144 logged Sharpe values sat
+beside a count of 129). `trial_sharpe_ratios` returns a value per counted trial
+**including the `infrastructure` purpose**, while the `N` this gate uses is
+`research_selection_trials`, which excludes it — and `build_retrospective` pools
+by purpose for exactly that reason. The set `N` counts gives:
+
+    sigma_trials = 1.2665   over the 126 of 129 research trials with a
+                            defined Sharpe (two have none computable, and
+                            the test artifact has none)
+    SR0(129)     = 2.619 x 1.2665 = 3.317
+
+**Units turned out not to matter, which was the other thing to check**: the code
+de-annualizes before taking the variance, that scaling is linear, so `SR0`
+annualizes back to the same figure either way. The population was wrong, not the
+units.
+
+With `SR0 = 3.317` the two figures this file already quotes are **window-specific
+rather than general**, and they reproduce **approximately** rather than exactly —
+their own inputs were taken at an earlier `N` and are not recoverable:
 
 | window | Y | SR0 + floor | where this file quotes it |
 |---|---|---|---|
-| 1h research | 1.84y | 3.389 + 1.213 = **4.60** | "would have needed an annualized Sharpe of 4.6" |
-| Binance futures 1m | 6.96y | 3.389 + 0.623 = **4.01** | the **4.00** row above |
+| 1h research | 1.84y | 3.317 + 1.213 = **4.53** | "would have needed an annualized Sharpe of 4.6" |
+| Binance futures 1m | 6.96y | 3.317 + 0.623 = **3.94** | the **4.00** row above |
 
 So **4.00 is the 1-minute window's number**, not this project's. Applying it to
 a different window is wrong in whichever direction that window is longer or
@@ -2193,10 +2211,10 @@ and a 27-year one**. On the reserved pre-2019 panel (27.35y, floor 0.315):
 | N | SR0 | required Sharpe there | inside a realistic 0.4-0.8 edge? |
 |---|---|---|---|
 | **1** | 0.000 | **0.315** | **yes** |
-| 2 | 0.673 | 0.987 | borderline |
-| 6 | 1.682 | 1.997 | no |
-| 12 | 2.154 | 2.469 | no |
-| 129 | 3.389 | 3.703 | no |
+| 2 | 0.659 | 0.974 | borderline |
+| 6 | 1.646 | 1.961 | no |
+| 12 | 2.108 | 2.423 | no |
+| 129 | 3.317 | 3.632 | no |
 
 **At `N` = 2 the requirement is already outside the plausible range.** That is
 why the reservation of that window for a *single pre-registered confirmation*
