@@ -1002,11 +1002,38 @@ def coverage(conn: sqlite3.Connection) -> None:
         "COUNT(*), SUM(bars) FROM scan_progress GROUP BY 1 ORDER BY 2 DESC"
     ):
         print(f"  {status:<10} {n:>6,} symbols  {b or 0:>10,} bars")
-    frozen = conn.execute(
+    # **Two totals, because one of them was being misread.** The `>20` filter is
+    # the useful one for an eligibility decision -- a few halted days are noise, a
+    # sustained stoppage is a property of the name -- but printing its sum beside
+    # the phrase "in total" read as a pool figure. On the completed 2019+ panel it
+    # said 186,939 where the pool holds 192,292, understating by 5,353 sessions
+    # across the 554 symbols with 1-20 frozen bars each. Found while writing
+    # `rd-y-the-full-universe-scan-result.md`, which quoted the wrong one.
+    sustained = conn.execute(
         "SELECT COUNT(*), SUM(frozen) FROM scan_progress WHERE frozen > 20"
     ).fetchone()
-    print(f"\n  {frozen[0] or 0:,} symbols carry >20 frozen sessions "
-          f"(O==H==L==C, zero turnover), {frozen[1] or 0:,} in total")
+    pool = conn.execute(
+        "SELECT COUNT(*), SUM(frozen) FROM scan_progress WHERE frozen > 0"
+    ).fetchone()
+    print(f"\n  frozen sessions (O==H==L==C, zero turnover): "
+          f"{pool[1] or 0:,} across {pool[0] or 0:,} symbols"
+          f"{f' ({100.0 * (pool[1] or 0) / bars:.2f}% of all bars)' if bars else ''}")
+    print(f"    of which {sustained[1] or 0:,} are in the {sustained[0] or 0:,} "
+          "symbols carrying >20 each")
+    # The extreme case is what makes the rule concrete rather than cautionary:
+    # a name can be listed for every session of the panel and traded on none.
+    # **One query, because two would drift.** The count and the examples share a
+    # predicate, and an earlier version wrote it twice -- so loosening one copy
+    # changed which symbols were shown while the count stayed right, and no test
+    # could see the disagreement. Found by mutating exactly that.
+    all_frozen = conn.execute(
+        "SELECT code, bars FROM scan_progress "
+        "WHERE bars > 0 AND frozen = bars ORDER BY bars DESC"
+    ).fetchall()
+    if all_frozen:
+        shown = ", ".join(f"{code} ({b:,} bars)" for code, b in all_frozen[:3])
+        print(f"    {len(all_frozen):,} symbols are 100% frozen -- listed "
+              f"throughout and never traded: {shown}")
     print("  A bar is not evidence the name was tradeable -- only that it "
           "was listed.")
 

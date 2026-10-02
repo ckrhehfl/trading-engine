@@ -546,7 +546,29 @@ reported as one.
 `O == H == L == C`, zero volume, zero turnover, for as long as the halt lasts.
 They are stored, because they are what the tape said, and **counted separately**
 in the scan's coverage report (`data/krx_scan.py`) so a reader can subtract
-them. What follows splits into the part that is decided and the part that is
+them.
+
+**What the scan counts is narrower than that description, and the gap is worth
+knowing before quoting a frozen figure** (found on review of PR #217).
+`record_progress`'s predicate is `open = high AND high = low AND low = close`
+with `turnover` either `0` or `NULL` — **`volume` is not tested.** Measured on
+the completed panel, adding `volume` would select the same bars, so the looser
+description was producing an unverifiable figure rather than a wrong one.
+
+**The turnover term is load-bearing, and equal OHLC alone is NOT a halt.** A
+price pinned at KRX's daily limit gives `O == H == L == C` with real turnover,
+and the name traded actively at that one price all day.
+**Those sessions are tradeable and must not be excluded from a liquidity
+screen**, which is what an OHLC-only test would do. So the rule above gains a
+second half: a frozen bar may never make a name eligible, **and a limit-locked
+bar may never be mistaken for one.** The `NULL` branch of the predicate has never
+fired here, which leaves its conflation of "halted" with "turnover failed to
+parse" latent rather than resolved.
+
+**The completed 2019+ panel is where this stopped being a probe and became a
+pool measurement**, and it found symbols frozen for **every session they were
+listed** — present in the pool throughout and tradeable on no day of it. Figures
+in `.planning/rd-y-the-full-universe-scan-result.md`. What follows splits into the part that is decided and the part that is
 not:
 
 - **Decided, and it follows directly from the measurement: a frozen bar may
@@ -894,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 126 documents,
+   them. `.planning/README.md` carries an index of all 127 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
