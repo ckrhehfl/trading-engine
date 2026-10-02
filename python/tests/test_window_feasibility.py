@@ -222,3 +222,59 @@ def test_the_defaults_are_the_conventional_pair():
     assert DEFAULT_ALPHA == 0.05
     assert DEFAULT_POWER == 0.80
     assert KRX_SESSIONS_PER_YEAR == 245.0
+
+
+# ---------------------------------------------------------------------------
+# The alpha contract, unified across all three statistics
+#
+# Flagged on review of PR #220: `detection_floor` was a second copy of
+# `retrospective.detection_floor_sharpe` and had already drifted — it raised
+# `StatisticsError` from inside `inv_cdf` where the real function raises
+# `ValueError`. The two companions validated nothing at all. A bad `alpha` is a
+# caller mistake in every one of them, so all three now fail the same way.
+
+import pytest as _pytest
+
+from research.retrospective import detection_floor_sharpe
+
+
+def test_detection_floor_delegates_rather_than_reimplementing():
+    """Identical output to the one definition, across spans. A second
+    implementation is free to drift, which is what happened."""
+    for years in (0.5, 1.84, 7.71, 27.35):
+        for alpha in (0.01, 0.05, 0.10):
+            assert detection_floor(years, alpha=alpha) == detection_floor_sharpe(
+                years, alpha=alpha
+            )
+
+
+@pytest.mark.parametrize("alpha", [0.0, 1.0, -0.1, 1.5, 5.0])
+def test_an_impossible_alpha_raises_in_every_statistic(alpha):
+    """One contract, three functions: `ValueError` naming the parameter — a
+    caller mistake, not a `None` that would propagate into a report as "no
+    evidence".
+
+    **Matched on the message, not just the type.** `statistics.StatisticsError`
+    subclasses `ValueError`, so a bare `raises(ValueError)` passes on an
+    unvalidated `inv_cdf` blowing up deep inside the arithmetic — which is
+    exactly the drift this check exists to catch, and a mutation removing the
+    validation survived until the match was added.
+    """
+    for call in (
+        lambda: detection_floor(27.35, alpha=alpha),
+        lambda: smallest_detectable_at_power(27.35, alpha=alpha),
+        lambda: power_for(0.5, 27.35, alpha=alpha),
+    ):
+        with _pytest.raises(ValueError, match="alpha must be in"):
+            call()
+
+
+@pytest.mark.parametrize("alpha", [0.0, 1.5])
+def test_a_degenerate_span_still_returns_none_even_with_a_bad_alpha(alpha):
+    """**The ordering that the guard placement protects.** The delegated helper
+    validates `alpha` before `years`, so calling it unguarded would turn
+    `detection_floor(0, alpha=1.5)` from `None` into a raise — tightening a
+    contract this module's callers rely on. The `years` check stays first.
+    """
+    assert detection_floor(0, alpha=alpha) is None
+    assert detection_floor(-5, alpha=alpha) is None

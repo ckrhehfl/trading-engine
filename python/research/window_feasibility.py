@@ -34,6 +34,8 @@ import math
 from dataclasses import dataclass
 from statistics import NormalDist
 
+from research.retrospective import detection_floor_sharpe
+
 #: One-sided alpha, matching `retrospective.DEFAULT_SIGNIFICANCE_ALPHA`.
 DEFAULT_ALPHA = 0.05
 #: Conventional power target. Stated as a default rather than a rule — the
@@ -48,11 +50,24 @@ KRX_SESSIONS_PER_YEAR = 245.0
 
 def detection_floor(years: float, *, alpha: float = DEFAULT_ALPHA) -> float | None:
     """The annualized Sharpe below which a result is indistinguishable from
-    noise at one-sided `alpha`. Mirrors `retrospective.detection_floor_sharpe`.
+    noise at one-sided `alpha`.
+
+    **Delegates rather than reimplements.** `retrospective.detection_floor_sharpe`
+    is the one definition, and a second copy here would be free to drift —
+    exactly the defect `CLAUDE.md` records from S16, where a local DSR
+    reimplementation was fed the wrong variance. The first version of this
+    function was that copy, and it had already drifted: it raised
+    `StatisticsError` from deep inside `inv_cdf` on a bad `alpha` where the real
+    function raises `ValueError`. Found on review of PR #220.
+
+    The `years` guard is kept **above** the call deliberately: the helper
+    validates `alpha` first, so delegating unguarded would turn
+    `detection_floor(0, alpha=5)` from `None` into a raise, silently tightening
+    a contract the rest of this module relies on.
     """
     if years <= 0:
         return None
-    return NormalDist().inv_cdf(1 - alpha) / math.sqrt(years)
+    return detection_floor_sharpe(years, alpha=alpha)
 
 
 def smallest_detectable_at_power(
@@ -66,6 +81,8 @@ def smallest_detectable_at_power(
     quantile, which is a factor of 2.28 in required years at the conventional
     0.05/0.80 pair.
     """
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
     if years <= 0 or not 0 < power < 1:
         return None
     n = NormalDist()
@@ -76,6 +93,8 @@ def power_for(
     true_sharpe: float, years: float, *, alpha: float = DEFAULT_ALPHA
 ) -> float | None:
     """Probability this span rejects the null for a given true Sharpe."""
+    if not 0 < alpha < 1:
+        raise ValueError(f"alpha must be in (0, 1), got {alpha}")
     if years <= 0:
         return None
     n = NormalDist()
