@@ -32,8 +32,8 @@ returns, `failed:transport` a network fault. Codes, so a second pass needs no
 re-derivation: `123160, 215580, 219860, 219960, 004090, 089170, 090990` and
 `090540, 121950`.
 
-**1,586 symbols produced no bars at all and that is the expected majority
-outcome**, not a gap: the delisted register reaches back further than the panel,
+**1,586 symbols produced no bars at all — 34.2% of the 4,638 recorded — and
+that is an expected outcome rather than a gap**: the delisted register reaches back further than the panel,
 so a name that left before 2019 or listed after 2026-09 is correctly absent. What
 would be a defect is the opposite — a name that traded inside the panel and is
 missing — and the per-day membership rule is what guards against it.
@@ -78,8 +78,15 @@ would mean duplicate rows.
 ## 3. The frozen bars, which are the result that changes a selection rule
 
 **192,292 frozen sessions — 4.18% of every bar in the panel — across 1,260
-symbols.** A frozen bar is `O == H == L == C` with zero volume and zero turnover:
-the tape's record of a halt, stored because that is what the venue said.
+symbols.**
+
+**What the count actually tests**, stated precisely because the prose elsewhere
+in this project is looser than the code: `record_progress` counts a bar frozen
+when `open = high AND high = low AND low = close` and `turnover` is `0` or
+`NULL`. **`volume` is not in the predicate.** The two are equivalent in practice
+on this venue — a session with turnover and no volume, or the reverse, would need
+a zero price — but the condition is turnover-only, and a reader checking the
+figure against a different definition would get a different number.
 
 **Four symbols are 100% frozen**, and four more are above 99%:
 

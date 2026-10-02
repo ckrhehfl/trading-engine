@@ -546,7 +546,20 @@ reported as one.
 `O == H == L == C`, zero volume, zero turnover, for as long as the halt lasts.
 They are stored, because they are what the tape said, and **counted separately**
 in the scan's coverage report (`data/krx_scan.py`) so a reader can subtract
-them. What follows splits into the part that is decided and the part that is
+them.
+
+**What the scan counts is narrower than that description, and the gap is worth
+knowing before quoting a frozen figure** (found on review of PR #217).
+`record_progress`'s predicate is `open = high AND high = low AND low = close`
+with `turnover` either `0` or `NULL` — **`volume` is not tested.** The two agree
+in practice here, since turnover without volume or volume without turnover would
+need a zero price, but a reader recomputing the count from a volume-based
+definition will not reproduce it.
+
+**The completed 2019+ panel is where this stopped being a probe and became a
+pool measurement**, and it found symbols frozen for **every session they were
+listed** — present in the pool throughout and tradeable on no day of it. Figures
+in `.planning/rd-y-the-full-universe-scan-result.md`. What follows splits into the part that is decided and the part that is
 not:
 
 - **Decided, and it follows directly from the measurement: a frozen bar may
