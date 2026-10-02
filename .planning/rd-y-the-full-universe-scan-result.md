@@ -83,10 +83,37 @@ symbols.**
 **What the count actually tests**, stated precisely because the prose elsewhere
 in this project is looser than the code: `record_progress` counts a bar frozen
 when `open = high AND high = low AND low = close` and `turnover` is `0` or
-`NULL`. **`volume` is not in the predicate.** The two are equivalent in practice
-on this venue — a session with turnover and no volume, or the reverse, would need
-a zero price — but the condition is turnover-only, and a reader checking the
-figure against a different definition would get a different number.
+`NULL`. **`volume` is not in the predicate.**
+
+Measured rather than assumed, on review of PR #217:
+
+| | bars |
+|---|---|
+| `O == H == L == C` | 208,492 |
+| …of which `turnover = 0` → **counted frozen** | **192,292** |
+| …of which `turnover IS NULL` | **0** |
+| …of which turnover is neither → **not frozen** | **16,200** |
+
+Three things follow, and the third was not expected.
+
+**The `NULL` branch has never fired.** No bar in the panel has a null turnover
+or a null volume, so the predicate's conflation of "halted" with "turnover
+failed to parse" is latent rather than realised. It is still a conflation — the
+stored row cannot distinguish them — and worth knowing before the predicate is
+reused on a series where parsing can fail.
+
+**Adding `volume` to the predicate would change nothing here.** `volume != 0 AND
+turnover = 0` selects **zero** bars, so the turnover-only condition and the
+"zero volume and zero turnover" description pick the same 192,292. The looser
+prose was not producing a wrong figure; it was producing an unverifiable one.
+
+**And `O == H == L == C` is not synonymous with a halt.** 16,200 sessions have
+equal OHLC *and* real turnover — a price pinned at its daily limit, which KRX
+caps at ±30%, where the name traded actively at one price all day. **Those are
+tradeable sessions and must not be excluded from a liquidity screen**, which is
+exactly what an OHLC-only frozen test would have done. The turnover term is what
+separates "nobody traded" from "everybody traded at the limit", and that is the
+reason it is in the predicate rather than an implementation detail.
 
 **Four symbols are 100% frozen**, and four more are above 99%:
 

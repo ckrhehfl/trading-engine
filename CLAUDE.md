@@ -551,10 +551,19 @@ them.
 **What the scan counts is narrower than that description, and the gap is worth
 knowing before quoting a frozen figure** (found on review of PR #217).
 `record_progress`'s predicate is `open = high AND high = low AND low = close`
-with `turnover` either `0` or `NULL` — **`volume` is not tested.** The two agree
-in practice here, since turnover without volume or volume without turnover would
-need a zero price, but a reader recomputing the count from a volume-based
-definition will not reproduce it.
+with `turnover` either `0` or `NULL` — **`volume` is not tested.** Measured on
+the completed panel, adding `volume` would select the same bars, so the looser
+description was producing an unverifiable figure rather than a wrong one.
+
+**The turnover term is load-bearing, and equal OHLC alone is NOT a halt.** A
+price pinned at KRX's daily limit gives `O == H == L == C` with real turnover,
+and the name traded actively at that one price all day.
+**Those sessions are tradeable and must not be excluded from a liquidity
+screen**, which is what an OHLC-only test would do. So the rule above gains a
+second half: a frozen bar may never make a name eligible, **and a limit-locked
+bar may never be mistaken for one.** The `NULL` branch of the predicate has never
+fired here, which leaves its conflation of "halted" with "turnover failed to
+parse" latent rather than resolved.
 
 **The completed 2019+ panel is where this stopped being a probe and became a
 pool measurement**, and it found symbols frozen for **every session they were
