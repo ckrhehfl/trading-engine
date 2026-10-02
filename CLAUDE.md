@@ -1479,6 +1479,61 @@ Non-negotiable once strategy research begins:
   statistics — mean, std, min/max, or similar — derived from data
   outside what would actually have been available at that point in
   time.
+
+  **Purging and embargo are not needed here, and the reason is the absence of a
+  forward-looking label rather than any single structural barrier** (established
+  2026-10-03, after an external review correctly noted their absence; the
+  question will recur, so the answer is recorded rather than re-derived. The
+  first draft of this clause overstated two of the four properties and was
+  corrected on review of PR #219 — the overstatement is kept visible below,
+  because "the training slice is the only input" is exactly the kind of claim
+  that reads as settled). López de Prado's purge exists for a
+  *labelled* training sample whose labels reach forward past the train/validate
+  boundary — a triple-barrier label spanning the split leaks the validation
+  period into training. Four properties mean no such leak exists in this
+  harness:
+
+  1. **`TrainableStrategy.fit` receives `train_klines` only.** `validate_klines`
+     is not a parameter, so "must not read it" is enforced by the signature
+     rather than by discipline — the same guarantee `KlineWindow` gives the bar
+     loop.
+  2. **There are no forward-looking labels, and this is the load-bearing
+     property.** What `fit` does with the training slice varies by strategy —
+     `ma_crossover` searches a grid of candidates, `FundingExtremityTrainable`
+     backtests once at fixed construction-time parameters to seed its rolling
+     state — and the clause previously described only the first. **The part that
+     matters is common to both: neither fits a model to labels.** A purge exists
+     to stop a label whose horizon reaches past the split from leaking the
+     validation period into training; with no labels there is no horizon to
+     reach.
+  3. **A `fit` may hold a longer series than its training slice, and what
+     protects it is a cursor rather than the absence of the input.** The first
+     version of this clause claimed the training slice was the only input; that
+     is false, and the counter-example is in this repo.
+     `FundingExtremityTrainable` is constructed with the **whole** funding
+     history and passes it into `compute_seed_signal_state`, which exists
+     precisely so a fold boundary does not reset the rolling z-score. What keeps
+     it honest is that the function consumes only settlements with
+     `funding_time <= known_through`, and `fit` passes a `known_through` drawn
+     from its own training bars — so no settlement past the training window is
+     ever read. None of the sixteen reads a database, file or network, which is a
+     weaker and separate statement.
+
+     **`params` is the other hole in a signature-only argument**: it is a
+     `Mapping[str, Any]` the caller supplies and `run_walk_forward` passes
+     through untouched, so nothing in the type stops a caller putting validation
+     data in it. That is a discipline, not a guarantee, and it is named here
+     rather than papered over.
+  4. **Each fold's validation run starts flat at `starting_equity`.** A position
+     cannot carry across a boundary, so no trade spans the split either.
+
+  **What property (4) does cost is a different distortion, and it is real**: a
+  strategy whose holding period approaches the fold length is force-closed at
+  every boundary, and each fold's equity curve is rebased. That is why
+  `pooled_validation_sharpe` stitches per-fold *returns* rather than concatenated
+  equity levels. Purging would not address it, and a design that genuinely needs
+  forward labels — a supervised classifier, say — would reintroduce the original
+  requirement and must state its own purge.
 - Survivorship bias doesn't apply to the current single-symbol
   (BTC-USDT) scope — there's no universe-selection step for it to enter
   through. Revisit before any multi-symbol expansion: the market-data
