@@ -62,9 +62,17 @@ class PersistenceResult:
     def ratio(self) -> float | None:
         """How much more active a surged name is than an ordinary one, later.
 
-        **Both arms are divided by the event day's own baseline**, so a drift in
-        the baseline itself cancels and cannot read as persistence. 1.0 means the
-        surge has fully evaporated.
+        **1.0 means the two arms' follow-up medians are equal** — the surged
+        names are no more active than ordinary ones, so the surge carries no
+        information at that horizon. It does not mean "the surge evaporated" in
+        any absolute sense; both arms could have risen together.
+
+        **The two arms share a normalisation, which is what makes the ratio
+        comparable, and that is a weaker claim than cancelling a trend.** A
+        name whose activity is trending up contributes a raised follow-up to
+        whichever arm it lands in, so a trend common to both arms largely
+        divides out. A trend that differs *between* the arms does not, and
+        nothing here corrects for that.
         """
         if self.after_surge is None or not self.after_ordinary:
             return None
@@ -125,6 +133,15 @@ def measure_persistence(
     """
     if not horizons:
         return []
+    # **Positive only.** A negative horizon would index *before* the event and
+    # report the day leading into a surge as a follow-up to it -- a
+    # look-backward result presented as a look-forward one. A zero horizon would
+    # report the event day as its own follow-up. Neither is a plausible typo to
+    # leave working. Raised rather than silently dropped, on this project's
+    # fail-loud-at-the-entry-point convention.
+    bad = [h for h in horizons if not isinstance(h, int) or isinstance(h, bool) or h < 1]
+    if bad:
+        raise ValueError(f"horizons must be positive integers, got {bad}")
     longest = max(horizons)
     surge: dict[int, list[float]] = {h: [] for h in horizons}
     ordinary: dict[int, list[float]] = {h: [] for h in horizons}
@@ -143,17 +160,29 @@ def measure_persistence(
         # zero-baseline guard each existed twice and only one copy was tested —
         # mutating either inline copy left the suite green. Same defect this
         # project recorded in S16 and again on PR #220.
-        relative = relative_turnover_series(turnovers, lookback=lookback)
+        # One pass for the baselines, then the ratios derived from them. An
+        # earlier version called `relative_turnover_series` *and* `_baselines`,
+        # which took the trailing median over every day twice -- 281 names of
+        # ~1,900 sessions each on the research panel, so the waste is real.
         baselines = _baselines(turnovers, lookback=lookback)
+        relative = [
+            None if base is None else turnovers[i] / base
+            for i, base in enumerate(baselines)
+        ]
 
         for i in range(lookback, len(turnovers) - longest):
             rel = relative[i]
             base = baselines[i]
             if rel is None or base is None:
                 continue
-            # Divided by the EVENT DAY's baseline, not by a fresh one computed at
-            # each horizon -- otherwise a baseline that itself rose would read as
-            # the surge having faded.
+            # **Divided by the EVENT DAY's baseline, and the reason is the
+            # opposite of what it first looks like.** A fresh baseline at each
+            # horizon would absorb any rise into its own denominator, pulling
+            # every follow-up back toward 1.0 and *understating* persistence --
+            # a name that stayed genuinely elevated would read as having faded,
+            # because its new normal is the elevated level. Holding the event
+            # day's baseline fixed measures activity against what was normal
+            # *before* the surge, which is the question being asked.
             followups = [(h, turnovers[i + h] / base) for h in horizons]
             if rel >= surge_multiple:
                 for h, v in followups:

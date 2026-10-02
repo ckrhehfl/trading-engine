@@ -80,9 +80,20 @@ A **surge** is relative turnover ≥ 3.0. The comparison arm is an **ordinary da
 for the same name, 0.8–1.25, deliberately narrow: a wide band would put mild
 surges in the control and shrink every ratio by construction.
 
-**Both arms are divided by the event day's own baseline at every horizon**, never
-by a fresh one — otherwise a name whose activity is trending up would read as
-"the surge persisted" when nothing persisted.
+**Both arms are divided by the event day's own baseline at every horizon**, and
+the reason is the opposite of what it first looks like. A fresh baseline at each
+horizon would absorb any rise into its own denominator, pulling every follow-up
+back toward 1.0 and **understating** persistence — a name that stayed genuinely
+elevated would read as having faded, because its new normal *is* the elevated
+level. Holding the event day's baseline fixed measures against what was normal
+before the surge, which is the question.
+
+**What the shared normalisation buys is comparability, which is weaker than
+cancelling a trend.** A trend common to both arms largely divides out; a trend
+that differs *between* the arms does not, and nothing here corrects for that.
+So **a ratio of 1.0 means the two arms' follow-up medians are equal** — the
+surge carries no information at that horizon — rather than "the surge
+evaporated" in any absolute sense.
 
 281 codes (every tenth completed name), 55,128 surge days against 81,354 ordinary
 days:

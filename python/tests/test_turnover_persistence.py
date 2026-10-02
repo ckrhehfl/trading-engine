@@ -138,8 +138,12 @@ def test_frozen_bars_left_in_turn_ordinary_activity_into_a_fake_surge():
         "activity reads as 2x -- a fabricated surge from a data artifact"
     )
 
-    # And with most of the window halted it clears the 3x surge threshold
-    # outright, which is how a filter ends up selecting on halt recovery.
+    # Past half, the median reaches zero and the day becomes undefined rather
+    # than an ever-larger surge. So the distortion is bounded in an unexpected
+    # way: a *partially* halted baseline is the dangerous case, because it
+    # produces a finite plausible number, while a mostly-halted one is rejected
+    # outright. A first version of this comment claimed the mostly-halted
+    # fixture demonstrated a 3x surge; it does not, and cannot.
     mostly_halted = (
         _flat(15, 100.0) + _flat(DEFAULT_LOOKBACK - 15, 0.0) + _flat(40, 100.0)
     )
@@ -310,3 +314,49 @@ def test_a_zero_baseline_inside_measure_persistence_is_skipped():
     result = _mp([dead_then_active], horizons=(1, 20))[0]
     assert result.n_surges == 0, "a zero baseline must not produce a surge"
     assert result.ratio is None
+
+
+@pytest.mark.parametrize("horizons", [(-1,), (0,), (20, -1), (20, 0), (1.5,), (True,)])
+def test_a_non_positive_horizon_is_refused(horizons):
+    """**A negative horizon would index before the event**, reporting the day
+    leading *into* a surge as a follow-up to it — a look-backward result
+    presented as a look-forward one, which is the single worst failure mode this
+    function could have. Zero would report the event day as its own follow-up,
+    and a float would index by accident or not at all.
+
+    Raised rather than silently dropped, on this project's
+    fail-loud-at-the-entry-point convention: a caller who passes `(20, -1)`
+    wants both numbers, and quietly returning one is worse than refusing.
+
+    `True` is in the list because `isinstance(True, int)` is `True` in Python,
+    so a bool would otherwise pass as the integer 1.
+    """
+    with pytest.raises(ValueError, match="horizons must be positive integers"):
+        _mp([_flat(300, 100.0)], horizons=horizons)
+
+
+def test_the_baselines_are_computed_once_per_series():
+    """The trailing median over every day is the expensive part — 281 names of
+    ~1,900 sessions on the research panel — and an earlier version computed it
+    twice by calling `relative_turnover_series` as well as `_baselines`.
+
+    Asserted by counting calls rather than by timing, which would be flaky.
+    """
+    import research.turnover_persistence as mod
+
+    calls = {"n": 0}
+    real = mod._baselines
+
+    def counting(*args, **kwargs):
+        calls["n"] += 1
+        return real(*args, **kwargs)
+
+    mod._baselines = counting
+    try:
+        _mp([_flat(300, 100.0), _flat(300, 100.0)], horizons=(1, 20))
+    finally:
+        mod._baselines = real
+
+    assert calls["n"] == 2, (
+        f"two series must mean two baseline passes, got {calls['n']}"
+    )
