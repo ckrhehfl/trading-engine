@@ -244,6 +244,17 @@ class FoldConsistencyResult:
     fraction_positive: float | None
     min_fraction_required: Decimal
     passed: bool
+    #: The true annualized Sharpe at which `min_fraction_required` becomes
+    #: attainable at this fold geometry, from
+    #: `fold_consistency_attainable_sharpe`. `None` when the caller did not
+    #: supply a geometry -- never a guess, so a reader can tell "not computed"
+    #: from "computed and low".
+    attainable_above_sharpe: float | None = None
+    #: True when the clause cannot be satisfied by the effect size under test,
+    #: so `passed=False` is **evidence about the criterion, not the strategy**.
+    #: CLAUDE.md's clause 1 requires this be reported as UNINFORMATIVE rather
+    #: than FAIL (operator amendment 2026-10-02).
+    uninformative: bool = False
 
     def to_dict(self) -> dict:
         return {
@@ -252,6 +263,13 @@ class FoldConsistencyResult:
             "fraction_positive": self.fraction_positive,
             "min_fraction_required": str(self.min_fraction_required),
             "passed": self.passed,
+            "attainable_above_sharpe": self.attainable_above_sharpe,
+            "uninformative": self.uninformative,
+            # Spelled out so a consumer cannot read `passed: false` as a verdict
+            # about the strategy when the criterion was out of reach.
+            "status": (
+                "UNINFORMATIVE" if self.uninformative else ("PASS" if self.passed else "FAIL")
+            ),
         }
 
 
@@ -259,6 +277,9 @@ def evaluate_fold_consistency(
     fold_sharpe_values: Sequence[float | None],
     *,
     min_fraction: Decimal,
+    fold_sessions: int | None = None,
+    sessions_per_year: float | None = None,
+    observed_sharpe: float | None = None,
 ) -> FoldConsistencyResult:
     """CLAUDE.md's revised Eligibility Bar, clause 1: at least
     `min_fraction` of folds must show a positive (strictly > 0) annualized
@@ -276,6 +297,25 @@ def evaluate_fold_consistency(
     if not 0 < min_fraction <= 1:
         raise ValueError(f"min_fraction must be in (0, 1], got {min_fraction}")
 
+    # **The attainability threshold, computed from the geometry actually used.**
+    # Optional because most existing callers pass no geometry; when they do, a
+    # candidate whose own Sharpe sits below the threshold has its result marked
+    # UNINFORMATIVE rather than FAIL, which is what CLAUDE.md's clause 1
+    # requires. Without a geometry nothing is inferred -- the threshold stays
+    # None and the verdict is the plain boolean, exactly as before.
+    attainable_above = None
+    if fold_sessions is not None and sessions_per_year is not None:
+        attainable_above = fold_consistency_attainable_sharpe(
+            fold_sessions=fold_sessions,
+            sessions_per_year=sessions_per_year,
+            min_fraction=float(min_fraction),
+        )
+    uninformative = (
+        attainable_above is not None
+        and observed_sharpe is not None
+        and observed_sharpe < attainable_above
+    )
+
     num_folds = len(fold_sharpe_values)
     num_positive = _count_positive_folds(fold_sharpe_values)
 
@@ -286,6 +326,8 @@ def evaluate_fold_consistency(
             fraction_positive=None,
             min_fraction_required=min_fraction,
             passed=False,
+            attainable_above_sharpe=attainable_above,
+            uninformative=uninformative,
         )
 
     fraction_positive = num_positive / num_folds
@@ -296,6 +338,8 @@ def evaluate_fold_consistency(
         fraction_positive=fraction_positive,
         min_fraction_required=min_fraction,
         passed=passed,
+        attainable_above_sharpe=attainable_above,
+        uninformative=uninformative,
     )
 
 
@@ -1016,6 +1060,9 @@ def evaluate_eligibility(
     null_probability: float = DEFAULT_NULL_PROBABILITY,
     significance_alpha: float = DEFAULT_SIGNIFICANCE_ALPHA,
     deflated_sharpe: DeflatedSharpeResult | None = None,
+    fold_sessions: int | None = None,
+    sessions_per_year: float | None = None,
+    observed_sharpe: float | None = None,
 ) -> EligibilityResult:
     """CLAUDE.md's revised (2026-07-27) "fold consistency" + "aggregate
     significance" Eligibility Bar clauses, combined into one evaluation.
@@ -1041,8 +1088,29 @@ def evaluate_eligibility(
     (fold-count credibility floor, drawdown ceiling, minimum trade count,
     profit-factor floor) -- see module docstring for why those stay a
     caller's direct responsibility.
+
+    **`fold_sessions` / `sessions_per_year` / `observed_sharpe` are how clause
+    1's attainability reaches a report.** Supply them and the fold-consistency
+    result carries `attainable_above_sharpe` plus a `status` of `UNINFORMATIVE`
+    when the candidate's own Sharpe is below that threshold -- CLAUDE.md's
+    amendment of 2026-10-02, which exists because the clause needs a true Sharpe
+    of 1.701 at the 60-session daily geometry and so cannot be satisfied by a
+    realistic edge. Omit them and nothing is inferred: the threshold stays
+    `None` and the verdict is the plain boolean, so every existing caller is
+    unaffected.
+
+    They are optional rather than required because this function is called from
+    paths that have no fold geometry to hand, and **a guessed geometry would
+    produce a threshold that looks computed** -- worse than an absent one, since
+    a reader prints it beside a fold fraction as though it meant something.
     """
-    fold_consistency = evaluate_fold_consistency(fold_sharpe_values, min_fraction=min_fold_consistency)
+    fold_consistency = evaluate_fold_consistency(
+        fold_sharpe_values,
+        min_fraction=min_fold_consistency,
+        fold_sessions=fold_sessions,
+        sessions_per_year=sessions_per_year,
+        observed_sharpe=observed_sharpe,
+    )
     sign_test = evaluate_sign_test(fold_sharpe_values, null_probability=null_probability, alpha=significance_alpha)
     sharpe_significance = evaluate_mean_sharpe_significance(fold_sharpe_values, alpha=significance_alpha)
     passed = fold_consistency.passed and sign_test.passed and sharpe_significance.passed
@@ -1053,3 +1121,44 @@ def evaluate_eligibility(
         passed=passed,
         deflated_sharpe=deflated_sharpe,
     )
+
+
+def fold_consistency_attainable_sharpe(
+    *,
+    fold_sessions: int,
+    sessions_per_year: float,
+    min_fraction: float,
+) -> float | None:
+    """The true annualized Sharpe at which the fold-consistency clause becomes
+    attainable at `min_fraction` — below it, the clause reports UNINFORMATIVE.
+
+    **Why this exists.** A fold's sign is a coin flip tilted by the true effect,
+    and the tilt over one validation window is `sharpe * sqrt(fold_sessions /
+    sessions_per_year)` in standard-error units. Inverting
+    `P(fold > 0) = Phi(tilt) = min_fraction` gives the Sharpe the clause needs:
+
+        required = Phi^-1(min_fraction) * sqrt(sessions_per_year / fold_sessions)
+
+    At the 60-session daily geometry with ~245 sessions a year that is **1.701**
+    for an 80% floor and **2.590** for 90% — both far outside the 0.4-0.8 a
+    realistic edge occupies. So the clause was unsatisfiable by any realistic
+    candidate, at any `N`, on any window: unlike the DSR obstruction it does not
+    involve the selection count, and unlike the detection floor it does not
+    improve with a longer panel, because the tilt depends on the **fold** length.
+
+    Found by an external blind review's second pass, 2026-10-02; the amendment
+    making the clause report UNINFORMATIVE below this threshold is the operator's
+    decision of the same date. `sr-j` had set 80-90% to replace a literal 100%
+    sweep on an argument about a **win rate**, which was never checked against an
+    effect size.
+
+    Computed rather than fixed so a future fold geometry recomputes instead of
+    inheriting 1.701. Returns `None` when the inputs cannot define a threshold,
+    on the same "no evidence" convention as the rest of this module.
+    """
+    if fold_sessions <= 0 or sessions_per_year <= 0:
+        return None
+    if not 0.0 < min_fraction < 1.0:
+        return None
+    quantile = NormalDist().inv_cdf(min_fraction)
+    return quantile * math.sqrt(sessions_per_year / fold_sessions)

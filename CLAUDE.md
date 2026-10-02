@@ -894,7 +894,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 125 documents,
+   them. `.planning/README.md` carries an index of all 126 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1647,7 +1647,58 @@ genuinely strong, real 80%-true-edge strategy clears a literal 19/19
 sweep only ~1.4% of the time, so demanding literal 100% mostly measures
 luck, not edge. Replaced with two required checks:
 1. **Fold consistency**: at least 80-90% of folds show positive
-   annualized Sharpe (not literal 100%).
+   annualized Sharpe (not literal 100%), **and this clause reports
+   UNINFORMATIVE rather than FAIL below the Sharpe at which it is attainable**
+   (amendment approved by the operator 2026-10-02; the obstruction it answers
+   was found by the external blind review's second pass and the figures below
+   are this session's).
+
+   **Why the amendment was needed: the clause as written cannot be satisfied by
+   a realistic edge, at any `N`, on any window.** A fold's sign is a coin flip
+   tilted by the true effect, and over a 60-session validation window at 245
+   sessions a year the tilt is small:
+
+   | true annualized Sharpe | P(fold Sharpe > 0) |
+   |---|---|
+   | 0.4 | 57.8% |
+   | 0.8 | 65.4% |
+   | 1.0 | 69.0% |
+   | 2.0 | 83.9% |
+
+   Inverting it, **the 80% floor needs a true Sharpe of 1.701 and the 90% floor
+   needs 2.590** — both far outside the 0.4-0.8 that credible institutional
+   trend-following reports. This is a **second obstruction, independent of the
+   DSR one**: it does not involve `N`, and lengthening the window does not touch
+   it, because the tilt depends on the *fold* length rather than the panel's.
+
+   `sr-j` set 80-90% to replace a literal 100% sweep, arguing that "even a
+   genuinely strong, real 80%-true-edge strategy clears a literal 19/19 sweep
+   only ~1.4% of the time." **That argument is about a win rate, not a Sharpe**,
+   and the substituted figure was never checked against an effect size.
+
+   **What the amendment does and does not do.** It does not lower the bar: a
+   candidate that clears 80% still clears it, and nothing is promoted on fewer
+   positive folds than before. It stops the clause being quoted as evidence
+   *against* a strategy whose effect size makes it unreachable — the same
+   handling `check_criterion_attainable` already gives an unattainable trade
+   count, and the same principle this file states twice elsewhere: **a criterion
+   that cannot be satisfied is not a criterion.**
+
+   The attainability threshold is computed, not fixed:
+   `required_sharpe = Phi^-1(fraction) * sqrt(sessions_per_year / fold_sessions)`
+   — 1.701 for 80% at the 60-session daily geometry, and lower for longer folds.
+   `research/eligibility.py::fold_consistency_attainable_sharpe` is the
+   implementation, so a future geometry change recomputes rather than inheriting
+   this number. **Reporting it is mandatory**: a walk-forward result must state
+   that threshold beside its fold fraction, exactly as a holdout must state its
+   detection floor.
+
+   The two alternatives considered and not taken, recorded so they are not
+   re-litigated: lengthening the fold until the sign is informative (80% at
+   Sharpe 0.6 needs ~480-session folds, which collides with the 8-10 fold floor)
+   and replacing the sign test with a pooled statistic over stitched validation
+   returns (the better long-run answer, and a change to `walkforward`'s
+   aggregation rather than to this clause — it stays open).
 2. **Aggregate significance**: the full set of per-fold Sharpe ratios
    must reject "no real edge" via *both* a binomial sign test (fold
    win/loss count against p=0.5) *and* a **Deflated Sharpe Ratio**
@@ -2222,6 +2273,27 @@ is not merely a convention inherited from `sr-t`: `N` = 1 is the only setting at
 which the window's own power is what decides the outcome. A walk-forward
 qualification campaign on the same data, carrying the project `N`, would need an
 observed annualized Sharpe above **3.632**.
+
+**And past a certain `N` the obstruction is a sign before it is a margin.** DSR
+is `PSR` computed against `SR0` rather than zero, so its numerator carries
+`observed - SR0`. Where `SR0` exceeds the whole 0.4-0.8 range, that numerator is
+negative before any uncertainty allowance enters, and **a longer window shrinks
+the uncertainty term without touching the sign** — so "collect more data" is not
+a weak remedy there, it is not a remedy.
+
+**The range matters and the first draft of this paragraph overstated it**
+(corrected on review of PR #216, which produced the counter-example): at `N` = 2,
+`SR0` is 0.658, so an observed 0.8 is **above** it and the numerator is positive.
+With this project's measured dispersion the thresholds are
+
+| | smallest `N` |
+|---|---|
+| `SR0` > 0.4, so the bottom of the range turns negative | **2** |
+| `SR0` > 0.8, so the **whole** range turns negative | **3** |
+
+so the sign argument covers the full 0.4-0.8 band only from `N` = 3 up. Below
+that it is an ordinary margin question, and at `N` = 1 there is no selection term
+at all.
 
 **That is a requirement, not a prohibition**, and the distinction is one this
 file already draws about the 1-minute window: a high `N` does not make DSR
