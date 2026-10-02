@@ -2220,8 +2220,17 @@ and a 27-year one**. On the reserved pre-2019 panel (27.35y, floor 0.315):
 why the reservation of that window for a *single pre-registered confirmation*
 is not merely a convention inherited from `sr-t`: `N` = 1 is the only setting at
 which the window's own power is what decides the outcome. A walk-forward
-qualification campaign on the same data, carrying the project `N`, would need
-**3.632** and could not pass whatever it found.
+qualification campaign on the same data, carrying the project `N`, would need an
+observed annualized Sharpe above **3.632**.
+
+**That is a requirement, not a prohibition**, and the distinction is one this
+file already draws about the 1-minute window: a high `N` does not make DSR
+unclearable, it raises the Sharpe a result must post without forbidding a result
+from posting it. `build_retrospective` computes DSR from the observed Sharpe, so
+a sufficiently extreme sample would clear 0.95. What the figure rules out is
+**planning on it**: 3.632 sits far outside the 0.4-0.8 that credible
+institutional trend-following reports, so a campaign sized against a realistic
+edge is designed to fail even when the edge is real.
 
 Credible institutional trend-following reports 0.4-0.8. **At this `N` no
 realistic edge can clear this bar on this data, whatever it is.** This is the
