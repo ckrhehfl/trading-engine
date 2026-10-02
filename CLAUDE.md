@@ -1810,7 +1810,37 @@ profit factor 1.967 to 1.968 — so the profit-factor floor's slippage/fee
 cushion is still doing real work here, not funding P&L; this is one real
 data point, not a general proof the funding-rate gap never matters for a
 strategy with different (e.g. much shorter, funding-settlement-spanning)
-holding-period characteristics). A fold's
+holding-period characteristics). **`mean_sharpe` is the mean of per-fold annualized Sharpes, and that is the
+optimistic statistic once fold volatility varies** (measured 2026-10-03, after
+the external review raised the aggregation method; figures from synthetic daily
+returns at the 1d geometry, 12 folds x 60 sessions). Holding the drift fixed
+while fold volatility ranged 0.5x-1.5x, a true Sharpe of 0.8 reports as
+**mean-of-folds 1.241 against pooled 0.697**; with a single fold at 8x
+volatility the mean barely moves (0.823 to 0.764) while pooled falls to 0.327.
+A low-volatility fold produces a large ratio and equal weighting carries it into
+the average, where pooling divides by the whole span's dispersion instead.
+
+Neither is wrong — the mean answers *how good was a typical period*, the pooled
+*what would running this across the whole span have produced* — and the second is
+what a capital decision rests on. So `walkforward` now reports
+**`pooled_validation_sharpe`** and the **`mean_minus_pooled_sharpe`** gap beside
+it. **`mean_sharpe` remains the scored figure**: which statistic the bar reads is
+a Risk-Parameter-class change, and nothing here makes it. What changes is that a
+run whose result depends on the choice now says so.
+
+Two properties of that computation, both load-bearing: returns are taken **within
+each fold and then pooled**, never by one pass over concatenated equity levels
+(each fold's curve is rebased to its own starting equity, so a single pass reads
+every boundary jump as a real return — twelve fabricated observations at the
+default geometry), and **overlapping folds report `None` rather than a figure**,
+since stitching them would count shared bars twice.
+
+**The 1,883 logged runs cannot be re-measured this way.** `_metrics_summary`
+drops `equity_curve`, so no stored record carries the daily series a pooled
+Sharpe needs — the same blocker the CSCV/PBO trigger has. Their `mean_sharpe`
+figures stand as what they are, and the gap is only available from here forward.
+
+A fold's
 `profit_factor: null` is interpreted according to why it's null: a
 zero-trade fold already fails eligibility via the Sharpe/trade-count
 requirements regardless of profit factor; a fold where every closed
