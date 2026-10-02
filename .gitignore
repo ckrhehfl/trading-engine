@@ -109,3 +109,11 @@ python/data/var/
 # `python/var/live/`. The `**/` prefix stays here for consistency with the
 # `**/data/var/` and `**/var/live/` lines above, where it does real work.
 **/var/
+
+# The paste-ready external-review bundles, built by
+# scripts/build-external-review-paste.py from .planning/xr-*.md. Generated, so
+# committing one would let it drift from the documents of record -- and it sits
+# at the repository root rather than in .planning/ both so an operator can find
+# it among 123 planning documents and so test_planning_index.py does not count
+# it as one.
+/PASTE-THIS-phase*.md
