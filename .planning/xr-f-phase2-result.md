@@ -23,11 +23,15 @@ Both unprompted, both for the reason Part A supplied:
   into three unusable ones.
 
 It restated the reason in a form sharper than ours: **the obstruction is a sign,
-not a margin.** DSR's numerator carries `observed − SR0`. An observed Sharpe in
-0.4–0.8 is below `SR0` at any `N` past 1, so the numerator is negative before
-uncertainty enters. A longer window shrinks the uncertainty term and cannot
-change the sign. *"Collect more data" is not a weak remedy here; it is not a
-remedy.*
+not a margin.** DSR's numerator carries `observed − SR0`, so where `SR0` exceeds
+the observed Sharpe the numerator is negative before uncertainty enters, and a
+longer window shrinks the uncertainty term without touching the sign. *"Collect
+more data" is not a weak remedy there; it is not a remedy.*
+
+**Both it and our first write-up overstated the range**, caught on review of
+PR #216: at `N` = 2 the measured `SR0` is 0.658, so an observed 0.8 sits **above**
+it. The sign argument covers the whole 0.4–0.8 band only from **`N` = 3** (`SR0`
+= 1.080); `N` = 2 turns the bottom of the range negative and not the top.
 
 ## 2. What it found that we had not
 

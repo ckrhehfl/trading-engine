@@ -126,3 +126,101 @@ def test_undefined_inputs_return_none_rather_than_a_number(kwargs):
     invented from a degenerate input would be worse than an absent one, because
     a caller reports it beside a fold fraction as though it meant something."""
     assert fold_consistency_attainable_sharpe(**kwargs) is None
+
+
+# ---------------------------------------------------------------------------
+# The threshold must reach a report, not just exist
+#
+# Flagged on review of PR #216: the first version of this work defined
+# `fold_consistency_attainable_sharpe` and tested its arithmetic, and nothing
+# called it. CLAUDE.md said reporting the threshold was mandatory while the
+# serialised result carried neither it nor an UNINFORMATIVE status, so every
+# consumer kept reading an unreachable criterion as `passed: false`. A rule
+# whose implementation is unreachable is the shape this repo records as "a guard
+# that silently does nothing is worse than no guard".
+
+from decimal import Decimal
+
+from research.eligibility import evaluate_eligibility, evaluate_fold_consistency
+
+#: Six folds, four positive -- 66.7%, under an 80% floor. So `passed` is False
+#: either way, and what the tests below check is whether that False is reported
+#: as a verdict about the strategy or about the criterion.
+FOLDS = [0.5, 0.4, -0.2, 0.3, -0.1, 0.2]
+
+
+def test_without_a_geometry_nothing_is_inferred():
+    """Every existing caller passes no geometry and must be unaffected: no
+    threshold, no UNINFORMATIVE, and the plain boolean verdict."""
+    result = evaluate_fold_consistency(FOLDS, min_fraction=Decimal("0.80"))
+    assert result.passed is False
+    assert result.attainable_above_sharpe is None
+    assert result.uninformative is False
+    assert result.to_dict()["status"] == "FAIL"
+
+
+def test_an_unreachable_criterion_is_reported_as_uninformative():
+    """A candidate at a realistic 0.6 Sharpe against a threshold of 1.701."""
+    result = evaluate_fold_consistency(
+        FOLDS,
+        min_fraction=Decimal("0.80"),
+        fold_sessions=DAILY_FOLD_SESSIONS,
+        sessions_per_year=KRX_SESSIONS_PER_YEAR,
+        observed_sharpe=0.6,
+    )
+    assert result.attainable_above_sharpe == pytest.approx(1.701, abs=0.002)
+    assert result.uninformative is True
+    assert result.to_dict()["status"] == "UNINFORMATIVE", (
+        "a criterion out of reach must not serialise as a verdict on the strategy"
+    )
+    # The raw boolean is deliberately untouched -- the amendment changes how the
+    # result is *reported*, not what the clause computes.
+    assert result.passed is False
+
+
+def test_a_candidate_above_the_threshold_is_judged_normally():
+    """The amendment must not make every failure uninformative: above the
+    threshold the clause is answerable and a miss is a real miss."""
+    result = evaluate_fold_consistency(
+        FOLDS,
+        min_fraction=Decimal("0.80"),
+        fold_sessions=DAILY_FOLD_SESSIONS,
+        sessions_per_year=KRX_SESSIONS_PER_YEAR,
+        observed_sharpe=2.5,
+    )
+    assert result.uninformative is False
+    assert result.to_dict()["status"] == "FAIL"
+
+
+def test_the_threshold_is_serialised_so_a_report_can_quote_it():
+    """CLAUDE.md requires the threshold be stated beside the fold fraction, the
+    way a holdout states its detection floor. That is only possible if it
+    survives serialisation."""
+    payload = evaluate_fold_consistency(
+        FOLDS,
+        min_fraction=Decimal("0.80"),
+        fold_sessions=DAILY_FOLD_SESSIONS,
+        sessions_per_year=KRX_SESSIONS_PER_YEAR,
+        observed_sharpe=0.6,
+    ).to_dict()
+    assert "attainable_above_sharpe" in payload
+    assert payload["attainable_above_sharpe"] == pytest.approx(1.701, abs=0.002)
+    assert payload["fraction_positive"] == pytest.approx(4 / 6)
+
+
+def test_evaluate_eligibility_passes_the_geometry_through():
+    """The wiring that was missing. `evaluate_eligibility` is the authoritative
+    entry point, so a threshold it drops never reaches any report."""
+    result = evaluate_eligibility(
+        FOLDS,
+        min_fold_consistency=Decimal("0.80"),
+        fold_sessions=DAILY_FOLD_SESSIONS,
+        sessions_per_year=KRX_SESSIONS_PER_YEAR,
+        observed_sharpe=0.6,
+    )
+    assert result.fold_consistency.uninformative is True
+    assert result.fold_consistency.attainable_above_sharpe == pytest.approx(1.701, abs=0.002)
+
+    without = evaluate_eligibility(FOLDS, min_fold_consistency=Decimal("0.80"))
+    assert without.fold_consistency.attainable_above_sharpe is None
+    assert without.fold_consistency.uninformative is False

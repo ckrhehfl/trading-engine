@@ -2274,13 +2274,26 @@ which the window's own power is what decides the outcome. A walk-forward
 qualification campaign on the same data, carrying the project `N`, would need an
 observed annualized Sharpe above **3.632**.
 
-**And the obstruction is a sign before it is a margin.** DSR is `PSR` computed
-against `SR0` rather than zero, so its numerator carries `observed - SR0`. An
-observed Sharpe anywhere in the 0.4-0.8 range is **below** `SR0` at any `N` past
-1, which makes that numerator negative before any uncertainty allowance enters.
-A longer window shrinks the uncertainty term; it cannot change the sign. So
-"collect more data" is not a weak remedy against the selection penalty — it is
-not a remedy at all.
+**And past a certain `N` the obstruction is a sign before it is a margin.** DSR
+is `PSR` computed against `SR0` rather than zero, so its numerator carries
+`observed - SR0`. Where `SR0` exceeds the whole 0.4-0.8 range, that numerator is
+negative before any uncertainty allowance enters, and **a longer window shrinks
+the uncertainty term without touching the sign** — so "collect more data" is not
+a weak remedy there, it is not a remedy.
+
+**The range matters and the first draft of this paragraph overstated it**
+(corrected on review of PR #216, which produced the counter-example): at `N` = 2,
+`SR0` is 0.658, so an observed 0.8 is **above** it and the numerator is positive.
+With this project's measured dispersion the thresholds are
+
+| | smallest `N` |
+|---|---|
+| `SR0` > 0.4, so the bottom of the range turns negative | **2** |
+| `SR0` > 0.8, so the **whole** range turns negative | **3** |
+
+so the sign argument covers the full 0.4-0.8 band only from `N` = 3 up. Below
+that it is an ordinary margin question, and at `N` = 1 there is no selection term
+at all.
 
 **That is a requirement, not a prohibition**, and the distinction is one this
 file already draws about the 1-minute window: a high `N` does not make DSR
