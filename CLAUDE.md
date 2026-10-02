@@ -1479,6 +1479,37 @@ Non-negotiable once strategy research begins:
   statistics — mean, std, min/max, or similar — derived from data
   outside what would actually have been available at that point in
   time.
+
+  **Purging and embargo are not needed here, and the reason is structural
+  rather than a judgement** (established 2026-10-03, after an external review
+  correctly noted their absence; the question will recur, so the answer is
+  recorded rather than re-derived). López de Prado's purge exists for a
+  *labelled* training sample whose labels reach forward past the train/validate
+  boundary — a triple-barrier label spanning the split leaks the validation
+  period into training. Four properties mean no such leak exists in this
+  harness:
+
+  1. **`TrainableStrategy.fit` receives `train_klines` only.** `validate_klines`
+     is not a parameter, so "must not read it" is enforced by the signature
+     rather than by discipline — the same guarantee `KlineWindow` gives the bar
+     loop.
+  2. **There are no forward-looking labels.** `fit` performs a parameter search,
+     backtesting candidates on the training slice; it fits no model to labels, so
+     there is nothing whose horizon could cross the boundary.
+  3. **No `fit` implementation reads an outside data source** — verified across
+     all sixteen: no database handle, no file read, no network call. The training
+     slice is the only input. `funding_rates` spans the whole period but is
+     passed to `compute_metrics`, never to `fit`.
+  4. **Each fold's validation run starts flat at `starting_equity`.** A position
+     cannot carry across a boundary, so no trade spans the split either.
+
+  **What property (4) does cost is a different distortion, and it is real**: a
+  strategy whose holding period approaches the fold length is force-closed at
+  every boundary, and each fold's equity curve is rebased. That is why
+  `pooled_validation_sharpe` stitches per-fold *returns* rather than concatenated
+  equity levels. Purging would not address it, and a design that genuinely needs
+  forward labels — a supervised classifier, say — would reintroduce the original
+  requirement and must state its own purge.
 - Survivorship bias doesn't apply to the current single-symbol
   (BTC-USDT) scope — there's no universe-selection step for it to enter
   through. Revisit before any multi-symbol expansion: the market-data
