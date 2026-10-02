@@ -25,9 +25,18 @@ from research.external_review_leakcheck import (
     missing_required_facts,
 )
 
-pytestmark = pytest.mark.skipif(
-    not FACT_PACKAGE.exists(), reason="fact package not present"
-)
+def test_the_fact_package_exists():
+    """**Not a skip condition.** A module-level `skipif` on the document's
+    existence makes every check below pass silently the moment the file is
+    deleted or renamed — which is the exact scenario in which a leak check
+    matters least and a missing *record* matters most. The document is the
+    evidence for conclusions now written into `CLAUDE.md`, so its absence is a
+    failure rather than a reason to stop looking. Flagged on review of PR #215,
+    while the operator was in fact deleting the generated paste bundles."""
+    assert FACT_PACKAGE.exists(), (
+        f"{FACT_PACKAGE} is missing -- it is the record of what the external "
+        "reviewer was given, and the basis of the rules derived from the reply"
+    )
 
 
 def test_the_fact_package_leaks_nothing():

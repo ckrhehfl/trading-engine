@@ -77,7 +77,17 @@ DIAGNOSIS = (
 
 #: Arithmetic deliberately withheld so we can see whether the reviewer performs
 #: it. Deriving the required Sharpe, or the reserved window's floor, is the test.
-WITHHELD_ARITHMETIC = ("0.315", "required sharpe", "would have needed", "4.00", "4.6")
+#:
+#: **The numeric entries carry digit boundaries**, because a bare "4.00" matches
+#: inside "14.00" and "0.315" inside "10.315" -- the same substring trap that
+#: `figure_survival.py` exists to avoid, where "4374" once "survived" inside a
+#: row id. Flagged on review of PR #215.
+WITHHELD_ARITHMETIC_LITERAL = ("required sharpe", "would have needed")
+WITHHELD_ARITHMETIC_NUMERIC = (
+    r"(?<![\d.])0\.315(?![\d])",
+    r"(?<![\d.])4\.00(?![\d])",
+    r"(?<![\d.])4\.6(?![\d])",
+)
 
 #: **A past result, by shape rather than by name.** See the module docstring.
 MEASURED_OUTCOME = (
@@ -100,23 +110,30 @@ MEASURED_OUTCOME = (
 #: Facts the design cannot be executed without. Their absence is the opposite
 #: failure from a leak and is just as disqualifying: a reviewer missing these
 #: produces generalities, which is what a fully blind package was shown to do.
+#: **Needles are phrases, not bare numbers**, because a short one fails OPEN: a
+#: document that had lost its trial count entirely would still contain "129"
+#: somewhere, and "0.95" appears in any number of unrelated thresholds. The check
+#: would then report the fact as present. Tightened on review of PR #215; the
+#: synthetic test removes each needle and asserts it is reported missing, so a
+#: needle that cannot be removed cleanly fails that test rather than passing
+#: quietly.
 REQUIRED_FACTS = {
-    "detection floor formula": "1.6449",
-    "selection trial count": "129",
-    "trial Sharpe dispersion": "1.2940",
-    "DSR threshold": "0.95",
+    "detection floor formula": "1.6449 / sqrt",
+    "selection trial count": "`N` = 129",
+    "trial Sharpe dispersion": "1.2665",
+    "DSR threshold": "Deflated Sharpe Ratio ≥ 0.95",
     "trade count formula": "evaluated_days / 20",
-    "Korean round trip": "30–33",
+    "Korean round trip": "30–33 bp",
     "transaction tax": "거래세",
-    "taker fee": "5 bp",
+    "taker fee": "Taker fee 5 bp",
     "KIS reach": "1991-08-28",
     "full universe panel": "4,598,643",
-    "short selling constraint": "short selling",
-    "holdout single access": "exactly once",
-    "walk-forward mandatory": "rolling train/validate",
+    "short selling constraint": "No retail short selling",
+    "holdout single access": "accessed exactly once",
+    "walk-forward mandatory": "without **rolling train/validate",
     "window availability": "selected on?",
-    "session hours": "15:20",
-    "calendar fails closed": "fails closed",
+    "session hours": "09:00–15:20 is the continuous session",
+    "calendar fails closed": "trading calendar fails closed",
 }
 
 
@@ -149,7 +166,8 @@ def find_leaks(text: str) -> list[Hit]:
         ("ARC", ARC_PREFIXES, False),
         ("VERDICT", VERDICTS, False),
         ("DIAGNOSIS", DIAGNOSIS, False),
-        ("WITHHELD-ARITH", WITHHELD_ARITHMETIC, False),
+        ("WITHHELD-ARITH", WITHHELD_ARITHMETIC_LITERAL, False),
+        ("WITHHELD-ARITH", WITHHELD_ARITHMETIC_NUMERIC, True),
         ("MEASURED-OUTCOME", MEASURED_OUTCOME, True),
     )
     hits: list[Hit] = []

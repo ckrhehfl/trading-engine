@@ -1659,6 +1659,14 @@ luck, not edge. Replaced with two required checks:
    (`research_selection_trials`) and the variance of that same trial
    set's Sharpe estimates. The one-sample t-test it replaces may still
    be reported for continuity but is no longer a pass criterion.
+
+   **The Sharpe this threshold implies is a property of three inputs, not of
+   the 0.95 alone** — the trial count, the dispersion of those trials' Sharpe
+   estimates, and the candidate window's calendar span. Any figure quoted as
+   "the bar at this `N`" must name its window, and the decomposition plus the
+   measured inputs are under the scalping arc's governing arithmetic below.
+   Quoting one window's figure against another window is the error that
+   section records.
    Both required, not either — they catch different failure modes
    (win-rate-only noise vs. aggregate-risk-adjusted-return noise a
    fold-percentage alone wouldn't rule out).

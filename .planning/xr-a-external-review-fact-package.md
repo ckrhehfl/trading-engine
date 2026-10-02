@@ -375,9 +375,12 @@ artifact** (a suite once appended to the live log) — summing to 129. The
 artifact is counted anyway, because an inflated `N` can only lower a later DSR
 and the log is append-only.
 
-**The standard deviation of those trial Sharpes is 1.2940**, over 144 logged
-Sharpe values in annualized units. A selection correction needs both that and
-`N`.
+**The standard deviation of those trial Sharpes is 1.2665**, over the **126 of
+those 129 trials that have a defined Sharpe** (three do not: two have no
+computable fold Sharpe and the artifact has none). Annualized units. A selection
+correction needs both that dispersion and `N`, computed over **the same
+population** — this figure therefore excludes the separate `infrastructure`
+purpose, exactly as `N` does.
 
 **DSR must fail closed on `N`.** A strategy whose family cannot be resolved
 resolves to its own single-member family, which *understates* `N` — and a smaller
