@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 127 documents,
+   them. `.planning/README.md` carries an index of all 128 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1365,6 +1365,29 @@ is optional:**
    한진해운 — delisted 2017 — full depth back to 2010 at the live control's own
    density, its blank 2008 being the listing date of that code rather than a
    retention floor; 조흥은행, merged away in 2006, **72 bars in 1998 Q1**.
+
+   **What shapes of question it can answer at all is now computed rather than
+   assumed** (`research/window_feasibility.py`, derivation in
+   `.planning/rd-z-can-the-reserved-window-answer-anything.md`). Three
+   constraints bind — the span's power, the cost ceiling on turnover, and the
+   Eligibility Bar's trade-count floor — and the second and third pull opposite
+   ways. Their intersection admits **a long-only cash-equity portfolio of 5-30
+   names holding for months**, and essentially nothing else: at 24 round trips a
+   year the 33bp Korean round trip costs more than a 0.5-Sharpe strategy's entire
+   gross return, while the trade floor clamps at 100 and a single name clears it
+   only barely.
+
+   **Trade count and turnover are separable through the universe size**, which is
+   what makes those two constraints compatible rather than contradictory: a round
+   trip in one of `n` equally weighted names moves `1/n` of capital, so widening
+   the universe multiplies trades and leaves turnover alone.
+
+   **And the pre-2000 data question is load-bearing rather than a caveat.**
+   Truncating the panel at 2000 drops the power for a true 0.5 edge from 83% to
+   70%, and at 2008 to 51% — a coin flip. The full span is the only start that
+   sees the lower half of a realistic range, and **even it cannot reach 0.4**
+   (67.3%). So verifying that era is a prerequisite to the access, not a footnote
+   on it.
 
    **Three conditions on using it, and the first is a scope change:**
 
