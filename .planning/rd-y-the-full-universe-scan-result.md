@@ -40,17 +40,34 @@ two reasons are not interchangeable.** `Absence` exists precisely because a sing
   the panel. Normally a later listing, or a name that left before 2019. **An
   expected outcome rather than a gap**, since the delisted register reaches
   further back than the panel does.
-- **`absent:never_served`, 434.** KIS serves no bar in **any** window, and a
-  nonsense-code negative control in the same run also answered empty — so the
-  request shape was sound and this is a code KIS does not price at all. That is a
-  statement about **data availability**, not about when the name was listed.
+- **`absent:never_served`, 434.** KIS serves no bar in **any** window — an
+  over-wide `19900101`..today probe answered `rt_cd=0` with an empty `output2`.
+  That is a statement about **data availability**, not about when the name was
+  listed.
 
 **The 434 are the residual survivorship exposure and should be read as such.** If
 any of them traded inside the panel, the pool is missing them and no amount of
-per-day membership logic recovers it: the price series is simply not served. What
-bounds the exposure is that the classification is earned rather than assumed — the
-negative control is what separates "KIS does not price this" from "our request was
-malformed", which is the distinction `Absence.UNKNOWN` refuses to guess at.
+per-day membership logic recovers it: the price series is simply not served.
+
+**What bounds the exposure is two controls, not one**, and the asymmetry between
+them is the point:
+
+- a **negative** control — a nonsense code — proves an empty answer is not simply
+  what this endpoint returns for everything;
+- a **positive** control, 005930, proves the *wide* request shape still works.
+  005930 is served back to 1991-08-28, which is KIS's own floor rather than a
+  listing date, so an empty answer for it cannot mean "no bars exist".
+
+**The negative control alone would fail in the unsafe direction**, which is why
+it is not sufficient: it exercises a narrow `_page` request, while the probe asks
+`19900101`..today. If KIS ever answered every wide request with `rt_cd=0` and an
+empty `output2` — a range limit, a date-format change, an `FID_ORG_ADJ_PRC`
+interaction — the negative control would still pass, because empty is what it
+expects, and **every `absent:unknown` would be recorded `NEVER_SERVED`**. That
+removes real names from the pool as "KIS does not price this", which is precisely
+the survivorship direction this universe exists to remove. An unresolvable
+control leaves every symbol at `UNKNOWN` instead, which is the distinction
+`Absence.UNKNOWN` refuses to guess at.
 
 What would be a defect is the opposite case — a name that traded inside the panel
 and is absent anyway — and the per-day membership rule is what guards against it.
