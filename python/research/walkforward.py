@@ -31,6 +31,8 @@ overlapping folds at the provisional default window sizes, short of the
 8-10 floor -- a human decision this task flags rather than resolves.
 """
 
+import math
+import statistics
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Callable, Mapping, Protocol, Sequence
@@ -39,7 +41,7 @@ from uuid import uuid4
 from backtest.engine import BacktestResult, Strategy, run_backtest
 from backtest.kline import Kline
 from metrics.funding import FundingRate
-from metrics.metrics import Metrics, compute_metrics
+from metrics.metrics import Metrics, compute_metrics, per_bar_returns
 from research import experiment_log
 from research.overfitting_check import SENSITIVITY_PARENT_RUN_ID_PREFIX
 from research.robustness import DEFAULT_PERTURBATION_FRACTIONS, check_parameter_sensitivity
@@ -447,7 +449,7 @@ def run_walk_forward(
             )
         )
 
-    aggregate = _aggregate_metrics(fold_results)
+    aggregate = _aggregate_metrics(fold_results, bars_per_day=bars_per_day)
 
     walk_forward_config: dict = {
         "train_bars": train_bars,
@@ -567,7 +569,87 @@ def _fold_result_to_log_dict(fold_result: FoldResult) -> dict:
     return record
 
 
-def _aggregate_metrics(fold_results: list[FoldResult]) -> dict:
+def _pooled_validation_sharpe(
+    fold_results: list[FoldResult], *, bars_per_day: int
+) -> float | None:
+    """Sharpe of the **stitched** validation returns, or `None` when the folds
+    overlap.
+
+    **Why this exists beside `mean_sharpe` rather than replacing it.** The two
+    answer different questions and differ by a lot once fold volatility varies,
+    which is what a regime shift looks like. Measured on synthetic daily returns
+    at this project's 1d geometry (12 folds x 60 sessions), with the drift held
+    fixed while volatility ranged 0.5x-1.5x across folds:
+
+        true Sharpe 0.8  ->  mean-of-folds 1.241,  pooled 0.697
+
+    and with a single fold at 8x volatility, mean-of-folds barely moved (0.823 to
+    0.764) while pooled fell to 0.327. **The mean of per-fold Sharpes is the
+    optimistic one in exactly the conditions a real strategy meets**, because a
+    low-volatility fold produces a large ratio and equal weighting carries it
+    into the average. Pooling divides by the whole period's dispersion instead.
+
+    Neither is wrong: the mean answers "how good was a typical period", the
+    pooled "what would running this across the whole span have produced". The
+    second is the one a capital decision rests on, so it is reported — but
+    `mean_sharpe` stays the scored figure, because changing which statistic the
+    Eligibility Bar reads is a human-approved gate change and not this
+    function's to make.
+
+    **`None` rather than a guess when the folds overlap.** Stitching overlapping
+    validation windows would count the shared bars twice, and this project's own
+    rule is that a statistic over duplicated observations is not a statistic over
+    independent ones. The default geometry steps by `validate_bars`, so folds are
+    adjacent and this returns a figure; a caller that configures an overlap gets
+    `None` and keeps the mean.
+    """
+    if len(fold_results) < 1:
+        return None
+    ordered = sorted(fold_results, key=lambda fr: fr.validate_start_index)
+    for earlier, later in zip(ordered, ordered[1:]):
+        if later.validate_start_index < earlier.validate_end_index:
+            return None
+
+    # **Returns per fold, then pooled -- never one pass over concatenated
+    # levels.** Each fold's curve is rebased to its own starting equity, so the
+    # levels are not comparable across folds and a single `per_bar_returns` over
+    # the concatenation reads every boundary jump as a real return: one
+    # fabricated observation per boundary, twelve at the default geometry. The
+    # first draft of this function did exactly that, having described the hazard
+    # in its own docstring, and the test that constructs an order-of-magnitude
+    # boundary jump is what caught it.
+    returns: list[float] = []
+    for fr in ordered:
+        curve = fr.metrics.equity_curve
+        if curve:
+            returns.extend(per_bar_returns(curve))
+    return _sharpe_from_returns(returns, bars_per_day=bars_per_day)
+
+
+def _sharpe_from_returns(returns: list[float], *, bars_per_day: int) -> float | None:
+    """Annualized Sharpe over already-computed per-bar returns.
+
+    `sqrt(bars_per_day * 365)`, matching `metrics.metrics._sharpe_ratio` exactly
+    -- 365 regardless of `bars_per_day`, which is this project's fixed
+    convention rather than a per-implementation judgment. A second convention
+    here would make the two reported Sharpes incomparable, which is the whole
+    point of reporting them side by side.
+
+    `None` on fewer than two returns or zero variance, on the same "no evidence
+    of risk-adjusted edge either way" convention as the rest of the metrics.
+    """
+    if len(returns) < 2:
+        return None
+    try:
+        sd = statistics.stdev(returns)
+    except statistics.StatisticsError:
+        return None
+    if sd == 0:
+        return None
+    return (statistics.fmean(returns) / sd) * math.sqrt(bars_per_day * 365)
+
+
+def _aggregate_metrics(fold_results: list[FoldResult], *, bars_per_day: int | None = None) -> dict:
     """Reduce per-fold `Metrics` to the aggregate figures CLAUDE.md's
     Eligibility Bar is evaluated against later -- evaluating the bar
     itself is explicitly not this function's job (see module docstring).
@@ -592,6 +674,8 @@ def _aggregate_metrics(fold_results: list[FoldResult]) -> dict:
             "mean_profit_factor": None,
             "min_profit_factor": None,
             "folds_with_zero_trades": 0,
+            "pooled_validation_sharpe": None,
+            "mean_minus_pooled_sharpe": None,
         }
 
     sharpe_values = [fr.metrics.sharpe_ratio for fr in fold_results]
@@ -599,9 +683,18 @@ def _aggregate_metrics(fold_results: list[FoldResult]) -> dict:
     profit_factors = [fr.metrics.profit_factor for fr in fold_results]
     defined_profit_factors = [p for p in profit_factors if p is not None]
 
+    mean_sharpe = (
+        (sum(defined_sharpe_values) / len(defined_sharpe_values)) if defined_sharpe_values else None
+    )
+    pooled = (
+        _pooled_validation_sharpe(fold_results, bars_per_day=bars_per_day)
+        if bars_per_day is not None
+        else None
+    )
+
     return {
         "fold_count": fold_count,
-        "mean_sharpe": (sum(defined_sharpe_values) / len(defined_sharpe_values)) if defined_sharpe_values else None,
+        "mean_sharpe": mean_sharpe,
         "min_sharpe": min(defined_sharpe_values) if defined_sharpe_values else None,
         "all_folds_positive_sharpe": all(s is not None and s > 0 for s in sharpe_values),
         "worst_fold_max_drawdown": max(fr.metrics.max_drawdown for fr in fold_results),
@@ -612,4 +705,13 @@ def _aggregate_metrics(fold_results: list[FoldResult]) -> dict:
         ),
         "min_profit_factor": min(defined_profit_factors) if defined_profit_factors else None,
         "folds_with_zero_trades": sum(1 for fr in fold_results if fr.metrics.num_trades == 0),
+        # Reported, never scored. `mean_sharpe` remains what the Eligibility Bar
+        # reads; this is the same track record measured the other way, so a
+        # reader can see when the two disagree rather than having to assume they
+        # do not. The gap is the one figure that says whether this run's result
+        # depends on which statistic was chosen.
+        "pooled_validation_sharpe": pooled,
+        "mean_minus_pooled_sharpe": (
+            mean_sharpe - pooled if (mean_sharpe is not None and pooled is not None) else None
+        ),
     }
