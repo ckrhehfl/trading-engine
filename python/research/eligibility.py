@@ -1053,3 +1053,44 @@ def evaluate_eligibility(
         passed=passed,
         deflated_sharpe=deflated_sharpe,
     )
+
+
+def fold_consistency_attainable_sharpe(
+    *,
+    fold_sessions: int,
+    sessions_per_year: float,
+    min_fraction: float,
+) -> float | None:
+    """The true annualized Sharpe at which the fold-consistency clause becomes
+    attainable at `min_fraction` — below it, the clause reports UNINFORMATIVE.
+
+    **Why this exists.** A fold's sign is a coin flip tilted by the true effect,
+    and the tilt over one validation window is `sharpe * sqrt(fold_sessions /
+    sessions_per_year)` in standard-error units. Inverting
+    `P(fold > 0) = Phi(tilt) = min_fraction` gives the Sharpe the clause needs:
+
+        required = Phi^-1(min_fraction) * sqrt(sessions_per_year / fold_sessions)
+
+    At the 60-session daily geometry with ~245 sessions a year that is **1.701**
+    for an 80% floor and **2.590** for 90% — both far outside the 0.4-0.8 a
+    realistic edge occupies. So the clause was unsatisfiable by any realistic
+    candidate, at any `N`, on any window: unlike the DSR obstruction it does not
+    involve the selection count, and unlike the detection floor it does not
+    improve with a longer panel, because the tilt depends on the **fold** length.
+
+    Found by an external blind review's second pass, 2026-10-02; the amendment
+    making the clause report UNINFORMATIVE below this threshold is the operator's
+    decision of the same date. `sr-j` had set 80-90% to replace a literal 100%
+    sweep on an argument about a **win rate**, which was never checked against an
+    effect size.
+
+    Computed rather than fixed so a future fold geometry recomputes instead of
+    inheriting 1.701. Returns `None` when the inputs cannot define a threshold,
+    on the same "no evidence" convention as the rest of this module.
+    """
+    if fold_sessions <= 0 or sessions_per_year <= 0:
+        return None
+    if not 0.0 < min_fraction < 1.0:
+        return None
+    quantile = NormalDist().inv_cdf(min_fraction)
+    return quantile * math.sqrt(sessions_per_year / fold_sessions)

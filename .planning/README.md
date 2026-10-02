@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-125 documents and counting, which is past the point where `ls` is a
+126 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -245,3 +245,4 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`xr-c-evaluation-rubric.md`](xr-c-evaluation-rubric.md) — External Review — how the Phase 1 reply gets judged, fixed before it exists
 - [`xr-d-phase2-prompt.md`](xr-d-phase2-prompt.md) — External Review Phase 2 — the history disclosed, and the design tested against it
 - [`xr-e-phase1-result.md`](xr-e-phase1-result.md) — External Review Phase 1 result — scored against xr-c, and what it corrected in this project
+- [`xr-f-phase2-result.md`](xr-f-phase2-result.md) — External Review Phase 2 result — two structural obstructions, and no promotion route under the current rules
