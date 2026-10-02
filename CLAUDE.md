@@ -1480,10 +1480,14 @@ Non-negotiable once strategy research begins:
   outside what would actually have been available at that point in
   time.
 
-  **Purging and embargo are not needed here, and the reason is structural
-  rather than a judgement** (established 2026-10-03, after an external review
-  correctly noted their absence; the question will recur, so the answer is
-  recorded rather than re-derived). López de Prado's purge exists for a
+  **Purging and embargo are not needed here, and the reason is the absence of a
+  forward-looking label rather than any single structural barrier** (established
+  2026-10-03, after an external review correctly noted their absence; the
+  question will recur, so the answer is recorded rather than re-derived. The
+  first draft of this clause overstated two of the four properties and was
+  corrected on review of PR #219 — the overstatement is kept visible below,
+  because "the training slice is the only input" is exactly the kind of claim
+  that reads as settled). López de Prado's purge exists for a
   *labelled* training sample whose labels reach forward past the train/validate
   boundary — a triple-barrier label spanning the split leaks the validation
   period into training. Four properties mean no such leak exists in this
@@ -1496,10 +1500,24 @@ Non-negotiable once strategy research begins:
   2. **There are no forward-looking labels.** `fit` performs a parameter search,
      backtesting candidates on the training slice; it fits no model to labels, so
      there is nothing whose horizon could cross the boundary.
-  3. **No `fit` implementation reads an outside data source** — verified across
-     all sixteen: no database handle, no file read, no network call. The training
-     slice is the only input. `funding_rates` spans the whole period but is
-     passed to `compute_metrics`, never to `fit`.
+  3. **A `fit` may hold a longer series than its training slice, and what
+     protects it is a cursor rather than the absence of the input.** The first
+     version of this clause claimed the training slice was the only input; that
+     is false, and the counter-example is in this repo.
+     `FundingExtremityTrainable` is constructed with the **whole** funding
+     history and passes it into `compute_seed_signal_state`, which exists
+     precisely so a fold boundary does not reset the rolling z-score. What keeps
+     it honest is that the function consumes only settlements with
+     `funding_time <= known_through`, and `fit` passes a `known_through` drawn
+     from its own training bars — so no settlement past the training window is
+     ever read. None of the sixteen reads a database, file or network, which is a
+     weaker and separate statement.
+
+     **`params` is the other hole in a signature-only argument**: it is a
+     `Mapping[str, Any]` the caller supplies and `run_walk_forward` passes
+     through untouched, so nothing in the type stops a caller putting validation
+     data in it. That is a discipline, not a guarantee, and it is named here
+     rather than papered over.
   4. **Each fold's validation run starts flat at `starting_equity`.** A position
      cannot carry across a boundary, so no trade spans the split either.
 
