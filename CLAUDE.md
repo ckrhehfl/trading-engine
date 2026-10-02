@@ -2221,7 +2221,7 @@ why the reservation of that window for a *single pre-registered confirmation*
 is not merely a convention inherited from `sr-t`: `N` = 1 is the only setting at
 which the window's own power is what decides the outcome. A walk-forward
 qualification campaign on the same data, carrying the project `N`, would need
-**3.703** and could not pass whatever it found.
+**3.632** and could not pass whatever it found.
 
 Credible institutional trend-following reports 0.4-0.8. **At this `N` no
 realistic edge can clear this bar on this data, whatever it is.** This is the
