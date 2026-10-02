@@ -32,11 +32,28 @@ returns, `failed:transport` a network fault. Codes, so a second pass needs no
 re-derivation: `123160, 215580, 219860, 219960, 004090, 089170, 090990` and
 `090540, 121950`.
 
-**1,586 symbols produced no bars at all — 34.2% of the 4,638 recorded — and
-that is an expected outcome rather than a gap**: the delisted register reaches back further than the panel,
-so a name that left before 2019 or listed after 2026-09 is correctly absent. What
-would be a defect is the opposite — a name that traded inside the panel and is
-missing — and the per-day membership rule is what guards against it.
+**1,586 symbols produced no bars at all — 34.2% of the 4,638 recorded — and the
+two reasons are not interchangeable.** `Absence` exists precisely because a single
+`absent` bucket could not say which, and collapsing them here would undo that:
+
+- **`absent:outside_window`, 1,152.** Bars exist for the code; none fall inside
+  the panel. Normally a later listing, or a name that left before 2019. **An
+  expected outcome rather than a gap**, since the delisted register reaches
+  further back than the panel does.
+- **`absent:never_served`, 434.** KIS serves no bar in **any** window, and a
+  nonsense-code negative control in the same run also answered empty — so the
+  request shape was sound and this is a code KIS does not price at all. That is a
+  statement about **data availability**, not about when the name was listed.
+
+**The 434 are the residual survivorship exposure and should be read as such.** If
+any of them traded inside the panel, the pool is missing them and no amount of
+per-day membership logic recovers it: the price series is simply not served. What
+bounds the exposure is that the classification is earned rather than assumed — the
+negative control is what separates "KIS does not price this" from "our request was
+malformed", which is the distinction `Absence.UNKNOWN` refuses to guess at.
+
+What would be a defect is the opposite case — a name that traded inside the panel
+and is absent anyway — and the per-day membership rule is what guards against it.
 
 ## 2. The pool over time
 
