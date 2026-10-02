@@ -1497,9 +1497,15 @@ Non-negotiable once strategy research begins:
      is not a parameter, so "must not read it" is enforced by the signature
      rather than by discipline — the same guarantee `KlineWindow` gives the bar
      loop.
-  2. **There are no forward-looking labels.** `fit` performs a parameter search,
-     backtesting candidates on the training slice; it fits no model to labels, so
-     there is nothing whose horizon could cross the boundary.
+  2. **There are no forward-looking labels, and this is the load-bearing
+     property.** What `fit` does with the training slice varies by strategy —
+     `ma_crossover` searches a grid of candidates, `FundingExtremityTrainable`
+     backtests once at fixed construction-time parameters to seed its rolling
+     state — and the clause previously described only the first. **The part that
+     matters is common to both: neither fits a model to labels.** A purge exists
+     to stop a label whose horizon reaches past the split from leaking the
+     validation period into training; with no labels there is no horizon to
+     reach.
   3. **A `fit` may hold a longer series than its training slice, and what
      protects it is a cursor rather than the absence of the input.** The first
      version of this clause claimed the training slice was the only input; that
