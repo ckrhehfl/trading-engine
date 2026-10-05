@@ -1,0 +1,46 @@
+{
+  "study_id": "activity-holdings-audit-v1",
+  "mode": "discovery_holdings_audit",
+  "promotion_allowed": false,
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "reference_run_id": "13adac55-56b3-460a-842d-7299105b5eca",
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "reference_specification_sha256": "b344f20598d94d0f19a65edeb9394cc511f28318f872a5736d3a405835a79ff7",
+  "reference_dataset_sha256": "fc8a57eae72c33a84e31a3bc96b45110b1db2903c22c3c5b6fd3c67d0e2809e6",
+  "reference_accounting": {
+    "diagnostics": {
+      "entries": 245,
+      "limit_locked_fills": 1,
+      "invested_sessions": 1834,
+      "delayed_exits": 2,
+      "unpriced_or_frozen_position_sessions": 5159,
+      "pending_exit_sessions": 4408,
+      "unfilled_entries": 2
+    },
+    "closed_trades": 237,
+    "unresolved_positions": 8
+  },
+  "protocol": [
+    "Operator chose option 1 on 2026-10-05: diagnose the eight unresolved holdings before any comparison. The comparison stop and holdout reservation remain in force.",
+    "Replay the original pilot parameters and exact dataset; refuse changed inputs or accounting. No bootstrap, performance summary, ranking, recovery adjustment or comparison family is run.",
+    "Report residual codes, entry/due dates, last bar and non-frozen mark dates, missing/frozen position-sessions and pending-sale sessions. A last mark is split-adjusted, not verified raw cash recovery.",
+    "After identification, inspect only these names' spent-window bars and existing symbol metadata. Consult official KRX/KIND, DART or issuer disclosures for halt, resumption, delisting, merger and tender-offer terms. Record effective and publication dates separately where available.",
+    "Classify price evidence separately from legal status. An absent or frozen bar cannot alone prove delisting or zero recovery. Any verified proceeds require the applicable entitlement, dates and share-conversion basis; unresolved amounts stay unknown.",
+    "Do not re-fetch or modify collector databases, read reserved pre-2019 prices, extend the return window, or change the portfolio using retrospective corporate-action knowledge. Log the replay before any data load. External documentary investigation is recorded in the planning result with source links."
+  ]
+}

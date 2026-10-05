@@ -183,7 +183,7 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
                     break
                 shares = budget / (series.opens[i] * (1 + cost / 1e4))
                 positions[code] = {"shares": shares, "due": i + holding,
-                                   "mark": series.opens[i]}
+                                   "entry": i, "mark_session": i, "mark": series.opens[i]}
                 cash -= budget
                 diagnostics["entries"] += 1
                 diagnostics["limit_locked_fills"] += bool(series.locked[i])
@@ -191,6 +191,7 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
             series = panel[code]
             if series.closes[i] and not series.frozen[i]:
                 position["mark"] = series.closes[i]
+                position["mark_session"] = i
         nav = cash + sum(p["shares"] * p["mark"] for p in positions.values())
         diagnostics["invested_sessions"] += bool(positions)
         returns.append(nav / previous - 1)
@@ -198,7 +199,45 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
         previous = nav
     return {"returns": returns, "navs": navs, "diagnostics": dict(diagnostics),
             "closed_trades": trades, "unresolved_positions": len(positions),
+            "terminal_holdings": terminal_holdings(dates, panel, positions, end),
             "unresolved_marked_value": sum(p["shares"] * p["mark"] for p in positions.values())}
+
+
+def terminal_holdings(dates: list[date], panel: dict[str, Series], positions: dict, end: int) -> list[dict]:
+    """Describe residual inventory without treating missing prices as delistings.
+
+    These are retrospective diagnostics only, never portfolio inputs. Prices
+    are the scan's split-adjusted marks, not verified cash recovery values.
+    """
+    rows = []
+    for code, p in sorted(positions.items()):
+        s = panel[code]
+        entry, due = p["entry"], p["due"]
+        observed = [i for i in range(entry, end + 1) if s.closes[i]]
+        rows.append({
+            "code": code, "entry_date": dates[entry].isoformat(),
+            "due_date": dates[due].isoformat() if due < len(dates) else None,
+            "due_within_window": due <= end,
+            "last_observed_bar_date": dates[observed[-1]].isoformat(),
+            "last_mark_date": dates[p["mark_session"]].isoformat(),
+            "last_mark_split_adjusted": p["mark"],
+            "terminal_bar_state": "missing" if not s.closes[end] else
+                                  "frozen" if s.frozen[end] else "non_frozen",
+            "missing_sessions_while_held": sum(not s.closes[i] for i in range(entry, end + 1)),
+            "frozen_sessions_while_held": sum(bool(s.frozen[i]) for i in range(entry, end + 1)),
+            "pending_sale_sessions": max(0, end - due + 1),
+            "recovery_value": None,
+        })
+    return rows
+
+
+def audit_holdings(book: dict, reference: dict) -> dict:
+    """Require the original accounting before emitting a diagnostic replay."""
+    actual = {key: book[key] for key in ("diagnostics", "closed_trades", "unresolved_positions")}
+    if actual != reference:
+        raise ValueError("replay accounting differs from the recorded pilot")
+    return {**actual, "terminal_holdings": book["terminal_holdings"],
+            "interpretation": "inventory diagnosis only; marks are not recovery; comparison remains stopped"}
 
 
 def block_standard_error(values: list[float], block: int, seed: int, repetitions: int) -> float:
@@ -264,7 +303,7 @@ def committed_specification(root: Path, path: Path) -> bytes:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run only the committed sizing specification and log before loading data."""
+    """Run committed calibration or its inventory audit; log before loading data."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--scan-db", type=Path, required=True)
@@ -276,15 +315,24 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("run from the repository root so logged code_version names this checkout")
     raw = committed_specification(root, args.spec)
     spec = json.loads(raw)
-    if spec["mode"] != "discovery_calibration" or spec["promotion_allowed"] is not False:
-        raise ValueError("only non-promotable discovery calibration is supported")
+    if spec["mode"] not in {"discovery_calibration", "discovery_holdings_audit"} or spec["promotion_allowed"] is not False:
+        raise ValueError("only non-promotable calibration or holdings audit is supported")
     if spec["window"] != {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"}:
         raise ValueError("unregistered data window")
+    if spec["mode"] == "discovery_holdings_audit":
+        validate_audit_specification(root, spec)
 
     def evaluate():
-        """Load only after the durable start, then return dispersion with provenance."""
+        """Load after the durable start; return only the registered report fields."""
         dates, panel, digest, quality = load_panel(args.scan_db, args.calendar_db)
-        result = calibration(simulate(dates, panel, spec["parameters"]), spec["parameters"])
+        if spec["mode"] == "discovery_holdings_audit" and digest != spec["reference_dataset_sha256"]:
+            raise ValueError("replay dataset differs from the recorded pilot")
+        book = simulate(dates, panel, spec["parameters"])
+        if spec["mode"] == "discovery_holdings_audit":
+            result = audit_holdings(book, spec["reference_accounting"])
+            result["reference_run_id"] = spec["reference_run_id"]
+        else:
+            result = calibration(book, spec["parameters"])
         return {**result, "dataset_sha256": digest, "scan_progress": quality}
 
     record = experiment_log.run_discovery_trial(
@@ -294,6 +342,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     print(json.dumps(record, indent=2))
     return 0
+
+
+def validate_audit_specification(root: Path, spec: dict) -> None:
+    """An inventory audit must retain the committed pilot's exact parameters."""
+    raw = committed_specification(root, root / spec["reference_specification"])
+    if hashlib.sha256(raw).hexdigest() != spec["reference_specification_sha256"]:
+        raise ValueError("reference specification hash differs")
+    reference = json.loads(raw)
+    if reference["mode"] != "discovery_calibration" or any(
+        spec[key] != reference[key] for key in ("parameters", "window")
+    ):
+        raise ValueError("audit must replay the calibration parameters and window exactly")
 
 
 if __name__ == "__main__":
