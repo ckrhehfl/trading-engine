@@ -7,6 +7,17 @@
       "symbol": "KRX:",
       "interval": "1d",
       "span": "2019-01-02..2026-09-18",
+      "universe": "same completed-code panel and activity book as the calibration; eight terminal holdings diagnosed",
+      "spent_by": ".planning/rd-af-unresolved-holdings-findings.md",
+      "what_it_selected": "diagnostic replay only; no return comparison or parameter selection",
+      "measured_on": "2026-10-05",
+      "run_id": "e66c47cb-967c-4cb5-8e9d-e9734637d0ee",
+      "specification_sha256": "84b75b24df3ba82511ff09f564a8dd4be40558560e5511f49668d298e6917e9d"
+    },
+    {
+      "symbol": "KRX:",
+      "interval": "1d",
+      "span": "2019-01-02..2026-09-18",
       "universe": "all 3,043 completed codes in the rd-y scan; 20-slot activity reference book",
       "spent_by": ".planning/rd-ad-activity-calibration-result.md",
       "what_it_selected": "event-arm dispersion calibration before specifying a comparison family; no performance selection",
