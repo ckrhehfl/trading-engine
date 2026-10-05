@@ -5,6 +5,17 @@
   "windows": [
     {
       "symbol": "KRX:",
+      "interval": "1d",
+      "span": "2019-01-02..2026-09-18",
+      "universe": "all 3,043 completed codes in the rd-y scan; 20-slot activity reference book",
+      "spent_by": ".planning/rd-ad-activity-calibration-result.md",
+      "what_it_selected": "event-arm dispersion calibration before specifying a comparison family; no performance selection",
+      "measured_on": "2026-10-05",
+      "run_id": "13adac55-56b3-460a-842d-7299105b5eca",
+      "specification_sha256": "b344f20598d94d0f19a65edeb9394cc511f28318f872a5736d3a405835a79ff7"
+    },
+    {
+      "symbol": "KRX:",
       "interval": "1m",
       "span": "2025-09-04..2026-09-23",
       "universe": "the rd-r ten",
