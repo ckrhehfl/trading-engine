@@ -71,3 +71,18 @@ Before the PR: 220 focused tests passed (one existing skip), including the
 new accounting, sizing, registration and planning-index coverage. The earlier
 full-suite run and the logger mutation check are recorded in Task AB. No real
 return data has been loaded for this study at this point.
+
+Pre-run clarification: the delisted finder includes KONEX issues, and the scan
+does not retain point-in-time market membership. KOSPI/KOSDAQ's common total
+tax schedule is therefore an upper-bound cost model here, not an exact tax
+claim for each name; KONEX's lower rate is not silently inherited. The sizing
+specification states this explicitly. A zero-variance/all-cash book is refused
+rather than reported as perfectly powered, and invested-session counts are
+reported beside the dispersion.
+
+CodeRabbit review found that a clean specification alone did not identify the
+actual executing code. The CLI now requires a repository-root invocation and
+refuses staged/unstaged/untracked changes to its six repository source inputs,
+including transitive imports and package initializers. Real temporary Git
+repositories test each dependency in staged and unstaged states, while an
+unrelated edited file remains allowed. No real pilot has run during these fixes.

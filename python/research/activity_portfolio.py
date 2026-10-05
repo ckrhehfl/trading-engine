@@ -26,6 +26,13 @@ from research import experiment_log
 from research.krx_tax_schedule import KOSPI, total_bp
 
 
+EXECUTION_SOURCES = (
+    "python/research/__init__.py", "python/research/activity_portfolio.py",
+    "python/research/experiment_log.py", "python/research/krx_tax_schedule.py",
+    "python/data/__init__.py", "python/data/_paths.py",
+)
+
+
 @dataclass
 class Series:
     """One name aligned to the index calendar; zero means an absent price."""
@@ -145,6 +152,9 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
             if i >= position["due"]:
                 if series.opens[i] and not series.frozen[i]:
                     value = position["shares"] * series.opens[i]
+                    # A point-in-time market map is absent. KOSPI's total is
+                    # equal to KOSDAQ and above KONEX over this panel: model
+                    # that upper tax bound, not a claim all names are KOSPI.
                     cash += value * (1 - (cost + total_bp(KOSPI, dates[i], dates)) / 1e4)
                     diagnostics["delayed_exits"] += i > position["due"]
                     diagnostics["limit_locked_fills"] += bool(series.locked[i])
@@ -182,6 +192,7 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
             if series.closes[i] and not series.frozen[i]:
                 position["mark"] = series.closes[i]
         nav = cash + sum(p["shares"] * p["mark"] for p in positions.values())
+        diagnostics["invested_sessions"] += bool(positions)
         returns.append(nav / previous - 1)
         navs.append(nav)
         previous = nav
@@ -218,6 +229,8 @@ def calibration(book: dict, params: dict) -> dict:
     if len(values) < max(params["bootstrap_blocks"]) * 2:
         raise ValueError("too few sessions for the registered block sensitivity")
     naive = statistics.stdev(values) / math.sqrt(len(values))
+    if naive == 0 or not math.isfinite(naive):
+        raise ValueError("no finite nonzero event-arm dispersion; cannot size a family")
     errors = {str(b): block_standard_error(values, b, params["seed"], params["bootstrap_repetitions"])
               for b in params["bootstrap_blocks"]}
     se = max(errors.values())
@@ -235,6 +248,21 @@ def calibration(book: dict, params: dict) -> dict:
             "interpretation": "dispersion calibration only; no edge claim or family authorized"}
 
 
+def committed_specification(root: Path, path: Path) -> bytes:
+    """Refuse changed specifications and staged, unstaged or untracked source edits."""
+    relative = path.resolve().relative_to(root).as_posix()
+    committed = subprocess.check_output(["git", "-C", str(root), "show", f"HEAD:{relative}"])
+    raw = path.read_bytes()
+    if raw != committed:
+        raise ValueError("specification must match its committed bytes")
+    dirty = subprocess.check_output([
+        "git", "-C", str(root), "status", "--porcelain", "--", *EXECUTION_SOURCES,
+    ])
+    if dirty.strip():
+        raise ValueError("execution sources must be committed before a discovery run")
+    return raw
+
+
 def main(argv: list[str] | None = None) -> int:
     """Run only the committed sizing specification and log before loading data."""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -244,11 +272,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--runs-path", type=Path, required=True)
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[2]
-    relative = args.spec.resolve().relative_to(root).as_posix()
-    committed = subprocess.check_output(["git", "-C", str(root), "show", f"HEAD:{relative}"])
-    raw = args.spec.read_bytes()
-    if raw != committed:
-        raise ValueError("specification must match its committed bytes")
+    if Path.cwd().resolve() != root:
+        raise ValueError("run from the repository root so logged code_version names this checkout")
+    raw = committed_specification(root, args.spec)
     spec = json.loads(raw)
     if spec["mode"] != "discovery_calibration" or spec["promotion_allowed"] is not False:
         raise ValueError("only non-promotable discovery calibration is supported")
@@ -256,6 +282,7 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("unregistered data window")
 
     def evaluate():
+        """Load only after the durable start, then return dispersion with provenance."""
         dates, panel, digest, quality = load_panel(args.scan_db, args.calendar_db)
         result = calibration(simulate(dates, panel, spec["parameters"]), spec["parameters"])
         return {**result, "dataset_sha256": digest, "scan_progress": quality}
