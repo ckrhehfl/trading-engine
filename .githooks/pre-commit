@@ -17,5 +17,5 @@ fi
 
 gitleaks protect --staged --redact -v
 
-# Check the staged version, even when the working tree differs from the index.
-python3 scripts/codex_guardrails.py staged
+# Check Git's actual candidate, including the temporary index for commit --only.
+python3 scripts/codex_guardrails.py pre-commit

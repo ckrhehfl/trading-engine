@@ -61,7 +61,11 @@ This hook covers `apply_patch`, including calls made from code mode. It does
 not inspect arbitrary shell commands, MCP writes or edits outside Codex.
 `python3 scripts/codex_guardrails.py scan` checks the final repository state;
 `staged` checks the actual Git index, not the possibly different working tree.
-The Git pre-commit hook and CI call these checks as independent backstops.
+Both ignore inherited external Git repository/index settings. The Git hook uses
+the separate `pre-commit` mode, which preserves Git's candidate index only after
+confirming it is a file inside this worktree's Git directory. This covers
+`git commit --only` and its temporary index. Missing, external or unsupported
+candidate paths block the commit. The Git hook and CI are independent backstops.
 The existing Java lexer's documented limitations still apply. These are
 secondary guardrails, not an OS sandbox or a substitute for code review.
 

@@ -174,9 +174,10 @@ def check_patch(payload: dict, root: Path = ROOT) -> list[str]:
     return errors
 
 
-def scan(staged: bool = False) -> list[str]:
-    """Check this repository's working files or actual staged blob contents."""
+def scan(staged: bool = False, *, hook_index: bool = False) -> list[str]:
+    """Scan the checkout/index; only the commit hook may supply a verified index."""
     env = os.environ.copy()
+    commit_index = env.get("GIT_INDEX_FILE") if hook_index else None
     for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
                 "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX"):
         env.pop(key, None)
@@ -187,6 +188,21 @@ def scan(staged: bool = False) -> list[str]:
         if len(gitdir) > 2 and gitdir[1:3] in {":/", ":\\"}:
             env["GIT_DIR"] = subprocess.check_output(["wslpath", "-u", gitdir], text=True).strip()
             env["GIT_WORK_TREE"] = str(ROOT)
+    if hook_index:
+        if not staged or not commit_index:
+            raise ValueError("the commit hook must provide its candidate index")
+        git_dir = Path(subprocess.check_output(
+            ["git", "rev-parse", "--absolute-git-dir"], cwd=ROOT, env=env, text=True,
+        ).strip()).resolve()
+        index = Path(commit_index)
+        if not index.is_absolute():
+            index = ROOT / index
+        index = index.resolve(strict=True)
+        # Git's partial-commit index lives beside this worktree's regular index.
+        # Resolving both paths also rejects symlinks into another repository.
+        if index.parent != git_dir or not index.is_file():
+            raise ValueError("commit index is outside this worktree's Git directory")
+        env["GIT_INDEX_FILE"] = str(index)
     args = (["diff", "--cached", "--name-only", "--diff-filter=ACMR", "-z"] if staged
             else ["ls-files", "--cached", "--others", "--exclude-standard", "-z"])
     paths = subprocess.check_output(["git", *args], cwd=ROOT, env=env).decode("utf-8").split("\0")
@@ -214,8 +230,10 @@ def main() -> int:
             errors = check_patch(json.load(sys.stdin))
         elif mode in {"scan", "staged"}:
             errors = scan(staged=mode == "staged")
+        elif mode == "pre-commit":
+            errors = scan(staged=True, hook_index=True)
         else:
-            raise ValueError("expected hook, scan or staged")
+            raise ValueError("expected hook, scan, staged or pre-commit")
         if errors:
             print("BLOCKED: " + "; ".join(errors), file=sys.stderr)
             return 2

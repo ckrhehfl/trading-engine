@@ -78,3 +78,12 @@ Git directory, object-store and prefix variables. Regression tests inject a
 foreign repository environment and verify the intended worktree/index is used.
 The WSL instructions now show each command separately and say to run one at a
 time, so copying them cannot accidentally create a shell pipeline.
+
+A subsequent review caught an important distinction: Git supplies a temporary
+candidate index to pre-commit for partial commits. Clearing it makes the hook
+inspect the wrong staged content. Ordinary scans still discard inherited index
+settings; the dedicated pre-commit mode instead verifies that the candidate is
+a file in the current worktree's Git directory before reading it. Integration
+tests execute the real hook in isolated clones and linked worktrees, exercising
+both forbidden partial commits and safe partial commits with excluded staged
+changes. The tests stub only gitleaks, not Git or the venue scanner.

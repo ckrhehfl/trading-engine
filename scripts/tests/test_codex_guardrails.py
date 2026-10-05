@@ -204,6 +204,23 @@ class PatchGuardTest(unittest.TestCase):
 
 
 class StagedGuardTest(unittest.TestCase):
+    def test_commit_hook_rejects_unverified_index_paths(self):
+        """Only a real file inside this worktree's Git directory may be retained."""
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp) / "repo"
+            env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+            subprocess.run(["git", "init", "-q", str(root)], check=True, env=env)
+            foreign = Path(temp) / "foreign-index"
+            foreign.write_bytes(b"not an index")
+            for candidate in (None, str(foreign), str(root / ".git/missing"), str(root / ".git")):
+                hook_env = env.copy()
+                if candidate is not None:
+                    hook_env["GIT_INDEX_FILE"] = candidate
+                with self.subTest(candidate=candidate), patch.object(guard, "ROOT", root), \
+                        patch.dict(os.environ, hook_env, clear=True):
+                    with self.assertRaises((ValueError, OSError)):
+                        guard.scan(staged=True, hook_index=True)
+
     def test_scans_index_even_when_worktree_was_cleaned(self):
         """A safe working copy cannot hide an unsafe staged blob or foreign env."""
         with tempfile.TemporaryDirectory() as temp:
@@ -240,6 +257,87 @@ class DevWrapperTest(unittest.TestCase):
             )
             self.assertEqual(0, p.returncode, p.stderr)
             self.assertEqual(root.resolve(), Path(p.stdout.strip()).resolve())
+
+
+@unittest.skipIf(sys.platform == "win32", "The installed pre-commit hook runs in WSL or Linux")
+class CommitHookTest(unittest.TestCase):
+    def setUp(self):
+        """Install the real hook in a temporary repo; stub only the secret scanner."""
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name) / "repo"
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+        self.env.update(GIT_AUTHOR_NAME="Guard Test", GIT_COMMITTER_NAME="Guard Test",
+                        GIT_AUTHOR_EMAIL="guard@example.invalid", GIT_COMMITTER_EMAIL="guard@example.invalid")
+        subprocess.run(["git", "init", "-q", str(self.root)], env=self.env, check=True)
+        self.git("config", "core.hooksPath", ".githooks")
+        self.git("config", "commit.gpgsign", "false")
+        for name in ("scripts/codex_guardrails.py", ".claude/hooks/vst_guardrail_check.py", ".githooks/pre-commit"):
+            target = self.root / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text((SCRIPT.parents[1] / name).read_text(), encoding="utf-8")
+        (self.root / ".githooks/pre-commit").chmod(0o755)
+        bindir = Path(self.temp.name) / "bin"
+        bindir.mkdir()
+        scanner = bindir / "gitleaks"
+        scanner.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
+        scanner.chmod(0o755)
+        self.env["PATH"] = str(bindir) + os.pathsep + self.env.get("PATH", "")
+        (self.root / "python").mkdir()
+        for name in ("a.py", "b.py"):
+            (self.root / "python" / name).write_text("x = 1\n", encoding="utf-8")
+        self.git("add", ".")
+        self.git("commit", "-qm", "seed")
+        self.seed = self.git("rev-parse", "HEAD").stdout.strip()
+
+    def git(self, *args, check=True):
+        """Run Git only in the isolated fixture with explicit test identity."""
+        return subprocess.run(["git", *args], cwd=self.root, env=self.env,
+                              text=True, capture_output=True, check=check)
+
+    def linked_worktree(self):
+        """Exercise a per-worktree Git directory as well as an ordinary clone."""
+        target = Path(self.temp.name) / "linked"
+        self.git("worktree", "add", "-q", "--detach", str(target), self.seed)
+        self.root = target
+
+    def test_partial_commit_blocks_unsafe_candidate_absent_from_regular_index(self):
+        """A --only commit must inspect its temporary candidate, including worktrees."""
+        for linked in (False, True):
+            if linked:
+                self.linked_worktree()
+            with self.subTest(linked=linked):
+                before = self.git("rev-parse", "HEAD").stdout
+                (self.root / "python/a.py").write_text(guard.PRODUCTION_HOST, encoding="utf-8")
+                self.assertNotIn(guard.PRODUCTION_HOST, self.git("show", ":python/a.py").stdout)
+                result = self.git("commit", "--only", "-qm", "blocked", "--", "python/a.py", check=False)
+                self.assertNotEqual(0, result.returncode)
+                self.assertIn("production venue hostname", result.stderr)
+                self.assertEqual(before, self.git("rev-parse", "HEAD").stdout)
+
+    def test_partial_commit_ignores_unsafe_staged_file_excluded_from_candidate(self):
+        """Unselected staged changes must not be mistaken for the partial commit."""
+        for linked, value in ((False, 2), (True, 3)):
+            if linked:
+                self.linked_worktree()
+            with self.subTest(linked=linked):
+                (self.root / "python/b.py").write_text(guard.PRODUCTION_HOST, encoding="utf-8")
+                self.git("add", "python/b.py")
+                (self.root / "python/a.py").write_text(f"x = {value}\n", encoding="utf-8")
+                self.git("commit", "--only", "-qm", "safe partial commit", "--", "python/a.py")
+                self.assertEqual(f"x = {value}\n", self.git("show", "HEAD:python/a.py").stdout)
+                self.assertNotIn(guard.PRODUCTION_HOST, self.git("show", "HEAD:python/b.py").stdout)
+                self.assertIn(guard.PRODUCTION_HOST, self.git("show", ":python/b.py").stdout)
+
+    def test_regular_commit_still_blocks_unsafe_staged_file(self):
+        """Using Git's candidate index must retain protection for ordinary commits."""
+        before = self.git("rev-parse", "HEAD").stdout
+        (self.root / "python/a.py").write_text(guard.PRODUCTION_HOST, encoding="utf-8")
+        self.git("add", "python/a.py")
+        result = self.git("commit", "-qm", "blocked", check=False)
+        self.assertNotEqual(0, result.returncode)
+        self.assertIn("production venue hostname", result.stderr)
+        self.assertEqual(before, self.git("rev-parse", "HEAD").stdout)
 
 
 if __name__ == "__main__":
