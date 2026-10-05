@@ -1,0 +1,4 @@
+# Shell entrypoints must also work in WSL after a Windows Git checkout.
+*.sh text eol=lf
+java/gradlew text eol=lf
+.githooks/* text eol=lf

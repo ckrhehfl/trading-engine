@@ -82,6 +82,12 @@ jobs:
         # testing something nobody has.
         run: uv sync --frozen
 
+      - name: Check agent-independent editing guardrails
+        run: |
+          python3 scripts/codex_guardrails.py scan
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+          python3 .claude/hooks/test_vst_guardrail_check.py
+
       - name: Record the committed log before the suite runs
         # `runs/live_signals.jsonl` is the git-tracked operational audit
         # trail and must come out byte-identical.
