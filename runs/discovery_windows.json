@@ -1,7 +1,7 @@
 {
-  "note": "HAND-MAINTAINED, unlike runs/spent_windows.json which is derived from runs/experiments.jsonl. It records windows spent in DISCOVERY mode, which the derived ledger cannot see: a discovery analysis is not a backtest run and does not go through research.experiment_log, so nothing writes it down. Add a row when an analysis selects on a window; cite the .planning document that did it.",
+  "note": "HAND-MAINTAINED, unlike runs/spent_windows.json which is derived from holdout_access records. It records DISCOVERY windows, including historical analyses that bypassed research.experiment_log. New studies use discovery_trial records, which the holdout ledger does not aggregate. Add a row when an analysis selects on a window; cite its .planning document.",
   "why_this_file_exists": "CLAUDE.md's Discovery/Confirmation split says a designated discovery window is deliberately and permanently spent. Only confirmation spends were recorded anywhere, so a discovery-spent window read as available -- the same class of stale claim that once called KRX daily unspent the day after it was spent.",
-  "known_gap": "Being hand-maintained, this file can go stale exactly as that sentence did. The real fix is CLAUDE.md guard 5's requirement that discovery trials be logged, which the rd-* Korean analyses do not meet: log_run expects fold results and an IC scan has none. Closing that needs its own change.",
+  "known_gap": "Historical rd-* Korean analyses were not logged and this hand-maintained ledger can still go stale. research.experiment_log.run_discovery_trial now supports studies without folds and durably records starts before evaluation (rd-ab). New studies must adopt it; this does not reconstruct old trials or automatically retrofit old scripts.",
   "windows": [
     {
       "symbol": "KRX:",
