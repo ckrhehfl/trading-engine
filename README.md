@@ -12,6 +12,11 @@ the Korean one starts with its kill switch tripped by design.
 
 ## Where things are
 
+For Codex sessions, start with [`AGENTS.md`](AGENTS.md), which points to the
+same binding rules in `CLAUDE.md`. Local development commands are in
+[`docs/codex-development.md`](docs/codex-development.md); the last Claude
+research endpoint is in [`docs/codex-handoff.md`](docs/codex-handoff.md).
+
 This project keeps three kinds of document, split by **lifetime** rather
 than by topic. Knowing which is which is the fastest way to find anything.
 

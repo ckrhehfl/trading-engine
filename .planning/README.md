@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-129 documents and counting, which is past the point where `ls` is a
+130 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -60,6 +60,10 @@ missing from it, if it lists a file that no longer exists, or if a
 document's title has changed without the index following. An index
 nobody notices going stale is worse than none — it sends readers to the
 wrong place with confidence.
+
+### Development environment
+
+- [`codex-local-environment.md`](codex-local-environment.md) — Codex migration — shared WSL toolchain and preserved research handoff
 
 ### Implementation Priorities
 

@@ -1,0 +1,19 @@
+{
+  "description": "Trading-engine patch guardrails; review and trust through Codex /hooks.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -c \"import runpy,sys; from pathlib import Path; exec('try:\\n cwd=Path.cwd()\\n root=next(p for p in (cwd,*cwd.parents) if (p/\\'.git\\').exists())\\n sys.argv=[str(root/\\'scripts/codex_guardrails.py\\'),\\'hook\\']\\n runpy.run_path(sys.argv[0],run_name=\\'__main__\\')\\nexcept Exception:\\n print(\\'BLOCKED: hook initialization or validation failed.\\',file=sys.stderr)\\n sys.exit(2)')\"",
+            "commandWindows": "python -c \"import runpy,sys; from pathlib import Path; exec('try:\\n cwd=Path.cwd()\\n root=next(p for p in (cwd,*cwd.parents) if (p/\\'.git\\').exists())\\n sys.argv=[str(root/\\'scripts/codex_guardrails.py\\'),\\'hook\\']\\n runpy.run_path(sys.argv[0],run_name=\\'__main__\\')\\nexcept Exception:\\n print(\\'BLOCKED: hook initialization or validation failed.\\',file=sys.stderr)\\n sys.exit(2)')\"",
+            "timeout": 15,
+            "statusMessage": "Checking trading-engine patch guardrails"
+          }
+        ]
+      }
+    ]
+  }
+}

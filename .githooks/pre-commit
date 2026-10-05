@@ -16,3 +16,6 @@ if ! command -v gitleaks >/dev/null 2>&1; then
 fi
 
 gitleaks protect --staged --redact -v
+
+# Check Git's actual candidate, including the temporary index for commit --only.
+python3 scripts/codex_guardrails.py pre-commit
