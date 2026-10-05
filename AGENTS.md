@@ -28,7 +28,13 @@ not automatically in the primary `C:\Dev\trading-engine` checkout.
 From PowerShell, use `scripts/dev.ps1 setup`, `scripts/dev.ps1 check`, or
 `scripts/dev.ps1 java`. The wrapper resolves its own worktree and uses
 `wsl -d Ubuntu-24.04`; it never chooses a different default distribution.
-From WSL, use `bash scripts/dev.sh setup|check|java`.
+From WSL, run one command at a time:
+
+```bash
+bash scripts/dev.sh setup
+bash scripts/dev.sh check
+bash scripts/dev.sh java
+```
 
 - `setup`: synchronize this worktree's Python environment from `uv.lock`.
 - `check`: run project guardrails, their regression tests, and the Python suite.

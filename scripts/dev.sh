@@ -5,7 +5,8 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 export UV_LINK_MODE=copy
 # Do not leak a caller's Git repository/index into synthetic test repositories.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR \
+    GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_PREFIX
 git rev-parse --show-toplevel >/dev/null
 case "${1:-check}" in
     setup) cd python; uv sync --frozen ;;

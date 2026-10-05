@@ -29,6 +29,7 @@ PRODUCTION_HOST = "open-api" + ".bingx.com"
 
 
 def violations(path: str, content: str) -> list[str]:
+    """Return venue-policy violations for a complete candidate file."""
     errors = []
     if path.lower().endswith((".java", ".py")) and PRODUCTION_HOST in content.lower():
         errors.append("production venue hostname in source")
@@ -40,6 +41,7 @@ def violations(path: str, content: str) -> list[str]:
 
 
 def repo_path(raw: str, cwd: Path, root: Path) -> Path:
+    """Resolve a patch path, rejecting escapes, Git internals and env secrets."""
     if not raw:
         raise ValueError("empty patch path")
     path = Path(raw)
@@ -107,6 +109,7 @@ def apply_hunks(current: str, lines: list[str]) -> str:
 
 
 def patch_candidates(patch: str, cwd: Path, root: Path = ROOT) -> dict[Path, str | None]:
+    """Rebuild a strict patch without writes; map deleted paths to None."""
     lines = patch.splitlines()
     if len(lines) < 2 or lines[0] != "*** Begin Patch" or lines[-1] != "*** End Patch":
         raise ValueError("unrecognized apply_patch envelope")
@@ -153,6 +156,7 @@ def patch_candidates(patch: str, cwd: Path, root: Path = ROOT) -> dict[Path, str
 
 
 def check_patch(payload: dict, root: Path = ROOT) -> list[str]:
+    """Validate a Codex apply_patch event and return candidate violations."""
     if not isinstance(payload, dict):
         raise ValueError("hook payload must be an object")
     if payload.get("hook_event_name") != "PreToolUse" or payload.get("tool_name") != "apply_patch":
@@ -171,8 +175,10 @@ def check_patch(payload: dict, root: Path = ROOT) -> list[str]:
 
 
 def scan(staged: bool = False) -> list[str]:
+    """Check this repository's working files or actual staged blob contents."""
     env = os.environ.copy()
-    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"):
+    for key in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR",
+                "GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_PREFIX"):
         env.pop(key, None)
     # Standalone scans also support worktrees created by Windows Git.
     pointer = ROOT / ".git"
@@ -201,6 +207,7 @@ def scan(staged: bool = False) -> list[str]:
 
 
 def main() -> int:
+    """Return zero for validated input or the hook's blocking status on failure."""
     try:
         mode = sys.argv[1] if len(sys.argv) > 1 else "scan"
         if mode == "hook":

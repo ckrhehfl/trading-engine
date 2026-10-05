@@ -22,7 +22,14 @@ distribution. `setup` uses the existing uv lock file and creates an independent
 Linux virtual environment in `python/.venv` for this worktree. Do not run it
 with Windows Python or copy the primary checkout's environment.
 
-Inside WSL, the equivalent is `bash scripts/dev.sh setup|check|java`.
+Inside WSL, run one command at a time:
+
+```bash
+bash scripts/dev.sh setup
+bash scripts/dev.sh check
+bash scripts/dev.sh java
+```
+
 Use `./scripts/dev.ps1 git <arguments>` for WSL Git operations and commits;
 Windows currently lacks the secret scanner required
 by `.githooks/pre-commit`. The clone already has `core.hooksPath=.githooks`.

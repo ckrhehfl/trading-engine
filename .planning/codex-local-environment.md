@@ -63,3 +63,18 @@ its regression test to fail. Existing Claude tests are retained.
 Local Python regression and Java build results are recorded in the change's
 delivery report. No remote deployment, collector restart, exchange call,
 research trial, holdout access or promotion is part of these tests.
+
+## Review corrections
+
+CodeRabbit's review of PR #222 identified three local-tooling issues. Both
+native hook commands now turn root-discovery and handler-loading exceptions
+into a blocking exit with a sanitized reason. Windows uses the same ancestor
+search as Linux, removing the bootstrap's dependency on a separate Git process.
+Regression cases cover an absent repository, missing handler and failed handler,
+alongside the existing allowed/denied edit checks.
+
+The development wrapper and standalone scanner also clear inherited common
+Git directory, object-store and prefix variables. Regression tests inject a
+foreign repository environment and verify the intended worktree/index is used.
+The WSL instructions now show each command separately and say to run one at a
+time, so copying them cannot accidentally create a shell pipeline.

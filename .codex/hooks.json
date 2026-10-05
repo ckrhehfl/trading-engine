@@ -7,8 +7,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 -c \"import runpy,sys; from pathlib import Path; cwd=Path.cwd(); root=next(p for p in (cwd,*cwd.parents) if (p/'.git').exists()); sys.argv=[str(root/'scripts/codex_guardrails.py'),'hook']; runpy.run_path(sys.argv[0],run_name='__main__')\"",
-            "commandWindows": "python -c \"import runpy,subprocess,sys; from pathlib import Path; root=Path(subprocess.check_output(['git','rev-parse','--show-toplevel'],text=True).strip()); sys.argv=[str(root/'scripts/codex_guardrails.py'),'hook']; runpy.run_path(sys.argv[0],run_name='__main__')\"",
+            "command": "python3 -c \"import runpy,sys; from pathlib import Path; exec('try:\\n cwd=Path.cwd()\\n root=next(p for p in (cwd,*cwd.parents) if (p/\\'.git\\').exists())\\n sys.argv=[str(root/\\'scripts/codex_guardrails.py\\'),\\'hook\\']\\n runpy.run_path(sys.argv[0],run_name=\\'__main__\\')\\nexcept Exception:\\n print(\\'BLOCKED: hook initialization or validation failed.\\',file=sys.stderr)\\n sys.exit(2)')\"",
+            "commandWindows": "python -c \"import runpy,sys; from pathlib import Path; exec('try:\\n cwd=Path.cwd()\\n root=next(p for p in (cwd,*cwd.parents) if (p/\\'.git\\').exists())\\n sys.argv=[str(root/\\'scripts/codex_guardrails.py\\'),\\'hook\\']\\n runpy.run_path(sys.argv[0],run_name=\\'__main__\\')\\nexcept Exception:\\n print(\\'BLOCKED: hook initialization or validation failed.\\',file=sys.stderr)\\n sys.exit(2)')\"",
             "timeout": 15,
             "statusMessage": "Checking trading-engine patch guardrails"
           }
