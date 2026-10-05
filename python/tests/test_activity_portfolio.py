@@ -2,6 +2,8 @@
 
 from array import array
 from datetime import date, timedelta
+import hashlib
+from pathlib import Path
 import sqlite3
 import subprocess
 
@@ -9,6 +11,7 @@ import pytest
 
 from research.activity_portfolio import Series, eligible, load_panel, simulate, block_standard_error, calibration
 from research.activity_portfolio import EXECUTION_SOURCES, committed_specification
+from research.activity_portfolio import audit_holdings, validate_audit_specification
 
 
 def fixture_book():
@@ -75,6 +78,75 @@ def test_disappearing_name_is_never_sold_at_its_retrospective_last_bar():
     assert book["unresolved_positions"] == 1
     assert book["unresolved_marked_value"] == 1
     assert book["diagnostics"]["entries"] == 1
+    row = book["terminal_holdings"][0]
+    assert row == {
+        "code": "A", "entry_date": "2026-09-11", "due_date": "2026-09-14",
+        "due_within_window": True, "last_observed_bar_date": "2026-09-13",
+        "last_mark_date": "2026-09-13", "last_mark_split_adjusted": 100,
+        "terminal_bar_state": "missing", "missing_sessions_while_held": 5,
+        "frozen_sessions_while_held": 0, "pending_sale_sessions": 5,
+        "recovery_value": None,
+    }
+
+
+def test_residual_frozen_quote_is_not_a_new_mark_or_recovery():
+    """Frozen terminal bars count as observations but cannot realize their quote."""
+    dates, series, params = fixture_book()
+    for i in range(5, 11):
+        series.frozen[i] = 1
+        series.opens[i] = series.closes[i] = 999
+    book = simulate(dates, {"A": series}, params)
+    row = book["terminal_holdings"][0]
+    assert book["navs"] == [1] * 8
+    assert row["last_observed_bar_date"] == "2026-09-18"
+    assert row["last_mark_date"] == "2026-09-12"
+    assert row["last_mark_split_adjusted"] == 100
+    assert row["frozen_sessions_while_held"] == 6
+    assert row["missing_sessions_while_held"] == 0
+    assert row["terminal_bar_state"] == "frozen"
+    assert row["recovery_value"] is None
+    reference = {key: book[key] for key in ("diagnostics", "closed_trades", "unresolved_positions")}
+    report = audit_holdings(book, reference)
+    assert report["terminal_holdings"] == [row]
+    assert not {"returns", "navs", "sharpe", "unresolved_marked_value"} & report.keys()
+    with pytest.raises(ValueError, match="accounting differs"):
+        audit_holdings(book, {**reference, "closed_trades": 99})
+
+
+def test_audit_requires_original_specification_hash_and_parameters(tmp_path, monkeypatch):
+    """A changed replay parameter cannot masquerade as the original inventory."""
+    from research import activity_portfolio as ap
+
+    raw = b'{"mode":"discovery_calibration","parameters":{"slots":20},"window":{}}'
+    monkeypatch.setattr(ap, "committed_specification", lambda *args: raw)
+    spec = dict(reference_specification="pilot.json", parameters={"slots": 20}, window={},
+                reference_specification_sha256=hashlib.sha256(raw).hexdigest())
+    validate_audit_specification(tmp_path, spec)
+    with pytest.raises(ValueError, match="parameters and window exactly"):
+        validate_audit_specification(tmp_path, {**spec, "parameters": {"slots": 10}})
+    with pytest.raises(ValueError, match="hash differs"):
+        validate_audit_specification(tmp_path, {**spec, "reference_specification_sha256": "0" * 64})
+
+
+def test_changed_audit_dataset_is_logged_as_failed_before_simulation(tmp_path, monkeypatch):
+    """The CLI writes start/failure records but cannot simulate a different panel."""
+    from research import activity_portfolio as ap, experiment_log
+
+    root = Path(ap.__file__).resolve().parents[2]
+    spec_path = root / "configs/research/discovery/activity-holdings-audit-v1.json"
+    raw = spec_path.read_bytes()
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(ap, "committed_specification", lambda *args: raw)
+    monkeypatch.setattr(ap, "validate_audit_specification", lambda *args: None)
+    monkeypatch.setattr(ap, "load_panel", lambda *args: ([], {}, "changed", {}))
+    monkeypatch.setattr(ap, "simulate", lambda *args: pytest.fail("must not simulate"))
+    log = tmp_path / "audit.jsonl"
+    with pytest.raises(ValueError, match="dataset differs"):
+        ap.main(["--spec", str(spec_path), "--scan-db", "unused", "--calendar-db", "unused",
+                 "--runs-path", str(log)])
+    records = list(experiment_log.read_records(log))
+    assert [r["status"] for r in records] == ["started", "failed"]
+    assert records[0]["specification_sha256"] == hashlib.sha256(raw).hexdigest()
 
 
 def test_unfilled_entry_remains_cash():
