@@ -12,6 +12,11 @@ one `record_type: "holdout_access"` entry per successful
 `research/holdout.py`). Both record types interleave in the one file, in
 write order.
 
+Discovery callbacks use ``run_discovery_trial``: a durable started record
+precedes data access and a completed/failed record follows. A distinct
+``discovery_trial`` type leaves existing promotion accounting unchanged.
+Historical unlogged discovery work is not reconstructed by this API.
+
 **Durability**: each write is exactly one `write()` call of a single
 complete JSON object plus `\\n`, followed by an explicit `flush()` +
 `os.fsync()` before the call returns -- a call that returns successfully
@@ -36,9 +41,12 @@ scenario, and is allowed to raise.
 
 import json
 import os
+import re
 import subprocess
+import uuid
+from collections.abc import Callable
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, Iterator, Mapping, Sequence
@@ -273,6 +281,66 @@ def log_holdout_access(
         "force_reclaim_reason": force_reclaim_reason,
     }
     return _append_record(record, runs_path)
+
+
+def run_discovery_trial(
+    *,
+    study_id: str,
+    specification_sha256: str,
+    parameters: Mapping[str, Any],
+    window: Mapping[str, str],
+    evaluate: Callable[[], Mapping[str, Any]],
+    runs_path: str | Path = DEFAULT_RUNS_PATH,
+) -> dict:
+    """Durably record a discovery attempt BEFORE its data-reading callback.
+
+    Unlike ``log_run``, this needs no invented folds. Each invocation has a
+    fresh id and a started record, followed by completed or failed. A crash
+    leaves the start visible; failures count as looks too. Discovery records
+    have a distinct type and never enter promotion-trial accounting.
+
+    The caller must enforce the declared window against its actual loader
+    and commit the specification first. This logger cannot police arbitrary
+    callback I/O. Single-writer durability is the same as the existing log.
+    """
+    if not isinstance(study_id, str) or not study_id.strip():
+        raise ValueError("study_id must be nonempty")
+    if not re.fullmatch(r"[0-9a-f]{64}", specification_sha256):
+        raise ValueError("specification_sha256 must be a SHA-256 hex digest")
+    if set(window) != {"symbol", "interval", "start", "end"}:
+        raise ValueError("window must name symbol, interval, start and end")
+    start, end = date.fromisoformat(window["start"]), date.fromisoformat(window["end"])
+    if start > end or not window["symbol"] or not window["interval"]:
+        raise ValueError("window must be nonempty and ordered")
+    record = {
+        "record_type": "discovery_trial",
+        "run_id": str(uuid.uuid4()),
+        "study_id": study_id,
+        "specification_sha256": specification_sha256,
+        "parameters": dict(parameters),
+        "window": dict(window),
+        "code_version": _git_head_sha(),
+        "promotion_allowed": False,
+        "promotion_trial_increment": 0,
+        "status": "started",
+        "logged_at": datetime.now(timezone.utc).isoformat(),
+    }
+    # Freeze nested caller-owned values before evaluate can mutate them.
+    record = json.loads(json.dumps(record, default=_json_default, allow_nan=False))
+    _append_record(record, runs_path)
+    try:
+        result = dict(evaluate())
+        json.dumps(result, default=_json_default, allow_nan=False)
+    except BaseException as exc:
+        _append_record({
+            **record, "status": "failed", "error_type": type(exc).__name__,
+            "logged_at": datetime.now(timezone.utc).isoformat(),
+        }, runs_path)
+        raise
+    return _append_record({
+        **record, "status": "completed", "result": result,
+        "logged_at": datetime.now(timezone.utc).isoformat(),
+    }, runs_path)
 
 
 def read_records(runs_path: str | Path = DEFAULT_RUNS_PATH) -> Iterator[dict]:

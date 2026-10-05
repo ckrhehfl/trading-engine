@@ -109,7 +109,7 @@ import research.experiment_log as experiment_log
 # Every function in `experiment_log` that appends to the log. Anything
 # added here must also be added to `test_conftest_isolation.py`'s
 # exhaustiveness check, which fails if a new writer appears.
-WRITE_FUNCTIONS = ("log_run", "log_holdout_access")
+WRITE_FUNCTIONS = ("log_run", "log_holdout_access", "run_discovery_trial")
 
 # Captured at import, before anything is patched. This is the value the
 # 25 bound defaults across `research/` are holding -- they took their

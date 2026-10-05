@@ -1,0 +1,32 @@
+{
+  "study_id": "activity-calibration-v1",
+  "mode": "discovery_calibration",
+  "promotion_allowed": false,
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "rationale": [
+    "Sizing measurement before fixing any comparison family, per CLAUDE.md. No performance means, Sharpe, ranking or promotion verdict are output.",
+    "Use rd-aa's single 3x/60-observation activity definition and rd-z's months-long 20-name cash-equity shape. This is a reference geometry, not a candidate selected for its performance.",
+    "Select at formation close using only prior completed observations; hash-order eligible names with the fixed seed. Attempt entries at the following open. Unfilled orders remain cash without hindsight replacement.",
+    "Frozen bars never enter a baseline or make a name eligible; equal OHLC with positive turnover remains eligible. Daily-open fills on limit-locked bars are an explicit unverified queue assumption and counted.",
+    "Operator choice 2026-10-05: carry halted holdings at last observed price, defer sales until a non-frozen bar, and retain unresolved marked inventory. Missing-price days get the same conservative no-sale treatment. Never cash out at a retrospectively identified final bar or assume a -100% delisting recovery.",
+    "Existing per-era KOSPI/KOSDAQ total tax schedule applies on sale with index-calendar T+2 settlement; price returns exclude dividends. Commission and 5bp per-side slippage are modeling assumptions. 43.54bp sizing floor is the largest modeled round trip across the panel, not a claim about current fees or executable capacity.",
+    "One session-level portfolio return is the sampling unit. Report iid and circular block-bootstrap standard errors for 63/126/252 sessions; use the largest for the normal-approximation 80%-power sizing calculation. No permutation test or significance claim.",
+    "If the detectable daily effect exceeds the amortized round-trip cost floor, stop before specifying/running a comparison family and obtain the operator's choice. Unresolved holdings, absent symbols and instrument-type uncertainty remain disclosed limitations. No reserved pre-2019 prices are read.",
+    "Index dates through 2026-09-23 are read for settlement only. Both-direction index/scan date coverage must agree for the price panel. Completed fetch status is required; never-served and failed names are disclosed, not reclassified as nonexistent."
+  ]
+}
