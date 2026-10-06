@@ -196,13 +196,19 @@ def parse_search(payload: bytes, start: str, end: str, page: int = 1) -> dict:
         title = link.attrs.get("title") or ""
         if not title or not link.text() or not cells[4].text():
             raise KindParseError("missing disclosure title or submitter")
-        if cells[3].text() != link.text() or cells[3].find("img"):
+        images = cells[3].find("img")
+        correction_image = {"src": "/images/common/icn_t_jung.gif", "class": "vmiddle legend",
+                            "alt": "해당보고서 이후에 정정된 보고서 있음"}
+        if (cells[3].text() != link.text() or len(images) > 1
+                or images != _children(link, {"img"})
+                or any(node.attrs != correction_image for node in images)):
             raise KindParseError("unrecognized disclosure title marker structure")
         # The attribute is the complete official title, including correction
-        # markers; the visible text can be shortened by the search page.
+        # markers; the visible text can be shortened by the search page. The
+        # image says a later correction exists, not that this row is corrected.
         output.append(dict(receipt_no=receipt_no, published_at=published.isoformat(),
                            title=title, issuer_name=issuer.text(), issuer_id=issuer_match[1],
-                           submitter=cells[4].text()))
+                           submitter=cells[4].text(), later_correction_reported=bool(images)))
     if len({row["receipt_no"] for row in output}) != len(output):
         raise KindParseError("duplicate disclosure receipt")
     return dict(total=total, page=page, pages=pages, rows=output)

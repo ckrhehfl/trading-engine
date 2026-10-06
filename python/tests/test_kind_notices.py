@@ -13,6 +13,8 @@ START = "2019-01-02"
 END = "2019-02-07"
 DOC_NO = "20190130002090"
 BODY_URL = f"https://kind.krx.co.kr/external/2019/01/30/000781/{DOC_NO}/70791.htm"
+CORRECTION_MARKER = ("<img src='/images/common/icn_t_jung.gif' class='vmiddle legend' "
+                     "alt='해당보고서 이후에 정정된 보고서 있음' />")
 
 
 def search_row(*, receipt="20190130000781", at="2019-01-30 17:01", issuer="25359", ordinal=1):
@@ -111,8 +113,40 @@ def test_search_preserves_receipt_time_and_opaque_issuer_without_inventing_code(
     assert result["rows"] == [{
         "receipt_no": "20190130000781", "published_at": "2019-01-30T17:01:00+09:00",
         "title": "추가상장(타법인흡수합병)", "issuer_name": "네오셈",
-        "issuer_id": "0004V", "submitter": "코스닥시장본부",
+        "issuer_id": "0004V", "submitter": "코스닥시장본부", "later_correction_reported": False,
     }]
+
+
+@pytest.mark.parametrize("prefix", ["", "[정정]"])
+def test_search_preserves_later_correction_image_separately_from_its_official_title(prefix):
+    title = "추가상장(타법인흡수합병)"
+    row = search_row().replace(title + "</a>", title + " " + CORRECTION_MARKER + "</a>")
+    row = row.replace(title, prefix + title)
+    parsed = kn.parse_search(search_page(row), START, END)["rows"][0]
+    assert parsed["title"] == prefix + title
+    assert parsed["later_correction_reported"] is True
+
+
+@pytest.mark.parametrize("marker", [
+    CORRECTION_MARKER.replace("icn_t_jung.gif", "unknown.gif"),
+    CORRECTION_MARKER.replace("/images/common/", "https://unrelated.example/"),
+    CORRECTION_MARKER.replace("해당보고서 이후에 정정된 보고서 있음", "정정"),
+    CORRECTION_MARKER.replace("vmiddle legend", "unknown"),
+    CORRECTION_MARKER.replace(" />", " title='unobserved' />"),
+    CORRECTION_MARKER + CORRECTION_MARKER,
+    "<span>" + CORRECTION_MARKER + "</span>",
+])
+def test_search_refuses_unknown_nested_or_duplicate_title_images(marker):
+    row = search_row().replace("추가상장(타법인흡수합병)</a>", "추가상장(타법인흡수합병)" + marker + "</a>")
+    with pytest.raises(kn.KindParseError):
+        kn.parse_search(search_page(row), START, END)
+
+
+@pytest.mark.parametrize("outside", [CORRECTION_MARKER, "[정정]"])
+def test_search_refuses_a_title_marker_outside_the_disclosure_anchor(outside):
+    row = search_row().replace("추가상장(타법인흡수합병)</a>", "추가상장(타법인흡수합병)</a>" + outside)
+    with pytest.raises(kn.KindParseError):
+        kn.parse_search(search_page(row), START, END)
 
 
 def test_search_accepts_full_page_and_partial_final_page_with_explicit_counts():

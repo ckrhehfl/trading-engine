@@ -73,9 +73,10 @@ class _PublicRedirect(HTTPRedirectHandler):
 class Evidence:
     """Persist response bytes before parsing; replay never falls back to network."""
 
-    def __init__(self, output: Path, source: Path | None = None) -> None:
+    def __init__(self, output: Path, source: Path | None = None, *, fetch_missing: bool = False) -> None:
         self.output = output
         self.source = source
+        self.fetch_missing = fetch_missing
         self.cache: dict[str, dict] = {}
         self.sources: dict[str, dict] = {}
         self.network_requests = 0
@@ -95,10 +96,10 @@ class Evidence:
         if key in self.cache:
             entry = self.cache[key]
             return (self.output / entry["file"]).read_bytes(), entry
-        if self.source is not None:
-            original = self.sources.get(key)
-            if original is None:
-                raise ValueError("response absent from offline evidence")
+        original = self.sources.get(key)
+        if self.source is not None and original is None and not self.fetch_missing:
+            raise ValueError("response absent from offline evidence")
+        if original is not None:
             filename = original["file"]
             if Path(filename).name != filename or not re.fullmatch(r"[0-9a-f]{64}\.html", filename):
                 raise ValueError("invalid saved response path")
@@ -122,7 +123,7 @@ class Evidence:
             raise ValueError("oversized public response")
         entry = {"request": request, "retrieved_at": retrieved_at,
                  "file": key + ".html", "sha256": sha(payload),
-                 "transport": "saved_response" if self.source is not None else "https"}
+                 "transport": "saved_response" if original is not None else "https"}
         write_new(self.output / entry["file"], payload)
         with (self.output / "sources.jsonl").open("ab") as stream:
             stream.write(json.dumps(entry, ensure_ascii=False, sort_keys=True).encode() + b"\n")
@@ -148,7 +149,7 @@ def notice_kind(title: str, merger_type: str) -> str | None:
             return "additional"
         if "변경상장" in title and "상호변경" in title:
             return "rename"
-    elif title == "SPAC소멸합병상장":
+    elif re.fullmatch(r"SPAC소멸합병상장(?:\([0-9]{4}\.[0-9]{1,2}\.[0-9]{1,2}\))?", title):
         return "spac_listing"
     return None
 
@@ -240,6 +241,8 @@ def acquire_candidate(candidate: dict, evidence: Evidence) -> dict:
         versions = parse_versions(viewer, row["receipt_no"])
         if not versions or len(versions) > MAX_VERSIONS:
             raise KindParseError("unexpected document version count")
+        if row.get("later_correction_reported") and len(versions) < 2:
+            raise KindParseError("reported later correction absent from viewer")
         for version in versions:
             contents, _ = evidence.get(VIEWER + "?" + urlencode({"method": "searchContents", "docNo": version["doc_no"]}))
             url = parse_body_url(contents, version["doc_no"])
@@ -254,6 +257,7 @@ def acquire_candidate(candidate: dict, evidence: Evidence) -> dict:
                 continue
             notices.append({**version, "receipt_no": row["receipt_no"],
                             "search_published_at": row["published_at"], "search_title": row["title"],
+                            "later_correction_reported": row.get("later_correction_reported", False),
                             "body_url": url, "body_sha256": source["sha256"], "fields": fields})
     result = verify_candidate(candidate, notices)
     result.update(search_rows=len(rows), notices=notices, parse_failures=failures)
@@ -266,8 +270,11 @@ def acquire_candidate(candidate: dict, evidence: Evidence) -> dict:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, required=True, help="fresh public-evidence directory")
-    parser.add_argument("--source-dir", type=Path, help="offline replay of saved responses; never uses network")
+    saved = parser.add_mutually_exclusive_group()
+    saved.add_argument("--source-dir", type=Path, help="offline replay of saved responses; never uses network")
+    saved.add_argument("--resume-dir", type=Path, help="reuse verified saved responses, fetch missing public requests")
     args = parser.parse_args(argv)
+    source = args.source_dir or args.resume_dir
     sources = ["python/research/kind_notices.py", "python/research/activity_merger_notices.py",
                str(INPUT.relative_to(ROOT)), ".planning/rd-al-merger-notices.md"]
     if subprocess.check_output(["git", "-C", str(ROOT), "status", "--porcelain", "--", *sources]).strip():
@@ -286,11 +293,12 @@ def main(argv: list[str] | None = None) -> int:
               "started_at": datetime.now(timezone.utc).isoformat(), "input_sha256": sha(input_bytes),
               "source_sha256": {name: sha((ROOT / name).read_bytes()) for name in sources},
               "candidate_count": 104, "purpose": "public listing metadata only; no eligibility or returns",
-              "source_dir": str(args.source_dir) if args.source_dir else None}))
+              "source_dir": str(source) if source else None,
+              "fetch_missing": args.resume_dir is not None}))
     records = []
     evidence = None
     try:
-        evidence = Evidence(args.output_dir, args.source_dir)
+        evidence = Evidence(args.output_dir, source, fetch_missing=args.resume_dir is not None)
         for i, candidate in enumerate(candidates, 1):
             try:
                 result = acquire_candidate(candidate, evidence)

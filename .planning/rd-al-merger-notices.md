@@ -78,3 +78,21 @@ only saved requests and byte hashes and cannot fall back to the network.
 An unsupported filing or a changed identity/date in a correction keeps the
 candidate unresolved. The safe error direction is retaining an unknown input,
 not selecting it out of the pool or granting historical eligibility.
+
+### First acquisition and bounded parsing repair
+
+The first 104-candidate acquisition, code `273b9ff`, saved 323 public responses:
+51 listing identities verified and 53 unresolved. Of the latter, 52 search
+pages contain KIND's exact `icn_t_jung.gif` marker, whose alt text says that
+a later correcting report exists. The marker must be preserved separately
+from the title and the viewer must expose the correction; it is not a reason
+to ignore the row. One remaining search title is the observed dated variant
+`SPAC소멸합병상장(2023.2.17)` for FineCircuit, receipt `20230215000891`.
+
+Before any follow-up acquisition, extend the parser only for these observed
+forms, with rejection tests for other markers. Add an explicit `--resume-dir`
+mode which verifies and reuses these saved public responses and fetches only
+missing requests from the same fixed scope, into a fresh output directory.
+The existing `--source-dir` stays strictly offline and missing responses remain
+a fatal incomplete replay. A source hash mismatch never triggers a refetch.
+This repair neither expands the candidate/date scope nor adds a price endpoint.

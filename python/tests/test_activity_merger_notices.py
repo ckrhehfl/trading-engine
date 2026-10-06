@@ -1,6 +1,7 @@
 """Counterexamples to certifying a listing from incomplete or conflicting evidence."""
 
 from copy import deepcopy
+from datetime import datetime
 import json
 from pathlib import Path
 from urllib.error import URLError
@@ -10,7 +11,9 @@ import pytest
 
 from research import activity_merger_notices as am
 from research import kind_notices as kn
-from test_kind_notices import additional, rename, search_page, search_row, spac_listing, versions
+from test_kind_notices import (
+    CORRECTION_MARKER, additional, rename, search_page, search_row, spac_listing, versions,
+)
 
 
 def candidate(**changes):
@@ -220,6 +223,31 @@ def test_unrecognized_notice_title_is_a_reference_and_not_a_verified_listing():
     assert [n["fields"]["kind"] for n in result["notices"]] == ["rename"]
 
 
+@pytest.mark.parametrize("title", ["SPAC소멸합병상장(2023.2.17)", "[정정]SPAC소멸합병상장(2023.02.17)"])
+def test_dated_spac_listing_title_is_recognized(title):
+    assert am.notice_kind(title, "spac_disappears") == "spac_listing"
+
+
+@pytest.mark.parametrize("title", [
+    "SPAC소멸합병상장(2023.2.17) 기준가격 안내", "SPAC소멸합병상장 기준가격 안내",
+    "SPAC소멸합병상장(2023.2.17)(기준가격)",
+])
+def test_price_announcements_are_not_fetched_as_spac_listing_notices(title):
+    assert am.notice_kind(title, "spac_disappears") is None
+
+
+def test_reported_later_correction_missing_from_viewer_stops_before_body_fetch():
+    responses = acquisition_responses()
+    key = (am.SEARCH, am.encoded(am.search_form("253590", "2019-01-31", 1)))
+    responses[key] = responses[key].replace(
+        "추가상장(타법인흡수합병)</a>".encode(),
+        ("추가상장(타법인흡수합병) " + CORRECTION_MARKER + "</a>").encode(), 1)
+    evidence = SavedResponses(responses)
+    with pytest.raises(kn.KindParseError, match="later correction absent"):
+        am.acquire_candidate(candidate(), evidence)
+    assert evidence.calls == [key, (viewer_url("search", acptno="20190130000781"), am.encoded(None))]
+
+
 @pytest.mark.parametrize("changed_total,duplicate", [(True, False), (False, True)])
 def test_pagination_changes_and_repeated_receipts_fail_before_body_acquisition(changed_total, duplicate):
     first_rows = "".join(search_row(receipt=f"20190130{i:06d}", ordinal=101 - i) for i in range(100))
@@ -284,6 +312,70 @@ def test_offline_evidence_failures_never_fall_back_to_network(tmp_path, monkeypa
     assert list(output.iterdir()) == []
 
 
+def test_explicit_resume_reuses_verified_bytes_and_fetches_only_missing_requests(tmp_path, monkeypatch):
+    source, output, original = saved_evidence(tmp_path, monkeypatch)
+    source_before = {path.name: path.read_bytes() for path in source.iterdir()}
+    calls = []
+    new_form = {"method": "searchDetailsSub", "pageIndex": "2"}
+    new_payload = b"<html>new public page</html>"
+
+    class Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            pass
+
+        def geturl(self):
+            return am.SEARCH
+
+        def read(self, count):
+            assert count == am.MAX_BYTES + 1
+            return new_payload
+
+    class Opener:
+        def open(self, request, timeout):
+            calls.append(request)
+            assert request.full_url == am.SEARCH
+            assert request.data == urlencode(new_form).encode()
+            assert timeout == 30
+            return Response()
+
+    monkeypatch.setattr(am, "build_opener", lambda *args: Opener())
+    monkeypatch.setattr(am.time, "sleep", lambda duration: None)
+    evidence = am.Evidence(output, source, fetch_missing=True)
+    stored_payload, stored = evidence.get(am.SEARCH, original["request"]["form"])
+    assert calls == []
+    assert stored_payload == source_before[original["file"]]
+    assert stored["retrieved_at"] == original["retrieved_at"]
+    assert stored["transport"] == "saved_response"
+    fetched_payload, fetched = evidence.get(am.SEARCH, new_form)
+    assert fetched_payload == new_payload
+    assert fetched["sha256"] == am.sha(new_payload)
+    assert fetched["transport"] == "https"
+    assert datetime.fromisoformat(fetched["retrieved_at"]).utcoffset() is not None
+    assert evidence.get(am.SEARCH, new_form) == (fetched_payload, fetched)
+    assert len(calls) == evidence.network_requests == 1
+    assert [json.loads(line)["transport"] for line in
+            (output / "sources.jsonl").read_text().splitlines()] == ["saved_response", "https"]
+    assert {path.name: path.read_bytes() for path in source.iterdir()} == source_before
+
+
+@pytest.mark.parametrize("failure", ["tamper", "missing_file"])
+def test_resume_never_refetches_a_corrupt_or_missing_recorded_response(tmp_path, monkeypatch, failure):
+    source, output, original = saved_evidence(tmp_path, monkeypatch)
+    path = source / original["file"]
+    if failure == "tamper":
+        path.write_bytes(b"tampered response")
+    else:
+        path.unlink()
+    evidence = am.Evidence(output, source, fetch_missing=True)
+    with pytest.raises((ValueError, FileNotFoundError)):
+        evidence.get(am.SEARCH, original["request"]["form"])
+    assert evidence.network_requests == 0
+    assert list(output.iterdir()) == []
+
+
 @pytest.mark.parametrize("url", [
     "http://kind.krx.co.kr/disclosure/details.do", "https://kind.krx.co.kr.attacker.example/disclosure/details.do",
     "https://kind.krx.co.kr/quotation/prices.do", "https://kind.krx.co.kr/external/../../credentials",
@@ -308,7 +400,8 @@ def fake_main_input(tmp_path, monkeypatch):
     monkeypatch.setattr(am, "INPUT", path)
     monkeypatch.setattr(am.subprocess, "check_output", lambda *args, **kwargs:
                         "a" * 40 if kwargs.get("text") else b"")
-    monkeypatch.setattr(am, "Evidence", lambda *args: type("Offline", (), {"network_requests": 0, "cache": {}})())
+    monkeypatch.setattr(am, "Evidence", lambda *args, **kwargs:
+                        type("Offline", (), {"network_requests": 0, "cache": {}})())
     return tmp_path / "run"
 
 
@@ -347,6 +440,36 @@ def test_missing_offline_response_aborts_main_instead_of_completing_unresolved_r
     assert failure["status"] == "incomplete"
     assert failure["network_requests"] == 0
     assert failure["completed_candidates"] == 0
+
+
+@pytest.mark.parametrize("option,fetch_missing", [("--source-dir", False), ("--resume-dir", True)])
+def test_main_only_enables_missing_fetch_for_explicit_resume(tmp_path, monkeypatch, option, fetch_missing):
+    output = fake_main_input(tmp_path, monkeypatch)
+    source = tmp_path / "prior-evidence"
+    calls = []
+
+    def evidence_factory(destination, saved_source, **kwargs):
+        calls.append((destination, saved_source, kwargs))
+        return type("Offline", (), {"network_requests": 0, "cache": {}})()
+
+    monkeypatch.setattr(am, "Evidence", evidence_factory)
+    monkeypatch.setattr(am, "acquire_candidate", unresolved)
+    assert am.main(["--output-dir", str(output), option, str(source)]) == 0
+    assert calls == [(output, source, {"fetch_missing": fetch_missing})]
+    started = json.loads((output / "started.json").read_text())
+    assert started["source_dir"] == str(source)
+    assert started["fetch_missing"] is fetch_missing
+
+
+def test_source_and_resume_modes_are_mutually_exclusive_before_any_work(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(am.subprocess, "check_output", lambda *args, **kwargs:
+                        pytest.fail("incompatible modes reached source inspection"))
+    output = tmp_path / "run"
+    with pytest.raises(SystemExit) as error:
+        am.main(["--output-dir", str(output), "--source-dir", "saved", "--resume-dir", "saved"])
+    assert error.value.code == 2
+    assert not output.exists()
+    assert "not allowed with argument" in capsys.readouterr().err
 
 
 def test_transport_exception_aborts_without_publishing_completed_result(tmp_path, monkeypatch):
