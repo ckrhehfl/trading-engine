@@ -1,0 +1,948 @@
+{
+  "description": "Fixed Task AH unique-name candidates for public exchange-notice verification; not verified historical identities or an eligibility list.",
+  "source_artifact": "/home/minjun4897/research-evidence/activity-mergers-20261006-0717/result.json",
+  "source_artifact_sha256": "a45f42f2d927588e701e4ff2ea7b15a38f5cdeee9d30cd48b97f0978db281402",
+  "scope": {
+    "start": "2019-01-02",
+    "end": "2026-09-18",
+    "count": 104
+  },
+  "records": [
+    {
+      "issuer_id": "25359",
+      "process_id": "20180124000001",
+      "name": "네오셈",
+      "listed_on": "2019-01-31",
+      "merger_type": "spac_survives",
+      "candidate_code": "253590",
+      "candidate_isin": "KR7253590004"
+    },
+    {
+      "issuer_id": "23934",
+      "process_id": "20160225000035",
+      "name": "이스트에이드",
+      "listed_on": "2019-06-10",
+      "merger_type": "spac_survives",
+      "candidate_code": "239340",
+      "candidate_isin": "KR7239340003"
+    },
+    {
+      "issuer_id": "30303",
+      "process_id": "20180702000061",
+      "name": "지니틱스",
+      "listed_on": "2019-07-26",
+      "merger_type": "spac_survives",
+      "candidate_code": "303030",
+      "candidate_isin": "KR7303030001"
+    },
+    {
+      "issuer_id": "25093",
+      "process_id": "20160725000005",
+      "name": "예선테크",
+      "listed_on": "2019-09-11",
+      "merger_type": "spac_survives",
+      "candidate_code": "250930",
+      "candidate_isin": "KR7250930005"
+    },
+    {
+      "issuer_id": "29757",
+      "process_id": "20180504000002",
+      "name": "아틀라스링크",
+      "listed_on": "2019-10-01",
+      "merger_type": "spac_survives",
+      "candidate_code": "297570",
+      "candidate_isin": "KR7297570004"
+    },
+    {
+      "issuer_id": "26485",
+      "process_id": "20170215000090",
+      "name": "이랜시스",
+      "listed_on": "2019-12-20",
+      "merger_type": "spac_survives",
+      "candidate_code": "264850",
+      "candidate_isin": "KR7264850009"
+    },
+    {
+      "issuer_id": "30718",
+      "process_id": "20180917000064",
+      "name": "아이엘",
+      "listed_on": "2019-12-27",
+      "merger_type": "spac_survives",
+      "candidate_code": "307180",
+      "candidate_isin": "KR7307180000"
+    },
+    {
+      "issuer_id": "31020",
+      "process_id": "20181025000123",
+      "name": "애니플러스",
+      "listed_on": "2020-02-07",
+      "merger_type": "spac_survives",
+      "candidate_code": "310200",
+      "candidate_isin": "KR7310200001"
+    },
+    {
+      "issuer_id": "30662",
+      "process_id": "20180829000004",
+      "name": "지아이에스",
+      "listed_on": "2020-02-11",
+      "merger_type": "spac_survives",
+      "candidate_code": "306620",
+      "candidate_isin": "KR7306620006"
+    },
+    {
+      "issuer_id": "27052",
+      "process_id": "20170508000388",
+      "name": "앱튼",
+      "listed_on": "2020-03-09",
+      "merger_type": "spac_survives",
+      "candidate_code": "270520",
+      "candidate_isin": "KR7270520000"
+    },
+    {
+      "issuer_id": "28174",
+      "process_id": "20171012000009",
+      "name": "레이크머티리얼즈",
+      "listed_on": "2020-03-23",
+      "merger_type": "spac_survives",
+      "candidate_code": "281740",
+      "candidate_isin": "KR7281740001"
+    },
+    {
+      "issuer_id": "26732",
+      "process_id": "20170410000206",
+      "name": "나인테크",
+      "listed_on": "2020-04-22",
+      "merger_type": "spac_survives",
+      "candidate_code": "267320",
+      "candidate_isin": "KR7267320000"
+    },
+    {
+      "issuer_id": "26120",
+      "process_id": "20161207000186",
+      "name": "덴티스",
+      "listed_on": "2020-07-03",
+      "merger_type": "spac_survives",
+      "candidate_code": "261200",
+      "candidate_isin": "KR7261200000"
+    },
+    {
+      "issuer_id": "27306",
+      "process_id": "20170616000015",
+      "name": "와이즈버즈",
+      "listed_on": "2020-08-05",
+      "merger_type": "spac_survives",
+      "candidate_code": "273060",
+      "candidate_isin": "KR7273060004"
+    },
+    {
+      "issuer_id": "32000",
+      "process_id": "20190320000101",
+      "name": "한울반도체",
+      "listed_on": "2020-08-06",
+      "merger_type": "spac_survives",
+      "candidate_code": "320000",
+      "candidate_isin": "KR7320000003"
+    },
+    {
+      "issuer_id": "33995",
+      "process_id": "20191022000113",
+      "name": "아이비김영",
+      "listed_on": "2020-10-13",
+      "merger_type": "spac_survives",
+      "candidate_code": "339950",
+      "candidate_isin": "KR7339950008"
+    },
+    {
+      "issuer_id": "33589",
+      "process_id": "20190909000117",
+      "name": "비올",
+      "listed_on": "2020-11-26",
+      "merger_type": "spac_survives",
+      "candidate_code": "335890",
+      "candidate_isin": "KR7335890000"
+    },
+    {
+      "issuer_id": "29917",
+      "process_id": "20180611000092",
+      "name": "더블유에스아이",
+      "listed_on": "2020-12-01",
+      "merger_type": "spac_survives",
+      "candidate_code": "299170",
+      "candidate_isin": "KR7299170001"
+    },
+    {
+      "issuer_id": "30993",
+      "process_id": "20181019000121",
+      "name": "조이웍스앤코",
+      "listed_on": "2020-12-24",
+      "merger_type": "spac_survives",
+      "candidate_code": "309930",
+      "candidate_isin": "KR7309930006"
+    },
+    {
+      "issuer_id": "32278",
+      "process_id": "20190405000347",
+      "name": "코퍼스코리아",
+      "listed_on": "2020-12-28",
+      "merger_type": "spac_survives",
+      "candidate_code": "322780",
+      "candidate_isin": "KR7322780008"
+    },
+    {
+      "issuer_id": "30775",
+      "process_id": "20180914000179",
+      "name": "국전",
+      "listed_on": "2020-12-30",
+      "merger_type": "spac_survives",
+      "candidate_code": "307750",
+      "candidate_isin": "KR7307750000"
+    },
+    {
+      "issuer_id": "31940",
+      "process_id": "20190312000025",
+      "name": "현대무벡스",
+      "listed_on": "2021-03-12",
+      "merger_type": "spac_survives",
+      "candidate_code": "319400",
+      "candidate_isin": "KR7319400008"
+    },
+    {
+      "issuer_id": "28741",
+      "process_id": "20171213000016",
+      "name": "제이시스메디칼",
+      "listed_on": "2021-03-31",
+      "merger_type": "spac_survives",
+      "candidate_code": "287410",
+      "candidate_isin": "KR7287410005"
+    },
+    {
+      "issuer_id": "33343",
+      "process_id": "20190816000069",
+      "name": "일승",
+      "listed_on": "2021-05-17",
+      "merger_type": "spac_survives",
+      "candidate_code": "333430",
+      "candidate_isin": "KR7333430007"
+    },
+    {
+      "issuer_id": "34036",
+      "process_id": "20191024000216",
+      "name": "다보링크",
+      "listed_on": "2021-08-13",
+      "merger_type": "spac_survives",
+      "candidate_code": "340360",
+      "candidate_isin": "KR7340360007"
+    },
+    {
+      "issuer_id": "29123",
+      "process_id": "20180226000097",
+      "name": "컴투스엔",
+      "listed_on": "2021-08-20",
+      "merger_type": "spac_survives",
+      "candidate_code": "291230",
+      "candidate_isin": "KR7291230001"
+    },
+    {
+      "issuer_id": "32126",
+      "process_id": "20190326000009",
+      "name": "프로이천",
+      "listed_on": "2021-10-27",
+      "merger_type": "spac_survives",
+      "candidate_code": "321260",
+      "candidate_isin": "KR7321260002"
+    },
+    {
+      "issuer_id": "33138",
+      "process_id": "20190723000109",
+      "name": "포커스에이아이",
+      "listed_on": "2021-10-27",
+      "merger_type": "spac_survives",
+      "candidate_code": "331380",
+      "candidate_isin": "KR7331380006"
+    },
+    {
+      "issuer_id": "30787",
+      "process_id": "20180927000090",
+      "name": "비투엔",
+      "listed_on": "2021-11-18",
+      "merger_type": "spac_survives",
+      "candidate_code": "307870",
+      "candidate_isin": "KR7307870006"
+    },
+    {
+      "issuer_id": "34044",
+      "process_id": "20191024000215",
+      "name": "세림B&G",
+      "listed_on": "2021-12-09",
+      "merger_type": "spac_survives",
+      "candidate_code": "340440",
+      "candidate_isin": "KR7340440007"
+    },
+    {
+      "issuer_id": "35132",
+      "process_id": "20200317000009",
+      "name": "넥사다이내믹스",
+      "listed_on": "2021-12-09",
+      "merger_type": "spac_survives",
+      "candidate_code": "351320",
+      "candidate_isin": "KR7351320007"
+    },
+    {
+      "issuer_id": "31087",
+      "process_id": "20181026000082",
+      "name": "디와이씨",
+      "listed_on": "2021-12-14",
+      "merger_type": "spac_survives",
+      "candidate_code": "310870",
+      "candidate_isin": "KR7310870001"
+    },
+    {
+      "issuer_id": "35909",
+      "process_id": "20200630000198",
+      "name": "씨엔알리서치",
+      "listed_on": "2021-12-17",
+      "merger_type": "spac_survives",
+      "candidate_code": "359090",
+      "candidate_isin": "KR7359090008"
+    },
+    {
+      "issuer_id": "36937",
+      "process_id": "20201027000069",
+      "name": "블리츠웨이엔터테인먼트",
+      "listed_on": "2021-12-23",
+      "merger_type": "spac_survives",
+      "candidate_code": "369370",
+      "candidate_isin": "KR7369370002"
+    },
+    {
+      "issuer_id": "37320",
+      "process_id": "20201203000085",
+      "name": "엑스플러스",
+      "listed_on": "2022-01-20",
+      "merger_type": "spac_survives",
+      "candidate_code": "373200",
+      "candidate_isin": "KR7373200005"
+    },
+    {
+      "issuer_id": "33229",
+      "process_id": "20190729000174",
+      "name": "누보",
+      "listed_on": "2022-03-04",
+      "merger_type": "spac_survives",
+      "candidate_code": "332290",
+      "candidate_isin": "KR7332290006"
+    },
+    {
+      "issuer_id": "36877",
+      "process_id": "20201020000143",
+      "name": "파이버프로",
+      "listed_on": "2022-03-25",
+      "merger_type": "spac_survives",
+      "candidate_code": "368770",
+      "candidate_isin": "KR7368770004"
+    },
+    {
+      "issuer_id": "33606",
+      "process_id": "20190911000119",
+      "name": "웨이버스",
+      "listed_on": "2022-04-14",
+      "merger_type": "spac_survives",
+      "candidate_code": "336060",
+      "candidate_isin": "KR7336060009"
+    },
+    {
+      "issuer_id": "36559",
+      "process_id": "20200928000124",
+      "name": "하이딥",
+      "listed_on": "2022-05-12",
+      "merger_type": "spac_survives",
+      "candidate_code": "365590",
+      "candidate_isin": "KR7365590009"
+    },
+    {
+      "issuer_id": "36326",
+      "process_id": "20200907000341",
+      "name": "모비데이즈",
+      "listed_on": "2022-06-08",
+      "merger_type": "spac_survives",
+      "candidate_code": "363260",
+      "candidate_isin": "KR7363260001"
+    },
+    {
+      "issuer_id": "32328",
+      "process_id": "20190417000020",
+      "name": "태성",
+      "listed_on": "2022-06-30",
+      "merger_type": "spac_survives",
+      "candidate_code": "323280",
+      "candidate_isin": "KR7323280008"
+    },
+    {
+      "issuer_id": "39171",
+      "process_id": "20210622000126",
+      "name": "코닉오토메이션",
+      "listed_on": "2022-07-29",
+      "merger_type": "spac_survives",
+      "candidate_code": "391710",
+      "candidate_isin": "KR7391710001"
+    },
+    {
+      "issuer_id": "32838",
+      "process_id": "20190614000503",
+      "name": "솔트웨어",
+      "listed_on": "2022-08-22",
+      "merger_type": "spac_survives",
+      "candidate_code": "328380",
+      "candidate_isin": "KR7328380001"
+    },
+    {
+      "issuer_id": "41954",
+      "process_id": "20220401000124",
+      "name": "비스토스",
+      "listed_on": "2022-10-18",
+      "merger_type": "spac_disappears",
+      "candidate_code": "419540",
+      "candidate_isin": "KR7419540000"
+    },
+    {
+      "issuer_id": "33305",
+      "process_id": "20190822000251",
+      "name": "이노테나",
+      "listed_on": "2022-10-19",
+      "merger_type": "spac_survives",
+      "candidate_code": "333050",
+      "candidate_isin": "KR7333050003"
+    },
+    {
+      "issuer_id": "33587",
+      "process_id": "20190909000112",
+      "name": "윙스풋",
+      "listed_on": "2022-10-27",
+      "merger_type": "spac_survives",
+      "candidate_code": "335870",
+      "candidate_isin": "KR7335870002"
+    },
+    {
+      "issuer_id": "33152",
+      "process_id": "20190725000004",
+      "name": "밸로프",
+      "listed_on": "2022-10-31",
+      "merger_type": "spac_survives",
+      "candidate_code": "331520",
+      "candidate_isin": "KR7331520007"
+    },
+    {
+      "issuer_id": "41718",
+      "process_id": "20220415000163",
+      "name": "핑거스토리",
+      "listed_on": "2022-12-08",
+      "merger_type": "spac_disappears",
+      "candidate_code": "417180",
+      "candidate_isin": "KR7417180007"
+    },
+    {
+      "issuer_id": "16230",
+      "process_id": "20220520000041",
+      "name": "신스틸",
+      "listed_on": "2022-12-23",
+      "merger_type": "spac_disappears",
+      "candidate_code": "162300",
+      "candidate_isin": "KR7162300008"
+    },
+    {
+      "issuer_id": "38054",
+      "process_id": "20220530000205",
+      "name": "옵티코어",
+      "listed_on": "2022-12-29",
+      "merger_type": "spac_disappears",
+      "candidate_code": "380540",
+      "candidate_isin": "KR7380540005"
+    },
+    {
+      "issuer_id": "38879",
+      "process_id": "20210528000117",
+      "name": "라이콤",
+      "listed_on": "2023-02-14",
+      "merger_type": "spac_survives",
+      "candidate_code": "388790",
+      "candidate_isin": "KR7388790008"
+    },
+    {
+      "issuer_id": "12798",
+      "process_id": "20220624000119",
+      "name": "화인써키트",
+      "listed_on": "2023-02-17",
+      "merger_type": "spac_disappears",
+      "candidate_code": "127980",
+      "candidate_isin": "KR7127980001"
+    },
+    {
+      "issuer_id": "40892",
+      "process_id": "20211116000345",
+      "name": "메쎄이상",
+      "listed_on": "2023-03-03",
+      "merger_type": "spac_survives",
+      "candidate_code": "408920",
+      "candidate_isin": "KR7408920007"
+    },
+    {
+      "issuer_id": "41842",
+      "process_id": "20220503000093",
+      "name": "라온텍",
+      "listed_on": "2023-03-09",
+      "merger_type": "spac_disappears",
+      "candidate_code": "418420",
+      "candidate_isin": "KR7418420006"
+    },
+    {
+      "issuer_id": "35668",
+      "process_id": "20220727000001",
+      "name": "엑스게이트",
+      "listed_on": "2023-03-16",
+      "merger_type": "spac_disappears",
+      "candidate_code": "356680",
+      "candidate_isin": "KR7356680009"
+    },
+    {
+      "issuer_id": "35515",
+      "process_id": "20200515000005",
+      "name": "코스텍시스",
+      "listed_on": "2023-04-03",
+      "merger_type": "spac_survives",
+      "candidate_code": "355150",
+      "candidate_isin": "KR7355150004"
+    },
+    {
+      "issuer_id": "31816",
+      "process_id": "20220930000340",
+      "name": "셀바이오휴먼텍",
+      "listed_on": "2023-04-20",
+      "merger_type": "spac_disappears",
+      "candidate_code": "318160",
+      "candidate_isin": "KR7318160009"
+    },
+    {
+      "issuer_id": "29883",
+      "process_id": "20220816000209",
+      "name": "슈어소프트테크",
+      "listed_on": "2023-04-28",
+      "merger_type": "spac_disappears",
+      "candidate_code": "298830",
+      "candidate_isin": "KR7298830001"
+    },
+    {
+      "issuer_id": "42476",
+      "process_id": "20220328000334",
+      "name": "벨로크",
+      "listed_on": "2023-04-28",
+      "merger_type": "spac_survives",
+      "candidate_code": "424760",
+      "candidate_isin": "KR7424760007"
+    },
+    {
+      "issuer_id": "27183",
+      "process_id": "20220728000313",
+      "name": "팸텍",
+      "listed_on": "2023-05-23",
+      "merger_type": "spac_disappears",
+      "candidate_code": "271830",
+      "candidate_isin": "KR7271830002"
+    },
+    {
+      "issuer_id": "35539",
+      "process_id": "20221027000061",
+      "name": "크라우드웍스",
+      "listed_on": "2023-08-31",
+      "merger_type": "spac_disappears",
+      "candidate_code": "355390",
+      "candidate_isin": "KR7355390006"
+    },
+    {
+      "issuer_id": "14606",
+      "process_id": "20220704000031",
+      "name": "율촌",
+      "listed_on": "2023-09-08",
+      "merger_type": "spac_disappears",
+      "candidate_code": "146060",
+      "candidate_isin": "KR7146060009"
+    },
+    {
+      "issuer_id": "38447",
+      "process_id": "20230308000333",
+      "name": "코어라인소프트",
+      "listed_on": "2023-09-18",
+      "merger_type": "spac_disappears",
+      "candidate_code": "384470",
+      "candidate_isin": "KR7384470001"
+    },
+    {
+      "issuer_id": "40349",
+      "process_id": "20230130000137",
+      "name": "우듬지팜",
+      "listed_on": "2023-09-19",
+      "merger_type": "spac_disappears",
+      "candidate_code": "403490",
+      "candidate_isin": "KR7403490006"
+    },
+    {
+      "issuer_id": "18826",
+      "process_id": "20230130000080",
+      "name": "세니젠",
+      "listed_on": "2023-11-03",
+      "merger_type": "spac_disappears",
+      "candidate_code": "188260",
+      "candidate_isin": "KR7188260004"
+    },
+    {
+      "issuer_id": "29056",
+      "process_id": "20230217000131",
+      "name": "파라택시스이더리움",
+      "listed_on": "2023-11-03",
+      "merger_type": "spac_disappears",
+      "candidate_code": "290560",
+      "candidate_isin": "KR7290560002"
+    },
+    {
+      "issuer_id": "45216",
+      "process_id": "20230120000094",
+      "name": "제이엔비",
+      "listed_on": "2023-11-24",
+      "merger_type": "spac_disappears",
+      "candidate_code": "452160",
+      "candidate_isin": "KR7452160005"
+    },
+    {
+      "issuer_id": "10967",
+      "process_id": "20230612000134",
+      "name": "씨싸이트",
+      "listed_on": "2023-12-21",
+      "merger_type": "spac_disappears",
+      "candidate_code": "109670",
+      "candidate_isin": "KR7109670000"
+    },
+    {
+      "issuer_id": "45219",
+      "process_id": "20230119000130",
+      "name": "한빛레이저",
+      "listed_on": "2024-01-04",
+      "merger_type": "spac_disappears",
+      "candidate_code": "452190",
+      "candidate_isin": "KR7452190002"
+    },
+    {
+      "issuer_id": "36299",
+      "process_id": "20230509000129",
+      "name": "드림인사이트",
+      "listed_on": "2024-01-25",
+      "merger_type": "spac_disappears",
+      "candidate_code": "362990",
+      "candidate_isin": "KR7362990004"
+    },
+    {
+      "issuer_id": "19955",
+      "process_id": "20230518000139",
+      "name": "레이저옵텍",
+      "listed_on": "2024-02-01",
+      "merger_type": "spac_disappears",
+      "candidate_code": "199550",
+      "candidate_isin": "KR7199550005"
+    },
+    {
+      "issuer_id": "44367",
+      "process_id": "20230227000150",
+      "name": "에스피소프트",
+      "listed_on": "2024-02-15",
+      "merger_type": "spac_disappears",
+      "candidate_code": "443670",
+      "candidate_isin": "KR7443670005"
+    },
+    {
+      "issuer_id": "45243",
+      "process_id": "20230626000143",
+      "name": "사피엔반도체",
+      "listed_on": "2024-02-19",
+      "merger_type": "spac_disappears",
+      "candidate_code": "452430",
+      "candidate_isin": "KR7452430002"
+    },
+    {
+      "issuer_id": "42057",
+      "process_id": "20230706000136",
+      "name": "제이투케이바이오",
+      "listed_on": "2024-03-25",
+      "merger_type": "spac_disappears",
+      "candidate_code": "420570",
+      "candidate_isin": "KR7420570004"
+    },
+    {
+      "issuer_id": "45125",
+      "process_id": "20230907000160",
+      "name": "삐아",
+      "listed_on": "2024-04-25",
+      "merger_type": "spac_disappears",
+      "candidate_code": "451250",
+      "candidate_isin": "KR7451250005"
+    },
+    {
+      "issuer_id": "14043",
+      "process_id": "20230327000127",
+      "name": "카티스",
+      "listed_on": "2024-05-03",
+      "merger_type": "spac_disappears",
+      "candidate_code": "140430",
+      "candidate_isin": "KR7140430000"
+    },
+    {
+      "issuer_id": "32335",
+      "process_id": "20231109001190",
+      "name": "다원넥스뷰",
+      "listed_on": "2024-06-11",
+      "merger_type": "spac_disappears",
+      "candidate_code": "323350",
+      "candidate_isin": "KR7323350009"
+    },
+    {
+      "issuer_id": "41363",
+      "process_id": "20211213000303",
+      "name": "씨피시스템",
+      "listed_on": "2024-06-27",
+      "merger_type": "spac_survives",
+      "candidate_code": "413630",
+      "candidate_isin": "KR7413630005"
+    },
+    {
+      "issuer_id": "46975",
+      "process_id": "20231013000126",
+      "name": "아이비젼웍스",
+      "listed_on": "2024-09-03",
+      "merger_type": "spac_disappears",
+      "candidate_code": "469750",
+      "candidate_isin": "KR7469750004"
+    },
+    {
+      "issuer_id": "35187",
+      "process_id": "20231121000146",
+      "name": "차이커뮤니케이션",
+      "listed_on": "2024-09-27",
+      "merger_type": "spac_disappears",
+      "candidate_code": "351870",
+      "candidate_isin": "KR7351870001"
+    },
+    {
+      "issuer_id": "47461",
+      "process_id": "20240116000123",
+      "name": "RF시스템즈",
+      "listed_on": "2024-11-19",
+      "merger_type": "spac_disappears",
+      "candidate_code": "474610",
+      "candidate_isin": "KR7474610003"
+    },
+    {
+      "issuer_id": "38968",
+      "process_id": "20230927000003",
+      "name": "유디엠텍",
+      "listed_on": "2024-11-20",
+      "merger_type": "spac_disappears",
+      "candidate_code": "389680",
+      "candidate_isin": "KR7389680000"
+    },
+    {
+      "issuer_id": "47182",
+      "process_id": "20240117000151",
+      "name": "셀로맥스사이언스",
+      "listed_on": "2024-12-13",
+      "merger_type": "spac_disappears",
+      "candidate_code": "471820",
+      "candidate_isin": "KR7471820001"
+    },
+    {
+      "issuer_id": "39812",
+      "process_id": "20240108000183",
+      "name": "에스지헬스케어",
+      "listed_on": "2024-12-19",
+      "merger_type": "spac_disappears",
+      "candidate_code": "398120",
+      "candidate_isin": "KR7398120006"
+    },
+    {
+      "issuer_id": "43298",
+      "process_id": "20240206000162",
+      "name": "엠에프씨",
+      "listed_on": "2024-12-26",
+      "merger_type": "spac_disappears",
+      "candidate_code": "432980",
+      "candidate_isin": "KR7432980001"
+    },
+    {
+      "issuer_id": "47856",
+      "process_id": "20240328000228",
+      "name": "블랙야크아이앤씨",
+      "listed_on": "2025-01-21",
+      "merger_type": "spac_disappears",
+      "candidate_code": "478560",
+      "candidate_isin": "KR7478560006"
+    },
+    {
+      "issuer_id": "43557",
+      "process_id": "20240325000272",
+      "name": "에르코스",
+      "listed_on": "2025-02-28",
+      "merger_type": "spac_disappears",
+      "candidate_code": "435570",
+      "candidate_isin": "KR7435570007"
+    },
+    {
+      "issuer_id": "46087",
+      "process_id": "20240328000308",
+      "name": "에스엠씨지",
+      "listed_on": "2025-03-07",
+      "merger_type": "spac_disappears",
+      "candidate_code": "460870",
+      "candidate_isin": "KR7460870009"
+    },
+    {
+      "issuer_id": "10197",
+      "process_id": "20241025000361",
+      "name": "우양에이치씨",
+      "listed_on": "2025-03-28",
+      "merger_type": "spac_disappears",
+      "candidate_code": "101970",
+      "candidate_isin": "KR7101970002"
+    },
+    {
+      "issuer_id": "36495",
+      "process_id": "20240909000001",
+      "name": "에이아이코리아",
+      "listed_on": "2025-04-29",
+      "merger_type": "spac_disappears",
+      "candidate_code": "364950",
+      "candidate_isin": "KR7364950006"
+    },
+    {
+      "issuer_id": "12502",
+      "process_id": "20240530000187",
+      "name": "티씨머티리얼즈",
+      "listed_on": "2025-05-15",
+      "merger_type": "spac_disappears",
+      "candidate_code": "125020",
+      "candidate_isin": "KR7125020008"
+    },
+    {
+      "issuer_id": "18804",
+      "process_id": "20240708000660",
+      "name": "바이오포트",
+      "listed_on": "2025-05-16",
+      "merger_type": "spac_disappears",
+      "candidate_code": "188040",
+      "candidate_isin": "KR7188040000"
+    },
+    {
+      "issuer_id": "45518",
+      "process_id": "20240819000163",
+      "name": "케이지에이",
+      "listed_on": "2025-06-17",
+      "merger_type": "spac_disappears",
+      "candidate_code": "455180",
+      "candidate_isin": "KR7455180000"
+    },
+    {
+      "issuer_id": "46231",
+      "process_id": "20240521000137",
+      "name": "뉴키즈온",
+      "listed_on": "2025-07-09",
+      "merger_type": "spac_disappears",
+      "candidate_code": "462310",
+      "candidate_isin": "KR7462310004"
+    },
+    {
+      "issuer_id": "39781",
+      "process_id": "20250120000148",
+      "name": "애드포러스",
+      "listed_on": "2025-08-22",
+      "merger_type": "spac_disappears",
+      "candidate_code": "397810",
+      "candidate_isin": "KR7397810003"
+    },
+    {
+      "issuer_id": "34287",
+      "process_id": "20240731000127",
+      "name": "오아",
+      "listed_on": "2025-09-09",
+      "merger_type": "spac_disappears",
+      "candidate_code": "342870",
+      "candidate_isin": "KR7342870003"
+    },
+    {
+      "issuer_id": "01495",
+      "process_id": "20250124000260",
+      "name": "삼익제약",
+      "listed_on": "2025-10-27",
+      "merger_type": "spac_disappears",
+      "candidate_code": "014950",
+      "candidate_isin": "KR7014950000"
+    },
+    {
+      "issuer_id": "45955",
+      "process_id": "20250107000139",
+      "name": "알트",
+      "listed_on": "2025-11-17",
+      "merger_type": "spac_disappears",
+      "candidate_code": "459550",
+      "candidate_isin": "KR7459550000"
+    },
+    {
+      "issuer_id": "01221",
+      "process_id": "20250114000200",
+      "name": "삼미금속",
+      "listed_on": "2025-12-29",
+      "merger_type": "spac_disappears",
+      "candidate_code": "012210",
+      "candidate_isin": "KR7012210001"
+    },
+    {
+      "issuer_id": "0004V",
+      "process_id": "20250515000293",
+      "name": "엔비알모션",
+      "listed_on": "2026-01-14",
+      "merger_type": "spac_disappears",
+      "candidate_code": "0004V0",
+      "candidate_isin": "KR70004V0003"
+    },
+    {
+      "issuer_id": "49333",
+      "process_id": "20250123000558",
+      "name": "지에프아이",
+      "listed_on": "2026-01-14",
+      "merger_type": "spac_disappears",
+      "candidate_code": "493330",
+      "candidate_isin": "KR7493330005"
+    },
+    {
+      "issuer_id": "0010F",
+      "process_id": "20250404000538",
+      "name": "보원케미칼",
+      "listed_on": "2026-04-03",
+      "merger_type": "spac_disappears",
+      "candidate_code": "0010F0",
+      "candidate_isin": "KR70010F0005"
+    },
+    {
+      "issuer_id": "28818",
+      "process_id": "20250728000217",
+      "name": "케이피항공산업",
+      "listed_on": "2026-05-19",
+      "merger_type": "spac_disappears",
+      "candidate_code": "288180",
+      "candidate_isin": "KR7288180003"
+    },
+    {
+      "issuer_id": "0017J",
+      "process_id": "20251112001225",
+      "name": "세미티에스",
+      "listed_on": "2026-06-10",
+      "merger_type": "spac_disappears",
+      "candidate_code": "0017J0",
+      "candidate_isin": "KR70017J0004"
+    }
+  ]
+}
