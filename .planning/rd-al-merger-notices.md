@@ -128,3 +128,54 @@ or a conflicting rename remains unresolved. Include the later correction in
 the selected evidence and use the latest publication date of that whole set,
 so this reconciliation never backdates availability. This remains notice-level
 identity evidence with `known_on=null`, not historical interval certification.
+
+## Completed evidence and remaining gates
+
+Final offline interpretation `b162d29` verified **all 104 fixed candidates**:
+51 SPAC-surviving and 53 SPAC-disappearing listings, with no parse failures.
+It made zero network requests. Across the two acquisitions there were 594
+unique public response requests, including 164 distinct notice bodies and nine
+correcting bodies. The saved source ledgers and all response hashes were checked
+again before publication. No raw/adjusted quotation or return computation was
+performed. The separate eleven Task AI pairs and their unresolved dates are
+unchanged.
+
+`rd-al-merger-notice-evidence.json` contains every candidate, its selected and
+reviewed document numbers, exact extracted corporate fields, per-document byte
+hashes, correction provenance, and hashes/counts for all four preserved runs.
+It keeps every `known_on` null and every `historical_intervals_ready` false.
+For Proicheon and Lycom, the evidence availability dates are conservatively
+2021-11-12 and 2023-02-16 respectively, including the later name-bearing
+correction rather than backdating that reconciliation to the original notice.
+
+The public evidence is preserved on GCP under
+`/home/minjun4897/research-evidence/activity-merger-notices-20261006/`, with
+`first/`, `resumed/`, `initial_interpretation/`, and `final/` subdirectories.
+All 2,537 archived files and the per-response ledgers were verified there.
+The 4,151,857-byte archive SHA-256 is
+`3b405be695b698a6af91aca7127c253a3488d73cdccb76e5ae261084d87c72ba`;
+the final result SHA-256 is
+`bbb7ee826d342eec24c3d045bbe8db9a7ba40efa1a7a56efa63baf0f895bdc31`.
+These are newly acquired public documents, not copied trading databases, logs
+or credentials. The collector checkout remained clean at `4ce85d7`; the
+existing pre-2019 collection script processes were observed separately.
+
+This closes the 104 **candidate-to-listing-notice identity checks**, not the
+full historical security-master or corporate-action ledger. A disappearing
+SPAC's name still does not prove its old stock code, exchange ratio, effective
+date or net payout. Initial instrument classifications, pre-conversion
+lookbacks, contemporaneous availability, the full bar-eligible pool, all held
+intervals (including closed/successor lots), vendor price-basis semantics and
+actual dataset compatibility remain prerequisites. Task AK's consumed
+credentialed diagnostic approval was not reused. Task AD's cost-floor stop,
+the reserved window, and the runner/preregistration gates are unchanged.
+
+Final code review included independent counterexamples to the dated rename
+bridge; all nine rejected inputs remained unresolved. The local full suite
+collected before its last ten bridge cases passed 4,171 tests with three
+existing skips in 301.78 seconds. The final focused suite passed 234 tests with
+one existing skip, including those ten cases. Both guardrail suites passed
+(27 and 34 tests), and the scanner and diff whitespace check passed. Applicable
+change checks (`require_no_blockers`) passed for the demonstrated guard mutation,
+allowlist boundary, isolated evidence writer, actual-record counts and declared
+safe error direction. Final GitHub CI and CodeRabbit results follow the PR.

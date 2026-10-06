@@ -1,0 +1,4922 @@
+{
+  "description": "Dated exchange-notice evidence for the 104 Task AH unique-name candidates; not a runnable identity, corporate-action or eligibility ledger.",
+  "acquired_on": "2026-10-06",
+  "artifact_directory": "/home/minjun4897/research-evidence/activity-merger-notices-20261006/",
+  "semantics": {
+    "code": "Explicit common-share short code in a dated additional/SPAC-disappearance listing body. An opaque issuer_id is never converted into a code.",
+    "listed_on": "Notice listing date, not legal merger effect or assumed tradability.",
+    "notice_evidence_available_on": "Latest publication day among selected documents, including name-changing corrections; no intraday availability claim.",
+    "known_on": "Unassigned. This acquisition does not build historical classification or lookback intervals.",
+    "candidate_isin": "The input manifest retains current candidate ISINs. Only SPAC-disappearance notices independently verify the operating-company ISIN.",
+    "missing_old_spac_code": "A disappearing SPAC name alone does not certify its old stock code or exchange ratio."
+  },
+  "runs": {
+    "first": {
+      "code_version": "273b9ff5b5510d81c1ac038cb5e8567cc581cab0",
+      "candidate_count": 104,
+      "counts": {
+        "listing_identity_verified": 51,
+        "unresolved": 53
+      },
+      "network_requests": 323,
+      "source_count": 323,
+      "input_sha256": "ceae72cba1f511567dc422f91ad99ebbb9cbb9d1be616b0e214cb460a84df719",
+      "result_sha256": "5a6426ef4b00db67ac48c2f86aa94078faabeeb3ed2e3bfec7652881d25ccf18",
+      "sources_sha256": "d34d03258278598ca7e9c7c2301c8a45c66c0987620b8ca2e7ff62fbf5cfaf4a"
+    },
+    "resumed": {
+      "code_version": "13952b1df79563c1d38bf923e513ad129614ead4",
+      "candidate_count": 104,
+      "counts": {
+        "listing_identity_verified": 96,
+        "unresolved": 8
+      },
+      "network_requests": 271,
+      "source_count": 594,
+      "input_sha256": "ceae72cba1f511567dc422f91ad99ebbb9cbb9d1be616b0e214cb460a84df719",
+      "result_sha256": "642dc3758c72af75578f48e1f21731b94717fe4208872f9a5cafc4200d01f9db",
+      "sources_sha256": "c9f8313365979e6f086b8f2e961885a6bc6899206a63068cdf5ffd4ec7a468c1"
+    },
+    "initial_interpretation": {
+      "code_version": "6247f00321661f81ebe0ad2aff5cb57cf442cdc9",
+      "candidate_count": 104,
+      "counts": {
+        "listing_identity_verified": 102,
+        "unresolved": 2
+      },
+      "network_requests": 0,
+      "source_count": 594,
+      "input_sha256": "ceae72cba1f511567dc422f91ad99ebbb9cbb9d1be616b0e214cb460a84df719",
+      "result_sha256": "a9ffb7958831b0a5ff1ba1ce0823ab4f559b6e80976f6804c1cc6ee56ff8c6df",
+      "sources_sha256": "f07d7bb84b3e09e1942d85becc98f798929fd5de90e1befd48b7ab96fbfe5cf9"
+    },
+    "final": {
+      "code_version": "b162d29ccc23c3ad6caf7882c614c8bfef6374b2",
+      "candidate_count": 104,
+      "counts": {
+        "listing_identity_verified": 104
+      },
+      "network_requests": 0,
+      "source_count": 594,
+      "input_sha256": "ceae72cba1f511567dc422f91ad99ebbb9cbb9d1be616b0e214cb460a84df719",
+      "result_sha256": "bbb7ee826d342eec24c3d045bbe8db9a7ba40efa1a7a56efa63baf0f895bdc31",
+      "sources_sha256": "f07d7bb84b3e09e1942d85becc98f798929fd5de90e1befd48b7ab96fbfe5cf9"
+    }
+  },
+  "counts": {
+    "candidates": 104,
+    "spac_survives": 51,
+    "spac_disappears": 53,
+    "unique_documents": 164,
+    "correction_documents": 9,
+    "responses": 594,
+    "network_requests_total": 594
+  },
+  "events": [
+    {
+      "issuer_id": "25359",
+      "process_id": "20180124000001",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-01-31",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)네오셈",
+      "notice_evidence_available_on": "2019-01-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "네오셈",
+      "code": "253590",
+      "selected_documents": [
+        "20190130002090",
+        "20190128002535"
+      ],
+      "reviewed_documents": [
+        "20190130002090",
+        "20190128002535"
+      ]
+    },
+    {
+      "issuer_id": "23934",
+      "process_id": "20160225000035",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-06-10",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "줌인터넷(주)",
+      "notice_evidence_available_on": "2019-06-07",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "이스트에이드",
+      "code": "239340",
+      "selected_documents": [
+        "20190607001548",
+        "20190604000990"
+      ],
+      "reviewed_documents": [
+        "20190607001548",
+        "20190604000990"
+      ]
+    },
+    {
+      "issuer_id": "30303",
+      "process_id": "20180702000061",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-07-26",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)지니틱스",
+      "notice_evidence_available_on": "2019-07-25",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "지니틱스",
+      "code": "303030",
+      "selected_documents": [
+        "20190725001276",
+        "20190723001267"
+      ],
+      "reviewed_documents": [
+        "20190725001276",
+        "20190723001267"
+      ]
+    },
+    {
+      "issuer_id": "25093",
+      "process_id": "20160725000005",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-09-11",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)예선테크",
+      "notice_evidence_available_on": "2019-09-10",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "예선테크",
+      "code": "250930",
+      "selected_documents": [
+        "20190910001277",
+        "20190906000841"
+      ],
+      "reviewed_documents": [
+        "20190910001277",
+        "20190906000841"
+      ]
+    },
+    {
+      "issuer_id": "29757",
+      "process_id": "20180504000002",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-10-01",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)알로이스",
+      "notice_evidence_available_on": "2019-09-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "아틀라스링크",
+      "code": "297570",
+      "selected_documents": [
+        "20190930001528",
+        "20190926001289"
+      ],
+      "reviewed_documents": [
+        "20190930001528",
+        "20190926001289",
+        "20190926001369"
+      ]
+    },
+    {
+      "issuer_id": "26485",
+      "process_id": "20170215000090",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-12-20",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)이랜시스",
+      "notice_evidence_available_on": "2019-12-19",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "이랜시스",
+      "code": "264850",
+      "selected_documents": [
+        "20191219001583",
+        "20191217001239"
+      ],
+      "reviewed_documents": [
+        "20191219001583",
+        "20191217001239"
+      ]
+    },
+    {
+      "issuer_id": "30718",
+      "process_id": "20180917000064",
+      "merger_type": "spac_survives",
+      "listed_on": "2019-12-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)아이엘사이언스",
+      "notice_evidence_available_on": "2019-12-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "아이엘",
+      "code": "307180",
+      "selected_documents": [
+        "20191226002487",
+        "20191223001467"
+      ],
+      "reviewed_documents": [
+        "20191226002487",
+        "20191223001467"
+      ]
+    },
+    {
+      "issuer_id": "31020",
+      "process_id": "20181025000123",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-02-07",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)애니플러스",
+      "notice_evidence_available_on": "2020-02-06",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "애니플러스",
+      "code": "310200",
+      "selected_documents": [
+        "20200206002431",
+        "20200204001725"
+      ],
+      "reviewed_documents": [
+        "20200206002431",
+        "20200204001725"
+      ]
+    },
+    {
+      "issuer_id": "30662",
+      "process_id": "20180829000004",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-02-11",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)네온테크",
+      "notice_evidence_available_on": "2020-02-10",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "지아이에스",
+      "code": "306620",
+      "selected_documents": [
+        "20200210003378",
+        "20200206002142"
+      ],
+      "reviewed_documents": [
+        "20200210003378",
+        "20200206002142"
+      ]
+    },
+    {
+      "issuer_id": "27052",
+      "process_id": "20170508000388",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-03-09",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "지엔원에너지 주식회사",
+      "notice_evidence_available_on": "2020-03-06",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "앱튼",
+      "code": "270520",
+      "selected_documents": [
+        "20200306002516",
+        "20200304002314"
+      ],
+      "reviewed_documents": [
+        "20200306002516",
+        "20200304002314"
+      ]
+    },
+    {
+      "issuer_id": "28174",
+      "process_id": "20171012000009",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-03-23",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)레이크머티리얼즈",
+      "notice_evidence_available_on": "2020-03-20",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "레이크머티리얼즈",
+      "code": "281740",
+      "selected_documents": [
+        "20200320004816",
+        "20200318003835"
+      ],
+      "reviewed_documents": [
+        "20200320004816",
+        "20200318003835"
+      ]
+    },
+    {
+      "issuer_id": "26732",
+      "process_id": "20170410000206",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-04-22",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)나인테크",
+      "notice_evidence_available_on": "2020-04-21",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "나인테크",
+      "code": "267320",
+      "selected_documents": [
+        "20200421001251",
+        "20200417001639"
+      ],
+      "reviewed_documents": [
+        "20200421001251",
+        "20200417001639"
+      ]
+    },
+    {
+      "issuer_id": "26120",
+      "process_id": "20161207000186",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-07-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 덴티스",
+      "notice_evidence_available_on": "2020-07-02",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "덴티스",
+      "code": "261200",
+      "selected_documents": [
+        "20200702001247",
+        "20200630000919"
+      ],
+      "reviewed_documents": [
+        "20200702001247",
+        "20200630000919"
+      ]
+    },
+    {
+      "issuer_id": "27306",
+      "process_id": "20170616000015",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-08-05",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)와이즈버즈",
+      "notice_evidence_available_on": "2020-08-04",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "와이즈버즈",
+      "code": "273060",
+      "selected_documents": [
+        "20200804001073",
+        "20200731001068"
+      ],
+      "reviewed_documents": [
+        "20200804001073",
+        "20200731001068"
+      ]
+    },
+    {
+      "issuer_id": "32000",
+      "process_id": "20190320000101",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-08-06",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "윈텍 주식회사",
+      "notice_evidence_available_on": "2020-08-05",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "한울반도체",
+      "code": "320000",
+      "selected_documents": [
+        "20200805001105",
+        "20200803001108"
+      ],
+      "reviewed_documents": [
+        "20200805001105",
+        "20200803001108"
+      ]
+    },
+    {
+      "issuer_id": "33995",
+      "process_id": "20191022000113",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-10-13",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)아이비김영",
+      "notice_evidence_available_on": "2020-10-12",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "아이비김영",
+      "code": "339950",
+      "selected_documents": [
+        "20201012000713",
+        "20201007001163"
+      ],
+      "reviewed_documents": [
+        "20201012000713",
+        "20201007001163"
+      ]
+    },
+    {
+      "issuer_id": "33589",
+      "process_id": "20190909000117",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-11-26",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)비올",
+      "notice_evidence_available_on": "2020-11-25",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "비올",
+      "code": "335890",
+      "selected_documents": [
+        "20201125000921",
+        "20201123000814"
+      ],
+      "reviewed_documents": [
+        "20201125000921",
+        "20201123000814"
+      ]
+    },
+    {
+      "issuer_id": "29917",
+      "process_id": "20180611000092",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-12-01",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)더블유에스아이",
+      "notice_evidence_available_on": "2020-11-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "더블유에스아이",
+      "code": "299170",
+      "selected_documents": [
+        "20201130001764",
+        "20201126000957"
+      ],
+      "reviewed_documents": [
+        "20201130001764",
+        "20201126000957"
+      ]
+    },
+    {
+      "issuer_id": "30993",
+      "process_id": "20181019000121",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-12-24",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)오하임아이엔티",
+      "notice_evidence_available_on": "2020-12-23",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "조이웍스앤코",
+      "code": "309930",
+      "selected_documents": [
+        "20201223002213",
+        "20201221001989"
+      ],
+      "reviewed_documents": [
+        "20201223002213",
+        "20201221001989"
+      ]
+    },
+    {
+      "issuer_id": "32278",
+      "process_id": "20190405000347",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-12-28",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)코퍼스코리아",
+      "notice_evidence_available_on": "2020-12-24",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "코퍼스코리아",
+      "code": "322780",
+      "selected_documents": [
+        "20201224001782",
+        "20201222001563"
+      ],
+      "reviewed_documents": [
+        "20201224001782",
+        "20201222001563"
+      ]
+    },
+    {
+      "issuer_id": "30775",
+      "process_id": "20180914000179",
+      "merger_type": "spac_survives",
+      "listed_on": "2020-12-30",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)국전약품",
+      "notice_evidence_available_on": "2020-12-29",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "국전",
+      "code": "307750",
+      "selected_documents": [
+        "20201229001820",
+        "20201224001811"
+      ],
+      "reviewed_documents": [
+        "20201229001820",
+        "20201224001811"
+      ]
+    },
+    {
+      "issuer_id": "31940",
+      "process_id": "20190312000025",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-03-12",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "현대무벡스(주)",
+      "notice_evidence_available_on": "2021-03-11",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "현대무벡스",
+      "code": "319400",
+      "selected_documents": [
+        "20210311002821",
+        "20210309002971"
+      ],
+      "reviewed_documents": [
+        "20210311002821",
+        "20210309002971"
+      ]
+    },
+    {
+      "issuer_id": "28741",
+      "process_id": "20171213000016",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-03-31",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)제이시스메디칼",
+      "notice_evidence_available_on": "2021-03-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "제이시스메디칼",
+      "code": "287410",
+      "selected_documents": [
+        "20210330004120",
+        "20210326003717"
+      ],
+      "reviewed_documents": [
+        "20210330004120",
+        "20210326003717"
+      ]
+    },
+    {
+      "issuer_id": "33343",
+      "process_id": "20190816000069",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-05-17",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)일승",
+      "notice_evidence_available_on": "2021-05-14",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "일승",
+      "code": "333430",
+      "selected_documents": [
+        "20210514003060",
+        "20210512001270"
+      ],
+      "reviewed_documents": [
+        "20210514003060",
+        "20210512001270"
+      ]
+    },
+    {
+      "issuer_id": "34036",
+      "process_id": "20191024000216",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-08-13",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 다보링크",
+      "notice_evidence_available_on": "2021-08-10",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "다보링크",
+      "code": "340360",
+      "selected_documents": [
+        "20210810001090",
+        "20210810001083"
+      ],
+      "reviewed_documents": [
+        "20210810001090",
+        "20210810001083"
+      ]
+    },
+    {
+      "issuer_id": "29123",
+      "process_id": "20180226000097",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-08-20",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)엔피",
+      "notice_evidence_available_on": "2021-08-19",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "컴투스엔",
+      "code": "291230",
+      "selected_documents": [
+        "20210819001189",
+        "20210817008023"
+      ],
+      "reviewed_documents": [
+        "20210819001189",
+        "20210817008023"
+      ]
+    },
+    {
+      "issuer_id": "32126",
+      "process_id": "20190326000009",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-10-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)프로이천",
+      "notice_evidence_available_on": "2021-11-12",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "프로이천",
+      "code": "321260",
+      "selected_documents": [
+        "20211026001226",
+        "20211022001046",
+        "20211112002906"
+      ],
+      "reviewed_documents": [
+        "20211026001226",
+        "20211112002906",
+        "20211022001046"
+      ]
+    },
+    {
+      "issuer_id": "33138",
+      "process_id": "20190723000109",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-10-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)포커스에이치엔에스",
+      "notice_evidence_available_on": "2021-10-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "포커스에이아이",
+      "code": "331380",
+      "selected_documents": [
+        "20211026001227",
+        "20211022001047"
+      ],
+      "reviewed_documents": [
+        "20211026001227",
+        "20211022001047"
+      ]
+    },
+    {
+      "issuer_id": "30787",
+      "process_id": "20180927000090",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-11-18",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)비투엔",
+      "notice_evidence_available_on": "2021-11-17",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "비투엔",
+      "code": "307870",
+      "selected_documents": [
+        "20211117001183",
+        "20211115002688"
+      ],
+      "reviewed_documents": [
+        "20211117001183",
+        "20211115002688"
+      ]
+    },
+    {
+      "issuer_id": "34044",
+      "process_id": "20191024000215",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-12-09",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)세림비앤지",
+      "notice_evidence_available_on": "2021-12-08",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "세림B&G",
+      "code": "340440",
+      "selected_documents": [
+        "20211208001209",
+        "20211206001145"
+      ],
+      "reviewed_documents": [
+        "20211208001209",
+        "20211206001145"
+      ]
+    },
+    {
+      "issuer_id": "35132",
+      "process_id": "20200317000009",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-12-09",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)에스에이티",
+      "notice_evidence_available_on": "2021-12-08",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "넥사다이내믹스",
+      "code": "351320",
+      "selected_documents": [
+        "20211208001156",
+        "20211206001300"
+      ],
+      "reviewed_documents": [
+        "20211208001156",
+        "20211206001300"
+      ]
+    },
+    {
+      "issuer_id": "31087",
+      "process_id": "20181026000082",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-12-14",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "디와이씨(주)",
+      "notice_evidence_available_on": "2021-12-13",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "디와이씨",
+      "code": "310870",
+      "selected_documents": [
+        "20211213002157",
+        "20211209001164"
+      ],
+      "reviewed_documents": [
+        "20211213002157",
+        "20211209001164"
+      ]
+    },
+    {
+      "issuer_id": "35909",
+      "process_id": "20200630000198",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-12-17",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)씨엔알리서치",
+      "notice_evidence_available_on": "2021-12-16",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "씨엔알리서치",
+      "code": "359090",
+      "selected_documents": [
+        "20211216002273",
+        "20211214001653"
+      ],
+      "reviewed_documents": [
+        "20211216002273",
+        "20211214001653"
+      ]
+    },
+    {
+      "issuer_id": "36937",
+      "process_id": "20201027000069",
+      "merger_type": "spac_survives",
+      "listed_on": "2021-12-23",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)블리츠웨이",
+      "notice_evidence_available_on": "2021-12-22",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "블리츠웨이엔터테인먼트",
+      "code": "369370",
+      "selected_documents": [
+        "20211222001293",
+        "20211220001592"
+      ],
+      "reviewed_documents": [
+        "20211222001293",
+        "20211220001592"
+      ]
+    },
+    {
+      "issuer_id": "37320",
+      "process_id": "20201203000085",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-01-20",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "하인크코리아(주)",
+      "notice_evidence_available_on": "2022-01-19",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "엑스플러스",
+      "code": "373200",
+      "selected_documents": [
+        "20220119001473",
+        "20220117001600"
+      ],
+      "reviewed_documents": [
+        "20220119001473",
+        "20220117001600"
+      ]
+    },
+    {
+      "issuer_id": "33229",
+      "process_id": "20190729000174",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-03-04",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)누보",
+      "notice_evidence_available_on": "2022-03-03",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "누보",
+      "code": "332290",
+      "selected_documents": [
+        "20220303001724",
+        "20220228002473"
+      ],
+      "reviewed_documents": [
+        "20220303001724",
+        "20220228002473"
+      ]
+    },
+    {
+      "issuer_id": "36877",
+      "process_id": "20201020000143",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-03-25",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)파이버프로",
+      "notice_evidence_available_on": "2022-03-24",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "파이버프로",
+      "code": "368770",
+      "selected_documents": [
+        "20220324002603",
+        "20220322003116"
+      ],
+      "reviewed_documents": [
+        "20220324002603",
+        "20220322003116"
+      ]
+    },
+    {
+      "issuer_id": "33606",
+      "process_id": "20190911000119",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-04-14",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)웨이버스",
+      "notice_evidence_available_on": "2022-04-13",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "웨이버스",
+      "code": "336060",
+      "selected_documents": [
+        "20220413001325",
+        "20220411001212"
+      ],
+      "reviewed_documents": [
+        "20220413001325",
+        "20220411001212"
+      ]
+    },
+    {
+      "issuer_id": "36559",
+      "process_id": "20200928000124",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-05-12",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)하이딥",
+      "notice_evidence_available_on": "2022-05-11",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "하이딥",
+      "code": "365590",
+      "selected_documents": [
+        "20220511001425",
+        "20220509000889"
+      ],
+      "reviewed_documents": [
+        "20220511001425",
+        "20220509000889"
+      ]
+    },
+    {
+      "issuer_id": "36326",
+      "process_id": "20200907000341",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-06-08",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)모비데이즈",
+      "notice_evidence_available_on": "2022-06-07",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "모비데이즈",
+      "code": "363260",
+      "selected_documents": [
+        "20220607001035",
+        "20220602000950"
+      ],
+      "reviewed_documents": [
+        "20220607001035",
+        "20220602000950",
+        "20220602001148"
+      ]
+    },
+    {
+      "issuer_id": "32328",
+      "process_id": "20190417000020",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-06-30",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)태성",
+      "notice_evidence_available_on": "2022-06-29",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "태성",
+      "code": "323280",
+      "selected_documents": [
+        "20220629001895",
+        "20220627001161"
+      ],
+      "reviewed_documents": [
+        "20220629001895",
+        "20220627001161"
+      ]
+    },
+    {
+      "issuer_id": "39171",
+      "process_id": "20210622000126",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-07-29",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "코닉오토메이션(주)",
+      "notice_evidence_available_on": "2022-07-28",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "코닉오토메이션",
+      "code": "391710",
+      "selected_documents": [
+        "20220728001391",
+        "20220726000923"
+      ],
+      "reviewed_documents": [
+        "20220728001391",
+        "20220726000923"
+      ]
+    },
+    {
+      "issuer_id": "32838",
+      "process_id": "20190614000503",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-08-22",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "솔트웨어 주식회사",
+      "notice_evidence_available_on": "2022-08-19",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "솔트웨어",
+      "code": "328380",
+      "selected_documents": [
+        "20220819001112",
+        "20220817000658"
+      ],
+      "reviewed_documents": [
+        "20220819001112",
+        "20220817000658"
+      ]
+    },
+    {
+      "issuer_id": "41954",
+      "process_id": "20220401000124",
+      "merger_type": "spac_disappears",
+      "listed_on": "2022-10-18",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 비스토스",
+      "notice_evidence_available_on": "2022-10-14",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "비스토스",
+      "code": "419540",
+      "selected_documents": [
+        "20221014001309"
+      ],
+      "reviewed_documents": [
+        "20221014001309"
+      ]
+    },
+    {
+      "issuer_id": "33305",
+      "process_id": "20190822000251",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-10-19",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)모코엠시스",
+      "notice_evidence_available_on": "2022-10-18",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "이노테나",
+      "code": "333050",
+      "selected_documents": [
+        "20221018001348",
+        "20221014001071"
+      ],
+      "reviewed_documents": [
+        "20221018001348",
+        "20221014001071"
+      ]
+    },
+    {
+      "issuer_id": "33587",
+      "process_id": "20190909000112",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-10-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)윙스풋",
+      "notice_evidence_available_on": "2022-10-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "윙스풋",
+      "code": "335870",
+      "selected_documents": [
+        "20221026001483",
+        "20221024001087"
+      ],
+      "reviewed_documents": [
+        "20221026001483",
+        "20221024001087"
+      ]
+    },
+    {
+      "issuer_id": "33152",
+      "process_id": "20190725000004",
+      "merger_type": "spac_survives",
+      "listed_on": "2022-10-31",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)밸로프",
+      "notice_evidence_available_on": "2022-10-28",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "밸로프",
+      "code": "331520",
+      "selected_documents": [
+        "20221028001695",
+        "20221026001491"
+      ],
+      "reviewed_documents": [
+        "20221028001695",
+        "20221026001491"
+      ]
+    },
+    {
+      "issuer_id": "41718",
+      "process_id": "20220415000163",
+      "merger_type": "spac_disappears",
+      "listed_on": "2022-12-08",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)핑거스토리",
+      "notice_evidence_available_on": "2022-12-06",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "핑거스토리",
+      "code": "417180",
+      "selected_documents": [
+        "20221206001190"
+      ],
+      "reviewed_documents": [
+        "20221206001190"
+      ]
+    },
+    {
+      "issuer_id": "16230",
+      "process_id": "20220520000041",
+      "merger_type": "spac_disappears",
+      "listed_on": "2022-12-23",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 신스틸",
+      "notice_evidence_available_on": "2022-12-21",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "신스틸",
+      "code": "162300",
+      "selected_documents": [
+        "20221221001708"
+      ],
+      "reviewed_documents": [
+        "20221221001708"
+      ]
+    },
+    {
+      "issuer_id": "38054",
+      "process_id": "20220530000205",
+      "merger_type": "spac_disappears",
+      "listed_on": "2022-12-29",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 옵티코어",
+      "notice_evidence_available_on": "2022-12-27",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "옵티코어",
+      "code": "380540",
+      "selected_documents": [
+        "20221227003039"
+      ],
+      "reviewed_documents": [
+        "20221227003039"
+      ]
+    },
+    {
+      "issuer_id": "38879",
+      "process_id": "20210528000117",
+      "merger_type": "spac_survives",
+      "listed_on": "2023-02-14",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 라이콤",
+      "notice_evidence_available_on": "2023-02-16",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "라이콤",
+      "code": "388790",
+      "selected_documents": [
+        "20230213003478",
+        "20230209002707",
+        "20230216001605"
+      ],
+      "reviewed_documents": [
+        "20230213003478",
+        "20230216001605",
+        "20230209002707"
+      ]
+    },
+    {
+      "issuer_id": "12798",
+      "process_id": "20220624000119",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-02-17",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)화인써키트",
+      "notice_evidence_available_on": "2023-02-15",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "화인써키트",
+      "code": "127980",
+      "selected_documents": [
+        "20230215002392"
+      ],
+      "reviewed_documents": [
+        "20230215002392"
+      ]
+    },
+    {
+      "issuer_id": "40892",
+      "process_id": "20211116000345",
+      "merger_type": "spac_survives",
+      "listed_on": "2023-03-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)메쎄이상",
+      "notice_evidence_available_on": "2023-03-02",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "메쎄이상",
+      "code": "408920",
+      "selected_documents": [
+        "20230302002780",
+        "20230227002276"
+      ],
+      "reviewed_documents": [
+        "20230302002780",
+        "20230227002276"
+      ]
+    },
+    {
+      "issuer_id": "41842",
+      "process_id": "20220503000093",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-03-09",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 라온텍",
+      "notice_evidence_available_on": "2023-03-07",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "라온텍",
+      "code": "418420",
+      "selected_documents": [
+        "20230307001707"
+      ],
+      "reviewed_documents": [
+        "20230307001707"
+      ]
+    },
+    {
+      "issuer_id": "35668",
+      "process_id": "20220727000001",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-03-16",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)엑스게이트",
+      "notice_evidence_available_on": "2023-03-14",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "엑스게이트",
+      "code": "356680",
+      "selected_documents": [
+        "20230314004474"
+      ],
+      "reviewed_documents": [
+        "20230314004474"
+      ]
+    },
+    {
+      "issuer_id": "35515",
+      "process_id": "20200515000005",
+      "merger_type": "spac_survives",
+      "listed_on": "2023-04-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)코스텍시스",
+      "notice_evidence_available_on": "2023-03-31",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "코스텍시스",
+      "code": "355150",
+      "selected_documents": [
+        "20230331007240",
+        "20230329005715"
+      ],
+      "reviewed_documents": [
+        "20230331007240",
+        "20230329005715"
+      ]
+    },
+    {
+      "issuer_id": "31816",
+      "process_id": "20220930000340",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-04-20",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 셀바이오휴먼텍",
+      "notice_evidence_available_on": "2023-04-18",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "셀바이오휴먼텍",
+      "code": "318160",
+      "selected_documents": [
+        "20230418001615"
+      ],
+      "reviewed_documents": [
+        "20230418001615"
+      ]
+    },
+    {
+      "issuer_id": "29883",
+      "process_id": "20220816000209",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-04-28",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "슈어소프트테크 주식회사",
+      "notice_evidence_available_on": "2023-04-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "슈어소프트테크",
+      "code": "298830",
+      "selected_documents": [
+        "20230426002191"
+      ],
+      "reviewed_documents": [
+        "20230426002191"
+      ]
+    },
+    {
+      "issuer_id": "42476",
+      "process_id": "20220328000334",
+      "merger_type": "spac_survives",
+      "listed_on": "2023-04-28",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 벨로크",
+      "notice_evidence_available_on": "2023-04-27",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "벨로크",
+      "code": "424760",
+      "selected_documents": [
+        "20230427001855",
+        "20230425001848"
+      ],
+      "reviewed_documents": [
+        "20230427001855",
+        "20230425001848"
+      ]
+    },
+    {
+      "issuer_id": "27183",
+      "process_id": "20220728000313",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-05-23",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "팸텍주식회사",
+      "notice_evidence_available_on": "2023-05-19",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "팸텍",
+      "code": "271830",
+      "selected_documents": [
+        "20230519001685"
+      ],
+      "reviewed_documents": [
+        "20230519001685"
+      ]
+    },
+    {
+      "issuer_id": "35539",
+      "process_id": "20221027000061",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-08-31",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 크라우드웍스",
+      "notice_evidence_available_on": "2023-08-29",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "크라우드웍스",
+      "code": "355390",
+      "selected_documents": [
+        "20230829001545"
+      ],
+      "reviewed_documents": [
+        "20230829001545"
+      ]
+    },
+    {
+      "issuer_id": "14606",
+      "process_id": "20220704000031",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-09-08",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)율촌",
+      "notice_evidence_available_on": "2023-09-06",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "율촌",
+      "code": "146060",
+      "selected_documents": [
+        "20230906001181"
+      ],
+      "reviewed_documents": [
+        "20230906001181"
+      ]
+    },
+    {
+      "issuer_id": "38447",
+      "process_id": "20230308000333",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-09-18",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)코어라인소프트",
+      "notice_evidence_available_on": "2023-09-14",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "코어라인소프트",
+      "code": "384470",
+      "selected_documents": [
+        "20230914001267"
+      ],
+      "reviewed_documents": [
+        "20230914001267"
+      ]
+    },
+    {
+      "issuer_id": "40349",
+      "process_id": "20230130000137",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-09-19",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "농업회사법인 우듬지팜 주식회사",
+      "notice_evidence_available_on": "2023-09-15",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "우듬지팜",
+      "code": "403490",
+      "selected_documents": [
+        "20230915001252"
+      ],
+      "reviewed_documents": [
+        "20230915001252"
+      ]
+    },
+    {
+      "issuer_id": "18826",
+      "process_id": "20230130000080",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-11-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)세니젠",
+      "notice_evidence_available_on": "2023-11-01",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "세니젠",
+      "code": "188260",
+      "selected_documents": [
+        "20231101001268"
+      ],
+      "reviewed_documents": [
+        "20231101001268",
+        "20231102001213"
+      ]
+    },
+    {
+      "issuer_id": "29056",
+      "process_id": "20230217000131",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-11-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)신시웨이",
+      "notice_evidence_available_on": "2023-11-01",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "파라택시스이더리움",
+      "code": "290560",
+      "selected_documents": [
+        "20231101001382"
+      ],
+      "reviewed_documents": [
+        "20231101001382"
+      ]
+    },
+    {
+      "issuer_id": "45216",
+      "process_id": "20230120000094",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-11-24",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)제이엔비",
+      "notice_evidence_available_on": "2023-11-22",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "제이엔비",
+      "code": "452160",
+      "selected_documents": [
+        "20231122001111"
+      ],
+      "reviewed_documents": [
+        "20231122001111"
+      ]
+    },
+    {
+      "issuer_id": "10967",
+      "process_id": "20230612000134",
+      "merger_type": "spac_disappears",
+      "listed_on": "2023-12-21",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "씨싸이트(주)",
+      "notice_evidence_available_on": "2023-12-19",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "씨싸이트",
+      "code": "109670",
+      "selected_documents": [
+        "20231219001153"
+      ],
+      "reviewed_documents": [
+        "20231219001153"
+      ]
+    },
+    {
+      "issuer_id": "45219",
+      "process_id": "20230119000130",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-01-04",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)한빛레이저",
+      "notice_evidence_available_on": "2024-01-02",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "한빛레이저",
+      "code": "452190",
+      "selected_documents": [
+        "20240102001061"
+      ],
+      "reviewed_documents": [
+        "20240102001061"
+      ]
+    },
+    {
+      "issuer_id": "36299",
+      "process_id": "20230509000129",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-01-25",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 드림인사이트",
+      "notice_evidence_available_on": "2024-01-23",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "드림인사이트",
+      "code": "362990",
+      "selected_documents": [
+        "20240123001377"
+      ],
+      "reviewed_documents": [
+        "20240123001377"
+      ]
+    },
+    {
+      "issuer_id": "19955",
+      "process_id": "20230518000139",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-02-01",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)레이저옵텍",
+      "notice_evidence_available_on": "2024-01-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "레이저옵텍",
+      "code": "199550",
+      "selected_documents": [
+        "20240130002101"
+      ],
+      "reviewed_documents": [
+        "20240130002101"
+      ]
+    },
+    {
+      "issuer_id": "44367",
+      "process_id": "20230227000150",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-02-15",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 에스피소프트",
+      "notice_evidence_available_on": "2024-02-13",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "에스피소프트",
+      "code": "443670",
+      "selected_documents": [
+        "20240213003429"
+      ],
+      "reviewed_documents": [
+        "20240213003429"
+      ]
+    },
+    {
+      "issuer_id": "45243",
+      "process_id": "20230626000143",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-02-19",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)사피엔반도체",
+      "notice_evidence_available_on": "2024-02-15",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "사피엔반도체",
+      "code": "452430",
+      "selected_documents": [
+        "20240215001379"
+      ],
+      "reviewed_documents": [
+        "20240215001379"
+      ]
+    },
+    {
+      "issuer_id": "42057",
+      "process_id": "20230706000136",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-03-25",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 제이투케이바이오",
+      "notice_evidence_available_on": "2024-03-21",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "제이투케이바이오",
+      "code": "420570",
+      "selected_documents": [
+        "20240321006158"
+      ],
+      "reviewed_documents": [
+        "20240321006158"
+      ]
+    },
+    {
+      "issuer_id": "45125",
+      "process_id": "20230907000160",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-04-25",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)삐아",
+      "notice_evidence_available_on": "2024-04-23",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "삐아",
+      "code": "451250",
+      "selected_documents": [
+        "20240423001788"
+      ],
+      "reviewed_documents": [
+        "20240423001788"
+      ]
+    },
+    {
+      "issuer_id": "14043",
+      "process_id": "20230327000127",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-05-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)카티스",
+      "notice_evidence_available_on": "2024-04-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "카티스",
+      "code": "140430",
+      "selected_documents": [
+        "20240430002161"
+      ],
+      "reviewed_documents": [
+        "20240430002161"
+      ]
+    },
+    {
+      "issuer_id": "32335",
+      "process_id": "20231109001190",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-06-11",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)다원넥스뷰",
+      "notice_evidence_available_on": "2024-06-07",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "다원넥스뷰",
+      "code": "323350",
+      "selected_documents": [
+        "20240607001184"
+      ],
+      "reviewed_documents": [
+        "20240607001184"
+      ]
+    },
+    {
+      "issuer_id": "41363",
+      "process_id": "20211213000303",
+      "merger_type": "spac_survives",
+      "listed_on": "2024-06-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "씨피시스템(주)",
+      "notice_evidence_available_on": "2024-06-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "씨피시스템",
+      "code": "413630",
+      "selected_documents": [
+        "20240626002153",
+        "20240624001151"
+      ],
+      "reviewed_documents": [
+        "20240626002153",
+        "20240624001151"
+      ]
+    },
+    {
+      "issuer_id": "46975",
+      "process_id": "20231013000126",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-09-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)아이비젼웍스",
+      "notice_evidence_available_on": "2024-08-30",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "아이비젼웍스",
+      "code": "469750",
+      "selected_documents": [
+        "20240830000728"
+      ],
+      "reviewed_documents": [
+        "20240830000728"
+      ]
+    },
+    {
+      "issuer_id": "35187",
+      "process_id": "20231121000146",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-09-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)차이커뮤니케이션",
+      "notice_evidence_available_on": "2024-09-25",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "차이커뮤니케이션",
+      "code": "351870",
+      "selected_documents": [
+        "20240925001267"
+      ],
+      "reviewed_documents": [
+        "20240925001267"
+      ]
+    },
+    {
+      "issuer_id": "47461",
+      "process_id": "20240116000123",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-11-19",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "알에프시스템즈(주)",
+      "notice_evidence_available_on": "2024-11-15",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "RF시스템즈",
+      "code": "474610",
+      "selected_documents": [
+        "20241115000803"
+      ],
+      "reviewed_documents": [
+        "20241115000803"
+      ]
+    },
+    {
+      "issuer_id": "38968",
+      "process_id": "20230927000003",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-11-20",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)유디엠텍",
+      "notice_evidence_available_on": "2024-11-18",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "유디엠텍",
+      "code": "389680",
+      "selected_documents": [
+        "20241118001283"
+      ],
+      "reviewed_documents": [
+        "20241118001283"
+      ]
+    },
+    {
+      "issuer_id": "47182",
+      "process_id": "20240117000151",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-12-13",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)셀로맥스사이언스",
+      "notice_evidence_available_on": "2024-12-11",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "셀로맥스사이언스",
+      "code": "471820",
+      "selected_documents": [
+        "20241211001728"
+      ],
+      "reviewed_documents": [
+        "20241211001728"
+      ]
+    },
+    {
+      "issuer_id": "39812",
+      "process_id": "20240108000183",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-12-19",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)에스지헬스케어",
+      "notice_evidence_available_on": "2024-12-17",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "에스지헬스케어",
+      "code": "398120",
+      "selected_documents": [
+        "20241217001763"
+      ],
+      "reviewed_documents": [
+        "20241217001763"
+      ]
+    },
+    {
+      "issuer_id": "43298",
+      "process_id": "20240206000162",
+      "merger_type": "spac_disappears",
+      "listed_on": "2024-12-26",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "엠에프씨(주)",
+      "notice_evidence_available_on": "2024-12-23",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "엠에프씨",
+      "code": "432980",
+      "selected_documents": [
+        "20241223001371"
+      ],
+      "reviewed_documents": [
+        "20241223001371"
+      ]
+    },
+    {
+      "issuer_id": "47856",
+      "process_id": "20240328000228",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-01-21",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 블랙야크아이앤씨",
+      "notice_evidence_available_on": "2025-01-17",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "블랙야크아이앤씨",
+      "code": "478560",
+      "selected_documents": [
+        "20250117001694"
+      ],
+      "reviewed_documents": [
+        "20250117001694"
+      ]
+    },
+    {
+      "issuer_id": "43557",
+      "process_id": "20240325000272",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-02-28",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)에르코스 농업회사법인",
+      "notice_evidence_available_on": "2025-02-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "에르코스",
+      "code": "435570",
+      "selected_documents": [
+        "20250226001694"
+      ],
+      "reviewed_documents": [
+        "20250226001694"
+      ]
+    },
+    {
+      "issuer_id": "46087",
+      "process_id": "20240328000308",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-03-07",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)에스엠씨지",
+      "notice_evidence_available_on": "2025-03-05",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "에스엠씨지",
+      "code": "460870",
+      "selected_documents": [
+        "20250305002994"
+      ],
+      "reviewed_documents": [
+        "20250305002994"
+      ]
+    },
+    {
+      "issuer_id": "10197",
+      "process_id": "20241025000361",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-03-28",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "우양에이치씨(주)",
+      "notice_evidence_available_on": "2025-03-26",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "우양에이치씨",
+      "code": "101970",
+      "selected_documents": [
+        "20250326005570"
+      ],
+      "reviewed_documents": [
+        "20250326005570",
+        "20250327001682"
+      ]
+    },
+    {
+      "issuer_id": "36495",
+      "process_id": "20240909000001",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-04-29",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)에이아이코리아",
+      "notice_evidence_available_on": "2025-04-25",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "에이아이코리아",
+      "code": "364950",
+      "selected_documents": [
+        "20250425001227"
+      ],
+      "reviewed_documents": [
+        "20250425001227"
+      ]
+    },
+    {
+      "issuer_id": "12502",
+      "process_id": "20240530000187",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-05-15",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "티씨머티리얼즈(주)",
+      "notice_evidence_available_on": "2025-05-13",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "티씨머티리얼즈",
+      "code": "125020",
+      "selected_documents": [
+        "20250513001143"
+      ],
+      "reviewed_documents": [
+        "20250513001143"
+      ]
+    },
+    {
+      "issuer_id": "18804",
+      "process_id": "20240708000660",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-05-16",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)바이오포트코리아",
+      "notice_evidence_available_on": "2025-05-14",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "바이오포트",
+      "code": "188040",
+      "selected_documents": [
+        "20250514001166"
+      ],
+      "reviewed_documents": [
+        "20250514001166"
+      ]
+    },
+    {
+      "issuer_id": "45518",
+      "process_id": "20240819000163",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-06-17",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "케이지에이(주)",
+      "notice_evidence_available_on": "2025-06-13",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "케이지에이",
+      "code": "455180",
+      "selected_documents": [
+        "20250613001570"
+      ],
+      "reviewed_documents": [
+        "20250613001570"
+      ]
+    },
+    {
+      "issuer_id": "46231",
+      "process_id": "20240521000137",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-07-09",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 뉴키즈온",
+      "notice_evidence_available_on": "2025-07-07",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "뉴키즈온",
+      "code": "462310",
+      "selected_documents": [
+        "20250707001015"
+      ],
+      "reviewed_documents": [
+        "20250707001015"
+      ]
+    },
+    {
+      "issuer_id": "39781",
+      "process_id": "20250120000148",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-08-22",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 애드포러스",
+      "notice_evidence_available_on": "2025-08-20",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "애드포러스",
+      "code": "397810",
+      "selected_documents": [
+        "20250820000514"
+      ],
+      "reviewed_documents": [
+        "20250820000514"
+      ]
+    },
+    {
+      "issuer_id": "34287",
+      "process_id": "20240731000127",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-09-09",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "오아 주식회사",
+      "notice_evidence_available_on": "2025-09-05",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "오아",
+      "code": "342870",
+      "selected_documents": [
+        "20250905000785"
+      ],
+      "reviewed_documents": [
+        "20250905000785",
+        "20250908001105"
+      ]
+    },
+    {
+      "issuer_id": "01495",
+      "process_id": "20250124000260",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-10-27",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "삼익제약(주)",
+      "notice_evidence_available_on": "2025-10-23",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "삼익제약",
+      "code": "014950",
+      "selected_documents": [
+        "20251023001142"
+      ],
+      "reviewed_documents": [
+        "20251023001142"
+      ]
+    },
+    {
+      "issuer_id": "45955",
+      "process_id": "20250107000139",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-11-17",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)알트",
+      "notice_evidence_available_on": "2025-11-13",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "알트",
+      "code": "459550",
+      "selected_documents": [
+        "20251113002185"
+      ],
+      "reviewed_documents": [
+        "20251113002185"
+      ]
+    },
+    {
+      "issuer_id": "01221",
+      "process_id": "20250114000200",
+      "merger_type": "spac_disappears",
+      "listed_on": "2025-12-29",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "삼미금속(주)",
+      "notice_evidence_available_on": "2025-12-24",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "삼미금속",
+      "code": "012210",
+      "selected_documents": [
+        "20251224001557"
+      ],
+      "reviewed_documents": [
+        "20251224001557"
+      ]
+    },
+    {
+      "issuer_id": "0004V",
+      "process_id": "20250515000293",
+      "merger_type": "spac_disappears",
+      "listed_on": "2026-01-14",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)엔비알모션",
+      "notice_evidence_available_on": "2026-01-12",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "엔비알모션",
+      "code": "0004V0",
+      "selected_documents": [
+        "20260112001502"
+      ],
+      "reviewed_documents": [
+        "20260112001502"
+      ]
+    },
+    {
+      "issuer_id": "49333",
+      "process_id": "20250123000558",
+      "merger_type": "spac_disappears",
+      "listed_on": "2026-01-14",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)지에프아이",
+      "notice_evidence_available_on": "2026-01-12",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "지에프아이",
+      "code": "493330",
+      "selected_documents": [
+        "20260112001630"
+      ],
+      "reviewed_documents": [
+        "20260112001630"
+      ]
+    },
+    {
+      "issuer_id": "0010F",
+      "process_id": "20250404000538",
+      "merger_type": "spac_disappears",
+      "listed_on": "2026-04-03",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "(주)보원케미칼",
+      "notice_evidence_available_on": "2026-04-01",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "보원케미칼",
+      "code": "0010F0",
+      "selected_documents": [
+        "20260401002933"
+      ],
+      "reviewed_documents": [
+        "20260401002933"
+      ]
+    },
+    {
+      "issuer_id": "28818",
+      "process_id": "20250728000217",
+      "merger_type": "spac_disappears",
+      "listed_on": "2026-05-19",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "케이피항공산업(주)",
+      "notice_evidence_available_on": "2026-05-15",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "케이피항공산업",
+      "code": "288180",
+      "selected_documents": [
+        "20260515007293"
+      ],
+      "reviewed_documents": [
+        "20260515007293",
+        "20260518000471",
+        "20260518001899"
+      ]
+    },
+    {
+      "issuer_id": "0017J",
+      "process_id": "20251112001225",
+      "merger_type": "spac_disappears",
+      "listed_on": "2026-06-10",
+      "status": "listing_identity_verified",
+      "operating_name_at_listing": "주식회사 세미티에스",
+      "notice_evidence_available_on": "2026-06-08",
+      "known_on": null,
+      "historical_intervals_ready": false,
+      "current_name": "세미티에스",
+      "code": "0017J0",
+      "selected_documents": [
+        "20260608001930"
+      ],
+      "reviewed_documents": [
+        "20260608001930"
+      ]
+    }
+  ],
+  "documents": {
+    "20190128002535": {
+      "publication_on": "2019-01-28",
+      "body_url": "https://kind.krx.co.kr/external/2019/01/28/001025/20190128002535/70765.htm",
+      "body_sha256": "1f3c9ec5011b75a24daa205054a588c347f8d58ca4b74be4b51a2a7294fadebc",
+      "fields": {
+        "after_company_name": "(주)네오셈",
+        "before_company_name": "대신밸런스제3호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)네오셈",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-01-31",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20190130002090": {
+      "publication_on": "2019-01-30",
+      "body_url": "https://kind.krx.co.kr/external/2019/01/30/000781/20190130002090/70791.htm",
+      "body_sha256": "8ba4997f0d60b81624fb515b9974032543687185c3532f9a9a077321eecfbf74",
+      "fields": {
+        "code": "253590",
+        "company_name": "대신밸런스제3호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-01-31",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A253590"
+      },
+      "correction": null
+    },
+    "20190604000990": {
+      "publication_on": "2019-06-04",
+      "body_url": "https://kind.krx.co.kr/external/2019/06/04/000383/20190604000990/70765.htm",
+      "body_sha256": "c34053b9c8e9e3de9b1b54739084d30ee4cc4ac554bb45c58716712e3e76d45a",
+      "fields": {
+        "after_company_name": "줌인터넷(주)",
+        "before_company_name": "미래에셋제5호기업인수목적(주)",
+        "code": null,
+        "company_name": "줌인터넷(주)",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-06-10",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20190607001548": {
+      "publication_on": "2019-06-07",
+      "body_url": "https://kind.krx.co.kr/external/2019/06/07/000697/20190607001548/70791.htm",
+      "body_sha256": "b3a7274c6090ce14e34ad4b0e1ab3b77f5e50636d838d228177f77ac1b6bee03",
+      "fields": {
+        "code": "239340",
+        "company_name": "미래에셋제5호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-06-10",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A239340"
+      },
+      "correction": null
+    },
+    "20190723001267": {
+      "publication_on": "2019-07-23",
+      "body_url": "https://kind.krx.co.kr/external/2019/07/23/000498/20190723001267/70765.htm",
+      "body_sha256": "9c97c6048ec34371035c51e4969dceb9a5df4f8ac3d7a34109cbb4a522aef6cd",
+      "fields": {
+        "after_company_name": "(주)지니틱스",
+        "before_company_name": "대신밸런스제5호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)지니틱스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-07-26",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20190725001276": {
+      "publication_on": "2019-07-25",
+      "body_url": "https://kind.krx.co.kr/external/2019/07/25/000534/20190725001276/70791.htm",
+      "body_sha256": "0f31b1bf5d460b7977dfaab9fcf2ae8cfdbd447a0f5f5232067105e8782dc17c",
+      "fields": {
+        "code": "303030",
+        "company_name": "대신밸런스제5호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-07-26",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A303030"
+      },
+      "correction": null
+    },
+    "20190906000841": {
+      "publication_on": "2019-09-06",
+      "body_url": "https://kind.krx.co.kr/external/2019/09/06/000355/20190906000841/70765.htm",
+      "body_sha256": "7a0fa35f80810969fc503cc812ab5468af41dbe8659d12810522f5b5f8069c74",
+      "fields": {
+        "after_company_name": "(주)예선테크",
+        "before_company_name": "케이비제10호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)예선테크",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-09-11",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20190910001277": {
+      "publication_on": "2019-09-10",
+      "body_url": "https://kind.krx.co.kr/external/2019/09/10/000519/20190910001277/70791.htm",
+      "body_sha256": "06e1ee84ac114299af8aa32cbfa88b9403c068c1d02992cb2c556f85c8a7a2cf",
+      "fields": {
+        "code": "250930",
+        "company_name": "케이비제10호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-09-11",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A250930"
+      },
+      "correction": null
+    },
+    "20190926001289": {
+      "publication_on": "2019-09-26",
+      "body_url": "https://kind.krx.co.kr/external/2019/09/26/000423/20190926001289/70765.htm",
+      "body_sha256": "049835db721ff0623d18e9520cee62e70800978ecb839ca2c38ba0dc01214c36",
+      "fields": {
+        "after_company_name": "(주)알로이스",
+        "before_company_name": "아이비케이에스제9호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)알로이스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-10-01",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20190926001369": {
+      "publication_on": "2019-09-26",
+      "body_url": "https://kind.krx.co.kr/external/2019/09/26/000462/20190926001369/70765.htm",
+      "body_sha256": "d96f5a53322d431087267965cf80d7c733e449704f0beb013baf573a710ff8ec",
+      "fields": {
+        "after_company_name": "(주)알로이스",
+        "before_company_name": "아이비케이에스제9호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)알로이스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-10-01",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": {
+        "items": [
+          "발행회수"
+        ],
+        "original_submission_on": "2019-09-26",
+        "publication_on": "2019-09-26",
+        "reason": "발행회차 정정",
+        "related_document": "변경상장(상호변경)"
+      }
+    },
+    "20190930001528": {
+      "publication_on": "2019-09-30",
+      "body_url": "https://kind.krx.co.kr/external/2019/09/30/000654/20190930001528/70791.htm",
+      "body_sha256": "13237f368989fd04c526dbd3c6edf247d03ee79a2ec3af57cc6debe3bb18db37",
+      "fields": {
+        "code": "297570",
+        "company_name": "아이비케이에스제9호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-10-01",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A297570"
+      },
+      "correction": null
+    },
+    "20191217001239": {
+      "publication_on": "2019-12-17",
+      "body_url": "https://kind.krx.co.kr/external/2019/12/17/000504/20191217001239/70765.htm",
+      "body_sha256": "4a390f64ab056448a3a6cacfed211b953f82416de757d84074e82c2a8108724d",
+      "fields": {
+        "after_company_name": "(주)이랜시스",
+        "before_company_name": "아이비케이에스제6호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)이랜시스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-12-20",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20191219001583": {
+      "publication_on": "2019-12-19",
+      "body_url": "https://kind.krx.co.kr/external/2019/12/19/000667/20191219001583/70791.htm",
+      "body_sha256": "2b9bb7ed8fa4821d58c4685968667991f357035311e271da71eb035049993dd0",
+      "fields": {
+        "code": "264850",
+        "company_name": "아이비케이에스제6호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-12-20",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A264850"
+      },
+      "correction": null
+    },
+    "20191223001467": {
+      "publication_on": "2019-12-23",
+      "body_url": "https://kind.krx.co.kr/external/2019/12/23/000564/20191223001467/70765.htm",
+      "body_sha256": "43b011a27e33fdee15ab675db731daf36a37e743450558bbdd4d5fe881a76d62",
+      "fields": {
+        "after_company_name": "(주)아이엘사이언스",
+        "before_company_name": "신영해피투모로우제4호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)아이엘사이언스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2019-12-27",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20191226002487": {
+      "publication_on": "2019-12-26",
+      "body_url": "https://kind.krx.co.kr/external/2019/12/26/000578/20191226002487/70791.htm",
+      "body_sha256": "ad92775c78d0415c6318d29848c049a07c9eb15c2739184eec5f3987dde1c665",
+      "fields": {
+        "code": "307180",
+        "company_name": "신영해피투모로우제4호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2019-12-27",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A307180"
+      },
+      "correction": null
+    },
+    "20200204001725": {
+      "publication_on": "2020-02-04",
+      "body_url": "https://kind.krx.co.kr/external/2020/02/04/000578/20200204001725/70765.htm",
+      "body_sha256": "3fc49ccce9b5beee7f2045a8b809ec38d6951ff57a5515d6cb283f89f1e8ab46",
+      "fields": {
+        "after_company_name": "(주)애니플러스",
+        "before_company_name": "미래에셋대우기업인수목적2호 주식회사",
+        "code": null,
+        "company_name": "(주)애니플러스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-02-07",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200206002142": {
+      "publication_on": "2020-02-06",
+      "body_url": "https://kind.krx.co.kr/external/2020/02/06/000759/20200206002142/70765.htm",
+      "body_sha256": "54b9f7a961637573e3e6b2a8902e55e5d832363807fd9331294858bd38303c80",
+      "fields": {
+        "after_company_name": "(주)네온테크",
+        "before_company_name": "디비금융제6호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)네온테크",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-02-11",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200206002431": {
+      "publication_on": "2020-02-06",
+      "body_url": "https://kind.krx.co.kr/external/2020/02/06/000876/20200206002431/70791.htm",
+      "body_sha256": "e5c862fb6fc19c0ec721d08f70118a6363bf9da63fb4494d413a189c478394df",
+      "fields": {
+        "code": "310200",
+        "company_name": "미래에셋대우기업인수목적2호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-02-07",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A310200"
+      },
+      "correction": null
+    },
+    "20200210003378": {
+      "publication_on": "2020-02-10",
+      "body_url": "https://kind.krx.co.kr/external/2020/02/10/001356/20200210003378/70791.htm",
+      "body_sha256": "462ad3dfa3f07a8eb8e90c7ee1fa2c461f04e29908f19195228d1877e50c7082",
+      "fields": {
+        "code": "306620",
+        "company_name": "디비금융제6호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-02-11",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A306620"
+      },
+      "correction": null
+    },
+    "20200304002314": {
+      "publication_on": "2020-03-04",
+      "body_url": "https://kind.krx.co.kr/external/2020/03/04/000949/20200304002314/70765.htm",
+      "body_sha256": "3209192fa1614e67d29a578189ba9cfe94d33779d6c618798b74417545946211",
+      "fields": {
+        "after_company_name": "지엔원에너지 주식회사",
+        "before_company_name": "하나금융10호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "지엔원에너지 주식회사",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-03-09",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200306002516": {
+      "publication_on": "2020-03-06",
+      "body_url": "https://kind.krx.co.kr/external/2020/03/06/001107/20200306002516/70791.htm",
+      "body_sha256": "851d510fa43ed35ab4b91e0a349c7c3eddb80ed1e0ee657fc4aef8115127712a",
+      "fields": {
+        "code": "270520",
+        "company_name": "하나금융10호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-03-09",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A270520"
+      },
+      "correction": null
+    },
+    "20200318003835": {
+      "publication_on": "2020-03-18",
+      "body_url": "https://kind.krx.co.kr/external/2020/03/18/001545/20200318003835/70765.htm",
+      "body_sha256": "3163b607d2b8e5b490e541e0b2eb22db048cfa1f9e91fe49e0ffcda93558309d",
+      "fields": {
+        "after_company_name": "(주)레이크머티리얼즈",
+        "before_company_name": "동부제5호기업인수목적주식회사",
+        "code": null,
+        "company_name": "(주)레이크머티리얼즈",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-03-23",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200320004816": {
+      "publication_on": "2020-03-20",
+      "body_url": "https://kind.krx.co.kr/external/2020/03/20/002389/20200320004816/70791.htm",
+      "body_sha256": "97e3deca9fee17a6f1fb40f602b4b5fd7278a9d8261c0de9ef4e710a7d363f5e",
+      "fields": {
+        "code": "281740",
+        "company_name": "동부제5호기업인수목적주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-03-23",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A281740"
+      },
+      "correction": null
+    },
+    "20200417001639": {
+      "publication_on": "2020-04-17",
+      "body_url": "https://kind.krx.co.kr/external/2020/04/17/000713/20200417001639/70765.htm",
+      "body_sha256": "d762f878c9db7e515c6207de416561b652d5c625e7ebb25b21531d810f7ee3d7",
+      "fields": {
+        "after_company_name": "(주)나인테크",
+        "before_company_name": "교보7호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)나인테크",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-04-22",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200421001251": {
+      "publication_on": "2020-04-21",
+      "body_url": "https://kind.krx.co.kr/external/2020/04/21/000526/20200421001251/70791.htm",
+      "body_sha256": "4ef5eccc8fd2af0578e9f52438e7f0e15cb92f749756f150abfbe4b02ebfd059",
+      "fields": {
+        "code": "267320",
+        "company_name": "교보7호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-04-22",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A267320"
+      },
+      "correction": null
+    },
+    "20200630000919": {
+      "publication_on": "2020-06-30",
+      "body_url": "https://kind.krx.co.kr/external/2020/06/30/000409/20200630000919/70765.htm",
+      "body_sha256": "11d3c3a087ef967164af4bff8c3923dd99fd9af5b5de3dc43f29a9d4cd1e14c4",
+      "fields": {
+        "after_company_name": "주식회사 덴티스",
+        "before_company_name": "하나금융9호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "주식회사 덴티스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-07-03",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200702001247": {
+      "publication_on": "2020-07-02",
+      "body_url": "https://kind.krx.co.kr/external/2020/07/02/000513/20200702001247/70791.htm",
+      "body_sha256": "55f76b2d72218a4c958e6f58ffeeab1100c006d76136e9ed77989af9f6c20e47",
+      "fields": {
+        "code": "261200",
+        "company_name": "하나금융9호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-07-03",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A261200"
+      },
+      "correction": null
+    },
+    "20200731001068": {
+      "publication_on": "2020-07-31",
+      "body_url": "https://kind.krx.co.kr/external/2020/07/31/000467/20200731001068/70765.htm",
+      "body_sha256": "c68c8ed665ef27933af5468d5c3fab9213a6d62367ba21eed24a38d6907f1f10",
+      "fields": {
+        "after_company_name": "(주)와이즈버즈",
+        "before_company_name": "엔에이치기업인수목적12호 주식회사",
+        "code": null,
+        "company_name": "(주)와이즈버즈",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-08-05",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200803001108": {
+      "publication_on": "2020-08-03",
+      "body_url": "https://kind.krx.co.kr/external/2020/08/03/000442/20200803001108/70765.htm",
+      "body_sha256": "31c2e59c612112a134ee0f98575a0aedec270fabb7588faf12c2335c074f49d3",
+      "fields": {
+        "after_company_name": "윈텍 주식회사",
+        "before_company_name": "하나금융13호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "윈텍 주식회사",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-08-06",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20200804001073": {
+      "publication_on": "2020-08-04",
+      "body_url": "https://kind.krx.co.kr/external/2020/08/04/000452/20200804001073/70791.htm",
+      "body_sha256": "9aa71d382ad2a3906df5adf1c453ca37a041ad99c1511599f59bdc2ace0cd4c2",
+      "fields": {
+        "code": "273060",
+        "company_name": "엔에이치기업인수목적12호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-08-05",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A273060"
+      },
+      "correction": null
+    },
+    "20200805001105": {
+      "publication_on": "2020-08-05",
+      "body_url": "https://kind.krx.co.kr/external/2020/08/05/000429/20200805001105/70791.htm",
+      "body_sha256": "fb9f597bb7b04735a68fffd30e6bb20e54d3566f2107bc8f9391c9a6a61a43a9",
+      "fields": {
+        "code": "320000",
+        "company_name": "하나금융13호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-08-06",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A320000"
+      },
+      "correction": null
+    },
+    "20201007001163": {
+      "publication_on": "2020-10-07",
+      "body_url": "https://kind.krx.co.kr/external/2020/10/07/000398/20201007001163/70765.htm",
+      "body_sha256": "521c1bf0a13482d14b371a247c84c62f85f34e296568ab373b7c1c88c9f9db6c",
+      "fields": {
+        "after_company_name": "(주)아이비김영",
+        "before_company_name": "엔에이치기업인수목적15호 주식회사",
+        "code": null,
+        "company_name": "(주)아이비김영",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-10-13",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20201012000713": {
+      "publication_on": "2020-10-12",
+      "body_url": "https://kind.krx.co.kr/external/2020/10/12/000270/20201012000713/70791.htm",
+      "body_sha256": "272e4c4712336d9926c696c878154326e2ad212734a7a489cdb2b53d10388efc",
+      "fields": {
+        "code": "339950",
+        "company_name": "엔에이치기업인수목적15호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-10-13",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A339950"
+      },
+      "correction": null
+    },
+    "20201123000814": {
+      "publication_on": "2020-11-23",
+      "body_url": "https://kind.krx.co.kr/external/2020/11/23/000323/20201123000814/70765.htm",
+      "body_sha256": "246db3ceb90882951695976b2ce77b206f893e5452e1436bb86dbe63bf229341",
+      "fields": {
+        "after_company_name": "(주)비올",
+        "before_company_name": "아이비케이에스제11호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)비올",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-11-26",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20201125000921": {
+      "publication_on": "2020-11-25",
+      "body_url": "https://kind.krx.co.kr/external/2020/11/25/000389/20201125000921/70791.htm",
+      "body_sha256": "624a220542a859ac7ff243b7ba967062661b80226c14f851a19e2103bc2a4a38",
+      "fields": {
+        "code": "335890",
+        "company_name": "아이비케이에스제11호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-11-26",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A335890"
+      },
+      "correction": null
+    },
+    "20201126000957": {
+      "publication_on": "2020-11-26",
+      "body_url": "https://kind.krx.co.kr/external/2020/11/26/000412/20201126000957/70765.htm",
+      "body_sha256": "b9ccf4a08e29ec9553b74042d3578e484e3e70c3b6940bad7b4db7705b3b2bb1",
+      "fields": {
+        "after_company_name": "(주)더블유에스아이",
+        "before_company_name": "아이비케이에스제10호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)더블유에스아이",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-12-01",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20201130001764": {
+      "publication_on": "2020-11-30",
+      "body_url": "https://kind.krx.co.kr/external/2020/11/30/000750/20201130001764/70791.htm",
+      "body_sha256": "96887d1cea752e443d40de901e69bcef2a9b17de97aad2a9f73458faef4a7f99",
+      "fields": {
+        "code": "299170",
+        "company_name": "아이비케이에스제10호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-12-01",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A299170"
+      },
+      "correction": null
+    },
+    "20201221001989": {
+      "publication_on": "2020-12-21",
+      "body_url": "https://kind.krx.co.kr/external/2020/12/21/000747/20201221001989/70765.htm",
+      "body_sha256": "bd3973e6ade6176e76e678364cfe8d983ac8f81f95ab1e56f4321a475861fa41",
+      "fields": {
+        "after_company_name": "(주)오하임아이엔티",
+        "before_company_name": "삼성머스트기업인수목적3호(주)",
+        "code": null,
+        "company_name": "(주)오하임아이엔티",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-12-24",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20201222001563": {
+      "publication_on": "2020-12-22",
+      "body_url": "https://kind.krx.co.kr/external/2020/12/22/000526/20201222001563/70765.htm",
+      "body_sha256": "1dc7252db1fac65ef0d28aebe56b2efc8569b9824ddcfdc401bf0997f3c8e0e9",
+      "fields": {
+        "after_company_name": "(주)코퍼스코리아",
+        "before_company_name": "디비금융제7호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)코퍼스코리아",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-12-28",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20201223002213": {
+      "publication_on": "2020-12-23",
+      "body_url": "https://kind.krx.co.kr/external/2020/12/23/000884/20201223002213/70791.htm",
+      "body_sha256": "5dcd67e0e023695c005d7bb0975e324780a99eac5cfb73e9caf160cd92c8793d",
+      "fields": {
+        "code": "309930",
+        "company_name": "삼성머스트기업인수목적3호(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-12-24",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A309930"
+      },
+      "correction": null
+    },
+    "20201224001782": {
+      "publication_on": "2020-12-24",
+      "body_url": "https://kind.krx.co.kr/external/2020/12/24/000738/20201224001782/70791.htm",
+      "body_sha256": "17cded9b755108a5456f13a0c199d445996e2a54d78a139138555857b2d6d8f1",
+      "fields": {
+        "code": "322780",
+        "company_name": "디비금융제7호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-12-28",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A322780"
+      },
+      "correction": null
+    },
+    "20201224001811": {
+      "publication_on": "2020-12-24",
+      "body_url": "https://kind.krx.co.kr/external/2020/12/24/000764/20201224001811/70765.htm",
+      "body_sha256": "0adb7b5eed968274d153bfa481bcfc405c2e8316465d728233cf3fef9c52ae35",
+      "fields": {
+        "after_company_name": "(주)국전약품",
+        "before_company_name": "대신밸런스제6호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)국전약품",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2020-12-30",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20201229001820": {
+      "publication_on": "2020-12-29",
+      "body_url": "https://kind.krx.co.kr/external/2020/12/29/000669/20201229001820/70791.htm",
+      "body_sha256": "04400f324d800ef7329973eff2eee4923b6c9495d9ffb69683161e7ef0888c16",
+      "fields": {
+        "code": "307750",
+        "company_name": "대신밸런스제6호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2020-12-30",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A307750"
+      },
+      "correction": null
+    },
+    "20210309002971": {
+      "publication_on": "2021-03-09",
+      "body_url": "https://kind.krx.co.kr/external/2021/03/09/001247/20210309002971/70765.htm",
+      "body_sha256": "0aa57d340378aeadf79d17c5196f00b6babae7ce4855400c247b66098dbc8baf",
+      "fields": {
+        "after_company_name": "현대무벡스(주)",
+        "before_company_name": "엔에이치기업인수목적14호 주식회사",
+        "code": null,
+        "company_name": "현대무벡스(주)",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-03-12",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20210311002821": {
+      "publication_on": "2021-03-11",
+      "body_url": "https://kind.krx.co.kr/external/2021/03/11/001264/20210311002821/70791.htm",
+      "body_sha256": "4f81cd1ad40573213aab63eb8358ca4334bfbbc1c7058ac06d311574673a7d1c",
+      "fields": {
+        "code": "319400",
+        "company_name": "엔에이치기업인수목적14호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-03-12",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A319400"
+      },
+      "correction": null
+    },
+    "20210326003717": {
+      "publication_on": "2021-03-26",
+      "body_url": "https://kind.krx.co.kr/external/2021/03/26/001785/20210326003717/70765.htm",
+      "body_sha256": "84aa1c272188a72f354372c4bdb98d89932daef4d961515e60345d3d458ef12c",
+      "fields": {
+        "after_company_name": "(주)제이시스메디칼",
+        "before_company_name": "유안타제3호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)제이시스메디칼",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-03-31",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20210330004120": {
+      "publication_on": "2021-03-30",
+      "body_url": "https://kind.krx.co.kr/external/2021/03/30/002035/20210330004120/70791.htm",
+      "body_sha256": "9a4951996aae6ebb561086bfac053689fc4b7a4967ea8799c8cf15ee2eb22e25",
+      "fields": {
+        "code": "287410",
+        "company_name": "유안타제3호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-03-31",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A287410"
+      },
+      "correction": null
+    },
+    "20210512001270": {
+      "publication_on": "2021-05-12",
+      "body_url": "https://kind.krx.co.kr/external/2021/05/12/000543/20210512001270/70765.htm",
+      "body_sha256": "5929918f082993fde00626392cd49b6798398e1d4d8397a247c02f221206b491",
+      "fields": {
+        "after_company_name": "(주)일승",
+        "before_company_name": "미래에셋대우기업인수목적4호 주식회사",
+        "code": null,
+        "company_name": "(주)일승",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-05-17",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20210514003060": {
+      "publication_on": "2021-05-14",
+      "body_url": "https://kind.krx.co.kr/external/2021/05/14/001514/20210514003060/70791.htm",
+      "body_sha256": "3d89c9df1e6c135ca0503b23011a6f726c62bca0f380ed9c916674773e334ac1",
+      "fields": {
+        "code": "333430",
+        "company_name": "미래에셋대우기업인수목적4호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-05-17",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A333430"
+      },
+      "correction": null
+    },
+    "20210810001083": {
+      "publication_on": "2021-08-10",
+      "body_url": "https://kind.krx.co.kr/external/2021/08/10/000458/20210810001083/70765.htm",
+      "body_sha256": "856f98f8439642984e9d0619bf80489c710d8c03192c2616d2fb633bc77c3099",
+      "fields": {
+        "after_company_name": "주식회사 다보링크",
+        "before_company_name": "유안타제6호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "주식회사 다보링크",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-08-13",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20210810001090": {
+      "publication_on": "2021-08-10",
+      "body_url": "https://kind.krx.co.kr/external/2021/08/10/000461/20210810001090/70791.htm",
+      "body_sha256": "1c24c15140d8daf622a0fa8d7d4525e39a381f17a68c4e6de1f51f18d8b631f9",
+      "fields": {
+        "code": "340360",
+        "company_name": "유안타제6호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-08-13",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A340360"
+      },
+      "correction": null
+    },
+    "20210817008023": {
+      "publication_on": "2021-08-17",
+      "body_url": "https://kind.krx.co.kr/external/2021/08/17/002607/20210817008023/70765.htm",
+      "body_sha256": "39695db247bdf288fa4db7b189d29f0b7a77e320b7aa77eb03a4acca59e06981",
+      "fields": {
+        "after_company_name": "(주)엔피",
+        "before_company_name": "삼성기업인수목적2호(주)",
+        "code": null,
+        "company_name": "(주)엔피",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-08-20",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20210819001189": {
+      "publication_on": "2021-08-19",
+      "body_url": "https://kind.krx.co.kr/external/2021/08/19/000510/20210819001189/70791.htm",
+      "body_sha256": "412314a49ec12ca17a7cb2214e99069a0b67ac05953fe9809df4bbf7a916ac1a",
+      "fields": {
+        "code": "291230",
+        "company_name": "삼성기업인수목적2호(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-08-20",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A291230"
+      },
+      "correction": null
+    },
+    "20211022001046": {
+      "publication_on": "2021-10-22",
+      "body_url": "https://kind.krx.co.kr/external/2021/10/22/000446/20211022001046/70765.htm",
+      "body_sha256": "fe37c45e8128b77f5a524755bc4342f0d1b5f31d9aca90e5369dfea2f205572e",
+      "fields": {
+        "after_company_name": "(주)프로이천",
+        "before_company_name": "유진기업인수목적4호 주식회사",
+        "code": null,
+        "company_name": "(주)프로이천",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-10-27",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211022001047": {
+      "publication_on": "2021-10-22",
+      "body_url": "https://kind.krx.co.kr/external/2021/10/22/000447/20211022001047/70765.htm",
+      "body_sha256": "c6065a66893fa3f1ecb898cfbf5284cc67d44c259e6a1a677ae6344d99f8ae74",
+      "fields": {
+        "after_company_name": "(주)포커스에이치엔에스",
+        "before_company_name": "유진기업인수목적5호 주식회사",
+        "code": null,
+        "company_name": "(주)포커스에이치엔에스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-10-27",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211026001226": {
+      "publication_on": "2021-10-26",
+      "body_url": "https://kind.krx.co.kr/external/2021/10/26/000485/20211026001226/70791.htm",
+      "body_sha256": "a3e9e1a82ea991876797571325cb177bac690672140ac3968d04694229c42f9f",
+      "fields": {
+        "code": "321260",
+        "company_name": "유진기업인수목적4호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-10-27",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A321260"
+      },
+      "correction": null
+    },
+    "20211026001227": {
+      "publication_on": "2021-10-26",
+      "body_url": "https://kind.krx.co.kr/external/2021/10/26/000486/20211026001227/70791.htm",
+      "body_sha256": "92e5f777934541eef84e81225fdaad63a946d6f06a2230a1a93c88e51747a582",
+      "fields": {
+        "code": "331380",
+        "company_name": "유진기업인수목적5호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-10-27",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A331380"
+      },
+      "correction": null
+    },
+    "20211112002906": {
+      "publication_on": "2021-11-12",
+      "body_url": "https://kind.krx.co.kr/external/2021/11/12/001397/20211112002906/70791.htm",
+      "body_sha256": "313d5d3402ee324e0f4801a40321a8e46270e19677e487e0322fbb3441980e63",
+      "fields": {
+        "code": "321260",
+        "company_name": "(주)프로이천",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-10-27",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A321260"
+      },
+      "correction": {
+        "items": [
+          "6. 기타"
+        ],
+        "original_submission_on": "2021-10-26",
+        "publication_on": "2021-11-12",
+        "reason": "추가적 의무보유 내역 안내",
+        "related_document": "추가상장(타법인흡수합병)"
+      }
+    },
+    "20211115002688": {
+      "publication_on": "2021-11-15",
+      "body_url": "https://kind.krx.co.kr/external/2021/11/15/001293/20211115002688/70765.htm",
+      "body_sha256": "68d76a5e671ac5c4462bdfebf8fa72261ed54ffe29a39d95b08250864ce07873",
+      "fields": {
+        "after_company_name": "(주)비투엔",
+        "before_company_name": "상상인이안제1호기업인수목적(주)",
+        "code": null,
+        "company_name": "(주)비투엔",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-11-18",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211117001183": {
+      "publication_on": "2021-11-17",
+      "body_url": "https://kind.krx.co.kr/external/2021/11/17/000573/20211117001183/70791.htm",
+      "body_sha256": "a67ffacae79668de965ab7accb1c7a79cb490ea890523ef42780d3b14fa876e3",
+      "fields": {
+        "code": "307870",
+        "company_name": "상상인이안제1호기업인수목적(주)",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-11-18",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A307870"
+      },
+      "correction": null
+    },
+    "20211206001145": {
+      "publication_on": "2021-12-06",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/06/000453/20211206001145/70765.htm",
+      "body_sha256": "2b078780ec1e999c4bc0ec90d1a004a9d3a71b05381e767dcd1a02ccd4c3f114",
+      "fields": {
+        "after_company_name": "(주)세림비앤지",
+        "before_company_name": "한화플러스제1호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)세림비앤지",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-12-09",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211206001300": {
+      "publication_on": "2021-12-06",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/06/000528/20211206001300/70765.htm",
+      "body_sha256": "a8648c9e1cc73076bda7a42a6c04603e5e83ac4eb192e396e4ea8c64c31e67f7",
+      "fields": {
+        "after_company_name": "(주)에스에이티",
+        "before_company_name": "아이비케이에스제14호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)에스에이티",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-12-09",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211208001156": {
+      "publication_on": "2021-12-08",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/08/000390/20211208001156/70791.htm",
+      "body_sha256": "a7d80d28b496342667d2d63b22a12e31a71ee9e629aa932b917a18383aa55394",
+      "fields": {
+        "code": "351320",
+        "company_name": "아이비케이에스제14호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-12-09",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A351320"
+      },
+      "correction": null
+    },
+    "20211208001209": {
+      "publication_on": "2021-12-08",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/08/000411/20211208001209/70791.htm",
+      "body_sha256": "9e91ca3e8a88a7183e369c69989141896604c59368d396c6cb24891e103bff1b",
+      "fields": {
+        "code": "340440",
+        "company_name": "한화플러스제1호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-12-09",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A340440"
+      },
+      "correction": null
+    },
+    "20211209001164": {
+      "publication_on": "2021-12-09",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/09/000409/20211209001164/70765.htm",
+      "body_sha256": "74dc6cbc3c13f23eb3e62833082cec93cdb6ec8a4ab7d149d00b08ffe5164409",
+      "fields": {
+        "after_company_name": "디와이씨(주)",
+        "before_company_name": "한국제8호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "디와이씨(주)",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-12-14",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211213002157": {
+      "publication_on": "2021-12-13",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/13/000708/20211213002157/70791.htm",
+      "body_sha256": "449eddd1d421451382ae2e80affa00a1adc9c94220859265f4c1eecaccc27e54",
+      "fields": {
+        "code": "310870",
+        "company_name": "한국제8호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-12-14",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A310870"
+      },
+      "correction": null
+    },
+    "20211214001653": {
+      "publication_on": "2021-12-14",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/14/000653/20211214001653/70765.htm",
+      "body_sha256": "a7eb2e6531d6933af4bc1ef4a636e21e63d0902336ced3c514fe55ecc1d954a8",
+      "fields": {
+        "after_company_name": "(주)씨엔알리서치",
+        "before_company_name": "엔에이치기업인수목적17호 주식회사",
+        "code": null,
+        "company_name": "(주)씨엔알리서치",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-12-17",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211216002273": {
+      "publication_on": "2021-12-16",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/16/001507/20211216002273/70791.htm",
+      "body_sha256": "1c729667ee47b7e09764fdd48b0ccc971d076918ac4b138c18d81e2246bc75ad",
+      "fields": {
+        "code": "359090",
+        "company_name": "엔에이치기업인수목적17호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-12-17",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A359090"
+      },
+      "correction": null
+    },
+    "20211220001592": {
+      "publication_on": "2021-12-20",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/20/000631/20211220001592/70765.htm",
+      "body_sha256": "5642e42f18c4d8695f4f5bff682472c0bb1a825142207cee7c6471dd596e812f",
+      "fields": {
+        "after_company_name": "(주)블리츠웨이",
+        "before_company_name": "대신밸런스제9호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)블리츠웨이",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2021-12-23",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20211222001293": {
+      "publication_on": "2021-12-22",
+      "body_url": "https://kind.krx.co.kr/external/2021/12/22/000442/20211222001293/70791.htm",
+      "body_sha256": "694387c52f29d1aef389659b8aebf8b99324658e9c86d0b287d3e42d033fd3ee",
+      "fields": {
+        "code": "369370",
+        "company_name": "대신밸런스제9호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2021-12-23",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A369370"
+      },
+      "correction": null
+    },
+    "20220117001600": {
+      "publication_on": "2022-01-17",
+      "body_url": "https://kind.krx.co.kr/external/2022/01/17/000675/20220117001600/70765.htm",
+      "body_sha256": "d00ef5cafbbefb10eb384201e17d0b903f23de497cd2cb08733f773d26cc365c",
+      "fields": {
+        "after_company_name": "하인크코리아(주)",
+        "before_company_name": "아이비케이에스제15호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "하인크코리아(주)",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-01-20",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220119001473": {
+      "publication_on": "2022-01-19",
+      "body_url": "https://kind.krx.co.kr/external/2022/01/19/000510/20220119001473/70791.htm",
+      "body_sha256": "8173bdbd9e325241c34b059504822e1eac1e08b219dfcce7457cfd83a39921fb",
+      "fields": {
+        "code": "373200",
+        "company_name": "아이비케이에스제15호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-01-20",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A373200"
+      },
+      "correction": null
+    },
+    "20220228002473": {
+      "publication_on": "2022-02-28",
+      "body_url": "https://kind.krx.co.kr/external/2022/02/28/001169/20220228002473/70765.htm",
+      "body_sha256": "5d5a7d24fb453bb9b99191b3bb0012270fb53021f24958a33878054c934208b8",
+      "fields": {
+        "after_company_name": "(주)누보",
+        "before_company_name": "대신밸런스제7호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)누보",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-03-04",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220303001724": {
+      "publication_on": "2022-03-03",
+      "body_url": "https://kind.krx.co.kr/external/2022/03/03/000629/20220303001724/70791.htm",
+      "body_sha256": "33204ef4ae1dae121e077951e3f790fa8bea7185dfea6a03701b20b662ee7f47",
+      "fields": {
+        "code": "332290",
+        "company_name": "대신밸런스제7호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-03-04",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A332290"
+      },
+      "correction": null
+    },
+    "20220322003116": {
+      "publication_on": "2022-03-22",
+      "body_url": "https://kind.krx.co.kr/external/2022/03/22/000732/20220322003116/70765.htm",
+      "body_sha256": "23399f8598063750880764f9493065351c2f476801a3d31baa6358fd39e5b9d2",
+      "fields": {
+        "after_company_name": "(주)파이버프로",
+        "before_company_name": "한국제9호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)파이버프로",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-03-25",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220324002603": {
+      "publication_on": "2022-03-24",
+      "body_url": "https://kind.krx.co.kr/external/2022/03/24/001004/20220324002603/70791.htm",
+      "body_sha256": "453d3537ff5833ab5adb8dd410f650347a0ff8f873f7bd53a2ecac36bb61a889",
+      "fields": {
+        "code": "368770",
+        "company_name": "한국제9호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-03-25",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A368770"
+      },
+      "correction": null
+    },
+    "20220411001212": {
+      "publication_on": "2022-04-11",
+      "body_url": "https://kind.krx.co.kr/external/2022/04/11/000448/20220411001212/70765.htm",
+      "body_sha256": "25db0256681eb1bd93abcfa32a21134dc36db94de22bb2b7b41059c68639c063",
+      "fields": {
+        "after_company_name": "(주)웨이버스",
+        "before_company_name": "유안타제5호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)웨이버스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-04-14",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220413001325": {
+      "publication_on": "2022-04-13",
+      "body_url": "https://kind.krx.co.kr/external/2022/04/13/000425/20220413001325/70791.htm",
+      "body_sha256": "30d97190c1c7d9a6e0e6d7b7e81ee587b16e4b2b5e7fb4275c6072e2c11d9123",
+      "fields": {
+        "code": "336060",
+        "company_name": "유안타제5호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-04-14",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A336060"
+      },
+      "correction": null
+    },
+    "20220509000889": {
+      "publication_on": "2022-05-09",
+      "body_url": "https://kind.krx.co.kr/external/2022/05/09/000359/20220509000889/70765.htm",
+      "body_sha256": "dd5e63034b8a27470f2aa5fcaefe3db6fcdaed198945694cc9c350c9c5fbbb6b",
+      "fields": {
+        "after_company_name": "(주)하이딥",
+        "before_company_name": "엔에이치기업인수목적18호 주식회사",
+        "code": null,
+        "company_name": "(주)하이딥",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-05-12",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220511001425": {
+      "publication_on": "2022-05-11",
+      "body_url": "https://kind.krx.co.kr/external/2022/05/11/000607/20220511001425/70791.htm",
+      "body_sha256": "20935b54f1f4dd71f9fd88fbb1d308e06affa7a66a947a3c3d5ec531cfef9bba",
+      "fields": {
+        "code": "365590",
+        "company_name": "엔에이치기업인수목적18호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-05-12",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A365590"
+      },
+      "correction": null
+    },
+    "20220602000950": {
+      "publication_on": "2022-06-02",
+      "body_url": "https://kind.krx.co.kr/external/2022/06/02/000385/20220602000950/70765.htm",
+      "body_sha256": "b304330c85e3d00002b3c049a5788e51099ac0bd4e3ee810ac0827a18cbf7f2f",
+      "fields": {
+        "after_company_name": "(주)모비데이즈",
+        "before_company_name": "하나금융17호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)모비데이즈",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-06-08",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220602001148": {
+      "publication_on": "2022-06-02",
+      "body_url": "https://kind.krx.co.kr/external/2022/06/02/000505/20220602001148/70765.htm",
+      "body_sha256": "9dab6b988e3bc2a1c74ba36879c804f10bd1dd1a9019532c8c55b54a37d4ea46",
+      "fields": {
+        "after_company_name": "(주)모비데이즈",
+        "before_company_name": "하나금융17호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)모비데이즈",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-06-08",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": {
+        "items": [
+          "발행회차"
+        ],
+        "original_submission_on": "2022-06-02",
+        "publication_on": "2022-06-02",
+        "reason": "회차 정정",
+        "related_document": "변경상장(상호변경)"
+      }
+    },
+    "20220607001035": {
+      "publication_on": "2022-06-07",
+      "body_url": "https://kind.krx.co.kr/external/2022/06/07/000414/20220607001035/70791.htm",
+      "body_sha256": "d0c6e70daf33f8189de6869531b0f70b159c44d856cfd1f85aefc48db43afa98",
+      "fields": {
+        "code": "363260",
+        "company_name": "하나금융17호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-06-08",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A363260"
+      },
+      "correction": null
+    },
+    "20220627001161": {
+      "publication_on": "2022-06-27",
+      "body_url": "https://kind.krx.co.kr/external/2022/06/27/000424/20220627001161/70765.htm",
+      "body_sha256": "7e4c2326a264b4c3722b04ce7439d65de3aeeb4b834917001c57ea7ac2a3557a",
+      "fields": {
+        "after_company_name": "(주)태성",
+        "before_company_name": "신영해피투모로우제5호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)태성",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-06-30",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220629001895": {
+      "publication_on": "2022-06-29",
+      "body_url": "https://kind.krx.co.kr/external/2022/06/29/000805/20220629001895/70791.htm",
+      "body_sha256": "a7823d366279972afd96752856f52cfd5d0a0fa8107c90e943aa72e4ec6949dc",
+      "fields": {
+        "code": "323280",
+        "company_name": "신영해피투모로우제5호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-06-30",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A323280"
+      },
+      "correction": null
+    },
+    "20220726000923": {
+      "publication_on": "2022-07-26",
+      "body_url": "https://kind.krx.co.kr/external/2022/07/26/000364/20220726000923/70765.htm",
+      "body_sha256": "04ea0b14da7ad35e6dc85c02899f2a65ddddf94feaa2edecae86c73e12555d1d",
+      "fields": {
+        "after_company_name": "코닉오토메이션(주)",
+        "before_company_name": "엔에이치기업인수목적21호 주식회사",
+        "code": null,
+        "company_name": "코닉오토메이션(주)",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-07-29",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220728001391": {
+      "publication_on": "2022-07-28",
+      "body_url": "https://kind.krx.co.kr/external/2022/07/28/000653/20220728001391/70791.htm",
+      "body_sha256": "697382b7b42fc8a9e1460863dd1a6b8369980834b710c68450904698ba038764",
+      "fields": {
+        "code": "391710",
+        "company_name": "엔에이치기업인수목적21호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-07-29",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A391710"
+      },
+      "correction": null
+    },
+    "20220817000658": {
+      "publication_on": "2022-08-17",
+      "body_url": "https://kind.krx.co.kr/external/2022/08/17/000263/20220817000658/70765.htm",
+      "body_sha256": "0778349a13c12b80b131b32ce4ee10b9cdde7f5f52f1bf6bc0bb13080d3857dd",
+      "fields": {
+        "after_company_name": "솔트웨어 주식회사",
+        "before_company_name": "미래에셋대우기업인수목적3호 주식회사",
+        "code": null,
+        "company_name": "솔트웨어 주식회사",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-08-22",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20220819001112": {
+      "publication_on": "2022-08-19",
+      "body_url": "https://kind.krx.co.kr/external/2022/08/19/000455/20220819001112/70791.htm",
+      "body_sha256": "ca2021ff69e0601888614ba8b248253cd4e7bea5a00e54b0d42a5b4d23289956",
+      "fields": {
+        "code": "328380",
+        "company_name": "미래에셋대우기업인수목적3호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-08-22",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A328380"
+      },
+      "correction": null
+    },
+    "20221014001071": {
+      "publication_on": "2022-10-14",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/14/000492/20221014001071/70765.htm",
+      "body_sha256": "02cb7d92837484a44857825bc564723a2b1531a3878db443a9e404ac51ad2165",
+      "fields": {
+        "after_company_name": "(주)모코엠시스",
+        "before_company_name": "신한제6호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)모코엠시스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-10-19",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20221014001309": {
+      "publication_on": "2022-10-14",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/14/000604/20221014001309/70980.htm",
+      "body_sha256": "05aad1b1f7f6d6e976e99f2c6ec5d3c630a1cc96df3af21ed48598d1c37b25c4",
+      "fields": {
+        "absorbed_spac_name": "SK5호스팩",
+        "code": "419540",
+        "company_name": "주식회사 비스토스",
+        "isin": "KR7419540000",
+        "kind": "spac_listing",
+        "listing_on": "2022-10-18",
+        "security_kind": "보통주",
+        "short_code": "A419540"
+      },
+      "correction": null
+    },
+    "20221018001348": {
+      "publication_on": "2022-10-18",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/18/000573/20221018001348/70791.htm",
+      "body_sha256": "662d75394b3da33d4bc91bb7140814b5cc0371610a7127b172b23f6858d16d72",
+      "fields": {
+        "code": "333050",
+        "company_name": "신한제6호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-10-19",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A333050"
+      },
+      "correction": null
+    },
+    "20221024001087": {
+      "publication_on": "2022-10-24",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/24/000474/20221024001087/70765.htm",
+      "body_sha256": "e4502406cd6e31f19a5c822d60ec33ff3a7e63e6b45f2b6fec9ee6c4f2b81f57",
+      "fields": {
+        "after_company_name": "(주)윙스풋",
+        "before_company_name": "아이비케이에스제12호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)윙스풋",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-10-27",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20221026001483": {
+      "publication_on": "2022-10-26",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/26/000622/20221026001483/70791.htm",
+      "body_sha256": "7f0cfe255eb59b4c679c626c2e55556092919a663e9dd78ec00e6fb01f1d5d77",
+      "fields": {
+        "code": "335870",
+        "company_name": "아이비케이에스제12호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-10-27",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A335870"
+      },
+      "correction": null
+    },
+    "20221026001491": {
+      "publication_on": "2022-10-26",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/26/000629/20221026001491/70765.htm",
+      "body_sha256": "7ac9137393d79c3318adcb80b1311612fa98e3a076e7fbdedeb6577cf8875cbe",
+      "fields": {
+        "after_company_name": "(주)밸로프",
+        "before_company_name": "교보9호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)밸로프",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2022-10-31",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20221028001695": {
+      "publication_on": "2022-10-28",
+      "body_url": "https://kind.krx.co.kr/external/2022/10/28/000800/20221028001695/70791.htm",
+      "body_sha256": "03c64f831759d02e3b9f5d79bb724ef50baf9c4ad5eaf98ac4cb257fd42825d5",
+      "fields": {
+        "code": "331520",
+        "company_name": "교보9호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2022-10-31",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A331520"
+      },
+      "correction": null
+    },
+    "20221206001190": {
+      "publication_on": "2022-12-06",
+      "body_url": "https://kind.krx.co.kr/external/2022/12/06/000447/20221206001190/70980.htm",
+      "body_sha256": "90abecce3e350ed9ee43214dba78466c2ddd7acb9a184c6f419ef8de4a71211e",
+      "fields": {
+        "absorbed_spac_name": "유안타제7호스팩",
+        "code": "417180",
+        "company_name": "(주)핑거스토리",
+        "isin": "KR7417180007",
+        "kind": "spac_listing",
+        "listing_on": "2022-12-08",
+        "security_kind": "보통주",
+        "short_code": "A417180"
+      },
+      "correction": null
+    },
+    "20221221001708": {
+      "publication_on": "2022-12-21",
+      "body_url": "https://kind.krx.co.kr/external/2022/12/21/000639/20221221001708/70980.htm",
+      "body_sha256": "5b6604b2b6f49eaa9b6d1ebf034017bd82d8862342c70de606b803c0a4a7870c",
+      "fields": {
+        "absorbed_spac_name": "하나금융15호스팩",
+        "code": "162300",
+        "company_name": "주식회사 신스틸",
+        "isin": "KR7162300008",
+        "kind": "spac_listing",
+        "listing_on": "2022-12-23",
+        "security_kind": "보통주",
+        "short_code": "A162300"
+      },
+      "correction": null
+    },
+    "20221227003039": {
+      "publication_on": "2022-12-27",
+      "body_url": "https://kind.krx.co.kr/external/2022/12/27/000825/20221227003039/70980.htm",
+      "body_sha256": "4f513bb6d471801f07e54f2b7be607402de156d52476851686e49f107bba3a91",
+      "fields": {
+        "absorbed_spac_name": "케이비제20호스팩",
+        "code": "380540",
+        "company_name": "주식회사 옵티코어",
+        "isin": "KR7380540005",
+        "kind": "spac_listing",
+        "listing_on": "2022-12-29",
+        "security_kind": "보통주",
+        "short_code": "A380540"
+      },
+      "correction": null
+    },
+    "20230209002707": {
+      "publication_on": "2023-02-09",
+      "body_url": "https://kind.krx.co.kr/external/2023/02/09/001166/20230209002707/70765.htm",
+      "body_sha256": "11cef1217da750783c3d92bd435b45df3e208d3acd5fd419cb7210b8b09ba28a",
+      "fields": {
+        "after_company_name": "주식회사 라이콤",
+        "before_company_name": "아이비케이에스제16호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "주식회사 라이콤",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2023-02-14",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20230213003478": {
+      "publication_on": "2023-02-13",
+      "body_url": "https://kind.krx.co.kr/external/2023/02/13/001370/20230213003478/70791.htm",
+      "body_sha256": "9734a1b29d29ce8dae80ec4ce971fd1760270912cc6f81e1906b87a1ba26bc15",
+      "fields": {
+        "code": "388790",
+        "company_name": "아이비케이에스제16호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2023-02-14",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A388790"
+      },
+      "correction": null
+    },
+    "20230215002392": {
+      "publication_on": "2023-02-15",
+      "body_url": "https://kind.krx.co.kr/external/2023/02/15/000891/20230215002392/70980.htm",
+      "body_sha256": "8dbc1f3cc8ac7fd23441640779918fd38e20ee0e5ce476d4f7b2bfec36e85359",
+      "fields": {
+        "absorbed_spac_name": "신영스팩6호",
+        "code": "127980",
+        "company_name": "(주)화인써키트",
+        "isin": "KR7127980001",
+        "kind": "spac_listing",
+        "listing_on": "2023-02-17",
+        "security_kind": "보통주",
+        "short_code": "A127980"
+      },
+      "correction": null
+    },
+    "20230216001605": {
+      "publication_on": "2023-02-16",
+      "body_url": "https://kind.krx.co.kr/external/2023/02/16/000589/20230216001605/70791.htm",
+      "body_sha256": "682a451e037a35c00202ab1f1964b2e472ccdbf9adb83254278c89f9cc819e93",
+      "fields": {
+        "code": "388790",
+        "company_name": "주식회사 라이콤",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2023-02-14",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A388790"
+      },
+      "correction": {
+        "items": [
+          "6. 기타"
+        ],
+        "original_submission_on": "2023-02-13",
+        "publication_on": "2023-02-16",
+        "reason": "의무보유 변경 내역 반영",
+        "related_document": "추가상장(타법인흡수합병)"
+      }
+    },
+    "20230227002276": {
+      "publication_on": "2023-02-27",
+      "body_url": "https://kind.krx.co.kr/external/2023/02/27/000973/20230227002276/70765.htm",
+      "body_sha256": "9f1bc281a8797cc60616da37ea64d03424e2068b00f57dbff45e987b944607e7",
+      "fields": {
+        "after_company_name": "(주)메쎄이상",
+        "before_company_name": "에스케이증권에이씨피씨제7호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)메쎄이상",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2023-03-03",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20230302002780": {
+      "publication_on": "2023-03-02",
+      "body_url": "https://kind.krx.co.kr/external/2023/03/02/001131/20230302002780/70791.htm",
+      "body_sha256": "02d2e5d674d50c3806934fcbc5c6c15ed62386835be0e202f7d14c41e0c3a6f5",
+      "fields": {
+        "code": "408920",
+        "company_name": "에스케이증권에이씨피씨제7호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2023-03-03",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A408920"
+      },
+      "correction": null
+    },
+    "20230307001707": {
+      "publication_on": "2023-03-07",
+      "body_url": "https://kind.krx.co.kr/external/2023/03/07/000735/20230307001707/70980.htm",
+      "body_sha256": "0d69cbe672c517aa57d471b4e0e7e0651b5dd5de77f01e65fb7a41a903f85061",
+      "fields": {
+        "absorbed_spac_name": "대신밸런스제11호스팩",
+        "code": "418420",
+        "company_name": "주식회사 라온텍",
+        "isin": "KR7418420006",
+        "kind": "spac_listing",
+        "listing_on": "2023-03-09",
+        "security_kind": "보통주",
+        "short_code": "A418420"
+      },
+      "correction": null
+    },
+    "20230314004474": {
+      "publication_on": "2023-03-14",
+      "body_url": "https://kind.krx.co.kr/external/2023/03/14/001962/20230314004474/70980.htm",
+      "body_sha256": "b60bcd35f134eea5729ec20cd03f062cffbd32546d3c7ed702c1b282a1085ebb",
+      "fields": {
+        "absorbed_spac_name": "대신밸런스제10호스팩",
+        "code": "356680",
+        "company_name": "(주)엑스게이트",
+        "isin": "KR7356680009",
+        "kind": "spac_listing",
+        "listing_on": "2023-03-16",
+        "security_kind": "보통주",
+        "short_code": "A356680"
+      },
+      "correction": null
+    },
+    "20230329005715": {
+      "publication_on": "2023-03-29",
+      "body_url": "https://kind.krx.co.kr/external/2023/03/29/002735/20230329005715/70765.htm",
+      "body_sha256": "8841299c84d4c4ad75714bbf56a5d28fdca2677e1b502cfca28514ccd9f3873b",
+      "fields": {
+        "after_company_name": "(주)코스텍시스",
+        "before_company_name": "교보10호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "(주)코스텍시스",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2023-04-03",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20230331007240": {
+      "publication_on": "2023-03-31",
+      "body_url": "https://kind.krx.co.kr/external/2023/03/31/003711/20230331007240/70791.htm",
+      "body_sha256": "17708f811f1eb099bb160e4b98187db88769b6f038537f0c18de5b519ffda90f",
+      "fields": {
+        "code": "355150",
+        "company_name": "교보10호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2023-04-03",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A355150"
+      },
+      "correction": null
+    },
+    "20230418001615": {
+      "publication_on": "2023-04-18",
+      "body_url": "https://kind.krx.co.kr/external/2023/04/18/000530/20230418001615/70980.htm",
+      "body_sha256": "e2b5ae5cafef0a135875cb7af048183f5817e3711033241b8fd5cd15c4936e4a",
+      "fields": {
+        "absorbed_spac_name": "대신밸런스제12호스팩",
+        "code": "318160",
+        "company_name": "주식회사 셀바이오휴먼텍",
+        "isin": "KR7318160009",
+        "kind": "spac_listing",
+        "listing_on": "2023-04-20",
+        "security_kind": "보통주",
+        "short_code": "A318160"
+      },
+      "correction": null
+    },
+    "20230425001848": {
+      "publication_on": "2023-04-25",
+      "body_url": "https://kind.krx.co.kr/external/2023/04/25/000711/20230425001848/70765.htm",
+      "body_sha256": "807a30e4a285f0395dae79fc83191c4d1051990b8db300b70256628e0227a1d0",
+      "fields": {
+        "after_company_name": "주식회사 벨로크",
+        "before_company_name": "아이비케이에스제18호기업인수목적 주식회사",
+        "code": null,
+        "company_name": "주식회사 벨로크",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2023-04-28",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20230426002191": {
+      "publication_on": "2023-04-26",
+      "body_url": "https://kind.krx.co.kr/external/2023/04/26/000588/20230426002191/70980.htm",
+      "body_sha256": "84693c85ec1f1cde8d7b23086a67188e4843011e2f18047370b4927fbf05b791",
+      "fields": {
+        "absorbed_spac_name": "엔에이치스팩22호",
+        "code": "298830",
+        "company_name": "슈어소프트테크 주식회사",
+        "isin": "KR7298830001",
+        "kind": "spac_listing",
+        "listing_on": "2023-04-28",
+        "security_kind": "보통주",
+        "short_code": "A298830"
+      },
+      "correction": null
+    },
+    "20230427001855": {
+      "publication_on": "2023-04-27",
+      "body_url": "https://kind.krx.co.kr/external/2023/04/27/000863/20230427001855/70791.htm",
+      "body_sha256": "22ca764db8d60762a6632d10566e09ecb7870d480596990f8fd512d05e58fc67",
+      "fields": {
+        "code": "424760",
+        "company_name": "아이비케이에스제18호기업인수목적 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2023-04-28",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A424760"
+      },
+      "correction": null
+    },
+    "20230519001685": {
+      "publication_on": "2023-05-19",
+      "body_url": "https://kind.krx.co.kr/external/2023/05/19/000572/20230519001685/70980.htm",
+      "body_sha256": "21ae81bac4f67e750ed79a3538b736740ca10f8c2a330cf6037e93b50e25497f",
+      "fields": {
+        "absorbed_spac_name": "하나금융19호스팩",
+        "code": "271830",
+        "company_name": "팸텍주식회사",
+        "isin": "KR7271830002",
+        "kind": "spac_listing",
+        "listing_on": "2023-05-23",
+        "security_kind": "보통주",
+        "short_code": "A271830"
+      },
+      "correction": null
+    },
+    "20230829001545": {
+      "publication_on": "2023-08-29",
+      "body_url": "https://kind.krx.co.kr/external/2023/08/29/000610/20230829001545/70980.htm",
+      "body_sha256": "20991d35335649e8656e8ba9ad57218d07dd1a3e378ef881ae103018d89734ff",
+      "fields": {
+        "absorbed_spac_name": "한국제10호스팩",
+        "code": "355390",
+        "company_name": "주식회사 크라우드웍스",
+        "isin": "KR7355390006",
+        "kind": "spac_listing",
+        "listing_on": "2023-08-31",
+        "security_kind": "보통주",
+        "short_code": "A355390"
+      },
+      "correction": null
+    },
+    "20230906001181": {
+      "publication_on": "2023-09-06",
+      "body_url": "https://kind.krx.co.kr/external/2023/09/06/000464/20230906001181/70980.htm",
+      "body_sha256": "f38127ab82e4da6754adec7c454b5d8a28b65746bf61b2aa70142dd4543fb3a4",
+      "fields": {
+        "absorbed_spac_name": "유안타제8호스팩",
+        "code": "146060",
+        "company_name": "(주)율촌",
+        "isin": "KR7146060009",
+        "kind": "spac_listing",
+        "listing_on": "2023-09-08",
+        "security_kind": "보통주",
+        "short_code": "A146060"
+      },
+      "correction": null
+    },
+    "20230914001267": {
+      "publication_on": "2023-09-14",
+      "body_url": "https://kind.krx.co.kr/external/2023/09/14/000476/20230914001267/70980.htm",
+      "body_sha256": "974768d93e57471c5b7c2a79904a0a1748d7358e243f5fcd9847465cfb1f5129",
+      "fields": {
+        "absorbed_spac_name": "신한제7호스팩",
+        "code": "384470",
+        "company_name": "(주)코어라인소프트",
+        "isin": "KR7384470001",
+        "kind": "spac_listing",
+        "listing_on": "2023-09-18",
+        "security_kind": "보통주",
+        "short_code": "A384470"
+      },
+      "correction": null
+    },
+    "20230915001252": {
+      "publication_on": "2023-09-15",
+      "body_url": "https://kind.krx.co.kr/external/2023/09/15/000571/20230915001252/70980.htm",
+      "body_sha256": "c78739415086794f05dd1f33b190b5371a521f571ed2a3deec1eb916f5edcb14",
+      "fields": {
+        "absorbed_spac_name": "하나금융20호스팩",
+        "code": "403490",
+        "company_name": "농업회사법인 우듬지팜 주식회사",
+        "isin": "KR7403490006",
+        "kind": "spac_listing",
+        "listing_on": "2023-09-19",
+        "security_kind": "보통주",
+        "short_code": "A403490"
+      },
+      "correction": null
+    },
+    "20231101001268": {
+      "publication_on": "2023-11-01",
+      "body_url": "https://kind.krx.co.kr/external/2023/11/01/000557/20231101001268/70980.htm",
+      "body_sha256": "def1213d00dd9046b26e479552fa1d651759a2658c7af605d665b52e5144c194",
+      "fields": {
+        "absorbed_spac_name": "케이비제23호스팩",
+        "code": "188260",
+        "company_name": "(주)세니젠",
+        "isin": "KR7188260004",
+        "kind": "spac_listing",
+        "listing_on": "2023-11-03",
+        "security_kind": "보통주",
+        "short_code": "A188260"
+      },
+      "correction": null
+    },
+    "20231101001382": {
+      "publication_on": "2023-11-01",
+      "body_url": "https://kind.krx.co.kr/external/2023/11/01/000605/20231101001382/70980.htm",
+      "body_sha256": "3207376d2bd198364eb52a3f86a674d0390e4ccae4f0d6022cdd041f44c2e22f",
+      "fields": {
+        "absorbed_spac_name": "IBKS제17호스팩",
+        "code": "290560",
+        "company_name": "(주)신시웨이",
+        "isin": "KR7290560002",
+        "kind": "spac_listing",
+        "listing_on": "2023-11-03",
+        "security_kind": "보통주",
+        "short_code": "A290560"
+      },
+      "correction": null
+    },
+    "20231102001213": {
+      "publication_on": "2023-11-02",
+      "body_url": "https://kind.krx.co.kr/external/2023/11/02/000543/20231102001213/70980.htm",
+      "body_sha256": "3d5653e1526fe495876a68e84858d50edf451003ffbafb69e4d772603023a29c",
+      "fields": {
+        "absorbed_spac_name": "케이비제23호스팩",
+        "code": "188260",
+        "company_name": "(주)세니젠",
+        "isin": "KR7188260004",
+        "kind": "spac_listing",
+        "listing_on": "2023-11-03",
+        "security_kind": "보통주",
+        "short_code": "A188260"
+      },
+      "correction": {
+        "items": [
+          "1.회사명 정식명 영문"
+        ],
+        "original_submission_on": "2023-11-01",
+        "publication_on": "2023-11-02",
+        "reason": "영문회사명 정정",
+        "related_document": "SPAC소멸합병상장"
+      }
+    },
+    "20231122001111": {
+      "publication_on": "2023-11-22",
+      "body_url": "https://kind.krx.co.kr/external/2023/11/22/000430/20231122001111/70980.htm",
+      "body_sha256": "49005fcff5d161ef501b69ccb74dc3e213262148b159adc884b4343760f9a795",
+      "fields": {
+        "absorbed_spac_name": "DB금융스팩9호",
+        "code": "452160",
+        "company_name": "(주)제이엔비",
+        "isin": "KR7452160005",
+        "kind": "spac_listing",
+        "listing_on": "2023-11-24",
+        "security_kind": "보통주",
+        "short_code": "A452160"
+      },
+      "correction": null
+    },
+    "20231219001153": {
+      "publication_on": "2023-12-19",
+      "body_url": "https://kind.krx.co.kr/external/2023/12/19/000387/20231219001153/70980.htm",
+      "body_sha256": "ba9b0c5e04f52feb43875f931d956ed1337386d0ec9e5611ec9ab0a10d1d4f27",
+      "fields": {
+        "absorbed_spac_name": "엔에이치스팩28호",
+        "code": "109670",
+        "company_name": "씨싸이트(주)",
+        "isin": "KR7109670000",
+        "kind": "spac_listing",
+        "listing_on": "2023-12-21",
+        "security_kind": "보통주",
+        "short_code": "A109670"
+      },
+      "correction": null
+    },
+    "20240102001061": {
+      "publication_on": "2024-01-02",
+      "body_url": "https://kind.krx.co.kr/external/2024/01/02/000394/20240102001061/70980.htm",
+      "body_sha256": "8d013ce1ea1d8f680aa5ddab883705395931ad9aa864aedc942593a9946ae80c",
+      "fields": {
+        "absorbed_spac_name": "디비금융스팩10호",
+        "code": "452190",
+        "company_name": "(주)한빛레이저",
+        "isin": "KR7452190002",
+        "kind": "spac_listing",
+        "listing_on": "2024-01-04",
+        "security_kind": "보통주",
+        "short_code": "A452190"
+      },
+      "correction": null
+    },
+    "20240123001377": {
+      "publication_on": "2024-01-23",
+      "body_url": "https://kind.krx.co.kr/external/2024/01/23/000493/20240123001377/70980.htm",
+      "body_sha256": "e84a1776f7853268822a0385026ca343acd106674254901f69a91cf8e08229af",
+      "fields": {
+        "absorbed_spac_name": "하이제6호스팩",
+        "code": "362990",
+        "company_name": "주식회사 드림인사이트",
+        "isin": "KR7362990004",
+        "kind": "spac_listing",
+        "listing_on": "2024-01-25",
+        "security_kind": "보통주",
+        "short_code": "A362990"
+      },
+      "correction": null
+    },
+    "20240130002101": {
+      "publication_on": "2024-01-30",
+      "body_url": "https://kind.krx.co.kr/external/2024/01/30/000776/20240130002101/70980.htm",
+      "body_sha256": "3d113a0cf39f26dcf564808159ffd9e068d3d9d00f68bfcc8b13190b9a28e08d",
+      "fields": {
+        "absorbed_spac_name": "하나금융23호스팩",
+        "code": "199550",
+        "company_name": "(주)레이저옵텍",
+        "isin": "KR7199550005",
+        "kind": "spac_listing",
+        "listing_on": "2024-02-01",
+        "security_kind": "보통주",
+        "short_code": "A199550"
+      },
+      "correction": null
+    },
+    "20240213003429": {
+      "publication_on": "2024-02-13",
+      "body_url": "https://kind.krx.co.kr/external/2024/02/13/001310/20240213003429/70980.htm",
+      "body_sha256": "be2102a8b23870df11954e5feaeac12817b7ea392ec4ff2e36e83eeed92f6002",
+      "fields": {
+        "absorbed_spac_name": "IBKS제19호스팩",
+        "code": "443670",
+        "company_name": "주식회사 에스피소프트",
+        "isin": "KR7443670005",
+        "kind": "spac_listing",
+        "listing_on": "2024-02-15",
+        "security_kind": "보통주",
+        "short_code": "A443670"
+      },
+      "correction": null
+    },
+    "20240215001379": {
+      "publication_on": "2024-02-15",
+      "body_url": "https://kind.krx.co.kr/external/2024/02/15/000485/20240215001379/70980.htm",
+      "body_sha256": "a9a01d383f3b2b9da98b7b398fca6d9dc52666c265d6a50ca7b928377866825f",
+      "fields": {
+        "absorbed_spac_name": "하나머스트7호스팩",
+        "code": "452430",
+        "company_name": "(주)사피엔반도체",
+        "isin": "KR7452430002",
+        "kind": "spac_listing",
+        "listing_on": "2024-02-19",
+        "security_kind": "보통주",
+        "short_code": "A452430"
+      },
+      "correction": null
+    },
+    "20240321006158": {
+      "publication_on": "2024-03-21",
+      "body_url": "https://kind.krx.co.kr/external/2024/03/21/001547/20240321006158/70980.htm",
+      "body_sha256": "99aa501ca6661f26442831678e25ad66a4bd6f1f40e041dbfd47c2c57b6e4d20",
+      "fields": {
+        "absorbed_spac_name": "교보11호스팩",
+        "code": "420570",
+        "company_name": "주식회사 제이투케이바이오",
+        "isin": "KR7420570004",
+        "kind": "spac_listing",
+        "listing_on": "2024-03-25",
+        "security_kind": "보통주",
+        "short_code": "A420570"
+      },
+      "correction": null
+    },
+    "20240423001788": {
+      "publication_on": "2024-04-23",
+      "body_url": "https://kind.krx.co.kr/external/2024/04/23/000676/20240423001788/70980.htm",
+      "body_sha256": "b612323015be745140474ccc924c0b9d32d605f4cdbb58371802b70c3bfba2d5",
+      "fields": {
+        "absorbed_spac_name": "신영스팩7호",
+        "code": "451250",
+        "company_name": "(주)삐아",
+        "isin": "KR7451250005",
+        "kind": "spac_listing",
+        "listing_on": "2024-04-25",
+        "security_kind": "보통주",
+        "short_code": "A451250"
+      },
+      "correction": null
+    },
+    "20240430002161": {
+      "publication_on": "2024-04-30",
+      "body_url": "https://kind.krx.co.kr/external/2024/04/30/000972/20240430002161/70980.htm",
+      "body_sha256": "66b1b5c29ef6a43a82977a2256f32f880679b67be8b1efd1923dc39bbfe3d730",
+      "fields": {
+        "absorbed_spac_name": "케이비제22호스팩",
+        "code": "140430",
+        "company_name": "(주)카티스",
+        "isin": "KR7140430000",
+        "kind": "spac_listing",
+        "listing_on": "2024-05-03",
+        "security_kind": "보통주",
+        "short_code": "A140430"
+      },
+      "correction": null
+    },
+    "20240607001184": {
+      "publication_on": "2024-06-07",
+      "body_url": "https://kind.krx.co.kr/external/2024/06/07/000526/20240607001184/70980.htm",
+      "body_sha256": "44d708d160134802c07a191d24bcaced7c25a88b2d8efdf8eea68a4e81662c21",
+      "fields": {
+        "absorbed_spac_name": "신한제9호스팩",
+        "code": "323350",
+        "company_name": "(주)다원넥스뷰",
+        "isin": "KR7323350009",
+        "kind": "spac_listing",
+        "listing_on": "2024-06-11",
+        "security_kind": "보통주",
+        "short_code": "A323350"
+      },
+      "correction": null
+    },
+    "20240624001151": {
+      "publication_on": "2024-06-24",
+      "body_url": "https://kind.krx.co.kr/external/2024/06/24/000450/20240624001151/70765.htm",
+      "body_sha256": "aafb82e785211804e4a7ab9ea4cec7c2bc0560cba606ee060341e13f04828f3d",
+      "fields": {
+        "after_company_name": "씨피시스템(주)",
+        "before_company_name": "유진기업인수목적8호 주식회사",
+        "code": null,
+        "company_name": "씨피시스템(주)",
+        "isin": null,
+        "kind": "rename",
+        "listing_on": "2024-06-27",
+        "security_kind": null,
+        "short_code": null
+      },
+      "correction": null
+    },
+    "20240626002153": {
+      "publication_on": "2024-06-26",
+      "body_url": "https://kind.krx.co.kr/external/2024/06/26/000880/20240626002153/70791.htm",
+      "body_sha256": "0b7e7d979aef41b7f869bd7ba07151f3f82d4b4077c88b82e26511e3f51b3a74",
+      "fields": {
+        "code": "413630",
+        "company_name": "유진기업인수목적8호 주식회사",
+        "isin": null,
+        "kind": "additional",
+        "listing_on": "2024-06-27",
+        "merger_reason": "타법인흡수합병",
+        "security_kind": "보통주",
+        "short_code": "A413630"
+      },
+      "correction": null
+    },
+    "20240830000728": {
+      "publication_on": "2024-08-30",
+      "body_url": "https://kind.krx.co.kr/external/2024/08/30/000356/20240830000728/70980.htm",
+      "body_sha256": "278a677552ab6e80176ff31ed345f94b45eeb6f085a6e16773dae0cffd49d30c",
+      "fields": {
+        "absorbed_spac_name": "하나금융24호스팩",
+        "code": "469750",
+        "company_name": "(주)아이비젼웍스",
+        "isin": "KR7469750004",
+        "kind": "spac_listing",
+        "listing_on": "2024-09-03",
+        "security_kind": "보통주",
+        "short_code": "A469750"
+      },
+      "correction": null
+    },
+    "20240925001267": {
+      "publication_on": "2024-09-25",
+      "body_url": "https://kind.krx.co.kr/external/2024/09/25/000446/20240925001267/70980.htm",
+      "body_sha256": "6546105a142d64dab3b18f1d4a24bc2eeecca4bd4892acc13ebe977f954afdca",
+      "fields": {
+        "absorbed_spac_name": "한국제11호스팩",
+        "code": "351870",
+        "company_name": "(주)차이커뮤니케이션",
+        "isin": "KR7351870001",
+        "kind": "spac_listing",
+        "listing_on": "2024-09-27",
+        "security_kind": "보통주",
+        "short_code": "A351870"
+      },
+      "correction": null
+    },
+    "20241115000803": {
+      "publication_on": "2024-11-15",
+      "body_url": "https://kind.krx.co.kr/external/2024/11/15/000356/20241115000803/70980.htm",
+      "body_sha256": "455cfa8b294f23a6176d86010ec8d46169a3cee824b19dba3966d5c4cd5cbef4",
+      "fields": {
+        "absorbed_spac_name": "교보12호스팩",
+        "code": "474610",
+        "company_name": "알에프시스템즈(주)",
+        "isin": "KR7474610003",
+        "kind": "spac_listing",
+        "listing_on": "2024-11-19",
+        "security_kind": "보통주",
+        "short_code": "A474610"
+      },
+      "correction": null
+    },
+    "20241118001283": {
+      "publication_on": "2024-11-18",
+      "body_url": "https://kind.krx.co.kr/external/2024/11/18/000518/20241118001283/70980.htm",
+      "body_sha256": "ce0b17242abf7b4a7ef809d503ab97a600bb33d5ba76b442366dbb99431e5111",
+      "fields": {
+        "absorbed_spac_name": "대신밸런스제13호스팩",
+        "code": "389680",
+        "company_name": "(주)유디엠텍",
+        "isin": "KR7389680000",
+        "kind": "spac_listing",
+        "listing_on": "2024-11-20",
+        "security_kind": "보통주",
+        "short_code": "A389680"
+      },
+      "correction": null
+    },
+    "20241211001728": {
+      "publication_on": "2024-12-11",
+      "body_url": "https://kind.krx.co.kr/external/2024/12/11/000546/20241211001728/70980.htm",
+      "body_sha256": "a5338e1d27ef211a7e38344d32aa219a300f8db9f0bbe49dacd4a4e1451e2cd4",
+      "fields": {
+        "absorbed_spac_name": "한화플러스제3호스팩",
+        "code": "471820",
+        "company_name": "(주)셀로맥스사이언스",
+        "isin": "KR7471820001",
+        "kind": "spac_listing",
+        "listing_on": "2024-12-13",
+        "security_kind": "보통주",
+        "short_code": "A471820"
+      },
+      "correction": null
+    },
+    "20241217001763": {
+      "publication_on": "2024-12-17",
+      "body_url": "https://kind.krx.co.kr/external/2024/12/17/000742/20241217001763/70980.htm",
+      "body_sha256": "46ad16ab23223267c7e2149c4768ff5c17c78b49089bb0449bb7f9b5392ab8da",
+      "fields": {
+        "absorbed_spac_name": "하나금융22호스팩",
+        "code": "398120",
+        "company_name": "(주)에스지헬스케어",
+        "isin": "KR7398120006",
+        "kind": "spac_listing",
+        "listing_on": "2024-12-19",
+        "security_kind": "보통주",
+        "short_code": "A398120"
+      },
+      "correction": null
+    },
+    "20241223001371": {
+      "publication_on": "2024-12-23",
+      "body_url": "https://kind.krx.co.kr/external/2024/12/23/000465/20241223001371/70980.htm",
+      "body_sha256": "f9e416822eb23566e543eb40e3b75c046727931ab300042355ba42ad3f63152d",
+      "fields": {
+        "absorbed_spac_name": "하나금융21호스팩",
+        "code": "432980",
+        "company_name": "엠에프씨(주)",
+        "isin": "KR7432980001",
+        "kind": "spac_listing",
+        "listing_on": "2024-12-26",
+        "security_kind": "보통주",
+        "short_code": "A432980"
+      },
+      "correction": null
+    },
+    "20250117001694": {
+      "publication_on": "2025-01-17",
+      "body_url": "https://kind.krx.co.kr/external/2025/01/17/000723/20250117001694/70980.htm",
+      "body_sha256": "cd5e9da8220ceb4e3432c459b7a4da7ba357b1faabf5da7261d1dcf9cfc786df",
+      "fields": {
+        "absorbed_spac_name": "미래에셋비전스팩1호",
+        "code": "478560",
+        "company_name": "주식회사 블랙야크아이앤씨",
+        "isin": "KR7478560006",
+        "kind": "spac_listing",
+        "listing_on": "2025-01-21",
+        "security_kind": "보통주",
+        "short_code": "A478560"
+      },
+      "correction": null
+    },
+    "20250226001694": {
+      "publication_on": "2025-02-26",
+      "body_url": "https://kind.krx.co.kr/external/2025/02/26/000581/20250226001694/70980.htm",
+      "body_sha256": "0ff3e625665fbbe7b287c468c510066e165a4378193d239de9f57a0d50a113b3",
+      "fields": {
+        "absorbed_spac_name": "키움제6호스팩",
+        "code": "435570",
+        "company_name": "(주)에르코스 농업회사법인",
+        "isin": "KR7435570007",
+        "kind": "spac_listing",
+        "listing_on": "2025-02-28",
+        "security_kind": "보통주",
+        "short_code": "A435570"
+      },
+      "correction": null
+    },
+    "20250305002994": {
+      "publication_on": "2025-03-05",
+      "body_url": "https://kind.krx.co.kr/external/2025/03/05/001199/20250305002994/70980.htm",
+      "body_sha256": "b690f0a760c2f025e4f62e330122893b961f40db5e7f11844478be66b9948e91",
+      "fields": {
+        "absorbed_spac_name": "키움제7호스팩",
+        "code": "460870",
+        "company_name": "(주)에스엠씨지",
+        "isin": "KR7460870009",
+        "kind": "spac_listing",
+        "listing_on": "2025-03-07",
+        "security_kind": "보통주",
+        "short_code": "A460870"
+      },
+      "correction": null
+    },
+    "20250326005570": {
+      "publication_on": "2025-03-26",
+      "body_url": "https://kind.krx.co.kr/external/2025/03/26/002645/20250326005570/70980.htm",
+      "body_sha256": "48bd4ed41faa16dad293e3880a64862ec731208696f2a23d22ae08be1c09abed",
+      "fields": {
+        "absorbed_spac_name": "KB제26호스팩",
+        "code": "101970",
+        "company_name": "우양에이치씨(주)",
+        "isin": "KR7101970002",
+        "kind": "spac_listing",
+        "listing_on": "2025-03-28",
+        "security_kind": "보통주",
+        "short_code": "A101970"
+      },
+      "correction": null
+    },
+    "20250327001682": {
+      "publication_on": "2025-03-27",
+      "body_url": "https://kind.krx.co.kr/external/2025/03/27/000555/20250327001682/70980.htm",
+      "body_sha256": "078f45afe7b05572616b69a471688a581d99f167f1948f8b18a77c2ffcf48ea0",
+      "fields": {
+        "absorbed_spac_name": "KB제26호스팩",
+        "code": "101970",
+        "company_name": "우양에이치씨(주)",
+        "isin": "KR7101970002",
+        "kind": "spac_listing",
+        "listing_on": "2025-03-28",
+        "security_kind": "보통주",
+        "short_code": "A101970"
+      },
+      "correction": {
+        "items": [
+          "1.회사명 약명 영문"
+        ],
+        "original_submission_on": "2025-03-26",
+        "publication_on": "2025-03-27",
+        "reason": "영문 약명 정정",
+        "related_document": "SPAC소멸합병상장"
+      }
+    },
+    "20250425001227": {
+      "publication_on": "2025-04-25",
+      "body_url": "https://kind.krx.co.kr/external/2025/04/25/000518/20250425001227/70980.htm",
+      "body_sha256": "660de471eb9bbbfeafa1ffc5aa9b463bb54a10605872209ca2e8ba974705c9c9",
+      "fields": {
+        "absorbed_spac_name": "한국제14호스팩",
+        "code": "364950",
+        "company_name": "(주)에이아이코리아",
+        "isin": "KR7364950006",
+        "kind": "spac_listing",
+        "listing_on": "2025-04-29",
+        "security_kind": "보통주",
+        "short_code": "A364950"
+      },
+      "correction": null
+    },
+    "20250513001143": {
+      "publication_on": "2025-05-13",
+      "body_url": "https://kind.krx.co.kr/external/2025/05/13/000541/20250513001143/70980.htm",
+      "body_sha256": "afeb733dae9daf1ba6655460fde369a82dddaab4b65750cd6e741e991075af33",
+      "fields": {
+        "absorbed_spac_name": "대신밸런스제15호스팩",
+        "code": "125020",
+        "company_name": "티씨머티리얼즈(주)",
+        "isin": "KR7125020008",
+        "kind": "spac_listing",
+        "listing_on": "2025-05-15",
+        "security_kind": "보통주",
+        "short_code": "A125020"
+      },
+      "correction": null
+    },
+    "20250514001166": {
+      "publication_on": "2025-05-14",
+      "body_url": "https://kind.krx.co.kr/external/2025/05/14/000534/20250514001166/70980.htm",
+      "body_sha256": "ebb8ca3017e822ebef9101024b141a6a50bb26bac6e7fa4b6e2395f986578cf0",
+      "fields": {
+        "absorbed_spac_name": "DB금융스팩11호",
+        "code": "188040",
+        "company_name": "(주)바이오포트코리아",
+        "isin": "KR7188040000",
+        "kind": "spac_listing",
+        "listing_on": "2025-05-16",
+        "security_kind": "보통주",
+        "short_code": "A188040"
+      },
+      "correction": null
+    },
+    "20250613001570": {
+      "publication_on": "2025-06-13",
+      "body_url": "https://kind.krx.co.kr/external/2025/06/13/000751/20250613001570/70980.htm",
+      "body_sha256": "dd705100621e85de9a4edc39e22211d4613f2bb66749a1df48e5be4650882a22",
+      "fields": {
+        "absorbed_spac_name": "삼성스팩9호",
+        "code": "455180",
+        "company_name": "케이지에이(주)",
+        "isin": "KR7455180000",
+        "kind": "spac_listing",
+        "listing_on": "2025-06-17",
+        "security_kind": "보통주",
+        "short_code": "A455180"
+      },
+      "correction": null
+    },
+    "20250707001015": {
+      "publication_on": "2025-07-07",
+      "body_url": "https://kind.krx.co.kr/external/2025/07/07/000424/20250707001015/70980.htm",
+      "body_sha256": "efce6c7af0fda354121b60fb71a87c931df72d1607f81fb623f55a14c468daea",
+      "fields": {
+        "absorbed_spac_name": "KB제28호스팩",
+        "code": "462310",
+        "company_name": "주식회사 뉴키즈온",
+        "isin": "KR7462310004",
+        "kind": "spac_listing",
+        "listing_on": "2025-07-09",
+        "security_kind": "보통주",
+        "short_code": "A462310"
+      },
+      "correction": null
+    },
+    "20250820000514": {
+      "publication_on": "2025-08-20",
+      "body_url": "https://kind.krx.co.kr/external/2025/08/20/000164/20250820000514/70980.htm",
+      "body_sha256": "0aad26d703f06e1b43342997ce0582574c51fbca866b9b0a20735671c29cc4c6",
+      "fields": {
+        "absorbed_spac_name": "신영스팩8호",
+        "code": "397810",
+        "company_name": "주식회사 애드포러스",
+        "isin": "KR7397810003",
+        "kind": "spac_listing",
+        "listing_on": "2025-08-22",
+        "security_kind": "보통주",
+        "short_code": "A397810"
+      },
+      "correction": null
+    },
+    "20250905000785": {
+      "publication_on": "2025-09-05",
+      "body_url": "https://kind.krx.co.kr/external/2025/09/05/000324/20250905000785/70980.htm",
+      "body_sha256": "569ae6796a2751cee5a72921cdffa61d554794dd67d31c5a11ad00cd1c951b40",
+      "fields": {
+        "absorbed_spac_name": "미래에셋비전스팩2호",
+        "code": "342870",
+        "company_name": "오아 주식회사",
+        "isin": "KR7342870003",
+        "kind": "spac_listing",
+        "listing_on": "2025-09-09",
+        "security_kind": "보통주",
+        "short_code": "A342870"
+      },
+      "correction": null
+    },
+    "20250908001105": {
+      "publication_on": "2025-09-08",
+      "body_url": "https://kind.krx.co.kr/external/2025/09/08/000408/20250908001105/70980.htm",
+      "body_sha256": "64a82bd57040344cdc783047c12d65596a1804f2c417f3b5635eec1a15627ead",
+      "fields": {
+        "absorbed_spac_name": "미래에셋비전스팩2호",
+        "code": "342870",
+        "company_name": "오아 주식회사",
+        "isin": "KR7342870003",
+        "kind": "spac_listing",
+        "listing_on": "2025-09-09",
+        "security_kind": "보통주",
+        "short_code": "A342870"
+      },
+      "correction": {
+        "items": [
+          "4. 자본금(원)"
+        ],
+        "original_submission_on": "2025-09-08",
+        "publication_on": "2025-09-08",
+        "reason": "이익소각 내역 반영",
+        "related_document": "자본금 수정"
+      }
+    },
+    "20251023001142": {
+      "publication_on": "2025-10-23",
+      "body_url": "https://kind.krx.co.kr/external/2025/10/23/000442/20251023001142/70980.htm",
+      "body_sha256": "7450da0e5f3d911fb0eb8164fe9a8c61c4a79d68bb0ea1dfa8283e9cdd19c930",
+      "fields": {
+        "absorbed_spac_name": "하나28호스팩",
+        "code": "014950",
+        "company_name": "삼익제약(주)",
+        "isin": "KR7014950000",
+        "kind": "spac_listing",
+        "listing_on": "2025-10-27",
+        "security_kind": "보통주",
+        "short_code": "A014950"
+      },
+      "correction": null
+    },
+    "20251113002185": {
+      "publication_on": "2025-11-13",
+      "body_url": "https://kind.krx.co.kr/external/2025/11/13/000939/20251113002185/70980.htm",
+      "body_sha256": "a057a77b3ac2c225cb1b12103b9cc91a5de4012af26093e2a9a12427398590cc",
+      "fields": {
+        "absorbed_spac_name": "IBKS제21호스팩",
+        "code": "459550",
+        "company_name": "(주)알트",
+        "isin": "KR7459550000",
+        "kind": "spac_listing",
+        "listing_on": "2025-11-17",
+        "security_kind": "보통주",
+        "short_code": "A459550"
+      },
+      "correction": null
+    },
+    "20251224001557": {
+      "publication_on": "2025-12-24",
+      "body_url": "https://kind.krx.co.kr/external/2025/12/24/000547/20251224001557/70980.htm",
+      "body_sha256": "8dcf39db54322f43b59ade802ca39c8d5bb2accafeafa25e59014de9ce400ce4",
+      "fields": {
+        "absorbed_spac_name": "IBKS제22호스팩",
+        "code": "012210",
+        "company_name": "삼미금속(주)",
+        "isin": "KR7012210001",
+        "kind": "spac_listing",
+        "listing_on": "2025-12-29",
+        "security_kind": "보통주",
+        "short_code": "A012210"
+      },
+      "correction": null
+    },
+    "20260112001502": {
+      "publication_on": "2026-01-12",
+      "body_url": "https://kind.krx.co.kr/external/2026/01/12/000587/20260112001502/70980.htm",
+      "body_sha256": "55500a29c292ecc5ab02cbca413d75a1bac8c52ff83ec9e31f27fd5c496c0c31",
+      "fields": {
+        "absorbed_spac_name": "미래에셋비전스팩3호",
+        "code": "0004V0",
+        "company_name": "(주)엔비알모션",
+        "isin": "KR70004V0003",
+        "kind": "spac_listing",
+        "listing_on": "2026-01-14",
+        "security_kind": "보통주",
+        "short_code": "A0004V0"
+      },
+      "correction": null
+    },
+    "20260112001630": {
+      "publication_on": "2026-01-12",
+      "body_url": "https://kind.krx.co.kr/external/2026/01/12/000647/20260112001630/70980.htm",
+      "body_sha256": "15334ed71eff90f68c7e904d25ad3869a332b6a4120dbf9bdf4822bd9ca06a0e",
+      "fields": {
+        "absorbed_spac_name": "대신밸런스제18호스팩",
+        "code": "493330",
+        "company_name": "(주)지에프아이",
+        "isin": "KR7493330005",
+        "kind": "spac_listing",
+        "listing_on": "2026-01-14",
+        "security_kind": "보통주",
+        "short_code": "A493330"
+      },
+      "correction": null
+    },
+    "20260401002933": {
+      "publication_on": "2026-04-01",
+      "body_url": "https://kind.krx.co.kr/external/2026/04/01/001210/20260401002933/70980.htm",
+      "body_sha256": "4baf9ad04f8f0073b0b9eee3f5bcbc26ba8d516ba29f437513d15a00481a3bc0",
+      "fields": {
+        "absorbed_spac_name": "비엔케이제2호스팩",
+        "code": "0010F0",
+        "company_name": "(주)보원케미칼",
+        "isin": "KR70010F0005",
+        "kind": "spac_listing",
+        "listing_on": "2026-04-03",
+        "security_kind": "보통주",
+        "short_code": "A0010F0"
+      },
+      "correction": null
+    },
+    "20260515007293": {
+      "publication_on": "2026-05-15",
+      "body_url": "https://kind.krx.co.kr/external/2026/05/15/003194/20260515007293/70980.htm",
+      "body_sha256": "63210ce930b417a13a54ae633b71c2ec6cf95bdd42c87703d375ee0f89d2e144",
+      "fields": {
+        "absorbed_spac_name": "엔에이치스팩30호",
+        "code": "288180",
+        "company_name": "케이피항공산업(주)",
+        "isin": "KR7288180003",
+        "kind": "spac_listing",
+        "listing_on": "2026-05-19",
+        "security_kind": "보통주",
+        "short_code": "A288180"
+      },
+      "correction": null
+    },
+    "20260518000471": {
+      "publication_on": "2026-05-18",
+      "body_url": "https://kind.krx.co.kr/external/2026/05/18/000311/20260518000471/70980.htm",
+      "body_sha256": "e523c642c1628b36d45903f0397912fe2e128c94916a9cd0937d6d4d63a0c2c8",
+      "fields": {
+        "absorbed_spac_name": "엔에이치스팩30호",
+        "code": "288180",
+        "company_name": "케이피항공산업(주)",
+        "isin": "KR7288180003",
+        "kind": "spac_listing",
+        "listing_on": "2026-05-19",
+        "security_kind": "보통주",
+        "short_code": "A288180"
+      },
+      "correction": {
+        "items": [
+          "-"
+        ],
+        "original_submission_on": "2026-05-18",
+        "publication_on": "2026-05-18",
+        "reason": "영문회사명 정정",
+        "related_document": "-"
+      }
+    },
+    "20260518001899": {
+      "publication_on": "2026-05-18",
+      "body_url": "https://kind.krx.co.kr/external/2026/05/18/000858/20260518001899/70980.htm",
+      "body_sha256": "5eae2eb7fc4d855f8ddc66f3df7f76c9fa1394b14b39d6590f9bbef48deb791d",
+      "fields": {
+        "absorbed_spac_name": "엔에이치스팩30호",
+        "code": "288180",
+        "company_name": "케이피항공산업(주)",
+        "isin": "KR7288180003",
+        "kind": "spac_listing",
+        "listing_on": "2026-05-19",
+        "security_kind": "보통주",
+        "short_code": "A288180"
+      },
+      "correction": {
+        "items": [
+          "회사 영문약명"
+        ],
+        "original_submission_on": null,
+        "publication_on": "2026-05-18",
+        "reason": "회사 영문약명 정정",
+        "related_document": "-"
+      }
+    },
+    "20260608001930": {
+      "publication_on": "2026-06-08",
+      "body_url": "https://kind.krx.co.kr/external/2026/06/08/000947/20260608001930/70980.htm",
+      "body_sha256": "ad36e5628517c82a33efddb24fb8fafb1a58b7099866458f2e3142e463d7643e",
+      "fields": {
+        "absorbed_spac_name": "엔에이치스팩29호",
+        "code": "0017J0",
+        "company_name": "주식회사 세미티에스",
+        "isin": "KR70017J0004",
+        "kind": "spac_listing",
+        "listing_on": "2026-06-10",
+        "security_kind": "보통주",
+        "short_code": "A0017J0"
+      },
+      "correction": null
+    }
+  },
+  "archive": {
+    "sha256": "3b405be695b698a6af91aca7127c253a3488d73cdccb76e5ae261084d87c72ba",
+    "bytes": 4151857,
+    "files_verified_on_gcp": 2537
+  }
+}
