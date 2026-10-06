@@ -63,3 +63,17 @@ wrong dates/types, alphabetic issuer identifiers, ambiguous live/dead matches,
 delisted and absent scan codes, read-only file purity, reserved-panel refusal,
 dirty-source refusal and evidence overwrite refusal. A direct public-source
 parse reproduced **115 rows: 62 SPAC-surviving, 53 SPAC-disappearing**.
+
+## Real-host transport correction
+
+At committed code `1c3f3f5`, all 23 new tests passed on GCP, but the real KIND
+request returned HTTP 403. The public query worked locally. The first attempt
+left an empty evidence directory and no successful report. No reason for the
+403 was established, and no claim of GCP acquisition success is made.
+
+The command now also accepts an explicitly saved public response, paired with
+its original timezone-aware retrieval timestamp. It hashes and retains those
+exact bytes and records `saved_html` as the transport. This imports public
+metadata into the isolated research directory; it does not copy trading
+databases out of GCP or change credentials. The fixed query URL and timestamp
+are acquisition provenance, not facts an HTML parser can independently prove.

@@ -133,6 +133,33 @@ def test_dirty_source_refused_before_read_or_network(tmp_path, monkeypatch):
         am.main(["--scan-db", "absent", "--identity-db", "absent", "--output-dir", str(tmp_path)])
 
 
+def test_saved_public_response_preserves_original_timestamp_without_network(tmp_path, monkeypatch):
+    scan, master = databases(tmp_path)
+    monkeypatch.setattr(am.subprocess, "check_output", lambda cmd, **kw: "a" * 40 if kw else b"")
+    monkeypatch.setattr(am, "fetch_listings", lambda: pytest.fail("offline import must not fetch"))
+    source = tmp_path / "source.html"
+    source.write_bytes(page())
+    output = tmp_path / "audit"
+    args = ["--scan-db", str(scan), "--identity-db", str(master), "--output-dir", str(output),
+            "--source-html", str(source), "--retrieved-at", "2026-10-06T07:00:00+00:00"]
+    assert am.main(args) == 0
+    result = json.loads((output / "result.json").read_text())
+    assert result["retrieved_at"] == "2026-10-06T07:00:00+00:00"
+    assert result["source_transport"] == "saved_html"
+    assert (output / "kind-mergers.html").read_bytes() == source.read_bytes()
+
+
+@pytest.mark.parametrize("extra", [
+    ["--source-html", "absent.html"],
+    ["--retrieved-at", "2026-10-06T07:00:00+00:00"],
+    ["--source-html", "absent.html", "--retrieved-at", "2026-10-06T07:00:00"],
+])
+def test_saved_response_requires_original_timezone_timestamp(extra, tmp_path, monkeypatch):
+    monkeypatch.setattr(am, "read_metadata", lambda *a: pytest.fail("must reject before data"))
+    with pytest.raises(SystemExit):
+        am.main(["--scan-db", "absent", "--identity-db", "absent", "--output-dir", str(tmp_path), *extra])
+
+
 def test_fetch_is_bounded_and_requests_only_observed_metadata_fields(monkeypatch):
     class Oversized:
         def __enter__(self):

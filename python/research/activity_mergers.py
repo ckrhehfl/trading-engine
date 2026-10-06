@@ -179,7 +179,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--scan-db", type=Path, required=True)
     parser.add_argument("--identity-db", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True, help="new directory; never overwrite evidence")
+    parser.add_argument("--source-html", type=Path, help="saved response to the fixed public query")
+    parser.add_argument("--retrieved-at", help="original ISO timestamp with timezone; required for saved HTML")
     args = parser.parse_args(argv)
+    if bool(args.source_html) != bool(args.retrieved_at):
+        parser.error("--source-html and --retrieved-at must be supplied together")
+    retrieved_at = datetime.fromisoformat(args.retrieved_at) if args.retrieved_at else None
+    if retrieved_at is not None and retrieved_at.utcoffset() is None:
+        parser.error("--retrieved-at must include a timezone")
     root = Path(__file__).resolve().parents[2]
     sources = ["python/research/activity_mergers.py", "python/research/activity_portfolio.py",
                "python/research/__init__.py", "python/research/experiment_log.py",
@@ -189,10 +196,18 @@ def main(argv: list[str] | None = None) -> int:
     version = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
     metadata = read_metadata(args.scan_db, args.identity_db)
     args.output_dir.mkdir(parents=True, exist_ok=False)
-    payload = fetch_listings()
+    if args.source_html:
+        with args.source_html.open("rb") as source:
+            payload = source.read(MAX_BYTES + 1)
+        if len(payload) > MAX_BYTES:
+            raise ValueError("oversized merger listing response")
+    else:
+        payload = fetch_listings()
+        retrieved_at = datetime.now(timezone.utc)
     # Retain a rejected response for diagnosis too; result.json exists only on success.
     (args.output_dir / "kind-mergers.html").write_bytes(payload)
-    result = {"code_version": version, "retrieved_at": datetime.now(timezone.utc).isoformat(),
+    result = {"code_version": version, "retrieved_at": retrieved_at.isoformat(),
+              "source_transport": "saved_html" if args.source_html else "https",
               "source_url": URL, "source_sha256": hashlib.sha256(payload).hexdigest(),
               **reconcile(parse_listings(payload), metadata)}
     (args.output_dir / "result.json").write_text(
