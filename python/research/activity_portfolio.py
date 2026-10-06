@@ -119,13 +119,14 @@ def eligible(series: Series, day: int, lookback: int, threshold: float) -> bool:
     return baseline > 0 and series.turnover[day] / baseline >= threshold
 
 
-def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
+def simulate(dates: list[date], panel: dict[str, Series], params: dict, *, trace_lots: bool = False) -> dict:
     """Maintain one cash-funded book through halts; never invent a last-bar exit.
 
     Signals use yesterday's close. Due sales execute at today's open if the
     daily bar is present and not frozen; otherwise they remain pending.
     The daily-bar fill proxy cannot establish queue availability at a limit.
     Such fills are counted, not mislabeled as halted observations.
+    Optional lot observation never supplies an input to portfolio accounting.
     """
     lookback, holding, slots = params["lookback"], params["holding_sessions"], params["slots"]
     if any(type(v) is not int or v < 1 for v in (lookback, holding, slots)):
@@ -139,6 +140,8 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
         raise ValueError("calendar needs two settlement sessions after the end")
     cash, previous = 1.0, 1.0
     positions: dict[str, dict] = {}
+    lot_intervals: list[dict] = []
+    active_lots: dict[str, dict] = {}
     returns, navs = [], []
     diagnostics = Counter()
     trades = 0
@@ -159,6 +162,10 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
                     diagnostics["delayed_exits"] += i > position["due"]
                     diagnostics["limit_locked_fills"] += bool(series.locked[i])
                     trades += 1
+                    if trace_lots:
+                        lot = active_lots.pop(code)
+                        lot["exit_date"] = dates[i].isoformat()
+                        lot["status"] = "closed"
                     del positions[code]
                 else:
                     diagnostics["pending_exit_sessions"] += 1
@@ -187,6 +194,18 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
                 cash -= budget
                 diagnostics["entries"] += 1
                 diagnostics["limit_locked_fills"] += bool(series.locked[i])
+                if trace_lots:
+                    due = positions[code]["due"]
+                    lot = {
+                        "lot_id": f"{code}:{dates[i].isoformat()}", "code": code,
+                        "formation_date": dates[known].isoformat(),
+                        "entry_date": dates[i].isoformat(),
+                        "due_date": dates[due].isoformat() if due < len(dates) else None,
+                        "exit_date": None, "audit_end_date": dates[end].isoformat(),
+                        "status": "unresolved",
+                    }
+                    lot_intervals.append(lot)
+                    active_lots[code] = lot
         for code, position in positions.items():
             series = panel[code]
             if series.closes[i] and not series.frozen[i]:
@@ -197,10 +216,13 @@ def simulate(dates: list[date], panel: dict[str, Series], params: dict) -> dict:
         returns.append(nav / previous - 1)
         navs.append(nav)
         previous = nav
-    return {"returns": returns, "navs": navs, "diagnostics": dict(diagnostics),
+    book = {"returns": returns, "navs": navs, "diagnostics": dict(diagnostics),
             "closed_trades": trades, "unresolved_positions": len(positions),
             "terminal_holdings": terminal_holdings(dates, panel, positions, end),
             "unresolved_marked_value": sum(p["shares"] * p["mark"] for p in positions.values())}
+    if trace_lots:
+        book["lot_intervals"] = lot_intervals
+    return book
 
 
 def terminal_holdings(dates: list[date], panel: dict[str, Series], positions: dict, end: int) -> list[dict]:
@@ -238,6 +260,79 @@ def audit_holdings(book: dict, reference: dict) -> dict:
         raise ValueError("replay accounting differs from the recorded pilot")
     return {**actual, "terminal_holdings": book["terminal_holdings"],
             "interpretation": "inventory diagnosis only; marks are not recovery; comparison remains stopped"}
+
+
+def audit_lot_coverage(book: dict, reference: dict) -> dict:
+    """Reconcile every observed lot before emitting dates and accounting only."""
+    actual = {key: book[key] for key in ("diagnostics", "closed_trades", "unresolved_positions")}
+    if actual != reference:
+        raise ValueError("replay accounting differs from the recorded pilot")
+    counts = (actual["diagnostics"].get("entries", 0), actual["closed_trades"],
+              actual["unresolved_positions"])
+    lots = book.get("lot_intervals")
+    if (any(type(value) is not int or value < 0 for value in counts)
+            or not isinstance(lots, list) or len(lots) != counts[0]
+            or counts[0] != counts[1] + counts[2]):
+        raise ValueError("lot trace does not reconcile to entries, closes and residuals")
+    fields = {"lot_id", "code", "formation_date", "entry_date", "due_date",
+              "exit_date", "audit_end_date", "status"}
+    seen, audit_ends = set(), set()
+    statuses = Counter()
+    intervals: dict[str, list[tuple[date, date | None]]] = {}
+    unresolved = Counter()
+    for lot in lots:
+        if not isinstance(lot, dict) or set(lot) != fields:
+            raise ValueError("lot trace must contain only the registered identifiers and dates")
+        if not isinstance(lot["code"], str) or not lot["code"]:
+            raise ValueError("invalid lot code")
+        if lot["lot_id"] != f"{lot['code']}:{lot['entry_date']}" or lot["lot_id"] in seen:
+            raise ValueError("invalid or duplicate lot identifier")
+        seen.add(lot["lot_id"])
+        parsed = {}
+        for key in ("formation_date", "entry_date", "due_date", "exit_date", "audit_end_date"):
+            value = lot[key]
+            if value is None and key in {"due_date", "exit_date"}:
+                parsed[key] = None
+                continue
+            try:
+                parsed[key] = date.fromisoformat(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"invalid lot {key}") from exc
+            if parsed[key].isoformat() != value:
+                raise ValueError(f"invalid lot {key}")
+        formation, entry, due, exit_day, end = (parsed[key] for key in (
+            "formation_date", "entry_date", "due_date", "exit_date", "audit_end_date"))
+        if not formation < entry <= end or due is not None and due <= entry:
+            raise ValueError("invalid lot date order")
+        status = lot["status"]
+        if status == "closed":
+            if exit_day is None or not entry < exit_day <= end or due is None or exit_day < due:
+                raise ValueError("closed lot must have an actual exit on or after its due date")
+        elif status == "unresolved":
+            if exit_day is not None:
+                raise ValueError("unresolved lot cannot have an exit date")
+            unresolved[(lot["code"], lot["entry_date"], lot["due_date"])] += 1
+        else:
+            raise ValueError("invalid lot status")
+        statuses[status] += 1
+        audit_ends.add(end)
+        intervals.setdefault(lot["code"], []).append((entry, exit_day))
+    if statuses["closed"] != counts[1] or statuses["unresolved"] != counts[2] or len(audit_ends) > 1:
+        raise ValueError("lot statuses or audit end dates do not reconcile")
+    for entries in intervals.values():
+        entries.sort()
+        for previous, current in zip(entries, entries[1:]):
+            if previous[1] is None or current[0] < previous[1]:
+                raise ValueError("overlapping lots for the same code")
+    try:
+        terminal = Counter((row["code"], row["entry_date"], row["due_date"])
+                           for row in book["terminal_holdings"])
+    except (KeyError, TypeError) as exc:
+        raise ValueError("terminal holdings are required to reconcile unresolved lots") from exc
+    if unresolved != terminal:
+        raise ValueError("unresolved lots differ from terminal holdings")
+    return {**actual, "lot_intervals": lots,
+            "interpretation": "retrospective v1 lot coverage only; no recovery or instrument-type certification; comparison remains stopped"}
 
 
 def block_standard_error(values: list[float], block: int, seed: int, repetitions: int) -> float:
@@ -303,7 +398,7 @@ def committed_specification(root: Path, path: Path) -> bytes:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Run committed calibration or its inventory audit; log before loading data."""
+    """Run committed calibration or diagnostic audits; log before loading data."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--scan-db", type=Path, required=True)
@@ -315,24 +410,28 @@ def main(argv: list[str] | None = None) -> int:
         raise ValueError("run from the repository root so logged code_version names this checkout")
     raw = committed_specification(root, args.spec)
     spec = json.loads(raw)
-    if spec["mode"] not in {"discovery_calibration", "discovery_holdings_audit"} or spec["promotion_allowed"] is not False:
-        raise ValueError("only non-promotable calibration or holdings audit is supported")
+    audit_mode = spec["mode"] in {"discovery_holdings_audit", "discovery_lot_coverage_audit"}
+    if (spec["mode"] != "discovery_calibration" and not audit_mode) or spec["promotion_allowed"] is not False:
+        raise ValueError("only non-promotable calibration or diagnostic audits are supported")
     if spec["window"] != {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"}:
         raise ValueError("unregistered data window")
-    if spec["mode"] == "discovery_holdings_audit":
+    if audit_mode:
         validate_audit_specification(root, spec)
 
     def evaluate():
         """Load after the durable start; return only the registered report fields."""
         dates, panel, digest, quality = load_panel(args.scan_db, args.calendar_db)
-        if spec["mode"] == "discovery_holdings_audit" and digest != spec["reference_dataset_sha256"]:
+        if audit_mode and digest != spec["reference_dataset_sha256"]:
             raise ValueError("replay dataset differs from the recorded pilot")
-        book = simulate(dates, panel, spec["parameters"])
-        if spec["mode"] == "discovery_holdings_audit":
-            result = audit_holdings(book, spec["reference_accounting"])
-            result["reference_run_id"] = spec["reference_run_id"]
+        if spec["mode"] == "discovery_lot_coverage_audit":
+            book = simulate(dates, panel, spec["parameters"], trace_lots=True)
+            result = audit_lot_coverage(book, spec["reference_accounting"])
         else:
-            result = calibration(book, spec["parameters"])
+            book = simulate(dates, panel, spec["parameters"])
+            result = (audit_holdings(book, spec["reference_accounting"]) if audit_mode
+                      else calibration(book, spec["parameters"]))
+        if audit_mode:
+            result["reference_run_id"] = spec["reference_run_id"]
         return {**result, "dataset_sha256": digest, "scan_progress": quality}
 
     record = experiment_log.run_discovery_trial(
@@ -345,7 +444,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def validate_audit_specification(root: Path, spec: dict) -> None:
-    """An inventory audit must retain the committed pilot's exact parameters."""
+    """A diagnostic audit must retain the committed pilot's exact parameters."""
     raw = committed_specification(root, root / spec["reference_specification"])
     if hashlib.sha256(raw).hexdigest() != spec["reference_specification_sha256"]:
         raise ValueError("reference specification hash differs")

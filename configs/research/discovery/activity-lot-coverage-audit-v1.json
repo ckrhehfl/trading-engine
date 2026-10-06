@@ -1,0 +1,47 @@
+{
+  "study_id": "activity-lot-coverage-audit-v1",
+  "mode": "discovery_lot_coverage_audit",
+  "promotion_allowed": false,
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "reference_run_id": "13adac55-56b3-460a-842d-7299105b5eca",
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "reference_specification_sha256": "b344f20598d94d0f19a65edeb9394cc511f28318f872a5736d3a405835a79ff7",
+  "reference_dataset_sha256": "fc8a57eae72c33a84e31a3bc96b45110b1db2903c22c3c5b6fd3c67d0e2809e6",
+  "reference_accounting": {
+    "diagnostics": {
+      "entries": 245,
+      "limit_locked_fills": 1,
+      "invested_sessions": 1834,
+      "delayed_exits": 2,
+      "unpriced_or_frozen_position_sessions": 5159,
+      "pending_exit_sessions": 4408,
+      "unfilled_entries": 2
+    },
+    "closed_trades": 237,
+    "unresolved_positions": 8
+  },
+  "protocol": [
+    "Task AM observes all successful entries and actual exits of the original v1 pilot, including repeated entries of the same code. The comparison stop and holdout reservation remain in force.",
+    "Replay the exact original parameters, window and dataset. Require every recorded accounting counter and all lot counts, identifiers and statuses to reconcile before publishing the diagnostic result.",
+    "Emit only accounting counters and lot identifiers, formation dates, entry dates, scheduled exit dates, actual exit dates or null, audit end dates and closed/unresolved statuses. Every audit end date is the registered window end; a closed holding interval ends at its actual exit date. No return, NAV, price or terminal-mark summary, bootstrap, detection floor, ranking or comparison is reported.",
+    "Trace fields are observations only and never influence selection, eligibility, allocation, fills, marks or cash. No retrospective corporate-action adjustment, simulated cash recovery or successor conversion is added.",
+    "Lot intervals are retrospective v1 diagnostic obligations, not point-in-time instrument classifications or future corrected-simulator lots. Merger listing overlaps and pre-entry history identify matters to investigate; absence of a matching merger event cannot certify an interval free of corporate actions. A merger listing date is not a merger effective date.",
+    "Merge reviewed implementation and specification before execution in the isolated GCP research checkout under the established resource limits. Log a durable discovery start before loading the read-only spent panel; retain full logs and audit artifacts on GCP and return bounded accounting and coverage summaries only.",
+    "Do not modify collector databases, checkout, processes, schedules or credentials, read reserved pre-2019 prices, or extend the price window. Full candidate-pool and lookback classification, other corporate actions, successor lots, recovery and raw/adjusted quantity compatibility remain separate Task AG gates."
+  ]
+}
