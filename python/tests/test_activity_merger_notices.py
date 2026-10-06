@@ -108,6 +108,66 @@ def test_identical_correction_retains_earliest_actual_publication_without_backda
     assert result["known_on"] is None
 
 
+def renamed_listing_versions(publication_on="2019-02-01"):
+    listing, renaming = notice(), notice("rename")
+    correction = deepcopy(listing)
+    correction.update(doc_no=publication_on.replace("-", "") + "999999",
+                      publication_on=publication_on,
+                      correction={"publication_on": publication_on,
+                                  "original_submission_on": listing["publication_on"],
+                                  "items": [{"field": "1.회사명", "before": listing["fields"]["company_name"],
+                                             "after": renaming["fields"]["after_company_name"]}]})
+    correction["fields"]["company_name"] = renaming["fields"]["after_company_name"]
+    return listing, renaming, correction
+
+
+@pytest.mark.parametrize("publication_on", ["2019-01-31", "2019-02-01"])
+def test_post_listing_name_correction_uses_dated_rename_and_delays_evidence_availability(publication_on):
+    listing, renaming, correction = renamed_listing_versions(publication_on)
+    result = am.verify_candidate(candidate(), [correction, renaming, listing])
+    assert result["status"] == "listing_identity_verified"
+    assert result["operating_name_at_listing"] == renaming["fields"]["after_company_name"]
+    assert result["notice_evidence_available_on"] == publication_on
+    assert {item["doc_no"] for item in result["evidence"]} == {
+        listing["doc_no"], renaming["doc_no"], correction["doc_no"]}
+    assert result["historical_intervals_ready"] is False
+    assert result["known_on"] is None
+
+
+@pytest.mark.parametrize("failure", ["before_listing", "late_rename", "no_correction", "unrelated_name", "changed_code"])
+def test_rename_bridge_cannot_ignore_timing_correction_provenance_or_other_identity_changes(failure):
+    publication_on = "2019-01-30" if failure == "before_listing" else "2019-02-01"
+    listing, renaming, correction = renamed_listing_versions(publication_on)
+    if failure == "late_rename":
+        renaming.update(publication_on="2019-02-02", doc_no="20190202001025")
+    elif failure == "no_correction":
+        correction.pop("correction")
+    elif failure == "unrelated_name":
+        correction["fields"]["company_name"] = "별개회사"
+    elif failure == "changed_code":
+        correction["fields"]["code"] = "123456"
+    result = am.verify_candidate(candidate(), [listing, correction, renaming])
+    assert_unresolved(result, "conflicting_listing_versions")
+    assert correction in result["evidence"]
+    assert "operating_name_at_listing" not in result
+    assert "notice_evidence_available_on" not in result
+
+
+def test_rename_bridge_still_requires_all_rename_versions_to_agree():
+    listing, renaming, correction = renamed_listing_versions()
+    conflicting_rename = deepcopy(renaming)
+    conflicting_rename.update(publication_on="2019-02-02", doc_no="20190202001025")
+    conflicting_rename["fields"]["after_company_name"] = "다른회사"
+    result = am.verify_candidate(candidate(), [listing, renaming, correction, conflicting_rename])
+    assert_unresolved(result, "conflicting_rename_versions")
+    assert conflicting_rename in result["evidence"]
+
+
+def test_renamed_correction_alone_does_not_invent_the_original_spac_listing():
+    _, renaming, correction = renamed_listing_versions()
+    assert_unresolved(am.verify_candidate(candidate(), [renaming, correction]), "missing_linked_rename")
+
+
 def test_disappearing_spac_checks_isin_and_never_infers_absorbed_spac_code():
     listing = notice("spac_listing")
     result = am.verify_candidate(disappearing(), [listing])
@@ -239,6 +299,19 @@ def test_correction_metadata_is_preserved_outside_identity_without_false_conflic
     assert original["correction"] is None
     assert corrected["publication_on"] == "2019-02-01"
     assert result["notice_evidence_available_on"] == "2019-01-30"
+
+
+def test_acquisition_preserves_name_correction_as_required_later_evidence(monkeypatch):
+    correction = parsed_correction(monkeypatch, changes={"company_name": "(주)네오셈"})
+    result = am.acquire_candidate(candidate(), SavedResponses(acquisition_responses(correction=True)))
+    assert result["status"] == "listing_identity_verified"
+    assert result["notice_evidence_available_on"] == "2019-02-01"
+    corrected = next(item for item in result["evidence"] if item["doc_no"] == "20190201000001")
+    assert corrected["correction"] == correction
+    assert corrected["fields"]["company_name"] == "(주)네오셈"
+    assert "correction" not in corrected["fields"]
+    assert result["historical_intervals_ready"] is False
+    assert result["known_on"] is None
 
 
 @pytest.mark.parametrize("field,value", [

@@ -112,3 +112,19 @@ version from the preamble's before/after text or assign a correction the origina
 submission date. Do not compare provenance differences as identity differences;
 continue to reject changes in the asserted identity fields. Preserve both
 acquisitions and create a separate offline interpretation result.
+
+The first offline interpretation (`6247f00`, zero network requests) parsed all
+164 distinct bodies, including nine corrections. It verified 102 candidates;
+Proicheon (321260) and Lycom (388790) remained name conflicts. In both cases the
+original additional-listing notice uses the SPAC name, while a later correction
+uses the operating-company name. Their separately acquired name-change notices
+explicitly link those exact names on the same listing date; code, date and all
+other extracted listing fields agree across versions.
+
+Resolve only that observed case: a correction published on/after the listing
+and after the linking rename notice may use the exact verified after-name.
+An arbitrary new name, an earlier correction, any code/date/other field change,
+or a conflicting rename remains unresolved. Include the later correction in
+the selected evidence and use the latest publication date of that whole set,
+so this reconciliation never backdates availability. This remains notice-level
+identity evidence with `known_on=null`, not historical interval certification.

@@ -159,9 +159,10 @@ def company_key(value: str) -> str:
     return re.sub(r"^(?:주식회사|\(주\))|(?:주식회사|\(주\))$", "", value)
 
 
-def facts_key(notice: dict) -> bytes:
+def facts_key(notice: dict, *, omit_company: bool = False) -> bytes:
     fields = {key: company_key(value) if key.endswith("name") else value
-              for key, value in notice["fields"].items() if key != "correction"}
+              for key, value in notice["fields"].items()
+              if key != "correction" and not (omit_company and key == "company_name")}
     return encoded(fields)
 
 
@@ -178,7 +179,7 @@ def verify_candidate(candidate: dict, notices: list[dict]) -> dict:
     # A later conflicting version of an otherwise matching receipt cannot be ignored.
     matching_receipts = {n["receipt_no"] for n in matches}
     versions = [n for n in notices if n["receipt_no"] in matching_receipts]
-    if len({facts_key(n) for n in versions}) != 1:
+    if len({facts_key(n, omit_company=kind == "additional") for n in versions}) != 1:
         result.update(reason="conflicting_listing_versions", evidence=versions)
         return result
     matches.sort(key=lambda n: (n["publication_on"], n["doc_no"]))
@@ -200,6 +201,21 @@ def verify_candidate(candidate: dict, notices: list[dict]) -> dict:
         renames.sort(key=lambda n: (n["publication_on"], n["doc_no"]))
         evidence.append(renames[0])
         operating_name = renames[0]["fields"]["after_company_name"]
+        before_name = company_key(renames[0]["fields"]["before_company_name"])
+        after_name = company_key(operating_name)
+        for version in versions:
+            name = company_key(version["fields"]["company_name"])
+            if name == before_name:
+                continue
+            # Two observed later corrections use the already-renamed issuer.
+            # Only the dated, separately verified rename can bridge those names.
+            if (name != after_name or not version.get("correction")
+                    or version["publication_on"] < candidate["listed_on"]
+                    or version["publication_on"] < renames[0]["publication_on"]):
+                result.update(reason="conflicting_listing_versions", evidence=versions + renames)
+                return result
+            if version["doc_no"] not in {n["doc_no"] for n in evidence}:
+                evidence.append(version)
     else:
         operating_name = listing["fields"]["company_name"]
         if listing["fields"]["isin"] != candidate["candidate_isin"]:
