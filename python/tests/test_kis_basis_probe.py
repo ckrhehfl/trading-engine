@@ -121,12 +121,15 @@ def test_fixed_matrix_is_72_calls_with_every_control_before_its_targets(run_inpu
 
 
 @pytest.mark.parametrize("fault", ["pending_fsync", "rename"])
-def test_final_publication_failure_never_leaves_a_success_artifact(run_inputs, monkeypatch, fault):
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_final_publication_failure_never_leaves_a_success_artifact(run_inputs, monkeypatch, fault, cleanup_fails):
     scan, output = run_inputs
     pending = output / ".result.pending"
     failure = output / "failure.json"
     original_fsync = probe.os.fsync
     original_rename = Path.rename
+    original_unlink = Path.unlink
+    publication_error = OSError("synthetic final publication failure")
     pending_synced = False
     failure_synced = False
     injected = []
@@ -137,7 +140,7 @@ def test_final_publication_failure_never_leaves_a_success_artifact(run_inputs, m
         is_pending = pending.exists() and pending.stat().st_ino == inode
         if fault == "pending_fsync" and is_pending:
             injected.append("pending_fsync")
-            raise OSError("synthetic final sync failure")
+            raise publication_error
         original_fsync(fd)
         if is_pending:
             pending_synced = True
@@ -148,15 +151,24 @@ def test_final_publication_failure_never_leaves_a_success_artifact(run_inputs, m
         if path == pending and fault == "rename":
             assert pending_synced, "publication attempted before durable output"
             injected.append("rename")
-            raise OSError("synthetic final rename failure")
+            raise publication_error
         return original_rename(path, target)
+
+    def unlink(path, *args, **kwargs):
+        if path == pending and cleanup_fails:
+            injected.append("cleanup")
+            raise OSError("synthetic cleanup failure must not replace original")
+        return original_unlink(path, *args, **kwargs)
 
     monkeypatch.setattr(probe.os, "fsync", fsync)
     monkeypatch.setattr(Path, "rename", rename)
+    monkeypatch.setattr(Path, "unlink", unlink)
     install_quotes(monkeypatch)
-    with pytest.raises(OSError, match="synthetic final"):
+    with pytest.raises(OSError, match="synthetic final") as exc:
         probe.acquire(scan, output, session)
-    assert injected == [fault]
+    assert exc.value is publication_error
+    assert injected == ([fault, "cleanup"] if cleanup_fails else [fault])
+    assert pending.exists() is cleanup_fails
     assert failure_synced
     assert read_json(failure)["logical_calls"] == 72
     assert read_json(failure)["quotation_http_attempts"] == 72
@@ -435,6 +447,78 @@ class HttpSession:
 
 def http_response(payload):
     return io.BytesIO(json.dumps(payload).encode())
+
+
+@pytest.mark.parametrize("stage", ["initial", "expired_refresh"])
+def test_session_opening_during_token_cache_miss_blocks_post_and_get(run_inputs, monkeypatch, stage):
+    scan, output = run_inputs
+    protected = False
+    cache_reads = []
+    requests = []
+    cache_writes = []
+    clock_reads = []
+
+    def cached_token(host, app_key):
+        nonlocal protected
+        cache_reads.append(host)
+        if stage == "expired_refresh" and len(cache_reads) == 1:
+            return "synthetic-bootstrap-token"
+        protected = True
+        return None
+
+    def monotonic():
+        clock_reads.append(None)
+        return 0 if len(clock_reads) == 1 else client.TOKEN_REUSE_S + 1
+
+    def urlopen(request, **kwargs):
+        requests.append(request.method)
+        if request.method == "POST":
+            return http_response({"access_token": "synthetic-issued-token"})
+        return http_response({"rt_cd": "0", "output2": []})
+
+    monkeypatch.setenv("KIS_APP_KEY", "synthetic-key")
+    monkeypatch.setenv("KIS_APP_SECRET", "synthetic-secret")
+    monkeypatch.setattr(probe, "in_continuous_session", lambda: protected)
+    monkeypatch.setattr(client, "_read_cached_token", cached_token)
+    monkeypatch.setattr(client, "_write_cached_token", lambda *args: cache_writes.append(args))
+    monkeypatch.setattr(client.time, "monotonic", monotonic)
+    monkeypatch.setattr(client.urllib.request, "urlopen", urlopen)
+
+    assert probe.main(["--scan-db", str(scan), "--output-dir", str(output)]) == 1
+    assert requests == [], "token POST or quotation GET escaped the final session guard"
+    assert cache_writes == []
+    assert len(cache_reads) == (1 if stage == "initial" else 3)
+    assert read_json(output / "failure.json")["quotation_http_attempts"] == 0
+    assert_rejected(output, "protected_session")
+
+
+@pytest.mark.parametrize("cache_hit", [False, True])
+def test_token_guard_allows_cache_reuse_and_outside_session_post(monkeypatch, cache_hit):
+    requests = []
+    cache_writes = []
+    guard_calls = []
+
+    def guard():
+        guard_calls.append(None)
+        probe.outside_session()
+
+    def urlopen(request, **kwargs):
+        requests.append(request.method)
+        if request.method == "POST":
+            assert request.full_url == client.PAPER_HOST + client.TOKEN_PATH
+            return http_response({"access_token": "synthetic-token"})
+        return http_response({"rt_cd": "0", "output2": [vendor_row()]})
+
+    monkeypatch.setattr(client, "_read_cached_token", lambda *args: "synthetic-token" if cache_hit else None)
+    monkeypatch.setattr(client, "_write_cached_token", lambda *args: cache_writes.append(args))
+    monkeypatch.setattr(client.urllib.request, "urlopen", urlopen)
+    authenticated = client.KisSession("synthetic-key", "synthetic-secret", before_token_request=guard)
+    assert client.fetch_daily_page(
+        authenticated, "033660", "20210805", "20210805", adjusted="0",
+        before_headers=probe.outside_session, before_attempt=probe.outside_session,
+    ) == [bar()]
+    assert requests == (["GET"] if cache_hit else ["POST", "GET"])
+    assert len(guard_calls) == len(cache_writes) == (0 if cache_hit else 1)
 
 
 def test_real_fetch_counts_transport_and_application_retries_separately(run_inputs, monkeypatch):

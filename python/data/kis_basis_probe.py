@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import argparse
 from collections.abc import Callable
-from contextlib import closing
+from contextlib import closing, suppress
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -218,8 +218,13 @@ def acquire(scan_path: Path, output: Path, session_factory: Callable[[], KisSess
         # Publish success only after the complete record has been synced.
         # A disk-full/fsync failure must not leave a success-shaped result.
         pending = output / ".result.pending"
-        persist(pending, result)
-        pending.rename(output / "result.json")
+        try:
+            persist(pending, result)
+            pending.rename(output / "result.json")
+        except BaseException:
+            with suppress(OSError):
+                pending.unlink(missing_ok=True)
+            raise
         return result
     except BaseException as exc:
         # Exception strings/objects may carry credentials or vendor payloads.
@@ -244,7 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     if not app_key or not app_secret:
         parser.error("operator-entered KIS_APP_KEY and KIS_APP_SECRET are required")
     try:
-        result = acquire(args.scan_db, args.output_dir, lambda: KisSession(app_key, app_secret, host=PAPER_HOST))
+        result = acquire(args.scan_db, args.output_dir, lambda: KisSession(
+            app_key, app_secret, host=PAPER_HOST, before_token_request=outside_session,
+        ))
     except (Exception, KeyboardInterrupt):
         # Avoid a traceback chaining a vendor response, token or request object.
         print("Basis diagnostic refused; inspect sanitized evidence if its directory was created.", file=sys.stderr)

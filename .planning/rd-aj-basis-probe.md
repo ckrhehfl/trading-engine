@@ -137,3 +137,30 @@ was outside the existing name-based print guard. It was renamed to
 well as the synthetic secret-bearing exception tests. Full-suite/CI and
 CodeRabbit outcomes are recorded by the PR; these focused checks alone do
 not establish completion of those gates.
+
+## CodeRabbit review corrections
+
+Review of the first implementation identified two remaining boundaries.
+Checking before `headers()` was insufficient if a cache read straddled the
+session boundary: initial issuance and later refresh must also check
+immediately before the token POST. The diagnostic binds the same guard to
+its `KisSession` for its lifetime; `issue_token` invokes it after cache lookup
+and request preparation but outside its network-error handler. Other callers
+omit the optional callback and retain their existing token/cache behavior.
+This still cannot cancel a request already in flight.
+
+A failed final sync or rename also left a success-shaped temporary record.
+Publication failures now attempt to remove `.result.pending` before
+re-raising the original error. An `OSError` during this cleanup must not mask
+that error. The absence of published `result.json` remains the success gate;
+cleanup and `failure.json` cannot be guaranteed if the filesystem itself
+refuses further writes. Never interpret a pending file as a completed run.
+
+Six revision regression cases failed against the first implementation before
+these fixes. Afterwards, the diagnostic's 70 tests and the existing 11 token
+session tests all passed (81 total). The token-boundary tests exercise the real
+CLI/session/issuance path with mocked cache and HTTP: initial issuance and
+expired-token renewal both sent zero POSTs/GETs when cache lookup crossed into
+the protected session. Valid cache hits and permitted token POSTs still work.
+Cleanup-failure tests preserve the original exception object and successfully
+sync the sanitized failure record when that independent write remains possible.
