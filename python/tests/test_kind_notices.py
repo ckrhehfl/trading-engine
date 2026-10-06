@@ -367,3 +367,91 @@ def test_spac_disappearance_keeps_operating_company_code_isin_and_absorbed_name(
 def test_notice_shape_changes_cannot_yield_apparently_verified_identity(payload, kind):
     with pytest.raises(kn.KindParseError):
         kn.parse_notice(payload, kind)
+
+
+def corrected(body, *, related="추가상장(타법인흡수합병)", published="2019-02-01",
+              original="2019-01-30", item="6. 기타", before="A999999", after="A888888"):
+    prefix = f"""<p class="CORRECTION"><a>정 정 신 고 (보고)</a></p>
+    <table><tr><td><br/></td><td>{published}</td></tr></table>
+    <table>
+      <tr><td>1. 정정관련 공시서류 :</td><td>{related}</td></tr>
+      <tr><td>2. 정정관련 공시서류 제출일 :</td><td>{original}</td></tr>
+      <tr><td>3. 정정사유 :</td><td>공시 항목 정정</td></tr>
+      <tr><td>4. 정정사항 :</td><td>하기 참조</td></tr>
+    </table>
+    <table><tr><th>항목</th><th>정정전</th><th>정정후</th></tr>
+      <tr><td>{item}</td><td><pre>{before}</pre></td><td><pre>{after}</pre></td></tr>
+    </table>"""
+    return body.replace(b"<body>", b"<body>" + prefix.encode(), 1)
+
+
+@pytest.mark.parametrize("body,kind,related", [
+    (additional(), "additional", "추가상장(타법인흡수합병)"),
+    (rename(), "rename", "변경상장(상호변경)"),
+    (spac_listing(), "spac_listing", "SPAC소멸합병상장"),
+])
+def test_correction_retains_its_date_without_promoting_before_after_values_to_identity(body, kind, related):
+    expected = kn.parse_notice(body, kind)
+    result = kn.parse_notice(corrected(body, related=related, item="단축코드"), kind)
+    metadata = result.pop("correction")
+    assert result == expected
+    assert metadata == {"publication_on": "2019-02-01", "original_submission_on": "2019-01-30",
+                        "related_document": related, "reason": "공시 항목 정정", "items": ["단축코드"]}
+    assert "A999999" not in str(result) and "A888888" not in str(result)
+    assert "correction" not in expected
+
+
+def test_correction_cannot_supply_a_code_missing_from_the_current_body():
+    payload = corrected(additional(code="-"), item="단축코드", before="A253590", after="A253590")
+    with pytest.raises(kn.KindParseError):
+        kn.parse_notice(payload, "additional")
+
+
+def test_correction_returns_changed_current_body_facts_for_the_callers_conflict_check():
+    original = kn.parse_notice(additional(), "additional")
+    changed = kn.parse_notice(corrected(additional(code="A0004V0"), item="단축코드",
+                                       before="A253590", after="A0004V0"), "additional")
+    assert original["code"] == "253590"
+    assert changed["code"] == "0004V0"
+    assert changed["correction"]["publication_on"] == "2019-02-01"
+
+
+@pytest.mark.parametrize("related", ["SPAC소멸합병상장", "자본금 수정", "-"])
+def test_observed_spac_correction_placeholders_remain_unknown(related):
+    parsed = kn.parse_notice(corrected(spac_listing(), related=related, original="-",
+                                      item="-", before="-", after="-"), "spac_listing")
+    assert parsed["correction"]["original_submission_on"] is None
+    assert parsed["correction"]["related_document"] == related
+    assert parsed["correction"]["items"] == ["-"]
+    assert parsed["code"] == "462310"
+
+
+@pytest.mark.parametrize("payload", [
+    corrected(additional(), published="2019-01-29"),
+    corrected(additional(), published="2019-02-30"),
+    corrected(additional(), published="-"),
+    corrected(additional(), original="2019-02-30"),
+    corrected(additional(), original="-"),
+    corrected(additional(), related="변경상장(상호변경)"),
+    corrected(additional()).replace(b'class="CORRECTION"', b'class="unknown"'),
+    corrected(additional()).replace("정 정 신 고 (보고)".encode(), "정정 참고자료".encode()),
+    corrected(additional()).replace("정정전".encode(), "정정후".encode()),
+    corrected(additional()).replace("2. 정정관련 공시서류 제출일 :".encode(), "2. 기타".encode()),
+    corrected(additional(), before=""),
+    corrected(additional()).replace(b"</body>", b"<table><tr><td>extra</td></tr></table></body>"),
+    corrected(additional()).replace(b"</body>", b'<p class="CORRECTION">duplicate</p></body>'),
+])
+def test_correction_unknown_structure_invalid_or_reversed_dates_fail_closed(payload):
+    with pytest.raises(kn.KindParseError):
+        kn.parse_notice(payload, "additional")
+
+
+def test_correction_tables_cannot_be_reordered_to_make_old_values_the_current_body():
+    payload = corrected(additional())
+    prefix_start = payload.index(b'<p class="CORRECTION">')
+    current_start = payload.index(b'<p class="SECTION-1">')
+    prefix = payload[prefix_start:current_start]
+    reordered = payload[:prefix_start] + payload[current_start:]
+    reordered = reordered.replace(b"</body>", prefix + b"</body>")
+    with pytest.raises(kn.KindParseError):
+        kn.parse_notice(reordered, "additional")

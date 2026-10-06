@@ -161,7 +161,7 @@ def company_key(value: str) -> str:
 
 def facts_key(notice: dict) -> bytes:
     fields = {key: company_key(value) if key.endswith("name") else value
-              for key, value in notice["fields"].items()}
+              for key, value in notice["fields"].items() if key != "correction"}
     return encoded(fields)
 
 
@@ -251,6 +251,9 @@ def acquire_candidate(candidate: dict, evidence: Evidence) -> dict:
             body, source = evidence.get(url)
             try:
                 fields = parse_notice(body, kind)
+                correction = fields.pop("correction", None)
+                if correction and correction["publication_on"] != version["publication_on"]:
+                    raise KindParseError("correction publication date disagrees with viewer")
             except KindParseError as exc:
                 failures.append({"receipt_no": row["receipt_no"], "doc_no": version["doc_no"],
                                  "body_url": url, "reason": str(exc)})
@@ -258,12 +261,15 @@ def acquire_candidate(candidate: dict, evidence: Evidence) -> dict:
             notices.append({**version, "receipt_no": row["receipt_no"],
                             "search_published_at": row["published_at"], "search_title": row["title"],
                             "later_correction_reported": row.get("later_correction_reported", False),
-                            "body_url": url, "body_sha256": source["sha256"], "fields": fields})
+                            "body_url": url, "body_sha256": source["sha256"],
+                            "correction": correction, "fields": fields})
     result = verify_candidate(candidate, notices)
     result.update(search_rows=len(rows), notices=notices, parse_failures=failures)
     # An unread correction may contradict a parsed original; keep the candidate open.
     if failures:
         result.update(status="unresolved", reason="notice_parse_or_identity_failure")
+        result.pop("operating_name_at_listing", None)
+        result.pop("notice_evidence_available_on", None)
     return result
 
 

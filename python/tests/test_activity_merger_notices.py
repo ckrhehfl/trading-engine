@@ -202,6 +202,70 @@ def test_unread_correction_keeps_previously_matching_original_unresolved():
     assert_unresolved(result, "notice_parse_or_identity_failure")
     assert len(result["notices"]) == 2
     assert result["parse_failures"][0]["doc_no"] == "20190201000001"
+    assert "operating_name_at_listing" not in result
+    assert "notice_evidence_available_on" not in result
+
+
+def parsed_correction(monkeypatch, *, publication_on="2019-02-01", changes=None):
+    """Isolate acquisition's metadata contract from correction HTML parsing."""
+    original_parser = am.parse_notice
+    correction = {"publication_on": publication_on, "original_submission_on": "2019-01-30",
+                  "items": [{"field": "6.기타", "before": "-", "after": "보호예수 내역 보완"}]}
+
+    def parse(body, kind):
+        if body != b"<html>unrecognized correction body</html>":
+            return original_parser(body, kind)
+        fields = original_parser(additional(), kind)
+        fields.update(changes or {})
+        fields["correction"] = deepcopy(correction)
+        return fields
+
+    monkeypatch.setattr(am, "parse_notice", parse)
+    return correction
+
+
+def test_correction_metadata_is_preserved_outside_identity_without_false_conflict(monkeypatch):
+    correction = parsed_correction(monkeypatch)
+    result = am.acquire_candidate(candidate(), SavedResponses(acquisition_responses(correction=True)))
+    assert result["status"] == "listing_identity_verified"
+    assert result["parse_failures"] == []
+    assert len(result["notices"]) == 3
+    documents = {item["doc_no"]: item for item in result["notices"]}
+    corrected = documents["20190201000001"]
+    original = documents["20190130002090"]
+    assert corrected["correction"] == correction
+    assert "correction" not in corrected["fields"]
+    assert corrected["fields"] == original["fields"]
+    assert original["correction"] is None
+    assert corrected["publication_on"] == "2019-02-01"
+    assert result["notice_evidence_available_on"] == "2019-01-30"
+
+
+@pytest.mark.parametrize("field,value", [
+    ("company_name", "다른 기업인수목적 주식회사"),
+    ("listing_on", "2019-02-04"),
+    ("code", "123456"),
+])
+def test_separating_correction_metadata_does_not_hide_changed_listing_facts(monkeypatch, field, value):
+    correction = parsed_correction(monkeypatch, changes={field: value})
+    result = am.acquire_candidate(candidate(), SavedResponses(acquisition_responses(correction=True)))
+    assert_unresolved(result, "conflicting_listing_versions")
+    corrected = next(item for item in result["evidence"] if item["doc_no"] == "20190201000001")
+    assert corrected["fields"][field] == value
+    assert corrected["correction"] == correction
+    assert "operating_name_at_listing" not in result
+    assert "notice_evidence_available_on" not in result
+
+
+def test_correction_publication_mismatch_removes_stale_verified_fields(monkeypatch):
+    parsed_correction(monkeypatch, publication_on="2019-02-02")
+    result = am.acquire_candidate(candidate(), SavedResponses(acquisition_responses(correction=True)))
+    assert_unresolved(result, "notice_parse_or_identity_failure")
+    assert len(result["notices"]) == 2
+    assert result["parse_failures"][0]["doc_no"] == "20190201000001"
+    assert result["parse_failures"][0]["reason"] == "correction publication date disagrees with viewer"
+    assert "operating_name_at_listing" not in result
+    assert "notice_evidence_available_on" not in result
 
 
 @pytest.mark.parametrize("mismatch", ["issuer", "submitter"])

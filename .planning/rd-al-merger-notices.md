@@ -96,3 +96,19 @@ missing requests from the same fixed scope, into a fresh output directory.
 The existing `--source-dir` stays strictly offline and missing responses remain
 a fatal incomplete replay. A source hash mismatch never triggers a refetch.
 This repair neither expands the candidate/date scope nor adds a price endpoint.
+
+The second acquisition, code `13952b1`, reused all 323 prior responses and
+obtained 271 missing public responses (594 unique responses in total). It
+verified 96 candidates and retained eight unresolved because correcting bodies
+prepend an additional correction section. All 104 searches now parse: 1,982
+search rows, of which 91 carry the later-correction marker (including unrelated
+filings whose bodies are not requested).
+
+The next repair is offline only: validate the observed correction preamble,
+read that version's following listing table, and retain the preamble's correction
+date and original-submission date as separate provenance. Compare the correction
+date with the viewer's document publication date. Never reconstruct an original
+version from the preamble's before/after text or assign a correction the original
+submission date. Do not compare provenance differences as identity differences;
+continue to reject changes in the asserted identity fields. Preserve both
+acquisitions and create a separate offline interpretation result.

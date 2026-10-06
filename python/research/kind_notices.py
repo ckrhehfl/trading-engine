@@ -323,11 +323,63 @@ def _security(rows: list[list[str]], heading: list[str]) -> dict:
     return dict(code=match[1], short_code=short_code, security_kind="보통주", isin=isin)
 
 
+def _notice_tables(root: _Element, title: _Element, kind: str) -> tuple[list[_Element], dict]:
+    tables = root.find("table")
+    expected = 1 if kind == "spac_listing" else 3
+    corrections = [node for node in root.find("p") if node.attrs.get("class") == "CORRECTION"]
+    if not corrections:
+        if len(tables) != expected:
+            raise KindParseError("unrecognized notice table count")
+        return tables, {}
+    correction = _one(corrections, "correction heading")
+    if _compact(correction.text()) != "정정신고(보고)" or len(tables) != expected + 3:
+        raise KindParseError("unrecognized correction notice structure")
+    body = _one(root.find("body"), "correction document body")
+    ordered = [node for node in _children(body, {"p", "table"})
+               if node.tag == "table" or node.attrs.get("class") in {"CORRECTION", "SECTION-1"}]
+    if ordered != [correction, *tables[:3], title, *tables[3:]]:
+        raise KindParseError("correction tables must precede the current notice body")
+    dated = _row_texts(tables[0])
+    if len(dated) != 1 or len(dated[0]) != 2 or dated[0][0]:
+        raise KindParseError("unrecognized correction publication date row")
+    publication_on = _date(dated[0][1])
+    details = _row_texts(tables[1])
+    labels = ["1.정정관련공시서류:", "2.정정관련공시서류제출일:", "3.정정사유:", "4.정정사항:"]
+    if (len(details) != 4 or any(len(row) != 2 or not row[1] for row in details)
+            or [_compact(row[0]) for row in details] != labels):
+        raise KindParseError("unrecognized correction detail rows")
+    related_document = details[0][1]
+    # Two inspected SPAC forms put a subject or an explicit unknown in the
+    # related-document field. Preserve those values; never invent a document ID.
+    related_titles = {"additional": {"추가상장(타법인흡수합병)"},
+                      "rename": {"변경상장(상호변경)"},
+                      "spac_listing": {"SPAC소멸합병상장", "자본금 수정", "-"}}
+    if related_document not in related_titles[kind]:
+        raise KindParseError("correction related document disagrees with notice kind")
+    if details[1][1] == "-" and kind != "spac_listing":
+        raise KindParseError("unrecognized missing original submission date")
+    original_submission_on = None if details[1][1] == "-" else _date(details[1][1])
+    if original_submission_on is not None and original_submission_on > publication_on:
+        raise KindParseError("correction predates its original submission")
+    changes = _row_texts(tables[2])
+    # Each inspected correction has one changed-item row. Before/after values
+    # stay in the preserved response, never serving as fallback identity fields.
+    if (len(changes) != 2 or changes[0] != ["항목", "정정전", "정정후"]
+            or len(changes[1]) != 3 or any(not value for value in changes[1])):
+        raise KindParseError("unrecognized correction before/after table")
+    metadata = dict(publication_on=publication_on, original_submission_on=original_submission_on,
+                    related_document=related_document, reason=details[2][1], items=[changes[1][0]])
+    return tables[3:], {"correction": metadata}
+
+
 def parse_notice(payload: bytes, kind: str) -> dict:
     """Extract only labelled corporate metadata from an inspected notice form.
 
     A rename has no code in the observed form. Its before/after names and date
     must be linked externally to separate code evidence; no issuer ID is used.
+    Correction metadata is separate from the current body fields. Its declared
+    publication date must also match the viewer version at the acquisition seam;
+    the original submission date never establishes when corrected facts existed.
     """
     titles = {"additional": "추가상장", "rename": "변경상장(상호변경)",
               "spac_listing": "SPAC소멸합병상장"}
@@ -338,9 +390,7 @@ def parse_notice(payload: bytes, kind: str) -> dict:
                   if node.attrs.get("class") == "SECTION-1"], "notice title")
     if title.text() != titles[kind]:
         raise KindParseError("notice title disagrees with requested kind")
-    tables = root.find("table")
-    if len(tables) != (1 if kind == "spac_listing" else 3):
-        raise KindParseError("unrecognized notice table count")
+    tables, extra = _notice_tables(root, title, kind)
     rows = _row_texts(tables[0])
     if kind == "rename":
         if any("단축코드" in cell for table in tables for row in _row_texts(table) for cell in row):
@@ -351,7 +401,7 @@ def parse_notice(payload: bytes, kind: str) -> dict:
             raise KindParseError("unexpected rename reason")
         return dict(kind=kind, company_name=after, before_company_name=before,
                     after_company_name=after, listing_on=_date(_field(rows, "4.상장일")),
-                    code=None, short_code=None, security_kind=None, isin=None)
+                    code=None, short_code=None, security_kind=None, isin=None, **extra)
     if kind == "additional":
         security = _security(rows, ["2.추가주식의종류와수", "주권종류", "단축코드", "추가주식수(주)"])
         issuance = _row_texts(tables[2])
@@ -362,8 +412,8 @@ def parse_notice(payload: bytes, kind: str) -> dict:
             raise KindParseError("unrecognized merger additional-listing reason")
         return dict(kind=kind, company_name=_field(rows, "1.회사명"),
                     listing_on=_date(_field(rows, "5.상장일")),
-                    merger_reason=issuance[1][1], **security)
+                    merger_reason=issuance[1][1], **security, **extra)
     security = _security(rows, ["2.주식의종류와수", "주권종류", "표준코드", "단축코드", "주식수(주)"])
     return dict(kind=kind, company_name=_company(rows, "1.회사명"),
                 listing_on=_date(_field(rows, "10.상장일(매매개시일)")),
-                absorbed_spac_name=_field(rows, "11.피합병법인(SPAC)"), **security)
+                absorbed_spac_name=_field(rows, "11.피합병법인(SPAC)"), **security, **extra)
