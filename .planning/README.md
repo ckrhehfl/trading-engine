@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-135 documents and counting, which is past the point where `ls` is a
+136 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -251,6 +251,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-ad-activity-calibration-result.md`](rd-ad-activity-calibration-result.md) — Research Direction Task AD — the sizing pilot stops before the comparison family
 - [`rd-ae-unresolved-holdings-audit.md`](rd-ae-unresolved-holdings-audit.md) — Research Direction Task AE — identify the eight residual holdings
 - [`rd-af-unresolved-holdings-findings.md`](rd-af-unresolved-holdings-findings.md) — Research Direction Task AF — residual holdings are not one kind of halt
+- [`rd-ag-corporate-action-accounting-protocol.md`](rd-ag-corporate-action-accounting-protocol.md) — Research Direction Task AG — accounting inputs before corrected sizing
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
