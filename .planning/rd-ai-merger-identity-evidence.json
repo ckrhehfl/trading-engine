@@ -1,0 +1,619 @@
+{
+  "description": "Curated public filing evidence for the 11 ambiguous Task AH mergers; not a runnable corporate-action or eligibility ledger.",
+  "acquired_on": "2026-10-06",
+  "artifact_directory": "/home/minjun4897/research-evidence/activity-merger-identities-20261006/",
+  "semantics": {
+    "merger_day_reported": "The completed issuance report's field labelled 합병기일; not a conclusion about statutory legal effect.",
+    "registered_on": "Reported completed registration, with null for unresolved conflicting reports.",
+    "merger_shares_listed_on": "Exchange additional-listing notice, corroborated by Task AH's historical listing list. Not necessarily an executable fill date.",
+    "source_publication_on": "Date of the specific filing version's official publication URL, checked against the retrieved document; no intraday availability claim.",
+    "known_on": "Unassigned: neither acquisition time nor a later corroborating filing may be backdated. Earliest contemporaneous evidence and all intervals remain to be reconstructed.",
+    "ratios": "Exact decimal strings, new raw common shares per old raw common share; never apply directly to adjusted units."
+  },
+  "events": [
+    {
+      "name": "포인트엔지니어링",
+      "old_operating_code": "176560",
+      "surviving_code": "256630",
+      "surviving_spac_name": "NH기업인수목적10호",
+      "merger_day_reported": "2019-07-01",
+      "registered_on": "2019-07-02",
+      "merger_shares_listed_on": "2019-07-16",
+      "old_code_delisted_on": "2019-07-16",
+      "new_common_raw_shares_per_old_common_raw_share": "7.5000000",
+      "evidence": {
+        "completion": "20190702000636",
+        "old_code_delisting": "20190711001347",
+        "new_code_additional_listing": "20190715001124",
+        "spac_rename": "20190711001446",
+        "registration": "20190702000636"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Common shares only; no automatic classification interval or tradeability inference."
+    },
+    {
+      "name": "자비스",
+      "old_operating_code": "230400",
+      "surviving_code": "254120",
+      "surviving_spac_name": "IBKS제5호기업인수목적",
+      "merger_day_reported": "2019-10-31",
+      "registered_on": "2019-11-01",
+      "merger_shares_listed_on": "2019-11-15",
+      "old_code_delisted_on": "2019-11-15",
+      "new_common_raw_shares_per_old_common_raw_share": "3.4030000",
+      "evidence": {
+        "completion": "20191101000369",
+        "old_code_delisting": "20191112001215",
+        "new_code_additional_listing": "20191114006422",
+        "spac_rename": "20191112001112",
+        "registration": "20230814004953"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Retrospective summaries sometimes label the registration date as the merger day; use the completed report's separately labelled merger day and retain the discrepancy."
+    },
+    {
+      "name": "한국비엔씨",
+      "old_operating_code": "226610",
+      "surviving_code": "256840",
+      "surviving_spac_name": "NH기업인수목적11호",
+      "merger_day_reported": "2019-11-15",
+      "registered_on": "2019-11-19",
+      "merger_shares_listed_on": "2019-12-03",
+      "old_code_delisted_on": "2019-12-03",
+      "new_common_raw_shares_per_old_common_raw_share": "6.0305419",
+      "evidence": {
+        "completion": "20191119000559",
+        "old_code_delisting": "20191128001434",
+        "new_code_additional_listing": "20191202001258",
+        "spac_rename": "20191128001490",
+        "registration": "20210319004484"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Retrospective summaries sometimes label the registration date as the merger day; use the completed report's separately labelled merger day and retain the discrepancy."
+    },
+    {
+      "name": "소프트캠프",
+      "old_operating_code": "210610",
+      "surviving_code": "258790",
+      "surviving_spac_name": "KB제11호기업인수목적",
+      "merger_day_reported": "2019-12-17",
+      "registered_on": null,
+      "merger_shares_listed_on": "2019-12-30",
+      "old_code_delisted_on": "2019-12-30",
+      "new_common_raw_shares_per_old_common_raw_share": "4.1300000",
+      "evidence": {
+        "completion": "20191218000540",
+        "old_code_delisting": "20191224001343",
+        "new_code_additional_listing": "20191227001872",
+        "spac_rename": "20191224001285",
+        "registration": "20200306002134"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Registration conflict: completion reports 2019-12-18; the 2020-03-06 earnings notice reports completed registration on 2019-12-19. Preserve both; do not select a legal-effective date."
+    },
+    {
+      "name": "카이노스메드",
+      "old_operating_code": "220250",
+      "surviving_code": "284620",
+      "surviving_spac_name": "하나금융11호기업인수목적",
+      "merger_day_reported": "2020-05-19",
+      "registered_on": "2020-05-20",
+      "merger_shares_listed_on": "2020-06-08",
+      "old_code_delisted_on": "2020-06-08",
+      "new_common_raw_shares_per_old_common_raw_share": "6.9000000",
+      "evidence": {
+        "completion": "20200520000465",
+        "old_code_delisting": "20200603000914",
+        "new_code_additional_listing": "20200605001391",
+        "spac_rename": "20200603000895",
+        "registration": "20260515003112"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Retrospective summaries sometimes label the registration date as the merger day; use the completed report's separately labelled merger day and retain the discrepancy."
+    },
+    {
+      "name": "TS트릴리온",
+      "old_operating_code": "284610",
+      "surviving_code": "317240",
+      "surviving_spac_name": "하이제4호기업인수목적",
+      "merger_day_reported": "2020-12-15",
+      "registered_on": "2020-12-17",
+      "merger_shares_listed_on": "2020-12-30",
+      "old_code_delisted_on": "2020-12-30",
+      "new_common_raw_shares_per_old_common_raw_share": "1.22300000",
+      "evidence": {
+        "completion": "20201217001212",
+        "old_code_delisting": "20201224001678",
+        "new_code_additional_listing": "20201229002398",
+        "spac_rename": "20201224001890",
+        "registration": "20201217001212"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "The original additional-listing notice is retained. Its 2021-08-30 correction (20210830001434) changes lock-up details and must not be backdated."
+    },
+    {
+      "name": "엠에프엠코리아",
+      "old_operating_code": "251960",
+      "surviving_code": "323230",
+      "surviving_spac_name": "신한제5호기업인수목적",
+      "merger_day_reported": "2020-12-15",
+      "registered_on": "2020-12-16",
+      "merger_shares_listed_on": "2020-12-30",
+      "old_code_delisted_on": "2020-12-30",
+      "new_common_raw_shares_per_old_common_raw_share": "1.2632207",
+      "evidence": {
+        "completion": "20201216001694",
+        "old_code_delisting": "20201224001699",
+        "new_code_additional_listing": "20201229002425",
+        "spac_rename": "20201224001794",
+        "registration": "20231117001173"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Common shares only; no automatic classification interval or tradeability inference."
+    },
+    {
+      "name": "원바이오젠",
+      "old_operating_code": "278380",
+      "surviving_code": "307280",
+      "surviving_spac_name": "교보8호기업인수목적",
+      "merger_day_reported": "2021-01-22",
+      "registered_on": "2021-01-25",
+      "merger_shares_listed_on": "2021-02-09",
+      "old_code_delisted_on": "2021-02-09",
+      "new_common_raw_shares_per_old_common_raw_share": "10.1605000",
+      "evidence": {
+        "completion": "20210125000728",
+        "old_code_delisting": "20210204002592",
+        "new_code_additional_listing": "20210208002674",
+        "spac_rename": "20210204002383",
+        "registration": "20210826000394"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Retrospective prose also says the SPAC disappears. The exchange notices and completed report establish the code roles; that contradictory prose is not used to reverse them."
+    },
+    {
+      "name": "휴럼",
+      "old_operating_code": "284420",
+      "surviving_code": "353190",
+      "surviving_spac_name": "NH기업인수목적16호",
+      "merger_day_reported": "2021-07-13",
+      "registered_on": "2021-07-15",
+      "merger_shares_listed_on": "2021-07-27",
+      "old_code_delisted_on": "2021-07-27",
+      "new_common_raw_shares_per_old_common_raw_share": "6.1500000",
+      "evidence": {
+        "completion": "20210715000678",
+        "old_code_delisting": "20210722001140",
+        "new_code_additional_listing": "20210726000719",
+        "spac_rename": "20210722001202",
+        "registration": "20211116000418"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Common shares only; no automatic classification interval or tradeability inference."
+    },
+    {
+      "name": "원텍",
+      "old_operating_code": "216280",
+      "surviving_code": "336570",
+      "surviving_spac_name": "대신밸런스제8호기업인수목적",
+      "merger_day_reported": "2022-06-14",
+      "registered_on": "2022-06-15",
+      "merger_shares_listed_on": "2022-06-30",
+      "old_code_delisted_on": "2022-06-30",
+      "new_common_raw_shares_per_old_common_raw_share": "12.8635762",
+      "evidence": {
+        "completion": "20220615000458",
+        "old_code_delisting": "20220627001299",
+        "new_code_additional_listing": "20220629001623",
+        "spac_rename": "20220627001280",
+        "registration": "20230316001692"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "Common shares only; no automatic classification interval or tradeability inference."
+    },
+    {
+      "name": "지슨",
+      "old_operating_code": "289860",
+      "surviving_code": "446840",
+      "surviving_spac_name": "키움제8호기업인수목적",
+      "merger_day_reported": "2025-07-29",
+      "registered_on": "2025-07-30",
+      "merger_shares_listed_on": "2025-08-14",
+      "old_code_delisted_on": "2025-08-14",
+      "new_common_raw_shares_per_old_common_raw_share": "2.8500190",
+      "evidence": {
+        "completion": "20250730000212",
+        "old_code_delisting": "20250811001486",
+        "new_code_additional_listing": "20250813002750",
+        "spac_rename": "20250811001440",
+        "registration": "20250730000212"
+      },
+      "known_on": null,
+      "identity_periods_ready": false,
+      "notes": "2,574 appraisal-acquired treasury shares received no merger shares. The ratio applies to qualifying public common shares, not total outstanding shares. A proposed fractional cash payment is not verified cash recovery."
+    }
+  ],
+  "sources": {
+    "20190702000636": {
+      "publication_on": "2019-07-02",
+      "url": "https://kind.krx.co.kr/external/2019/07/02/000294/20190702000636/10810.htm",
+      "sha256": "ca7ee1c8f2c6b0e6cc67ddfbba5f9e9a2da00c25f7da72618fbbcee81039315b",
+      "retrieved_at": "2026-10-06T16:43:10.2370368+09:00",
+      "artifact_file": "20190702000294-20190702000636-body.html"
+    },
+    "20190711001347": {
+      "publication_on": "2019-07-11",
+      "url": "https://kind.krx.co.kr/external/2019/07/11/000526/20190711001347/32007.htm",
+      "sha256": "27f1a8e35b11aac589a2a9c0b68fb97361584a27c9a04df95977aeecca6d6fea",
+      "retrieved_at": "2026-10-06T16:42:30.4030434+09:00",
+      "artifact_file": "20190711000526-20190711001347.html"
+    },
+    "20190711001446": {
+      "publication_on": "2019-07-11",
+      "url": "https://kind.krx.co.kr/external/2019/07/11/000564/20190711001446/70765.htm",
+      "sha256": "a63ed641b3a95908aad9462767b08093c59db6596f6c40200114a4ad3cb60a30",
+      "retrieved_at": "2026-10-06T16:42:31.0711388+09:00",
+      "artifact_file": "20190711000564-20190711001446.html"
+    },
+    "20190715001124": {
+      "publication_on": "2019-07-15",
+      "url": "https://kind.krx.co.kr/external/2019/07/15/000510/20190715001124/70791.htm",
+      "sha256": "53c0f6d1e772859041c52e212ce4257fd46bab5b8506c33c1ae2106fea62f071",
+      "retrieved_at": "2026-10-06T16:42:30.830448+09:00",
+      "artifact_file": "20190715000510-20190715001124.html"
+    },
+    "20191101000369": {
+      "publication_on": "2019-11-01",
+      "url": "https://kind.krx.co.kr/external/2019/11/01/000136/20191101000369/10810.htm",
+      "sha256": "0ef4718ae3e6a0e6a6033ce5d3c54cb8b6de3df7b404dd20c4af4ccd256e6596",
+      "retrieved_at": "2026-10-06T16:43:10.4084266+09:00",
+      "artifact_file": "20191101000136-20191101000369-body.html"
+    },
+    "20191112001112": {
+      "publication_on": "2019-11-12",
+      "url": "https://kind.krx.co.kr/external/2019/11/12/000524/20191112001112/70765.htm",
+      "sha256": "792178f33cf89193ad4fdd78453fcf6bcec0823ee01744202da02abf64cc1515",
+      "retrieved_at": "2026-10-06T16:42:32.3600517+09:00",
+      "artifact_file": "20191112000524-20191112001112.html"
+    },
+    "20191112001215": {
+      "publication_on": "2019-11-12",
+      "url": "https://kind.krx.co.kr/external/2019/11/12/000601/20191112001215/32007.htm",
+      "sha256": "e2a8ec0c55a5ed044b04ff2474e6e96781066c8ab55b345290e5949c20a9e894",
+      "retrieved_at": "2026-10-06T16:42:31.3095436+09:00",
+      "artifact_file": "20191112000601-20191112001215.html"
+    },
+    "20191114006422": {
+      "publication_on": "2019-11-14",
+      "url": "https://kind.krx.co.kr/external/2019/11/14/002856/20191114006422/70791.htm",
+      "sha256": "a876eedba8598408d728041ddccd1742976385b7095da98ca99682ff48093e0e",
+      "retrieved_at": "2026-10-06T16:42:32.0675753+09:00",
+      "artifact_file": "20191114002856-20191114006422.html"
+    },
+    "20191119000559": {
+      "publication_on": "2019-11-19",
+      "url": "https://kind.krx.co.kr/external/2019/11/19/000213/20191119000559/10810.htm",
+      "sha256": "0c8026ccf0eaa50229946f417680655996b7e116d3c62f134ae55a285a7667b7",
+      "retrieved_at": "2026-10-06T16:43:10.7090221+09:00",
+      "artifact_file": "20191119000069-20191119000559-body.html"
+    },
+    "20191128001434": {
+      "publication_on": "2019-11-28",
+      "url": "https://kind.krx.co.kr/external/2019/11/28/000602/20191128001434/32007.htm",
+      "sha256": "d75b2e23223e6f84d6efc0a035827fe3f2b1dc76cd0692d54397ead37147a553",
+      "retrieved_at": "2026-10-06T16:42:32.6214799+09:00",
+      "artifact_file": "20191128000602-20191128001434.html"
+    },
+    "20191128001490": {
+      "publication_on": "2019-11-28",
+      "url": "https://kind.krx.co.kr/external/2019/11/28/000640/20191128001490/70765.htm",
+      "sha256": "7162c08303972e363ec76ddc9a6ee7909831ba7ff03d33b234b75e354bbc8357",
+      "retrieved_at": "2026-10-06T16:42:33.4058156+09:00",
+      "artifact_file": "20191128000563-20191128001490.html"
+    },
+    "20191202001258": {
+      "publication_on": "2019-12-02",
+      "url": "https://kind.krx.co.kr/external/2019/12/02/000499/20191202001258/70791.htm",
+      "sha256": "dfde9e8d6827c308eda39ab35548e3ff2e8c52938c4e29eef665ffe5f06a7362",
+      "retrieved_at": "2026-10-06T16:42:32.9078007+09:00",
+      "artifact_file": "20191202000499-20191202001258.html"
+    },
+    "20191218000540": {
+      "publication_on": "2019-12-18",
+      "url": "https://kind.krx.co.kr/external/2019/12/18/000168/20191218000540/10810.htm",
+      "sha256": "17279fe3a1c62f71d9929c5eda2fa4c42d6aa61d41e20c7325545587fb6a8616",
+      "retrieved_at": "2026-10-06T16:43:10.9356828+09:00",
+      "artifact_file": "20191218000168-20191218000540-body.html"
+    },
+    "20191224001285": {
+      "publication_on": "2019-12-24",
+      "url": "https://kind.krx.co.kr/external/2019/12/24/000539/20191224001285/70765.htm",
+      "sha256": "76ba69d84efd95b3af5ded342145a54812cf0e81f7958f2d1841682bc28ad967",
+      "retrieved_at": "2026-10-06T16:42:35.1506037+09:00",
+      "artifact_file": "20191224000539-20191224001285.html"
+    },
+    "20191224001343": {
+      "publication_on": "2019-12-24",
+      "url": "https://kind.krx.co.kr/external/2019/12/24/000571/20191224001343/32007.htm",
+      "sha256": "229cfb6b550e1c6251d626818284eb215df5e814d359eec0ace48631461bbdf4",
+      "retrieved_at": "2026-10-06T16:42:34.2379605+09:00",
+      "artifact_file": "20191224000571-20191224001343.html"
+    },
+    "20191227001872": {
+      "publication_on": "2019-12-27",
+      "url": "https://kind.krx.co.kr/external/2019/12/27/000846/20191227001872/70791.htm",
+      "sha256": "cc28fc5bbc55bfd8630c726bc256a7368c2769a0317454c2b7c9ec320987ebaa",
+      "retrieved_at": "2026-10-06T16:42:34.7855719+09:00",
+      "artifact_file": "20191227000846-20191227001872.html"
+    },
+    "20200306002134": {
+      "publication_on": "2020-03-06",
+      "url": "https://kind.krx.co.kr/external/2020/03/06/000947/20200306002134/70443.htm",
+      "sha256": "3219084fb5d5cd0f4d43ac48bc1aa31c4f9caf8374e104a53e600b90eddcfeed",
+      "retrieved_at": "2026-10-06T16:44:37.0663245+09:00",
+      "artifact_file": "20200306000947-20200306002134.html"
+    },
+    "20200520000465": {
+      "publication_on": "2020-05-20",
+      "url": "https://kind.krx.co.kr/external/2020/05/20/000184/20200520000465/10810.htm",
+      "sha256": "f6b1ef68e9e38c0455937e5c6829e74dd39eea1c7e5d4eeb6c57ecc46ad95598",
+      "retrieved_at": "2026-10-06T16:43:11.1277976+09:00",
+      "artifact_file": "20200520000184-20200520000465-body.html"
+    },
+    "20200603000895": {
+      "publication_on": "2020-06-03",
+      "url": "https://kind.krx.co.kr/external/2020/06/03/000367/20200603000895/70765.htm",
+      "sha256": "0c9b323c58f80655c23fa0e43bad8f6fa7c95cd2f8d8c3fe90b2d4d03ae2d5f2",
+      "retrieved_at": "2026-10-06T16:42:36.8917382+09:00",
+      "artifact_file": "20200603000367-20200603000895.html"
+    },
+    "20200603000914": {
+      "publication_on": "2020-06-03",
+      "url": "https://kind.krx.co.kr/external/2020/06/03/000381/20200603000914/32007.htm",
+      "sha256": "d2f16cde2f570f918e6c431a25355ac050594d2a4caa697069133961f7a3cf62",
+      "retrieved_at": "2026-10-06T16:42:35.460289+09:00",
+      "artifact_file": "20200603000381-20200603000914.html"
+    },
+    "20200605001391": {
+      "publication_on": "2020-06-05",
+      "url": "https://kind.krx.co.kr/external/2020/06/05/000561/20200605001391/70791.htm",
+      "sha256": "b9ce566766739333e9c48049b2edbe2eb19fcd5209ecb16523595c54975ea08f",
+      "retrieved_at": "2026-10-06T16:42:36.6050519+09:00",
+      "artifact_file": "20200605000561-20200605001391.html"
+    },
+    "20201216001694": {
+      "publication_on": "2020-12-16",
+      "url": "https://kind.krx.co.kr/external/2020/12/16/001031/20201216001694/10810.htm",
+      "sha256": "e9f9c93c381a48ea4fda7d5a6ef8404d0c80c62ea5f4e8a52bd16d5a1e8888a9",
+      "retrieved_at": "2026-10-06T16:43:11.373232+09:00",
+      "artifact_file": "20201216001031-20201216001694-body.html"
+    },
+    "20201217001212": {
+      "publication_on": "2020-12-17",
+      "url": "https://kind.krx.co.kr/external/2020/12/17/000493/20201217001212/10810.htm",
+      "sha256": "ed862c3443877a29075d8afd21f400bb35740e6eb58fb2325d5750c8bd1eb5f9",
+      "retrieved_at": "2026-10-06T16:43:11.2533837+09:00",
+      "artifact_file": "20201217000493-20201217001212-body.html"
+    },
+    "20201224001678": {
+      "publication_on": "2020-12-24",
+      "url": "https://kind.krx.co.kr/external/2020/12/24/000683/20201224001678/32007.htm",
+      "sha256": "1cc327ff705202b36b8bf65d3db6df990256f0e33d5de73c5497781f1f23507d",
+      "retrieved_at": "2026-10-06T16:42:37.1558767+09:00",
+      "artifact_file": "20201224000683-20201224001678.html"
+    },
+    "20201224001699": {
+      "publication_on": "2020-12-24",
+      "url": "https://kind.krx.co.kr/external/2020/12/24/000693/20201224001699/32007.htm",
+      "sha256": "e2109877082165fdcb87f58e2584d9fafb0dfb382865d4621b84148b274473bb",
+      "retrieved_at": "2026-10-06T16:42:38.4803173+09:00",
+      "artifact_file": "20201224000693-20201224001699.html"
+    },
+    "20201224001794": {
+      "publication_on": "2020-12-24",
+      "url": "https://kind.krx.co.kr/external/2020/12/24/000747/20201224001794/70765.htm",
+      "sha256": "35a51db360f0f8df7fff985468e95e1fc1e26f2f0a8bebaab60cdb4145a3f583",
+      "retrieved_at": "2026-10-06T16:42:39.5098111+09:00",
+      "artifact_file": "20201224000747-20201224001794.html"
+    },
+    "20201224001890": {
+      "publication_on": "2020-12-24",
+      "url": "https://kind.krx.co.kr/external/2020/12/24/000815/20201224001890/70765.htm",
+      "sha256": "77f0b57cb7aa88c58a55eb6cec52503326632bfbc9e5050c37816bc8dbc1caef",
+      "retrieved_at": "2026-10-06T16:42:38.0133785+09:00",
+      "artifact_file": "20201224000815-20201224001890.html"
+    },
+    "20201229002398": {
+      "publication_on": "2020-12-29",
+      "url": "https://kind.krx.co.kr/external/2020/12/29/000952/20201229002398/70791.htm",
+      "sha256": "636ef0e7db31f0c492b77d0f39a4975e774e922b63fe78bdb67c3ecac691879f",
+      "retrieved_at": "2026-10-06T16:44:36.9844976+09:00",
+      "artifact_file": "20201229000952-20201229002398.html"
+    },
+    "20201229002425": {
+      "publication_on": "2020-12-29",
+      "url": "https://kind.krx.co.kr/external/2020/12/29/000964/20201229002425/70791.htm",
+      "sha256": "aa779ec25315b68162a33eafe5fb1882a1b7952bcfd69b959e9d41aeb97bdead",
+      "retrieved_at": "2026-10-06T16:42:39.1515129+09:00",
+      "artifact_file": "20201229000964-20201229002425.html"
+    },
+    "20210125000728": {
+      "publication_on": "2021-01-25",
+      "url": "https://kind.krx.co.kr/external/2021/01/25/000236/20210125000728/10810.htm",
+      "sha256": "e03364d1ae2f64945ebc7f578e0f9005e5fb2df031152c384a52ad9c5e299e86",
+      "retrieved_at": "2026-10-06T16:43:11.4924283+09:00",
+      "artifact_file": "20210125000236-20210125000728-body.html"
+    },
+    "20210204002383": {
+      "publication_on": "2021-02-04",
+      "url": "https://kind.krx.co.kr/external/2021/02/04/000924/20210204002383/70765.htm",
+      "sha256": "7486af0105204eae2b01509542b96b47cd9b012c853866755e9be76431b28250",
+      "retrieved_at": "2026-10-06T16:42:40.6611918+09:00",
+      "artifact_file": "20210204000924-20210204002383.html"
+    },
+    "20210204002592": {
+      "publication_on": "2021-02-04",
+      "url": "https://kind.krx.co.kr/external/2021/02/04/001026/20210204002592/32007.htm",
+      "sha256": "3bb68305cf6ce17b351e052941e007386f3d2325339f670dcc891bf0158dfa8e",
+      "retrieved_at": "2026-10-06T16:42:39.836055+09:00",
+      "artifact_file": "20210204001026-20210204002592.html"
+    },
+    "20210208002674": {
+      "publication_on": "2021-02-08",
+      "url": "https://kind.krx.co.kr/external/2021/02/08/001051/20210208002674/70791.htm",
+      "sha256": "7e42e18d381ae8aa6d01deaa11f2f3d60a181cbe2eb2f4966c73c6f76ebe0d00",
+      "retrieved_at": "2026-10-06T16:42:40.4182431+09:00",
+      "artifact_file": "20210208001051-20210208002674.html"
+    },
+    "20210319004484": {
+      "publication_on": "2021-03-19",
+      "url": "https://kind.krx.co.kr/external/2021/03/19/001232/20210319004484/11011.htm",
+      "sha256": "82148462869c9f8b9f5e16aa2a26cbca619e7dcab7438857260aa33a6989dc84",
+      "retrieved_at": "2026-10-06T07:45:36.3698177+00:00",
+      "artifact_file": "20210319001232-20210319004484.html"
+    },
+    "20210715000678": {
+      "publication_on": "2021-07-15",
+      "url": "https://kind.krx.co.kr/external/2021/07/15/000214/20210715000678/10810.htm",
+      "sha256": "32acc05c62175f02086b9e0ac1bd0e2d35117f86c3c0a785150f45be43d54241",
+      "retrieved_at": "2026-10-06T16:43:11.5984366+09:00",
+      "artifact_file": "20210715000214-20210715000678-body.html"
+    },
+    "20210722001140": {
+      "publication_on": "2021-07-22",
+      "url": "https://kind.krx.co.kr/external/2021/07/22/000469/20210722001140/32007.htm",
+      "sha256": "d349c9996dc98a35e0f901c1d75bea40a6d7fd2782cf74da10887e2ea1ccc9b0",
+      "retrieved_at": "2026-10-06T16:42:40.9930335+09:00",
+      "artifact_file": "20210722000469-20210722001140.html"
+    },
+    "20210722001202": {
+      "publication_on": "2021-07-22",
+      "url": "https://kind.krx.co.kr/external/2021/07/22/000497/20210722001202/70765.htm",
+      "sha256": "47069e5b466b6864441c873642d2a39e73a4e02828172ef427367ff7bf3c9aa3",
+      "retrieved_at": "2026-10-06T16:42:42.2251427+09:00",
+      "artifact_file": "20210722000431-20210722001202.html"
+    },
+    "20210726000719": {
+      "publication_on": "2021-07-26",
+      "url": "https://kind.krx.co.kr/external/2021/07/26/000260/20210726000719/70791.htm",
+      "sha256": "d02b27e36c8f34341a4cf05c2287315975e529e686b0f5ce1d2251618a23c49b",
+      "retrieved_at": "2026-10-06T16:42:41.594067+09:00",
+      "artifact_file": "20210726000260-20210726000719.html"
+    },
+    "20210826000394": {
+      "publication_on": "2021-08-26",
+      "url": "https://kind.krx.co.kr/external/2021/08/26/000153/20210826000394/11012.htm",
+      "sha256": "7ec12de7ae9a16bdf3d2ce5b9b21484bc992899f62594c2d3275f66a68cebc34",
+      "retrieved_at": "2026-10-06T07:45:38.2593503+00:00",
+      "artifact_file": "20210826000153-20210826000394.html"
+    },
+    "20210830001434": {
+      "publication_on": "2021-08-30",
+      "url": "https://kind.krx.co.kr/external/2021/08/30/000547/20210830001434/70791.htm",
+      "sha256": "29e35fbb4a033439d4b9c275970a655bbca83b4362be11994ff39bb0f9a09d96",
+      "retrieved_at": "2026-10-06T16:42:37.6413553+09:00",
+      "artifact_file": "20201229000952-20210830001434.html"
+    },
+    "20211116000418": {
+      "publication_on": "2021-11-16",
+      "url": "https://kind.krx.co.kr/external/2021/11/16/000165/20211116000418/11013.htm",
+      "sha256": "8ea44bd8e39639d39c35047ed4861bedc86d78dc86f67aa1c303a36c9b13a4a0",
+      "retrieved_at": "2026-10-06T07:45:38.9254120+00:00",
+      "artifact_file": "20211116000165-20211116000418.html"
+    },
+    "20220615000458": {
+      "publication_on": "2022-06-15",
+      "url": "https://kind.krx.co.kr/external/2022/06/15/000167/20220615000458/10810.htm",
+      "sha256": "6a81ee56d27f03e41bbabddc1a9297087615b044035427e981af07ce86a75344",
+      "retrieved_at": "2026-10-06T16:43:11.7611772+09:00",
+      "artifact_file": "20220615000167-20220615000458-body.html"
+    },
+    "20220627001280": {
+      "publication_on": "2022-06-27",
+      "url": "https://kind.krx.co.kr/external/2022/06/27/000474/20220627001280/70765.htm",
+      "sha256": "7211735d01b801a25823220964baa995a8f3a193310117b22085eb5cd3c2b3bf",
+      "retrieved_at": "2026-10-06T16:42:43.3405428+09:00",
+      "artifact_file": "20220627000474-20220627001280.html"
+    },
+    "20220627001299": {
+      "publication_on": "2022-06-27",
+      "url": "https://kind.krx.co.kr/external/2022/06/27/000485/20220627001299/32007.htm",
+      "sha256": "cdadddc36e98aa662bca5ab30c0b2a04a7cddeef6d612a36562e5f2923b320fe",
+      "retrieved_at": "2026-10-06T16:42:42.4408745+09:00",
+      "artifact_file": "20220627000485-20220627001299.html"
+    },
+    "20220629001623": {
+      "publication_on": "2022-06-29",
+      "url": "https://kind.krx.co.kr/external/2022/06/29/000658/20220629001623/70791.htm",
+      "sha256": "4d2744bfc995ae7a00c9a966c0d2067fbbf4750c9450779796e5794e25a929c2",
+      "retrieved_at": "2026-10-06T16:42:43.0447377+09:00",
+      "artifact_file": "20220629000658-20220629001623.html"
+    },
+    "20230316001692": {
+      "publication_on": "2023-03-16",
+      "url": "https://kind.krx.co.kr/external/2023/03/16/000574/20230316001692/11011.htm",
+      "sha256": "9f53b0be55974d9f5711b4f814ae290202ebb60eee986089671a005e1c6d0d5c",
+      "retrieved_at": "2026-10-06T07:45:39.4802907+00:00",
+      "artifact_file": "20230316000574-20230316001692.html"
+    },
+    "20230814004953": {
+      "publication_on": "2023-08-14",
+      "url": "https://kind.krx.co.kr/external/2023/08/14/001565/20230814004953/11012.htm",
+      "sha256": "bd0e97ffc157335d43c0b77d2882207efbc17147486c59a7add3e69776cde2cb",
+      "retrieved_at": "2026-10-06T16:44:37.6298203+09:00",
+      "artifact_file": "20230814001565-20230814004953.html"
+    },
+    "20231117001173": {
+      "publication_on": "2023-11-17",
+      "url": "https://kind.krx.co.kr/external/2023/11/17/000512/20231117001173/10401.htm",
+      "sha256": "bde0cb3153a70690385fd61d767a28442de5ca0da334ccd92cdaf84c442050f0",
+      "retrieved_at": "2026-10-06T07:45:37.2481727+00:00",
+      "artifact_file": "20231117000512-20231117001173.html"
+    },
+    "20250730000212": {
+      "publication_on": "2025-07-30",
+      "url": "https://kind.krx.co.kr/external/2025/07/30/000098/20250730000212/10810.htm",
+      "sha256": "d2fcd172c7fc59ec7de950b86b74cb1de66ef8c5687e904ed1cd50ec18ad39fa",
+      "retrieved_at": "2026-10-06T16:43:11.9937375+09:00",
+      "artifact_file": "20250730000098-20250730000212-body.html"
+    },
+    "20250811001440": {
+      "publication_on": "2025-08-11",
+      "url": "https://kind.krx.co.kr/external/2025/08/11/000696/20250811001440/70765.htm",
+      "sha256": "2664ccac7bf3bf2221e2769623b821e6a3f6f5e5222a18ae41590d9bb53ceebc",
+      "retrieved_at": "2026-10-06T16:42:44.4312033+09:00",
+      "artifact_file": "20250811000696-20250811001440.html"
+    },
+    "20250811001486": {
+      "publication_on": "2025-08-11",
+      "url": "https://kind.krx.co.kr/external/2025/08/11/000720/20250811001486/32007.htm",
+      "sha256": "c36524996e0d15150798a3e515a3a8d60208adb15f5aadc9fdc9f5860377ca7e",
+      "retrieved_at": "2026-10-06T16:42:43.6175776+09:00",
+      "artifact_file": "20250811000720-20250811001486.html"
+    },
+    "20250813002750": {
+      "publication_on": "2025-08-13",
+      "url": "https://kind.krx.co.kr/external/2025/08/13/000999/20250813002750/70791.htm",
+      "sha256": "17c04462ea0869c8d443b766ee80c0c710547177a313b04f317917fe82131135",
+      "retrieved_at": "2026-10-06T16:42:44.1757197+09:00",
+      "artifact_file": "20250813000999-20250813002750.html"
+    },
+    "20260515003112": {
+      "publication_on": "2026-05-15",
+      "url": "https://kind.krx.co.kr/external/2026/05/15/001426/20260515003112/11013.htm",
+      "sha256": "8bd68cca4bf40aefb4fc94231ac3d8c2ba13ffc7df6b7149e2deff78236eb0ee",
+      "retrieved_at": "2026-10-06T16:44:37.3530193+09:00",
+      "artifact_file": "20260515001426-20260515003112.html"
+    }
+  }
+}
