@@ -56,7 +56,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -261,12 +261,17 @@ def _write_cached_token(host: str, app_key: str, token: str) -> None:
         pass  # an uncacheable token still works for this run
 
 
-def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = True) -> str:
+def issue_token(
+    host: str, app_key: str, app_secret: str, *, use_cache: bool = True,
+    before_request: Callable[[], None] | None = None,
+) -> str:
     """`POST /oauth2/tokenP`, reusing a cached token where possible.
 
     The cache is not a convenience. `EGW00133` fires after roughly three
     issuances in a few minutes, and the allowance is per app key -- shared
     with the live `kis-paper` JVM, which needs it to renew its own token.
+    An optional guard runs after cache/request preparation, immediately
+    before a new issuance, and its refusal is not treated as a network error.
     """
     if use_cache:
         cached = _read_cached_token(host, app_key)
@@ -277,6 +282,8 @@ def issue_token(host: str, app_key: str, app_secret: str, *, use_cache: bool = T
     ).encode("utf-8")
     req = urllib.request.Request(host + TOKEN_PATH, data=body, method="POST")
     req.add_header("content-type", "application/json; charset=utf-8")
+    if before_request is not None:
+        before_request()
     try:
         with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
@@ -304,20 +311,35 @@ class KisSession:
     that a whole backfill is structurally one issuance. Passing a token
     around invites a caller to re-issue per symbol, which is what exhausts
     the shared rate limit.
+    `before_token_request`, when supplied, guards every initial/renewal POST
+    for the session's lifetime without changing cache hits or reuse limits.
     """
 
-    def __init__(self, app_key: str, app_secret: str, *, host: str = PAPER_HOST) -> None:
+    def __init__(
+        self, app_key: str, app_secret: str, *, host: str = PAPER_HOST,
+        before_token_request: Callable[[], None] | None = None,
+    ) -> None:
         if not app_key or not app_secret:
             raise KisKlinesError("app_key and app_secret are both required")
         self._app_key = app_key
         self._app_secret = app_secret
         self.host = host
+        self._before_token_request = before_token_request
         # Resolved here so construction still fails fast on a bad key, and
         # re-resolved per request by `headers` -- see its docstring.
-        self._token = issue_token(host, app_key, app_secret)
+        self._token = self._issue_token()
         # A ceiling on issuance, not a second freshness policy -- see
         # `headers`. Set here so the bound starts at construction.
         self._token_at = time.monotonic()
+
+    def _issue_token(self) -> str:
+        """Apply the same optional guard to initial issuance and renewal."""
+        if self._before_token_request is None:
+            return issue_token(self.host, self._app_key, self._app_secret)
+        return issue_token(
+            self.host, self._app_key, self._app_secret,
+            before_request=self._before_token_request,
+        )
 
     def headers(self, tr_id: str) -> dict[str, str]:
         """Auth headers, with the token re-resolved through the cache.
@@ -366,7 +388,7 @@ class KisSession:
             # prevent, from the other end.
             self._token = cached
         elif time.monotonic() - self._token_at >= TOKEN_REUSE_S:
-            self._token = issue_token(self.host, self._app_key, self._app_secret)
+            self._token = self._issue_token()
             self._token_at = time.monotonic()
         return {
             "authorization": f"Bearer {self._token}",
@@ -380,7 +402,9 @@ class KisSession:
 # ------------------------------------------------------------------ http
 
 
-def _get_with_retry(url: str, headers: dict[str, str]) -> dict[str, Any]:
+def _get_with_retry(
+    url: str, headers: dict[str, str], *, before_attempt: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     """One GET, retried on transport failure with exponential backoff.
 
     `HTTP 500` from KIS is transient -- measured, not assumed: the Phase 0
@@ -393,6 +417,10 @@ def _get_with_retry(url: str, headers: dict[str, str]) -> dict[str, Any]:
         req = urllib.request.Request(url, method="GET")
         for k, v in headers.items():
             req.add_header(k, v)
+        # Quotation-only instrumentation/session guard. No headers or request
+        # objects reach the callback; its refusal is outside the retry handler.
+        if before_attempt is not None:
+            before_attempt()
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
                 return json.loads(resp.read().decode("utf-8"))
@@ -662,6 +690,8 @@ def fetch_daily_page(
     *,
     adjusted: str,
     is_index: bool = False,
+    before_attempt: Callable[[], None] | None = None,
+    before_headers: Callable[[], None] | None = None,
 ) -> list[KlineRow]:
     """One `inquire-daily-*chartprice` call, ascending by date.
 
@@ -669,6 +699,12 @@ def fetch_daily_page(
     Raises if the response reaches the row cap, because a capped response
     is silently truncated and this module's contract is that a page is
     complete.
+
+    Optional `before_attempt` runs before every quotation GET attempt,
+    including transport/application retries. It can refuse an attempt by
+    raising; it receives no headers and does not instrument authentication.
+    `before_headers` can also guard header/token preparation on each
+    application attempt, without counting it as a quotation GET.
     """
     if adjusted not in (ADJUSTED, RAW):
         raise KisKlinesError(f"adjusted must be {ADJUSTED!r} or {RAW!r}, got {adjusted!r}")
@@ -697,7 +733,11 @@ def fetch_daily_page(
     # the next attempt. See `_RETRYABLE_MSG_CD`.
     payload = None
     for attempt in range(_REJECTION_ATTEMPTS):
-        payload = _get_with_retry(url, session.headers(tr))
+        if before_headers is not None:
+            before_headers()
+        headers = session.headers(tr)
+        payload = (_get_with_retry(url, headers) if before_attempt is None else
+                   _get_with_retry(url, headers, before_attempt=before_attempt))
         if payload.get("rt_cd") == "0":
             break
         if payload.get("msg_cd") not in _RETRYABLE_MSG_CD:
