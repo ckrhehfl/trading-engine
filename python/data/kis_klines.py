@@ -56,7 +56,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
@@ -380,7 +380,9 @@ class KisSession:
 # ------------------------------------------------------------------ http
 
 
-def _get_with_retry(url: str, headers: dict[str, str]) -> dict[str, Any]:
+def _get_with_retry(
+    url: str, headers: dict[str, str], *, before_attempt: Callable[[], None] | None = None,
+) -> dict[str, Any]:
     """One GET, retried on transport failure with exponential backoff.
 
     `HTTP 500` from KIS is transient -- measured, not assumed: the Phase 0
@@ -390,6 +392,10 @@ def _get_with_retry(url: str, headers: dict[str, str]) -> dict[str, Any]:
     """
     last: Exception | None = None
     for attempt in range(_MAX_RETRIES):
+        # Quotation-only instrumentation/session guard. No headers or request
+        # objects reach the callback; its refusal is outside the retry handler.
+        if before_attempt is not None:
+            before_attempt()
         req = urllib.request.Request(url, method="GET")
         for k, v in headers.items():
             req.add_header(k, v)
@@ -662,6 +668,8 @@ def fetch_daily_page(
     *,
     adjusted: str,
     is_index: bool = False,
+    before_attempt: Callable[[], None] | None = None,
+    before_headers: Callable[[], None] | None = None,
 ) -> list[KlineRow]:
     """One `inquire-daily-*chartprice` call, ascending by date.
 
@@ -669,6 +677,12 @@ def fetch_daily_page(
     Raises if the response reaches the row cap, because a capped response
     is silently truncated and this module's contract is that a page is
     complete.
+
+    Optional `before_attempt` runs before every quotation GET attempt,
+    including transport/application retries. It can refuse an attempt by
+    raising; it receives no headers and does not instrument authentication.
+    `before_headers` can also guard header/token preparation on each
+    application attempt, without counting it as a quotation GET.
     """
     if adjusted not in (ADJUSTED, RAW):
         raise KisKlinesError(f"adjusted must be {ADJUSTED!r} or {RAW!r}, got {adjusted!r}")
@@ -697,7 +711,11 @@ def fetch_daily_page(
     # the next attempt. See `_RETRYABLE_MSG_CD`.
     payload = None
     for attempt in range(_REJECTION_ATTEMPTS):
-        payload = _get_with_retry(url, session.headers(tr))
+        if before_headers is not None:
+            before_headers()
+        headers = session.headers(tr)
+        payload = (_get_with_retry(url, headers) if before_attempt is None else
+                   _get_with_retry(url, headers, before_attempt=before_attempt))
         if payload.get("rt_cd") == "0":
             break
         if payload.get("msg_cd") not in _RETRYABLE_MSG_CD:
