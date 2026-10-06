@@ -120,6 +120,12 @@ def test_unknown_cash_is_not_a_verified_zero_and_eligibility_is_required():
         settle_final_cash(replace(lot(), dataset_sha256="b" * 64), payout(), session=d(15))
 
 
+def test_final_payout_rejects_an_observation_after_the_issues_last_trade():
+    inconsistent = observable_mark(lot(), session=d(6), close=D(60), frozen=False)
+    with pytest.raises(ValueError, match="eligibility"):
+        settle_final_cash(inconsistent, payout(), session=d(15))
+
+
 def test_historical_spac_conversion_is_not_backdated_from_todays_name():
     periods = (
         IdentityPeriod("A", d(1), d(9), d(1), False, "IPO as SPAC"),

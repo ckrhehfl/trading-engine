@@ -154,3 +154,43 @@ all counts above reproduced, including 217 exceptions and zero raw daily rows
 inside the spent window. This is a metadata hash, not a price-dataset hash.
 The collector HEAD and clean status matched before and after the command.
 No new return trial or experiment-log entry was created.
+
+## Follow-up source discovery during review
+
+KRX KIND separates [initial listings](https://kind.krx.co.kr/listinvstg/listingcompany.do?method=searchListingTypeMain)
+from [SPAC merger listings](https://kind.krx.co.kr/listinvstg/mergeListingCompany.do?method=searchMergeListingCompMain).
+The former explicitly excludes SPAC merger listings. The latter's page also
+warns that its statistics exclude SPAC-surviving changes, even though a query
+selecting both types returned them in the list. Treat the observed list as a
+source to reconcile, not a complete historical security master.
+
+A metadata-only query on 2026-10-06, 2019-01-02 through 2026-09-18, returned
+115 rows: **62 SPAC-surviving and 53 SPAC-disappearing mergers**. The response
+reported one page and 115 total rows, agreeing with the parsed count. The
+observed form parameters were `method=searchMergeListingCompSub`,
+`forward=mergeListingCompany_sub`, `listTypeArrStr=06|07|`,
+`secuGrpArrStr=ST|FS|`, `currentPageSize=3000`, `pageIndex=1`, and those date
+bounds. Optional price/amount columns were left unselected.
+
+Among the 62 SPAC-surviving rows, **59 names match exactly one October 5 live
+identity that is also a done scan code**. Examples: 이스트에이드 / `239340`
+(2019-06-10), 예선테크 / `250930` (2019-09-11), 네오셈 / `253590`
+(2019-01-31). The three unmatched live names are 제이시스메디칼, 엠에프엠코리아
+and 비올. This is a name-based triage join, not verified historical eligibility;
+it deliberately does not discard unmatched/delisted names. The list also
+corroborates 율촌's 2023-09-08 and 뉴키즈온's 2025-07-09 merger listings.
+
+This supplies a concrete next acquisition source, while demonstrating why
+excluding today's 212 SPAC labels is insufficient. The next specification
+must also state how pre-conversion observations affect the activity lookback;
+checking only the formation day's type does not certify the preceding history.
+
+CI at PR #227 head `72e947de9148b60b58fd3e335b2c627ebd0807e2` ran the final
+test set: **3,896 passed, three existing skips**, in 187.60 seconds. Local
+full verification collected before the additional timing test and reported
+3,895 passed; that added case also passed in the final focused/GCP runs above.
+
+CodeRabbit found one inconsistent-input case: a lot could have an observation
+dated after the final distribution's declared last trading date. A reproducer
+failed against the reviewed code; the eligibility check now rejects that lot
+before crediting cash. This preserves the supported non-trading-issue contract.

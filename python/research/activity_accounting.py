@@ -171,7 +171,8 @@ def settle_final_cash(
     if lot.dataset_sha256 != payout.basis.dataset_sha256:
         raise ValueError("cash basis must use the holding's price snapshot")
     if (lot.entered_on > payout.last_trading_on or
-            lot.available_on > payout.record_on or lot.mark_date > session):
+            lot.available_on > payout.record_on or lot.mark_date > session or
+            lot.mark_date > payout.last_trading_on):
         raise ValueError("holding does not establish payout eligibility")
     if session < payout.paid_on:
         return lot, Decimal(0)
