@@ -135,3 +135,22 @@ These are remaining data and integration work, not a conclusion that the
 activity direction fails. The old 10.69 bp result remains specific to v1.
 No pre-2019 prices were accessed; no collector checkout, schedule or credential
 was changed. The collector stayed clean at `4ce85d7` during the initial audit.
+
+## Verification and repeatable audit result
+
+Local focused verification: **80 passed, one existing skip**, including v1
+portfolio regressions and the planning index. Removing the `known_on` guard
+made the historical-SPAC test fail (`DID NOT RAISE`); restoring it passed all
+25 new tests. This checks the failure direction rather than just a happy path.
+The inventory tests use databases with no price columns or `scan_bars` table,
+compare file bytes before/after, and trace the reserved-panel refusal before
+any identity query. A changed identity changes the metadata hash.
+
+GCP executed the committed auditor at
+`7324bf8fec3648fc40c554aea3a26ba7bfac4ac2` in the existing isolated research
+checkout. **25 tests passed in 0.37 seconds** there. The resulting metadata hash
+was `952df59dd96510c01115d33ed3c8156edfa2c2ba884fbf2d30e294158310bf8f`;
+all counts above reproduced, including 217 exceptions and zero raw daily rows
+inside the spent window. This is a metadata hash, not a price-dataset hash.
+The collector HEAD and clean status matched before and after the command.
+No new return trial or experiment-log entry was created.
