@@ -64,12 +64,22 @@ def digest(value: object) -> str:
     return hashlib.sha256(canonical(value).encode()).hexdigest()
 
 
+def sync_directory(path: Path) -> None:
+    """Persist directory entries on the supported WSL/GCP Linux filesystem."""
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def persist(path: Path, value: object, *, append: bool = False) -> None:
     """Flush every diagnostic boundary, including before the first price read."""
     with path.open("a" if append else "x", encoding="utf-8") as stream:
         stream.write(canonical(value) + "\n")
         stream.flush()
         os.fsync(stream.fileno())
+    sync_directory(path.parent)
 
 
 def outside_session() -> None:
@@ -137,7 +147,9 @@ def acquire(scan_path: Path, output: Path, session_factory: Callable[[], KisSess
     version = source_version()
     if output.resolve().is_relative_to(ROOT):
         raise ProbeRefusal("evidence_must_be_outside_checkout")
-    output.mkdir(mode=0o700, parents=True, exist_ok=False)
+    # Require an existing evidence root; do not create unsynced ancestors.
+    output.mkdir(mode=0o700, exist_ok=False)
+    sync_directory(output.parent)
     plan = {
         "purpose": "price-basis diagnostic only; no returns or strategy selection",
         "host": PAPER_HOST, "anchors": [vars(a) for a in ANCHORS],
@@ -163,9 +175,20 @@ def acquire(scan_path: Path, output: Path, session_factory: Callable[[], KisSess
             time.sleep(INTER_REQUEST_DELAY_S)
             outside_session()
             counts["quotation_http_attempts"] += 1
-            persist(output / "events.jsonl", {
-                "event": "quotation_http_attempt", "at": utc_now(), "request": current, **counts,
-            }, append=True)
+            try:
+                persist(output / "events.jsonl", {
+                    "event": "quotation_http_attempt", "at": utc_now(), "request": current, **counts,
+                }, append=True)
+                # A slow evidence sync may itself cross the market boundary.
+                outside_session()
+            except BaseException:
+                counts["quotation_http_attempts"] -= 1
+                with suppress(OSError):
+                    persist(output / "events.jsonl", {
+                        "event": "quotation_http_attempt_cancelled", "at": utc_now(),
+                        "request": current, "reason": "not_sent", **counts,
+                    }, append=True)
+                raise
 
         def ask(code: str, day: str, basis: str, role: str) -> dict[str, str] | None:
             nonlocal current
@@ -218,12 +241,17 @@ def acquire(scan_path: Path, output: Path, session_factory: Callable[[], KisSess
         # Publish success only after the complete record has been synced.
         # A disk-full/fsync failure must not leave a success-shaped result.
         pending = output / ".result.pending"
+        final = output / "result.json"
         try:
             persist(pending, result)
-            pending.rename(output / "result.json")
+            pending.rename(final)
+            sync_directory(output)
         except BaseException:
+            for path in (pending, final):
+                with suppress(OSError):
+                    path.unlink(missing_ok=True)
             with suppress(OSError):
-                pending.unlink(missing_ok=True)
+                sync_directory(output)
             raise
         return result
     except BaseException as exc:

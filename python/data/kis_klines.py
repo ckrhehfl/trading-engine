@@ -414,13 +414,13 @@ def _get_with_retry(
     """
     last: Exception | None = None
     for attempt in range(_MAX_RETRIES):
+        req = urllib.request.Request(url, method="GET")
+        for k, v in headers.items():
+            req.add_header(k, v)
         # Quotation-only instrumentation/session guard. No headers or request
         # objects reach the callback; its refusal is outside the retry handler.
         if before_attempt is not None:
             before_attempt()
-        req = urllib.request.Request(url, method="GET")
-        for k, v in headers.items():
-            req.add_header(k, v)
         try:
             with urllib.request.urlopen(req, timeout=TIMEOUT_S) as resp:
                 return json.loads(resp.read().decode("utf-8"))

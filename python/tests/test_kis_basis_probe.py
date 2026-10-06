@@ -6,6 +6,7 @@ import io
 import json
 from pathlib import Path
 import sqlite3
+import stat
 from types import SimpleNamespace
 import urllib.error
 import urllib.parse
@@ -380,6 +381,112 @@ def test_started_is_fsynced_before_price_access_and_auth(run_inputs, monkeypatch
     assert price_reads > 0
 
 
+def test_directory_entries_are_durable_before_prices_and_success_return(run_inputs, monkeypatch):
+    scan, output = run_inputs
+    original_fsync = probe.os.fsync
+    original_archive = probe.archived_anchors
+    original_rename = Path.rename
+    boundaries = []
+
+    def fsync(fd):
+        info = probe.os.fstat(fd)
+        original_fsync(fd)
+        if stat.S_ISDIR(info.st_mode):
+            if info.st_ino == output.parent.stat().st_ino:
+                boundaries.append("output_parent_synced")
+            elif output.exists() and info.st_ino == output.stat().st_ino:
+                boundaries.append("published_directory_synced" if (output / "result.json").exists() else "output_directory_synced")
+        elif (output / "started.json").exists() and info.st_ino == (output / "started.json").stat().st_ino:
+            boundaries.append("started_file_synced")
+
+    def archived(path):
+        assert boundaries[:3] == ["output_parent_synced", "started_file_synced", "output_directory_synced"]
+        boundaries.append("prices_read")
+        return original_archive(path)
+
+    def authenticate():
+        assert "prices_read" in boundaries
+        boundaries.append("authenticated")
+        return session()
+
+    def rename(path, target):
+        renamed = original_rename(path, target)
+        if path == output / ".result.pending":
+            boundaries.append("renamed")
+        return renamed
+
+    monkeypatch.setattr(probe.os, "fsync", fsync)
+    monkeypatch.setattr(probe, "archived_anchors", archived)
+    monkeypatch.setattr(Path, "rename", rename)
+    install_quotes(monkeypatch)
+    result = probe.acquire(scan, output, authenticate)
+    boundaries.append("returned")
+    assert result["logical_calls"] == 72
+    assert boundaries[-3:] == ["renamed", "published_directory_synced", "returned"]
+
+
+@pytest.mark.parametrize("which_directory", ["output_parent", "started_parent"])
+def test_preprice_directory_sync_failure_refuses_before_database_or_auth(run_inputs, monkeypatch, which_directory):
+    scan, output = run_inputs
+    original_fsync = probe.os.fsync
+    injected = []
+    error = OSError("synthetic directory sync failure")
+
+    def fsync(fd):
+        info = probe.os.fstat(fd)
+        target = output.parent if which_directory == "output_parent" else output
+        if stat.S_ISDIR(info.st_mode) and target.exists() and info.st_ino == target.stat().st_ino:
+            injected.append(which_directory)
+            raise error
+        original_fsync(fd)
+
+    monkeypatch.setattr(probe.os, "fsync", fsync)
+    monkeypatch.setattr(probe, "archived_anchors", lambda _: pytest.fail("price read before durable directory entry"))
+    with pytest.raises(OSError) as exc:
+        probe.acquire(scan, output, lambda: pytest.fail("authentication before durable directory entry"))
+    assert exc.value is error
+    assert injected == [which_directory]
+    assert not (output / "archive.json").exists()
+    assert not (output / "result.json").exists()
+
+
+def test_postrename_directory_sync_failure_removes_success_and_records_failure(run_inputs, monkeypatch):
+    scan, output = run_inputs
+    original_fsync = probe.os.fsync
+    injected = []
+    error = OSError("synthetic publication directory failure")
+    failure_directory_synced = []
+
+    def fsync(fd):
+        info = probe.os.fstat(fd)
+        is_output = stat.S_ISDIR(info.st_mode) and output.exists() and info.st_ino == output.stat().st_ino
+        if is_output and (output / "result.json").exists() and not injected:
+            injected.append("postrename")
+            raise error
+        original_fsync(fd)
+        if is_output and (output / "failure.json").exists():
+            failure_directory_synced.append(True)
+
+    monkeypatch.setattr(probe.os, "fsync", fsync)
+    install_quotes(monkeypatch)
+    with pytest.raises(OSError) as exc:
+        probe.acquire(scan, output, session)
+    assert exc.value is error
+    assert injected == ["postrename"]
+    assert failure_directory_synced == [True]
+    assert not (output / ".result.pending").exists()
+    assert_rejected(output, "upstream_or_interrupted")
+
+
+def test_missing_evidence_parent_is_not_created_recursively(run_inputs, monkeypatch):
+    scan, output = run_inputs
+    nested = output / "unprovisioned" / "evidence"
+    monkeypatch.setattr(probe, "archived_anchors", lambda _: pytest.fail("price read with missing evidence parent"))
+    with pytest.raises(FileNotFoundError):
+        probe.acquire(scan, nested, lambda: pytest.fail("authenticated with missing evidence parent"))
+    assert not output.exists()
+
+
 @pytest.mark.parametrize("condition", ["session", "dirty", "inside_checkout", "existing"])
 def test_preflight_refusals_do_not_read_prices_or_authenticate(run_inputs, monkeypatch, condition):
     scan, output = run_inputs
@@ -596,6 +703,48 @@ def test_session_opening_during_inter_request_delay_prevents_first_http_attempt(
     with pytest.raises(probe.ProbeRefusal, match="protected_session"):
         probe.acquire(scan, output, HttpSession)
     assert read_json(output / "failure.json")["quotation_http_attempts"] == 0
+    assert_rejected(output, "protected_session")
+
+
+@pytest.mark.parametrize("sync_boundary", ["event_file", "event_directory"])
+def test_session_opening_during_attempt_evidence_sync_cancels_unsent_get(run_inputs, monkeypatch, sync_boundary):
+    scan, output = run_inputs
+    original_fsync = probe.os.fsync
+    protected = False
+    injected = []
+    requests = []
+    event_path = output / "events.jsonl"
+
+    def fsync(fd):
+        nonlocal protected
+        info = probe.os.fstat(fd)
+        original_fsync(fd)
+        if injected or not event_path.exists():
+            return
+        last_event = events(output)[-1]
+        if last_event["event"] != "quotation_http_attempt":
+            return
+        at_file = stat.S_ISREG(info.st_mode) and info.st_ino == event_path.stat().st_ino
+        at_directory = stat.S_ISDIR(info.st_mode) and info.st_ino == output.stat().st_ino
+        if (sync_boundary == "event_file" and at_file) or (sync_boundary == "event_directory" and at_directory):
+            injected.append(sync_boundary)
+            protected = True
+
+    def urlopen(request, **kwargs):
+        requests.append(request.method)
+        return http_response({"rt_cd": "0", "output2": []})
+
+    monkeypatch.setattr(probe.os, "fsync", fsync)
+    monkeypatch.setattr(probe, "in_continuous_session", lambda: protected)
+    monkeypatch.setattr(client.urllib.request, "urlopen", urlopen)
+    with pytest.raises(probe.ProbeRefusal, match="protected_session"):
+        probe.acquire(scan, output, HttpSession)
+    assert injected == [sync_boundary]
+    assert requests == []
+    assert read_json(output / "failure.json")["quotation_http_attempts"] == 0
+    cancelled = [event for event in events(output) if event["event"] == "quotation_http_attempt_cancelled"]
+    assert len(cancelled) == 1
+    assert cancelled[0]["quotation_http_attempts"] == 0
     assert_rejected(output, "protected_session")
 
 

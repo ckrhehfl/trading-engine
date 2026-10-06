@@ -164,3 +164,34 @@ expired-token renewal both sent zero POSTs/GETs when cache lookup crossed into
 the protected session. Valid cache hits and permitted token POSTs still work.
 Cleanup-failure tests preserve the original exception object and successfully
 sync the sanitized failure record when that independent write remains possible.
+
+The second review found a filesystem durability gap: syncing file contents
+does not durably create their directory entries. Evidence writes therefore
+also sync the containing directory, and final rename is followed by a directory
+sync before success is returned. The output directory must now have an existing
+parent (the dedicated research-evidence root); recursive parent creation is
+refused, avoiding unsynced ancestor directories. Creation of the fresh output
+directory syncs that existing parent before any source price or authentication.
+
+If final publication or its directory sync fails, both owned temporary and
+final paths are removed on a best-effort basis and the directory is resynced,
+without masking the original error. A failing filesystem may still prevent
+cleanup or failure recording: accept only a successfully completed CLI run
+with its result, and reject any evidence directory carrying a failure record.
+The directory-descriptor sync implementation targets the supported Linux
+environments (Ubuntu WSL and GCP), not native Windows Python.
+
+The added sync boundary also prompted a final session check after writing each
+quotation-attempt event. The GET callback now runs after request/header
+preparation and immediately before the network call. If its evidence sync or
+last session check fails, that unsent attempt is removed from the final HTTP
+counter and a sanitized cancellation event is attempted. Thus an intent event
+may be followed by cancellation; interpret final counters together with those
+events, not by counting intent lines alone.
+
+Five directory-durability regression cases failed before the second-review
+fix and passed afterwards. Two additional tests move into the protected
+session during the attempt event's file/directory fsync and verify zero GETs,
+zero final HTTP attempts and a cancellation event. The resulting diagnostic
+suite has 77 passing tests; together with the existing token-session suite,
+88 tests passed. Original publication/cleanup fault injections also still pass.
