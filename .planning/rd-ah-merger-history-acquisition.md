@@ -147,3 +147,9 @@ three existing skips** in 336.24 seconds; all four additional cases passed in
 the final focused run (57 passed, one existing skip). Both guardrail suites
 passed (27 and 34 tests). No return trial, reserved price access, portfolio
 replay, power estimate or collector deployment occurred.
+
+PR #228 CI at `35c7f72fc8f9ffc600d75b003d958e403a96c27d` passed **3,924 tests,
+three existing skips**, including the saved-response cases. CodeRabbit found
+one CLI consistency issue: a malformed retrieval timestamp raised a traceback
+instead of an argument error. A reproducer failed against that head; the parser
+now rejects malformed ISO input with exit code 2 before opening any database.

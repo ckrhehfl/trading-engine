@@ -184,7 +184,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     if bool(args.source_html) != bool(args.retrieved_at):
         parser.error("--source-html and --retrieved-at must be supplied together")
-    retrieved_at = datetime.fromisoformat(args.retrieved_at) if args.retrieved_at else None
+    try:
+        retrieved_at = datetime.fromisoformat(args.retrieved_at) if args.retrieved_at else None
+    except ValueError:
+        parser.error("--retrieved-at must be an ISO timestamp")
     if retrieved_at is not None and retrieved_at.utcoffset() is None:
         parser.error("--retrieved-at must include a timezone")
     root = Path(__file__).resolve().parents[2]

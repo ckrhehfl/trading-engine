@@ -153,11 +153,14 @@ def test_saved_public_response_preserves_original_timestamp_without_network(tmp_
     ["--source-html", "absent.html"],
     ["--retrieved-at", "2026-10-06T07:00:00+00:00"],
     ["--source-html", "absent.html", "--retrieved-at", "2026-10-06T07:00:00"],
+    ["--source-html", "absent.html", "--retrieved-at", "not-a-timestamp"],
 ])
-def test_saved_response_requires_original_timezone_timestamp(extra, tmp_path, monkeypatch):
+def test_saved_response_requires_original_timezone_timestamp(extra, tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(am, "read_metadata", lambda *a: pytest.fail("must reject before data"))
-    with pytest.raises(SystemExit):
+    with pytest.raises(SystemExit) as exc:
         am.main(["--scan-db", "absent", "--identity-db", "absent", "--output-dir", str(tmp_path), *extra])
+    assert exc.value.code == 2
+    assert "error:" in capsys.readouterr().err
 
 
 def test_fetch_is_bounded_and_requests_only_observed_metadata_fields(monkeypatch):
