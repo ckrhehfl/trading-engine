@@ -76,6 +76,23 @@ def test_reserved_panel_refused_before_identity_or_bar_query(tmp_path, monkeypat
     assert selects == ["SELECT start,end FROM scan_panel WHERE id=1"]
 
 
+def test_complete_code_inventory_preserves_unknowns_and_conflicts_without_prices(tmp_path):
+    """The coverage denominator includes closed, missing and ambiguous identities."""
+    scan, master = databases(tmp_path)
+    before = [p.read_bytes() for p in (scan, master)]
+    compact = ar.inventory(scan, master)
+    complete = ar.inventory(scan, master, include_code_inventory=True)
+    rows = complete.pop("code_inventory")
+    assert complete == compact  # Same transactions, inputs, hash and category counts.
+    assert [row["code"] for row in rows] == ["005930", "084180", "367480", "999999"]
+    assert [len(row["identities"]) for row in rows] == [1, 2, 1, 0]
+    assert rows[1]["category"] == rows[3]["category"] == "missing_or_multiple_identity"
+    assert {r["kind"] for r in rows[1]["identities"]} == {"live", "delisted"}
+    assert rows[2]["category"] == "spac"
+    assert not any("known_on" in row or "eligible" in row for row in rows)
+    assert [p.read_bytes() for p in (scan, master)] == before
+
+
 def test_absent_snapshot_refuses_instead_of_assigning_historical_eligibility(tmp_path):
     scan, master = databases(tmp_path)
     with sqlite3.connect(master) as con:

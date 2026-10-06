@@ -19,7 +19,7 @@ from data.krx_instrument import is_common_stock_issue, is_reit, is_spac
 from research.activity_portfolio import readonly
 
 
-def inventory(scan_path: Path, identity_path: Path) -> dict:
+def inventory(scan_path: Path, identity_path: Path, *, include_code_inventory: bool = False) -> dict:
     """Read completion/identity metadata only, after refusing reserved panels."""
     with closing(readonly(scan_path)) as scan, closing(readonly(identity_path)) as master:
         # Pin read transactions so a collector cannot change one snapshot while
@@ -57,6 +57,7 @@ def inventory(scan_path: Path, identity_path: Path) -> dict:
         )]
         counts = Counter()
         exceptions = []
+        code_inventory = []
         for code in codes:
             rows = identities[code]
             if len(rows) != 1:
@@ -73,24 +74,31 @@ def inventory(scan_path: Path, identity_path: Path) -> dict:
                 else:
                     category = "other_non_candidate"
             counts[category] += 1
+            if include_code_inventory:
+                code_inventory.append(dict(code=code, category=category, identities=rows))
             if category != "passes_current_filter":
                 exceptions.append(dict(code=code, category=category, identities=rows))
         inputs = {"panel": panel, "done_codes": codes, "snapshots": snapshots,
                   "identities": {c: identities[c] for c in codes}, "raw_daily_rows": raw}
         digest = hashlib.sha256(json.dumps(inputs, sort_keys=True, ensure_ascii=False,
                                           separators=(",", ":")).encode()).hexdigest()
-        return {
+        result = {
             "metadata_sha256": digest, "completed_codes": len(codes),
             "snapshots": snapshots, "current_label_counts": dict(sorted(counts.items())),
             "exceptions": exceptions, "raw_daily_rows_in_spent_window": raw,
             "interpretation": "metadata inventory only; current labels are not historical membership",
         }
+        if include_code_inventory:
+            result["code_inventory"] = code_inventory
+        return result
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--scan-db", type=Path, required=True)
     parser.add_argument("--identity-db", type=Path, required=True)
+    parser.add_argument("--include-code-inventory", action="store_true",
+                        help="retain every completed code, including unknown/conflicting current identities")
     args = parser.parse_args(argv)
     root = Path(__file__).resolve().parents[2]
     sources = ["python/research/activity_readiness.py", "python/research/activity_portfolio.py",
@@ -101,7 +109,9 @@ def main(argv: list[str] | None = None) -> int:
     if dirty.strip():
         raise ValueError("metadata audit sources must be committed")
     version = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
-    print(json.dumps({"code_version": version, **inventory(args.scan_db, args.identity_db)},
+    result = inventory(args.scan_db, args.identity_db,
+                       include_code_inventory=args.include_code_inventory)
+    print(json.dumps({"code_version": version, **result},
                      ensure_ascii=False, indent=2))
     return 0
 
