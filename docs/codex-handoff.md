@@ -76,9 +76,15 @@ recorded separately in AQ.
 Task AR (`.planning/rd-ar-large-liquid-liquidity-acquisition.md`) now registers
 the fixed preceding-session liquidity acquisition and diagnostic. Implementation
 and local regression verification are complete, reusing the pinned AQ responses
-and AP calendar rather than changing the size boundary. CodeRabbit review and
-merge precede real requests; no AR
-request or trailing-liquidity outcome has been inspected at this update.
+and AP calendar rather than changing the size boundary. PR #246 passed review
+and CI, was merged and deployed to the isolated GCP research checkout. The
+first run then stopped at a transport failure after 549 successful responses;
+all saved responses and the ledger were verified offline. It published no
+completed candidate artifact. AR records the immutable failed run and a bounded
+recovery plan that reuses verified evidence. Recovery implementation, independent
+review and full local regression verification are complete; CodeRabbit and merge
+precede follow-up requests. No completed liquidity-coverage result is available
+at this update.
 After that diagnostic, finish positive dated operating-company evidence and
 price-panel coverage.
 These remain prerequisites for the new sizing runner. No new large/liquid

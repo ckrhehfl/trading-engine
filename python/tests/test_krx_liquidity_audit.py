@@ -2,9 +2,12 @@
 
 from datetime import datetime, timedelta
 from decimal import Decimal
+import errno
 import hashlib
 import io
 import json
+from socket import EAI_AGAIN, EAI_FAIL, EAI_MEMORY, EAI_NODATA, EAI_NONAME, gaierror
+from ssl import SSLError
 import stat
 from urllib.error import HTTPError, URLError
 
@@ -17,7 +20,7 @@ from test_krx_formation_audit import rows_for_day
 
 
 def synthetic_calendar():
-    anchors = {0: "20190102", 1894: "20260918", 1895: "20260921",
+    anchors = {0: "20190102", 538: "20210310", 1894: "20260918", 1895: "20260921",
                1896: "20260922", 1897: "20260923"}
     anchors.update({60 + 126 * i: day for i, day in enumerate(formation.DATES)})
     calendar = [None] * 1898
@@ -115,7 +118,7 @@ def harness(inputs, monkeypatch):
         def open(self, request, timeout):
             started = json.loads((output / "started.json").read_text())
             assert len(started["request_matrix"]) == 1680
-            assert started["source_sha"] == "a" * 40
+            assert started["source_sha"] == probe.source_version()
             last = json.loads((output / "requests.jsonl").read_text().splitlines()[-1])
             assert last["event"] == "attempt" and last["number"] == len(calls) + 1
             assert timeout == 20 and request.get_method() == "GET"
@@ -555,4 +558,341 @@ def test_private_input_paths_are_required(inputs, tmp_path, problem):
         manifest = probe.ROOT / "never-read-calendar.json"
     with pytest.raises(probe.ProbeRefusal):
         audit.load_calendar(manifest)
+
+
+@pytest.fixture
+def recovery(harness, monkeypatch):
+    """Build the registered failed prefix with the unchanged original invocation."""
+    inputs, opener, calls, sleeps = harness
+    manifest, cache, output, _ = inputs
+    source = "e7c13b33b2b0754b031796e88881baf742d2049f"
+    monkeypatch.setattr(probe, "source_version", lambda: source)
+    opener.mutate = lambda request, payload: TimeoutError() if len(calls) == 550 else payload
+    original = audit.acquire(manifest, cache, output)
+    assert original["failure"] == "transport_failure"
+    assert original["requests_attempted"] == 550 and original["schema_valid_responses"] == 549
+    old = output.with_name("original")
+    output.rename(old)
+    for name, filename in (("RECOVERY_REPORT_SHA256", "report.json"),
+                           ("RECOVERY_STARTED_SHA256", "started.json"),
+                           ("RECOVERY_LEDGER_SHA256", "requests.jsonl")):
+        monkeypatch.setattr(audit, name, hashlib.sha256((old / filename).read_bytes()).hexdigest(), raising=False)
+    opener.mutate = lambda request, payload: payload
+    calls.clear()
+    sleeps.clear()
+    monkeypatch.setattr(probe, "source_version", lambda: "a" * 40)
+    return old, harness
+
+
+def recover(recovery):
+    old, (inputs, _, _, _) = recovery
+    manifest, cache, output, _ = inputs
+    return audit.acquire(manifest, cache, output, recovery_dir=old)
+
+
+def test_recovery_reuses_all_prefix_before_network_and_preserves_original(recovery, monkeypatch):
+    old, (inputs, opener, calls, sleeps) = recovery
+    manifest, cache, output, _ = inputs
+    before = {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in old.iterdir()}
+    validated = []
+    summarize = formation.summarize_trading_day
+    def track(rows, service, day):
+        validated.append((service, day, len(calls)))
+        return summarize(rows, service, day)
+    monkeypatch.setattr(formation, "summarize_trading_day", track)
+    result = recover(recovery)
+    assert result["specification"] == "krx-large-liquid-liquidity-recovery-v1"
+    assert result["status"] == "liquidity_audited" and result["coverage_complete"] is True
+    assert result["reused_prefix_validated"] is True and result["reused_valid_responses"] == 549
+    assert result["requests_attempted"] == result["http_200_responses"] == result["schema_valid_responses"] == len(calls) == 1131
+    assert result["combined_valid_responses"] == 1680 and result["logical_items_remaining"] == 0
+    assert result["transport_retries_used"] == 0 and result["unused_wire_attempt_budget"] == 2
+    assert result["requests_unattempted"] == 0 and result["days_audited"] == 840
+    assert result["totals"]["liquidity_pass_rows"] == 28
+    for flag in formation._uncertified_flags():
+        assert result[flag] is False
+    _, matrix = audit.load_calendar(manifest)
+    assert validated[:549] == [(row["service"], row["bas_dd"], 0) for row in matrix[:549]]
+    assert [request.full_url for request in calls] == [f"{probe.HOST}/svc/apis/sto/{row['service']}?basDd={row['bas_dd']}" for row in matrix[549:]]
+    assert calls[0].full_url.endswith("ksq_bydd_trd?basDd=20210310")
+    assert sleeps == [1] * 1130
+    assert len(list(output.glob("response-*.json"))) == 1131
+    assert not list(output.glob("response-0549-*"))
+    assert (output / "response-0550-ksq_bydd_trd-20210310.json").exists()
+    started = json.loads((output / "started.json").read_bytes())
+    assert started["request_matrix"] == matrix and started["new_request_matrix"] == matrix[549:]
+    assert started["max_requests"] == 1133 and started["max_transport_retries"] == 2
+    assert started["transport_retry_cooldown_seconds"] == 30
+    assert started["recovery_provenance"]["source_sha"] == "e7c13b33b2b0754b031796e88881baf742d2049f"
+    ledger = [json.loads(line) for line in (output / "requests.jsonl").read_text().splitlines()]
+    assert [row["number"] for row in ledger] == [number for number in range(1, 1132) for _ in range(2)]
+    assert [row["logical_number"] for row in ledger] == [number for number in range(550, 1681) for _ in range(2)]
+    assert {path.name: (path.read_bytes(), path.stat().st_mtime_ns) for path in old.iterdir()} == before
+    assert json.loads((output / "candidates.json").read_bytes())["specification"] == result["specification"]
+
+
+@pytest.mark.parametrize("failed_attempts", [{1, 2}, {1, 5}, {1131, 1132}])
+def test_recovery_two_transport_retries_are_global_durable_and_bounded(recovery, failed_attempts):
+    _, (inputs, opener, calls, sleeps) = recovery
+    output = inputs[2]
+    opener.mutate = lambda request, payload: URLError(TimeoutError("test-only-credential")) if len(calls) in failed_attempts else payload
+    result = recover(recovery)
+    assert result["status"] == "liquidity_audited" and len(calls) == 1133
+    assert result["transport_retries_used"] == 2 and result["unused_wire_attempt_budget"] == 0
+    assert result["schema_valid_responses"] == 1131 and result["combined_valid_responses"] == 1680
+    assert sleeps.count(30) == 2 and sleeps.count(1) == 1130
+    ledger = [json.loads(line) for line in (output / "requests.jsonl").read_text().splitlines()]
+    assert len(ledger) == 2266
+    for number in failed_attempts:
+        response = ledger[2 * number - 1]
+        assert response["event"] == "response" and response["failure"] == "transport_failure"
+        assert response["http_status"] is None
+        assert ledger[2 * number]["logical_number"] == response["logical_number"]
+        assert calls[number - 1].full_url == calls[number].full_url
+    assert len(list(output.glob("response-*.json"))) == 1131
+
+
+def test_recovery_third_transport_failure_stops_without_resetting_allowance(recovery):
+    _, (inputs, opener, calls, sleeps) = recovery
+    opener.mutate = lambda request, payload: TimeoutError() if len(calls) in {1, 4, 7} else payload
+    result = recover(recovery)
+    assert result["failure"] == "transport_failure" and len(calls) == 7
+    assert result["transport_retries_used"] == 2 and sleeps.count(30) == 2
+    assert result["schema_valid_responses"] == 4 and result["combined_valid_responses"] == 553
+    assert result["logical_items_remaining"] == 1127 and result["unused_wire_attempt_budget"] == 1126
+    assert not (inputs[2] / "candidates.json").exists()
+
+
+@pytest.mark.parametrize("status", [301, 401, 403, 429, 500, 503])
+def test_recovery_never_retries_http_failures(recovery, status):
+    _, (inputs, opener, calls, sleeps) = recovery
+    class ErrorBody(io.BytesIO):
+        def read(self, *args):
+            pytest.fail("HTTP error body must not be read")
+    opener.mutate = lambda request, payload: HTTPError(request.full_url, status, "test-only-credential", {}, ErrorBody())
+    result = recover(recovery)
+    assert result["status"] == "failed" and len(calls) == 1 and not sleeps
+    assert result["transport_retries_used"] == 0 and result["reused_valid_responses"] == 549
+    assert result["combined_valid_responses"] == 549 and result["days_audited"] == 274
+    assert not (inputs[2] / "candidates.json").exists()
+
+
+@pytest.mark.parametrize("problem,reason", [("duplicate", "cross_market_duplicate"), ("cap", "capitalization_mismatch"),
+                                          ("schema", "schema_failure"), ("oversized", "response_too_large"),
+                                          ("secret", "credential_echo")])
+def test_recovery_partial_day_join_and_nontransport_failures_stop(recovery, problem, reason):
+    _, (inputs, opener, calls, sleeps) = recovery
+    def mutate(request, payload):
+        if problem == "oversized":
+            return b" " * (8 * 1024 * 1024 + 1)
+        payload["OutBlock_1"][0][{"duplicate": "ISU_CD", "cap": "MKTCAP", "schema": "ACC_TRDVAL", "secret": "ISU_NM"}[problem]] = {
+            "duplicate": "111111", "cap": "1", "schema": "-", "secret": "test-only-credential"}[problem]
+        return payload
+    opener.mutate = mutate
+    result = recover(recovery)
+    assert result["failure"] == reason and len(calls) == 1 and not sleeps
+    assert result["combined_valid_responses"] == 549 and result["days_audited"] == 274
+    assert not (inputs[2] / "candidates.json").exists()
+
+
+@pytest.mark.parametrize("problem", ["report", "started", "ledger", "raw", "missing", "symlink", "hardlink", "permissions", "directory", "oversized", "candidates", "pending"])
+def test_recovery_preflight_rejects_tampering_before_output_or_network(recovery, problem):
+    old, (inputs, _, calls, _) = recovery
+    path = old / "response-0549-stk_bydd_trd-20210310.json"
+    if problem in ("report", "started", "ledger"):
+        path = old / {"report": "report.json", "started": "started.json", "ledger": "requests.jsonl"}[problem]
+        path.write_bytes(path.read_bytes() + b" ")
+    elif problem == "raw":
+        path.write_bytes(path.read_bytes() + b" ")
+    elif problem == "missing":
+        path.unlink()
+    elif problem == "symlink":
+        real = path.with_name("other.json")
+        path.rename(real)
+        path.symlink_to(real)
+    elif problem == "hardlink":
+        path.with_name("other.json").hardlink_to(path)
+    elif problem == "permissions":
+        path.chmod(0o644)
+    elif problem == "directory":
+        old.chmod(0o755)
+    elif problem == "oversized":
+        path.write_bytes(b" " * (8 * 1024 * 1024 + 1))
+    else:
+        probe.persist(old / ("candidates.json" if problem == "candidates" else "candidates.pending.json"), {})
+    with pytest.raises(probe.ProbeRefusal):
+        recover(recovery)
+    assert not calls and not inputs[2].exists()
+
+
+@pytest.mark.parametrize("filename,field,value", [
+    ("report.json", "specification", "krx-large-liquid-liquidity-recovery-v1"),
+    ("report.json", "source_sha", "b" * 40), ("report.json", "failure", "http_failure"),
+    ("report.json", "requests_attempted", 549), ("report.json", "http_200_responses", 550),
+    ("report.json", "schema_valid_responses", 548), ("report.json", "days_audited", 275),
+    ("report.json", "report_persisted", False), ("report.json", "candidates_persisted", True),
+    ("report.json", "coverage_complete", True), ("report.json", "historical_eligibility_certified", True),
+    ("report.json", "artifact_cleanup_unverified", True), ("report.json", "observations", []),
+    ("started.json", "source_sha", "b" * 40), ("started.json", "request_matrix", []),
+    ("started.json", "status", "failed"), ("started.json", "max_requests", 1681),
+    ("started.json", "candidates_persisted", True),
+])
+def test_recovery_rejects_wrong_pinned_run_shape(recovery, monkeypatch, filename, field, value):
+    old, (inputs, _, calls, _) = recovery
+    path = old / filename
+    payload = json.loads(path.read_bytes())
+    payload[field] = value
+    path.write_bytes(probe.canonical(payload))
+    pin(monkeypatch, "RECOVERY_REPORT_SHA256" if filename == "report.json" else "RECOVERY_STARTED_SHA256", path)
+    with pytest.raises(probe.ProbeRefusal, match="invalid_recovery_evidence"):
+        recover(recovery)
+    assert not calls and not inputs[2].exists()
+
+
+@pytest.mark.parametrize("index,field,value", [(0, "number", 2), (1, "http_status", 500),
+                                            (1098, "bas_dd", "20210311"), (1099, "http_status", 200)])
+def test_recovery_rejects_wrong_ledger_even_with_matching_hash(recovery, monkeypatch, index, field, value):
+    old, (inputs, _, calls, _) = recovery
+    path = old / "requests.jsonl"
+    ledger = [json.loads(line) for line in path.read_bytes().splitlines()]
+    ledger[index][field] = value
+    path.write_bytes(b"\n".join(probe.canonical(row) for row in ledger) + b"\n")
+    pin(monkeypatch, "RECOVERY_LEDGER_SHA256", path)
+    with pytest.raises(probe.ProbeRefusal, match="invalid_recovery_evidence"):
+        recover(recovery)
+    assert not calls and not inputs[2].exists()
+
+
+@pytest.mark.parametrize("field,value", [("MKTCAP", "1"), ("ACC_TRDVAL", "-"), ("BAS_DD", "20210311"), ("ISU_CD", "222222")])
+def test_recovery_reaudits_rows_and_relationships_before_network(recovery, monkeypatch, field, value):
+    old, (inputs, _, calls, _) = recovery
+    # Complete day's KOSPI half: changing its code duplicates the KOSDAQ half.
+    report_path = old / "report.json"
+    report = json.loads(report_path.read_bytes())
+    observation = report["observations"][0]
+    path = old / "response-0001-stk_bydd_trd-20190102.json"
+    payload = json.loads(path.read_bytes())
+    payload["OutBlock_1"][0][field] = value
+    path.write_bytes(probe.canonical(payload))
+    observation["response_sha256"] = hashlib.sha256(path.read_bytes()).hexdigest()
+    report_path.write_bytes(probe.canonical(report))
+    pin(monkeypatch, "RECOVERY_REPORT_SHA256", report_path)
+    with pytest.raises(probe.ProbeRefusal):
+        recover(recovery)
+    assert not calls and not inputs[2].exists()
+
+
+def test_recovery_read_timeout_after_http200_is_distinct_in_ledger(recovery, monkeypatch):
+    _, (inputs, opener, calls, sleeps) = recovery
+    open_response = opener.open
+    def open_with_read_timeout(request, timeout):
+        response = open_response(request, timeout)
+        if len(calls) == 1:
+            response.read = lambda size: (_ for _ in ()).throw(TimeoutError("test-only-credential"))
+        return response
+    monkeypatch.setattr(opener, "open", open_with_read_timeout)
+    result = recover(recovery)
+    assert result["status"] == "liquidity_audited" and result["transport_retries_used"] == 1
+    assert result["http_200_responses"] == 1132 and result["schema_valid_responses"] == 1131
+    assert result["unused_wire_attempt_budget"] == 1 and sleeps[0] == 30
+    ledger = [json.loads(line) for line in (inputs[2] / "requests.jsonl").read_bytes().splitlines()]
+    assert ledger[1]["http_status"] == 200 and ledger[1]["failure"] == "transport_failure"
+    assert ledger[1]["logical_number"] == ledger[2]["logical_number"] == 550
+
+
+@pytest.mark.parametrize("number", [errno.ENOMEM, errno.ENOSPC, errno.EMFILE, errno.ENOBUFS, errno.EIO, errno.EACCES])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_recovery_resource_errors_are_not_transport_retries(recovery, number, wrapped):
+    _, (_, opener, calls, sleeps) = recovery
+    failure = OSError(number, "test-only-credential")
+    opener.mutate = lambda request, payload: URLError(failure) if wrapped else failure
+    result = recover(recovery)
+    assert result["failure"] == "local_io_failure" and len(calls) == 1 and not sleeps
+    assert result["transport_retries_used"] == 0
+
+
+@pytest.mark.parametrize("failure", [TimeoutError(), ConnectionResetError(), gaierror(EAI_AGAIN, "temporary failure"),
+                                    OSError(errno.ENETUNREACH, "network unavailable"), URLError(TimeoutError())])
+def test_recovery_transport_allowlist_includes_network_failure_shapes(failure):
+    assert audit._retryable_transport(failure)
+    if not isinstance(failure, URLError):
+        assert audit._retryable_transport(URLError(failure))
+
+
+@pytest.mark.parametrize("failure", [OSError(), OSError(errno.EINVAL, "invalid argument"), MemoryError(),
+                                    ConnectionError(errno.ENOBUFS, "resource unavailable"), SSLError(),
+                                    gaierror(EAI_FAIL, "failure"), gaierror(EAI_NONAME, "failure"),
+                                    gaierror(EAI_NODATA, "failure"), URLError("unclassified failure")])
+def test_recovery_transport_allowlist_rejects_unknown_and_resource_failures(failure):
+    assert not audit._retryable_transport(failure)
+    assert not audit._retryable_transport(URLError(failure))
+
+
+@pytest.mark.parametrize("failure", [MemoryError("test-only-credential"), gaierror(EAI_MEMORY, "test-only-credential"),
+                                    SSLError("test-only-credential"), URLError("test-only-credential")])
+@pytest.mark.parametrize("wrapped", [False, True])
+def test_recovery_memory_tls_and_unclassified_failures_never_retry(recovery, failure, wrapped):
+    _, (_, opener, calls, sleeps) = recovery
+    opener.mutate = lambda request, payload: URLError(failure) if wrapped else failure
+    result = recover(recovery)
+    assert result["failure"] == "local_io_failure" and len(calls) == 1 and not sleeps
+    assert result["transport_retries_used"] == 0 and "test-only-credential" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("stage", ["started", "attempt", "response", "raw", "candidates", "final", "report_rename", "sync"])
+def test_recovery_evidence_failures_stop_without_retry_or_completed_artifact(recovery, monkeypatch, stage):
+    _, (inputs, _, calls, _) = recovery
+    output = inputs[2]
+    persist = probe.persist
+    def fail_persist(path, value, **kwargs):
+        if ((stage == "started" and path.name == "started.json")
+                or (stage in ("attempt", "response") and path.name == "requests.jsonl" and value["event"] == stage)
+                or (stage == "raw" and path.name.startswith("response-"))
+                or (stage == "candidates" and path.name == "candidates.pending.json")
+                or (stage == "final" and path.name == "report.pending.json")):
+            raise OSError("test-only-credential")
+        persist(path, value, **kwargs)
+    monkeypatch.setattr(probe, "persist", fail_persist)
+    replace = audit.os.replace
+    def fail_replace(src, dest):
+        if stage == "report_rename" and dest.name == "report.json":
+            raise OSError("test-only-credential")
+        replace(src, dest)
+    monkeypatch.setattr(audit.os, "replace", fail_replace)
+    sync = probe.sync_directory
+    def fail_sync(path):
+        if stage == "sync" and (output / "report.json").exists():
+            raise OSError("test-only-credential")
+        sync(path)
+    monkeypatch.setattr(probe, "sync_directory", fail_sync)
+    result = recover(recovery)
+    assert result["status"] == "failed" and result["transport_retries_used"] == 0
+    assert "test-only-credential" not in json.dumps(result)
+    assert result["reused_valid_responses"] == 549
+    assert result["requests_attempted"] == len(calls)
+    assert result["combined_valid_responses"] == (1680 if stage in ("candidates", "final", "report_rename", "sync") else 549)
+    assert not (output / "candidates.json").exists() and not result["candidates_persisted"]
+
+
+def test_recovery_low_disk_after_transport_failure_does_not_spend_retry(recovery, monkeypatch):
+    _, (inputs, opener, calls, sleeps) = recovery
+    opener.mutate = lambda request, payload: TimeoutError()
+    monkeypatch.setattr(audit.shutil, "disk_usage", lambda path: (4 << 30, 2 << 30, (2 << 30) - bool(calls)))
+    result = recover(recovery)
+    assert result["failure"] == "low_disk_space" and len(calls) == 1 and sleeps == [30]
+    assert result["transport_retries_used"] == 0 and result["unused_wire_attempt_budget"] == 1132
+    assert len((inputs[2] / "requests.jsonl").read_text().splitlines()) == 2
+
+
+def test_recovery_cli_preflight_failure_keeps_recovery_identity_and_false_prefix(recovery, capsys):
+    old, (inputs, _, calls, _) = recovery
+    manifest, cache, output, _ = inputs
+    (old / "report.json").write_bytes(b"{}")
+    assert audit.main(["--calendar-manifest", str(manifest), "--formation-dir", str(cache),
+                       "--output-dir", str(output), "--recovery-dir", str(old)]) == 1
+    result = json.loads(capsys.readouterr().out)
+    assert result["specification"] == "krx-large-liquid-liquidity-recovery-v1"
+    assert result["reused_prefix_validated"] is False and result["reused_valid_responses"] == 0
+    assert result["combined_valid_responses"] == 0 and result["logical_items_remaining"] == 1680
+    assert result["report_persisted"] is False and not calls and not output.exists()
 
