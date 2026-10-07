@@ -31,8 +31,8 @@ No new key was issued, and the previously registered key remains in use.
 On 2026-10-07, under a scope persisted before execution, clean PR #241 source
 ran one GCP check at **17:31:35 KST** and then the original 16-request matrix
 at **17:31:57–17:32:40 KST**. All **17 requests returned HTTP 200** and passed
-the probe's structural checks. The three trading dates contain 7,494 trading
-rows, all joined unambiguously to basic information. Saturday trading is empty;
+the probe's structural checks. All trading rows across the three positive
+dates joined unambiguously to basic information. Saturday trading is empty;
 Saturday basic snapshots equal Friday's. These are source samples, not a
 common-stock candidate pool or complete historical panel. AP contains private
 evidence hashes and offline ledger/hash verification. Total AP requests are
