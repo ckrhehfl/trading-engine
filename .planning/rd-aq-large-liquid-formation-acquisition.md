@@ -182,3 +182,95 @@ The full WSL check then passed: 27 Codex guardrail tests, 34 VST guardrail
 tests, and **4379 Python tests with three existing skips** in 351.69 seconds.
 CI and completed CodeRabbit review remain merge requirements; the real
 acquisition has not run at this point.
+
+## Reviewed source, deployment and actual acquisition — 2026-10-07
+
+PR #244's exact head `a23943fa7be68cdbf16f96e67ff50d027417297d` passed all
+four CI workflows and received CodeRabbit approval without actionable comments
+at 10:28:25 UTC. The advisory docstring-percentage warning was explicitly
+answered; there were no unresolved review threads. The merged source is
+`d3010fbd33c98ee3eb2de1f98311b337c7b7f217`. The isolated research checkout
+was fast-forwarded to that clean source at 10:29:37 UTC after checking its
+base and exact six-file diff. The collector stayed clean at `4ce85d7`, with
+the previously observed collection processes still present.
+
+The first orchestration scope, `<private-evidence-root>/krx-formations-20261007-v1`,
+stopped before starting the module: its environment parser did not accept the
+existing `export KRX_API_KEY=...` assignment form. Only `scope.json` existed;
+there was no run directory, attempt log or API request. Preserve that scope
+and its zero-request preflight result. The wrapper was corrected without
+changing the credential file or the reviewed module. A fresh v2 scope retained
+the same dates, services, source and request cap; this was not an API retry.
+
+The v2 run started at **19:31:03 KST** and finished at **19:33:04 KST**.
+All **56 requests returned HTTP 200 and passed schema validation**. All
+**14 dates / 28 market joins** passed the full row and two-way membership
+checks. Across those dates, **35,271 issue-date trading rows** matched their
+basic-information rows and passed capitalization/share checks. Of these,
+**944 issue-date rows** meet the size boundary and **34,327** fall below it.
+Among the size passes, **926 issue-date rows** have the source's `보통주`
+label. These are repeated observations across dates, not distinct companies
+or a final eligible-pool count.
+
+| formation | joined trading rows | size passes, all classes | size passes with common label |
+|---|---:|---:|---:|
+| 2019-04-02 | 2238 | 54 | 53 |
+| 2019-10-04 | 2272 | 48 | 47 |
+| 2020-04-07 | 2331 | 41 | 40 |
+| 2020-10-13 | 2357 | 54 | 53 |
+| 2021-04-15 | 2421 | 64 | 63 |
+| 2021-10-20 | 2456 | 73 | 72 |
+| 2022-04-22 | 2494 | 74 | 73 |
+| 2022-10-27 | 2538 | 56 | 55 |
+| 2023-04-27 | 2584 | 72 | 71 |
+| 2023-11-03 | 2637 | 68 | 67 |
+| 2024-05-10 | 2683 | 78 | 76 |
+| 2024-11-15 | 2729 | 72 | 70 |
+| 2025-05-27 | 2761 | 84 | 82 |
+| 2025-12-01 | 2770 | 106 | 104 |
+
+This is Stage A completion only. The common-label count ranges from 40 to 104
+per formation, but liquidity, positive historical operating-company identity,
+panel/history coverage and accounting readiness have not been checked by this
+run. No named example was forced into the pool. All three readiness/certification
+flags remain false. No strategy return, new portfolio, comparison or reserved
+window was inspected. Task AP's earlier 21 requests are separate; Task AQ made
+exactly 56 real requests, with no retries or unattempted matrix entries.
+
+## Private evidence and independent reconciliation
+
+Evidence remains under
+`<private-evidence-root>/krx-formations-20261007-v2/`, outside the checkout.
+An independent offline pass at 10:33:29 UTC checked the complete matrix against
+the **112 attempt/response ledger events**, all **56 raw response files**,
+every recorded response hash, per-market/per-date size counts and total sums.
+The shortest response-to-next-attempt interval was **1.032052 seconds**.
+It also verified directory/file modes 0700/0600 and the false certification
+flags. The invocation returned zero with empty stderr, a persisted report and
+a clean executing checkout; the collector's SHA and clean state matched before
+and after. Verification made no API requests and opened no research database.
+
+| artifact | SHA-256 |
+|---|---|
+| orchestration scope | `1da9312ffce1c42740b0cbe5fb83d8618ef27499722226ccbed4299d9eb3630e` |
+| module started manifest | `2bce0c4b916a1f67415e91dd1b4372ae8425e518d98624661725c58407ee48e9` |
+| final report | `17ae2a87663ed592c2968b9ce051f4fa248574a6d70561e704e7b5a27c8c593b` |
+| request ledger | `f85c8a4403eaacde5d6fd0195054568262cbbb4cdab98ffdc846ab45933f2487` |
+| canonical raw-file manifest | `9e43284f9a5b6e8680f88b673fae5630c9ebb9b92c049b9d300e816203140e6e` |
+| invocation receipt | `fba41ccab688640b9984de2fcad33524bc2873f42c8d327a89b610f47061610e` |
+| independent verification | `ca5e4fef1355e144ac3e6f3b2501bcd7a537ed11bcec1b611229913485ac4b23` |
+
+The next bounded work is the preceding-session liquidity acquisition and dated
+type/coverage audit within this fixed large/liquid specification. The minimum
+matrix still has **1680 trading requests** beyond the 56 completed here, before
+any other verified cache reuse; classification evidence is additional. Register
+that manifest and finish its implementation/review before acquisition. Task AO
+deliverable 2's rule is fixed; deliverables 1 and 3 are partially evidenced,
+while the new sizing runner and sizing/comparison decision remain unexecuted.
+No operator decision is currently blocking that next data-validation work.
+
+The result-only documentation check passed 84 tests with one existing skip;
+scanner and diff checks passed. Independent read-only review recomputed the
+table totals/range and remaining request count, finding no actionable issue.
+It did not independently access the private GCP evidence; the offline
+reconciliation above is the executed evidence check.

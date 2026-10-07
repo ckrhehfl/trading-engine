@@ -63,13 +63,22 @@ not permission to tune the cutoffs after seeing them. Task AO deliverable
 **1 of 5 remains open on coverage and historical classification**; deliverable
 2 now has its reproducible timing and missing-data specification in
 `.planning/rd-aq-large-liquid-formation-acquisition.md`. AQ implements the
-fixed formation-source request matrix derived from AP's calendar-only inventory
-and has passed synthetic tests and independent review. CI, CodeRabbit and
-merge precede any real execution. The first result will audit source identity,
-capitalization arithmetic and size
-counts; liquidity histories and positive dated operating-company evidence
-remain separate prerequisites. No AQ API request, new large/liquid universe
-selection, portfolio or comparison run has occurred at this update.
+fixed formation-source request matrix derived from AP's calendar-only inventory.
+PR #244 passed CI and CodeRabbit, was merged and deployed to the isolated GCP
+research checkout. AQ then completed all 56 requests and all 14 formation-day
+audits. The saved responses agree on membership, listed shares and capitalization
+arithmetic; the result records aggregate size and common-label counts, not an
+eligible universe. An independent offline pass verified hashes, the complete
+request ledger, permissions and aggregate arithmetic. The collector stayed
+unchanged. A preceding wrapper-format failure made no API request and remains
+recorded separately in AQ.
+
+Next register and acquire the preceding-session liquidity histories, then
+finish positive dated operating-company evidence and price-panel coverage.
+These remain prerequisites for the new sizing runner. No new large/liquid
+universe selection, portfolio or comparison run has occurred; readiness and
+historical certification remain false. No new operator choice currently blocks
+the next bounded data-validation work.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
