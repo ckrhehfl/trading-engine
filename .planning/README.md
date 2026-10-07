@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-144 documents and counting, which is past the point where `ls` is a
+145 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -260,6 +260,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-am-lot-coverage-audit.md`](rd-am-lot-coverage-audit.md) — Research Direction Task AM — recover the pilot's complete holding intervals
 - [`rd-an-post-spac-baseline.md`](rd-an-post-spac-baseline.md) — Research Direction Task AN — post-SPAC baseline and dated-source boundaries
 - [`rd-ao-large-liquid-scope.md`](rd-ao-large-liquid-scope.md) — Research Direction Task AO — focus the next study on large, liquid common stocks
+- [`rd-ap-krx-source-access.md`](rd-ap-krx-source-access.md) — Research Direction Task AP — bound KRX source access before universe selection
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

@@ -20,6 +20,14 @@ size/type data access and semantics, then freeze a size-and-liquidity rule
 before inspecting its candidate list or returns. The activity hypothesis,
 post-SPAC baseline decision, accounting obligations and research gates remain.
 
+Task AP (`.planning/rd-ap-krx-source-access.md`) records the operator-authorized
+KRX key registration, verified GCP deployment split, official API contracts
+and fixed access probe. Research code was synchronized to PR #236 on
+2026-10-07; the collector remains at PR #221 and was not restarted. An API key
+being stored is not evidence that its service permissions or historical data
+semantics have passed. Consult AP's actual acquisition result before selecting
+a dated universe.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.
