@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "description": "Dated public SPAC-list presence; not a historical eligibility ledger",
+  "acquired_on": "2026-10-07",
+  "known_on": null,
+  "historical_intervals_ready": false,
+  "source_url": "https://kind.krx.co.kr/corpgeneral/listedissuestatusdetail.do",
+  "request_count": 54,
+  "total_rows": 508,
+  "parameters": {
+    "method": "searchListedIssueStatDetailSub",
+    "forward": "listedissuestatdetail_sub",
+    "mktId": "KSQ",
+    "secugrpId": "SP",
+    "detailType": "1",
+    "currentPageSize": "10"
+  },
+  "snapshots": [
+    {
+      "as_of_date": "2021-03-11",
+      "reported_total": 56,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": true,
+          "displayed_name": "현대무벡스",
+          "displayed_listing_date": "2019-05-08"
+        }
+      ]
+    },
+    {
+      "as_of_date": "2021-03-12",
+      "reported_total": 55,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2021-04-15",
+      "reported_total": 57,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2022-04-22",
+      "reported_total": 55,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2022-06-13",
+      "reported_total": 56,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2022-06-14",
+      "reported_total": 56,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2022-06-15",
+      "reported_total": 56,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2022-06-29",
+      "reported_total": 59,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": true,
+          "displayed_name": "원텍",
+          "displayed_listing_date": "2019-12-19"
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    },
+    {
+      "as_of_date": "2022-06-30",
+      "reported_total": 58,
+      "reported_pages": 6,
+      "targets": [
+        {
+          "code": "336570",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        },
+        {
+          "code": "319400",
+          "present": false,
+          "displayed_name": null,
+          "displayed_listing_date": null
+        }
+      ]
+    }
+  ],
+  "evidence": {
+    "gcp_directory": "/home/minjun4897/research-evidence/activity-post-spac-baseline-20261007",
+    "result_sha256": "ee8a1da02c9981b5917ca35e14a58233067a04d9e040fc247bb68a873a839762",
+    "ledger_sha256": "91b4528215aecaf49621e73c57891f6edc3c4f14df1e34dfc87d456035f6da42",
+    "archive_sha256": "b246b10230800f3f7302e725ac571308a5b0226c145e9e0c92d9fa399d74a096",
+    "archive_bytes": 99217
+  },
+  "limitations": [
+    "Displayed names may be current names despite historical classifications.",
+    "Absence from the complete SPAC list does not establish common-stock eligibility or the legal merger date.",
+    "Nine company-level snapshots do not certify continuous intervals, all share classes or contemporaneous publication time.",
+    "No portfolio filter, return experiment or first eligible entry date is inferred.",
+    "displayed_listing_date is the source table's listing-date field; it is not a merger date or a baseline reset date."
+  ]
+}
