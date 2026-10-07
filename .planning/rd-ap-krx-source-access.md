@@ -389,3 +389,87 @@ Source availability remains **unestablished**: Task AO is still at deliverable
 portfolio/comparison runs. After the authorization discrepancy is resolved,
 record a bounded acquisition decision, establish source semantics and then
 freeze the size/liquidity universe rule before inspecting its outcome.
+
+## Local/GCP access comparison — 2026-10-07
+
+The operator requested a check of whether GCP itself prevents use. Read-only
+instance metadata identifies the existing GCP zone as `us-central1-a`;
+[Google's region documentation][gcp-zones] places it in Iowa, USA. The inspected
+[KRX terms][krx-terms] and [FAQ][faq] contain no explicit blanket prohibition
+on GCP. The FAQ's IP-block warning concerns excessive unofficial crawling;
+it does not establish that this instance is blocked. Neither the inspected
+documents nor an HTTP 401 establish an unrestricted-network guarantee.
+
+Before either request, the comparison scope was persisted and fsynced in
+private evidence at **2026-10-07 16:53:42 KST** (07:53:42Z), specification
+`krx-location-comparison-20261007-v1`. This was a private prerequest scope
+record, not a new Git preregistration or strategy trial. It reused the
+unchanged, previously reviewed one-request CLI at clean source
+`1b757eacb7bc693beb271ec5aff4a8628eb91caa` in both environments. The registered
+matrix allowed one local WSL request and one existing-GCP request, at most
+two total, with no retries or infrastructure changes. Both used `stk_bydd_trd`,
+`basDd=20190102`, the same production HTTPS path and literal `AUTH_KEY`.
+Local and freshly loaded GCP keys were again compared in memory and equal;
+no key value or key hash was printed or retained.
+
+The prerequest interpretation distinguished location correlation from cause:
+local success/cloud failure would implicate environment without proving a
+blanket GCP policy; two failures would not establish GCP-specific failure;
+two successes would not explain the earlier failures.
+
+| environment | response time, 2026-10-07 KST | attempts / cap | result |
+|---|---|---|---|
+| local WSL Ubuntu-24.04 | 16:54:27 | 1 / 1 | HTTP 401 |
+| existing GCP, `us-central1-a` | 16:55:01 | 1 / 1 | HTTP 401 |
+
+Both reports were persisted, exited 1 with `access_failure`, and contain zero
+HTTP 200 or schema-validated responses. Error bodies remained unread; there
+are no raw response samples, observations or joined universe data. Both runs
+used a 384 MiB memory ceiling; the GCP run also used nice level 15. The GCP
+collector checkout stayed clean at `4ce85d7` before and after. No collector,
+schedule, credentials or databases were changed. Cumulative actual KRX
+requests are now **4: 1 local and 3 GCP, all HTTP 401**. No other service/date
+in the original matrix has been attempted.
+
+Private evidence roots use
+`<private-evidence-root>/krx-location-comparison-20261007-v1/`, with `local/`
+and `gcp/` run directories on their respective hosts. Directories are 0700
+and the following files were verified 0600. The identical prerequest scope
+was mirrored to GCP; the preflight record is local.
+
+| artifact | SHA-256 |
+|---|---|
+| `scope.json` | `9ac8902dd955ce0d2482c471b23b32deef1d6c414ed8ca4d7f2209eba89be3e2` |
+| `preflight.json` | `b9d97491ef9698f9d35aaff1e915e0e38cd5327ba658ffa2c4d3bd492e092a98` |
+| `local/started.json` | `3ecea06cdaa43ce057a0db547dde7f251c551fccc9953fbc196b5806c7b60942` |
+| `local/requests.jsonl` | `9ae5900dee19169eb16e2f066f495014bbbc95629414af941ede70b5a8fd5c17` |
+| `local/report.json` | `40f1beabf06d3f45d98d0ebc6e96993455e04f6dfdb0e5755ce3d6f08b0883f2` |
+| `local/execution.json` | `61d19703b73cc8d58fc4e28391246511409b41ed3a4a08e1e5e54cdad88ae65c` |
+| `gcp/started.json` | `43ec7bcb5ea5f5f6b3356d123e3331483623460dc96ad4632bfbd5833ffcf52a` |
+| `gcp/requests.jsonl` | `0ba41a8d4ac52cc884d5f4bf43acb4c6ca7e1132ffe22327c361f0faaa49741f` |
+| `gcp/report.json` | `27e7d4430edee21b39a9e396b88679ba41b66e470549930cf3302aeda5081d0a` |
+| `gcp/execution.json` | `327e23706f927d6fa09c45f3a37fd4f9ce33d4b67227ec231c533c95ae67e99c` |
+
+### Result and next action
+
+This comparison does **not support a GCP-only failure**. It does not identify
+the vendor's exact rejection reason or rule out coexisting network restrictions.
+The HTTP response shows that both calls reached an HTTP responder; it is not
+evidence of a simple connection timeout. The operator-confirmed valid key and
+service approvals must not be relabeled as incorrect or pending.
+
+Keep the current infrastructure. The next useful step is KRX's inspection of
+account/key/service authorization linkage and the rejection records for the
+two new request times, in addition to the earlier timestamps above. Ask whether
+any source-network restriction applies to these requests, rather than assume
+one or move the server speculatively. No inquiry has been sent on the operator's
+behalf and no further API request is scheduled. After a concrete explanation
+or service-side change, record the next bounded verification decision.
+
+This operational comparison is complete. Source access remains unestablished;
+Task AO deliverable **1 of 5** remains open, with zero new dated-universe
+samples or large/liquid portfolio/comparison runs. The experiment count and
+pre-2019 reservation are unchanged.
+
+[gcp-zones]: https://docs.cloud.google.com/compute/docs/regions-zones
+[krx-terms]: https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO002.jsp

@@ -33,12 +33,19 @@ dates, 2026-10-07 through 2027-10-06; do not repeat the key-copy/expiry question
 The separate one-request header-spelling diagnostic was reviewed and merged
 as PR #239, deployed to the isolated research checkout and executed at
 05:25:44Z. It also returned **HTTP 401**, despite preserving literal `AUTH_KEY`.
-Across both runs only two actual requests were sent; neither acquired data.
-The collector remains at PR #221. Header spelling is not a sufficient fix;
-the rejection reason remains unknown. AP records the evidence and a private
-KRX support-inquiry outline. No inquiry was sent and no retry is scheduled.
-Next obtain KRX's explanation of the account/service authorization refusal,
-then record a bounded acquisition decision. Never treat key storage, reported
+The subsequent operator-requested location comparison reused clean PR #240
+source and matching keys: local WSL returned **401 at 16:54:27 KST**, and the
+existing GCP instance returned **401 at 16:55:01 KST**, on 2026-10-07. Each
+sent one identical request under a scope recorded privately before execution.
+Cumulative actual requests are four (one local, three GCP), all 401, with no
+data acquired. GCP's zone is `us-central1-a` (Iowa); no blanket GCP prohibition
+was found in the inspected official terms/FAQ. The results do not support a
+GCP-only failure or establish the exact rejection reason. The collector
+remains at PR #221. Keep the infrastructure unchanged; AP records evidence
+and a private KRX inquiry outline. No inquiry was sent or retry scheduled.
+Next obtain KRX's explanation of the account/service authorization refusal
+and any applicable network restriction, then record a bounded acquisition
+decision. Never treat key storage, reported
 approvals or passing tests as successful data access. Task AO deliverable 1
 remains open, with no new large/liquid universe, portfolio or comparison run.
 
