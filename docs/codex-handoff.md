@@ -2,7 +2,7 @@
 
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
 Current research scope and source status last updated on 2026-10-07, including
-the operator's numeric-boundary decision and Task AQ's formation-source work.
+the operator's numeric-boundary decision and Task AR's liquidity-input work.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -73,8 +73,14 @@ request ledger, permissions and aggregate arithmetic. The collector stayed
 unchanged. A preceding wrapper-format failure made no API request and remains
 recorded separately in AQ.
 
-Next register and acquire the preceding-session liquidity histories, then
-finish positive dated operating-company evidence and price-panel coverage.
+Task AR (`.planning/rd-ar-large-liquid-liquidity-acquisition.md`) now registers
+the fixed preceding-session liquidity acquisition and diagnostic. Implementation
+and local regression verification are complete, reusing the pinned AQ responses
+and AP calendar rather than changing the size boundary. CodeRabbit review and
+merge precede real requests; no AR
+request or trailing-liquidity outcome has been inspected at this update.
+After that diagnostic, finish positive dated operating-company evidence and
+price-panel coverage.
 These remain prerequisites for the new sizing runner. No new large/liquid
 universe selection, portfolio or comparison run has occurred; readiness and
 historical certification remain false. No new operator choice currently blocks

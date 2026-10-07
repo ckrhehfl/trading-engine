@@ -382,3 +382,21 @@ def test_failed_final_write_preserves_original_failure_and_counts(harness, monke
     result = audit.acquire(output)
     assert result["failure"] == "transport_failure" and result["evidence_write_failure"] is True
     assert result["requests_attempted"] == len(calls) == 1 and result["requests_unattempted"] == 55
+
+
+def test_shared_trading_validator_does_not_expand_formation_dates():
+    day = "20190102"
+    rows = rows_for_day(day)[probe.SERVICES[0]]
+    assert audit.summarize_trading_day(rows, probe.SERVICES[0], day)["schema_valid"] is True
+    with pytest.raises(probe.ProbeRefusal, match="schema_failure"):
+        audit._summarize(rows, probe.SERVICES[0], day)
+    with pytest.raises(probe.ProbeRefusal, match="incomplete_day"):
+        audit.audit_day(day, rows_for_day(day))
+
+
+@pytest.mark.parametrize("day,service", [("20181228", "stk_bydd_trd"), ("20260919", "stk_bydd_trd"),
+                                       ("20260230", "stk_bydd_trd"), ("20260101", "stk_isu_base_info"),
+                                       (None, "stk_bydd_trd")])
+def test_shared_validator_remains_bounded_and_trading_only(day, service):
+    with pytest.raises(probe.ProbeRefusal, match="schema_failure"):
+        audit.summarize_trading_day(rows_for_day()[service], service, day)
