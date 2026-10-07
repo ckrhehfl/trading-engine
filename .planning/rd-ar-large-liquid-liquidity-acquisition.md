@@ -189,3 +189,141 @@ CodeRabbit/CI completion, merge, isolated research deployment and the bounded
 acquisition are still pending at this entry. No AR request has been made.
 The external wrapper will enforce and inspect the 384 MiB process limit;
 synthetic tests do not establish real-input memory usage or source coverage.
+
+## First execution and preserved transport stop — 2026-10-07
+
+PR #246 passed all four CI workflows. CodeRabbit approved head
+`e2b0ad399fbffd7eca04090e467bfd964eac5934` at 13:55:51 UTC with no actionable
+comments or review threads. Its nonblocking docstring-coverage warning was
+answered with the public-entry-point/test-helper distinction. The squash merge
+is `e7c13b33b2b0754b031796e88881baf742d2049f`. The isolated GCP research checkout
+was deployed cleanly at 13:58:09 UTC; the collector stayed clean at
+`4ce85d714890b87f1a57ae89d4942660e41c0483` with its three known processes present.
+
+The first AR run lasted **13:58:27–14:18:34 UTC**. It stopped at logical request
+550, `ksq_bydd_trd` for `20210310`, with `transport_failure`. Its response event
+has no HTTP status after 20.136205 seconds, consistent with the configured
+timeout; the saved fixed error category cannot distinguish DNS, connection,
+TLS or read failure. Do not assert an authentication rejection or a KRX server
+root cause. No automatic retry occurred. There were **549 HTTP 200 responses**,
+549 valid saved payloads and **274 complete two-market days**; the next day's
+KOSPI half is saved but has no completed partner. The other 1130 requests were
+never attempted. No `candidates.json` was published, and all readiness flags
+remain false. Partial aggregate history counters include uncollected sessions
+and must not be presented as a completed coverage result or selected universe.
+
+The actual child process had a 384 MiB address-space limit and niceness 15.
+A during-run check observed approximately 36 MiB resident memory, sufficient
+free disk and all three collector processes. The final invocation receipt
+confirmed the research checkout and collector were clean and unchanged.
+
+An offline verification made zero API requests and rechecked all **632071 raw
+rows** in the 549 saved payloads, their hashes, fields and capitalization
+relations. All 1100 ledger events match the attempted matrix; the minimum
+response-to-next-attempt gap is 1.02972 seconds. Candidate absence and private
+permissions were verified. Evidence remains outside the checkout in
+`/home/minjun4897/research-evidence/krx-liquidity-20261007-v1`.
+
+| preserved item | SHA-256 |
+|---|---|
+| scope | `c99d0a731174ba51848378a511a3fb57eafa31788c9a752c5dcff8e76c1a56da` |
+| started receipt | `34b0abbd41bd360a9309114b6cdb34dd30516bff747586d7190cc6d8acb0a79f` |
+| failed report | `53effb672a849084148511be55cda1e92e90d181d0d6ee47291545ecdf12b612` |
+| request ledger | `8b2c2367f1ac6e0d3ca5d8f07dd2cf9380bb99a593b0fd769d5e8495fb8da622` |
+| canonical saved-raw manifest | `0b5c2860d0930c91efc9a3017e3683d256c84f991781428b7f1e2a1263906540` |
+| invocation receipt | `a69ffcb359f98397b6863e40d750f4dd7d3e0bdc53e47d35620e32695df1aba2` |
+| partial offline verification | `bd99815de666bdb22b715f83b0b67e914b10dc8b0b53f88bae77ef67391dbde9` |
+
+## Reviewed recovery plan — registered before any follow-up request
+
+The first run remains failed and immutable. The operator's standing instruction
+to complete the work covers this engineering recovery; no research threshold,
+universe, period, missing-data meaning, outcome gate or source is changed.
+The initial stop rule was followed, not silently relaxed in the running job.
+Implement, independently review, test, CodeRabbit-review and merge the following
+separate bounded invocation before any follow-up API request.
+
+Add an explicit `--recovery-dir` mode to the same diagnostic, identified as
+**`krx-large-liquid-liquidity-recovery-v1`**. It accepts only the preserved first
+AR run: pin the failed report, started receipt and ledger hashes above, verify
+their source SHA, fixed matrix, terminal failure, 550 attempts, 549 successful
+observations and absence of completed candidates. Every cached raw response
+must match its pinned report hash and pass the original row/relation checks.
+Reject a different, incomplete, changed, symlinked or nonprivate cache. This is
+not a general resume mechanism and cannot recursively resume a failed recovery.
+
+Reconstruct histories by streaming the **549 saved responses** in original
+logical order before the first new network request. Reuse the old `20210310`
+KOSPI half with the newly acquired KOSDAQ half and validate their relation.
+Do not discard a partial day's valid half, copy the original evidence into the
+checkout, reacquire successful items or select caches by their liquidity result.
+Keep all original bytes untouched and record their provenance separately from
+new response files. The complete logical matrix remains **1680 items**.
+
+The new request matrix is exactly logical items **550 through 1680**, hence
+**1131 required new responses**. Within this new invocation permit at most
+**two extra transport-failure attempts in total**, with a **30-second cooldown**
+before each retry of the same item. Thus its hard wire-attempt cap is **1133**;
+combined with the failed run, the maximum is 1683 wire attempts for the same
+1680 logical observations. This includes one deliberate follow-up attempt of
+the original failed item. An exhausted retry allowance stops immediately.
+
+Only the existing fixed `transport_failure` category permits these two extra
+attempts. Every HTTP error (including 401, 403, 429 and server errors), redirect,
+unexpected response, malformed/oversized payload, schema/arithmetic/identity
+failure, input/evidence-write problem or resource limit still stops immediately.
+The request date/service, host, timeout, response ceiling, environment helper,
+disk and process limits remain fixed. No parallel requests, alternative host,
+credential change, collector change or further automatic recovery is allowed.
+
+Persist the full logical matrix, reused-prefix provenance, new matrix, attempt
+budget, retry policy and clean source SHA before requests. A new durable ledger
+uses a monotonically increasing wire-attempt number and the original logical
+number, retaining every failed attempt and response. New raw filenames use the
+logical number; a transport failure never creates a successful response file.
+Report new HTTP/schema counts, reused valid counts, combined logical completion,
+remaining logical items, retries used and unused wire-attempt budget distinctly.
+Do not equate an unused retry allowance with missing source observations.
+
+Only all 1680 revalidated/new logical items together can publish the diagnostic
+candidates. Preserve the original target denominator, median/zero/missing and
+type-certification rules. The ordinary no-recovery invocation must retain its
+original first-error stop and counters. Test cache tampering before network,
+the partial-day join, successful-item reuse, retry order/cooldown/global cap,
+nonretryable failures, evidence-write failures and fail-closed publication.
+Verification of the eventual combined evidence must independently reconcile
+both ledgers, origins, hashes and exact medians. No follow-up request has been
+made at this registration.
+
+### Recovery error-classification clarification — before follow-up requests
+
+Independent review reproduced a local socket-buffer exhaustion error being
+treated as retryable by the first implementation draft. The draft used only
+synthetic inputs; no recovery network request had occurred. Tighten the recovery
+allow-list to typed timeouts, connection errors, explicit network errno values
+(`ENETDOWN`, `ENETRESET`, `ENETUNREACH`, `EHOSTDOWN`, `EHOSTUNREACH`,
+`ECONNABORTED`, `ECONNREFUSED`, `ECONNRESET`, `ETIMEDOUT`, `EPIPE`) and DNS
+`EAI_AGAIN`. Reject known local resource errors first, including nested
+`URLError.reason` causes. Generic TLS/certificate errors, other DNS errors,
+string reasons and unclassified OS errors stop with a fixed safe category;
+do not infer retryability from exception message text. The original non-recovery
+invocation still stops on its first error with its existing behavior. This
+clarification narrows error recovery without changing the data or research rule.
+
+### Recovery implementation verification — 2026-10-08 KST
+
+The implementation adds 99 synthetic recovery tests to the original 88 in the
+liquidity test file. Final WSL `scripts/dev.ps1 check` passed the scanner,
+27 Codex and 34 VST guardrail tests, and **4572 Python tests**, with three
+existing skips, in 1416.77 seconds for the Python suite. This full run includes
+the final conservative retry classifier; a redundant worker-focused run was
+stopped and was not counted as completed verification.
+
+The independent reviewer reproduced the draft's socket-buffer exhaustion bug,
+verified its fix and passed **24 tests** on the final module, including complete
+prefix validation, the partial-day join, the wire-attempt cap, a read timeout
+after HTTP 200 and the original no-recovery behavior. Replacing the classifier
+with an always-retry function in a separate process made the resource-error
+regression fail as expected; no source mutation remained. No unresolved review
+finding or new research decision remains. CodeRabbit, merge and deployment of
+this recovery change still precede any follow-up acquisition.

@@ -1,18 +1,22 @@
 """Audit the fixed preceding-session KRX histories without selecting a universe.
 
-Only private calendar-manifest, formation-dir and fresh output-dir paths are
-accepted. No database, retry, alternative source, returns or orders are used.
+Only private evidence paths are accepted. Explicit recovery reuses one pinned
+failed run with a fixed transport retry allowance; ordinary runs never retry.
 """
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime
 from decimal import Decimal, localcontext
+import errno
 import hashlib
 import json
 import os
 from pathlib import Path
 import shutil
+from socket import EAI_AGAIN, gaierror
+from ssl import SSLError
 import stat
 import time
 from urllib.error import HTTPError, URLError
@@ -23,6 +27,15 @@ from data import krx_openapi_probe as probe
 
 
 SPECIFICATION = "krx-large-liquid-liquidity-v1"
+RECOVERY_SPECIFICATION = "krx-large-liquid-liquidity-recovery-v1"
+RECOVERY_SOURCE_SHA = "e7c13b33b2b0754b031796e88881baf742d2049f"
+RECOVERY_REPORT_SHA256 = "53effb672a849084148511be55cda1e92e90d181d0d6ee47291545ecdf12b612"
+RECOVERY_STARTED_SHA256 = "34b0abbd41bd360a9309114b6cdb34dd30516bff747586d7190cc6d8acb0a79f"
+RECOVERY_LEDGER_SHA256 = "8b2c2367f1ac6e0d3ca5d8f07dd2cf9380bb99a593b0fd769d5e8495fb8da622"
+RECOVERY_PREFIX = 549
+RECOVERY_MAX_REQUESTS = 1133
+RECOVERY_MAX_RETRIES = 2
+RECOVERY_COOLDOWN_SECONDS = 30
 CALENDAR_SHA256 = formation.CALENDAR_SHA256
 CALENDAR_MANIFEST_SHA256 = formation.CALENDAR_MANIFEST_SHA256
 FORMATION_REPORT_SHA256 = "17ae2a87663ed592c2968b9ce051f4fa248574a6d70561e704e7b5a27c8c593b"
@@ -262,6 +275,96 @@ def _initial_report() -> dict:
             "observations": [], "days": [], **formation._uncertified_flags()}
 
 
+def _recovery_report() -> dict:
+    return {**_initial_report(), "specification": RECOVERY_SPECIFICATION,
+            "max_requests": RECOVERY_MAX_REQUESTS, "required_new_responses": MAX_REQUESTS - RECOVERY_PREFIX,
+            "requests_unattempted": MAX_REQUESTS - RECOVERY_PREFIX, "new_logical_items_attempted": 0,
+            "response_counts_scope": "new_invocation", "reused_prefix_validated": False,
+            "reused_valid_responses": 0, "combined_valid_responses": 0, "logical_items_remaining": MAX_REQUESTS,
+            "transport_retries_used": 0, "unused_wire_attempt_budget": RECOVERY_MAX_REQUESTS,
+            "max_transport_retries": RECOVERY_MAX_RETRIES, "transport_retry_cooldown_seconds": RECOVERY_COOLDOWN_SECONDS,
+            "recovery_provenance": {"source_sha": RECOVERY_SOURCE_SHA,
+                                    "report_sha256": RECOVERY_REPORT_SHA256,
+                                    "started_sha256": RECOVERY_STARTED_SHA256,
+                                    "ledger_sha256": RECOVERY_LEDGER_SHA256,
+                                    "reused_logical_first": 1, "reused_logical_last": RECOVERY_PREFIX}}
+
+
+def _recovery_rows(path: Path, matrix: list[dict], secret: str) -> Iterator[tuple[dict, list[dict]]]:
+    """Stream and revalidate only the immutable first run, never another recovery."""
+    path = _private_path(path, directory=True)
+    report = _json(_read_private(path / "report.json", RECOVERY_REPORT_SHA256))
+    started = _json(_read_private(path / "started.json", RECOVERY_STARTED_SHA256))
+    ledger = [_json(line) for line in _read_private(path / "requests.jsonl", RECOVERY_LEDGER_SHA256).splitlines()]
+    required = {"specification": SPECIFICATION, "source_sha": RECOVERY_SOURCE_SHA, "max_requests": MAX_REQUESTS,
+                "status": "failed", "failure": "transport_failure", "requests_attempted": 550,
+                "requests_unattempted": 1130, "http_200_responses": RECOVERY_PREFIX,
+                "schema_valid_responses": RECOVERY_PREFIX, "days_audited": 274, "report_persisted": True}
+    started_required = {"specification": SPECIFICATION, "source_sha": RECOVERY_SOURCE_SHA, "status": "started",
+                        "max_requests": MAX_REQUESTS, "requests_attempted": 0, "requests_unattempted": MAX_REQUESTS,
+                        "http_200_responses": 0, "schema_valid_responses": 0, "days_audited": 0,
+                        "request_matrix": matrix, "observations": [], "days": [], "host": probe.HOST,
+                        "calendar_sha256": CALENDAR_SHA256, "calendar_manifest_sha256": CALENDAR_MANIFEST_SHA256,
+                        "formation_report_sha256": FORMATION_REPORT_SHA256,
+                        "formation_started_sha256": FORMATION_STARTED_SHA256, "formation_ledger_sha256": FORMATION_LEDGER_SHA256,
+                        "timeout_seconds": probe.TIMEOUT_SECONDS, "interval_seconds": probe.INTERVAL_SECONDS,
+                        "max_response_bytes": probe.MAX_RESPONSE_BYTES, "min_free_bytes": MIN_FREE_BYTES,
+                        "lookback_sessions": WINDOW_SESSIONS, "window": "C[f-60:f]",
+                        "liquidity_min_krw": str(LIQUIDITY_MIN_KRW), "market_cap_min_krw": str(formation.MARKET_CAP_MIN_KRW),
+                        "threshold_boundaries": "inclusive", "required_invocation_address_space_limit_bytes": 384 * 1024**2}
+    if (not isinstance(report, dict) or any(report.get(key) != value for key, value in required.items())
+            or not isinstance(started, dict) or any(started.get(key) != value for key, value in started_required.items())
+            or any(value.get(flag) is not False for value in (report, started)
+                   for flag in (*formation._uncertified_flags(), "coverage_complete", "candidates_persisted"))
+            or any(flag in report for flag in ("evidence_write_failure", "artifact_cleanup_unverified", "candidates_sha256"))
+            or len(ledger) != 1100 or not isinstance(report.get("observations"), list)
+            or len(report["observations"]) != RECOVERY_PREFIX
+            or len(matrix) != MAX_REQUESTS or matrix[549] != {"bas_dd": "20210310", "service": "ksq_bydd_trd"}):
+        raise probe.ProbeRefusal("invalid_recovery_evidence")
+    expected_files = {f"response-{number:04d}-{item['service']}-{item['bas_dd']}.json"
+                      for number, item in enumerate(matrix[:RECOVERY_PREFIX], 1)}
+    if ({entry.name for entry in path.glob("response-*.json")} != expected_files
+            or any(os.path.lexists(path / name) for name in ("candidates.json", "candidates.pending.json", "report.pending.json"))):
+        raise probe.ProbeRefusal("invalid_recovery_evidence")
+    for index, item in enumerate(matrix[:550]):
+        for offset, event in enumerate(("attempt", "response")):
+            entry = ledger[index * 2 + offset]
+            if (not isinstance(entry, dict) or any(entry.get(key) != value for key, value in item.items())
+                    or entry.get("event") != event or entry.get("number") != index + 1
+                    or (event == "response" and entry.get("http_status") != (200 if index < RECOVERY_PREFIX else None))):
+                raise probe.ProbeRefusal("invalid_recovery_evidence")
+    for index, item in enumerate(matrix[:RECOVERY_PREFIX]):
+        observation = report["observations"][index]
+        if (not isinstance(observation, dict) or observation.get("schema_valid") is not True
+                or not isinstance(observation.get("response_sha256"), str) or len(observation["response_sha256"]) != 64):
+            raise probe.ProbeRefusal("invalid_recovery_evidence")
+        body = _read_private(path / f"response-{index+1:04d}-{item['service']}-{item['bas_dd']}.json", observation["response_sha256"])
+        rows = probe.parse_response(body, secret)
+        summary = formation.summarize_trading_day(rows, item["service"], item["bas_dd"])
+        if (not summary["schema_valid"]
+                or summary != {key: value for key, value in observation.items() if key not in ("at", "response_sha256")}):
+            raise probe.ProbeRefusal("recovery_reaudit_mismatch")
+        yield item, rows
+
+
+def _retryable_transport(error: BaseException) -> bool:
+    # Local resource and filesystem errors must not inherit OSError's broad
+    # legacy transport classification. Unknown OS errors stop conservatively.
+    cause = error.reason if isinstance(error, URLError) else error
+    if isinstance(cause, SSLError):
+        return False
+    if isinstance(cause, gaierror):
+        return cause.errno == EAI_AGAIN
+    if not isinstance(cause, OSError):
+        return False
+    if cause.errno is not None:
+        return cause.errno in {
+            errno.ENETDOWN, errno.ENETRESET, errno.ENETUNREACH, errno.EHOSTDOWN, errno.EHOSTUNREACH,
+            errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EPIPE,
+        }
+    return isinstance(cause, (TimeoutError, ConnectionError))
+
+
 def _publish_report(output: Path, report: dict) -> None:
     report["report_persisted"] = True
     published = False
@@ -282,80 +385,25 @@ def _publish_report(output: Path, report: dict) -> None:
         report["candidates_persisted"] = False
 
 
-def acquire(calendar_manifest: Path, formation_dir: Path, output: Path) -> dict:
-    """Acquire the fixed matrix once, retaining only current-day rows and targets."""
+def acquire(calendar_manifest: Path, formation_dir: Path, output: Path, *, recovery_dir: Path | None = None) -> dict:
+    """Audit the fixed matrix, optionally recovering only the pinned failed run."""
     secret = probe.credential()
     version = probe.source_version()
     windows, matrix = load_calendar(calendar_manifest)
     targets = load_formation_cache(formation_dir, secret)
-    output = probe.prepare_output(output)
-    report = {**_initial_report(), "source_sha": version}
+    recovering = recovery_dir is not None
+    report = {**(_recovery_report() if recovering else _initial_report()), "source_sha": version}
     histories = {(target["formation"], target["code"]): {} for target in targets}
     targets_by_formation = {day: [target for target in targets if target["formation"] == day] for day in formation.DATES}
     formation_by_date = {day: formation_day for formation_day, window in windows.items() for day in window}
     audited_dates = set()
-    try:
-        probe.persist(output / "started.json", {
-            **report, "host": probe.HOST, "calendar_sha256": CALENDAR_SHA256,
-            "calendar_manifest_sha256": CALENDAR_MANIFEST_SHA256,
-            "formation_report_sha256": FORMATION_REPORT_SHA256,
-            "formation_started_sha256": FORMATION_STARTED_SHA256, "formation_ledger_sha256": FORMATION_LEDGER_SHA256,
-            "formation_cap_pass_rows": len(targets),
-            "formation_cap_pass_common_label_rows": sum(target["source_common_label"] for target in targets),
-            "request_matrix": matrix, "lookback_sessions": WINDOW_SESSIONS,
-            "liquidity_min_krw": str(LIQUIDITY_MIN_KRW), "market_cap_min_krw": str(formation.MARKET_CAP_MIN_KRW),
-            "threshold_boundaries": "inclusive", "window": "C[f-60:f]",
-            "min_free_bytes": MIN_FREE_BYTES, "required_invocation_address_space_limit_bytes": 384 * 1024**2,
-            "timeout_seconds": probe.TIMEOUT_SECONDS, "interval_seconds": probe.INTERVAL_SECONDS,
-            "max_response_bytes": probe.MAX_RESPONSE_BYTES,
-        })
-        opener = probe.make_opener()
-        rows_for_day = {}
-        for item in matrix:
-            day, service = item["bas_dd"], item["service"]
-            if report["requests_attempted"] >= MAX_REQUESTS:
-                raise probe.ProbeRefusal("request_limit")
-            if report["requests_attempted"]:
-                time.sleep(probe.INTERVAL_SECONDS)
-            if shutil.disk_usage(output)[2] < MIN_FREE_BYTES:
-                raise probe.ProbeRefusal("low_disk_space")
-            number = report["requests_attempted"] + 1
-            request_record = {"number": number, **item}
-            probe.persist(output / "requests.jsonl", {**request_record, "event": "attempt", "at": probe.utc_now()}, append=True)
-            url = f"{probe.HOST}/svc/apis/sto/{service}?basDd={day}"
-            request = Request(url, headers={"AUTH_KEY": secret}, method="GET")
-            report["requests_attempted"] = number
-            status = None
-            try:
-                with opener.open(request, timeout=probe.TIMEOUT_SECONDS) as response:
-                    status = response.status
-                    if status != 200 or response.geturl() != url:
-                        raise probe.ProbeRefusal("unexpected_response")
-                    report["http_200_responses"] += 1
-                    body = response.read(probe.MAX_RESPONSE_BYTES + 1)
-            except HTTPError as error:
-                status = error.code
-                error.close()
-                reason = "redirect_rejected" if 300 <= status < 400 else ("access_failure" if status in (401, 403) else "http_failure")
-                raise probe.ProbeRefusal(reason) from None
-            except (URLError, TimeoutError, OSError):
-                raise probe.ProbeRefusal("transport_failure") from None
-            finally:
-                probe.persist(output / "requests.jsonl", {**request_record, "event": "response", "at": probe.utc_now(), "http_status": status}, append=True)
-            if len(body) > probe.MAX_RESPONSE_BYTES:
-                raise probe.ProbeRefusal("response_too_large")
-            rows = probe.parse_response(body, secret)
-            probe.persist(output / f"response-{number:04d}-{service}-{day}.json", body, raw=True)
-            observation = formation.summarize_trading_day(rows, service, day)
-            observation.update(at=probe.utc_now(), response_sha256=hashlib.sha256(body).hexdigest())
-            report["observations"].append(observation)
-            if not observation["schema_valid"]:
-                raise probe.ProbeRefusal("schema_failure")
-            report["schema_valid_responses"] += 1
-            rows_for_day[service] = rows
-            formation._check_relations(rows_for_day)
-            if service != probe.SERVICES[1]:
-                continue
+    rows_for_day = {}
+
+    def accept_rows(item: dict, rows: list[dict]) -> None:
+        day, service = item["bas_dd"], item["service"]
+        rows_for_day[service] = rows
+        formation._check_relations(rows_for_day)
+        if service == probe.SERVICES[1]:
             formation_day = formation_by_date[day]
             target_codes = {target["code"] for target in targets_by_formation[formation_day]}
             for market_rows in rows_for_day.values():
@@ -364,7 +412,107 @@ def acquire(calendar_manifest: Path, formation_dir: Path, output: Path) -> dict:
                         histories[formation_day, row["ISU_CD"]][day] = _bar_metrics(row)
             audited_dates.add(day)
             report["days_audited"] += 1
-            rows_for_day = {}
+            rows_for_day.clear()
+        if recovering:
+            report["combined_valid_responses"] += 1
+
+    prefix = RECOVERY_PREFIX if recovering else 0
+    if recovering:
+        recovery_dir = _private_path(recovery_dir, directory=True)
+        if Path(os.path.abspath(output)).is_relative_to(recovery_dir):
+            raise probe.ProbeRefusal("output_overlaps_recovery_evidence")
+        # Exhaust the stream before creating output or making any new request.
+        # The last KOSPI half remains in rows_for_day for logical item 550.
+        for item, rows in _recovery_rows(recovery_dir, matrix, secret):
+            accept_rows(item, rows)
+            report["reused_valid_responses"] += 1
+        if report["reused_valid_responses"] != RECOVERY_PREFIX or report["days_audited"] != 274:
+            raise probe.ProbeRefusal("incomplete_recovery_prefix")
+        report["reused_prefix_validated"] = True
+        report["logical_items_remaining"] = MAX_REQUESTS - report["combined_valid_responses"]
+    output = probe.prepare_output(output)
+    try:
+        probe.persist(output / "started.json", {
+            **report, "host": probe.HOST, "calendar_sha256": CALENDAR_SHA256,
+            "calendar_manifest_sha256": CALENDAR_MANIFEST_SHA256,
+            "formation_report_sha256": FORMATION_REPORT_SHA256,
+            "formation_started_sha256": FORMATION_STARTED_SHA256, "formation_ledger_sha256": FORMATION_LEDGER_SHA256,
+            "formation_cap_pass_rows": len(targets),
+            "formation_cap_pass_common_label_rows": sum(target["source_common_label"] for target in targets),
+            "request_matrix": matrix, **({"new_request_matrix": matrix[prefix:]} if recovering else {}),
+            "lookback_sessions": WINDOW_SESSIONS,
+            "liquidity_min_krw": str(LIQUIDITY_MIN_KRW), "market_cap_min_krw": str(formation.MARKET_CAP_MIN_KRW),
+            "threshold_boundaries": "inclusive", "window": "C[f-60:f]",
+            "min_free_bytes": MIN_FREE_BYTES, "required_invocation_address_space_limit_bytes": 384 * 1024**2,
+            "timeout_seconds": probe.TIMEOUT_SECONDS, "interval_seconds": probe.INTERVAL_SECONDS,
+            "max_response_bytes": probe.MAX_RESPONSE_BYTES,
+        })
+        opener = probe.make_opener()
+        for logical_number, item in enumerate(matrix[prefix:], prefix + 1):
+            day, service = item["bas_dd"], item["service"]
+            retrying = False
+            while True:
+                if report["requests_attempted"] >= report["max_requests"]:
+                    raise probe.ProbeRefusal("request_limit")
+                if report["requests_attempted"]:
+                    time.sleep(RECOVERY_COOLDOWN_SECONDS if retrying else probe.INTERVAL_SECONDS)
+                if shutil.disk_usage(output)[2] < MIN_FREE_BYTES:
+                    raise probe.ProbeRefusal("low_disk_space")
+                number = report["requests_attempted"] + 1
+                request_record = {"number": number, **item, **({"logical_number": logical_number} if recovering else {})}
+                probe.persist(output / "requests.jsonl", {**request_record, "event": "attempt", "at": probe.utc_now()}, append=True)
+                url = f"{probe.HOST}/svc/apis/sto/{service}?basDd={day}"
+                request = Request(url, headers={"AUTH_KEY": secret}, method="GET")
+                report["requests_attempted"] = number
+                if recovering:
+                    report["new_logical_items_attempted"] += not retrying
+                    report["transport_retries_used"] += retrying
+                status, transport_failure = None, False
+                try:
+                    with opener.open(request, timeout=probe.TIMEOUT_SECONDS) as response:
+                        status = response.status
+                        if status != 200 or response.geturl() != url:
+                            raise probe.ProbeRefusal("unexpected_response")
+                        report["http_200_responses"] += 1
+                        body = response.read(probe.MAX_RESPONSE_BYTES + 1)
+                except HTTPError as error:
+                    status = error.code
+                    error.close()
+                    reason = "redirect_rejected" if 300 <= status < 400 else ("access_failure" if status in (401, 403) else "http_failure")
+                    raise probe.ProbeRefusal(reason) from None
+                except (URLError, TimeoutError, OSError) as error:
+                    if recovering and not _retryable_transport(error):
+                        raise probe.ProbeRefusal("local_io_failure") from None
+                    transport_failure = True
+                except MemoryError:
+                    if recovering:
+                        raise probe.ProbeRefusal("local_io_failure") from None
+                    raise
+                finally:
+                    probe.persist(output / "requests.jsonl", {
+                        **request_record, "event": "response", "at": probe.utc_now(), "http_status": status,
+                        **({"failure": "transport_failure"} if recovering and transport_failure else {}),
+                    }, append=True)
+                if not transport_failure:
+                    break
+                if not recovering or report["transport_retries_used"] >= RECOVERY_MAX_RETRIES:
+                    raise probe.ProbeRefusal("transport_failure")
+                retrying = True
+            if len(body) > probe.MAX_RESPONSE_BYTES:
+                raise probe.ProbeRefusal("response_too_large")
+            rows = probe.parse_response(body, secret)
+            probe.persist(output / f"response-{logical_number:04d}-{service}-{day}.json", body, raw=True)
+            observation = formation.summarize_trading_day(rows, service, day)
+            observation.update(at=probe.utc_now(), response_sha256=hashlib.sha256(body).hexdigest())
+            if recovering:
+                observation.update(logical_number=logical_number, number=number)
+            report["observations"].append(observation)
+            if not observation["schema_valid"]:
+                raise probe.ProbeRefusal("schema_failure")
+            report["schema_valid_responses"] += 1
+            accept_rows(item, rows)
+        if recovering and report["combined_valid_responses"] != MAX_REQUESTS:
+            raise probe.ProbeRefusal("incomplete_recovery")
         report["status"] = "liquidity_audited"
     except probe.ProbeRefusal as error:
         report.update(status="failed", failure=str(error))
@@ -382,7 +530,7 @@ def acquire(calendar_manifest: Path, formation_dir: Path, output: Path) -> dict:
                           for day in formation.DATES]
         report["coverage_complete"] = report["status"] == "liquidity_audited" and not report["totals"]["incomplete_history_rows"]
         if report["status"] == "liquidity_audited":
-            artifact = {"specification": SPECIFICATION, "candidates": candidates, **formation._uncertified_flags()}
+            artifact = {"specification": report["specification"], "candidates": candidates, **formation._uncertified_flags()}
             probe.persist(output / "candidates.pending.json", artifact)
             os.replace(output / "candidates.pending.json", output / "candidates.json")
             report["candidates_persisted"] = True
@@ -399,23 +547,31 @@ def acquire(calendar_manifest: Path, formation_dir: Path, output: Path) -> dict:
                 report["artifact_cleanup_unverified"] = True
         report["candidates_persisted"] = False
     report["finished_at"] = probe.utc_now()
-    report["requests_unattempted"] = MAX_REQUESTS - report["requests_attempted"]
+    if recovering:
+        report["logical_items_remaining"] = MAX_REQUESTS - report["combined_valid_responses"]
+        report["unused_wire_attempt_budget"] = RECOVERY_MAX_REQUESTS - report["requests_attempted"]
+        report["requests_unattempted"] = MAX_REQUESTS - RECOVERY_PREFIX - report["new_logical_items_attempted"]
+    else:
+        report["requests_unattempted"] = MAX_REQUESTS - report["requests_attempted"]
     _publish_report(output, report)
     return report
 
 
 def main(argv: list[str] | None = None) -> int:
+    recovering = False
     try:
         parser = probe.SafeParser(description=__doc__, allow_abbrev=False)
         parser.add_argument("--calendar-manifest", required=True, type=Path)
         parser.add_argument("--formation-dir", required=True, type=Path)
         parser.add_argument("--output-dir", required=True, type=Path)
+        parser.add_argument("--recovery-dir", type=Path)
         args = parser.parse_args(argv)
-        report = acquire(args.calendar_manifest, args.formation_dir, args.output_dir)
+        recovering = args.recovery_dir is not None
+        report = acquire(args.calendar_manifest, args.formation_dir, args.output_dir, recovery_dir=args.recovery_dir)
     except probe.ProbeRefusal as error:
-        report = {**_initial_report(), "status": "failed", "failure": str(error), "report_persisted": False}
+        report = {**(_recovery_report() if recovering else _initial_report()), "status": "failed", "failure": str(error), "report_persisted": False}
     except Exception:
-        report = {**_initial_report(), "status": "failed", "failure": "unexpected_failure", "report_persisted": False}
+        report = {**(_recovery_report() if recovering else _initial_report()), "status": "failed", "failure": "unexpected_failure", "report_persisted": False}
     print(probe.canonical(report).decode())
     return 0 if report["status"] == "liquidity_audited" else 1
 
