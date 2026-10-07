@@ -22,11 +22,15 @@ post-SPAC baseline decision, accounting obligations and research gates remain.
 
 Task AP (`.planning/rd-ap-krx-source-access.md`) records the operator-authorized
 KRX key registration, verified GCP deployment split, official API contracts
-and fixed access probe. Research code was synchronized to PR #236 on
-2026-10-07; the collector remains at PR #221 and was not restarted. An API key
-being stored is not evidence that its service permissions or historical data
-semantics have passed. Consult AP's actual acquisition result before selecting
-a dated universe.
+and bounded access probe. The research checkout ran merged PR #237 on
+2026-10-07 after 53 server tests passed; the collector remains at PR #221 and
+was not restarted. The first production request returned **HTTP 401**, so only
+1 of at most 16 requests ran and zero data samples were acquired. The operator
+reports key and all four service approvals; local-to-GCP key equality and
+fresh environment loading were verified without revealing values. Current
+issued-key identity/service validity remains an account-side check. Read AP's
+result and subsequent diagnosis before another bounded attempt; never treat
+key storage, approval reports or test passes as successful data access.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,

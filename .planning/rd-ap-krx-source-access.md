@@ -161,3 +161,93 @@ no remaining actionable finding. Full CI and CodeRabbit are separate merge
 requirements, and none of these checks establishes real service access.
 
 [access]: https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO003.jsp
+
+## First GCP execution result — 2026-10-07
+
+PR #237's exact head `8da38ad` received CodeRabbit approval at 04:23:48Z,
+with no actionable comments or unresolved threads. All four CI workflows
+passed; Python CI reports **4,284 passed, 3 existing skips**. The docstring
+coverage advisory was assessed and answered in the PR, not hidden as a test
+failure. The reviewed tree equals merge commit
+`530fcb42f576bedf01f65948a53a345a1e95c566`.
+
+At 04:26:25Z the isolated GCP research checkout was verified clean at that
+merge. Its own environment passed all 53 probe tests in 2.27 seconds. No
+collector checkout or running process was changed. A first local launcher
+had a Python quoting syntax error before SSH or any request; correcting that
+launcher did not retry a network request or change the committed probe.
+
+The single actual run started at **04:27:50.936959Z** and finished at
+**04:27:51.577947Z**, with nice level 15 and a 384 MiB virtual-memory ceiling:
+
+| measure | observed result |
+|---|---|
+| first request | `stk_bydd_trd`, `basDd=20190102`, official HTTPS production path |
+| HTTP response | **401** |
+| attempted / maximum | **1 / 16** |
+| HTTP 200 / validated responses | **0 / 0** |
+| remaining requests | **15 unattempted**; the other services and controls were not tested |
+| diagnostic exit | 1, `access_failure`; stderr empty |
+| report publication | persisted successfully |
+| acquired raw responses / universe samples | **0 / 0** |
+
+The run stopped as specified. No error body or authentication header was read
+into an artifact. Evidence is private at
+`<private-evidence-root>/krx-source-access-20261007-v1/`:
+
+| artifact | SHA-256 |
+|---|---|
+| `started.json` | `ab9921d25652dd69e1caf0b7d45533437e3d0f2a08fa6b02ac9b56aad852a5bf` |
+| `requests.jsonl` | `5294815ff8465e6f4a9ccef9a7096a24295dfc503d1ee2315f23ca8959444363` |
+| `report.json` | `1d69b4546c6f29ca32c370cb6b4f5aa7f9c9635289336405f366654e5edc6566` |
+| `execution.json` | `ecc8172051f90af30e45ed67436386f90148c15b181f2b5721c53b3b4be41778` |
+
+All four files were verified 0600. Execution records retain research HEAD
+`530fcb4` and collector HEAD `4ce85d7`, both clean. At 04:28:59Z the same two
+pre-2019 wrappers and `data.krx_scan` process were present. Process presence
+does not independently certify collection quality or completion.
+
+## Diagnosis after the refusal
+
+The operator reports that **the key and all four services are approved**.
+This is operator-provided account information, not an authenticated account
+screen inspected by the agent. At 04:30:43Z an in-memory comparison confirmed
+that the exact primary-local KRX assignment equals the value in a fresh GCP
+process sourced from the research environment. It is nonempty and contains
+no header-unsafe whitespace/control characters. A separate boolean comparison
+excluded confusion with the public demo key shown in the official example.
+Neither check sent an API request, emitted a key/hash, changed a credential,
+or read KIS credential values. There has been no second API attempt.
+
+The official [KRX FAQ][faq] was then inspected in the rendered browser:
+
+- `basDd` selects the market's listings at that day's close, including
+  subsequently delisted or then-suspended listings; transfers use the dated
+  market. This describes membership, not a proof that every type field is
+  historically unrevised.
+- OHLC and traded value use KRW; volume uses shares. The answer does not
+  explicitly specify the market-cap field's unit.
+- Data is updated at 08:00 on the following business day; same-day,
+  pre-update and holiday queries are unavailable. Treat this as the current
+  documented schedule, not independently observed historical publication times.
+- The 401 answer lists service approval, using personal keys on sample routes,
+  superseded keys after renewal, and key typos/whitespace. The 403 answer adds
+  URL correctness and HTTPS. This run used the documented non-sample HTTPS
+  path. The FAQ's separate crawler/IP-block warning does not establish that
+  this GCP address is blocked.
+
+The remaining account-side check is whether the currently issued key matches
+the local assignment and whether today's date falls within the approved
+service period. Only the operator can inspect that signed-in screen in the
+current session. A 401 does not certify either an invalid key or a GCP network
+restriction, and the operator's approval report must not be rewritten as
+"approval pending." Preserve this failed attempt before planning any further
+bounded diagnostic; do not expand dates, switch IPs or repeat requests blindly.
+
+The source-access diagnostic and research deployment have been performed;
+source availability is **not established**. Task AO deliverable 1 remains open,
+dated-universe samples and new large/liquid portfolio/comparison runs remain
+zero. Next: resolve this authentication discrepancy, obtain the fixed samples,
+then freeze the dated size/liquidity rule before selection outcomes are read.
+
+[faq]: https://openapi.krx.co.kr/contents/OPP/COMM/faq/OPPCOMM004.cmd
