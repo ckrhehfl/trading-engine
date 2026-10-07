@@ -577,3 +577,121 @@ point-in-time classifications and revisions. `universe_ready` and
 semantics, then freeze the dated size/liquidity rule before inspecting ranks
 or returns. New large/liquid portfolio and comparison runs remain zero;
 the experiment count and pre-2019 reservation are unchanged.
+
+## Saved-sample semantics and classification audit — 2026-10-07
+
+This follow-up used clean source `a4fb3a1f9baa86add304990ead958b931f806712`
+and only already acquired private evidence. It made **zero new HTTP requests**,
+read no credentials or research database, and inspected no size/liquidity
+ranks or strategy returns. Cumulative Task AP API attempts remain 21.
+
+### Scope recorded before each inspection
+
+Private scope `krx-saved-sample-semantics-v1` was persisted and fsynced at
+**17:56:15 KST**. It named the 16 matrix responses above and preregistered
+input-hash verification, row-wise capitalization arithmetic, matching listed
+shares, aggregate class counts, and same-code identity changes between the
+three sampled trading dates. The fixed identity-only controls were the
+operator's examples `005930` and `000660`, plus Task AN's already investigated
+conversion control `336570`; none was selected by size or return.
+
+A separate scope, `krx-saved-classification-crosscheck-v1`, was persisted
+before comparing the API's section labels with Task AN's already saved,
+complete **2022-06-30** KIND SPAC snapshot. It required reporting every set
+difference and the conversion control's membership. It authorized no new
+SPAC requests, price inspection or expansion of Task AN's old universe.
+
+### Arithmetic and identity results
+
+The first audit finished at **17:57:16 KST**. All 16 input hashes matched the
+matrix report. Across the three trading dates, every one of **7,494** trading
+rows had exact `MKTCAP == TDD_CLSPRC * LIST_SHRS`; the corresponding basic
+record had the same listed-share count, with **zero mismatches** for either
+check. These are consistency checks of the sampled source, not independent
+verification of each issuer's shares or a historical coverage certificate.
+
+| date | KOSPI rows checked | KOSDAQ rows checked | arithmetic / cross-source share mismatches |
+|---|---:|---:|---:|
+| 2019-01-02 | 901 | 1,325 | 0 / 0 |
+| 2022-06-30 | 941 | 1,565 | 0 / 0 |
+| 2026-09-18 | 942 | 1,820 | 0 / 0 |
+
+Basic information distinguishes instrument groups such as `주권`, foreign
+shares, depositary receipts, REITs and other investment vehicles, and share
+classes such as common and preferred. Counts are source labels, not eligible
+candidate counts. The two operator examples are KOSPI `주권` / `보통주`
+at every sampled trading date; no claim is made that either passes the new
+size/liquidity rule throughout the discovery era.
+
+Matched short codes show date-sensitive names, market and section labels:
+
+| sample transition | common codes | earlier-only / later-only | name changes | market changes | section changes |
+|---|---:|---:|---:|---:|---:|
+| 2019-01-02 to 2022-06-30 | 2,120 | 106 / 386 | 278 | 5 | 512 |
+| 2022-06-30 to 2026-09-18 | 2,308 | 198 / 454 | 318 | 7 | 593 |
+
+An earlier-only code is not by itself a verified delisting. Different
+snapshots do not prove contemporaneous classification or absence of revisions.
+Control `336570` has name `원텍` and labels `주권` / `보통주` on both later
+dates, with listing date **2019-12-19**. That original listing date cannot
+substitute for the separately evidenced post-SPAC baseline reset date.
+
+### What the same-date classification cross-check establishes
+
+The second audit finished at **18:00:55 KST**. KOSDAQ SPAC-section counts
+are 43, 57 and 66 on the three sampled dates. For 2022-06-30, KIND's complete
+SPAC snapshot contains **58** codes, the API SPAC section **57**, and their
+intersection **57**. The only KIND-only code is `340120`; there are no
+API-only codes. API basic information contains it as `주권` / `보통주`,
+named `하이제5호기업인수목적`, but with section `관리종목(소속부없음)`.
+Control `336570` is present in API basic information and absent from both
+SPAC sets, consistent with Task AN's recorded boundary.
+
+Thus **not in the SPAC section does not establish an operating company**.
+The two sources expose different classifications; this does not demonstrate
+an API error. The existing example is enough to reject that shortcut without
+investigating its trading outcome or restarting full-market SPAC research.
+Unknown candidate classifications still need evidence under Task AO's rule.
+
+### Current documentation and remaining limits
+
+The live official FAQ was inspected on 2026-10-07. Its unit, price-basis,
+publication, historical-membership and session-coverage contracts are recorded
+with the source link in `docs/exchange-api.md` section 6. That resolves the
+previously undocumented meaning and timing at the documentation level; it
+does not establish an archive of historical release times or revisions.
+Record actual acquisition separately from any inferred historical availability.
+
+Neither snapshot variation nor the arithmetic proves full-period completeness,
+point-in-time classifications, corporate-action accounting or revision policy.
+`universe_ready`, `historical_coverage_certified` and
+`historical_eligibility_certified` remain false. Task AO deliverable **1 of 5**
+remains open on coverage and historical classification. The operator's size
+and liquidity decision is appended to Task AO; deliverable 2 still needs the
+complete reproducible timing, missing-data and acquisition specification.
+No universe, portfolio or comparison run occurred; experiment count, collector
+state and the reserved pre-2019 window are unchanged.
+
+### Private provenance
+
+Outputs are under `<private-evidence-root>/krx-semantics-20261007-v1/`.
+The source matrix report hash is recorded in the preceding result. The KIND
+input is Task AN's saved `result.json`, hash
+`ee8a1da02c9981b5917ca35e14a58233067a04d9e040fc247bb68a873a839762`;
+its existing source archive hash is
+`b246b10230800f3f7302e725ac571308a5b0226c145e9e0c92d9fa399d74a096`.
+
+| new artifact | SHA-256 |
+|---|---|
+| `scope.json` | `067bc05fa2cb9fdda3b89cd5eab55ba2d6e607b031439acbe847a1bb6ac3cb04` |
+| `result.json` | `72790e367338340f3619403577f0f0a802f5385e82dea99ff8fdac9ccb5ca782` |
+| `classification-scope.json` | `6451cf0d13187a55ab8e6775c1076329ab7916497210b5f059eec8c725609f64` |
+| `classification-result.json` | `63061af881bd8295abef7bd5121b7c12e03a090fe943f545c2e880b7652be976` |
+
+Before publication, a separate read-only check matched all four hashes and
+verified 0600 files under the 0700 output directory. The WSL documentation
+and planning-index suites passed **84 tests with one existing skip**; the
+repository scanner and diff whitespace check passed. Fresh-context read-only
+review found no actionable issue in the four-document diff. It did not
+independently inspect the private inputs or external FAQ. Full CI and
+CodeRabbit remain merge requirements.

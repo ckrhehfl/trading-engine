@@ -171,3 +171,35 @@ checks; full CI and CodeRabbit remain the PR's merge requirements.
 [kospi-basic]: https://openapi.krx.co.kr/contents/OPP/USES/service/OPPUSES002_S2.cmd?BO_ID=PiwgMdTwmsenXhmqqxuj
 [kosdaq-basic]: https://openapi.krx.co.kr/contents/OPP/USES/service/OPPUSES002_S2.cmd?BO_ID=CifLHplnUFMgpHIMMPXs
 [fsc]: https://www.data.go.kr/data/15094808/openapi.do
+
+## Numeric universe boundary — operator decision 2026-10-07
+
+Before inspecting size/liquidity ranks, candidate counts or returns for this
+new universe, the operator selected option 1:
+
+- **Market capitalization at least KRW 5 trillion** at the dated selection
+  reference point, using that date's capitalization rather than today's shares.
+- **Median daily traded value at least KRW 10 billion (100억 원)** over the
+  preceding **60 trading days**.
+- KOSPI and KOSDAQ domestic operating-company common stocks at the relevant
+  historical time. Neither today's winners nor an index's current constituents
+  define the past universe.
+
+The alternative KRW 1 trillion boundary was not selected and is not a parallel
+trial. No candidate count or period-wide inclusion of Samsung Electronics or
+SK Hynix has been verified. Do not tune the boundary to force those examples
+to pass or to increase the number of observations after seeing the outcome.
+
+This fixes the operator's scope choice, not every implementation detail in
+deliverable 2. A reproducible specification must still pin the selection clock,
+liquidity window endpoints, re-selection cadence, incomplete histories,
+missing observations and type-evidence policy before examining the outcome.
+The liquidity window's trading-day count is distinct from Task AN's normal
+post-conversion observation requirement; neither silently replaces the other.
+
+Task AP now establishes access, sampled capitalization consistency and the
+current documented source timing. It also establishes that the SPAC section
+label alone cannot certify an operating company. Next finish the bounded
+acquisition/coverage specification and audit the new candidate scope, rather
+than expand classification of the old full-market pilot. Deliverables 1 and 2
+remain in progress; no new universe selection or strategy replay has run.

@@ -42,11 +42,25 @@ GCP access with the existing key is now verified for all four services on the
 fixed dates. Missing individual service permission is the likely explanation
 of the earlier 401, not a proven internal rejection cause. A KRX rejection-log
 inquiry is no longer a prerequisite; no inquiry was sent. The collector remains
-unchanged at PR #221. Task AO deliverable **1 of 5 remains open on source
-meaning and coverage**: units, publication timing, historical completeness,
-point-in-time classification and revisions still need verification. Then fix
-the dated size/liquidity rule before ranks or returns are inspected. No new
-large/liquid universe selection, portfolio or comparison run has occurred.
+unchanged at PR #221.
+
+The subsequent offline audit verified every saved trading row's capitalization
+arithmetic and matching basic-information share count. Current official units,
+raw-price basis, publication timing and dated membership semantics are now in
+`docs/exchange-api.md` section 6. These are sampled/documented facts, not full
+historical certification. An existing same-date KIND comparison also proves
+that absence from the API's SPAC section does not establish an operating
+company; AP contains the complete discrepancy and private evidence hashes.
+The audit made no new API requests.
+
+The operator selected the numeric size/liquidity boundary recorded in Task AO's
+latest decision. That choice is fixed before examining its candidates; it is
+not permission to tune the cutoffs after seeing them. Task AO deliverable
+**1 of 5 remains open on coverage and historical classification**; deliverable
+2 now has its operator-selected boundary but still needs the full reproducible
+timing and missing-data specification. Next finish that bounded specification
+and audit the resulting candidate scope. No new large/liquid universe
+selection, portfolio or comparison run has occurred.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
