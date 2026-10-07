@@ -203,3 +203,17 @@ label alone cannot certify an operating company. Next finish the bounded
 acquisition/coverage specification and audit the new candidate scope, rather
 than expand classification of the old full-market pilot. Deliverables 1 and 2
 remain in progress; no new universe selection or strategy replay has run.
+
+### Earlier status records superseded
+
+The initial scope paragraph's unselected numeric cutoff describes that earlier
+decision only. The operator decision above supersedes it with the stated
+capitalization and liquidity boundaries; the original record is preserved.
+
+Likewise, the earlier source-feasibility and credential-clarification sections
+describe access before individual service approval. Task AP's section
+"Individual service approval and successful GCP access — 2026-10-07" records
+the operator's corrected approval report and **17 HTTP 200, schema-valid
+responses**, including all four services, at **17:31:35–17:32:40 KST**.
+Those observed results supersede the earlier unverified-access status.
+The completed fixed access matrix does not certify full historical coverage.

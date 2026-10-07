@@ -1,7 +1,10 @@
 # Claude to Codex handoff
 
-Recorded on 2026-10-05, against repository HEAD `4ce85d7` (PR #221).
-This describes the handoff, not a new research conclusion or authorization.
+Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
+Current research scope and source status last updated on 2026-10-07, including
+the operator's numeric-boundary decision and the saved-sample audit below.
+The later sections retain the original handoff context. These records are not
+a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
 ## Current research scope — operator decision 2026-10-07
