@@ -193,7 +193,7 @@ The single actual run started at **04:27:50.936959Z** and finished at
 
 The run stopped as specified. No error body or authentication header was read
 into an artifact. Evidence is private at
-`/home/minjun4897/research-evidence/krx-source-access-20261007-v1/`:
+`<private-evidence-root>/krx-source-access-20261007-v1/`:
 
 | artifact | SHA-256 |
 |---|---|
