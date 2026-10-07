@@ -1,8 +1,9 @@
 # Claude to Codex handoff
 
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
-Current research scope and source status last updated on 2026-10-07, including
-the operator's numeric-boundary decision and Task AR's liquidity-input work.
+Current research scope and source status last updated on 2026-10-08 KST,
+including the operator's numeric-boundary decision and Task AR's completed
+liquidity acquisition and unresolved-history result.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -81,12 +82,27 @@ and CI, was merged and deployed to the isolated GCP research checkout. The
 first run then stopped at a transport failure after 549 successful responses;
 all saved responses and the ledger were verified offline. It published no
 completed candidate artifact. AR records the immutable failed run and a bounded
-recovery plan that reuses verified evidence. Recovery implementation, independent
-review and full local regression verification are complete; CodeRabbit and merge
-precede follow-up requests. No completed liquidity-coverage result is available
-at this update.
-After that diagnostic, finish positive dated operating-company evidence and
-price-panel coverage.
+recovery plan that reuses verified evidence. PR #247 passed CodeRabbit and all
+four CI workflows, was merged and deployed to the isolated research checkout.
+Its bounded recovery completed at 01:12:54 KST on October 8: 1131 new successful
+requests, no transport retries, and 549 revalidated cached responses complete
+all 1680 logical responses across 840 dates. The preserved first failure makes
+the combined wire-attempt count 1681. The collector stayed clean and unchanged.
+An independent offline pass verified every raw hash, both ledgers, exact medians
+and aggregate counts across 2107688 source rows.
+
+The full 944 capitalization-pass issue-formation rows remain in the diagnostic.
+Of the 926 common-label rows, 918 have complete histories: 879 pass the liquidity
+screen and 39 fall below it. Eight rows remain unresolved, with 254 missing
+issue-session values, all before the basic source's reported listing date.
+That field does not itself verify initial-listing or conversion history.
+The common-label subset spans 138 distinct issue codes; these row counts are
+not counts of distinct stocks or proof of operating-company eligibility.
+There are 878 common-label rows passing both liquidity and the separate formation
+tradability proxy; they are not a completed eligible universe.
+
+Next obtain positive dated listing/operating-company evidence within the chosen
+scope, resolve the eight incomplete histories and finish price-panel coverage.
 These remain prerequisites for the new sizing runner. No new large/liquid
 universe selection, portfolio or comparison run has occurred; readiness and
 historical certification remain false. No new operator choice currently blocks

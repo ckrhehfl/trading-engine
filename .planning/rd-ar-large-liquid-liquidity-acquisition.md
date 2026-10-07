@@ -327,3 +327,171 @@ with an always-retry function in a separate process made the resource-error
 regression fail as expected; no source mutation remained. No unresolved review
 finding or new research decision remains. CodeRabbit, merge and deployment of
 this recovery change still precede any follow-up acquisition.
+
+## Recovery review and deployment — 2026-10-08 KST
+
+PR #247 passed all four CI workflows. CodeRabbit approved head
+`fe7e0d63e4872d450fa7b009bfaa4cc8b575ec90` at 15:26:08 UTC on October 7,
+with no actionable comments or unresolved review threads. Its nonblocking
+docstring-coverage warning was answered without changing review configuration.
+The squash merge is `9e5eacf74f967998df775ac34e001b3b7cc1ba6f`.
+
+The isolated research checkout was deployed cleanly at 15:28:09 UTC, after
+checking its expected base and four-file change allow-list. The collector
+remained clean at `4ce85d714890b87f1a57ae89d4942660e41c0483`; its three known
+processes were present. The recovery invocation started at **15:28:32 UTC /
+00:28:32 KST on October 8**, with the registered new-request matrix and limits
+persisted first. Its actual child address-space limit and niceness were
+inspected. The new evidence root is
+`/home/minjun4897/research-evidence/krx-liquidity-recovery-20261007-v1`;
+the directory name retains the preregistration date, not the execution's KST
+date. The preserved first-run directory is unchanged.
+
+At this entry the recovery is still running. No completed liquidity result is
+asserted; final evidence and independent offline verification follow separately.
+
+## Completed acquisition and offline result — 2026-10-08 KST
+
+The recovery module ran at **15:28:35–16:12:54 UTC on October 7 /
+00:28:35–01:12:54 KST on October 8**, from the reviewed merge above.
+All **1131 new attempts returned HTTP 200 and valid saved responses**.
+No transport retry was used; the two unused extra-attempt slots are retry
+allowance, not missing observations. Together with the **549 revalidated
+cached responses**, the full **1680 logical responses / 840 two-market days**
+are complete. Across the preserved failed run and this recovery there were
+**1681 wire attempts**, including the original failed attempt. The first
+failure remains recorded; it is not relabeled as a successful invocation.
+
+The final report and private candidate diagnostic were published successfully.
+The invocation receipt confirms clean, unchanged research and collector
+checkouts. A during-run inspection at 15:59:27 UTC observed 47400 KiB resident
+memory for the research child, its 384 MiB address-space cap and niceness 15,
+and all three known collector processes. No collector restart or deployment,
+schedule change, database access or new return trial accompanied acquisition.
+
+### Observed denominator and liquidity result
+
+Counts below are **issue-formation rows**, not distinct issuers or independent
+return observations. The 944 capitalization-pass rows contain 140 distinct
+issue codes. The source-common-label subset has 926 rows across 138 codes;
+a common-share label still does not certify a domestic operating company.
+
+| diagnostic | all capitalization-pass rows | source-common-label subset |
+|---|---:|---:|
+| fixed target denominator | 944 | 926 |
+| complete 60-session histories | 936 | 918 |
+| liquidity threshold passes | 897 | 879 |
+| liquidity threshold misses, with complete histories | 39 | 39 |
+| unresolved incomplete histories | 8 | 8 |
+| formation tradability proxy passes, independent of liquidity | 943 | 925 |
+| observed issue-session values | 56386 | 55306 |
+| missing issue-session values | 254 | 254 |
+| observed zero-turnover values | 90 | 90 |
+| observations with a zero open, high or low | 90 | 90 |
+| equal-OHLC and zero-turnover observations | 0 | 0 |
+
+For the common-label subset, **878 rows** pass both the liquidity screen and
+the formation tradability proxy. That intersection remains a diagnostic count,
+not an eligible universe or a claim that trades can be filled. The 90 observed
+zero-turnover values occur in nine common-label issue-formation rows and remain
+in their fixed windows. Zero open/high/low values are not, by themselves,
+proof of a legal suspension.
+
+All eight incomplete issue-formation rows refer to eight distinct issue codes.
+Their **254 missing issue-session values are before the basic response's
+reported listing date**; none is on or after it. This is a measured relation
+to a source field, not verified new-listing eligibility or a conversion history.
+These rows retain null medians and unresolved liquidity status. No missing
+value was filled with zero, no window was shortened and no target was dropped.
+
+| formation | all cap-pass | common label | common liquidity pass | common below | common incomplete |
+|---|---:|---:|---:|---:|---:|
+| 20190402 | 54 | 53 | 49 | 3 | 1 |
+| 20191004 | 48 | 47 | 40 | 7 | 0 |
+| 20200407 | 41 | 40 | 40 | 0 | 0 |
+| 20201013 | 54 | 53 | 53 | 0 | 0 |
+| 20210415 | 64 | 63 | 62 | 0 | 1 |
+| 20211020 | 73 | 72 | 68 | 1 | 3 |
+| 20220422 | 74 | 73 | 69 | 3 | 1 |
+| 20221027 | 56 | 55 | 54 | 1 | 0 |
+| 20230427 | 72 | 71 | 68 | 3 | 0 |
+| 20231103 | 68 | 67 | 63 | 4 | 0 |
+| 20240510 | 78 | 76 | 71 | 4 | 1 |
+| 20241115 | 72 | 70 | 66 | 4 | 0 |
+| 20250527 | 84 | 82 | 75 | 7 | 0 |
+| 20251201 | 106 | 104 | 101 | 2 | 1 |
+| total | 944 | 926 | 879 | 39 | 8 |
+
+The common-label identity **879 + 39 + 8 = 926** and observation identity
+**55306 + 254 = 926 × 60** preserve the full denominator. The corresponding
+all-target identities are **897 + 39 + 8 = 944** and
+**56386 + 254 = 944 × 60**. No cutoff, formation date or outcome-based ranking
+was changed after seeing these counts.
+
+### Independent verification and private evidence
+
+A separate offline verifier completed at **16:13:52 UTC / 01:13:52 KST**.
+It made zero API requests and opened no research database. It rechecked the
+pinned AP calendar and AQ report/raw responses, both acquisition ledgers,
+the reused/new origin of every raw
+file, hashes, private permissions, requested dates/markets, cross-market
+identity uniqueness and exact capitalization arithmetic across **2107688
+source rows**. The combined raw payload size is **677536742 bytes**.
+
+The new ledger contains **2262 events** for its 1131 attempts; the old ledger's
+1100 events remain unchanged. The minimum new response-to-next-attempt gap was
+**1.032194 seconds**. No real retry occurred, so this execution supplies no
+observed retry-cooldown interval. Exact medians were recomputed using integer
+coefficient alignment independently of the production median function; all
+candidate fields, missing/zero diagnostics and per-date/overall counts matched.
+
+Before executing this verifier, independent review caught and corrected three
+verification defects: a failed assertion could exit successfully, a synthetic
+HTTP error mislabeled as a transport failure could pass ledger checking, and
+three recovery counters lacked explicit assertions. The corrected verifier
+passed 14 synthetic ledger cases, its failure exit check and four exact-median
+comparisons against Fraction. Those synthetic checks did not access private
+evidence or the network. The subsequent real offline run passed.
+
+| recovery evidence item | SHA-256 |
+|---|---|
+| recovery scope | `8d26e2b219517eb1839074b6cfbdbde1c2054794d4605d65425144b00d48d03a` |
+| recovery started receipt | `e7a3f7290abc6e7541a1ff005c39e0ec07a1e4d99bfcd64b182b7cb404141e27` |
+| new request ledger | `2f86c7af7db76f2fcf6410bcef477eef7b5e25973db87b4e4a8ff13f39e34518` |
+| completed diagnostic report | `f23e37b0b6613a4720c21949b63f8c3ba1ba0a6c97546478b9abae522ca983ad` |
+| private candidate diagnostics | `09a942994bf2d4eec746a5cfb2337cf0bc47fb3d4f271d21339fb97f7a1a95d6` |
+| combined raw-origin manifest | `f32b0a7e4e36cd141f1d1e172a9822dad49eee1c8df1714534b3719efdb40ba9` |
+| invocation receipt | `be9f4919c9fe5a18e720c58f5287f10cef715ec92cd123130773ae7e6d4ade4f` |
+| offline verification | `e504f152db88187124d4a5766eae8ccbb6e2a147a685e82e54ee3b98ac06c32d` |
+
+The raw-origin manifest distinguishes reused files from new files; it is a
+combined manifest, not a replacement for the original partial manifest. All
+evidence stays in the private roots recorded above. No raw responses, codes,
+names or per-issue prices/capitalizations are copied into this record.
+
+### Current completion and next work
+
+AR's fixed acquisition and diagnostic are complete. **Target history coverage
+is not complete:** eight rows remain unresolved. `universe_ready`,
+`historical_coverage_certified` and `historical_eligibility_certified` all
+remain false; acquisition completion does not override these gates.
+
+Next obtain positive dated listing/type evidence within this large/liquid
+scope, resolve the eight incomplete histories without denominator changes,
+and map the candidates and required lookbacks to the price panel. Carry forward
+AN's distinct post-conversion activity baseline and AG's corporate-action and
+price-basis accounting requirements before registering the new sizing runner.
+No large/liquid portfolio, return comparison, confirmation access or promotion
+has occurred. No new operator choice is currently required to begin that
+bounded evidence work. Publication review, merge and result-document deployment
+remain the final steps for this record.
+
+### Result-document verification
+
+The WSL documentation regression passed **84 tests with one existing skip**;
+the repository scanner passed. Independent read-only review recalculated the
+14-date table and denominator/request/ledger identities, checked preservation
+of the earlier record and found no unresolved issue. That document review used
+the supplied verified aggregates and did not access GCP or private evidence.
+The runtime had already passed the full 4572-test suite recorded above; this
+result change modifies only AR's record and the living handoff.
