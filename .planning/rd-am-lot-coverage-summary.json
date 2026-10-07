@@ -1,0 +1,341 @@
+{
+  "description": "Retrospective pilot coverage obligations; no historical eligibility or corporate-action clearance.",
+  "run_id": "d2e2568c-33dc-4181-945a-1e171f04a568",
+  "code_version": "fb153a7a8f8fc042e059f0f439522a8b77349278",
+  "specification_sha256": "c21e81f1d88000538e254b00d7ccda4e50e39a1da858d1655829e6411c66c4e7",
+  "dataset_sha256": "fc8a57eae72c33a84e31a3bc96b45110b1db2903c22c3c5b6fd3c67d0e2809e6",
+  "execution": {
+    "run_id": "d2e2568c-33dc-4181-945a-1e171f04a568",
+    "code_version": "fb153a7a8f8fc042e059f0f439522a8b77349278",
+    "specification_sha256": "c21e81f1d88000538e254b00d7ccda4e50e39a1da858d1655829e6411c66c4e7",
+    "dataset_sha256": "fc8a57eae72c33a84e31a3bc96b45110b1db2903c22c3c5b6fd3c67d0e2809e6",
+    "elapsed_seconds": 133.47,
+    "peak_child_rss_kib": 173400,
+    "memory_limit_mib": 384,
+    "nice": 15,
+    "log_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+    "original_log_bytes": 7807,
+    "original_log_prefix_preserved": true,
+    "original_log_sha256": "c68b6ba05d6e6cf79248f6b5fac9a1f230f2795d24490820d9fa7b6314a53464",
+    "log_sha256_after": "a0f74fe2fde69565ce0dca60701ad5c3c6406bc32081985502da52c49b60e936",
+    "log_records_after": 6,
+    "collector_head": "4ce85d714890b87f1a57ae89d4942660e41c0483",
+    "collector_clean": true,
+    "files": {
+      "lot-audit-record.json": "f60ca4acf40cabe76c73a7b077e1cc63f561641414b2ce66db6d381a26afe3a9",
+      "metadata-inventory.json": "f7adfa1675d011731a9436778abe9e22a0efcb72fb82926d4b90003baffc5f01"
+    }
+  },
+  "metadata_sha256": "08301ba87620151eaca0cb731ddc5de8c291c2caa2093393cf4e8692b49eedbd",
+  "completed_codes": 3043,
+  "snapshots": {
+    "live": {
+      "first": "2026-09-14",
+      "last": "2026-10-06",
+      "count": 16
+    },
+    "delisted": {
+      "first": "2026-09-21",
+      "last": "2026-10-06",
+      "count": 12
+    }
+  },
+  "lot_count": 245,
+  "unique_held_codes": 232,
+  "closed_lots": 237,
+  "unresolved_lots": 8,
+  "current_universe_labels": {
+    "missing_or_multiple_identity": 1,
+    "other_non_candidate": 2,
+    "passes_current_filter": 2826,
+    "reit": 2,
+    "spac": 212
+  },
+  "lots_by_current_label": {
+    "passes_current_filter": 237,
+    "spac": 8
+  },
+  "merger_events": 115,
+  "explicit_event_code_links": 126,
+  "events_missing_old_disappearing_spac_code": 53,
+  "lot_event_links_by_phase": {
+    "listing_after_exit": 1,
+    "listing_before_entry": 8,
+    "listing_during_holding": 1
+  },
+  "matched_lot_count": 10,
+  "matched_held_codes": 10,
+  "lot_event_links": [
+    {
+      "lot_id": "273060:2019-10-07",
+      "code": "273060",
+      "entry_date": "2019-10-07",
+      "interval_end": "2020-04-20",
+      "status": "closed",
+      "event_id": "AL-14",
+      "role": "surviving_spac",
+      "listed_on": "2020-08-05",
+      "name": "(주)와이즈버즈",
+      "phase": "listing_after_exit",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "319400:2021-04-16",
+      "code": "319400",
+      "entry_date": "2021-04-16",
+      "interval_end": "2021-10-21",
+      "status": "closed",
+      "event_id": "AL-22",
+      "role": "surviving_spac",
+      "listed_on": "2021-03-12",
+      "name": "현대무벡스(주)",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "336570:2022-04-25",
+      "code": "336570",
+      "entry_date": "2022-04-25",
+      "interval_end": "2022-10-28",
+      "status": "closed",
+      "event_id": "AI-10",
+      "role": "surviving_spac",
+      "listed_on": "2022-06-30",
+      "name": "원텍",
+      "phase": "listing_during_holding",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "353190:2022-04-25",
+      "code": "353190",
+      "entry_date": "2022-04-25",
+      "interval_end": "2022-10-28",
+      "status": "closed",
+      "event_id": "AI-9",
+      "role": "surviving_spac",
+      "listed_on": "2021-07-27",
+      "name": "휴럼",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "359090:2022-10-28",
+      "code": "359090",
+      "entry_date": "2022-10-28",
+      "interval_end": "2023-04-28",
+      "status": "closed",
+      "event_id": "AL-33",
+      "role": "surviving_spac",
+      "listed_on": "2021-12-17",
+      "name": "(주)씨엔알리서치",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "380540:2023-11-06",
+      "code": "380540",
+      "entry_date": "2023-11-06",
+      "interval_end": "2024-05-13",
+      "status": "closed",
+      "event_id": "AL-50",
+      "role": "surviving_operating_company",
+      "listed_on": "2022-12-29",
+      "name": "주식회사 옵티코어",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_disappears"
+    },
+    {
+      "lot_id": "323280:2024-05-13",
+      "code": "323280",
+      "entry_date": "2024-05-13",
+      "interval_end": "2024-11-18",
+      "status": "closed",
+      "event_id": "AL-41",
+      "role": "surviving_spac",
+      "listed_on": "2022-06-30",
+      "name": "(주)태성",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "298830:2024-05-13",
+      "code": "298830",
+      "entry_date": "2024-05-13",
+      "interval_end": "2024-11-18",
+      "status": "closed",
+      "event_id": "AL-58",
+      "role": "surviving_operating_company",
+      "listed_on": "2023-04-28",
+      "name": "슈어소프트테크 주식회사",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_disappears"
+    },
+    {
+      "lot_id": "264850:2024-05-13",
+      "code": "264850",
+      "entry_date": "2024-05-13",
+      "interval_end": "2024-11-18",
+      "status": "closed",
+      "event_id": "AL-6",
+      "role": "surviving_spac",
+      "listed_on": "2019-12-20",
+      "name": "(주)이랜시스",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_survives"
+    },
+    {
+      "lot_id": "303030:2025-05-28",
+      "code": "303030",
+      "entry_date": "2025-05-28",
+      "interval_end": "2025-12-02",
+      "status": "closed",
+      "event_id": "AL-3",
+      "role": "surviving_spac",
+      "listed_on": "2019-07-26",
+      "name": "(주)지니틱스",
+      "phase": "listing_before_entry",
+      "merger_type": "spac_survives"
+    }
+  ],
+  "historical_sample_date": "2019-01-02",
+  "historical_sample_counts": {
+    "SPAC": 44,
+    "REIT": 6,
+    "total": 50
+  },
+  "historical_sample_by_current_label": {
+    "SPAC": {
+      "spac": 17,
+      "passes_current_filter": 27
+    },
+    "REIT": {
+      "not_in_completed_scan": 3,
+      "reit": 2,
+      "passes_current_filter": 1
+    }
+  },
+  "historical_spacs_now_current_pass": [
+    {
+      "code": "307180",
+      "displayed_name": "아이엘"
+    },
+    {
+      "code": "310200",
+      "displayed_name": "애니플러스"
+    },
+    {
+      "code": "310870",
+      "displayed_name": "디와이씨"
+    },
+    {
+      "code": "309930",
+      "displayed_name": "조이웍스앤코"
+    },
+    {
+      "code": "307750",
+      "displayed_name": "국전"
+    },
+    {
+      "code": "307870",
+      "displayed_name": "비투엔"
+    },
+    {
+      "code": "307280",
+      "displayed_name": "원바이오젠"
+    },
+    {
+      "code": "306620",
+      "displayed_name": "지아이에스"
+    },
+    {
+      "code": "299170",
+      "displayed_name": "더블유에스아이"
+    },
+    {
+      "code": "291230",
+      "displayed_name": "컴투스엔"
+    },
+    {
+      "code": "303030",
+      "displayed_name": "지니틱스"
+    },
+    {
+      "code": "297570",
+      "displayed_name": "아틀라스링크"
+    },
+    {
+      "code": "284620",
+      "displayed_name": "카이노스메드"
+    },
+    {
+      "code": "287410",
+      "displayed_name": "제이시스메디칼"
+    },
+    {
+      "code": "253590",
+      "displayed_name": "네오셈"
+    },
+    {
+      "code": "281740",
+      "displayed_name": "레이크머티리얼즈"
+    },
+    {
+      "code": "270520",
+      "displayed_name": "앱튼"
+    },
+    {
+      "code": "273060",
+      "displayed_name": "와이즈버즈"
+    },
+    {
+      "code": "261200",
+      "displayed_name": "덴티스"
+    },
+    {
+      "code": "267320",
+      "displayed_name": "나인테크"
+    },
+    {
+      "code": "264850",
+      "displayed_name": "이랜시스"
+    },
+    {
+      "code": "256630",
+      "displayed_name": "포인트엔지니어링"
+    },
+    {
+      "code": "258790",
+      "displayed_name": "소프트캠프"
+    },
+    {
+      "code": "256840",
+      "displayed_name": "한국비엔씨"
+    },
+    {
+      "code": "254120",
+      "displayed_name": "자비스"
+    },
+    {
+      "code": "250930",
+      "displayed_name": "예선테크"
+    },
+    {
+      "code": "239340",
+      "displayed_name": "이스트에이드"
+    }
+  ],
+  "lots_in_historical_sample": 3,
+  "evidence_sha256": {
+    "al": "8cb6a2142e2548313e94604428a377eb05837d07c7fd7543cd866b6a8c787c23",
+    "ai": "1a4fef05b68e6b9071a59a1499885ed4621a8bcabf2a42b29a046c29f9482434",
+    "historical_sample": "3433ff33c7eea1a4b529914c894a3c4da2cc708a95d31e02bffc44b4e7020b79"
+  },
+  "limitations": [
+    "Listing date is not merger effective date; even listing_after_exit can require earlier effective-date investigation.",
+    "The 53 disappearing SPAC old codes are not supplied by AL; no-match is not clearance.",
+    "Only v1 entered lots are represented; future corrected or successor lots and full preselection/lookback coverage remain open.",
+    "2019-01-02 company classifications have mixed current names and unknown contemporaneous availability; no interval or known_on assigned.",
+    "All current labels are diagnostics, not past eligibility."
+  ],
+  "summary_schema_version": 2
+}
