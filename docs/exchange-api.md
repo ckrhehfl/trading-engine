@@ -9,18 +9,20 @@ venue's row cap, retention depth or response shape is a **living** fact — it
 changes when the venue changes — while `CLAUDE.md` holds what may never be
 violated. Both were in `CLAUDE.md` until 2026-09-26.
 
-**What is deliberately NOT here: the rules these measurements produced.** Every
-trap below has a standing rule attached, and those live in `CLAUDE.md`'s
-Exchange API Facts section, which is shorter than this file for that reason. §6
-maps them. Where a rule needs a number, the number is here and the rule points.
+**What is deliberately NOT here: the binding rules these measurements produced.**
+Established rules live in `CLAUDE.md`'s Exchange API Facts section; §7 maps
+them. New source findings retain their stated verification limits until the
+applicable research gates are met. Where a rule needs a number, the number
+is here and the rule points.
 
-Three venues, three roles:
+Sources and their roles:
 
 | venue | role |
 |---|---|
 | **BingX** | the first and only `ExchangeAdapter` with a paper/live path |
 | **Binance** | read-only historical data for research. No credentials, no order placement, no plan to become a trading venue |
 | **KIS** | the third paper-trading loop (KOSPI200 index futures) |
+| **KRX OpenAPI** | read-only dated stock trading and basic information for universe research |
 
 ---
 
@@ -600,11 +602,57 @@ state.
 
 ---
 
-## 6. Where the rules are
+## 6. KRX OpenAPI — documented semantics and saved-sample checks
 
-Every trap above has a standing rule, and the rules are in `CLAUDE.md`'s
-Exchange API Facts section rather than here. This table is the index, not the
-rules themselves.
+Checked 2026-10-07. The current [official FAQ][krx-faq] describes:
+
+| item | documented meaning |
+|---|---|
+| units | OHLC and traded value in KRW; volume in shares |
+| price basis | original, unadjusted prices; no retroactive corporate-action adjustment |
+| publication | previous-day data updated at 08:00 on the next business day; no same-day or intraday data |
+| membership at `basDd` | issues listed at that day's close, including suspended issues and issues subsequently delisted; market follows the queried date |
+| session coverage | OHLC uses the regular session; volume/value include KRX after-hours trading, including the aftermarket introduced on 2026-09-14 |
+
+These are current documented contracts, not a historical publication archive
+or a promise that erroneous records are never corrected. Next-session use
+must account for the publication lag. Acquisition time is not a historical
+availability timestamp. Total value divided by total volume need not lie
+within regular-session OHLC, and the aggregation regime changes during the
+discovery era.
+
+Offline checks of the Task AP samples found **7,494/7,494** trading rows with
+`MKTCAP == TDD_CLSPRC * LIST_SHRS` exactly, and identical listed-share counts
+in the corresponding trading/basic rows. This supports KRW market-cap units
+in those samples; it does not certify the entire history. Trading `ISU_CD`
+is a short code, whereas basic information provides ISIN `ISU_CD` and short
+code `ISU_SRT_CD`. Saturday basic snapshots repeat Friday's even when trading
+responses are empty; basic records carry no observation-date field.
+
+Instrument group, share class and market section describe different things.
+`보통주` alone includes investment vehicles and SPACs. On 2022-06-30 the
+already saved KIND SPAC list contains **58** codes, while the API's SPAC
+section contains **57**; their intersection is 57. The remaining code,
+`340120`, is present in API basic information as `주권` / `보통주` with
+section `관리종목(소속부없음)`. An issue absent from the SPAC section is
+therefore not established to be an operating company. This is a distinction
+between fields, not evidence that the API misclassified it. `LIST_DD` also
+does not identify a SPAC conversion date: control `336570` retains its original
+listing date after conversion.
+
+Full scope, hashes and limits: `.planning/rd-ap-krx-source-access.md`.
+Continuous coverage, classification at decision time and revision behaviour
+remain uncertified. No selected large/liquid universe has been produced.
+
+[krx-faq]: https://openapi.krx.co.kr/contents/OPP/COMM/faq/OPPCOMM004.cmd
+
+---
+
+## 7. Where the rules are
+
+Established rules are in `CLAUDE.md`'s Exchange API Facts section rather than
+here. This table indexes those rules; it does not promote newly documented
+source findings into binding conclusions.
 
 | measurement here | the rule it produced |
 |---|---|
