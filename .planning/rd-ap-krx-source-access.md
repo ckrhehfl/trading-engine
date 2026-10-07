@@ -311,3 +311,81 @@ dirty source refusal and failure to persist an attempt. The original full
 matrix tests still pass. The repository scanner and diff whitespace check
 pass. These tests use synthetic credentials/responses and make no API call;
 CI, CodeRabbit and actual GCP execution remain separate checks.
+
+## Literal-header execution result — 2026-10-07
+
+PR #239's exact head `f8b85f4` received CodeRabbit approval at **05:22:50Z**,
+with no actionable comments or unresolved threads. The docstring-coverage
+advisory was assessed in the PR. All four CI workflows passed; Python passed
+**4,296 tests with 3 existing skips** both in WSL (384.07 seconds) and CI
+(195.44 seconds). The reviewed tree equals merge commit
+`f4ac38fd573a5272e9986ff1a7ac6163a537e8ab`.
+
+The isolated GCP research checkout was fast-forwarded to that merge and its
+65 probe tests passed in **3.19 seconds**. The collector checkout remained
+clean at `4ce85d7` before and after deployment and execution. No collector
+process, schedule, credential or database was changed.
+
+The diagnostic started at **05:25:43.855266Z** and finished at
+**05:25:44.174607Z** (14:25:44 KST), using nice level 15 and a 384 MiB
+virtual-memory ceiling:
+
+| measure | observed result |
+|---|---|
+| specification | `krx-openapi-auth-header-case-v1` |
+| request | `stk_bydd_trd`, `basDd=20190102`, same official HTTPS production path |
+| serialized authentication field | literal `AUTH_KEY`; value not recorded |
+| HTTP response | **401** |
+| attempted / maximum | **1 / 1** |
+| HTTP 200 / validated responses | **0 / 0** |
+| diagnostic exit | 1, `access_failure`; no timeout or stderr output |
+| report publication | persisted successfully |
+| acquired raw responses / universe samples | **0 / 0** |
+
+The other services/dates were not called. Error bodies remained unread. The
+first failed run is preserved separately; cumulative actual KRX attempts
+across the two runs are **2**, both returning 401. No successful data sample
+exists. Private evidence is at
+`<private-evidence-root>/krx-auth-header-case-20261007-v1/`, with all four files
+verified 0600:
+
+| artifact | SHA-256 |
+|---|---|
+| `started.json` | `70bc3bb116bc3fc3cf2cc22aa4f84238e51983170ed2979cc8867048b9037303` |
+| `requests.jsonl` | `bf435975a921091d86d2c0c0f44f567571183ec7357b382f2b9613c0993bdeaa` |
+| `report.json` | `68ef04941037ef87f12e5153a7a48367107cdb5841939d697d939d9ee0f4e58a` |
+| `execution.json` | `b6c530916499431eaa2b5a2c85578ca086ac30e453f0abd5b3529ad45e5f5a55` |
+
+### Interpretation and next external dependency
+
+Literal header spelling is **not a sufficient fix** for this observed refusal.
+The diagnostic does not identify the vendor's internal rejection reason.
+Do not recast the operator-confirmed key and approvals as invalid or pending,
+infer an IP block from 401, rotate the key speculatively, switch network origin
+to bypass refusal, or expand the request matrix. The next useful evidence is
+an explanation of the rejection from KRX's account/service authentication
+records, using the exact request times and endpoint above. No support message
+has been sent on the operator's behalf, and no automatic retry is scheduled.
+
+For a private inquiry to KRX, provide the key issue/validity dates, the four
+operator-confirmed service approvals, production GET path and `basDd`, the
+two request times (13:27:51 and 14:25:44 KST on 2026-10-07), and HTTP 401.
+Ask KRX to check account/service authorization linkage and the rejection
+reason for these requests. The public FAQ footer lists `krxdata@krx.co.kr`;
+do not include the key value, `.env`, screenshot or raw environment in the
+inquiry. An approval-propagation delay or network restriction is a question
+for KRX, not a confirmed diagnosis.
+
+Additional official FAQ entries inspected while awaiting review state that
+OpenAPI provides no bulk trading-calendar/holiday or corporate-action-history
+API/separate dataset, and no suspension-status field. For suspensions KRX
+directs users to Data Marketplace's dated suspension history and KIND for
+exact effective times. These are source limitations, not a reason to reopen
+full-market SPAC research or skip existing corporate-action accounting.
+
+The diagnostic engineering, review, merge and research deployment are complete.
+Source availability remains **unestablished**: Task AO is still at deliverable
+1 of 5, with zero new dated-universe samples and zero new large/liquid
+portfolio/comparison runs. After the authorization discrepancy is resolved,
+record a bounded acquisition decision, establish source semantics and then
+freeze the size/liquidity universe rule before inspecting its outcome.

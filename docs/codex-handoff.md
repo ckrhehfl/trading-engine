@@ -30,10 +30,17 @@ reports key and all four service approvals; local-to-GCP key equality and
 fresh environment loading were verified without revealing values. The operator
 subsequently confirmed the current key's identity and supplied its validity
 dates, 2026-10-07 through 2027-10-06; do not repeat the key-copy/expiry question.
-AP now registers a separate one-request header-spelling diagnostic, preserving
-literal `AUTH_KEY` instead of urllib's normalized `Auth_Key`. This is an
-unproven compatibility hypothesis. Read AP before executing that mode; never
-treat key storage, approval reports or test passes as successful data access.
+The separate one-request header-spelling diagnostic was reviewed and merged
+as PR #239, deployed to the isolated research checkout and executed at
+05:25:44Z. It also returned **HTTP 401**, despite preserving literal `AUTH_KEY`.
+Across both runs only two actual requests were sent; neither acquired data.
+The collector remains at PR #221. Header spelling is not a sufficient fix;
+the rejection reason remains unknown. AP records the evidence and a private
+KRX support-inquiry outline. No inquiry was sent and no retry is scheduled.
+Next obtain KRX's explanation of the account/service authorization refusal,
+then record a bounded acquisition decision. Never treat key storage, reported
+approvals or passing tests as successful data access. Task AO deliverable 1
+remains open, with no new large/liquid universe, portfolio or comparison run.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
