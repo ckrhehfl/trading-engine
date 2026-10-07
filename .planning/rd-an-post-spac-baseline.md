@@ -144,3 +144,13 @@ all response statuses and the date population with `conclusion_check`, and
 measured a minimum recorded start interval of 1,004.4397 milliseconds. The
 repository scanner and diff whitespace check passed. This verification read
 only saved public metadata; it did not rerun prices or acquire another response.
+
+## Scope update — 2026-10-07
+
+The operator subsequently selected large, highly liquid common stocks as the
+next study's target. Task AO (`rd-ao-large-liquid-scope.md`) records that decision
+and its source-feasibility inspection. It replaces this task's proposed default
+next step of expanding classification across the old full-market pilot pool.
+The post-conversion baseline decision and acquired evidence remain valid; the
+new scope still needs dated eligibility and correct accounting for every
+candidate/holding relevant to its own declared rule.
