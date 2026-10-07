@@ -7,6 +7,7 @@ liquidity history, strategy returns or order endpoint is accessed.
 
 from __future__ import annotations
 
+from datetime import datetime
 from decimal import Decimal, localcontext
 import hashlib
 import os
@@ -42,7 +43,26 @@ def _number(row: dict, field: str) -> Decimal:
 
 
 def _summarize(rows: list[dict], service: str, day: str) -> dict:
-    if (day not in DATES or service not in probe.SERVICES or not isinstance(rows, list)
+    if day not in DATES:
+        raise probe.ProbeRefusal("schema_failure")
+    return _summarize_rows(rows, service, day)
+
+
+def summarize_trading_day(rows: list[dict], service: str, day: str) -> dict:
+    """Pure post-2019 trading validation; this does not authorize acquisition."""
+    try:
+        valid_date = (isinstance(day, str) and len(day) == 8 and day.isascii()
+                      and day.isdigit() and datetime.strptime(day, "%Y%m%d")
+                      and "20190102" <= day <= "20260918")
+    except ValueError:
+        valid_date = False
+    if not valid_date or service not in probe.SERVICES[:2]:
+        raise probe.ProbeRefusal("schema_failure")
+    return _summarize_rows(rows, service, day)
+
+
+def _summarize_rows(rows: list[dict], service: str, day: str) -> dict:
+    if (service not in probe.SERVICES or not isinstance(rows, list)
             or any(not isinstance(row, dict) for row in rows)):
         raise probe.ProbeRefusal("schema_failure")
     observation = probe.summarize(rows, service, day)
