@@ -15,39 +15,38 @@ expansion from Task AN as the default next task.
 
 The first activity pilot, its accounting diagnosis and Task AN's dated-source
 check have been completed and preserved. No large/liquid candidate universe or
-new return comparison has run. The immediate next step is to establish dated
-size/type data access and semantics, then freeze a size-and-liquidity rule
+new return comparison has run. The immediate next step is to verify dated
+size/type source meaning and coverage, then freeze a size-and-liquidity rule
 before inspecting its candidate list or returns. The activity hypothesis,
 post-SPAC baseline decision, accounting obligations and research gates remain.
 
-Task AP (`.planning/rd-ap-krx-source-access.md`) records the operator-authorized
-KRX key registration, verified GCP deployment split, official API contracts
-and bounded access probe. The research checkout ran merged PR #237 on
-2026-10-07 after 53 server tests passed; the collector remains at PR #221 and
-was not restarted. The first production request returned **HTTP 401**, so only
-1 of at most 16 requests ran and zero data samples were acquired. The operator
-reports key and all four service approvals; local-to-GCP key equality and
-fresh environment loading were verified without revealing values. The operator
-subsequently confirmed the current key's identity and supplied its validity
-dates, 2026-10-07 through 2027-10-06; do not repeat the key-copy/expiry question.
-The separate one-request header-spelling diagnostic was reviewed and merged
-as PR #239, deployed to the isolated research checkout and executed at
-05:25:44Z. It also returned **HTTP 401**, despite preserving literal `AUTH_KEY`.
-The subsequent operator-requested location comparison reused clean PR #240
-source and matching keys: local WSL returned **401 at 16:54:27 KST**, and the
-existing GCP instance returned **401 at 16:55:01 KST**, on 2026-10-07. Each
-sent one identical request under a scope recorded privately before execution.
-Cumulative actual requests are four (one local, three GCP), all 401, with no
-data acquired. GCP's zone is `us-central1-a` (Iowa); no blanket GCP prohibition
-was found in the inspected official terms/FAQ. The results do not support a
-GCP-only failure or establish the exact rejection reason. The collector
-remains at PR #221. Keep the infrastructure unchanged; AP records evidence
-and a private KRX inquiry outline. No inquiry was sent or retry scheduled.
-Next obtain KRX's explanation of the account/service authorization refusal
-and any applicable network restriction, then record a bounded acquisition
-decision. Never treat key storage, reported
-approvals or passing tests as successful data access. Task AO deliverable 1
-remains open, with no new large/liquid universe, portfolio or comparison run.
+Task AP (`.planning/rd-ap-krx-source-access.md`) records KRX key registration,
+the GCP deployment split, official contracts and the bounded access probe.
+Four initial requests returned HTTP 401, including one from local WSL; those
+results remain preserved. The operator then corrected the earlier approval
+report: key approval had been mistaken for individual service approval. After
+applying for all four named services, the operator confirmed their approvals.
+No new key was issued, and the previously registered key remains in use.
+
+On 2026-10-07, under a scope persisted before execution, clean PR #241 source
+ran one GCP check at **17:31:35 KST** and then the original 16-request matrix
+at **17:31:57–17:32:40 KST**. All **17 requests returned HTTP 200** and passed
+the probe's structural checks. The three trading dates contain 7,494 trading
+rows, all joined unambiguously to basic information. Saturday trading is empty;
+Saturday basic snapshots equal Friday's. These are source samples, not a
+common-stock candidate pool or complete historical panel. AP contains private
+evidence hashes and offline ledger/hash verification. Total AP requests are
+21: four earlier 401s and seventeen new 200s.
+
+GCP access with the existing key is now verified for all four services on the
+fixed dates. Missing individual service permission is the likely explanation
+of the earlier 401, not a proven internal rejection cause. A KRX rejection-log
+inquiry is no longer a prerequisite; no inquiry was sent. The collector remains
+unchanged at PR #221. Task AO deliverable **1 of 5 remains open on source
+meaning and coverage**: units, publication timing, historical completeness,
+point-in-time classification and revisions still need verification. Then fix
+the dated size/liquidity rule before ranks or returns are inspected. No new
+large/liquid universe selection, portfolio or comparison run has occurred.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,

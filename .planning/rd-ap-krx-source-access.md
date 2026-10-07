@@ -473,3 +473,107 @@ pre-2019 reservation are unchanged.
 
 [gcp-zones]: https://docs.cloud.google.com/compute/docs/regions-zones
 [krx-terms]: https://openapi.krx.co.kr/contents/OPP/INFO/OPPINFO002.jsp
+
+## Individual service approval and successful GCP access — 2026-10-07
+
+The operator corrected the earlier approval report: the key approval had
+been mistaken for individual API approval. The operator then applied for the
+four named services and confirmed their approvals, without receiving a new
+key. This supersedes the earlier account-status premise; preserve the four
+observed 401 responses as actual results, not as evidence of a GCP ban.
+
+### Recorded execution decision
+
+Before any new request, private scope `krx-approved-services-recheck-v1` was
+persisted and fsynced at **17:31:18 KST** (08:31:18Z). This was a new execution
+record for the already reviewed probe, not a code change or strategy trial.
+Both runs used clean source `9c57589c0e24bbb92e55cc146f55589466aa7131`,
+the existing GCP origin and the previously registered research key.
+
+- First, allow one `--header-case-check` request for
+  `stk_bydd_trd/20190102`. Continue only if exit status is zero, the report
+  is persisted, and exactly one HTTP 200 response passes schema validation.
+- Conditional on that success, run the unchanged normal 16-request matrix
+  registered above: three positive dates and one Saturday across four services.
+  The normal mode retains its original header serialization. The maximum
+  across both phases is **17 attempts**, with no retries, date expansion,
+  alternate keys or fallback hosts. A validation/access/evidence failure stops
+  the run. No pre-2019 data, ranks or returns are requested.
+
+### Actual results
+
+The first phase completed at **17:31:35 KST**, returning HTTP 200 and 901
+validly structured rows. The normal matrix ran **17:31:57–17:32:40 KST**:
+**16/16 HTTP 200, 16/16 schema-valid responses, zero unattempted requests**.
+Both processes exited zero, with no timeout or stderr, and persisted reports.
+
+| requested date | KOSPI trading rows | KOSDAQ trading rows | KOSPI basic rows | KOSDAQ basic rows |
+|---|---:|---:|---:|---:|
+| 2019-01-02 | 901 | 1,325 | 901 | 1,325 |
+| 2022-06-30 | 941 | 1,565 | 941 | 1,565 |
+| 2026-09-18 | 942 | 1,820 | 942 | 1,820 |
+| 2026-09-19, Saturday | 0 | 0 | 942 | 1,820 |
+
+These are source row counts, including security types beyond the intended
+common-stock universe; they are not selected candidate counts. Across the
+three trading dates, **7,494 trading rows** join one-to-one by short code to
+basic information, with zero unmatched or ambiguous rows. Required fields,
+identifier shape/uniqueness and the probe's checked numeric fields pass.
+Returned trading dates match the requests. Basic listing dates are valid and
+none is later than the requested date.
+
+Both Saturday trading responses are empty, as registered. Saturday basic
+responses equal Friday's for each market. Basic payloads differ across the
+three positive dates, so they are not one identical snapshot for all requests;
+this alone does not certify point-in-time classification, publication timing
+or historical completeness. Basic responses still have no observation-date
+field. No candidate ranks, price-level values or security names were emitted.
+
+The single literal-header response and the normal-mode first response have
+the same SHA-256. Both spellings succeeded after the service applications,
+using the existing key and GCP instance. Access is now established for this
+fixed matrix. The approval correction and subsequent success support missing
+individual service permission as the likely explanation of the earlier 401;
+without KRX's internal logs, they do not prove its exact historical cause.
+The earlier recommendation to seek a rejection-log explanation is no longer
+a prerequisite to this source-access work. No support inquiry was sent.
+
+Cumulative KRX attempts across Task AP are **21: 4 earlier HTTP 401 and 17
+new HTTP 200** (20 GCP, 1 local). This run produced 17 private response files,
+including the repeated first request and two empty controls; it did not
+acquire a continuous historical panel. Both runs used nice level 15 and a
+384 MiB memory ceiling. The collector checkout stayed clean at `4ce85d7`
+before and after; no collector process, schedule, credential or database changed.
+
+### Evidence verification and remaining work
+
+Private evidence is at
+`<private-evidence-root>/krx-approved-services-20261007-v1/`, with `single/`
+and `matrix/` subdirectories. A separate offline verification at
+**17:34:15 KST** matched the saved scope, start records, attempt/response
+ledger and all 17 raw-response hashes, checked 0700 run directories and 0600
+files, and verified zero unmatched/ambiguous joins. The matrix's minimum gap
+from the preceding response to the next attempt was **1.007221 seconds**.
+This verification made zero API requests; its aggregate record is also private.
+
+| artifact | SHA-256 |
+|---|---|
+| `scope.json` | `10696d9093f347e1288c73458a2c30048e0cf116c2f37ee2c91ad6a4f928649d` |
+| `single/started.json` | `742353cb36164a3450f705d460a7f3e3cd85110e9b971e7e37b657b8f7230543` |
+| `single/requests.jsonl` | `0eb48b166738b93cd84dd1f1294186a8d903b51fe939e2f6468ec6dfa98ec159` |
+| `single/report.json` | `cf63844f4a081bfe366d74d3f32b761c129a815082c05d1cf09b5bd37c1ddac9` |
+| `single/execution.json` | `ff509c69af9d07856ca644e8df40850b4a9365aacd95eecbe6d44595d2e6a4db` |
+| `matrix/started.json` | `c15ad740b14b59d3f4afa9481644d035d3824fd33e2db35638563c3c77db58b8` |
+| `matrix/requests.jsonl` | `cf99d7595ea1bed12b45b241510202e486857dfacb04e5197d0994ea43676161` |
+| `matrix/report.json` | `21144ad40cf648e0201f762a1b86970d2610f8e81d10979a449a01b3aacd5042` |
+| `matrix/execution.json` | `8ef7a235cc772900e1b767fad2e5fd55809290ce5dcb47d64a3166936e90ca36` |
+| `verification.json` | `aac1468913e162ee3bafd17fe4d18a724226f715dc4ae3e2bdc4242d54f004e0` |
+
+The access and structural sample checks are complete. Task AO deliverable
+**1 of 5 remains open on source meaning and coverage**, not authentication:
+verify units, publication/decision-time availability, historical completeness,
+point-in-time classifications and revisions. `universe_ready` and
+`historical_coverage_certified` remain false. Next resolve those source
+semantics, then freeze the dated size/liquidity rule before inspecting ranks
+or returns. New large/liquid portfolio and comparison runs remain zero;
+the experiment count and pre-2019 reservation are unchanged.
