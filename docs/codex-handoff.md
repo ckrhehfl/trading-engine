@@ -62,8 +62,11 @@ not permission to tune the cutoffs after seeing them. Task AO deliverable
 **1 of 5 remains open on coverage and historical classification**; deliverable
 2 now has its operator-selected boundary but still needs the full reproducible
 timing and missing-data specification. Next finish that bounded specification
-and audit the resulting candidate scope. No new large/liquid universe
-selection, portfolio or comparison run has occurred.
+and audit the resulting candidate scope. AP's calendar-only inventory now
+records a proposed minimum request matrix using the existing formation
+geometry; it is a planning count, with no price values or candidates queried
+and no additional API requests. No new large/liquid universe selection,
+portfolio or comparison run has occurred.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,

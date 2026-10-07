@@ -695,3 +695,53 @@ repository scanner and diff whitespace check passed. Fresh-context read-only
 review found no actionable issue in the four-document diff. It did not
 independently inspect the private inputs or external FAQ. Full CI and
 CodeRabbit remain merge requirements.
+
+## Calendar-only acquisition inventory — 2026-10-07
+
+While final review was waiting for its included allowance, a separate private
+scope `large-liquid-calendar-inventory-v1` was persisted at **18:25:09 KST**,
+before any database query. Clean research source remained `a4fb3a1`.
+The scan database's `scan_panel.start/end` first had to equal the registered
+discovery bounds. The only subsequent column read was the existing index's
+`klines.open_time_ms`, bounded to **2019-01-02 through 2026-09-23**. Both
+connections used read-only/query-only transactions. No price, turnover,
+candidate code, credential or reserved database was read; no API request or
+experiment-log entry was made. The process used nice level 15 and 384 MiB.
+
+At **18:26:59 KST**, the dates gave **1,895 discovery sessions** and **three
+later settlement-only sessions**. Dates were unique and UTC-midnight aligned.
+Using v1's unchanged formation expression `range(60, end_index - 126, 126)`
+gives **14 formation dates**, from **2019-04-02 to 2025-12-01**. The union of
+each formation day and its immediately preceding 60 calendar sessions has
+**854 dates**. This preserves the previous geometry; it is not a performance-
+selected cadence or a shortened discovery era.
+
+A proposed minimum source matrix therefore has **1,708 trading requests**
+(two markets across that date union) and **28 basic-information requests**
+(two markets on the formation dates), **1,736 in total** before any verified
+cache reuse. Of these, 56 would cover the four services on formation dates.
+This is a planning count, not an executed or authorized acquisition manifest.
+It excludes additional type-history evidence and does not certify the full
+candidate history. Missing/frozen-observation treatment, exact decision clock
+and the complete staged acquisition contract still require specification.
+No candidate outcomes were inspected to derive these counts.
+
+Private files are under
+`<private-evidence-root>/large-liquid-calendar-20261007-v1/`:
+
+| artifact | SHA-256 |
+|---|---|
+| `scope.json` | `5d78594f95e1937bd036212bc341f84748634ae212fcb7b509557aa39c5980cc` |
+| `manifest.json` | `ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882` |
+| `result.json` | `f13250dcbdebd4a6beb6b5674be440136627f18a7fb9a628a8e3210c0fb4f82e` |
+
+The canonical date-list hash is
+`fceaf0d8748f203001afbf11a66c44aa756f7f55b21e22aaee04152186506ce4`.
+Task AO deliverables 1 and 2 remain in progress, with zero new selected
+universes, portfolio runs or return comparisons.
+
+A separate check verified all three file hashes, private permissions and the
+unique request set against the saved date list without another database query.
+Fresh-context review independently reproduced the index/count arithmetic from
+v1's formation expression; it did not re-read the private date list. The final
+documentation/planning-index tests again passed 84 tests with one existing skip.
