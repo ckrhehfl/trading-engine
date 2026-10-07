@@ -2,6 +2,7 @@
 
 import io
 import json
+import ssl
 import stat
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
@@ -66,14 +67,116 @@ def harness(tmp_path, monkeypatch):
             return Response(body, request.full_url)
 
     opener = Opener()
-    monkeypatch.setattr(probe, "make_opener", lambda: opener)
+    opener.header_case_checks = []
+    def make_opener(*, header_case_check=False):
+        opener.header_case_checks.append(header_case_check)
+        return opener
+    monkeypatch.setattr(probe, "make_opener", make_opener)
     return output, opener, calls, sleeps
 
 
+@pytest.fixture
+def wire(monkeypatch):
+    """Run urllib/http.client serialization and parsing without a real socket."""
+    state = {"response": b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}", "sockets": []}
+
+    class Socket:
+        def __init__(self):
+            self.sent = bytearray()
+
+        def sendall(self, data):
+            self.sent.extend(data)
+
+        def makefile(self, mode):
+            return io.BytesIO(state["response"])
+
+        def close(self):
+            pass
+
+    def connect(connection):
+        assert connection.host == "data-dbg.krx.co.kr"
+        assert connection.port == 443 and connection.timeout == 20
+        assert connection._context.check_hostname is True
+        assert connection._context.verify_mode == ssl.CERT_REQUIRED
+        connection.sock = Socket()
+        state["sockets"].append(connection.sock)
+
+    monkeypatch.setattr(probe.HTTPSConnection, "connect", connect)
+    return state
+
+
+def test_wire_changes_only_auth_header_spelling(wire):
+    for diagnostic in (False, True):
+        request = Request(
+            "https://data-dbg.krx.co.kr/svc/apis/sto/stk_bydd_trd?basDd=20190102",
+            headers={"AUTH_KEY": "test-only-credential", "X-Test-Header": "unchanged"},
+        )
+        with probe.make_opener(header_case_check=diagnostic).open(request, timeout=20) as response:
+            assert response.read() == b"{}"
+    default, diagnostic = (bytes(sock.sent) for sock in wire["sockets"])
+    assert b"\r\nAuth_Key: test-only-credential\r\n" in default
+    assert b"\r\nAUTH_KEY: test-only-credential\r\n" in diagnostic
+    assert diagnostic == default.replace(b"\r\nAuth_Key:", b"\r\nAUTH_KEY:")
+
+
+def test_header_case_cli_sends_only_fixed_first_request(harness, capsys):
+    output, opener, calls, sleeps = harness
+    assert probe.main(["--output-dir", str(output), "--header-case-check"]) == 0
+    report = json.loads(capsys.readouterr().out)
+    assert report["status"] == "single_request_checked"
+    assert report["specification"] == "krx-openapi-auth-header-case-v1"
+    assert report["max_requests"] == report["requests_attempted"] == len(calls) == 1
+    assert report["http_200_responses"] == report["schema_valid_responses"] == 1
+    assert report["requests_unattempted"] == 0 and not sleeps
+    assert opener.header_case_checks == [True]
+    assert calls[0].full_url == "https://data-dbg.krx.co.kr/svc/apis/sto/stk_bydd_trd?basDd=20190102"
+    assert report["joins"] == report["basic_date_comparisons"] == []
+    assert report["universe_ready"] is report["historical_coverage_certified"] is False
+    started = json.loads((output / "started.json").read_text())
+    assert started["max_requests"] == 1
+    assert started["request_matrix"] == [{"service": "stk_bydd_trd", "bas_dd": "20190102"}]
+    assert json.loads((output / "report.json").read_text()) == report
+    assert stat.S_IMODE(output.stat().st_mode) == 0o700
+    for path in output.iterdir():
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
+        assert b"test-only-credential" not in path.read_bytes()
+
+
+@pytest.mark.parametrize("status", [301, 302, 303, 307, 308, 401])
+def test_header_case_http_failure_never_retries_or_follows_redirect(wire, tmp_path, monkeypatch,
+                                                                  status):
+    monkeypatch.setenv("KRX_API_KEY", "test-only-credential")
+    monkeypatch.setenv("https_proxy", "http://untrusted.invalid:1234")
+    monkeypatch.setattr(probe, "source_version", lambda: "a" * 40)
+    body = b"test-only-credential"
+    wire["response"] = (
+        f"HTTP/1.1 {status} Refused\r\nLocation: https://untrusted.invalid/\r\n"
+        f"Content-Length: {len(body)}\r\n\r\n"
+    ).encode() + body
+    def refuse_body_read(*args, **kwargs):
+        pytest.fail("an error response body must not be read")
+    monkeypatch.setattr(HTTPError, "read", refuse_body_read, raising=False)
+    output = tmp_path / "evidence"
+    report = probe.acquire(output, header_case_check=True)
+    assert report["status"] == "failed"
+    assert report["failure"] == ("access_failure" if status == 401 else "redirect_rejected")
+    assert report["max_requests"] == report["requests_attempted"] == len(wire["sockets"]) == 1
+    assert report["requests_unattempted"] == report["http_200_responses"] == 0
+    assert report["schema_valid_responses"] == 0
+    assert report["joins"] == report["basic_date_comparisons"] == []
+    assert not list(output.glob("response-*.json"))
+    assert all(body not in path.read_bytes() for path in output.iterdir())
+    ledger = [json.loads(line) for line in (output / "requests.jsonl").read_text().splitlines()]
+    assert [record["event"] for record in ledger] == ["attempt", "response"]
+    assert ledger[-1]["http_status"] == status
+
+
 def test_fixed_matrix_private_evidence_and_aggregate_only(harness):
-    output, _, calls, sleeps = harness
+    output, opener, calls, sleeps = harness
     report = probe.acquire(output)
     assert report["status"] == "access_checked"
+    assert report["specification"] == probe.SPECIFICATION and report["max_requests"] == 16
+    assert opener.header_case_checks == [False]
     assert report["requests_attempted"] == 16 == len(calls)
     assert report["http_200_responses"] == report["schema_valid_responses"] == 16
     assert report["requests_unattempted"] == 0
@@ -167,14 +270,15 @@ def test_transport_error_is_sanitized(harness, capsys):
     assert all(b"test-only-credential" not in path.read_bytes() for path in output.iterdir())
 
 
+@pytest.mark.parametrize("header_case_check", [False, True])
 @pytest.mark.parametrize("escaped", [False, True])
-def test_echoed_credential_never_saved(harness, escaped):
+def test_echoed_credential_never_saved(harness, escaped, header_case_check):
     output, opener, calls, _ = harness
     body = json.dumps({"OutBlock_1": [trade()]}).replace("fixture", "test-only-credential")
     if escaped:
         body = body.replace("test-only-credential", "\\u0074est-only-credential")
     opener.mutate = lambda request, payload: body.encode()
-    report = probe.acquire(output)
+    report = probe.acquire(output, header_case_check=header_case_check)
     assert report["failure"] == "credential_echo" and len(calls) == 1
     assert not list(output.glob("response-*.json"))
 
@@ -233,13 +337,14 @@ def test_invalid_credentials_fail_before_requests(harness, monkeypatch, value):
     assert not calls and not output.exists()
 
 
-def test_dirty_checkout_fails_before_requests(harness, monkeypatch):
+@pytest.mark.parametrize("header_case_check", [False, True])
+def test_dirty_checkout_fails_before_requests(harness, monkeypatch, header_case_check):
     output, _, calls, _ = harness
     def dirty():
         raise probe.ProbeRefusal("uncommitted_sources")
     monkeypatch.setattr(probe, "source_version", dirty)
     with pytest.raises(probe.ProbeRefusal, match="uncommitted_sources"):
-        probe.acquire(output)
+        probe.acquire(output, header_case_check=header_case_check)
     assert not calls and not output.exists()
 
 
@@ -255,7 +360,8 @@ def test_existing_or_symlink_output_fails_before_requests(harness, tmp_path):
     assert not calls
 
 
-def test_ledger_failure_prevents_next_http_request(harness, monkeypatch):
+@pytest.mark.parametrize("header_case_check", [False, True])
+def test_ledger_failure_prevents_next_http_request(harness, monkeypatch, header_case_check):
     output, _, calls, _ = harness
     original = probe.persist
     def fail_attempt(path, value, **kwargs):
@@ -263,8 +369,9 @@ def test_ledger_failure_prevents_next_http_request(harness, monkeypatch):
             raise OSError("test-only-credential")
         original(path, value, **kwargs)
     monkeypatch.setattr(probe, "persist", fail_attempt)
-    result = probe.acquire(output)
+    result = probe.acquire(output, header_case_check=header_case_check)
     assert result["failure"] == "local_io_failure" and not calls
+    assert result["requests_unattempted"] == (1 if header_case_check else 16)
 
 
 def test_no_proxy_and_no_redirect_forwarding(monkeypatch):

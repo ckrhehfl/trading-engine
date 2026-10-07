@@ -27,10 +27,13 @@ and bounded access probe. The research checkout ran merged PR #237 on
 was not restarted. The first production request returned **HTTP 401**, so only
 1 of at most 16 requests ran and zero data samples were acquired. The operator
 reports key and all four service approvals; local-to-GCP key equality and
-fresh environment loading were verified without revealing values. Current
-issued-key identity/service validity remains an account-side check. Read AP's
-result and subsequent diagnosis before another bounded attempt; never treat
-key storage, approval reports or test passes as successful data access.
+fresh environment loading were verified without revealing values. The operator
+subsequently confirmed the current key's identity and supplied its validity
+dates, 2026-10-07 through 2027-10-06; do not repeat the key-copy/expiry question.
+AP now registers a separate one-request header-spelling diagnostic, preserving
+literal `AUTH_KEY` instead of urllib's normalized `Auth_Key`. This is an
+unproven compatibility hypothesis. Read AP before executing that mode; never
+treat key storage, approval reports or test passes as successful data access.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
