@@ -9,10 +9,11 @@ venue's row cap, retention depth or response shape is a **living** fact — it
 changes when the venue changes — while `CLAUDE.md` holds what may never be
 violated. Both were in `CLAUDE.md` until 2026-09-26.
 
-**What is deliberately NOT here: the rules these measurements produced.** Every
-trap below has a standing rule attached, and those live in `CLAUDE.md`'s
-Exchange API Facts section, which is shorter than this file for that reason. §7
-maps them. Where a rule needs a number, the number is here and the rule points.
+**What is deliberately NOT here: the binding rules these measurements produced.**
+Established rules live in `CLAUDE.md`'s Exchange API Facts section; §7 maps
+them. New source findings retain their stated verification limits until the
+applicable research gates are met. Where a rule needs a number, the number
+is here and the rule points.
 
 Sources and their roles:
 
@@ -649,9 +650,9 @@ remain uncertified. No selected large/liquid universe has been produced.
 
 ## 7. Where the rules are
 
-Every trap above has a standing rule, and the rules are in `CLAUDE.md`'s
-Exchange API Facts section rather than here. This table is the index, not the
-rules themselves.
+Established rules are in `CLAUDE.md`'s Exchange API Facts section rather than
+here. This table indexes those rules; it does not promote newly documented
+source findings into binding conclusions.
 
 | measurement here | the rule it produced |
 |---|---|
