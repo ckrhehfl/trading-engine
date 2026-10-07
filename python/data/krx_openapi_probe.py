@@ -1,8 +1,9 @@
 """Bounded KRX OpenAPI access/field evidence, never a universe or strategy run.
 
-The only runtime input is a new, private evidence directory. AUTH_KEY comes
-from KRX_API_KEY in the process environment. No research database/log is read
-or written. Responses are local evidence, never printed in operator reports.
+Supply a new, private evidence directory; --header-case-check selects a fixed
+single-request diagnostic. AUTH_KEY comes from KRX_API_KEY in the process
+environment. No research database/log is read or written. Responses are local
+evidence, never printed in operator reports.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
+from http.client import HTTPSConnection
 import json
 import os
 from pathlib import Path
@@ -20,13 +22,14 @@ import stat
 import subprocess
 import time
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
+from urllib.request import HTTPRedirectHandler, HTTPSHandler, ProxyHandler, Request, build_opener
 
 
 HOST = "https://data-dbg.krx.co.kr"
 SERVICES = ("stk_bydd_trd", "ksq_bydd_trd", "stk_isu_base_info", "ksq_isu_base_info")
 DATES = ("20190102", "20220630", "20260918", "20260919")
 SPECIFICATION = "krx-openapi-access-fields-v1"
+HEADER_CASE_SPECIFICATION = "krx-openapi-auth-header-case-v1"
 MAX_REQUESTS = 16
 MAX_RESPONSE_BYTES = 8 * 1024 * 1024
 TIMEOUT_SECONDS = 20
@@ -53,9 +56,26 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def make_opener():
+class ExactAuthKeyHTTPSConnection(HTTPSConnection):
+    """Change only the authentication header's spelling at serialization."""
+
+    def putheader(self, header, *values):
+        if header.lower() == "auth_key":
+            header = "AUTH_KEY"
+        super().putheader(header, *values)
+
+
+class ExactAuthKeyHTTPSHandler(HTTPSHandler):
+    def https_open(self, req):
+        return self.do_open(ExactAuthKeyHTTPSConnection, req, context=self._context)
+
+
+def make_opener(*, header_case_check: bool = False):
     # A fresh opener has neither ambient proxies nor cookies nor redirect auth forwarding.
-    return build_opener(ProxyHandler({}), NoRedirect())
+    handlers = [ProxyHandler({}), NoRedirect()]
+    if header_case_check:
+        handlers.append(ExactAuthKeyHTTPSHandler())
+    return build_opener(*handlers)
 
 
 def utc_now() -> str:
@@ -270,12 +290,16 @@ def join_counts(trades: list[dict], basics: list[dict], service: str, day: str) 
     return result
 
 
-def acquire(output: Path) -> dict:
+def acquire(output: Path, *, header_case_check: bool = False) -> dict:
     secret = credential()
     version = source_version()
     output = prepare_output(output)
+    dates = DATES[:1] if header_case_check else DATES
+    services = SERVICES[:1] if header_case_check else SERVICES
+    max_requests = 1 if header_case_check else MAX_REQUESTS
     report = {
-        "specification": SPECIFICATION, "source_sha": version, "started_at": utc_now(),
+        "specification": HEADER_CASE_SPECIFICATION if header_case_check else SPECIFICATION,
+        "source_sha": version, "started_at": utc_now(), "max_requests": max_requests,
         "status": "started", "requests_attempted": 0, "observations": [], "joins": [],
         "http_200_responses": 0, "schema_valid_responses": 0,
         "basic_date_comparisons": [], "universe_ready": False,
@@ -285,17 +309,17 @@ def acquire(output: Path) -> dict:
     }
     persist(output / "started.json", {
         **report, "host": HOST,
-        "request_matrix": [{"service": service, "bas_dd": day} for day in DATES for service in SERVICES],
-        "max_requests": MAX_REQUESTS, "timeout_seconds": TIMEOUT_SECONDS,
+        "request_matrix": [{"service": service, "bas_dd": day} for day in dates for service in services],
+        "timeout_seconds": TIMEOUT_SECONDS,
         "interval_seconds": INTERVAL_SECONDS, "max_response_bytes": MAX_RESPONSE_BYTES,
     })
-    basic_hashes = {service: [] for service in SERVICES[2:]}
+    basic_hashes = {service: [] for service in services[2:]}
     try:
-        opener = make_opener()
-        for day in DATES:
+        opener = make_opener(header_case_check=header_case_check)
+        for day in dates:
             rows_for_day = {}
-            for service in SERVICES:
-                if report["requests_attempted"] >= MAX_REQUESTS:
+            for service in services:
+                if report["requests_attempted"] >= max_requests:
                     raise ProbeRefusal("request_limit")
                 if report["requests_attempted"]:
                     time.sleep(INTERVAL_SECONDS)
@@ -342,10 +366,11 @@ def acquire(output: Path) -> dict:
                 if service in basic_hashes:
                     fingerprint = hashlib.sha256(canonical(sorted(rows, key=canonical))).hexdigest()
                     basic_hashes[service].append({"bas_dd": day, "rows_sha256": fingerprint})
-            for trade_service, basic_service in zip(SERVICES[:2], SERVICES[2:], strict=True):
-                report["joins"].append(join_counts(rows_for_day[trade_service], rows_for_day[basic_service],
-                                                   trade_service, day))
-        report["status"] = "access_checked"
+            if not header_case_check:
+                for trade_service, basic_service in zip(SERVICES[:2], SERVICES[2:], strict=True):
+                    report["joins"].append(join_counts(rows_for_day[trade_service], rows_for_day[basic_service],
+                                                       trade_service, day))
+        report["status"] = "single_request_checked" if header_case_check else "access_checked"
     except ProbeRefusal as error:
         report.update(status="failed", failure=str(error))
     except OSError:
@@ -360,7 +385,7 @@ def acquire(output: Path) -> dict:
         for service, hashes in basic_hashes.items()
     ]
     report["finished_at"] = utc_now()
-    report["requests_unattempted"] = MAX_REQUESTS - report["requests_attempted"]
+    report["requests_unattempted"] = max_requests - report["requests_attempted"]
     # A partial write must never appear under the published report filename.
     # Preserve HTTP counts/original failure even if local evidence storage fails.
     report["report_persisted"] = True
@@ -391,14 +416,16 @@ def main(argv: list[str] | None = None) -> int:
     try:
         parser = SafeParser(description=__doc__, allow_abbrev=False)
         parser.add_argument("--output-dir", required=True, type=Path)
+        parser.add_argument("--header-case-check", action="store_true",
+                            help="send only stk_bydd_trd/20190102 with exact AUTH_KEY spelling")
         args = parser.parse_args(argv)
-        report = acquire(args.output_dir)
+        report = acquire(args.output_dir, header_case_check=args.header_case_check)
     except ProbeRefusal as error:
         report = {"status": "failed", "failure": str(error), "universe_ready": False}
     except Exception:
         report = {"status": "failed", "failure": "unexpected_failure", "universe_ready": False}
     print(canonical(report).decode())
-    return 0 if report["status"] == "access_checked" else 1
+    return 0 if report["status"] in ("access_checked", "single_request_checked") else 1
 
 
 if __name__ == "__main__":

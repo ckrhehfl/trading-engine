@@ -251,3 +251,63 @@ zero. Next: resolve this authentication discrepancy, obtain the fixed samples,
 then freeze the dated size/liquidity rule before selection outcomes are read.
 
 [faq]: https://openapi.krx.co.kr/contents/OPP/COMM/faq/OPPCOMM004.cmd
+
+## Operator evidence and header-spelling diagnostic — 2026-10-07
+
+The operator confirms that the stored value is the currently issued key. The
+supplied account screenshot shows an issue/renewal date of **2026-10-07** and
+key validity **2026-10-07 through 2027-10-06**. No key characters or screenshot
+are retained here. Together with the earlier equality/environment checks and
+reported four service approvals, this closes the request to reconfirm key
+copying or expiry. It does not turn the observed 401 into successful access.
+
+An offline inspection of the installed Python transport found a concrete
+request difference: `urllib.request.AbstractHTTPHandler.do_open` title-cases
+header names, sending `Auth_Key` where the official example writes `AUTH_KEY`.
+The [Python documentation][urllib-headers] describes this normalization. HTTP
+field names are case-insensitive under [RFC 9110 section 5.1][http-fields];
+there is no evidence yet that KRX treats these spellings differently. This is
+a bounded compatibility hypothesis, not a diagnosed vendor defect.
+
+Before any further API request, register this separate diagnostic:
+
+- Run the reviewed `--header-case-check` mode once in the same isolated GCP
+  research checkout, with the same registered key and network origin.
+- Send **one GET at most**, to the same production host and first request:
+  `stk_bydd_trd`, `basDd=20190102`. Preserve the literal header name `AUTH_KEY`
+  at serialization. Other request behavior, verified TLS, proxy/redirect
+  refusal, timeout and response ceiling retain the existing probe's rules.
+- No retry, alternate key, IP, host, service or date. Both success and failure
+  end this diagnostic; it cannot start the remaining 15 matrix requests.
+- Use specification `krx-openapi-auth-header-case-v1` and a new private output
+  directory. Persist source SHA, the one-entry matrix and attempt ledger before
+  network activity, and retain the original failed run. Keep the existing
+  evidence permissions, aggregate-only output and credential-echo refusal.
+  Error bodies remain unread and unrecorded.
+- A validated 200 establishes this single request's access at execution time,
+  not all four services or historical semantics. Because the earlier 401 was
+  at a different time, it would not alone prove header spelling caused the
+  change. Another 401 rules out literal spelling as a sufficient fix in that
+  attempt; it does not identify a bad key or an IP restriction.
+
+The normal 16-request mode is unchanged. Any subsequent acquisition needs its
+own recorded execution decision; the one-request diagnostic is not permission
+for automatic retries. No collector, credential storage, research database,
+experiment count, universe rule or pre-2019 access changes. New large/liquid
+portfolio and comparison runs remain zero; Task AO deliverable 1 remains open.
+
+[urllib-headers]: https://docs.python.org/3/library/urllib.request.html#urllib.request.Request
+[http-fields]: https://www.rfc-editor.org/rfc/rfc9110.html#section-5.1
+
+### Header diagnostic verification before execution
+
+The WSL offline probe suite passes **65 tests**. A fake socket runs the real
+urllib/http.client serialization and verifies that the only wire difference
+is `Auth_Key` becoming `AUTH_KEY`; certificate/hostname verification remains
+enabled. Removing the spelling correction in memory makes that test fail.
+The tests cover the one-entry ledger/report, a 401 and five redirect statuses
+without retry, unread error bodies, ambient proxy refusal, credential echoes,
+dirty source refusal and failure to persist an attempt. The original full
+matrix tests still pass. The repository scanner and diff whitespace check
+pass. These tests use synthetic credentials/responses and make no API call;
+CI, CodeRabbit and actual GCP execution remain separate checks.
