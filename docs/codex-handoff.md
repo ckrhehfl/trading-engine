@@ -2,7 +2,7 @@
 
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
 Current research scope and source status last updated on 2026-10-07, including
-the operator's numeric-boundary decision and the saved-sample audit below.
+the operator's numeric-boundary decision and Task AQ's formation-source work.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -18,10 +18,11 @@ expansion from Task AN as the default next task.
 
 The first activity pilot, its accounting diagnosis and Task AN's dated-source
 check have been completed and preserved. No large/liquid candidate universe or
-new return comparison has run. The immediate next step is to verify dated
-size/type source meaning and coverage, then freeze a size-and-liquidity rule
-before inspecting its candidate list or returns. The activity hypothesis,
-post-SPAC baseline decision, accounting obligations and research gates remain.
+new return comparison has run. Task AQ fixes the reproducible universe rule
+before examining its outcome and implements the first formation-source audit.
+Source coverage and dated classification still need verification. The activity
+hypothesis, post-SPAC baseline decision, accounting obligations and research
+gates remain.
 
 Task AP (`.planning/rd-ap-krx-source-access.md`) records KRX key registration,
 the GCP deployment split, official contracts and the bounded access probe.
@@ -60,13 +61,15 @@ The operator selected the numeric size/liquidity boundary recorded in Task AO's
 latest decision. That choice is fixed before examining its candidates; it is
 not permission to tune the cutoffs after seeing them. Task AO deliverable
 **1 of 5 remains open on coverage and historical classification**; deliverable
-2 now has its operator-selected boundary but still needs the full reproducible
-timing and missing-data specification. Next finish that bounded specification
-and audit the resulting candidate scope. AP's calendar-only inventory now
-records a proposed minimum request matrix using the existing formation
-geometry; it is a planning count, with no price values or candidates queried
-and no additional API requests. No new large/liquid universe selection,
-portfolio or comparison run has occurred.
+2 now has its reproducible timing and missing-data specification in
+`.planning/rd-aq-large-liquid-formation-acquisition.md`. AQ implements the
+fixed formation-source request matrix derived from AP's calendar-only inventory
+and has passed synthetic tests and independent review. CI, CodeRabbit and
+merge precede any real execution. The first result will audit source identity,
+capitalization arithmetic and size
+counts; liquidity histories and positive dated operating-company evidence
+remain separate prerequisites. No AQ API request, new large/liquid universe
+selection, portfolio or comparison run has occurred at this update.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
