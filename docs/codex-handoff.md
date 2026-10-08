@@ -5,7 +5,8 @@ Current research scope and source status last updated on 2026-10-08 KST,
 including the operator's numeric-boundary decision, Task AR's completed
 liquidity acquisition, Task AS's listing/classification-source evidence and
 Task AT's date-only price-panel mapping, Task AU's bar-state audit and
-Task AV's bounded historical company-overview acquisition.
+Task AV's bounded historical company-overview acquisition and Task AW's
+metadata reconciliation and issuer-content review.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -166,9 +167,26 @@ AV preserves initial failures, source-format corrections, request counts and
 independent checks. Lost temporary pilot evidence is explicitly excluded;
 subsequent evidence uses persistent private archives.
 
-Next establish dated domestic operating-company intervals and their public
-availability within this bounded scope, linking acquired corporate anchors
-to exact issue identifiers and subsequent classification-affecting changes.
+Task AW (`.planning/rd-aw-large-liquid-identity-reconciliation.md`) preserves
+all 944 rows and reconciles the 917 target rows / 136 codes without certifying
+historical intervals. The 134 available earliest trading-identity observations
+and 16 adjacent-formation metadata differences across 13 codes are saved;
+the two unavailable earliest dates remain unresolved. The prior AL/AI merger
+ledgers have no exact-code overlap and cannot clear this pool's event history.
+Actual issuer-content review found omissions in acquired reports. Eleven
+bounded supplementary overviews bring the reviewed DART total to 133 source
+records, with sufficient-content candidates for 120 of the original 122 DART
+codes. 005070 and 196170 remain content gaps after supplementation. Fourteen
+KIND listing anchors remain separate. Neither a content candidate nor a
+mechanical name match is a certified issue bridge. AW records source hashes,
+two transport failures, bounded recoveries and independent verification.
+
+Next resolve those two content gaps under a separately fixed source scope and
+establish exact dated issuer/issue links for the same 136 codes. Reconcile
+observed renames, transfers and correction versions before accepting continuous
+domestic operating-company intervals and their public availability. Current
+display names, unchanged sampled metadata and absence of SPAC wording cannot
+substitute for that evidence.
 Then finish AN's post-conversion baseline and AG price-basis/corporate-action checks.
 The bar-state/date diagnostic is complete; historical identity and accounting
 remain prerequisites for the new sizing runner. No new large/liquid
