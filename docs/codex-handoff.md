@@ -2,8 +2,8 @@
 
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
 Current research scope and source status last updated on 2026-10-08 KST,
-including the operator's numeric-boundary decision and Task AR's completed
-liquidity acquisition and unresolved-history result.
+including the operator's numeric-boundary decision, Task AR's completed
+liquidity acquisition and Task AS's listing/classification-source evidence.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -93,7 +93,8 @@ and aggregate counts across 2107688 source rows.
 
 The full 944 capitalization-pass issue-formation rows remain in the diagnostic.
 Of the 926 common-label rows, 918 have complete histories: 879 pass the liquidity
-screen and 39 fall below it. Eight rows remain unresolved, with 254 missing
+screen and 39 fall below it. The original AR diagnostic retained eight
+incomplete rows with unresolved liquidity status and 254 missing
 issue-session values, all before the basic source's reported listing date.
 That field does not itself verify initial-listing or conversion history.
 The common-label subset spans 138 distinct issue codes; these row counts are
@@ -101,12 +102,33 @@ not counts of distinct stocks or proof of operating-company eligibility.
 There are 878 common-label rows passing both liquidity and the separate formation
 tradability proxy; they are not a completed eligible universe.
 
-Next obtain positive dated listing/operating-company evidence within the chosen
-scope, resolve the eight incomplete histories and finish price-panel coverage.
+Task AS (`.planning/rd-as-large-liquid-listing-evidence.md`) resolves the cause
+of all eight short histories using official exchange notices: seven new
+listings and one split relisting. All 254 missing observations precede the
+verified current-issue listing. They remain in the original population with
+insufficient-history dispositions; no zero fill, shorter window or predecessor
+history was substituted. Original AR results remain immutable.
+
+AS also acquired and independently verified 28 positive KIND ST company tables
+for all 14 formation dates, matching their company counts to source summaries.
+The 926 common-label observations split into 917 ST-positive rows (136 codes)
+and nine rows carrying explicit API investment-company/foreign-DR labels.
+Of the 917, 909 have complete liquidity histories, 876 pass liquidity and 875
+also pass the separate formation tradability proxy. These are diagnostic
+partitions, not an eligible universe. All 944 original capitalization-pass
+rows remain, including preferred-share controls. Historical queries display
+some current market/listing-date fields, so those fields cannot be backdated.
+Full classification intervals and their original publication times remain
+uncertified; the separate notice publication timestamps do not certify them.
+
+Next establish dated domestic operating-company intervals within this bounded
+scope and finish required-lookback/price-panel mapping, carrying AN/AG forward.
 These remain prerequisites for the new sizing runner. No new large/liquid
 universe selection, portfolio or comparison run has occurred; readiness and
 historical certification remain false. No new operator choice currently blocks
-the next bounded data-validation work.
+the next bounded data-validation work. The separate pre-2019 collector pass
+finished with five failures; AS records its read-only operational diagnosis and
+existing retry schedule without accessing reserved prices or changing it.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
