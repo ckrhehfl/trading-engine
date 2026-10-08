@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-155 documents and counting, which is past the point where `ls` is a
+156 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -271,6 +271,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-ax-large-liquid-dated-issue-bridges.md`](rd-ax-large-liquid-dated-issue-bridges.md) — Research Direction Task AX — link dated issuer evidence to exact issues
 - [`rd-ay-large-liquid-identity-events.md`](rd-ay-large-liquid-identity-events.md) — Research Direction Task AY — reconcile dated aliases and identity events
 - [`rd-az-large-liquid-remaining-identity.md`](rd-az-large-liquid-remaining-identity.md) — Research Direction Task AZ — verify remaining issuer aliases and event evidence
+- [`rd-ba-large-liquid-identity-gaps.md`](rd-ba-large-liquid-identity-gaps.md) — Research Direction Task BA — resolve the remaining dated identity gaps
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

@@ -6,8 +6,8 @@ including the operator's numeric-boundary decision, Task AR's completed
 liquidity acquisition, Task AS's listing/classification-source evidence and
 Task AT's date-only price-panel mapping, Task AU's bar-state audit and
 Task AV's bounded historical company-overview acquisition and Task AW's
-metadata reconciliation and issuer-content review, followed by Tasks AX-AZ's
-dated issue, notice and history-source links.
+metadata reconciliation and issuer-content review, followed by Tasks AX-BA's
+dated issue, notice and history-source links and bounded tender-content review.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -219,13 +219,37 @@ are preserved in the planning record; this does not certify event absence.
 Its first history-parser failure is preserved alongside a bounded recovery
 that reused the cached response and fetched only the remaining history leaf.
 
-Next establish 002790's explicit dated abbreviation/issuer link, then inspect
-the smallest relevant sections of the two preserved 383220 tender filings
-and resolve the two unavailable earliest identity dates (011790: 2020-12-30;
-019170: 2020-07-10). The six correction summaries and five additional-listing
-bodies have been reviewed; do not restart their acquisition by default.
-The observed metadata differences have notice evidence, but this bounded title search does not prove
-complete event coverage. Do not carry an older DART business classification
+Task BA (`.planning/rd-ba-large-liquid-identity-gaps.md`) supplies the dated
+AmoreG common-issue abbreviation/code/ISIN notice and connects it to the
+previously verified issuer-history finding. Its supplement adds the three
+002790 links, preserving all earlier row fields, the 914 existing links,
+27 controls and eight short-history pairs. All 917 sampled targets now have
+source-point links across 136 codes; these are 917 issue-date observations,
+not 917 distinct stocks or certified continuous eligibility intervals.
+The legal-name change month (March 2011), notice publication (April 15) and
+exchange name-change listing (April 20) remain distinct. The old history raw
+was not reread in BA; its previously verified content-review JSON was reused.
+Four basic-info responses also resolve the requested-date identity projections
+for 011790 on 2020-12-30 and 019170 on 2020-07-10. They add no formation rows
+and do not repair missing trading observations or historical publication time.
+
+BA's five bounded original tender sections identify F&F Holdings as offeror,
+F&F common shares as target, and proposed share consideration for participating
+shareholders, with a fractional-share cash provision. They do not establish
+automatic conversion of all holdings, actual participation or completion.
+The date-role erratum matters for the next step: 2021-07-20 is 383220's first
+required lookback observation, whereas its first formation is 2021-10-20.
+The July 23 corrections therefore precede that formation and require review.
+Old derivative `after_first_formation` labels are preserved but superseded by
+this correction; the four actual formation dates did not change.
+
+Next reconcile those two July 23 tender corrections and relevant outcome
+evidence with the originals under a separately fixed minimal-source scope,
+then establish continuous eligible-company intervals and their limitations.
+The six earlier correction summaries and five additional-listing bodies have
+already been reviewed; do not restart their acquisition by default. The
+observed metadata differences have notice evidence, but the bounded title
+search does not prove complete event coverage. Do not carry an older DART business classification
 through restructuring merely because the stock name and code link. Actual
 historical KRX publication and continuous eligible-company intervals remain
 uncertified. Current names, unchanged sampled metadata and absence of SPAC

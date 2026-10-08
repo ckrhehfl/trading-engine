@@ -411,3 +411,17 @@ baselines and price-basis/corporate-action obligations remain open. No new
 large/liquid eligible universe, sizing run, portfolio comparison or strategy
 promotion has occurred. The current work package's completion must not be
 reported as strategy completion.
+
+## BA erratum — F&F date role, 2026-10-09 KST
+
+The earlier phrase "first formation on 2021-07-20" is incorrect. The
+preserved AV workload identifies 20210720 as 383220's first required
+lookback observation. AZ's own immutable 917-target result gives its first
+formation as 20211020, followed by 20220422, 20221027 and 20230427.
+The 2021-07-23 tender corrections are after the lookback's start but before
+the first formation. They were outside the original search ending July 19
+and were not acquired in AZ; this does not make them irrelevant to later
+eligibility or accounting. BA records the source hashes and requires their
+subsequent reconciliation. Original artifacts, including the derivative
+`after_first_formation` label, are retained unchanged and must be interpreted
+with this correction. No source-point count or return experiment changes.
