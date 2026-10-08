@@ -4,7 +4,8 @@ Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
 Current research scope and source status last updated on 2026-10-08 KST,
 including the operator's numeric-boundary decision, Task AR's completed
 liquidity acquisition, Task AS's listing/classification-source evidence and
-Task AT's date-only price-panel mapping.
+Task AT's date-only price-panel mapping, Task AU's bar-state audit and
+Task AV's bounded historical company-overview acquisition.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -19,10 +20,11 @@ and next completion conditions. Do not resume full-market SPAC classification
 expansion from Task AN as the default next task.
 
 The first activity pilot, its accounting diagnosis and Task AN's dated-source
-check have been completed and preserved. No large/liquid candidate universe or
-new return comparison has run. Task AQ fixes the reproducible universe rule
-before examining its outcome and implements the first formation-source audit.
-Source coverage and dated classification still need verification. The activity
+check have been completed and preserved. No certified large/liquid eligible
+universe or new return comparison has run. Task AQ fixed the reproducible
+universe rule before examining its outcome and implemented the first formation-
+source audit. Later audits below verify the bounded source/date/bar coverage;
+historical classification and accounting remain uncertified. The activity
 hypothesis, post-SPAC baseline decision, accounting obligations and research
 gates remain.
 
@@ -62,7 +64,7 @@ The audit made no new API requests.
 The operator selected the numeric size/liquidity boundary recorded in Task AO's
 latest decision. That choice is fixed before examining its candidates; it is
 not permission to tune the cutoffs after seeing them. Task AO deliverable
-**1 of 5 remains open on coverage and historical classification**; deliverable
+**1 of 5 remains open on historical classification**; deliverable
 2 now has its reproducible timing and missing-data specification in
 `.planning/rd-aq-large-liquid-formation-acquisition.md`. AQ implements the
 fixed formation-source request matrix derived from AP's calendar-only inventory.
@@ -150,11 +152,24 @@ preserves the original results and bounds the next classification acquisition
 to observed history: 52 of 136 ST-positive codes start at 20190102 and 84 later.
 All 27 controls/explicitly typed records and all insufficient histories remain.
 
+Task AV (`.planning/rd-av-large-liquid-identity-anchors.md`) verified a DART
+route returning only a company-overview leaf and acquired 122 dated regular-
+report sections. The six remaining regular-report queries were officially
+empty within their fixed date bounds; official KIND new-listing/relisting
+notices supply their starting identity sources. Together with AS's eight
+existing listing notices, this covers the 136-code acquisition workload.
+Samsung and SK Hynix's saved reports contain dated company names, Korean
+offices and operating businesses. The full 944-row population and all original
+short/control dispositions remain intact. Source acquisition does not certify
+the exact issue link or continuous operating-company status for every code.
+AV preserves initial failures, source-format corrections, request counts and
+independent checks. Lost temporary pilot evidence is explicitly excluded;
+subsequent evidence uses persistent private archives.
+
 Next establish dated domestic operating-company intervals and their public
-availability within this bounded scope. First verify a section-only official
-filing route for older identity anchors; the sampled KIND overview link opens
-the whole report, and a DART section-only contract is not yet verified. Then
-finish AN's post-conversion baseline and AG price-basis/corporate-action checks.
+availability within this bounded scope, linking acquired corporate anchors
+to exact issue identifiers and subsequent classification-affecting changes.
+Then finish AN's post-conversion baseline and AG price-basis/corporate-action checks.
 The bar-state/date diagnostic is complete; historical identity and accounting
 remain prerequisites for the new sizing runner. No new large/liquid
 universe selection, portfolio or comparison run has occurred; readiness and
