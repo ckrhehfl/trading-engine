@@ -226,7 +226,7 @@ previously verified issuer-history finding. Its supplement adds the three
 27 controls and eight short-history pairs. All 917 sampled targets now have
 source-point links across 136 codes; these are 917 issue-date observations,
 not 917 distinct stocks or certified continuous eligibility intervals.
-The legal-name change month (2011.3), notice publication (April 15) and
+The legal-name change month (March 2011), notice publication (April 15) and
 exchange name-change listing (April 20) remain distinct. The old history raw
 was not reread in BA; its previously verified content-review JSON was reused.
 Four basic-info responses also resolve the requested-date identity projections
