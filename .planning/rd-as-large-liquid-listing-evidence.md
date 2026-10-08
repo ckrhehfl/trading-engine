@@ -16,7 +16,7 @@ formation and explicit short code, retaining all 944 rows. It extracts only
 identity/type/listing fields and the already-computed missing-history fields;
 it opens no database and makes no API request. The record completed at
 **11:05:35 KST** in
-`/home/minjun4897/research-evidence/large-liquid-listing-inventory-20261008-v1`.
+`<LOCAL_RESEARCH_ROOT>/large-liquid-listing-inventory-20261008-v1`.
 
 | private inventory item | SHA-256 |
 |---|---|
@@ -191,14 +191,14 @@ historical dissemination times or a full classification ledger. Classification
 ## Evidence preservation and verification
 
 Public raw evidence, request records and acquisition scripts are preserved in
-`/home/minjun4897/research-evidence/large-liquid-kind-evidence-20261008-v2`.
+`<LOCAL_RESEARCH_ROOT>/large-liquid-kind-evidence-20261008-v2`.
 The archive contains 127 files. The preceding v1 archive attempt stopped at
 the 7.25 MB parsed result exceeding its raw-response size cap; its partial
 files remain. V2 reused the identical archive, applying the larger limit only
 to that identified aggregate JSON. No source query was repeated for archiving.
 
 The candidate join is in
-`/home/minjun4897/research-evidence/large-liquid-listing-join-20261008-v2`.
+`<LOCAL_RESEARCH_ROOT>/large-liquid-listing-join-20261008-v2`.
 Its first attempt retained a scope but no result after refusing the unrecognized
 relisting enum spelling. V2 used the actual inspected enum, without broadening
 the evidence condition. It verified all 127 archived file hashes, the pinned
