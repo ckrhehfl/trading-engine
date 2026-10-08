@@ -184,8 +184,9 @@ two transport failures, bounded recoveries and independent verification.
 Task AX (`.planning/rd-ax-large-liquid-dated-issue-bridges.md`) resolves both
 remaining content gaps using three fixed report leaves. All 122 DART codes now
 have issuer-content candidates, alongside the 14 KIND anchors. Exact quoted
-names and explicit aliases are checked against all 35,271 identity rows from
-the 28 saved dated KRX basic responses. The literal first pass remains intact;
+names and explicit aliases are checked against the complete saved dated KRX
+basic-information population; AX records the exact source counts. The literal
+first pass remains intact;
 a separately registered English legal-form normalization resolves 56 further
 observations. The result has 736 dated name links, 97 explicit listing-issue
 links and 84 unresolved observations across 12 codes. All sampled observations

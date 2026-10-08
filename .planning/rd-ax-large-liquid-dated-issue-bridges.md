@@ -241,3 +241,10 @@ The original AV/AW/AS/AQ evidence remains in its previously pinned archives.
 The receiver verifies every hash; a separate SSH readback verifies the exact
 file population, all hashes and directory/file permissions (0700/0600).
 Only the result documentation and planning index belong in the public PR.
+
+The first full Python CI run on PR #254 reported one documentation-ownership
+failure, with 4571 tests passing and three skipped: the handoff repeated the
+comma-grouped identity-row count. The handoff now points to this AX record
+for that source count. The documentation guard remains unchanged, as do all
+research results and private evidence. This failure was not a strategy or
+data-verification result.
