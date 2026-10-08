@@ -181,10 +181,25 @@ KIND listing anchors remain separate. Neither a content candidate nor a
 mechanical name match is a certified issue bridge. AW records source hashes,
 two transport failures, bounded recoveries and independent verification.
 
-Next resolve those two content gaps under a separately fixed source scope and
-establish exact dated issuer/issue links for the same 136 codes. Reconcile
-observed renames, transfers and correction versions before accepting continuous
-domestic operating-company intervals and their public availability. Current
+Task AX (`.planning/rd-ax-large-liquid-dated-issue-bridges.md`) resolves both
+remaining content gaps using three fixed report leaves. All 122 DART codes now
+have issuer-content candidates, alongside the 14 KIND anchors. Exact quoted
+names and explicit aliases are checked against all 35,271 identity rows from
+the 28 saved dated KRX basic responses. The literal first pass remains intact;
+a separately registered English legal-form normalization resolves 56 further
+observations. The result has 736 dated name links, 97 explicit listing-issue
+links and 84 unresolved observations across 12 codes. All sampled observations
+link for 124 of 136 codes. All 944 original rows and their short/control
+dispositions remain. These are source-point links, not certified continuous
+history or proof of the actual historical KRX publication time.
+The initial bridge contract's availability requirement remains unmet.
+
+Next fix a finite alias/rename/event-evidence scope for those unresolved dates
+and AW's separate queue of 16 metadata differences across 13 codes. Preserve
+the two unavailable earliest trading-identity dates rather than backdating
+later observations. Reconcile renames, transfers and correction versions before
+accepting continuous domestic operating-company intervals and their public
+availability. Current
 display names, unchanged sampled metadata and absence of SPAC wording cannot
 substitute for that evidence.
 Then finish AN's post-conversion baseline and AG price-basis/corporate-action checks.
