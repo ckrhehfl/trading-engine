@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-149 documents and counting, which is past the point where `ls` is a
+150 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -265,6 +265,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-ar-large-liquid-liquidity-acquisition.md`](rd-ar-large-liquid-liquidity-acquisition.md) — Research Direction Task AR — audit fixed liquidity histories before selecting a universe
 - [`rd-as-large-liquid-listing-evidence.md`](rd-as-large-liquid-listing-evidence.md) — Research Direction Task AS — listing and positive classification evidence
 - [`rd-at-large-liquid-panel-coverage.md`](rd-at-large-liquid-panel-coverage.md) — Research Direction Task AT — map the fixed candidates to stored session dates
+- [`rd-au-large-liquid-normal-lookbacks.md`](rd-au-large-liquid-normal-lookbacks.md) — Research Direction Task AU — bound normal-observation lookbacks before classification
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

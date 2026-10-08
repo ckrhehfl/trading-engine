@@ -134,11 +134,29 @@ Electronics and SK Hynix each have complete date coverage at all 14 formations.
 Independent offline recomputation passed. No price values, API or reserved
 database were accessed, and date presence does not certify normal observations.
 
+Task AU (`.planning/rd-au-large-liquid-normal-lookbacks.md`) now checks stored
+bar states for all 944 rows, reading observations only through each code's
+last formation. The 917 ST-positive rows contain 909 complete preceding
+non-frozen candidate windows and the same eight short AS histories. Nine
+windows extend beyond 60 market sessions after skipping frozen bars. No
+invalid observations were found; one formation (`010620`, `20251201`) is
+frozen and stays separately flagged. Samsung and SK Hynix each have complete
+candidate windows and non-frozen formation bars at all 14 dates. Independent
+saved-state recomputation passed; this does not certify historical identity.
+
+The eight short histories' expanded search bounds are not a demand to classify
+the current issue before its verified listing. A separate AS reconciliation
+preserves the original results and bounds the next classification acquisition
+to observed history: 52 of 136 ST-positive codes start at 20190102 and 84 later.
+All 27 controls/explicitly typed records and all insufficient histories remain.
+
 Next establish dated domestic operating-company intervals and their public
-availability within this bounded scope, then finish normal-observation and
-AG price-basis/corporate-action checks. The date-mapping portion is complete;
-the full required-lookback and accounting gates remain prerequisites for the
-new sizing runner. No new large/liquid
+availability within this bounded scope. First verify a section-only official
+filing route for older identity anchors; the sampled KIND overview link opens
+the whole report, and a DART section-only contract is not yet verified. Then
+finish AN's post-conversion baseline and AG price-basis/corporate-action checks.
+The bar-state/date diagnostic is complete; historical identity and accounting
+remain prerequisites for the new sizing runner. No new large/liquid
 universe selection, portfolio or comparison run has occurred; readiness and
 historical certification remain false. No new operator choice currently blocks
 the next bounded data-validation work. The separate pre-2019 collector pass
