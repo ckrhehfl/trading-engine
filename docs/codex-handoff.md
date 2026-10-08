@@ -3,7 +3,8 @@
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
 Current research scope and source status last updated on 2026-10-08 KST,
 including the operator's numeric-boundary decision, Task AR's completed
-liquidity acquisition and Task AS's listing/classification-source evidence.
+liquidity acquisition, Task AS's listing/classification-source evidence and
+Task AT's date-only price-panel mapping.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -121,9 +122,23 @@ some current market/listing-date fields, so those fields cannot be backdated.
 Full classification intervals and their original publication times remain
 uncertified; the separate notice publication timestamps do not certify them.
 
-Next establish dated domestic operating-company intervals within this bounded
-scope and finish required-lookback/price-panel mapping, carrying AN/AG forward.
-These remain prerequisites for the new sizing runner. No new large/liquid
+Task AT (`.planning/rd-at-large-liquid-panel-coverage.md`) now maps all 944
+rows / 140 codes to the existing spent scan using dates and progress metadata
+only. All 917 ST-positive common-label rows have formation dates; 909 have
+complete preceding 60-session windows and eight retain exactly AS's 254
+pre-listing gaps. Those 917 partitions agree with AR. The four codes absent
+from the store account for 18 preferred-share controls and nine explicitly
+typed investment-company/foreign-DR observations; all remain in the audit.
+The 136 stored codes have consistent completed progress metadata. Samsung
+Electronics and SK Hynix each have complete date coverage at all 14 formations.
+Independent offline recomputation passed. No price values, API or reserved
+database were accessed, and date presence does not certify normal observations.
+
+Next establish dated domestic operating-company intervals and their public
+availability within this bounded scope, then finish normal-observation and
+AG price-basis/corporate-action checks. The date-mapping portion is complete;
+the full required-lookback and accounting gates remain prerequisites for the
+new sizing runner. No new large/liquid
 universe selection, portfolio or comparison run has occurred; readiness and
 historical certification remain false. No new operator choice currently blocks
 the next bounded data-validation work. The separate pre-2019 collector pass
