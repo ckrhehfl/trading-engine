@@ -195,14 +195,25 @@ dispositions remain. These are source-point links, not certified continuous
 history or proof of the actual historical KRX publication time.
 The initial bridge contract's availability requirement remains unmet.
 
-Next fix a finite alias/rename/event-evidence scope for those unresolved dates
-and AW's separate queue of 16 metadata differences across 13 codes. Preserve
-the two unavailable earliest trading-identity dates rather than backdating
-later observations. Reconcile renames, transfers and correction versions before
-accepting continuous domestic operating-company intervals and their public
-availability. Current
-display names, unchanged sampled metadata and absence of SPAC wording cannot
-substitute for that evidence.
+Task AY (`.planning/rd-ay-large-liquid-identity-events.md`) adds dated official
+rename notices for 67 previously unresolved observations. Its supplementary
+result retains AX's 736 name links and 97 listing links, leaving 17 unresolved
+observations for 002790 and 017670. All sampled observations now link for 134
+of 136 codes. It preserves all original rows and controls. The selected notices
+also distinguish two market transfers and three section changes from business
+conversion; the planning record owns the source counts, exact dates and hashes.
+Two added report covers supplied no acceptable new aliases. The first viewer
+title mismatch remains preserved alongside its bounded metadata/body recovery.
+
+Next establish the remaining two codes' explicit abbreviation/issuer links,
+then reconcile the separate correction-version and issuance/tender-title
+queues and two unavailable earliest identity dates. The observed metadata
+differences have notice evidence, but this bounded title search does not prove
+complete event coverage. Do not carry an older DART business classification
+through restructuring merely because the stock name and code link. Actual
+historical KRX publication and continuous eligible-company intervals remain
+uncertified. Current names, unchanged sampled metadata and absence of SPAC
+wording cannot substitute for those checks.
 Then finish AN's post-conversion baseline and AG price-basis/corporate-action checks.
 The bar-state/date diagnostic is complete; historical identity and accounting
 remain prerequisites for the new sizing runner. No new large/liquid
