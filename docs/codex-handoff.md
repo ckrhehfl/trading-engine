@@ -1,12 +1,13 @@
 # Claude to Codex handoff
 
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
-Current research scope and source status last updated on 2026-10-08 KST,
+Current research scope and source status last updated on 2026-10-09 KST,
 including the operator's numeric-boundary decision, Task AR's completed
 liquidity acquisition, Task AS's listing/classification-source evidence and
 Task AT's date-only price-panel mapping, Task AU's bar-state audit and
 Task AV's bounded historical company-overview acquisition and Task AW's
-metadata reconciliation and issuer-content review.
+metadata reconciliation and issuer-content review, followed by Tasks AX-AZ's
+dated issue, notice and history-source links.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -205,10 +206,25 @@ conversion; the planning record owns the source counts, exact dates and hashes.
 Two added report covers supplied no acceptable new aliases. The first viewer
 title mismatch remains preserved alongside its bounded metadata/body recovery.
 
-Next establish the remaining two codes' explicit abbreviation/issuer links,
-then reconcile the separate correction-version and issuance/tender-title
-queues and two unavailable earliest identity dates. The observed metadata
-differences have notice evidence, but this bounded title search does not prove
+Task AZ (`.planning/rd-az-large-liquid-remaining-identity.md`) adds fourteen
+017670 links using the original report's explicitly labelled issuer history
+and legal-name provenance. The supplemental result retains AY's 900 links,
+all 944 original rows and 27 controls. It leaves three unresolved 002790
+observations: 2019-04-02, 2019-10-04 and 2021-04-15. Thus 914 of 917 targets
+link, with all sampled observations linked for 135 of 136 codes. The selected
+002790 history supplied no acceptable abbreviation evidence. AZ also reviews
+all six correction summaries and five additional-listing bodies. Their
+eighteen correction items, version-specific wording and actual listing dates
+are preserved in the planning record; this does not certify event absence.
+Its first history-parser failure is preserved alongside a bounded recovery
+that reused the cached response and fetched only the remaining history leaf.
+
+Next establish 002790's explicit dated abbreviation/issuer link, then inspect
+the smallest relevant sections of the two preserved 383220 tender filings
+and resolve the two unavailable earliest identity dates (011790: 2020-12-30;
+019170: 2020-07-10). The six correction summaries and five additional-listing
+bodies have been reviewed; do not restart their acquisition by default.
+The observed metadata differences have notice evidence, but this bounded title search does not prove
 complete event coverage. Do not carry an older DART business classification
 through restructuring merely because the stock name and code link. Actual
 historical KRX publication and continuous eligible-company intervals remain
