@@ -15,6 +15,7 @@ from research.activity_inputs import (
 )
 from research.activity_replay import DecimalSeries, replay_synthetic
 from research.activity_screen import PublishedValue, ScreenObservation, SyntheticListing
+from research.activity_timing import AvailabilityMetadata, SessionLagPolicy
 
 
 KST = timezone(timedelta(hours=9))
@@ -86,6 +87,107 @@ def join_args(scan, index=2, codes=(A, B)):
         params=params(), liquidity_lookback=2, liquidity_floor=D(50), capitalization_floor=D(100),
         decision_at=cutoff,
     )
+
+
+def timed_join_args(scan, lag=2):
+    args = join_args(scan)
+    policy = SessionLagPolicy(lag, paired=True)
+
+    def metadata(day, source):
+        return AvailabilityMetadata(
+            day, policy.selection_at(scan.calendar, scan.calendar.index(day)),
+            "unknown", source, None, "synthetic-source-snapshot", "assumed",
+            availability_policy="synthetic-daily-delay", evidence_reference="BH toy fixture",
+        )
+
+    args["timing_policy"] = policy
+    args["decision_at"] = policy.selection_at(scan.calendar, 2)
+    args["quote_available_at"] = {code: {} for code in scan.panel}
+    args["quote_metadata"] = {
+        code: {day: metadata(day, "synthetic KIS adjusted quote") for day in scan.calendar[:3]}
+        for code in scan.panel
+    }
+    args["sources"] = tuple(replace(
+        row,
+        capitalization=PublishedValue(
+            row.capitalization.value, None, metadata(row.formation_on, "synthetic KRX MKTCAP"),
+        ),
+        liquidity=tuple((day, replace(
+            value, public_available_at=None, availability=metadata(day, "synthetic KRX ACC_TRDVAL"),
+        )) for day, value in row.liquidity),
+    ) for row in args["sources"])
+    return args
+
+
+def test_explicit_d2_join_keeps_unknown_actual_times_and_precise_provenance(tmp_path):
+    scan = load_scan(database(tmp_path), calendar(), (A, B))
+    args = timed_join_args(scan)
+    result = join_formation(**args)
+    assert result.selection.formation_on == scan.calendar[2]
+    assert result.selection.decision_on == scan.calendar[4]
+    assert result.selection.selection_at == args["decision_at"]
+    assert result.selection.candidates[0].size_pass is True
+    assert args["sources"][0].capitalization.public_available_at is None
+    assert args["sources"][0].capitalization.availability.is_final is None
+    assert args["quote_metadata"][A][scan.calendar[2]].retrieved_at == "unknown"
+
+
+def test_absent_decimal_replay_quote_keeps_null_instead_of_actual_zero():
+    from research.activity_replay import _quote
+
+    series = DecimalSeries((None,), (None,), (None,), (None,), (None,), (False,))
+    assert _quote(series, 0) == (None, None, False, False)
+
+
+def test_availability_metadata_cannot_backdate_a_daily_observation(tmp_path):
+    scan = load_scan(database(tmp_path), calendar(), (A, B))
+    args = timed_join_args(scan)
+    metadata = args["quote_metadata"][A][scan.calendar[2]]
+    with pytest.raises(ValueError, match="precede observation_date"):
+        replace(metadata, available_at=datetime.combine(scan.calendar[1], time(23, 59), KST))
+
+
+@pytest.mark.parametrize("field", ["quote", "capitalization", "liquidity"])
+def test_explicit_timing_join_cannot_discard_required_metadata(tmp_path, field):
+    scan = load_scan(database(tmp_path), calendar(), (A, B))
+    args = timed_join_args(scan)
+    if field == "quote":
+        args["quote_metadata"] = None
+    else:
+        row = args["sources"][0]
+        if field == "capitalization":
+            row = replace(row, capitalization=replace(row.capitalization, availability=None))
+        else:
+            row = replace(row, liquidity=tuple((day, replace(value, availability=None))
+                                              for day, value in row.liquidity))
+        args["sources"] = (row, *args["sources"][1:])
+    with pytest.raises(ValueError, match="metadata"):
+        join_formation(**args)
+
+
+@pytest.mark.parametrize("field", ["quote", "capitalization", "liquidity"])
+def test_timing_join_rejects_one_late_field_without_patching_other_metadata(tmp_path, field):
+    scan = load_scan(database(tmp_path), calendar(), (A, B))
+    args = timed_join_args(scan)
+
+    def late(meta):
+        return replace(meta, available_at=args["decision_at"] + timedelta(seconds=1))
+
+    if field == "quote":
+        day = scan.calendar[2]
+        args["quote_metadata"][A][day] = late(args["quote_metadata"][A][day])
+    else:
+        row = args["sources"][0]
+        if field == "capitalization":
+            row = replace(row, capitalization=replace(
+                row.capitalization, availability=late(row.capitalization.availability),
+            ))
+        else:
+            row = replace(row, liquidity=tuple((day, replace(value, availability=late(value.availability)))
+                                              for day, value in row.liquidity))
+        args["sources"] = (row, *args["sources"][1:])
+    with pytest.raises(ValueError, match="later than selection"):
+        join_formation(**args)
 
 
 def test_loader_preserves_large_text_precision_null_absence_and_file_bytes(tmp_path):

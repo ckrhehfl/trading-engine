@@ -7,8 +7,10 @@ combined domestic operating-company common-issue classification in the fixture;
 this helper cannot certify it from current names, labels or a source string.
 
 Quote/activity turnover, source ACC_TRDVAL and issue capitalization have separate
-aware public_available_at inputs. They are checked at the explicitly supplied
-next-index-session 08:30 KST modeled decision, not inferred from a source date.
+aware public_available_at inputs or explicit AvailabilityMetadata. They are
+checked at the supplied policy's 08:30 KST modeled decision (D+1 by default),
+not inferred from a source date. Modeled assumptions retain unknown actual
+historical public availability separately and cannot certify that history.
 Classification retains AG's earlier formation cutoff. The fixed AQ calendar
 window includes verified zeros/frozen observations; only AN's same-operating-
 period normal baseline skips frozen observations. Unknown observations stop
@@ -24,11 +26,12 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import date, datetime
 from decimal import Decimal, localcontext
 
 from research.activity_accounting import IdentityPeriod, common_stock_at
 from research.activity_replay import SyntheticCandidate, SyntheticSelection
+from research.activity_timing import AvailabilityMetadata, SessionLagPolicy
 
 
 @dataclass(frozen=True)
@@ -37,6 +40,7 @@ class PublishedValue:
 
     value: Decimal | None
     public_available_at: datetime | None
+    availability: AvailabilityMetadata | None = None
 
 
 @dataclass(frozen=True)
@@ -51,6 +55,7 @@ class ScreenObservation:
     state: str
     turnover: Decimal | None
     public_available_at: datetime | None
+    availability: AvailabilityMetadata | None = None
 
 
 @dataclass(frozen=True)
@@ -92,14 +97,35 @@ def _available(value: datetime | None, decision: datetime) -> None:
         raise ValueError("unknown, naive or late synthetic public availability")
 
 
+def _published(
+    row: PublishedValue | ScreenObservation, day: date, decision: datetime,
+    *, require_metadata: bool = False,
+) -> None:
+    if row.availability is None:
+        if require_metadata:
+            raise ValueError("explicit timing policy requires field availability metadata")
+        _available(row.public_available_at, decision)
+        return
+    if not isinstance(row.availability, AvailabilityMetadata):
+        raise ValueError("explicit availability metadata is required")
+    row.availability.require_available(decision, observation_date=day)
+    # Legacy public time, if retained, means actual source publication. It may
+    # never be relabeled with a modeled assumption or conflict with provenance.
+    if row.public_available_at is not None:
+        _available(row.public_available_at, decision)
+        if row.public_available_at != row.availability.source_public_available_at:
+            raise ValueError("public availability conflicts with provenance")
+
+
 def _observation(
     rows: Mapping[date, ScreenObservation], day: date, decision: datetime,
+    *, require_metadata: bool = False,
 ) -> ScreenObservation:
     row = rows.get(day)
     if not isinstance(row, ScreenObservation) or row.state not in {"observed", "frozen"}:
         raise ValueError(f"unresolved synthetic observation: {day}")
     _decimal(row.turnover, "turnover")
-    _available(row.public_available_at, decision)
+    _published(row, day, decision, require_metadata=require_metadata)
     return row
 
 
@@ -132,7 +158,7 @@ def _listing_start(
 def _normal_history(
     calendar: Sequence[date], index: int, rows: Mapping[date, ScreenObservation],
     periods: tuple[IdentityPeriod, ...], period: IdentityPeriod, start: date,
-    lookback: int, decision: datetime,
+    lookback: int, decision: datetime, *, require_metadata: bool = False,
 ) -> tuple[list[Decimal], tuple[date, ...], tuple[date, ...], bool]:
     values, days, frozen = [], [], []
     for day in reversed(calendar[:index]):
@@ -141,7 +167,7 @@ def _normal_history(
         matches = [p for p in periods if p.code == period.code and p.start <= day < p.end]
         if matches != [period]:
             raise ValueError("unknown or conflicting operating-period history")
-        row = _observation(rows, day, decision)
+        row = _observation(rows, day, decision, require_metadata=require_metadata)
         if row.state == "frozen":
             frozen.append(day)
             continue
@@ -161,7 +187,7 @@ def screen_synthetic(
     capitalization: Mapping[str, PublishedValue],
     periods: tuple[IdentityPeriod, ...], listings: Mapping[str, SyntheticListing], *,
     liquidity_lookback: int, liquidity_floor: Decimal, capitalization_floor: Decimal,
-    decision_at: datetime,
+    decision_at: datetime, timing_policy: SessionLagPolicy | None = None,
 ) -> SyntheticScreen:
     """Calculate BB-compatible toy dispositions without hashing or held filtering.
 
@@ -170,6 +196,8 @@ def screen_synthetic(
     before size/history screens, including held or size-failing names. Known
     excluded controls need no operating screens. Each quotes code must have a
     verified formation observation; unknown formation data cannot remove it.
+    Explicit timing policies require field-level provenance for every consumed
+    value. Only the unchanged default path accepts legacy public timestamps.
     """
     if (not calendar or any(type(day) is not date for day in calendar)
             or any(a >= b for a, b in zip(calendar, calendar[1:]))):
@@ -185,17 +213,21 @@ def screen_synthetic(
     threshold = _decimal(Decimal(str(raw_threshold)), "v1 threshold")
     _decimal(liquidity_floor, "liquidity floor")
     _decimal(capitalization_floor, "capitalization floor")
-    formation, decision = calendar[formation_index:formation_index + 2]
-    cutoff = datetime.combine(decision, time(8, 30), timezone(timedelta(hours=9)))
+    policy = timing_policy if timing_policy is not None else SessionLagPolicy()
+    if not isinstance(policy, SessionLagPolicy):
+        raise ValueError("explicit SessionLagPolicy is required")
+    formation = calendar[formation_index]
+    decision = policy.execution_on(calendar, formation_index)
+    cutoff = policy.selection_at(calendar, formation_index)
     _available(decision_at, cutoff)
     if decision_at != cutoff:
-        raise ValueError("decision must be next index session at 08:30 KST")
+        raise ValueError("decision must be the policy index session at 08:30 KST")
     if formation_index < liquidity_lookback:
         raise ValueError("truncated calendar cannot supply the fixed liquidity window")
 
     present = {}
     for code, rows in quotes.items():
-        bar = _observation(rows, formation, decision_at)
+        bar = _observation(rows, formation, decision_at, require_metadata=timing_policy is not None)
         if bar.state != "frozen":
             present[code] = bar
     identities = {}
@@ -218,7 +250,7 @@ def screen_synthetic(
         if not isinstance(cap, PublishedValue):
             raise ValueError("unresolved synthetic capitalization")
         size = _decimal(cap.value, "capitalization")
-        _available(cap.public_available_at, decision_at)
+        _published(cap, formation, decision_at, require_metadata=timing_policy is not None)
         listed_on = _listing_start(listings, code, formation)
         source = liquidity.get(code, {})
         liquid_values, zero_count, frozen_count = [], 0, 0
@@ -227,7 +259,7 @@ def screen_synthetic(
             if listed_on is not None and day < listed_on:
                 short_liquidity = True
                 continue
-            row = _observation(source, day, decision_at)
+            row = _observation(source, day, decision_at, require_metadata=timing_policy is not None)
             liquid_values.append(row.turnover)
             zero_count += row.turnover == 0
             frozen_count += row.state == "frozen"
@@ -237,7 +269,8 @@ def screen_synthetic(
 
         start = max(period.start, listed_on) if listed_on is not None else period.start
         values, normal_days, frozen_days, short_normal = _normal_history(
-            calendar, formation_index, quotes[code], periods, period, start, lookback, decision_at)
+            calendar, formation_index, quotes[code], periods, period, start, lookback, decision_at,
+            require_metadata=timing_policy is not None)
         baseline = None if short_normal else _median(values)
         ratio = present[code].turnover / baseline if baseline is not None and baseline > 0 else None
         active = False
@@ -254,4 +287,6 @@ def screen_synthetic(
         diagnostics.append(ScreenDiagnostic(
             code, normal_days, frozen_days, window, zero_count, frozen_count,
             baseline, ratio, liquid_median))
-    return SyntheticScreen(SyntheticSelection(formation, decision, tuple(candidates)), tuple(diagnostics))
+    return SyntheticScreen(SyntheticSelection(formation, decision, tuple(candidates),
+                                             decision_at if timing_policy is not None else None),
+                           tuple(diagnostics))

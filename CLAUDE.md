@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 162 documents,
+   them. `.planning/README.md` carries an index of all 163 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1447,6 +1447,70 @@ is optional:**
    counting them toward the *promotion* `N` is a decision about which `N`,
    never permission to stop recording. An unlogged run is still the unsafe
    direction (Task C's own finding).
+
+**KRX historical-availability sensitivity — operator instruction 2026-10-09.**
+This supersedes BB/BC/BG's historical-release-proof-first requirement, including
+the earlier choice to investigate further instead of adopting an assumption.
+Continue official public-document/specification/notice/archive research alongside
+implementation and logged actual-data experiments. Do not stop this work or ask
+the operator to email or telephone institutions because historical publication
+time remains unverified. An inquiry is optional only after public evidence and
+conservative experiments fail to resolve an uncertainty that demonstrably
+changes the strategy's outcome.
+
+Distinguish observation date, historical availability and present retrieval.
+Modern historical API coverage proves neither historical public availability
+nor historical operation of that exact API. Evidence for the same fields in
+another official channel is distinct from evidence for the channel being used.
+Record field, channel, applicable period and revision limitations, classifying
+each claim as confirmed, inferred or assumed.
+
+Run a preregistered, non-promotable Discovery sensitivity pair using the same
+formation-day D inputs, universe thresholds, formations, costs, seed and holding
+parameters: execution on market session D+1 versus D+2. Explicit conservative
+modeled `available_at` values may replace missing historical timestamps for this
+study, labeled assumed; never relabel them as verified source publication times.
+D+2 is sensitivity, not proof of timely publication or protection against later
+revisions. Record row provenance where available: `observation_date`,
+`available_at`, `retrieved_at`, `source`, `is_final`, `data_vintage`,
+`evidence_level`. Preserve unknown true publication/retrieval/finality values as
+unknown. Enforce `available_at <= selection_at` for every selected input,
+including excluded formation observations. A known later source publication
+cannot be overridden by an earlier assumption.
+
+Report returns, volatility, maximum drawdown, trade counts and selection-change
+rates as descriptive timing sensitivity. Distinguish formation signal pools,
+selected portfolios and filled entries; zero signal change can follow by
+construction. This explicit sensitivity may run without an edge-comparison
+power pass, but authorizes no strategy selection, winning-lag claim, direction
+closure, paper/live promotion or reserved-window access. Eligibility,
+Confirmation and the detectable-effect rule for subsequent strategy families
+remain unchanged. The existing daily opening-price fill is a disclosed proxy,
+never an actual intraday fill at a later timestamp. Selection precedes that
+proxy; holding length starts at each arm's entry, with symmetric paired terminal
+horizons and the same evaluation calendar.
+Freeze explicit-policy target lists before the execution session's opening
+quotes. Scheduled due exits may reserve prospective slots but create no cash;
+failed sales, still-held targets or event-driven capacity conflicts leave those
+targets unfilled without re-selection or substitution. A known pending final
+payment retains its slot before payment. Preserve the legacy v1 path separately.
+
+Freeze and log actual-input/selection/holding-requirement preflights before input
+access, then scope price-basis/action evidence to the union of consequential
+holdings and successors across both arms before complete performance replay.
+Do not require an actual holding denominator before the logged preflight that
+derives it. Dated historical membership, identity/operating baselines, exact
+integer/Decimal cap and turnover, and distinct actual-zero/prelisting/
+postdelisting/halt/supplier-gap/file-or-API-error states remain required. Preserve
+unknown causes rather than inventing them or zero-filling. Reviewed committed
+source/specification, full source/dependency/input manifests and durable
+trial-start logging still apply.
+
+Each report states new verified facts and official sources, inferences and
+assumptions, risks removed in code, remaining risks, independent first-experiment
+conditions still open/newly closed, and both arms' execution status. Task BH's
+implementation/evidence ledger is
+`.planning/rd-bh-large-liquid-timing-sensitivity.md`.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode

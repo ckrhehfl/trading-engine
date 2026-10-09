@@ -416,6 +416,22 @@ Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.
 
+The operator's 2026-10-09 instruction now supersedes BB/BC/BG's historical-
+release-proof-first choice. Task BH (`.planning/rd-bh-large-liquid-timing-sensitivity.md`)
+continues official public research and an explicit assumed-availability D+1/D+2
+Discovery sensitivity; historical publication uncertainty alone no longer
+blocks actual experiments. Do not ask the operator to email/telephone external
+institutions as a prerequisite. Keep confirmed/inferred/assumed evidence and
+observation/publication/retrieval separate; current historical coverage is not
+historical availability. The full policy is in CLAUDE.md's Discovery subsection.
+Timing metadata, policy-based replay and the saved-input preflight runner are
+implemented with synthetic tests; the registered actual-input preflight has
+not run and no D+1/D+2 paired trial is complete. Eligibility/baseline,
+consequential price/action accounting,
+actual replay integration and frozen logged preregistration remain four open
+work groups. Derive holding requirements in a registered preflight before
+demanding their complete coverage; do not create a circular first-run gate.
+
 ## Where the previous work stopped
 
 The local Claude trading-engine transcript ends after a request to continue

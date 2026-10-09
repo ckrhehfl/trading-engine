@@ -3,9 +3,11 @@
 This module does not certify sources or run a study. Its future caller must
 register actual reads/trials, supply the independently established FULL present
 non-frozen formation population, and adjudicate continuous domestic operating
-common-issue periods, listing bounds and historical publication times. Neither
+common-issue periods, listing bounds and explicit availability policies. Neither
 a digest nor an IdentityPeriod/source string proves those historical facts.
-BA/BE's unknown times and uncertified source points cannot supply these inputs.
+BA/BE's uncertified source points cannot certify these inputs. The operator's
+BH policy permits explicitly assumed availability, preserving unknown actual
+source times separately; it does not certify an identity or a source vintage.
 
 Quote activity is read from scan_bars.turnover. Source ACC_TRDVAL uses a separate
 field-specific input type; it is never calculated from or filled by the quotes.
@@ -35,6 +37,7 @@ from research.activity_screen import (
     PublishedValue, ScreenObservation, SyntheticListing, SyntheticScreen,
     screen_synthetic,
 )
+from research.activity_timing import AvailabilityMetadata, SessionLagPolicy
 
 
 @dataclass(frozen=True)
@@ -76,6 +79,7 @@ class SourceLiquidity:
     state: str
     acc_trdval: Decimal | None
     public_available_at: datetime | None
+    availability: AvailabilityMetadata | None = None
 
 
 @dataclass(frozen=True)
@@ -230,6 +234,8 @@ def join_formation(
     quote_available_at: Mapping[str, Mapping[date, datetime | None]], *,
     params: Mapping, liquidity_lookback: int, liquidity_floor: Decimal,
     capitalization_floor: Decimal, decision_at: datetime,
+    quote_metadata: Mapping[str, Mapping[date, AvailabilityMetadata]] | None = None,
+    timing_policy: SessionLagPolicy | None = None,
 ) -> SyntheticScreen:
     """Validate the independent full pool, then invoke the existing pure screen.
 
@@ -239,6 +245,8 @@ def join_formation(
     remain in LoadedScan but cannot quietly disappear from this fixed pool.
     This join checks consistency/refusal, not historical source truth. The
     existing screen retains classification-at-formation and per-field timing.
+    An explicit lag policy requires provenance for consumed fields. Unknown
+    true public times remain None; modeled times live only in the metadata.
     """
     if not isinstance(scan, LoadedScan) or type(formation_on) is not date:
         raise ValueError("an explicit loaded scan and formation date are required")
@@ -265,12 +273,13 @@ def join_formation(
         if not series.observed[index]:
             continue
         availability = quote_available_at.get(code, {})
+        metadata = {} if quote_metadata is None else quote_metadata.get(code, {})
         quotes[code] = {
             day: ScreenObservation(
                 "missing" if not series.observed[i] else
                 "unknown" if series.frozen[i] is None else
                 "frozen" if series.frozen[i] else "observed",
-                series.turnover[i], availability.get(day),
+                series.turnover[i], availability.get(day), metadata.get(day),
             ) for i, day in enumerate(scan.calendar[:index + 1])
         }
     if (type(periods) is not tuple
@@ -295,7 +304,9 @@ def join_formation(
             if (type(day) is not date or day not in scan.calendar or day in dated
                     or not isinstance(value, SourceLiquidity)):
                 raise ValueError("duplicate/misaligned source date or substituted quote activity")
-            dated[day] = ScreenObservation(value.state, value.acc_trdval, value.public_available_at)
+            dated[day] = ScreenObservation(
+                value.state, value.acc_trdval, value.public_available_at, value.availability,
+            )
         liquidity[row.code] = dated
     if source_codes != expected:
         raise ValueError("formation source rows must match the independent population exactly")
@@ -303,4 +314,5 @@ def join_formation(
         scan.calendar, index, params, quotes, liquidity, capitalization, periods, listings,
         liquidity_lookback=liquidity_lookback, liquidity_floor=liquidity_floor,
         capitalization_floor=capitalization_floor, decision_at=decision_at,
+        timing_policy=timing_policy,
     )
