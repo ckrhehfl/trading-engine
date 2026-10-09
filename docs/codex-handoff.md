@@ -381,6 +381,17 @@ eligibility fields. The next bounded task is to register the named content
 gaps against existing issuer/listing sources. Continuous eligibility and
 historical field publication remain open; no real strategy trial has run.
 
+BF (`.planning/rd-bf-large-liquid-listing-content.md`) reviewed the remaining
+saved listing/relisting notices and independently checked their literal
+claims. The notices give issue identity, listing facts and headquarters, but
+no own/consolidated/holding-business statement. The owning record preserves
+these business-content gaps without adding a mandatory country-field gate.
+The exact evidence package is archived and independently read back in GCP;
+the collector remains unchanged. The next bounded task is to identify and
+register one missing issuer-business document/leaf, starting with 0126Z0.
+Historical publication and continuous eligibility remain open; this content
+review creates no new strategy validation.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.
