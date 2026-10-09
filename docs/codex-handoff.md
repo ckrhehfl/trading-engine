@@ -424,9 +424,16 @@ blocks actual experiments. Do not ask the operator to email/telephone external
 institutions as a prerequisite. Keep confirmed/inferred/assumed evidence and
 observation/publication/retrieval separate; current historical coverage is not
 historical availability. The full policy is in CLAUDE.md's Discovery subsection.
-Timing metadata, policy-based replay and the saved-input preflight runner are
-implemented with synthetic tests; the registered actual-input preflight has
-not run and no D+1/D+2 paired trial is complete. Eligibility/baseline,
+Timing metadata, policy-based replay and the saved-input preflight runner were
+merged in PR #264 and deployed only to the isolated research checkout at
+`380af85a6d8ced4d8156643e1a714823c25f1e3f`. BH's actual saved-input preflight
+completed with all registered files hash-verified: 41 of 917 windows have independently
+reproduced liquidity/short-history failures; 876 remain an unresolved upper
+bound before activity calculation. Its first private-parent failure read no
+inputs; the separately registered recovery and failed receipts are preserved.
+Task BI now implements the exact activity-failure preflight in
+`.planning/rd-bi-large-liquid-activity-failures.md`; no BI actual input has been
+read at this implementation stage. Neither D+1 nor D+2 performance is complete. Eligibility/baseline,
 consequential price/action accounting,
 actual replay integration and frozen logged preregistration remain four open
 work groups. Derive holding requirements in a registered preflight before
