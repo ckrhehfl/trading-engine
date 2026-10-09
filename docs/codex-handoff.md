@@ -392,6 +392,26 @@ register one missing issuer-business document/leaf, starting with 0126Z0.
 Historical publication and continuous eligibility remain open; this content
 review creates no new strategy validation.
 
+BG (`.planning/rd-bg-large-liquid-input-integration.md`) follows the revised
+work order: prepare the actual-input code boundary alongside a concrete route
+for the historical-publication question. `activity_inputs.py` reads the spent
+scan schema without float conversion or NULL-to-zero substitution and joins a
+formation against an independently established complete population. Its output
+uses the existing screen, Decimal replay boundary and portfolio accounting;
+temporary synthetic SQLite fixtures exercise the chain. Actual source periods,
+listing bounds and publication times must still be supplied and adjudicated.
+The scan digest covers its calendar/progress/bars, not the separate source
+values, periods or availability inputs; R7 still needs the full frozen manifest.
+
+The public KOSCOM contact table identifies the KRX daytime FTP closing-data
+recipient. BG preserves a concrete inquiry about field definitions, effective
+release schedules and corrections, but it is unsent; no email-sending connector
+is exposed. An official contact route is not historical release evidence.
+This implementation closes part of the R6 code gap only. R2/R4 continuous
+eligibility, R3 publication, R5 actual lot/event coverage, actual integration
+verification and R7 remain open before R8 sizing. Actual sizing/comparisons
+remain zero. The BF business-content follow-up is still outstanding.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.

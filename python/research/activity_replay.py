@@ -57,6 +57,42 @@ from research.krx_tax_schedule import KOSPI, total_bp
 
 
 @dataclass(frozen=True)
+class DecimalSeries:
+    """Lossless scan observations, distinct from absent calendar sessions.
+
+    An observed NULL is unresolved, not an absent bar or zero. This boundary
+    establishes no source completeness, identity or publication-time proof.
+    """
+
+    opens: tuple[Decimal | None, ...]
+    closes: tuple[Decimal | None, ...]
+    turnover: tuple[Decimal | None, ...]
+    frozen: tuple[bool | None, ...]
+    locked: tuple[bool | None, ...]
+    observed: tuple[bool, ...]
+
+    def __post_init__(self) -> None:
+        fields = (self.opens, self.closes, self.turnover, self.frozen,
+                  self.locked, self.observed)
+        if any(type(values) is not tuple for values in fields) or len({len(v) for v in fields}) != 1:
+            raise ValueError("Decimal series requires aligned immutable tuples")
+        for index, observed in enumerate(self.observed):
+            if type(observed) is not bool:
+                raise ValueError("Decimal observation presence must be explicit")
+            for values, positive in ((self.opens, True), (self.closes, True), (self.turnover, False)):
+                value = values[index]
+                if value is not None and (not isinstance(value, Decimal)
+                                          or not value.is_finite() or value < 0
+                                          or (positive and value == 0)):
+                    raise ValueError("Decimal series requires positive prices/nonnegative turnover Decimals or NULL")
+            if any(values[index] is not None and type(values[index]) is not bool
+                   for values in (self.frozen, self.locked)):
+                raise ValueError("Decimal bar states must be explicit booleans or unknown")
+            if not observed and any(values[index] is not None for values in fields[:-1]):
+                raise ValueError("absent Decimal observation cannot carry values")
+
+
+@dataclass(frozen=True)
 class SyntheticCandidate:
     """Explicit toy selector result, with no implied source certification.
 
@@ -132,7 +168,13 @@ def _number(value: object, name: str) -> Decimal:
     return result
 
 
-def _quote(series: Series, index: int) -> tuple[Decimal, Decimal, bool, bool]:
+def _quote(series: Series | DecimalSeries, index: int) -> tuple[Decimal, Decimal, bool, bool]:
+    if isinstance(series, DecimalSeries):
+        if not series.observed[index]:
+            return Decimal(0), Decimal(0), False, False
+        if any(values[index] is None for values in
+               (series.opens, series.closes, series.turnover, series.frozen, series.locked)):
+            raise ValueError("unresolved observed Decimal quote")
     if series.frozen[index] not in (0, 1) or series.locked[index] not in (0, 1):
         raise ValueError("synthetic bar states must be boolean")
     return (_number(series.opens[index], "open"), _number(series.closes[index], "close"),
@@ -179,7 +221,7 @@ def _event_date(event: CompulsoryStockExchange | FinalCashPayment) -> date:
 
 def _check_event_quotes(
     events: Sequence[CompulsoryStockExchange | FinalCashPayment],
-    panel: Mapping[str, Series], *, session: date, index: int,
+    panel: Mapping[str, Series | DecimalSeries], *, session: date, index: int,
 ) -> None:
     """Refuse bars contradicting explicit event bounds, even before payment."""
     for event in events:
@@ -195,7 +237,7 @@ def _check_event_quotes(
 
 
 def replay_synthetic(
-    dates: Sequence[date], panel: Mapping[str, Series], params: Mapping,
+    dates: Sequence[date], panel: Mapping[str, Series | DecimalSeries], params: Mapping,
     selections: Sequence[SyntheticSelection], *, dataset_sha256: str,
     events: tuple[CompulsoryStockExchange | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
@@ -226,8 +268,9 @@ def replay_synthetic(
             or any(char not in "0123456789abcdef" for char in dataset_sha256)):
         raise ValueError("synthetic snapshot must be a lowercase SHA-256 string")
     for code, series in panel.items():
-        if not isinstance(code, str) or not code or code != code.strip() or not isinstance(series, Series):
-            raise ValueError("synthetic panel requires codes and Series")
+        if (not isinstance(code, str) or not code or code != code.strip()
+                or not isinstance(series, (Series, DecimalSeries))):
+            raise ValueError("synthetic panel requires codes and Series or DecimalSeries")
         if any(len(values) != len(calendar) for values in
                (series.opens, series.closes, series.turnover, series.frozen, series.locked)):
             raise ValueError("synthetic series must align to the complete calendar")
