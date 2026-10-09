@@ -12,18 +12,28 @@ this component. Unknown/conflicting classification stops the entire selection
 before held-code exclusion and hashing; unresolved screens for operating common
 shares also stop it. Known excluded controls need no operating-company screens.
 Classification evidence must be dated no later than formation, retaining AG's
-cutoff. The market decision remains the next session under a date-granularity
-toy convention; its date does NOT establish publication before 08:30. Actual
-publication timestamps, sources and historical timing remain uncertified (R3).
+cutoff. The market decision uses an explicit D+1/D+2 session policy (D+1 by
+default), with 08:30 KST selection before daily-open-price proxy execution.
+Its modeled cutoff does NOT certify actual historical publication (R3).
 
-Every calendar session from lookback+1 through end is processed in this order:
+With an explicit timing policy, the final 08:30 target list is fixed from the
+prior book and scheduled due exits before any current-session quote is read.
+Due, available lots reserve prospective exit slots without assuming a sale or
+cash receipt. Only prior-book due/availability dates inform that plan; actual
+future event/payment dates do not. Pending claims retain actual inventory and
+slots until settled, so event/sale failure may invalidate a target with no
+replacement selected.
+The legacy timing_policy=None path retains v1's post-sale selection convention.
+
+Every calendar session from lookback+1 through end then processes:
 (1) due compulsory exchanges/final net payments, chronologically, with supplied
-order breaking same-day ties; (2) opening due sales; (3) formation+1 entries;
+order breaking same-day ties; (2) opening due sales; (3) policy-lagged entries;
 (4) closing observable marks. Non-session event dates apply on the first later
 session. Pending deliveries, absent/frozen bars retain inventory, marked value
 and occupied lots. Daily-open fills, including limit-locked bars, retain v1's
-unverified queue proxy. Held CURRENT codes are excluded, selected failed fills
-get no substitute, allocation is current opening equity/slots, and fractional
+unverified queue proxy. Retained CURRENT codes are excluded, selected failed fills
+get no substitute, allocation is current opening equity/slots for execution
+sizing only, and fractional
 shares include entry costs in the cash budget. Sales use the existing KOSPI
 upper-bound tax convention and T+2 calendar schedule. Exchange units/carried
 marks retain AG's fixed-snapshot coordinates and never enter eligibility.
@@ -46,7 +56,7 @@ from __future__ import annotations
 from collections import Counter
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 import hashlib
 
@@ -54,6 +64,7 @@ from research.activity_accounting import Lot, observable_mark
 from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
 from research.activity_portfolio import Series
 from research.krx_tax_schedule import KOSPI, total_bp
+from research.activity_timing import SessionLagPolicy
 
 
 @dataclass(frozen=True)
@@ -128,11 +139,12 @@ class SyntheticCandidate:
 
 @dataclass(frozen=True)
 class SyntheticSelection:
-    """A complete toy formation pool, usable only on its next market session."""
+    """Complete formation pool for the explicitly modeled execution session."""
 
     formation_on: date
     decision_on: date
     candidates: tuple[SyntheticCandidate, ...]
+    selection_at: datetime | None = None
 
     def __post_init__(self) -> None:
         if type(self.formation_on) is not date or type(self.decision_on) is not date:
@@ -143,6 +155,9 @@ class SyntheticSelection:
             raise ValueError("synthetic selection requires SyntheticCandidate rows")
         if len({row.code for row in self.candidates}) != len(self.candidates):
             raise ValueError("duplicate synthetic candidate")
+        if self.selection_at is not None and (
+                not isinstance(self.selection_at, datetime) or self.selection_at.utcoffset() is None):
+            raise ValueError("selection_at must be an aware timestamp")
 
 
 @dataclass(frozen=True)
@@ -168,10 +183,10 @@ def _number(value: object, name: str) -> Decimal:
     return result
 
 
-def _quote(series: Series | DecimalSeries, index: int) -> tuple[Decimal, Decimal, bool, bool]:
+def _quote(series: Series | DecimalSeries, index: int) -> tuple[Decimal | None, Decimal | None, bool, bool]:
     if isinstance(series, DecimalSeries):
         if not series.observed[index]:
-            return Decimal(0), Decimal(0), False, False
+            return None, None, False, False
         if any(values[index] is None for values in
                (series.opens, series.closes, series.turnover, series.frozen, series.locked)):
             raise ValueError("unresolved observed Decimal quote")
@@ -184,9 +199,12 @@ def _quote(series: Series | DecimalSeries, index: int) -> tuple[Decimal, Decimal
 def _selected(
     selection: SyntheticSelection, *, formation_on: date, decision_on: date,
     present_codes: set[str], held_codes: set[str], seed: int, free_slots: int,
+    selection_at: datetime,
 ) -> tuple[str, ...]:
     if selection.formation_on != formation_on or selection.decision_on != decision_on:
-        raise ValueError("synthetic selection must use the formation's next market session")
+        raise ValueError("synthetic selection must use the formation's next market session under its policy")
+    if selection.selection_at is not None and selection.selection_at != selection_at:
+        raise ValueError("synthetic selection must use the policy's 08:30 KST cutoff")
     if {row.code for row in selection.candidates} != present_codes:
         raise ValueError("synthetic selection must cover every non-frozen formation bar")
     # Check EVERY classification before any screen, held-code exclusion or hash.
@@ -241,6 +259,7 @@ def replay_synthetic(
     selections: Sequence[SyntheticSelection], *, dataset_sha256: str,
     events: tuple[CompulsoryStockExchange | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
+    timing_policy: SessionLagPolicy | None = None,
 ) -> SyntheticReplay:
     """Replay caller-supplied toy inputs without reading or writing anything.
 
@@ -248,6 +267,8 @@ def replay_synthetic(
     equal the first formation date, and pending future events cannot already be
     due at that cutoff. Events may not reuse initial consumed ids. All supplied
     observations and events must share the explicitly identified snapshot.
+    Paired policies use the same lag-2 terminal formation horizon and evaluation
+    calendar; each lot's holding period still begins at its actual proxy entry.
     """
     calendar = list(dates)
     if (not calendar or any(type(day) is not date for day in calendar)
@@ -274,9 +295,15 @@ def replay_synthetic(
         if any(len(values) != len(calendar) for values in
                (series.opens, series.closes, series.turnover, series.frozen, series.locked)):
             raise ValueError("synthetic series must align to the complete calendar")
-    formation_indices = tuple(range(lookback, end - holding, holding))
+    policy = timing_policy if timing_policy is not None else SessionLagPolicy()
+    if not isinstance(policy, SessionLagPolicy):
+        raise ValueError("explicit SessionLagPolicy is required")
+    formation_indices = policy.formation_indices(
+        calendar, lookback=lookback, holding_sessions=holding, end_index=end)
     if any(not isinstance(selection, SyntheticSelection) for selection in selections):
         raise ValueError("explicit SyntheticSelection inputs are required")
+    if timing_policy is not None and any(selection.selection_at is None for selection in selections):
+        raise ValueError("explicit timing policy requires selection_at timestamps")
     formation_map = {selection.formation_on: selection for selection in selections}
     if (len(formation_map) != len(selections)
             or set(formation_map) != {calendar[index] for index in formation_indices}):
@@ -305,6 +332,23 @@ def replay_synthetic(
     closed, cursor = 0, 0
     for index in range(lookback + 1, end + 1):
         session = calendar[index]
+        formation_index = index - policy.session_lag
+        selected = None
+        if timing_policy is not None and formation_index in formation_indices:
+            # Freeze portfolio choices at 08:30 without consulting today's
+            # opening/frozen prices or assuming actual event/sale proceeds.
+            retained = tuple(lot for lot in book.lots
+                             if lot.due_on > session or lot.available_on > session)
+            formation_on = calendar[formation_index]
+            present_codes = {code for code, series in panel.items()
+                             if _quote(series, formation_index)[1] and not series.frozen[formation_index]}
+            selected = _selected(
+                formation_map[formation_on], formation_on=formation_on, decision_on=session,
+                present_codes=present_codes, held_codes={lot.code for lot in retained},
+                seed=params["seed"], free_slots=max(0, slots - len(retained)),
+                selection_at=policy.selection_at(calendar, formation_index),
+            )
+            choices.append((formation_on, selected))
         _check_event_quotes(ordered_events, panel, session=session, index=index)
         book = replace(book, as_of=session)
         while cursor < len(ordered_events) and _event_date(ordered_events[cursor]) <= session:
@@ -334,16 +378,18 @@ def replay_synthetic(
                 diagnostics["pending_exit_sessions"] += 1
             remaining.append(lot)
         book = replace(book, cash=cash, lots=tuple(remaining))
-        if index - 1 in formation_indices:
-            formation_on = calendar[index - 1]
-            present_codes = {code for code, series in panel.items()
-                             if _quote(series, index - 1)[1] and not series.frozen[index - 1]}
-            selected = _selected(
-                formation_map[formation_on], formation_on=formation_on, decision_on=session,
-                present_codes=present_codes, held_codes={lot.code for lot in book.lots},
-                seed=params["seed"], free_slots=max(0, slots - book.slot_count),
-            )
-            choices.append((formation_on, selected))
+        if formation_index in formation_indices:
+            if timing_policy is None:
+                formation_on = calendar[formation_index]
+                present_codes = {code for code, series in panel.items()
+                                 if _quote(series, formation_index)[1] and not series.frozen[formation_index]}
+                selected = _selected(
+                    formation_map[formation_on], formation_on=formation_on, decision_on=session,
+                    present_codes=present_codes, held_codes={lot.code for lot in book.lots},
+                    seed=params["seed"], free_slots=max(0, slots - book.slot_count),
+                    selection_at=policy.selection_at(calendar, formation_index),
+                )
+                choices.append((formation_on, selected))
             equity = book.cash
             for lot in book.lots:
                 opening, _, frozen, _ = _quote(panel[lot.code], index)
@@ -352,12 +398,24 @@ def replay_synthetic(
             allocation = equity / slots
             lots, cash = list(book.lots), book.cash
             for code in selected:
+                if timing_policy is not None and any(lot.code == code for lot in lots):
+                    diagnostics["unfilled_entries"] += 1
+                    diagnostics["unfilled_held_targets"] += 1
+                    continue
+                if timing_policy is not None and len(lots) >= slots:
+                    diagnostics["unfilled_entries"] += 1
+                    diagnostics["unfilled_capacity_targets"] += 1
+                    continue
                 opening, _, frozen, locked = _quote(panel[code], index)
                 if not opening or frozen:
                     diagnostics["unfilled_entries"] += 1
                     continue
                 budget = min(cash, allocation)
                 if budget <= 0:
+                    if timing_policy is not None:
+                        diagnostics["unfilled_entries"] += 1
+                        diagnostics["unfilled_cash_targets"] += 1
+                        continue
                     break
                 lots.append(Lot(f"{code}:{session}", code, budget / (opening * (1 + cost / 10000)),
                                 opening, session, session, calendar[index + holding], session,
