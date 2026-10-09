@@ -334,6 +334,38 @@ suite passes 120 tests, including 32 new screen cases. This prepares arithmetic
 only: the actual loader/evidence adapter, historical timing verification and
 actual sizing/comparison gates remain open. No new actual study was run.
 
+BC publication is complete in PR #259; the isolated GCP research checkout
+was verified at `b19b8d259aeeb0732d8cfce99f1621a71a72f9f9`, with the
+collector unchanged. BD (`.planning/rd-bd-large-liquid-tender-outcomes.md`)
+continues only BA/BB's named F&F correction/outcome obligation. Its first
+registered acquisition is two exact July 23 DART wrappers, followed only by
+separately recorded minimal source bounds. This does not reopen the timing
+search or establish complete R5 event coverage or an actual holding denominator.
+
+BD's fixed source acquisition is complete: the two July corrections and the
+August 19 result report were read through eight registered requests. The
+result clause reports F&F common shares tendered and purchased; the exact
+quantities and source locations remain in the BD research record. It
+states September 2 as planned Holdings new-share delivery, unlike the July
+correction's August 19 proposed date; actual delivery, fractional cash and
+research-account participation remain unverified. This elective tender does
+not justify a compulsory conversion of every F&F holder. The offer ended
+before the first October 20 formation; July 20 is only the first required
+lookback observation. Independent final content checks and the private GCP
+archive's 335-file readback are complete; PR review/merge and isolated research
+sync remain pending at this entry. The collector stayed unchanged. New actual
+sizing and comparison counts remain zero.
+
+After BD publication, the next bounded work is an offline evidence/gap map
+over BB's exact required-date union, reusing existing reviewed issue anchors,
+listing and change evidence. Identify unsupported/conflicting periods before
+registering only the specific missing source bounds. Do not forward-fill
+source-point identity links into certified operating-company periods. Keep
+document/name/market changes separate from actual continuous operating periods:
+splitting an `IdentityPeriod` on every rename or document version would reset
+the AN baseline artificially. R2/R4 certification, R3 historical publication,
+R5 actual lot coverage and real integration/preregistration still precede sizing.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.
