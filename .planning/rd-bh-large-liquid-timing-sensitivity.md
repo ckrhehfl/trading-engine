@@ -266,3 +266,47 @@ covering timing, saved-input preflight, input composition, screen, replay,
 accounting, book, portfolio and planning-index behavior. The skipped case is
 reported as skipped, not passed. Full project CI and CodeRabbit remain required
 before publication and before the registered actual-input run.
+
+## Publication and actual preflight outcome — 2026-10-09
+
+PR [#264](https://github.com/ckrhehfl/trading-engine/pull/264) merged as
+`380af85a6d8ced4d8156643e1a714823c25f1e3f` at 13:06:16 UTC. CodeRabbit completed
+the full source review and explicitly verified the only subsequent doc fix;
+no unresolved finding remained. Nine required checks passed. Final Python CI
+reported 4,900 passed and three skipped. The full local suite was interrupted
+after exact-head CI passed; it is not reported as completed locally.
+
+The isolated GCP research checkout was fast-forwarded at 13:07:12 UTC. Collector
+checkout stayed clean at `4ce85d714890b87f1a57ae89d4942660e41c0483`; no collector,
+process, schedule, credential, reserved input or new API was changed/accessed.
+Attempt `d5c342b6-fb03-4d50-bb8b-75801660fbb2` failed at the output-parent mode
+check, before any actual input read. Its durable failure remains preserved.
+The explicitly registered recovery only supplied a new mode-0700 private
+parent and exclusive child; it changed no source, input or scientific parameter.
+
+Recovery `c1c710f8-977c-4542-b1bf-6a4b01ec7fc1` ran 13:14:12–13:20:35 UTC under
+`/home/minjun4897/research-evidence/large-liquid-bh-timing-preflight-20261009-recovery-v1/run`.
+All 1,748 input files matched their pins. BB's 55,773 required code/dates split
+into 55,683 retained raw rows and 90 dates without saved KRX responses. Those
+90 are cache coverage gaps, not new KIS failures or automatically 90 blockers.
+Only 33 exact absolute-liquidity failures plus eight verified short histories
+were eliminated: **41 windows fail, 876 windows across 133 codes remain an
+unresolved upper bound**. No activity predicate, actual holding selection or
+return was calculated. Each timing arm has zero completed performance studies.
+
+An independent verifier read only four new output files, verified their hashes,
+partitions and paired ordering. It did not reread original sources, the database
+or historical logs. It did not independently recompute holding-session distance
+because that four-file package omitted the complete index calendar.
+
+| output | SHA-256 |
+|---|---|
+| result | `dc9234b69339a5c4cce9295d00436c0a1d198402936a798c8eac636811e70ef6` |
+| input manifest | `a612fd2663f2afe56d290f0029304d90d0c30cdf8269662f7bfb7f0f4c76f363` |
+| source manifest | `f85ebbceca0eb56dc1a0dc218de5929d019a09cd2df046b4a61ff7a64fe24d0d` |
+| specification | `148ad3753345d6794b7c25eccf9a0ca50396694c5acaf4052f181eaa4e520b84` |
+
+The next registered step is BI's one-way numeric activity-failure preflight,
+then historical identity/normal-period and consequential price/action evidence
+only for surviving potential signals. Historical publication remains an
+assumption under the operator override, not a newly verified official fact.

@@ -1,0 +1,39 @@
+{
+  "schema": "activity-failure-preflight-v1",
+  "study_id": "activity-numeric-failure-preflight-v1",
+  "mode": "discovery_numeric_failure_preflight",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60, "threshold": 3.0, "holding_sessions": 126, "slots": 20,
+    "seed": 20261005, "end": "2026-09-18", "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0, "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252], "bootstrap_repetitions": 2000,
+    "alpha": 0.05, "power": 0.8
+  },
+  "inputs": {
+    "calendar_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-calendar-20261007-v1/manifest.json",
+      "sha256": "ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882"
+    },
+    "bb_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bb-replay-readiness-20261009-v1/result.json",
+      "sha256": "2ac0b2c81d19921d19cfea95a850574d9bef8dc7b5d1ebc900aa1f039ea0d9b4"
+    },
+    "bh_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bh-timing-preflight-20261009-recovery-v1/run/result.json",
+      "sha256": "dc9234b69339a5c4cce9295d00436c0a1d198402936a798c8eac636811e70ef6"
+    },
+    "au_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-normal-lookbacks-20261008-v1/result.json",
+      "sha256": "eb95349f4a5555a45363b98ae907c6a7791e12297a3fee17fa7729a492ce1fa4"
+    },
+    "scan_database": {
+      "path": "/home/minjun4897/trading-engine/python/data/var/krx_scan.sqlite3",
+      "snapshot_policy": "readonly_single_transaction_exact_requested_code_dates",
+      "whole_database_hash": null,
+      "allowed_columns": ["bsop_date", "open", "high", "low", "close", "turnover"]
+    }
+  }
+}

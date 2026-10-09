@@ -137,7 +137,7 @@ def _git(root: Path, *args: str) -> bytes:
     return subprocess.check_output(["git", "-C", str(root), *args], stderr=subprocess.PIPE)
 
 
-def freeze_sources(root: Path, spec_path: Path) -> tuple[dict, bytes, dict]:
+def freeze_sources(root: Path, spec_path: Path, *, spec_validator=None) -> tuple[dict, bytes, dict]:
     """Freeze ALL tracked Python, the lock/project and both committed specs.
 
     Source reads are engineering inputs, not research data. Untracked Python
@@ -169,7 +169,7 @@ def freeze_sources(root: Path, spec_path: Path) -> tuple[dict, bytes, dict]:
     clean()
     raw = contents[relative]
     spec, reference = strict_json(raw), strict_json(contents[REFERENCE])
-    validate_spec(spec, reference)
+    (validate_spec if spec_validator is None else spec_validator)(spec, reference)
     locked = tomllib.loads(contents["python/uv.lock"].decode("utf-8"))
     installed = {}
     for package in locked.get("package", []):

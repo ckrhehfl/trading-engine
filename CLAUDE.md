@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 163 documents,
+   them. `.planning/README.md` carries an index of all 164 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1511,6 +1511,44 @@ assumptions, risks removed in code, remaining risks, independent first-experimen
 conditions still open/newly closed, and both arms' execution status. Task BH's
 implementation/evidence ledger is
 `.planning/rd-bh-large-liquid-timing-sensitivity.md`.
+
+**Next execution design — Task BI, registered before actual reads.** Calculate
+only provable activity-predicate failures within BH's unresolved population,
+before demanding complete historical classification. This is a non-promotable
+Discovery input/signal-scope preflight, not portfolio performance. Keep all
+existing research parameters and both timing arms fixed. No new API, filing,
+holding-price, reserved-panel or credential access is authorized by this step.
+
+For each BH unresolved window, use BB's first required observation through its
+formation, expanded to EVERY intervening session of the pinned index calendar.
+Read the union of these exact code/date intervals from the existing spent KIS
+scan, only date/OHLC/turnover fields. Validate panel and complete requested-code
+progress before values in one read-only SQLite snapshot; fingerprint typed
+consumed rows, retain missing/NULL/invalid states, and reconcile normal/frozen
+dates to BB. Never skip an unknown interval or splice codes. The scan snapshot
+fingerprint is not a whole-database hash or price-basis certificate.
+
+The one-way proof is: a continuous operating period beginning before or on the
+oldest of the latest complete normal observations has the same baseline; a later
+start has insufficient normal history. Thus an exact numeric failure cannot
+become eligible through a later operating-period start. A numeric pass remains
+unresolved and cannot certify a period or a trading signal. Apply AN's frozen,
+locked and zero rules, exact Decimal median/product, and BH's metadata/cutoff
+checks to every consumed observation. Unknowns or BB state/date disagreement
+prevent exclusion; record them without silently refreshing the historical map.
+
+Implement a pure failure predicate, narrow reader and committed logged runner.
+Freeze all tracked Python, runtime, dependency declarations and relevant specs;
+pin BH result, BB result, AU state/date result and calendar by SHA-256. AU's
+saved metadata supplies the exact normal/frozen partition missing from BB's
+combined interval list; it supplies no prices or new classification. Log started before actual
+input bodies/DB access, preserve partial failures and disallow automatic retry.
+Use a fresh private parent with mode 0700 and exclusive child output; reject
+input/source/log/output aliases before writes. Preserve source/input manifests
+and all seven metadata fields with historical publication/finality/vintage
+unknown where appropriate. Review/test/merge before one isolated GCP run; then
+independently verify new outputs. Report narrowed potential-signal windows,
+unresolved causes, both timing schedules and zero performance runs honestly.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
