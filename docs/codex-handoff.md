@@ -8,6 +8,8 @@ Task AT's date-only price-panel mapping, Task AU's bar-state audit and
 Task AV's bounded historical company-overview acquisition and Task AW's
 metadata reconciliation and issuer-content review, followed by Tasks AX-BA's
 dated issue, notice and history-source links and bounded tender-content review.
+Task BB inventories the remaining replay gates and starts synthetic lot-book
+integration; it does not certify eligibility or execute a new strategy study.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -262,6 +264,30 @@ historical certification remain false. No new operator choice currently blocks
 the next bounded data-validation work. The separate pre-2019 collector pass
 finished with five failures; AS records its read-only operational diagnosis and
 existing retry schedule without accessing reserved prices or changing it.
+
+Task BB (`.planning/rd-bb-large-liquid-replay-readiness.md`) fixes eight explicit
+completion gates and independently checked local BA/workload identities. Its
+one bounded GCP saved-metadata read preserves the complete 944-row population,
+917 target windows and 27 controls. The required listing-bounded date inventory
+has 55,773 distinct code/session obligations across 136 codes; 6,302 pre-listing
+search references remain separately preserved, with no change to AU's original.
+This does not require one filing per date: a verified period can cover many.
+Actual holding/action-lot denominators remain undefined, not zero, and historical
+eligibility, publication, operating-period baselines and readiness remain open.
+
+`research.activity_book` composes AG's existing arithmetic into immutable cash
+and acquisition lots with atomic compulsory exchanges/final payouts, event-ID
+reuse refusal and forward-only accounting cutoffs. Synthetic checks passed;
+the adversarial review's mutable dataset-ID case was fixed at the new boundary.
+This component has no data loader or full replay. Independent reconstruction
+matched every inventory field and rejected 23 mutations; all ten private GCP
+archive files were read back with matching hashes and permissions. Finish
+review/CI and publication, then continue the minimal F&F
+correction/outcome scope and the required historical intervals while preparing
+full synthetic selection/fill/mark/exit/event ordering. Do not wait for all
+source acquisitions before doing the synthetic integration work; real prices
+still require every data/replay gate and reviewed preregistration. New sizing
+and comparison executions remain zero.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
