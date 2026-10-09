@@ -408,3 +408,46 @@ independently ran all 44 scope tests and found no actionable defect. Actual
 GCP peak memory under the registered 512-MiB process cap remains unmeasured
 until the post-merge attempt; a resource failure must be preserved, not retried
 automatically or treated as a strategy result.
+
+## Completed reviewed publication and actual scope — recorded in BK
+
+PR #266 received CodeRabbit approval for exact head
+`5724fcaa08d90ad77709a8db1249431e95525a22`, review 5471846764 at
+2026-10-09 15:06:47 UTC, with no actionable comments or unresolved threads.
+All nine checks passed; both Python CI runs reported 5,066 passed / three
+skipped. Normal squash merge `a450d6cd3254958bf3e0faf9583396c6400acbbc`
+retained reviewed tree `c237e4f58536de8282cfc87713d26b277399536e`.
+The isolated GCP research checkout advanced to that merge at 15:08:57 UTC.
+The operational collector remained clean at
+`4ce85d714890b87f1a57ae89d4942660e41c0483` before and after.
+
+The registered one-time scope run `151eb340-244c-4084-8cdd-04f8c7c46a7e`
+logged durable started/completed at 15:09:11.407217 / 15:09:14.399300 UTC.
+It retained 917 prior windows: 41 BH failures, 840 BI failures and 36 potential
+windows, plus the separate 27 retained controls. Each timing arm has 36
+potential intervals; the original-issue union covers 31 codes and 24,598 unique
+code/dates. This scope run opened no database or new source endpoint.
+Both completed performance counts remain zero; actual holding/action
+denominators remain None. The registered memory-capped attempt completed;
+its actual peak memory was not separately measured.
+
+New-output independent verification passed without importing the producer or
+rereading original BH/BI inputs. It reconstructed the paired calendar geometry,
+126-session due dates, evaluation-end unions, partitions and references, and
+checked private permissions and hashes. Its boundary is the new scope output,
+not another re-verification of original BH/BI source proofs. Output SHA-256:
+
+| artifact | SHA-256 |
+|---|---|
+| result | `69b6829903cb03fdb835ee084a91d06941cb4c8ce5048ea75189a298c63109ea` |
+| source manifest | `896deec2517e3da9857753f4ad67c25aa798b909f211067eb3ccb222a28a0d21` |
+| input manifest | `474b818169871fe36866766140e5dca89346302faa1f0837b2cbbea8ce198413` |
+| specification | `a965f3269775b8c8bf189d449d3ce666df3fd1d04f5fed9d016636388a6742a5` |
+
+Private publication receipts remain under
+`/home/minju/.local/share/trading-engine-research/large-liquid-bj-publication-20261009-v1`;
+the GCP run is at the registered price/action-scope root. The merged PR body
+also records the actual publication facts. Source-content gaps are now zero,
+while four full-performance work groups remain open and zero are newly closed.
+Task BK continues the positive-period adjudication and raw-price source-route
+inspection; no return-based parameter change or strategy conclusion was made.

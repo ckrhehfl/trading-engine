@@ -915,8 +915,8 @@ So the operation is two steps, and only the first is mechanical:
    remove only **narrative and evidence** — what was run, in what order,
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
-   elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 165 documents,
+elsewhere, because this file is the only place a future session reads
+them. `.planning/README.md` carries an index of all 166 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1596,6 +1596,41 @@ runner. Freeze reviewed committed source/dependencies/specification and log
 durable started before saved actual result/calendar input bodies. Preserve
 failed attempts and private exclusive outputs; no automatic retry. Review,
 merge and isolated GCP execution precede independent output verification.
+
+**Next execution design — Task BK, before source-summary reads.** Adjudicate
+the 36 potential windows' positive issuer/issue/business evidence, maintaining
+all original failure/control partitions and the same consumed activity snapshot.
+Start with only the four pinned BJ summaries registered in
+`.planning/rd-bk-large-liquid-evidence-adjudication.md`. Produce exact source
+coordinates, date roles, positive passages, relevant changes and concrete gaps;
+register raw-source paths/hashes or bounded official queries before following
+them. No source candidate, repeated name/ISIN, headquarters or empty search
+alone certifies a continuous period. Formation-known evidence may document an
+earlier effective operating period without backdating publication; exhaustive
+search completeness and publication before each baseline observation are not
+additional gates. Proposed changes do not prove adoption/effectiveness.
+
+In parallel, inspect existing code/specification/document contracts for reuse
+of saved official KRX raw OHLC in a later registered price-basis study. This
+engineering step opens no saved market-body/manifest, DB, API or credential.
+Keep raw-source, adjusted-quote and turnover semantics and data vintages separate.
+Any actual market-input preflight requires reviewed committed source/specification,
+full manifests and durable started logging before inputs; this source-summary
+review does not authorize a price read or performance calculation. Preserve
+exclusive private evidence/failures and obtain independent verification, CI and
+CodeRabbit before normal merge and isolated research-only publication.
+
+BK also implements the registered cached-price parity audit: derive the exact
+intersection of BJ's pinned original-issue union with the existing AQ/AR cache
+dates, verify fixed cache receipts/ledgers and only those raw trading envelopes,
+then read matching spent KIS date/OHLC/volume/turnover in one read-only snapshot
+after panel/progress validation. Preserve typed rows, gaps, provenance and exact
+factor numerator/denominator; compare losslessly without interpreting a price
+ratio as a verified vendor convention or changing BI's consumed turnover.
+Reviewed committed source/specification and durable start precede all actual
+inputs. No API, classification/price-basis certificate, event application,
+selection or return calculation is part of this diagnostic. Its exact protocol,
+pins, private exclusive output and independent-verification boundary are in BK.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
