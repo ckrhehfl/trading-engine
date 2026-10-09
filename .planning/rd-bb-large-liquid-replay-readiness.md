@@ -238,3 +238,42 @@ commit before and after both operations. No research run or collector change
 was made. The earlier independent-reconstruction and archive instructions
 are now satisfied by the receipts above; review/CI, merge and isolated code
 synchronization remain the publication steps.
+
+## Publication review follow-up
+
+PR #258's first Python CI completed with 4,629 passed, three skipped and one
+failure: the docs figure-ownership guard rejected the two comma-grouped
+inventory counts repeated in the handoff. The handoff now points to this BB
+record for those counts. Focused document and planning-index verification
+passed 84 tests with one skip. The initial failure remains recorded rather
+than described as a passing full-suite run.
+
+CodeRabbit questioned using an availability-date price basis to express the
+successor claim at effectiveness. Independent synthetic rechecking confirmed
+AG's existing fixed-snapshot coordinate contract: changing future raw and
+adjusted price levels together leaves the early book unchanged; changing only
+the adjustment coordinate changes shares and carried unit mark inversely while
+preserving raw entitlement, NAV, cash and occupied slots. An observable
+successor mark still cannot update before availability. Simply delaying the
+whole event would leave the old lot's earlier availability in place, permitting
+the old issue to be marked during the delivery gap. The safe follow-up is to
+make this contract explicit and add coordinate-invariance regressions, retaining
+the mandatory effective-date claim and AG/v1 behavior.
+
+This argument does not certify a real vendor bridge or permit the carried
+quantity/mark to become a pre-availability price signal. R3, R5 and R6 remain
+open. The future full runner must separately prove point-in-time selection,
+fills and observable marks; the accounting component has no such consumers.
+
+The WSL `scripts/dev.sh check` completed at 2026-10-09 05:37:18 UTC with
+guardrails, 27 script regression tests, 34 hook tests and the collected Python
+suite passing: 4,630 passed, three skipped in 1,633.33 seconds. This local
+full-suite result follows the handoff correction. The additional coordinate
+regressions still require their focused run and updated-head CI before merge.
+
+The three coordinate-regression cases subsequently passed with the existing
+accounting checks: 83 focused tests (61 book and 22 AG arithmetic), with the
+scanner also passing. They include two constant-factor price-level changes,
+and a factor rebase with independently specified raw quantities, carried value,
+delivery restriction and same-economic-price valuation after delivery. No
+execution semantics changed. Updated-head CI and the review response remain.

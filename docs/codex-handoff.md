@@ -268,9 +268,9 @@ existing retry schedule without accessing reserved prices or changing it.
 Task BB (`.planning/rd-bb-large-liquid-replay-readiness.md`) fixes eight explicit
 completion gates and independently checked local BA/workload identities. Its
 one bounded GCP saved-metadata read preserves the complete 944-row population,
-917 target windows and 27 controls. The required listing-bounded date inventory
-has 55,773 distinct code/session obligations across 136 codes; 6,302 pre-listing
-search references remain separately preserved, with no change to AU's original.
+917 target windows and 27 controls. BB records the required listing-bounded
+code/session inventory and separately preserves all verified pre-listing
+search references, with no change to AU's original.
 This does not require one filing per date: a verified period can cover many.
 Actual holding/action-lot denominators remain undefined, not zero, and historical
 eligibility, publication, operating-period baselines and readiness remain open.

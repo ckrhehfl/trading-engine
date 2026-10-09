@@ -150,6 +150,14 @@ class ActivityBook:
             raise ValueError("event id has already been applied")
 
     def apply_stock_exchange(self, event: CompulsoryStockExchange, *, session: date) -> ActivityBook:
+        """Convert at effectiveness using share units from one fixed snapshot.
+
+        The availability-date price pair supplies the adjusted/raw unit factor;
+        its future price level is not booked. The carried mark preserves each
+        lot's old marked value and observation date while delivery is pending.
+        Observable successor marks remain blocked until availability, which
+        itself does not establish an executable fill.
+        """
         if not isinstance(event, CompulsoryStockExchange):
             raise ValueError("an inspected CompulsoryStockExchange is required")
         self._check_session(event.event_id, session)

@@ -91,6 +91,60 @@ def test_unavailable_successor_keeps_carried_value_and_observation_date() -> Non
     assert observed.due_on == day(10) and observed.entered_on == day(2)
 
 
+@pytest.mark.parametrize("price_scale", [D("0.1"), D(8)])
+def test_future_price_level_at_constant_unit_factor_cannot_change_early_book(price_scale: D) -> None:
+    event = exchange()
+    scaled_basis = replace(event.new_basis, raw_close=D(200) * price_scale,
+                           adjusted_close=D(25) * price_scale)
+    original = book()
+    baseline = original.apply_stock_exchange(event, session=day(6))
+    scaled = original.apply_stock_exchange(replace(event, new_basis=scaled_basis), session=day(6))
+    assert scaled == baseline
+    assert original == book()
+
+
+def test_changed_unit_factor_rebases_claims_but_keeps_economic_value_and_delivery_timing() -> None:
+    event = exchange()
+    rebased_event = replace(event, new_basis=replace(event.new_basis, raw_close=D(800), adjusted_close=D(200)))
+    original = book()
+    first_frame = original.apply_stock_exchange(event, session=day(6))
+    second_frame = original.apply_stock_exchange(rebased_event, session=day(6))
+    assert tuple(lot.shares for lot in first_frame.lots) == (D(200), D(80))
+    assert tuple(lot.shares for lot in second_frame.lots) == (D(100), D(40))
+    assert tuple(lot.mark for lot in first_frame.lots) == (D(25), D(25))
+    assert tuple(lot.mark for lot in second_frame.lots) == (D(50), D(50))
+    for converted, unit_factor in ((first_frame, D("0.125")), (second_frame, D("0.25"))):
+        # Each old adjusted lot represents 50/20 raw old shares. The mandatory
+        # half-share exchange grants exactly 25/10 raw successor shares.
+        assert tuple(lot.shares * unit_factor for lot in converted.lots) == (D(25), D(10))
+        assert converted.cash == original.cash == D(123)
+        assert converted.nav == original.nav == D(7123)
+        assert converted.slot_count == original.slot_count == 2
+        assert converted.as_of == day(6)
+        assert converted.applied_event_ids == (event.event_id,)
+        for old, new in zip(original.lots, converted.lots, strict=True):
+            assert new.lot_id == old.lot_id and new.code == "NEW"
+            assert new.entered_on == old.entered_on and new.due_on == old.due_on
+            assert new.mark_date == old.mark_date == day(5)
+            assert new.available_on == day(9) and new.dataset_sha256 == old.dataset_sha256
+            assert observable_mark(new, session=day(8), close=D(999), frozen=False) == new
+
+    # At delivery, one economic raw close of 320 is 40 or 80 in the two
+    # adjusted coordinates. Both books then hold 35 raw shares worth 11,200.
+    first_observed = replace(first_frame, as_of=day(9), lots=tuple(
+        observable_mark(lot, session=day(9), close=D(40), frozen=False)
+        for lot in first_frame.lots
+    ))
+    second_observed = replace(second_frame, as_of=day(9), lots=tuple(
+        observable_mark(lot, session=day(9), close=D(80), frozen=False)
+        for lot in second_frame.lots
+    ))
+    assert first_observed.nav == second_observed.nav == D(11323)
+    assert tuple(lot.shares * lot.mark for lot in first_observed.lots) == (D(8000), D(3200))
+    assert tuple(lot.shares * lot.mark for lot in second_observed.lots) == (D(8000), D(3200))
+    assert all(lot.mark_date == day(9) for lot in first_observed.lots + second_observed.lots)
+
+
 def test_final_cash_waits_then_removes_all_matching_lots_with_exact_net_credit() -> None:
     other = replace(first_lot(), lot_id="other", code="OTHER")
     original = replace(book(), lots=book().lots + (other,))
