@@ -344,7 +344,8 @@ search or establish complete R5 event coverage or an actual holding denominator.
 
 BD's fixed source acquisition is complete: the two July corrections and the
 August 19 result report were read through eight registered requests. The
-result clause reports 2,300,265 F&F common shares tendered and purchased. It
+result clause reports F&F common shares tendered and purchased; the exact
+quantities and source locations remain in the BD research record. It
 states September 2 as planned Holdings new-share delivery, unlike the July
 correction's August 19 proposed date; actual delivery, fractional cash and
 research-account participation remain unverified. This elective tender does

@@ -377,3 +377,12 @@ R3 still requires the missing official historical-publication evidence; no
 08:30 historical assumption, login or official inquiry was approved here.
 Local checks, exact-head CI, CodeRabbit, merge and isolated research-code
 synchronization are the remaining publication steps at this entry.
+
+## Publication verification correction
+
+The first push CI completed with one documentation-rule failure: the handoff
+repeated the large reported share quantity instead of pointing to its owning
+research record. The other 4,705 Python cases passed, with three skips. Remove
+only the repeated quantity from the handoff, retain the exact source figures
+here, and rerun the documentation-ownership checks and final-head CI/review.
+No source evidence, accounting behavior or rule/test exemption is changed.
