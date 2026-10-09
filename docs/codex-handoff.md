@@ -427,7 +427,7 @@ historical availability. The full policy is in CLAUDE.md's Discovery subsection.
 Timing metadata, policy-based replay and the saved-input preflight runner were
 merged in PR #264 and deployed only to the isolated research checkout at
 `380af85a6d8ced4d8156643e1a714823c25f1e3f`. BH's actual saved-input preflight
-completed with 1,748 hash-verified files: 41 of 917 windows have independently
+completed with all registered files hash-verified: 41 of 917 windows have independently
 reproduced liquidity/short-history failures; 876 remain an unresolved upper
 bound before activity calculation. Its first private-parent failure read no
 inputs; the separately registered recovery and failed receipts are preserved.
