@@ -289,6 +289,32 @@ source acquisitions before doing the synthetic integration work; real prices
 still require every data/replay gate and reviewed preregistration. New sizing
 and comparison executions remain zero.
 
+During the scheduled review wait, BB also prepared `research.activity_replay`
+for pure synthetic full-session integration. It combines events, opening due
+sales, next-session entries and closing marks without changing v1. Explicit
+toy selector dispositions keep the two history screens separate; classification
+must be known by formation, and unknown classification stops the whole selection
+before hashing, while known excluded controls need no operating baseline.
+Date-only toy knowledge is not proof of
+the actual morning publication cutoff. Event/quote conflicts stop processing;
+absent or frozen entries retain cash without substitution. Real selector
+calculations, source adapters and certified evidence remain open, and this
+component cannot register or execute an actual large/liquid sizing study.
+
+Information availability concerns what was public at the historical decision,
+not whether the current OpenAPI server served the same response then. Original
+filing publication and classification effectiveness must remain separate. Market
+observations need a supported historical release bound before the modeled
+decision; today's FAQ alone does not certify that bound for earlier years.
+No blanket historical availability date or completed gate follows from this
+distinction. BB records the remaining work and the separate classification
+formation cutoff.
+
+The operator selected further historical-publication verification instead of
+adopting the proposed 08:30 historical-information assumption. Keep that timing
+gate open; BB registers a bounded official-document follow-up. Current synthetic
+code review and publication can finish independently of that evidence work.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.

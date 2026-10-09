@@ -277,3 +277,230 @@ scanner also passing. They include two constant-factor price-level changes,
 and a factor rebase with independently specified raw quantities, carried value,
 delivery restriction and same-economic-price valuation after delivery. No
 execution semantics changed. Updated-head CI and the review response remain.
+
+## Synthetic integration scope while publication waits
+
+CodeRabbit reported a scheduled included-review limit after the batched fix.
+Its reply created at 2026-10-09 05:40:12 UTC states 47 minutes; request one
+full review after 06:27:12 UTC plus a small margin, using that reply's own
+timestamp. No billing or subscription setting is changed, and a limited check
+does not satisfy the merge gate.
+
+Use this wait to prepare the next pure synthetic integration in
+`research/activity_replay.py` and its tests, within this publication package.
+The original book-only implementation above remains a historical stage. This
+addition has no loader, CLI, data acquisition, automatic certification or
+actual research execution. It composes the frozen v1 selection/fill conventions
+and AG lot accounting, with explicit synthetic eligibility inputs rather than
+relabeling source diagnostics as certified history. Existing v1 parameters
+must be supplied from the original contract; no large/liquid outcome is used
+to choose a new cutoff or size.
+
+The session order is corporate actions due by the cutoff, opening due sales,
+next-session entries from the preceding formation, then observable closing
+marks. Process every index session, including those between formations. Due
+sales precede same-day re-entry, as in v1. A mandatory successor occupies its
+old acquisition slot through delivery, keeps the original due date and cannot
+supply an unavailable signal, mark or fill. Cash payments credit only actual
+verified net amounts at payment; unknown recovery remains unresolved.
+
+The minimal acceptance matrix covers unchanged action-free v1 behavior; both
+distinct lookback contracts; point-in-time refusal before hash selection;
+next-open fills and selected-entry failure without substitution; cash-funded
+allocation and dated tax; frozen/delayed exits; separate successor lots and
+due dates; delivery marks; same-day due sale/re-entry; and future mutations
+that cannot alter earlier economic states. Any unavailable input or conflicting
+eligibility must stop, not remove a candidate silently. New study adapters,
+durable real-run logging, complete source coverage and sizing remain outside
+the synthetic component. Its completion does not close R2-R5 or R7-R8, and
+R6 stays open until the entire declared matrix and independent review pass.
+
+## Independent synthetic integration review
+
+The initial toy integration passed 135 focused cases, including 27 new replay
+cases and the unchanged v1/book/arithmetic suites. Independent adversarial
+review then reproduced an event/quote conflict: an effective-date conversion
+could consume its ID in an empty book before a stale positive OLD quote funded
+a new OLD acquisition; a final-payout issue could similarly be sold after its
+verified last trading date. Reject such active old-issue quote conflicts before
+trade/mark processing, rather than replacing or dropping a candidate. A
+formation made before the event followed by genuinely absent/frozen OLD quotes
+is still an ordinary unfilled entry with cash retained, as in v1.
+
+Independent mutation checks also found three weakly protected paths: event
+chronological sorting, the available-cash cap on entry, and the availability
+guard on opening-equity allocation. Add separate hand-computed fixtures for
+each. The first full-suite attempt during these changing draft fixtures was
+interrupted after an early failure indication; it is not a completed check.
+Run the fixed snapshot and updated-head CI after the focused fixes. These
+synthetic review findings are not real-price experiments or evidence closure.
+
+## Implemented synthetic session integration
+
+`SyntheticCandidate`, `SyntheticSelection` and `replay_synthetic` now compose
+the book across every supplied replay session. Selection covers every present,
+non-frozen formation code before held-code exclusion/hash ordering. Proven toy
+excluded controls do not need operating-history screens; unknown classification
+cannot use that exemption. The two history dispositions are separate caller
+inputs, not implemented historical screen calculations. Toy availability has
+date granularity and cannot certify the actual morning decision cutoff.
+
+The event/quote check rejects positive non-frozen old-issue opens or closes
+from compulsory effectiveness onward, or after a verified final distribution's
+last trading date, including the pre-payment interval. It runs only within the
+replayed sessions. It neither fabricates a cessation date nor reads settlement-
+tail prices. A pre-event formation followed by absent/frozen entry-day quotes
+still leaves cash unfilled without selecting a replacement.
+
+Final focused verification passed 145 cases: 37 new replay cases and 108
+unchanged v1/book/arithmetic cases. Hand-computed fixtures now cover the three
+independent mutation gaps and the event/quote failures, including the valid
+pre-effectiveness and missing/frozen alternatives. No original v1 or AG source
+was edited. Independent rechecks, fixed-snapshot full checks and updated-head
+CI/review remain the publication checks for this extension.
+
+This completes a synthetic session-loop component, not the actual large/liquid
+selector or dataset adapter. R2-R5, R7-R8 and R6's real selector/integration
+remain open. No new sizing or comparison was executed and no actual lot/event
+denominator was inferred from these toy holdings.
+
+## Availability contract audit and bounded next document check
+
+A separate repository-only audit distinguishes public historical information
+from the date a modern API response was downloaded. AG's `known_on` means
+classification was public, and AG requires it by formation; AQ's next-session
+market-data decision does not waive that earlier classification cutoff. The
+synthetic loop's next-session classification comparison was independently
+reproduced as weaker than AG and is being corrected before publication.
+
+R3 does not require historical server logs from the particular modern OpenAPI
+unless the study claims to reproduce that provider's historical delivery.
+It does require original public-information availability, dated classification
+evidence and supported applicability of the market-observation release bound.
+Current FAQ timing, a historical `basDd` and a modern receipt are not enough.
+This clarification neither supplies `known_on` values nor closes R2-R5.
+
+Before any further public document read, bound one timing audit to three
+official candidates: the KRX OpenAPI FAQ at
+`https://openapi.krx.co.kr/contents/OPP/COMM/faq/OPPCOMM004.cmd`, the separate
+KRX data-feed publication schedule mentioned in AP, and the FSC stock-price
+service page `https://www.data.go.kr/data/15094808/openapi.do`. For the
+unidentified KRX schedule only, allow one official-domain search to locate
+one original schedule document. Review each candidate once for the publication
+upper bound and historical applicability of close, final accumulated turnover,
+listed shares and issue market capitalization during 2019-2025. Read service
+documentation only: no data endpoint, filing search, stock price, authentication,
+paid enrollment or historical API-response reconstruction. Record supported
+bounds or unverified status and stop after these three candidates; do not
+expand the scope or automatically adopt a new timing assumption. If evidence
+is insufficient, preserve R3 and bring any required model assumption to the
+operator separately.
+
+## Final synthetic contract corrections
+
+The event/quote conflict check now also runs on the initial formation before
+the session loop; otherwise a ceased issue's positive first-formation quote
+could still enter selection. Independent execution rejected that attack and
+the two original stale-quote attacks, while retaining absent/frozen unfilled
+entries, normal pre-event trading and untouched settlement-tail prices.
+Three added initial-formation cases raised focused checks to 148.
+
+The final contract audit then reproduced AG refusing a classification first
+known on the next session while the new toy loop accepted it. The comparison
+now uses formation, and fixture defaults use that same date. A held candidate
+which also fails the size screen still cannot use next-session classification:
+the added regression verifies refusal before hashing. AG and v1 remain
+unchanged. Final focused checks passed 149 cases: 41 replay and 108 existing
+v1/book/arithmetic cases. The repository scanner passed. The three independent
+in-memory mutations (event ordering, cash cap, pending-delivery allocation)
+are each rejected by their hand-computed fixture.
+
+The local full check already in progress collected the preceding 37 replay
+cases; it does not establish that the last four regressions were collected.
+Those are covered by the final focused run and must also run in exact-head CI.
+Its final result and the classification-cutoff independent recheck are still
+pending at this entry. No real sizing, comparison or source certification
+was executed by these synthetic checks.
+
+## Bounded timing-document result
+
+The registered three-candidate timing audit is complete. The FAQ URL and FSC
+service URL were each opened once; one KRX-domain search attempted to identify
+the separate feed schedule. Five text searches used already-opened results.
+The FAQ's extracted text did not expose individual answers, so it supplies no
+new historical timing evidence beyond AP's previously inspected current FAQ.
+The [FSC service page](https://www.data.go.kr/data/15094808/openapi.do) states
+that it links and collects KRX source information before publishing after
+13:00 on the following business day. Its registration date is 2021-11-16,
+not the original market information's first-publication date. This service
+does not support the modeled 08:30 decision or establish KRX's historical
+release bound. The single KRX-domain search did not identify the separate
+schedule; that is an acquisition limitation, not evidence it does not exist.
+
+No field-specific historical upper bound was certified. Some search snippets
+incidentally contained quote tables; no quote page or data endpoint was opened,
+and no quote values were extracted, saved or used. The audit stopped at its
+declared scope, with R3 still open. The operator was presented with the concrete
+choice of an explicit next-session 08:30 market-information assumption, further
+historical-timing evidence, or Astra review of that assumption first. No choice
+is inferred from silence. Classification remains known by formation regardless
+of that pending market-information decision, and R2/R4/R5 remain separate.
+
+## Operator timing decision and further bounded verification
+
+The operator explicitly selected option 2, further historical-publication
+evidence, on 2026-10-09. Do not adopt or mark approved the proposed 08:30
+historical-information assumption. Keep R3 open while current synthetic code
+publication proceeds independently.
+
+The next documentation-only scope may make at most two search batches totaling
+eight queries, limited to official KRX/KOSCOM/FSC domains. Inspect at most six
+original official documents and at most two directly related official links
+needed to read their historical schedule or effective-date provisions. Seek
+the historical public release upper bound of final daily close, accumulated
+turnover including after-hours, listed shares and issue capitalization during
+2019-2025; separate market-information publication from the modern OpenAPI's
+delivery. Preserve dates, field coverage and effective periods, distinguishing
+direct evidence from inference. No data endpoint, stock quote, authentication,
+paid enrollment or API credential is used. Stop at the declared document/search
+limits and report any uncovered periods or fields; no silent timing assumption,
+additional scope expansion or real research trial follows from this check.
+
+The final independent synthetic recheck reproduced refusal of next-session
+classification and acceptance of classification known by formation. The old
+event/quote and first-formation attacks remained blocked; all 41 new replay
+tests passed in the independent WSL run. No scoped findings or testing gaps
+remain in that review. This satisfies the synthetic code's independent review,
+not actual historical certification or the required completed CodeRabbit review.
+
+## Further historical-publication findings
+
+The second registered document check stopped after two batches/eight official-
+domain queries, five original documents and two related official links. It
+did not adopt the proposed assumption. The [KRX distribution-product page](https://openapi.krx.co.kr/contents/OPP/DATA/OPPDATA002.jsp)
+lists KOSPI/KOSDAQ realtime and EOD products and current first/second daytime
+close transmissions at 16:00 and 18:10. It does not state the schedule's
+historical effective interval or certify final accumulated turnover, listed
+shares and issue capitalization in that batch. Copyright is not an effective
+date. The [KRX receiving guide](https://openapi.krx.co.kr/contents/OPP/DATA/OPPDATA003.jsp)
+and [KOSCOM service description](https://mig.koscom.co.kr/portal/main/contents.do?menuNo=200611)
+establish distribution channels outside the modern API, including post-market
+FTP closing information, but not the required historical field-level bound.
+
+The [FSC notice dated 2019-04-03](https://www.fsc.go.kr/po010106/73613)
+describes pre-opening previous-close trading during 07:30-08:30 and a planned
+2019-04-29 change to 08:30-08:40. This is partial evidence that the previous
+close was usable in morning trading under that contemporary system; it does
+not certify continuous 2019-2025 release bounds for all study fields. A KOSCOM
+service overview and business description added no historical schedule; a
+retrieved official PDF was a 2013 winter magazine and was not used as timing
+evidence. Non-target market-number snippets in search results were not opened
+as quote pages, extracted or used as research input.
+
+Thus the close has partial contemporary-system/current-distribution support;
+the historical release bounds for final after-hours-inclusive turnover,
+listed shares and issue capitalization remain unverified. R3 stays open.
+This is a finite acquisition result, not a claim that such evidence does not
+exist or that an unsupported historical assumption has been approved. Further
+evidence work must target those remaining fields and applicable periods,
+rather than demand unavailable per-response logs from the current OpenAPI.
