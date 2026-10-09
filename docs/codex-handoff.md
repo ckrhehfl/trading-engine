@@ -366,6 +366,21 @@ splitting an `IdentityPeriod` on every rename or document version would reset
 the AN baseline artificially. R2/R4 certification, R3 historical publication,
 R5 actual lot coverage and real integration/preregistration still precede sizing.
 
+BD publication is complete in PR #260. The isolated GCP research checkout
+was verified clean at `fef98717fd4307ea9d2aed5844ca4460fef2ced3`, with the
+collector unchanged. BE (`.planning/rd-be-large-liquid-interval-gaps.md`)
+starts the offline gap map from the fixed saved summaries. It must preserve
+the exact required dates and separate source-point links and content candidates
+from continuous operating eligibility. No additional source acquisition or
+actual sizing/comparison follows from this mapping alone.
+
+BE's offline map has now been independently reconstructed and archived in
+GCP. Its owning record identifies the remaining content-review group and
+exact required dates, while retaining all original populations and unknown
+eligibility fields. The next bounded task is to register the named content
+gaps against existing issuer/listing sources. Continuous eligibility and
+historical field publication remain open; no real strategy trial has run.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.
