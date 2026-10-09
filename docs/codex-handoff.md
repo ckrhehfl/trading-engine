@@ -315,6 +315,25 @@ adopting the proposed 08:30 historical-information assumption. Keep that timing
 gate open; BB registers a bounded official-document follow-up. Current synthetic
 code review and publication can finish independently of that evidence work.
 
+BB publication is complete: PR #258 merged and the isolated GCP research
+checkout was verified at its merge commit, with the collector unchanged.
+BC (`.planning/rd-bc-large-liquid-release-timing.md`) continues the operator's
+additional-verification choice and prepares the missing pure screen arithmetic.
+Its bounded official-document audit found the exact KOSCOM closing-information
+connection-standard route, but the list requires login. Existing account status
+is unknown; no authentication, signup, purchase or inquiry was performed.
+The two inspected official PDFs do not supply the missing historical release
+bounds. BC retains R3 and the other actual-data gates, and includes an unsent
+clarification draft. Do not resume broad timing searches automatically or treat
+the current product description as a verified historical schedule.
+
+BC's pure `activity_screen.py` calculates BB-compatible toy selections with
+separate AQ calendar-liquidity and AN normal-operating histories, explicit
+source publication times and formation classification. Its local focused
+suite passes 120 tests, including 32 new screen cases. This prepares arithmetic
+only: the actual loader/evidence adapter, historical timing verification and
+actual sizing/comparison gates remain open. No new actual study was run.
+
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
 and any blocker or decision. The sections below describe the original handoff.
