@@ -8,6 +8,8 @@ Task AT's date-only price-panel mapping, Task AU's bar-state audit and
 Task AV's bounded historical company-overview acquisition and Task AW's
 metadata reconciliation and issuer-content review, followed by Tasks AX-BA's
 dated issue, notice and history-source links and bounded tender-content review.
+Task BB inventories the remaining replay gates and starts synthetic lot-book
+integration; it does not certify eligibility or execute a new strategy study.
 The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
@@ -262,6 +264,56 @@ historical certification remain false. No new operator choice currently blocks
 the next bounded data-validation work. The separate pre-2019 collector pass
 finished with five failures; AS records its read-only operational diagnosis and
 existing retry schedule without accessing reserved prices or changing it.
+
+Task BB (`.planning/rd-bb-large-liquid-replay-readiness.md`) fixes eight explicit
+completion gates and independently checked local BA/workload identities. Its
+one bounded GCP saved-metadata read preserves the complete 944-row population,
+917 target windows and 27 controls. BB records the required listing-bounded
+code/session inventory and separately preserves all verified pre-listing
+search references, with no change to AU's original.
+This does not require one filing per date: a verified period can cover many.
+Actual holding/action-lot denominators remain undefined, not zero, and historical
+eligibility, publication, operating-period baselines and readiness remain open.
+
+`research.activity_book` composes AG's existing arithmetic into immutable cash
+and acquisition lots with atomic compulsory exchanges/final payouts, event-ID
+reuse refusal and forward-only accounting cutoffs. Synthetic checks passed;
+the adversarial review's mutable dataset-ID case was fixed at the new boundary.
+This component has no data loader or full replay. Independent reconstruction
+matched every inventory field and rejected 23 mutations; all ten private GCP
+archive files were read back with matching hashes and permissions. Finish
+review/CI and publication, then continue the minimal F&F
+correction/outcome scope and the required historical intervals while preparing
+full synthetic selection/fill/mark/exit/event ordering. Do not wait for all
+source acquisitions before doing the synthetic integration work; real prices
+still require every data/replay gate and reviewed preregistration. New sizing
+and comparison executions remain zero.
+
+During the scheduled review wait, BB also prepared `research.activity_replay`
+for pure synthetic full-session integration. It combines events, opening due
+sales, next-session entries and closing marks without changing v1. Explicit
+toy selector dispositions keep the two history screens separate; classification
+must be known by formation, and unknown classification stops the whole selection
+before hashing, while known excluded controls need no operating baseline.
+Date-only toy knowledge is not proof of
+the actual morning publication cutoff. Event/quote conflicts stop processing;
+absent or frozen entries retain cash without substitution. Real selector
+calculations, source adapters and certified evidence remain open, and this
+component cannot register or execute an actual large/liquid sizing study.
+
+Information availability concerns what was public at the historical decision,
+not whether the current OpenAPI server served the same response then. Original
+filing publication and classification effectiveness must remain separate. Market
+observations need a supported historical release bound before the modeled
+decision; today's FAQ alone does not certify that bound for earlier years.
+No blanket historical availability date or completed gate follows from this
+distinction. BB records the remaining work and the separate classification
+formation cutoff.
+
+The operator selected further historical-publication verification instead of
+adopting the proposed 08:30 historical-information assumption. Keep that timing
+gate open; BB registers a bounded official-document follow-up. Current synthetic
+code review and publication can finish independently of that evidence work.
 
 Every operator report must distinguish the current work package's completion
 from strategy validation and include the current stage/counts, next action,
