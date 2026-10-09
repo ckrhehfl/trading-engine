@@ -450,11 +450,34 @@ Its evidence ledger records the exact sources, failed/omitted routes and review
 limits. The acceptance standard is formation-known positive historical-period
 evidence plus relevant identity/change reconciliation; earlier-than-baseline
 publication and proof of every public search's completeness are not new gates.
-BJ also prepares a separately logged conservative original-issue price/action
-scope from the pinned BI/BH/calendar inputs. Its intervals extend through the
-fixed evaluation end to cover possible failed exits. They are investigation
-upper bounds, with successor/settlement/basis/no-event coverage still open,
-and must not be called actual selected holdings or complete strategy coverage.
+BJ's separately logged conservative original-issue price/action scope was
+reviewed in PR #266, merged as `a450d6cd3254958bf3e0faf9583396c6400acbbc`,
+deployed to the isolated GCP research checkout and executed once. Independent
+new-output verification reproduced 36 potential intervals per arm / 31 codes /
+the complete original-issue code/date union. Its intervals extend through the fixed evaluation end
+to cover possible failed exits. They are investigation upper bounds, with
+successor/settlement/basis/no-event coverage still open, and must not be called
+actual selected holdings or complete strategy coverage. The collector remains
+clean and unchanged. Actual receipts and verification limits are appended to
+BJ's ledger; paired performance counts remain zero.
+
+Task BK (`.planning/rd-bk-large-liquid-evidence-adjudication.md`) starts the
+positive issuer/issue/business-period adjudication for those potential windows
+and inspects the engineering route for reuse of saved official raw OHLC.
+Its initial summary-only allowlist authorizes no market-input read or automatic
+period certification; follow its appended source registration before access.
+
+BK's bounded content review now accepts the 31 codes / 36 required intervals
+using positive issuer/issue/business evidence and reconciled changes, with
+continuity explicitly labeled inference. The 165 raw-checked passages and
+per-code decisions are preserved in its private decision ledger, whose pin is
+in BK. HYBE's actual 2021-04-14 common-share rename, domestic Doosan Bobcat
+issuer context and SK Innovation's actual holding business close the three
+specific content questions. This is not full-universe or normal-input
+certification. The logged cached KRX/KIS parity module is implemented and
+synthetically tested; follow BK's review/publication and actual-run receipts
+before treating any price comparison as completed. Both performance counts
+remain zero at this checkpoint.
 
 ## Where the previous work stopped
 
