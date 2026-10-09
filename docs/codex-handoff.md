@@ -424,8 +424,10 @@ blocks actual experiments. Do not ask the operator to email/telephone external
 institutions as a prerequisite. Keep confirmed/inferred/assumed evidence and
 observation/publication/retrieval separate; current historical coverage is not
 historical availability. The full policy is in CLAUDE.md's Discovery subsection.
-No new metadata implementation or actual paired trial is complete at this
-registration. Eligibility/baseline, consequential price/action accounting,
+Timing metadata, policy-based replay and the saved-input preflight runner are
+implemented with synthetic tests; the registered actual-input preflight has
+not run and no D+1/D+2 paired trial is complete. Eligibility/baseline,
+consequential price/action accounting,
 actual replay integration and frozen logged preregistration remain four open
 work groups. Derive holding requirements in a registered preflight before
 demanding their complete coverage; do not create a circular first-run gate.
