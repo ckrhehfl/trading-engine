@@ -1,0 +1,29 @@
+{
+  "schema": "activity-price-action-scope-v1",
+  "study_id": "activity-price-action-scope-v1",
+  "mode": "discovery_conservative_price_action_scope",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60, "threshold": 3.0, "holding_sessions": 126, "slots": 20,
+    "seed": 20261005, "end": "2026-09-18", "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0, "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252], "bootstrap_repetitions": 2000,
+    "alpha": 0.05, "power": 0.8
+  },
+  "inputs": {
+    "calendar_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-calendar-20261007-v1/manifest.json",
+      "sha256": "ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882"
+    },
+    "bh_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bh-timing-preflight-20261009-recovery-v1/run/result.json",
+      "sha256": "dc9234b69339a5c4cce9295d00436c0a1d198402936a798c8eac636811e70ef6"
+    },
+    "bi_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bi-activity-failures-20261009-v1/run/result.json",
+      "sha256": "b011e43ff4c34c26e8f6e66b216b202b1f1b06c340abc9e4d1340b6393729dc3"
+    }
+  }
+}

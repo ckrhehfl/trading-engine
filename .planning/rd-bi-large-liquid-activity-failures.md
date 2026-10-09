@@ -85,3 +85,44 @@ work groups stay partially open: eligibility/normal periods, consequential
 price/actions, actual replay integration, final frozen logged performance run.
 This step narrows their workload; it does not automatically close a work group.
 There is no new official historical publication fact or inquiry requirement.
+
+## Completed publication and actual preflight — 2026-10-09 UTC
+
+PR #265 merged normally as `aee4e38638061301c2a14e756245680a7a8ace88`.
+CodeRabbit approved final head `3ef8cee349c6f00563c9fbd1446a62aeaae9d525`
+with no actionable findings or unresolved threads. All nine checks passed;
+both full Python CI runs recorded 5,022 passed and three skipped. The merged
+tree matched the reviewed tree. The isolated GCP research checkout was
+fast-forwarded to the merge; the clean collector stayed at
+`4ce85d714890b87f1a57ae89d4942660e41c0483`, with no process/schedule changes.
+
+Run `c8d66720-a8d9-464b-8d2c-b5cff0fd9ef3` started durably at
+`2026-10-09T14:07:27.531980+00:00` and completed at
+`2026-10-09T14:07:41.476082+00:00` in the registered private GCP root.
+All four saved inputs matched their pins. One readonly snapshot consumed the
+registered 53,526 code/dates across 133 codes: 53,435 observed and 91 frozen.
+No missing/NULL/invalid/state-date drift was found. The 876 BH unresolved
+windows partition into 839 exact activity failures, one frozen-formation
+failure and 36 numeric-pass potential windows across 31 codes. Input-unresolved
+windows are zero. All prior 41 BH failures and the 27 controls are preserved.
+
+Result SHA-256 is
+`b011e43ff4c34c26e8f6e66b216b202b1f1b06c340abc9e4d1340b6393729dc3`;
+source manifest `93b642db2c575b2046e3e7eb22921dc9abaef9b1db96d10320248900c59b2f8c`;
+input manifest `7e328048f3bd4ab55ecb93fd825fab1485ab6731a2d0d8c02dae0389681e3a0a`;
+read scope `88dbd977017c957b2e2e197bb9254aac2e72852cb4b9da8c33036e677ab63c38`;
+specification `fd682a1619d46c6870c983b68376b8b71a8010e70703cab7e057228684ddc875`.
+
+An independent verifier read only the five new output files, not original
+source bodies, DB, credentials or historical experiment logs. It reproduced
+exact medians/products, date/state partitions, metadata cutoffs, all summary
+counts and paired schedules including the 126-session distance. It could check
+fingerprint consistency but could not independently recompute the typed raw
+SQLite/OHLC digest because OHLC was deliberately not retained. Exact turnover
+stays only in the private GCP package; no raw DB/OHLC was copied locally.
+
+These are signal-scope failures, not certified eligibility or returns. All four
+full-performance work groups remain partly open; neither arm has a completed
+performance run. BJ focuses on only the potential windows and preserves the
+full source population. Actual publication time/finality/vintage are unknown;
+modeled next-session availability remains an assumption.

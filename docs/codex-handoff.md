@@ -431,13 +431,30 @@ completed with all registered files hash-verified: 41 of 917 windows have indepe
 reproduced liquidity/short-history failures; 876 remain an unresolved upper
 bound before activity calculation. Its first private-parent failure read no
 inputs; the separately registered recovery and failed receipts are preserved.
-Task BI now implements the exact activity-failure preflight in
-`.planning/rd-bi-large-liquid-activity-failures.md`; no BI actual input has been
-read at this implementation stage. Neither D+1 nor D+2 performance is complete. Eligibility/baseline,
+Task BI's exact activity-failure preflight was reviewed, merged in PR #265,
+deployed to the isolated research checkout and run successfully. Its registered
+outcome and verification limits are in
+`.planning/rd-bi-large-liquid-activity-failures.md`. The narrowed issuer work is
+Task BJ (`.planning/rd-bj-large-liquid-survivor-evidence.md`), preserving earlier
+failures and the complete formation population. Neither D+1 nor D+2 performance
+is complete. Eligibility/baseline,
 consequential price/action accounting,
 actual replay integration and frozen logged preregistration remain four open
 work groups. Derive holding requirements in a registered preflight before
 demanding their complete coverage; do not create a circular first-run gate.
+
+BJ's pinned source reconciliation and independent review now supply business
+content for every potential-window code, including the two previously missing
+issuer bundles. This is source content, not certified continuous eligibility.
+Its evidence ledger records the exact sources, failed/omitted routes and review
+limits. The acceptance standard is formation-known positive historical-period
+evidence plus relevant identity/change reconciliation; earlier-than-baseline
+publication and proof of every public search's completeness are not new gates.
+BJ also prepares a separately logged conservative original-issue price/action
+scope from the pinned BI/BH/calendar inputs. Its intervals extend through the
+fixed evaluation end to cover possible failed exits. They are investigation
+upper bounds, with successor/settlement/basis/no-event coverage still open,
+and must not be called actual selected holdings or complete strategy coverage.
 
 ## Where the previous work stopped
 

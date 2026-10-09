@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
    elsewhere, because this file is the only place a future session reads
-   them. `.planning/README.md` carries an index of all 164 documents,
+   them. `.planning/README.md` carries an index of all 165 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1549,6 +1549,53 @@ and all seven metadata fields with historical publication/finality/vintage
 unknown where appropriate. Review/test/merge before one isolated GCP run; then
 independently verify new outputs. Report narrowed potential-signal windows,
 unresolved causes, both timing schedules and zero performance runs honestly.
+
+**Next execution design — Task BJ, before source reads.** Use BI's verified
+potential-window metadata to focus existing classification evidence, preserving
+the complete source population and all earlier failure/control dispositions.
+Read only the pinned BA/BE/AW/AX/AY/AZ summaries registered in
+`.planning/rd-bj-large-liquid-survivor-evidence.md`; resolve their exact source
+references before registering any raw-body read. Compare each potential window's
+exact issue, required dates, earlier business-content candidates and already
+reviewed changes. A source-candidate association is not an IdentityPeriod or
+proof of continuous status. Keep publication, effective and retrieval dates
+distinct. Do not renew work on failures outside the potential-window scope.
+
+Resolve missing own/holding-business content with bounded official-source
+research for only the intersecting codes. Register search terms, request caps,
+exact selected documents/sections and source hashes before each later body
+review. Reuse earlier saved bodies where available. Incidental financial
+amounts in issuer documents are not market observations or performance inputs.
+No price/DB read, return calculation, automatic source expansion, credentials,
+inquiry, reserved data or collector change is part of this evidence step.
+
+Continuous operating periods still require positive dated issuer/issue and
+business evidence with classification-affecting changes reconciled; repeated
+names/ISINs, missing search hits and headquarters alone do not certify them.
+Do not pretend the potential-window subset is the complete formation universe.
+The eventual selector must preserve all source partitions and reuse independent
+failures only against the same consumed activity snapshot and AN predicate.
+Derive a conservative price/action requirement union before claiming an actual
+holding denominator; an empty event tuple requires reviewed no-event coverage.
+These remain engineering/evidence steps under the existing paired Discovery
+authorization, not strategy validation or a relaxation of eligibility rules.
+
+In parallel with issuer adjudication, implement one registered conservative
+price/action scope preflight. Pin the existing BI result, BH population result
+and index calendar; reuse their exact full-population/failure partitions and
+the fixed calibration parameters. For each BI potential window, derive both
+possible entries and scheduled due dates, and union every original-issue
+session from possible entry through the fixed evaluation end. Do not cut the
+scope at scheduled exit: failed sales can retain holdings. This is an upper
+bound for the BI potential subset, not a certified signal/target/lot list or
+whole-strategy completeness certificate. Preserve controls and all failures
+by pinned reference. Successors, settlement, no-event coverage and baseline/
+formation price-basis evidence remain explicit separate obligations.
+No prices, action bodies, selectors or returns are read/calculated by this
+runner. Freeze reviewed committed source/dependencies/specification and log
+durable started before saved actual result/calendar input bodies. Preserve
+failed attempts and private exclusive outputs; no automatic retry. Review,
+merge and isolated GCP execution precede independent output verification.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
