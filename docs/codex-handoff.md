@@ -474,10 +474,14 @@ per-code decisions are preserved in its private decision ledger, whose pin is
 in BK. HYBE's actual 2021-04-14 common-share rename, domestic Doosan Bobcat
 issuer context and SK Innovation's actual holding business close the three
 specific content questions. This is not full-universe or normal-input
-certification. The logged cached KRX/KIS parity module is implemented and
-synthetically tested; follow BK's review/publication and actual-run receipts
-before treating any price comparison as completed. Both performance counts
-remain zero at this checkpoint.
+certification. PR #267 is reviewed, merged and deployed to the isolated GCP
+research checkout. BK's actual cached KRX/KIS comparison and producer-free new
+output verification completed; its final publication section owns the precise
+counts, hashes and limits. Turnover agrees on comparable cached pairs; OHLC
+differences remain consequential price-basis evidence, not an action explanation.
+Task BL now restores the unchanged BI activity snapshot and connects accepted
+periods to actual normal-screen inputs, preserving all source/proof partitions.
+Both performance counts remain zero at this checkpoint.
 
 ## Where the previous work stopped
 

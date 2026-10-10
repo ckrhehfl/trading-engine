@@ -317,3 +317,42 @@ The local full suite exposed a handoff prose duplication of a comma-formatted
 count. Replacing that copy with a pointer to the owning research record fixed
 the focused regression: 93 passed / one skipped across document, planning-index
 and discovery-log tests. The full local run remains unfinished at this point.
+
+## Final publication and actual diagnostic receipts
+
+PR #267 completed CodeRabbit APPROVED review 5472708219 on reviewed head
+`92dc99579251740524a5e4db0168a14afb559bab`, with no unresolved threads and nine
+passing checks. Both Python CI runs passed 5126 tests / three skipped; Java
+passed. The local full suite was stopped after exact-head CI passed, so no
+local full-suite completion is claimed. Normal squash merge
+`08bcc6c71a3ada57edf35d700cfb9923d537a334` occurred 2026-10-09 16:31:44 UTC;
+the reviewed/merged tree is `96e8d76efb764e6116a58124c1a723cf33ce2b6f`.
+Isolated GCP research deployment completed 16:32:33.539998 UTC. The clean
+collector checkout stayed `4ce85d714890b87f1a57ae89d4942660e41c0483` throughout.
+
+One registered parity attempt, run `64a6de50-e07d-492d-b7c2-487efc19194c`,
+started 16:32:51.450933 and completed 16:36:30.511962 UTC, with no API calls.
+Output: `large-liquid-bk-cached-price-parity-20261010-v1/run` on GCP.
+Result SHA-256 `5ed0b57e0d8610a45c7abc27ae8e74f105d75ccb3609628405b3f1248385f69c`;
+input manifest `3b00a5408bb473f5ef5f509f130bf1e7c6de86a13295868c0ebdff40b7d7a888`;
+typed scan snapshot `f6d52d49e3b4ec6b82bcf85b4ae720cb80212ccf49b1e7a78286fc6474abe8a4`.
+
+The 1342 cached envelopes cover an 8967-code/date intersection of the 24598
+original-issue scope; 15631 dates outside that cache are not missing-trade
+findings. Among 8723 comparable pairs turnover agrees exactly everywhere;
+close agrees in 6019 and differs in 2704. Volume differs in 2646. There are
+244 dates absent from both sources with unknown cause, and 58 raw zero-OHL
+rows corresponding to scan frozen rows. Of 8665 positive-OHLC pairs, 2645 have
+nonuniform field factors. Those ratios do not identify action causes or certify
+vendor adjustment convention, original vintage or full price-basis coverage.
+BK's later snapshot does not replace BI's consumed activity snapshot.
+
+Producer-free independent verification (88 synthetic verifier checks) reproduced
+the six new output hashes, typed output fingerprint and recorded arithmetic,
+counts, states and provenance. It read only the new outputs, not the original
+DB/cache/log; original raw truth and source attribution still rely on the pinned
+producer. Its verifier pin is
+`58b07b0adfdcb6db67ddf14251015a1d552b770e4fa2a6ca130f23aa9d7d1373`.
+Four first-performance groups remain open; zero whole groups closed. Both
+completed performance counts remain zero. Task BL now connects actual normal
+inputs before consequential price/action accounting and portfolio replay.

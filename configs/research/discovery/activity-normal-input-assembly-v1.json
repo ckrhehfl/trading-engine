@@ -1,0 +1,77 @@
+{
+  "schema": "activity-normal-input-assembly-v1",
+  "study_id": "activity-normal-input-assembly-v1",
+  "mode": "discovery_normal_input_assembly",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {
+    "symbol": "KRX:",
+    "interval": "1d",
+    "start": "2019-01-02",
+    "end": "2026-09-18"
+  },
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [
+      63,
+      126,
+      252
+    ],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "inputs": {
+    "calendar_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-calendar-20261007-v1/manifest.json",
+      "sha256": "ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882"
+    },
+    "bb_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bb-replay-readiness-20261009-v1/result.json",
+      "sha256": "2ac0b2c81d19921d19cfea95a850574d9bef8dc7b5d1ebc900aa1f039ea0d9b4"
+    },
+    "bh_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bh-timing-preflight-20261009-recovery-v1/run/result.json",
+      "sha256": "dc9234b69339a5c4cce9295d00436c0a1d198402936a798c8eac636811e70ef6"
+    },
+    "au_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-normal-lookbacks-20261008-v1/result.json",
+      "sha256": "eb95349f4a5555a45363b98ae907c6a7791e12297a3fee17fa7729a492ce1fa4"
+    },
+    "bi_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bi-activity-failures-20261009-v1/run/result.json",
+      "sha256": "b011e43ff4c34c26e8f6e66b216b202b1f1b06c340abc9e4d1340b6393729dc3"
+    },
+    "bk_adjudication": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bk-evidence-adjudication-20261010-v1/verification/bk-period-adjudication.json",
+      "sha256": "2c6f1fab960bf5214fe0a176b20ffee2207e4d10844c23b632a9cfebe1bef893"
+    },
+    "aq": {
+      "root": "/home/minjun4897/research-evidence/krx-formations-20261007-v2/run",
+      "report_sha256": "17ae2a87663ed592c2968b9ce051f4fa248574a6d70561e704e7b5a27c8c593b",
+      "started_sha256": "2bce0c4b916a1f67415e91dd1b4372ae8425e518d98624661725c58407ee48e9",
+      "ledger_sha256": "f85c8a4403eaacde5d6fd0195054568262cbbb4cdab98ffdc846ab45933f2487"
+    },
+    "ar_original": {
+      "root": "/home/minjun4897/research-evidence/krx-liquidity-20261007-v1/run",
+      "report_sha256": "53effb672a849084148511be55cda1e92e90d181d0d6ee47291545ecdf12b612",
+      "started_sha256": "34b0abbd41bd360a9309114b6cdb34dd30516bff747586d7190cc6d8acb0a79f",
+      "ledger_sha256": "8b2c2367f1ac6e0d3ca5d8f07dd2cf9380bb99a593b0fd769d5e8495fb8da622"
+    },
+    "ar_recovery": {
+      "root": "/home/minjun4897/research-evidence/krx-liquidity-recovery-20261007-v1/run",
+      "report_sha256": "f23e37b0b6613a4720c21949b63f8c3ba1ba0a6c97546478b9abae522ca983ad",
+      "started_sha256": "e7a3f7290abc6e7541a1ff005c39e0ec07a1e4d99bfcd64b182b7cb404141e27",
+      "ledger_sha256": "2f86c7af7db76f2fcf6410bcef477eef7b5e25973db87b4e4a8ff13f39e34518",
+      "candidates_sha256": "09a942994bf2d4eec746a5cfb2337cf0bc47fb3d4f271d21339fb97f7a1a95d6"
+    }
+  }
+}
