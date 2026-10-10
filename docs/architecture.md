@@ -259,11 +259,17 @@ canonical projection; final interval coverage remains a separate check.
 candidates while preserving the full quote union. Unsupported origins retain
 their original horizon. The paired connector recomputes the versioned proof,
 validates final coverage and checks actual component inventory after the same
-existing replay. A separate logged proof caller and reviewed actual specification
-remain prerequisites. The operator selected KRX raw prices for the relevant
-LG/LX episode; its new versioned projection must retain original diagnostic
-lineage and prevent silent raw/adjusted unit changes within a holding. Genuine
-unit/date-role declarations remain caller obligations, not inferred from a hash.
+existing replay. Genuine unit/date-role declarations remain caller obligations,
+not inferred from a hash.
+`activity_raw_episode_plan` derives a price-free LG/LX acquisition delta from
+fixed potential origins and saved cache geometry. `activity_raw_episode_preflight`
+checks the registered plan and saved receipts before reading cached bodies or
+making literal KRX requests, preserving original text, missing states and private
+failure outputs. `activity_raw_quote_view` restores a separate immutable raw
+projection over the full BM/BP lineage. The paired connector accepts its two
+pinned artifacts only with a recomputed component proof. Explicit raw replay
+checks affected event bases and execution coordinates; pending event-created
+rights carry their existing value before availability without a price read.
 
 ---
 

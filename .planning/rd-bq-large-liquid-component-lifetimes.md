@@ -124,9 +124,9 @@ by this continuation and actual D1/D2 performance studies remain zero/zero.
 
 ## Operator choice: raw prices for the LG/LX episode
 
-Root's separately registered content review found the April28 LG raw close
-126500 and stored adjusted close119500. Their observed ratio is239/253 in the
-adjusted-to-raw direction. May27 LG108500 and LX12000 each match their current
+Root's separately registered content review found the April 28 LG raw close
+126500 and stored adjusted close 119500. Their observed ratio is 239/253 in the
+adjusted-to-raw direction. May 27 LG 108500 and LX 12000 each match their current
 raw counterpart. These comparisons do not establish the vendor's economic
 share-unit convention; the April difference must not be relabeled as one.
 
@@ -153,3 +153,101 @@ paired inventory integration, their tests and documentation. New raw acquisition
 raw projection and a raw-aware logged proof specification require their own
 implementation, review and normal merge before actual use. The three condition
 groups remain open and no D1/D2 performance study has completed.
+
+### Raw continuation design after fixed origin metadata review
+
+The separately registered calendar/origin projection found exactly two LG
+potential entries: April16/D1 dueOctober21 and April19/D2 dueOctober22, both
+from the April15,2021 formation. There are no later independent LG origins in
+that fixed proof. Its original final horizon remains September18,2026; existing
+KIS-derived candidate dates alone are not raw exit evidence.
+
+The first raw diagnostic will therefore cover the bounded candidate episode
+April16 throughOctober22,2021 for LG and May27 throughOctober22 for LX, plus
+the raw old/availability anchors already inside those intervals. This is a
+fixed diagnostic acquisition window, not a conclusion that either component
+sold. The raw-aware proof must find both components' own usable raw openings
+by the window end. Otherwise it retains the original obligation and refuses
+performance; a later separately registered diagnostic may extend the window.
+
+Use a distinct immutable raw view over the unmodified BM/BP base. Its identity
+covers the complete original fingerprints, raw artifact and price-free episode
+plan. Affected-code series use only raw observations inside their planned
+intervals and expose unresolved/unrequested cells outside them; they never
+fall back to KIS. The decoder/replay must refuse an attempted buy, sale or mark
+there. Other issues retain their existing quote convention. New raw observations
+have their own source/provenance representation, not SQLite typed storage.
+The final runtime component assertions independently verify that no original
+LG/LX investment survives the proved raw endpoint. Keep the full original BP
+successor quote union as retained diagnostic lineage, separate from the raw
+execution projection.
+
+The raw producer first validates the frozen AQ/AR receipt matrices and ledgers
+and maps planned days to original body pins. Reuse those exact KRX daily bodies
+and the previously preserved BP daily raw envelopes. Only uncached planned
+service/days belong to a new fixed request matrix. Retain the six exact source
+texts, integer/Decimal values, response hash, row position and independent
+retrieval metadata. An absent requested row, an invalid row and an observed
+zero-price/no-trade row remain separate. Neither becomes a zero-value holding
+or proof of delisting. Resource limits, exact counts, canonical start before
+reads/credentials, preserved failures and zero retries remain mandatory.
+
+### Raw execution boundary and independent source review
+
+The pure decoder retains six exact KRX texts and Decimal values. The new view
+keeps raw rows, unit plan and the entire original composite lineage under its
+own identity. An independent source review reproduced a forged frozen-view
+escape in the public coordinate/basis helpers. Four regressions first failed;
+the helpers now refreeze the complete artifact/plan/base before consumption.
+The related decoder/view/extension suites passed180 cases. Actual replay still
+needs an explicit raw-view connection; source tests are not a completed study.
+
+Pending, unavailable compulsory rights require no price read. The execution
+connection must retain their existing marked value and one investment slot
+until availability, without asking for a quote before the raw episode begins.
+Every available affected holding and attempted affected purchase must instead
+pass the registered raw coordinate boundary; an out-of-window holding cannot
+quietly continue on masked quotes or fall back to the old adjusted panel.
+
+The explicit pending carry convention partitions the last observable marked
+value, never acquisition cost. If both components first receive usable prices
+on the same session, the aggregate pending NAV, cash, grouped slots, quantities
+and subsequent fills can be invariant to that partition. Availability dates
+alone do not establish this: an absent/frozen component can leave weight-dependent
+carry. Actual raw observations and a paired synthetic counterexample must test
+that distinction before treating the convention as immaterial.
+
+### Fixed raw plan and related implementation batch
+
+The registered metadata-only calculation completed without reading original
+financial bodies, APIs, a database or credentials. Acquisition-plan SHA256 is
+`cfe9c20a31539947eb8a396932f3c7ffb6d44ad848c7fbc60245da918e0792f0`;
+unit-plan SHA256 is
+`4acf0dbb395bcda7163effa9fc6ffacc0fe8c94223e3c1d3767a4f67a72669e8`.
+The fixed geometry contains 128 unique sessions and 229 target code-dates:
+63 saved envelopes cover 125 code-dates; 65 new literal KOSPI requests cover
+104. Existing cache bodies have not yet been independently checked by this
+diagnostic. This does not discharge an original holding obligation.
+
+The earlier generic-only PR plan is superseded by one related PR #279 batch:
+shared component core plus raw decoder, plan/acquisition caller and committed
+fixed specification, immutable raw restore, raw-aware component proof and the
+explicit existing paired/replay connection. This batches review of the operator's
+chosen price convention without an extra serial review window. The old
+adjusted-anchor 26-input prototype remains outside the batch and actual use.
+The final raw-aware logged action proof and performance specification remain
+separate steps after actual raw output verification.
+
+Substantive CodeRabbit review of the initial generic head completed on
+2026-10-10 at 11:53 UTC. Its actionable finding requested structural prose in
+`docs/architecture.md`; operator choice and future work remain here and in the
+binding rules/handoff. Related new code requires a new substantive review.
+The earlier complete WSL check passed 6329 tests with 3 skips, but collection
+preceded these raw additions. New focused synthetic runs are recorded separately.
+Independent review also found that direct raw replay could accept a non-unit
+event basis despite a valid raw panel; its repair binds affected event bases
+to resolved raw observations, in addition to the paired connector's binding.
+
+The first-performance groups remain three: consequential price/action/unit
+coverage, actual paired connection and the final frozen logged study. No group
+closed in this source continuation; actual D1/D2 performance remains zero/zero.

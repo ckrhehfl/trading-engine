@@ -13,13 +13,15 @@ from decimal import Decimal
 
 from research import activity_holding_preflight as holding
 from research import activity_preflight as saved
-from research.activity_book import ActivityBook
+from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange
 from research.activity_component_bounds import WRAPPER_SCHEMA, validate_component_exit_bounds, verify_component_inventory
 from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs, holding_requirements
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_partition_selection import PartitionSelection, selections_from_bl
 from research.activity_quote_extension import extend_holding_quotes
+from research.activity_raw_episode import TARGET_CODES
+from research.activity_raw_quote_view import RawEpisodeQuoteInputs, raw_price_basis, restore_raw_quote_view
 from research.activity_replay import replay_synthetic
 from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 from research.activity_timing import SessionLagPolicy
@@ -59,6 +61,7 @@ PACKAGE_ROLES = (*holding.BL_ROLES, "bl_verification", "bj_scope", *BM_ROLES, "b
 ACTION_ROLES = ("reviewed_action_coverage", "basis_evidence")
 CONDITIONAL_ROLE = "conditional_exit_scope"
 EXTENSION_ROLE = "quote_extension"
+RAW_ROLES = ("raw_episode_quotes", "raw_episode_unit_plan")
 SCHEMA = "activity-paired-replay-v1"
 
 
@@ -202,6 +205,44 @@ def prepare_inputs(
         selections["D1"], selections["D2"], required, quotes, tuple(windows), dict(expected_pins))
 
 
+def _require_raw_potential_scope(quotes: RawEpisodeQuoteInputs, proof: dict, events: tuple) -> None:
+    """Cover every potential origin path, independently of eventual fills.
+
+    Before legal effect the original holding needs prices. Event-created rights
+    need no quotes before their own availability. A missing component candidate
+    retains the original horizon; an unfilled entry cannot excuse its raw gap.
+    """
+    requested = set(quotes.requested_coordinates)
+    for row in proof["entries"]:
+        entry, end = (date.fromisoformat(row["origin"]["entry_on"]), date.fromisoformat(row["end_on"]))
+        effective = date.fromisoformat(row["effective_on"]) if row["event_id"] else None
+        spans = [(row["origin"]["code"], entry, end, effective)]
+        if effective is not None:
+            spans.extend((part["code"], max(entry, date.fromisoformat(part["available_on"])), end, None)
+                         for part in row["components"])
+        for code, start, stop, before in spans:
+            if code in TARGET_CODES:
+                saved.require(all((code, day) in requested for day in quotes.calendar
+                    if start <= day <= stop and (before is None or day < before)),
+                    "potential raw scope does not cover the recomputed origin/component lifetime")
+    # The conservative graph also propagates unsupported conversions and
+    # downstream successors, which need not have an entry's spin event_id.
+    # Independent origins were checked above; compulsory rights alone need
+    # no price before the first applicable delivery for this issue window.
+    for window in proof["windows"]:
+        code = window["code"]
+        if code not in TARGET_CODES:
+            continue
+        start, end = date.fromisoformat(window["start"]), date.fromisoformat(window["end"])
+        deliveries = [(event.new_available_on if isinstance(event, CompulsorySpinOff) else event.available_on)
+            for event in events if isinstance(event, (CompulsorySpinOff, CompulsoryStockExchange))
+            and event.new_basis.code == code and event.effective_on <= end]
+        if deliveries:
+            start = max(start, min(deliveries))
+        saved.require(all((code, day) in requested for day in quotes.calendar if start <= day <= end),
+            "potential raw scope does not cover the full propagated successor window")
+
+
 def paired_replay(
     bl_package: dict,
     bm_package: dict,
@@ -212,6 +253,8 @@ def paired_replay(
     expected_pins: dict,
     conditional_exit_scope: bytes | None = None,
     quote_extension: bytes | None = None,
+    raw_episode_quotes: bytes | None = None,
+    raw_episode_unit_plan: bytes | None = None,
 ) -> dict:
     """Prepare original full inputs and connect reviewed actions to both books.
 
@@ -231,10 +274,17 @@ def paired_replay(
     recomputed component proof. Full-window linked terms determine the immutable
     quote union; eligible origins determine the shorter action union. Final
     inclusive coverage and actual origin/component inventory must both agree.
+    Optional raw episode bytes and unit plan form a distinct, explicitly pinned
+    projection over the complete composite. They require the component wrapper;
+    available affected holdings cannot silently cross their raw quote boundary.
     """
     require = saved.require
+    use_raw = raw_episode_quotes is not None or raw_episode_unit_plan is not None
+    require(not use_raw or (raw_episode_quotes is not None and raw_episode_unit_plan is not None
+        and quote_extension is not None and conditional_exit_scope is not None),
+        "raw projection requires both raw artifacts, full extension and component proof")
     roles = (PACKAGE_ROLES + ACTION_ROLES + (() if conditional_exit_scope is None else (CONDITIONAL_ROLE,))
-             + (() if quote_extension is None else (EXTENSION_ROLE,)))
+             + (() if quote_extension is None else (EXTENSION_ROLE,)) + (RAW_ROLES if use_raw else ()))
     require(type(expected_pins) is dict and set(expected_pins) == set(roles),
             "exact registered package and action byte pins required")
     prepared = prepare_inputs(bl_package, bm_package, parameters,
@@ -293,6 +343,12 @@ def paired_replay(
         quotes = extend_holding_quotes(prepared.holding_inputs, component)
         quote_sha = quotes.quote_snapshot_sha256
         quote_lineage = saved.strict_json(quotes.fingerprint_json)
+    if use_raw:
+        require(wrapper is not None, "raw projection requires the versioned component proof")
+        quotes = restore_raw_quote_view(quotes, raw_episode_quotes, expected_pins[RAW_ROLES[0]],
+            raw_episode_unit_plan, expected_pins[RAW_ROLES[1]])
+        quote_sha = quotes.quote_snapshot_sha256
+        quote_lineage = saved.strict_json(quotes.fingerprint_json)
     full_terms = None
     if wrapper is not None:
         full_terms = reviewed_action_terms(actions["reviewed_action_coverage"], actions["basis_evidence"],
@@ -305,6 +361,8 @@ def paired_replay(
             prepared.selections_d2, prepared.holding_inputs, parameters, prepared.required_code_dates, identities,
             input_sha256=prepared.input_sha256, quotes=quotes, terms=full_terms,
             unresolved_priority_intervals=tuple(supplied_proof["unresolved_priority_intervals"]))
+        if use_raw:
+            _require_raw_potential_scope(quotes, component_proof, full_terms.events)
         action_windows = tuple(component_proof["windows"])
         action_scope_sha = component_proof["component_scope_sha256"]
         use_child = any(row["end_on"] != row["original_end_on"] for row in component_proof["entries"]) or not plan["entries"]
@@ -326,16 +384,23 @@ def paired_replay(
         require(set(component.requested_coordinates) == required_extra,
                 "extension must exactly supply separately required successor and basis coordinates")
     positions, panel = {day: index for index, day in enumerate(calendar)}, quotes.panel
-    observations = {(row.code, row.observation_date): row for row in quotes.observations}
+    base = quotes.base if type(quotes) is RawEpisodeQuoteInputs else quotes
+    observations = {(row.code, row.observation_date): row for row in base.observations}
     for row in actions["basis_evidence"]["bases"].values():
         key = row["code"], date.fromisoformat(row["session"])
+        if use_raw and key[0] in TARGET_CODES:
+            basis = raw_price_basis(quotes, *key)
+            require(Decimal(row["raw_close"]) == Decimal(row["adjusted_close"]) == basis.raw_close,
+                "raw event basis must match explicit raw share units and a resolved raw quote")
+            continue
         observation = observations.get(key)
         require(key[1] in positions and observation is not None and observation.typed_values is not None
                 and not observation.issues and panel[key[0]].closes[positions[key[1]]] == Decimal(row["adjusted_close"]),
                 "event adjusted basis must match a requested resolved quote")
     initial = ActivityBook(Decimal(1), (), calendar[parameters["lookback"]])
     replays = {arm: replay_synthetic(calendar, quotes.panel, parameters, selections[arm], dataset_sha256=quote_sha,
-        events=events, initial_book=initial, timing_policy=SessionLagPolicy(lag, paired=True))
+        events=events, initial_book=initial, timing_policy=SessionLagPolicy(lag, paired=True),
+        raw_quote_view=quotes if use_raw else None)
         for arm, lag in (("D1", 1), ("D2", 2))}
     if mixed is not None:
         verify_ordinary_inventory(replays, mixed)

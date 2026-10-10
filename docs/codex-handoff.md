@@ -558,11 +558,15 @@ checks in the existing paired connector and no committed actual proof inputs
 yet. Root must review genuine event/date/unit declarations before registering
 that diagnostic; source tests cannot replace that evidence. The operator then
 selected KRX raw prices and official allotment ratios for the LG/LX episode,
-after the April28 raw126500/adjusted119500 difference lacked a verified economic
-unit interpretation. The generic component core can ship independently; the
-26-input adjusted-anchor caller remains an unregistered local prototype outside
-that continuation. A versioned raw projection and raw-aware logged caller must
-preserve original diagnostics and guard holding-unit boundaries. See BQ and the
+after the April 28 raw 126500/adjusted 119500 difference lacked a verified economic
+unit interpretation. PR #279 now batches the generic core with the related raw
+decoder, acquisition plan/caller, immutable projection and explicit paired/replay
+connection. The 26-input adjusted-anchor caller remains an unregistered local
+prototype outside that continuation. The price-free plan registers 128 sessions,
+229 target code-dates, 63 saved envelopes and 65 new KRX requests. Those are
+request geometry, not yet independently verified raw observations or exits.
+Actual raw acquisition follows normal review, merge and isolated deployment;
+the final raw-aware action proof/caller remains a separate obligation. See BQ and the
 private evidence ledger for immutable receipts. Actual D1/D2 performance remains
 zero/zero and the same three performance groups remain open.
 

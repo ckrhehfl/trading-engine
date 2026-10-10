@@ -72,6 +72,7 @@ from dataclasses import dataclass, replace
 from datetime import date, datetime
 from decimal import Decimal
 import hashlib
+from typing import TYPE_CHECKING
 
 from research.activity_accounting import Lot, observable_mark, sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
@@ -79,6 +80,9 @@ from research.activity_portfolio import Series
 from research.activity_partition_selection import PartitionSelection, select_partition
 from research.krx_tax_schedule import KOSPI, total_bp
 from research.activity_timing import SessionLagPolicy
+
+if TYPE_CHECKING:
+    from research.activity_raw_quote_view import RawEpisodeQuoteInputs
 
 
 @dataclass(frozen=True)
@@ -278,6 +282,7 @@ def replay_synthetic(
     events: tuple[CompulsoryStockExchange | CompulsorySpinOff | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
     timing_policy: SessionLagPolicy | None = None,
+    raw_quote_view: RawEpisodeQuoteInputs | None = None,
 ) -> SyntheticReplay:
     """Replay pure inputs through a toy or explicit evidence-selection seam.
 
@@ -298,11 +303,45 @@ def replay_synthetic(
     observations and events must share the explicitly identified snapshot.
     Paired policies use the same lag-2 terminal formation horizon and evaluation
     calendar; each lot's holding period still begins at its actual proxy entry.
+    An optional raw view is refrozen once and must match the complete supplied
+    calendar, snapshot and typed panel. Affected execution coordinates then fail
+    outside its requested episode. Only event-created, grouped pending carry
+    may retain its value without a quote before that particular lot's delivery.
+    Affected event bases must use the view's resolved raw close in both price
+    fields; a matching snapshot id alone cannot introduce adjusted share units.
     """
     calendar = list(dates)
     if (not calendar or any(type(day) is not date for day in calendar)
             or any(left >= right for left, right in zip(calendar, calendar[1:]))):
         raise ValueError("synthetic calendar must contain strictly increasing dates")
+    raw_rows, raw_codes, pending_raw_lots = None, frozenset(), set()
+    if raw_quote_view is not None:
+        from research.activity_quote_extension import _same
+        from research.activity_raw_episode import TARGET_CODES
+        from research.activity_raw_quote_view import validate_raw_quote_view
+
+        fresh = validate_raw_quote_view(raw_quote_view)
+        if (not _same(tuple(calendar), fresh.calendar) or dataset_sha256 != fresh.quote_snapshot_sha256
+                or not _same(tuple(sorted(panel.items())), fresh.series)):
+            raise ValueError("raw replay calendar, snapshot and complete typed panel must match the view")
+        panel = fresh.panel
+        raw_codes = TARGET_CODES
+        raw_rows = {(row.code, date.fromisoformat(row.requested_bas_dd)): row for row in fresh.raw_observations}
+
+    def execution_quote(code, index):
+        if raw_rows is not None and code in raw_codes:
+            row = raw_rows.get((code, calendar[index]))
+            if row is None:
+                raise ValueError("affected lot crossed the registered raw episode boundary")
+            if row.status != "observed" and row.issues != ("target_absent_cause_unknown",):
+                raise ValueError("unresolved raw observation")
+        return _quote(panel[code], index)
+
+    def pending_raw(lot, session):
+        return (raw_rows is not None and lot.code in raw_codes and session < lot.available_on
+                and lot.carried_value is not None and lot.investment_id is not None
+                and (lot.lot_id, lot.investment_key) in pending_raw_lots)
+
     lookback, holding, slots = (params[key] for key in ("lookback", "holding_sessions", "slots"))
     if any(type(value) is not int or value < 1 for value in (lookback, holding, slots)):
         raise ValueError("lookback, holding and slots must be positive integers")
@@ -375,6 +414,12 @@ def replay_synthetic(
         if (any(basis.dataset_sha256 != dataset_sha256 for basis in bases)
                 or _event_date(event) <= book.as_of or event.event_id in book.applied_event_ids):
             raise ValueError("synthetic events need the same snapshot, future due dates and unused ids")
+        for basis in bases:
+            if raw_rows is not None and basis.code in raw_codes:
+                row = raw_rows.get((basis.code, basis.session))
+                if (row is None or row.status != "observed" or row.state not in {"observed", "locked"}
+                        or row.close is None or basis.raw_close != row.close or basis.adjusted_close != row.close):
+                    raise ValueError("raw event basis must match a requested resolved raw/raw close")
         if isinstance(event, (CompulsoryStockExchange, CompulsorySpinOff)) and event.new_basis.code not in panel:
             raise ValueError("synthetic successor must have an explicit panel series, even if absent")
     _check_event_quotes(ordered_events, panel, session=calendar[lookback], index=lookback)
@@ -413,13 +458,25 @@ def replay_synthetic(
         book = replace(book, as_of=session)
         while cursor < len(ordered_events) and _event_date(ordered_events[cursor]) <= session:
             event = ordered_events[cursor]
+            prior_lots = {lot.lot_id: lot for lot in book.lots}
             book = (book.apply_spin_off(event, session=session) if isinstance(event, CompulsorySpinOff)
                     else book.apply_stock_exchange(event, session=session) if isinstance(event, CompulsoryStockExchange)
                     else book.apply_final_cash(event, session=session))
+            if raw_rows is not None and isinstance(event, CompulsorySpinOff):
+                pending_raw_lots.update((lot.lot_id, lot.investment_key) for lot in book.lots
+                    if lot.carried_value is not None and lot.investment_id is not None
+                    and (lot.lot_id not in prior_lots or prior_lots[lot.lot_id].carried_value is None))
             cursor += 1
         remaining, cash = [], book.cash
         for lot in book.lots:
-            opening, close, frozen, locked = _quote(panel[lot.code], index)
+            if pending_raw(lot, session):
+                diagnostics["unpriced_or_frozen_position_sessions"] += 1
+                diagnostics["unavailable_position_sessions"] += 1
+                if session >= lot.due_on:
+                    diagnostics["pending_exit_sessions"] += 1
+                remaining.append(lot)
+                continue
+            opening, close, frozen, locked = execution_quote(lot.code, index)
             available = session >= lot.available_on
             if not close or frozen:
                 diagnostics["unpriced_or_frozen_position_sessions"] += 1
@@ -456,7 +513,10 @@ def replay_synthetic(
                 choices.append((formation_on, selected))
             equity_values = [book.cash]
             for lot in book.lots:
-                opening, _, frozen, _ = _quote(panel[lot.code], index)
+                if pending_raw(lot, session):
+                    equity_values.append(lot.marked_value)
+                    continue
+                opening, _, frozen, _ = execution_quote(lot.code, index)
                 equity_values.append(lot.shares * opening if opening and not frozen and session >= lot.available_on
                                      else lot.marked_value)
             equity = sum_decimal_values(tuple(equity_values))
@@ -471,7 +531,7 @@ def replay_synthetic(
                     diagnostics["unfilled_entries"] += 1
                     diagnostics["unfilled_capacity_targets"] += 1
                     continue
-                opening, _, frozen, locked = _quote(panel[code], index)
+                opening, _, frozen, locked = execution_quote(code, index)
                 if not opening or frozen:
                     diagnostics["unfilled_entries"] += 1
                     continue
@@ -491,7 +551,10 @@ def replay_synthetic(
             book = replace(book, cash=cash, lots=tuple(lots))
         marked = []
         for lot in book.lots:
-            _, close, frozen, _ = _quote(panel[lot.code], index)
+            if pending_raw(lot, session):
+                marked.append(lot)
+                continue
+            _, close, frozen, _ = execution_quote(lot.code, index)
             marked.append(observable_mark(lot, session=session, close=close, frozen=frozen)
                           if close else lot)
         book = replace(book, lots=tuple(marked))

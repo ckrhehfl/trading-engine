@@ -18,10 +18,13 @@ from research.activity_holding_inputs import HoldingInputs
 from research.activity_partition_selection import PartitionSelection
 from research.activity_preflight import digest, encoded, require, strict_json
 from research.activity_quote_extension import CompositeHoldingInputs, _same, _validated, extend_holding_quotes
+from research.activity_raw_episode import TARGET_CODES
+from research.activity_raw_quote_view import RawEpisodeQuoteInputs, validate_raw_quote_view
 from research.activity_reviewed_actions import ReviewedActionTerms, _day, _identity, _value, reviewed_action_terms
 
 
 SCHEMA = "activity-component-lifetime-bounds-v1"
+RAW_SCHEMA = "activity-raw-component-lifetime-bounds-v1"
 WRAPPER_SCHEMA = "activity-component-exit-scope-v1"
 ORIGIN_FIELDS = ("formation_on", "arm", "code", "isin", "entry_on", "due_on")
 
@@ -79,6 +82,19 @@ def _candidate(quotes, observations: dict, code: str, due: date | None, availabl
         observation = observations.get((code, day))
         if observation is None:
             return None, "unrequested_quote"
+        if type(quotes) is RawEpisodeQuoteInputs and code in TARGET_CODES:
+            if observation.issues == ("target_absent_cause_unknown",) or observation.state == "observed_no_trade_zero_prices":
+                continue
+            if observation.status != "observed":
+                return None, "unresolved_observed"
+            if observation.state == "frozen":
+                continue
+            series = quotes.panel[code]
+            if observation.issues or observation.open is None or series.opens[index] != observation.open:
+                return None, "unresolved_observed"
+            if observation.open > 0:
+                return day, "locked" if observation.state == "locked" else "observed"
+            continue
         if observation.typed_values is None:
             continue
         series = quotes.panel[code]
@@ -102,7 +118,7 @@ def component_exit_bounds(
     ordinary_exit_scope: dict, selections_d1: tuple[PartitionSelection, ...],
     selections_d2: tuple[PartitionSelection, ...], original: HoldingInputs, parameters: Mapping,
     original_required_code_dates: Mapping[str, Sequence[str]], issue_isins: Mapping[str, str], *,
-    input_sha256: Mapping[str, str], quotes: HoldingInputs | CompositeHoldingInputs,
+    input_sha256: Mapping[str, str], quotes: HoldingInputs | CompositeHoldingInputs | RawEpisodeQuoteInputs,
     terms: ReviewedActionTerms, unresolved_priority_intervals: tuple[dict, ...] = (),
 ) -> dict:
     """Recompute every potential origin and preserve the exact FULL quote union.
@@ -114,7 +130,12 @@ def component_exit_bounds(
     """
     plan = validate_exit_bounds(ordinary_exit_scope, selections_d1, selections_d2, original, parameters,
         original_required_code_dates, issue_isins, input_sha256=input_sha256)
-    if type(quotes) is CompositeHoldingInputs:
+    raw_quotes = type(quotes) is RawEpisodeQuoteInputs
+    if raw_quotes:
+        quotes = validate_raw_quote_view(quotes)
+        require(_same(quotes.base.original, original), "raw view must retain immutable original quotes")
+        supplied = frozenset(quotes.base.extension.requested_coordinates)
+    elif type(quotes) is CompositeHoldingInputs:
         require(_same(quotes.original, original)
                 and _same(quotes, extend_holding_quotes(original, quotes.extension)), "immutable composite quotes required")
         supplied = frozenset(quotes.extension.requested_coordinates)
@@ -128,11 +149,22 @@ def component_exit_bounds(
     extra.update((row["code"], _day(row["session"])) for row in canonical["basis_evidence"]["bases"].values())
     extra.difference_update(original.requested_coordinates)
     require(supplied == extra, "FULL extension must retain exact original successor and basis union")
-    observations = {(row.code, row.observation_date): row for row in quotes.observations}
+    if raw_quotes:
+        observations = {(row.code, row.observation_date): row for row in quotes.base.observations if row.code not in TARGET_CODES}
+        observations.update({(row.code, date.fromisoformat(row.requested_bas_dd)): row
+                             for row in quotes.raw_observations})
+    else:
+        observations = {(row.code, row.observation_date): row for row in quotes.observations}
     positions = {day: index for index, day in enumerate(quotes.calendar)}
     for row in canonical["basis_evidence"]["bases"].values():
         key = row["code"], _day(row["session"])
         observation = observations.get(key)
+        if raw_quotes and key[0] in TARGET_CODES:
+            require(observation is not None and observation.status == "observed" and not observation.issues
+                    and observation.close is not None and Decimal(row["raw_close"]) == Decimal(row["adjusted_close"])
+                    == observation.close == quotes.panel[key[0]].closes[positions[key[1]]],
+                    "raw event basis must be equal raw/raw requested resolved raw close")
+            continue
         require(observation is not None and observation.typed_values is not None and not observation.issues
                 and quotes.panel[key[0]].closes[positions[key[1]]] == Decimal(row["adjusted_close"]),
                 "event basis must match a requested resolved composite quote")
@@ -161,6 +193,9 @@ def component_exit_bounds(
         entry, end = _day(origin["entry_on"]), _day(original_row["original_end_on"])
         due = _day(origin["due_on"]) if origin["due_on"] else None
         endpoint = _day(original_row["end_on"])
+        raw_origin = raw_quotes and origin["code"] in TARGET_CODES
+        if raw_origin:
+            endpoint = end
         relevant = [event for event in terms.events if _lifetime(event)[0] == origin["code"]
                     and entry < _lifetime(event)[2] and _lifetime(event)[1] <= endpoint]
         require(len(relevant) <= 1, "unsupported full-issue origin graph")
@@ -168,6 +203,10 @@ def component_exit_bounds(
         mode, reason, event_id = "ordinary_child", "ordinary_price_candidate", None
         components = [dict(code=origin["code"], isin=origin["isin"], available_on=str(entry),
                            candidate_on=original_row["candidate_on"], candidate_state=original_row["candidate_state"])]
+        if raw_origin:
+            components[0].update(candidate_on=None, candidate_state="raw_ordinary_candidate_not_proven")
+            if event is None:
+                mode, reason = "original_end", "raw_ordinary_candidate_not_proven"
         if event is not None:
             mode, reason, endpoint = "original_end", "unsupported_non_spin_event", end
             if isinstance(event, CompulsorySpinOff):
@@ -187,11 +226,21 @@ def component_exit_bounds(
                 else:
                     reason = "pending_or_unresolved_component"
                 candidate = original_row["candidate_on"]
+                if raw_origin:
+                    # After legal effect, pending components use their own
+                    # availability; do not inspect a not-yet-delivered bar.
+                    candidate, state = _candidate(quotes, observations, origin["code"], due, entry,
+                                                  min(end, event.effective_on - timedelta(days=1)))
+                    candidate = str(candidate) if candidate else None
+                    if candidate is None and state in ("unrequested_quote", "unresolved_observed"):
+                        mode, reason, endpoint = "original_end", "unresolved_raw_origin_sale_path", end
                 if candidate and event.last_eligible_entry_on < _day(candidate) < event.effective_on:
                     mode, reason, endpoint = "original_end", "unsupported_pre_effective_sale_if_filled", end
                 if any(other is not event and _lifetime(other)[0] in {row["code"] for row in components}
                        and entry <= _lifetime(other)[1] <= endpoint for other in terms.events):
                     mode, reason, endpoint = "original_end", "unsupported_followup_event_full_path", end
+        if raw_origin and event is not None and (origin["code"], entry) not in observations:
+            mode, reason, endpoint = "original_end", "raw_origin_entry_unrequested", end
         if any(any(row["code"] == part["code"] and row["isin"] == part["isin"] for part in components)
                and _day(row["start"]) <= endpoint and entry <= _day(row["end"])
                for row in unresolved_priority_intervals):
@@ -225,7 +274,7 @@ def component_exit_bounds(
         delivered.add(event.new_basis.code)
     spin_windows = [dict(event_id=event_id, **row) for event_id, rows in sorted(spin_spans.items())
                     for row in _windows(rows)]
-    result = dict(schema=SCHEMA, status="provisional", ordinary_scope_sha256=plan["child_scope_sha256"],
+    result = dict(schema=RAW_SCHEMA if raw_quotes else SCHEMA, status="provisional", ordinary_scope_sha256=plan["child_scope_sha256"],
         original_input_sha256=plan["input_sha256"], original_read_scope_sha256=plan["original_read_scope_sha256"],
         calendar_sha256=plan["calendar_sha256"], parameters_sha256=plan["parameters_sha256"],
         original_quote_snapshot_sha256=original.quote_snapshot_sha256, quote_snapshot_sha256=quotes.quote_snapshot_sha256,
@@ -233,6 +282,9 @@ def component_exit_bounds(
         full_extension_code_dates=[[code, str(day)] for code, day in sorted(supplied)],
         entries=entries, windows=_windows(spans), spin_off_windows=spin_windows,
         books_computed=False, returns_computed=False, action_coverage_certified=False, actual_exits_certified=False)
+    if raw_quotes:
+        result.update(raw_source_artifact_sha256=quotes.source_artifact_sha256, raw_unit_plan_sha256=quotes.unit_plan_sha256,
+                      base_quote_snapshot_sha256=quotes.base.quote_snapshot_sha256)
     result["component_scope_sha256"] = digest(encoded(result))
     return result
 
