@@ -242,6 +242,12 @@ it calls the existing paired replay once, retains both books and the descriptive
 report, and records completion only after a final source/runtime identity check.
 These callers share existing private IO, source freezing and discovery logging;
 new output verification and source-content judgments remain separate obligations.
+`activity_raw_anchor_preflight` uses the existing credential/header/transport
+helpers for three literal KRX requests: two LG/LX raw-close dates and one LX
+identity date. Durable discovery start precedes credential or network access.
+It retains private original responses, exact Decimal text and per-target
+metadata; missing or inconsistent targets remain unresolved. Current retrieval
+does not certify historical availability, adjusted units, delivery or returns.
 
 ---
 

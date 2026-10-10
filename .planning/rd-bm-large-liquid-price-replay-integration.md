@@ -1233,3 +1233,48 @@ regressions passed 57 tests; broader related tests passed 195 with one optional
 skip before this one additional fixed-spec regression. Scanner is OK. The prior
 BO-collected WSL run completed 6,075 passing and three skipped tests; the final
 BP tree's full WSL run and external CI/review are still in progress.
+
+### BP fixed raw-anchor diagnostic prepared before first substantive review
+
+The same PR additionally supplies a separately logged, fixed three-request
+diagnostic rather than reusing the old broader acquisition runners. Requests
+are KOSPI daily trades for April 28 and May 27, 2021, followed by KOSPI basic
+information for May 27. Projection is LG's first raw close, LG/LX's second raw
+closes and LX's short-code-to-ISIN identity, with response hashes and row positions.
+The existing probe supplies credential validation, exact AUTH_KEY handling,
+redirect/proxy restrictions, response parsing and private raw persistence.
+No host/date/service/count/retry configuration surface is added. The committed
+spec preserves the reference parameters exactly; max three attempts, twenty
+seconds per request, eight MiB per response and 1.1 seconds between requests
+are fixed. This diagnostic performs no database read or original quote edit.
+
+Source/specification freeze and canonical durable discovery start precede
+credential access and every request. Failed attempts preserve sanitized partial
+manifests/resource/failure receipts without retries. HTTP 200 with absent,
+duplicate, malformed or mismatched targets completes with explicit unresolved
+targets, never zero or a guessed lifecycle explanation. Basic information lacks
+a row observation date: requested_bas_dd is retained separately, while
+observation_date, available_at and is_final remain null where not established.
+Raw close text is parsed with Decimal and retains current retrieval/vintage
+metadata. Neither current responses nor matching historical dates prove what
+could have been known then. Unit bridge, custody, action coverage, source truth,
+historical availability, books, returns and promotion remain uncertified.
+
+This source-only addition will receive the same final-head CI, substantive
+CodeRabbit, merge and isolated research deployment as the other BP callers.
+Actual access needs a separately frozen one-attempt launch registration and
+independent output verification. At preparation time no request was made, and
+first-performance groups and completed actual studies remain three open,
+zero newly closed, D1 zero and D2 zero.
+
+BP fresh review corrected a raw diagnostic metadata bug: an unresolved returned
+date no longer inherits the requested date. Requested date, returned BAS_DD and
+validated observation date are separate, and absent/duplicate/mismatched targets
+retain null observation dates. The executing producer's own committed path and
+byte hash must appear in the frozen source manifest before credentials or
+network are available. Its final focused synthetic suite passed 49 tests.
+The separately prepared quote publication/independent-verification/deployment
+helpers passed 114 synthetic tests. Fresh review repaired a publication encoder
+that escaped non-ASCII typed TEXT differently from the producer; valid unresolved
+Unicode values now retain the same fingerprint bytes locally and remotely.
+These helper tests and reviews made no actual data, API, credential or DB read.
