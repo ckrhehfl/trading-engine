@@ -217,3 +217,69 @@ def validate_exit_bounds(
     _require(type(plan) is dict and encoded(plan) == encoded(recomputed),
              "provisional exit proof disagrees with the full original package")
     return recomputed
+
+
+def mixed_action_scope(plan: dict, coverage: dict) -> dict:
+    """Project an already recomputed proof without shortening any event issue.
+
+    A code with any declared event, supported-event interval or unresolved
+    interval retains every original entry-through-end window. This intentionally
+    conservative code-level fallback also covers independent re-entries. Other
+    issues use their ordinary child windows; reviewed_actions must still verify
+    exact complete inclusive source coverage before either book executes.
+    No input quote row or original scope identifier is replaced.
+    """
+    _require(type(coverage) is dict and all(type(coverage.get(name)) is list
+             for name in ("windows", "events", "unresolved")), "typed mixed action declarations required")
+    full_codes = set()
+    for row in coverage["events"] + coverage["unresolved"]:
+        _require(type(row) is dict and type(row.get("code")) is str,
+                 "mixed event or unresolved issue identity required")
+        full_codes.add(row["code"])
+        if type(row.get("successor_code")) is str:
+            full_codes.add(row["successor_code"])
+    for row in coverage["windows"]:
+        _require(type(row) is dict and type(row.get("code")) is str,
+                 "mixed coverage issue identity required")
+        if row.get("review_state") != "reviewed_no_event":
+            full_codes.add(row["code"])
+    entries, intervals, codes = [], {}, set(plan["issue_isins"])
+    for original in plan["entries"]:
+        full = original["code"] in full_codes
+        endpoint = original["original_end_on"] if full else original["end_on"]
+        entries.append(dict(original, action_end_on=endpoint,
+                            action_mode="original_event_or_unresolved" if full else "ordinary_child"))
+        intervals.setdefault(original["code"], []).append((_iso(original["entry_on"]), _iso(endpoint)))
+    windows = _windows(intervals, plan["issue_isins"])
+    ordinary = codes - full_codes
+    result = {"schema": "activity-mixed-action-scope-v1",
+              "original_read_scope_sha256": plan["original_read_scope_sha256"],
+              "child_scope_sha256": plan["child_scope_sha256"],
+              "quote_snapshot_sha256": plan["quote_snapshot_sha256"],
+              "entries": entries, "windows": windows,
+              "ordinary_codes": sorted(ordinary), "original_end_codes": sorted(codes & full_codes)}
+    # Preserve the two existing homogeneous contracts, including vacuous cash.
+    result["action_scope_sha256"] = (plan["child_scope_sha256"] if not codes & full_codes else
+        plan["original_read_scope_sha256"] if not ordinary else digest(encoded(result)))
+    return result
+
+
+def verify_ordinary_inventory(replays: dict, scope: dict) -> None:
+    """Reject an actual ordinary lot outside its independently proved lifetime.
+
+    This is a result invariant, never a forced sale or a replacement book engine.
+    Event issues retain the original horizon and existing rights accounting.
+    A future deferred-entry queue cannot silently reuse an earlier entry proof.
+    """
+    bounds = {(row["arm"], row["code"], _iso(row["entry_on"])): row
+              for row in scope["entries"] if row["action_mode"] == "ordinary_child"}
+    for arm, replay in replays.items():
+        for book in replay.books:
+            for lot in book.lots:
+                if lot.code not in scope["ordinary_codes"]:
+                    continue
+                row = bounds.get((arm, lot.code, lot.entered_on))
+                _require(row is not None and lot.due_on.isoformat() == row["due_on"],
+                         "ordinary inventory lacks its exact entry/due proof")
+                _require(row["candidate_on"] is None or book.as_of < _iso(row["candidate_on"]),
+                         "ordinary inventory survives its validated opening exit")

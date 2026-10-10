@@ -1068,3 +1068,67 @@ The notice separately starts LG futures on May 28; that separate instrument date
 is not used for stock availability or broker delivery. Remaining uncertainty
 continues to be event-specific unit/delivery and coherent-input connection,
 with three first-performance groups open, zero newly closed and D1/D2 zero/zero.
+
+## PR275 completion and BO source-only connection, 2026-10-10
+
+PR275's substantive CodeRabbit review covered nine files at
+`d1c95e38ef11b3b5e783f5930fbf81c93ad942ae`; its two minor documentation
+findings were repaired in `f406944f7b9b46ba1a6e3a28ee4b3bb79baad0d1`.
+The reviewer verified the exact final document delta and seven unchanged Python
+blobs in issue comment 6095300267 at 07:50:50 UTC. Native auto-merge actually
+merged at 07:52:15 UTC before two optional Python jobs finished. Preserve that
+ordering: all eight final-head jobs were observed successful at 07:58:27 UTC,
+and only then was isolated GCP deployment executed. Future merge commands must
+themselves wait for all full checks instead of relying on required-check settings.
+Normal squash `9d5c320aceaa0933d2c6a2f74f118925039d2492` has the registered
+parent and exact reviewed tree. Deployment completed at 07:59:19.726146 UTC;
+the isolated research checkout is clean at that merge. Collector checkout
+`4ce85d714890b87f1a57ae89d4942660e41c0483` remains clean and unchanged. No
+collector process, schedule, environment, database or experiment was accessed.
+
+The next source-only connection removes the global all-no-event choice.
+After exact original-package and ordinary-proof recomputation, any issue with
+an event, supported/unknown interval or unresolved effect retains all of its
+original entry-through-end requirements. Other issues use independently proved
+ordinary bounds. Successors also independently selected retain the conservative
+original horizon. This first implementation is intentionally per issue; it does
+not shorten the LG component lifecycle or change the original-end event rule.
+Homogeneous child/full scope identifiers remain compatible; a genuinely mixed
+scope has its own content-derived identifier and complete entry/window records.
+An ordinary lot with an unregistered entry/due or surviving its first executable
+exit stops the report, without a forced sale or a second book engine.
+
+The optional separately pinned quote-extension envelope restores a retained
+audit/read scope through the existing adapter. Both component projections are
+revalidated against their exact typed evidence. Requested coordinate overlap,
+including an original requested absence, is rejected. Same-code unrequested
+anchors may be added. A new explicitly composite identifier links replay lots,
+event bases and action declarations; original fingerprints, row values/states,
+provenance and distinct receipt times remain intact. The extension must equal
+exactly the missing successor and event-basis coordinates. Each adjusted event
+basis must match a requested resolved quote; this establishes a structural join,
+not the raw-price source, adjustment convention or custody-delivery truth.
+
+No saved market input, database, credential, API or official source body was
+read for this engineering step. No new official historical-publication evidence
+is claimed. Historical availability/vintage assumptions and event-specific
+unit/delivery work remain. Synthetic implementation and tests cannot close the
+three first-performance groups: consequential price/action coverage, actual
+paired replay integration and the final frozen logged study. D1/D2 completed
+actual performance studies remain zero/zero; no group is newly closed here.
+After normal review/merge and isolated deployment, next is the separately frozen
+bounded successor/anchor producer plus source-specific unit/rights evidence,
+executable reviewed interval declarations, and registered actual paired caller.
+
+The focused final-source regression run passed 143 tests. It includes full
+synthetic original-package-to-spin-off-to-both-books execution, repinned
+extension/evidence corruption, mixed ordinary/event execution, independent
+re-entry horizons, pending slots, exact typed storage and original absences.
+Independent source review found one unnecessarily blocked valid boundary:
+when all successor/basis coordinates already exist in the original snapshot,
+no new extension is needed. The connector now computes the missing set first
+and preserves that original hash; regression covers this and a conflicting
+original-snapshot basis before replay. Adjusted-basis row matching applies to
+both original and extended paths. No additional source-review finding remained.
+The full WSL project check and external CI/CodeRabbit are still in progress;
+these targeted results are not reported as a completed full check or deployment.

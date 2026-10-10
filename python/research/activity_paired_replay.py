@@ -3,7 +3,7 @@
 There is no IO, trial logging or actual study execution here. Callers establish
 registered byte pins, independent package verification and reviewed evidence.
 Original BL source partitions and the full BM holding quote snapshot remain
-separate. Successor series require a separately registered coherent artifact.
+separate. Optional successor scans form a new, explicitly composite artifact.
 """
 from __future__ import annotations
 
@@ -14,10 +14,11 @@ from decimal import Decimal
 from research import activity_holding_preflight as holding
 from research import activity_preflight as saved
 from research.activity_book import ActivityBook
-from research.activity_exit_bounds import validate_exit_bounds
+from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs, holding_requirements
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_partition_selection import PartitionSelection, selections_from_bl
+from research.activity_quote_extension import extend_holding_quotes
 from research.activity_replay import replay_synthetic
 from research.activity_reviewed_actions import reviewed_actions
 from research.activity_timing import SessionLagPolicy
@@ -56,6 +57,7 @@ def _json_value(value):
 PACKAGE_ROLES = (*holding.BL_ROLES, "bl_verification", "bj_scope", *BM_ROLES, "bm_verification")
 ACTION_ROLES = ("reviewed_action_coverage", "basis_evidence")
 CONDITIONAL_ROLE = "conditional_exit_scope"
+EXTENSION_ROLE = "quote_extension"
 SCHEMA = "activity-paired-replay-v1"
 
 
@@ -208,6 +210,7 @@ def paired_replay(
     parameters: dict,
     expected_pins: dict,
     conditional_exit_scope: bytes | None = None,
+    quote_extension: bytes | None = None,
 ) -> dict:
     """Prepare original full inputs and connect reviewed actions to both books.
 
@@ -215,14 +218,18 @@ def paired_replay(
     same parameters, events, original quote snapshot and normalized NAV1 initial
     book at calendar[lookback]. Dates/Decimal accounting are serialized explicitly.
     This pure result does not authorize actual reads, certify evidence or count
-    as a logged completed study. Successor requirements cannot extend this hash.
+    as a logged completed study. Optional quote_extension is a separately pinned
+    envelope of a retained audit/read scope. It adds exactly the missing event
+    series/anchors under a new composite identity, preserving both scan vintages.
+    Independent extension-output/source/unit review remains a caller obligation.
     Optional conditional_exit_scope is a separately pinned price-only child
     proof, recomputed from the full original inputs. Its shorter windows apply
-    only to reviewed no-event declarations; supported actions retain the original
-    full windows and BM scope. Quote rows and fingerprint are never shortened.
+    only to reviewed no-event issues; event/unresolved issues retain the original
+    full windows independently. Quote rows and fingerprint are never shortened.
     """
     require = saved.require
-    roles = PACKAGE_ROLES + ACTION_ROLES + (() if conditional_exit_scope is None else (CONDITIONAL_ROLE,))
+    roles = (PACKAGE_ROLES + ACTION_ROLES + (() if conditional_exit_scope is None else (CONDITIONAL_ROLE,))
+             + (() if quote_extension is None else (EXTENSION_ROLE,)))
     require(type(expected_pins) is dict and set(expected_pins) == set(roles),
             "exact registered package and action byte pins required")
     prepared = prepare_inputs(bl_package, bm_package, parameters,
@@ -238,7 +245,7 @@ def paired_replay(
                                          prepared.quote_snapshot_sha256)
     selections = {"D1": prepared.selections_d1, "D2": prepared.selections_d2}
     quotes = prepared.holding_inputs
-    plan, use_child = None, False
+    plan, mixed, use_child = None, None, False
     action_windows, action_scope_sha = prepared.expected_windows, prepared.read_scope_sha256
     if conditional_exit_scope is not None:
         saved._pin(expected_pins[CONDITIONAL_ROLE])
@@ -253,31 +260,69 @@ def paired_replay(
         plan = validate_exit_bounds(saved.strict_json(conditional_exit_scope), prepared.selections_d1,
             prepared.selections_d2, quotes, parameters, prepared.required_code_dates, identities,
             input_sha256=prepared.input_sha256)
-        coverage = actions["reviewed_action_coverage"]
-        declared_windows = coverage.get("windows")
-        use_child = (coverage.get("events") == [] and type(declared_windows) is list
-                     and all(type(row) is dict and row.get("review_state") == "reviewed_no_event"
-                             for row in declared_windows))
-        if use_child:
-            action_windows = tuple(plan["child_windows"])
-            action_scope_sha = plan["child_scope_sha256"]
+        mixed = mixed_action_scope(plan, actions["reviewed_action_coverage"])
+        use_child = bool(mixed["ordinary_codes"]) or not plan["entries"]
+        action_windows = tuple(mixed["windows"])
+        action_scope_sha = mixed["action_scope_sha256"]
+    quote_lineage = None
+    if quote_extension is not None:
+        saved._pin(expected_pins[EXTENSION_ROLE])
+        require(type(quote_extension) is bytes and saved.digest(quote_extension) == expected_pins[EXTENSION_ROLE],
+                "registered quote extension byte pin mismatch")
+        extension = saved.strict_json(quote_extension)
+        require(type(extension) is dict and set(extension) == {
+            "schema", "original_quote_snapshot_sha256", "read_scope", "holding_input_audit"}
+            and extension["schema"] == "activity-quote-extension-envelope-v1"
+            and extension["original_quote_snapshot_sha256"] == prepared.quote_snapshot_sha256,
+            "quote extension original snapshot or schema mismatch")
+        audit, scope = extension["holding_input_audit"], extension["read_scope"]
+        require(type(audit) is dict and type(scope) is dict, "typed extension audit/scope required")
+        component = restore_holding_inputs(audit, scope, quote_snapshot_sha256=audit.get("quote_snapshot_sha256"),
+            activity_snapshot_sha256=activity_sha, read_scope_sha256=saved.digest(saved.encoded(scope)))
+        quotes = extend_holding_quotes(prepared.holding_inputs, component)
+        quote_sha = quotes.quote_snapshot_sha256
+        quote_lineage = saved.strict_json(quotes.fingerprint_json)
     events, successor_required = reviewed_actions(actions["reviewed_action_coverage"], actions["basis_evidence"],
         expected_windows=action_windows, calendar=calendar, activity_snapshot_sha256=activity_sha,
         quote_snapshot_sha256=quote_sha, read_scope_sha256=action_scope_sha)
-    require(not successor_required, "successor requires a separately registered coherent quote snapshot")
+    required_extra = {(code, date.fromisoformat(day)) for code, days in successor_required.items() for day in days}
+    bases = actions["basis_evidence"]["bases"].values()
+    required_extra.update((row["code"], date.fromisoformat(row["session"])) for row in bases)
+    required_extra.difference_update(prepared.holding_inputs.requested_coordinates)
+    if quote_extension is None:
+        require(not required_extra, "successor requires a separately registered coherent quote snapshot")
+    else:
+        require(set(component.requested_coordinates) == required_extra,
+                "extension must exactly supply separately required successor and basis coordinates")
+    positions, panel = {day: index for index, day in enumerate(calendar)}, quotes.panel
+    observations = {(row.code, row.observation_date): row for row in quotes.observations}
+    for row in actions["basis_evidence"]["bases"].values():
+        key = row["code"], date.fromisoformat(row["session"])
+        observation = observations.get(key)
+        require(key[1] in positions and observation is not None and observation.typed_values is not None
+                and not observation.issues and panel[key[0]].closes[positions[key[1]]] == Decimal(row["adjusted_close"]),
+                "event adjusted basis must match a requested resolved quote")
     initial = ActivityBook(Decimal(1), (), calendar[parameters["lookback"]])
     replays = {arm: replay_synthetic(calendar, quotes.panel, parameters, selections[arm], dataset_sha256=quote_sha,
         events=events, initial_book=initial, timing_policy=SessionLagPolicy(lag, paired=True))
         for arm, lag in (("D1", 1), ("D2", 2))}
+    if mixed is not None:
+        verify_ordinary_inventory(replays, mixed)
     report = paired_timing_report(replays["D1"], replays["D2"], selections["D1"], selections["D2"], initial_nav=initial.nav)
+    quote_required = {}
+    for code, day in quotes.requested_coordinates:
+        quote_required.setdefault(code, []).append(day.isoformat())
     return {"schema": SCHEMA, "status": "pure_paired_replay",
             "initial_nav": "1", "activity_snapshot_sha256": activity_sha, "quote_snapshot_sha256": quote_sha,
+            "original_quote_snapshot_sha256": prepared.quote_snapshot_sha256, "quote_lineage": quote_lineage,
             "read_scope_sha256": prepared.read_scope_sha256, "input_sha256": dict(expected_pins),
             "action_scope_sha256": action_scope_sha, "conditional_exit_scope": plan,
+            "conditional_action_scope": mixed,
             "conditional_scope_used": use_child,
             "reviewed_action_coverage": actions["reviewed_action_coverage"],
             "reviewed_action_evidence": actions["basis_evidence"],
-            "required_code_dates": prepared.required_code_dates, "selections": _json_value(selections),
+            "required_code_dates": prepared.required_code_dates, "quote_required_code_dates": quote_required,
+            "selections": _json_value(selections),
             "replays": _json_value(replays), "report": report,
             "actual_study_completed": False, "promotion_allowed": False,
             "source_truth_certified": False, "event_coverage_certified": False,
