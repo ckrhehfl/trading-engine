@@ -1132,3 +1132,104 @@ original-snapshot basis before replay. Adjusted-basis row matching applies to
 both original and extended paths. No additional source-review finding remained.
 The full WSL project check and external CI/CodeRabbit are still in progress;
 these targeted results are not reported as a completed full check or deployment.
+
+## PR276 completion and BP logged input connection, 2026-10-10
+
+PR276 received substantive CodeRabbit APPROVED review of final head
+`61568526482ecca61c0bb9b4a66039942cb288c3` at 08:46:03 UTC with no
+outstanding threads. All eight full final-head GitHub CI jobs passed before
+normal squash at 08:49:25 UTC. Merge `a39596552a330b66da864895556667510790c35c`
+has single parent `9d5c320aceaa0933d2c6a2f74f118925039d2492` and exact
+reviewed tree `78d72ccec4e5718bd358351943934df7143b629d`. Isolated deployment
+completed at 08:51:09.035293 UTC; the research checkout is clean at that merge,
+and collector checkout `4ce85d714890b87f1a57ae89d4942660e41c0483` remains
+clean and unchanged. One SSH attempt made no collector/process/schedule/env/DB/
+quote/experiment operation. Local full WSL regression was still running when
+this completed; do not describe GitHub CI as that local run. BP adds new caller
+files after its test collection; the final BP tree needs its own complete CI.
+
+The separately reviewed BP quote producer restores all original eighteen
+package roles and their verification receipts before deriving an exact union
+from a separately pinned, price-free compulsory spin-off coordinate plan.
+Original quote/read-scope pins bind the original calendar; no independently
+guessed calendar hash or new calendar is necessary. Original requested cells,
+including requested absences, are subtracted from the union. A pre-entry old
+basis anchor may be added if it is a spent session. Events must remain within
+the existing parent horizon; chained events require a separate producer.
+The new read scope is saved and fsynced before one existing bounded typed scan.
+The existing adapter, audit restoration and quote composer produce the exact
+four-field envelope consumed by the existing paired caller, with original and
+composite identity/provenance retained. No return, selection or book is computed
+by this diagnostic; it supplies no unit, custody or action-coverage certificate.
+
+The committed LG coordinate plan requests the pre-suspension candidate anchor
+April 28, legal effectiveness May 1 and both stock trading anchors May 27, 2021.
+These dates reuse prior final-allocation and KRX stock-listing evidence. The
+April 28 choice remains a diagnostic anchor based on the proposed suspension
+schedule, not a completed-source last-observable finding. May 27 is confirmed
+stock trading applicability, not independently attested broker delivery. The
+plan deliberately carries no prices, raw ratios, unit factors or executable
+action declaration. Its SHA-256 is
+`ee9d9cb11567cea31eba73ffbe879d0e4988f4c1dba98f2221d89ef6bf64f867`.
+The committed diagnostic specification pins this exact plan and unchanged
+original input roles/reference parameters. Before one actual invocation, copy
+only these committed plan bytes into a fresh exclusive private evidence root;
+never copy credentials, original logs, databases or another environment.
+Use separate fresh input `large-liquid-bp-quote-plan-20261010-v1` and output
+`large-liquid-bp-quote-extension-20261010-v1/run` roots. The shared boundary
+validator intentionally protects every original input parent; no exception is
+added merely to place an output beneath a coordinate plan's protected directory.
+Review/CI/normal merge/exact isolated deployment and durable start precede
+actual saved-input or scan reads. The new result requires independent verification.
+
+The logged paired caller separately pins the original packages, reviewed action
+coverage and basis evidence, plus explicitly declared conditional proof/quote
+extension. It retains exact JSON parameter representations and uses only the
+existing paired book/report implementation. Before any input read it records
+durable discovery start and saves source/specification manifests. It retains
+both replay books, report, input/resource hashes and a final source/runtime
+identity check. A successful logged wrapper records one completed computation
+per arm, while pure `actual_study_completed=False` and independent output
+verification `pending` remain explicit. Any failed arm, pin mismatch or final
+source drift preserves partial output and sanitized failure/resource/input
+receipts, records zero completed pair counts, and performs no automatic retry.
+No actual paired specification is invented while executable coverage/bases are
+unfinished; that specification must separately pin the final reviewed inputs.
+
+Fresh-context source review found and repaired an overly strict old-basis
+anchor boundary in the diagnostic prototype. It also checked the logged
+caller's start/read/final-check/failure ordering; no actionable finding remained.
+Tests use synthetic package bytes and mocked bounded scans, including the
+generated envelope connected to both existing spin-off books. These tests are
+engineering verification and do not read actual prices or complete a study.
+
+The additional bounded official source query returned mostly unrelated issuers,
+old proposals and later retrospective documents. The issuer's May 3 completion
+notice at https://www.lg.co.kr/ir/public/notice/34 confirms completed split
+procedures; it adds no custody-date attestation. Its selected exact image
+attachment https://www.lg.co.kr/ckstorage/images/img_0503_3.jpg could not be
+inspected because the web tool rejected its content type. No unobserved image
+content is inferred, no adjacent page is silently substituted, and no external
+inquiry is required. No new official historical-publication-time evidence was
+established. Historic availability/vintage, daily-open execution and pending
+valuation/delivery conventions remain explicit limitations.
+
+Before actual BP invocation, first-performance groups remain three open and
+zero newly closed: consequential quote/action/basis coverage, actual paired
+integration, and final frozen logged study. Completed actual D1/D2 studies
+remain zero/zero. Next is the one bounded retained-input extension diagnostic
+and independent verification, event-specific unit/rights evidence and executable
+inclusive coverage, then the registered actual paired execution. The existing
+event original-end rule remains binding; this caller does not silently replace
+it with an ordinary child bound or promote a strategy.
+
+BP's fixed-spec regression and independent review caught JSON serialization
+changing reference `3.0`/`5.0` into integers. The new spec now retains their exact
+original representations. Launcher preparation also caught a protected input
+parent overlapping the proposed output; distinct private input/output roots
+resolve it without weakening the shared guard. The final committed-spec test
+checks both the plan byte pin and write-boundary compatibility. Focused caller
+regressions passed 57 tests; broader related tests passed 195 with one optional
+skip before this one additional fixed-spec regression. Scanner is OK. The prior
+BO-collected WSL run completed 6,075 passing and three skipped tests; the final
+BP tree's full WSL run and external CI/review are still in progress.

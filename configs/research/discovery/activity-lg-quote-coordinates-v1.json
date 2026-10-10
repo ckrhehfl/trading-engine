@@ -1,0 +1,17 @@
+{
+  "schema": "activity-price-free-event-coordinate-plan-v1",
+  "original_quote_snapshot_sha256": "2488132206b8978016b0d322377523746aaee98e49c5c23464964e1a4c985499",
+  "original_read_scope_sha256": "905c52d3696006a1938df7c4cf06fd216e40b4e5fec584b4511b09d567d0734d",
+  "events": [
+    {
+      "event_id": "lg-2021-compulsory-spin-off",
+      "kind": "compulsory_spin_off",
+      "code": "003550",
+      "successor_code": "383800",
+      "old_basis_on": "2021-04-28",
+      "effective_on": "2021-05-01",
+      "retained_available_on": "2021-05-27",
+      "new_available_on": "2021-05-27"
+    }
+  ]
+}
