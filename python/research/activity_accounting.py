@@ -56,7 +56,7 @@ class PriceBasis:
 
 @dataclass(frozen=True)
 class Lot:
-    """Keep acquisition lots separate even when they acquire the same code."""
+    """Separate component lots while retaining their original investment."""
 
     lot_id: str
     code: str
@@ -67,10 +67,16 @@ class Lot:
     due_on: date
     available_on: date
     dataset_sha256: str
+    investment_id: str | None = None
 
     def __post_init__(self) -> None:
         if not self.lot_id or not self.code:
             raise ValueError("lot id and code are required")
+        if self.investment_id is not None and (
+            not isinstance(self.investment_id, str) or not self.investment_id or
+            self.investment_id != self.investment_id.strip()
+        ):
+            raise ValueError("investment id must be a nonblank, unpadded string")
         _positive(self.shares, "shares")
         _positive(self.mark, "mark")
         if self.due_on < self.entered_on or self.mark_date < self.entered_on:
@@ -80,6 +86,13 @@ class Lot:
         if (len(self.dataset_sha256) != 64 or
                 any(c not in "0123456789abcdef" for c in self.dataset_sha256)):
             raise ValueError("lot needs a dataset SHA-256")
+
+    @property
+    def investment_key(self) -> tuple[str, str]:
+        """Legacy lots occupy independent slots without explicit-ID collisions."""
+        if self.investment_id is None:
+            return ("lot", self.lot_id)
+        return ("investment", self.investment_id)
 
 
 def successor_entitlement(

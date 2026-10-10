@@ -1874,6 +1874,28 @@ CI, substantive CodeRabbit, normal merge and exact isolated research deployment
 precede its one registered actual invocation. Independent verification of new
 outputs remains distinct from evidence-content review and final paired results.
 
+**BM operator decision: compulsory spin-off components retain one investment.**
+On 2026-10-10 the operator selected original-investment grouping for a surviving
+issuer plus compulsorily allotted new-company shares. All components inherit the
+original acquisition and due date and occupy one investment slot together.
+After due, sell each component only when it is delivered and has an executable
+opening under the existing proxy. Undelivered rights remain inventory; a partly
+sold investment retains its slot until all components/rights settle. Automatic
+allotment is not an optional new purchase or a new selection event. Preserve
+existing costs, taxes and analytical fractional-share conventions. The frozen
+pilot remains unchanged; extend the existing evidence-gated accounting/replay.
+
+This policy does not establish final LG terms or turn a price-return convention
+into permission to discard stock rights. Confirm final allocation, eligibility,
+rights/effectiveness and delivery/tradability dates and the event-specific
+raw/adjusted unit bridge. Keep attachment/record dates separate from later legal
+effectiveness where eligibility can differ. Preserve the original historical
+formation population; never exclude an issuer using its later split. Do not
+duplicate the original carried NAV across components or use future price levels
+to allocate pending value. Source-supported allocation or an explicit separately
+registered pending-value convention is required before actual accounting.
+Source/synthetic implementations are not event coverage or completed studies.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

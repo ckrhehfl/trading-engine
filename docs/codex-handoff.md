@@ -528,7 +528,12 @@ now reuses that full snapshot and recomputes each potential entry's conditional
 evidence bounds. It shortens no quote artifact and certifies no actual exit or
 no-event period. The pure paired connection preserves the original full path;
 shorter coverage requires the separately recomputed child proof and reviewed
-no-event evidence. Actual preflight execution remains pending review/deployment.
+no-event evidence. That registered preflight has now completed and passed its
+independent coordinate/package check after normal review, merge and isolated
+research deployment; see the BM ledger for its immutable receipts. The operator
+also selected original-investment grouping for compulsory spin-off components,
+as recorded in CLAUDE.md. Grouped slots are being connected to the existing book
+and cutoff selection while relevant official holding-period history is acquired.
 Prices/action coverage, actual paired replay connection
 and final frozen logged study remain three open performance groups. No actual
 D1/D2 performance study has completed. Next, use the registered metadata

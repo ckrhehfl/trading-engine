@@ -99,10 +99,11 @@ class FinalCashPayment:
 class ActivityBook:
     """Cash and distinct acquisition lots at a dated accounting cutoff.
 
-    Slots count lots, including unavailable entitlements. IDs are consumed only
-    from effectiveness/payment onward, even when no matching lot is held. Reuse
-    of a consumed ID is an error. Both event methods return a complete new book
-    only after every matching lot passes the existing accounting primitive.
+    Components of one original investment share a slot, including unavailable
+    entitlements. Legacy lots each occupy a slot. IDs are consumed only from
+    effectiveness/payment onward, even when no matching lot is held. Reuse of a
+    consumed ID is an error. Both event methods return a complete new book only
+    after every matching lot passes the existing accounting primitive.
     """
 
     cash: Decimal
@@ -116,16 +117,22 @@ class ActivityBook:
         _date(self.as_of, "book date")
         if type(self.lots) is not tuple or type(self.applied_event_ids) is not tuple:
             raise ValueError("lots and applied event ids must be immutable tuples")
+        investment_terms: dict[tuple[str, str], tuple[date, date, str]] = {}
         for lot in self.lots:
             if not isinstance(lot, Lot):
                 raise ValueError("inventory must contain Lot objects")
             _identifier(lot.lot_id, "lot id")
             _identifier(lot.code, "lot code")
+            if lot.investment_id is not None:
+                _identifier(lot.investment_id, "investment id")
             _snapshot(lot.dataset_sha256)
             for name in ("mark_date", "entered_on", "due_on", "available_on"):
                 _date(getattr(lot, name), f"lot {name}")
             if lot.entered_on > self.as_of or lot.mark_date > self.as_of:
                 raise ValueError("lot acquisition and mark cannot be after the book date")
+            terms = (lot.entered_on, lot.due_on, lot.dataset_sha256)
+            if investment_terms.setdefault(lot.investment_key, terms) != terms:
+                raise ValueError("investment components must share acquisition, due date and price snapshot")
         if len({lot.lot_id for lot in self.lots}) != len(self.lots):
             raise ValueError("lot ids must be unique")
         for event_id in self.applied_event_ids:
@@ -135,7 +142,7 @@ class ActivityBook:
 
     @property
     def slot_count(self) -> int:
-        return len(self.lots)
+        return len({lot.investment_key for lot in self.lots})
 
     @property
     def nav(self) -> Decimal:
