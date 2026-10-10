@@ -94,6 +94,19 @@ def test_replayed_failure_matches_every_pinned_field():
     assert module.replay_proofs(windows, loaded, bi, calendar, {"threshold": 3, "lookback": 60}) == bi["windows"]
 
 
+def test_original_fixed_threshold_decimal_scale_survives_receipt_replay():
+    """Equal numeric thresholds must preserve the original exact receipt strings."""
+    calendar, windows, loaded, bi = proof_fixture()
+    original = activity_failure(calendar, calendar[60], loaded.observations["111111"],
+        bb_required_observed_dates=calendar[:61], bb_frozen_dates=(), threshold=Decimal("3.0")).to_dict()
+    bi["windows"][0].update(original)
+    assert bi["windows"][0]["required_turnover"] == "300.0"
+    with pytest.raises(ValueError, match="restored BI proof differs"):
+        module.replay_proofs(windows, loaded, bi, calendar, {"threshold": 3, "lookback": 60})
+    assert module.replay_proofs(windows, loaded, bi, calendar,
+                               {"threshold": 3.0, "lookback": 60}) == bi["windows"]
+
+
 def test_population_metadata_references_resolve_exactly_without_losing_rows():
     shared = {"observation_date": "2020-03-01", "source": "synthetic service", "is_final": None}
     rows = [{"code": code, "capitalization_availability": shared,
@@ -147,16 +160,19 @@ def test_adjudication_requires_exact_window_population_and_unique_code():
 
 
 def test_fixed_specification_pins_source_snapshot_and_unchanged_predicate():
+    """Reject scope, threshold value/scale and promotion changes to the fixed study."""
     root = Path(__file__).resolve().parents[2]
     spec = json.loads((root / "configs/research/discovery/activity-normal-input-assembly-v1.json").read_text())
     reference = json.loads((root / saved.REFERENCE).read_text())
     module.validate_spec(spec, reference)
-    for corruption in ("snapshot", "threshold", "input_role", "mode", "promotion"):
+    for corruption in ("snapshot", "threshold", "threshold_scale", "input_role", "mode", "promotion"):
         changed = deepcopy(spec)
         if corruption == "snapshot":
             changed["inputs"]["bi_result"]["sha256"] = "f" * 64
         elif corruption == "threshold":
             changed["parameters"]["threshold"] = 2.99
+        elif corruption == "threshold_scale":
+            changed["parameters"]["threshold"] = 3
         elif corruption == "input_role":
             changed["inputs"]["scan_database"] = {"path": "/never/read/db"}
         elif corruption == "mode":
@@ -185,9 +201,11 @@ def runner_fixture(tmp_path, monkeypatch):
 
 
 def test_started_is_durable_before_first_read_and_failure_is_preserved(tmp_path, monkeypatch):
+    """A failed attempt retains its pre-read start, input manifest and safe frames."""
     root, output, runs, _ = runner_fixture(tmp_path, monkeypatch)
     attempted = []
     def reader(path):
+        """Check durable start before the synthetic reader deliberately fails."""
         attempted.append(path)
         assert [json.loads(line)["status"] for line in runs.read_text().splitlines()] == ["started"]
         assert (output / "source-manifest.json").exists()
@@ -198,6 +216,8 @@ def test_started_is_durable_before_first_read_and_failure_is_preserved(tmp_path,
     assert [json.loads(line)["status"] for line in runs.read_text().splitlines()] == ["started", "failed"]
     failure = json.loads((output / "failure.json").read_text())
     assert failure["automatic_retries"] == 0
+    assert failure["error_frames"][-1]["function"] == "require"
+    assert all(set(frame) == {"file", "line", "function"} for frame in failure["error_frames"])
     assert failure["actual_inputs_attempted"] == json.loads((output / "input-manifest.json").read_text())
     assert not (output / "result.json").exists()
 
@@ -254,7 +274,7 @@ def test_connected_evaluation_restores_proofs_and_runs_real_normal_screen(tmp_pa
     loaded = load_activity_failure_inputs(database, calendar, {code: dates})
     frozen = tuple(d for d in dates[:-1] if loaded.observations[code][d].state == "frozen")
     value = activity_failure(calendar, formation, loaded.observations[code],
-        bb_required_observed_dates=dates, bb_frozen_dates=frozen, threshold=Decimal(3)).to_dict()
+        bb_required_observed_dates=dates, bb_frozen_dates=frozen, threshold=Decimal("3.0")).to_dict()
     bh_row = {"formation": key[0], "code": code, "required_dates": len(dates),
               "proven_numeric_failures": [], "potentially_influential_unresolved": True}
     bb_row = {"formation": key[0], "code": code, "inventory_start": dates[0].strftime("%Y%m%d"),
@@ -293,13 +313,14 @@ def test_connected_evaluation_restores_proofs_and_runs_real_normal_screen(tmp_pa
     population = [{"formation": key[0], "code": code, "isin": fixture["isin"],
                    "capitalization": "5000000000000", "cap_pass": True, "negative_type": None}]
     def sources(*args):
+        """Supply one synthetic source join with the real raw-scope output boundary."""
         saved.write_exclusive(args[-1] / "raw-source-read-scope.json", b"{}")
         return {"population": population, "potential_sources": {key: source},
                 "formation_totals": {"trade_rows": 1}, "negative_type_controls": []}
     monkeypatch.setattr(module, "load_sources", sources)
     output = tmp_path / "output"
     output.mkdir()
-    parameters = {**fixture["params"]}
+    parameters = {**fixture["params"], "threshold": 3.0}
     if conflicting_source:
         with pytest.raises(ValueError, match="accepted issue source provenance mismatch"):
             module.evaluate_inputs({"inputs": declared, "parameters": parameters},

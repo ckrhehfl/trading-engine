@@ -108,3 +108,114 @@ attempt uses niceness 10, 768 MiB address-space limit, CPU 300 seconds and wall
 the complete new-output arithmetic evidence. A successful receipt must match
 all nine output hashes, durable start/completion, exact source/spec and boundary
 flags. These checks do not establish original-source truth or performance.
+
+## First publication, preserved failure and registered recovery
+
+PR #268's head `7ababd0217d069b784a4a23f2cba7214d13fb40e` received
+CodeRabbit APPROVED review `5476540487` at 2026-10-10T00:15:20Z, with
+zero inline findings or review threads. All nine checks passed, including both
+Java and Python jobs; Python PR job 38007837291 reported 5323 passed / three
+skipped. Normal squash merge `b097a040c48aa9416566389ec77b151c77623911`
+completed at 00:18:26Z. The isolated research checkout was clean at this merge
+at 00:18:57.610815Z. The collector stayed clean at unchanged operational commit
+`4ce85d714890b87f1a57ae89d4942660e41c0483`; no process or schedule changed.
+
+The first actual BL attempt failed with ValueError after all six fixed input
+hashes and the restored read scope, before raw-cache scope/body consumption.
+Its private output directory above and durable failed trial remain preserved.
+The failed specification SHA-256 is
+`064b1a276ea9c24b933fa363a5a3bd4bbcd52cc3e0bde94ec2736cf781862683`;
+failed source manifest SHA-256 is
+`16c5bacc5fcb53ce87dc3fb520d0ca899f9c17b092f315744d32990c0af7b309`.
+No price/return, API or current DB read occurred. No normal-input completion
+is claimed from this failure: four first-performance groups remain open and
+both completed performance counts remain zero.
+
+Independent code/synthetic reconstruction found that BL serialized the fixed
+threshold as integer 3, while the original BI specification used 3.0. Their
+numeric predicates agree, but Decimal receipt strings differ (`300` versus
+`300.0`), reproducing the exact proof-comparison ValueError. This is a strongly
+supported explanation, not a directly traced actual exception: the old failure
+receipt did not retain frames. The original BI producer is unchanged, and a
+past-version producer/current restore synthetic roundtrip agrees in five states.
+
+Restore literal 3.0 in the BL specification, reject its integer rewrite during
+validation, and convert the value to Decimal at the pure screen boundary. Keep
+every original proof-field comparison; no threshold, screen or evidence rule
+is weakened. Add value-free basename/function/line failure frames for a future
+diagnosis. Related focused WSL tests passed 182 cases; the connected test now
+also uses the actual 3.0 path. Fresh adversarial delta review found no actionable
+defect. Final new-head CI and CodeRabbit are required before recovery.
+
+After that connected-path change, the focused runner/assembly/restore and
+planning-index regression passed 212 tests / one skipped. Repository guardrail
+scan and Git whitespace checks passed. This is the new working-tree check;
+the earlier full CI count belongs specifically to PR #268's reviewed head.
+
+Register exactly one fresh reviewed recovery, with unchanged fixed inputs and
+study parameters, at
+`/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v1/run`.
+Freeze launcher `var/bl-recovery-publication.py`, SHA-256
+`5b18ae982145462c12c4980d85d2b307fcfecb30094394cd36d0afe277e14c9a`.
+It checks the preserved failed output pins and bounded canonical receipt
+metadata for its exact started/failed trial, then requires the new clean reviewed
+merge and unchanged collector before/after. Its private launcher receipts live
+under `large-liquid-bl-recovery-publication-20261010-v1`. The same 768 MiB,
+CPU 300 seconds, wall 900 seconds, niceness 10 and disk floor apply. Durable
+started precedes source consumption, with exclusive outputs and no automatic
+retry. This is a registered recovery, not an overwrite or hidden replacement.
+
+Freeze producer-free verifier `var/bl-output-verify.py`, SHA-256
+`ce90a9c77c2d2b8532f4c53fe837fb8c4623d853f49f80c1b9ae0791a29df78d`,
+whose 34 synthetic tests passed. One independent verification may read only
+the recovery's nine new declared outputs, never original market inputs, DB or
+experiment log. It reconstructs all restored medians, full source partition,
+period/source joins, metadata cutoffs and both signal arms. Its private durable
+registration precedes reads, bounded to 1 GiB / CPU 180 seconds / wall 300
+seconds. Arithmetic/provenance consistency does not certify historical actual
+publication, source truth, OHLC price basis, or strategy performance.
+
+### External helper provisioning and execution boundary
+
+These are operator-supplied private execution helpers, not files installed by
+the reviewed Git checkout. Their external source is this task's local WSL
+working copy at
+`/mnt/c/Users/minju/.codex/worktrees/0473/trading-engine/var/`:
+`bl-recovery-publication.py`, `bl-output-verify.py` and the verification wrapper
+`bl-independent-publication.py`. They were supplied through the task's patch
+tool and independently source-reviewed. The wrapper's SHA-256 is
+`bbbd45f6cc56258459a376a3b5cf3e5892639b90fb646bedd5b247c58a532601`.
+The other two pins are above. A fresh Git clone alone cannot supply these files
+and must not be represented as a complete launcher installation.
+
+Provisioning for this one execution uses that existing local source directory;
+there is no network script download or remote `var/` installation. Before each
+invocation, read the local helper bytes, require their SHA-256 equals the pin,
+compile those same checked bytes and execute them in memory; abort on absence
+or mismatch. Check all three helpers before the first recovery operation. From
+the local WSL worktree, the recovery helper receives `sync <reviewed-merge-sha>`
+once, then `run <same-reviewed-merge-sha>` once. Both normal merge and completed
+CI/CodeRabbit precede these commands. The independent wrapper runs once only
+after successful recovery. Never substitute a newly generated file on a hash
+mismatch or rerun an exclusive operation automatically.
+
+The recovery helper retains its exact supplied launcher/inline remote bytes
+as private `sync-launcher.py`, `run-launcher.py`, `sync-remote.py` and
+`run-remote.py` under the registered local publication root before SSH.
+The independent wrapper retains `launcher.py`, `verifier.py`, `remote.py` and
+its pin/scope registration under the registered private independent root before
+SSH. These are the recovery archive sources after publication; restoring them
+to the local source directory requires the same pin checks. Neither helper is
+executed from the GCP Git checkout: local SSH sends checked inline code, which
+requires the clean reviewed GCP research merge; the research calculation itself
+is the committed `research.activity_normal_preflight` module. The independent
+wrapper checks the verifier body pin again remotely before compilation, opens
+only the new recovery outputs and imports no producer. Private receipts, host
+credentials and original research logs are not installed into the checkout.
+
+CodeRabbit's external-provisioning finding was addressed in `110eff9` and its
+thread is resolved. Its separate nonblocking docstring-coverage warning is
+also addressed for the runner/test functions touched by this recovery. No
+calculation, source-read or evidence predicate changed in that follow-up.
+The final-head full re-review must finish after the published capacity ETA;
+a green rate-limited status alone does not satisfy the project merge gate.

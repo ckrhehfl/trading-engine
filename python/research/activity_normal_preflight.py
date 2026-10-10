@@ -12,6 +12,7 @@ from datetime import date, datetime
 from decimal import Decimal
 import os
 from pathlib import Path
+import traceback
 
 from research import activity_preflight as saved
 from research import activity_scope_preflight as prior
@@ -74,12 +75,14 @@ ADJUDICATION_SHA256 = INPUTS["bk_adjudication"]["sha256"]
 
 
 def validate_spec(spec: dict, reference: dict) -> None:
+    """Require the fixed study, immutable inputs and original threshold scale."""
     saved.require(spec.get("schema") == SCHEMA and spec.get("study_id") == SCHEMA
         and spec.get("mode") == "discovery_normal_input_assembly"
         and spec.get("promotion_allowed") is False
         and spec.get("reference_specification") == saved.REFERENCE
         and spec.get("window") == saved.WINDOW
         and spec.get("parameters") == reference["parameters"]
+        and type(spec["parameters"]["threshold"]) is type(reference["parameters"]["threshold"])
         and spec.get("inputs") == INPUTS, "fixed BL specification mismatch")
 
 
@@ -199,6 +202,7 @@ def population_audit(rows: list[dict]) -> dict:
 
 
 def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dict:
+    """Restore pinned proofs and assemble normal inputs without computing returns."""
     declared = spec["inputs"]
     values = {role: inputs.json(Path(declared[role]["path"]), declared[role]["sha256"], role)
               for role in ("calendar_manifest", "bb_result", "bh_result", "au_result", "bi_result",
@@ -232,6 +236,8 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     saved.require(set(sources["potential_sources"]) == potential,
                   "source join omitted or added potential windows")
     normal = []
+    screen_params = {**spec["parameters"],
+                     "threshold": Decimal(str(spec["parameters"]["threshold"]))}
     for key in sorted(potential):
         source = sources["potential_sources"][key]
         record = records[key[1]]
@@ -244,7 +250,7 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
         assembled = assemble_window(calendar=calendar, formation=day(key[0]), code=key[1],
             isin=source["isin"], listing_date=source["listing_date"], observations=observations,
             capitalization=source["capitalization"], liquidity=source["liquidity"],
-            accepted_record=record, params=spec["parameters"])
+            accepted_record=record, params=screen_params)
         assembled["formation_source_provenance"] = source["source_provenance"]
         normal.append(assembled)
     arms = {}
@@ -298,6 +304,7 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
 
 def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path,
                   *, reader=saved.read_private) -> dict:
+    """Log one frozen-input attempt and preserve exclusive success/failure evidence."""
     root = root.resolve()
     saved.require(Path.cwd().resolve() == root, "run from repository root")
     sources, raw, spec = saved.freeze_sources(root, spec_path, spec_validator=validate_spec)
@@ -305,6 +312,7 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
     inputs = saved.PinnedInputs(reader)
 
     def evaluate():
+        """Publish only unchanged source/runtime results; retain any partial failure."""
         created = False
         try:
             saved.private_directory(output.parent)
@@ -337,6 +345,9 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
                     saved.write_exclusive(output / "input-manifest.json", saved.encoded(inputs.manifest))
                 saved.write_exclusive(output / "failure.json", saved.encoded({"status": "failed",
                     "error_type": type(exc).__name__, "actual_inputs_attempted": inputs.manifest,
+                    "error_frames": [{"file": Path(frame.filename).name, "line": frame.lineno,
+                                      "function": frame.name}
+                                     for frame in traceback.extract_tb(exc.__traceback__)],
                     "source_manifest_sha256": saved.digest(saved.encoded(sources)),
                     "specification_sha256": saved.digest(raw),
                     "partial_package_preserved": True, "automatic_retries": 0}))
