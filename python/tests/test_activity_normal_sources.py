@@ -1,7 +1,7 @@
 """BL source joins use only hand-built responses; no saved market input is read."""
 from copy import deepcopy
 from dataclasses import replace
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -126,9 +126,19 @@ def test_complete_population_literal_controls_and_exact_separate_liquidity(harne
     assert "ACC_TRDVAL" in metadata.source
     assert source["source_provenance"]["historical_version_unknown"] is True
     provenance = source["krx_metadata_provenance"]
-    assert provenance == {"formation": DAY, "code": "111111", "source_observation_position": 2,
+    assert provenance == {"formation": DAY, "code": "111111", "source_observation_position": 3,
                           "source_response_sha256": receipts["aq"]["observations"][2]["response_sha256"],
-                          "source_row_position": 0, "source_service": "stk_isu_base_info"}
+                          "source_row_position": 1, "source_service": "stk_isu_base_info"}
+    by_code = {row["code"]: row for row in result["population"]}
+    assert {code: (by_code[code]["krx_metadata_provenance"]["source_observation_position"],
+                   by_code[code]["krx_metadata_provenance"]["source_row_position"])
+            for code in ("111111", "333333", "222222", "950160")} == {
+                "111111": (3, 1), "333333": (3, 2), "222222": (4, 1), "950160": (4, 2)}
+    # Capitalization and liquidity retain their existing, separate conventions.
+    assert source["source_provenance"]["capitalization"]["source_observation_position"] == 0
+    assert source["source_provenance"]["capitalization"]["source_row_position"] == 0
+    assert source["source_provenance"]["liquidity_rows"][0]["logical_number"] == 1
+    assert source["source_provenance"]["liquidity_rows"][0]["source_row_position"] == 0
     assert len(reads) == len(args[1].manifest) == 10
     assert all(entry["read_status"] == "hash_verified" for entry in args[1].manifest)
     scope = saved.strict_json((args[-1] / "raw-source-read-scope.json").read_bytes())
@@ -137,6 +147,41 @@ def test_complete_population_literal_controls_and_exact_separate_liquidity(harne
     assert scope["liquidity_sessions_by_formation"][DAY] == [d.strftime("%Y%m%d") for d in CALENDAR[:3]]
     assert {item["path"] for item in scope["aq_raw_responses"] + scope["ar_raw_responses"]} == set(map(str, reads))
     assert not any("KIS" in str(row) for row in source["source_provenance"]["liquidity_rows"])
+
+
+@pytest.mark.parametrize("formation_number,basic_observations", [(1, (3, 4)), (13, (51, 52))])
+def test_basic_metadata_matches_independent_one_based_ax_coordinates(formation_number, basic_observations):
+    """Literal AX coordinate expectations cover two markets and basic row order."""
+    day = saved.formation.DATES[formation_number - 1]
+    observed = datetime.strptime(day, "%Y%m%d").date()
+    calendar = tuple(observed + timedelta(days=offset) for offset in range(3))
+    rows = rows_for_day(day)
+    for market, second_code in enumerate(("333333", "444444")):
+        trade_service, basic_service = saved.probe.SERVICES[market], saved.probe.SERVICES[market + 2]
+        trade, basic = deepcopy(rows[trade_service][0]), deepcopy(rows[basic_service][0])
+        trade.update(ISU_CD=second_code, TDD_CLSPRC="1", MKTCAP="100000000")
+        basic.update(ISU_CD=f"KR7{second_code}003", ISU_SRT_CD=second_code)
+        rows[trade_service].append(trade)
+        rows[basic_service].append(basic)
+        rows[trade_service].reverse()  # Basic row coordinates must not follow trading row order.
+    offset = (formation_number - 1) * 4
+    positions = dict(zip(saved.probe.SERVICES, range(offset, offset + 4), strict=True))
+    observations = {service: {"response_sha256": f"{index + 1:064x}",
+                              "at": "2026-10-07T08:31:00+00:00"}
+                    for service, index in positions.items()}
+    population = {row["code"]: row for row in module._formation_rows(
+        day, rows, observations, positions, calendar)}
+    expected = {"111111": (basic_observations[0], 1), "333333": (basic_observations[0], 2),
+                "222222": (basic_observations[1], 1), "444444": (basic_observations[1], 2)}
+    for code, (observation, row_position) in expected.items():
+        provenance = population[code]["krx_metadata_provenance"]
+        assert (provenance["source_observation_position"], provenance["source_row_position"]) == (
+            observation, row_position)
+        assert provenance["source_response_sha256"] == f"{observation:064x}"
+    for market, code in enumerate(("111111", "222222")):
+        capital = population[code]["krx_capitalization_provenance"]
+        assert capital["source_observation_position"] == offset + market
+        assert capital["source_row_position"] == 1
 
 
 @pytest.mark.parametrize("code,field,value", [
