@@ -915,3 +915,122 @@ issue; its six related modules passed 194 synthetic cases. Root checks passed
 checks. These are overlapping test sets, not an additive unique-test count.
 The actual spin-off primitive, final evidence and coherent quote extension
 remain separate work; no split allotment or actual portfolio result is claimed.
+
+### Group foundation shipped; compulsory spin-off connected
+
+PR #274 received substantive CodeRabbit APPROVED on exact head
+`88c1879b72f60704b8f1d3463530ccdc53f27b39` at2026-10-10T06:49:32Z.
+All eight CI checks and genuine CodeRabbit success preceded normal squash merge
+`8296c7e992f7b5e15c0f6cf7299abe15d9e8b4dd` at06:51:52Z, with zero review threads.
+Reviewed/merged trees equal `0bdc550a9ddb42870618c32f935f8fd72cf67ed0`.
+The isolated research checkout reached that clean merge at06:53:05.457023Z.
+The collector remained clean at its unchanged recorded operational commit;
+no process, schedule, credential or database changed.
+
+The continuation adds one compulsory two-component spin-off to the same
+immutable book/replay. Both components inherit the original acquisition/due
+dates and investment slot. Delivered components exit independently after due;
+the remaining right retains its slot. Exact raw ratios and coherent raw/adjusted
+unit bridges determine quantities. A separately referenced carry convention
+partitions old value with an exact residual, without booking future availability
+price levels. Observable valid marks clear carried value. Analytical fractional
+shares retain the standing convention; net-asset weights are not market weights.
+
+Fresh adversarial review reproduced two defects before shipping. Bounded local
+Decimal aggregation now prevents a boundary-digit loss from pending NAV, without
+changing global context or the existing share/price-product convention. An
+eligible parent sale after rights attachment but before legal effect is now
+explicitly rejected: the minimal conversion does not model detached rights and
+must not silently discard them, defer a valid sale or invent market suspension.
+Same-day effect precedes sales. Repeated IDs, collisions and ambiguous same-day
+chains are refused. Both findings were independently rechecked after repair.
+
+The reviewed-declaration decoder links exact spin-off terms, three basis roles
+and retained/new issue identities to one coherent snapshot. Purchase cutoff and
+record day remain distinct. Carry evidence strength is separately linked and
+preserved. New-issue complete coverage and both retained/new availability anchors
+become explicit quote requirements. The package caller still refuses expanded
+requirements until a separately registered coherent artifact is supplied; new
+series cannot inherit an old quote hash. Pure decoding is not that artifact.
+
+### All34 bounded company-history leaves received
+
+Each actual read had fixed byte pins, exact report/issuer/window/leaf coordinates,
+limits and exclusive private outputs. The original34 targets were not reduced.
+Concrete metadata parser repairs handled issuer-listing badges and delayed DART
+child insertion; strict selected-leaf/ancestor/version checks remain. Unrelated
+financial TOC extents stay uncertified. Eleven previously unrequested wrappers
+were completed with11 requests, no retry/failure. Attachment-main refusals remain.
+
+The first seven leaves received bounded explicit inferred-no-compulsory-action
+content findings. The next batch stopped on a DART connection reset at original
+request14 after13 bodies, with12 readable texts and one LG parser refusal.
+The refusal was a Korean substring collision between a shareholder subject and
+later exchange wording. A fresh parser preserves all selected-node/document/
+heading/financial-sibling guards;19 synthetic cases pass. Its registered network0
+LG derivation contains829 lines/44,574 bytes, SHA-256
+`9a47a2271af48c8e425aa64437f6b9fd6b9761ad01c5cee05594e34fa51b43d0`.
+Old failure/raw receipts remain immutable.
+
+The no-response failed request received one separately registered manual second
+attempt, followed only by13 never-attempted requests. This continuation completed
+14 requests/responses/readable texts, zero failures/parser refusals/automatic
+retries, without re-requesting the20 received leaves. Result SHA-256
+`3cc85f41c9c86697ac3fd982e4418f279553f26be77c7bffaa50938c4ccd9208`, scope
+`04c11f0c5f6a1bd0ca56e53baf598743c21677ca15aaa094a4f299ec29c5b623`.
+All34 selected targets now have received/readable representations. Acquisition
+completeness is distinct from complete action coverage; content review continues.
+
+LG's official annual-history leaf receipt20220321001237/node5/dcm8485703,
+offset33135/length68808 directly confirms the executed May1,2021 spin-off,
+April30 allocation record, raw LG0.9115879/LX0.4420605 allocations per old share
+and LX relisting May27. Raw SHA-256
+`ec979e5cbe851efe59330779d3bd94d9efb3ae849017fb858c40879a9ef3d449`.
+Source: https://dart.fss.or.kr/report/viewer.do?rcpNo=20220321001237&dcmNo=8485703&eleId=5&offset=33135&length=68808&dtd=dart3.xsd
+This retrospective event evidence is not a formation-availability timestamp.
+Custodian delivery and the final eligible purchase cutoff are not directly
+attested by this leaf. The selected official LX guide independently supplies
+May27 trading: https://kind.krx.co.kr/external/2021/05/26/000323/20210526001048/99334.htm
+
+A concrete HYBE funding-right question was checked separately. Its official
+April19,2021 securities-registration report records April16 ex-rights and
+April19 allocation record: https://kind.krx.co.kr/external/2021/04/19/000094/20210419000163/10601.htm
+Potential entries April16(D1)/April19(D2) are on/after ex-rights; exclusion from
+that old subscription right is a dated source-based eligibility inference.
+Purchase-date comparison to the later record day alone would wrongly grant it.
+This finding does not authorize optional exercise or prove all-event absence.
+
+First-performance status remains three open groups, zero newly closed; actual
+completed D1/D2 studies remain zero/zero. Normal inputs, original holding-price
+diagnosis, independent checks and source prioritization are complete. Next:
+finish bounded content decisions, connect mixed per-entry requirements and a
+coherent component quote artifact, then freeze/run the existing logged pair.
+Historical publication/finality/vintage remain explicit assumptions/unknowns;
+D2 sensitivity does not prove them. Institution contact is not a blocker.
+
+### Received-history content decisions continued
+
+The next12 received leaves were fully reviewed with exact issuer/window/node
+coordinates and raw pins: 275,565 raw bytes and3,862 derived visible-text lines.
+Eleven initially supported bounded inferred-no-compulsory-action findings.
+Kakao initially remained unknown because its July1,2021 Melon separation did
+not specify the recipient of the new shares in the selected annual-history leaf.
+That initial decision is preserved rather than silently replaced.
+
+Two narrowly selected official pages resolved the particular ownership question.
+The corrected May27,2021 decision specifies a physical subsidiary split with all
+new shares owned by Kakao:
+https://kind.krx.co.kr/external/2021/05/27/000292/20210527000849/11345.htm
+The February25,2022 AGM notice records the executed July1 physical split and
+Kakao's acquisition of those shares, followed by the September1 subsidiary
+merger replacement:
+https://kind.krx.co.kr/external/2022/02/25/001588/20220225003185/00591.htm
+Together with the selected completed annual history, this supports an inferred
+no-compulsory-shareholder-allotment finding for the exact Kakao holding window.
+The12 final interval findings are inferred, not complete-source certification;
+the addendum identifies root's official-page review separately from the original
+leaf reviewer. Decision SHA-256
+`7c3a44cbae46b59095827044e9b727ae753e1ac8a231cb34f1a2e311dfc4ad60`.
+The first7 and these12 intervals now have content findings; LG has a confirmed
+relevant spin-off. The final14 received leaves remain in content review. This
+does not close a first-performance group or increment D1/D2 completed studies.

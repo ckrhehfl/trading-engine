@@ -10,10 +10,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal
+import json
 
 from research.activity_accounting import (
     FinalCashDistribution, Lot, PriceBasis, settle_final_cash,
-    successor_entitlement,
+    spin_off_entitlements, successor_entitlement, sum_decimal_values,
 )
 
 
@@ -96,13 +97,70 @@ class FinalCashPayment:
 
 
 @dataclass(frozen=True)
+class CompulsorySpinOff:
+    """Inspected two-component compulsory allotment with an explicit carry rule.
+
+    Final eligibility/ratios/delivery and the share-unit bridge remain evidence
+    obligations. carry_source identifies a registered valuation convention or
+    source-supported allocation; it does not certify market-value weights.
+    last_eligible_entry_on is a source-attested purchase cutoff, distinct from
+    the later record date; record-day entry alone does not establish rights.
+    """
+
+    event_id: str
+    retained_ratio: Decimal
+    new_ratio: Decimal
+    old_basis: PriceBasis
+    retained_basis: PriceBasis
+    new_basis: PriceBasis
+    last_eligible_entry_on: date
+    record_on: date
+    effective_on: date
+    retained_available_on: date
+    new_available_on: date
+    retained_carry_weight: Decimal
+    carry_source: str
+    carry_evidence_level: str
+    source: str
+
+    def __post_init__(self) -> None:
+        _identifier(self.event_id, "event id")
+        for name in ("retained_ratio", "new_ratio", "retained_carry_weight"):
+            value = getattr(self, name)
+            if not isinstance(value, Decimal) or not value.is_finite() or value <= 0:
+                raise ValueError(f"{name} must be a finite positive Decimal")
+        if self.retained_carry_weight >= 1:
+            raise ValueError("retained carry weight must be strictly below one")
+        for basis in (self.old_basis, self.retained_basis, self.new_basis):
+            _basis(basis)
+        for name in ("last_eligible_entry_on", "record_on", "effective_on", "retained_available_on", "new_available_on"):
+            _date(getattr(self, name), name)
+        if self.old_basis.code != self.retained_basis.code or self.new_basis.code == self.old_basis.code:
+            raise ValueError("spin-off needs retained old code and a distinct new code")
+        if len({basis.dataset_sha256 for basis in (self.old_basis, self.retained_basis, self.new_basis)}) != 1:
+            raise ValueError("spin-off bases must use the same price snapshot")
+        if not (self.old_basis.session < self.effective_on
+                and self.last_eligible_entry_on <= self.record_on <= self.effective_on
+                and self.effective_on <= min(self.retained_available_on, self.new_available_on)):
+            raise ValueError("invalid spin-off record/effective/availability dates")
+        if (self.retained_basis.session != self.retained_available_on
+                or self.new_basis.session != self.new_available_on):
+            raise ValueError("spin-off component bases must be anchored to their availability")
+        _identifier(self.carry_source, "carry source")
+        _identifier(self.source, "spin-off source")
+        if (not isinstance(self.carry_evidence_level, str)
+                or self.carry_evidence_level not in {"confirmed", "inferred", "assumed"}):
+            raise ValueError("carry evidence level must be explicit")
+
+
+@dataclass(frozen=True)
 class ActivityBook:
     """Cash and distinct acquisition lots at a dated accounting cutoff.
 
     Components of one original investment share a slot, including unavailable
     entitlements. Legacy lots each occupy a slot. IDs are consumed only from
     effectiveness/payment onward, even when no matching lot is held. Reuse of a
-    consumed ID is an error. Both event methods return a complete new book only
+    consumed ID is an error. Each event method returns a complete new book only
     after every matching lot passes the existing accounting primitive.
     """
 
@@ -126,6 +184,11 @@ class ActivityBook:
             if lot.investment_id is not None:
                 _identifier(lot.investment_id, "investment id")
             _snapshot(lot.dataset_sha256)
+            if lot.carried_value is not None and (
+                not isinstance(lot.carried_value, Decimal) or not lot.carried_value.is_finite()
+                or lot.carried_value <= 0
+            ):
+                raise ValueError("carried value must be a finite positive Decimal")
             for name in ("mark_date", "entered_on", "due_on", "available_on"):
                 _date(getattr(lot, name), f"lot {name}")
             if lot.entered_on > self.as_of or lot.mark_date > self.as_of:
@@ -147,7 +210,7 @@ class ActivityBook:
     @property
     def nav(self) -> Decimal:
         """Marked inventory plus cash; a carried mark is not an executable quote."""
-        return self.cash + sum((lot.shares * lot.mark for lot in self.lots), Decimal(0))
+        return sum_decimal_values((self.cash,) + tuple(lot.marked_value for lot in self.lots))
 
     def _check_session(self, event_id: str, session: date) -> None:
         _date(session, "processing session")
@@ -199,3 +262,47 @@ class ActivityBook:
         return replace(self, cash=cash, lots=tuple(remaining), as_of=session,
                        applied_event_ids=self.applied_event_ids + (event.event_id,)
                        if consumed else self.applied_event_ids)
+
+    def apply_spin_off(self, event: CompulsorySpinOff, *, session: date) -> ActivityBook:
+        """Keep both components in the original slot, atomically and once.
+
+        Legacy acquisitions receive separate deterministic investment IDs.
+        Existing explicit groups remain stable; generated component/group IDs
+        are refused if they collide with any current inventory identity.
+        """
+        if not isinstance(event, CompulsorySpinOff):
+            raise ValueError("an inspected CompulsorySpinOff is required")
+        self._check_session(event.event_id, session)
+        if session < event.effective_on:
+            return replace(self, as_of=session)
+        lot_ids = {lot.lot_id for lot in self.lots}
+        investment_keys = {lot.investment_key for lot in self.lots}
+        remaining = []
+        for lot in self.lots:
+            if lot.code != event.old_basis.code:
+                remaining.append(lot)
+                continue
+            identity = json.dumps((event.event_id, lot.lot_id), ensure_ascii=True, separators=(",", ":"))
+            new_lot_id = "spin-off-component:" + identity
+            if new_lot_id in lot_ids:
+                raise ValueError("spin-off component id collision")
+            lot_ids.add(new_lot_id)
+            investment_id = lot.investment_id
+            if investment_id is None:
+                investment_id = "spin-off-investment:" + identity
+                key = ("investment", investment_id)
+                if key in investment_keys:
+                    raise ValueError("spin-off investment id collision")
+                investment_keys.add(key)
+            remaining.extend(spin_off_entitlements(
+                lot, retained_ratio=event.retained_ratio, new_ratio=event.new_ratio,
+                old_basis=event.old_basis, retained_basis=event.retained_basis, new_basis=event.new_basis,
+                last_eligible_entry_on=event.last_eligible_entry_on,
+                record_on=event.record_on, effective_on=event.effective_on,
+                retained_available_on=event.retained_available_on, new_available_on=event.new_available_on,
+                retained_carry_weight=event.retained_carry_weight, carry_source=event.carry_source,
+                carry_evidence_level=event.carry_evidence_level, session=session, source=event.source,
+                investment_id=investment_id, new_lot_id=new_lot_id,
+            ))
+        return replace(self, lots=tuple(remaining), as_of=session,
+                       applied_event_ids=self.applied_event_ids + (event.event_id,))
