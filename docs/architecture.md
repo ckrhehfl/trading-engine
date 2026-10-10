@@ -248,6 +248,11 @@ identity date. Durable discovery start precedes credential or network access.
 It retains private original responses, exact Decimal text and per-target
 metadata; missing or inconsistent targets remain unresolved. Current retrieval
 does not certify historical availability, adjusted units, delivery or returns.
+`activity_basis_anchor_preflight` instead restores seven already pinned saved
+artifacts and their independent receipt links, composes the immutable quote
+inputs, and projects the three fixed raw/adjusted anchor pairs with exact
+Fraction ratios in both directions. Its logged output is a diagnostic rather
+than a basis certificate, a new API request or a performance result.
 
 ---
 

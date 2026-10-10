@@ -1278,3 +1278,55 @@ helpers passed 114 synthetic tests. Fresh review repaired a publication encoder
 that escaped non-ASCII typed TEXT differently from the producer; valid unresolved
 Unicode values now retain the same fingerprint bytes locally and remotely.
 These helper tests and reviews made no actual data, API, credential or DB read.
+
+### BP reviewed deployment and actual input diagnostics completed
+
+PR #277 completed substantive CodeRabbit review and all eight CI jobs before
+normal squash merge. The merged research code was deployed to the isolated GCP
+research checkout. The operational collector remained clean at its unchanged
+commit; no collector process, schedule or environment was changed.
+
+One preregistered quote-extension diagnostic requested 1,303 additional
+successor code/dates. All 1,303 were observed, with no requested absence. A
+separately registered independent verifier checked the nine outputs, minimal
+prior scope/verification/plan references and publication receipts. It did not
+reread the original typed audit or database and did not repeat the producer.
+Original values and their prior independent-verification limitation remain.
+
+One preregistered KRX raw-anchor diagnostic made exactly three requests. All
+four target extracts were observed: LG's April 28 and May 27, 2021 raw closes,
+LX's May 27 raw close, and LX's issue identity. The current response identifies
+LX's common issue as KR7383800000 and lists May 27, 2021 as LIST_DD. Current
+retrieval is not evidence of historical availability, revision vintage or
+custody delivery. Dates lacking an independently established observation date,
+available_at or finality remain null.
+
+The first raw-independent wrapper failed with PermissionError. Source inspection
+identified a cross-host path check that consulted WSL-only paths on GCP; that
+cause remains an inference because the failed transport reported only its error
+type. The failed source, protocol and receipts were preserved. A separately
+reviewed recovery uses lexical validation for foreign registration paths while
+retaining strict filesystem checks at actual local and remote IO. Root ran 54
+synthetic tests successfully, and a fresh reviewer separately exercised 23
+memory paths. The newly registered recovery independently verified the same
+nine metadata artifacts and three retained raw bodies, reconstructing all four
+extracts without new API, credential or database access. Raw bodies remain private.
+
+Exact byte pins, registered scopes, starts, failures and independent receipts
+remain in private research records. Source-content judgments, event-specific
+raw/adjusted units, final allotment eligibility/delivery and inclusive action
+coverage are separate obligations. These successful diagnostics compute neither
+books nor returns. First-performance condition groups remain three open and
+zero newly closed; completed actual D1/D2 studies remain zero/zero.
+
+Next, connect the three event basis coordinates to the immutable composite
+quote snapshot and finish consequential LG/LX action declarations. The existing
+mixed rule still keeps ordinary conditional bounds and original-end event
+requirements. A source-only component-lifetime proposal is being assessed as
+an alternative to irrelevant later-period evidence; it has not changed binding
+rules, shortened actual scope or supplied a completed study.
+
+The subsequent conditional component design and its implementation now live in
+CLAUDE.md and `rd-bq-large-liquid-component-lifetimes.md`. That design requires a
+logged, independently verified proof before final use; no actual scope has yet
+been shortened. The original diagnostic and all event/full quote inputs remain.
