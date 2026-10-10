@@ -222,6 +222,16 @@ missingness and requested coordinates without reopening the price database.
 `activity_timing_report` describes paired immutable book results with Decimal
 NAV/return/drawdown, session dispersion and separate signal/target/trade counts.
 It performs no loading, replay, trial logging or evidence certification.
+`activity_paired_replay` validates the original packages and reconnects those
+same components. Its conditional action scope applies ordinary child proofs per
+issue; an event or unresolved issue, including a successor also independently
+selected, keeps its original horizon. An ordinary lot surviving its proved exit
+stops reporting. `activity_quote_extension` composes separately validated,
+disjoint scan requests under a new quote identity, retaining both original
+fingerprints and receipt/provenance records. The optional pinned extension
+envelope supplies exactly the missing successor and basis coordinates; event
+adjusted-close anchors must agree with resolved requested composite observations.
+Composition is not a single source vintage or an economic unit certificate.
 
 ---
 
