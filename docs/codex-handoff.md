@@ -537,8 +537,9 @@ isolated research checkout. The continuation connects compulsory two-component
 allocation to the same book/replay and reviewed-action decoder, with original
 due dates, pending rights, explicit carry assumptions and exact NAV aggregation.
 Fresh review found and repaired rounding and detached-rights-sale defects.
-All34 fixed company-history leaves have been received; content decisions remain
-separate from acquisition. LG's actual raw ratios/record/effect/listing dates are
+All34 fixed company-history leaves have received content dispositions:33 bounded
+inferred no-compulsory-action intervals and one relevant LG spin-off. These are
+separate from executable declarations and source certification. LG's actual raw ratios/record/effect/listing dates are
 confirmed in the selected official annual-history leaf. Delivery and event-specific
 price-unit connections remain separate evidence obligations.
 Prices/action coverage, actual paired replay connection

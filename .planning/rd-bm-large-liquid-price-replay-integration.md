@@ -1034,3 +1034,37 @@ leaf reviewer. Decision SHA-256
 The first7 and these12 intervals now have content findings; LG has a confirmed
 relevant spin-off. The final14 received leaves remain in content review. This
 does not close a first-performance group or increment D1/D2 completed studies.
+
+The final14 selected leaves have now passed private-file/pin checks, exact
+workload/result-coordinate comparison and full raw/readable visible-text
+comparison. All14 content decisions are bounded inferred-no-compulsory-action
+findings. Parent-surviving subsidiary absorption, treasury-share cancellation,
+subsidiary splits and controlling-holder block deals retain explicit named
+no-op dispositions. The shorter277810/443060 histories retain their stated
+source limitations. Decision document:45,610 bytes, SHA-256
+`c4ae7586b2f983ab6374d986abb78583d894cd9d976e5a073867e94466097bd9`.
+Thus all34 fixed targets have content dispositions:33 inferred ordinary
+intervals and one confirmed relevant LG spin-off. These are not yet executable
+coverage declarations, coherent event price bases or completed performance runs.
+
+Source-only mixed-scope design review found the current paired seam's global
+all-no-event condition expands unrelated ordinary evidence whenever any event
+exists. The minimum next connection must retain original18-package validation
+and exact child-proof recomputation, then validate per-entry mixed requirements.
+Under the current binding contract relevant events retain original-end fallback.
+A shorter proven component-group lifecycle would be an explicit further
+contract, not permission implied by these ordinary findings. No deferred-entry
+queue exists: unfilled targets do not acquire a later unregistered entry/due.
+An independent later formation remains a separate potential entry. New coherent
+quotes must preserve original typed values/states and create a distinct hash
+shared by lots, bases and action declarations. New series cannot inherit the
+old BM identity. Final replay inventory must remain inside the validated bounds
+before a paired report is produced. Source-only design SHA-256
+`6998526a1b8eefd17a9877fad921e0ea1fa348330c1f76c9f16607c77f9fc05f`.
+
+A targeted official KRX notice corroborates LG's May27,2021 changed listing:
+https://kind.krx.co.kr/external/2021/05/27/000504/20210527001079/70874.htm
+The notice separately starts LG futures on May28; that separate instrument date
+is not used for stock availability or broker delivery. Remaining uncertainty
+continues to be event-specific unit/delivery and coherent-input connection,
+with three first-performance groups open, zero newly closed and D1/D2 zero/zero.
