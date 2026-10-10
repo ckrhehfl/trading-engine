@@ -1732,6 +1732,23 @@ block this diagnostic; it applies no events, computes no returns and closes no
 performance study. Actual prices still require separately frozen committed
 pins, reviewed merge, resources and independent verification before execution.
 
+**BM source-only replay-input continuation while its actual price diagnostic
+awaits review.** Add one pure in-memory restoration seam for the successful
+holding-price audit and its read scope. The caller must separately pin bytes and
+verify the complete BM package/independent receipt. Restore the exact existing
+bounded reader's scan shape from its retained typed fingerprint and scan
+metadata; recheck read-scope/quote/activity identifiers and requested coordinates
+before passing it through `adapt_holding_scan`. Do not reread a database,
+reinterpret unresolved values, reconstruct the source population from prices or
+invent an empty event ledger. Cash-only output restores None without an invented
+snapshot. Reject conflicting rows, receipt metadata, scope or type identities.
+Synthetic producer-to-audit-to-restored-adapter checks must preserve every
+typed value, row provenance, missingness/state and panel boundary, including
+empty unions and tampered evidence. This seam establishes consistency of
+verified diagnostic evidence, not source truth, event/basis certification or
+actual replay completion. Actual events, book execution and paired metrics
+retain their separately frozen input protocol after the price diagnostic.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

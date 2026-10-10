@@ -352,3 +352,32 @@ frozen/locked/absent/unresolved states, empty-union no-scan/no-quote behavior an
 state tampering even with internally reissued output hashes. The verifier's
 stdlib-only import boundary is also checked. These integration tests use
 synthetic evidence and do not certify actual-package compatibility or prices.
+
+### Pure restoration seam batched before the actual diagnostic review
+
+Implemented `research.activity_holding_restore.restore_holding_inputs` while
+the actual diagnostic registration awaited substantive CodeRabbit review.
+It reconstructs the exact bounded reader scan from the retained holding audit,
+rechecks the canonical read-scope hash and caller-supplied activity/quote pins,
+then reuses `adapt_holding_scan`. Audit rows, state/issues, coordinate sidecars
+and projection counts must agree. The caller still verifies original package
+bytes, source links and the independent receipt separately; this helper is not
+a second whole-package verifier. It opens no file or database, supplies no
+event declaration and computes no performance. Empty scope retains None scan
+and no quote snapshot. No actual research input was consumed in this work.
+
+The actual producer's synthetic audit restores the complete immutable adapter
+result, including exact Decimal text, TEXT/INTEGER/REAL/BLOB/NULL identity,
+requested absence, unrequested coordinates, frozen/locked bars, unresolved
+observations and row provenance. Newly pinned contradictory storage identity,
+scope/metadata/row mutations and invented cash-only evidence are rejected.
+The worker ran 51 new restoration cases plus 46 existing adapter cases:
+97 passed in 7.83 seconds. Repository scanner and whitespace checks passed.
+A separate fresh source-only adversarial review reported no actionable finding.
+The helper is batched into this existing diagnostic PR before its substantive
+review rather than creating another review queue. Actual BM price consumption,
+events/basis accounting and D1/D2 performance remain unexecuted.
+
+The main-agent focused run added the planning-index regression to those two
+modules: 127 passed / one skipped in 8.41 seconds. This is synthetic source
+validation, not an actual audit restoration or price diagnostic.

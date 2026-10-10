@@ -495,6 +495,10 @@ and execution protocol are being registered in BM's ledger; implementation
 alone is not an actual price read or performance result. Publication/vintage
 uncertainty remains an explicitly assumed paired-timing sensitivity question,
 not an external-contact blocker. The operational collector remains unchanged.
+The same registration PR also adds a pure audit-to-holding-input restoration
+seam, tested against actual producer code over synthetic data. It avoids a
+second database read when verified price evidence is later supplied to replay;
+it does not establish event coverage or complete a performance study.
 
 ## Where the previous work stopped
 
