@@ -119,3 +119,23 @@ cases have distinct execution receipts; neither number is described as CI for
 an as-yet-unpublished BM head. The first non-login wrapper invocation could not
 locate uv; specifying the already installed WSL executable path fixed the
 invocation without installing or changing dependencies.
+
+## Publication sequencing update
+
+BL PR #269 completed actual review/normal merge, but its one actual recovery
+failed at the inherited basic-coordinate join; both failures remain preserved
+in BL's ledger. PR #270 repairs that exact join and registers fresh v2 helpers.
+CodeRabbit's automatic response at 2026-10-10T01:58:04Z reported the next
+included review in 34 minutes, with one included review per hour. No paid
+overage or subscription change is authorized or requested.
+
+Revise the earlier separate-PR sequencing: retain BL repair and this pure BM
+engineering package as separate commits, but publish them together in PR #270
+for one substantive final-head review. This avoids another capacity wait for
+the already tested next input seam. Both parts remain separately inspectable.
+The actual GCP operation remains only BL's registered recovery-v2 and its
+independent output verification; shipping BM source does not authorize actual
+BM price/action reads or imply replay/performance completion. Successful BL
+output pins and a separately frozen actual-input protocol remain necessary.
+The four open first-performance groups and zero D1/D2 performance counts are
+unchanged by this publication sequencing choice.
