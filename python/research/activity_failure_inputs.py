@@ -231,6 +231,187 @@ def _observation(raw: tuple | None) -> tuple[str, Decimal | None, tuple[str, ...
     return ("frozen" if opening == high == low == close and turnover == 0 else "observed"), turnover, ()
 
 
+def _snapshot_record(value: object, keys: set[str], name: str) -> dict:
+    if type(value) is not dict or set(value) != keys:
+        raise ValueError(f"{name} must have the exact Task BI snapshot fields")
+    return value
+
+
+def _snapshot_date(value: object) -> date:
+    if type(value) is not str:
+        raise ValueError("snapshot dates must be canonical ISO date text")
+    try:
+        day = date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("invalid snapshot date") from exc
+    if day.isoformat() != value:
+        raise ValueError("snapshot dates must be canonical ISO date text")
+    return day
+
+
+def _snapshot_values(state: object, issues: object, value: object) -> tuple[str, tuple[str, ...], Decimal | None]:
+    if (type(state) is not str or state not in {"observed", "frozen", "missing", "null", "invalid"}
+            or type(issues) is not list or any(type(issue) is not str for issue in issues)):
+        raise ValueError("invalid snapshot observation state/issues")
+    if state in {"observed", "frozen"}:
+        if issues or type(value) is not str:
+            raise ValueError("resolved snapshot observations need exact Decimal turnover text and no issues")
+        try:
+            turnover = Decimal(value)
+        except InvalidOperation as exc:
+            raise ValueError("invalid snapshot Decimal turnover") from exc
+        if (not turnover.is_finite() or turnover < 0 or str(turnover) != value
+                or state == "frozen" and turnover != 0):
+            raise ValueError("invalid snapshot Decimal turnover or frozen state")
+        return state, (), turnover
+    if value is not None:
+        raise ValueError("unresolved snapshot observations cannot carry turnover")
+    if state == "missing":
+        if issues != ["absent_requested_row:unknown_cause"]:
+            raise ValueError("missing snapshot rows must retain their unknown cause")
+    else:
+        fields = READ_COLUMNS[1:]
+        allowed = {f"{kind}:{field}": index for index, field in enumerate(fields)
+                   for kind in ("null", "invalid")}
+        allowed["invalid:ohlc_bounds"] = len(fields)
+        positions = [allowed.get(issue, -1) for issue in issues]
+        if (not issues or -1 in positions
+                or any(a >= b for a, b in zip(positions, positions[1:]))
+                or (state == "invalid") != any(issue.startswith("invalid:") for issue in issues)
+                or "invalid:ohlc_bounds" in issues
+                and any(position < len(fields) - 1 for position in positions)):
+            raise ValueError("snapshot issues contradict the observation state or field order")
+    return state, tuple(issues), None
+
+
+def restore_activity_failure(
+    snapshot: dict, calendar: tuple[date, ...],
+    requested_dates: Mapping[str, tuple[date, ...]],
+) -> ActivityFailureInputs:
+    """Restore only the exact saved BI receipt, without opening any source.
+
+    Validate the original reader's complete schema, scope, row/provenance join,
+    progress bounds and fixed assumed availability. The upstream typed-row hash
+    is preserved, not recomputed: this turnover-only receipt has no raw OHLC or
+    SQLite storage types with which to reproduce or certify that hash.
+    """
+    scope = _scope(calendar, requested_dates)
+    fixed = {
+        "schema": "task-bi-activity-failure-snapshot-v1",
+        "fingerprint_scope": "typed consumed rows, exact requested union, panel and progress",
+        "whole_database_hash": False,
+        "original_source_vintage_certified": False,
+        "snapshot_received_at_meaning": "local snapshot receipt, not original row retrieval",
+        "progress_counts_recomputed_from_prices": False,
+        "requested_rows_checked_against_progress": True,
+    }
+    _snapshot_record(snapshot, set(fixed) | {
+        "dataset_sha256", "snapshot_received_at", "read_columns", "panel", "read_scope",
+        "progress", "fetched_row_count", "missing_row_count", "row_states", "row_provenance",
+    }, "snapshot")
+    for key, expected in fixed.items():
+        if type(snapshot[key]) is not type(expected) or snapshot[key] != expected:
+            raise ValueError(f"invalid Task BI snapshot {key}")
+    digest = snapshot["dataset_sha256"]
+    if type(digest) is not str or re.fullmatch(r"[0-9a-f]{64}", digest) is None:
+        raise ValueError("snapshot dataset_sha256 must be an exact lowercase SHA-256")
+    receipt = snapshot["snapshot_received_at"]
+    if type(receipt) is not str:
+        raise ValueError("snapshot receipt must be an aware canonical UTC timestamp")
+    try:
+        received_at = datetime.fromisoformat(receipt)
+    except ValueError as exc:
+        raise ValueError("invalid snapshot receipt timestamp") from exc
+    if received_at.utcoffset() != timezone.utc.utcoffset(None) or received_at.isoformat() != receipt:
+        raise ValueError("snapshot receipt must be an aware canonical UTC timestamp")
+    columns = snapshot["read_columns"]
+    if type(columns) is not list or columns != list(READ_COLUMNS):
+        raise ValueError("snapshot must retain the exact Task BI read columns")
+    panel = _snapshot_record(snapshot["panel"], {"id", "start", "end"}, "snapshot panel")
+    if (type(panel["id"]) is not int or panel["id"] != 1
+            or panel["start"] != PANEL_START.isoformat() or panel["end"] != PANEL_END.isoformat()):
+        raise ValueError("snapshot must retain the exact Task BI spent panel")
+    saved_scope = snapshot["read_scope"]
+    if type(saved_scope) is not list or len(saved_scope) != len(scope):
+        raise ValueError("snapshot must retain the exact requested code/date scope")
+    for saved, (code, days) in zip(saved_scope, scope):
+        _snapshot_record(saved, {"code", "dates"}, "snapshot read scope")
+        if (saved["code"] != code or type(saved["dates"]) is not list
+                or tuple(_snapshot_date(day) for day in saved["dates"]) != days):
+            raise ValueError("snapshot must retain the exact requested code/date scope")
+    saved_progress = snapshot["progress"]
+    if type(saved_progress) is not list or len(saved_progress) != len(scope):
+        raise ValueError("snapshot needs exactly one progress row per requested code")
+    progress = []
+    for saved, (code, _) in zip(saved_progress, scope):
+        _snapshot_record(saved, {"code", "first_date", "last_date", "bars", "frozen", "status",
+                                 "fetched_at", "fetched_at_meaning"}, "snapshot progress")
+        if (saved["code"] != code or saved["fetched_at_meaning"]
+                != "collector progress receipt; row retrieval remains unknown"):
+            raise ValueError("snapshot progress code/receipt meaning disagrees")
+        progress.append(_progress(code, [(
+            _snapshot_date(saved["first_date"]).strftime("%Y%m%d"),
+            _snapshot_date(saved["last_date"]).strftime("%Y%m%d"),
+            saved["bars"], saved["frozen"], saved["status"], saved["fetched_at"],
+        )]))
+    keys = tuple((code, day) for code, days in scope for day in days)
+    saved_states, provenance = snapshot["row_states"], snapshot["row_provenance"]
+    if (type(saved_states) is not list or type(provenance) is not list
+            or len(saved_states) != len(keys) or len(provenance) != len(keys)):
+        raise ValueError("snapshot needs exactly one state and provenance per requested row")
+    positions = {day: index for index, day in enumerate(calendar)}
+    policy = SessionLagPolicy(1)
+    available = {day: policy.selection_at(calendar, positions[day]) for day in {day for _, day in keys}}
+    observations = {code: {} for code, _ in scope}
+    states, fetched = [], {code: 0 for code, _ in scope}
+    bounds = {row.code: row for row in progress}
+    for (code, day), saved, source in zip(keys, saved_states, provenance):
+        _snapshot_record(saved, {"code", "observation_date", "state", "issues"}, "snapshot row state")
+        _snapshot_record(source, {
+            "code", "state", "issues", "turnover", "observation_date", "available_at",
+            "retrieved_at", "source", "is_final", "data_vintage", "evidence_level",
+            "source_public_available_at", "availability_policy", "evidence_reference", "snapshot_sha256",
+        }, "snapshot row provenance")
+        if (saved["code"] != code or source["code"] != code
+                or _snapshot_date(saved["observation_date"]) != day
+                or _snapshot_date(source["observation_date"]) != day
+                or saved["state"] != source["state"] or saved["issues"] != source["issues"]):
+            raise ValueError("snapshot state/provenance must join the exact requested row once")
+        state, issues, turnover = _snapshot_values(source["state"], source["issues"], source["turnover"])
+        if type(saved["issues"]) is not list:
+            raise ValueError("snapshot row issues must be a list")
+        expected_metadata = {
+            "available_at": available[day].isoformat(), "retrieved_at": "unknown", "source": _SOURCE,
+            "is_final": None, "data_vintage": None, "evidence_level": "assumed",
+            "source_public_available_at": None, "availability_policy": _POLICY,
+            "evidence_reference": f"Task BI registered snapshot sha256:{digest}", "snapshot_sha256": digest,
+        }
+        for key, expected in expected_metadata.items():
+            if type(source[key]) is not type(expected) or source[key] != expected:
+                raise ValueError(f"snapshot row has conflicting Task BI provenance: {key}")
+        metadata = AvailabilityMetadata(
+            observation_date=day, available_at=available[day], retrieved_at="unknown", source=_SOURCE,
+            is_final=None, data_vintage=None, evidence_level="assumed", availability_policy=_POLICY,
+            evidence_reference=expected_metadata["evidence_reference"],
+        )
+        if state != "missing":
+            if not bounds[code].first_date <= day <= bounds[code].last_date:
+                raise ValueError("restored observation is outside its scan_progress bounds")
+            fetched[code] += 1
+            if fetched[code] > bounds[code].bars:
+                raise ValueError("restored row count exceeds full-code scan_progress bars")
+        observations[code][day] = ScreenObservation(state, turnover, None, metadata)
+        states.append(ActivityFailureRowState(code, day, state, issues, metadata, turnover))
+    fetched_count, missing_count = sum(fetched.values()), sum(row.state == "missing" for row in states)
+    for key, expected in (("fetched_row_count", fetched_count), ("missing_row_count", missing_count)):
+        if type(snapshot[key]) is not int or snapshot[key] != expected:
+            raise ValueError(f"snapshot {key} disagrees with its exact row states")
+    restored = ActivityFailureSnapshot(digest, received_at, scope, tuple(progress), tuple(states),
+                                       fetched_count, missing_count)
+    return ActivityFailureInputs(MappingProxyType({code: MappingProxyType(rows)
+                                                  for code, rows in observations.items()}), restored)
+
+
 def load_activity_failure_inputs(
     scan_path: Path, calendar: tuple[date, ...],
     requested_dates: Mapping[str, tuple[date, ...]],

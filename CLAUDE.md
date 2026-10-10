@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 166 documents,
+them. `.planning/README.md` carries an index of all 167 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1631,6 +1631,40 @@ Reviewed committed source/specification and durable start precede all actual
 inputs. No API, classification/price-basis certificate, event application,
 selection or return calculation is part of this diagnostic. Its exact protocol,
 pins, private exclusive output and independent-verification boundary are in BK.
+
+**Next execution design — Task BL, before actual input reads.** Connect the
+accepted bounded operating periods to the exact normal-observation screen,
+preserving the complete dated formation population and every proven failure
+and negative-type control. Restore activity observations only from the pinned
+BI result, validate its complete read scope/provenance and re-evaluate its
+numeric proofs. Preserve its upstream typed snapshot identifier without
+pretending the saved turnover-only output can reconstruct raw OHLC hashing.
+Do not substitute BK's later snapshot. Use the saved official KRX formation
+envelopes for full source keys, exact capitalization and literal negative-type
+evidence, and the fixed prior-session liquidity envelopes for remaining possible
+windows; ACC_TRDVAL remains separate from KIS activity turnover.
+
+The original formation keys must partition exactly into cap failures, BH and
+BI proven failures, explicit negative-type controls and remaining normal-screen
+windows. Unknown or conflicting source types are errors, not exclusions.
+For each remaining window require exact formation/code/ISIN agreement with BK's
+accepted ledger, formation-known positive evidence, bounded period coverage of
+every consumed baseline session and the listing bound. Construct one unambiguous
+half-open IdentityPeriod per window; do not reset for an ordinary rename or
+market move. Reuse the exact screen calculations under both fixed timing arms,
+retaining assumed availability and unknown actual source publication separately.
+No holding-price fabrication, action application or performance calculation is
+part of this input assembly. Do not turn the negative-type controls into a
+portfolio comparator or request normal/holding data for their proven exclusions.
+
+Register the precise immutable input pins/read scope, reviewed committed code
+and specification before market reads; durable start, exclusive private output,
+independent verification and normal CI/CodeRabbit/merge precede isolated GCP
+execution. The source-only engineering schema read is limited to the existing
+BK adjudication ledger `var/bk-period-adjudication.json`, SHA-256
+`2c6f1fab960bf5214fe0a176b20ffee2207e4d10844c23b632a9cfebe1bef893`;
+it may inspect keys and one accepted decision, not any saved market body.
+The actual-start ledger is `.planning/rd-bl-large-liquid-normal-input-assembly.md`.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
