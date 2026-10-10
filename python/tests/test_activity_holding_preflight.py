@@ -109,6 +109,7 @@ def fixture(tmp_path, monkeypatch, *, cash=False, mutate=None):
 
 
 def statuses(runs):
+    """Read status order from the temporary synthetic trial ledger."""
     return [json.loads(line)["status"] for line in runs.read_text().splitlines()]
 
 
@@ -157,14 +158,17 @@ def test_full_receipt_and_raw_roles_match_exact_internal_manifest(corruption):
 
 
 def test_durable_start_precedes_every_input_and_one_exact_read_only_scan(tmp_path, monkeypatch):
+    """Require durable registration and exact scope before one read-only synthetic scan."""
     root, output, runs, spec, store, _, calendar = fixture(tmp_path, monkeypatch)
     original, trace, connections = sqlite3.connect, [], []
     before = Path(spec["inputs"]["scan_database"]["path"]).read_bytes()
     def reader(path):
+        """Assert durable start and source receipts precede each synthetic input read."""
         assert statuses(runs) == ["started"]
         assert (output / "specification.json").exists() and (output / "source-manifest.json").exists()
         return store[path]
     def connect(*args, **kwargs):
+        """Trace the single read-only connection after the exact scope is persisted."""
         assert args[0].endswith("?mode=ro") and kwargs["uri"] is True
         assert statuses(runs) == ["started"] and not (output / "result.json").exists()
         scope = json.loads((output / "read-scope.json").read_text())
@@ -198,6 +202,7 @@ def test_durable_start_precedes_every_input_and_one_exact_read_only_scan(tmp_pat
 
 
 def test_cash_only_reads_no_database_and_has_no_quote_fingerprint(tmp_path, monkeypatch):
+    """Publish empty cash-only diagnostics without opening a database or inventing a pin."""
     root, output, runs, _, store, _, _ = fixture(tmp_path, monkeypatch, cash=True)
     monkeypatch.setattr(prices, "load_scan", lambda *a: pytest.fail("cash-only scope opened quotes"))
     module.run_preflight(root, root / "spec.json", output, runs, reader=store.__getitem__)
@@ -209,12 +214,15 @@ def test_cash_only_reads_no_database_and_has_no_quote_fingerprint(tmp_path, monk
 
 
 def test_default_reader_raises_only_population_cap(tmp_path, monkeypatch):
+    """Route only the population audit through the larger bounded reader."""
     root, output, runs, spec, store, _, _ = fixture(tmp_path, monkeypatch, cash=True)
     population, ordinary = [], []
     def population_reader(path):
+        """Record population reads while returning fabricated pinned bytes."""
         population.append(path)
         return store[path]
     def ordinary_reader(path):
+        """Record ordinary reads while returning fabricated pinned bytes."""
         ordinary.append(path)
         return store[path]
     monkeypatch.setattr(module, "_read_population", population_reader)
@@ -226,6 +234,7 @@ def test_default_reader_raises_only_population_cap(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("corruption", [None, "mode", "oversize"])
 def test_population_reader_is_private_and_bounded(tmp_path, corruption):
+    """Reject public permissions or oversized temporary population files."""
     private = tmp_path / "private"
     private.mkdir(mode=0o700)
     path = private / "population.json"
@@ -244,6 +253,7 @@ def test_population_reader_is_private_and_bounded(tmp_path, corruption):
 
 @pytest.mark.parametrize("corruption", ["pin", "receipt_pin", "receipt_file", "receipt_package", "receipt_verified", "receipt_boundary"])
 def test_corrupt_pins_or_independent_receipt_fail_before_scan(tmp_path, monkeypatch, corruption):
+    """Refuse invalid pins or independent receipts before any quote scan."""
     root, output, runs, spec, store, _, _ = fixture(tmp_path, monkeypatch)
     role = "bl_verification" if corruption != "pin" else "bl_result"
     item = spec["inputs"][role]
@@ -270,7 +280,9 @@ def test_corrupt_pins_or_independent_receipt_fail_before_scan(tmp_path, monkeypa
 @pytest.mark.parametrize("corruption", ["manifest", "source_spec", "restored_pin", "restored_dates", "BL_params",
     "BJ_schema", "BJ_calendar", "BJ_end", "BJ_bound", "late_metadata", "signal", "audit_hash"])
 def test_repinned_internal_disagreement_cannot_reach_database(tmp_path, monkeypatch, corruption):
+    """Reject internal package disagreement even when outer byte pins are refreshed."""
     def mutate(data, bj):
+        """Introduce one synthetic package disagreement before repinning the fixture."""
         if corruption == "manifest": data["input-manifest.json"][0]["expected_sha256"] = "0" * 64
         elif corruption == "source_spec": data["source-manifest.json"]["files"][0]["path"] = "other.json"
         elif corruption == "restored_pin": data["restored-activity-audit.json"]["upstream_dataset_sha256"] = "0" * 64
@@ -297,6 +309,7 @@ def test_repinned_internal_disagreement_cannot_reach_database(tmp_path, monkeypa
 
 @pytest.mark.parametrize("corruption", ["parameters", "threshold_type", "study", "window", "reference", "roles", "pin", "columns", "mode", "relative", "package_path"])
 def test_source_only_specification_validator_freezes_shapes_and_parameters(tmp_path, monkeypatch, corruption):
+    """Reject altered specification roles, shapes, bounds or fixed parameters."""
     _, _, _, spec, _, _, _ = fixture(tmp_path, monkeypatch)
     reference = {"parameters": deepcopy(spec["parameters"])}
     module.validate_spec(spec, reference)
@@ -316,6 +329,7 @@ def test_source_only_specification_validator_freezes_shapes_and_parameters(tmp_p
 
 
 def test_source_drift_preserves_scope_audit_and_value_free_failure(tmp_path, monkeypatch):
+    """Preserve partial diagnostics and value-free failure frames after source drift."""
     root, output, runs, spec, store, frozen, _ = fixture(tmp_path, monkeypatch)
     sources = iter([frozen, {**frozen, "code_version": "b" * 40}])
     monkeypatch.setattr(saved, "freeze_sources", lambda *a, **kw: (next(sources), saved.encoded(spec), spec))
@@ -327,6 +341,7 @@ def test_source_drift_preserves_scope_audit_and_value_free_failure(tmp_path, mon
 
 
 def test_existing_output_is_preserved_without_reads(tmp_path, monkeypatch):
+    """Refuse an existing output directory without consuming synthetic inputs."""
     root, output, runs, _, _, _, _ = fixture(tmp_path, monkeypatch)
     output.mkdir(mode=0o700)
     sentinel = output / "sentinel"
@@ -338,6 +353,7 @@ def test_existing_output_is_preserved_without_reads(tmp_path, monkeypatch):
 
 @pytest.mark.parametrize("alias", ["input_log", "source_log", "input_output", "checkout_output", "output_log"])
 def test_write_boundaries_fail_before_start_or_input_reads(tmp_path, monkeypatch, alias):
+    """Reject unsafe output boundaries before trial registration or input reads."""
     root, output, runs, spec, _, _, _ = fixture(tmp_path, monkeypatch)
     if alias == "input_log": runs = Path(spec["inputs"]["bl_result"]["path"])
     elif alias == "source_log": runs = root / "python/synthetic.py"

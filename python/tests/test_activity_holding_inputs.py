@@ -69,6 +69,7 @@ def resign(scan):
 
 
 def test_requirements_cover_both_arm_entries_through_end_not_scheduled_exit():
+    """Keep every possible holding session through evaluation end for both arms."""
     d1, d2, calendar, params = declarations()
     result = holding_requirements(d1, d2, calendar, params, upper_bound(calendar))
     assert dict(result) == {A: tuple(day.isoformat() for day in calendar[61:130])}
@@ -82,6 +83,7 @@ def test_requirements_cover_both_arm_entries_through_end_not_scheduled_exit():
 @pytest.mark.parametrize("corruption", ["missing", "duplicate", "order", "swapped_arms", "cutoff",
                                          "partition", "eligible", "BJ_missing", "BJ_due_only", "BJ_dates"])
 def test_incomplete_or_inconsistent_schedule_scope_is_rejected(corruption):
+    """Reject incomplete paired declarations or requirements outside the BJ bound."""
     d1, d2, calendar, params = declarations()
     upper = upper_bound(calendar)
     if corruption == "missing": d1 = d1[:-1]
@@ -99,6 +101,7 @@ def test_incomplete_or_inconsistent_schedule_scope_is_rejected(corruption):
 
 
 def test_no_signals_need_no_quote_read_or_invented_snapshot():
+    """Allow empty signals without constructing or reading a quote snapshot."""
     d1, d2, calendar, params = declarations()
     d1 = tuple(replace(row, eligible_codes=()) for row in d1)
     d2 = tuple(replace(row, eligible_codes=()) for row in d2)
@@ -114,6 +117,7 @@ def test_no_signals_need_no_quote_read_or_invented_snapshot():
 
 
 def test_lossless_projection_preserves_storage_receipt_and_is_immutable(tmp_path):
+    """Preserve exact Decimal text and freeze receipts independently of caller mutation."""
     value = "100.123456789012345678901234567890"
     path, requested, _ = scan_case(tmp_path)
     mutate(path, "UPDATE scan_bars SET high='101',low='99',close=?,turnover=? WHERE code=? AND bsop_date=?",
@@ -150,6 +154,7 @@ def test_lossless_projection_preserves_storage_receipt_and_is_immutable(tmp_path
     ("turnover", 0, "invalid:turnover"), ("volume", "Infinity", "invalid:volume"),
 ])
 def test_unresolved_rows_preserve_observed_presence_and_replay_refuses(tmp_path, field, value, issue):
+    """Retain invalid observed storage and refuse its use as an execution quote."""
     _, requested, scan = scan_case(tmp_path, change=(field, value))
     inputs = adapt(scan, requested)
     assert inputs.panel[A].observed[0] is True and inputs.absent_coordinates == ()
@@ -161,6 +166,7 @@ def test_unresolved_rows_preserve_observed_presence_and_replay_refuses(tmp_path,
 
 @pytest.mark.parametrize("turnover,frozen,locked", [("0", True, False), ("10", False, True)])
 def test_zero_volume_and_turnover_use_existing_flat_bar_states(tmp_path, turnover, frozen, locked):
+    """Interpret genuine zero volume and turnover with existing flat-bar rules."""
     path, requested, _ = scan_case(tmp_path)
     mutate(path, "UPDATE scan_bars SET volume='0',turnover=? WHERE code=?", (turnover, A))
     scan = load_scan(path, {"calendar_dates": [day.strftime("%Y%m%d") for day in DAYS],
@@ -171,6 +177,7 @@ def test_zero_volume_and_turnover_use_existing_flat_bar_states(tmp_path, turnove
 
 
 def test_explicit_absence_is_distinct_from_unrequested_calendar_cells(tmp_path):
+    """Distinguish an inspected absent row from calendar cells outside the request."""
     path, requested, _ = scan_case(tmp_path)
     mutate(path, "DELETE FROM scan_bars WHERE code=? AND bsop_date='20190103'", (A,))
     scan = load_scan(path, {"calendar_dates": [day.strftime("%Y%m%d") for day in DAYS],
@@ -190,6 +197,7 @@ def test_explicit_absence_is_distinct_from_unrequested_calendar_cells(tmp_path):
                                          "duplicate_typed", "date", "values", "typed_values", "provenance",
                                          "receipt", "flag", "progress", "panel", "encoding"])
 def test_corrupt_scope_storage_provenance_and_metadata_rejected(tmp_path, corruption):
+    """Reject corrupted typed receipts even when their fingerprint is repinned."""
     _, requested, scan = scan_case(tmp_path)
     row = scan["rows"][A, "20190102"]
     if corruption == "hash": scan["fingerprint"]["rows"][0][2][1][1] = "101"
@@ -217,6 +225,7 @@ def test_corrupt_scope_storage_provenance_and_metadata_rejected(tmp_path, corrup
 
 
 def test_external_quote_activity_and_scope_pins_are_explicit(tmp_path):
+    """Require explicit valid activity references and matching quote and scope pins."""
     _, requested, scan = scan_case(tmp_path)
     for overrides in ({"quote_snapshot_sha256": "e" * 64}, {"read_scope_sha256": "e" * 64},
                       {"activity_snapshot_sha256": "unknown"}):
@@ -230,6 +239,7 @@ def test_external_quote_activity_and_scope_pins_are_explicit(tmp_path):
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_full_bounded_synthetic_reader_adapter_selection_book_route(tmp_path, lag):
+    """Connect fabricated bounded quotes to paired selection and existing accounting."""
     d1, d2, calendar, params = declarations()
     requested = holding_requirements(d1, d2, calendar, params, upper_bound(calendar))
     # This temporary database contains only fabricated rows for the declared union.

@@ -252,9 +252,11 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
     output, runs = saved.validate_write_boundaries(root, spec_path, spec, sources, output_dir, runs_path)
     population_path = Path(spec["inputs"]["bl_population_audit"]["path"])
     def bounded_reader(path):
+        """Use the larger private bound only for the declared population audit."""
         return _read_population(path) if path == population_path else saved.read_private(path)
     inputs = saved.PinnedInputs(bounded_reader if reader is None else reader)
     def evaluate():
+        """Publish one exclusive diagnostic package and preserve any partial failure."""
         created = False
         try:
             saved.private_directory(output.parent)
@@ -295,6 +297,7 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
 
 
 def main(argv=None) -> int:
+    """Run the bounded diagnostic CLI and emit a value-free failure receipt."""
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     parser.add_argument("--spec", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

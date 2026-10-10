@@ -22,6 +22,7 @@ SNAPSHOT, PARTITION = "a" * 64, "b" * 64
 
 
 def case(lag, **changes):
+    """Build paired synthetic declarations with an explicitly larger source population."""
     policy = SessionLagPolicy(lag, paired=True)
     days, panel, params, toy, initial, entry = target_case(policy, **changes)
     declarations = tuple(PartitionSelection(
@@ -33,12 +34,14 @@ def case(lag, **changes):
 
 
 def target(params, formation, codes=("A", "B")):
+    """Compute the independently expected original hash-order target."""
     return min(codes, key=lambda code: hashlib.sha256(
         f"{params['seed']}:{formation}:{code}".encode()).digest())
 
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_partition_and_complete_toy_declarations_share_the_same_accounting(lag):
+    """Require evidence and complete toy declarations to produce identical books."""
     policy, days, panel, params, selected, initial, entry, toy = case(lag)
     partition = run_case(policy, panel, params, selected, initial)
     synthetic = run_case(policy, panel, params, toy, initial)
@@ -110,6 +113,7 @@ def test_cash_only_exception_does_not_accept_malformed_non_none_snapshot(snapsho
 
 @pytest.mark.parametrize("arm,lag", [("D1", 1), ("D2", 2)])
 def test_complete_synthetic_bl_partition_connects_to_books_with_a_smaller_price_panel(arm, lag):
+    """Connect complete synthetic BL partitions without expanding the holding-price panel."""
     from test_activity_partition_selection import package
 
     result, population, normal, calendar, params = package()
@@ -134,6 +138,7 @@ def test_complete_synthetic_bl_partition_connects_to_books_with_a_smaller_price_
 
 
 def test_partition_declarations_require_explicit_timing_and_unmixed_types():
+    """Refuse implicit timing or a mixture of toy and partition declarations."""
     policy, days, panel, params, selected, initial, _, toy = case(1)
     with pytest.raises(ValueError, match="explicit timing policy"):
         replay_synthetic(days, panel, params, selected, dataset_sha256=SNAPSHOT, initial_book=initial)
@@ -144,6 +149,7 @@ def test_partition_declarations_require_explicit_timing_and_unmixed_types():
 
 @pytest.mark.parametrize("change", ["missing", "duplicate", "extra", "unknown_panel_code"])
 def test_every_formation_needs_one_declaration_and_every_eligible_code_needs_prices(change):
+    """Reject missing, duplicate or extra formations and uncovered eligible codes."""
     policy, days, panel, params, selected, initial, _, _ = case(1)
     if change == "missing":
         selected = ()
@@ -160,6 +166,7 @@ def test_every_formation_needs_one_declaration_and_every_eligible_code_needs_pri
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_partition_targets_precede_quotes_without_reconstructing_a_panel_population(lag, monkeypatch):
+    """Fix targets before execution quotes without interpreting unused panel rows."""
     policy, days, panel, params, selected, initial, entry, _ = case(lag)
     # This unconsumed panel series cannot provide a formation classification or
     # quote. Its presence must not redefine the independently declared source.
@@ -171,6 +178,7 @@ def test_partition_targets_precede_quotes_without_reconstructing_a_panel_populat
     reads = []
 
     def select(*args, **kwargs):
+        """Assert prior-book slot inputs and record that target selection completed."""
         nonlocal chosen
         assert kwargs["held_codes"] == set() and kwargs["free_slots"] == 1
         result = original_select(*args, **kwargs)
@@ -178,6 +186,7 @@ def test_partition_targets_precede_quotes_without_reconstructing_a_panel_populat
         return result
 
     def quote(series, index):
+        """Reject unused-series reads and execution quotes preceding target selection."""
         assert series is not excluded, "unused price panel became the source population"
         if index == entry:
             assert chosen, "execution quote was read before targets were fixed"
@@ -185,6 +194,7 @@ def test_partition_targets_precede_quotes_without_reconstructing_a_panel_populat
         return original_quote(series, index)
 
     def refuse_toy(*args, **kwargs):
+        """Fail if partition declarations enter the legacy toy classification path."""
         pytest.fail("partition evidence was sent through toy classification checks")
 
     monkeypatch.setattr(module, "select_partition", select)
@@ -198,6 +208,7 @@ def test_partition_targets_precede_quotes_without_reconstructing_a_panel_populat
 @pytest.mark.parametrize("lag", [1, 2])
 @pytest.mark.parametrize("failure", ["absent", "frozen"])
 def test_failed_target_gets_neither_replacement_nor_later_retry(lag, failure):
+    """Keep a failed fixed target unfilled without substitute or later retry."""
     policy, days, panel, params, selected, initial, entry, _ = case(lag)
     initial = replace(initial, cash=D(100), lots=())
     chosen = target(params, days[2])
@@ -215,6 +226,7 @@ def test_failed_target_gets_neither_replacement_nor_later_retry(lag, failure):
 @pytest.mark.parametrize("lag", [1, 2])
 @pytest.mark.parametrize("failure", ["absent", "frozen"])
 def test_failed_due_sale_keeps_its_slot_and_invalidates_the_fixed_target(lag, failure):
+    """Retain an unsold due lot and reject the target that needs its slot."""
     policy, days, panel, params, selected, initial, entry, _ = case(lag)
     baseline = run_case(policy, panel, params, selected, initial)
     if failure == "absent":
@@ -235,6 +247,7 @@ def test_failed_due_sale_keeps_its_slot_and_invalidates_the_fixed_target(lag, fa
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_failed_due_same_code_sale_cannot_duplicate_the_acquisition_lot(lag):
+    """Prevent an unsuccessful due exit from creating a duplicate same-code lot."""
     policy, days, panel, params, selected, initial, entry, _ = case(lag, active=("HELD",))
     panel["HELD"] = absent_on(panel["HELD"], entry)
     result = run_case(policy, panel, params, selected, initial)
@@ -247,6 +260,7 @@ def test_failed_due_same_code_sale_cannot_duplicate_the_acquisition_lot(lag):
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_pending_delivery_preserves_share_value_cash_and_slot_before_any_sale(lag):
+    """Retain pending successor inventory, value and occupied capacity until delivery."""
     policy, days, panel, params, selected, initial, entry, _ = case(
         lag, active=("NEW",), initial_code="OLD")
     for index in range(entry, len(days)):
@@ -273,6 +287,7 @@ def test_pending_delivery_preserves_share_value_cash_and_slot_before_any_sale(la
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_pending_final_payment_retains_inventory_until_cash_arrives_without_reselection(lag):
+    """Retain pending payment claims without changing the previously fixed targets."""
     policy, days, panel, params, selected, initial, entry, _ = case(lag)
     for index in range(3, len(days)):
         panel["HELD"] = absent_on(panel["HELD"], index)
@@ -296,6 +311,7 @@ def test_pending_final_payment_retains_inventory_until_cash_arrives_without_rese
 
 @pytest.mark.parametrize("lag", [1, 2])
 def test_cash_share_and_value_conservation_accounts_for_every_market_cost(lag):
+    """Reconcile shares and final cash with all entry, exit and tax costs."""
     policy, days, panel, params, selected, initial, entry, _ = case(lag)
     result = run_case(policy, panel, params, selected, initial)
     acquired = at(result, days[entry]).lots[0]
@@ -314,6 +330,7 @@ def test_cash_share_and_value_conservation_accounts_for_every_market_cost(lag):
 
 @pytest.mark.parametrize("change", ["decision", "cutoff"])
 def test_partition_declaration_must_match_the_policy_dates_and_cutoff(change):
+    """Reject declarations that move the policy decision date or selection cutoff."""
     policy, days, panel, params, selected, initial, entry, _ = case(1)
     with pytest.raises(ValueError):
         if change == "decision":

@@ -116,6 +116,7 @@ def package():
 
 @pytest.mark.parametrize("arm,lag", [("D1", 1), ("D2", 2)])
 def test_actual_producer_schema_retains_full_pool_and_empty_formations(arm, lag):
+    """Preserve full synthetic producer partitions and explicit empty signal formations."""
     result, population, normal, calendar, params = package()
     selections = selections_from_bl(result, population, normal, calendar, params, arm)
     assert len(selections) == 2
@@ -131,6 +132,7 @@ def test_actual_producer_schema_retains_full_pool_and_empty_formations(arm, lag)
 
 
 def test_fingerprint_covers_excluded_rows_and_every_referenced_field():
+    """Include excluded source rows and referenced provenance in partition fingerprints."""
     args = package()
     original = selections_from_bl(*args, "D1")
     args[1]["rows"][1]["dated_aliases"] = {"trade_name": "synthetic historical alias"}
@@ -153,6 +155,7 @@ def test_fingerprint_covers_excluded_rows_and_every_referenced_field():
     "late_cap", "public_late", "missing_field_metadata", "schedule", "lineage", "promotion",
 ])
 def test_corrupt_partition_metadata_joins_or_either_arm_stop_before_selection(corruption):
+    """Reject corrupted source joins, proofs, metadata or either signal arm."""
     result, population, normal, calendar, params = package()
     rows = population["rows"]
     if corruption == "missing_source": rows.pop(1)
@@ -206,6 +209,7 @@ def test_corrupt_partition_metadata_joins_or_either_arm_stop_before_selection(co
     ("basic_section", None), ("trade_section", None),
 ])
 def test_downstream_proof_cannot_override_nonordinary_source_labels(row_index, field, value):
+    """Refuse downstream proofs that conflict with literal ordinary-share labels."""
     result, population, normal, calendar, params = package()
     population["rows"][row_index]["literal_source_labels"][field] = value
     if field == "share_class":
@@ -215,6 +219,7 @@ def test_downstream_proof_cannot_override_nonordinary_source_labels(row_index, f
 
 
 def test_hash_order_held_exclusion_slots_and_no_mutation():
+    """Preserve original hash ordering, held-code exclusion and slot limits immutably."""
     calendar = package()[3]
     cutoff = SessionLagPolicy(1).selection_at(calendar, 60)
     selection = PartitionSelection(calendar[60], calendar[61], cutoff, ("A", "B", "HELD"), 100, "d" * 64)
@@ -234,6 +239,7 @@ def test_hash_order_held_exclusion_slots_and_no_mutation():
     ("eligible_codes", ["A"]), ("eligible_codes", ("A", "A")), ("eligible_codes", (" A",)),
     ("source_population_count", 0), ("source_population_count", True), ("source_partition_sha256", "bad")])
 def test_declaration_rejects_mutable_or_ambiguous_inputs(field, value):
+    """Reject mutable eligible codes and ambiguous dates, counts or partition pins."""
     values = dict(formation_on=date(2020, 3, 1), decision_on=date(2020, 3, 2),
         selection_at=SessionLagPolicy(1).selection_at((date(2020, 3, 1), date(2020, 3, 2)), 0),
         eligible_codes=("A",), source_population_count=2, source_partition_sha256="d" * 64)
@@ -245,6 +251,7 @@ def test_declaration_rejects_mutable_or_ambiguous_inputs(field, value):
     ("decision_on", date(2020, 3, 3)), ("selection_at", datetime(2020, 3, 2)),
     ("free_slots", -1), ("free_slots", True), ("seed", True), ("held_codes", ["A"])])
 def test_selection_cannot_change_schedule_or_use_invalid_book_arguments(field, value):
+    """Reject altered selection timing and invalid prior-book selection arguments."""
     cutoff = SessionLagPolicy(1).selection_at((date(2020, 3, 1), date(2020, 3, 2)), 0)
     selection = PartitionSelection(date(2020, 3, 1), date(2020, 3, 2), cutoff, ("A",), 2, "e" * 64)
     options = dict(formation_on=selection.formation_on, decision_on=selection.decision_on,

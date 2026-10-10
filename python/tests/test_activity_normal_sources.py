@@ -95,6 +95,7 @@ def harness(tmp_path, monkeypatch):
 
 
 def test_complete_population_literal_controls_and_exact_separate_liquidity(harness):
+    """Preserve complete source joins and the distinct basic/cap/liquidity coordinates."""
     args, receipts, _, _, reads = harness
     result = module.load_sources(*args)
     assert len(result["population"]) == 7

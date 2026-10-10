@@ -196,3 +196,11 @@ was inferred from worker-message timing and is not established by that receipt;
 the final rerun is the authoritative current-file evidence. Fresh cash-only
 delta review also found no actionable defect. Final-head CI/CodeRabbit remain
 required before publication to GCP.
+
+Before the one final substantive re-review, documented the new runner and its
+four new test modules, including nested callbacks: 53 missing docstrings added,
+71 functions in those files now documented. The touched BL source-coordinate
+regression also received a short intent docstring. AST parse/compile, scanner
+and whitespace checks passed; the delta changes no executable logic. This
+addresses the recurring docstring-coverage warning before consuming another
+review attempt. Final CI still runs on the exact published head.
