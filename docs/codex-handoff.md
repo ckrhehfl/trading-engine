@@ -491,7 +491,7 @@ limits are in BL's ledger. Normal-input connection is complete; prices/actions,
 actual replay integration and final frozen logged performance remain open.
 Task BM's pure selection/holding/replay seams and bounded holding-price runner
 shipped with the same reviewed merge. Its separately pinned actual specification
-and execution protocol are being registered in BM's ledger; implementation
+and execution protocol are recorded in BM's ledger; implementation
 alone is not an actual price read or performance result. Publication/vintage
 uncertainty remains an explicitly assumed paired-timing sensitivity question,
 not an external-contact blocker. The operational collector remains unchanged.
@@ -502,19 +502,38 @@ it does not establish event coverage or complete a performance study.
 Its pure paired-report continuation computes the requested descriptive metrics
 from existing immutable replay results, preserving initial-NAV losses and
 separating signal overlap, targets, filled entries, ordinary sales and open lots.
-These additions remain synthetic preparation until the registered actual run.
+These pure helpers do not themselves establish completed actual replay.
 
-PR #271's substantive CodeRabbit approval, final CI and normal merge completed;
-the isolated research checkout is clean at
-`c17babb7a45a70ad252a8b862a1bf80a617ea189`, with collector unchanged.
+PR #271's substantive CodeRabbit approval, final CI and normal merge completed.
 The first BM diagnostic failed before opening prices: BL's integer slippage
 literal and the reference's equal float literal failed an overly strict package
 comparison. Its immutable failure/output/log receipts are preserved in BM's
 ledger. Recovery changes only this numeric-representation boundary, retaining
 the costs, upstream bytes and new-spec validator. One fresh recovery output and
-separate independent wrapper are registered there; reviewed merge/deployment
-must precede that attempt. The already provisioned BL verification receipt must
-not be replaced. No actual D1/D2 performance study has completed.
+separate independent wrapper are registered there. The provisioned BL
+verification receipt remains unchanged.
+
+PR #272 passed exact-head CI and substantive CodeRabbit approval, merged
+normally, and reached the clean isolated research checkout at
+`74ae8aae8e687f13efe6a4ccd4daa54f076eb028`. Its single registered recovery
+diagnostic completed at 2026-10-10T04:45:12Z; separate producer-free verification
+passed for new-output typed rows, scope and internal lineage. The exact requested
+union contains observed, frozen and absent requested rows, with no unresolved
+observed rows; its counts are recorded in BM's ledger. Missing causes remain unknown;
+they are not automatic delistings or zero recoveries. The successful pins,
+snapshot identities, verification receipt and limits are in BM's ledger.
+Original failed evidence is preserved, and the collector remains clean at its
+unchanged PR #221 head. A separate committed provisional ordinary-exit preflight
+now reuses that full snapshot and recomputes each potential entry's conditional
+evidence bounds. It shortens no quote artifact and certifies no actual exit or
+no-event period. The pure paired connection preserves the original full path;
+shorter coverage requires the separately recomputed child proof and reviewed
+no-event evidence. Actual preflight execution remains pending review/deployment.
+Prices/action coverage, actual paired replay connection
+and final frozen logged study remain three open performance groups. No actual
+D1/D2 performance study has completed. Next, use the registered metadata
+inventory and existing reviewed issuer evidence for exact holding-period action
+coverage while connecting the existing book/report components.
 
 ## Where the previous work stopped
 

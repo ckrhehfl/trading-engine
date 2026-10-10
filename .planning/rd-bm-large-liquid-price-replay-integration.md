@@ -538,3 +538,281 @@ replaced. Main-agent preflight/restoration/planning-index validation passed
 168 / one skipped in 9.66 seconds. The repository guardrail scanner and Git
 whitespace check passed. Actual recovery, CI and CodeRabbit are still pending
 at this registration entry.
+
+### Recovery-v1 completed and independently checked
+
+PR #272 received substantive CodeRabbit approval on unchanged exact head
+`71bd27ad1efac78b91313cc38b3595d8b7701235`, review `5477610742` at
+2026-10-10T04:38:33Z. No review threads were opened. All nine checks passed;
+each Python CI run passed 5,669 / three skipped. Normal squash merge was
+`74ae8aae8e687f13efe6a4ccd4daa54f076eb028` at 04:39:10Z. Reviewed-head and
+merge trees both equal `2f78fc1bbac522b09f22330372543b52fd9bc674`.
+The isolated GCP research checkout reached that exact clean merge at
+04:39:45.151113Z; the clean collector remained at
+`4ce85d714890b87f1a57ae89d4942660e41c0483` before and after deployment,
+diagnostic and independent verification. Exclusive recovery-sync receipts
+preserve the checked helper, remote source and state reconciliation.
+
+The single registered recovery diagnostic completed as run
+`086bdb3b-9343-4307-ac1f-7eef1f5cd700`, started 04:40:22.536900Z and
+completed 04:45:12.060149Z on October 10. It used the unchanged specification
+and eleven input pins; there were no new API requests or automatic retries.
+The separate recovery output contains the exact six successful diagnostic
+files. Original failed outputs and auxiliary provision/repair receipts remain
+unchanged.
+
+| recovery output | SHA-256 |
+|---|---|
+| result.json | `9423082f1b8a69193f5c596095c17d94b65f0f2e5b2501dfcfc427ce25481e8d` |
+| specification.json | `96aedecdc8207fbc4f55405a19ca4522893f23e95f6d5ddd424014b041654f77` |
+| source-manifest.json | `1f9c9c1dfc16dd2709e16f4a70954479abdf5d56f1a036fb16e32306c9900331` |
+| input-manifest.json | `db72b256e551d028b597d52b46a663fb7d007374710245e6e035dfb1c5589d24` |
+| read-scope.json | `905c52d3696006a1938df7c4cf06fd216e40b4e5fec584b4511b09d567d0734d` |
+| holding-input-audit.json | `567c800406e365a01b3bc6e86467d0d7a547062e09e64934872b81ecb08c594b` |
+
+The exact 31-code / 24,598 requested-coordinate union contains 23,852 observed,
+92 frozen and 654 absent requested rows. There are no unresolved observed rows.
+The separate 34,240 unrequested coordinates are not missing requests. Both arms
+retain 36 signal-window occurrences. Absent rows' causes are not established by
+this diagnostic: do not label them delisted, halted or zero recovery, and do not
+erase their signal/source population. These counts are not filled entries or
+completed holdings.
+
+The registered recovery independent wrapper executed verify once, without
+provisioning the BL receipt again. Its producer-free verifier independently
+reconstructed the six-file hashes, internal package links, exact requested
+union, typed-row fingerprint, metadata, missingness and state counts from new
+outputs and the three pinned BL/BJ reference outputs. `verified` is true with
+scope `BM_new_output_typed_rows_scope_and_internal_lineage_only`.
+Package SHA-256 is
+`8552173544a761f885491ca74afadecae86ba10b12aac48798a214472992b6f1`;
+quote snapshot is
+`2488132206b8978016b0d322377523746aaee98e49c5c23464964e1a4c985499`;
+activity snapshot remains
+`1ff51e25fdd71e8c3c0798de9c1a39b822f683ff6609a8e2adcd6cd1b3b44308`.
+The exact 2,142-byte local `verify-stdout.json` has SHA-256
+`c6895ace52cfb4beab4045aa4860bf009eb0b600ace4a5cf1e14d4d282b49529`.
+Its original-source truth, DB transaction/whole-DB hash, BI snapshot equality,
+event coverage, vendor price basis and historical vintage flags remain false.
+Independent verification opened no DB/API/original source inputs and computed
+no returns.
+
+The bounded recovery package is complete: eight of eight local/source/review/
+CI/merge/deploy/diagnostic/independent-verification stages. The first-performance
+groups remain three open and zero newly closed by this diagnostic: consequential
+price/action coverage, actual paired replay integration, and the final frozen
+logged study. D1/D2 completed actual performance studies remain zero/zero.
+No new official historical-publication evidence was obtained; availability and
+vintage remain assumed. The next work uses these exact interval/state outputs
+and existing reviewed issuer evidence to resolve consequential actions, while
+connecting the already tested book/report components. No email/telephone or
+whole-market notice search is introduced.
+
+### Registered post-diagnostic metadata inventory before saved-output reads
+
+The successful independent check above permits the next source-evidence
+inventory, not another market scan or performance study. Read exactly three
+private GCP files once, verifying their registered bytes before JSON parsing:
+
+- Recovery `run/read-scope.json`, SHA-256 `905c52d3696006a1938df7c4cf06fd216e40b4e5fec584b4511b09d567d0734d`, ceiling 4 MiB.
+- Recovery `run/holding-input-audit.json`, SHA-256 `567c800406e365a01b3bc6e86467d0d7a547062e09e64934872b81ecb08c594b`, ceiling 64 MiB.
+- `/home/minjun4897/research-evidence/large-liquid-bk-evidence-adjudication-20261010-v1/verification/bk-period-adjudication.json`, SHA-256 `2c6f1fab960bf5214fe0a176b20ffee2207e4d10844c23b632a9cfebe1bef893`, ceiling 8 MiB.
+
+The recovery root is the exact recovery-v1 location registered above. Project
+only requested code/date coordinates, quote/activity/read-scope identifiers,
+per-code state counts and consecutive abnormal-state runs; omit all typed
+prices, volume, turnover, marks and returns. Reconcile every audit row to its
+requested coordinate and count. From BK project exact matching code/ISIN and
+window IDs/formation/approved interval bounds plus report receipt, source URL,
+raw/readable hashes and publication/report-period metadata. No body/passages,
+source truth, period extension or action decision is part of this inventory.
+The bounded JSON parser necessarily reads the pinned audit bytes to extract
+those fields, but does not adapt, rank or replay any price value.
+
+Use a source-reviewed metadata helper with nice 10, address-space 768 MiB,
+CPU 60 seconds and wall 120 seconds; no DB/API/credential access or retry. Check
+the clean research/collector heads before and after. Persist helper/remote source,
+registration, stdout/stderr/exit and the resulting metadata inventory in a fresh
+exclusive local private root
+`/home/minju/.local/share/trading-engine-research/large-liquid-bm-event-metadata-20261010-v1`.
+This inventory determines exact subsequent public-source questions, not an
+eligible-universe or no-event certificate. Register any later source-summary
+or selected leaf read separately before access; reuse existing evidence first.
+
+The metadata helper is frozen at `var/bm-event-metadata.py`, SHA-256
+`136a3d13f4a708b8cee2e563c76e46b5833a73742f9c901a6f9a045b39777be2`;
+its synthetic tests are
+`2b35b923219605418b88f388a3192dbce22ebefc90114a65494df80015401021`.
+Thirteen synthetic tests passed, including coordinate/count/identity/boundary
+mutations and exclusive receipt checks. The source was reviewed before actual
+invocation; remote Python disables bytecode and Git uses optional-locks off.
+Check this exact source pin before compiling/executing those same bytes once.
+Only the metadata projection below will be retained locally, not original
+price/audit bodies. This is evidence inventory, not a replay/performance run.
+
+The one metadata inventory completed successfully; its 369,299-byte private
+`stdout.json` has SHA-256
+`7a246c7a3dc349cdc978db1b060c77e6c6521e44a5e6df0e5aefd3c7288c2330`.
+It reproduces all 24,598 coordinates, 31 exact issues and 36 BK window anchors,
+with no raw price output or source-period extension. Both checkout guards passed.
+All 654 absent requests are code 091990, 2024-01-12 through 2026-09-18. Frozen
+runs are 003550 (2021-04-29–05-26, 18 sessions), 009830 (2023-02-27–03-30, 23),
+012450 (2024-08-29–09-26, 18), 091990 (2023-12-18–2024-01-11, 16), and 207940
+(2025-10-30–11-21, 17). These source-derived states do not establish their
+corporate-action causes, rights or settlement. Several runs occur years after
+their possible entry; the original through-end upper bound is preserved, but
+it must not become a demand to reconcile events after a separately demonstrated
+ordinary exit. A proposed conditional exit bound needs source/engineering
+review and a separately logged actual quote-input protocol; metadata alone
+does not establish realized exits or excuse unresolved earlier actions.
+
+Before external discovery, register five exact public official-source metadata
+queries, one each, no automatic retry or query expansion:
+
+- `site:kind.krx.co.kr "091990" "2024" "합병"`
+- `site:lg.co.kr "2021" "인적분할" "LX"`
+- `site:kind.krx.co.kr "009830" "2023" "분할"`
+- `site:kind.krx.co.kr "012450" "2024" "분할"`
+- `site:kind.krx.co.kr "207940" "2025" "분할"`
+
+Use the official-result metadata only to identify the exact event/period question
+and selected official leaves. No search-hit absence is no-event coverage. This
+does not authorize market-data requests, successor quotes or whole filings.
+Register exact selected body URLs/pins before any later content review; retain
+proposed/effective/delivery/payment dates separately. Later source questions
+must follow the demonstrated relevant holding scope rather than expanding every
+signal to every future corporate event by default.
+
+### Conditional ordinary-exit child scope registered before implementation
+
+The source-only independent audit found that the original through-end scope can
+include corporate actions years after a scheduled ordinary sale. Preserve that
+scope and all diagnostic bytes. Implement the explicit conditional child contract
+now recorded in CLAUDE.md: every potential formation/arm/code/ISIN entry has exact
+due entry-index+holding_sessions and a provisional first resolved observed positive
+unfrozen opening at or after due. Locked openings remain the existing proxy. No
+candidate or out-of-calendar due retains the evaluation end. No return, lot,
+source truth, action completeness or historical publication claim follows.
+Final use requires separately pinned inclusive calendar-day no-action coverage
+through the candidate itself; earlier pending rights or relevant events keep and
+expand the original bound. All later formations and both lagged entries remain.
+The original package validator remains exact; a separate child proof must be
+recomputed before any shorter decoder requirement is accepted.
+
+The five previously registered public metadata queries were each submitted once.
+Search output included incidental filing excerpts, including historical prices;
+none was used as a quote/selection/return input or no-event coverage. The 091990
+official result identifies a merger-related ownership-report cessation:
+https://kind.krx.co.kr/external/2024/01/05/000505/20240105001406/00636.htm .
+It is a candidate source, not a reviewed effective/delivery/payment certificate.
+The other returned excerpts do not establish any relevant split. No search
+absence establishes complete coverage. A bounded continuation may submit one
+official LG-domain metadata query, `2021 LX 인적분할 5월 1일`, and retain only
+result title/URL. Register the exact chosen body before its separate review.
+
+Source-only fresh review also passed the action decoder after rejecting code
+reuse across different ISINs, including disjoint original intervals and pending
+successors. Source SHA-256 is
+`f2e19d21ab5cda4822c5b24572dcca79b34a10e5b44bcf8b2a15a25e078564a4`;
+tests `b667227316eae7e16f34ac2d16ce3a87d48213d0deb4c8d0a93b40fd8e8167ba`.
+The related synthetic suite passed 270 cases. Fresh pure paired-prototype review
+passed 28 integration cases, including pending and in-horizon cash settlement,
+with no actionable findings; source/test pins are
+`49be69a06f2e8d4d9796fd47e58b82873fca1f92f11781c35620577513c3be93` and
+`2662577274f9349c91f286bf2063a4e0db929d48bbdab3ad31b74c8d1d82a5bd`.
+Move that minimal pure seam into production and connect the independently
+recomputed child proof. These synthetic checks close no actual study condition.
+
+Before selected official-body review, register exactly two LG issuer pages:
+`https://www.lg.co.kr/media/release/22752` (2020 plan) and
+`https://www.lg.co.kr/ir/public/notice/34` (2021 split-progress announcement).
+Read each once through the public web tool, with no automatic linked-page fetch
+or expansion. Distinguish proposed ratios/dates from actual effectiveness,
+allotment, listing, delivery and fractional-cash settlement. These sources may
+identify a relevant action but cannot extend BK periods or certify full action
+coverage or price basis. No market-data query/return computation is authorized.
+
+The selected issuer announcement explicitly reports completion of the split
+procedures on its May 3, 2021 page. The earlier release supplies proposed ratios,
+not a final allotment certificate. Before follow-up selected-body reads register
+exactly notice/34's body image (web link 46) and its adjacent titled notice
+`(주)LG 분할에 따른 주식 병합 공고` (web link 47). These exact source coordinates
+are used once each, without other linked documents or market data. Actual split
+rights may affect the April 2021 potential entry; no event accounting conclusion
+or coverage certificate follows yet.
+
+### Registered actual ordinary-exit preflight v1
+
+Before another saved market-input read, freeze committed specification
+`configs/research/discovery/activity-ordinary-exit-preflight-v1.json`, SHA-256
+`640f6a01a94fd1b2d46f95a53a2144237d041fe4a32821ea93985635ef4faf57`.
+It preserves the reference window and exact parameter encodings, the nine
+successful BL outputs/receipt/BJ and the six successful BM recovery outputs
+recorded above. Its eighteenth input is the exact 2,142-byte BM independent
+receipt at the new exclusive GCP path
+`/home/minjun4897/research-evidence/large-liquid-bm-independent-20261010-v1/verification.json`,
+SHA-256 `c6895ace52cfb4beab4045aa4860bf009eb0b600ace4a5cf1e14d4d282b49529`.
+Provision only that checked receipt once; do not rerun either producer/verifier.
+The original local receipt stays unchanged. The provision's local private root
+is `/home/minju/.local/share/trading-engine-research/large-liquid-bm-receipt-provision-20261010-v1`.
+
+One reviewed normal merge will be fast-forwarded only into the existing isolated
+research checkout, from clean `74ae8aae8e687f13efe6a4ccd4daa54f076eb028`.
+Check reviewed-head/merge tree equality and both checkout states. Collector must
+remain clean at `4ce85d714890b87f1a57ae89d4942660e41c0483`; change no process,
+schedule, credential, database or collector source. Fresh deployment receipts
+go in `/home/minju/.local/share/trading-engine-research/large-liquid-bm-exit-deployment-20261010-v1`.
+
+Invoke the new committed `research.activity_exit_preflight` once, using that
+exact reviewed merge and specification, fresh GCP output
+`/home/minjun4897/research-evidence/large-liquid-bm-ordinary-exit-scope-20261010-v1/run`,
+canonical `/home/minjun4897/trading-engine/runs/experiments.jsonl`, and local
+publication root
+`/home/minju/.local/share/trading-engine-research/large-liquid-bm-ordinary-exit-publication-20261010-v1`.
+Durable started precedes all eighteen saved-input reads. Retain original byte
+pins and full source/dependency/runtime manifests, exact full quote snapshot,
+every arm/formation entry and separate provisional child union. Read no database,
+API, credential or filing body. No books, returns, no-event coverage or actual
+exit claim is computed. Resource limits stay nice 10, address-space 768 MiB,
+CPU 300 seconds, wall 900 seconds and at least 2 GiB free space. Retain measured
+resource usage, six exclusive private outputs and partial failure evidence.
+No automatic retry or old-output replacement is allowed.
+
+Frozen private helpers (compile/execute the same checked bytes):
+
+| helper | SHA-256 |
+|---|---|
+| `var/bm-exit-sync.py` | `6a0b25e225bd91b2776ecaca885cfed30cb091188241a815bb6188ad25192139` |
+| `var/bm-exit-receipt-provision.py` | `720536db5f4ab84d7e5f599d2c09a105fb639fd2154cc3400a6507b2796a4ede` |
+| `var/bm-exit-publication.py` | `1d01e61556c9503abedae6597636846e9774bb60c15caef97a3657a1de5c424e` |
+
+Fresh independent source review passed the conditional planner, logged runner,
+actual specification and helpers. It caught a new-directory parent-fsync omission
+in the sync helper; the repair was independently rechecked with fake SSH/fsync
+tracing before any actual operation. Its 118 synthetic tests passed. A separate
+fresh paired-source review passed package joins, full-snapshot retention,
+no-event-only child proof and full supported/pending-event fallback; four extra
+repinned tamper cases were rejected before replay. Related implementation suites
+passed 312 cases. These reviews use source/synthetic inputs only and establish
+no actual event coverage or completed study.
+
+After successful publication, independently verify the new six outputs against
+only pinned BL result, original BM read-scope/audit and its independent receipt,
+using a separate source-reviewed stdlib helper without producer/planner imports.
+Register that verifier's exact source/test pins and exclusive private receipts
+before invocation. It recomputes potential entries, due/candidate coordinates,
+unions, windows and package links from the previously verified original states;
+it does not reopen a DB or certify original source truth, events or vintage.
+Source/CI/substantive CodeRabbit/merge/deployment and success/independent check
+remain pending at this registration. First-performance groups remain three open,
+zero newly closed; D1/D2 completed studies remain zero/zero.
+
+Before reusing source-acquisition identifiers, register one bounded local
+metadata read of ignored `var/bk-overview-inventory.json`, SHA-256
+`2a45f0b51064940fd10b29453b501f461277e8e2219b86b8157c79c791b2943a`,
+ceiling 2 MiB. Project only each of the existing 31 code/ISIN/corp_cik and report
+receipt/publication/period/selected-source-coordinate fields. No leaf body,
+price, ratio, metric, source-period extension or new request is part of this
+read. Retain the inventory's exact original IDs; actual follow-up source dates
+will be registered after the conditional coordinate preflight, not extrapolated
+from formation-only evidence.

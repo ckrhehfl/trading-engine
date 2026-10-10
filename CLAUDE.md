@@ -1794,6 +1794,86 @@ Retain the original helper and failed operation evidence. Source/CI/CodeRabbit,
 normal merge and isolated research deployment precede the one separately logged
 recovery attempt; no automatic retry or collector change is authorized.
 
+**BM continuation: reviewed action declarations and the existing paired book.**
+After the bounded diagnostic's successful independent verification, reuse its
+exact original-issue requirements and snapshot rather than reading the database
+again. Register byte pins and a small metadata projection before inspecting
+saved source summaries or diagnostic state intervals. Reuse already reviewed
+AY/AZ/BD dispositions and BK's exact issue anchors, retaining their actual date
+bounds. A formation-bounded operating period does not automatically certify the
+following holding period. Scope any remaining public source work to positive
+dated issuer/share history and relevant changes for that exact possible-holding
+union; reconcile original sources and boundary gaps. A reviewed inference may
+describe its supported period without pretending to prove exhaustive search
+completeness. No-op names, identical ISINs, quote continuity or empty searches
+alone do not establish complete period coverage. Keep source-content judgments
+separate from structural validation; independent agent review is permitted by
+the existing Execute methodology and is not a new mandatory human checkpoint.
+
+Implement a pure decoder for caller-pinned reviewed interval/action declarations
+and evidence references. Validate exact code/ISIN, complete nonoverlapping union,
+date roles, unresolved effects and links to one coherent quote snapshot. Separate
+reviewed named no-ops from complete period findings. Decode only existing
+compulsory exchanges and final cash primitives with exact Decimal text and the
+existing basis obligations. Preserve an actual final payment after the evaluation
+horizon as pending inventory; do not invent early cash or terminal liquidation.
+Check the complete event graph independently of input order: successor delivery
+must precede its next compulsory exchange and cannot follow its final-payment
+record date under the existing lot model. Require supported successor quote and
+coverage expansion without attaching new series to an old snapshot identifier.
+The decoder establishes consistency of supplied reviewed evidence, never source
+truth, price-basis certification or historical publication proof.
+
+Connect the existing BL package validator, partition selections, holding audit
+restoration, reviewed declarations, existing replay engine and paired report in
+a thin pure caller, with the same parameters, normalized initial NAV and explicit
+D1/D2 policies. Synthetic tests must exercise complete package linkage, late or
+contradictory inputs, absent/frozen fills, deferred sales, retained slots and
+pending events. Do not add a second book engine, reselection, family power gate
+or whole-vendor-formula gate. The separate actual logged caller/specification
+still requires frozen input/evidence pins, reviewed committed source, durable
+start before actual reads, exclusive outputs, independent verification and the
+normal review/merge/isolated deployment flow. Source-only prototypes and passing
+synthetic tests are not actual event coverage or completed performance studies.
+
+**BM conditional ordinary-exit scope, after the preserved full diagnostic.**
+The successful full-through-end diagnostic remains immutable: original BJ/BM
+scope, typed audit, quote snapshot and upstream population are not shortened or
+rehash-labeled. A separately logged child preflight may reuse that exact saved
+snapshot to prioritize consequential holding evidence. This is an explicit
+refinement of the earlier through-end requirement, not a changed holding rule.
+For every formation/arm/code/ISIN potential entry independently, keep the exact
+due session at entry index plus the unchanged holding_sessions. From that due
+session find the first observed, resolved, positive opening quote with frozen
+false. Limit-locked openings retain the existing daily-open proxy; do not add a
+new volume or tradability screen. If due or a usable opening is beyond the
+calendar, preserve the original evaluation-end bound. An absent/frozen entry
+does not excuse an independent later formation or re-entry.
+
+This price-only endpoint is provisional, never an actual fill, exit, return or
+no-event certificate. Record each entry, due/candidate coordinate, state, original
+scope/calendar/parameter/quote identifiers and the separate child union. Coverage
+must separately review the complete inclusive calendar-day interval from entry
+through candidate, including non-session days and the candidate's own day:
+events run before opening sales. Only a pinned confirmed or explicitly inferred
+no-compulsory-action finding over that whole interval permits the conditional
+ordinary-exit bound in a final replay. Preserve original-end requirements for
+unresolved intervals or relevant events/pending rights; expand supported successor
+and settlement requirements under the existing accounting rules. Never erase an
+earlier record/right date because delivery/payment is later, or attach successor
+series to the old quote hash. All potential entries across both arms remain.
+
+The pure package seam must recompute and validate this child scope against the
+original full package before using shorter expected windows; accepting arbitrary
+caller-truncated windows is forbidden. The initial source-priority preflight
+computes no books/returns, reads no DB/API/source bodies and certifies no source
+claim. Its committed thin runner/specification pins existing package bytes and
+receipts, logs started before saved-input reads, writes fresh exclusive private
+outputs and retains source/runtime/resource/failure manifests. Source review,
+CI, substantive CodeRabbit, normal merge and exact isolated research deployment
+precede its one registered actual invocation. Independent verification of new
+outputs remains distinct from evidence-content review and final paired results.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one
