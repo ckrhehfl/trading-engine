@@ -1,6 +1,7 @@
 """Holding diagnostic acceptance checks use fabricated BL bytes and SQLite only."""
 from copy import deepcopy
 from datetime import timedelta
+from decimal import Decimal
 import json
 from pathlib import Path
 import sqlite3
@@ -23,7 +24,7 @@ def fixture(tmp_path, monkeypatch, *, cash=False, mutate=None):
     evidence.mkdir(mode=0o700)
     result, population, normal, calendar, params = package()
     calendar = (*calendar, calendar[-1] + timedelta(days=1), calendar[-1] + timedelta(days=2))
-    params["threshold"] = 3.0
+    params.update(threshold=3.0, slippage_bps_per_side=5.0)
     if cash:
         # Turn the sole possible signal into an ordinary baseline failure.
         for arm in normal[0]["arms"].values():
@@ -111,6 +112,85 @@ def fixture(tmp_path, monkeypatch, *, cash=False, mutate=None):
 def statuses(runs):
     """Read status order from the temporary synthetic trial ledger."""
     return [json.loads(line)["status"] for line in runs.read_text().splitlines()]
+
+
+def test_committed_bl_reference_slippage_literals_match_without_weakening_bm_spec(tmp_path, monkeypatch):
+    """Exercise the exact committed 5/5.0 mismatch using source JSON only."""
+    root = Path(__file__).resolve().parents[2]
+    directory = root / "configs/research/discovery"
+    upstream = saved.strict_json((directory / "activity-normal-input-assembly-v1.json").read_bytes())["parameters"]
+    reference = saved.strict_json((directory / "activity-calibration-v1.json").read_bytes())
+    assert type(upstream["slippage_bps_per_side"]) is int
+    assert type(reference["parameters"]["slippage_bps_per_side"]) is float
+    assert saved.encoded(upstream) != saved.encoded(reference["parameters"])
+    before = deepcopy((upstream, reference))
+    assert module._bl_parameters_match(upstream, reference["parameters"])
+    assert (upstream, reference) == before
+    _, _, _, spec, _, _, _ = fixture(tmp_path, monkeypatch, cash=True)
+    spec["parameters"] = deepcopy(reference["parameters"])
+    module.validate_spec(spec, reference)
+    spec["parameters"]["slippage_bps_per_side"] = 5
+    with pytest.raises(ValueError, match="fixed holding diagnostic specification mismatch"):
+        module.validate_spec(spec, reference)
+
+
+@pytest.mark.parametrize("left,right", [(5, 5.0), (5.0, 5), (5, 5), (5.0, 5.0)])
+def test_only_equivalent_numeric_slippage_representation_is_accepted(left, right):
+    """Accept equivalent finite JSON numbers without changing their inputs."""
+    upstream = {"slippage_bps_per_side": left, "threshold": 3.0, "lookback": 60}
+    expected = {**upstream, "slippage_bps_per_side": right}
+    before = deepcopy((upstream, expected))
+    assert module._bl_parameters_match(upstream, expected)
+    assert (upstream, expected) == before
+
+
+@pytest.mark.parametrize("side", ["upstream", "expected"])
+@pytest.mark.parametrize("value", [6, 5.01, "5", True, False, None, float("nan"), float("inf"), -float("inf"), Decimal("5")])
+def test_slippage_boundary_rejects_changed_cost_or_non_json_finite_numbers(side, value):
+    """Neither input may smuggle a bool/string/nonfinite or changed cost."""
+    upstream = {"slippage_bps_per_side": 5, "lookback": 60}
+    expected = {"slippage_bps_per_side": 5.0, "lookback": 60}
+    (upstream if side == "upstream" else expected)["slippage_bps_per_side"] = value
+    assert module._bl_parameters_match(upstream, expected) is False
+
+
+@pytest.mark.parametrize("field,value", [
+    ("lookback", 60.0), ("holding_sessions", 126.0), ("slots", 20.0), ("seed", 20261005.0),
+    ("bootstrap_repetitions", 2000.0), ("bootstrap_blocks", [63.0, 126, 252]), ("threshold", 3),
+    ("commission_bps_per_side", 1.78), ("commission_bps_per_side", "1.77"),
+    ("sizing_round_trip_bps", 43.55), ("end", "2026-09-17"), ("extra_parameter", 0),
+])
+def test_all_other_parameter_values_names_and_numeric_types_stay_exact(field, value):
+    """The BL input exception never normalizes another cost/count/predicate."""
+    reference = Path(__file__).resolve().parents[2] / saved.REFERENCE
+    expected = saved.strict_json(reference.read_bytes())["parameters"]
+    upstream = {**expected, "slippage_bps_per_side": 5, field: value}
+    assert module._bl_parameters_match(upstream, expected) is False
+    assert module._bl_parameters_match(expected, upstream) is False
+
+
+@pytest.mark.parametrize("missing", ["slippage_bps_per_side", "lookback"])
+def test_parameter_key_omissions_are_not_normalized(missing):
+    """An equivalence exception cannot erase a required parameter name."""
+    expected = {"slippage_bps_per_side": 5.0, "lookback": 60}
+    upstream = {key: value for key, value in expected.items() if key != missing}
+    assert module._bl_parameters_match(upstream, expected) is False
+    assert module._bl_parameters_match(expected, upstream) is False
+
+
+def test_repinned_synthetic_bl_integer_slippage_reaches_diagnostic_without_rewriting_inputs(tmp_path, monkeypatch):
+    """Use the genuine package boundary with distinct BL int/BM float pins."""
+    def mutate(data, bj):
+        """Keep upstream literal identity distinct before registering fixture pins."""
+        data["specification.json"]["parameters"] = {
+            **data["specification.json"]["parameters"], "slippage_bps_per_side": 5}
+    root, output, runs, spec, store, _, _ = fixture(tmp_path, monkeypatch, cash=True, mutate=mutate)
+    before = deepcopy(store)
+    assert type(spec["parameters"]["slippage_bps_per_side"]) is float
+    monkeypatch.setattr(prices, "load_scan", lambda *a: pytest.fail("cash-only diagnostic opened quotes"))
+    module.run_preflight(root, root / "spec.json", output, runs, reader=store.__getitem__)
+    assert statuses(runs) == ["started", "completed"] and store == before
+    assert saved.strict_json((output / "result.json").read_bytes())["status"] == "holding_price_inputs_audited"
 
 
 @pytest.mark.parametrize("corruption", [None, "missing_receipt", "wrong_raw_role", "extra_input", "duplicate_raw"])
