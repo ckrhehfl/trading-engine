@@ -1,0 +1,38 @@
+{
+  "schema": "activity-raw-anchor-preflight-v1",
+  "study_id": "activity-raw-anchor-preflight-v1",
+  "mode": "discovery_raw_anchor_diagnostic",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "inputs": {},
+  "request_contract": {
+    "host": "https://data-dbg.krx.co.kr",
+    "matrix": [
+      {"service": "stk_bydd_trd", "bas_dd": "20210428", "targets": ["003550"]},
+      {"service": "stk_bydd_trd", "bas_dd": "20210527", "targets": ["003550", "383800"]},
+      {"service": "stk_isu_base_info", "bas_dd": "20210527", "targets": ["383800"]}
+    ],
+    "timeout_seconds": 20,
+    "max_response_bytes": 8388608,
+    "interval_seconds": 1.1,
+    "max_requests": 3,
+    "automatic_retries": 0,
+    "authentication_header": "AUTH_KEY"
+  }
+}
