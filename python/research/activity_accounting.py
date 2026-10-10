@@ -9,7 +9,31 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
+
+
+def sum_decimal_values(values: tuple[Decimal, ...]) -> Decimal:
+    """Add bounded finite values exactly, without intermediate NAV rounding.
+
+    Existing share/price products keep their Decimal convention. Only their
+    aggregation uses extra local precision; no global context is changed and
+    the exact result is retained rather than rounded at each component.
+    """
+    if type(values) is not tuple or len(values) > 100_000:
+        raise ValueError("a bounded tuple of Decimal values is required")
+    if any(not isinstance(value, Decimal) or not value.is_finite() for value in values):
+        raise ValueError("finite Decimal values are required")
+    nonzero = tuple(value for value in values if value)
+    if not nonzero:
+        return Decimal(0)
+    highest = max(value.adjusted() for value in nonzero)
+    lowest = min(value.as_tuple().exponent for value in nonzero)
+    precision = highest - lowest + len(str(len(nonzero))) + 2
+    if precision > 4096 or abs(highest) > 4096 or abs(lowest) > 4096:
+        raise ValueError("bounded exact Decimal precision is required")
+    with localcontext() as context:
+        context.prec = max(1, precision)
+        return sum(values, Decimal(0))
 
 
 def _positive(value: Decimal, name: str) -> None:
@@ -56,7 +80,12 @@ class PriceBasis:
 
 @dataclass(frozen=True)
 class Lot:
-    """Separate component lots while retaining their original investment."""
+    """Separate component lots while retaining their original investment.
+
+    carried_value preserves an explicit pending allocation when shares*mark
+    cannot represent it exactly. A valid observable mark clears this override;
+    the carried per-share mark is never an observed PriceBasis.
+    """
 
     lot_id: str
     code: str
@@ -68,6 +97,7 @@ class Lot:
     available_on: date
     dataset_sha256: str
     investment_id: str | None = None
+    carried_value: Decimal | None = None
 
     def __post_init__(self) -> None:
         if not self.lot_id or not self.code:
@@ -79,6 +109,8 @@ class Lot:
             raise ValueError("investment id must be a nonblank, unpadded string")
         _positive(self.shares, "shares")
         _positive(self.mark, "mark")
+        if self.carried_value is not None:
+            _positive(self.carried_value, "carried value")
         if self.due_on < self.entered_on or self.mark_date < self.entered_on:
             raise ValueError("lot dates precede acquisition")
         if self.available_on < self.entered_on:
@@ -93,6 +125,11 @@ class Lot:
         if self.investment_id is None:
             return ("lot", self.lot_id)
         return ("investment", self.investment_id)
+
+    @property
+    def marked_value(self) -> Decimal:
+        """An exact pending allocation is not an observed per-share quote."""
+        return self.carried_value if self.carried_value is not None else self.shares * self.mark
 
 
 def successor_entitlement(
@@ -118,6 +155,8 @@ def successor_entitlement(
         raise ValueError("invalid pre-event price or entitlement dates")
     if lot.available_on >= effective_on or lot.mark_date >= effective_on:
         raise ValueError("holding must be available and marked before the event")
+    if lot.carried_value is not None:
+        raise ValueError("a carried allocation is not an observable exchange basis")
     if new_basis.session != available_on:
         raise ValueError("successor basis must be anchored to availability")
     if old_basis.session != lot.mark_date or old_basis.adjusted_close != lot.mark:
@@ -130,6 +169,72 @@ def successor_entitlement(
                    mark=lot.mark / multiplier, available_on=available_on)
 
 
+def spin_off_entitlements(
+    lot: Lot, *, retained_ratio: Decimal, new_ratio: Decimal,
+    old_basis: PriceBasis, retained_basis: PriceBasis, new_basis: PriceBasis,
+    last_eligible_entry_on: date, record_on: date, effective_on: date, retained_available_on: date,
+    new_available_on: date, retained_carry_weight: Decimal,
+    carry_source: str, carry_evidence_level: str, session: date, source: str,
+    investment_id: str, new_lot_id: str,
+) -> tuple[Lot, Lot]:
+    """Partition one original investment into two compulsory stock components.
+
+    Raw ratios determine share quantities, never pending market-value weights.
+    The explicit carry convention partitions the old marked value; the second
+    component receives its exact residual. Availability-basis prices provide
+    unit factors only, with no future price level booked. Analytical fractional
+    shares are retained. IDs/collisions across inventory belong to ActivityBook.
+    This primitive converts still-held eligible inventory; replay separately
+    refuses unsupported sales that would detach rights before effectiveness.
+    """
+    _positive(retained_ratio, "retained raw share ratio")
+    _positive(new_ratio, "new raw share ratio")
+    _positive(retained_carry_weight, "retained carry weight")
+    if retained_carry_weight >= 1:
+        raise ValueError("retained carry weight must be strictly below one")
+    _source(source)
+    _source(carry_source)
+    if not isinstance(carry_evidence_level, str) or carry_evidence_level not in {"confirmed", "inferred", "assumed"}:
+        raise ValueError("carry evidence level must be explicit")
+    if old_basis.code != lot.code or retained_basis.code != lot.code or new_basis.code == lot.code:
+        raise ValueError("spin-off bases must match retained and distinct new codes")
+    if len({lot.dataset_sha256, old_basis.dataset_sha256, retained_basis.dataset_sha256,
+            new_basis.dataset_sha256}) != 1:
+        raise ValueError("spin-off bases must use the holding's price snapshot")
+    if not (lot.entered_on <= old_basis.session < effective_on <= session
+            and lot.entered_on <= last_eligible_entry_on <= record_on <= effective_on
+            and lot.available_on <= record_on and lot.available_on < effective_on
+            and effective_on <= retained_available_on and effective_on <= new_available_on):
+        raise ValueError("invalid spin-off record eligibility or entitlement dates")
+    if (lot.mark_date != old_basis.session or lot.mark != old_basis.adjusted_close
+            or lot.mark_date >= effective_on or lot.carried_value is not None):
+        raise ValueError("spin-off old basis must reconcile an observable pre-event mark")
+    if retained_basis.session != retained_available_on or new_basis.session != new_available_on:
+        raise ValueError("spin-off component bases must be anchored to their availability")
+    old_value = lot.marked_value
+    # Multiplication/subtraction of finite Decimals can be exact, even when a
+    # per-share carried mark has a repeating expansion. Preserve the value
+    # separately until a valid observable mark replaces the convention.
+    precision = (len(old_value.as_tuple().digits) + len(retained_carry_weight.as_tuple().digits)
+                 + abs(retained_carry_weight.as_tuple().exponent) + 2)
+    if precision > 4096:
+        raise ValueError("bounded carry allocation precision is required")
+    with localcontext() as context:
+        context.prec = max(context.prec, precision)
+        retained_value = old_value * retained_carry_weight
+        new_value = old_value - retained_value
+    old_units = old_basis.raw_shares_per_adjusted_share
+    retained_shares = lot.shares * old_units * retained_ratio / retained_basis.raw_shares_per_adjusted_share
+    new_shares = lot.shares * old_units * new_ratio / new_basis.raw_shares_per_adjusted_share
+    retained = replace(lot, shares=retained_shares, mark=retained_value / retained_shares,
+                       available_on=retained_available_on, investment_id=investment_id,
+                       carried_value=retained_value)
+    allotted = replace(lot, lot_id=new_lot_id, code=new_basis.code, shares=new_shares,
+                       mark=new_value / new_shares, available_on=new_available_on,
+                       investment_id=investment_id, carried_value=new_value)
+    return retained, allotted
+
+
 def observable_mark(lot: Lot, *, session: date, close: Decimal, frozen: bool) -> Lot:
     """No mark update before delivery or from frozen bars; no backward time."""
     if session < lot.mark_date:
@@ -137,7 +242,7 @@ def observable_mark(lot: Lot, *, session: date, close: Decimal, frozen: bool) ->
     if session < lot.available_on or frozen:
         return lot
     _positive(close, "observable close")
-    return replace(lot, mark=close, mark_date=session)
+    return replace(lot, mark=close, mark_date=session, carried_value=None)
 
 
 @dataclass(frozen=True)

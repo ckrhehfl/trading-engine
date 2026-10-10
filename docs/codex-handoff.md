@@ -532,8 +532,16 @@ no-event evidence. That registered preflight has now completed and passed its
 independent coordinate/package check after normal review, merge and isolated
 research deployment; see the BM ledger for its immutable receipts. The operator
 also selected original-investment grouping for compulsory spin-off components,
-as recorded in CLAUDE.md. Grouped slots are being connected to the existing book
-and cutoff selection while relevant official holding-period history is acquired.
+as recorded in CLAUDE.md. Grouped slots shipped in PR #274 and reached the clean
+isolated research checkout. The continuation connects compulsory two-component
+allocation to the same book/replay and reviewed-action decoder, with original
+due dates, pending rights, explicit carry assumptions and exact NAV aggregation.
+Fresh review found and repaired rounding and detached-rights-sale defects.
+All 34 fixed company-history leaves have received content dispositions: 33 bounded
+inferred no-compulsory-action intervals and one relevant LG spin-off. These are
+separate from executable declarations and source certification. LG's actual raw ratios/record/effect/listing dates are
+confirmed in the selected official annual-history leaf. Delivery and event-specific
+price-unit connections remain separate evidence obligations.
 Prices/action coverage, actual paired replay connection
 and final frozen logged study remain three open performance groups. No actual
 D1/D2 performance study has completed. Next, use the registered metadata

@@ -34,7 +34,7 @@ replacement selected.
 The legacy timing_policy=None path retains v1's post-sale selection convention.
 
 Every calendar session from lookback+1 through end then processes:
-(1) due compulsory exchanges/final net payments, chronologically, with supplied
+(1) due compulsory exchanges/spin-offs/final net payments, chronologically, with supplied
 order breaking same-day ties; (2) opening due sales; (3) policy-lagged entries;
 (4) closing observable marks. Non-session event dates apply on the first later
 session. Pending deliveries, absent/frozen bars retain inventory, marked value
@@ -52,11 +52,16 @@ it never silently filters a candidate or substitutes another entry. An absent
 or frozen next-session old-issue bar remains a v1 unfilled entry.
 Before those event bounds ordinary selection/fills remain permitted. No
 cessation is inferred for an issue without an explicit supported event.
+An eligible holding's executable sale after a spin-off's purchase cutoff but
+before effectiveness is explicitly unsupported: the two-component transition
+does not model already-detached rights. Reject that path rather than discarding
+rights, deferring the sale or inventing market suspension.
 
 Only immutable books, chosen codes and accounting diagnostics are returned;
 there is no IO, CLI, loader, certification, trial logging, sizing or comparison.
 Synthetic dispositions do not close R2-R5/R7-R8 or R6's actual-data integration.
-The frozen activity_portfolio v1 and accounting primitives remain unchanged.
+The frozen activity_portfolio v1 remains unchanged. Compulsory spin-offs extend
+the existing book, preserving both components and their one original slot.
 """
 
 from __future__ import annotations
@@ -68,8 +73,8 @@ from datetime import date, datetime
 from decimal import Decimal
 import hashlib
 
-from research.activity_accounting import Lot, observable_mark
-from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
+from research.activity_accounting import Lot, observable_mark, sum_decimal_values
+from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 from research.activity_portfolio import Series
 from research.activity_partition_selection import PartitionSelection, select_partition
 from research.krx_tax_schedule import KOSPI, total_bp
@@ -238,20 +243,24 @@ def _selected(
     return tuple(pool[:free_slots])
 
 
-def _event_date(event: CompulsoryStockExchange | FinalCashPayment) -> date:
-    if isinstance(event, CompulsoryStockExchange):
+def _event_date(event: CompulsoryStockExchange | CompulsorySpinOff | FinalCashPayment) -> date:
+    if isinstance(event, (CompulsoryStockExchange, CompulsorySpinOff)):
         return event.effective_on
     if isinstance(event, FinalCashPayment):
         return event.distribution.paid_on
-    raise ValueError("only synthetic compulsory exchanges/final net payments are supported")
+    raise ValueError("only synthetic compulsory exchanges/spin-offs/final net payments are supported")
 
 
 def _check_event_quotes(
-    events: Sequence[CompulsoryStockExchange | FinalCashPayment],
+    events: Sequence[CompulsoryStockExchange | CompulsorySpinOff | FinalCashPayment],
     panel: Mapping[str, Series | DecimalSeries], *, session: date, index: int,
 ) -> None:
     """Refuse bars contradicting explicit event bounds, even before payment."""
     for event in events:
+        if isinstance(event, CompulsorySpinOff):
+            # Delivery gates the entitlement, not market quotations for the
+            # retained issue or independently traded new-company shares.
+            continue
         if isinstance(event, CompulsoryStockExchange):
             code, ceased = event.old_basis.code, session >= event.effective_on
         else:
@@ -266,7 +275,7 @@ def _check_event_quotes(
 def replay_synthetic(
     dates: Sequence[date], panel: Mapping[str, Series | DecimalSeries], params: Mapping,
     selections: Sequence[SyntheticSelection | PartitionSelection], *, dataset_sha256: str | None,
-    events: tuple[CompulsoryStockExchange | FinalCashPayment, ...] = (),
+    events: tuple[CompulsoryStockExchange | CompulsorySpinOff | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
     timing_policy: SessionLagPolicy | None = None,
 ) -> SyntheticReplay:
@@ -349,13 +358,24 @@ def replay_synthetic(
     ordered_events = sorted(events, key=_event_date)  # stable: explicit same-day order
     if len({event.event_id for event in ordered_events}) != len(ordered_events):
         raise ValueError("synthetic event ids must be unique")
+    for spin_off in (event for event in ordered_events if isinstance(event, CompulsorySpinOff)):
+        codes = {spin_off.old_basis.code, spin_off.new_basis.code}
+        for other in ordered_events:
+            if other is spin_off or _event_date(other) != spin_off.effective_on:
+                continue
+            other_codes = ({other.old_basis.code, other.new_basis.code}
+                           if isinstance(other, (CompulsoryStockExchange, CompulsorySpinOff))
+                           else {other.distribution.code})
+            if codes & other_codes:
+                raise ValueError("same-day spin-off event chains are ambiguous")
     for event in ordered_events:
-        bases = ((event.old_basis, event.new_basis) if isinstance(event, CompulsoryStockExchange)
+        bases = ((event.old_basis, event.retained_basis, event.new_basis) if isinstance(event, CompulsorySpinOff)
+                 else (event.old_basis, event.new_basis) if isinstance(event, CompulsoryStockExchange)
                  else (event.distribution.basis,))
         if (any(basis.dataset_sha256 != dataset_sha256 for basis in bases)
                 or _event_date(event) <= book.as_of or event.event_id in book.applied_event_ids):
             raise ValueError("synthetic events need the same snapshot, future due dates and unused ids")
-        if isinstance(event, CompulsoryStockExchange) and event.new_basis.code not in panel:
+        if isinstance(event, (CompulsoryStockExchange, CompulsorySpinOff)) and event.new_basis.code not in panel:
             raise ValueError("synthetic successor must have an explicit panel series, even if absent")
     _check_event_quotes(ordered_events, panel, session=calendar[lookback], index=lookback)
     books, choices = [], []
@@ -393,8 +413,8 @@ def replay_synthetic(
         book = replace(book, as_of=session)
         while cursor < len(ordered_events) and _event_date(ordered_events[cursor]) <= session:
             event = ordered_events[cursor]
-            book = (book.apply_stock_exchange(event, session=session)
-                    if isinstance(event, CompulsoryStockExchange)
+            book = (book.apply_spin_off(event, session=session) if isinstance(event, CompulsorySpinOff)
+                    else book.apply_stock_exchange(event, session=session) if isinstance(event, CompulsoryStockExchange)
                     else book.apply_final_cash(event, session=session))
             cursor += 1
         remaining, cash = [], book.cash
@@ -407,6 +427,10 @@ def replay_synthetic(
                 diagnostics["unavailable_position_sessions"] += 1
             if session >= lot.due_on:
                 if available and opening and not frozen:
+                    if any(isinstance(event, CompulsorySpinOff) and event.old_basis.code == lot.code
+                           and lot.entered_on <= event.last_eligible_entry_on < session < event.effective_on
+                           for event in ordered_events):
+                        raise ValueError("unsupported pre-effective spin-off sale would detach pending rights")
                     tax = Decimal(str(total_bp(KOSPI, session, calendar)))
                     if cost + tax > 10000:
                         raise ValueError("sale costs cannot exceed the sale notional")
@@ -430,11 +454,12 @@ def replay_synthetic(
                     selection_at=policy.selection_at(calendar, formation_index),
                 )
                 choices.append((formation_on, selected))
-            equity = book.cash
+            equity_values = [book.cash]
             for lot in book.lots:
                 opening, _, frozen, _ = _quote(panel[lot.code], index)
-                equity += lot.shares * (opening if opening and not frozen
-                                        and session >= lot.available_on else lot.mark)
+                equity_values.append(lot.shares * opening if opening and not frozen and session >= lot.available_on
+                                     else lot.marked_value)
+            equity = sum_decimal_values(tuple(equity_values))
             allocation = equity / slots
             lots, cash = list(book.lots), book.cash
             for code in selected:

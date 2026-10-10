@@ -29,7 +29,7 @@ import json
 import re
 
 from research.activity_accounting import FinalCashDistribution, PriceBasis
-from research.activity_book import CompulsoryStockExchange, FinalCashPayment
+from research.activity_book import CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 
 
 def _fields(value: object, names: str) -> dict:
@@ -99,7 +99,7 @@ def reviewed_actions(
     activity_snapshot_sha256: str,
     quote_snapshot_sha256: str | None,
     read_scope_sha256: str,
-) -> tuple[tuple[CompulsoryStockExchange | FinalCashPayment, ...], dict[str, tuple[str, ...]]]:
+) -> tuple[tuple[CompulsorySpinOff | CompulsoryStockExchange | FinalCashPayment, ...], dict[str, tuple[str, ...]]]:
     """Validate declared coverage and decode supported events without reading data.
 
     Original requirements may overlap; declarations must cover their exact union
@@ -115,6 +115,9 @@ def reviewed_actions(
     Final-payment relevance and coverage use the inclusive last-trading-to-paid
     lifetime. Known actual payment may be after the horizon/calendar; its evidence
     date is not a quote session or an instruction to recognize cash early.
+    Spin-offs retain the parent issue and add the allotted issue. Their purchase
+    cutoff/record/effective dates are distinct; an explicit registered carry
+    convention is linked separately from the verified compulsory allotment.
 
     Unknown/gapped/conflicting coverage, unsupported/proposed events, mismatched
     evidence coordinates, and absent basis are errors. An empty requirement has
@@ -230,17 +233,24 @@ def reviewed_actions(
     raw_events = []
     event_ids: set[str] = set()
     for raw in declaration["events"]:
-        if type(raw) is not dict or raw.get("kind") not in ("compulsory_stock_exchange", "final_cash_payment"):
+        if type(raw) is not dict or raw.get("kind") not in (
+                "compulsory_stock_exchange", "compulsory_spin_off", "final_cash_payment"):
             raise ValueError("unsupported action kind")
         stock = raw["kind"] == "compulsory_stock_exchange"
-        fields = ("successor_code successor_isin ratio old_basis_id new_basis_id effective_on available_on"
-                  if stock else "last_trading_on record_on paid_on net_cash_per_raw_share basis_id")
+        spin = raw["kind"] == "compulsory_spin_off"
+        if spin:
+            fields = ("successor_code successor_isin retained_ratio new_ratio old_basis_id retained_basis_id "
+                      "new_basis_id last_eligible_entry_on record_on effective_on retained_available_on "
+                      "new_available_on retained_carry_weight carry_evidence_level carry_evidence_ref")
+        else:
+            fields = ("successor_code successor_isin ratio old_basis_id new_basis_id effective_on available_on"
+                      if stock else "last_trading_on record_on paid_on net_cash_per_raw_share basis_id")
         row = _fields(raw, "event_id kind status code isin evidence_ref " + fields)
         event_id = _text(row["event_id"])
         if event_id in event_ids:
             raise ValueError("duplicate event id")
         event_ids.add(event_id)
-        on = _day(row["effective_on"] if stock else row["paid_on"])
+        on = _day(row["effective_on"] if stock or spin else row["paid_on"])
         raw_events.append((on, row))
 
     decoded = []
@@ -250,8 +260,9 @@ def reviewed_actions(
     successor_identities: dict[str, tuple[str, str]] = {}
     for on, row in sorted(raw_events, key=lambda item: item[0]):
         code, isin = _identity(row)
-        first_effect = (on if row["kind"] == "compulsory_stock_exchange"
-                        else _day(row["last_trading_on"]))
+        spin = row["kind"] == "compulsory_spin_off"
+        first_effect = (_day(row["last_eligible_entry_on"]) if spin else
+                        on if row["kind"] == "compulsory_stock_exchange" else _day(row["last_trading_on"]))
         if not any(required_code == code and identity == isin and
                    first_effect.toordinal() <= ordinal <= on.toordinal()
                    for (required_code, ordinal), identity in required.items()):
@@ -260,18 +271,33 @@ def reviewed_actions(
             raise ValueError("conflicting full-issue events")
         identities_with_event.add((code, isin))
         event_id = row["event_id"]
-        if row["kind"] == "compulsory_stock_exchange":
+        if row["kind"] == "compulsory_stock_exchange" or spin:
             if row["status"] != "verified_effective":
                 raise ValueError("proposed or unverified exchange")
             new_code, new_isin = _identity({"code": row["successor_code"], "isin": row["successor_isin"]})
             bind_issue(new_code, new_isin)
-            available = _day(row["available_on"])
-            source = link(row["evidence_ref"], code=code, isin=isin, start=on, end=on,
-                          finding="verified_compulsory_stock_exchange", event_ids=(event_id,))
-            event = CompulsoryStockExchange(event_id, _number(row["ratio"]),
-                basis(row["old_basis_id"], code, isin, "last_observable_pre_event"),
-                basis(row["new_basis_id"], new_code, new_isin, "successor_availability"),
-                on, available, source)
+            available = _day(row["new_available_on"] if spin else row["available_on"])
+            source = link(row["evidence_ref"], code=code, isin=isin, start=first_effect, end=on,
+                          finding="verified_" + row["kind"], event_ids=(event_id,))
+            old_basis = basis(row["old_basis_id"], code, isin, "last_observable_pre_event")
+            new_basis = basis(row["new_basis_id"], new_code, new_isin, "successor_availability")
+            if spin:
+                level = _text(row["carry_evidence_level"])
+                if level not in ("confirmed", "inferred", "assumed"):
+                    raise ValueError("explicit carry evidence level required")
+                carry_source = link(row["carry_evidence_ref"], code=code, isin=isin, start=on, end=on,
+                    finding="registered_spin_off_carry_" + level, event_ids=(event_id,))
+                event = CompulsorySpinOff(event_id, _number(row["retained_ratio"]), _number(row["new_ratio"]),
+                    old_basis, basis(row["retained_basis_id"], code, isin, "retained_availability"), new_basis,
+                    first_effect, _day(row["record_on"]), on, _day(row["retained_available_on"]), available,
+                    _number(row["retained_carry_weight"]), carry_source, level, source)
+                # A component's unit anchor may be after the original holding
+                # bound. The coherent connector must supply this retained row
+                # too, rather than checking only the new company's series.
+                successor.setdefault(code, set()).add(event.retained_available_on)
+            else:
+                event = CompulsoryStockExchange(event_id, _number(row["ratio"]), old_basis, new_basis,
+                                                on, available, source)
             # Keep each disjoint required interval; do not fill unrelated gaps.
             relevant = sorted(ordinal for (required_code, ordinal), identity in required.items()
                               if required_code == code and identity == isin and ordinal >= on.toordinal())
@@ -297,15 +323,19 @@ def reviewed_actions(
     # overlap: a parent cannot deliver an issue after that exact issue's child
     # conversion/record boundary. Code reuse was rejected before object creation.
     for parent in decoded:
-        if not isinstance(parent, CompulsoryStockExchange):
+        if not isinstance(parent, (CompulsoryStockExchange, CompulsorySpinOff)):
             continue
+        parent_available = parent.new_available_on if isinstance(parent, CompulsorySpinOff) else parent.available_on
         for child in decoded:
             if coordinates[child.event_id][:2] != successor_identities[parent.event_id]:
                 continue
-            if isinstance(child, CompulsoryStockExchange):
-                if parent.available_on >= child.effective_on:
+            if isinstance(child, CompulsorySpinOff):
+                if parent_available > child.last_eligible_entry_on or parent_available >= child.effective_on:
+                    raise ValueError("unsupported spin-off eligibility before parent delivery")
+            elif isinstance(child, CompulsoryStockExchange):
+                if parent_available >= child.effective_on:
                     raise ValueError("unsupported re-exchange of a pending entitlement")
-            elif parent.available_on > child.distribution.record_on:
+            elif parent_available > child.distribution.record_on:
                 raise ValueError("unsupported final payout eligibility before parent delivery")
     if used_bases != set(bases):
         raise ValueError("unrelated or unused basis")
