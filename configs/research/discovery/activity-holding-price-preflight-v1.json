@@ -1,0 +1,37 @@
+{
+  "schema": "activity-holding-price-preflight-v1",
+  "study_id": "activity-holding-price-preflight-v1",
+  "mode": "discovery_holding_price_diagnostic",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "inputs": {
+    "bl_result": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/result.json", "sha256": "f9a8ba2d7b84259eaa54560a7095e32adae762dddbd1cb52082dd5acaa409530"},
+    "bl_specification": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/specification.json", "sha256": "de4ed1c44aa99074012fe75359ba5558074ecc1ae709a18b42ef59162e1ba49f"},
+    "bl_source_manifest": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/source-manifest.json", "sha256": "036bc43ab5be3ffbe7696239f6ca7610d4441800ab9e029812d1be28d2dfbfa0"},
+    "bl_input_manifest": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/input-manifest.json", "sha256": "b124c9354c11f1bfba40d3a86c994f91c1dda5c2ded65473a8b6ee30207be308"},
+    "bl_read_scope": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/read-scope.json", "sha256": "bda4c5e9081810f3cbc585229befbdad3c2d90ae10fbbaf6ca0adade5deef654"},
+    "bl_raw_source_read_scope": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/raw-source-read-scope.json", "sha256": "511a69274e7628c24cd0409c09b52ec0cb75fa7a24db3e50b601b7559fc2d39e"},
+    "bl_population_audit": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/population-audit.json", "sha256": "20c126919c3b2a5c9c911b0bf371bc1c99f78727c134fbea807fef1db62dca76"},
+    "bl_normal_input_audit": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/normal-input-audit.json", "sha256": "488b1968bae538b0b24299658618e24ce539fc0131cbfdf7e4aa38c8918510e1"},
+    "bl_restored_activity_audit": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run/restored-activity-audit.json", "sha256": "babc3a654b86ea459c3479e2fb687f113db1eca7d9c93a2e29085849195efae1"},
+    "bl_verification": {"path": "/home/minjun4897/research-evidence/large-liquid-bl-independent-20261010-v2/verification.json", "sha256": "915237d4306b4c93d2b6ac4e503f759d3866d3e61346cfac0009b0ac4678d860"},
+    "bj_scope": {"path": "/home/minjun4897/research-evidence/large-liquid-bj-price-action-scope-20261009-v1/run/result.json", "sha256": "69b6829903cb03fdb835ee084a91d06941cb4c8ce5048ea75189a298c63109ea"},
+    "scan_database": {"path": "/home/minjun4897/trading-engine/python/data/var/krx_scan.sqlite3", "mode": "ro", "columns": ["bsop_date", "open", "high", "low", "close", "volume", "turnover"]}
+  }
+}

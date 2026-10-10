@@ -328,3 +328,74 @@ regressions passed 352 tests / one skipped. The producer-free v2 verifier's
 row-zero, wrong cap convention and accepted-row conflicts; the unchanged v1
 synthetic suite still passed 34. Guardrail scan and whitespace check passed.
 These tests read no actual market input and do not close a performance group.
+
+## V2 reviewed publication and actual execution
+
+PR #270's final head `23dba7359dbdbe415d40f81ff03148664a0fa573`
+received CodeRabbit APPROVED review `5477166008` at
+2026-10-10T02:36:30Z. The full review completed with no actionable comments,
+zero inline comments and zero review threads. All nine checks passed; the
+final Python PR job 38016813829/114108803280 reported 5542 passed / three
+skipped in 403.38 seconds. The earlier local full collection reported 5479
+passed / three skipped in 1735.56 seconds and preceded the final added runner
+cases; these are distinct collections, not interchangeable final-head counts.
+
+Normal squash merge `6301fab0ad9e43aa6052119e520c926cae25c236`
+completed at 2026-10-10T02:38:04Z. Its tree
+`2c30a0255a02e0e2049f0a41ca97262bdb378ae9` exactly matches the reviewed
+head. The checked v2 launcher synchronized the clean isolated GCP research
+checkout from the previous reviewed merge at
+2026-10-10T02:38:52.410572+00:00. The collector remained clean at unchanged
+`4ce85d714890b87f1a57ae89d4942660e41c0483`.
+
+The registered v2 run was then invoked once with all three frozen helper pins
+checked again. Its result and independent verification are pending at this
+checkpoint. No normal-input group or performance study is closed by a started
+process or a merged source change.
+
+The registered v2 attempt completed successfully in durable trial
+`a04f07ea-7798-4b74-a21d-74d9027cc2fd`, started
+2026-10-10T02:39:18.075943+00:00 and completed
+2026-10-10T02:45:24.362926+00:00. All 1511 fixed consumed inputs retained the
+same verified input manifest as recovery-v1. The launcher read back the exact
+started/completed receipts and nine output hashes; both earlier failed trials
+remain preserved. The collector and isolated research checkout stayed clean at
+their registered commits. An operational process-only check read elapsed/CPU/RSS
+statistics during execution, without opening another research source or changing
+the registered process or its limits.
+
+| Successful v2 output | SHA-256 |
+|---|---|
+| result.json | `f9a8ba2d7b84259eaa54560a7095e32adae762dddbd1cb52082dd5acaa409530` |
+| specification.json | `de4ed1c44aa99074012fe75359ba5558074ecc1ae709a18b42ef59162e1ba49f` |
+| source-manifest.json | `036bc43ab5be3ffbe7696239f6ca7610d4441800ab9e029812d1be28d2dfbfa0` |
+| input-manifest.json | `b124c9354c11f1bfba40d3a86c994f91c1dda5c2ded65473a8b6ee30207be308` |
+| read-scope.json | `bda4c5e9081810f3cbc585229befbdad3c2d90ae10fbbaf6ca0adade5deef654` |
+| raw-source-read-scope.json | `511a69274e7628c24cd0409c09b52ec0cb75fa7a24db3e50b601b7559fc2d39e` |
+| population-audit.json | `20c126919c3b2a5c9c911b0bf371bc1c99f78727c134fbea807fef1db62dca76` |
+| normal-input-audit.json | `488b1968bae538b0b24299658618e24ce539fc0131cbfdf7e4aa38c8918510e1` |
+| restored-activity-audit.json | `babc3a654b86ea459c3479e2fb687f113db1eca7d9c93a2e29085849195efae1` |
+
+The separately pinned producer-free v2 wrapper then verified exactly those nine
+new outputs. It independently reproduced the 35,271-row partition:
+34,327 capitalization failures, 27 negative-type controls, 41 BH failures,
+840 BI failures and 36 normal windows across 31 codes. All 876 BI windows'
+saved numeric proofs agreed, with zero unresolved inputs. Both arms retain
+36 signals, union 36 and symmetric difference zero. These are formation/code
+signal occurrences, not 36 strategies or actual portfolio fills.
+
+The verified package identifier is
+`6485cf91fa5dfff1cbec1e6e867141f42bc8edcf676fe47c01bf2866a82d5786`.
+The exact 1611-byte independent stdout receipt at the private local path above
+has SHA-256
+`915237d4306b4c93d2b6ac4e503f759d3866d3e61346cfac0009b0ac4678d860`.
+Its scope remains new-output arithmetic, partition and provenance links only;
+original source truth, historical publication/vintage, classification truth and
+typed OHLC reconstruction are not certified. Publication availability remains
+assumed under the paired timing protocol.
+
+Normal-input connection is now complete: three first-performance groups remain
+open and one group was newly closed. Consequential prices/actions, actual replay
+integration and final frozen logged performance remain open. Both D1/D2
+completed performance counts remain zero. Shipping the pure BM seams alongside
+this repair did not execute any holding-price or portfolio study.

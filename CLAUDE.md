@@ -1670,9 +1670,12 @@ The actual-start ledger is `.planning/rd-bl-large-liquid-normal-input-assembly.m
 the narrow proof-partition selection connection and consequential price/action
 input route together, using the unchanged Discovery parameters and paired
 session policies. Engineering and synthetic verification may proceed without
-reading saved market inputs. Actual BL completion is still pending and must
-not be presumed. Freeze its successful result/audits and independent receipts
-before a separately registered actual BM input consumption.
+reading saved market inputs. BL's registered recovery-v2 completed and its
+producer-free new-output verification passed; the successful pins and limits
+are recorded in `.planning/rd-bl-large-liquid-normal-input-assembly.md`.
+Preserve those exact result/audit and independent receipt pins before a
+separately registered actual BM input consumption. No holding-price or
+performance completion follows from BL's successful normal-input assembly.
 
 Do not shrink the historical source population to a price-panel subset or
 invent positive business classifications for cap/BH/BI/negative-type exclusions.

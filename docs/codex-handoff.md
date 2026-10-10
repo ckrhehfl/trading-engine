@@ -483,6 +483,19 @@ Task BL now restores the unchanged BI activity snapshot and connects accepted
 periods to actual normal-screen inputs, preserving all source/proof partitions.
 Both performance counts remain zero at this checkpoint.
 
+BL recovery-v2 now completed after PR #270's reviewed merge and isolated GCP
+research deployment. Independent output-only verification reproduced the full
+partition and both timing arms' signal lists without unresolved normal inputs.
+The exact successful output pins, preserved earlier failures and verification
+limits are in BL's ledger. Normal-input connection is complete; prices/actions,
+actual replay integration and final frozen logged performance remain open.
+Task BM's pure selection/holding/replay seams and bounded holding-price runner
+shipped with the same reviewed merge. Its separately pinned actual specification
+and execution protocol are being registered in BM's ledger; implementation
+alone is not an actual price read or performance result. Publication/vintage
+uncertainty remains an explicitly assumed paired-timing sensitivity question,
+not an external-contact blocker. The operational collector remains unchanged.
+
 ## Where the previous work stopped
 
 The local Claude trading-engine transcript ends after a request to continue
