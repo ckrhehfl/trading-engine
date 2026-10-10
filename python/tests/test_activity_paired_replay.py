@@ -10,12 +10,14 @@ import weakref
 import pytest
 
 from research import activity_paired_replay as PAIRED
+from research import activity_component_bounds as COMPONENT
 from research import activity_holding_preflight as producer
 from research import activity_preflight as saved
 from research import activity_price_parity as prices
 from research.activity_exit_bounds import provisional_exit_bounds
 from research.activity_holding_inputs import _FINGERPRINT_SCOPE, _provenance
 from research.activity_partition_selection import selections_from_bl
+from research.activity_reviewed_actions import reviewed_action_terms
 from test_activity_partition_selection import package
 
 
@@ -624,4 +626,132 @@ def test_conditional_child_scope_requires_recomputation_and_reviewed_no_event(mo
     monkeypatch.setattr(PAIRED, "replay_synthetic", lambda *a, **kw: pytest.fail("invalid child proof reached returns"))
     with pytest.raises(ValueError):
         PAIRED.paired_replay(*inputs, parameters=parameters, expected_pins=pins, conditional_exit_scope=plan_raw)
+
+
+def component_case(monkeypatch, *, mode="ordinary", cash=False):
+    inputs, parameters, pins, calendar = fixture(monkeypatch, mode=mode, cash=cash)
+    prepared = PAIRED.prepare_inputs(inputs[0], inputs[1], parameters,
+        {role: pins[role] for role in PAIRED.PACKAGE_ROLES})
+    identities = {row["code"]: row["isin"] for row in prepared.expected_windows}
+    plan = provisional_exit_bounds(prepared.selections_d1, prepared.selections_d2, prepared.holding_inputs,
+        parameters, prepared.required_code_dates, identities, input_sha256=prepared.input_sha256)
+    coverage, evidence = saved.strict_json(inputs[2]), saved.strict_json(inputs[3])
+    terms = reviewed_action_terms(coverage, evidence, expected_windows=prepared.expected_windows,
+        calendar=calendar, activity_snapshot_sha256=prepared.activity_snapshot_sha256,
+        quote_snapshot_sha256=prepared.quote_snapshot_sha256)
+    proof = COMPONENT.component_exit_bounds(plan, prepared.selections_d1, prepared.selections_d2,
+        prepared.holding_inputs, parameters, prepared.required_code_dates, identities,
+        input_sha256=prepared.input_sha256, quotes=prepared.holding_inputs, terms=terms)
+    coverage.update(required_scope_sha256=proof["component_scope_sha256"], windows=[])
+    for window in proof["windows"]:
+        source = evidence["references"][window["code"]]
+        coverage["windows"].append(dict(window,
+            review_state="reviewed_supported_events" if coverage["events"] else "reviewed_no_event",
+            event_ids=[row["event_id"] for row in coverage["events"]], evidence_refs=[window["code"]]))
+        source.update(window)
+    inputs[2], inputs[3] = saved.encoded(coverage), saved.encoded(evidence)
+    wrapper = saved.encoded(dict(schema=COMPONENT.WRAPPER_SCHEMA, ordinary_exit_scope=plan, component_scope=proof))
+    pins.update(reviewed_action_coverage=saved.digest(inputs[2]), basis_evidence=saved.digest(inputs[3]),
+                conditional_exit_scope=saved.digest(wrapper))
+    return inputs, parameters, pins, calendar, wrapper
+
+
+@pytest.mark.parametrize("mode,cash", [("ordinary", False), ("pending_final_cash", False), ("ordinary", True)])
+def test_component_wrapper_recomputed_then_calls_existing_engine_once_per_arm(monkeypatch, mode, cash):
+    inputs, parameters, pins, _, wrapper = component_case(monkeypatch, mode=mode, cash=cash)
+    calls, replay = [], PAIRED.replay_synthetic
+    def counted(*args, **kwargs):
+        calls.append(kwargs["timing_policy"].session_lag)
+        return replay(*args, **kwargs)
+    monkeypatch.setattr(PAIRED, "replay_synthetic", counted)
+    value = PAIRED.paired_replay(*inputs, parameters=parameters, expected_pins=pins, conditional_exit_scope=wrapper)
+    proof = value["conditional_component_scope"]
+    assert calls == [1, 2]
+    assert value["action_scope_sha256"] == proof["component_scope_sha256"]
+    assert value["quote_snapshot_sha256"] == proof["original_quote_snapshot_sha256"]
+    assert value["actual_study_completed"] is False and value["promotion_allowed"] is False
+    if mode == "pending_final_cash":
+        assert value["conditional_scope_used"] is False
+        assert all(row["end_on"] == parameters["end"] for row in proof["entries"])
+        assert all(value["report"]["arms"][arm]["terminal_open_lots"] == 1 for arm in ("D1", "D2"))
+    else:
+        assert value["conditional_scope_used"] is True
+
+
+@pytest.mark.parametrize("change", ["missing_origin", "ordinary", "component", "terms", "scope", "coverage", "wrapper_fields"])
+def test_component_wrapper_corruption_fails_before_books(monkeypatch, change):
+    inputs, parameters, pins, _, wrapper_raw = component_case(monkeypatch)
+    wrapper = saved.strict_json(wrapper_raw)
+    proof = wrapper["component_scope"]
+    if change == "missing_origin":
+        proof["entries"].pop()
+    elif change == "ordinary":
+        wrapper["ordinary_exit_scope"]["entries"].pop()
+    elif change == "component":
+        proof["entries"][0]["components"].clear()
+    elif change == "terms":
+        proof["terms_sha256"] = "0" * 64
+    elif change in ("scope", "coverage"):
+        coverage = saved.strict_json(inputs[2])
+        if change == "scope":
+            coverage["required_scope_sha256"] = pins["bm_read_scope"]
+        else:
+            coverage["windows"].clear()
+        inputs[2] = saved.encoded(coverage)
+        pins["reviewed_action_coverage"] = saved.digest(inputs[2])
+    else:
+        wrapper["unexpected"] = False
+    proof["component_scope_sha256"] = saved.digest(saved.encoded(
+        {key: value for key, value in proof.items() if key != "component_scope_sha256"}))
+    wrapper_raw = saved.encoded(wrapper)
+    pins[PAIRED.CONDITIONAL_ROLE] = saved.digest(wrapper_raw)
+    monkeypatch.setattr(PAIRED, "replay_synthetic", lambda *a, **kw: pytest.fail("invalid component proof reached replay"))
+    with pytest.raises(ValueError):
+        PAIRED.paired_replay(*inputs, parameters=parameters, expected_pins=pins, conditional_exit_scope=wrapper_raw)
+
+
+def test_component_wrapper_connects_full_original_successor_quotes_to_short_action_union(monkeypatch):
+    from research.activity_quote_extension import extend_holding_quotes
+    from test_activity_paired_extension import spin_fixture
+    inputs, parameters, pins, calendar, envelope, composite = spin_fixture(monkeypatch)
+    full_report = PAIRED.paired_replay(*inputs, parameters=parameters, expected_pins=pins,
+                                     quote_extension=saved.encoded(envelope))["report"]
+    prepared = PAIRED.prepare_inputs(*inputs[:2], parameters,
+        {role: pins[role] for role in PAIRED.PACKAGE_ROLES})
+    identities = {row["code"]: row["isin"] for row in prepared.expected_windows}
+    plan = provisional_exit_bounds(prepared.selections_d1, prepared.selections_d2, prepared.holding_inputs,
+        parameters, prepared.required_code_dates, identities, input_sha256=prepared.input_sha256)
+    coverage, evidence = saved.strict_json(inputs[2]), saved.strict_json(inputs[3])
+    terms = reviewed_action_terms(coverage, evidence, expected_windows=prepared.expected_windows, calendar=calendar,
+        activity_snapshot_sha256=prepared.activity_snapshot_sha256, quote_snapshot_sha256=composite.quote_snapshot_sha256)
+    proof = COMPONENT.component_exit_bounds(plan, prepared.selections_d1, prepared.selections_d2,
+        prepared.holding_inputs, parameters, prepared.required_code_dates, identities,
+        input_sha256=prepared.input_sha256, quotes=composite, terms=terms)
+    coverage.update(required_scope_sha256=proof["component_scope_sha256"], windows=[])
+    for window in proof["windows"]:
+        parent = window["code"] == "000001"
+        ref = "000001" if parent else "new-complete"
+        evidence["references"][ref].update(window)
+        coverage["windows"].append(dict(window, review_state="reviewed_supported_events" if parent else "reviewed_no_event",
+            event_ids=["synthetic-spin"] if parent else [], evidence_refs=[ref]))
+    inputs[2:] = [saved.encoded(coverage), saved.encoded(evidence)]
+    wrapper = saved.encoded(dict(schema=COMPONENT.WRAPPER_SCHEMA, ordinary_exit_scope=plan, component_scope=proof))
+    pins.update(reviewed_action_coverage=saved.digest(inputs[2]), basis_evidence=saved.digest(inputs[3]),
+                conditional_exit_scope=saved.digest(wrapper))
+    before, calls, replay = deepcopy((inputs, pins, envelope)), [], PAIRED.replay_synthetic
+    def capture(*args, **kwargs):
+        calls.append(kwargs["timing_policy"].session_lag)
+        return replay(*args, **kwargs)
+    monkeypatch.setattr(PAIRED, "replay_synthetic", capture)
+    monkeypatch.setattr("builtins.open", lambda *a, **kw: pytest.fail("component wrapper attempted IO"))
+    monkeypatch.setattr(sqlite3, "connect", lambda *a, **kw: pytest.fail("component wrapper attempted DB"))
+    value = PAIRED.paired_replay(*inputs, parameters=parameters, expected_pins=pins,
+                              quote_extension=saved.encoded(envelope), conditional_exit_scope=wrapper)
+    assert calls == [1, 2] and value["report"] == full_report
+    assert before == (inputs, pins, envelope)
+    assert value["conditional_component_scope"] == proof
+    assert value["quote_lineage"] == saved.strict_json(extend_holding_quotes(composite.original, composite.extension).fingerprint_json)
+    assert value["quote_snapshot_sha256"] == composite.quote_snapshot_sha256
+    assert value["quote_required_code_dates"]["000002"][-1] == parameters["end"]
+    assert next(row for row in proof["windows"] if row["code"] == "000002")["end"] == calendar[92].isoformat()
 
