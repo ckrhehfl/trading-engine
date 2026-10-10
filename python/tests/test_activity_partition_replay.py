@@ -9,13 +9,13 @@ import pytest
 
 from research import activity_replay as module
 from research.activity_accounting import FinalCashDistribution, PriceBasis
-from research.activity_book import CompulsoryStockExchange, FinalCashPayment
+from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
 from research.activity_partition_selection import PartitionSelection, selections_from_bl
 from research.activity_replay import DecimalSeries, replay_synthetic
 from research.activity_timing import SessionLagPolicy
 from research.krx_tax_schedule import KOSPI, total_bp
 from test_activity_replay import at
-from test_activity_timing import absent_on, run_case, target_case
+from test_activity_timing import absent_on, replay_inputs, run_case, target_case
 
 
 SNAPSHOT, PARTITION = "a" * 64, "b" * 64
@@ -47,6 +47,65 @@ def test_partition_and_complete_toy_declarations_share_the_same_accounting(lag):
     assert at(partition, days[entry]).lots[0].entered_on == days[entry]
     assert selected[0].source_population_count > len(panel)
     assert selected[0].source_partition_sha256 != SNAPSHOT
+
+
+@pytest.mark.parametrize("lag", [1, 2])
+@pytest.mark.parametrize("initial_cash", [None, D("37.25"), D(0)])
+def test_cash_only_partition_replays_without_inventing_a_quote_snapshot(lag, initial_cash):
+    """Both explicit arms retain numeric cash/NAV without price observations."""
+    from research.activity_holding_inputs import adapt_holding_scan, holding_requirements
+
+    policy, days, _, params, selected, _, _, _ = case(lag)
+    empty = tuple(replace(row, eligible_codes=()) for row in selected)
+    other = tuple(replace(row, eligible_codes=()) for row in case(3 - lag)[4])
+    d1, d2 = (empty, other) if lag == 1 else (other, empty)
+    requirements = holding_requirements(d1, d2, tuple(days), params, {})
+    inputs = adapt_holding_scan(None, tuple(days), requirements, quote_snapshot_sha256=None,
+                               read_scope_sha256="c" * 64, activity_snapshot_sha256=SNAPSHOT)
+    book = None if initial_cash is None else ActivityBook(initial_cash, (), days[params["lookback"]])
+    result = replay_synthetic(days, inputs.panel, params, empty,
+                              dataset_sha256=inputs.quote_snapshot_sha256,
+                              initial_book=book, timing_policy=policy)
+    expected_cash = D(1) if initial_cash is None else initial_cash
+    assert result.selections == ((days[2], ()),)
+    assert tuple(book.as_of for book in result.books) == tuple(days[3:10])
+    assert all(book.cash == book.nav == expected_cash and book.lots == () for book in result.books)
+    assert result.closed_trades == 0
+    assert dict(result.diagnostics).get("entries", 0) == 0
+    assert dict(result.diagnostics)["invested_sessions"] == 0
+    assert inputs.quote_snapshot_sha256 is None
+
+
+@pytest.mark.parametrize("change", ["panel", "signal", "initial_lot", "event", "legacy", "legacy_timed"])
+def test_none_snapshot_is_forbidden_outside_explicit_empty_partition(change):
+    """No quote-free exception applies to prices, inventory, events or toy selectors."""
+    policy, days, panel, params, selected, initial, entry, toy = case(1)
+    declarations = tuple(replace(row, eligible_codes=()) for row in selected)
+    quotes, book, events = {}, None, ()
+    if change == "panel": quotes = panel
+    elif change == "signal": declarations, quotes = selected, panel
+    elif change == "initial_lot": book, quotes = initial, panel
+    elif change == "event":
+        basis = PriceBasis("HELD", days[2], D(100), D(100), SNAPSHOT, "synthetic basis")
+        events = (FinalCashPayment("payment", FinalCashDistribution(
+            "HELD", days[2], days[entry], days[entry + 2], D(100), basis, "synthetic payment")),)
+    elif change in ("legacy", "legacy_timed"):
+        if change == "legacy":
+            toy = replay_inputs(SessionLagPolicy())[3]
+            policy = None
+        declarations = tuple(replace(row, candidates=()) for row in toy)
+    with pytest.raises(ValueError, match="snapshot must be a lowercase SHA-256"):
+        replay_synthetic(days, quotes, params, declarations, dataset_sha256=None,
+                         initial_book=book, events=events, timing_policy=policy)
+
+
+@pytest.mark.parametrize("snapshot", ["", "unknown", "A" * 64, 0])
+def test_cash_only_exception_does_not_accept_malformed_non_none_snapshot(snapshot):
+    """The exception denotes no snapshot with None, never a malformed identifier."""
+    policy, days, _, params, selected, _, _, _ = case(1)
+    empty = tuple(replace(row, eligible_codes=()) for row in selected)
+    with pytest.raises(ValueError, match="snapshot must be a lowercase SHA-256"):
+        replay_synthetic(days, {}, params, empty, dataset_sha256=snapshot, timing_policy=policy)
 
 
 @pytest.mark.parametrize("arm,lag", [("D1", 1), ("D2", 2)])

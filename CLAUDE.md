@@ -1711,6 +1711,24 @@ promotion. Actual replay completion, price/action coverage and final logged
 paired performance are distinct claims. The work ledger is
 `.planning/rd-bm-large-liquid-price-replay-integration.md`.
 
+The first BM actual step is a bounded holding-price diagnostic, not a return
+study. Implement its thin logged runner now using synthetic inputs only;
+register its exact actual specification after BL succeeds. Pin all nine BL
+outputs, its independent verification receipt and BJ's conservative scope;
+validate their exact package/lineage agreement before deriving paired signal
+requirements. Use BL's complete restored calendar and separate BI activity
+identifier. Persist the exact required code/date read scope before the single
+read-only typed scan transaction, then adapt it without cache-intersection
+planning or narrowing. Preserve typed fingerprint, rows, metadata/missingness,
+requested/absent/unrequested distinctions and quote/activity identifiers as
+new exclusive diagnostics. An empty signal union reads no DB and invents no
+quote hash. Changed source/runtime or partial failures retain their evidence;
+durable start precedes all saved-input reads, with no retry/API/collector change.
+Event/no-event certification and the full vendor adjustment formula must not
+block this diagnostic; it applies no events, computes no returns and closes no
+performance study. Actual prices still require separately frozen committed
+pins, reviewed merge, resources and independent verification before execution.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

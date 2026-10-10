@@ -139,3 +139,60 @@ BM price/action reads or imply replay/performance completion. Successful BL
 output pins and a separately frozen actual-input protocol remain necessary.
 The four open first-performance groups and zero D1/D2 performance counts are
 unchanged by this publication sequencing choice.
+
+## First price-diagnostic runner engineering
+
+The next source-only implementation is the thin bounded holding-price
+diagnostic runner detailed in CLAUDE.md. It connects pinned successful BL
+outputs and independent receipt to paired selection/holding requirements,
+requires a subset of pinned BJ scope, persists the exact read-scope before one
+read-only scan, and publishes separate typed quote diagnostics. Cash-only
+scope reads no quotes and has no quote hash. No returns, action application or
+coverage certification is part of this diagnostic. Final performance retains
+those separate obligations, but they are not prerequisites to this first
+price/state diagnostic. No actual inputs may be opened by this engineering
+work; exact successful BL pins/specification and bounded publication protocol
+will be registered separately after BL completes.
+
+Source-only integration review found a conditional cash-only seam mismatch:
+the holding adapter correctly returned no quote snapshot for an empty signal
+union, but replay required a price hash unconditionally. The explicit partition
+path now accepts None only with an empty quote panel, every eligible tuple
+empty, no initial lots and an exactly empty event tuple. Complete paired
+schedule and explicit timing remain required. All nonempty and legacy synthetic
+paths retain the existing valid-hash requirement; no absent quote identity is
+invented. D1/D2 connected requirements-to-adapter-to-book cases preserve initial
+cash 0, 37.25 and default 1. Related WSL synthetic regressions passed 266 cases,
+with guardrail scan and whitespace check passing. This does not certify actual
+no-event coverage or publish performance.
+
+The bounded diagnostic runner is implemented as
+`research.activity_holding_preflight`. It validates nine byte-pinned BL files,
+their independent package receipt and the separate BJ scope, derives both
+signal arms, fsyncs the exact read scope, then calls only the existing bounded
+single-transaction RO scan and pure adapter. It preserves requested/absent/
+unrequested coordinates, typed storage and row provenance, separate activity/
+quote identities and value-free failed frames. No prices are read for an empty
+union. Only the compact population input has a separate 128 MiB bounded private
+reader; other evidence retains the existing 64 MiB limit. One-time calendar
+positions and panel projection avoid repeated work per observation.
+
+The worker's final runner-focused suite passed 47 synthetic cases. Its earlier
+combined selection/holding/replay/source run passed 298 before four final reader
+cases were added. Fresh adversarial source review found no actionable defect;
+actual saved package/DB compatibility is not claimed by that review. The main
+agent's related cross-module run passed 290 / one skipped before those same
+four cases were added. The current published pre-delta head
+`1b840292f1123a229244bbd3b10867ac5bc2ce59` passed all nine CI checks; its
+Python PR job 38015380956/114104412953 reported 5479 passed / three skipped.
+Those results have distinct source collections and do not represent final-head
+CI for the new runner. No actual BM specification, source read, price diagnostic
+or performance study has executed.
+
+The final main-agent cross-module rerun of the current files passed 290 / one
+skipped in 16.28 seconds, including the runner's final test file. The earlier
+sentence dating its first 290-case collection before the last reader additions
+was inferred from worker-message timing and is not established by that receipt;
+the final rerun is the authoritative current-file evidence. Fresh cash-only
+delta review also found no actionable defect. Final-head CI/CodeRabbit remain
+required before publication to GCP.

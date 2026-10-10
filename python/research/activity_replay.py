@@ -21,6 +21,8 @@ proof partition. It requires an explicit timing policy and never rebuilds that
 source population from the holding-price panel. Its evidence and fingerprint
 remain caller declarations: this pure seam checks internal consistency and
 accounting, not actual source, classification, price or event correctness.
+An empty eligible partition with no panel, inventory or events may carry no
+quote snapshot (None); cash-only books need no invented price identity.
 
 With an explicit timing policy, the final 08:30 target list is fixed from the
 prior book and scheduled due exits before any current-session quote is read.
@@ -263,7 +265,7 @@ def _check_event_quotes(
 
 def replay_synthetic(
     dates: Sequence[date], panel: Mapping[str, Series | DecimalSeries], params: Mapping,
-    selections: Sequence[SyntheticSelection | PartitionSelection], *, dataset_sha256: str,
+    selections: Sequence[SyntheticSelection | PartitionSelection], *, dataset_sha256: str | None,
     events: tuple[CompulsoryStockExchange | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
     timing_policy: SessionLagPolicy | None = None,
@@ -276,6 +278,10 @@ def replay_synthetic(
     the panel does not represent or reconstruct its complete source partition.
     Both paths check internal book consistency without IO or certification of
     actual source evidence, classification, prices, events or study completion.
+    Only an explicit PartitionSelection cash-only path accepts dataset_sha256=None:
+    the panel, every eligible tuple, initial inventory and events must all be
+    empty. An optional initial cash-only book retains its existing cash amount.
+    This absence of supplied events does not certify actual no-event coverage.
 
     Optional initial inventory is only a synthetic test seam: its cutoff must
     equal the first formation date, and pending future events cannot already be
@@ -299,9 +305,6 @@ def replay_synthetic(
     end = calendar.index(date.fromisoformat(params["end"]))
     if not lookback < end or end + 2 >= len(calendar):
         raise ValueError("calendar needs replay sessions and two settlement sessions after end")
-    if (not isinstance(dataset_sha256, str) or len(dataset_sha256) != 64
-            or any(char not in "0123456789abcdef" for char in dataset_sha256)):
-        raise ValueError("synthetic snapshot must be a lowercase SHA-256 string")
     for code, series in panel.items():
         if (not isinstance(code, str) or not code or code != code.strip()
                 or not isinstance(series, (Series, DecimalSeries))):
@@ -332,6 +335,13 @@ def replay_synthetic(
     book = initial_book if initial_book is not None else ActivityBook(Decimal(1), (), calendar[lookback])
     if not isinstance(book, ActivityBook) or book.as_of != calendar[lookback] or book.slot_count > slots:
         raise ValueError("initial synthetic book must match the first formation cutoff and slots")
+    cash_only_without_quotes = (dataset_sha256 is None and partition_path and not panel
+                                and all(not selection.eligible_codes for selection in selections)
+                                and not book.lots and type(events) is tuple and not events)
+    if not cash_only_without_quotes and (
+            not isinstance(dataset_sha256, str) or len(dataset_sha256) != 64
+            or any(char not in "0123456789abcdef" for char in dataset_sha256)):
+        raise ValueError("synthetic snapshot must be a lowercase SHA-256 string")
     if any(lot.code not in panel or lot.dataset_sha256 != dataset_sha256 for lot in book.lots):
         raise ValueError("initial synthetic lots must share the panel snapshot and known codes")
     if type(events) is not tuple:
