@@ -253,6 +253,17 @@ artifacts and their independent receipt links, composes the immutable quote
 inputs, and projects the three fixed raw/adjusted anchor pairs with exact
 Fraction ratios in both directions. Its logged output is a diagnostic rather
 than a basis certificate, a new API request or a performance result.
+`activity_reviewed_actions` shares its event/basis decoder with a terms-only
+canonical projection; final interval coverage remains a separate check.
+`activity_component_bounds` recomputes origin-specific spin-off component
+candidates while preserving the full quote union. Unsupported origins retain
+their original horizon. The paired connector recomputes the versioned proof,
+validates final coverage and checks actual component inventory after the same
+existing replay. A separate logged proof caller and reviewed actual specification
+remain prerequisites. The operator selected KRX raw prices for the relevant
+LG/LX episode; its new versioned projection must retain original diagnostic
+lineage and prevent silent raw/adjusted unit changes within a holding. Genuine
+unit/date-role declarations remain caller obligations, not inferred from a hash.
 
 ---
 

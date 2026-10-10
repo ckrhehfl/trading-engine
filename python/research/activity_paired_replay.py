@@ -14,13 +14,14 @@ from decimal import Decimal
 from research import activity_holding_preflight as holding
 from research import activity_preflight as saved
 from research.activity_book import ActivityBook
+from research.activity_component_bounds import WRAPPER_SCHEMA, validate_component_exit_bounds, verify_component_inventory
 from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs, holding_requirements
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_partition_selection import PartitionSelection, selections_from_bl
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_replay import replay_synthetic
-from research.activity_reviewed_actions import reviewed_actions
+from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 from research.activity_timing import SessionLagPolicy
 from research.activity_timing_report import paired_timing_report
 
@@ -226,6 +227,10 @@ def paired_replay(
     proof, recomputed from the full original inputs. Its shorter windows apply
     only to reviewed no-event issues; event/unresolved issues retain the original
     full windows independently. Quote rows and fingerprint are never shortened.
+    A versioned component wrapper contains that ordinary proof plus a separately
+    recomputed component proof. Full-window linked terms determine the immutable
+    quote union; eligible origins determine the shorter action union. Final
+    inclusive coverage and actual origin/component inventory must both agree.
     """
     require = saved.require
     roles = (PACKAGE_ROLES + ACTION_ROLES + (() if conditional_exit_scope is None else (CONDITIONAL_ROLE,))
@@ -245,7 +250,7 @@ def paired_replay(
                                          prepared.quote_snapshot_sha256)
     selections = {"D1": prepared.selections_d1, "D2": prepared.selections_d2}
     quotes = prepared.holding_inputs
-    plan, mixed, use_child = None, None, False
+    plan, mixed, component_proof, wrapper, use_child = None, None, None, None, False
     action_windows, action_scope_sha = prepared.expected_windows, prepared.read_scope_sha256
     if conditional_exit_scope is not None:
         saved._pin(expected_pins[CONDITIONAL_ROLE])
@@ -257,13 +262,19 @@ def paired_replay(
             code, isin = window["code"], window["isin"]
             require(code not in identities or identities[code] == isin, "conflicting original issue identity")
             identities[code] = isin
-        plan = validate_exit_bounds(saved.strict_json(conditional_exit_scope), prepared.selections_d1,
+        supplied_plan = saved.strict_json(conditional_exit_scope)
+        if type(supplied_plan) is dict and supplied_plan.get("schema") == WRAPPER_SCHEMA:
+            require(set(supplied_plan) == {"schema", "ordinary_exit_scope", "component_scope"}
+                    and type(supplied_plan["component_scope"]) is dict, "exact component proof wrapper required")
+            wrapper, supplied_plan = supplied_plan, supplied_plan["ordinary_exit_scope"]
+        plan = validate_exit_bounds(supplied_plan, prepared.selections_d1,
             prepared.selections_d2, quotes, parameters, prepared.required_code_dates, identities,
             input_sha256=prepared.input_sha256)
-        mixed = mixed_action_scope(plan, actions["reviewed_action_coverage"])
-        use_child = bool(mixed["ordinary_codes"]) or not plan["entries"]
-        action_windows = tuple(mixed["windows"])
-        action_scope_sha = mixed["action_scope_sha256"]
+        if wrapper is None:
+            mixed = mixed_action_scope(plan, actions["reviewed_action_coverage"])
+            use_child = bool(mixed["ordinary_codes"]) or not plan["entries"]
+            action_windows = tuple(mixed["windows"])
+            action_scope_sha = mixed["action_scope_sha256"]
     quote_lineage = None
     if quote_extension is not None:
         saved._pin(expected_pins[EXTENSION_ROLE])
@@ -282,9 +293,29 @@ def paired_replay(
         quotes = extend_holding_quotes(prepared.holding_inputs, component)
         quote_sha = quotes.quote_snapshot_sha256
         quote_lineage = saved.strict_json(quotes.fingerprint_json)
+    full_terms = None
+    if wrapper is not None:
+        full_terms = reviewed_action_terms(actions["reviewed_action_coverage"], actions["basis_evidence"],
+            expected_windows=prepared.expected_windows, calendar=calendar, activity_snapshot_sha256=activity_sha,
+            quote_snapshot_sha256=quote_sha)
+        supplied_proof = wrapper["component_scope"]
+        require(type(supplied_proof.get("unresolved_priority_intervals")) is list,
+                "component priority intervals required")
+        component_proof = validate_component_exit_bounds(supplied_proof, plan, prepared.selections_d1,
+            prepared.selections_d2, prepared.holding_inputs, parameters, prepared.required_code_dates, identities,
+            input_sha256=prepared.input_sha256, quotes=quotes, terms=full_terms,
+            unresolved_priority_intervals=tuple(supplied_proof["unresolved_priority_intervals"]))
+        action_windows = tuple(component_proof["windows"])
+        action_scope_sha = component_proof["component_scope_sha256"]
+        use_child = any(row["end_on"] != row["original_end_on"] for row in component_proof["entries"]) or not plan["entries"]
     events, successor_required = reviewed_actions(actions["reviewed_action_coverage"], actions["basis_evidence"],
         expected_windows=action_windows, calendar=calendar, activity_snapshot_sha256=activity_sha,
-        quote_snapshot_sha256=quote_sha, read_scope_sha256=action_scope_sha)
+        quote_snapshot_sha256=quote_sha, read_scope_sha256=action_scope_sha,
+        spin_off_windows=None if component_proof is None else tuple(component_proof["spin_off_windows"]))
+    if full_terms is not None:
+        # Shorter action cells never shorten the immutable full quote extension.
+        require(events == full_terms.events, "final event terms changed after component proof")
+        successor_required = dict(full_terms.successor_required)
     required_extra = {(code, date.fromisoformat(day)) for code, days in successor_required.items() for day in days}
     bases = actions["basis_evidence"]["bases"].values()
     required_extra.update((row["code"], date.fromisoformat(row["session"])) for row in bases)
@@ -308,6 +339,8 @@ def paired_replay(
         for arm, lag in (("D1", 1), ("D2", 2))}
     if mixed is not None:
         verify_ordinary_inventory(replays, mixed)
+    if component_proof is not None:
+        verify_component_inventory(replays, component_proof, events)
     report = paired_timing_report(replays["D1"], replays["D2"], selections["D1"], selections["D2"], initial_nav=initial.nav)
     quote_required = {}
     for code, day in quotes.requested_coordinates:
@@ -318,6 +351,7 @@ def paired_replay(
             "read_scope_sha256": prepared.read_scope_sha256, "input_sha256": dict(expected_pins),
             "action_scope_sha256": action_scope_sha, "conditional_exit_scope": plan,
             "conditional_action_scope": mixed,
+            "conditional_component_scope": component_proof,
             "conditional_scope_used": use_child,
             "reviewed_action_coverage": actions["reviewed_action_coverage"],
             "reviewed_action_evidence": actions["basis_evidence"],

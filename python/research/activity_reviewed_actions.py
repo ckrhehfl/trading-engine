@@ -22,6 +22,7 @@ decoded exactly, then the existing accounting constructors enforce their rules.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, fields, is_dataclass
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from hashlib import sha256
@@ -30,6 +31,30 @@ import re
 
 from research.activity_accounting import FinalCashDistribution, PriceBasis
 from research.activity_book import CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
+from research.activity_preflight import digest, encoded
+
+
+@dataclass(frozen=True)
+class ReviewedActionTerms:
+    """Evidence-linked constructors, without final interval coverage approval."""
+
+    events: tuple[CompulsorySpinOff | CompulsoryStockExchange | FinalCashPayment, ...]
+    successor_required: tuple[tuple[str, tuple[str, ...]], ...]
+    required_cells: tuple[tuple[str, str, str], ...]
+    canonical_json: bytes
+    terms_sha256: str
+
+
+def _value(value: object) -> object:
+    if isinstance(value, (date, Decimal)):
+        return str(value)
+    if is_dataclass(value):
+        return {field.name: _value(getattr(value, field.name)) for field in fields(value)}
+    if isinstance(value, (tuple, list)):
+        return [_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _value(item) for key, item in value.items()}
+    return value
 
 
 def _fields(value: object, names: str) -> dict:
@@ -99,6 +124,7 @@ def reviewed_actions(
     activity_snapshot_sha256: str,
     quote_snapshot_sha256: str | None,
     read_scope_sha256: str,
+    spin_off_windows: tuple[dict, ...] | None = None,
 ) -> tuple[tuple[CompulsorySpinOff | CompulsoryStockExchange | FinalCashPayment, ...], dict[str, tuple[str, ...]]]:
     """Validate declared coverage and decode supported events without reading data.
 
@@ -123,7 +149,35 @@ def reviewed_actions(
     evidence coordinates, and absent basis are errors. An empty requirement has
     no events, references, bases, or invented quote hash. Returned objects express
     the supplied reviewed declarations, never a machine certificate of sources.
+    Optional spin_off_windows are the paired seam's recomputed origin proof,
+    independently checked against full-window terms before this call. They limit
+    successor action cells, not quote inputs, and permit legal non-session starts
+    and fully linked events lying outside the shortened action union. This
+    decoder alone does not establish the caller's component proof or actual gates.
     """
+    return _decode(coverage, basis_evidence, expected_windows=expected_windows, calendar=calendar,
+        activity_snapshot_sha256=activity_snapshot_sha256, quote_snapshot_sha256=quote_snapshot_sha256,
+        read_scope_sha256=read_scope_sha256, spin_off_windows=spin_off_windows)
+
+
+def reviewed_action_terms(
+    coverage: dict, basis_evidence: dict, *, expected_windows: tuple[dict, ...],
+    calendar: tuple[date, ...], activity_snapshot_sha256: str, quote_snapshot_sha256: str | None,
+) -> ReviewedActionTerms:
+    """Decode against ORIGINAL full windows, excluding final coverage from the DAG.
+
+    Event/reference/basis/constructor/graph checks are shared with reviewed_actions.
+    Final window findings, no-ops and scope equality are deliberately not approved.
+    The supplied required_scope hash must be well formed but may name the later
+    component proof. Only references actually used by event terms enter this hash.
+    """
+    return _decode(coverage, basis_evidence, expected_windows=expected_windows, calendar=calendar,
+        activity_snapshot_sha256=activity_snapshot_sha256, quote_snapshot_sha256=quote_snapshot_sha256,
+        read_scope_sha256=coverage.get("required_scope_sha256"), terms_only=True)
+
+
+def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_snapshot_sha256,
+            quote_snapshot_sha256, read_scope_sha256, terms_only=False, spin_off_windows=None):
     _hash(activity_snapshot_sha256)
     _hash(read_scope_sha256)
     if (type(calendar) is not tuple or not calendar or
@@ -179,15 +233,27 @@ def reviewed_actions(
     for raw in expected_windows:
         row = _fields(raw, "code isin start end")
         code, isin, start, end = interval(row)
-        if start not in calendar or end not in calendar:
+        if (start not in calendar or end not in calendar) and spin_off_windows is None:
             raise ValueError("requirement endpoints must be sessions")
         require(code, isin, start, end)
     if not required:
         if (quote_snapshot_sha256 is not None or declaration["windows"] or
                 declaration["events"] or declaration["noops"] or refs or bases):
             raise ValueError("empty requirement cannot invent inputs or events")
-        return (), {}
-    _hash(quote_snapshot_sha256)
+        if not terms_only:
+            return (), {}
+    if required:
+        _hash(quote_snapshot_sha256)
+
+    overrides = {}
+    if spin_off_windows is not None:
+        if type(spin_off_windows) is not tuple or terms_only:
+            raise ValueError("immutable recomputed spin-off windows required")
+        for raw in spin_off_windows:
+            row = _fields(raw, "event_id code isin start end")
+            event_id = _text(row["event_id"])
+            code, isin, start, end = interval(row)
+            overrides.setdefault(event_id, []).append((code, isin, start, end))
 
     used_refs: set[str] = set()
 
@@ -265,7 +331,7 @@ def reviewed_actions(
                         on if row["kind"] == "compulsory_stock_exchange" else _day(row["last_trading_on"]))
         if not any(required_code == code and identity == isin and
                    first_effect.toordinal() <= ordinal <= on.toordinal()
-                   for (required_code, ordinal), identity in required.items()):
+                   for (required_code, ordinal), identity in required.items()) and spin_off_windows is None:
             raise ValueError("event lifetime outside required issue interval")
         if (code, isin) in identities_with_event:
             raise ValueError("conflicting full-issue events")
@@ -301,6 +367,15 @@ def reviewed_actions(
             # Keep each disjoint required interval; do not fill unrelated gaps.
             relevant = sorted(ordinal for (required_code, ordinal), identity in required.items()
                               if required_code == code and identity == isin and ordinal >= on.toordinal())
+            if spin and spin_off_windows is not None:
+                relevant = []
+                for ec, ei, start, end in overrides.pop(event_id, []):
+                    if (ec, ei) != (new_code, new_isin) or start < on:
+                        raise ValueError("inconsistent component successor interval")
+                    cells = range(start.toordinal(), end.toordinal() + 1)
+                    if any(required.get((code, ordinal)) != isin for ordinal in cells):
+                        raise ValueError("component successor exceeds parent action interval")
+                    relevant.extend(cells)
             for ordinal in relevant:
                 require(new_code, new_isin, date.fromordinal(ordinal), date.fromordinal(ordinal))
             successor_identities[event_id] = new_code, new_isin
@@ -339,6 +414,23 @@ def reviewed_actions(
                 raise ValueError("unsupported final payout eligibility before parent delivery")
     if used_bases != set(bases):
         raise ValueError("unrelated or unused basis")
+    if overrides:
+        raise ValueError("component interval names an unknown spin-off")
+
+    successor_result = {code: tuple(day.isoformat() for day in sorted(days))
+                        for code, days in sorted(successor.items())}
+    if terms_only:
+        canonical = encoded(dict(schema="activity-reviewed-action-terms-v1", status="terms_only",
+            activity_snapshot_sha256=activity_snapshot_sha256, quote_snapshot_sha256=quote_snapshot_sha256,
+            calendar_sha256=calendar_pin, original_windows=list(expected_windows),
+            events=[dict(declaration=row, decoded=_value(event))
+                    for (_, row), event in zip(sorted(raw_events, key=lambda item: item[0]), decoded)],
+            basis_evidence=dict(bases={key: bases[key] for key in sorted(used_bases)},
+                                references={key: refs[key] for key in sorted(used_refs)}),
+            final_coverage_verified=False))
+        return ReviewedActionTerms(tuple(decoded), tuple(successor_result.items()),
+            tuple((code, isin, date.fromordinal(ordinal).isoformat())
+                  for (code, ordinal), isin in sorted(required.items())), canonical, digest(canonical))
 
     covered: set[tuple[str, int]] = set()
     for raw in declaration["windows"]:
@@ -379,5 +471,4 @@ def reviewed_actions(
              finding="reviewed_" + row["kind"], event_ids=())
     if used_refs != set(refs):
         raise ValueError("unrelated or unused reviewed reference")
-    return tuple(decoded), {code: tuple(day.isoformat() for day in sorted(days))
-                            for code, days in sorted(successor.items())}
+    return tuple(decoded), successor_result

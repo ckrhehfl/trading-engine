@@ -82,3 +82,74 @@ CodeRabbit, merge/deploy normally, then perform the registered saved-input
 diagnostics and independent verification. Publication timing remains an
 explicit sensitivity assumption, never a request for institutional contact or
 a reason to stop both timing arms.
+
+## Basis diagnostic completed; component source continuation
+
+PR #278 received substantive CodeRabbit approval and eight passing CI checks,
+then merged normally and reached the isolated GCP research checkout. One
+registered basis diagnostic completed, preserving the three fixed raw/adjusted
+pairs and their original component lineage. A separately registered independent
+verification initially failed: source inspection found that its manifest
+validator rejected legitimate empty Python package files. The original failed
+attempt remains immutable. A reviewed recovery accepts zero bytes only with
+the empty-file hash, keeps the original consumed-input contract, and independently
+verified the same six outputs without new prices or rerunning their producer.
+
+This establishes the stored arithmetic and package links, not vendor unit
+semantics, last-observable role, custody delivery or historical vintage. The
+operational collector remained unchanged. Exact sources, scopes, failures,
+registrations and private receipt pins are retained in the evidence ledger.
+
+The source continuation now supplies the shared terms-only decoder, pure
+component bounds and actual-inventory assertions in the existing paired
+connector. A potential purchase after the old basis date retains its original
+evidence horizon, even if it precedes the eligibility cutoff; a shorter proof
+cannot conceal the existing accounting rejection. Later independent parent
+purchases still receive no earlier allotted component.
+
+The logged component caller freezes exactly 26 saved inputs and writes seven
+outputs. It binds the prior quote/basis independent receipts, exact three
+anchor observations and canonical terms before deriving a candidate scope. A
+later retained observable pre-effective mark contradicting the declared old
+basis stops the diagnostic. Missing/unrequested states remain distinct, and
+even a successful mark check does not certify the source role. Start logging,
+source/runtime identity, private exclusive output and failure preservation
+follow the existing callers. It performs no book, return or new API/DB read.
+
+No actual component specification has yet been registered: event-specific unit
+and date-role review must precede genuine terms and basis declarations. Source
+implementation and synthetic validation cannot supply those declarations.
+All three first-performance condition groups remain open; zero groups closed
+by this continuation and actual D1/D2 performance studies remain zero/zero.
+
+## Operator choice: raw prices for the LG/LX episode
+
+Root's separately registered content review found the April28 LG raw close
+126500 and stored adjusted close119500. Their observed ratio is239/253 in the
+adjusted-to-raw direction. May27 LG108500 and LX12000 each match their current
+raw counterpart. These comparisons do not establish the vendor's economic
+share-unit convention; the April difference must not be relabeled as one.
+
+The operator selected KRX raw prices plus official compulsory allotment ratios
+for the relevant LG/LX holding episode. This is a deliberate change to the
+episode's price-input convention, without a new signal, universe, holding period,
+cost, slot rule or winning-strategy claim. Preserve the original BM/BP diagnostics
+and their requested absences. A new versioned raw artifact and explicit lineage
+must identify the replacement projection; never modify the old artifacts or
+present KRX observations as a KIS typed scan. Raw share accounting uses the
+official retained/new ratios directly, with no guessed vendor bridge.
+
+The original 26-input proof caller is a tested local prototype, not part of the
+generic component-core continuation and not an approved actual route for the
+new choice. Its current adjusted-anchor binding cannot silently accept raw
+prices. The follow-up must define the raw scope from potential-origin metadata
+before price acquisition, preserve actual zeros separately from halts/missing
+states, and reject a lot crossing between raw and adjusted units without an
+explicit valid transition. A short raw diagnostic is not permission to discard
+an original-end fallback or invent a pending allocation/delivery fact.
+
+The next generic-core PR contains only the shared decoder, pure bounds,
+paired inventory integration, their tests and documentation. New raw acquisition,
+raw projection and a raw-aware logged proof specification require their own
+implementation, review and normal merge before actual use. The three condition
+groups remain open and no D1/D2 performance study has completed.

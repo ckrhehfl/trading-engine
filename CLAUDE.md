@@ -1954,6 +1954,33 @@ to allocate pending value. Source-supported allocation or an explicit separately
 registered pending-value convention is required before actual accounting.
 Source/synthetic implementations are not event coverage or completed studies.
 
+**BQ operator choice: raw-price accounting for the LG/LX episode.**
+On 2026-10-10 the operator selected KRX unadjusted prices and official compulsory
+allotment ratios for the relevant LG/LX holding episode. The observed April28
+raw/adjusted price ratio is not a verified vendor share-unit conversion. Do not
+use it as one. Keep the existing signal/universe, holding period, costs, slot
+grouping, fractional-share convention and D1/D2 sensitivity unchanged.
+
+Before raw-price production implementation, use this boundary: preserve the
+original BM/BP artifacts, full requests and requested absences. Define a separate
+versioned raw artifact, an explicit price-free episode/unit plan and a new
+composite identity. Never overwrite original rows, disguise KRX data as KIS
+typed storage, fill an original absence silently, or switch a held lot between
+raw and adjusted units without an established transition. Derive request scope
+from all potential origins, never filled trades or attractive returns. A bounded
+raw acquisition that cannot prove complete applicable lifetime coverage must
+retain the unresolved obligation; it cannot certify an original-end fallback.
+
+Within a wholly raw episode, same-session raw/raw basis factors are one by the
+declared unit definition, and official retained/new allotment ratios apply to
+raw shares. This does not certify the vendor's unrelated adjusted convention.
+Final source/date-role/rights evidence, explicit pending carry convention, exact
+integer/Decimal parsing, missing-state distinctions, recorded inputs, normal
+review/merge/deployment and independent actual-output verification still apply.
+A new raw-aware logged proof specification must precede actual use; the local
+adjusted-anchor proof prototype is not that specification. No actual performance
+study, new strategy family or promotion follows from this design alone.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

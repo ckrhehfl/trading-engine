@@ -11,7 +11,7 @@ import pytest
 
 from research.activity_accounting import Lot
 from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
-from research.activity_reviewed_actions import reviewed_actions
+from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 
 
 CALENDAR = tuple(date.fromisoformat(text) for text in (
@@ -549,3 +549,43 @@ def test_cash_only_requires_no_quote_no_evidence_and_no_events():
     coverage["events"] = exchange_fixture()[0]["events"]
     with pytest.raises(ValueError, match="empty requirement"):
         call(coverage, evidence, (), quote=None)
+
+
+def test_terms_stage_checks_shared_evidence_but_does_not_approve_final_coverage(monkeypatch):
+    coverage, evidence, required = exchange_fixture()
+    kwargs = dict(expected_windows=required, calendar=CALENDAR,
+                  activity_snapshot_sha256=ACTIVITY, quote_snapshot_sha256=QUOTE)
+    monkeypatch.setattr("builtins.open", lambda *a, **kw: pytest.fail("terms performed IO"))
+    terms = reviewed_action_terms(coverage, evidence, **kwargs)
+    assert terms.events == call(coverage, evidence, required)[0]
+    canonical = json.loads(terms.canonical_json)
+    assert canonical["status"] == "terms_only" and canonical["final_coverage_verified"] is False
+    assert set(canonical["basis_evidence"]["references"]) == {"event", "old", "new"}
+    # This later hash and incomplete final findings are deliberately outside the
+    # term hash, preventing a coverage -> proof -> coverage cycle.
+    coverage.update(required_scope_sha256="9" * 64, windows=[])
+    evidence["references"]["complete"]["finding"] = "assumed_no_compulsory_action"
+    fresh = reviewed_action_terms(coverage, evidence, **kwargs)
+    assert fresh == terms
+    with pytest.raises(ValueError):
+        reviewed_actions(coverage, evidence, read_scope_sha256="9" * 64, **kwargs)
+
+
+@pytest.mark.parametrize("change", ["basis", "event_ref", "carry", "snapshot", "identity", "graph"])
+def test_terms_stage_retains_constructor_reference_identity_and_graph_rejections(change):
+    coverage, evidence, required = exchange_fixture()
+    if change == "basis":
+        evidence["bases"]["old"]["role"] = "assumed"
+    elif change == "event_ref":
+        evidence["references"]["event"]["raw_sha256"] = "x" * 64
+    elif change == "carry":
+        coverage["events"][0]["ratio"] = "0"
+    elif change == "snapshot":
+        evidence["bases"]["new"]["quote_snapshot_sha256"] = "0" * 64
+    elif change == "identity":
+        evidence["bases"]["new"]["isin"] = AI
+    else:
+        coverage["events"].append(dict(coverage["events"][0], event_id="duplicate-full-issue"))
+    with pytest.raises(ValueError):
+        reviewed_action_terms(coverage, evidence, expected_windows=required, calendar=CALENDAR,
+                             activity_snapshot_sha256=ACTIVITY, quote_snapshot_sha256=QUOTE)
