@@ -1,0 +1,53 @@
+{
+  "schema": "activity-basis-anchor-preflight-v1",
+  "study_id": "activity-basis-anchor-preflight-v1",
+  "mode": "discovery_event_basis_anchor_diagnostic",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "inputs": {
+    "bm_read_scope": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bm-holding-price-inputs-20261010-recovery-v1/run/read-scope.json",
+      "sha256": "905c52d3696006a1938df7c4cf06fd216e40b4e5fec584b4511b09d567d0734d"
+    },
+    "bm_holding_input_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bm-holding-price-inputs-20261010-recovery-v1/run/holding-input-audit.json",
+      "sha256": "567c800406e365a01b3bc6e86467d0d7a547062e09e64934872b81ecb08c594b"
+    },
+    "bm_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bm-independent-20261010-v1/verification.json",
+      "sha256": "c6895ace52cfb4beab4045aa4860bf009eb0b600ace4a5cf1e14d4d282b49529"
+    },
+    "quote_extension": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bp-quote-extension-20261010-v1/run/quote-extension.json",
+      "sha256": "78e55336891168d4def5abb985a920763bb97e16988e6f52abff98de0e021716"
+    },
+    "quote_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bp-quote-independent-20261010-v1/verification.json",
+      "sha256": "31620821e85d7b96116f32205879002e5c80ba5402c0fe3652336da93009c89e"
+    },
+    "raw_anchor_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bp-raw-anchor-20261010-v1/run/result.json",
+      "sha256": "0db5101d5ca4392d090e3d2685b78b52a223ea6ed681d71de92107267da5ecf0"
+    },
+    "raw_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bp-raw-independent-20261010-recovery-v1/verification.json",
+      "sha256": "fbeabc92ae02da39b821653a1bf2d4388870d25d32cd8b37409fbd8862a2caca"
+    }
+  }
+}

@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 168 documents,
+them. `.planning/README.md` carries an index of all 169 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1873,6 +1873,64 @@ outputs and retains source/runtime/resource/failure manifests. Source review,
 CI, substantive CodeRabbit, normal merge and exact isolated research deployment
 precede its one registered actual invocation. Independent verification of new
 outputs remains distinct from evidence-content review and final paired results.
+
+**BQ conditional component-lifetime scope, preserving the original diagnostic.**
+This refines the preceding original-end evidence-priority rule only after a
+separately logged proof is recomputed and complete inclusive action evidence is
+validated. It changes neither holding duration nor accounting, selection, costs,
+slots or execution. The original full package, quote requests, typed rows,
+fingerprints and receipts remain immutable; do not shorten the quote extension.
+All potential entries across both arms remain in the proof, including unfilled
+entries and independent acquisitions of either parent or successor.
+
+First validate the original package and recompute the ordinary-exit proof. Restore
+the separately pinned full quote extension under its new composite identity.
+Decode canonical event terms through the existing evidence-reference, price-basis
+and accounting-constructor checks independently of final interval coverage. This
+terms-only stage is not complete action coverage. Bind the canonical terms,
+original input pins, ordinary proof, calendar/parameters and composite quotes
+before computing a component proof; never hash a final coverage file into the
+scope identifier that the same file must reference.
+
+For every formation/arm/code/ISIN/entry/due origin independently, an eligible
+compulsory spin-off inherits the original due date for both components. Each
+candidate is the first requested, observed, resolved, positive, nonfrozen opening
+at or after both that due date and the component's established availability.
+Keep the existing locked-opening proxy. A missing request is not an absence.
+The provisional group endpoint is the later of the two candidates. Require
+complete inclusive calendar-day action coverage for the parent from entry
+through that endpoint and the successor from legal effectiveness through that
+endpoint, including events on the candidate day before opening sales. Apply the
+same independently derived union across origins and arms; a later independent
+parent purchase does not itself acquire the earlier spin-off's allotted shares.
+
+Unresolved rights/delivery, missing usable openings, unsupported chains or events,
+or an unsupported eligibility path preserve the affected original-end obligation.
+Do not make a fallback into a no-event certificate. Keep record, purchase cutoff,
+legal effectiveness and availability separate. Preserve rejection of a sale
+after the purchase cutoff and before effectiveness when pending rights would be
+detached. A first implementation may conservatively keep the full existing path
+for unsupported origin graphs; it must state that restriction rather than
+silently dropping an entry, successor or right.
+
+Validate the original full successor/basis quote union separately from the shorter
+action-evidence union. Recompute a supplied versioned proof wrapper rather than
+accept caller-edited endpoints. Validate final coverage and its scope identifier
+only after this recomputation, then call the existing replay once per arm. Verify
+that actual components disappear by their own candidate session close and that
+the original investment has no remaining components after its group endpoint.
+Do not require an unfilled potential entry to have created a lot, force a sale,
+or run a second book to justify the bound. Any contradiction fails the study.
+
+A committed logged proof caller/specification must freeze all input/evidence
+bytes and sources, log durable start before actual reads, preserve exclusive
+outputs, resource/failure manifests and zero automatic retries. Source tests,
+substantive CodeRabbit, normal merge and isolated research deployment precede
+the separately registered actual proof and its independent verification. Only
+then may the final logged pair use its conditional scope. Source-only proposals,
+synthetic tests and price candidates establish no source truth, final delivery,
+actual exit or completed performance study. Existing final terms, unit bridges,
+pending-value conventions and reviewed complete interval findings remain required.
 
 **BM operator decision: compulsory spin-off components retain one investment.**
 On 2026-10-10 the operator selected original-investment grouping for a surviving
