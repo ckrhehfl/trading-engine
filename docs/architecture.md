@@ -216,6 +216,12 @@ holding-quote snapshot identities separate. Package pins, historical source
 judgments and action/no-event coverage belong to the registered caller; these
 pure adapters neither open actual data nor certify those facts. Their work and
 verification record is `.planning/rd-bm-large-liquid-price-replay-integration.md`.
+`activity_holding_restore` reconstructs that same adapter input from separately
+verified diagnostic audit evidence. It preserves the typed snapshot, provenance,
+missingness and requested coordinates without reopening the price database.
+`activity_timing_report` describes paired immutable book results with Decimal
+NAV/return/drawdown, session dispersion and separate signal/target/trade counts.
+It performs no loading, replay, trial logging or evidence certification.
 
 ---
 

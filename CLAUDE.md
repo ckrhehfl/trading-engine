@@ -1670,9 +1670,12 @@ The actual-start ledger is `.planning/rd-bl-large-liquid-normal-input-assembly.m
 the narrow proof-partition selection connection and consequential price/action
 input route together, using the unchanged Discovery parameters and paired
 session policies. Engineering and synthetic verification may proceed without
-reading saved market inputs. Actual BL completion is still pending and must
-not be presumed. Freeze its successful result/audits and independent receipts
-before a separately registered actual BM input consumption.
+reading saved market inputs. BL's registered recovery-v2 completed and its
+producer-free new-output verification passed; the successful pins and limits
+are recorded in `.planning/rd-bl-large-liquid-normal-input-assembly.md`.
+Preserve those exact result/audit and independent receipt pins before a
+separately registered actual BM input consumption. No holding-price or
+performance completion follows from BL's successful normal-input assembly.
 
 Do not shrink the historical source population to a price-panel subset or
 invent positive business classifications for cap/BH/BI/negative-type exclusions.
@@ -1728,6 +1731,46 @@ Event/no-event certification and the full vendor adjustment formula must not
 block this diagnostic; it applies no events, computes no returns and closes no
 performance study. Actual prices still require separately frozen committed
 pins, reviewed merge, resources and independent verification before execution.
+
+**BM source-only replay-input continuation while its actual price diagnostic
+awaits review.** Add one pure in-memory restoration seam for the successful
+holding-price audit and its read scope. The caller must separately pin bytes and
+verify the complete BM package/independent receipt. Restore the exact existing
+bounded reader's scan shape from its retained typed fingerprint and scan
+metadata; recheck read-scope/quote/activity identifiers and requested coordinates
+before passing it through `adapt_holding_scan`. Do not reread a database,
+reinterpret unresolved values, reconstruct the source population from prices or
+invent an empty event ledger. Cash-only output restores None without an invented
+snapshot. Reject conflicting rows, receipt metadata, scope or type identities.
+Synthetic producer-to-audit-to-restored-adapter checks must preserve every
+typed value, row provenance, missingness/state and panel boundary, including
+empty unions and tampered evidence. This seam establishes consistency of
+verified diagnostic evidence, not source truth, event/basis certification or
+actual replay completion. Actual events, book execution and paired metrics
+retain their separately frozen input protocol after the price diagnostic.
+
+**BM source-only paired reporting design before return access.** Add a pure
+descriptive report over two existing immutable `SyntheticReplay` results and
+their explicit D1/D2 `PartitionSelection` tuples, with one explicit positive
+Decimal initial NAV. Require common ordered session-book dates and formation
+coordinates, matching paired signal/source partitions and each arm's complete
+target declarations. Do not load data, execute a replay, certify event coverage,
+log a trial, choose a lag or run family sizing in this helper. Keep NAV ratios,
+total return and maximum drawdown in Decimal, including initial NAV in both the
+first session return and drawdown high-water mark. Report unannualized sample
+session-return standard deviation, converting to float only at that statistical
+boundary; fewer than two returns yields unknown dispersion. A zero NAV may
+remain zero with zero subsequent returns, but must not recover from zero without
+an explicitly modeled external cash flow. Report filled entries, ordinary
+closed trades and terminal open lots separately, never call signal occurrences
+trades. For both formation signal pools and actual selected targets, report the
+sum of per-formation symmetric-difference counts divided by the sum of union
+counts, retaining numerator/denominator and unknown rate for an empty union.
+Zero signal change by construction is distinct from target/fill/performance
+equality. Preserve cash-only, first-session cost loss, delayed exit, divergent
+entry/target outcomes, absent inputs and invalid-result checks in synthetic
+tests. Actual paired study registration, evidence coverage and logging remain
+separate obligations; the existing calibration/power rules are not changed.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode

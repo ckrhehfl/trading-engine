@@ -204,3 +204,231 @@ regression also received a short intent docstring. AST parse/compile, scanner
 and whitespace checks passed; the delta changes no executable logic. This
 addresses the recurring docstring-coverage warning before consuming another
 review attempt. Final CI still runs on the exact published head.
+
+## Actual holding-price diagnostic registration after verified BL completion
+
+BL recovery-v2 and its producer-free independent verification completed after
+PR #270's reviewed merge `6301fab0ad9e43aa6052119e520c926cae25c236`.
+Its ledger records all nine successful output pins, canonical receipts and
+preserved failures. Both arms have 36 actual normal-screen signals across 31
+codes and zero unresolved inputs. This closes the normal-input connection
+group only: three first-performance groups remain open, one newly closed;
+completed D1/D2 performance studies remain zero.
+
+Register `configs/research/discovery/activity-holding-price-preflight-v1.json`,
+SHA-256 `96aedecdc8207fbc4f55405a19ca4522893f23e95f6d5ddd424014b041654f77`.
+Its parameters preserve the reference JSON values and numeric types exactly,
+including threshold 3.0. Its exact twelve roles are the nine successful BL
+outputs, their independent receipt, BJ's existing conservative scope and the
+read-only scan database. The specification's absolute paths and byte pins are
+the input allowlist; no original KRX/KIS envelope or another DB is opened.
+Only `bsop_date, open, high, low, close, volume, turnover` are read from the
+declared DB, using the existing single-transaction typed bounded reader.
+
+The exact requested union is defined without a portfolio-lot dependency: for
+each of the two pinned BL signal lists, take that schedule arm's possible
+entry through the fixed evaluation end inclusive, then union by original
+issue code/date. Validate it against the pinned BJ requested union before any
+DB read. BL selected every one of BJ's 36 potential windows, so this protocol
+expects the same 31-code / 24,598-code-date union, never a broader one. This
+is a fixed deterministic scope definition from pinned evidence, not a claim
+that a new quote snapshot or runtime read-scope hash already exists. The runner
+must fsync the complete computed coordinates before opening the DB; independent
+verification reconstructs them separately. No exit-date truncation, current
+universe filter, unfilled-order replacement or reserved pre-2019 read is allowed.
+
+One new actual attempt uses exclusive GCP output
+`/home/minjun4897/research-evidence/large-liquid-bm-holding-price-inputs-20261010-v1/run`
+and the existing canonical Discovery log at
+`/home/minjun4897/trading-engine/runs/experiments.jsonl`. Keep clean isolated
+research at the new reviewed merge before/after; sync only from the clean
+previous reviewed merge above using an exact fast-forward. Collector HEAD and
+cleanliness must remain unchanged at
+`4ce85d714890b87f1a57ae89d4942660e41c0483`. No collector process, schedule,
+credential or API changes are included. The single attempt retains durable
+start before saved-input reads, exclusive private outputs and any partial
+failure, with no automatic retry. Use niceness 10, 768 MiB address space,
+CPU 300 seconds, wall 900 seconds and a 2 GiB free-space floor.
+
+The BL independent receipt currently exists locally as the exact 1611-byte
+`/home/minju/.local/share/trading-engine-research/large-liquid-bl-independent-20261010-v2/stdout.json`,
+SHA-256 `915237d4306b4c93d2b6ac4e503f759d3866d3e61346cfac0009b0ac4678d860`.
+Before the actual diagnostic, provision those checked bytes once to the new
+private GCP path named in the actual specification. Preserve bytes exactly,
+create parent 0700/file 0600 exclusively, fsync and read back the byte pin.
+Do not alter the immutable nine-file BL package or claim Git installs this
+private receipt. No original input, credential or database is copied.
+
+The source-only publication helper is `var/bm-holding-publication.py`, SHA-256
+`0e86bfd7360de0db2230e7b50f9ce63f76594045eebe4d251cba6b994338aa4c`;
+its synthetic test source is
+`14498b01f83154a7d3e78347850a6b315dfdea3b9589a46e0ad1866b6eb86c3e`.
+It takes the exact committed specification path/pin, reviewed merge, exclusive
+GCP output and fresh local private receipt directory, plus checked helper and
+verifier source pins. It performs one research module invocation, preserves
+local source/registration/remote/stdout/stderr/exit evidence and checks all six
+successful output hashes, committed source/spec links, typed input statuses
+and exact newly appended canonical started/completed receipts. It does not
+sync the checkout or execute the independent verifier. Thirty-three fake-SSH
+synthetic cases passed; fresh adversarial source review found no actionable
+defect. The actual specification's pure validation and related runner/index
+regressions passed 77 tests / one skipped. No actual BM input was opened by
+these checks.
+
+The separate producer-free verifier is `var/bm-holding-output-verify.py`,
+SHA-256 `6fde4f31a18ff3b1d6b93f1aa2bfa53e7f6e47da42777be6289f4fa0abbe6e0a`;
+synthetic tests are pinned at
+`5a5dd898d9318b66bef217819e54759b7478a8083489475ac01de90307922a0f`.
+Its exact read allowlist is six new BM files (`result.json`, `specification.json`,
+`source-manifest.json`, `input-manifest.json`, `read-scope.json`,
+`holding-input-audit.json`) plus separately byte-pinned BL `result.json`, BL
+`read-scope.json` and BJ `result.json` from the actual specification. The extra
+BL scope supplies the complete calendar absent from BL's result. Verify its
+hash against BL's result audit map. Read no DB, original response, canonical
+log or other input during this independent step. Reconstruct the paired signal
+union and BJ subset, typed fingerprint/rows/storage/missingness, requested/
+absent/unrequested coordinates, metadata/provenance, summaries, input links
+and separate BI/quote identifiers. The CLI retains the fixed actual parameters;
+synthetic overrides are not exposed as execution options. Twenty-eight synthetic
+tests and mutation subcases passed; fresh source-only adversarial review found
+no actionable defect. The 64 MiB per-file verification limit is retained:
+synthetic size accounting for the fixed 24,598 requested coordinates plus all
+34,240 possible unrequested coordinates estimated 49.53 MiB even with generous
+normal numeric widths and an extra MiB of metadata. This estimate is not an
+actual output-size observation.
+
+The independent report certifies output arithmetic/typed consistency and
+pinned evidence links. It does not independently reread the original BL
+verification receipt, establish original source/DB-transaction truth, certify
+vendor price conventions, identify corporate events or compute performance.
+Relevant event/no-event and basis accounting remain later obligations, not
+prerequisites to this diagnostic. Freeze the separate receipt-provisioning/
+independent wrapper and its tests before publication below; retain its checked
+source privately and execute the same checked bytes in memory over SSH, as for
+BL. Final CI/CodeRabbit, normal merge and exact research deployment precede
+actual BM input consumption.
+
+### Checked private provisioning and independent wrapper freeze
+
+Freeze `var/bm-holding-independent.py` at SHA-256
+`45bf88b5cbc7eaaee40460e29bdf65ced674a68eef07e40623ab90dcf242c523`;
+its synthetic test source is
+`038b42ed088e52412f3d777ab9eebfdb407d933adfd43bff58d4657f924a28d9`.
+It accepts exactly `provision REVIEWED_MERGE` or `verify REVIEWED_MERGE`.
+Provision once after the reviewed research deployment; run independent verify
+once after successful actual diagnostic publication. Both modes require the
+exact clean reviewed research commit and unchanged clean collector before and
+after. Verification uses niceness 10, 1 GiB address space, CPU 180 seconds and
+wall 300 seconds; it imports no producer. Its failure JSON and nonzero status
+remain preserved, including verification failures, rather than losing the
+captured diagnostic to a wrapper exception. Ten fake-SSH synthetic tests passed.
+
+External helper sources are this task's WSL directory
+`/mnt/c/Users/minju/.codex/worktrees/0473/trading-engine/var`; Git does not install
+them. Before the first operation and each provision/run/verify invocation,
+check all three registered BM helper byte pins (publication, independent
+verifier and two-mode wrapper) and compile the same checked bytes with the
+proper source `__file__`. Archive those bytes and their exact registration
+privately before SSH; do not execute a newly reopened unverified path. A later
+host/source-path change requires the same pin checks. The committed research
+calculation remains `research.activity_holding_preflight`.
+
+The fresh publication receipt root is
+`/home/minju/.local/share/trading-engine-research/large-liquid-bm-holding-publication-20261010-v1`.
+The two-mode wrapper uses
+`/home/minju/.local/share/trading-engine-research/large-liquid-bm-independent-20261010-v1`,
+created exclusively during provision and reused only for its distinct verify
+receipts. Mode-prefixed launcher/source/remote/registration/stdout/stderr/exit
+files are private, exclusive and durable before SSH. The only evidence copied
+to GCP is the fixed verified BL receipt; no credentials or original market data
+are moved into a checkout.
+
+An additional producer-to-independent synthetic integration source is
+`var/bm-holding-roundtrip-tests.py`, SHA-256
+`bbeba52f129675aa84698737dc92e806c7e409d9350973f00b8599003bde0e32`.
+All four checks passed: real `run_preflight`/`evaluate_inputs`/PinnedInputs and
+bounded temporary SQLite output consumed by the independent verifier, observed/
+frozen/locked/absent/unresolved states, empty-union no-scan/no-quote behavior and
+state tampering even with internally reissued output hashes. The verifier's
+stdlib-only import boundary is also checked. These integration tests use
+synthetic evidence and do not certify actual-package compatibility or prices.
+
+### Pure restoration seam batched before the actual diagnostic review
+
+Implemented `research.activity_holding_restore.restore_holding_inputs` while
+the actual diagnostic registration awaited substantive CodeRabbit review.
+It reconstructs the exact bounded reader scan from the retained holding audit,
+rechecks the canonical read-scope hash and caller-supplied activity/quote pins,
+then reuses `adapt_holding_scan`. Audit rows, state/issues, coordinate sidecars
+and projection counts must agree. The caller still verifies original package
+bytes, source links and the independent receipt separately; this helper is not
+a second whole-package verifier. It opens no file or database, supplies no
+event declaration and computes no performance. Empty scope retains None scan
+and no quote snapshot. No actual research input was consumed in this work.
+
+The actual producer's synthetic audit restores the complete immutable adapter
+result, including exact Decimal text, TEXT/INTEGER/REAL/BLOB/NULL identity,
+requested absence, unrequested coordinates, frozen/locked bars, unresolved
+observations and row provenance. Newly pinned contradictory storage identity,
+scope/metadata/row mutations and invented cash-only evidence are rejected.
+The worker ran 51 new restoration cases plus 46 existing adapter cases:
+97 passed in 7.83 seconds. Repository scanner and whitespace checks passed.
+A separate fresh source-only adversarial review reported no actionable finding.
+The helper is batched into this existing diagnostic PR before its substantive
+review rather than creating another review queue. Actual BM price consumption,
+events/basis accounting and D1/D2 performance remain unexecuted.
+
+The main-agent focused run added the planning-index regression to those two
+modules: 127 passed / one skipped in 8.41 seconds. This is synthetic source
+validation, not an actual audit restoration or price diagnostic.
+
+### Pure paired report and scoped coverage route before actual returns
+
+Added `research.activity_timing_report.paired_timing_report` over the existing
+immutable replay results and explicit paired partition declarations. Initial
+NAV, daily NAV ratios/returns, total return and maximum drawdown retain Decimal
+arithmetic/text; initial NAV is both the first-return denominator and the initial
+drawdown peak. Dispersion is unannualized sample session-return standard
+deviation with float conversion only at that statistical boundary. Fewer than
+two returns has unknown dispersion. Zero NAV is absorbing, not silently repaired.
+Signal and actual-target changes each retain per-formation symmetric-difference
+and union counts plus their aggregate ratio; an empty union has unknown rate.
+Filled entries, ordinary sales and terminal open lots are separate counts.
+Common coordinates do not certify identical costs, initial books, source truth
+or event coverage. This helper performs no replay, IO, logging, family sizing or
+lag selection. The actual paired protocol remains separate.
+
+The worker's 31 new reporting cases and 58 existing timing cases passed together
+(89 passed in 1.86 seconds). Existing engine synthetic fixtures demonstrate
+first-session cost loss, equal signals with different entry/NAV outcomes,
+delayed exits producing different targets, absent fills, retained terminal lots,
+cash-only books, empty unions, zero NAV and malformed-result rejection.
+
+A separate source-only route audit identifies the remaining minimal connection:
+reviewed coverage/event declarations and a thin logged paired caller to the
+existing engine. Reuse AY rename/market-movement dispositions, AZ reviewed
+corrections/additional listings and BD's voluntary pre-entry F&F disposition;
+do not reacquire or convert those into compulsory exchanges. AI/AL's old SPAC
+evidence has no exact-code overlap with this pool and cannot certify its
+no-event coverage. Scope remaining evidence to exact code/ISIN and possible
+holding periods, joining only relevant events and any successors. Do not review
+every price row manually or require actual lots before preflight. No complete
+reviewed no-event ledger for these periods was found in the public repository
+declarations. No actual input was opened by this audit. Paired descriptive
+timing sensitivity has no family power-pass prerequisite; later strategy-family
+calibration rules remain unchanged.
+
+The reporting worker added a weighted-overlap regression after its first run
+(32 new / 58 existing cases, 90 passed in 2.30 seconds). The main-agent combined
+restoration, adapter, report, timing, partition replay and index run then passed
+262 / one skipped in 11.73 seconds. A fresh adversarial review subsequently
+reproduced one genuine count inconsistency: a result with one selected target
+could report two filled entries. The explicit partition engine records exactly
+one filled or unfilled outcome for every target, so the report now requires
+their sum to equal target occurrences. It does not compare sales to entries,
+because valid initial inventory can produce more sales than new entries.
+Four mutation regressions cover excess entries, excess unfilled outcomes,
+missing outcomes and double counting. Final worker report/timing verification
+passed 94 cases (36 new plus 58 existing) in 2.24 seconds; scanner passed.
+The earlier combined run predates this count correction and is not final-head
+CI evidence. The new source consumes no actual input or returns.
