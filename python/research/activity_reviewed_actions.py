@@ -230,21 +230,6 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
                 raise ValueError("conflicting required issue identity")
             required[key] = isin
 
-    for raw in expected_windows:
-        row = _fields(raw, "code isin start end")
-        code, isin, start, end = interval(row)
-        if (start not in calendar or end not in calendar) and spin_off_windows is None:
-            raise ValueError("requirement endpoints must be sessions")
-        require(code, isin, start, end)
-    if not required:
-        if (quote_snapshot_sha256 is not None or declaration["windows"] or
-                declaration["events"] or declaration["noops"] or refs or bases):
-            raise ValueError("empty requirement cannot invent inputs or events")
-        if not terms_only:
-            return (), {}
-    if required:
-        _hash(quote_snapshot_sha256)
-
     overrides = {}
     if spin_off_windows is not None:
         if type(spin_off_windows) is not tuple or terms_only:
@@ -254,6 +239,22 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
             event_id = _text(row["event_id"])
             code, isin, start, end = interval(row)
             overrides.setdefault(event_id, []).append((code, isin, start, end))
+    override_successors = {(code, isin) for rows in overrides.values() for code, isin, _, _ in rows}
+
+    for raw in expected_windows:
+        row = _fields(raw, "code isin start end")
+        code, isin, start, end = interval(row)
+        if (start not in calendar or end not in calendar) and (code, isin) not in override_successors:
+            raise ValueError("requirement endpoints must be sessions")
+        require(code, isin, start, end)
+    if not required:
+        if (quote_snapshot_sha256 is not None or declaration["windows"] or
+                declaration["events"] or declaration["noops"] or refs or bases or overrides):
+            raise ValueError("empty requirement cannot invent inputs or events")
+        if not terms_only:
+            return (), {}
+    if required:
+        _hash(quote_snapshot_sha256)
 
     used_refs: set[str] = set()
 
@@ -327,16 +328,16 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
     for on, row in sorted(raw_events, key=lambda item: item[0]):
         code, isin = _identity(row)
         spin = row["kind"] == "compulsory_spin_off"
+        event_id = row["event_id"]
         first_effect = (_day(row["last_eligible_entry_on"]) if spin else
                         on if row["kind"] == "compulsory_stock_exchange" else _day(row["last_trading_on"]))
         if not any(required_code == code and identity == isin and
                    first_effect.toordinal() <= ordinal <= on.toordinal()
-                   for (required_code, ordinal), identity in required.items()) and spin_off_windows is None:
+                   for (required_code, ordinal), identity in required.items()) and not (spin and event_id in overrides):
             raise ValueError("event lifetime outside required issue interval")
         if (code, isin) in identities_with_event:
             raise ValueError("conflicting full-issue events")
         identities_with_event.add((code, isin))
-        event_id = row["event_id"]
         if row["kind"] == "compulsory_stock_exchange" or spin:
             if row["status"] != "verified_effective":
                 raise ValueError("proposed or unverified exchange")
@@ -367,9 +368,9 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
             # Keep each disjoint required interval; do not fill unrelated gaps.
             relevant = sorted(ordinal for (required_code, ordinal), identity in required.items()
                               if required_code == code and identity == isin and ordinal >= on.toordinal())
-            if spin and spin_off_windows is not None:
+            if spin and event_id in overrides:
                 relevant = []
-                for ec, ei, start, end in overrides.pop(event_id, []):
+                for ec, ei, start, end in overrides.pop(event_id):
                     if (ec, ei) != (new_code, new_isin) or start < on:
                         raise ValueError("inconsistent component successor interval")
                     cells = range(start.toordinal(), end.toordinal() + 1)

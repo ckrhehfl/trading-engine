@@ -270,6 +270,11 @@ projection over the full BM/BP lineage. The paired connector accepts its two
 pinned artifacts only with a recomputed component proof. Explicit raw replay
 checks affected event bases and execution coordinates; pending event-created
 rights carry their existing value before availability without a price read.
+`activity_raw_component_preflight` is the logged saved-input caller for that
+raw component proof. It binds the prior limited raw verification to the
+restored observations and saves canonical terms and the recomputed proof;
+final action coverage and paired books remain separate. The paired preflight
+passes the optional raw artifacts through to the same existing connector.
 
 ---
 

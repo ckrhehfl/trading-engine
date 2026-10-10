@@ -251,3 +251,40 @@ to resolved raw observations, in addition to the paired connector's binding.
 The first-performance groups remain three: consequential price/action/unit
 coverage, actual paired connection and the final frozen logged study. No group
 closed in this source continuation; actual D1/D2 performance remains zero/zero.
+
+### Final related source batch and the scoped-override review repair
+
+The substantive CodeRabbit review of head `4f14ba5` completed on October10 at
+12:52 UTC and found an overbroad component override exception in the shared
+action decoder. An empty override tuple could relax requirement endpoint and
+event-lifetime checks; a nonempty override could also affect an unrelated
+event. Independent negative cases reproduced the failures before the minimum
+repair. Endpoint exceptions now apply only to the actual overridden successor
+code/ISIN, and lifetime/successor replacement exceptions only to the named
+spin-off event. Other events retain their full original successor coverage.
+Empty and unknown overrides cannot silently drop those obligations. The WSL
+reviewed-action, component/raw-component, reviewed-spin and raw-paired suites
+passed217 cases after the repair. This establishes code behavior only.
+
+To avoid another serial source-review window, the related PR batch now also
+includes the independently reviewed raw-aware logged proof caller and the
+existing paired preflight's optional raw-input forwarding. The raw proof caller
+accepts27 pinned saved roles, binds prior limited verification to restored raw
+date/hash coordinates, checks old-mark roles and preserves every potential
+origin before saving canonical terms and a recomputed component wrapper. Its
+61 synthetic tests passed; the paired preflight's41 tests passed, including
+real paired engines downstream of synthetic package preparation. The former
+adjusted-anchor26-input prototype remains excluded. Neither caller has an
+actual registered raw proof or performance specification yet. Those fixed
+input pins must follow the independently verified raw acquisition and reviewed
+source/date/rights/pending declarations; source readiness is not permission to
+execute a prototype or certify final coverage.
+
+Operational source preparation also separated the content helper's180-second
+remote computation limit from its240-second transport deadline and added a
+raising alarm handler, private failure preservation and handler restoration.
+Root content review is an agent obligation under the existing methodology,
+not a new human checkpoint. No original financial artifact, API, database or
+credential was read by this source-only continuation. The same three
+first-performance groups remain open, zero newly closed, and actual D1/D2
+performance studies remain zero/zero.

@@ -44,10 +44,10 @@ def fixture():
     return coverage, evidence, required
 
 
-def call(coverage, evidence, required, quote=QUOTE):
+def call(coverage, evidence, required, quote=QUOTE, *, spin_off_windows=None):
     return reviewed_actions(coverage, evidence, expected_windows=required,
         calendar=CALENDAR, activity_snapshot_sha256=ACTIVITY,
-        quote_snapshot_sha256=quote, read_scope_sha256=SCOPE)
+        quote_snapshot_sha256=quote, read_scope_sha256=SCOPE, spin_off_windows=spin_off_windows)
 
 
 def price_basis(evidence, name, code, isin, session, role):
@@ -85,6 +85,38 @@ def payment_fixture():
         finding="verified_final_cash_payment", ids=("payment-1",))
     price_basis(evidence, "last", A, AI, "2020-01-03", "last_trading")
     return coverage, evidence, required
+
+
+def spin_fixture(code=A, isin=AI, successor=B, successor_isin=BI, event_id="spin-1"):
+    coverage, _, _ = fixture()
+    name = lambda role: event_id + "-" + role
+    coverage["events"] = [dict(event_id=event_id, kind="compulsory_spin_off", status="verified_effective",
+        code=code, isin=isin, successor_code=successor, successor_isin=successor_isin,
+        retained_ratio="0.75", new_ratio="0.25", old_basis_id=name("old"),
+        retained_basis_id=name("retained"), new_basis_id=name("new"),
+        last_eligible_entry_on="2020-01-03", record_on="2020-01-03", effective_on="2020-01-04",
+        retained_available_on="2020-01-06", new_available_on="2020-01-06",
+        retained_carry_weight="0.5", carry_evidence_level="assumed",
+        carry_evidence_ref=name("carry"), evidence_ref=name("event"))]
+    coverage["windows"] = [window(code, isin, ids=(event_id,), ref=name("complete")),
+        window(successor, successor_isin, "2020-01-04", "2020-01-08", ref=name("successor-complete"))]
+    evidence = dict(references={
+        name("complete"): reference(code, isin, finding="confirmed_supported_events_complete", ids=(event_id,)),
+        name("successor-complete"): reference(successor, successor_isin, "2020-01-04", "2020-01-08"),
+        name("event"): reference(code, isin, "2020-01-03", "2020-01-04", "verified_compulsory_spin_off", (event_id,)),
+        name("carry"): reference(code, isin, "2020-01-04", "2020-01-04", "registered_spin_off_carry_assumed", (event_id,)),
+    }, bases={})
+    for role, basis_code, basis_isin, session, basis_role in (
+        ("old", code, isin, "2020-01-03", "last_observable_pre_event"),
+        ("retained", code, isin, "2020-01-06", "retained_availability"),
+        ("new", successor, successor_isin, "2020-01-06", "successor_availability"),
+    ):
+        price_basis(evidence, name(role), basis_code, basis_isin, session, basis_role)
+    return coverage, evidence, (dict(code=code, isin=isin, start="2020-01-02", end="2020-01-08"),)
+
+
+def spin_override(end="2020-01-08"):
+    return (dict(event_id="spin-1", code=B, isin=BI, start="2020-01-04", end=end),)
 
 
 def test_pure_complete_no_action_preserves_overlapping_requirements_and_inputs(monkeypatch):
@@ -589,3 +621,117 @@ def test_terms_stage_retains_constructor_reference_identity_and_graph_rejections
     with pytest.raises(ValueError):
         reviewed_action_terms(coverage, evidence, expected_windows=required, calendar=CALENDAR,
                              activity_snapshot_sha256=ACTIVITY, quote_snapshot_sha256=QUOTE)
+
+
+def test_empty_spin_override_keeps_session_endpoint_validation():
+    coverage, evidence, required = fixture()
+    required = (dict(required[0], start="2020-01-04"),)
+    coverage["windows"][0]["start"] = "2020-01-04"
+    with pytest.raises(ValueError, match="endpoints must be sessions"):
+        call(coverage, evidence, required, spin_off_windows=())
+
+
+def test_empty_spin_override_keeps_event_lifetime_validation():
+    coverage, evidence, required = payment_fixture()
+    required = (dict(required[0], start="2020-01-08"),)
+    coverage["windows"] = [window(start="2020-01-08")]
+    evidence["references"]["complete"] = reference()
+    with pytest.raises(ValueError, match="event lifetime outside"):
+        call(coverage, evidence, required, spin_off_windows=())
+
+
+@pytest.mark.parametrize("code,isin", [("000003", "KR7000003000"), (B, "KR7000002990")])
+def test_spin_override_does_not_relax_unrelated_requirement_endpoints(code, isin):
+    coverage, evidence, required = spin_fixture()
+    required += (dict(code=code, isin=isin, start="2020-01-04", end="2020-01-08"),)
+    coverage["windows"].append(window(code, isin, "2020-01-04", ref="unrelated"))
+    evidence["references"]["unrelated"] = reference(code, isin, "2020-01-04")
+    with pytest.raises(ValueError, match="endpoints must be sessions"):
+        call(coverage, evidence, required, spin_off_windows=spin_override())
+
+
+def test_spin_override_does_not_relax_unrelated_payment_lifetime():
+    coverage, evidence, required = spin_fixture()
+    payment, payment_evidence, _ = payment_fixture()
+    code, isin = "000003", "KR7000003000"
+    for row in (*payment["events"], *payment_evidence["references"].values(), *payment_evidence["bases"].values()):
+        row.update(code=code, isin=isin)
+    coverage["events"].extend(payment["events"])
+    coverage["windows"].append(window(code, isin, "2020-01-08", ref="complete"))
+    payment_evidence["references"]["complete"] = reference(code, isin)
+    evidence["references"].update(payment_evidence["references"])
+    evidence["bases"].update(payment_evidence["bases"])
+    required += (dict(code=code, isin=isin, start="2020-01-08", end="2020-01-08"),)
+    with pytest.raises(ValueError, match="event lifetime outside"):
+        call(coverage, evidence, required, spin_off_windows=spin_override())
+
+
+@pytest.mark.parametrize("overrides", [None, ()])
+def test_unoverridden_spin_keeps_full_successor_coverage_with_empty_override(overrides):
+    events, successor = call(*spin_fixture(), spin_off_windows=overrides)
+    assert [event.event_id for event in events] == ["spin-1"]
+    assert successor[B] == ("2020-01-06", "2020-01-07", "2020-01-08")
+
+
+@pytest.mark.parametrize("omit_successor", [False, True])
+def test_override_only_shortens_its_named_spin_successor(omit_successor):
+    coverage, evidence, required = spin_fixture()
+    other, other_evidence, other_required = spin_fixture("000003", "KR7000003000", "000004", "KR7000004000", "spin-2")
+    coverage["windows"][1]["end"] = "2020-01-07"
+    evidence["references"]["spin-1-successor-complete"]["end"] = "2020-01-07"
+    if omit_successor:
+        other["windows"].pop()
+        other_evidence["references"].pop("spin-2-successor-complete")
+    coverage["windows"].extend(other["windows"])
+    coverage["events"].extend(other["events"])
+    evidence["references"].update(other_evidence["references"])
+    evidence["bases"].update(other_evidence["bases"])
+    required += other_required
+    if omit_successor:
+        with pytest.raises(ValueError, match="uncovered required action interval"):
+            call(coverage, evidence, required, spin_off_windows=spin_override("2020-01-07"))
+    else:
+        _, successor = call(coverage, evidence, required, spin_off_windows=spin_override("2020-01-07"))
+        assert successor[B] == ("2020-01-06", "2020-01-07")
+        assert successor["000004"] == ("2020-01-06", "2020-01-07", "2020-01-08")
+
+
+@pytest.mark.parametrize("overrides", [[], {}, False])
+def test_spin_override_requires_an_immutable_tuple(overrides):
+    with pytest.raises(ValueError, match="immutable recomputed spin-off windows"):
+        call(*fixture(), spin_off_windows=overrides)
+
+
+def test_named_override_keeps_legal_non_session_successor_start():
+    coverage, evidence, required = spin_fixture()
+    required += (dict(code=B, isin=BI, start="2020-01-04", end="2020-01-08"),)
+    events, successor = call(coverage, evidence, required, spin_off_windows=spin_override())
+    assert events[0].effective_on == date(2020, 1, 4) and events[0].effective_on not in CALENDAR
+    assert successor[B] == ("2020-01-06", "2020-01-07", "2020-01-08")
+
+
+def test_spin_override_does_not_relax_an_unoverridden_spin_lifetime():
+    coverage, evidence, required = spin_fixture()
+    other, other_evidence, other_required = spin_fixture("000003", "KR7000003000", "000004", "KR7000004000", "spin-2")
+    other["windows"] = [window("000003", "KR7000003000", "2020-01-08", ref="spin-2-complete")]
+    other_evidence["references"]["spin-2-complete"] = reference("000003", "KR7000003000")
+    other_evidence["references"].pop("spin-2-successor-complete")
+    coverage["windows"].extend(other["windows"])
+    coverage["events"].extend(other["events"])
+    evidence["references"].update(other_evidence["references"])
+    evidence["bases"].update(other_evidence["bases"])
+    required += (dict(other_required[0], start="2020-01-08"),)
+    with pytest.raises(ValueError, match="event lifetime outside"):
+        call(coverage, evidence, required, spin_off_windows=spin_override())
+
+
+def test_unknown_spin_override_is_not_ignored_in_empty_requirements():
+    coverage, _, _ = fixture()
+    coverage.update(quote_snapshot_sha256=None, windows=[])
+    with pytest.raises(ValueError, match="empty requirement"):
+        call(coverage, {"references": {}, "bases": {}}, (), quote=None, spin_off_windows=spin_override())
+
+
+def test_unknown_spin_override_is_not_ignored_in_nonempty_requirements():
+    with pytest.raises(ValueError, match="unknown spin-off"):
+        call(*fixture(), spin_off_windows=spin_override())
