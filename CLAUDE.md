@@ -916,7 +916,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 167 documents,
+them. `.planning/README.md` carries an index of all 168 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
@@ -1665,6 +1665,51 @@ BK adjudication ledger `var/bk-period-adjudication.json`, SHA-256
 `2c6f1fab960bf5214fe0a176b20ffee2207e4d10844c23b632a9cfebe1bef893`;
 it may inspect keys and one accepted decision, not any saved market body.
 The actual-start ledger is `.planning/rd-bl-large-liquid-normal-input-assembly.md`.
+
+**Next engineering design — Task BM, while BL awaits external review.** Build
+the narrow proof-partition selection connection and consequential price/action
+input route together, using the unchanged Discovery parameters and paired
+session policies. Engineering and synthetic verification may proceed without
+reading saved market inputs. Actual BL completion is still pending and must
+not be presumed. Freeze its successful result/audits and independent receipts
+before a separately registered actual BM input consumption.
+
+Do not shrink the historical source population to a price-panel subset or
+invent positive business classifications for cap/BH/BI/negative-type exclusions.
+A separate immutable selection declaration must retain every dated source key,
+its proof disposition and complete partition fingerprint, matching the pinned
+BL normal audit and both signal lists. Validate complete calendar formations,
+unique identities, all referenced field availability at each policy cutoff and
+agreement between normal candidates and signals before exposing eligible codes.
+The declaration establishes consistency of pinned evidence, not fresh source
+truth. Apply only the original seed/hash order, held-code exclusion and slots
+to that eligible pool. It must not inspect the execution-session quote or add
+replacement targets after a failed fill. Keep the existing synthetic selection
+contract and accounting order intact; introduce the evidence selection as an
+explicit separate contract, never a weakened synthetic classification check.
+
+Reuse BJ's existing conservative original-issue interval through the evaluation
+end, narrowed only by verified BL signal windows. Do not demand an actual lot
+denominator before a bounded replay or stop a price interval at a scheduled
+exit. The exact holding-quote snapshot is separate from BI's activity snapshot;
+lots and event price bases must share its coordinates. Reuse the bounded
+read-only typed scan pattern, never the full-code price loader. Saved KRX raw
+anchors, KIS adjusted quotes and original retrieval/vintage unknowns stay
+separate. Expand successor requirements only for supported relevant events.
+Inspected compulsory exchanges/final settlements or reviewed no-event coverage
+remain required; an empty event tuple is not such evidence. Price missingness
+is not zero or automatic delisting. No API/backfill/credential access or new
+price convention is authorized by this engineering design.
+
+Verify the complete synthetic partition-to-selection-to-books path for both
+arms, including false/missing/duplicate proofs, late inputs, absent/frozen fills,
+due sale failures, retained slots, pending entitlements/payments and unchanged
+cash/share/value conservation. An actual input protocol must pin exact source
+and code/date unions, reviewed code/runtime/specification and exclusive private
+outputs, logging started before reads; no automatic retry or performance
+promotion. Actual replay completion, price/action coverage and final logged
+paired performance are distinct claims. The work ledger is
+`.planning/rd-bm-large-liquid-price-replay-integration.md`.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode

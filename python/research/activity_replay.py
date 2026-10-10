@@ -1,4 +1,4 @@
-"""Pure synthetic full-session accounting preparation; not a real-data runner.
+"""Pure full-session accounting with separate toy and evidence selection seams.
 
 The caller supplies toy Series, the original v1 parameter mapping (no numeric
 defaults here), one explicit SyntheticSelection per v1 formation, a fixed
@@ -15,6 +15,12 @@ Classification evidence must be dated no later than formation, retaining AG's
 cutoff. The market decision uses an explicit D+1/D+2 session policy (D+1 by
 default), with 08:30 KST selection before daily-open-price proxy execution.
 Its modeled cutoff does NOT certify actual historical publication (R3).
+
+PartitionSelection instead declares eligible codes from a complete dated source
+proof partition. It requires an explicit timing policy and never rebuilds that
+source population from the holding-price panel. Its evidence and fingerprint
+remain caller declarations: this pure seam checks internal consistency and
+accounting, not actual source, classification, price or event correctness.
 
 With an explicit timing policy, the final 08:30 target list is fixed from the
 prior book and scheduled due exits before any current-session quote is read.
@@ -63,6 +69,7 @@ import hashlib
 from research.activity_accounting import Lot, observable_mark
 from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
 from research.activity_portfolio import Series
+from research.activity_partition_selection import PartitionSelection, select_partition
 from research.krx_tax_schedule import KOSPI, total_bp
 from research.activity_timing import SessionLagPolicy
 
@@ -256,12 +263,19 @@ def _check_event_quotes(
 
 def replay_synthetic(
     dates: Sequence[date], panel: Mapping[str, Series | DecimalSeries], params: Mapping,
-    selections: Sequence[SyntheticSelection], *, dataset_sha256: str,
+    selections: Sequence[SyntheticSelection | PartitionSelection], *, dataset_sha256: str,
     events: tuple[CompulsoryStockExchange | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
     timing_policy: SessionLagPolicy | None = None,
 ) -> SyntheticReplay:
-    """Replay caller-supplied toy inputs without reading or writing anything.
+    """Replay pure inputs through a toy or explicit evidence-selection seam.
+
+    SyntheticSelection keeps its complete toy formation-pool validation and
+    legacy timing convention. PartitionSelection requires an explicit policy,
+    one declaration per formation and panel coverage of every eligible code;
+    the panel does not represent or reconstruct its complete source partition.
+    Both paths check internal book consistency without IO or certification of
+    actual source evidence, classification, prices, events or study completion.
 
     Optional initial inventory is only a synthetic test seam: its cutoff must
     equal the first formation date, and pending future events cannot already be
@@ -300,8 +314,15 @@ def replay_synthetic(
         raise ValueError("explicit SessionLagPolicy is required")
     formation_indices = policy.formation_indices(
         calendar, lookback=lookback, holding_sessions=holding, end_index=end)
-    if any(not isinstance(selection, SyntheticSelection) for selection in selections):
-        raise ValueError("explicit SyntheticSelection inputs are required")
+    partition_path = any(isinstance(selection, PartitionSelection) for selection in selections)
+    selection_type = PartitionSelection if partition_path else SyntheticSelection
+    if any(not isinstance(selection, selection_type) for selection in selections):
+        raise ValueError("explicit unmixed SyntheticSelection or PartitionSelection inputs are required")
+    if partition_path:
+        if timing_policy is None:
+            raise ValueError("partition selections require an explicit timing policy")
+        if any(code not in panel for selection in selections for code in selection.eligible_codes):
+            raise ValueError("every partition-eligible code needs an explicit panel series")
     if timing_policy is not None and any(selection.selection_at is None for selection in selections):
         raise ValueError("explicit timing policy requires selection_at timestamps")
     formation_map = {selection.formation_on: selection for selection in selections}
@@ -340,14 +361,22 @@ def replay_synthetic(
             retained = tuple(lot for lot in book.lots
                              if lot.due_on > session or lot.available_on > session)
             formation_on = calendar[formation_index]
-            present_codes = {code for code, series in panel.items()
-                             if _quote(series, formation_index)[1] and not series.frozen[formation_index]}
-            selected = _selected(
-                formation_map[formation_on], formation_on=formation_on, decision_on=session,
-                present_codes=present_codes, held_codes={lot.code for lot in retained},
-                seed=params["seed"], free_slots=max(0, slots - len(retained)),
-                selection_at=policy.selection_at(calendar, formation_index),
-            )
+            if partition_path:
+                selected = select_partition(
+                    formation_map[formation_on], formation_on=formation_on, decision_on=session,
+                    held_codes={lot.code for lot in retained}, seed=params["seed"],
+                    free_slots=max(0, slots - len(retained)),
+                    selection_at=policy.selection_at(calendar, formation_index),
+                )
+            else:
+                present_codes = {code for code, series in panel.items()
+                                 if _quote(series, formation_index)[1] and not series.frozen[formation_index]}
+                selected = _selected(
+                    formation_map[formation_on], formation_on=formation_on, decision_on=session,
+                    present_codes=present_codes, held_codes={lot.code for lot in retained},
+                    seed=params["seed"], free_slots=max(0, slots - len(retained)),
+                    selection_at=policy.selection_at(calendar, formation_index),
+                )
             choices.append((formation_on, selected))
         _check_event_quotes(ordered_events, panel, session=session, index=index)
         book = replace(book, as_of=session)

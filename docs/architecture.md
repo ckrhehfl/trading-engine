@@ -207,6 +207,16 @@ primary key between the two silently corrupts a series. See
 `python/data/kis_klines.py` and `.planning/audit-2026-09-consolidation.md`
 decision D4.
 
+The research replay has separate synthetic and evidence selection contracts.
+`activity_partition_selection` keeps the complete dated source/proof population
+independent of the smaller holding-price panel, then supplies eligible signals
+to `activity_replay`'s existing book engine. `activity_holding_inputs` adapts the
+bounded typed scan receipt into immutable Decimal quotes and keeps activity and
+holding-quote snapshot identities separate. Package pins, historical source
+judgments and action/no-event coverage belong to the registered caller; these
+pure adapters neither open actual data nor certify those facts. Their work and
+verification record is `.planning/rd-bm-large-liquid-price-replay-integration.md`.
+
 ---
 
 ## 6. What a new venue actually costs

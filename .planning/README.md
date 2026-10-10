@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-167 documents and counting, which is past the point where `ls` is a
+168 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -283,6 +283,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-bj-large-liquid-survivor-evidence.md`](rd-bj-large-liquid-survivor-evidence.md) — Research Direction Task BJ — reconcile evidence for possible activity signals
 - [`rd-bk-large-liquid-evidence-adjudication.md`](rd-bk-large-liquid-evidence-adjudication.md) — Research Direction Task BK — adjudicate potential-window issuer evidence
 - [`rd-bl-large-liquid-normal-input-assembly.md`](rd-bl-large-liquid-normal-input-assembly.md) — Research Direction Task BL — assemble dated normal-screen inputs
+- [`rd-bm-large-liquid-price-replay-integration.md`](rd-bm-large-liquid-price-replay-integration.md) — Research Direction Task BM — connect proof partitions, prices and portfolio replay
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
