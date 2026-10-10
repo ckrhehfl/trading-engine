@@ -432,3 +432,109 @@ missing outcomes and double counting. Final worker report/timing verification
 passed 94 cases (36 new plus 58 existing) in 2.24 seconds; scanner passed.
 The earlier combined run predates this count correction and is not final-head
 CI evidence. The new source consumes no actual input or returns.
+
+### PR #271 completion and the preserved first BM attempt
+
+PR #271 completed substantive CodeRabbit review on exact head
+`69ba19585d7c70db82b24335342b18fb54c77f6b`.
+Its initially requested extra private overlap assertion was answered with the
+public caller's existing length/formation preconditions and rejection cases.
+CodeRabbit withdrew the mandatory finding, resolved its thread and approved
+that unchanged head at 2026-10-10T03:41:31Z. The reply is
+<https://github.com/ckrhehfl/trading-engine/pull/271#discussion_r4236251864>.
+All nine checks passed; each final Python CI run passed 5,629 / three skipped.
+Normal squash merge was `c17babb7a45a70ad252a8b862a1bf80a617ea189` at
+03:42:35Z. Reviewed-head and merge trees both equal
+`d3b2fbf1b0fca9fb5fcfd23a9ab877af77f5d09c`.
+The isolated research checkout reached that exact clean merge at
+03:43:27.442085Z. The clean collector stayed at
+`4ce85d714890b87f1a57ae89d4942660e41c0483` throughout.
+
+Before price consumption, the auxiliary BL receipt provision failed because
+the owned GCP research-evidence base was mode 0775, violating the helper's
+private-parent requirement. No target receipt was created. Preserve the
+original provision stdout/stderr/exit evidence in the registered independent
+root. A separately recorded metadata repair tightened only that owned base
+to 0700 at 03:46:47.269642Z, without changing contents or either checkout.
+A separately registered `provision-recovery-1` reused the original remote
+source byte-for-byte and succeeded. Its exclusive 1,611-byte BL receipt at
+`/home/minjun4897/research-evidence/large-liquid-bl-independent-20261010-v2/verification.json`
+has SHA-256 `915237d4306b4c93d2b6ac4e503f759d3866d3e61346cfac0009b0ac4678d860`.
+Parent/file modes are 0700/0600 and readback matched. Do not provision it again.
+
+The first actual BM diagnostic was separately logged as run
+`780fd304-39e1-4fd8-a135-bdf654818bdf`, started
+2026-10-10T03:47:55.633824Z and failed at 03:47:58.752115Z.
+All eleven saved BL/receipt/BJ inputs were hash-verified. The failure preceded
+read-scope creation and price-DB access: only failure, input manifest, source
+manifest and specification files exist in the original registered v1 run.
+There is no price snapshot or holding audit, and no completed performance run.
+Preserve that output and the publication wrapper's nonzero exit with no retry.
+
+| preserved file | SHA-256 |
+|---|---|
+| failure.json | `d5c5ba7b82f58721267096b7abee7ec32379eedec8c490c30569fff36c5ffc46` |
+| input-manifest.json | `ead01dbd2146840189a0f4395f36ae313f431a1c89cb96d6406ee13c232fba50` |
+| source-manifest.json | `dc152c7acb01e49bec908235e08f012220e9d2543c5c27485a12bed2b2a69417` |
+| specification.json | `96aedecdc8207fbc4f55405a19ca4522893f23e95f6d5ddd424014b041654f77` |
+
+Source-only comparison identifies the exact incompatibility: pinned BL uses
+integer `5` for slippage while the unchanged reference and BM specification
+use float `5.0`. Every other parameter's canonical encoding agrees. The BL
+validator accepted numeric equivalence; BM's new package boundary demanded
+identical encoding. This is a connection defect, not a changed cost or a
+market-data failure. Do not modify the immutable upstream specification,
+receipts, pins or research parameters to repair it.
+
+### Registered BM recovery-v1 before another actual attempt
+
+Implement only the input-boundary exception described in CLAUDE.md: both
+slippage values must be finite JSON int/float numbers, excluding bool/string,
+and have equal Decimal values. Keep exact encoded comparison for every other
+parameter and retain the new BM specification's strict reference comparison.
+The actual committed BL/reference-literal regression, altered/nonfinite costs,
+bool/string, missing/additional fields and other numeric type mutations join
+the synthetic package roundtrip. Worker preflight/restoration verification
+passed 138 cases in 7.34 seconds; scanner and whitespace checks passed.
+This is synthetic compatibility evidence, not a successful actual diagnostic.
+
+Keep the original actual specification and its `96aedec...` byte pin above.
+Register one fresh output:
+`/home/minjun4897/research-evidence/large-liquid-bm-holding-price-inputs-20261010-recovery-v1/run`.
+Its fresh local publication root is
+`/home/minju/.local/share/trading-engine-research/large-liquid-bm-holding-publication-20261010-recovery-v1`.
+Retain all nine BL pins, its provisioned receipt, BJ pin, exact signal/date
+union, source/runtime guards and resource limits from the original protocol.
+No old file is replaced. Source review, exact-head CI/substantive CodeRabbit,
+normal merge and exact isolated research deployment precede this single
+separately logged attempt. Preserve failures; do not automatically retry.
+
+Freeze `var/bm-holding-independent-recovery-v1.py` at SHA-256
+`8043e60b28dad16f8cd68906ef54d94015fc5b785d3e9c4e4bcd5c81c728bad9`;
+its tests are `528843475b01e03ba36f5f59dceb8f2f296c99637160a6fa56e91022f1bd8831`.
+Its only delta from the original wrapper is the remote OUTPUT path above.
+Ten fake-SSH checks passed. Retain the original helper and all provision and
+repair evidence. Invoke only `verify REVIEWED_MERGE` once after successful
+recovery publication, using the existing private independent root's unused
+verify-prefixed exclusive files. Do not invoke its provision mode.
+Before run/verify, check all three helper pins: original publication `0e86...`,
+original producer-free verifier `6fde...` and recovery wrapper `8043...` as
+fully recorded here and above; compile and execute those same checked bytes.
+The producer retains nice 10, 768 MiB address space, CPU 300 seconds, wall
+900 seconds and the 2 GiB free-space floor. Independent verification retains
+nice 10, 1 GiB, CPU 180 seconds and wall 300 seconds. No API, credential,
+collector/process/schedule, event or performance change is part of this repair.
+
+After the failed attempt, the first-performance groups remain three open and
+zero newly closed: consequential price/action coverage, actual paired replay
+integration and the final frozen logged study. D1/D2 completed actual
+performance studies remain zero/zero. Historical availability/vintage is still
+assumed; this package adds no official historical publication evidence.
+
+Fresh source-only review found no actionable defect in the recovery comparison
+or wrapper. The reviewer confirmed the BM specification-validator AST is
+unchanged and the wrapper is exactly the original bytes with only OUTPUT
+replaced. Main-agent preflight/restoration/planning-index validation passed
+168 / one skipped in 9.66 seconds. The repository guardrail scanner and Git
+whitespace check passed. Actual recovery, CI and CodeRabbit are still pending
+at this registration entry.

@@ -1772,6 +1772,28 @@ entry/target outcomes, absent inputs and invalid-result checks in synthetic
 tests. Actual paired study registration, evidence coverage and logging remain
 separate obligations; the existing calibration/power rules are not changed.
 
+**BM registered recovery design after its preserved first diagnostic failure.**
+The first attempt failed before read-scope creation or price-DB access because
+BL's pinned slippage JSON literal is an integer and the unchanged reference/BM
+literal is an equivalent float. Fix only that input-boundary representation
+comparison: require both slippage values to be actual finite JSON numbers,
+excluding bool and strings, and compare their Decimal values. All other
+parameter names, values and numeric representations retain the existing exact
+canonical comparison. The new BM specification itself still must match the
+committed reference bytes/parameter types; no cost, threshold, holding period,
+original BL bytes, hash, receipt or predicate changes. Add the actual committed
+BL/reference representation regression and altered-cost, bool/string/nonfinite,
+count/type/other-field mutation checks before another actual attempt.
+Preserve the failed package and durable started/failed receipts. Register one
+separate recovery-v1 output and local publication root, retaining the same
+input pins, exact scope and resources. Reuse the successfully provisioned BL
+receipt without rewriting it. Freeze a separately named independent wrapper
+whose only source delta is the recovery output path; use its verify operation
+once with the existing private receipt root's still-unused verify filenames.
+Retain the original helper and failed operation evidence. Source/CI/CodeRabbit,
+normal merge and isolated research deployment precede the one separately logged
+recovery attempt; no automatic retry or collector change is authorized.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

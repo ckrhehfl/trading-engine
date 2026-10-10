@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 from datetime import date
+from decimal import Decimal
 import json
 import os
 from pathlib import Path
@@ -116,6 +117,25 @@ def _manifest_agreement(spec: dict, manifest: list, rawscope: dict) -> None:
     saved.require(actual == expected, "BL internal input/specification/raw-source agreement mismatch")
 
 
+def _bl_parameters_match(upstream: object, expected: dict) -> bool:
+    """Allow only BL's finite numeric slippage representation to differ.
+
+    BL's pinned 5 and BM/reference's 5.0 have the same Decimal value. Other
+    parameter names, values and JSON representations remain byte-exact here;
+    the BM specification validator retains its separate exact reference check.
+    """
+    if type(upstream) is not dict or type(expected) is not dict:
+        return False
+    key = "slippage_bps_per_side"
+    left, right = upstream.get(key), expected.get(key)
+    if type(left) not in (int, float) or type(right) not in (int, float):
+        return False
+    left, right = Decimal(str(left)), Decimal(str(right))
+    return (left.is_finite() and right.is_finite() and left == right
+            and saved.encoded({name: value for name, value in upstream.items() if name != key})
+            == saved.encoded({name: value for name, value in expected.items() if name != key}))
+
+
 def validate_package(data: dict, hashes: dict, receipt: dict, bj: dict, params: dict) -> tuple[tuple[date, ...], str]:
     """Validate byte-linked package/receipt boundaries before selection or quotes."""
     result, spec, sources, manifest = (data[name] for name in BL_FILES[:4])
@@ -130,7 +150,7 @@ def validate_package(data: dict, hashes: dict, receipt: dict, bj: dict, params: 
                   and spec.get("study_id") == "activity-normal-input-assembly-v1"
                   and spec.get("mode") == "discovery_normal_input_assembly"
                   and spec.get("window") == saved.WINDOW and spec.get("reference_specification") == saved.REFERENCE
-                  and saved.encoded(spec.get("parameters")) == saved.encoded(params)
+                  and _bl_parameters_match(spec.get("parameters"), params)
                   and spec.get("promotion_allowed") is False, "BL specification/status mismatch")
     saved.require(result.get("specification_sha256") == hashes["specification.json"]
                   and result.get("source_manifest_sha256") == hashes["source-manifest.json"]

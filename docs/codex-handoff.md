@@ -504,6 +504,18 @@ from existing immutable replay results, preserving initial-NAV losses and
 separating signal overlap, targets, filled entries, ordinary sales and open lots.
 These additions remain synthetic preparation until the registered actual run.
 
+PR #271's substantive CodeRabbit approval, final CI and normal merge completed;
+the isolated research checkout is clean at
+`c17babb7a45a70ad252a8b862a1bf80a617ea189`, with collector unchanged.
+The first BM diagnostic failed before opening prices: BL's integer slippage
+literal and the reference's equal float literal failed an overly strict package
+comparison. Its immutable failure/output/log receipts are preserved in BM's
+ledger. Recovery changes only this numeric-representation boundary, retaining
+the costs, upstream bytes and new-spec validator. One fresh recovery output and
+separate independent wrapper are registered there; reviewed merge/deployment
+must precede that attempt. The already provisioned BL verification receipt must
+not be replaced. No actual D1/D2 performance study has completed.
+
 ## Where the previous work stopped
 
 The local Claude trading-engine transcript ends after a request to continue
