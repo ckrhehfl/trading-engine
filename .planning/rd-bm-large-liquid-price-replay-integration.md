@@ -919,11 +919,11 @@ remain separate work; no split allotment or actual portfolio result is claimed.
 ### Group foundation shipped; compulsory spin-off connected
 
 PR #274 received substantive CodeRabbit APPROVED on exact head
-`88c1879b72f60704b8f1d3463530ccdc53f27b39` at2026-10-10T06:49:32Z.
+`88c1879b72f60704b8f1d3463530ccdc53f27b39` at 2026-10-10T06:49:32Z.
 All eight CI checks and genuine CodeRabbit success preceded normal squash merge
-`8296c7e992f7b5e15c0f6cf7299abe15d9e8b4dd` at06:51:52Z, with zero review threads.
+`8296c7e992f7b5e15c0f6cf7299abe15d9e8b4dd` at 06:51:52Z, with zero review threads.
 Reviewed/merged trees equal `0bdc550a9ddb42870618c32f935f8fd72cf67ed0`.
-The isolated research checkout reached that clean merge at06:53:05.457023Z.
+The isolated research checkout reached that clean merge at 06:53:05.457023Z.
 The collector remained clean at its unchanged recorded operational commit;
 no process, schedule, credential or database changed.
 
@@ -953,49 +953,49 @@ become explicit quote requirements. The package caller still refuses expanded
 requirements until a separately registered coherent artifact is supplied; new
 series cannot inherit an old quote hash. Pure decoding is not that artifact.
 
-### All34 bounded company-history leaves received
+### All 34 bounded company-history leaves received
 
 Each actual read had fixed byte pins, exact report/issuer/window/leaf coordinates,
-limits and exclusive private outputs. The original34 targets were not reduced.
+limits and exclusive private outputs. The original 34 targets were not reduced.
 Concrete metadata parser repairs handled issuer-listing badges and delayed DART
 child insertion; strict selected-leaf/ancestor/version checks remain. Unrelated
 financial TOC extents stay uncertified. Eleven previously unrequested wrappers
-were completed with11 requests, no retry/failure. Attachment-main refusals remain.
+were completed with 11 requests, no retry/failure. Attachment-main refusals remain.
 
 The first seven leaves received bounded explicit inferred-no-compulsory-action
 content findings. The next batch stopped on a DART connection reset at original
-request14 after13 bodies, with12 readable texts and one LG parser refusal.
+request 14 after 13 bodies, with 12 readable texts and one LG parser refusal.
 The refusal was a Korean substring collision between a shareholder subject and
 later exchange wording. A fresh parser preserves all selected-node/document/
-heading/financial-sibling guards;19 synthetic cases pass. Its registered network0
-LG derivation contains829 lines/44,574 bytes, SHA-256
+heading/financial-sibling guards; 19 synthetic cases pass. Its registered network-free
+LG derivation contains 829 lines/44,574 bytes, SHA-256
 `9a47a2271af48c8e425aa64437f6b9fd6b9761ad01c5cee05594e34fa51b43d0`.
 Old failure/raw receipts remain immutable.
 
 The no-response failed request received one separately registered manual second
-attempt, followed only by13 never-attempted requests. This continuation completed
+attempt, followed only by 13 never-attempted requests. This continuation completed
 14 requests/responses/readable texts, zero failures/parser refusals/automatic
-retries, without re-requesting the20 received leaves. Result SHA-256
+retries, without re-requesting the 20 received leaves. Result SHA-256
 `3cc85f41c9c86697ac3fd982e4418f279553f26be77c7bffaa50938c4ccd9208`, scope
 `04c11f0c5f6a1bd0ca56e53baf598743c21677ca15aaa094a4f299ec29c5b623`.
-All34 selected targets now have received/readable representations. Acquisition
+All 34 selected targets now have received/readable representations. Acquisition
 completeness is distinct from complete action coverage; content review continues.
 
-LG's official annual-history leaf receipt20220321001237/node5/dcm8485703,
-offset33135/length68808 directly confirms the executed May1,2021 spin-off,
-April30 allocation record, raw LG0.9115879/LX0.4420605 allocations per old share
-and LX relisting May27. Raw SHA-256
+LG's official annual-history leaf receipt 20220321001237/node 5/dcm 8485703,
+offset 33135/length 68808 directly confirms the executed May 1, 2021 spin-off,
+April 30 allocation record, raw LG 0.9115879/LX 0.4420605 allocations per old share
+and LX relisting May 27. Raw SHA-256
 `ec979e5cbe851efe59330779d3bd94d9efb3ae849017fb858c40879a9ef3d449`.
 Source: https://dart.fss.or.kr/report/viewer.do?rcpNo=20220321001237&dcmNo=8485703&eleId=5&offset=33135&length=68808&dtd=dart3.xsd
 This retrospective event evidence is not a formation-availability timestamp.
 Custodian delivery and the final eligible purchase cutoff are not directly
 attested by this leaf. The selected official LX guide independently supplies
-May27 trading: https://kind.krx.co.kr/external/2021/05/26/000323/20210526001048/99334.htm
+May 27 trading: https://kind.krx.co.kr/external/2021/05/26/000323/20210526001048/99334.htm
 
 A concrete HYBE funding-right question was checked separately. Its official
-April19,2021 securities-registration report records April16 ex-rights and
-April19 allocation record: https://kind.krx.co.kr/external/2021/04/19/000094/20210419000163/10601.htm
-Potential entries April16(D1)/April19(D2) are on/after ex-rights; exclusion from
+April 19, 2021 securities-registration report records April 16 ex-rights and
+April 19 allocation record: https://kind.krx.co.kr/external/2021/04/19/000094/20210419000163/10601.htm
+Potential entries April 16(D1)/April 19(D2) are on/after ex-rights; exclusion from
 that old subscription right is a dated source-based eligibility inference.
 Purchase-date comparison to the later record day alone would wrongly grant it.
 This finding does not authorize optional exercise or prove all-event absence.
@@ -1010,46 +1010,46 @@ D2 sensitivity does not prove them. Institution contact is not a blocker.
 
 ### Received-history content decisions continued
 
-The next12 received leaves were fully reviewed with exact issuer/window/node
-coordinates and raw pins: 275,565 raw bytes and3,862 derived visible-text lines.
+The next 12 received leaves were fully reviewed with exact issuer/window/node
+coordinates and raw pins: 275,565 raw bytes and 3,862 derived visible-text lines.
 Eleven initially supported bounded inferred-no-compulsory-action findings.
-Kakao initially remained unknown because its July1,2021 Melon separation did
+Kakao initially remained unknown because its July 1, 2021 Melon separation did
 not specify the recipient of the new shares in the selected annual-history leaf.
 That initial decision is preserved rather than silently replaced.
 
 Two narrowly selected official pages resolved the particular ownership question.
-The corrected May27,2021 decision specifies a physical subsidiary split with all
+The corrected May 27, 2021 decision specifies a physical subsidiary split with all
 new shares owned by Kakao:
 https://kind.krx.co.kr/external/2021/05/27/000292/20210527000849/11345.htm
-The February25,2022 AGM notice records the executed July1 physical split and
-Kakao's acquisition of those shares, followed by the September1 subsidiary
+The February 25, 2022 AGM notice records the executed July 1 physical split and
+Kakao's acquisition of those shares, followed by the September 1 subsidiary
 merger replacement:
 https://kind.krx.co.kr/external/2022/02/25/001588/20220225003185/00591.htm
 Together with the selected completed annual history, this supports an inferred
 no-compulsory-shareholder-allotment finding for the exact Kakao holding window.
-The12 final interval findings are inferred, not complete-source certification;
+The 12 final interval findings are inferred, not complete-source certification;
 the addendum identifies root's official-page review separately from the original
 leaf reviewer. Decision SHA-256
 `7c3a44cbae46b59095827044e9b727ae753e1ac8a231cb34f1a2e311dfc4ad60`.
-The first7 and these12 intervals now have content findings; LG has a confirmed
-relevant spin-off. The final14 received leaves remain in content review. This
+The first 7 and these 12 intervals now have content findings; LG has a confirmed
+relevant spin-off. The final 14 received leaves remain in content review. This
 does not close a first-performance group or increment D1/D2 completed studies.
 
-The final14 selected leaves have now passed private-file/pin checks, exact
+The final 14 selected leaves have now passed private-file/pin checks, exact
 workload/result-coordinate comparison and full raw/readable visible-text
-comparison. All14 content decisions are bounded inferred-no-compulsory-action
+comparison. All 14 content decisions are bounded inferred-no-compulsory-action
 findings. Parent-surviving subsidiary absorption, treasury-share cancellation,
 subsidiary splits and controlling-holder block deals retain explicit named
-no-op dispositions. The shorter277810/443060 histories retain their stated
-source limitations. Decision document:45,610 bytes, SHA-256
+no-op dispositions. The shorter 277810/443060 histories retain their stated
+source limitations. Decision document: 45,610 bytes, SHA-256
 `c4ae7586b2f983ab6374d986abb78583d894cd9d976e5a073867e94466097bd9`.
-Thus all34 fixed targets have content dispositions:33 inferred ordinary
+Thus all 34 fixed targets have content dispositions: 33 inferred ordinary
 intervals and one confirmed relevant LG spin-off. These are not yet executable
 coverage declarations, coherent event price bases or completed performance runs.
 
 Source-only mixed-scope design review found the current paired seam's global
 all-no-event condition expands unrelated ordinary evidence whenever any event
-exists. The minimum next connection must retain original18-package validation
+exists. The minimum next connection must retain original 18-package validation
 and exact child-proof recomputation, then validate per-entry mixed requirements.
 Under the current binding contract relevant events retain original-end fallback.
 A shorter proven component-group lifecycle would be an explicit further
@@ -1062,9 +1062,9 @@ old BM identity. Final replay inventory must remain inside the validated bounds
 before a paired report is produced. Source-only design SHA-256
 `6998526a1b8eefd17a9877fad921e0ea1fa348330c1f76c9f16607c77f9fc05f`.
 
-A targeted official KRX notice corroborates LG's May27,2021 changed listing:
+A targeted official KRX notice corroborates LG's May 27, 2021 changed listing:
 https://kind.krx.co.kr/external/2021/05/27/000504/20210527001079/70874.htm
-The notice separately starts LG futures on May28; that separate instrument date
+The notice separately starts LG futures on May 28; that separate instrument date
 is not used for stock availability or broker delivery. Remaining uncertainty
 continues to be event-specific unit/delivery and coherent-input connection,
 with three first-performance groups open, zero newly closed and D1/D2 zero/zero.
