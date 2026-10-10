@@ -816,3 +816,102 @@ price, ratio, metric, source-period extension or new request is part of this
 read. Retain the inventory's exact original IDs; actual follow-up source dates
 will be registered after the conditional coordinate preflight, not extrapolated
 from formation-only evidence.
+
+### Ordinary-exit preflight completed and independently checked
+
+PR #273 received substantive CodeRabbit APPROVED on head
+`6daaef8bb23e218f3d3db9aba8b128b4ba9c2037` at 2026-10-10T05:41:24Z;
+all eight CI jobs passed, including 5,894 Python tests with three skips, and
+there were no review threads. Normal squash merge
+`a79262c080d71c0e77480b99f1e7647ae978a497` completed 05:42:05Z. Both trees equal
+`b111fa80ab0ecc1a4db6f7488fde60b9836c3340`. The isolated research fast-forward
+completed 05:42:51.742603Z; the collector stayed clean at its unchanged recorded
+operational commit. The original BM independent receipt was provisioned once
+at its registered private GCP location, without rerunning its producer/verifier.
+
+The registered run `5b5e0702-adee-4d72-9cbd-ce50078c2b4c` durably started
+05:43:35.483340Z and completed 05:45:51.502463Z. All 72 potential entries have
+provisional opening candidates: 36 per arm. Original 31 issues/24,598 code-date
+coordinates remain immutable; the conditional union has 4,604 coordinates and
+34 merged calendar-day windows. This approximately 81% reduction is source-work
+prioritization, conditional on separately reviewed complete event coverage.
+It is not an actual exit/trade/return or an unconditional no-event finding.
+
+| output | SHA-256 |
+|---|---|
+| specification.json | `640f6a01a94fd1b2d46f95a53a2144237d041fe4a32821ea93985635ef4faf57` |
+| source-manifest.json | `d3062d710022d99c86864dd1aa0239cad2f8e570913edc94e65146ab38ad533c` |
+| input-manifest.json | `33ec5ee0adca85b8b53bbaa7ad979484db399cb1654ec3acee4f28770448bbd6` |
+| resource-manifest.json | `18139df477c2a43341d0a317ae72bc736bd8797fe5398708a8e3d4dd09be67db` |
+| exit-scope.json | `e98683b885f81be54232439b04083ef8e6eff3ccf1af88b1c3c429a16c0d96d6` |
+| result.json | `34cc5516c3469091915f9a7ad29c97a4f7e4fa8f4eaf65a377557c0f6b91a988` |
+
+The independently reconstructed child scope hash is
+`725dff94e0d30ebbd0d94b12a60a1435ffbf19dd06a85c8d7331dfd14571dc67`.
+The 2,910-byte independent receipt, SHA-256
+`957906bba586f4b327fc946de59eaa1877872af8b92f0eb936c91e370ae35468`,
+is in the registered local `large-liquid-bm-exit-independent-20261010-v1` root.
+Its scope is `new_conditional_exit_coordinates_and_original_state_links_only`:
+six new files plus the four pinned references, with no original eighteen-input
+reread, DB/API/source body or quote-value rehash. It explicitly relies on the
+original independently verified BM typed states for candidate-open eligibility.
+Original source truth, event/basis/vintage and actual exits remain uncertified.
+Source review repaired missing success-report merge/specification comparisons
+in the independent wrapper before actual invocation; 59 combined synthetic
+checks passed. Verifier and wrapper source pins are respectively
+`3c0c75ea5d0b7a3bd2a5021fa6bdeb8202432e6b268eda0243409ed9a58884bc` and
+`bf5e6d85e538c3b243343c71910b9650a658e05e74c48f6e205f644f80625eeb`.
+
+A separately registered one-file metadata projection then succeeded. Its source
+`var/bm-exit-metadata.py` is pinned at
+`415e33bc2bcd82a12adf70ab1ad14d59918c37e74cabc5eaf5c3209604e060c0`;
+ten synthetic cases and root source review preceded access. The private local
+`large-liquid-bm-exit-metadata-20261010-v1/stdout.json` is 19,748 bytes, SHA-256
+`c9ddf371d5fbac2ef4108ab90481eee699642f1cf3fc89600ddf5866d7e98d5c`.
+It projects only exact issue/entry/due/candidate/end coordinates, windows,
+counts and four snapshot/scope identifiers. No price value or original source
+body is in it. All operational/research checkout guards passed.
+
+Of the five original abnormal runs, only LG's 2021 run intersects the new
+provisional holding windows. The 009830/012450/091990/207940 later runs are after
+their respective candidates. This is a conditional prioritization result; it
+does not certify absence of earlier rights or erase the original full scope.
+LG's child union is 2021-04-16 through 2021-10-22. The issuer's completion notice
+establishes a relevant split question, while the earlier plan does not supply
+final allotment/eligibility/delivery or adjusted-unit accounting evidence.
+
+The operator explicitly selected original-investment grouping for spin-off
+components. CLAUDE.md records the binding policy: one original slot, inherited
+acquisition/due dates, separate post-due sales only when delivered/tradable,
+undelivered rights retained. No new optional acquisition or future-event
+exclusion from the historical formation pool. Source-only audit found the old
+price-return/ex-dividend convention does not authorize discarding the new-company
+right. Existing one-to-one exchange/final-cash primitives need a minimal extension.
+
+Use exact provisional windows for the next issuer-history source workload.
+Annual/half-year issuer histories may support an explicitly reviewed bounded
+`inferred_no_compulsory_action` finding under the existing rules; a report label,
+filing date, empty search or quote continuity alone cannot. No exhaustive daily
+absence search or whole-vendor-formula proof is added. The current pure paired
+seam has an intentionally limited all-no-event child path and refuses successor
+quote expansion; supported spin-off integration must preserve the original
+artifacts and connect separately pinned relevant bounds and coherent quotes.
+
+Current package execution/independent check are complete. First-performance
+groups remain three open and zero newly closed by this diagnostic; D1/D2 actual
+performance studies remain zero/zero. Historical availability and vintage remain
+assumed. Next work is relevant official holding-period history, authorized
+grouped-right accounting, and the actual fixed paired study connection.
+
+The first grouped-inventory foundation is implemented without changing the
+frozen pilot: an optional original-investment ID has a distinct namespace from
+legacy lot IDs; group components must share acquisition/due/snapshot terms.
+Book slots and both cutoff/actual-fill capacity checks count investments.
+Pending/partly sold groups retain one slot. The cutoff reads no current opening
+or frozen state, and failed component sales invalidate reserved new targets
+without reselection. A fresh read-only correctness review found no actionable
+issue; its six related modules passed 194 synthetic cases. Root checks passed
+124 group/replay/timing cases, 160 paired/exit/report cases and 54 documentation
+checks. These are overlapping test sets, not an additive unique-test count.
+The actual spin-off primitive, final evidence and coherent quote extension
+remain separate work; no split allotment or actual portfolio result is claimed.

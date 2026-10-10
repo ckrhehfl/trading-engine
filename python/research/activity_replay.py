@@ -370,12 +370,13 @@ def replay_synthetic(
             # opening/frozen prices or assuming actual event/sale proceeds.
             retained = tuple(lot for lot in book.lots
                              if lot.due_on > session or lot.available_on > session)
+            retained_slots = len({lot.investment_key for lot in retained})
             formation_on = calendar[formation_index]
             if partition_path:
                 selected = select_partition(
                     formation_map[formation_on], formation_on=formation_on, decision_on=session,
                     held_codes={lot.code for lot in retained}, seed=params["seed"],
-                    free_slots=max(0, slots - len(retained)),
+                    free_slots=max(0, slots - retained_slots),
                     selection_at=policy.selection_at(calendar, formation_index),
                 )
             else:
@@ -384,7 +385,7 @@ def replay_synthetic(
                 selected = _selected(
                     formation_map[formation_on], formation_on=formation_on, decision_on=session,
                     present_codes=present_codes, held_codes={lot.code for lot in retained},
-                    seed=params["seed"], free_slots=max(0, slots - len(retained)),
+                    seed=params["seed"], free_slots=max(0, slots - retained_slots),
                     selection_at=policy.selection_at(calendar, formation_index),
                 )
             choices.append((formation_on, selected))
@@ -441,7 +442,7 @@ def replay_synthetic(
                     diagnostics["unfilled_entries"] += 1
                     diagnostics["unfilled_held_targets"] += 1
                     continue
-                if timing_policy is not None and len(lots) >= slots:
+                if timing_policy is not None and len({lot.investment_key for lot in lots}) >= slots:
                     diagnostics["unfilled_entries"] += 1
                     diagnostics["unfilled_capacity_targets"] += 1
                     continue
