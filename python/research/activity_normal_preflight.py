@@ -75,6 +75,7 @@ ADJUDICATION_SHA256 = INPUTS["bk_adjudication"]["sha256"]
 
 
 def validate_spec(spec: dict, reference: dict) -> None:
+    """Require the fixed study, immutable inputs and original threshold scale."""
     saved.require(spec.get("schema") == SCHEMA and spec.get("study_id") == SCHEMA
         and spec.get("mode") == "discovery_normal_input_assembly"
         and spec.get("promotion_allowed") is False
@@ -201,6 +202,7 @@ def population_audit(rows: list[dict]) -> dict:
 
 
 def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dict:
+    """Restore pinned proofs and assemble normal inputs without computing returns."""
     declared = spec["inputs"]
     values = {role: inputs.json(Path(declared[role]["path"]), declared[role]["sha256"], role)
               for role in ("calendar_manifest", "bb_result", "bh_result", "au_result", "bi_result",
@@ -302,6 +304,7 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
 
 def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path,
                   *, reader=saved.read_private) -> dict:
+    """Log one frozen-input attempt and preserve exclusive success/failure evidence."""
     root = root.resolve()
     saved.require(Path.cwd().resolve() == root, "run from repository root")
     sources, raw, spec = saved.freeze_sources(root, spec_path, spec_validator=validate_spec)
@@ -309,6 +312,7 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
     inputs = saved.PinnedInputs(reader)
 
     def evaluate():
+        """Publish only unchanged source/runtime results; retain any partial failure."""
         created = False
         try:
             saved.private_directory(output.parent)

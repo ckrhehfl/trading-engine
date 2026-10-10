@@ -212,3 +212,10 @@ is the committed `research.activity_normal_preflight` module. The independent
 wrapper checks the verifier body pin again remotely before compilation, opens
 only the new recovery outputs and imports no producer. Private receipts, host
 credentials and original research logs are not installed into the checkout.
+
+CodeRabbit's external-provisioning finding was addressed in `110eff9` and its
+thread is resolved. Its separate nonblocking docstring-coverage warning is
+also addressed for the runner/test functions touched by this recovery. No
+calculation, source-read or evidence predicate changed in that follow-up.
+The final-head full re-review must finish after the published capacity ETA;
+a green rate-limited status alone does not satisfy the project merge gate.
