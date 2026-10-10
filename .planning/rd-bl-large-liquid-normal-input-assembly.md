@@ -219,3 +219,112 @@ also addressed for the runner/test functions touched by this recovery. No
 calculation, source-read or evidence predicate changed in that follow-up.
 The final-head full re-review must finish after the published capacity ETA;
 a green rate-limited status alone does not satisfy the project merge gate.
+
+## First recovery publication and preserved coordinate failure
+
+After the published capacity wait, PR #269 received actual CodeRabbit
+APPROVED review `5476906721` at 2026-10-10T01:37:34Z for exact head
+`5afe5d403cf1af82eb6cb964fb268322be757eb8`. The final status was
+Review completed at 01:37:38Z; the sole earlier provisioning thread was
+resolved and no new actionable finding remained. All nine CI checks passed;
+the Python PR job reported 5324 passed / three skipped. Normal squash merge
+`5d03f05ea7a9dd501404e77c412e4ccda74e6d97` completed at 01:41:13Z,
+with a tree identical to that reviewed head. The isolated GCP research checkout
+was clean at this merge at 01:41:44.288709Z. The collector remained clean at
+unchanged `4ce85d714890b87f1a57ae89d4942660e41c0483`.
+
+The one registered recovery-v1 failed with ValueError in durable trial
+`49ff756e-6770-479d-afa6-6e64b9aad296`, started
+2026-10-10T01:42:04.699257+00:00 and failed
+2026-10-10T01:46:24.946826+00:00. All 1511 attempted inputs were
+hash_verified. Value-free frames now identify `evaluate_inputs`' exact
+accepted-issue source provenance equality. Source order shows that restored
+BI proof comparison and source loading were reached successfully; this does
+not replace independent verification of a successful output package. No
+normal-input result, holding selection or performance was completed. Preserve
+the original failure and this recovery, with no automatic retry.
+
+The six recovery-v1 output hashes are:
+
+| Output | SHA-256 |
+|---|---|
+| failure.json | `9b6b821d7507d91dd7d400321734f420a9648665c6c4308cd9e84109759dd757` |
+| input-manifest.json | `b124c9354c11f1bfba40d3a86c994f91c1dda5c2ded65473a8b6ee30207be308` |
+| raw-source-read-scope.json | `511a69274e7628c24cd0409c09b52ec0cb75fa7a24db3e50b601b7559fc2d39e` |
+| read-scope.json | `bda4c5e9081810f3cbc585229befbdad3c2d90ae10fbbaf6ca0adade5deef654` |
+| source-manifest.json | `7c7cbc25a0db386b8f6982953f02427b1a046f476e70032d34bd5a0417dff9d9` |
+| specification.json | `de4ed1c44aa99074012fe75359ba5558074ecc1ae709a18b42ef59162e1ba49f` |
+
+Independent source tracing found a coordinate-contract error. The original AX
+complete-basic exporter and its independent verifier enumerate observations
+and basic rows from one; BJ/BK preserve those exact coordinates. BL newly
+enumerated them from zero. Thus the thirteenth formation's KOSPI basic response
+is observation 51 under AX, while BL reported 50; its source row 912 was
+reported as 911. The permitted pinned one-record BK schema read confirms the
+accepted contract, without reading another saved market response. Existing
+synthetic tests and the independent output verifier shared the new zero-based
+assumption, so their agreement did not validate compatibility with AX.
+
+Repair only `krx_metadata_provenance`'s basic observation/row coordinates to
+the inherited one-based contract. The internal AQ index and BL's separate
+capitalization and liquidity row coordinates remain zero-based, with liquidity
+logical response numbers remaining one-based. Keep exact accepted provenance
+equality; do not modify BK evidence, weaken a comparison, or change a financial
+predicate. Regressions must use independently specified AX expectations and a
+real formation-row producer joined to an accepted record, including independent
+observation-minus-one and row-minus-one failures.
+
+## Second recovery registration — fresh outputs and unchanged study
+
+After normal reviewed merge and completed CI/CodeRabbit, register one new
+recovery-v2 at
+`/home/minjun4897/research-evidence/large-liquid-bl-normal-input-assembly-20261010-recovery-v2/run`.
+Keep all fixed input pins, specification, numerical rules and resource limits
+unchanged. The new launcher checks both preserved failures, the six recovery-v1
+hashes above and its exact bounded started/failed canonical receipts. Sync only
+the clean isolated research checkout from the previous reviewed merge
+`5d03f05ea7a9dd501404e77c412e4ccda74e6d97`; collector HEAD/cleanliness must
+match before/after. Exclusive outputs, durable start, no automatic retries,
+768 MiB address space, CPU 300 seconds, wall 900 seconds, niceness 10 and the
+2 GiB free-space floor remain. No additional API or current DB read is allowed.
+
+New private helper filenames end in v2; never overwrite the frozen v1 helper
+sources or receipts. Their external source remains this task's local WSL var
+directory and their deployment mechanism is the checked-byte in-memory
+procedure recorded above. Before the first operation and each invocation,
+check all three registered v2 helper pins. Retain checked source bytes privately
+before SSH. The producer-free independent wrapper may execute once only after
+successful new assembly and may read only its nine declared outputs. Its basic
+coordinate check follows AX one-based semantics while the separate cap/liquidity
+semantics remain unchanged; original source-row truth is outside its output-only
+scope. Freeze helper hashes and synthetic results below before publication.
+
+At registration, four first-performance groups remain open, none newly closed;
+both completed D1/D2 performance counts remain zero. A successful independently
+verified normal-input package is required to close the first group.
+
+### V2 helper freeze and engineering validation
+
+| External helper | SHA-256 |
+|---|---|
+| var/bl-recovery-publication-v2.py | `2f4563cad8eb4fb5e36d0be60748df4d50aeca2d591269cad958e8b27f5567a4` |
+| var/bl-output-verify-v2.py | `b86fdc9e36119a5ff819aeb8eb74ad62bedc08782a832db500ecb4b3cd8d129e` |
+| var/bl-independent-publication-v2.py | `de9094ca71d4a9d33d0d7d03b41688b457e066f1af039245de6befd9ca07da98` |
+
+The recovery launcher archives receipts beneath private local
+`/home/minju/.local/share/trading-engine-research/large-liquid-bl-recovery-publication-20261010-v2`;
+the independent wrapper uses the corresponding
+`large-liquid-bl-independent-20261010-v2`. Check the three pins above before
+sync/run/independent execution, compiling the same checked bytes. The verifier's
+separate synthetic test source `var/bl-output-verify-v2-tests.py` is frozen at
+`bdb7f3ee02dec77f6857b9024f6895458b0f890ffd40a01e06ef30f550468c19`.
+This remains an external private helper provisioning procedure, not a claim
+that Git installs ignored files.
+
+New independent coordinate expectations failed before the repair and passed
+after it. WSL focused input/source/restore/assembly/runner and planning-index
+regressions passed 352 tests / one skipped. The producer-free v2 verifier's
+41 synthetic tests passed, including basic observation-minus-one/zero,
+row-zero, wrong cap convention and accepted-row conflicts; the unchanged v1
+synthetic suite still passed 34. Guardrail scan and whitespace check passed.
+These tests read no actual market input and do not close a performance group.

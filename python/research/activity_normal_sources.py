@@ -117,7 +117,11 @@ def _availability_json(value: AvailabilityMetadata) -> dict:
 
 def _formation_rows(day: str, rows: dict, observations: dict, observation_positions: dict,
                     calendar: tuple[date, ...]) -> list[dict]:
-    """Preserve every dated trade/basic join, including size failures."""
+    """Preserve every dated join, using AX/BK's 1-based basic coordinates.
+
+    Internal AQ observation indices and capitalization coordinates remain
+    0-based; only basic metadata provenance follows the existing AX/BK contract.
+    """
     result = []
     for trade_service, basic_service in zip(saved.probe.SERVICES[:2], saved.probe.SERVICES[2:], strict=True):
         cap_metadata = _metadata(day, trade_service, observations[trade_service], calendar, "MKTCAP")
@@ -131,7 +135,7 @@ def _formation_rows(day: str, rows: dict, observations: dict, observation_positi
         cap_availability, basic_availability, section_availability = (
             _availability_json(value) for value in (cap_metadata, basic_metadata, section_metadata))
         basics = {row["ISU_SRT_CD"]: (position, row)
-                  for position, row in enumerate(rows[basic_service])}
+                  for position, row in enumerate(rows[basic_service], 1)}
         for position, trade in enumerate(rows[trade_service]):
             code = trade["ISU_CD"]
             basic_position, basic = basics[code]
@@ -155,7 +159,7 @@ def _formation_rows(day: str, rows: dict, observations: dict, observation_positi
                                   "abbreviation": basic["ISU_ABBRV"], "english_name": basic["ISU_ENG_NM"]},
                 "krx_metadata_provenance": {
                     "formation": day, "code": code,
-                    "source_observation_position": observation_positions[basic_service],
+                    "source_observation_position": observation_positions[basic_service] + 1,
                     "source_response_sha256": observations[basic_service]["response_sha256"],
                     "source_row_position": basic_position, "source_service": basic_service},
                 "krx_capitalization_provenance": {

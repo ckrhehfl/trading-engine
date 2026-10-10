@@ -240,23 +240,42 @@ def test_changed_source_after_assembly_cannot_publish_result(tmp_path, monkeypat
     assert (output / "failure.json").exists() and not (output / "result.json").exists()
 
 
-@pytest.mark.parametrize("conflicting_source", [False, True])
+@pytest.mark.parametrize("conflicting_source", [None, "response", "observation", "row"])
 def test_connected_evaluation_restores_proofs_and_runs_real_normal_screen(tmp_path, monkeypatch,
                                                                        conflicting_source):
     """Exercise cross-module contracts with a temporary synthetic DB/receipt.
 
-    Only the already separately tested KRX raw reader and large production
-    count/calendar declarations are substituted; restore/proofs/period/screen
-    and output serialization all execute their real implementations.
+    Only raw IO and large production count/calendar declarations are
+    substituted; the real formation-row producer joins an independently
+    specified AX-style accepted coordinate before restore/period/screen output.
     """
     import sqlite3
     from research.activity_failure_inputs import load_activity_failure_inputs
+    from research import activity_normal_sources as source_reader
     from test_activity_normal_assembly import fixture as screen_fixture
+    from test_krx_formation_audit import rows_for_day
 
     fixture = screen_fixture()
     calendar, code, formation = fixture["calendar"], fixture["code"], fixture["formation"]
     dates = calendar[:calendar.index(formation) + 1]
     key = formation.strftime("%Y%m%d"), code
+    # Existing AX/BK contract: third AQ response, first raw basic row, both
+    # one-based. Never copy this expected coordinate from the BL producer.
+    fixture["accepted_record"]["required_windows"][0]["krx_metadata_provenance"] = {
+        "code": code, "formation": key[0], "source_observation_position": 3,
+        "source_response_sha256": "c" * 64, "source_row_position": 1,
+        "source_service": "stk_isu_base_info",
+    }
+    raw_rows = rows_for_day(key[0])
+    raw_rows["stk_bydd_trd"][0].update(ISU_CD=code)
+    raw_rows["stk_isu_base_info"][0].update(
+        ISU_SRT_CD=code, ISU_CD=fixture["isin"], LIST_DD="20100101")
+    observations = {service: {"response_sha256": "c" * 64,
+                              "at": "2026-10-09T00:00:00+00:00"}
+                    for service in saved.probe.SERVICES}
+    produced = source_reader._formation_rows(key[0], raw_rows, observations,
+        {service: index for index, service in enumerate(saved.probe.SERVICES)}, calendar)
+    source_row = next(row for row in produced if row["code"] == code)
     database = tmp_path / "synthetic.sqlite3"
     with sqlite3.connect(database) as connection:
         connection.executescript(
@@ -304,9 +323,13 @@ def test_connected_evaluation_restores_proofs_and_runs_real_normal_screen(tmp_pa
     original_partition = module.partition_population
     monkeypatch.setattr(module, "partition_population", lambda *a:
                         original_partition(*a, counts={"normal_window": 1}))
-    provenance = deepcopy(fixture["accepted_record"]["required_windows"][0]["krx_metadata_provenance"])
-    if conflicting_source:
+    provenance = deepcopy(source_row["krx_metadata_provenance"])
+    if conflicting_source == "response":
         provenance["source_response_sha256"] = "f" * 64
+    elif conflicting_source == "observation":
+        provenance["source_observation_position"] -= 1
+    elif conflicting_source == "row":
+        provenance["source_row_position"] -= 1
     source = {"isin": fixture["isin"], "listing_date": fixture["listing_date"],
               "capitalization": fixture["capitalization"], "liquidity": fixture["liquidity"],
               "krx_metadata_provenance": provenance, "source_provenance": {"synthetic": True}}
