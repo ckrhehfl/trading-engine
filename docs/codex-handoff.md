@@ -499,6 +499,10 @@ The same registration PR also adds a pure audit-to-holding-input restoration
 seam, tested against actual producer code over synthetic data. It avoids a
 second database read when verified price evidence is later supplied to replay;
 it does not establish event coverage or complete a performance study.
+Its pure paired-report continuation computes the requested descriptive metrics
+from existing immutable replay results, preserving initial-NAV losses and
+separating signal overlap, targets, filled entries, ordinary sales and open lots.
+These additions remain synthetic preparation until the registered actual run.
 
 ## Where the previous work stopped
 

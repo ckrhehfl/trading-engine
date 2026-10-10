@@ -1749,6 +1749,29 @@ verified diagnostic evidence, not source truth, event/basis certification or
 actual replay completion. Actual events, book execution and paired metrics
 retain their separately frozen input protocol after the price diagnostic.
 
+**BM source-only paired reporting design before return access.** Add a pure
+descriptive report over two existing immutable `SyntheticReplay` results and
+their explicit D1/D2 `PartitionSelection` tuples, with one explicit positive
+Decimal initial NAV. Require common ordered session-book dates and formation
+coordinates, matching paired signal/source partitions and each arm's complete
+target declarations. Do not load data, execute a replay, certify event coverage,
+log a trial, choose a lag or run family sizing in this helper. Keep NAV ratios,
+total return and maximum drawdown in Decimal, including initial NAV in both the
+first session return and drawdown high-water mark. Report unannualized sample
+session-return standard deviation, converting to float only at that statistical
+boundary; fewer than two returns yields unknown dispersion. A zero NAV may
+remain zero with zero subsequent returns, but must not recover from zero without
+an explicitly modeled external cash flow. Report filled entries, ordinary
+closed trades and terminal open lots separately, never call signal occurrences
+trades. For both formation signal pools and actual selected targets, report the
+sum of per-formation symmetric-difference counts divided by the sum of union
+counts, retaining numerator/denominator and unknown rate for an empty union.
+Zero signal change by construction is distinct from target/fill/performance
+equality. Preserve cash-only, first-session cost loss, delayed exit, divergent
+entry/target outcomes, absent inputs and invalid-result checks in synthetic
+tests. Actual paired study registration, evidence coverage and logging remain
+separate obligations; the existing calibration/power rules are not changed.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

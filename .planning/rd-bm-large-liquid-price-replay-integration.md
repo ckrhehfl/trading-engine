@@ -381,3 +381,54 @@ events/basis accounting and D1/D2 performance remain unexecuted.
 The main-agent focused run added the planning-index regression to those two
 modules: 127 passed / one skipped in 8.41 seconds. This is synthetic source
 validation, not an actual audit restoration or price diagnostic.
+
+### Pure paired report and scoped coverage route before actual returns
+
+Added `research.activity_timing_report.paired_timing_report` over the existing
+immutable replay results and explicit paired partition declarations. Initial
+NAV, daily NAV ratios/returns, total return and maximum drawdown retain Decimal
+arithmetic/text; initial NAV is both the first-return denominator and the initial
+drawdown peak. Dispersion is unannualized sample session-return standard
+deviation with float conversion only at that statistical boundary. Fewer than
+two returns has unknown dispersion. Zero NAV is absorbing, not silently repaired.
+Signal and actual-target changes each retain per-formation symmetric-difference
+and union counts plus their aggregate ratio; an empty union has unknown rate.
+Filled entries, ordinary sales and terminal open lots are separate counts.
+Common coordinates do not certify identical costs, initial books, source truth
+or event coverage. This helper performs no replay, IO, logging, family sizing or
+lag selection. The actual paired protocol remains separate.
+
+The worker's 31 new reporting cases and 58 existing timing cases passed together
+(89 passed in 1.86 seconds). Existing engine synthetic fixtures demonstrate
+first-session cost loss, equal signals with different entry/NAV outcomes,
+delayed exits producing different targets, absent fills, retained terminal lots,
+cash-only books, empty unions, zero NAV and malformed-result rejection.
+
+A separate source-only route audit identifies the remaining minimal connection:
+reviewed coverage/event declarations and a thin logged paired caller to the
+existing engine. Reuse AY rename/market-movement dispositions, AZ reviewed
+corrections/additional listings and BD's voluntary pre-entry F&F disposition;
+do not reacquire or convert those into compulsory exchanges. AI/AL's old SPAC
+evidence has no exact-code overlap with this pool and cannot certify its
+no-event coverage. Scope remaining evidence to exact code/ISIN and possible
+holding periods, joining only relevant events and any successors. Do not review
+every price row manually or require actual lots before preflight. No complete
+reviewed no-event ledger for these periods was found in the public repository
+declarations. No actual input was opened by this audit. Paired descriptive
+timing sensitivity has no family power-pass prerequisite; later strategy-family
+calibration rules remain unchanged.
+
+The reporting worker added a weighted-overlap regression after its first run
+(32 new / 58 existing cases, 90 passed in 2.30 seconds). The main-agent combined
+restoration, adapter, report, timing, partition replay and index run then passed
+262 / one skipped in 11.73 seconds. A fresh adversarial review subsequently
+reproduced one genuine count inconsistency: a result with one selected target
+could report two filled entries. The explicit partition engine records exactly
+one filled or unfilled outcome for every target, so the report now requires
+their sum to equal target occurrences. It does not compare sales to entries,
+because valid initial inventory can produce more sales than new entries.
+Four mutation regressions cover excess entries, excess unfilled outcomes,
+missing outcomes and double counting. Final worker report/timing verification
+passed 94 cases (36 new plus 58 existing) in 2.24 seconds; scanner passed.
+The earlier combined run predates this count correction and is not final-head
+CI evidence. The new source consumes no actual input or returns.
