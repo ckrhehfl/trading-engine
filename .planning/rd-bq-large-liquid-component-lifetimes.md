@@ -367,3 +367,43 @@ steps are review/merge/deploy of this projection, exact LG terms and pending
 declarations, the registered component proof, and the frozen paired study.
 All three first-performance groups remain open, zero newly closed, with
 actual D1/D2 performance studies still zero/zero.
+
+### Frozen actual raw component inputs on October 14 KST
+
+PR #280 normally merged as `22118f2505d5c3749dc2b8aa3253d24323c5e8b2` and
+the isolated GCP research checkout contains its reviewed tree. Both fresh
+source reviewers passed 223 focused tests and found no remaining actionable
+finding. All four CI checks passed; the supported WSL full check also passed
+6807 tests with 3 skips, scanner, 27 guardrails and 34 VST regressions.
+
+The original raw artifact and its 211 observed/18 unresolved classifications
+are unchanged. A separately registered producer-independent comparison of
+three saved review outputs verified all 229 source states, nine anchors and
+the explicit v2 identity/18 non-executable coordinates. It did not certify
+source truth, halt cause, custody or production restore. The execution-view
+snapshot is `b767702ac898ece0803d1f9fc8f9718befc8727551f8b246a6f4c8e95b81ad2c`.
+
+The first LG auxiliary preparation failed before either saved input was read
+and before SSH, because a clean Windows working file had CRLF while the Git
+blob had LF. The failure is preserved. The separately reviewed recovery
+allows only that line-ending equivalence and still compiles exact frozen Git
+bytes; changed/untracked/shadowed modules remain rejected. Its four fragments
+were generated once and provisioned to a fresh GCP research-evidence root.
+The official allotment ratios/effect/record dates are distinct from inferred
+purchase cutoff/first tradability and the assumed last-marked-NAV partition.
+Prior raw receipts do not certify those declarations or the new projection.
+
+The actual 27-input specification now freezes the original 18 BL/BM/BJ roles,
+ordinary price-only scope, BP extension/verification, original raw artifact/
+unit plan/verification and the new reviewed LG terms/bases/explicit priority
+list. It preserves the calibration parameters including numeric JSON types,
+original windows, costs, seed, full source population and all possible origins.
+Its mode is a raw component-lifetime scope preflight, never performance.
+
+Review, normal merge and isolated deployment must precede one durable logged
+run of this exact specification. No API, credentials, DB, new quote request,
+book, return or source/event/custody certification is part of that run. The
+new outputs require producer-independent geometry/link verification; final
+complete action coverage and paired proof recomputation remain separate.
+Three first-performance groups remain open, zero newly closed, and actual
+D1/D2 performance remains zero/zero.
