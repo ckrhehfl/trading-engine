@@ -157,13 +157,13 @@ groups remain open and no D1/D2 performance study has completed.
 ### Raw continuation design after fixed origin metadata review
 
 The separately registered calendar/origin projection found exactly two LG
-potential entries: April16/D1 dueOctober21 and April19/D2 dueOctober22, both
-from the April15,2021 formation. There are no later independent LG origins in
-that fixed proof. Its original final horizon remains September18,2026; existing
+potential entries: April 16/D1 due October 21 and April 19/D2 due October 22, both
+from the April 15, 2021 formation. There are no later independent LG origins in
+that fixed proof. Its original final horizon remains September 18, 2026; existing
 KIS-derived candidate dates alone are not raw exit evidence.
 
 The first raw diagnostic will therefore cover the bounded candidate episode
-April16 throughOctober22,2021 for LG and May27 throughOctober22 for LX, plus
+April 16 through October 22, 2021 for LG and May 27 through October 22 for LX, plus
 the raw old/availability anchors already inside those intervals. This is a
 fixed diagnostic acquisition window, not a conclusion that either component
 sold. The raw-aware proof must find both components' own usable raw openings
@@ -199,7 +199,7 @@ keeps raw rows, unit plan and the entire original composite lineage under its
 own identity. An independent source review reproduced a forged frozen-view
 escape in the public coordinate/basis helpers. Four regressions first failed;
 the helpers now refreeze the complete artifact/plan/base before consumption.
-The related decoder/view/extension suites passed180 cases. Actual replay still
+The related decoder/view/extension suites passed 180 cases. Actual replay still
 needs an explicit raw-view connection; source tests are not a completed study.
 
 Pending, unavailable compulsory rights require no price read. The execution
@@ -254,7 +254,7 @@ closed in this source continuation; actual D1/D2 performance remains zero/zero.
 
 ### Final related source batch and the scoped-override review repair
 
-The substantive CodeRabbit review of head `4f14ba5` completed on October10 at
+The substantive CodeRabbit review of head `4f14ba5` completed on October 10 at
 12:52 UTC and found an overbroad component override exception in the shared
 action decoder. An empty override tuple could relax requirement endpoint and
 event-lifetime checks; a nonempty override could also affect an unrelated
@@ -264,27 +264,40 @@ code/ISIN, and lifetime/successor replacement exceptions only to the named
 spin-off event. Other events retain their full original successor coverage.
 Empty and unknown overrides cannot silently drop those obligations. The WSL
 reviewed-action, component/raw-component, reviewed-spin and raw-paired suites
-passed217 cases after the repair. This establishes code behavior only.
+passed 217 cases after the repair. This establishes code behavior only.
 
 To avoid another serial source-review window, the related PR batch now also
 includes the independently reviewed raw-aware logged proof caller and the
 existing paired preflight's optional raw-input forwarding. The raw proof caller
-accepts27 pinned saved roles, binds prior limited verification to restored raw
+accepts 27 pinned saved roles, binds prior limited verification to restored raw
 date/hash coordinates, checks old-mark roles and preserves every potential
 origin before saving canonical terms and a recomputed component wrapper. Its
-61 synthetic tests passed; the paired preflight's41 tests passed, including
+61 synthetic tests passed; the paired preflight's 41 tests passed, including
 real paired engines downstream of synthetic package preparation. The former
-adjusted-anchor26-input prototype remains excluded. Neither caller has an
+adjusted-anchor 26-input prototype remains excluded. Neither caller has an
 actual registered raw proof or performance specification yet. Those fixed
 input pins must follow the independently verified raw acquisition and reviewed
 source/date/rights/pending declarations; source readiness is not permission to
 execute a prototype or certify final coverage.
 
-Operational source preparation also separated the content helper's180-second
-remote computation limit from its240-second transport deadline and added a
+Operational source preparation also separated the content helper's 180-second
+remote computation limit from its 240-second transport deadline and added a
 raising alarm handler, private failure preservation and handler restoration.
 Root content review is an agent obligation under the existing methodology,
 not a new human checkpoint. No original financial artifact, API, database or
 credential was read by this source-only continuation. The same three
 first-performance groups remain open, zero newly closed, and actual D1/D2
 performance studies remain zero/zero.
+
+### Final verification and resumed review on October 13
+
+The final supported WSL check on head `741b6c6` passed the repository scanner,
+27 guardrail tests, 34 VST regression tests and the Python suite: 6768 passed,
+3 skipped. All four CI workflows passed on that head. After the account usage
+reset, source and Git checks confirmed the same unchanged production code.
+CodeRabbit's substantive full review completed on October 13 at 13:38 UTC with
+one minor finding: missing spaces around dates and counts in this PR's new,
+unmerged audit paragraphs. Those draft additions are corrected before merge;
+the previously merged append-only record is unchanged. No actual raw request,
+component proof or D1/D2 performance run has yet occurred. All three
+first-performance groups remain open; this continuation closed zero groups.
