@@ -407,3 +407,53 @@ new outputs require producer-independent geometry/link verification; final
 complete action coverage and paired proof recomputation remain separate.
 Three first-performance groups remain open, zero newly closed, and actual
 D1/D2 performance remains zero/zero.
+
+### Actual raw component proof and frozen paired inputs on October 14 KST
+
+PR #281 passed both separate final-head reviews and all four required CI
+checks, then normally squash-merged as `1a40c5ba3fb75322049c8d2f32e1d3eba2eae0f6`.
+The isolated GCP research checkout contains its exact reviewed tree; the
+collector remains clean and unchanged at `4ce85d7`.
+
+The separately registered 27-input raw component preflight completed once.
+Its canonical started/completed pair and seven output hashes are preserved.
+It retains all 72 potential origins, 36 per arm: 70 ordinary price candidates
+and two LG origins with both component candidates. All fit the shorter
+conditional bounds; no origin requires original-end fallback. The unchanged
+base request union has 24,598 original plus 1,303 extension coordinates, and
+the raw episode has 229 coordinates. Its action-evidence union has 35 complete
+inclusive windows. These are candidate bounds, not actual sales or returns.
+
+A separately registered producer-independent check read only the seven new
+outputs and publication pair. It verified manifests, pins, declared geometry
+and durable lineage, preserving the upstream-price/source/custody limits.
+Component wrapper SHA is
+`fd0962f19266cd8f3c4bb1e1f8dbaf8c2e3208a53a96c48ad77783699e3ffeb8`;
+canonical terms SHA is
+`8f8bbb594870529655285451afc250fe58463b3d6ce316ccb2880f1f427e0f28`.
+The verification does not independently reconstruct price candidates; the
+final paired caller must recompute the proof from its immutable inputs.
+
+The previously reviewed 33 ordinary dispositions and explicit LG/LX interval
+findings were assembled once through the existing action decoder. Their
+inferred evidence strength remains unchanged. Root's separate LG/LX template
+review confirmed the four official-source/review links and rejection of either
+interval extending beyond October 22. The publication binds the verified
+component outputs and writes five declaration artifacts without API, DB, key,
+raw-response, producer/proof or replay access. Independent verification of
+those new declaration outputs is being prepared and remains required before
+actual paired execution. No source/custody/exhaustive-no-event certificate is
+created by that publication.
+
+The new raw paired specification freezes all original 18 roles and adds only
+the final action coverage/bases, verified component wrapper, full BP extension
+and original raw artifact/unit plan. It preserves original parameter JSON
+types, costs, seed, calendar/window, full origin population and quote requests.
+Normal source review, CI, merge and isolated deployment remain mandatory.
+The caller will validate complete action coverage after recomputing its proof,
+then execute the existing book once per arm and retain its durable record.
+New-output headline verification remains separate from that execution.
+
+All three first-performance groups remain open pending the new declarations'
+independent check, actual paired connection and final registered execution.
+Zero groups are claimed closed by this freeze; D1/D2 performance remains zero/zero.
