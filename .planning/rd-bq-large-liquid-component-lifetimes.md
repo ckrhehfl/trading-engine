@@ -301,3 +301,34 @@ unmerged audit paragraphs. Those draft additions are corrected before merge;
 the previously merged append-only record is unchanged. No actual raw request,
 component proof or D1/D2 performance run has yet occurred. All three
 first-performance groups remain open; this continuation closed zero groups.
+
+### Operator-approved review transition on October 13
+
+The operator confirmed that the CodeRabbit subscription expired, declined
+another payment and explicitly selected separate Codex review plus CI. This
+replaces the mandatory vendor gate for this PR and subsequent work. A reviewer
+who did not author the change must inspect the frozen source/diff and actual
+verification evidence; research/accounting changes receive a separate research-
+integrity review. Record real findings and their disposition. Local reviews are
+procedural controls, never fabricated external approvals or commit statuses.
+
+The approved GitHub transition removes only the mandatory CodeRabbit status
+and requires the existing `python-tests`, `java-tests`, `gitleaks` and
+`bingx-hostname-guard` checks. CODEOWNERS, unresolved-conversation protection,
+administrator enforcement and high-risk human approvals remain. The optional
+vendor configuration retains its safety guidance while automatic reviews and
+blocking statuses are disabled. There is no Hermes installation, new API
+spending, direct main push, administrative merge bypass or collector change.
+
+GitHub readback confirmed the four required Actions checks with their existing
+app identity. Comparing the complete before/after protection snapshots showed
+no other changed field; `strict: false`, code-owner review, stale-review
+dismissal, administrator enforcement and conversation resolution were preserved.
+
+Active review requirements are updated in `CLAUDE.md`; historical approvals
+and failures remain in their original records. The completed WSL source check
+and actual CI results remain evidence, not a performance conclusion. The
+current source and review-transition changes still need the separate final
+reviews and passing CI before normal merge and isolated GCP publication.
+All three first-performance groups remain open, zero newly closed, and
+actual D1/D2 performance remains zero/zero.

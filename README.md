@@ -70,7 +70,8 @@ that backstops it. The repo is public.
 
 `.github/CODEOWNERS` **names** the high-risk paths — `java/`, `schemas/`,
 `configs/`, `.github/`, `CLAUDE.md`, `.coderabbit.yaml` — and everything else
-auto-merges once CI and CodeRabbit pass. That is all six, and
+can merge once CI and a separate Codex review pass. CodeRabbit is optional.
+That is all six, and
 `python/tests/test_docs_do_not_duplicate_claude_md.py` asserts it stays all
 six — a list of protected paths copied into prose drifts, and an omission here
 understates what needs a human decision.
@@ -79,7 +80,7 @@ understates what needs a human decision.
 overstate the protection.** GitHub does not raise a required-review when the
 PR author is also the sole code owner, which is the situation here; that was
 tested empirically. What actually blocks a merge is
-`required_conversation_resolution` — an unresolved CodeRabbit thread — plus
+`required_conversation_resolution` — an unresolved review thread — plus
 any standing `CHANGES_REQUESTED`. So the CODEOWNERS boundary is enforced
 **procedurally** on those paths, and branch protection stays on because it
 does bind a future second collaborator or bot identity. Full mechanism, and

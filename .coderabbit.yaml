@@ -1,7 +1,9 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
 #
-# CodeRabbit review config — personal-trading-engine
+# Optional CodeRabbit review config — personal-trading-engine
 # Source of truth for review criteria is CLAUDE.md at the repo root.
+# The required gate is separate Codex review plus CI; these safety criteria
+# remain available to reviewers without requiring a paid CodeRabbit service.
 
 language: "ko-KR"
 
@@ -12,18 +14,18 @@ tone_instructions: >-
 
 reviews:
   profile: "assertive"
-  request_changes_workflow: true
-  review_status: true
-  commit_status: true
-  fail_commit_status: true
+  request_changes_workflow: false
+  review_status: false
+  commit_status: false
+  fail_commit_status: false
   poem: false
   collapse_walkthrough: false
   sequence_diagrams: false
 
   auto_review:
-    enabled: true
+    enabled: false
     drafts: false
-    auto_incremental_review: true
+    auto_incremental_review: false
 
   path_instructions:
     - path: "**"
