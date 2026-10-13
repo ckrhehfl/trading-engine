@@ -19,7 +19,7 @@ from research.activity_partition_selection import PartitionSelection
 from research.activity_preflight import digest, encoded, require, strict_json
 from research.activity_quote_extension import CompositeHoldingInputs, _same, _validated, extend_holding_quotes
 from research.activity_raw_episode import TARGET_CODES
-from research.activity_raw_quote_view import RawEpisodeQuoteInputs, validate_raw_quote_view
+from research.activity_raw_quote_view import RawEpisodeQuoteInputs, is_raw_no_trade_reference_close, validate_raw_quote_view
 from research.activity_reviewed_actions import ReviewedActionTerms, _day, _identity, _value, reviewed_action_terms
 
 
@@ -83,7 +83,8 @@ def _candidate(quotes, observations: dict, code: str, due: date | None, availabl
         if observation is None:
             return None, "unrequested_quote"
         if type(quotes) is RawEpisodeQuoteInputs and code in TARGET_CODES:
-            if observation.issues == ("target_absent_cause_unknown",) or observation.state == "observed_no_trade_zero_prices":
+            if (observation.issues == ("target_absent_cause_unknown",)
+                    or observation.state == "observed_no_trade_zero_prices" or is_raw_no_trade_reference_close(observation)):
                 continue
             if observation.status != "observed":
                 return None, "unresolved_observed"

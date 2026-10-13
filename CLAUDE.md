@@ -1982,6 +1982,22 @@ A new raw-aware logged proof specification must precede actual use; the local
 adjusted-anchor proof prototype is not that specification. No actual performance
 study, new strategy family or promotion follows from this design alone.
 
+The fixed raw diagnostic exposed a KRX reference-close form: valid unique
+requested code/date, open/high/low zero, positive close, and zero volume and
+turnover. Preserve the original decoder's unresolved row and verification;
+do not rewrite them as a newly observed price or certify a halt cause. A
+separate versioned execution view may recognize only that exact validated
+source-text form as a requested non-executable coordinate. Its fingerprint
+must bind the explicit policy and ordered affected coordinates. Project no
+usable price, never use the reference close as a new mark, fill or basis, and
+retain the last marked value until a later usable observation. Other mixed
+zeros, active volume/turnover, malformed or mismatched rows remain unresolved.
+Report original decoder unresolved counts separately from execution-view
+unresolved and non-executable counts. The old raw receipt verifies its original
+outputs only; the new interpretation needs separate source review and logged
+proof/output verification. No reacquisition or original-artifact replacement
+is required for this no-price projection.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

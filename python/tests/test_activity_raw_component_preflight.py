@@ -71,6 +71,7 @@ def fixture(tmp_path, monkeypatch, *, raw_end=129, states=None):
                 ACC_TRDVOL="9007199254740993", ACC_TRDVAL="1000")
             state = (states or {}).get((code, index))
             if state == "zero": row.update(dict.fromkeys(RAW_FIELDS, "0"))
+            elif state == "reference_close": row.update(dict.fromkeys(RAW_FIELDS, "0"), TDD_CLSPRC=str(opening + 1))
             elif state in ("locked", "frozen"):
                 row.update(dict.fromkeys(RAW_FIELDS[:4], str(opening + 1)))
                 if state == "frozen": row.update(ACC_TRDVOL="0", ACC_TRDVAL="0")
@@ -282,7 +283,7 @@ def test_contradictory_later_mark_rejects_the_reviewed_old_role_before_proof(tmp
     assert list(output.iterdir()) == []
 
 
-@pytest.mark.parametrize("state", ["positive", "locked", "zero", "absent", "invalid", "frozen", "unrequested"])
+@pytest.mark.parametrize("state", ["positive", "locked", "zero", "reference_close", "absent", "invalid", "frozen", "unrequested"])
 def test_raw_parent_old_mark_diagnostic_distinguishes_no_trade_absence_and_unknown(tmp_path, monkeypatch, state):
     spec, store, documents, prepared, view = fixture(tmp_path, monkeypatch, states={(LG, 64): state})
     old = raw.raw_price_basis(view, LG, view.calendar[63])
@@ -295,9 +296,19 @@ def test_raw_parent_old_mark_diagnostic_distinguishes_no_trade_absence_and_unkno
     check = module._pre_effective_marks(SimpleNamespace(events=(event,)), view)[0]
     expected = "contradictory_later_observable" if state in ("positive", "locked") else "unresolved" if state in ("invalid", "unrequested") else "no_later_observable_in_retained_quotes"
     assert check["state"] == expected and check["basis_role_certified"] is False
-    field = {"zero": "no_trade_zero_price_sessions", "absent": "absent_requested_sessions", "invalid": "invalid_sessions",
+    field = {"zero": "no_trade_zero_price_sessions", "reference_close": "no_trade_reference_close_sessions",
+             "absent": "absent_requested_sessions", "invalid": "invalid_sessions",
              "frozen": "frozen_sessions", "unrequested": "unrequested_sessions"}.get(state, "later_observable_sessions")
     assert check[field] == 1
+
+
+def test_reference_close_view_preserves_original_raw_verification_counts(tmp_path, monkeypatch):
+    spec, _, documents, _, view = fixture(tmp_path, monkeypatch, states={(LG, 64): "reference_close"})
+    receipt = deepcopy(documents["raw_episode_verification"])
+    assert receipt["summary"]["unresolved_rows"] == 1
+    assert view.summary["raw_unresolved_code_dates"] == 0
+    module._verify_raw(receipt, {role: row["sha256"] for role, row in spec["inputs"].items()}, view)
+    assert receipt == documents["raw_episode_verification"]
 
 
 @pytest.mark.parametrize("failure", [None, "pin", "reader", "proof", "drift", "uncommitted", "source_pin"])

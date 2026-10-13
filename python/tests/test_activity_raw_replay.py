@@ -56,6 +56,8 @@ def fixture(*, weight=".5", lag=1, due=date(2021, 5, 26), states=None,
             chosen = (states or {}).get((code, day), "zero" if code == LG and OLD_MARK < day < AVAILABLE else None)
             if chosen == "zero":
                 source.update(dict.fromkeys(RAW_FIELDS, "0.00"))
+            elif chosen == "reference_close":
+                source.update(dict.fromkeys(RAW_FIELDS, "0.00"), TDD_CLSPRC="126500")
             elif chosen == "invalid":
                 source["TDD_OPNPRC"] = "NULL"
             elif chosen == "frozen":
@@ -142,7 +144,7 @@ def test_raw_basis_binding_also_covers_stock_exchange_and_final_cash_before_pric
         run(values)
 
 
-@pytest.mark.parametrize("state", ["absent", "zero", "invalid", "duplicate", "frozen"])
+@pytest.mark.parametrize("state", ["absent", "zero", "reference_close", "invalid", "duplicate", "frozen"])
 def test_raw_basis_anchor_requires_resolved_nonfrozen_quote_before_prices(monkeypatch, state):
     values = fixture(states={(LX, AVAILABLE): state})
     monkeypatch.setattr(replay_module, "_quote", lambda *a: pytest.fail("unusable raw anchor reached prices"))
@@ -231,7 +233,7 @@ def test_delayed_first_component_price_is_a_counterexample_to_unconditional_carr
     assert at(low, later).slot_count == at(high, later).slot_count
 
 
-@pytest.mark.parametrize("state", ["absent", "zero", "invalid", "duplicate"])
+@pytest.mark.parametrize("state", ["absent", "zero", "reference_close", "invalid", "duplicate"])
 def test_available_component_missingness_is_not_a_pending_boundary_exception(state):
     due = AVAILABLE + timedelta(days=1)
     values = fixture(states={(LX, due): state}, due=due)
@@ -244,7 +246,7 @@ def test_available_component_missingness_is_not_a_pending_boundary_exception(sta
     assert len(waiting) == 1 and waiting[0].carried_value is None and waiting[0].mark_date == AVAILABLE
     key = LX, due
     assert (key in values["raw_quote_view"].absent_coordinates) == (state == "absent")
-    assert (key in values["raw_quote_view"].no_trade_coordinates) == (state == "zero")
+    assert (key in values["raw_quote_view"].no_trade_coordinates) == (state in ("zero", "reference_close"))
     assert not any(lot.code == LX for lot in at(result, due + timedelta(days=1)).lots)
 
 
@@ -323,3 +325,33 @@ def test_normal_raw_mode_matches_legacy_books_and_neither_path_performs_io(monke
     raw = run(values)
     legacy = run({**values, "raw_quote_view": None})
     assert raw == legacy
+
+
+@pytest.mark.parametrize("lag", [1, 2])
+def test_reference_close_preserves_april_mark_through_no_quotes_pending_effect_and_may_execution(lag):
+    states = {(LG, day): "reference_close" for day in CALENDAR if OLD_MARK < day < AVAILABLE}
+    values = fixture(states=states, due=date(2021, 4, 29), lag=lag)
+    result = run(values)
+    for day in (date(2021, 4, 29), date(2021, 4, 30)):
+        lots = tuple(lot for lot in at(result, day).lots if lot.code == LG)
+        assert len(lots) == 1 and lots[0].mark_date == OLD_MARK and lots[0].mark == D(100)
+        assert lots[0].shares == D(10) and lots[0].carried_value is None
+    for day in (EFFECTIVE, AVAILABLE - timedelta(days=1)):
+        lots = tuple(lot for lot in at(result, day).lots if lot.code in (LG, LX))
+        assert len(lots) == 2 and len({lot.investment_key for lot in lots}) == 1
+        assert all(lot.mark_date == OLD_MARK and lot.carried_value == D(500) for lot in lots)
+        assert {lot.code: lot.shares for lot in lots} == {LG: D(8), LX: D(2)}
+    assert not any(lot.code in (LG, LX) for lot in at(result, AVAILABLE).lots)
+    raw_rows = values["raw_quote_view"].raw_observations
+    assert all(row.status == "unresolved" and row.close is None
+               for row in raw_rows if row.code == LG and OLD_MARK < date.fromisoformat(row.requested_bas_dd) < AVAILABLE)
+
+
+def test_reference_close_cannot_create_a_new_entry():
+    states = {(LG, day): "reference_close" for day in CALENDAR}
+    values = fixture(states=states)
+    values.update(events=(), initial_book=replace(values["initial_book"], lots=()),
+        selections=tuple(replace(selection, eligible_codes=(LG,)) for selection in values["selections"]))
+    result = run(values)
+    assert not any(lot.code == LG for book in result.books for lot in book.lots)
+    assert result.closed_trades == 0
