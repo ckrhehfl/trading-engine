@@ -26,7 +26,7 @@ from research.activity_holding_restore import restore_holding_inputs
 from research.activity_paired_replay import BM_ROLES, PACKAGE_ROLES, _require_raw_potential_scope, prepare_inputs
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_raw_episode import TARGET_CODES
-from research.activity_raw_quote_view import calendar_sha256, raw_price_basis, restore_raw_quote_view
+from research.activity_raw_quote_view import calendar_sha256, is_raw_no_trade_reference_close, raw_price_basis, restore_raw_quote_view
 from research.activity_reviewed_actions import reviewed_action_terms
 
 
@@ -219,6 +219,8 @@ def _pre_effective_marks(terms, quotes) -> list[dict]:
                     counts["absent_requested_sessions"] += 1
                 elif row.state == "observed_no_trade_zero_prices":
                     counts["no_trade_zero_price_sessions"] += 1
+                elif is_raw_no_trade_reference_close(row):
+                    counts["no_trade_reference_close_sessions"] += 1
                 elif row.status != "observed" or row.issues or row.close is None:
                     counts["invalid_sessions"] += 1
                 elif row.state == "frozen":
@@ -243,7 +245,8 @@ def _pre_effective_marks(terms, quotes) -> list[dict]:
         checks.append(dict(event_id=event.event_id, code=event.old_basis.code, old_basis_on=str(event.old_basis.session),
             effective_on=str(event.effective_on), latest_requested_resolved_observable_on=str(latest),
             **{name: counts[name] for name in ("checked_sessions", "unrequested_sessions", "invalid_sessions",
-                "absent_requested_sessions", "no_trade_zero_price_sessions", "frozen_sessions", "later_observable_sessions")},
+                "absent_requested_sessions", "no_trade_zero_price_sessions", "no_trade_reference_close_sessions",
+                "frozen_sessions", "later_observable_sessions")},
             state="contradictory_later_observable" if counts["later_observable_sessions"] else
                 "unresolved" if unknown else "no_later_observable_in_retained_quotes", basis_role_certified=False))
     return checks

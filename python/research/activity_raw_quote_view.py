@@ -21,11 +21,28 @@ from research.activity_raw_episode import RawQuoteObservation, TARGET_CODES, val
 from research.activity_replay import DecimalSeries
 
 SCHEMA = "activity-raw-episode-quote-view-v1"
+REFERENCE_CLOSE_SCHEMA = "activity-raw-episode-quote-view-v2"
+REFERENCE_CLOSE_POLICY = "non_executable_ohl_zero_positive_reference_close_zero_activity_v1"
 PLAN_SCHEMA = "activity-raw-episode-unit-plan-v1"
 ARTIFACT_SCHEMA = "activity-raw-episode-quotes-v1"
 UNITS = dict(price_unit="KRW_per_raw_share", volume_unit="raw_shares", turnover_unit="KRW",
              quotation_basis="KRX_unadjusted_raw")
 NAMES = ("opens", "closes", "turnover", "frozen", "locked", "observed")
+
+
+def is_raw_no_trade_reference_close(row: RawQuoteObservation) -> bool:
+    """Recognize validated source text for no execution/mark, never a halt cause.
+
+    The original decoder rejection and its empty numeric values stay unchanged.
+    A positive reference close with zero OHL and activity is not a usable quote.
+    """
+    validate_raw_observation(row)
+    if row.status != "unresolved" or row.issues != ("mixed_or_active_zero_prices",):
+        return False
+    values = dict(row.canonical_decimal_strings)
+    return (all(values[name] == "0" for name in
+                ("TDD_OPNPRC", "TDD_HGPRC", "TDD_LWPRC", "ACC_TRDVOL", "ACC_TRDVAL"))
+            and values["TDD_CLSPRC"] is not None and Decimal(values["TDD_CLSPRC"]) > 0)
 
 
 def _value(value):
@@ -139,6 +156,7 @@ def build_raw_quote_view(base: CompositeHoldingInputs, observations: tuple[RawQu
     require(source_artifact == encode_raw_artifact(base, observations, unit_plan_sha256),
             "raw artifact rows/base/unit-plan lineage mismatch")
     raw_rows = dict(zip(coordinates, observations))
+    reference_close = {key for key, row in raw_rows.items() if is_raw_no_trade_reference_close(row)}
     base_panel = base.panel
     codes = sorted(set(base_panel) | TARGET_CODES)
     series, absent, unresolved, no_trade = [], [], [], []
@@ -146,6 +164,8 @@ def build_raw_quote_view(base: CompositeHoldingInputs, observations: tuple[RawQu
     for key, row in raw_rows.items():
         if row.issues == ("target_absent_cause_unknown",):
             absent.append(key)
+        elif key in reference_close:
+            no_trade.append(key)
         elif row.status != "observed":
             unresolved.append(key)
         elif row.state == "observed_no_trade_zero_prices":
@@ -158,7 +178,8 @@ def build_raw_quote_view(base: CompositeHoldingInputs, observations: tuple[RawQu
         columns = [[] for _ in NAMES]
         for day in base.calendar:
             row = raw_rows.get((code, day))
-            if row is None or row.state == "observed_no_trade_zero_prices" or row.issues == ("target_absent_cause_unknown",):
+            if (row is None or (code, day) in reference_close or row.state == "observed_no_trade_zero_prices"
+                    or row.issues == ("target_absent_cause_unknown",)):
                 # DecimalSeries forbids values, even frozen=True, when absent.
                 # Exact observed-zero source evidence stays in raw_observations.
                 values = (None, None, None, None, None, False)
@@ -170,16 +191,23 @@ def build_raw_quote_view(base: CompositeHoldingInputs, observations: tuple[RawQu
                 column.append(value)
         series.append((code, DecimalSeries(*(tuple(column) for column in columns))))
     unrequested = tuple((code, day) for code in codes for day in base.calendar if (code, day) not in requested)
-    identity = encoded(dict(schema=SCHEMA, activity_snapshot_sha256=base.activity_snapshot_sha256,
+    schema = REFERENCE_CLOSE_SCHEMA if reference_close else SCHEMA
+    reference_identity = {} if not reference_close else dict(reference_close_policy=REFERENCE_CLOSE_POLICY,
+        reference_close_no_trade_coordinates=[dict(code=code, session=str(day), response_sha256=row.response_sha256,
+            row_position=row.row_position) for (code, day), row in raw_rows.items() if (code, day) in reference_close])
+    identity = encoded(dict(schema=schema, activity_snapshot_sha256=base.activity_snapshot_sha256,
         calendar_sha256=calendar_sha256(base.calendar), base_quote_snapshot_sha256=base.quote_snapshot_sha256,
         base_lineage=strict_json(base.fingerprint_json), source_artifact_sha256=source_artifact_sha256,
         unit_plan_sha256=unit_plan_sha256, source_unit_plan=plan, **UNITS,
         original_requested_absences_preserved=True, atomic_source_vintage_certified=False,
-        price_basis_certified=False, unit_bridge_certified=False))
+        price_basis_certified=False, unit_bridge_certified=False, **reference_identity))
     quote_sha = digest(identity)
     require(quote_sha not in {base.quote_snapshot_sha256, base.original.quote_snapshot_sha256,
         base.extension.quote_snapshot_sha256, source_artifact_sha256, unit_plan_sha256}, "raw view needs a separate identity")
-    summary = encoded(dict(schema=SCHEMA + ":summary-v1", raw_requested_code_dates=len(scope),
+    reference_summary = {} if not reference_close else dict(
+        original_raw_unresolved_code_dates=sum(row.status != "observed" for row in observations),
+        raw_reference_close_no_trade_code_dates=len(reference_close))
+    summary = encoded(dict(schema=schema + ":summary-v1", raw_requested_code_dates=len(scope),
         raw_absent_code_dates=len([key for key in absent if key[0] in TARGET_CODES]),
         raw_unresolved_code_dates=len(unresolved), raw_no_trade_code_dates=len(no_trade),
         source_artifact_sha256=source_artifact_sha256, unit_plan_sha256=unit_plan_sha256,
@@ -187,7 +215,7 @@ def build_raw_quote_view(base: CompositeHoldingInputs, observations: tuple[RawQu
         original_requested_absences_preserved=True, episode_end_is_actual_exit=False,
         original_end_obligation_discharged=False, legacy_replay_boundary_guard_integrated=False,
         source_truth_certified=False, historical_vintage_certified=False, unit_bridge_certified=False,
-        returns_computed=False, books_computed=False))
+        returns_computed=False, books_computed=False, **reference_summary))
     return RawEpisodeQuoteInputs(base, base.calendar, base.activity_snapshot_sha256, quote_sha, identity,
         source_artifact_sha256, source_artifact, unit_plan_sha256, unit_plan, observations, tuple(series),
         tuple(sorted(requested)), tuple(sorted(absent)), tuple(sorted(unresolved)), tuple(sorted(no_trade)), unrequested, summary)
@@ -238,7 +266,8 @@ def require_raw_coordinate(view: RawEpisodeQuoteInputs, code: str, session: date
         return None
     row = next((row for row in view.raw_observations if row.code == code and row.requested_bas_dd == session.strftime("%Y%m%d")), None)
     require(row is not None, "affected lot crossed the registered raw episode boundary")
-    require(row.status == "observed" or row.issues == ("target_absent_cause_unknown",), "unresolved raw observation")
+    require(row.status == "observed" or row.issues == ("target_absent_cause_unknown",)
+            or is_raw_no_trade_reference_close(row), "unresolved raw observation")
     return row
 
 

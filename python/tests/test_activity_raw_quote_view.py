@@ -11,7 +11,7 @@ import pytest
 from research import activity_raw_quote_view as module
 from research.activity_preflight import digest, encoded, strict_json
 from research.activity_quote_extension import extend_holding_quotes
-from research.activity_raw_episode import RAW_FIELDS, extract_raw_episode_targets
+from research.activity_raw_episode import RAW_FIELDS, decode_raw_episode_row, extract_raw_episode_targets
 from research.activity_replay import _quote
 import test_activity_quote_extension as synthetic
 
@@ -42,6 +42,8 @@ def fixture(*, state=None):
                 source.update(dict.fromkeys(RAW_FIELDS[:4], "7.00"))
                 if chosen == "frozen": source.update(ACC_TRDVOL="0", ACC_TRDVAL="0")
             elif chosen == "zero": source.update(dict.fromkeys(RAW_FIELDS, "0.00"))
+            elif chosen == "reference_close":
+                source.update(dict.fromkeys(RAW_FIELDS, "0.00"), TDD_CLSPRC="+126,500.00")
             elif chosen == "invalid": source["TDD_OPNPRC"] = "NULL"
             rows = [] if chosen == "absent" else [source, source] if chosen == "duplicate" else [source]
             observations.extend(extract_raw_episode_targets(rows, dict(service="stk_bydd_trd", bas_dd=day.strftime("%Y%m%d"), targets=[code]),
@@ -202,12 +204,111 @@ def test_public_raw_consumers_reject_forged_rows_without_trusting_frozen_type(co
 
 
 def test_raw_artifact_restore_roundtrip_keeps_exact_text_units_and_missing_states():
-    for state in (None, "absent", "zero", "invalid", "duplicate", "frozen", "locked"):
+    for state in (None, "absent", "zero", "reference_close", "invalid", "duplicate", "frozen", "locked"):
         view = build(*fixture(state=state))
         restored = module.restore_raw_quote_view(view.base, view.source_artifact_json,
             view.source_artifact_sha256, view.unit_plan_json, view.unit_plan_sha256)
         assert restored == view
         assert restored.raw_observations == view.raw_observations
+
+
+def reference_row(**changes):
+    source = dict(ISU_CD=LG, BAS_DD=DAYS[2].strftime("%Y%m%d"),
+                  **dict.fromkeys(RAW_FIELDS, "0"))
+    source["TDD_CLSPRC"] = "126500"
+    source.update(changes)
+    return decode_raw_episode_row(source, code=LG, bas_dd=DAYS[2].strftime("%Y%m%d"),
+        retrieved_at="2026-10-10T00:00:00+00:00", response_sha256="d" * 64, row_position=7)
+
+
+def test_reference_close_is_view_only_non_executable_and_retains_unresolved_source_bytes():
+    base, observations, plan = fixture(state="reference_close")
+    view = build(base, observations, plan)
+    row = observations[1]
+    assert module.is_raw_no_trade_reference_close(row) is True
+    assert row.status == row.state == "unresolved" and row.issues == ("mixed_or_active_zero_prices",)
+    assert all(getattr(row, name) is None for name in ("open", "high", "low", "close", "volume", "turnover"))
+    assert row.market_state_cause == "unknown" and row.source_truth_certified is False
+    assert view.raw_observations is observations
+    assert view.source_artifact_json == module.encode_raw_artifact(base, observations, view.unit_plan_sha256)
+    assert dict(row.original_texts)["TDD_CLSPRC"] == "+126,500.00"
+    key = LG, DAYS[2]
+    assert key in view.no_trade_coordinates and key not in view.unresolved_coordinates and key not in view.absent_coordinates
+    assert all(getattr(view.panel[LG], name)[2] is None for name in module.NAMES[:-1])
+    assert view.panel[LG].observed[2] is False and _quote(view.panel[LG], 2) == (None, None, False, False)
+    assert module.require_raw_coordinate(view, *key) is row
+    with pytest.raises(ValueError, match="raw basis"):
+        module.raw_price_basis(view, *key)
+    identity = strict_json(view.fingerprint_json)
+    assert identity["schema"] == "activity-raw-episode-quote-view-v2"
+    assert identity["reference_close_policy"] == "non_executable_ohl_zero_positive_reference_close_zero_activity_v1"
+    assert identity["reference_close_no_trade_coordinates"] == [dict(code=LG, session=str(DAYS[2]),
+        response_sha256=row.response_sha256, row_position=row.row_position)]
+    assert view.summary["schema"] == "activity-raw-episode-quote-view-v2:summary-v1"
+    assert view.summary["original_raw_unresolved_code_dates"] == 1
+    assert view.summary["raw_unresolved_code_dates"] == 0
+    assert view.summary["raw_reference_close_no_trade_code_dates"] == view.summary["raw_no_trade_code_dates"] == 1
+    assert module.validate_raw_quote_view(view) == view
+
+
+def test_v1_identity_and_summary_stay_exact_when_reference_close_projection_is_unused():
+    view = build(*fixture(state="invalid"))
+    identity = strict_json(view.fingerprint_json)
+    assert identity["schema"] == module.SCHEMA == "activity-raw-episode-quote-view-v1"
+    assert "reference_close_policy" not in identity and "reference_close_no_trade_coordinates" not in identity
+    assert "original_raw_unresolved_code_dates" not in view.summary
+    assert "raw_reference_close_no_trade_code_dates" not in view.summary
+
+
+def test_reference_close_summary_distinguishes_original_unresolved_absent_and_projection():
+    base, observations, plan = fixture(state="absent")
+    source = reference_row()
+    reference = replace(source, requested_bas_dd=DAYS[1].strftime("%Y%m%d"), returned_bas_dd=DAYS[1].strftime("%Y%m%d"))
+    view = build(base, (reference, *observations[1:]), plan)
+    assert view.summary["original_raw_unresolved_code_dates"] == 2
+    assert view.summary["raw_absent_code_dates"] == 1 and view.summary["raw_unresolved_code_dates"] == 0
+    assert view.summary["raw_reference_close_no_trade_code_dates"] == 1
+
+
+@pytest.mark.parametrize("changes", [dict(ACC_TRDVOL="1"), dict(ACC_TRDVAL="1"),
+    dict(TDD_OPNPRC="1"), dict(TDD_HGPRC="126500"), dict(TDD_LWPRC="1"), dict(TDD_CLSPRC="0"),
+    dict(TDD_CLSPRC="-1"), dict(TDD_CLSPRC="NULL"), dict(TDD_CLSPRC="NaN"),
+    dict(TDD_CLSPRC=None), dict(TDD_CLSPRC=126500), dict(BAS_DD="20210101"), dict(ISU_CD=LX)])
+def test_reference_close_predicate_does_not_accept_nearby_invalid_or_other_shapes(changes):
+    assert module.is_raw_no_trade_reference_close(reference_row(**changes)) is False
+
+
+@pytest.mark.parametrize("change", [dict(close=Decimal("126500")), dict(issues=("invalid_ohlc_bounds",)),
+    dict(state="observed"), dict(status="observed"), dict(returned_bas_dd="20210101"), dict(row_positions=(8,)),
+    dict(canonical_decimal_strings=tuple((field, "1") for field in RAW_FIELDS))])
+def test_reference_close_predicate_refuses_forged_decoder_rows(change):
+    with pytest.raises(ValueError):
+        module.is_raw_no_trade_reference_close(replace(reference_row(), **change))
+
+
+@pytest.mark.parametrize("mutation", ["policy", "coordinate", "order", "summary", "panel", "unresolved", "no_trade"])
+def test_refreeze_recomputes_reference_close_policy_coordinates_counts_and_panel(mutation):
+    base, observations, plan = fixture(state="reference_close")
+    observations = (reference_row(), *observations[1:])
+    # A second reference row remains at its original requested coordinate.
+    observations = (replace(observations[0], requested_bas_dd=DAYS[1].strftime("%Y%m%d"),
+        returned_bas_dd=DAYS[1].strftime("%Y%m%d")), *observations[1:])
+    view = build(base, observations, plan)
+    if mutation in ("policy", "coordinate", "order"):
+        identity = strict_json(view.fingerprint_json)
+        if mutation == "policy": identity["reference_close_policy"] = "allow_reference_close_price"
+        elif mutation == "coordinate": identity["reference_close_no_trade_coordinates"][0]["row_position"] += 1
+        else: identity["reference_close_no_trade_coordinates"].reverse()
+        raw = encoded(identity)
+        view = replace(view, fingerprint_json=raw, quote_snapshot_sha256=digest(raw))
+    elif mutation == "summary":
+        summary = view.summary; summary["original_raw_unresolved_code_dates"] = 0
+        view = replace(view, summary_json=encoded(summary))
+    elif mutation == "panel": view = replace(view, series=base.series)
+    elif mutation == "unresolved": view = replace(view, unresolved_coordinates=((LG, DAYS[2]),))
+    else: view = replace(view, no_trade_coordinates=())
+    with pytest.raises(ValueError, match="disagrees"):
+        module.validate_raw_quote_view(view)
 
 
 @pytest.mark.parametrize("mutation", ["decimal_number", "price", "sequence", "extra", "unit", "pin"])

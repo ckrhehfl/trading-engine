@@ -318,7 +318,7 @@ def replay_synthetic(
     if raw_quote_view is not None:
         from research.activity_quote_extension import _same
         from research.activity_raw_episode import TARGET_CODES
-        from research.activity_raw_quote_view import validate_raw_quote_view
+        from research.activity_raw_quote_view import is_raw_no_trade_reference_close, validate_raw_quote_view
 
         fresh = validate_raw_quote_view(raw_quote_view)
         if (not _same(tuple(calendar), fresh.calendar) or dataset_sha256 != fresh.quote_snapshot_sha256
@@ -333,7 +333,8 @@ def replay_synthetic(
             row = raw_rows.get((code, calendar[index]))
             if row is None:
                 raise ValueError("affected lot crossed the registered raw episode boundary")
-            if row.status != "observed" and row.issues != ("target_absent_cause_unknown",):
+            if (row.status != "observed" and row.issues != ("target_absent_cause_unknown",)
+                    and not is_raw_no_trade_reference_close(row)):
                 raise ValueError("unresolved raw observation")
         return _quote(panel[code], index)
 

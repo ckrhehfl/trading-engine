@@ -332,3 +332,38 @@ current source and review-transition changes still need the separate final
 reviews and passing CI before normal merge and isolated GCP publication.
 All three first-performance groups remain open, zero newly closed, and
 actual D1/D2 performance remains zero/zero.
+
+### Review transition shipped and fixed raw diagnostic on October 13 UTC
+
+Fresh separate correctness, research-integrity and policy reviewers completed
+their final-head reviews without remaining actionable findings. All four
+required Actions checks passed on head `35e08a5`; PR #279 normally squash-merged
+as `f09d23e514dcc047ff7380b8a1b5828b2bc5d104`. The isolated GCP research checkout
+fast-forwarded to that exact reviewed tree. The running collector checkout
+remained clean at `4ce85d7`; no collector or process operation was performed.
+
+The fixed acquisition completed all 65 new requests and reused 63 saved
+envelopes for 229 LG/LX coordinates. Original decoding produced 211 observed
+and 18 unresolved rows. A separately registered independent check verified the
+12 new outputs and 65 new response bodies, retaining the limited cached-source
+verification boundary. Root's separately registered content review found the
+same first usable LG/LX opens and closes on May 27. All entry and scheduled-due
+anchors are usable. These observations are current API retrievals, not proof
+of historical publication, finality, custody or strategy profitability.
+
+The 18 unresolved LG rows from April 29 through May 26 have exact source texts
+open/high/low zero, positive reference close and zero volume/turnover. They
+were correctly preserved as unresolved by the original decoder. The next
+minimal continuation preserves that artifact and receipt while introducing
+an explicit execution view v2: only this fully validated form becomes a
+requested non-executable coordinate with no usable panel price. Its policy
+and ordered coordinates enter the new snapshot identity. No reference close
+becomes a fill, basis or new mark, and unrelated unknown rows remain errors.
+Separate source and original/projection counts prevent this interpretation
+from masquerading as a producer correction or prior receipt certification.
+
+No additional API request or replacement raw artifact is needed. The next
+steps are review/merge/deploy of this projection, exact LG terms and pending
+declarations, the registered component proof, and the frozen paired study.
+All three first-performance groups remain open, zero newly closed, with
+actual D1/D2 performance studies still zero/zero.

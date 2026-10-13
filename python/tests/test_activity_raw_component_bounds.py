@@ -51,6 +51,7 @@ def fixture(monkeypatch, *, states=None, end=160, lg_start=3, independent=False,
                 source.update(dict.fromkeys(RAW_FIELDS[:4], str(opening + 1)))
                 if state == "frozen": source.update(ACC_TRDVOL="0", ACC_TRDVAL="0")
             elif state == "zero": source.update(dict.fromkeys(RAW_FIELDS, "0.00"))
+            elif state == "reference_close": source.update(dict.fromkeys(RAW_FIELDS, "0"), TDD_CLSPRC=str(opening + 1))
             elif state == "invalid": source["TDD_OPNPRC"] = "NULL"
             rows = [] if state == "absent" else [source, source] if state == "duplicate" else [source]
             observations.extend(extract_raw_episode_targets(rows,
@@ -100,7 +101,7 @@ def test_raw_candidates_have_separate_identity_full_original_union_and_no_io(mon
     assert bounds.validate_component_exit_bounds(proof, *values[0], **values[1]) == proof
 
 
-@pytest.mark.parametrize("state", ["absent", "zero", "frozen", "locked", "invalid", "duplicate"])
+@pytest.mark.parametrize("state", ["absent", "zero", "reference_close", "frozen", "locked", "invalid", "duplicate"])
 def test_explicit_raw_state_candidate_skip_or_full_fallback(monkeypatch, state):
     values = fixture(monkeypatch, states={(LX, 129): state})
     row, calendar = first(core.build(values)), values[1]["quotes"].calendar
@@ -136,10 +137,11 @@ def test_later_parent_and_independent_successor_origins_keep_original_obligation
     assert any(row["ordinary_candidate_on"] for row in later)
 
 
-@pytest.mark.parametrize("change", ["half_raw", "base_value", "missing_anchor"])
+@pytest.mark.parametrize("change", ["half_raw", "base_value", "missing_anchor", "reference_close"])
 def test_raw_basis_requires_equal_raw_units_and_requested_resolved_raw_close(monkeypatch, change):
-    values = fixture(monkeypatch, lg_start=42 if change == "missing_anchor" else 3)
-    if change != "missing_anchor":
+    values = fixture(monkeypatch, lg_start=42 if change == "missing_anchor" else 3,
+                     states={(LG, 41): "reference_close"} if change == "reference_close" else None)
+    if change not in ("missing_anchor", "reference_close"):
         coverage, evidence = values[2]
         evidence["bases"]["old"].update(raw_close="202" if change == "half_raw" else "101",
                                         adjusted_close="201" if change == "half_raw" else "101")
