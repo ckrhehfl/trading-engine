@@ -992,8 +992,8 @@ Touch only what the task requires — no drive-by reformatting or adjacent
 refactors. This matters most in CODEOWNERS-matched paths (`java/`,
 `schemas/`, `configs/`, `.github/`), where an unrelated change makes an
 already high-stakes diff harder to review — and just as much on
-low-risk paths, which auto-merge on CI + CodeRabbit alone, meaning a
-scope-creep change may never get a second look from anyone. Clean up
+low-risk paths, which merge after the Code Review Gate and required CI:
+reviewers still need a focused diff to identify unrelated behavior. Clean up
 only the dead code your own change orphaned; flag pre-existing dead
 code instead of removing it unasked.
 
@@ -1617,8 +1617,9 @@ Keep raw-source, adjusted-quote and turnover semantics and data vintages separat
 Any actual market-input preflight requires reviewed committed source/specification,
 full manifests and durable started logging before inputs; this source-summary
 review does not authorize a price read or performance calculation. Preserve
-exclusive private evidence/failures and obtain independent verification, CI and
-CodeRabbit before normal merge and isolated research-only publication.
+exclusive private evidence/failures and obtain independent verification, required
+CI and the Code Review Gate before normal merge and isolated research-only
+publication.
 
 BK also implements the registered cached-price parity audit: derive the exact
 intersection of BJ's pinned original-issue union with the existing AQ/AR cache
@@ -1659,8 +1660,8 @@ portfolio comparator or request normal/holding data for their proven exclusions.
 
 Register the precise immutable input pins/read scope, reviewed committed code
 and specification before market reads; durable start, exclusive private output,
-independent verification and normal CI/CodeRabbit/merge precede isolated GCP
-execution. The source-only engineering schema read is limited to the existing
+independent verification, the Code Review Gate, required CI and normal merge
+precede isolated GCP execution. The source-only engineering schema read is limited to the existing
 BK adjudication ledger `var/bk-period-adjudication.json`, SHA-256
 `2c6f1fab960bf5214fe0a176b20ffee2207e4d10844c23b632a9cfebe1bef893`;
 it may inspect keys and one accepted decision, not any saved market body.
@@ -1790,9 +1791,9 @@ input pins, exact scope and resources. Reuse the successfully provisioned BL
 receipt without rewriting it. Freeze a separately named independent wrapper
 whose only source delta is the recovery output path; use its verify operation
 once with the existing private receipt root's still-unused verify filenames.
-Retain the original helper and failed operation evidence. Source/CI/CodeRabbit,
-normal merge and isolated research deployment precede the one separately logged
-recovery attempt; no automatic retry or collector change is authorized.
+Retain the original helper and failed operation evidence. The Code Review Gate,
+required CI, normal merge and isolated research deployment precede the one
+separately logged recovery attempt; no automatic retry or collector change is authorized.
 
 **BM continuation: reviewed action declarations and the existing paired book.**
 After the bounded diagnostic's successful independent verification, reuse its
@@ -1869,9 +1870,9 @@ caller-truncated windows is forbidden. The initial source-priority preflight
 computes no books/returns, reads no DB/API/source bodies and certifies no source
 claim. Its committed thin runner/specification pins existing package bytes and
 receipts, logs started before saved-input reads, writes fresh exclusive private
-outputs and retains source/runtime/resource/failure manifests. Source review,
-CI, substantive CodeRabbit, normal merge and exact isolated research deployment
-precede its one registered actual invocation. Independent verification of new
+outputs and retains source/runtime/resource/failure manifests. The Code Review
+Gate, required CI, normal merge and exact isolated research deployment precede
+its one registered actual invocation. Independent verification of new
 outputs remains distinct from evidence-content review and final paired results.
 
 **BQ conditional component-lifetime scope, preserving the original diagnostic.**
@@ -1925,8 +1926,8 @@ or run a second book to justify the bound. Any contradiction fails the study.
 A committed logged proof caller/specification must freeze all input/evidence
 bytes and sources, log durable start before actual reads, preserve exclusive
 outputs, resource/failure manifests and zero automatic retries. Source tests,
-substantive CodeRabbit, normal merge and isolated research deployment precede
-the separately registered actual proof and its independent verification. Only
+the Code Review Gate, required CI, normal merge and isolated research deployment
+precede the separately registered actual proof and its independent verification. Only
 then may the final logged pair use its conditional scope. Source-only proposals,
 synthetic tests and price candidates establish no source truth, final delivery,
 actual exit or completed performance study. Existing final terms, unit bridges,
@@ -1953,6 +1954,33 @@ duplicate the original carried NAV across components or use future price levels
 to allocate pending value. Source-supported allocation or an explicit separately
 registered pending-value convention is required before actual accounting.
 Source/synthetic implementations are not event coverage or completed studies.
+
+**BQ operator choice: raw-price accounting for the LG/LX episode.**
+On 2026-10-10 the operator selected KRX unadjusted prices and official compulsory
+allotment ratios for the relevant LG/LX holding episode. The observed April28
+raw/adjusted price ratio is not a verified vendor share-unit conversion. Do not
+use it as one. Keep the existing signal/universe, holding period, costs, slot
+grouping, fractional-share convention and D1/D2 sensitivity unchanged.
+
+Before raw-price production implementation, use this boundary: preserve the
+original BM/BP artifacts, full requests and requested absences. Define a separate
+versioned raw artifact, an explicit price-free episode/unit plan and a new
+composite identity. Never overwrite original rows, disguise KRX data as KIS
+typed storage, fill an original absence silently, or switch a held lot between
+raw and adjusted units without an established transition. Derive request scope
+from all potential origins, never filled trades or attractive returns. A bounded
+raw acquisition that cannot prove complete applicable lifetime coverage must
+retain the unresolved obligation; it cannot certify an original-end fallback.
+
+Within a wholly raw episode, same-session raw/raw basis factors are one by the
+declared unit definition, and official retained/new allotment ratios apply to
+raw shares. This does not certify the vendor's unrelated adjusted convention.
+Final source/date-role/rights evidence, explicit pending carry convention, exact
+integer/Decimal parsing, missing-state distinctions, recorded inputs, normal
+review/merge/deployment and independent actual-output verification still apply.
+A new raw-aware logged proof specification must precede actual use; the local
+adjusted-anchor proof prototype is not that specification. No actual performance
+study, new strategy family or promotion follows from this design alone.
 
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
@@ -3519,7 +3547,7 @@ specification is registered before it is run**, as this one was.
 | MCP | Context7, GitHub MCP | add when useful, not urgent |
 | CI/CD | `claude-code-action` | not wired to repo events yet — public-repo triggers are a separate, deliberately deferred decision (prompt-injection surface); PRs currently opened via authenticated `gh` sessions |
 | Merge governance | `.github/CODEOWNERS` + branch protection on `main` (see Branch and Merge) | active now |
-| Code review | CodeRabbit Pro (see below) | active now — GitHub App installed, verified posting reviews, its `CodeRabbit` commit status is a required check on `main` |
+| Code review | Separate fresh-context Codex review + required CI (see below) | operator-approved 2026-10-13; CodeRabbit remains optional and its status is not a required check |
 | Multi-agent orchestration | Anthropic Agent Teams (official) | standby, off by default |
 
 ## Future Tooling Watchlist
@@ -3537,9 +3565,47 @@ time (see "Why this is more than a bare CLAUDE.md").
 
 ## Code Review Gate
 
-CodeRabbit Pro reviews every PR — see `.coderabbit.yaml` for the actual
-rules (no live-trading enablement, no secrets, no risk/leverage relaxation,
-Python cannot place live orders, Risk Gateway cannot be bypassed).
+**Operator decision 2026-10-13: a separate Codex review and required CI replace
+mandatory CodeRabbit approval, including the current PR #279.** This approval
+authorizes the policy/protection transition through the normal PR process; it
+does not waive this gate for the transition itself. Before merging:
+
+- A Codex reviewer distinct from the author, started with a fresh context,
+  reads the binding project rules, final source commit, complete PR diff and
+  actual verification results. Apply the relevant `path_instructions` and
+  `pre_merge_checks` safety criteria retained in `.coderabbit.yaml`, independently
+  of whether that optional service runs. The author supplies exact commit/diff identity,
+  executed commands/results and relevant evidence; the reviewer inspects them
+  and performs any additional checks needed. An author's self-review or a
+  request to a reviewer is not a completed separate review.
+- Record the reviewer, reviewed source commit, scope, verification evidence,
+  findings and each finding's fix or reasoned disposition in the PR or its
+  linked append-only work ledger. Address blocking findings before merge.
+  Any subsequent source change needs review of the final changed diff and
+  updated verification; a review of an earlier commit does not cover it.
+- Research/accounting changes also require a separate research-integrity
+  review of data scope, preregistration/pins, timing, missingness, accounting
+  and claim/evidence boundaries. That review does not replace the separately
+  required producer-independent verification of new actual outputs, nor does
+  a source review authorize an actual run, holdout access or promotion.
+- All four required checks on the final PR head must pass: `python-tests`,
+  `java-tests`, `gitleaks`, and `bingx-hostname-guard`. Do not treat pending,
+  skipped, stale or fabricated results as passing. Existing unresolved review
+  conversations and high-risk human-approval boundaries still apply.
+
+This local Codex review is a procedural control, not a GitHub external-bot
+approval or a completed GitHub check. Do not forge an approval, bot identity or
+commit status to represent it. The transition adds no Codex GitHub integration,
+paid API usage or Hermes dependency. PR-only merges, admin-bypass prohibition,
+Non-negotiable Rules and all research/operational boundaries remain in force.
+
+CodeRabbit is an optional additional reviewer. Its pending, rate-limited,
+failed or unavailable status does not block merge after the gate above is
+satisfied; its substantive findings still need a recorded disposition, and
+unresolved conversations are not cleared merely to merge. `.coderabbit.yaml`
+retains its review rules (no live-trading enablement, no secrets, no
+risk/leverage relaxation, Python cannot place live orders, Risk Gateway cannot
+be bypassed).
 
 CodeRabbit Pro's Autofix is fine to accept for lint, formatting, docs, and
 low-risk Python research code. For Java OMS / Risk Gateway / Execution,
@@ -3547,7 +3613,7 @@ anything touching credentials, or anything live-trading-related: review and
 apply the fix manually. Do not accept an automated fix on high-risk code
 without reading it.
 
-### Rate limits
+### Optional CodeRabbit rate limits — historical observations
 
 Not a fixed "N reviews/hour" bucket — confirmed 2026-07-25 via
 `@coderabbitai rate limit` (this query itself doesn't consume a review):
@@ -3556,9 +3622,11 @@ PR review activity is in the 95th percentile or higher... adaptive
 limits apply"), triggered by requesting re-reviews too many times in a
 short window on one PR — exactly what happened after 6 re-review
 requests on a single PR in one session. The response includes an exact
-ETA ("next review available in N minutes"). When blocked: comment
+ETA ("next review available in N minutes"). If an optional re-review is useful,
+comment
 `@coderabbitai rate limit` to get that ETA instead of guessing or
-polling blindly, wait it out, then retry once. Also reduces the
+polling blindly, then retry once after that time. This wait is not a merge
+prerequisite. Also reduces the
 underlying cause: batch fixes for multiple review findings into one
 push before requesting re-review, rather than re-requesting after each
 small fix.
@@ -3568,7 +3636,9 @@ small fix.
 - Never commit or push directly to `main`.
 - Changes go through a branch and a PR.
 - Self-review and verify before opening a PR.
-- CodeRabbit review must complete (not pending) before merge.
+- Complete the Code Review Gate on the final source commit and pass all four
+  required CI checks before merge; CodeRabbit is optional.
+- Never use `--admin` or another protection bypass to merge.
 
 ### Auto-merge Policy
 
@@ -3581,11 +3651,13 @@ high-risk changes, and deciding on anything that costs money (new paid
 tools/services, subscription changes).
 
 - **Not CODEOWNERS-matched** (Python research/backtest code, docs, tests,
-  most of the repo by volume): CI + CodeRabbit passing is sufficient —
-  merges without any human review, via GitHub's native auto-merge. Verified
-  working end-to-end, including with the `CodeRabbit` commit status as a
-  required branch-protection check (`README.md` / cleanup PRs merged with
-  zero manual action once CodeRabbit's review posted success).
+  most of the repo by volume): the Code Review Gate and all four required CI
+  checks are sufficient under the existing delegation; an agent may merge
+  normally or enable GitHub's native auto-merge only after recording the
+  separate review. Native auto-merge enforces GitHub protection, not the local
+  procedural review. Historically, `README.md` / cleanup PRs merged with zero
+  manual action after CodeRabbit success when that status was required; this
+  is evidence of the former configuration, not the current review rule.
 - **CODEOWNERS-matched** (`java/`, `schemas/`, `configs/`, `.github/`,
   `CLAUDE.md`, `.coderabbit.yaml`): **not a hard server-side gate — but
   `required_conversation_resolution` is, and that is what will actually
@@ -3633,8 +3705,8 @@ tools/services, subscription changes).
   second collaborator from merging those paths unreviewed, which is real
   protection, just not against the current sole operator.
 - As of 2026-07-24, @ckrhehfl has delegated day-to-day merge judgment for
-  most CODEOWNERS-matched PRs too: once required checks (CI + CodeRabbit)
-  are genuinely green — not pending, not rate-limited — an LLM agent
+  most CODEOWNERS-matched PRs too: once the separate Code Review Gate is
+  complete and all four required CI checks are genuinely green, an LLM agent
   operating this repo may merge without asking first, for CODEOWNERS
   paths whose content is *not* itself high-risk (e.g. `.github/`
   workflow/tooling changes like `gitleaks.yml`, `schemas/` additions,
@@ -3651,62 +3723,31 @@ tools/services, subscription changes).
   task requires @ckrhehfl to do something only they can do (a GitHub UI
   setting, an account credential, entering a password).
 
-- **A rate-limited CodeRabbit is a wait, not a question** (revised
-  2026-08-31, human-instructed, replacing "still stop and ask when
-  CodeRabbit is rate-limited/unusable rather than passing"). Rate
-  limiting is a scheduling fact with a published ETA attached, not a
-  judgment call, and handing it to the human converts a five-minute wait
-  into an unbounded one. The agent waits it out itself:
+- **Optional CodeRabbit delays do not block merge** (operator decision
+  2026-10-13). The former mandatory-wait rule, revised 2026-08-31, is
+  superseded by the separate Codex review and CI gate above. There is no
+  obligation to wait, retry or escalate optional-bot availability to the
+  human merely to merge. Choosing to wait for extra findings does not satisfy
+  or replace the required separate review.
 
-  1. Comment `@coderabbitai rate limit` — that query does not itself
-     consume a review — and read the exact ETA out of the reply.
-  2. **Compute the wake time from the reply's own `created_at`**, not
-     from when the ETA was read. The two differ by however long the
-     round trip took, and sleeping the stated minutes from the wrong
-     origin lands early and burns the retry.
-  3. Sleep until then plus a small margin, then comment
-     **`@coderabbitai full review`** once. Not `@coderabbitai review` —
-     that one is rejected unless automatic reviews are *paused*, and a
-     commit pushed while rate-limited is never picked up automatically
-     afterwards, so without this the PR sits with no completed review and
-     cannot pass the merge gate.
-  4. Batch every outstanding fix into one push *before* requesting, per
-     the Rate limits section below — re-requesting per fix is what
-     causes this in the first place.
+  The historical scheduling observations remain useful if a re-review is
+  chosen: on PR #135, three review rounds hit the limit twice, at 28 and then
+  42 minutes, and both cleared when stated. The observed allowance was a
+  rolling 7-day window over review attempts. The old five-minute-wait example
+  and roughly-a-few-hours escalation threshold described that former workflow;
+  neither is a current merge requirement.
 
-  **A second rate limit carrying its own ETA is still a wait, not an
-  escalation.** Observed on PR #135: three review rounds in one session
-  hit the limit twice, at 28 and then 42 minutes, and both cleared
-  exactly when stated. The allowance is a rolling 7-day window over
-  review *attempts*, so an active branch will hit it repeatedly and the
-  waits lengthen — that is the policy working as designed, not a fault.
-  Loop: read the ETA, sleep, retry, and only stop when the signal stops
-  being a schedule.
-
-  Escalate to the human only when it is **no longer a wait**: the reply
-  carries no ETA at all, CodeRabbit reports an error rather than a limit,
-  the quoted wait is long enough to be a real scheduling decision rather
-  than a pause (roughly a few hours or more), or no review appears well
-  past a stated ETA.
-
-  The merge gate itself is unchanged — a **completed** review is still
-  required, and waiting for one is never the same as proceeding without
-  one.
-
-  Three mechanical details, each learned by getting it wrong here:
-
-  - **`@coderabbitai review` is rejected unless automatic reviews are
-    *paused*.** It is not the retry command.
-  - **A push made *while* rate-limited is not retried when the limit
-    clears.** CodeRabbit has already processed and declined that commit,
-    so waiting produces nothing. The command that works is
-    **`@coderabbitai full review`**, which answers "Full review
-    triggered" and re-examines the whole PR — expect more findings than
-    an incremental pass, since it looks at everything rather than the
-    latest diff.
-  - **The ETA in `gh pr checks`' summary column goes stale** and will
-    keep reading "Review rate limited" long after the bot itself says
-    "available now". Always read status from the bot's newest comment.
+  For an optional retry, batch outstanding fixes into one push, query
+  `@coderabbitai rate limit`, compute its ETA from the reply's `created_at`,
+  and request `@coderabbitai full review` once after the ETA plus a small
+  margin. Three observed details explain these commands: `@coderabbitai review`
+  was rejected unless automatic reviews were paused; a rate-limited push was
+  not automatically retried when the limit cleared; and `gh pr checks` could
+  retain a stale "Review rate limited" ETA after the bot reported "available
+  now". Read its newest comment if choosing this optional path. A full review
+  re-examines the whole PR and may raise more findings than an incremental
+  pass. Missing ETAs, errors or long delays can be recorded without inventing
+  approval or bypassing the actual merge gate.
 
 ## Implementation Priority
 
@@ -3825,12 +3866,14 @@ without blocking the infrastructure work itself.
 
 ## Why this is more than a bare CLAUDE.md, but still not the old system
 
-Guardrails, GSD, and CodeRabbit are here because concrete requirements
+Guardrails, GSD, and separate review are here because concrete requirements
 justify each one *now*: guardrails because the repo is public and real
 secrets will exist soon, GSD because this project is genuinely
 multi-month and will span multiple
-exchanges (context rot is a real risk here, not a hypothetical one),
-CodeRabbit because it's already paid for and reviewing every PR is cheap.
+exchanges (context rot is a real risk here, not a hypothetical one).
+Separate fresh-context Codex review checks the author's assumptions; required
+CI supplies executed regression and guardrail evidence. CodeRabbit remains
+optional additional feedback under the 2026-10-13 operator decision.
 Still deliberately excluded: a second full methodology framework running
 alongside GSD, a multi-agent reviewer fleet, a multi-document
 cross-referenced spec system, and Agent Teams until GSD's built-in

@@ -6,7 +6,7 @@ name: python-tests
 #
 # CI ran java-tests, gitleaks and bingx-hostname-guard -- and nothing
 # that executed a single Python test. Meanwhile the Auto-merge Policy in
-# CLAUDE.md says non-CODEOWNERS paths (Python research/backtest code,
+# CLAUDE.md then said non-CODEOWNERS paths (Python research/backtest code,
 # "most of the repo by volume") merge on "CI + CodeRabbit passing"
 # alone, with no human review.
 #

@@ -12,9 +12,9 @@
 # requirement even though GitHub won't enforce it technically. See CLAUDE.md
 # "Branch and Merge / Auto-merge Policy" for the full explanation.
 #
-# Anything NOT matched below has no required reviewer: CI + CodeRabbit
-# passing is sufficient for auto-merge. Keep this file's boundaries in sync
-# with .coderabbit.yaml's path_instructions — same risk classification.
+# Anything NOT matched below can merge after separate Codex review + CI under
+# CLAUDE.md's Code Review Gate. CodeRabbit is optional. Preserve this file's
+# risk boundaries and the safety criteria in .coderabbit.yaml.
 
 # Java Trading Plane: OMS / Risk Gateway / Execution / ExchangeAdapter /
 # Reconciliation / Kill Switch — all execution and risk-affecting code.

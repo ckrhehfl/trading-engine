@@ -548,6 +548,28 @@ D1/D2 performance study has completed. Next, use the registered metadata
 inventory and existing reviewed issuer evidence for exact holding-period action
 coverage while connecting the existing book/report components.
 
+The subsequent BQ basis diagnostic shipped through PR #278 and completed in the
+isolated research checkout. Independent output verification passed in a fresh
+registered recovery after repairing an empty-source-file manifest rejection;
+the failed first attempt remains preserved. This verifies the saved anchor
+arithmetic and links, not an economic unit bridge. Component scope and its logged
+caller are implemented as source-only continuations, with actual-inventory
+checks in the existing paired connector and no committed actual proof inputs
+yet. Root must review genuine event/date/unit declarations before registering
+that diagnostic; source tests cannot replace that evidence. The operator then
+selected KRX raw prices and official allotment ratios for the LG/LX episode,
+after the April 28 raw 126500/adjusted 119500 difference lacked a verified economic
+unit interpretation. PR #279 now batches the generic core with the related raw
+decoder, acquisition plan/caller, immutable projection and explicit paired/replay
+connection. The 26-input adjusted-anchor caller remains an unregistered local
+prototype outside that continuation. The price-free plan registers 128 sessions,
+229 target code-dates, 63 saved envelopes and 65 new KRX requests. Those are
+request geometry, not yet independently verified raw observations or exits.
+Actual raw acquisition follows normal review, merge and isolated deployment;
+the final raw-aware action proof/caller remains a separate obligation. See BQ and the
+private evidence ledger for immutable receipts. Actual D1/D2 performance remains
+zero/zero and the same three performance groups remain open.
+
 ## Where the previous work stopped
 
 The local Claude trading-engine transcript ends after a request to continue

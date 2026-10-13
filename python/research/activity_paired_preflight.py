@@ -23,7 +23,7 @@ SCHEMA = "activity-paired-preflight-v1"
 SOURCE_PATH = "python/research/activity_paired_preflight.py"
 MODE = "discovery_descriptive_timing_sensitivity"
 BASE_ROLES = paired.PACKAGE_ROLES + paired.ACTION_ROLES
-OPTIONAL_ROLES = (paired.CONDITIONAL_ROLE, paired.EXTENSION_ROLE)
+OPTIONAL_ROLES = (paired.CONDITIONAL_ROLE, paired.EXTENSION_ROLE, *paired.RAW_ROLES)
 
 
 def validate_spec(spec: dict, reference: dict) -> None:
@@ -41,6 +41,9 @@ def validate_spec(spec: dict, reference: dict) -> None:
     saved.require(type(declared) is dict and set(BASE_ROLES) <= set(declared)
         and set(declared) <= set(BASE_ROLES + OPTIONAL_ROLES),
         "exact eighteen package and two action roles plus declared optional roles required")
+    saved.require(not set(paired.RAW_ROLES) & set(declared)
+        or set(OPTIONAL_ROLES) <= set(declared),
+        "raw projection requires both raw artifacts, full extension and component proof")
     paths = []
     for row in declared.values():
         saved.require(type(row) is dict and set(row) == {"path", "sha256"}
@@ -56,7 +59,7 @@ def validate_spec(spec: dict, reference: dict) -> None:
 
 
 def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dict:
-    """Read registered bytes after start; let the existing pure caller validate."""
+    """Read once after start; the pure caller validates raw/component semantics."""
     roles = BASE_ROLES + tuple(role for role in OPTIONAL_ROLES if role in spec["inputs"])
     pins = {role: spec["inputs"][role]["sha256"] for role in roles}
     raw = {role: inputs.read(Path(spec["inputs"][role]["path"]), pins[role], role) for role in roles}
@@ -66,7 +69,8 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
           "verification": raw["bm_verification"]}
     replay = paired.paired_replay(bl, bm, raw["reviewed_action_coverage"], raw["basis_evidence"],
         parameters=spec["parameters"], expected_pins=pins,
-        conditional_exit_scope=raw.get(paired.CONDITIONAL_ROLE), quote_extension=raw.get(paired.EXTENSION_ROLE))
+        conditional_exit_scope=raw.get(paired.CONDITIONAL_ROLE), quote_extension=raw.get(paired.EXTENSION_ROLE),
+        raw_episode_quotes=raw.get(paired.RAW_ROLES[0]), raw_episode_unit_plan=raw.get(paired.RAW_ROLES[1]))
     # The pure helper's actual_study_completed=False remains untouched.
     replay_raw, report_raw = saved.encoded(replay), saved.encoded(replay["report"])
     saved.write_exclusive(output / "paired-replay.json", replay_raw)

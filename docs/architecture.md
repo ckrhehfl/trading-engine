@@ -253,6 +253,28 @@ artifacts and their independent receipt links, composes the immutable quote
 inputs, and projects the three fixed raw/adjusted anchor pairs with exact
 Fraction ratios in both directions. Its logged output is a diagnostic rather
 than a basis certificate, a new API request or a performance result.
+`activity_reviewed_actions` shares its event/basis decoder with a terms-only
+canonical projection; final interval coverage remains a separate check.
+`activity_component_bounds` recomputes origin-specific spin-off component
+candidates while preserving the full quote union. Unsupported origins retain
+their original horizon. The paired connector recomputes the versioned proof,
+validates final coverage and checks actual component inventory after the same
+existing replay. Genuine unit/date-role declarations remain caller obligations,
+not inferred from a hash.
+`activity_raw_episode_plan` derives a price-free LG/LX acquisition delta from
+fixed potential origins and saved cache geometry. `activity_raw_episode_preflight`
+checks the registered plan and saved receipts before reading cached bodies or
+making literal KRX requests, preserving original text, missing states and private
+failure outputs. `activity_raw_quote_view` restores a separate immutable raw
+projection over the full BM/BP lineage. The paired connector accepts its two
+pinned artifacts only with a recomputed component proof. Explicit raw replay
+checks affected event bases and execution coordinates; pending event-created
+rights carry their existing value before availability without a price read.
+`activity_raw_component_preflight` is the logged saved-input caller for that
+raw component proof. It binds the prior limited raw verification to the
+restored observations and saves canonical terms and the recomputed proof;
+final action coverage and paired books remain separate. The paired preflight
+passes the optional raw artifacts through to the same existing connector.
 
 ---
 
