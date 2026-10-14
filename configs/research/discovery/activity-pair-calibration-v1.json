@@ -1,0 +1,41 @@
+{
+  "schema": "activity-pair-calibration-v1",
+  "study_id": "activity-pair-calibration-v1",
+  "mode": "discovery_event_arm_dispersion_only",
+  "promotion_allowed": false,
+  "window": {"symbol": "KRX:", "interval": "1d", "start": "2019-01-02", "end": "2026-09-18"},
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "parameters": {
+    "lookback": 60,
+    "threshold": 3.0,
+    "holding_sessions": 126,
+    "slots": 20,
+    "seed": 20261005,
+    "end": "2026-09-18",
+    "commission_bps_per_side": 1.77,
+    "slippage_bps_per_side": 5.0,
+    "sizing_round_trip_bps": 43.54,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "alpha": 0.05,
+    "power": 0.8
+  },
+  "inputs": {
+    "paired_report": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bq-raw-paired-20261010-v1/run/report.json",
+      "sha256": "d1993f2705e7fb3258a52db1f709300aba61701eda2dcc8fbfcd804ee0c4211c"
+    },
+    "paired_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bq-raw-paired-20261010-v1/run/result.json",
+      "sha256": "29d61f5df6651f7a8f84c28a5cb3038f3967e5324815792a23304a1a3c5af4fc"
+    },
+    "paired_specification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bq-raw-paired-20261010-v1/run/specification.json",
+      "sha256": "513b0472b3f406134a3c685df512cb0070df0f5dac99cee65c2f18555eba8cfc"
+    },
+    "paired_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bq-raw-paired-independent-20261014-recovery-v1/verification.json",
+      "sha256": "6cdace23457d4f4382f2c6dcee4cd139ed03638eaee321b1ab70f858247d127f"
+    }
+  }
+}
