@@ -2033,6 +2033,21 @@ file):
 
 Non-negotiable once strategy research begins:
 
+**BR one-comparison exploratory exception — operator decision 2026-10-15.**
+After the original event-arm sizing and separate output verification, the
+operator explicitly chose to continue one descriptive same-universe activity
+versus fixed-hash control comparison despite the unresolved cost-floor power
+prerequisite. Retain that failed prerequisite in every result; this exception
+does not convert it into a pass. Remove only the activity predicate in the
+control and match each formation/arm's original pre-opening target-count ceiling,
+not successful fills. Preserve the original universe, parameters, seed, costs,
+holding/accounting and paired D+1/D+2 policies. Report realized exposure and the
+limitations of a single fixed control. This comparison cannot establish an edge,
+promote a strategy, close the research direction or access reserved confirmation
+data. Other input integrity, preregistration, independent output verification,
+review, CI and operational boundaries remain binding. The ordinary sizing stop
+still applies to other families. Implementation/evidence: `.planning/rd-br-large-liquid-control-comparison.md`.
+
 - No strategy is eligible for paper trading without walk-forward
   validation (rolling train/validate windows), not a single train/test
   split — a single split can't distinguish a real edge from a result

@@ -76,6 +76,7 @@ from typing import TYPE_CHECKING
 
 from research.activity_accounting import Lot, observable_mark, sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
+from research.activity_control_selection import CountedControlSelection, SLOTS as CONTROL_SLOTS, select_control
 from research.activity_portfolio import Series
 from research.activity_partition_selection import PartitionSelection, select_partition
 from research.krx_tax_schedule import KOSPI, total_bp
@@ -278,7 +279,7 @@ def _check_event_quotes(
 
 def replay_synthetic(
     dates: Sequence[date], panel: Mapping[str, Series | DecimalSeries], params: Mapping,
-    selections: Sequence[SyntheticSelection | PartitionSelection], *, dataset_sha256: str | None,
+    selections: Sequence[SyntheticSelection | PartitionSelection | CountedControlSelection], *, dataset_sha256: str | None,
     events: tuple[CompulsoryStockExchange | CompulsorySpinOff | FinalCashPayment, ...] = (),
     initial_book: ActivityBook | None = None,
     timing_policy: SessionLagPolicy | None = None,
@@ -290,9 +291,12 @@ def replay_synthetic(
     legacy timing convention. PartitionSelection requires an explicit policy,
     one declaration per formation and panel coverage of every eligible code;
     the panel does not represent or reconstruct its complete source partition.
-    Both paths check internal book consistency without IO or certification of
+    CountedControlSelection uses its independently proved complete-population
+    prefix, original target ceiling and the control's own retained book. Its
+    explicit paired policy preserves the twenty-slot accounting denominator.
+    These paths check internal book consistency without IO or certification of
     actual source evidence, classification, prices, events or study completion.
-    Only an explicit PartitionSelection cash-only path accepts dataset_sha256=None:
+    Only an explicit evidence-selection cash-only path accepts dataset_sha256=None:
     the panel, every eligible tuple, initial inventory and events must all be
     empty. An optional initial cash-only book retains its existing cash amount.
     This absence of supplied events does not certify actual no-event coverage.
@@ -366,11 +370,15 @@ def replay_synthetic(
         raise ValueError("explicit SessionLagPolicy is required")
     formation_indices = policy.formation_indices(
         calendar, lookback=lookback, holding_sessions=holding, end_index=end)
+    control_path = any(isinstance(selection, CountedControlSelection) for selection in selections)
     partition_path = any(isinstance(selection, PartitionSelection) for selection in selections)
-    selection_type = PartitionSelection if partition_path else SyntheticSelection
+    evidence_path = partition_path or control_path
+    selection_type = CountedControlSelection if control_path else PartitionSelection if partition_path else SyntheticSelection
     if any(not isinstance(selection, selection_type) for selection in selections):
-        raise ValueError("explicit unmixed SyntheticSelection or PartitionSelection inputs are required")
-    if partition_path:
+        raise ValueError("explicit unmixed SyntheticSelection, PartitionSelection or CountedControlSelection inputs are required")
+    if control_path and (slots != CONTROL_SLOTS or not policy.paired):
+        raise ValueError("counted control requires unchanged twenty-slot book and paired timing policy")
+    if evidence_path:
         if timing_policy is None:
             raise ValueError("partition selections require an explicit timing policy")
         if any(code not in panel for selection in selections for code in selection.eligible_codes):
@@ -384,7 +392,7 @@ def replay_synthetic(
     book = initial_book if initial_book is not None else ActivityBook(Decimal(1), (), calendar[lookback])
     if not isinstance(book, ActivityBook) or book.as_of != calendar[lookback] or book.slot_count > slots:
         raise ValueError("initial synthetic book must match the first formation cutoff and slots")
-    cash_only_without_quotes = (dataset_sha256 is None and partition_path and not panel
+    cash_only_without_quotes = (dataset_sha256 is None and evidence_path and not panel
                                 and all(not selection.eligible_codes for selection in selections)
                                 and not book.lots and type(events) is tuple and not events)
     if not cash_only_without_quotes and (
@@ -438,7 +446,15 @@ def replay_synthetic(
                              if lot.due_on > session or lot.available_on > session)
             retained_slots = len({lot.investment_key for lot in retained})
             formation_on = calendar[formation_index]
-            if partition_path:
+            if control_path:
+                selected = select_control(
+                    formation_map[formation_on], arm=f"D{policy.session_lag}",
+                    formation_on=formation_on, decision_on=session,
+                    held_codes={lot.code for lot in retained}, seed=params["seed"],
+                    free_slots=max(0, slots - retained_slots),
+                    selection_at=policy.selection_at(calendar, formation_index),
+                )
+            elif partition_path:
                 selected = select_partition(
                     formation_map[formation_on], formation_on=formation_on, decision_on=session,
                     held_codes={lot.code for lot in retained}, seed=params["seed"],
