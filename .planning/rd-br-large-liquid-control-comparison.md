@@ -196,3 +196,15 @@ seconds, SSH 420 seconds. No automatic retry, original ACTIVITY replay, database
 API, credential or collector mutation. Only BL's population role may use the
 existing 128 MiB reader; all other roles retain the 64 MiB cap. New-output
 verification remains a separate operation. Control performance runs remain zero.
+
+### Final source review correction before any control-input execution
+
+The separate fresh-context correctness review found that a resolved control
+prefix could label an original ACTIVITY target excluded. This contradicts the
+sole varied axis: a previously accepted target cannot fail a shared non-activity
+condition. The selector now rejects that contradiction, with separate inside-U
+and outside-U regressions. Original targets in an unneeded tail remain legal;
+the correction does not force unnecessary tail review or change target counts.
+The resulting combined synthetic control/shared-replay regression passed 228
+tests. Source review and CI completion on the final commit remain separate from
+the logged scope execution and independent new-output verification.

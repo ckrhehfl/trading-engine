@@ -23,7 +23,7 @@ def ordered(codes, formation=FORMATION, seed=20261005):
 def declaration(*, count=12, k=3, prior=frozenset(), excluded=frozenset(), arm="D1", formation=FORMATION):
     population = tuple((f"{number:06d}", f"KR7{number:06d}000") for number in range(count))
     order = ordered(tuple(row[0] for row in population), formation)
-    targets = order[:k]
+    targets = tuple(code for code in order if code not in excluded)[:k]
     prefix, outside = [], 0
     if k:
         for code in order:
@@ -121,6 +121,32 @@ def test_unknown_tail_stays_in_identity_without_being_claimed_eligible():
     changed[unknown] = (changed[unknown][0], "different_tail_identity")
     with pytest.raises(ValueError, match="population count/fingerprint"):
         replace(selection, source_population=tuple(changed))
+
+
+@pytest.mark.parametrize("in_prior", [False, True])
+def test_original_activity_target_cannot_be_declared_excluded_in_control_prefix(in_prior):
+    base = declaration(count=12, k=1)
+    head, second = ordered(tuple(row[0] for row in base.source_population))[:2]
+    selection = declaration(count=12, k=1, prior=frozenset((head,)) if in_prior else frozenset())
+    # This still satisfies the rank and k-outside-U stopping rule. The sole
+    # contradiction is removing a known same-universe ACTIVITY target.
+    prefix = ((head, "excluded", "b" * 64), (second, "eligible", "b" * 64))
+    assert selection.activity_targets == (head,)
+    with pytest.raises(ValueError, match="original activity target cannot be excluded"):
+        replace(selection, resolved_prefix=prefix)
+
+
+def test_original_activity_target_in_unneeded_tail_does_not_expand_control_prefix():
+    selection = declaration(count=12, k=1)
+    tail = ordered(tuple(row[0] for row in selection.source_population))[-1]
+    targets = (tail,)
+    changed = replace(selection, activity_targets=targets,
+        activity_targets_sha256=module.activity_targets_fingerprint(arm=selection.arm,
+            formation_on=selection.formation_on, decision_on=selection.decision_on,
+            selection_at=selection.selection_at, targets=targets, seed=selection.seed))
+    assert changed.resolved_prefix == selection.resolved_prefix
+    assert tail not in changed.eligible_codes and tail not in changed.possible_origin_codes
+    assert select(changed) == selection.eligible_codes
 
 
 @pytest.mark.parametrize("in_prior", [False, True])

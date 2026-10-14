@@ -123,6 +123,8 @@ class CountedControlSelection:
             _require(type(row) is tuple and len(row) == 3 and index < len(ordered)
                 and row[0] == ordered[index] and row[1] in ("eligible", "excluded") and _pin(row[2]),
                 "complete ordered prefix with resolved dispositions and evidence required")
+            _require(row[0] not in self.activity_targets or row[1] == "eligible",
+                "original activity target cannot be excluded from the same-universe control")
             outside += row[1] == "eligible" and row[0] not in self.prior_potential_codes
             _require(outside < k or index == len(self.resolved_prefix) - 1,
                 "prefix must stop at the first k eligible candidates outside fixed prior bound")
