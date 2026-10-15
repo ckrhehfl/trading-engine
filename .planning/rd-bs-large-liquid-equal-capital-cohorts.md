@@ -194,3 +194,179 @@ After the complete correction batch, 198 related synthetic tests passed in WSL
 (95.75 seconds). The separate correctness reviewer independently ran the final
 event-structure subset: 29 passed, 34 deselected (23.62 seconds). Final source
 identity review and all required final-head CI remain merge prerequisites.
+
+## Source shipment and verified initial metadata — 2026-10-16 KST
+
+Both separate final reviews completed without remaining blockers on source
+`20c4b8c31b22d85beaec90a64dc8673b0e47e901`, tree
+`1b167024256b51386f0b671ccbf52dd934c1c3d2`. All four required final-head CI checks
+passed and PR #288 normally squash-merged as
+`11df2d343552ff0f702c11dac73850b0ac773420`. Isolated GCP research deployment
+verified that clean commit and the unchanged clean collector commit `4ce85d7`.
+Checkout observations do not establish collector service health.
+
+The fixed initial metadata trial completed once. Its result SHA-256 is
+`262243b957e1078eff6658ef904374881943bb27820ab85a3e9dff6c19cedb37` and canonical
+started/completed pair SHA-256 is
+`b557f690c26123cf3930f283d93461746a2a63cc4f8ffcc87076fd0f5ee4e10a`.
+It performed the thirteen declared saved reads, no DB/API access or new books.
+
+The first producer-independent metadata check refused legitimate empty tracked
+Python source files because its manifest check incorrectly required positive
+source byte lengths. Preserve that failed check and every producer output. A
+separate recovery verifier accepts exact integer nonnegative source lengths,
+requires zero bytes if and only if the source hash is SHA-256 of empty content,
+and retains positive lengths for saved JSON input reads. Its source and outer
+recovery are separately pinned; 58 synthetic tests and 39 subtests passed.
+One explicitly registered recovery over the identical ten input pins completed,
+without rerunning the producer or a performance study. Verification SHA-256:
+`0dca93ff8649670edad8ee3676f5f3190a7dbab0031f1ea043e38d4b0a0462e8`.
+Verified local needed-window projection SHA-256:
+`2280fb682c0c0820eff7e3e6236b807b7a54dd4fbbe558c989c7a05afc679879`.
+
+The complete dated source population has 35,271 rows. Across fourteen formations
+and five fixed controls, the needed union contains 179 windows: seventeen
+already eligible in the old BR normal subset and 162 unresolved, including 143
+unknown-prefix windows. The nineteen other windows include original ACTIVITY
+opportunities outside that old BR-only audit; reuse their exact original BK/BL
+evidence before seeking new sources. These are evidence windows, not fills or
+independent market samples.
+
+The registered issuer-metadata allocation then joined only those 162 unresolved
+windows to seven pinned BA/BE/AW/AX/AY/AZ/AU metadata copies. It completed with
+eighty distinct codes and source-frontier SHA-256
+`1691241ec0cb1946e5a51ee828635aa386c20fb4052b48139817be64cf157921`.
+Eight codes lack an AW/AX content candidate: 316140, 323410, 326030, 329180,
+352820, 383220, 402340 and 443060. Some have previously saved BK/BR sources;
+absence from AW/AX is neither an exclusion nor evidence that no business exists.
+Register metadata reuse and exact publication-bound source inventories before
+any additional body or HTTP work. No actual BS performance study has occurred.
+
+The metadata substep is complete. All three first-family dependency groups stay
+open: final normal prefixes, consequential inputs, and logged cohort execution
+plus independent output verification. Further implementation connects existing
+ordinary/component proofs to the full family origin union without changing any
+cohort's targets or assigned budget, shortening original input snapshots, or
+falling back from required raw prices to adjusted prices.
+
+### Exact-window input bridge preparation — 2026-10-16 KST
+
+The new normal-only runner reuses the saved BI observations and the existing
+normal-source cache/assembly. It requires exactly the initial 179 needed
+windows, retaining every other known or unknown disposition. Repeat-code
+contexts may bind different pre-formation report vintages to disjoint windows;
+they cannot backdate another context or silently broaden a prior period. Each
+context freezes its source pair, publication candidate, literal passages,
+complete required dates and dated KRX issue provenance before cached bodies.
+Updated shared-normal exclusions may expose another unknown prefix; they do
+not authorize skipping it or proceeding to returns.
+
+The separate conditional cohort connection recomputes the original ordinary
+and component proofs for the same full-family possible-origin union in both
+proof arms. This union is evidence scope, never an enlarged actual portfolio.
+It preserves each group's targets and assigned count, original requested
+coordinates/absences, complete successor extensions and raw LG/LX requirements.
+Each actual cohort must pass the existing per-origin inventory checks. No
+second accounting engine or adjusted fallback is introduced. Independent
+source review found no blockers; 29 connection regressions and the existing
+63 cohort regressions passed. The final normal-runner family passed 199
+targeted regressions, including 14 independently rerun context cases. These
+are source tests, not actual BS performance studies.
+
+Exact old positive-window metadata supplies 32 additional reuse candidates
+beyond the 17 already eligible in BR. The other 130 windows across 71 codes
+were divided into explicit content-review sets. Source-content review has
+provided 119 bounded inferred candidates; 11 windows across five codes require
+current-business leaf supplements. Unknowns remain unknown. Official issuer
+name, domestic headquarters and actual own/subsidiary operations are reviewed
+together; a purpose-only table is insufficient. The same report's actual
+business leaf and two pre-formation report queries are the only newly
+registered public-source followup. No financial/price leaf, source expansion,
+returns, DB, collector change or paid access is part of that followup.
+
+Normal publication preserves source/specification, input/read-scope and
+resource manifests, one canonical started/completed discovery pair and all
+failures. Its 39 mock regressions passed; separate source review found no
+blockers. Producer-independent actual-output verification remains required.
+The first-family dependency count remains three: final normal prefixes,
+consequential holding/action inputs, and actual cohort execution plus saved
+output verification. None is closed by these engineering or content-review
+counts. D+1/D+2 new BS performance studies remain zero.
+
+### Bounded source-content supplements completed — 2026-10-16 KST
+
+The five-code public followup made eleven requests once. Its original refusals
+are preserved: incidental consolidated-statement references or internal Roman
+subheadings in selected business leaves, and one whole-listing receipt/display
+date mismatch in an older POSCO row. Registered review of the already saved
+business leaves resolved ten windows without new HTTP, financial-chapter
+access, price inputs or exclusions. It retained SK Innovation's unrelated
+content-omission marker as a completeness limitation.
+
+The saved POSCO listing directly identified the latest needed 2022.06 report,
+receipt `20220816000612`, displayed on 2022-08-16. A separately registered
+three-request selected-report operation fetched only that wrapper and its
+company/business overview leaves. Independent review caught title-prefix and
+order gaps in the financial-chapter refusal; those were fixed with 29 mock
+regressions before the three actual requests. The 2022 report confirms the
+holding-company transition, domestic headquarters and operating subsidiaries.
+Its one bounded manual context does not extend the old steel-company report
+across the transition.
+
+All 179 initial windows now have source-context candidates: 49 exact prior
+reuse windows and 130 newly reviewed bounded inferred windows. New raw/readable
+literals and original unknowns remain separately linked in private manifests.
+This closes the content-supplement substep only. The complete ledger must still
+be assembled, normal predicates re-evaluated from saved inputs and outputs
+verified independently before the candidate-prefix dependency can close.
+The first-family dependency count remains three and new BS D+1/D+2 performance
+studies remain zero. The collector checkout remains outside all these actions.
+
+### Logged original-issue quote reader prepared — 2026-10-16 KST
+
+The holding-input runner consumes thirteen normal outputs and their separate
+verification receipt, checks the original population/calendar/BI lineage, and
+recomputes the complete updated frontier before reading prices. It builds all
+six groups and both lags for the calendar-derived formation grid. Unknown
+prefixes fail before database access; unknown tails remain in the population.
+Its paired union is proof scope only and retains each possible original entry
+through evaluation end. Declarations and the exact read scope are saved before
+one existing read-only typed scan; the existing adapter, audit and provisional
+exit-bound implementation own its results. No new book, return or action logic
+is introduced, and original requested absences remain explicit.
+
+Only the validated pre-price target declarations can be marked frozen. Action
+coverage, successor closure, raw LG/LX units, actual reuse readiness, returns,
+power and promotion remain unestablished. The source CLI enforces AS768 MiB,
+CPU300, wall900 and nice10 with zero retries and preserved partial failures.
+The author ran 99 holding/normal regressions; root independently ran all 45 new
+holding cases (15.89 seconds). Root's full repository check passed 7,444 Python
+tests with three skips (2,109.61 seconds), plus 27 guardrail and 34 hook cases.
+That full suite was collected before the new holding tests were added; its
+45-case result and final-head CI cover the new reader separately. The repository
+scanner also passed. No actual holding scan or BS performance study has run.
+
+### Complete normal-context ledger registered — 2026-10-16 KST
+
+A separately registered single-file metadata copy fetched the original BS
+scope result, verified SHA-256
+`262243b957e1078eff6658ef904374881943bb27820ab85a3e9dff6c19cedb37`
+and 20,982,696 bytes, with clean unchanged research `11df2d3` and collector
+`4ce85d7` checkouts before/after. This copied metadata only.
+
+The one registered eleven-input assembly completed with 179 accepted bounded
+contexts across 84 codes: 49 exact old windows and 130 newly reviewed windows,
+zero pending contexts. The private period-adjudication artifact is pinned as
+`5f7c68bec2751a7c44ee43420a191eec66e2fede773ba42c3365cafbc13a7d05`.
+Original unknown recommendations, exact source pairs, per-window publications
+and limitations remain linked. No price/body/API/database/book/return operation
+was part of the assembly. Source-content completeness is not normal eligibility.
+
+`configs/research/discovery/activity-cohort-normal-inputs-v1.json` now fixes that
+ledger, the original scope/independent receipt and all existing normal-source
+inputs. Parameters and numeric types retain the canonical reference values.
+It authorizes only the logged normal-input assembly after separate final-source
+review, required CI, normal merge and research deployment. Normal exclusions
+must remain explicit; an exposed unknown prefix requires further registered
+input work before holdings or returns. All three first-performance dependency
+groups remain open. New BS D+1/D+2 performance studies remain zero.
