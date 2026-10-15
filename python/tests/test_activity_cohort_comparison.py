@@ -554,3 +554,32 @@ def test_conflicting_full_issue_actions_refuse_in_both_orders(monkeypatch, rever
     monkeypatch.setattr(module, "replay_synthetic", lambda *args, **kwargs: pytest.fail("conflicting old-issue actions reached replay"))
     with pytest.raises(ValueError, match="conflicting full-issue events"):
         run(values, events=tuple(reversed(events)) if reverse else events)
+
+
+@pytest.mark.parametrize("sessions", [5, 50, 500])
+def test_summary_does_not_rebuild_entire_nav_history_for_each_session(sessions):
+    class CountedHistory:
+        def __init__(self):
+            self.reads = 0
+
+        @property
+        def navs(self):
+            self.reads += 1
+            assert self.reads <= 2, "full NAV rebuild count must not grow with session count"
+            return tuple(D(1) + D(index + 1) / D(1000) for index in range(sessions))
+
+    days = tuple(date(2020, 1, 1) + timedelta(days=index) for index in range(sessions))
+    histories = (CountedHistory(), CountedHistory())
+    rows = tuple({"replay": history, "assigned_capital": D("0.5"), "filled_capital": D("0.5"),
+        "filled_principal": D("0.49"), "entry_cost_amount": D("0.01"), "filled_entries": 10,
+        "ordinary_closed_trades": 10, "terminal_open_lots": 0, "terminal_open_investments": 0,
+        "exposure": {"path": [{"marked_inventory_value": D("0.25")} for _ in days]}}
+        for history in histories)
+    result = module._summary(rows, days)
+    expected_pnl = D(sessions) * D(2) / D(1000)
+    assert result["net_pnl"] == result["metrics"]["total_return"] == expected_pnl
+    assert result["assigned_capital"] == D(1)
+    assert result["filled_principal"] == D("0.98")
+    assert result["entry_cost_amount"] == D("0.02")
+    assert result["metrics"]["session_return_count"] == sessions
+    assert result["exposure"]["mean_marked_inventory_value"] == D("0.5")

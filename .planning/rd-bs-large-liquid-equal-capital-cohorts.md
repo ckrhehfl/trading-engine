@@ -370,3 +370,66 @@ review, required CI, normal merge and research deployment. Normal exclusions
 must remain explicit; an exposed unknown prefix requires further registered
 input work before holdings or returns. All three first-performance dependency
 groups remain open. New BS D+1/D+2 performance studies remain zero.
+
+### Input bridge merged and bounded normal timeout retained — 2026-10-16 KST
+
+PR #289 merged normally as `b4e8a606e75ec9a71cb902f3925579177d352b3d`
+after separate final correctness and research-integrity reviews of source
+`c543555e68ecc0481c85017873f8a2b2157ee8f0` and tree
+`612f2f9b4998efdde73d84315c352153eb6666d1`, with no findings. The four
+final-head CI runs passed: Python `38783743382`, Java `38783743566`,
+gitleaks `38783743595`, hostname guard `38783743380`; unresolved review
+conversations were zero. One isolated research fast-forward completed with
+clean research `b4e8a60` and unchanged clean collector `4ce85d7`. No collector
+process, schedule, environment or database was changed. One private ledger
+provision verified all 3,515,648 bytes of the registered `5f7c68b` artifact.
+
+The first registered normal-only publication failed with `TimeoutError` while
+validating saved official trading responses. Its failed canonical trial,
+original root, streams and partial output remain preserved; no automatic
+retry occurred. A five-file, read-only failure-metadata inspection found 1,434
+input receipts, elapsed 294.552 seconds and peak RSS 590,748 KiB. Its exact
+failure metadata is
+`df0f001a5231ba00ea218038ac60493019039b90fa5e5ddef0876133cbf2ded7`,
+resource metadata
+`37c7787801b7ca5e80a576cc3b39570263e79cbfd283ff52448d01535e3da0b0`.
+Recorded user/system CPU were 249.349/11.930 seconds even though the resource
+declaration reports CPU120; retain those observations rather than claiming
+independently proved CPU enforcement. The recorded timeout is the wall limit.
+No holding-price database, external API, credentials, book or return was read
+or computed by this normal operation. Both new BS study counts remain zero.
+
+The recovery changes only the caller's CPU allowance to 600 seconds and wall
+allowance to 900 seconds, retaining AS768 MiB, nice10, zero retries, the exact
+179-window input specification and every strategy/timing/selection rule. Its
+new publication and independent-verification roots must be exclusive and leave
+the original attempt intact. Separate source review, required CI, normal merge,
+research deployment and a fresh source/config/start registration precede the
+one recovery attempt. The independent checker still must verify every new
+output and full frontier; an exposed unknown prefix cannot be skipped.
+
+### Cohort NAV aggregation resource defect corrected — 2026-10-16 KST
+
+A synthetic full-family resource probe exited without a result; a bounded
+one-cohort diagnostic then completed in 26.537 seconds. Inspection found that
+the old aggregate accessed `SyntheticReplay.navs` for every session and cohort.
+That property recomputes the entire immutable book history, making aggregate
+work quadratic in session count. The summary now caches each cohort's exact
+NAV tuple once, retaining all Decimal operations, ordering and denominators.
+No book, selection, allocation, cost or timing behavior changes.
+
+Three regressions cover 5, 50 and 500 sessions with bounded history access and
+exact accounting totals. Root ran all 66 comparison tests successfully, and
+all 54 normal-input tests passed. A separate reviewer compared the old and new
+complete summaries under four synthetic paths and Decimal precisions 9, 28
+and 50: all twelve canonical outputs, including paths, exposure and standard
+deviation, matched. A new synthetic 168-cohort probe completed with 84 D1 and
+84 D2 evaluations in 21.635 seconds, peak RSS 675,472 KiB. These probes read no
+actual research input and wrote no study log; they establish no strategy result
+or guarantee for the larger actual quote package. Actual-input runtime/memory
+limits and failure retention remain necessary.
+
+The three first-performance dependencies remain open: verified complete normal
+prefixes; consequential holding/action/successor/raw inputs; and logged cohort
+execution with separate output verification. This work closes no additional
+dependency group. Actual new BS D+1/D+2 performance evaluations remain zero.

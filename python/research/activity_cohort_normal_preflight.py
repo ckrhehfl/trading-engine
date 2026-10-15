@@ -359,7 +359,7 @@ def _resources(started: float) -> dict:
     return {"elapsed_seconds": time.monotonic() - started, "process_peak_rss_kib": usage.ru_maxrss,
         "process_user_cpu_seconds": usage.ru_utime, "process_system_cpu_seconds": usage.ru_stime,
         "address_space_limit_bytes": list(resource.getrlimit(resource.RLIMIT_AS)),
-        "cpu_limit_seconds": list(resource.getrlimit(resource.RLIMIT_CPU)), "wall_limit_seconds": 300}
+        "cpu_limit_seconds": list(resource.getrlimit(resource.RLIMIT_CPU)), "wall_limit_seconds": 900}
 
 
 def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path, *, reader=None, freeze=None, evaluator=None) -> dict:
@@ -415,8 +415,8 @@ def main(argv=None) -> int:
     parser.add_argument("--spec", type=Path, required=True); parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--runs-path", type=Path, required=True); args = parser.parse_args(argv)
     def expired(signum, frame): raise TimeoutError("registered BS normal wall limit exceeded")
-    resource.setrlimit(resource.RLIMIT_AS, (768 * 1024**2,) * 2); resource.setrlimit(resource.RLIMIT_CPU, (120, 120))
-    signal.signal(signal.SIGALRM, expired); signal.alarm(300)
+    resource.setrlimit(resource.RLIMIT_AS, (768 * 1024**2,) * 2); resource.setrlimit(resource.RLIMIT_CPU, (600, 600))
+    signal.signal(signal.SIGALRM, expired); signal.alarm(900)
     try: record = run_preflight(Path(__file__).resolve().parents[2], args.spec, args.output_dir, args.runs_path)
     except Exception as error:
         print(saved.encoded({"status": "failed", "error_type": type(error).__name__, "automatic_retries": 0}).decode()); return 1
