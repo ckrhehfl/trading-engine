@@ -616,3 +616,52 @@ refusal, nonfinite rejection and partial serialization failure. The original
 failed attempt is retained; a separately registered fresh recovery still needs
 final source reviews, required CI, normal merge and research-only reflection.
 The same two dependency groups remain open, and actual BS counts remain 0/168.
+
+### Preserve new-family quote and raw scope identities — 2026-10-16 KST
+
+PR #293 passed the final separate correctness and research-integrity reviews
+and all eight PR/push checks, then merged normally as
+`34ba8f4d8baf35e13236414c7233556e69711da6`. Research-only reflection retained
+the unchanged clean collector `4ce85d7`, with no process, schedule, environment
+or database mutations. The separately registered holding recovery completed;
+its original ten output pins are frozen in registration
+`5eb0265dd8d7fb5dc4bad23bcb4c980936100d658a3301a9190f9cbcba486989`.
+Producer-independent verification is in progress. Extraction completion alone
+does not establish action coverage, raw units, source truth or input readiness.
+
+The new quote connector consumes the verified full-family holding receipt and
+a separately pinned, price-free event coordinate plan. It derives the exact
+additional successor and basis union over every possible original holding,
+subtracting all original requested coordinates, including absent observations.
+Only that additional union receives a new read-only typed scan. The resulting
+extension envelope binds the genuine new BS original; an old BM/BP envelope
+is neither relabeled nor treated as evidence for this family. Existing typed
+restoration, quote composition and accounting functions remain unchanged.
+An empty additional union performs no database scan. Unsupported event chains
+fail explicitly instead of dropping obligations or inventing entitlements.
+
+The pure raw planner derives all LG/LX original and possible-successor
+requirements from the complete cohort declarations and explicit event metadata.
+It separately reports the minimum per-origin coordinates and the contiguous
+episode envelope required by the existing raw view. Two unsupported acquisition
+eligibility boundaries remain explicit and retain their original horizons;
+they are not findings that those acquisitions received split rights. The new
+unit plan binds the new base quote identity. Prior response body/receipt
+metadata can nominate cache candidates only: neither unchanged raw values nor
+the old BQ receipt alone certify new-family reuse. Missing bodies, unsupported
+events, source contents and final component proof remain separate obligations.
+
+Source tests use fabricated inputs only. The quote author passed 59 cases; a
+separate correctness reviewer passed 105 quote/raw cases, and a separate
+research-integrity reviewer passed 59 final quote cases plus its earlier raw
+review. The latter reproduced and resolved a P2 where a cleanup write could
+replace the original failure: independent evidence writes now preserve the
+first exception object, including canonical-log, umask and alarm failures.
+No-primary cleanup failures still fail. Final commit review and required CI
+precede deployment or actual use of these new adapters. Actual source/body
+and output validation are not replaced by this source review.
+
+The two open dependency groups remain consequential holding/action/successor/
+raw closure, then individually logged cohort execution with saved-output
+verification. Actual D1/D2 BS evaluations remain 0/168; no power, PASS,
+promotion, holdout or historical-publication claim changes.
