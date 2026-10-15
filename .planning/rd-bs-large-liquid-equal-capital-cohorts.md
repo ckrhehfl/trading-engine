@@ -433,3 +433,113 @@ The three first-performance dependencies remain open: verified complete normal
 prefixes; consequential holding/action/successor/raw inputs; and logged cohort
 execution with separate output verification. This work closes no additional
 dependency group. Actual new BS D+1/D+2 performance evaluations remain zero.
+
+### Normal recovery completed; independent memory failure preserved — 2026-10-16 KST
+
+PR #290 merged normally as `169b6c1d76a3f8ecffbfbfd235fc620669f0f32c`
+after separate final-source correctness and research-integrity reviews of
+`78701dd03eedb25fb3b332ea4bb3de5da1b52975`, tree
+`88e4f9b15271dc91e30d9113db1645dbc875d16f`, with no findings. All four
+PR checks and all four push checks passed on that source head. An initial
+normal merge refusal occurred while push Python was still running; no bypass
+was used. The later normal merge and isolated research deployment completed
+with the collector checkout still clean at `4ce85d7`.
+
+The separately registered normal-only recovery produced all thirteen outputs
+once. Its result is pinned as
+`0c80506b57df7438cc19df55155ee1ea65247959f31854a3f5f34f563c0d6344`
+and frontier as
+`10ae03788a728b153b157be5b68b470079f64fa68f15879a35c3ce44e1e9566a`.
+The first independent checker then failed with `MemoryError` while parsing
+its twentieth file, before calling its pure semantic verifier. Nineteen
+reads completed; elapsed time was 13.140 seconds and peak RSS 660,860 KiB
+under the declared AS768 MiB limit. Its exact failure/resource metadata are
+`3c055b15c99d70ceb936fbffef9c9e0028f5824469ed8cb21a7caaa281c0216b`
+and `e0c5c0e282ca5c3236cee5dee33f84fc77e2a310611d820cbf7cf9dbf22367d4`.
+The original producer outputs, failed verifier root and every input pin remain
+unchanged. Only a separately registered verifier recovery may inspect those
+same outputs; the producer is not rerun. Output completion is not yet
+independent verification, so the normal-prefix dependency remains open.
+
+The holding reader now releases checked but unused normal bodies and the BI
+scan body before decoding the full historical population. It retains all
+original hash/canonical/receipt checks, nineteen saved-read roles and order,
+lineage, planning and price-scan semantics. A weak-reference regression checks
+that the duplicate bodies have actually been released before population
+decode. Root ran all 46 holding tests successfully; separate source review
+reran all 46 in 16.17 seconds and found no correctness issue. Actual input
+memory limits still need verification in the registered run.
+
+### Individual cohort execution prepared — 2026-10-16 KST
+
+The streaming helper calls the existing cohort engine once for each original
+group/formation/lag key. Each canonical durable Discovery start precedes its
+calculation. The original full book and exact Decimal NAV path are saved before
+the canonical completion receipt, then released before the next cohort. Only
+NAV/inventory tuples and scalar statistics survive for the existing aggregate
+and delta functions. Every zero-budget cohort is still an individually logged
+look; failures preserve partial outputs and never trigger an automatic retry.
+
+The author and a separate source reviewer each passed 19 synthetic tests,
+including complete ordinary and raw-component book/summary equivalence,
+durable-start ordering, cash, permissions, failed writes and low ambient Decimal
+precision. A separate 168-cash-cohort probe produced exactly 84 D1 and 84 D2
+completions and 336 temporary canonical start/completion records. These are
+engineering checks, with no actual input or actual research log access. The
+upper caller still owns actual input pins and receipts, source/runtime freeze,
+resource limits, final identity checks and producer-independent saved-output
+verification. No strategy return or signal advantage follows from these tests.
+
+Separate review also corrected a gap-planner omission at two unsupported LG
+entry boundaries: both original components and their raw-coordinate requirements
+now survive through the original endpoint, with the unresolved reason retained.
+It does not certify an unsupported origin as an actual rights entitlement.
+All 48 gap-planner synthetic regressions passed independent review.
+
+The first actual BS comparison still has three open dependency groups: verified
+normal prefixes, consequential holding/action/successor/raw inputs, and logged
+cohort execution with independent saved-output verification. This append closes
+zero groups. Actual new BS performance evaluations remain D1=0 and D2=0.
+
+### Actual normal package independently verified — 2026-10-16 KST
+
+The separately registered memory recovery verified the same thirteen producer
+outputs and twenty-one saved references once. It uses the frozen strict JSON
+parser and unchanged semantic verifier, with explicit unused-field projections
+and separate original-byte/projection identities. The independent receipt is
+`1d6342f6ad768e708c5d32fdef285f00eef3e83ff2ac25252f59bb50486865dc`.
+Root independently passed 81 pure, 62 publication and 11 registration synthetic
+cases before the actual invocation. A pre-actual review found that the first
+new wrapper omitted checkout verification on failure; its final source fixes
+that omission and retains before/finally state receipts, including failure.
+
+The actual verifier recomputed all 179 required windows, 221 merged normal
+audits and the full 35,271-row historical population. All fourteen formations
+and five fixed controls have complete required prefixes: zero unknown prefix
+windows, zero unresolved required windows, and zero new normal exclusions.
+The 654 unresolved numeric windows remain in the full population as unknown
+tails; they were not silently excluded or certified. The receipt confirms
+clean research `169b6c1` and unchanged clean collector `4ce85d7`. It computes
+no books or returns and adds zero performance studies.
+
+This closes the normal-prefix dependency, reducing the first actual BS
+comparison's open groups from three to two: consequential holding/action/
+successor/raw inputs, then individual cohort execution and independent saved
+output verification. It establishes metadata/predicate consistency rather than
+historical source truth or publication/vintage certainty. D1/D2 actual BS
+performance evaluations remain zero.
+
+The holding-input specification now fixes the genuine thirteen output byte
+pins and the verified receipt above, preserving canonical reference parameter
+representations. The new upper caller consumes selected independently verified
+holding artifacts and separately pinned action/extension/raw inputs, restores
+the existing typed objects and prepares the complete conditional binding before
+any cohort book. Its input-orchestration diagnostic adds zero performance
+studies; the existing streaming helper owns all individual cohort counts.
+The author passed 35 synthetic caller regressions. A fresh separate correctness
+review independently passed all 100 execution/caller/holding regressions, and a
+fresh separate research-integrity review passed 338 combined regressions covering
+the actual-run helpers and gap boundaries. Neither review certifies actual
+holding/action inputs, actual resource capacity or performance. Final source
+commit/configuration review, required CI and isolated research deployment still
+precede the registered holding-price scan and any cohort experiment.
