@@ -543,3 +543,41 @@ the actual-run helpers and gap boundaries. Neither review certifies actual
 holding/action inputs, actual resource capacity or performance. Final source
 commit/configuration review, required CI and isolated research deployment still
 precede the registered holding-price scan and any cohort experiment.
+
+### Prepare the same validated family once per invocation — 2026-10-16 KST
+
+PR #291 passed all eight required PR/push checks and merged normally as
+`9bbb6a4e39a64e8026ab74543518b38ab9c54804`. The reviewed deployment moved only
+the isolated research checkout from `169b6c1` to that merge; the clean collector
+remained `4ce85d7`, with zero process, schedule, environment or database changes.
+The genuine holding specification and producer were registered separately for
+one bounded read-only holding diagnostic. Actual holding verification remains
+pending, and actual BS performance counts remain D1=0/D2=0.
+
+A source-only single-cohort resource probe identified repeated full-input
+validation, rather than book calculation, as a concrete execution cost. Its
+retained successful repetition used 27.2404 CPU seconds and 204340 KiB peak RSS;
+after scope binding, repeated quote validation took 3.338 seconds and scope
+validation 7.134 seconds, while the fabricated replay took 0.01697 seconds.
+The earlier full-family probe exited unsuccessfully without a usable final
+diagnostic; its cause is unconfirmed and it is not evidence of a market result.
+
+The continuation prepares all declarations, quotes, events and conditional
+coverage once within the existing invocation. An invocation-local closure
+accepts only its own frozen context and checks the retained field identities
+and unchanged parameter bytes before each book. Public replay still performs
+the same preparation and uses the same book loop and summary calculations.
+Streaming retains each cohort's durable start before book computation, complete
+saved book before completion, and inventory checks. There is no public trusted
+input flag, global cache or new accounting engine. Fresh NAV, original targets,
+assigned capital, costs, raw LG/LX handling, missing-fill behavior, study counts
+and exploratory claim boundaries are unchanged.
+
+The author passed 94 comparison/execution regressions after correcting a new
+synthetic fixture's calendar length; the unchanged connection and upper caller
+passed 64 cases with the same production source. The new complete synthetic
+grid covers fourteen formations, six groups and two lags with one preparation.
+These are engineering checks, not actual BS performance evaluations or proof
+of capacity with the actual inputs. Final source review, required CI, normal
+merge and isolated research deployment precede actual use. The two remaining
+dependency groups are unchanged by this optimization.
