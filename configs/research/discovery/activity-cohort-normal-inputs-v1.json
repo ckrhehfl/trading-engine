@@ -1,0 +1,111 @@
+{
+  "comparison_power_prerequisite_met": false,
+  "controls": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05"
+  ],
+  "design": "independent_formation_equal_assigned_capital",
+  "inputs": {
+    "aq": {
+      "ledger_sha256": "f85c8a4403eaacde5d6fd0195054568262cbbb4cdab98ffdc846ab45933f2487",
+      "report_sha256": "17ae2a87663ed592c2968b9ce051f4fa248574a6d70561e704e7b5a27c8c593b",
+      "root": "/home/minjun4897/research-evidence/krx-formations-20261007-v2/run",
+      "started_sha256": "2bce0c4b916a1f67415e91dd1b4372ae8425e518d98624661725c58407ee48e9"
+    },
+    "ar_original": {
+      "ledger_sha256": "8b2c2367f1ac6e0d3ca5d8f07dd2cf9380bb99a593b0fd769d5e8495fb8da622",
+      "report_sha256": "53effb672a849084148511be55cda1e92e90d181d0d6ee47291545ecdf12b612",
+      "root": "/home/minjun4897/research-evidence/krx-liquidity-20261007-v1/run",
+      "started_sha256": "34b0abbd41bd360a9309114b6cdb34dd30516bff747586d7190cc6d8acb0a79f"
+    },
+    "ar_recovery": {
+      "candidates_sha256": "09a942994bf2d4eec746a5cfb2337cf0bc47fb3d4f271d21339fb97f7a1a95d6",
+      "ledger_sha256": "2f86c7af7db76f2fcf6410bcef477eef7b5e25973db87b4e4a8ff13f39e34518",
+      "report_sha256": "f23e37b0b6613a4720c21949b63f8c3ba1ba0a6c97546478b9abae522ca983ad",
+      "root": "/home/minjun4897/research-evidence/krx-liquidity-recovery-20261007-v1/run",
+      "started_sha256": "e7a3f7290abc6e7541a1ff005c39e0ec07a1e4d99bfcd64b182b7cb404141e27"
+    },
+    "au_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-normal-lookbacks-20261008-v1/result.json",
+      "sha256": "eb95349f4a5555a45363b98ae907c6a7791e12297a3fee17fa7729a492ce1fa4"
+    },
+    "bb_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bb-replay-readiness-20261009-v1/result.json",
+      "sha256": "2ac0b2c81d19921d19cfea95a850574d9bef8dc7b5d1ebc900aa1f039ea0d9b4"
+    },
+    "bh_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bh-timing-preflight-20261009-recovery-v1/run/result.json",
+      "sha256": "dc9234b69339a5c4cce9295d00436c0a1d198402936a798c8eac636811e70ef6"
+    },
+    "bi_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bi-activity-failures-20261009-v1/run/result.json",
+      "sha256": "b011e43ff4c34c26e8f6e66b216b202b1f1b06c340abc9e4d1340b6393729dc3"
+    },
+    "br_control_dispositions": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-br-control-inputs-recovery-20261015-v1/run/control-dispositions.json",
+      "sha256": "742a00f1f0b76894351265e6f4d56bc3d0a3ed89a0822c56ccb811ef32b11701"
+    },
+    "br_normal_input_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-br-control-inputs-recovery-20261015-v1/run/normal-input-audit.json",
+      "sha256": "ab2a5cd9c4ed00b2574f41a954440f8d5ac8e1036d1d1dd50a28f533808f78fe"
+    },
+    "br_population_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-br-control-inputs-recovery-20261015-v1/run/population-audit.json",
+      "sha256": "20c126919c3b2a5c9c911b0bf371bc1c99f78727c134fbea807fef1db62dca76"
+    },
+    "br_scope_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-br-control-scope-20261015-v1/run/result.json",
+      "sha256": "9b808013d51c893af4ccb66662ba75e4756b12d42d99d80ebae3da7e2cf6bb90"
+    },
+    "bs_adjudication": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-issuer-adjudication-20261016-v1/period-adjudication.json",
+      "sha256": "5f7c68bec2751a7c44ee43420a191eec66e2fede773ba42c3365cafbc13a7d05"
+    },
+    "bs_scope_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-scope-20261016-v1/run/result.json",
+      "sha256": "262243b957e1078eff6658ef904374881943bb27820ab85a3e9dff6c19cedb37"
+    },
+    "bs_scope_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-scope-independent-recovery-20261016-v1/verification.json",
+      "sha256": "0dca93ff8649670edad8ee3676f5f3190a7dbab0031f1ea043e38d4b0a0462e8"
+    },
+    "calendar_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-calendar-20261007-v1/manifest.json",
+      "sha256": "ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882"
+    }
+  },
+  "mode": "discovery_cohort_normal_input_assembly",
+  "parameters": {
+    "alpha": 0.05,
+    "bootstrap_blocks": [
+      63,
+      126,
+      252
+    ],
+    "bootstrap_repetitions": 2000,
+    "commission_bps_per_side": 1.77,
+    "end": "2026-09-18",
+    "holding_sessions": 126,
+    "lookback": 60,
+    "power": 0.8,
+    "seed": 20261005,
+    "sizing_round_trip_bps": 43.54,
+    "slippage_bps_per_side": 5.0,
+    "slots": 20,
+    "threshold": 3.0
+  },
+  "power_design_passed": false,
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "schema": "activity-cohort-normal-inputs-v1",
+  "study_id": "activity-cohort-normal-inputs-v1",
+  "window": {
+    "end": "2026-09-18",
+    "interval": "1d",
+    "start": "2019-01-02",
+    "symbol": "KRX:"
+  }
+}

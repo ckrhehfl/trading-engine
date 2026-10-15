@@ -345,3 +345,28 @@ tests with three skips (2,109.61 seconds), plus 27 guardrail and 34 hook cases.
 That full suite was collected before the new holding tests were added; its
 45-case result and final-head CI cover the new reader separately. The repository
 scanner also passed. No actual holding scan or BS performance study has run.
+
+### Complete normal-context ledger registered — 2026-10-16 KST
+
+A separately registered single-file metadata copy fetched the original BS
+scope result, verified SHA-256
+`262243b957e1078eff6658ef904374881943bb27820ab85a3e9dff6c19cedb37`
+and 20,982,696 bytes, with clean unchanged research `11df2d3` and collector
+`4ce85d7` checkouts before/after. This copied metadata only.
+
+The one registered eleven-input assembly completed with 179 accepted bounded
+contexts across 84 codes: 49 exact old windows and 130 newly reviewed windows,
+zero pending contexts. The private period-adjudication artifact is pinned as
+`5f7c68bec2751a7c44ee43420a191eec66e2fede773ba42c3365cafbc13a7d05`.
+Original unknown recommendations, exact source pairs, per-window publications
+and limitations remain linked. No price/body/API/database/book/return operation
+was part of the assembly. Source-content completeness is not normal eligibility.
+
+`configs/research/discovery/activity-cohort-normal-inputs-v1.json` now fixes that
+ledger, the original scope/independent receipt and all existing normal-source
+inputs. Parameters and numeric types retain the canonical reference values.
+It authorizes only the logged normal-input assembly after separate final-source
+review, required CI, normal merge and research deployment. Normal exclusions
+must remain explicit; an exposed unknown prefix requires further registered
+input work before holdings or returns. All three first-performance dependency
+groups remain open. New BS D+1/D+2 performance studies remain zero.
