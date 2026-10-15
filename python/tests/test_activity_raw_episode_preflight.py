@@ -409,3 +409,66 @@ def test_existing_output_is_preserved_and_cli_never_echoes_errors(tmp_path, monk
     monkeypatch.setattr(module, "run_preflight", lambda *a, **kw: (_ for _ in ()).throw(ValueError(SECRET)))
     assert module.main(["--spec", "/unused", "--output-dir", "/unused", "--runs-path", "/unused"]) == 1
     assert SECRET not in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("transport", ["url", "timeout", "os", "http401", "redirect"])
+def test_fetch_preserves_sanitized_primary_when_response_ledger_also_fails(tmp_path, monkeypatch, transport):
+    refusals, ledger, calls = [], [], []
+    original = module.probe.ProbeRefusal
+    class RecordedRefusal(original):
+        def __init__(self, message):
+            super().__init__(message)
+            refusals.append(self)
+    monkeypatch.setattr(module.probe, "ProbeRefusal", RecordedRefusal)
+    def persist(path, value, *, append):
+        ledger.append(value)
+        if value["event"] == "response":
+            raise OSError("synthetic ledger failure")
+    monkeypatch.setattr(module.probe, "persist", persist)
+    def open_response(request, *, timeout):
+        calls.append(request)
+        if transport.startswith("http") or transport == "redirect":
+            raise HTTPError(request.full_url, 401 if transport == "http401" else 302,
+                "synthetic transport failure", {}, BytesIO())
+        raise dict(url=URLError, timeout=TimeoutError, os=OSError)[transport](SECRET)
+    manifest = []
+    with pytest.raises(RecordedRefusal) as caught:
+        module._fetch(SimpleNamespace(open=open_response), dict(service="stk_bydd_trd", bas_dd="20210527", targets=["003550"]),
+            SECRET, tmp_path, manifest, 1)
+    expected = "access_failure" if transport == "http401" else "redirect_rejected" if transport == "redirect" else "transport_failure"
+    assert len(refusals) == len(calls) == 1 and caught.value is refusals[0]
+    assert str(caught.value) == expected and caught.value.__notes__ == ["response ledger retention failed: OSError"]
+    assert [row["event"] for row in ledger] == ["attempt", "response"]
+    assert manifest[0]["http_status"] == (401 if transport == "http401" else 302 if transport == "redirect" else None)
+    assert SECRET not in str(caught.value) + str(caught.value.__notes__)
+    assert not list(tmp_path.iterdir())
+
+
+def test_fetch_response_ledger_failure_without_primary_still_fails(tmp_path, monkeypatch):
+    secondary, ledger = OSError("synthetic ledger failure"), []
+    def persist(path, value, *, append):
+        ledger.append(value)
+        if value["event"] == "response":
+            raise secondary
+    monkeypatch.setattr(module.probe, "persist", persist)
+    item = dict(service="stk_bydd_trd", bas_dd="20210527", targets=["003550"])
+    url = f"{module.probe.HOST}/svc/apis/sto/{item['service']}?basDd={item['bas_dd']}"
+    class Response(BytesIO):
+        status = 200
+        def geturl(self): return url
+    manifest = []
+    with pytest.raises(OSError) as caught:
+        module._fetch(SimpleNamespace(open=lambda *args, **kwargs: Response(b"{}")), item, SECRET, tmp_path, manifest, 1)
+    assert caught.value is secondary and manifest[0]["http_status"] == 200
+    assert [row["event"] for row in ledger] == ["attempt", "response"]
+    assert not list(tmp_path.iterdir())
+
+
+def test_fetch_attempt_ledger_failure_prevents_any_transport(tmp_path, monkeypatch):
+    secondary, manifest = OSError("synthetic attempt ledger failure"), []
+    def persist(*args, **kwargs): raise secondary
+    monkeypatch.setattr(module.probe, "persist", persist)
+    with pytest.raises(OSError) as caught:
+        module._fetch(SimpleNamespace(open=lambda *args, **kwargs: pytest.fail("unlogged transport")),
+            dict(service="stk_bydd_trd", bas_dd="20210527", targets=["003550"]), SECRET, tmp_path, manifest, 1)
+    assert caught.value is secondary and manifest[0]["read_status"] == "started"

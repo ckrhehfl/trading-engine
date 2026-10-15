@@ -665,3 +665,65 @@ The two open dependency groups remain consequential holding/action/successor/
 raw closure, then individually logged cohort execution with saved-output
 verification. Actual D1/D2 BS evaluations remain 0/168; no power, PASS,
 promotion, holdout or historical-publication claim changes.
+
+### Verified holding package and explicit raw acquisition boundary — 2026-10-16 KST
+
+PR #294 passed both final committed-source reviews and all eight PR/push checks,
+then merged normally as `6f545afd06176a7bad00588d746f22e6a18acf54`. The reviewed
+code-only reflection completed at 2026-10-15T22:06:39.836302UTC: isolated research
+`34ba8f4` became clean `6f545af`; the collector remained clean `4ce85d7`.
+It changed no collector process, schedule, environment or database.
+
+The holding recovery's independent receipt is
+`be90d15abd9bb2e8612923a19f8c3e728ed5d7eaffcdfc1d5028cfca5260e170`.
+It recomputed all 168 declarations and 358 original potential origins for 84
+original codes. The 79,212 requested code/dates comprise 78,448 observed,
+109 frozen, one locked and 654 absent states. Absence remains distinct from
+zero, a certified halt or a reason to exclude a target. No book or return was
+computed. This verifies saved typed/provenance/missingness consistency, not
+source truth, event coverage, historical vintage, final successor closure or
+resource enforcement.
+
+The separately registered price-free gap planner consumed sixteen exact saved
+metadata files, with original BQ numeric anchors explicitly decoded and stripped
+from its projected metadata. Its output is
+`4ed9ae79e3ec03238e5dfa135f47121c1f106b07ec0752b4eef82bf0368ac721`.
+The independent saved-calendar partition check found 140 priority windows,
+55 reused interval fragments, 112 unknown ranges, 76 source-work entries,
+39 unresolved identity-work ranges and three action intersections. The
+39 unresolved ranges lack explicit corporate IDs; they are not issuer
+classification failures. Reusing positive prior intervals does not certify
+the uncovered cells or extend their original reference bounds. The pure
+LG/LX envelope contains 1,330 LG and 1,303 LX code/dates; these are potential
+scope coordinates, not actual acquired raw observations or new-request counts.
+Cache coverage and narrower recomputed component bounds remain to be checked.
+
+The new raw caller recomputes the complete cohort-derived acquisition matrix
+and unit plan against explicitly pinned metadata and the genuine new composite
+lineage before reading response bodies. It verifies original AQ/AR, BP or BQ
+receipt/body joins, redecodes the exact six raw fields and preserves original
+response hashes, row coordinates and retrieval timestamps. Cached response
+metadata nominates reuse; it is not a new-body or new-family certificate. An
+invalid cache does not trigger an automatic API fallback. Credentials and
+fixed-host HTTP are used only for the explicitly registered uncached matrix;
+full cache coverage performs neither access. The caller writes a new artifact
+bound to the new unit/base and uses the existing raw-view encoding/restoration.
+The original BQ artifacts, receipts, costs and accounting remain unchanged.
+
+Separate source reviews found a shared response-ledger cleanup defect: a
+sanitized transport refusal could be replaced by a later ledger write error.
+The shared fetch boundary now captures and preserves the first refusal object,
+retains its HTTP status and attaches only a secondary error-type note. A
+ledger failure with no earlier error still fails, and an attempt-ledger failure
+prevents transport. The author passed 399 new/related raw regressions before
+that correction; the root and two separate reviewers each passed the final
+110 old/new caller tests after it. Final committed-source review, required CI
+and research-only reflection still precede actual use of this caller.
+
+The registered 76 source-work rows are allocated into eleven bounded public
+DART history batches. Report-nomination cutoffs are explicit; they do not
+backdate source publication or prove no-event coverage. Existing corporate-ID
+metadata will be joined separately for the 39 unresolved ranges; none is
+silently removed. Acquisition, original-content review, component proofs and
+saved-output verification remain separate. Both first-experiment dependency
+groups are still open, and actual D1/D2 BS performance counts remain 0/168.
