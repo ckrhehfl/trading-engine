@@ -581,3 +581,38 @@ These are engineering checks, not actual BS performance evaluations or proof
 of capacity with the actual inputs. Final source review, required CI, normal
 merge and isolated research deployment precede actual use. The two remaining
 dependency groups are unchanged by this optimization.
+
+### Actual holding serialization failure and bounded writer — 2026-10-16 KST
+
+PR #292 passed both fresh final-source reviews, with 158 regressions per
+reviewer and six complete baseline/final canonical-output comparisons. All
+eight PR/push checks passed; normal merge `c4b8ba3ae5d4128d9e70d160b2da63b55ffe6877`
+was reflected only in the isolated GCP research checkout. The collector remains
+clean `4ce85d7`, with zero process, environment, schedule or database mutations.
+The retained fabricated 168-cohort execution completed with 336 temporary log
+records, D1=84/D2=84, 62.375 CPU seconds and 282684 KiB peak RSS. It establishes
+synthetic execution capacity only, not actual input capacity or signal value.
+
+The first actual holding diagnostic failed after its nineteen saved references
+and one read-only database scan. Its saved failure identifies `MemoryError` at
+`saved.encoded(audit)`, after adapting 78,558 observed rows; it did not produce
+a complete holding audit or any BS performance evaluation. The preserved
+failure is `946448b2c8146d7f2c1b24c1d65b14f995f80cc666dfa2377699a57a5bd2d17f`;
+input manifest `404f633e2af72313fef6650ea0a99dca86f5d797a94f02fdcb19881a714286fc`
+and resource manifest `8d643420c37b4b17ee3a4fce00664fdf3106a7ed9532b6261171dff0cad7445e`
+remain unchanged. Reported elapsed time was 740.567 seconds and peak RSS
+680896 KiB. The record declares AS768MiB/CPU300/wall900/nice10; this is not
+independent certification of kernel resource enforcement. The read-only failure
+inspection accessed five metadata files once, with no DB/API access or retry.
+
+The continuation writes the same canonical audit through JSONEncoder.iterencode
+and a 64 KiB buffer, hashing the exact UTF-8 bytes as they are written. It keeps
+the original field values, sorting, indentation and trailing newline, without
+building a second complete JSON string. Exclusive/no-follow mode0600 creation,
+file and directory fsync, partial-output preservation and the existing failure
+path remain. The author passed all 53 holding regressions, including complete
+canonical-byte/hash equality, Unicode, large integers, zero, existing-file/link
+refusal, nonfinite rejection and partial serialization failure. The original
+failed attempt is retained; a separately registered fresh recovery still needs
+final source reviews, required CI, normal merge and research-only reflection.
+The same two dependency groups remain open, and actual BS counts remain 0/168.

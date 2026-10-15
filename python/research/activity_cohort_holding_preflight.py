@@ -12,6 +12,8 @@ from copy import deepcopy
 from dataclasses import asdict
 from datetime import date
 from decimal import Decimal
+import hashlib
+import json
 import os
 from pathlib import Path
 import re
@@ -242,6 +244,29 @@ def _empty_audit(quotes, requested, scope_sha):
             "unrequested_code_dates": 0, "state_counts": {}}}
 
 
+def _write_audit(path: Path, audit: dict) -> str:
+    """Write the same canonical bytes without retaining a second complete JSON."""
+    digest, pending = hashlib.sha256(), bytearray()
+    encoder = json.JSONEncoder(ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
+    with os.fdopen(descriptor, "wb") as stream:
+        def flush():
+            if pending:
+                stream.write(pending)
+                digest.update(pending)
+                pending.clear()
+        for token in encoder.iterencode(audit):
+            pending.extend(token.encode("utf-8"))
+            if len(pending) >= 64 * 1024:
+                flush()
+        pending.extend(b"\n")
+        flush()
+        stream.flush()
+        os.fsync(stream.fileno())
+    saved._sync_directory(path.parent)
+    return digest.hexdigest()
+
+
 def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path, *, scan_loader=None) -> dict:
     declared, data, hashes = spec["inputs"], {}, {}
     def load(role):
@@ -309,11 +334,10 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path, *, sca
     if scan is not None:
         del scan["rows"]
     audit = _empty_audit(quotes, requested, scope_sha) if scan is None else _audit(scan, quotes, requested, scope_sha)
-    audit_raw = saved.encoded(audit)
-    audit_sha, holding_summary = saved.digest(audit_raw), audit["summary"]
-    saved.write_exclusive(output / "holding-input-audit.json", audit_raw)
+    audit_sha = _write_audit(output / "holding-input-audit.json", audit)
+    holding_summary = audit["summary"]
     database_access = scan is not None
-    del scan, audit, audit_raw
+    del scan, audit
     exit_scope = provisional_exit_bounds(proofs["D1"], proofs["D2"], quotes, spec["parameters"], requested,
         scope["issue_isins"], input_sha256=pins)
     exit_raw = saved.encoded(exit_scope)

@@ -27,6 +27,53 @@ from test_activity_cohort_comparison import quotes as synthetic_quotes
 from test_activity_normal_assembly import fixture as window_fixture
 
 
+@pytest.mark.parametrize("value", [{}, {"한글": [0, -0.0, None, True, 10**40, "\\n\"\t"], "a": "Unicode: 가나다"},
+    {"rows": [{"code": f"{index:06}", "value": "가" * 128, "typed": [["text", "0"], ["text", "1.2500"]]}
+        for index in range(2048)]}])
+def test_streamed_audit_matches_all_existing_canonical_bytes_and_hash(tmp_path, monkeypatch, value):
+    expected = saved.encoded(value)
+    monkeypatch.setattr(saved, "encoded", lambda *args: pytest.fail("stream writer rebuilt a complete canonical JSON"))
+    path = tmp_path / "audit.json"
+    assert module._write_audit(path, value) == saved.digest(expected)
+    assert path.read_bytes() == expected
+    assert path.stat().st_mode & 0o777 == 0o600
+
+
+@pytest.mark.parametrize("link", [False, True])
+def test_streamed_audit_refuses_existing_file_or_symlink(tmp_path, link):
+    target = tmp_path / "original.json"
+    target.write_bytes(b"preserved")
+    path = tmp_path / "audit.json"
+    if link:
+        path.symlink_to(target)
+    else:
+        path.write_bytes(b"preserved")
+    with pytest.raises(FileExistsError):
+        module._write_audit(path, {})
+    assert target.read_bytes() == b"preserved"
+    assert path.read_bytes() == b"preserved"
+
+
+def test_streamed_audit_preserves_partial_output_without_returning_success(tmp_path, monkeypatch):
+    class FailedEncoder:
+        def __init__(self, **kwargs):
+            assert kwargs == dict(ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+
+        def iterencode(self, value):
+            yield "x" * (64 * 1024)
+            raise OSError("fabricated serialization failure")
+    monkeypatch.setattr(module.json, "JSONEncoder", FailedEncoder)
+    path = tmp_path / "audit.json"
+    with pytest.raises(OSError, match="serialization failure"):
+        module._write_audit(path, {})
+    assert path.read_bytes() == b"x" * (64 * 1024)
+
+
+def test_streamed_audit_rejects_nonfinite_json_values(tmp_path):
+    with pytest.raises(ValueError):
+        module._write_audit(tmp_path / "audit.json", {"bad": float("nan")})
+
+
 @pytest.fixture(autouse=True)
 def no_actual_network_database_or_normal_sources(monkeypatch):
     def denied(*args, **kwargs):
