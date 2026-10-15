@@ -176,23 +176,32 @@ def _fetch(opener, item, secret, output, manifest, number):
     manifest.append(entry)
     probe.persist(output / "requests.jsonl", dict(**record, event="attempt", at=probe.utc_now()), append=True)
     url = f"{probe.HOST}/svc/apis/sto/{item['service']}?basDd={item['bas_dd']}"
-    status = None
+    status, primary = None, None
     try:
-        with opener.open(Request(url, headers={"AUTH_KEY": secret}, method="GET"), timeout=20) as response:
-            status = response.status
-            if status != 200 or response.geturl() != url:
-                raise probe.ProbeRefusal("unexpected_response")
-            body = response.read(probe.MAX_RESPONSE_BYTES + 1)
-    except HTTPError as error:
-        status = error.code
-        error.close()
-        raise probe.ProbeRefusal("redirect_rejected" if 300 <= status < 400 else
-            "access_failure" if status in (401, 403) else "http_failure") from None
-    except (URLError, TimeoutError, OSError):
-        raise probe.ProbeRefusal("transport_failure") from None
+        try:
+            with opener.open(Request(url, headers={"AUTH_KEY": secret}, method="GET"), timeout=20) as response:
+                status = response.status
+                if status != 200 or response.geturl() != url:
+                    raise probe.ProbeRefusal("unexpected_response")
+                body = response.read(probe.MAX_RESPONSE_BYTES + 1)
+        except HTTPError as error:
+            status = error.code
+            error.close()
+            raise probe.ProbeRefusal("redirect_rejected" if 300 <= status < 400 else
+                "access_failure" if status in (401, 403) else "http_failure") from None
+        except (URLError, TimeoutError, OSError):
+            raise probe.ProbeRefusal("transport_failure") from None
+    except BaseException as error:
+        primary = error
+        raise
     finally:
-        probe.persist(output / "requests.jsonl", dict(**record, event="response", at=probe.utc_now(), http_status=status), append=True)
         entry["http_status"] = status
+        try:
+            probe.persist(output / "requests.jsonl", dict(**record, event="response", at=probe.utc_now(), http_status=status), append=True)
+        except BaseException as secondary:
+            if primary is None:
+                raise
+            primary.add_note("response ledger retention failed: " + type(secondary).__name__)
     if len(body) > probe.MAX_RESPONSE_BYTES:
         raise probe.ProbeRefusal("response_too_large")
     rows = probe.parse_response(body, secret)
