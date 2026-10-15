@@ -15,6 +15,7 @@ from datetime import date
 from decimal import Decimal, localcontext
 import math
 from statistics import median, stdev
+from typing import TYPE_CHECKING
 
 from research.activity_accounting import sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
@@ -27,6 +28,9 @@ from research.activity_quote_extension import CompositeHoldingInputs, _same, _va
 from research.activity_raw_quote_view import RawEpisodeQuoteInputs, validate_raw_quote_view
 from research.activity_replay import _check_event_quotes, _event_date, _quote, replay_synthetic
 from research.activity_timing import SessionLagPolicy
+
+if TYPE_CHECKING:
+    from research.activity_cohort_connection import CohortScopeBinding
 
 
 ARMS = ("D1", "D2")
@@ -171,7 +175,8 @@ def _events(events: tuple, quotes, parameters: dict, raw_quote_view) -> tuple:
     return ordered
 
 
-def _coverage(rows: tuple[CohortSelection, ...], quotes, events: tuple, parameters: dict) -> None:
+def _coverage(rows: tuple[CohortSelection, ...], quotes, events: tuple, parameters: dict, *,
+              origin_bounds: tuple[tuple[str, date, str, date, date], ...] | None = None) -> None:
     """Bound every potential lot without using prices to choose any target.
 
     Failed sales may retain an investment through end. Compulsory transitions
@@ -184,49 +189,60 @@ def _coverage(rows: tuple[CohortSelection, ...], quotes, events: tuple, paramete
     requested = set(quotes.requested_coordinates)
     needed = set()
     raw_codes = set() if type(quotes) is not RawEpisodeQuoteInputs else {row.code for row in quotes.raw_observations}
+    bounds = {}
+    if origin_bounds is not None:
+        require(type(origin_bounds) is tuple and all(type(row) is tuple and len(row) == 5
+            and type(row[0]) is str and type(row[1]) is date and type(row[2]) is str
+            and type(row[3]) is date and type(row[4]) is date and row[3] <= row[4] <= end
+            for row in origin_bounds), "immutable complete conditional origin bounds required")
+        bounds = {row[:4]: row[4] for row in origin_bounds}
+        expected = {(row.arm, row.formation_on, code, row.decision_on) for row in rows for code in row.chosen_codes}
+        require(len(bounds) == len(origin_bounds) and bounds.keys() == expected,
+            "conditional bounds must retain every chosen cohort origin")
 
-    def interval(code, start, available, stop, pending_raw=False):
+    def interval(code, start, available, stop, pending_raw=False, endpoint=end):
         require(code in panel, "every chosen or successor issue requires a supplied quote series")
         # The existing raw replay bypasses quotes only for event-created
         # spin-off carry. A stock-exchange successor still crosses that raw
         # boundary while unavailable and therefore needs explicit raw rows.
         first = start if code in raw_codes and not pending_raw else max(start, available)
-        needed.update((code, day) for day in calendar if first <= day <= end and day < stop)
+        needed.update((code, day) for day in calendar if first <= day <= endpoint and day < stop)
 
     for row in rows:
         # Keep every original investment separate even when two origins later
         # share a code. A transition must not erase an independently chosen lot.
-        possible = [(code, row.decision_on, row.decision_on, False, False) for code in row.chosen_codes]
+        possible = [(code, row.decision_on, row.decision_on, False, False,
+            bounds.get((row.arm, row.formation_on, code, row.decision_on), end)) for code in row.chosen_codes]
         for event in events:
             effective = _event_date(event)
             code = event.distribution.code if type(event) is FinalCashPayment else event.old_basis.code
             if effective > end:
                 continue
             following = []
-            for current_code, start, available, from_event, pending_raw in possible:
+            for current_code, start, available, from_event, pending_raw, endpoint in possible:
                 # Existing events retain supplied same-day order. Ordinary
                 # entries on that day occur after all events.
-                if (current_code != code or effective < start or (effective == start and not from_event)
+                if (current_code != code or effective < start or effective > endpoint or (effective == start and not from_event)
                         or (type(event) is CompulsorySpinOff
                         and row.decision_on > event.last_eligible_entry_on)):
-                    following.append((current_code, start, available, from_event, pending_raw))
+                    following.append((current_code, start, available, from_event, pending_raw, endpoint))
                     continue
-                interval(code, start, available, effective, pending_raw)
+                interval(code, start, available, effective, pending_raw, endpoint)
                 if type(event) is CompulsoryStockExchange:
-                    following.append((event.new_basis.code, effective, event.available_on, True, False))
+                    following.append((event.new_basis.code, effective, event.available_on, True, False, endpoint))
                 elif type(event) is CompulsorySpinOff:
-                    following.extend(((code, effective, event.retained_available_on, True, True),
-                        (event.new_basis.code, effective, event.new_available_on, True, True)))
+                    following.extend(((code, effective, event.retained_available_on, True, True, endpoint),
+                        (event.new_basis.code, effective, event.new_available_on, True, True, endpoint)))
                     due = calendar[calendar.index(row.decision_on) + parameters["holding_sessions"]]
                     if event.last_eligible_entry_on < due < event.effective_on:
                         for day in calendar:
-                            if due <= day < event.effective_on:
+                            if due <= day <= endpoint and day < event.effective_on:
                                 opening, _, frozen, _ = _quote(panel[code], calendar.index(day))
                                 require(not opening or frozen,
                                     "unsupported pre-effective spin-off sale would detach pending rights")
             possible = following
-        for code, start, available, _, pending_raw in possible:
-            interval(code, start, available, date.max, pending_raw)
+        for code, start, available, _, pending_raw, endpoint in possible:
+            interval(code, start, available, date.max, pending_raw, endpoint)
     require(needed <= requested, "complete chosen and possible descendant holding-input coverage required")
     positions = {day: index for index, day in enumerate(calendar)}
     for code, day in sorted(needed):
@@ -318,6 +334,7 @@ def replay_equal_capital_cohorts(
     declarations: tuple[CohortSelection, ...], holding_inputs: HoldingInputs | CompositeHoldingInputs,
     events: tuple, *, parameters: dict, raw_quote_view: RawEpisodeQuoteInputs | None = None,
     cohort_keys: tuple[tuple[str, str, date], ...] | None = None,
+    scope_binding: CohortScopeBinding | None = None,
 ) -> dict:
     """Validate the complete input family before replaying one or all cohorts.
 
@@ -328,10 +345,11 @@ def replay_equal_capital_cohorts(
     values survive in the output. Division and descriptive paths use precision
     28; only unannualized sample daily SD converts returns to float.
 
-    Coverage is conservative through evaluation end and does not consume the
-    existing conditional ordinary/component exit proofs. Bounded raw episodes
-    may therefore need a separately reviewed scope connection before actual
-    reuse. Pure success does not establish actual-input or execution readiness.
+    Without scope_binding coverage remains conservative through evaluation end.
+    An explicit binding recomputes existing ordinary/component proofs and final
+    reviewed intervals before any book; every resulting cohort is checked for
+    inventory surviving its own proved bounds. Full quote requests are retained.
+    Pure success does not establish actual-input or execution readiness.
     """
     require(type(parameters) is dict and encoded(parameters) == encoded(PARAMETERS),
         "unchanged canonical parameter bytes required")
@@ -342,7 +360,12 @@ def replay_equal_capital_cohorts(
     require(date.fromisoformat(parameters["end"]) in calendar, "evaluation end must be in the complete calendar")
     keyed = _declarations(declarations, calendar, parameters)
     ordered_events = _events(events, quotes, parameters, raw_quote_view)
-    _coverage(declarations, quotes, ordered_events, parameters)
+    binding = None
+    if scope_binding is not None:
+        from research.activity_cohort_connection import validate_cohort_scope, verify_cohort_inventory
+        binding = validate_cohort_scope(scope_binding, declarations, quotes, ordered_events, parameters=parameters)
+    else:
+        _coverage(declarations, quotes, ordered_events, parameters)
     if cohort_keys is None:
         selected_keys = tuple(sorted(keyed))
     else:
@@ -366,6 +389,8 @@ def replay_equal_capital_cohorts(
             result = replay_synthetic(calendar, quotes.panel, parameters, schedule,
                 dataset_sha256=quotes.quote_snapshot_sha256, events=ordered_events, initial_book=initial,
                 timing_policy=SessionLagPolicy(int(row.arm[-1]), paired=True), raw_quote_view=raw_quote_view)
+            if binding is not None:
+                verify_cohort_inventory(binding, row.arm, result)
             require(tuple(book.as_of for book in result.books) == days, "complete common cohort session path required")
             require(all(set(codes) == (set(row.chosen_codes) if formation == row.formation_on else set())
                 for formation, codes in result.selections), "fixed cohort targets changed during replay")
@@ -418,7 +443,9 @@ def replay_equal_capital_cohorts(
         "aggregation": "ex-post sum(cohort_NAV-1)/sum(original_activity_target_count/20); not a deployable continuous strategy",
         "control_interpretation": "five fixed controls share market sessions; not independent market samples; no p-values",
         "future_counts_used_only_for_ex_post_attribution": True,
-        "conditional_exit_bounds_consumed": False, "actual_input_reuse_readiness_established": False,
+        "conditional_exit_bounds_consumed": binding is not None,
+        "conditional_scope_binding_sha256": None if binding is None else binding.binding_sha256,
+        "actual_input_reuse_readiness_established": False,
         "comparison_power_prerequisite_met": False, "power_design_passed": False,
         "source_truth_certified": False, "event_coverage_certified": False, "price_basis_certified": False,
         "historical_vintage_certified": False, "promotion_allowed": False, "actual_study_completed": False}
