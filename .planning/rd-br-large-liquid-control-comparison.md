@@ -433,3 +433,37 @@ passed; Python 7,089 passed / 3 skipped in 2,063.54 seconds. The added actual
 configuration passed fixed-specification validation without any saved input,
 DB, API or study read. Separate source reviews, final-head four CI checks,
 normal merge and isolated research deployment precede the actual diagnostic.
+
+### First nominee diagnostic refusal and source-contract repair
+
+PR285 completed both separate final-commit reviews and all four CI checks,
+then normally squash-merged as `a72b40ace8717fe5ab255c74bd127e88450c57ec`.
+Its reviewed tree was deployed to the isolated GCP research checkout; the
+collector remained clean at its unchanged recorded version.
+
+The first registered diagnostic logged trial
+`15c852b7-6542-4a38-b16b-ce66a1ab92e0` as started then failed. All nine saved
+input hashes matched. It stopped at the scope-consumer manifest check before
+raw normal-source envelopes or the holding DB. Preserve its complete private
+failure/resource/input/source/log evidence; do not repeat or overwrite that
+root. D1/D2 CONTROL performance studies remain zero.
+
+The cause is a consumer/fixture contract error: the existing scope producer
+writes input-manifest.json separately and links its hash from result.json;
+it does not embed an input_manifest list in result.json. The new consumer and
+its fabricated fixture incorrectly required that nonexistent list. Repair the
+consumer to rely on the independently verified receipt's exact original input
+pins and already checked manifest-output hash link, retaining every source,
+summary, target, timing and false-claim check. Add a regression that feeds the
+actual pure scope producer's output shape instead of inventing an embedded
+manifest. This is an implementation correction, not a data finding, strategy
+failure, input/policy relaxation or extra performance variation.
+
+Release already consumed large metadata documents before reconstructing BI
+proofs; preserve the exact nine input reads/order, cached source scope and
+AS768/CPU300 limits. A separately reviewed/merged/deployed repair may execute
+one explicitly registered recovery into fresh
+`large-liquid-br-control-inputs-recovery-20261015-v1/run`, using the same fixed
+input specification and study parameters. New source/protocol/registration and
+fresh local receipts must be frozen first. No automatic retry, ACTIVITY replay,
+collector mutation, new API/credential, CONTROL performance or promotion.

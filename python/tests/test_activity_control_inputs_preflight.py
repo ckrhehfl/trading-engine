@@ -5,6 +5,7 @@ from decimal import Decimal
 import json
 from pathlib import Path
 import sqlite3
+import weakref
 
 import pytest
 
@@ -15,6 +16,7 @@ from research.activity_failure_inputs import load_activity_failure_inputs
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_pair_calibration import PARAMETERS
 from test_activity_control_normal_inputs import fixture as normal_fixture
+from test_activity_control_scope_preflight import fixture as scope_fixture, plan as scope_plan
 
 
 def specification():
@@ -53,8 +55,6 @@ def bind_scope(scope, activity_sha):
     scope.update(activity_snapshot_sha256=activity_sha, frontier_complete=False,
         compulsory_successor_closure_complete=False, control_targets_frozen=False,
         potential_holding_origins_bound_complete=False, holding_selection_executed=False, returns_computed=False)
-    scope["input_manifest"] = [{"role": role, "path": module.scope_source.INPUTS[role]["path"], "sha256": pin,
-        "expected_sha256": pin, "bytes": 0, "read_status": "hash_verified"} for role, pin in pins.items()]
     outputs = {name: str(index + 1) * 64 for index, name in enumerate(module.SCOPE_FILES)}
     for field, filename in (("specification_sha256", "specification.json"), ("source_manifest_sha256", "source-manifest.json"),
             ("input_manifest_sha256", "input-manifest.json"), ("resource_manifest_sha256", "resource-manifest.json")):
@@ -128,7 +128,7 @@ def fixture(tmp_path, monkeypatch, *, noneligible=False):
     monkeypatch.setattr(saved, "_bb_windows", lambda *a: ([bb_row], set()))
     monkeypatch.setattr(module.normal.prior, "population_snapshot", lambda *a: {"prior_dispositions": [bh_row]})
     monkeypatch.setattr(module.scope_source, "bi_metadata", lambda *a: {"snapshot_sha256": loaded.snapshot.dataset_sha256})
-    recomputed = {key: deepcopy(value) for key, value in scope.items() if key not in {"input_manifest",
+    recomputed = {key: deepcopy(value) for key, value in scope.items() if key not in {
         "specification_sha256", "source_manifest_sha256", "input_manifest_sha256", "resource_manifest_sha256"}}
     monkeypatch.setattr(module.scope_source, "plan_control", lambda *a: recomputed)
     fresh = deepcopy(data["population_audit"]["rows"])
@@ -186,6 +186,47 @@ def test_integrated_runner_logs_first_freezes_db_scope_and_reuses_real_restore_s
     assert all(row["state"] == "provisional_candidate" for row in exits["entries"])
 
 
+def test_raw_input_roots_are_released_before_bi_recompute_and_restore_with_the_same_nine_reads(tmp_path, monkeypatch):
+    root, output, runs, _, store, _, _ = fixture(tmp_path, monkeypatch)
+    expected = ["calendar_manifest", "bb_result", "bh_result", "au_result", "bi_result",
+        "br_scope_result", "br_scope_verification", "bl_population_audit", "br_adjudication"]
+    disposable = {"calendar_manifest", "bb_result", "bh_result", "au_result", "br_scope_verification"}
+    references, reads, stages = {}, [], []
+    class TrackedDict(dict):
+        __slots__ = ("__weakref__",)
+    original_json = saved.PinnedInputs.json
+    def json_input(self, path, pin, role):
+        value = original_json(self, path, pin, role)
+        reads.append(role)
+        if role in disposable:
+            value = TrackedDict(value)
+            references[role] = weakref.ref(value)
+        return value
+    monkeypatch.setattr(saved.PinnedInputs, "json", json_input)
+    original_plan, original_metadata, original_restore = module.plan_windows, module.scope_source.bi_metadata, module.restore_activity_failure
+    def plan(*args):
+        stages.append("plan_windows")
+        return original_plan(*args)
+    def released():
+        assert reads == expected and set(references) == disposable
+        assert all(value() is None for value in references.values())
+    def metadata(*args):
+        released()
+        assert stages == ["plan_windows"]
+        stages.append("bi_metadata")
+        return original_metadata(*args)
+    def restore(*args):
+        released()
+        assert stages == ["plan_windows", "bi_metadata"]
+        stages.append("restore")
+        return original_restore(*args)
+    monkeypatch.setattr(module, "plan_windows", plan)
+    monkeypatch.setattr(module.scope_source, "bi_metadata", metadata)
+    monkeypatch.setattr(module, "restore_activity_failure", restore)
+    module.run_preflight(root, root / "spec.json", output, runs, reader=store.__getitem__)
+    assert stages == ["plan_windows", "bi_metadata", "restore"] and statuses(runs) == ["started", "completed"]
+
+
 def test_noneligible_reviewed_nominee_preserves_refusal_before_any_db_price_access(tmp_path, monkeypatch):
     root, output, runs, _, store, _, _ = fixture(tmp_path, monkeypatch, noneligible=True)
     monkeypatch.setattr(module.prices, "load_scan", lambda *a: pytest.fail("noneligible nominee opened holding DB"))
@@ -223,7 +264,8 @@ def test_source_change_after_diagnostic_cannot_publish_completed_result(tmp_path
     assert (output / "holding-input-audit.json").exists() and not (output / "result.json").exists()
 
 
-@pytest.mark.parametrize("corruption", ["output_link", "input_link", "summary", "targets", "flag", "count"])
+@pytest.mark.parametrize("corruption", ["output_link", "input_link", "input_missing", "input_extra", "manifest_link",
+    "manifest_output", "invalid_pin", "summary", "targets", "flag", "count"])
 def test_scope_receipt_cannot_certify_another_output_or_target_declaration(corruption):
     data = normal_fixture()
     scope = data["scope"]
@@ -232,11 +274,48 @@ def test_scope_receipt_cannot_certify_another_output_or_target_declaration(corru
     declared = {"br_scope_result": {"sha256": receipt["output_sha256"]["result.json"]}}
     if corruption == "output_link": receipt["output_sha256"]["result.json"] = "f" * 64
     elif corruption == "input_link": receipt["input_sha256"]["bi_result"] = "f" * 64
+    elif corruption == "input_missing": del receipt["input_sha256"]["bi_result"]
+    elif corruption == "input_extra": receipt["input_sha256"]["unexpected"] = "f" * 64
+    elif corruption == "manifest_link": scope["input_manifest_sha256"] = "f" * 64
+    elif corruption == "manifest_output": receipt["output_sha256"]["input-manifest.json"] = "f" * 64
+    elif corruption == "invalid_pin": receipt["output_sha256"]["input-manifest.json"] = "unknown"
     elif corruption == "summary": receipt["summary"]["source_rows"] = 1
     elif corruption == "targets": receipt["activity_preopening_k"]["20200301"]["D1"] = 5
     elif corruption == "flag": receipt["eligible_control_certified"] = True
     else: receipt["D1_completed_studies"] = 1
     with pytest.raises(ValueError): module.validate_scope(scope, receipt, declared, "a" * 64)
+
+
+def test_actual_scope_producer_plan_contract_has_a_separate_manifest_hash_and_no_embedded_list():
+    scope = scope_plan(scope_fixture())
+    assert "input_manifest" not in scope
+    before = deepcopy(scope)
+    activity_sha = scope["activity_snapshot_sha256"]
+    receipt = bind_scope(scope, activity_sha)
+    assert "input_manifest" not in scope and len(receipt["input_sha256"]) == 10
+    assert {key: scope[key] for key in before} == before
+    assert scope["input_manifest_sha256"] == receipt["output_sha256"]["input-manifest.json"]
+    declared = {"br_scope_result": {"sha256": receipt["output_sha256"]["result.json"]}}
+    module.validate_scope(scope, receipt, declared, activity_sha)
+
+
+def test_wrong_separate_scope_manifest_hash_preserves_failure_before_holding_database(tmp_path, monkeypatch):
+    root, output, runs, spec, store, _, _ = fixture(tmp_path, monkeypatch)
+    role = "br_scope_verification"
+    path = Path(spec["inputs"][role]["path"])
+    receipt = saved.strict_json(store[path])
+    receipt["output_sha256"]["input-manifest.json"] = "f" * 64
+    store[path] = saved.encoded(receipt)
+    spec["inputs"][role]["sha256"] = saved.digest(store[path])
+    monkeypatch.setattr(module.prices, "load_scan", lambda *args: pytest.fail("invalid scope opened holding DB"))
+    with pytest.raises(ValueError, match="scope internal output links"):
+        module.run_preflight(root, root / "spec.json", output, runs, reader=store.__getitem__)
+    failure = saved.strict_json((output / "failure.json").read_bytes())
+    assert statuses(runs) == ["started", "failed"] and failure["automatic_retries"] == 0
+    assert len(failure["actual_inputs_attempted"]) == 9
+    assert all(row["read_status"] == "hash_verified" for row in failure["actual_inputs_attempted"])
+    assert not (output / "normal-read-scope.json").exists() and not (output / "read-scope.json").exists()
+    assert not (output / "result.json").exists()
 
 
 def test_input_cannot_alias_log_or_existing_output_and_retry_does_not_read(tmp_path, monkeypatch):
