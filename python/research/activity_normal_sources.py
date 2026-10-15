@@ -171,7 +171,8 @@ def _formation_rows(day: str, rows: dict, observations: dict, observation_positi
 
 
 def load_sources(spec_inputs: dict, inputs: saved.PinnedInputs, schedule: list[dict],
-                 calendar: tuple[date, ...], potential_keys: set[tuple[str, str]], output: Path) -> dict:
+                 calendar: tuple[date, ...], potential_keys: set[tuple[str, str]], output: Path, *,
+                 expected_window_count: int = 36) -> dict:
     """Read only pinned saved source data after the caller's durable start.
 
     The input manifest belongs to the caller's shared PinnedInputs instance.
@@ -180,8 +181,10 @@ def load_sources(spec_inputs: dict, inputs: saved.PinnedInputs, schedule: list[d
     """
     SessionLagPolicy._calendar(calendar)
     formations = [row["formation"] for row in schedule]
+    saved.require(type(expected_window_count) is int and expected_window_count > 0,
+                  "expected source window count must be a positive integer")
     saved.require(formations == list(saved.formation.DATES)
-                  and len(potential_keys) == POTENTIAL_WINDOWS
+                  and len(potential_keys) == expected_window_count
                   and all(formation in formations and saved.probe.id_kind(code) == "short6"
                           for formation, code in potential_keys), "invalid fixed source population geometry")
     positions = {day.strftime("%Y%m%d"): index for index, day in enumerate(calendar)}

@@ -80,7 +80,7 @@ def _window(
 
 def accepted_period(
     accepted_record: dict, *, formation: date, code: str, isin: str,
-    required_dates: tuple[date, ...],
+    required_dates: tuple[date, ...], evidence_label: str = "BK",
 ) -> IdentityPeriod:
     """Connect one exact BK window; never broaden its adjudicated boundaries."""
     if (type(formation) is not date or not required_dates
@@ -120,8 +120,9 @@ def accepted_period(
                 or passage.get("literal_text_present_in_raw_html") is not True):
             raise ValueError("BK positive raw/readable passage coordinates are required")
         _text(passage.get("text"), "BK passage text")
+    _text(evidence_label, "evidence label")
     return IdentityPeriod(code, start, end, known_on, True,
-                          f"BK bounded inferred decision {receipt}; raw={raw}; readable={readable}")
+                          f"{evidence_label} bounded inferred decision {receipt}; raw={raw}; readable={readable}")
 
 
 def _reasons(candidate: dict | None) -> list[str]:
@@ -144,7 +145,7 @@ def assemble_window(
     calendar: tuple[date, ...], formation: date, code: str, isin: str,
     listing_date: date, observations: Mapping[date, ScreenObservation],
     capitalization: PublishedValue, liquidity: Mapping[date, ScreenObservation],
-    accepted_record: dict, params: dict,
+    accepted_record: dict, params: dict, *, evidence_label: str = "BK",
 ) -> dict:
     """Return both fixed timing arms for one already partitioned possible window.
 
@@ -170,7 +171,7 @@ def assemble_window(
     if required_dates != calendar[calendar.index(required_dates[0]):index + 1]:
         raise ValueError("activity dates must exactly cover the oldest-through-formation interval")
     period = accepted_period(accepted_record, formation=formation, code=code, isin=isin,
-                             required_dates=required_dates)
+                             required_dates=required_dates, evidence_label=evidence_label)
     if type(listing_date) is not date or listing_date > required_dates[0]:
         raise ValueError("source listing bound must precede every required activity observation")
     if not isinstance(capitalization, PublishedValue):
