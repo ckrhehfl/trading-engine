@@ -535,3 +535,39 @@ verifier passed 41 synthetic cases; the private ordinary assembly and its caller
 passed 73, and the CONTROL publication helper passed 26 injected/mock cases.
 These tests perform no actual market, source-body, DB/API or performance access.
 Full project checks are in progress. Actual CONTROL executions remain zero.
+
+### Complete ordinary declarations and fixed actual configuration
+
+The three source refusals were resolved without replacing their original
+packages: two saved LG histories needed one narrow price-marker correction for
+grammatical `주주가 ... 한국증권거래소`, and Samsung Fire's attachment identified one
+explicit primary report. The latter used exactly two public requests. Separate
+content review of the recovered leaves retains inferred strength and exact
+periods; the old LG spin-off precedes these later CONTROL purchases.
+
+The first declaration assembly refused before its pure builder because one
+manual review uses a nested inventory pin while others use a flat pin. Preserve
+that failure and all original reads. A separately reviewed recovery accepted
+both explicit shapes while refusing conflicts, without changing any source or
+manual decision. It checked 45 raw/readable pairs and 190 literal passages and
+assembled 45 new intervals plus six reused pieces into the exact 49-window,
+11,257-calendar-day union. Original references, identity context and strength
+remain preserved. No events/bases or compulsory descendants are declared on
+this ordinary path; these are reviewed inferences, not source certificates.
+
+The committed `activity-control-comparison-v1.json` pins sixteen exact saved
+roles, including the original verified ACTIVITY pair, the BR diagnostic and
+receipt, and the new coverage/basis/bound declarations. Canonical validation
+reads no actual input and preserves the failed power flags. The final caller
+must independently resolve the complete source prefix and verify U_prior and
+all holding proof/interval contracts before either book; declarations alone
+do not discharge those checks.
+
+The full WSL project check passed guardrail suites and 7,194 Python tests with
+three skips in 1,814.48 seconds. A subsequent small memory-lifetime correction
+delays bulky holding/original documents until after population decoding and
+counted selection release. Its related 99 tests passed in 43.70 seconds and the
+unchanged publication contract passed 26 in 26.48 seconds. The AS768 limit is
+retained; actual full-input RSS has not been measured. Final commit reviews,
+four required CI checks, normal merge and exact isolated deployment remain
+required before the one registered CONTROL pair and saved-result verification.

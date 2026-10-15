@@ -317,9 +317,12 @@ def test_large_document_roots_are_released_before_books(tmp_path, monkeypatch):
     root, output, runs, spec, store, _ = fixture(tmp_path, monkeypatch)
     class TrackedDict(dict):
         __slots__ = ("__weakref__",)
-    references = {}
+    references, read_order = {}, []
     original_json = saved.PinnedInputs.json
     def read_json(self, path, pin, role):
+        read_order.append(role)
+        if role in module.DEFERRED_ROLES:
+            assert "br_population_audit" in references and references["br_population_audit"]() is None
         value = original_json(self, path, pin, role)
         if role in ("br_population_audit", "br_scope_result", "br_result", "br_verification", "br_read_scope", "br_holding_input_audit"):
             value = TrackedDict(value)
@@ -343,6 +346,8 @@ def test_large_document_roots_are_released_before_books(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "bind_control_holding_scope", bind)
     monkeypatch.setattr(module.control, "replay_bound_control", replay)
     module.run_preflight(root, root / "spec.json", output, runs, reader=store.__getitem__)
+    assert read_order == [role for role in module.ROLES if role not in ("br_population_audit", *module.DEFERRED_ROLES)] \
+        + ["br_population_audit", *module.DEFERRED_ROLES]
 
 
 def test_cli_keeps_fixed_cpu_and_wall_limits_with_external_address_space_wrapper(monkeypatch, capsys):

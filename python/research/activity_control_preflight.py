@@ -48,6 +48,8 @@ ROLES = ("br_scope_result", "br_result", "br_verification", "br_population_audit
     "br_provisional_exit_scope", "control_bounds", "reviewed_action_coverage", "basis_evidence",
     "original_activity_report", "original_activity_replay", "original_activity_specification",
     "original_activity_verification")
+DEFERRED_ROLES = ("br_holding_input_audit", "original_activity_report", "original_activity_replay",
+    "original_activity_specification", "original_activity_verification")
 POWER_FLAGS = ("comparison_power_prerequisite_met", "power_design_passed")
 
 
@@ -122,7 +124,7 @@ def _verify_br(documents: dict, pins: dict) -> dict:
     saved.require(scope.get("activity_snapshot_sha256") == result["activity_snapshot_sha256"]
         and documents["br_read_scope"].get("input_sha256") == producer_pins
         and documents["br_read_scope"].get("normal_input_audit_sha256") == pins["br_normal_input_audit"]
-        and documents["br_holding_input_audit"].get("summary") == result.get("holding_summary") == receipt.get("holding_summary")
+        and result.get("holding_summary") == receipt.get("holding_summary")
         and result.get("normal_summary") == receipt.get("normal_summary")
         and type(result.get("provisional_exit_entries")) is int
         and result["provisional_exit_entries"] == receipt.get("provisional_exit_entries")
@@ -217,18 +219,21 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     pins = {role: spec["inputs"][role]["sha256"] for role in ROLES}
     def load(role):
         return inputs.json(Path(spec["inputs"][role]["path"]), pins[role], role)
-    # Do not retain raw bytes or the large population alongside restored quotes.
-    documents = {role: load(role) for role in ROLES if role != "br_population_audit"}
+    # Keep bulky holding/original books out of the population JSON decode peak.
+    documents = {role: load(role) for role in ROLES if role not in ("br_population_audit", *DEFERRED_ROLES)}
     producer_pins = _verify_br(documents, pins)
     scope, read_scope = documents["br_scope_result"], documents["br_read_scope"]
     calendar = tuple(date.fromisoformat(day) for day in read_scope["calendar_dates"])
-    _verify_original(documents, pins, calendar, documents["br_result"]["activity_snapshot_sha256"])
     declarations = _bounds(documents.pop("control_bounds"), spec["parameters"],
         documents["br_provisional_exit_scope"]["calendar_sha256"], pins["reviewed_action_coverage"])
     population = load("br_population_audit")
     selections = counted_selections_from_br(calendar, spec["parameters"], scope, population,
         documents["br_control_dispositions"], documents["br_normal_input_audit"], declarations)
     del population, declarations
+    documents.update({role: load(role) for role in DEFERRED_ROLES})
+    saved.require(documents["br_holding_input_audit"].get("summary") == documents["br_result"].get("holding_summary"),
+        "BR holding audit summary mismatch")
+    _verify_original(documents, pins, calendar, documents["br_result"]["activity_snapshot_sha256"])
     result_input = documents["br_result"]
     bound = bind_control_holding_scope(selections, calendar=calendar, parameters=spec["parameters"], scope=scope,
         dispositions=documents["br_control_dispositions"], normal_audits=documents["br_normal_input_audit"],
