@@ -467,3 +467,71 @@ one explicitly registered recovery into fresh
 input specification and study parameters. New source/protocol/registration and
 fresh local receipts must be frozen first. No automatic retry, ACTIVITY replay,
 collector mutation, new API/credential, CONTROL performance or promotion.
+
+### Nominee input recovery and independent saved-output verification
+
+PR286 normally squash-merged as `a2fb7ed111215ab5c7a36fbffe8ab85dd8358ed2`
+after both final source reviews, all four exact-head CI checks and no unresolved
+review threads. Its reviewed tree was fast-forwarded into the isolated GCP
+research checkout. The operational collector checkout was unchanged and clean;
+no collector process-health claim follows from this Git check.
+
+One separately registered recovery completed the unchanged nominee diagnostic.
+The first independent publication then refused before any verification inputs:
+its remote wrapper tried to stat the local WSL receipt directory as the GCP
+research user. Preserve that wrapper failure. A separately reviewed locality
+repair retained the original verifier, fourteen output pins, four saved evidence
+inputs and resource limits, and completed once into fresh recovery roots.
+
+Independent saved-output verification confirmed 35,271 complete source rows,
+875 numeric possibilities and 59 reviewed normal windows across 36 codes. The
+other 816 numeric possibilities remain unresolved, not excluded. The typed
+holding audit contains 27,468 requested code-dates, zero absent rows, 27,451
+observed rows and 17 frozen rows, plus 118 paired provisional exit entries.
+The original population-audit byte pin is unchanged. This confirms internal
+arithmetic/lineage and typed-row consistency, not source truth, historical
+vintage, event coverage, units, final prefixes, successor closure or returns.
+
+The one price-free holding-gap allocation used only the new provisional scope,
+bounded issuer ledger and old 33 ordinary review fragments. Its output SHA is
+`b453e7ba3315c7ed29ed678683f1467f662a831fd12335bda9957bbd3da0b7eb`.
+There are 49 required initial child windows, six reused intersection pieces
+and 45 source-work ranges with explicit CIK joins; none has a missing CIK.
+Separate calendar-day set arithmetic confirmed the complete non-overlapping
+reuse/gap partition and that reuse never extends the original reference bounds.
+These are initial source-work intervals, not final ordinary or successor bounds.
+CONTROL D1/D2 performance executions remain zero; original ACTIVITY is unchanged.
+
+### Fixed CONTROL caller and reviewed ordinary evidence preparation
+
+The new BR connector retains every source row and resolves only the fixed hash
+prefix. Unknown numeric rows remain unknown, and a prefix/origin outside the
+reviewed nominee union refuses before books. Explicit successor-aware U_prior
+declarations carry all previous possible origins irrespective of fills. Preserve
+the BR producer input pins for its original quote/exit proof; consumer evidence
+pins are separate. Paired nominee projections validate the unchanged conservative
+quote union, while counted declarations determine actual CONTROL targets.
+
+The pure ordinary connector checks both original target ceilings, populations,
+timing arms and complete reviewed intervals before either CONTROL book. A
+compulsory descendant or unknown interval requires the existing event preparation
+path; it cannot be dropped. Reuse existing accounting, exits and costs. Restore
+the original saved ACTIVITY books without rerunning them. The logged caller fixes
+sixteen saved roles, seven exclusive outputs and the failed power flags. Actual
+configuration, independent final review, CI, normal merge and isolated deployment
+still precede the one CONTROL pair. Pure source/synthetic success is not a study.
+
+Bounded public history acquisition produced 42 accepted leaves and three parser
+refusals over 45 fixed work queries. Content review distinguishes subsidiary
+transactions, own treasury cancellations, earlier events, and surviving-issuer
+new issuance from compulsory changes to an existing external common-share lot.
+The judgments are explicitly inferred over exact supplied intervals, not an
+exhaustive action ledger or historical API availability proof. Preserve every
+original refusal and manual unknown alongside separately reviewed corrections.
+
+Focused source verification passed 174 tests across the caller, connection,
+replay, report and original paired caller. The independent saved-result arithmetic
+verifier passed 41 synthetic cases; the private ordinary assembly and its caller
+passed 73, and the CONTROL publication helper passed 26 injected/mock cases.
+These tests perform no actual market, source-body, DB/API or performance access.
+Full project checks are in progress. Actual CONTROL executions remain zero.
