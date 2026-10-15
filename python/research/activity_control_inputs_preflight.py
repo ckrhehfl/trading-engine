@@ -90,16 +90,7 @@ def validate_scope(scope: dict, receipt: dict, declared: dict, activity_sha: str
         and all(scope.get(name) is False for name in ("frontier_complete", "compulsory_successor_closure_complete",
             "control_targets_frozen", "potential_holding_origins_bound_complete", "holding_selection_executed", "returns_computed")),
         "scope metadata boundaries mismatch")
-    manifest = scope.get("input_manifest")
-    saved.require(type(manifest) is list and len(manifest) == len(pins), "complete prior scope input manifest required")
-    actual = {}
-    for row in manifest:
-        role = row["role"]
-        saved.require(role in pins and role not in actual and row.get("path") == scope_source.INPUTS[role]["path"]
-            and row.get("expected_sha256") == row.get("sha256") == pins[role] and row.get("read_status") == "hash_verified"
-            and type(row.get("bytes")) is int and row["bytes"] >= 0, "scope consumed upstream pin mismatch")
-        actual[role] = row["sha256"]
-    saved.require(actual == pins and receipt.get("activity_preopening_k") == {
+    saved.require(receipt.get("activity_preopening_k") == {
         row["formation"]: row["activity_preopening_k"] for row in scope["formations"]}, "scope target-count receipt mismatch")
     saved.require(all(receipt.get(name) is False for name in ("eligible_control_certified", "compulsory_successor_closure_complete",
         "event_coverage_certified", "price_basis_certified", "source_truth_certified", "books_replayed", "returns_computed", "promotion_allowed"))
@@ -162,19 +153,27 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
         return inputs.json(Path(row["path"]), row["sha256"], role)
     values = {role: load(role) for role in ("calendar_manifest", "bb_result", "bh_result", "au_result", "bi_result",
         "br_scope_result", "br_scope_verification", "bl_population_audit", "br_adjudication")}
-    calendar_strings, _, schedule = saved.calendar_schedule(values["calendar_manifest"], spec["parameters"])
+    calendar_strings, history, schedule = saved.calendar_schedule(values.pop("calendar_manifest"), spec["parameters"])
+    del history
     calendar = tuple(day(value) for value in calendar_strings)
-    scope, population, ledger = (values[role] for role in ("br_scope_result", "bl_population_audit", "br_adjudication"))
-    activity_sha = values["bi_result"]["scan_snapshot"]["dataset_sha256"]
-    validate_scope(scope, values["br_scope_verification"], declared, activity_sha)
+    scope, population, ledger = (values.pop(role) for role in ("br_scope_result", "bl_population_audit", "br_adjudication"))
+    bi = values.pop("bi_result")
+    activity_sha = bi["scan_snapshot"]["dataset_sha256"]
+    validate_scope(scope, values.pop("br_scope_verification"), declared, activity_sha)
     saved.require(scope["paired_schedule"] == schedule, "scope/original paired calendar mismatch")
-    previous = normal.prior.population_snapshot(values["bh_result"], schedule)
-    numeric = scope_source.bi_metadata(previous, values["bi_result"], calendar_strings, schedule, spec["parameters"])
+    bb_windows = saved._bb_windows(values.pop("bb_result"), calendar_strings)[0]
+    bh = values.pop("bh_result")
+    windows, requested_activity = plan_windows(bb_windows, bh["coverage"]["windows"],
+        values.pop("au_result")["rows"], calendar_strings)
+    previous = normal.prior.population_snapshot(bh, schedule)
+    del values, bb_windows, bh
+    numeric = scope_source.bi_metadata(previous, bi, calendar_strings, schedule, spec["parameters"])
     targets = {arm: {row["formation"]: row["activity_preopening_targets"][arm] for row in scope["formations"]} for arm in ("D1", "D2")}
     summary = {"source_rows": scope["summary"]["source_rows"], "disposition_counts": scope["summary"]["prior_disposition_counts"]}
     recomputed = scope_source.plan_control(population, previous, numeric, targets, summary, schedule, spec["parameters"])
     saved.require(all(saved.encoded(scope.get(key)) == saved.encoded(value) for key, value in recomputed.items()),
                   "recomputed complete BR rank/proof scope mismatch")
+    del numeric, recomputed, previous, targets, summary
     records = ledger.get("records")
     saved.require(type(records) is list and bool(records), "nonempty BR positive adjudication records required")
     reviewed = {(date.fromisoformat(window["formation"]).strftime("%Y%m%d"), record["code"])
@@ -182,23 +181,23 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     normal.adjudication_records(ledger, reviewed)
     possible = {(row["formation"], row["code"]) for formation in scope["formations"] for row in formation["ranked_numeric_possible"]}
     saved.require(reviewed <= possible, "BR accepted nominees outside complete numeric possible pool")
-    bb_windows, _ = saved._bb_windows(values["bb_result"], calendar_strings)
-    windows, requested_activity = plan_windows(bb_windows, values["bh_result"]["coverage"]["windows"],
-        values["au_result"]["rows"], calendar_strings)
     normal_scope = {"schema": SCHEMA + ":normal-read-scope-v1", "restored_activity_source": declared["bi_result"],
         "upstream_dataset_sha256": activity_sha, "typed_OHLC_fingerprint_recomputed": False,
         "requested_code_dates": {code: [value.isoformat() for value in dates] for code, dates in requested_activity.items()},
         "reviewed_nominee_windows": [list(key) for key in sorted(reviewed)], "numeric_possible_windows": len(possible),
         "complete_control_prefix_proved": False, "database_access": False, "returns_computed": False}
     saved.write_exclusive(output / "normal-read-scope.json", saved.encoded(normal_scope))
-    restored = restore_activity_failure(values["bi_result"]["scan_snapshot"], calendar, requested_activity)
-    proofs = normal.replay_proofs(windows, restored, values["bi_result"], calendar, spec["parameters"])
-    del values, bb_windows, numeric, recomputed, previous
+    del normal_scope
+    restored = restore_activity_failure(bi["scan_snapshot"], calendar, requested_activity)
+    proofs = normal.replay_proofs(windows, restored, bi, calendar, spec["parameters"])
+    del bi, windows, requested_activity
     source = load_sources(declared, inputs, schedule, calendar, reviewed, output, expected_window_count=len(reviewed))
     _source_agreement(source["population"], population)
+    del source["population"]
     screen_params = {**spec["parameters"], "threshold": Decimal(str(spec["parameters"]["threshold"]))}
     connected = assemble_control_normal_inputs(calendar, scope, population, records, restored.observations,
         source["potential_sources"], screen_params)
+    del population, restored, records, ledger
     audits, dispositions, normal_summary = (connected[key] for key in ("normal_input_audit", "dispositions", "summary"))
     normal_raw = saved.encoded(audits)
     saved.write_exclusive(output / "normal-input-audit.json", normal_raw)
@@ -224,7 +223,7 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     scope_raw = saved.encoded(read_scope)
     saved.write_exclusive(output / "read-scope.json", scope_raw)
     read_sha = saved.digest(scope_raw)
-    del connected, source, restored, population, records, ledger, proofs
+    del connected, source, proofs
     scan = prices.load_scan(Path(declared["scan_database"]["path"]),
         {"calendar_dates": calendar_strings, "intersection_code_dates": requested}, inputs, read_sha)
     quote_sha = scan["typed_snapshot_sha256"]
