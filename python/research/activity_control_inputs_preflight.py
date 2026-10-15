@@ -193,9 +193,11 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     del bi, windows, requested_activity
     source = load_sources(declared, inputs, schedule, calendar, reviewed, output, expected_window_count=len(reviewed))
     _source_agreement(source["population"], population)
+    del source["population"]
     screen_params = {**spec["parameters"], "threshold": Decimal(str(spec["parameters"]["threshold"]))}
     connected = assemble_control_normal_inputs(calendar, scope, population, records, restored.observations,
         source["potential_sources"], screen_params)
+    del population, restored, records, ledger
     audits, dispositions, normal_summary = (connected[key] for key in ("normal_input_audit", "dispositions", "summary"))
     normal_raw = saved.encoded(audits)
     saved.write_exclusive(output / "normal-input-audit.json", normal_raw)
@@ -221,7 +223,7 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     scope_raw = saved.encoded(read_scope)
     saved.write_exclusive(output / "read-scope.json", scope_raw)
     read_sha = saved.digest(scope_raw)
-    del connected, source, restored, population, records, ledger, proofs
+    del connected, source, proofs
     scan = prices.load_scan(Path(declared["scan_database"]["path"]),
         {"calendar_dates": calendar_strings, "intersection_code_dates": requested}, inputs, read_sha)
     quote_sha = scan["typed_snapshot_sha256"]
