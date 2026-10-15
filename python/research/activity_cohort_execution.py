@@ -170,6 +170,8 @@ def run_cohort_family(
         saved.write_exclusive(output / "cohort-plan.json", plan_raw)
         with localcontext() as context:
             context.prec = 28
+            prepared, execute = comparison._prepare_cohort_replay(declarations, holding_inputs, events,
+                parameters=parameters, raw_quote_view=raw_quote_view, scope_binding=scope_binding)
             for ordinal, key in enumerate(keys, 1):
                 declaration = keyed[key]
                 name = f"cohort-{ordinal:04d}-{key[0]}-{key[1]}-{key[2].isoformat()}"
@@ -180,8 +182,7 @@ def run_cohort_family(
                     nonlocal compact
                     attempted.append(key)
                     try:
-                        one = comparison.replay_equal_capital_cohorts(declarations, holding_inputs, events,
-                            parameters=parameters, raw_quote_view=raw_quote_view, cohort_keys=(key,), scope_binding=scope_binding)
+                        one = execute(prepared, (key,))
                         saved.require(len(one["cohorts"]) == 1 and one["cohorts"][0]["key"] == key,
                             "one exact declared cohort per trial required")
                         cohort = one["cohorts"][0]

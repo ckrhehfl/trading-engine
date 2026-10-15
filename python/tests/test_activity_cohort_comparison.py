@@ -70,13 +70,14 @@ def quotes(calendar, *, changes=None, scope=None, scope_pin=SCOPE):
         read_scope_sha256=scope_pin, activity_snapshot_sha256=ACTIVITY)
 
 
-def case(ks=(2, 1), *, changes=None, scope=None):
-    calendar = tuple(date(2026, 9, 18) - timedelta(days=314 - index) for index in range(317))
+def case(ks=(2, 1), *, changes=None, scope=None, end_index=None):
+    end_index = 60 + 126 * len(ks) + 2 if end_index is None else end_index
+    calendar = tuple(date(2026, 9, 18) - timedelta(days=end_index - index) for index in range(end_index + 3))
     population = tuple((code, f"synthetic_ISIN_{code}") for code in CODES)
     result = []
     for lag in (1, 2):
         arm, policy = f"D{lag}", SessionLagPolicy(lag, paired=True)
-        for index, k in zip((60, 186), ks, strict=True):
+        for index, k in zip(range(60, 60 + 126 * len(ks), 126), ks, strict=True):
             formation, decision, cutoff = calendar[index], policy.execution_on(calendar, index), policy.selection_at(calendar, index)
             targets = tuple(sorted(CODES, key=lambda code: hashlib.sha256(
                 f"{PARAMETERS['seed']}:{formation}:{code}".encode()).digest()))[:k]
@@ -99,6 +100,68 @@ def run(values, *, events=(), keys=None, parameters=None):
 def cohort(result, arm="D1", group="ACTIVITY", formation=None):
     return next(row for row in result["cohorts"] if row["arm"] == arm and row["group_id"] == group
         and (formation is None or row["formation_on"] == formation))
+
+
+def test_issued_context_reuses_full_validation_and_preserves_every_original_cohort(monkeypatch):
+    from research.activity_paired_replay import _json_value
+    values = case()
+    complete = run(values)
+    counts = {name: 0 for name in ("_quotes", "_coverage", "_declarations")}
+    for name in counts:
+        original = getattr(module, name)
+        def counted(*args, _name=name, _original=original, **kwargs):
+            counts[_name] += 1
+            return _original(*args, **kwargs)
+        monkeypatch.setattr(module, name, counted)
+    parameters = deepcopy(PARAMETERS)
+    prepared, execute = module._prepare_cohort_replay(*values, (), parameters=parameters)
+    for original in complete["cohorts"]:
+        current = execute(prepared, (original["key"],))
+        assert _json_value(current["cohorts"]) == _json_value((original,))
+    assert counts == {name: 1 for name in counts}
+    other, other_execute = module._prepare_cohort_replay(*values, (), parameters=parameters)
+    assert other is not prepared and other_execute is not execute
+    assert counts == {name: 2 for name in counts}
+    with pytest.raises(ValueError, match="issued prepared"):
+        other_execute(prepared, (complete["cohorts"][0]["key"],))
+
+
+@pytest.mark.parametrize("change", ["copy", "type", "context", "quotes", "observation", "declaration", "parameters"])
+def test_forged_or_stale_prepared_context_refuses_before_any_book(monkeypatch, change):
+    values = case()
+    parameters = deepcopy(PARAMETERS)
+    prepared, execute = module._prepare_cohort_replay(*values, (), parameters=parameters)
+    candidate = prepared
+    if change == "copy": candidate = replace(prepared)
+    elif change == "type": candidate = object()
+    elif change == "context": object.__setattr__(prepared, "days", ())
+    elif change == "quotes": object.__setattr__(values[1], "series", ())
+    elif change == "observation": object.__setattr__(values[1].observations[0], "code", "changed")
+    elif change == "declaration": object.__setattr__(values[0][0], "activity_targets_sha256", "f" * 64)
+    else: parameters["slippage_bps_per_side"] = 0.0
+    monkeypatch.setattr(module, "replay_synthetic", lambda *a, **k: pytest.fail("changed prepared input reached a book"))
+    key = prepared.keyed[0][0]
+    with pytest.raises(ValueError):
+        execute(candidate, (key,))
+
+
+def test_complete_fourteen_formation_grid_reuses_one_preparation_for_all_168_cash_cohorts(monkeypatch):
+    values = case(ks=(0,) * 14, scope={}, end_index=1894)
+    calls, real = [], module._quotes
+    def counted(*args):
+        calls.append(True)
+        return real(*args)
+    monkeypatch.setattr(module, "_quotes", counted)
+    prepared, execute = module._prepare_cohort_replay(*values, (), parameters=deepcopy(PARAMETERS))
+    keys = tuple(key for key, _ in prepared.keyed)
+    assert len(keys) == 168 and len(prepared.calendar) == 1897
+    completed = {arm: 0 for arm in module.ARMS}
+    for key in keys:
+        result = execute(prepared, (key,))
+        assert result["cohorts"][0]["assigned_capital"] == 0
+        assert set(result["cohorts"][0]["replay"].navs) == {D(1)}
+        completed[key[0]] += 1
+    assert completed == {"D1": 84, "D2": 84} and calls == [True]
 
 
 def test_complete_cohorts_keep_fixed_twenty_slot_budget_costs_and_common_paths(monkeypatch):

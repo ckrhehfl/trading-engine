@@ -59,23 +59,29 @@ def full(values):
 def test_streamed_summary_equals_whole_engine_and_each_original_book_is_saved(tmp_path, monkeypatch):
     values = fixture(tmp_path)
     batch = full(values)
-    real = comparison.replay_equal_capital_cohorts
-    refs, called = [], []
-    def checked(*args, **kwargs):
-        assert all(reference() is None for reference in refs), "a prior full replay survived into the next cohort"
-        log = records(values["runs_path"])
-        key, = kwargs["cohort_keys"]
-        assert log[-1]["status"] == "started" and log[-1]["parameters"]["cohort_key"] == module._key_value(key)
+    real = comparison._prepare_cohort_replay
+    refs, called, preparations = [], [], []
+    def checked_prepare(*args, **kwargs):
         assert kwargs["scope_binding"] is values["scope_binding"]
         assert args[0] is values["declarations"] and args[1] is values["holding_inputs"]
-        called.append(key)
-        result = real(*args, **kwargs)
-        refs.append(weakref.ref(result["cohorts"][0]["replay"]))
-        return result
-    monkeypatch.setattr(comparison, "replay_equal_capital_cohorts", checked)
+        prepared, execute = real(*args, **kwargs)
+        preparations.append(prepared)
+        def checked(candidate, keys):
+            assert all(reference() is None for reference in refs), "a prior full replay survived into the next cohort"
+            log = records(values["runs_path"])
+            key, = keys
+            assert log[-1]["status"] == "started" and log[-1]["parameters"]["cohort_key"] == module._key_value(key)
+            assert candidate is prepared
+            called.append(key)
+            result = execute(candidate, keys)
+            refs.append(weakref.ref(result["cohorts"][0]["replay"]))
+            return result
+        return prepared, checked
+    monkeypatch.setattr(comparison, "_prepare_cohort_replay", checked_prepare)
     result = module.run_cohort_family(**values)
     report = result["report"]
     assert all(reference() is None for reference in refs)
+    assert len(preparations) == 1
     assert called == sorted(row["key"] for row in batch["cohorts"])
     assert report["aggregates"] == _json_value(batch["aggregates"])
     assert report["comparisons"] == _json_value(batch["comparisons"])
@@ -209,14 +215,17 @@ def test_lag_specific_zero_targets_have_declared_selection_change_and_keep_proof
 
 def test_first_failure_preserves_completed_books_and_canonical_failure_and_refuses_retry(tmp_path, monkeypatch):
     values = fixture(tmp_path)
-    real = comparison.replay_equal_capital_cohorts
+    real = comparison._prepare_cohort_replay
     calls = []
-    def fail_third(*args, **kwargs):
-        calls.append(kwargs["cohort_keys"][0])
-        if len(calls) == 3:
-            raise ValueError("synthetic third-cohort failure")
-        return real(*args, **kwargs)
-    monkeypatch.setattr(comparison, "replay_equal_capital_cohorts", fail_third)
+    def fail_third_prepare(*args, **kwargs):
+        prepared, execute = real(*args, **kwargs)
+        def fail_third(candidate, keys):
+            calls.append(keys[0])
+            if len(calls) == 3:
+                raise ValueError("synthetic third-cohort failure")
+            return execute(candidate, keys)
+        return prepared, fail_third
+    monkeypatch.setattr(comparison, "_prepare_cohort_replay", fail_third_prepare)
     with pytest.raises(ValueError, match="third-cohort"):
         module.run_cohort_family(**values)
     log = records(values["runs_path"])
@@ -281,7 +290,7 @@ def test_invalid_frozen_contract_or_output_boundary_never_starts_engine(tmp_path
     elif mutation == "log_inside": values["runs_path"] = values["output_dir"] / "log.jsonl"
     elif mutation == "existing_root": values["output_dir"].mkdir(mode=0o700)
     else: values["output_dir"].parent.chmod(0o755)
-    monkeypatch.setattr(comparison, "replay_equal_capital_cohorts", lambda *args, **kwargs: pytest.fail("invalid input reached engine"))
+    monkeypatch.setattr(comparison, "_prepare_cohort_replay", lambda *args, **kwargs: pytest.fail("invalid input reached engine"))
     with pytest.raises(ValueError):
         module.run_cohort_family(**values)
     if values["runs_path"].is_absolute():

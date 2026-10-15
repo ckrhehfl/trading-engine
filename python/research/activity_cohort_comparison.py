@@ -10,7 +10,7 @@ Internal consistency here certifies no source, event coverage or price basis.
 """
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from datetime import date
 from decimal import Decimal, localcontext
 import math
@@ -23,7 +23,7 @@ from research.activity_cohort_selection import CohortSelection, CONTROL_IDS, SLO
 from research.activity_holding_inputs import HoldingInputs
 from research.activity_pair_calibration import PARAMETERS
 from research.activity_partition_selection import PartitionSelection
-from research.activity_preflight import encoded, require
+from research.activity_preflight import encoded, require, strict_json
 from research.activity_quote_extension import CompositeHoldingInputs, _same, _validated, extend_holding_quotes
 from research.activity_raw_quote_view import RawEpisodeQuoteInputs, validate_raw_quote_view
 from research.activity_replay import _check_event_quotes, _event_date, _quote, replay_synthetic
@@ -331,27 +331,43 @@ def _deltas(activity: dict, controls: dict) -> dict:
         "known_control_count": len(known)}
 
 
-def replay_equal_capital_cohorts(
+@dataclass(frozen=True)
+class _PreparedReplay:
+    declarations: tuple
+    quotes: HoldingInputs | CompositeHoldingInputs | RawEpisodeQuoteInputs
+    ordered_events: tuple
+    binding: CohortScopeBinding | None
+    raw_quote_view: RawEpisodeQuoteInputs | None
+    parameters_json: bytes
+    keyed: tuple
+    calendar: tuple[date, ...]
+    days: tuple[date, ...]
+    initial: ActivityBook
+
+
+def _immutable_fields(values: tuple) -> tuple:
+    """Retain field identities without rebuilding or serializing quote evidence."""
+    pending, seen, result = list(values), set(), []
+    while pending:
+        value = pending.pop()
+        if (type(value) is tuple or is_dataclass(value)) and id(value) not in seen:
+            seen.add(id(value))
+            if type(value) is tuple:
+                pending.extend(value)
+            else:
+                require(value.__dataclass_params__.frozen, "prepared replay requires frozen inputs")
+                attributes = tuple((field.name, getattr(value, field.name)) for field in fields(value))
+                result.append((value, type(value), attributes))
+                pending.extend(item for _, item in attributes)
+    return tuple(result)
+
+
+def _prepare_cohort_replay(
     declarations: tuple[CohortSelection, ...], holding_inputs: HoldingInputs | CompositeHoldingInputs,
     events: tuple, *, parameters: dict, raw_quote_view: RawEpisodeQuoteInputs | None = None,
-    cohort_keys: tuple[tuple[str, str, date], ...] | None = None,
     scope_binding: CohortScopeBinding | None = None,
-) -> dict:
-    """Validate the complete input family before replaying one or all cohorts.
-
-    Optional keys restrict computation only, never input validation. Each cohort
-    retains every original formation, with empty eligible tuples everywhere but
-    its one active formation. k/20 includes entry costs and is unchanged by fill
-    failure or verified control exhaustion. Exact original Decimal books and NAV
-    values survive in the output. Division and descriptive paths use precision
-    28; only unannualized sample daily SD converts returns to float.
-
-    Without scope_binding coverage remains conservative through evaluation end.
-    An explicit binding recomputes existing ordinary/component proofs and final
-    reviewed intervals before any book; every resulting cohort is checked for
-    inventory surviving its own proved bounds. Full quote requests are retained.
-    Pure success does not establish actual-input or execution readiness.
-    """
+) -> tuple:
+    """Validate one invocation and issue a closure for that exact frozen context."""
     require(type(parameters) is dict and encoded(parameters) == encoded(PARAMETERS),
         "unchanged canonical parameter bytes required")
     quotes = _quotes(holding_inputs, raw_quote_view)
@@ -363,10 +379,35 @@ def replay_equal_capital_cohorts(
     ordered_events = _events(events, quotes, parameters, raw_quote_view)
     binding = None
     if scope_binding is not None:
-        from research.activity_cohort_connection import validate_cohort_scope, verify_cohort_inventory
+        from research.activity_cohort_connection import validate_cohort_scope
         binding = validate_cohort_scope(scope_binding, declarations, quotes, ordered_events, parameters=parameters)
     else:
         _coverage(declarations, quotes, ordered_events, parameters)
+    end = calendar.index(date.fromisoformat(parameters["end"]))
+    prepared = _PreparedReplay(declarations, quotes, ordered_events, binding, raw_quote_view, encoded(parameters),
+        tuple(keyed.items()), calendar, calendar[parameters["lookback"] + 1:end + 1],
+        ActivityBook(ONE, (), calendar[parameters["lookback"]]))
+    sealed = _immutable_fields((prepared, holding_inputs, raw_quote_view, scope_binding))
+
+    def execute(candidate, cohort_keys=None):
+        require(type(candidate) is _PreparedReplay and candidate is prepared,
+            "only this invocation's issued prepared replay is accepted")
+        require(encoded(parameters) == prepared.parameters_json, "prepared replay source parameters changed")
+        require(all(type(value) is kind and all(getattr(value, name) is original for name, original in attributes)
+            for value, kind, attributes in sealed), "prepared replay or immutable input changed")
+        return _execute_prepared_cohorts(prepared, cohort_keys)
+
+    return prepared, execute
+
+
+def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | None) -> dict:
+    """The issuing closure owns validation; this is the unchanged book loop."""
+    declarations, quotes, ordered_events = prepared.declarations, prepared.quotes, prepared.ordered_events
+    binding, raw_quote_view = prepared.binding, prepared.raw_quote_view
+    parameters, keyed = strict_json(prepared.parameters_json), dict(prepared.keyed)
+    calendar, days, initial = prepared.calendar, prepared.days, prepared.initial
+    if binding is not None:
+        from research.activity_cohort_connection import verify_cohort_inventory
     if cohort_keys is None:
         selected_keys = tuple(sorted(keyed))
     else:
@@ -374,9 +415,6 @@ def replay_equal_capital_cohorts(
             and all(type(key) is tuple and len(key) == 3 and key in keyed for key in cohort_keys)
             and len(set(cohort_keys)) == len(cohort_keys), "unique known immutable cohort keys required")
         selected_keys = tuple(sorted(cohort_keys))
-    end = calendar.index(date.fromisoformat(parameters["end"]))
-    days = calendar[parameters["lookback"] + 1:end + 1]
-    initial = ActivityBook(ONE, (), calendar[parameters["lookback"]])
     results = []
     with localcontext() as context:
         context.prec = 28
@@ -450,3 +488,23 @@ def replay_equal_capital_cohorts(
         "comparison_power_prerequisite_met": False, "power_design_passed": False,
         "source_truth_certified": False, "event_coverage_certified": False, "price_basis_certified": False,
         "historical_vintage_certified": False, "promotion_allowed": False, "actual_study_completed": False}
+
+
+def replay_equal_capital_cohorts(
+    declarations: tuple[CohortSelection, ...], holding_inputs: HoldingInputs | CompositeHoldingInputs,
+    events: tuple, *, parameters: dict, raw_quote_view: RawEpisodeQuoteInputs | None = None,
+    cohort_keys: tuple[tuple[str, str, date], ...] | None = None,
+    scope_binding: CohortScopeBinding | None = None,
+) -> dict:
+    """Validate the full family, then execute the unchanged selected cohort loop.
+
+    Optional keys restrict computation only. Each cohort keeps every original
+    formation and uses its fixed targets only at its one active formation.
+    Full quote, declaration, event and conditional proof validation precedes
+    books. Every book retains its own inventory-bound checks. Decimal precision,
+    costs, assigned budgets, missing fills and complete outputs are unchanged.
+    The private context and executor are issued afresh for every invocation.
+    """
+    prepared, execute = _prepare_cohort_replay(declarations, holding_inputs, events,
+        parameters=parameters, raw_quote_view=raw_quote_view, scope_binding=scope_binding)
+    return execute(prepared, cohort_keys)
