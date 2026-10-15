@@ -104,10 +104,16 @@ def _events(events: tuple, quotes, parameters: dict, raw_quote_view) -> tuple:
         "immutable existing compulsory event types required")
     ordered = tuple(sorted(events, key=_event_date))
     require(len({event.event_id for event in ordered}) == len(ordered), "unique event ids required")
+    # The reviewed decoder permits one full-issue action per exact issue.
+    # This code-only boundary conservatively preserves that invariant; exact
+    # issue identity and the rejection of code reuse remain caller obligations.
+    old_codes = tuple(event.distribution.code if type(event) is FinalCashPayment else event.old_basis.code
+        for event in ordered)
+    require(len(set(old_codes)) == len(old_codes), "conflicting full-issue events for the same issue code")
     raw_rows = {} if raw_quote_view is None else {
         (row.code, date.fromisoformat(row.requested_bas_dd)): row for row in raw_quote_view.raw_observations}
     raw_codes = {code for code, _ in raw_rows}
-    for event_index, event in enumerate(ordered):
+    for event in ordered:
         replace(event)
         bases = ((event.old_basis, event.retained_basis, event.new_basis) if type(event) is CompulsorySpinOff
             else (event.old_basis, event.new_basis) if type(event) is CompulsoryStockExchange
@@ -127,11 +133,6 @@ def _events(events: tuple, quotes, parameters: dict, raw_quote_view) -> tuple:
                     "raw event bases must retain resolved raw/raw quote coordinates")
         if type(event) in (CompulsoryStockExchange, CompulsorySpinOff):
             require(event.new_basis.code in quotes.panel, "every possible successor needs a supplied quote series")
-        if type(event) is CompulsoryStockExchange:
-            require(not any(type(other) is CompulsoryStockExchange
-                and other.effective_on == event.effective_on and other.old_basis.code == event.new_basis.code
-                for other in ordered[event_index + 1:]),
-                "unsupported same-day exchange chain: successor is not available before the next effectiveness")
         if type(event) is CompulsorySpinOff:
             codes = {event.old_basis.code, event.new_basis.code}
             for other in ordered:
@@ -140,6 +141,30 @@ def _events(events: tuple, quotes, parameters: dict, raw_quote_view) -> tuple:
                 other_codes = ({other.old_basis.code, other.new_basis.code} if type(other) in
                     (CompulsoryStockExchange, CompulsorySpinOff) else {other.distribution.code})
                 require(not codes & other_codes, "same-day spin-off event chains are ambiguous")
+    # Preserve activity_reviewed_actions.reviewed_actions' complete graph
+    # delivery checks independently of input order and event lifetime overlap.
+    # This pure boundary has codes only; the caller must reject issue-code reuse
+    # and establish exact ISIN/evidence joins before supplying these events.
+    for parent in ordered:
+        if type(parent) not in (CompulsoryStockExchange, CompulsorySpinOff):
+            continue
+        delivered = parent.new_available_on if type(parent) is CompulsorySpinOff else parent.available_on
+        for child in ordered:
+            code = child.distribution.code if type(child) is FinalCashPayment else child.old_basis.code
+            if code != parent.new_basis.code:
+                continue
+            if type(child) is CompulsorySpinOff:
+                require(delivered <= child.last_eligible_entry_on and delivered < child.effective_on,
+                    "unsupported spin-off eligibility before parent delivery")
+            elif type(child) is CompulsoryStockExchange:
+                require(delivered < child.effective_on, "unsupported re-exchange of a pending entitlement")
+            else:
+                require(delivered <= child.distribution.record_on,
+                    "unsupported final payout eligibility before parent delivery")
+                # A final payment and the creation of its successor inventory
+                # on the same day otherwise depend on stable input tie order.
+                require(_event_date(parent) != child.distribution.paid_on,
+                    "unsupported same-day final payout after compulsory successor creation")
     end = quotes.calendar.index(date.fromisoformat(parameters["end"]))
     for index in range(parameters["lookback"], end + 1):
         _check_event_quotes(ordered, quotes.panel, session=quotes.calendar[index], index=index)

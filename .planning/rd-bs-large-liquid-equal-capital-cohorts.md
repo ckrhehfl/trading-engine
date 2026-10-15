@@ -172,3 +172,25 @@ unavailable successor coordinates, refuses unsupported same-day exchange chains
 before any cohort, preserves independent origins when successor codes overlap,
 and distinguishes funded attribution NAV from auxiliary idle cash in toy books.
 Actual D1/D2 cohort studies remain zero; all three first-family groups stay open.
+
+## Independent event-graph review and correction
+
+Fresh separate reviewers `bs_correctness_review` and `bs_integrity_review` found
+that the new plain-event seam did not preserve all existing reviewed decoder
+graph checks. Reverse ordering could consume an empty successor before creating
+it, and conflicting full-issue events could make the result depend on input
+order. A same-day successor creation/final-payment tie also remained ambiguous
+when delivery and record dates were equal. These synthetic reproductions were
+source defects, not actual BS study findings; no actual BS inputs were read.
+
+The cohort boundary now retains the existing one-full-issue-action invariant,
+checks every successor delivery against every child effect, spin-off cutoff and
+final-payment record independently of input order, and refuses the unsupported
+same-day creation/payment tie. The normal delivery-on-record/later-payment path
+remains supported. Exact code/ISIN evidence joins and code-reuse refusal remain
+caller obligations; the pure seam does not certify source truth.
+
+After the complete correction batch, 198 related synthetic tests passed in WSL
+(95.75 seconds). The separate correctness reviewer independently ran the final
+event-structure subset: 29 passed, 34 deselected (23.62 seconds). Final source
+identity review and all required final-head CI remain merge prerequisites.

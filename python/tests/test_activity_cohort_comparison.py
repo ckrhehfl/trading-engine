@@ -417,7 +417,8 @@ def test_raw_stock_successor_needs_explicit_rows_even_before_delivery(monkeypatc
         module.replay_equal_capital_cohorts(declarations, base, (event,), parameters=deepcopy(PARAMETERS), raw_quote_view=view)
 
 
-def test_same_day_exchange_chain_refuses_before_any_book(monkeypatch):
+@pytest.mark.parametrize("reverse", [False, True])
+def test_same_day_exchange_chain_refuses_before_any_book(monkeypatch, reverse):
     declarations, holding = case((1, 0))
     calendar, old, middle, new = holding.calendar, declarations[0].chosen_codes[0], "999998", "999999"
     scope = {code: calendar[61:315] for code in (*CODES, middle, new)}
@@ -431,5 +432,125 @@ def test_same_day_exchange_chain_refuses_before_any_book(monkeypatch):
         CompulsoryStockExchange("second", D(1), basis(middle, 99), basis(new, 100),
         calendar[100], calendar[100], "synthetic second event"))
     monkeypatch.setattr(module, "replay_synthetic", lambda *args, **kwargs: pytest.fail("unsupported chain reached replay"))
-    with pytest.raises(ValueError, match="unsupported same-day exchange chain"):
+    with pytest.raises(ValueError, match="unsupported re-exchange of a pending entitlement"):
+        run(values, events=tuple(reversed(events)) if reverse else events)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("payment_delay", [0, 20])
+def test_final_payout_record_before_successor_delivery_refuses_in_both_orders(monkeypatch, reverse, payment_delay):
+    declarations, holding = case((1, 0))
+    calendar, old, new = holding.calendar, declarations[0].chosen_codes[0], "999998"
+    scope = {code: calendar[61:315] for code in (*CODES, new)}
+    changes = {(old, day): None for day in calendar[100:315]}
+    changes.update({(new, day): None for day in calendar[99:315]})
+    values = case((1, 0), scope=scope, changes=changes)
+    pin = values[1].quote_snapshot_sha256
+    def basis(code, index):
+        return PriceBasis(code, calendar[index], D(100), D(100), pin, "synthetic basis")
+    exchange = CompulsoryStockExchange("exchange", D(1), basis(old, 99), basis(new, 100),
+        calendar[100], calendar[100], "synthetic exchange")
+    payment = FinalCashPayment("payment", FinalCashDistribution(new, calendar[98], calendar[99],
+        calendar[100 + payment_delay], D(100), basis(new, 98), "synthetic payment"))
+    events = (payment, exchange) if reverse else (exchange, payment)
+    monkeypatch.setattr(module, "replay_synthetic", lambda *args, **kwargs: pytest.fail("invalid payout graph reached replay"))
+    with pytest.raises(ValueError, match="unsupported final payout eligibility before parent delivery"):
         run(values, events=events)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("child_kind", ["stock", "spin_cutoff", "spin_effect"])
+def test_pending_parent_delivery_cannot_cross_child_boundaries(monkeypatch, reverse, child_kind):
+    declarations, holding = case((1, 0))
+    calendar, old, middle, new = holding.calendar, declarations[0].chosen_codes[0], "999998", "999999"
+    scope = {code: calendar[61:315] for code in (*CODES, middle, new)}
+    changes = {(old, day): None for day in calendar[100:315]}
+    if child_kind == "stock":
+        changes.update({(middle, day): None for day in calendar[110:315]})
+    values = case((1, 0), scope=scope, changes=changes)
+    pin = values[1].quote_snapshot_sha256
+    def basis(code, index):
+        return PriceBasis(code, calendar[index], D(100), D(100), pin, "synthetic basis")
+    delivery = {"stock": 111, "spin_cutoff": 100, "spin_effect": 110}[child_kind]
+    parent = CompulsoryStockExchange("parent", D(1), basis(old, 99), basis(middle, delivery),
+        calendar[100], calendar[delivery], "synthetic parent")
+    if child_kind == "stock":
+        child = CompulsoryStockExchange("child", D(1), basis(middle, 109), basis(new, 110),
+            calendar[110], calendar[110], "synthetic child")
+        message = "unsupported re-exchange of a pending entitlement"
+    else:
+        cutoff = 99 if child_kind == "spin_cutoff" else 110
+        child = CompulsorySpinOff("child", D("0.5"), D("0.5"), basis(middle, 109), basis(middle, 110),
+            basis(new, 112), calendar[cutoff], calendar[cutoff], calendar[110], calendar[110], calendar[112],
+            D("0.5"), "synthetic carry", "assumed", "synthetic child")
+        message = "unsupported spin-off eligibility before parent delivery"
+    events = (child, parent) if reverse else (parent, child)
+    monkeypatch.setattr(module, "replay_synthetic", lambda *args, **kwargs: pytest.fail("invalid delivery graph reached replay"))
+    with pytest.raises(ValueError, match=message):
+        run(values, events=events)
+
+
+def final_successor_case(payment_delay):
+    declarations, holding = case((1, 0))
+    calendar, old, new = holding.calendar, declarations[0].chosen_codes[0], "999998"
+    scope = {code: calendar[61:315] for code in (*CODES, new)}
+    changes = {(code, day): None for code in (old, new) for day in calendar[100:315]}
+    values = case((1, 0), scope=scope, changes=changes)
+    pin = values[1].quote_snapshot_sha256
+    def basis(code, index):
+        return PriceBasis(code, calendar[index], D(100), D(100), pin, "synthetic basis")
+    exchange = CompulsoryStockExchange("exchange", D(1), basis(old, 99), basis(new, 100),
+        calendar[100], calendar[100], "synthetic exchange")
+    payment = FinalCashPayment("payment", FinalCashDistribution(new, calendar[99], calendar[100],
+        calendar[100 + payment_delay], D(100), basis(new, 99), "synthetic payment"))
+    return values, (exchange, payment)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_same_day_final_payment_and_successor_creation_refuse_when_record_equals_delivery(monkeypatch, reverse):
+    values, events = final_successor_case(0)
+    monkeypatch.setattr(module, "replay_synthetic", lambda *args, **kwargs: pytest.fail("same-day payout tie reached replay"))
+    with pytest.raises(ValueError, match="unsupported same-day final payout after compulsory successor creation"):
+        run(values, events=tuple(reversed(events)) if reverse else events)
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_later_final_payment_allows_delivery_on_record_date(reverse):
+    values, events = final_successor_case(20)
+    key = ("D1", "ACTIVITY", values[1].calendar[60])
+    result = run(values, events=tuple(reversed(events)) if reverse else events, keys=(key,))
+    row = cohort(result)
+    assert row["ordinary_closed_trades"] == row["terminal_open_lots"] == row["terminal_open_investments"] == 0
+    assert row["replay"].books[-1].applied_event_ids == ("exchange", "payment")
+    with localcontext() as context:
+        context.prec = 28
+        assert row["replay"].books[-1].cash == D("0.95") + row["filled_principal"]
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+@pytest.mark.parametrize("kinds", [("stock", "stock"), ("stock", "spin"), ("stock", "final"),
+    ("spin", "spin"), ("spin", "final"), ("final", "final")])
+def test_conflicting_full_issue_actions_refuse_in_both_orders(monkeypatch, reverse, kinds):
+    declarations, holding = case((1, 0))
+    calendar, old = holding.calendar, declarations[0].chosen_codes[0]
+    scope = {code: calendar[61:315] for code in (*CODES, "999998", "999999")}
+    values = case((1, 0), scope=scope, changes={(old, day): None for day in calendar[100:315]})
+    pin = values[1].quote_snapshot_sha256
+    def basis(code, index):
+        return PriceBasis(code, calendar[index], D(100), D(100), pin, "synthetic basis")
+    def action(kind, ordinal):
+        new = ("999998", "999999")[ordinal]
+        identifier = f"event-{ordinal}"
+        if kind == "stock":
+            return CompulsoryStockExchange(identifier, D(1), basis(old, 99), basis(new, 100),
+                calendar[100], calendar[100], "synthetic exchange")
+        if kind == "spin":
+            return CompulsorySpinOff(identifier, D("0.5"), D("0.5"), basis(old, 99), basis(old, 100),
+                basis(new, 101), calendar[98], calendar[99], calendar[100], calendar[100], calendar[101],
+                D("0.5"), "synthetic carry", "assumed", "synthetic spin")
+        return FinalCashPayment(identifier, FinalCashDistribution(old, calendar[99], calendar[101],
+            calendar[120 + ordinal], D(100), basis(old, 99), "synthetic payment"))
+    events = tuple(action(kind, ordinal) for ordinal, kind in enumerate(kinds))
+    monkeypatch.setattr(module, "replay_synthetic", lambda *args, **kwargs: pytest.fail("conflicting old-issue actions reached replay"))
+    with pytest.raises(ValueError, match="conflicting full-issue events"):
+        run(values, events=tuple(reversed(events)) if reverse else events)
