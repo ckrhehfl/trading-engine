@@ -274,12 +274,13 @@ def _path_metrics(days: tuple[date, ...], navs: tuple[Decimal, ...] | None) -> d
 
 def _summary(results: tuple[dict, ...], days: tuple[date, ...]) -> dict:
     assigned = sum_decimal_values(tuple(row["assigned_capital"] for row in results))
-    pnls = tuple(sum_decimal_values(tuple(_difference(row["replay"].navs[index], ONE)
-        for row in results)) for index in range(len(days)))
+    histories = tuple(row["replay"].navs for row in results)
+    pnls = tuple(sum_decimal_values(tuple(_difference(history[index], ONE)
+        for history in histories)) for index in range(len(days)))
     normalized = None if assigned == 0 else tuple(sum_decimal_values((ONE, pnl / assigned)) for pnl in pnls)
     inventory = tuple(sum_decimal_values(tuple(row["exposure"]["path"][index]["marked_inventory_value"]
         for row in results)) for index in range(len(days)))
-    navs = tuple(sum_decimal_values(tuple(row["replay"].navs[index] for row in results)) for index in range(len(days)))
+    navs = tuple(sum_decimal_values(tuple(history[index] for history in histories)) for index in range(len(days)))
     return {"cohort_count": len(results), "positive_assigned_cohort_count": sum(row["assigned_capital"] > 0 for row in results),
         "assigned_capital": assigned, "filled_capital": sum_decimal_values(tuple(row["filled_capital"] for row in results)),
         "filled_principal": sum_decimal_values(tuple(row["filled_principal"] for row in results)),
