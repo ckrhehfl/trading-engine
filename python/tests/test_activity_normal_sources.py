@@ -43,7 +43,6 @@ def harness(tmp_path, monkeypatch):
     """Small test geometry; the production receipt/matrix helper is reused elsewhere."""
     monkeypatch.setattr(saved.formation, "DATES", (DAY,))
     monkeypatch.setattr(saved.liquidity, "WINDOW_SESSIONS", 3)
-    monkeypatch.setattr(module, "POTENTIAL_WINDOWS", 1)
     totals = {"trade_rows": 7, "cap_pass_rows": 6, "cap_below_rows": 1,
               "cap_pass_common_label_rows": 4}
     monkeypatch.setattr(saved, "AQ_TOTALS", totals)
@@ -97,7 +96,7 @@ def harness(tmp_path, monkeypatch):
 def test_complete_population_literal_controls_and_exact_separate_liquidity(harness):
     """Preserve complete source joins and the distinct basic/cap/liquidity coordinates."""
     args, receipts, _, _, reads = harness
-    result = module.load_sources(*args)
+    result = module.load_sources(*args, expected_window_count=1)
     assert len(result["population"]) == 7
     assert sum(row["cap_pass"] for row in result["population"]) == 6
     assert len(result["negative_type_controls"]) == 4  # No presumed historical count.
@@ -206,7 +205,7 @@ def test_raw_hash_failure_preserves_started_manifest_and_scope(harness):
     first = next(iter(store))
     store[first] = b"changed synthetic bytes"
     with pytest.raises(ValueError, match="hash mismatch"):
-        module.load_sources(*args)
+        module.load_sources(*args, expected_window_count=1)
     assert reads == [first]
     assert args[1].manifest[-1]["read_status"] == "hash_mismatch"
     assert (args[-1] / "raw-source-read-scope.json").exists()
@@ -223,7 +222,7 @@ def test_complete_source_cap_arithmetic_is_audited(harness):
     observation.update(response_sha256=saved.digest(body), at="2026-10-07T08:31:00+00:00")
     harness[1]["aq"]["observations"][0] = observation
     with pytest.raises(saved.probe.ProbeRefusal, match="capitalization_mismatch"):
-        module.load_sources(*args)
+        module.load_sources(*args, expected_window_count=1)
 
 
 def test_no_cap_or_type_exclusion_precedes_both_arms_availability_guard(harness, monkeypatch):
@@ -237,7 +236,7 @@ def test_no_cap_or_type_exclusion_precedes_both_arms_availability_guard(harness,
     monkeypatch.setattr(module, "_metadata", late)
     monkeypatch.setattr(module, "_negative_type", lambda *args: classifications.append(args))
     with pytest.raises(ValueError, match="available_at is later than selection_at"):
-        module.load_sources(*harness[0])
+        module.load_sources(*harness[0], expected_window_count=1)
     assert classifications == []
     assert len(harness[-1]) == 4  # Whole formation validated, no liquidity opened.
 
@@ -252,7 +251,7 @@ def test_nonintegral_capitalization_fails_even_for_an_otherwise_below_cap_row(ha
     observation.update(response_sha256=saved.digest(body), at="2026-10-07T08:31:00+00:00")
     receipts["aq"]["observations"][0] = observation
     with pytest.raises(ValueError, match="nonintegral source capitalization"):
-        module.load_sources(*args)
+        module.load_sources(*args, expected_window_count=1)
 
 
 def test_duplicate_basic_identifier_is_rejected_before_join_dict_can_overwrite(harness):
@@ -266,7 +265,7 @@ def test_duplicate_basic_identifier_is_rejected_before_join_dict_can_overwrite(h
     observation.update(response_sha256=saved.digest(body), at="2026-10-07T08:31:00+00:00", schema_valid=True)
     receipts["aq"]["observations"][2] = observation
     with pytest.raises(ValueError, match="saved raw observation re-audit mismatch"):
-        module.load_sources(*args)
+        module.load_sources(*args, expected_window_count=1)
 
 
 def test_missing_requested_liquidity_is_explicit_not_zero_or_kis_fallback(harness):
@@ -280,13 +279,13 @@ def test_missing_requested_liquidity_is_explicit_not_zero_or_kis_fallback(harnes
     observation.update(response_sha256=saved.digest(body), at="2026-10-07T08:31:00+00:00")
     receipts["ar_original"]["observations"][0] = observation
     with pytest.raises(ValueError, match="missing potential source liquidity rows: 111111:20190326"):
-        module.load_sources(*args)
+        module.load_sources(*args, expected_window_count=1)
 
 
 def test_exclusive_scope_refuses_retry_before_more_raw_bodies(harness):
     args, _, _, _, reads = harness
-    module.load_sources(*args)
+    module.load_sources(*args, expected_window_count=1)
     before = len(reads)
     with pytest.raises(FileExistsError):
-        module.load_sources(*args)
+        module.load_sources(*args, expected_window_count=1)
     assert len(reads) == before
