@@ -251,21 +251,29 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path, *, sca
         data[name], hashes[name] = load(role), declared[role]["sha256"]
     receipt = load("bs_normal_verification")
     validate_normal_package(data, hashes, receipt, declared, spec["parameters"])
-    context = {role: load(role) for role in (*FIXED_INPUTS, "bs_initial_scope_result")}
-    calendar_strings, _, schedule = saved.calendar_schedule(context.pop("calendar_manifest"), spec["parameters"])
+    # Every original normal body has been hash/canonical/receipt checked. Keep
+    # only the planning bodies and small lineage fields before decoding the
+    # full historical population; BI's bulky scan provenance is not a planner
+    # input and must not overlap that decode peak.
+    lineage = (data["result.json"]["activity_snapshot_sha256"], data["frontier.json"]["activity_snapshot_sha256"],
+        data["normal-read-scope.json"]["upstream_dataset_sha256"],
+        data["normal-read-scope.json"]["restored_activity_source"],
+        data["restored-activity-proof-audit.json"]["upstream_dataset_sha256"])
+    data = {name: data[name] for name in ("control-dispositions.json", "normal-input-audit.json", "frontier.json", "normal-exclusions.json")}
+    del receipt
+    calendar_strings, _, schedule = saved.calendar_schedule(load("calendar_manifest"), spec["parameters"])
     calendar = tuple(date.fromisoformat(value) for value in calendar_strings)
-    original_scope, population, initial = (context.pop(role) for role in ("br_scope_result", "br_population_audit", "bs_initial_scope_result"))
-    bi = context.pop("bi_result")
+    bi = load("bi_result")
     activity_sha = bi["scan_snapshot"]["dataset_sha256"]
     saved._pin(activity_sha)
+    del bi
+    original_scope, population, initial = (load(role) for role in ("br_scope_result", "br_population_audit", "bs_initial_scope_result"))
     saved.require(original_scope["paired_schedule"] == schedule
         and original_scope["activity_snapshot_sha256"] == initial["activity_snapshot_sha256"]
-        == data["result.json"]["activity_snapshot_sha256"] == data["frontier.json"]["activity_snapshot_sha256"] == activity_sha
-        and data["normal-read-scope.json"]["upstream_dataset_sha256"] == activity_sha
-        and data["normal-read-scope.json"]["restored_activity_source"] == declared["bi_result"]
-        and data["restored-activity-proof-audit.json"]["upstream_dataset_sha256"] == activity_sha,
+        == lineage[0] == lineage[1] == activity_sha and lineage[2] == lineage[4] == activity_sha
+        and lineage[3] == declared["bi_result"],
         "unchanged original calendar/activity lineage required")
-    del bi, context, receipt
+    del lineage
     prepared = plan_holding_inputs(calendar, original_scope, population, initial, data["control-dispositions.json"],
         data["normal-input-audit.json"], data["frontier.json"], data["normal-exclusions.json"], spec["parameters"])
     requested, proofs = prepared["requested_code_dates"], prepared["proof_selections"]

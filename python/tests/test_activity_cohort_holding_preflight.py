@@ -6,6 +6,7 @@ from decimal import Decimal
 from pathlib import Path
 import socket
 import sqlite3
+import weakref
 
 import pytest
 
@@ -388,6 +389,37 @@ def test_typed_missing_unresolved_frozen_and_locked_rows_stay_in_original_scope(
     assert [(row["group_id"], row["arm"], row["formation_on"], row["activity_targets"], row["resolved_prefix"])
         for row in declarations] == [(row.group_id, row.arm, str(row.formation_on), list(row.activity_targets), [list(item) for item in row.resolved_prefix])
         for row in expected]
+
+
+def test_checked_unused_normal_bodies_and_bi_are_released_before_population_decode(pipeline):
+    value, spec, data, hashes, receipt, bodies, output, inputs, reads = pipeline
+    watched = {"bs_normal_input_manifest", "bs_normal_resource_manifest", "bs_normal_normal_read_scope",
+        "bs_normal_raw_source_read_scope", "bs_normal_normal_input_delta", "bs_normal_restored_activity_proof_audit",
+        "bi_result"}
+    refs = {}
+    class TrackedDict(dict):
+        pass
+    class TrackedList(list):
+        pass
+    class TrackedInputs(saved.PinnedInputs):
+        def json(self, path, pin, role):
+            if role == "br_population_audit":
+                assert set(refs) == watched
+                assert all(reference() is None for reference in refs.values())
+            result = super().json(path, pin, role)
+            if role in watched:
+                result = TrackedDict(result) if isinstance(result, dict) else TrackedList(result)
+                refs[role] = weakref.ref(result)
+            return result
+    def loader(path, plan, pinned, scope_sha):
+        return scan_from_quotes(synthetic_quotes(value["calendar"],
+            scope={code: tuple(date.fromisoformat(day) for day in days)
+                for code, days in plan["intersection_code_dates"].items()}, scope_pin=scope_sha))
+    tracked = TrackedInputs(lambda path: bodies[str(path)])
+    result = module.evaluate_inputs(spec, tracked, output, scan_loader=loader)
+    assert result["control_targets_frozen"] is True
+    assert [row["role"] for row in tracked.manifest] == [*module.NORMAL_ROLES,
+        "bs_normal_verification", *module.FIXED_INPUTS, "bs_initial_scope_result"]
 
 
 @pytest.mark.parametrize("change", ["verified", "file_pin", "input_pin", "commit", "producer", "summary", "power", "counts", "predicate", "source_flag", "manifest_link", "body"])

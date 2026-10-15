@@ -1,0 +1,133 @@
+{
+  "comparison_power_prerequisite_met": false,
+  "controls": [
+    "C01",
+    "C02",
+    "C03",
+    "C04",
+    "C05"
+  ],
+  "design": "independent_formation_equal_assigned_capital",
+  "inputs": {
+    "bi_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bi-activity-failures-20261009-v1/run/result.json",
+      "sha256": "b011e43ff4c34c26e8f6e66b216b202b1f1b06c340abc9e4d1340b6393729dc3"
+    },
+    "br_population_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-br-control-inputs-recovery-20261015-v1/run/population-audit.json",
+      "sha256": "20c126919c3b2a5c9c911b0bf371bc1c99f78727c134fbea807fef1db62dca76"
+    },
+    "br_scope_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-br-control-scope-20261015-v1/run/result.json",
+      "sha256": "9b808013d51c893af4ccb66662ba75e4756b12d42d99d80ebae3da7e2cf6bb90"
+    },
+    "bs_initial_scope_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-scope-20261016-v1/run/result.json",
+      "sha256": "262243b957e1078eff6658ef904374881943bb27820ab85a3e9dff6c19cedb37"
+    },
+    "bs_normal_control_dispositions": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/control-dispositions.json",
+      "sha256": "08434205d10220cb4f1c0187a0fa61f6f4906fbe9575944821e14bdb5f9afe0c"
+    },
+    "bs_normal_frontier": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/frontier.json",
+      "sha256": "10ae03788a728b153b157be5b68b470079f64fa68f15879a35c3ce44e1e9566a"
+    },
+    "bs_normal_input_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/input-manifest.json",
+      "sha256": "e056194eeb972562c6c8fe833cfaeb1d962d392a82a53c1ddeb1e5a4a078515d"
+    },
+    "bs_normal_normal_exclusions": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/normal-exclusions.json",
+      "sha256": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570"
+    },
+    "bs_normal_normal_input_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/normal-input-audit.json",
+      "sha256": "e9df545483162e40df294bd0df30f332df4126ae927e5acdc22bdbcab60a7b9b"
+    },
+    "bs_normal_normal_input_delta": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/normal-input-delta.json",
+      "sha256": "b51e65001be03180275c068aac0591cd89d31538cd27685fd9a8b78f60349d2f"
+    },
+    "bs_normal_normal_read_scope": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/normal-read-scope.json",
+      "sha256": "288e11d4c0f47e56529de2125668deaf74c11cfdf6b05e29f288144b40754f61"
+    },
+    "bs_normal_raw_source_read_scope": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/raw-source-read-scope.json",
+      "sha256": "e3f76ea29b9aaef84b1fb3afbf25a1b898fc77a8c595d3be9f5431912d99f751"
+    },
+    "bs_normal_resource_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/resource-manifest.json",
+      "sha256": "e27e57a775d1f2d4c4e925c186931b0e13e4a524a5f4c8adf26d4be73645a315"
+    },
+    "bs_normal_restored_activity_proof_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/restored-activity-proof-audit.json",
+      "sha256": "2de96eb6c3b489f74bdb77a5b401c3f657e5d192280e6c8bec17b471e459a57b"
+    },
+    "bs_normal_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/result.json",
+      "sha256": "0c80506b57df7438cc19df55155ee1ea65247959f31854a3f5f34f563c0d6344"
+    },
+    "bs_normal_source_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/source-manifest.json",
+      "sha256": "dab8a4510e83526b057ca53a7ade59302abed01bb9a1da12f12e92ad25041dc1"
+    },
+    "bs_normal_specification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/specification.json",
+      "sha256": "41d69058a53f6643a755c29b42f0bccd1f75006e6cf6366d358fb830e1d4da0c"
+    },
+    "bs_normal_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-independent-memory-recovery-20261016-v1/verification.json",
+      "sha256": "1d6342f6ad768e708c5d32fdef285f00eef3e83ff2ac25252f59bb50486865dc"
+    },
+    "calendar_manifest": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-calendar-20261007-v1/manifest.json",
+      "sha256": "ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882"
+    },
+    "scan_database": {
+      "columns": [
+        "bsop_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "turnover"
+      ],
+      "mode": "ro",
+      "path": "/home/minjun4897/trading-engine/python/data/var/krx_scan.sqlite3"
+    }
+  },
+  "mode": "discovery_cohort_original_issue_holding_input_diagnostic",
+  "parameters": {
+    "alpha": 0.05,
+    "bootstrap_blocks": [
+      63,
+      126,
+      252
+    ],
+    "bootstrap_repetitions": 2000,
+    "commission_bps_per_side": 1.77,
+    "end": "2026-09-18",
+    "holding_sessions": 126,
+    "lookback": 60,
+    "power": 0.8,
+    "seed": 20261005,
+    "sizing_round_trip_bps": 43.54,
+    "slippage_bps_per_side": 5.0,
+    "slots": 20,
+    "threshold": 3.0
+  },
+  "power_design_passed": false,
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "schema": "activity-cohort-holding-inputs-v1",
+  "study_id": "activity-cohort-holding-inputs-v1",
+  "window": {
+    "end": "2026-09-18",
+    "interval": "1d",
+    "start": "2019-01-02",
+    "symbol": "KRX:"
+  }
+}
