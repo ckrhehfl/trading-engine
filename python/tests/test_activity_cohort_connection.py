@@ -24,7 +24,7 @@ from research import activity_raw_quote_view as raw_view
 from research.activity_raw_episode import extract_raw_episode_targets
 from research.activity_reviewed_actions import reviewed_action_terms
 from research.activity_timing import SessionLagPolicy
-from test_activity_cohort_return_policy import synthetic_policy
+from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2
 import test_activity_cohort_comparison as fixture
 
 
@@ -395,13 +395,14 @@ def test_existing_postbook_inventory_check_runs_for_every_selected_cohort(monkey
     assert calls.count("D1") == calls.count("D2") == 12 and len(calls) == len(result["cohorts"])
 
 
-def rights_package(*, component=False, shortened=False):
+def rights_package(*, component=False, shortened=False, v2=False):
     """The artificial calendar contains all three fabricated historical periods."""
-    policy = synthetic_policy()
+    policy = synthetic_policy_v2() if v2 else synthetic_policy()
     codes = tuple(sorted(row["code"] for row in policy["events"]))
     calendar = tuple(date(2023, 1, 1) + timedelta(days=index) for index in range(314)) + tuple(
-        map(date.fromisoformat, ("2025-04-03", "2025-04-06", "2026-09-18", "2026-09-19", "2026-09-20")))
-    population, declarations = tuple((code, isin(code)) for code in codes), []
+        map(date.fromisoformat, ("2025-04-03", "2025-04-06", *(("2026-03-17",) if v2 else ()), "2026-09-18", "2026-09-19", "2026-09-20")))
+    issue_ids = {row["code"]: row["isin"] for row in policy["events"]}
+    population, declarations = tuple((code, issue_ids[code]) for code in codes), []
     for arm, lag in (("D1", 1), ("D2", 2)):
         timing = SessionLagPolicy(lag, paired=True)
         for index, targets in ((60, codes), (186, ())):
@@ -415,7 +416,8 @@ def rights_package(*, component=False, shortened=False):
                         selection_at=cutoff, targets=targets, seed=PARAMETERS["seed"]), population, len(population),
                     population_fingerprint(population), fixture.PARTITION, prefix))
     declarations = tuple(declarations)
-    original = fixture.quotes(calendar, scope={code: calendar[61:317] for code in codes})
+    end_index = calendar.index(date.fromisoformat(PARAMETERS["end"]))
+    original = fixture.quotes(calendar, scope={code: calendar[61:end_index + 1] for code in codes})
     selections, required, identities = plan_inputs(declarations, original)
     plan = provisional_exit_bounds(selections["D1"], selections["D2"], original, PARAMETERS, required, identities, input_sha256=PINS)
     windows = tuple(dict(code=row["code"], isin=row["isin"], start=row["entry_on"], end=row["original_end_on"])
@@ -425,11 +427,13 @@ def rights_package(*, component=False, shortened=False):
         required_scope_sha256=original.read_scope_sha256, windows=[], events=[], noops=[], unresolved=[])
     evidence = dict(references={}, bases={})
     for row in policy["events"]:
-        coverage["events"].append(dict({key: row[key] for key in
-            ("event_id", "kind", "code", "isin", "start", "end", "evidence_ref")}, status="reviewed_unmodeled"))
+        event = dict({key: row[key] for key in
+            ("event_id", "kind", "code", "isin", "start", "end", "evidence_ref")}, status="reviewed_unmodeled")
+        if "date_role" in row: event["date_role"] = row["date_role"]
+        coverage["events"].append(event)
         evidence["references"][row["evidence_ref"]] = dict({key: row[key] for key in
             ("code", "isin", "start", "end", "raw_sha256", "review_sha256", "coordinate")},
-            reviewed_on="2026-10-16", finding="reviewed_automatic_subscription_rights_certificate", event_ids=[row["event_id"]])
+            reviewed_on="2026-10-16", finding="reviewed_" + row["kind"], event_ids=[row["event_id"]])
     policy_raw, proof = encoded(policy), None
     if component:
         terms = reviewed_action_terms(coverage, evidence, expected_windows=windows, calendar=calendar,
@@ -441,12 +445,12 @@ def rights_package(*, component=False, shortened=False):
         coverage["required_scope_sha256"] = proof["component_scope_sha256"]
     else:
         # All declared event issues retain original-end in mixed_action_scope.
-        windows = tuple(dict(code=code, isin=isin(code), start=str(calendar[61]), end=str(calendar[316])) for code in codes)
+        windows = tuple(dict(code=code, isin=issue_ids[code], start=str(calendar[61]), end=str(calendar[end_index])) for code in codes)
     for index, row in enumerate(windows):
         ids = [event["event_id"] for event in policy["events"] if event["code"] == row["code"]
             and row["start"] <= event["end"] and event["start"] <= row["end"]]
         ref = "complete-" + str(index)
-        state = "price_return_unmodeled_rights" if ids else "reviewed_no_event"
+        state = ("price_return_unmodeled_assets" if row["code"] == "006800" else "price_return_unmodeled_rights") if ids else "reviewed_no_event"
         coverage["windows"].append(dict(row, review_state=state, event_ids=ids, evidence_refs=[ref]))
         evidence["references"][ref] = dict(row, raw_sha256="5" * 64, review_sha256="6" * 64,
             coordinate="synthetic:full-interval", reviewed_on="2026-10-16", event_ids=ids,
@@ -502,3 +506,21 @@ def test_optional_policy_keeps_existing_raw_lg_terms_quotes_and_nav():
     assert current.binding_sha256 != old.binding_sha256
     key = ("D1", "ACTIVITY", values["original"].calendar[60])
     assert replay(values, current, keys=(key,))["cohorts"][0]["replay"] == replay(values, old, keys=(key,))["cohorts"][0]["replay"]
+
+
+@pytest.mark.parametrize("component", [False, True])
+def test_stock_dividend_policy_preserves_full_horizons_and_same_original_replay(component):
+    values = rights_package(component=component, v2=True)
+    binding = module.prepare_cohort_scope(**values)
+    assert binding.events == () and binding.return_policy_json == values["return_policy_json"]
+    assert all(end == date.fromisoformat(PARAMETERS["end"]) for *_, end in binding.origin_bounds)
+    key = ("D1", "ACTIVITY", values["original"].calendar[60])
+    result = replay(values, binding, keys=(key,))
+    baseline = comparison.replay_equal_capital_cohorts(values["declarations"], values["quotes"], (), parameters=PARAMETERS, cohort_keys=(key,))
+    assert result["cohorts"][0]["replay"] == baseline["cohorts"][0]["replay"]
+
+
+def test_stock_dividend_origin_cannot_use_shorter_component_scope(monkeypatch):
+    values = rights_package(component=True, shortened=True, v2=True)
+    monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("shortened stock-dividend scope reached engine"))
+    with pytest.raises(ValueError, match="original horizon"): module.prepare_cohort_scope(**values)

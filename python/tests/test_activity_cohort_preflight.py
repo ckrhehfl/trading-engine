@@ -36,7 +36,7 @@ def deny_actual_network_database(monkeypatch):
 
 
 def fixture(tmp_path, *, zero=False, raw=False, return_policy=False):
-    seed = rights_package() if return_policy else raw_package() if raw else package(ks=(0, 0) if zero else (1, 1))
+    seed = rights_package(v2=return_policy == 2) if return_policy else raw_package() if raw else package(ks=(0, 0) if zero else (1, 1))
     declarations, calendar = seed["declarations"], seed["original"].calendar
     proofs = cohort_proof_selections(declarations, calendar, PARAMETERS)
     declaration_value = [_json_value(asdict(row)) for row in declarations]
@@ -132,6 +132,7 @@ def fixture(tmp_path, *, zero=False, raw=False, return_policy=False):
     spec = dict(schema=module.SCHEMA, study_id=module.SCHEMA, mode=module.RETURN_MODE if return_policy else module.MODE, window=deepcopy(saved.WINDOW), reference_specification=saved.REFERENCE,
         parameters=deepcopy(PARAMETERS), controls=list(module.CONTROL_IDS), design=module.frontier.DESIGN, inputs=declared,
         holding_verification_identity=identity, promotion_allowed=False, **dict.fromkeys(module.frontier.POWER_FLAGS, False))
+    if return_policy == 2: spec["return_policy_schema"] = module.RETURN_POLICY_SCHEMA_V2
     bodies = {declared[role]["path"]: body for role, body in payloads.items()}
     return spec, bodies, declarations, original, receipt
 
@@ -386,8 +387,9 @@ def test_saved_price_return_policy_passes_exact_original_bytes_to_existing_runne
     assert result["automatic_subscription_rights_cash"] == "not_modeled"
 
 
-def test_outer_price_return_trial_and_receipts_preserve_declared_convention(tmp_path, monkeypatch):
-    root, output, runs, reader, freeze, *_ = logging_case(tmp_path, monkeypatch, return_policy=True)
+@pytest.mark.parametrize("version", [1, 2])
+def test_outer_price_return_trial_and_receipts_preserve_declared_convention(tmp_path, monkeypatch, version):
+    root, output, runs, reader, freeze, *_ = logging_case(tmp_path, monkeypatch, return_policy=version)
     record = module.run_preflight(root, root / "spec.json", output, runs, reader=reader, freeze=freeze)
     result = saved.strict_json((output / "result.json").read_bytes())
     started = saved.strict_json(runs.read_bytes().splitlines()[0])
@@ -395,3 +397,27 @@ def test_outer_price_return_trial_and_receipts_preserve_declared_convention(tmp_
         assert value["return_measure"] == module.RETURN_MODE and value["actual_investment_return"] is False
         assert value["return_policy_sha256"] == result["return_policy_sha256"]
     assert result["cohort_evaluation_counts"] == {"D1": 12, "D2": 12}
+    if version == 2:
+        for value in (result, record["result"], started["parameters"]):
+            assert value["return_policy_schema"] == module.RETURN_POLICY_SCHEMA_V2
+            assert value["automatic_stock_dividend_assets"] == "not_modeled"
+            assert value["unmodeled_asset_codes"] == ["003670", "005070", "006400", "006800"]
+
+
+@pytest.mark.parametrize("change", ["missing_version", "v1_bytes", "unknown_version", "no_policy"])
+def test_registered_version_and_loaded_policy_must_agree_before_any_book(tmp_path, monkeypatch, change):
+    spec, bodies, *_ = fixture(tmp_path, return_policy=2)
+    if change == "missing_version": spec.pop("return_policy_schema")
+    elif change == "v1_bytes":
+        from test_activity_cohort_return_policy import synthetic_policy
+        row = spec["inputs"]["return_policy"]
+        bodies[row["path"]] = saved.encoded(synthetic_policy())
+        row["sha256"] = saved.digest(bodies[row["path"]])
+    elif change == "unknown_version": spec["return_policy_schema"] = "all-future-assets"
+    else: spec["inputs"].pop("return_policy"); spec["mode"] = module.MODE
+    output = tmp_path / "output"; output.mkdir(mode=0o700)
+    monkeypatch.setattr(module.execution, "run_cohort_family", lambda *a, **k: pytest.fail("mixed version reached book"))
+    with pytest.raises(ValueError):
+        module.validate_contract(spec, {"parameters": PARAMETERS})
+        module.evaluate_inputs(spec, inputs_for(spec, bodies), output, runs_path=tmp_path / "log.jsonl",
+            source_manifest_sha256="1" * 64, specification_sha256="2" * 64)

@@ -163,17 +163,17 @@ def prepare_cohort_scope(
             if not affected:
                 continue
             end = row["end_on"] if proof is not None else row["action_end_on"]
-            require(end == row["original_end_on"], "unmodeled rights origin must retain its original horizon")
+            require(end == row["original_end_on"], "unmodeled asset origin must retain its original horizon")
             if proof is not None:
                 for event in affected:
                     # Retain an explicit priority declaration over the whole
-                    # consequential certificate period, as well as the recomputed
+                    # consequential unmodeled asset period, as well as the recomputed
                     # original-end fallback. A shorter candidate cannot excuse it.
                     require(any((priority["code"], priority["isin"]) == (event["code"], event["isin"])
                         and priority["start"] <= max(origin["entry_on"], event["start"])
                         and min(row["original_end_on"], event["end"]) <= priority["end"]
                         for priority in proof["unresolved_priority_intervals"]),
-                        "unmodeled rights require existing unresolved component priority intervals")
+                        "unmodeled assets require existing unresolved component priority intervals")
     events, successors = reviewed_actions(coverage, evidence, expected_windows=action_windows,
         calendar=original.calendar, activity_snapshot_sha256=original.activity_snapshot_sha256,
         quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256, read_scope_sha256=scope_sha,

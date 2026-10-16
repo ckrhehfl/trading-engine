@@ -16,6 +16,18 @@ def synthetic_policy():
             for event_id, (code, year) in module.EVENT_IDENTITIES.items()])
 
 
+def synthetic_policy_v2():
+    value = synthetic_policy()
+    value.update(schema=module.SCHEMA_V2, automatic_stock_dividend_assets="not_modeled")
+    for row in value["events"]:
+        row["isin"] = module.V2_ISINS[row["code"]]
+    value["events"].append(dict(event_id=module.STOCK_DIVIDEND_EVENT_ID, code="006800",
+        kind=module.STOCK_DIVIDEND_KIND, isin=module.V2_ISINS["006800"], start="2026-03-17", end="2026-03-17",
+        date_role=module.STOCK_DIVIDEND_DATE_ROLE, evidence_ref="synthetic-006800", raw_sha256="a" * 64,
+        review_sha256="b" * 64, coordinate="synthetic:disclosed record date; delivery and entitlement unverified"))
+    return value
+
+
 def test_absent_policy_keeps_old_output_empty_and_valid_policy_is_pure(monkeypatch):
     assert module.decode_return_policy(None) is None and module.policy_report(None) == {}
     value = synthetic_policy()
@@ -64,3 +76,47 @@ def test_policy_original_bytes_and_duplicate_json_fields_are_not_replaced():
     assert module.policy_report(compact)["return_policy_sha256"] != module.policy_report(spaced)["return_policy_sha256"]
     with pytest.raises(ValueError): module.decode_return_policy(value)
     with pytest.raises(ValueError): module.decode_return_policy(b'{"mode":1,"mode":2}')
+
+
+def test_v2_is_exactly_the_named_four_assets_with_explicit_unknown_stock_dividend():
+    policy = synthetic_policy_v2()
+    body = encoded(policy)
+    assert module.decode_return_policy(body) == policy
+    result = module.policy_report(body)
+    assert result == {**module.declared_policy_report(module.SCHEMA, digest(body)),
+        "return_policy_schema": module.SCHEMA_V2, "automatic_stock_dividend_assets": "not_modeled",
+        "unmodeled_asset_codes": ["003670", "005070", "006400", "006800"],
+        "unmodeled_asset_event_ids": sorted(module.V2_EVENT_IDENTITIES)}
+    assert module.attribution_codes(body) == ("003670", "005070", "006400", "006800")
+    assert module.attribution_codes(None) == module.attribution_codes(encoded(synthetic_policy())) == (
+        "003670", "005070", "006400")
+
+
+@pytest.mark.parametrize("change", ["schema_downgrade", "schema_upgrade_without_event", "asset_zero", "missing_asset_flag",
+    "missing_event", "fifth_event", "duplicate", "kind", "code", "isin", "certificate_isin", "year", "date", "interval",
+    "date_role", "missing_date_role", "raw", "review", "coordinate", "unknown_event", "extra_field"])
+def test_v2_does_not_expand_to_other_assets_or_claim_record_date_as_delivery(change):
+    value = synthetic_policy_v2()
+    row = value["events"][-1]
+    if change == "schema_downgrade": value["schema"] = module.SCHEMA
+    elif change == "schema_upgrade_without_event":
+        value = synthetic_policy(); value.update(schema=module.SCHEMA_V2, automatic_stock_dividend_assets="not_modeled")
+    elif change == "asset_zero": value["automatic_stock_dividend_assets"] = "zero"
+    elif change == "missing_asset_flag": value.pop("automatic_stock_dividend_assets")
+    elif change == "missing_event": value["events"].pop()
+    elif change == "fifth_event": value["events"].append(deepcopy(row))
+    elif change == "duplicate": value["events"][0] = deepcopy(row)
+    elif change == "kind": row["kind"] = module.KIND
+    elif change == "code": row["code"] = "005930"
+    elif change == "isin": row["isin"] = "KR7006800001"
+    elif change == "certificate_isin": value["events"][0]["isin"] = "KR7005070001"
+    elif change == "year": row["start"] = row["end"] = "2025-03-17"
+    elif change == "date": row["start"] = row["end"] = "2026-03-18"
+    elif change == "interval": row["end"] = "2026-03-18"
+    elif change == "date_role": row["date_role"] = "verified_delivery"
+    elif change == "missing_date_role": row.pop("date_role")
+    elif change in ("raw", "review"): row[change + "_sha256"] = "missing"
+    elif change == "coordinate": row["coordinate"] = ""
+    elif change == "unknown_event": row["event_id"] = "mirae-2027-stock-dividend"
+    else: row["all_future_events_allowed"] = True
+    with pytest.raises(ValueError): module.policy_report(encoded(value))

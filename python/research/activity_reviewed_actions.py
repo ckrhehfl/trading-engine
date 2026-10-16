@@ -31,7 +31,8 @@ import re
 
 from research.activity_accounting import FinalCashDistribution, PriceBasis
 from research.activity_book import CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
-from research.activity_cohort_return_policy import KIND as CERTIFICATE_KIND, decode_return_policy
+from research.activity_cohort_return_policy import (KIND as CERTIFICATE_KIND, STOCK_DIVIDEND_KIND,
+    decode_return_policy)
 from research.activity_preflight import digest, encoded
 
 
@@ -303,18 +304,20 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
         return parsed
 
     raw_events = []
-    certificate_events = []
+    unmodeled_events = []
     event_ids: set[str] = set()
     for raw in declaration["events"]:
-        if type(raw) is dict and raw.get("kind") == CERTIFICATE_KIND and policy is not None:
-            row = _fields(raw, "event_id kind status code isin start end evidence_ref")
+        if type(raw) is dict and raw.get("kind") in (CERTIFICATE_KIND, STOCK_DIVIDEND_KIND) and policy is not None:
+            stock_dividend = raw["kind"] == STOCK_DIVIDEND_KIND
+            row = _fields(raw, "event_id kind status code isin start end evidence_ref" + (" date_role" if stock_dividend else ""))
             event_id = _text(row["event_id"])
             pinned = policy_events.get(event_id)
             if (pinned is None or event_id in event_ids or row["status"] != "reviewed_unmodeled" or
-                    any(row[key] != pinned[key] for key in ("kind", "code", "isin", "start", "end", "evidence_ref"))):
-                raise ValueError("certificate event differs from pinned BS return policy")
+                    any(row[key] != pinned[key] for key in ("kind", "code", "isin", "start", "end", "evidence_ref"))
+                    or (stock_dividend and row["date_role"] != pinned.get("date_role"))):
+                raise ValueError("unmodeled asset event differs from pinned BS return policy")
             event_ids.add(event_id)
-            certificate_events.append(row)
+            unmodeled_events.append(row)
             continue
         if type(raw) is not dict or raw.get("kind") not in (
                 "compulsory_stock_exchange", "compulsory_spin_off", "final_cash_payment"):
@@ -432,25 +435,25 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
     # The component-proof DAG retains ONLY supported execution terms. Certificate
     # links are checked here, then excluded from the existing canonical terms.
     execution_refs = set(used_refs)
-    relevant_certificates = set()
+    relevant_unmodeled = set()
     for event_id, row in policy_events.items():
         if row["code"] in issue_isins and issue_isins[row["code"]] != row["isin"]:
-            raise ValueError("certificate policy conflicts with required issue identity")
+            raise ValueError("unmodeled asset policy conflicts with required issue identity")
         first, last = _day(row["start"]).toordinal(), _day(row["end"]).toordinal()
         if any(required_code == row["code"] and first <= ordinal <= last
                 for required_code, ordinal in required):
-            relevant_certificates.add(event_id)
-    if {row["event_id"] for row in certificate_events} != relevant_certificates:
-        raise ValueError("missing or out-of-scope pinned certificate event")
-    for row in certificate_events:
+            relevant_unmodeled.add(event_id)
+    if {row["event_id"] for row in unmodeled_events} != relevant_unmodeled:
+        raise ValueError("missing or out-of-scope pinned unmodeled asset event")
+    for row in unmodeled_events:
         code, isin, start, end = interval(row)
         pinned = policy_events[row["event_id"]]
         ref = refs.get(row["evidence_ref"])
         if type(ref) is not dict or any(ref.get(key) != pinned[key]
                 for key in ("raw_sha256", "review_sha256", "coordinate")):
-            raise ValueError("certificate source or review differs from pinned return policy")
+            raise ValueError("unmodeled asset source or review differs from pinned return policy")
         link(row["evidence_ref"], code=code, isin=isin, start=start, end=end,
-            finding="reviewed_automatic_subscription_rights_certificate", event_ids=(row["event_id"],))
+            finding="reviewed_" + row["kind"], event_ids=(row["event_id"],))
         coordinates[row["event_id"]] = code, isin, start, end
     if used_bases != set(bases):
         raise ValueError("unrelated or unused basis")
@@ -482,15 +485,18 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
         expected_ids = {event_id for event_id, (ec, ei, first, last) in coordinates.items()
                         if (ec, ei) == (code, isin) and start <= last and first <= end}
         ids = _ids(row["event_ids"])
-        has_certificate = bool(expected_ids & relevant_certificates)
-        state = ("price_return_unmodeled_rights" if has_certificate else
+        has_unmodeled = bool(expected_ids & relevant_unmodeled)
+        has_stock_dividend = any(policy_events[event_id]["kind"] == STOCK_DIVIDEND_KIND
+            for event_id in expected_ids & relevant_unmodeled)
+        unmodeled_state = "price_return_unmodeled_assets" if has_stock_dividend else "price_return_unmodeled_rights"
+        state = (unmodeled_state if has_unmodeled else
                  "reviewed_supported_events" if expected_ids else "reviewed_no_event")
         if row["review_state"] != state or set(ids) != expected_ids:
             raise ValueError("unknown, conflicting or incomplete action finding")
         links = _ids(row["evidence_refs"])
         if not links:
             raise ValueError("complete interval requires explicit reviewed evidence")
-        findings = (("price_return_unmodeled_rights",) if has_certificate else
+        findings = ((unmodeled_state,) if has_unmodeled else
             ("confirmed_supported_events_complete", "inferred_supported_events_complete")
             if expected_ids else ("confirmed_no_compulsory_action", "inferred_no_compulsory_action"))
         for ref_id in links:

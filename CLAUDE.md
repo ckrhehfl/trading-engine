@@ -1977,6 +1977,23 @@ reselection, capital redistribution or a second replay. This exception changes
 no power/Eligibility Bar, holdout, promotion or live-trading boundary. Its record
 is `.planning/rd-bs-large-liquid-equal-capital-cohorts.md`.
 
+**BS additional operator choice: Mirae2026 stock dividend in price-return exploration.**
+On 2026-10-16 the operator separately approved acknowledging the named
+Mirae Asset Securities2026 automatic stock-dividend event as unmodeled dividend
+shares and fractional cash in the same exploratory price-return comparison.
+Preserve the existing three-certificate policy bytes and meanings; bind this
+fourth event in a separately versioned and source/review-pinned policy. Retain
+the frozen cohorts, all five controls, assigned capital and D1/D2 schedules.
+Report all four named issuers' contributions from those same books without
+reselection, redistribution or a second replay. Unmodeled assets are unknown,
+never observed zero; this is not actual investment total return. Preserve full
+original action horizons and the LG/LX raw-price/allotment/original-investment
+decisions. A disclosed record date is not proven entitlement, custody delivery,
+actual execution or historical availability. This additional narrow exception
+does not waive any other unresolved action or identity, existing verification,
+power/Eligibility Bar, holdout, promotion or live-trading boundary. Its record
+is the same append-only BS plan.
+
 **BQ operator choice: raw-price accounting for the LG/LX episode.**
 On 2026-10-10 the operator selected KRX unadjusted prices and official compulsory
 allotment ratios for the relevant LG/LX holding episode. The observed April28

@@ -1,10 +1,10 @@
-"""Describe three issuers' price PnL in one existing immutable cohort replay.
+"""Describe versioned named issuers' PnL in one existing immutable cohort replay.
 
 This helper neither selects nor replays a portfolio. It follows original lots
-and the existing opening-price/cost/tax convention, leaving subscription-right
-cash unknown. The residual is an attribution of the same book, not a strategy
-that excluded those issuers. Supported action lineage for these three issuers
-is deliberately outside this narrow diagnostic.
+and the existing opening-price/cost/tax convention, leaving approved unmodeled
+assets unknown. The residual is an attribution of the same book, not a strategy
+that excluded those issuers. Supported action lineage for the three v1 issuers
+or four v2 issuers is deliberately outside this narrow diagnostic.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from decimal import Decimal, localcontext
 from research.activity_accounting import sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 from research.activity_cohort_selection import CohortSelection
+from research.activity_cohort_return_policy import attribution_codes
 from research.activity_preflight import require
 from research.activity_replay import SyntheticReplay, _number, _quote
 from research.krx_tax_schedule import KOSPI, total_bp
@@ -29,7 +30,7 @@ def _difference(left: Decimal, right: Decimal) -> Decimal:
     return sum_decimal_values((left, right.copy_negate()))
 
 
-def require_supported_attribution_actions(events: tuple) -> None:
+def require_supported_attribution_actions(events: tuple, *, return_policy_json: bytes | None = None) -> None:
     """Refuse any supplied action that would need new affected-lot lineage."""
     require(type(events) is tuple, "immutable attribution events required")
     for event in events:
@@ -39,11 +40,19 @@ def require_supported_attribution_actions(events: tuple) -> None:
             require(type(event) in (CompulsorySpinOff, CompulsoryStockExchange),
                 "unknown action cannot support issuer attribution")
             codes = {event.old_basis.code, event.new_basis.code}
-        require(not codes.intersection(KNOWN_ISSUER_CODES),
-            "supported action touching known rights issuer needs explicit attribution lineage")
+        require(not codes.intersection(attribution_codes(return_policy_json)),
+            "supported action touching known unmodeled asset issuer needs explicit attribution lineage")
 
 
-def _result(by_code: dict, assigned: Decimal, total_pnl: Decimal) -> dict:
+def _unmodeled_assets(code: str | None = None, *, return_policy_json: bytes | None = None) -> dict:
+    result = {} if code == "006800" else dict(automatic_subscription_rights_cash=None, rights_cash_model="not_modeled")
+    if "006800" in attribution_codes(return_policy_json) and code in (None, "006800"):
+        result.update(automatic_stock_dividend_shares=None, automatic_stock_dividend_fractional_cash=None,
+            stock_dividend_assets_model="not_modeled")
+    return result
+
+
+def _result(by_code: dict, assigned: Decimal, total_pnl: Decimal, *, return_policy_json: bytes | None = None) -> dict:
     known = sum_decimal_values(tuple(row["pnl"] for row in by_code.values()))
     remainder = _difference(total_pnl, known)
     require(sum_decimal_values((known, remainder)) == total_pnl, "issuer attribution must reconcile same-book PnL")
@@ -53,25 +62,25 @@ def _result(by_code: dict, assigned: Decimal, total_pnl: Decimal) -> dict:
         "remainder_return_contribution": None if assigned == 0 else remainder / assigned,
         "denominator": "same original assigned acquisition capital; unfilled budgets are not redistributed",
         "interpretation": "descriptive attribution of the same immutable replay; not issuer exclusion or a replayed strategy",
-        "automatic_subscription_rights_cash": None, "rights_cash_model": "not_modeled",
-        "actual_investment_return": False}
+        "actual_investment_return": False, **_unmodeled_assets(return_policy_json=return_policy_json)}
 
 
 def attribute_known_issuer_returns(
     replay: SyntheticReplay, selection: CohortSelection, quotes, parameters: dict, *, events: tuple = (),
+    return_policy_json: bytes | None = None,
 ) -> dict:
     """Follow original entry, ordinary disappearance and terminal mark only.
 
     Each cohort begins cash-only at one and has one active formation. Verify
-    every initial fill's budget/share identity, then follow only the three
+    every initial fill's budget/share identity, then follow only the versioned
     affected original lot ids. Simultaneous sales are priced separately from
     their own shares/openings; a whole-book cash delta is never assigned to one
-    issuer. No synthetic rights value or second replay is produced.
+    issuer. No synthetic asset value or second replay is produced.
     """
     require(type(replay) is SyntheticReplay and type(replay.books) is tuple and bool(replay.books),
         "existing immutable replay books required for issuer attribution")
     require(type(selection) is CohortSelection, "original cohort declaration required")
-    require_supported_attribution_actions(events)
+    require_supported_attribution_actions(events, return_policy_json=return_policy_json)
     calendar = quotes.calendar
     require(type(calendar) is tuple and all(type(day) is date for day in calendar)
         and all(a < b for a, b in zip(calendar, calendar[1:])), "ordered immutable attribution calendar required")
@@ -122,7 +131,7 @@ def attribute_known_issuer_returns(
         require(set(actual) == expected_ids and entry.cash == cash,
             "original entry book must retain every actual fill and unfilled cash")
         by_code = {}
-        for code in KNOWN_ISSUER_CODES:
+        for code in attribution_codes(return_policy_json):
             lot_id = f"{code}:{decision}"
             initial = actual.get(lot_id)
             previous, sold_on, exit_cash = None, None, ZERO
@@ -191,24 +200,28 @@ def attribute_known_issuer_returns(
                 "entry_budget": budget, "net_exit_cash": exit_cash,
                 "terminal_marked_value": terminal_value, "pnl": pnl,
                 "assigned_capital_return_contribution": None if assigned == 0 else pnl / assigned,
-                "automatic_subscription_rights_cash": None, "rights_cash_model": "not_modeled"}
+                **_unmodeled_assets(code, return_policy_json=return_policy_json)}
         return _result(by_code, Decimal(selection.target_ceiling) / slots,
-            _difference(replay.books[-1].nav, ONE))
+            _difference(replay.books[-1].nav, ONE), return_policy_json=return_policy_json)
 
 
-def aggregate_known_issuer_returns(rows: tuple[dict, ...], *, assigned_capital: Decimal, total_pnl: Decimal) -> dict:
+def aggregate_known_issuer_returns(rows: tuple[dict, ...], *, assigned_capital: Decimal, total_pnl: Decimal,
+    return_policy_json: bytes | None = None) -> dict:
     """Sum scalar attribution from the same cohorts and original denominator."""
     require(type(rows) is tuple and bool(rows), "nonempty immutable cohort attribution rows required")
+    codes = attribution_codes(return_policy_json)
+    require(all(set(row[ATTRIBUTION_KEY]["by_code"]) == set(codes) for row in rows),
+        "issuer attribution rows must retain the same versioned policy scope")
     with localcontext() as context:
         context.prec = 28
         by_code = {}
-        for code in KNOWN_ISSUER_CODES:
+        for code in codes:
             values = tuple(row[ATTRIBUTION_KEY]["by_code"][code] for row in rows)
             summary = {field: sum_decimal_values(tuple(row[field] for row in values))
                 for field in ("entry_budget", "net_exit_cash", "terminal_marked_value", "pnl")}
             summary.update(targeted_cohort_count=sum(row["targeted"] for row in values),
                 filled_entries=sum(row["filled_entries"] for row in values),
                 assigned_capital_return_contribution=None if assigned_capital == 0 else summary["pnl"] / assigned_capital,
-                automatic_subscription_rights_cash=None, rights_cash_model="not_modeled")
+                **_unmodeled_assets(code, return_policy_json=return_policy_json))
             by_code[code] = summary
-        return _result(by_code, assigned_capital, total_pnl)
+        return _result(by_code, assigned_capital, total_pnl, return_policy_json=return_policy_json)

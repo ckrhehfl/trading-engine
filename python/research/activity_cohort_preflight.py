@@ -25,7 +25,8 @@ from research import activity_cohort_scope_preflight as frontier
 from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_cohort_connection import cohort_proof_selections, prepare_cohort_scope
-from research.activity_cohort_return_policy import EVENT_IDENTITIES, MODE as RETURN_MODE, policy_report
+from research.activity_cohort_return_policy import (SCHEMA as RETURN_POLICY_SCHEMA, SCHEMA_V2 as RETURN_POLICY_SCHEMA_V2,
+    MODE as RETURN_MODE, declared_policy_report, decode_return_policy, policy_report)
 from research.activity_cohort_selection import CohortSelection, CONTROL_IDS
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_pair_calibration import PARAMETERS
@@ -87,16 +88,15 @@ def _declared_policy_report(spec):
     """Label the registered convention before reads, including failed attempts."""
     if "return_policy" not in spec["inputs"]:
         return {}
-    return dict(return_measure=RETURN_MODE, return_policy_sha256=spec["inputs"]["return_policy"]["sha256"],
-        automatic_subscription_rights_cash="not_modeled", actual_investment_return=False,
-        unmodeled_rights_codes=sorted(code for code, _ in EVENT_IDENTITIES.values()),
-        unmodeled_rights_event_ids=sorted(EVENT_IDENTITIES), promotion_allowed=False)
+    return declared_policy_report(spec.get("return_policy_schema", RETURN_POLICY_SCHEMA),
+        spec["inputs"]["return_policy"]["sha256"])
 
 
 def validate_contract(spec: dict, reference: dict) -> None:
     """Validate a generic registered contract, without creating actual pins."""
     saved.require(type(spec) is dict and set(spec) == {"schema", "study_id", "mode", "window", "reference_specification",
         "parameters", "controls", "design", "inputs", "holding_verification_identity", "promotion_allowed", *frontier.POWER_FLAGS}
+        | ({"return_policy_schema"} if "return_policy_schema" in spec else set())
         and spec["schema"] == spec["study_id"] == SCHEMA and spec["mode"] in (MODE, RETURN_MODE)
         and spec["promotion_allowed"] is False and all(spec[name] is False for name in frontier.POWER_FLAGS)
         and spec["controls"] == list(CONTROL_IDS) and spec["design"] == frontier.DESIGN
@@ -109,6 +109,8 @@ def validate_contract(spec: dict, reference: dict) -> None:
         and set(declared) <= set(BASE_ROLES + OPTIONAL_ROLES), "exact saved cohort input roles required")
     saved.require(("return_policy" in declared) == (spec["mode"] == RETURN_MODE),
         "explicit approved price-return mode and policy must be supplied together")
+    saved.require("return_policy_schema" not in spec or ("return_policy" in declared
+        and spec["return_policy_schema"] == RETURN_POLICY_SCHEMA_V2), "explicit v2 policy registration required")
     saved.require(not {"raw_episode_quotes", "raw_episode_unit_plan"} & set(declared)
         or set(RAW_ROLES) <= set(declared), "raw cohort inputs require both artifacts, extension and component proof")
     paths = []
@@ -296,7 +298,10 @@ def prepare_inputs(spec: dict, inputs: saved.PinnedInputs) -> PreparedCohorts:
         "reviewed_action_coverage": declared["reviewed_action_coverage"]["sha256"], "basis_evidence": declared["basis_evidence"]["sha256"]}
     if component_raw is not None: pins["component_exit_scope"] = declared["component_exit_scope"]["sha256"]
     return_policy = load("return_policy") if "return_policy" in declared else None
-    if return_policy is not None: pins["return_policy"] = declared["return_policy"]["sha256"]
+    if return_policy is not None:
+        saved.require(decode_return_policy(return_policy)["schema"] == spec.get("return_policy_schema", RETURN_POLICY_SCHEMA),
+            "loaded return policy differs from registered version")
+        pins["return_policy"] = declared["return_policy"]["sha256"]
     binding = prepare_cohort_scope(declarations, original, quotes, ordinary_raw, coverage, evidence,
         parameters=spec["parameters"], original_required_code_dates=scope["requested_code_dates"], issue_isins=scope["issue_isins"],
         input_sha256=identity["input_sha256"], expected_pins=pins, component_exit_scope=component_raw,

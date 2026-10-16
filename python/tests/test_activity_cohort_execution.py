@@ -315,13 +315,14 @@ def test_outputs_are_private_existing_canonical_log_mode_and_umask_are_preserved
     assert values["runs_path"].stat().st_mode & 0o777 == 0o644
 
 
-def test_all_168_policy_books_plans_trials_receipts_and_aggregates_keep_identical_pin(tmp_path, monkeypatch):
+@pytest.mark.parametrize("v2", [False, True])
+def test_all_168_policy_books_plans_trials_receipts_and_aggregates_keep_identical_pin(tmp_path, monkeypatch, v2):
     from research.activity_cohort_return_attribution import ATTRIBUTION_KEY
     from research.activity_cohort_return_policy import policy_report
-    from test_activity_cohort_return_policy import synthetic_policy
+    from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2
 
     values = package(ks=(0,) * 14)
-    policy = saved.encoded(synthetic_policy())
+    policy = saved.encoded(synthetic_policy_v2() if v2 else synthetic_policy())
     values["expected_pins"]["return_policy"] = saved.digest(policy)
     binding = prepare_cohort_scope(**values, return_policy_json=policy)
     private = tmp_path / "private"
@@ -360,6 +361,10 @@ def test_all_168_policy_books_plans_trials_receipts_and_aggregates_keep_identica
         cohort, = document["engine_result"]["cohorts"]
         flagged(cohort)
         assert cohort[ATTRIBUTION_KEY]["automatic_subscription_rights_cash"] is None
+        if v2:
+            assert cohort[ATTRIBUTION_KEY]["automatic_stock_dividend_shares"] is None
+            assert cohort[ATTRIBUTION_KEY]["automatic_stock_dividend_fractional_cash"] is None
+            assert sorted(cohort[ATTRIBUTION_KEY]["by_code"]) == ["003670", "005070", "006400", "006800"]
         assert cohort[ATTRIBUTION_KEY]["known_issuer_pnl"] == "0"
         assert cohort["metrics"]["total_return"] is None and set(document["navs"]) == {"1"}
         saved_receipt = read(output / receipt["receipt_file"])

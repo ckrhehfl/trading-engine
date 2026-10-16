@@ -13,7 +13,7 @@ from research.activity_accounting import Lot
 from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
 from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 from research.activity_preflight import encoded
-from test_activity_cohort_return_policy import synthetic_policy
+from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2
 
 
 CALENDAR = tuple(date.fromisoformat(text) for text in (
@@ -739,8 +739,8 @@ def test_unknown_spin_override_is_not_ignored_in_nonempty_requirements():
         call(*fixture(), spin_off_windows=spin_override())
 
 
-def certificate_fixture(*, supported=False):
-    policy = synthetic_policy()
+def certificate_fixture(*, supported=False, v2=False):
+    policy = synthetic_policy_v2() if v2 else synthetic_policy()
     calendar = tuple(sorted({date.fromisoformat(row[key]) for row in policy["events"] for key in ("start", "end")}))
     coverage, _, _ = fixture()
     coverage.update(calendar_sha256=sha256(json.dumps([str(day) for day in calendar], separators=(",", ":")).encode()).hexdigest(),
@@ -748,6 +748,7 @@ def certificate_fixture(*, supported=False):
     evidence, required = dict(references={}, bases={}), []
     for row in policy["events"]:
         raw = {key: row[key] for key in ("event_id", "kind", "code", "isin", "start", "end", "evidence_ref")}
+        if "date_role" in row: raw["date_role"] = row["date_role"]
         coverage["events"].append(dict(raw, status="reviewed_unmodeled"))
         ids = [row["event_id"]]
         if supported and row["code"] == "005070":
@@ -761,11 +762,12 @@ def certificate_fixture(*, supported=False):
         window_ref = "window-" + row["code"]
         coordinate = {key: row[key] for key in ("code", "isin", "start", "end")}
         required.append(coordinate)
-        coverage["windows"].append(dict(coordinate, review_state="price_return_unmodeled_rights", event_ids=ids,
+        state = "price_return_unmodeled_assets" if row["code"] == "006800" else "price_return_unmodeled_rights"
+        coverage["windows"].append(dict(coordinate, review_state=state, event_ids=ids,
             evidence_refs=[window_ref]))
-        evidence["references"][window_ref] = reference(**coordinate, finding="price_return_unmodeled_rights", ids=ids)
+        evidence["references"][window_ref] = reference(**coordinate, finding=state, ids=ids)
         evidence["references"][row["evidence_ref"]] = dict(reference(**coordinate,
-            finding="reviewed_automatic_subscription_rights_certificate", ids=(row["event_id"],)),
+            finding="reviewed_" + row["kind"], ids=(row["event_id"],)),
             **{key: row[key] for key in ("raw_sha256", "review_sha256", "coordinate")})
         for ref in evidence["references"].values(): ref["reviewed_on"] = "2026-10-16"
     kwargs = dict(expected_windows=tuple(required), calendar=calendar, activity_snapshot_sha256=ACTIVITY,
@@ -813,5 +815,44 @@ def test_unmodeled_certificate_scope_is_fail_closed(change):
     elif change == "finding": evidence["references"][coverage["windows"][0]["evidence_refs"][0]]["finding"] = "inferred_no_compulsory_action"
     else:
         coverage["events"].pop(0)
+        coverage["noops"].append(dict(code=row["code"], isin=row["isin"], on=row["start"], kind="voluntary_offer", evidence_ref=row["evidence_ref"]))
+    with pytest.raises(ValueError): reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_four_named_assets_stay_out_of_executable_terms(supported):
+    coverage, evidence, kwargs, policy = certificate_fixture(supported=supported, v2=True)
+    events, successors = reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)
+    assert tuple(event.event_id for event in events) == (("supported-payment",) if supported else ())
+    assert successors == {}
+    terms_kwargs = {key: value for key, value in kwargs.items() if key != "read_scope_sha256"}
+    terms = reviewed_action_terms(coverage, evidence, **terms_kwargs, return_policy_json=policy)
+    assert terms.events == events and b"mirae-2026-stock-dividend" not in terms.canonical_json
+
+
+@pytest.mark.parametrize("change", ["no_policy", "v1_policy", "missing_event", "kind", "date_role", "status", "isin",
+    "date", "raw", "review", "coordinate", "finding", "window_state", "window_finding", "no_event", "voluntary", "gap"])
+def test_stock_dividend_cannot_be_downgraded_to_no_event_or_other_right(change):
+    coverage, evidence, kwargs, policy = certificate_fixture(v2=True)
+    row = coverage["events"][-1]
+    ref = evidence["references"][row["evidence_ref"]]
+    window = coverage["windows"][-1]
+    if change == "no_policy": policy = None
+    elif change == "v1_policy": policy = encoded(synthetic_policy())
+    elif change == "missing_event": coverage["events"].pop()
+    elif change == "kind": row["kind"] = "automatic_subscription_rights_certificate"
+    elif change == "date_role": row["date_role"] = "verified_delivery"
+    elif change == "status": row["status"] = "verified_delivered"
+    elif change == "isin": row["isin"] = "KR7006800001"
+    elif change == "date": row["start"] = row["end"] = "2026-03-18"
+    elif change in ("raw", "review"): ref[change + "_sha256"] = "f" * 64
+    elif change == "coordinate": ref["coordinate"] = "other-coordinate"
+    elif change == "finding": ref["finding"] = "reviewed_automatic_subscription_rights_certificate"
+    elif change == "window_state": window["review_state"] = "price_return_unmodeled_rights"
+    elif change == "window_finding": evidence["references"][window["evidence_refs"][0]]["finding"] = "price_return_unmodeled_rights"
+    elif change == "no_event": window.update(review_state="reviewed_no_event", event_ids=[])
+    elif change == "gap": coverage["windows"].pop()
+    else:
+        coverage["events"].pop()
         coverage["noops"].append(dict(code=row["code"], isin=row["isin"], on=row["start"], kind="voluntary_offer", evidence_ref=row["evidence_ref"]))
     with pytest.raises(ValueError): reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)
