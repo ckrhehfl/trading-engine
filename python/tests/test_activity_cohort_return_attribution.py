@@ -17,9 +17,10 @@ import test_activity_cohort_comparison as fixture
 CODES = (*module.KNOWN_ISSUER_CODES, "999999")
 
 
-def case(monkeypatch, *, changes=None):
-    monkeypatch.setattr(fixture, "CODES", CODES)
-    declarations, quotes = fixture.case((4, 0), changes=changes)
+def case(monkeypatch, *, changes=None, v2=False):
+    codes = (*module.KNOWN_ISSUER_CODES, "006800", "999999") if v2 else CODES
+    monkeypatch.setattr(fixture, "CODES", codes)
+    declarations, quotes = fixture.case((len(codes), 0), changes=changes)
     declaration = next(row for row in declarations if row.arm == "D1" and row.group_id == "ACTIVITY")
     result = comparison.replay_equal_capital_cohorts(declarations, quotes, (), parameters=deepcopy(PARAMETERS),
         cohort_keys=((declaration.arm, declaration.group_id, declaration.formation_on),))
@@ -27,10 +28,10 @@ def case(monkeypatch, *, changes=None):
     return replay, declaration, quotes
 
 
-def attribute(values, *, replay=None, events=()):
+def attribute(values, *, replay=None, events=(), policy=None):
     original, declaration, quotes = values
     return module.attribute_known_issuer_returns(original if replay is None else replay, declaration, quotes,
-        deepcopy(PARAMETERS), events=events)
+        deepcopy(PARAMETERS), events=events, return_policy_json=policy)
 
 
 def price(day, value):
@@ -156,3 +157,54 @@ def test_same_original_capital_denominator_and_remainder_reconcile_without_repla
         assert result["by_code"][code]["pnl"] == sum_decimal_values((first["by_code"][code]["pnl"],) * 2)
     assert sum_decimal_values((result["known_issuer_pnl"], result["remainder_pnl"])) == total
     assert result["known_issuer_return_contribution"] == result["known_issuer_pnl"] / D("0.4")
+
+
+def test_four_issuer_nonzero_same_book_attribution_preserves_unknown_dividend_and_no_replay(monkeypatch):
+    from research.activity_preflight import encoded
+    from test_activity_cohort_return_policy import synthetic_policy_v2
+    policy = encoded(synthetic_policy_v2())
+    initial = case(monkeypatch, v2=True)
+    calendar = initial[2].calendar
+    codes = (*module.KNOWN_ISSUER_CODES, "006800", "999999")
+    changes = {(code, calendar[187]): price(calendar[187], 110 + index * 10) for index, code in enumerate(codes)}
+    values = case(monkeypatch, v2=True, changes=changes)
+    original = deepcopy(values[0])
+    result = attribute(values, policy=policy)
+    shares = D("0.05") / (D(100) * (1 + D("6.77") / 10000))
+    tax = D(str(total_bp(KOSPI, calendar[187], calendar)))
+    expected = []
+    for index, code in enumerate(codes[:-1]):
+        row = result["by_code"][code]
+        cash = shares * D(110 + index * 10) * (1 - (D("6.77") + tax) / 10000)
+        pnl = sum_decimal_values((cash, D("-0.05")))
+        expected.append(pnl)
+        assert row["net_exit_cash"] == cash and row["pnl"] == pnl
+        assert row["assigned_capital_return_contribution"] == pnl / D("0.25")
+    mirae = result["by_code"]["006800"]
+    assert mirae["automatic_stock_dividend_shares"] is None
+    assert mirae["automatic_stock_dividend_fractional_cash"] is None
+    assert mirae["stock_dividend_assets_model"] == "not_modeled"
+    assert "automatic_subscription_rights_cash" not in mirae
+    assert result["known_issuer_pnl"] == sum_decimal_values(tuple(expected))
+    assert sum_decimal_values((result["known_issuer_pnl"], result["remainder_pnl"])) == result["total_book_pnl"]
+    assert values[0] == original
+    rows = ({module.ATTRIBUTION_KEY: result}, {module.ATTRIBUTION_KEY: deepcopy(result)})
+    monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("attribution ran another replay"))
+    aggregate = module.aggregate_known_issuer_returns(rows, assigned_capital=D("0.5"),
+        total_pnl=sum_decimal_values((result["total_book_pnl"],) * 2), return_policy_json=policy)
+    assert aggregate["by_code"]["006800"]["pnl"] == sum_decimal_values((mirae["pnl"],) * 2)
+    assert aggregate["automatic_stock_dividend_shares"] is aggregate["automatic_stock_dividend_fractional_cash"] is None
+    with pytest.raises(ValueError, match="versioned policy scope"):
+        module.aggregate_known_issuer_returns(rows, assigned_capital=D("0.5"), total_pnl=aggregate["total_book_pnl"])
+
+
+def test_v2_affected_mirae_supported_action_needs_new_explicit_lineage(monkeypatch):
+    from research.activity_preflight import encoded
+    from test_activity_cohort_return_policy import synthetic_policy_v2
+    values = case(monkeypatch, v2=True)
+    calendar, code = values[2].calendar, "006800"
+    basis = PriceBasis(code, calendar[99], D(100), D(100), values[2].quote_snapshot_sha256, "synthetic basis")
+    event = FinalCashPayment("unsupported-mirae-lineage", FinalCashDistribution(code,
+        calendar[99], calendar[100], calendar[200], D(100), basis, "synthetic final payment"))
+    with pytest.raises(ValueError, match="explicit attribution lineage"):
+        attribute(values, events=(event,), policy=encoded(synthetic_policy_v2()))

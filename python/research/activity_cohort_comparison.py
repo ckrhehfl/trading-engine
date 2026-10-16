@@ -299,7 +299,8 @@ def _summary(results: tuple[dict, ...], days: tuple[date, ...], *, return_policy
     policy = policy_report(return_policy_json)
     if policy:
         result.update(policy)
-        result[ATTRIBUTION_KEY] = aggregate_known_issuer_returns(results, assigned_capital=assigned, total_pnl=pnls[-1])
+        result[ATTRIBUTION_KEY] = aggregate_known_issuer_returns(results, assigned_capital=assigned, total_pnl=pnls[-1],
+            return_policy_json=return_policy_json)
     return result
 
 
@@ -329,9 +330,12 @@ def _exposure(days, inventory, navs, assigned: Decimal, pnls, *, return_policy_j
         "auxiliary_raw_books_nav_weight": mean("auxiliary_raw_books_nav_weight"),
         "nav_weight_denominator": "assigned_capital + sum(cohort_NAV - 1); excludes unassigned synthetic cash",
         "pending_rights_included": True, "executable_liquidity_certified": False}
-    if policy_report(return_policy_json):
+    policy = policy_report(return_policy_json)
+    if policy:
         result.update(pending_rights_scope="modeled supported LG/LX compulsory components only",
             automatic_subscription_rights_included=False)
+        if "automatic_stock_dividend_assets" in policy:
+            result["automatic_stock_dividend_assets_included"] = False
     return result
 
 
@@ -399,7 +403,7 @@ def _prepare_cohort_replay(
     else:
         _coverage(declarations, quotes, ordered_events, parameters)
     if binding is not None and policy_report(binding.return_policy_json):
-        require_supported_attribution_actions(ordered_events)
+        require_supported_attribution_actions(ordered_events, return_policy_json=binding.return_policy_json)
     end = calendar.index(date.fromisoformat(parameters["end"]))
     prepared = _PreparedReplay(declarations, quotes, ordered_events, binding, raw_quote_view, encoded(parameters),
         tuple(keyed.items()), calendar, calendar[parameters["lookback"] + 1:end + 1],
@@ -479,7 +483,7 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
             if policy:
                 results[-1].update(policy)
                 results[-1][ATTRIBUTION_KEY] = attribute_known_issuer_returns(result, row, quotes, parameters,
-                    events=ordered_events)
+                    events=ordered_events, return_policy_json=return_policy_json)
         aggregates, comparisons = {}, {}
         for arm in ARMS:
             arm_results = tuple(row for row in results if row["arm"] == arm)
