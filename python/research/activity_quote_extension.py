@@ -44,27 +44,47 @@ def _validated(component: HoldingInputs) -> None:
                  "component fingerprint must be canonical")
         requested = fingerprint.get("intersection_code_dates")
         _require(type(component.observations) is tuple, "component observations must be immutable")
-        rows = {}
-        for observation in component.observations:
+        typed_rows = fingerprint.get("rows")
+        _require(type(typed_rows) is list and len(typed_rows) == len(component.observations),
+                 "component observations must match retained typed rows")
+        rows, provenance_by_day = {}, {}
+        for observation, typed_row in zip(component.observations, typed_rows):
             _require(type(observation) is HoldingObservation and type(observation.code) is str
                      and type(observation.observation_date) is date
                      and type(observation.provenance_json) is bytes,
                      "component observation receipt shape mismatch")
             key = observation.code, observation.observation_date.strftime("%Y%m%d")
             _require(key not in rows, "duplicate component observation")
+            _require(type(typed_row) is list and len(typed_row) == 3
+                     and typed_row[:2] == [observation.code, observation.observation_date.isoformat()],
+                     "component observation coordinates disagree with retained typed rows")
             typed, values = observation.typed_values, None
             if typed is not None:
                 _require(type(typed) is tuple and len(typed) == 7
                          and all(type(pair) is tuple and len(pair) == 2 and type(pair[0]) is str
                                  and (pair[1] is None or type(pair[1]) is str) for pair in typed),
                          "component typed storage must be immutable seven-field tuples")
-                typed = [list(pair) for pair in typed]
+                retained = typed_row[2]
+                _require(type(retained) is list and len(retained) == len(typed)
+                         and all(type(saved) is list and saved == list(pair)
+                                 for pair, saved in zip(typed, retained)),
+                         "component typed storage disagrees with retained typed rows")
+                # Reuse only after independently comparing the immutable receipt;
+                # the adapter still decodes and validates every retained field.
+                typed = retained
                 raw = tuple(_decode_typed(pair) for pair in typed)
                 values = {field: value if value is None or type(value) is str
                           else {"sqlite_storage": pair} for field, value, pair in zip(
                               ("open", "high", "low", "close", "volume", "turnover"), raw[1:], typed[1:])}
-            provenance = strict_json(observation.provenance_json)
-            _require(encoded(provenance) == observation.provenance_json, "component provenance must be canonical")
+            else:
+                _require(typed_row[2] == "absent", "component absence disagrees with retained typed rows")
+            cached = provenance_by_day.get(observation.observation_date)
+            if cached is None or cached[0] != observation.provenance_json:
+                provenance = strict_json(observation.provenance_json)
+                _require(encoded(provenance) == observation.provenance_json, "component provenance must be canonical")
+                provenance_by_day[observation.observation_date] = observation.provenance_json, provenance
+            else:
+                provenance = cached[1]
             rows[key] = {"values": values, "typed_values": typed, "provenance": provenance}
         scan = {"rows": rows, "fingerprint": fingerprint,
                 "typed_snapshot_sha256": component.quote_snapshot_sha256,

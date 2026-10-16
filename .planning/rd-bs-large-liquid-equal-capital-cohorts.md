@@ -1019,3 +1019,91 @@ arithmetic and compare all scalar/aggregate attributions, without importing the
 production attribution helper or executing another book. This is saved-input
 reuse, not a new market query or source/rights/transaction certificate. The
 separate private publication/verifier gates and actual verification remain open.
+
+## Price-return source shipped; next duplicate-validation boundary, 2026-10-16
+
+PR #299 final head076412728842eeb530121a1d8b8d9fd194e514d1 and
+treec92267f2e99a1ef7693de6579f692d3774027851 passed separate final
+correctness/adversarial and research-integrity reviews, all eight final-head
+CI runs and zero unresolved conversations. Normal squash
+61761e5de2b20f876a9d717cdce69a46a0a27f2f preserves that tree with sole
+parent48619137332fa7fb3a2ae319c993661184854f57. Reviewed research-only
+reflection7d011e65 completed2026-10-16T02:23:08.166330Z. Isolated research
+is clean61761e5 and operational collector remains clean4ce85d71; no process,
+collector, database or experiment operation was part of that reflection.
+
+A fourth, separately registered quote diagnostic used registration
+ea8572427d2724e7d9d97efd7991e02aaefc052a09a282de2cafc1392d755e5f,
+the unchanged E147 producer/spec531871d5 and reviewed publisher2020e8b4.
+Its exclusive provenance-recovery roots preserve all preceding failed roots.
+Original six-file parsing, fingerprint and projection now passed. The pinned
+coordinate plan was read and a read-only additional scan consumed1303rows.
+It then failed while extend_holding_quotes revalidated the original component:
+_validated reconstructed the complete typed scan and adapt_holding_scan tried
+to encode the fingerprint while those duplicate structures remained live.
+This is another input-memory defect, not a price-return comparison result.
+
+Failure17dd37be609f2dae42bf6eac34ba18f17e07fd2008506ce7f4b608985a29f17d,
+resourceee37b0e0efaa7d257f4d0209d0481d6b68d588ffb6eced2f546395960d628ea8
+and inputmanifest3a2070749515425f59e1745df4a677020cbe1e268cab5459963d91be9b691c48
+are preserved. Unchanged AS768MiB/CPU300/wall900/nice10 produced peak691064KiB,
+elapsed140.203170s,user82.514184s,system13.564096s. Additional typed-scan pin
+34c5b42e56819d7a56a6e2cb71ea2dd71b96e66814117f1a5158b66ff2a0de3d
+was received2026-10-16T02:25:29.179058Z. Final-checkout receipt
+808d22122d57efd84c1307950f3a55bfe0cbef7ba9e2d28192c06fc54087a3ee
+confirms clean research61761e5 and unchanged clean collector4ce85d71.
+Only own diagnostic metadata, not original inputs or quote values, was fetched
+to explain this failure. No automatic retry or old-root replacement occurred.
+
+The focused source continuation reduces _validated's overlapping allocations:
+independently compare each immutable observation tuple against its fingerprint
+row before reusing that existing typed list, and share decoded provenance only
+for the same date and exact canonical bytes within this invocation. Reapply the
+complete existing adapter and final _same, including Decimal exponents and all
+request/absence/series fields. Forged dataclasses remain rejected. A source
+memory improvement is not an actual recovery; final tests, separate reviews,
+CI, normal shipping and a newly registered diagnostic remain necessary.
+
+The public certificate acquisition also preserved a separate bounded failure.
+Original Cosmo20230818001446 completed1505530bytes/raw7db8c821. Posco's
+HTTP200/content-length3690638 exceeded the original2000000byte cap, preserving
+the truncated prefix and failure0765d7dc; Samsung had not been requested.
+After two fresh source gates, manual recovery0443a053/test883d739f used only
+the fixed Posco and Samsung URLs, a declared8MiB response cap and unchanged
+AS256MiB/CPU30/wall120/nice10 in a new exclusive root. It completed two GETs:
+result402660a98ef8a24016e96aa83a15c39d54e8a69b023459d265cc4df37994084c,
+Posco raw5a17fa3874488f9dd5580c7cb23d97b211a3956e12edb7e3bbd0ca49fdc92f77
+and Samsung raw426bfa4fe8c763c0375685652ee9e7224ca1aad1de3a790b5302787b2aaaa443.
+There were four wire attempts across the original and recovery, no automatic
+retry and no refetch of completed Cosmo. Acquired_unreviewed is not source truth.
+
+The separately registered three-body content read38db7b9f/request98ed5fce
+completed with projectioncd01c0c5e00cf8e04b737316a22dbce500fdeca6b176b09fa36aafa42e0b7f41.
+The selected original official texts explicitly describe certificate issuance
+and account allocation to existing shareholders, distinct from subscribing
+with new cash. This supports acknowledging the three unmodeled assets. Whole
+amendment-chain completeness, actual cash/unit values, delivery, historical
+publication/vintage and full action/issue-period coverage are not established.
+Independent source-content review and exact final policy/coverage joins remain
+separate obligations. The narrow price-return exception does not waive others.
+
+Actual BS is still D+1 0/84 and D+2 0/84,total0/168. The two remaining large
+dependency groups stay open: relevant input/action/raw/unit connection, then
+actual comparison with independent result verification. This continuation has
+closed zero of those groups. Keep source tests and acquired documents distinct
+from completed studies or evidence that the signal adds value.
+
+Source-only verification of that focused allocation repair: source
+10cd9a417c8a1931fb3ae3c481a7d36764d05d52ae37f6781d4e5723511c28e9,
+test6f3134578467c48d1c45fdb802e90c5ecd09b37e3aa1758fd960f3bb5650e3b2.
+The six related holding/restore/extension/quote/cohort-quote/paired files passed
+292tests in61.60s, including44focused tests. Six fabricated quote cases retained
+identical full results and18saved output byte/hash comparisons.
+A151120828byte synthetic audit with80000original rows plus1303extension rows
+tested the actual restore-then-release-audit lifetime under the same
+AS768MiB/CPU300/wall900/nice10: the old validator raisedMemoryError at
+peak774336KiB/14.857s, while the repair completed at642536KiB/14.270s.
+An initial probe mistakenly kept its decoded audit alive through extension and
+both implementations failed; that probe was corrected to match prepare_original's
+actual lifetime, without changing production source or increasing resource caps.
+These synthetic results do not establish actual input recovery or source truth.
