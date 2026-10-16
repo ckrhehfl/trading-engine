@@ -727,3 +727,71 @@ metadata will be joined separately for the 39 unresolved ranges; none is
 silently removed. Acquisition, original-content review, component proofs and
 saved-output verification remain separate. Both first-experiment dependency
 groups are still open, and actual D1/D2 BS performance counts remain 0/168.
+
+## Actual holding-source review and successor quote registration, 2026-10-16
+
+The normal-prefix dependency is closed by its saved-output verification. The
+holding recovery also completed with independently verified original rows,
+missingness, full-family declarations and provisional exit bounds. These are
+input results; actual matched BS performance remains D1=0, D2=0 of 168 books.
+Two first-experiment dependency groups remain: consequential action/raw-unit
+input closure, and the individually logged comparison plus independent output
+verification. This continuation has not closed either remaining group.
+
+The original 76 fixed history query units completed with 73 acquired leaves
+and three parser-unresolved units. Separate actual content reviewers inspected
+all 73 complete histories and original raw/readable byte pins: 68 bounded
+no-compulsory-action inferences and five original-body follow-up findings.
+Those inferences describe inspected positive histories; they do not prove an
+exhaustive event search or independently certify final replay coverage.
+
+The source-ID supplement allocated 33 additional unknown windows and three
+POSCO search-candidate windows without repeating the original 76. All 36
+additional fixed queries completed: 31 acquired leaves and five parser gaps.
+The three 005490 holding windows retain unresolved historical identity
+context, including a selected 2022 record without a CIK; nominating a known
+CIK for a new source search does not backfill historical identity proof.
+Additional content review is separate from acquisition.
+
+Actual source review found shareholder rights offerings within possible
+holding periods for 005070, 003670 and 006400. Automatic subscription-right
+certificates are distinct from choosing to subscribe with additional cash.
+The existing voluntary-offer no-op cannot silently discard those assets.
+The operator has been asked whether to first register a limited price-return
+exploration or complete explicit rights-sale accounting. No answer has been
+assumed; neither new return convention nor rights policy has been applied.
+Issuers and periods remain in the frozen family. Public KRX follow-up also
+identified no-new-share subsidiary-merger terms; formal source supplementation
+remains separate from those web nominations and original-history findings.
+
+The first local coordinate-projection attempt used nonexistent local holding
+metadata paths and stopped before its first input read. Preserve that failed
+attempt. A separately reviewed publisher then called the unchanged metadata
+projector once at the genuine GCP paths. Exactly three pinned metadata reads
+produced coordinate-plan SHA 78b303af011c3db569b9a1121e2b28b0b559cf5dcaf12c057b4e6a2710add6d9
+(27,243 original bytes), publication receipt
+4221e97987528b2cc47dac2acb22331a08c8d4767a18677f10948f3c17e45c60.
+This step read no prices, database, API, credentials or source bodies, applied
+no action and computed no return. Research e52b72a and collector 4ce85d71
+stayed clean and unchanged. Its output is not a source/action/basis certificate.
+
+`activity-cohort-quote-inputs-v1.json` now supplies genuine pins for the verified
+new holding package, its independent receipt, that full-family price-free
+successor/basis union and the existing read-only typed scan. Parameters,
+assigned capital, controls, costs, holding duration and power flags are
+unchanged. The committed quote producer independently recomputes the exact
+union from the original typed package before any additional quote scan. All
+original requests, including requested absences, stay immutable. Final source
+review, required CI, normal merge, research-only reflection and a separately
+registered actual invocation still precede that price diagnostic. Its eventual
+output requires separate verification; it does not run any of the 168 books or
+resolve unsupported rights, actual historical publication, vintage or promotion.
+
+Separate actual reviews of all 31 additional leaves are now complete: 25
+bounded inferences and six original-leaf follow-ups, with all five acquisition
+parser gaps preserved. The follow-ups concern automatic rights, merger terms
+or timing, and the conservative successor origin/tail boundary. A body-context
+issuer label is not an independently proved historical ISIN/CIK bridge.
+Neither these findings nor the original 68 bounded inferences are a final
+coverage, action or accounting certificate. The outstanding rights question
+and actual BS performance count are unchanged.
