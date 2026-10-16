@@ -14,6 +14,7 @@ from collections.abc import Callable
 from datetime import date
 import hashlib
 from importlib import metadata
+import io
 import json
 import os
 from pathlib import Path
@@ -57,8 +58,17 @@ def digest(raw: bytes) -> str:
 
 
 def encoded(value: Any) -> bytes:
-    return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2,
-                       allow_nan=False) + "\n").encode("utf-8")
+    """Stream canonical JSON bytes without collecting encoder tokens."""
+    encoder = json.JSONEncoder(ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False)
+    with io.BytesIO() as stream:
+        for chunk in encoder.iterencode(value):
+            if len(chunk) <= 64 * 1024:
+                stream.write(chunk.encode("utf-8"))
+            else:
+                for start in range(0, len(chunk), 64 * 1024):
+                    stream.write(chunk[start:start + 64 * 1024].encode("utf-8"))
+        stream.write(b"\n")
+        return stream.getvalue()
 
 
 def strict_json(raw: bytes) -> Any:
