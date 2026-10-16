@@ -1,0 +1,61 @@
+{
+  "actual_investment_return": false,
+  "approved_on": "2026-10-16",
+  "automatic_stock_dividend_assets": "not_modeled",
+  "automatic_subscription_rights_cash": "not_modeled",
+  "events": [
+    {
+      "code": "005070",
+      "coordinate": "KIND20230818001446; independent-review.json: issuer005070; normalized lines461-475,527-530,739; start/end are disclosed schedule, execution/final-amendment-chain not certified",
+      "end": "2023-11-07",
+      "event_id": "cosmo-2023-subscription-rights",
+      "evidence_ref": "bs-cosmo-2023-subscription-rights-reviewed",
+      "isin": "KR7005070008",
+      "kind": "automatic_subscription_rights_certificate",
+      "raw_sha256": "7db8c821198fda3d628b1b6359253a3c84cbc94cb0d2fa550bb7998a57169ce6",
+      "review_sha256": "5be7f654106faa066561a98ab8beddbf0f069781be6930a89ff38b6e5dda75c3",
+      "start": "2023-09-05"
+    },
+    {
+      "code": "003670",
+      "coordinate": "KIND20250612000065; independent-review.json: issuer003670; normalized lines447-460,520-523,1038-1039; start/end are disclosed schedule, execution/final-amendment-chain not certified",
+      "end": "2025-07-22",
+      "event_id": "posco-future-m-2025-subscription-rights",
+      "evidence_ref": "bs-posco-future-m-2025-subscription-rights-reviewed",
+      "isin": "KR7003670007",
+      "kind": "automatic_subscription_rights_certificate",
+      "raw_sha256": "5a17fa3874488f9dd5580c7cb23d97b211a3956e12edb7e3bbd0ca49fdc92f77",
+      "review_sha256": "5be7f654106faa066561a98ab8beddbf0f069781be6930a89ff38b6e5dda75c3",
+      "start": "2025-06-16"
+    },
+    {
+      "code": "006400",
+      "coordinate": "KIND20250519000446; independent-review.json: issuer006400; normalized lines169-170,182-186,291-298; Apr10 start inferred from Apr11 record/T+2, not directly verified ex-right date; May22 is disclosed subscription deadline; execution/final-amendment-chain not certified",
+      "end": "2025-05-22",
+      "event_id": "samsung-sdi-2025-subscription-rights",
+      "evidence_ref": "bs-samsung-sdi-2025-subscription-rights-reviewed",
+      "isin": "KR7006400006",
+      "kind": "automatic_subscription_rights_certificate",
+      "raw_sha256": "426bfa4fe8c763c0375685652ee9e7224ca1aad1de3a790b5302787b2aaaa443",
+      "review_sha256": "5be7f654106faa066561a98ab8beddbf0f069781be6930a89ff38b6e5dda75c3",
+      "start": "2025-04-10"
+    },
+    {
+      "code": "006800",
+      "coordinate": "KIND20260313000999 normalized lines25-26,39-40,51-62; independent-review.json also verifies KIND20260429000237 raw93bf86169612b1fb9ad159ec1261e9cfacb02aae6604f0beb0d23756f9ce21f9 lines13,17,161-166,176-177; single-day interval is disclosed record date only, not delivery or certified entitlement; full amendment chain, historical availability, vendor unit and actual custody not certified",
+      "date_role": "disclosed_record_date_only",
+      "end": "2026-03-17",
+      "event_id": "mirae-2026-stock-dividend",
+      "evidence_ref": "bs-mirae-2026-stock-dividend-reviewed",
+      "isin": "KR7006800007",
+      "kind": "automatic_stock_dividend",
+      "raw_sha256": "2224d9c89074ed2807d3f1ba1e5705b525d1ba81afee56f3bd4dad4a7c892c5d",
+      "review_sha256": "c8dcf3a0d89a36733eaafa8b968556638242f124df7aef824b97613e0c653347",
+      "start": "2026-03-17"
+    }
+  ],
+  "mode": "price_return_exploratory",
+  "promotion_allowed": false,
+  "schema": "activity-cohort-return-policy-v2",
+  "study": "BS-v1"
+}

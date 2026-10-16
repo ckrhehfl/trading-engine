@@ -7,6 +7,7 @@ from pathlib import Path
 import socket
 import sqlite3
 import weakref
+from types import SimpleNamespace
 
 import pytest
 
@@ -46,7 +47,7 @@ def repin(spec, bodies, role, value):
 def fixture(tmp_path):
     old, bodies, declarations, original, _ = holding_fixture.fixture(tmp_path, raw=True)
     spec = {**deepcopy(old), "schema": module.SCHEMA, "study_id": module.SCHEMA, "mode": module.MODE,
-        "return_policy_schema": module.SCHEMA_V2}
+        "return_policy_schema": module.SCHEMA_V2, "reviewed_terms_binding": "current_snapshot"}
     inputs = spec["inputs"]
     inputs["reviewed_terms"] = inputs.pop("reviewed_action_coverage")
     inputs.pop("component_exit_scope")
@@ -136,6 +137,97 @@ def evaluate(tmp_path, spec, bodies):
     output = tmp_path / "proof"; output.mkdir(mode=0o700)
     inputs = saved.PinnedInputs(lambda path: bodies[str(path)])
     return module.evaluate_inputs(spec, inputs, output), inputs, output
+
+
+def template_fixture(tmp_path):
+    spec, bodies, _, original, view = fixture(tmp_path)
+    current = saved.strict_json(bodies[spec["inputs"]["reviewed_terms"]["path"]])
+    current_basis = saved.strict_json(bodies[spec["inputs"]["basis_evidence"]["path"]])
+    old_event_id = current["events"][0]["event_id"]
+    current["events"][0]["event_id"] = "lg-2021-compulsory-spin-off"
+    for row in current_basis["references"].values():
+        row["event_ids"] = ["lg-2021-compulsory-spin-off" if event == old_event_id else event for event in row["event_ids"]]
+    template, evidence = deepcopy(current), deepcopy(current_basis)
+    template.update(activity_snapshot_sha256="8" * 64, quote_snapshot_sha256="9" * 64,
+        required_scope_sha256="7" * 64, windows=[{"old": "coverage_not_transferred"}],
+        noops=[{"old": "noops_not_transferred"}])
+    for row in evidence["bases"].values(): row["quote_snapshot_sha256"] = "9" * 64
+    spec["reviewed_terms_binding"] = module.TEMPLATE_BINDING
+    for role, pin in module.TEMPLATE_PINS.items(): spec["inputs"][role]["sha256"] = pin
+    return spec, original, view, template, evidence, current, current_basis, bodies
+
+
+def test_reviewed_template_only_rebinds_snapshot_labels_and_does_not_transfer_prior_coverage(tmp_path):
+    spec, original, view, template, evidence, current, current_basis, bodies = template_fixture(tmp_path)
+    before = deepcopy((spec, template, evidence))
+    coverage, basis, report = module._bind_reviewed_template(spec, template, evidence, original, view,
+        policy=synthetic_policy_v2(), windows=())
+    assert coverage == current and basis == current_basis
+    assert before == (spec, template, evidence)
+    assert report["basis_values_unchanged"] is True and report["template_source_references_unchanged"] is True
+    assert report["prior_interval_coverage_transferred"] is False and report["raw_anchor_count"] == 3
+    module._bind_raw_basis(basis, view)
+    # The unchanged terms decoder, rather than the template adapter, approves
+    # event/source/date/basis constructor consistency against the current view.
+    terms = module.reviewed_action_terms(coverage, basis, expected_windows=tuple(
+        dict(code=row["code"], isin=row["isin"], start=row["entry_on"], end=row["original_end_on"])
+        for row in saved.strict_json(bodies[spec["inputs"]["ordinary_exit_scope"]["path"]])["entries"]),
+        calendar=original.calendar, activity_snapshot_sha256=original.activity_snapshot_sha256,
+        quote_snapshot_sha256=view.quote_snapshot_sha256)
+    assert len(terms.events) == 1
+
+
+@pytest.mark.parametrize("change", ("pin", "snapshot", "event", "calendar", "unresolved", "anchor"))
+def test_reviewed_template_never_repairs_changed_facts_or_unreviewed_sources(tmp_path, change):
+    spec, original, view, template, evidence, _, _, _ = template_fixture(tmp_path)
+    if change == "pin": spec["inputs"]["basis_evidence"]["sha256"] = "6" * 64
+    elif change == "snapshot": next(iter(evidence["bases"].values()))["quote_snapshot_sha256"] = "5" * 64
+    elif change == "event": template["events"][0]["kind"] = "final_cash_payment"
+    elif change == "calendar": template["calendar_sha256"] = "4" * 64
+    elif change == "unresolved": template["unresolved"] = [{"unknown": True}]
+    else: evidence["bases"].pop(next(iter(evidence["bases"])))
+    with pytest.raises(ValueError): module._bind_reviewed_template(spec, template, evidence, original, view,
+        policy=synthetic_policy_v2(), windows=())
+
+
+def test_rebound_raw_basis_rejects_changed_numeric_value_instead_of_replacing_it(tmp_path):
+    spec, original, view, template, evidence, _, _, _ = template_fixture(tmp_path)
+    row = next(iter(evidence["bases"].values()))
+    row["raw_close"] = row["adjusted_close"] = "9999999999"
+    _, bound, _ = module._bind_reviewed_template(spec, template, evidence, original, view,
+        policy=synthetic_policy_v2(), windows=())
+    with pytest.raises(ValueError, match="raw basis must match"):
+        module._bind_raw_basis(bound, view)
+
+
+@pytest.mark.parametrize("selected", ("005070", "003670", "006400", "006800", "all"))
+def test_template_connects_only_relevant_pinned_policy_assets_and_shared_decoder_retains_lg_only(tmp_path, selected):
+    spec, original, view, template, evidence, current, _, _ = template_fixture(tmp_path)
+    policy = synthetic_policy_v2()
+    events = [row for row in policy["events"] if selected in ("all", row["code"])]
+    calendar = tuple(sorted(set(original.calendar) | {date(2019, 1, 2), date(2026, 9, 18)}
+        | {date.fromisoformat(row[key]) for row in policy["events"] for key in ("start", "end")}))
+    family = SimpleNamespace(calendar=calendar, activity_snapshot_sha256=original.activity_snapshot_sha256,
+        read_scope_sha256=original.read_scope_sha256)
+    template["calendar_sha256"] = module.calendar_sha256(calendar)
+    windows = (dict(code="003550", isin=current["events"][0]["isin"], start=str(calendar[0]), end=str(calendar[-1])),
+        *(dict(code=row["code"], isin=row["isin"], start=row["start"], end=row["end"]) for row in events))
+    bound, bases, report = module._bind_reviewed_template(spec, template, evidence, family, view,
+        policy=policy, windows=windows)
+    assert report["policy_event_ids_connected"] == sorted(row["event_id"] for row in events)
+    assert report["policy_source_references_added"] == len(events)
+    assert bound["events"][0] == current["events"][0]
+    assert [row["event_id"] for row in bound["events"][1:]] == [row["event_id"] for row in events]
+    for row in events:
+        reference = bases["references"][row["evidence_ref"]]
+        assert all(reference[key] == row[key] for key in ("raw_sha256", "review_sha256", "coordinate"))
+    module._bind_raw_basis(bases, view)
+    terms = module.reviewed_action_terms(bound, bases, expected_windows=windows, calendar=calendar,
+        activity_snapshot_sha256=original.activity_snapshot_sha256, quote_snapshot_sha256=view.quote_snapshot_sha256,
+        return_policy_json=saved.encoded(policy))
+    assert len(terms.events) == 1 and terms.events[0].event_id == "lg-2021-compulsory-spin-off"
+    canonical = saved.strict_json(terms.canonical_json)
+    assert all(row["event_id"] not in {item["declaration"]["event_id"] for item in canonical["events"]} for row in events)
 
 
 def test_real_restore_and_existing_proof_engine_emit_direct_proof_without_books(tmp_path, monkeypatch):

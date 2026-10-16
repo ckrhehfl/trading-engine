@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from collections import Counter
+from copy import deepcopy
 import json
 from pathlib import Path, PurePosixPath
 import os
@@ -28,7 +29,7 @@ from research.activity_pair_calibration import PARAMETERS
 from research.activity_paired_replay import _require_raw_potential_scope
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_raw_component_preflight import _bind_raw_basis, _pre_effective_marks
-from research.activity_raw_quote_view import restore_raw_quote_view
+from research.activity_raw_quote_view import calendar_sha256, restore_raw_quote_view
 from research.activity_reviewed_actions import reviewed_action_terms
 
 
@@ -63,6 +64,10 @@ ZERO = ("D1_completed_studies", "D2_completed_studies", "performance_studies_add
 FALSE_FLAGS = tuple(sorted(set((*QUOTE_FALSE, *RAW_FALSE, "final_coverage_verified", "raw_response_bodies_read",
     "original_source_bodies_read", "actual_investment_return", "actual_study_completed"))))
 LIMITS = dict(address_space_bytes=768 * 1024**2, cpu_seconds=300, wall_seconds=900, nice=10)
+TEMPLATE_BINDING = "reviewed_lg_template_rebind_current_raw_identity_v1"
+TEMPLATE_PINS = dict(
+    reviewed_terms="48a65cfde7bfc3fe471a75f256933a0abf43bc00c7186d5c1dc5ec9244eb7333",
+    basis_evidence="b63e91db18f149e347ca094ba5a0f1005506e86f10e995ef94f9a76dec91232d")
 
 
 def _same(left, right, message):
@@ -73,9 +78,11 @@ def validate_contract(spec: dict, reference: dict) -> None:
     """Reuse the original thirteen-field identity; require fifteen explicit pins."""
     saved.require(type(spec) is dict and set(spec) == {"schema", "study_id", "mode", "window", "reference_specification",
         "parameters", "controls", "design", "inputs", "holding_verification_identity", "return_policy_schema",
-        "promotion_allowed", *cohort.frontier.POWER_FLAGS} and spec["schema"] == spec["study_id"] == SCHEMA
+        "reviewed_terms_binding", "promotion_allowed", *cohort.frontier.POWER_FLAGS} and spec["schema"] == spec["study_id"] == SCHEMA
         and spec["mode"] == MODE and spec["return_policy_schema"] == SCHEMA_V2,
         "fixed BS terms-only component diagnostic and explicit v2 policy required")
+    saved.require(spec["reviewed_terms_binding"] in ("current_snapshot", TEMPLATE_BINDING),
+        "explicit reviewed terms binding required")
     declared = spec["inputs"]
     saved.require(type(declared) is dict and set(declared) == set(INPUT_ROLES), "exact fifteen saved BS roles required")
     # This projection invokes the unchanged holding identity/parameter validator;
@@ -83,7 +90,11 @@ def validate_contract(spec: dict, reference: dict) -> None:
     projected = {**spec, "schema": cohort.SCHEMA, "study_id": cohort.SCHEMA, "mode": cohort.RETURN_MODE,
         "inputs": {role: declared[role] for role in (*cohort.HOLDING_ROLES, "holding_verification", "basis_evidence", "return_policy")}
             | {"reviewed_action_coverage": declared["reviewed_terms"]}}
+    projected.pop("reviewed_terms_binding")
     cohort.validate_contract(projected, reference)
+    if spec["reviewed_terms_binding"] == TEMPLATE_BINDING:
+        saved.require(all(declared[role]["sha256"] == pin for role, pin in TEMPLATE_PINS.items()),
+            "only the previously reviewed LG raw template pair may be rebound")
     paths = []
     for row in declared.values():
         saved.require(type(row) is dict and set(row) == {"path", "sha256"} and type(row["path"]) is str
@@ -260,6 +271,66 @@ def _policy_obligations(proof, policy):
                 for priority in proof["unresolved_priority_intervals"]), "explicit unmodeled-asset priority interval required")
 
 
+def _bind_reviewed_template(spec, coverage, evidence, original, quotes, *, policy, windows):
+    """Preserve reviewed LG facts/values; derive only this run's snapshot labels.
+
+    The prior complete coverage is not transferred. Actual raw anchors and all
+    terms are checked again below against this run's independently verified raw
+    view. The exact prior template pins are part of the registered specification.
+    """
+    if spec["reviewed_terms_binding"] == "current_snapshot":
+        return coverage, evidence, None
+    saved.require(all(spec["inputs"][role]["sha256"] == pin for role, pin in TEMPLATE_PINS.items()),
+        "reviewed template pair changed")
+    saved.require(type(coverage) is dict and coverage.get("schema") == "activity-reviewed-actions-v1"
+        and coverage.get("status") == "reviewed_complete" and coverage.get("unresolved") == []
+        and type(coverage.get("events")) is list and len(coverage["events"]) == 1
+        and coverage["events"][0].get("event_id") == "lg-2021-compulsory-spin-off"
+        and coverage["events"][0].get("kind") == "compulsory_spin_off"
+        and type(evidence) is dict and set(evidence) == {"references", "bases"}
+        and type(evidence["bases"]) is dict and len(evidence["bases"]) == 3,
+        "reviewed LG-only template required")
+    old_snapshot = coverage.get("quote_snapshot_sha256")
+    saved._pin(old_snapshot)
+    saved.require(all(type(row) is dict and row.get("quote_snapshot_sha256") == old_snapshot
+        and row.get("code") in ("003550", "383800") for row in evidence["bases"].values()),
+        "template bases must retain one reviewed LG/LX snapshot")
+    bound, bases = deepcopy(coverage), deepcopy(evidence)
+    bound.update(activity_snapshot_sha256=original.activity_snapshot_sha256,
+        quote_snapshot_sha256=quotes.quote_snapshot_sha256, required_scope_sha256=original.read_scope_sha256,
+        windows=[], noops=[], unresolved=[])
+    # Calendar dates do not change between the saved study and this BS family.
+    saved.require(bound.get("calendar_sha256") == calendar_sha256(original.calendar),
+        "reviewed template calendar changed")
+    for row in bases["bases"].values():
+        row["quote_snapshot_sha256"] = quotes.quote_snapshot_sha256
+    policy_ids = []
+    for event in policy["events"]:
+        if not any((row["code"], row["isin"]) == (event["code"], event["isin"])
+                and row["start"] <= event["end"] and event["start"] <= row["end"] for row in windows):
+            continue
+        fields = ("event_id", "kind", "code", "isin", "start", "end", "evidence_ref")
+        declaration = {key: event[key] for key in fields}
+        declaration["status"] = "reviewed_unmodeled"
+        if "date_role" in event: declaration["date_role"] = event["date_role"]
+        reference_id = event["evidence_ref"]
+        saved.require(reference_id not in bases["references"], "policy reference collides with reviewed LG template")
+        bases["references"][reference_id] = dict(
+            **{key: event[key] for key in ("code", "isin", "start", "end", "raw_sha256", "review_sha256", "coordinate")},
+            reviewed_on=policy["approved_on"], finding="reviewed_" + event["kind"], event_ids=[event["event_id"]])
+        bound["events"].append(declaration)
+        policy_ids.append(event["event_id"])
+    binding = dict(mode=TEMPLATE_BINDING, template_sha256=dict(TEMPLATE_PINS),
+        previous_activity_snapshot_sha256=coverage.get("activity_snapshot_sha256"),
+        previous_quote_snapshot_sha256=old_snapshot, previous_required_scope_sha256=coverage.get("required_scope_sha256"),
+        activity_snapshot_sha256=original.activity_snapshot_sha256, quote_snapshot_sha256=quotes.quote_snapshot_sha256,
+        required_scope_sha256=original.read_scope_sha256, modeled_event_declarations_unchanged=True,
+        template_source_references_unchanged=True, basis_values_unchanged=True, prior_interval_coverage_transferred=False,
+        policy_event_ids_connected=sorted(policy_ids), policy_source_references_added=len(policy_ids),
+        raw_anchor_count=len(bases["bases"]), source_truth_certified=False)
+    return bound, bases, binding
+
+
 def evaluate_inputs(spec, inputs, output):
     validate_contract(spec, {"parameters": PARAMETERS})
     def load(role):
@@ -274,10 +345,12 @@ def evaluate_inputs(spec, inputs, output):
     policy_raw = load("return_policy"); policy = decode_return_policy(policy_raw)
     saved.require(policy["schema"] == spec["return_policy_schema"] == SCHEMA_V2, "loaded policy differs from registered v2 schema")
     coverage, evidence = saved.strict_json(load("reviewed_terms")), saved.strict_json(load("basis_evidence"))
+    windows = tuple(dict(code=row["code"], isin=row["isin"], start=row["entry_on"], end=row["original_end_on"]) for row in ordinary["entries"])
+    coverage, evidence, template_binding = _bind_reviewed_template(spec, coverage, evidence, original, quotes,
+        policy=policy, windows=windows)
     saved.require(type(coverage) is dict and all(coverage.get(name) == [] for name in ("windows", "noops", "unresolved"))
         and coverage.get("required_scope_sha256") == original.read_scope_sha256, "terms-only original-scope envelope required")
     selections = cohort_proof_selections(declarations, original.calendar, spec["parameters"])
-    windows = tuple(dict(code=row["code"], isin=row["isin"], start=row["entry_on"], end=row["original_end_on"]) for row in ordinary["entries"])
     _bind_raw_basis(evidence, quotes)
     terms = reviewed_action_terms(coverage, evidence, expected_windows=windows, calendar=original.calendar,
         activity_snapshot_sha256=original.activity_snapshot_sha256, quote_snapshot_sha256=quotes.quote_snapshot_sha256, return_policy_json=policy_raw)
@@ -306,7 +379,8 @@ def evaluate_inputs(spec, inputs, output):
         original_quote_snapshot_sha256=original.quote_snapshot_sha256, extension_quote_snapshot_sha256=base.extension.quote_snapshot_sha256,
         base_quote_snapshot_sha256=base.quote_snapshot_sha256, raw_quote_snapshot_sha256=quotes.quote_snapshot_sha256,
         raw_source_artifact_sha256=quotes.source_artifact_sha256, raw_unit_plan_sha256=quotes.unit_plan_sha256,
-        terms_sha256=terms.terms_sha256, ordinary_scope_sha256=proof["ordinary_scope_sha256"], component_scope_sha256=proof["component_scope_sha256"],
+        terms_sha256=terms.terms_sha256, reviewed_template_binding=template_binding,
+        ordinary_scope_sha256=proof["ordinary_scope_sha256"], component_scope_sha256=proof["component_scope_sha256"],
         pre_effective_mark_checks=checks, raw_verification_counts=raw_receipt["counts"],
         prior_independent_receipts_relied_on=True, original_quote_requests_preserved=True, independent_output_verification="pending",
         unmodeled_asset_values={event["event_id"]: None for event in policy["events"]},
@@ -386,7 +460,8 @@ def run_preflight(root, spec_path, output_dir, runs_path, *, reader=None, freeze
     try:
         return experiment_log.run_discovery_trial(study_id=spec["study_id"], specification_sha256=spec_pin, window=spec["window"], runs_path=runs,
             parameters={**spec["parameters"], "mode": spec["mode"], "source_manifest_sha256": source_pin,
-                "declared_inputs": spec["inputs"], "output_dir": str(output), **dict.fromkeys(ZERO, 0), **metadata}, evaluate=evaluate)
+                "reviewed_terms_binding": spec["reviewed_terms_binding"], "declared_inputs": spec["inputs"],
+                "output_dir": str(output), **dict.fromkeys(ZERO, 0), **metadata}, evaluate=evaluate)
     except BaseException as error:
         if primary_error is not None and error is not primary_error:
             _secondary(output, "logging-failure.json", primary_error, "canonical_failure_append", error)
