@@ -9,6 +9,7 @@ import sqlite3
 
 import pytest
 
+from research import activity_holding_inputs as module
 from research.activity_holding_inputs import adapt_holding_scan, holding_requirements
 from research.activity_partition_selection import selections_from_bl
 from research.activity_preflight import PinnedInputs, digest, encoded
@@ -37,7 +38,7 @@ def upper_bound(calendar):
     return {code: tuple(day.isoformat() for day in calendar[:-2]) for code in (A, B)}
 
 
-def scan_case(tmp_path, *, change=None):
+def scan_case(tmp_path, *, change=None, codes=(A,)):
     """Exercise only the existing bounded reader over a temporary synthetic DB."""
     path = database(tmp_path)
     mutate(path, "UPDATE scan_bars SET volume='100'")
@@ -46,7 +47,7 @@ def scan_case(tmp_path, *, change=None):
         assert field in ("open", "high", "low", "close", "volume", "turnover")
         mutate(path, f"UPDATE scan_bars SET {field}=? WHERE code=? AND bsop_date=?",
                (value, A, DAYS[0].strftime("%Y%m%d")))
-    requested = {A: tuple(day.isoformat() for day in DAYS[:3])}
+    requested = {code: tuple(day.isoformat() for day in DAYS[:3]) for code in codes}
     plan = {"calendar_dates": [day.strftime("%Y%m%d") for day in DAYS],
             "intersection_code_dates": {code: list(days) for code, days in requested.items()}}
     scan = load_scan(path, plan, PinnedInputs(), SCOPE_PIN)
@@ -143,6 +144,55 @@ def test_lossless_projection_preserves_storage_receipt_and_is_immutable(tmp_path
         inputs.quote_snapshot_sha256 = "e" * 64
     with pytest.raises(TypeError):
         inputs.panel[A] = inputs.panel[A]
+
+
+def test_provenance_bytes_share_one_immutable_object_per_day_without_skipping_row_checks(tmp_path, monkeypatch):
+    _, requested, scan = scan_case(tmp_path, codes=(A, B))
+    original_scan, calls, encoded_rows = deepcopy(scan), [], []
+    provenance, encode = module._provenance, module.encoded
+    row_ids = {id(row["provenance"]) for row in scan["rows"].values()}
+    def expected(day, *args):
+        calls.append(day)
+        return provenance(day, *args)
+    def encoded_row(value):
+        if id(value) in row_ids: encoded_rows.append(id(value))
+        return encode(value)
+    monkeypatch.setattr(module, "_provenance", expected)
+    monkeypatch.setattr(module, "encoded", encoded_row)
+    inputs = adapt(scan, requested)
+    assert scan == original_scan and calls == list(DAYS[:3])
+    assert set(encoded_rows) == row_ids and len(encoded_rows) == 6
+    by_day = {}
+    for row in inputs.observations:
+        assert row.provenance_json == encode(scan["rows"][row.code, row.observation_date.strftime("%Y%m%d")]["provenance"])
+        assert type(row.provenance_json) is bytes
+        if row.observation_date in by_day: assert row.provenance_json is by_day[row.observation_date]
+        else: by_day[row.observation_date] = row.provenance_json
+    assert len({id(raw) for raw in by_day.values()}) == 3
+    assert sum(len(raw) for raw in by_day.values()) * 2 == sum(len(row.provenance_json) for row in inputs.observations)
+    scan["rows"][A, "20190102"]["provenance"]["retrieved_at"] = "caller mutation"
+    assert json.loads(inputs.observations[0].provenance_json)["retrieved_at"] == "unknown"
+
+
+@pytest.mark.parametrize("corruption", ["tampered", "none", "nonnull", "equal_non_json", "equal_noncanonical_text"])
+def test_primed_day_cache_does_not_accept_changed_second_code_provenance(tmp_path, corruption):
+    _, requested, scan = scan_case(tmp_path, codes=(A, B))
+    row = scan["rows"][B, "20190102"]  # All A rows prime these dates first.
+    error = ValueError
+    if corruption == "tampered": row["provenance"]["retrieved_at"] = "tampered"
+    elif corruption == "none": row["provenance"] = None
+    elif corruption == "nonnull": row["provenance"]["is_final"] = False
+    elif corruption == "equal_non_json":
+        class EqualUnknown:
+            def __eq__(self, other): return other == "unknown"
+        row["provenance"]["retrieved_at"] = EqualUnknown()
+        error = TypeError
+    else:
+        class EqualUnknownText(str):
+            def __eq__(self, other): return other == "unknown"
+        row["provenance"]["retrieved_at"] = EqualUnknownText("different canonical text")
+    with pytest.raises(error):
+        adapt(scan, requested)
 
 
 @pytest.mark.parametrize("field,value,issue", [

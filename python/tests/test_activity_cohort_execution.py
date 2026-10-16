@@ -313,3 +313,65 @@ def test_outputs_are_private_existing_canonical_log_mode_and_umask_are_preserved
     assert values["output_dir"].stat().st_mode & 0o777 == 0o700
     assert all(path.stat().st_mode & 0o777 == 0o600 for path in values["output_dir"].iterdir())
     assert values["runs_path"].stat().st_mode & 0o777 == 0o644
+
+
+def test_all_168_policy_books_plans_trials_receipts_and_aggregates_keep_identical_pin(tmp_path, monkeypatch):
+    from research.activity_cohort_return_attribution import ATTRIBUTION_KEY
+    from research.activity_cohort_return_policy import policy_report
+    from test_activity_cohort_return_policy import synthetic_policy
+
+    values = package(ks=(0,) * 14)
+    policy = saved.encoded(synthetic_policy())
+    values["expected_pins"]["return_policy"] = saved.digest(policy)
+    binding = prepare_cohort_scope(**values, return_policy_json=policy)
+    private = tmp_path / "private"
+    private.mkdir(mode=0o700)
+    calls, real = [], comparison.replay_synthetic
+    def counted(*args, **kwargs):
+        calls.append(True)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(comparison, "replay_synthetic", counted)
+    output = private / "cohorts"
+    log_path = tmp_path / "log.jsonl"
+    result = module.run_cohort_family(values["declarations"], values["quotes"], binding.events,
+        parameters=values["parameters"], scope_binding=binding, study_id="synthetic-168-policy",
+        source_manifest_sha256="1" * 64, specification_sha256="2" * 64,
+        runs_path=log_path, output_dir=output)
+    flags = policy_report(policy)
+    def flagged(row):
+        assert all(row[key] == value for key, value in flags.items())
+    assert len(calls) == 168 and result["completed_cohort_studies_by_arm"] == {"D1": 84, "D2": 84}
+    plan = read(output / "cohort-plan.json")
+    flagged(plan)
+    assert len(plan["cohorts"]) == 168
+    for row in plan["cohorts"]: flagged(row)
+    report = result["report"]
+    flagged(report)
+    flagged(read(output / "completion.json"))
+    assert len(report["cohort_receipts"]) == 168
+    completed_record_bytes = {row["run_id"]: saved.encoded(row) for line in log_path.read_bytes().splitlines()
+        if (row := saved.strict_json(line))["status"] == "completed"}
+    for receipt in report["cohort_receipts"]:
+        flagged(receipt)
+        flagged(receipt["statistics"])
+        document = read(output / receipt["cohort_output"])
+        flagged(document)
+        flagged(document["engine_result"])
+        cohort, = document["engine_result"]["cohorts"]
+        flagged(cohort)
+        assert cohort[ATTRIBUTION_KEY]["automatic_subscription_rights_cash"] is None
+        assert cohort[ATTRIBUTION_KEY]["known_issuer_pnl"] == "0"
+        assert cohort["metrics"]["total_return"] is None and set(document["navs"]) == {"1"}
+        saved_receipt = read(output / receipt["receipt_file"])
+        flagged(saved_receipt["parameters"])
+        flagged(saved_receipt["result"])
+        assert (output / receipt["receipt_file"]).read_bytes() == completed_record_bytes[receipt["run_id"]]
+    log = records(log_path)
+    assert len(log) == 336
+    for row in log: flagged(row["parameters"])
+    for row in log[1::2]: flagged(row["result"])
+    for groups in report["aggregates"].values():
+        for row in groups.values():
+            flagged(row)
+            assert row[ATTRIBUTION_KEY]["assigned_capital"] == "0"
+            assert row[ATTRIBUTION_KEY]["known_issuer_return_contribution"] is None

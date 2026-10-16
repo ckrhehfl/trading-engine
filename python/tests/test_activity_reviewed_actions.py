@@ -12,6 +12,8 @@ import pytest
 from research.activity_accounting import Lot
 from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
 from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
+from research.activity_preflight import encoded
+from test_activity_cohort_return_policy import synthetic_policy
 
 
 CALENDAR = tuple(date.fromisoformat(text) for text in (
@@ -735,3 +737,81 @@ def test_unknown_spin_override_is_not_ignored_in_empty_requirements():
 def test_unknown_spin_override_is_not_ignored_in_nonempty_requirements():
     with pytest.raises(ValueError, match="unknown spin-off"):
         call(*fixture(), spin_off_windows=spin_override())
+
+
+def certificate_fixture(*, supported=False):
+    policy = synthetic_policy()
+    calendar = tuple(sorted({date.fromisoformat(row[key]) for row in policy["events"] for key in ("start", "end")}))
+    coverage, _, _ = fixture()
+    coverage.update(calendar_sha256=sha256(json.dumps([str(day) for day in calendar], separators=(",", ":")).encode()).hexdigest(),
+        windows=[], events=[])
+    evidence, required = dict(references={}, bases={}), []
+    for row in policy["events"]:
+        raw = {key: row[key] for key in ("event_id", "kind", "code", "isin", "start", "end", "evidence_ref")}
+        coverage["events"].append(dict(raw, status="reviewed_unmodeled"))
+        ids = [row["event_id"]]
+        if supported and row["code"] == "005070":
+            ids.append("supported-payment")
+            coverage["events"].append(dict(event_id="supported-payment", kind="final_cash_payment", status="verified_paid",
+                code=row["code"], isin=row["isin"], last_trading_on=row["start"], record_on="2023-04-04", paid_on=row["end"],
+                net_cash_per_raw_share="1", basis_id="last", evidence_ref="payment"))
+            evidence["references"]["payment"] = reference(row["code"], row["isin"], row["end"], row["end"],
+                "verified_final_cash_payment", ("supported-payment",))
+            price_basis(evidence, "last", row["code"], row["isin"], row["start"], "last_trading")
+        window_ref = "window-" + row["code"]
+        coordinate = {key: row[key] for key in ("code", "isin", "start", "end")}
+        required.append(coordinate)
+        coverage["windows"].append(dict(coordinate, review_state="price_return_unmodeled_rights", event_ids=ids,
+            evidence_refs=[window_ref]))
+        evidence["references"][window_ref] = reference(**coordinate, finding="price_return_unmodeled_rights", ids=ids)
+        evidence["references"][row["evidence_ref"]] = dict(reference(**coordinate,
+            finding="reviewed_automatic_subscription_rights_certificate", ids=(row["event_id"],)),
+            **{key: row[key] for key in ("raw_sha256", "review_sha256", "coordinate")})
+        for ref in evidence["references"].values(): ref["reviewed_on"] = "2026-10-16"
+    kwargs = dict(expected_windows=tuple(required), calendar=calendar, activity_snapshot_sha256=ACTIVITY,
+        quote_snapshot_sha256=QUOTE, read_scope_sha256=SCOPE)
+    return coverage, evidence, kwargs, encoded(policy)
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_pinned_certificates_remain_declared_but_never_become_execution_events(supported):
+    coverage, evidence, kwargs, policy = certificate_fixture(supported=supported)
+    before = deepcopy((coverage, evidence))
+    events, successors = reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)
+    assert tuple(event.event_id for event in events) == (("supported-payment",) if supported else ())
+    assert successors == {} and (coverage, evidence) == before
+    terms_kwargs = {key: value for key, value in kwargs.items() if key != "read_scope_sha256"}
+    terms = reviewed_action_terms(coverage, evidence, **terms_kwargs, return_policy_json=policy)
+    old = deepcopy(coverage)
+    old["events"] = [row for row in old["events"] if row["kind"] != "automatic_subscription_rights_certificate"]
+    old_evidence = deepcopy(evidence)
+    for row in synthetic_policy()["events"]: old_evidence["references"].pop(row["evidence_ref"])
+    baseline = reviewed_action_terms(old, old_evidence, **terms_kwargs)
+    assert terms == baseline and terms.events == events
+    assert b"subscription-rights" not in terms.canonical_json
+
+
+@pytest.mark.parametrize("change", ["no_policy", "missing_event", "wrong_kind", "fourth_event", "identity", "policy_identity",
+    "date", "raw", "review", "coordinate", "event_ref", "reference_ids", "unknown", "no_event", "finding", "noop"])
+def test_unmodeled_certificate_scope_is_fail_closed(change):
+    coverage, evidence, kwargs, policy = certificate_fixture()
+    row = coverage["events"][0]
+    ref = evidence["references"][row["evidence_ref"]]
+    if change == "no_policy": policy = None
+    elif change == "missing_event": coverage["events"].pop(0)
+    elif change == "wrong_kind": row["kind"] = "unknown_right"
+    elif change == "fourth_event": coverage["events"].append(dict(row, code="005930", event_id="fourth"))
+    elif change == "identity": row["isin"] = "KR7005070001"
+    elif change == "policy_identity":
+        changed = synthetic_policy(); changed["events"][0]["isin"] = "KR7005070001"; policy = encoded(changed)
+    elif change == "date": row["end"] = "2023-04-05"
+    elif change in ("raw", "review", "coordinate"): ref[{"raw": "raw_sha256", "review": "review_sha256", "coordinate": "coordinate"}[change]] = "f" * 64
+    elif change == "event_ref": row["evidence_ref"] = "missing"
+    elif change == "reference_ids": ref["event_ids"] = []
+    elif change == "unknown": coverage["events"].append(dict(event_id="unknown", kind="merger", code="005070"))
+    elif change == "no_event": coverage["windows"][0].update(review_state="reviewed_no_event", event_ids=[])
+    elif change == "finding": evidence["references"][coverage["windows"][0]["evidence_refs"][0]]["finding"] = "inferred_no_compulsory_action"
+    else:
+        coverage["events"].pop(0)
+        coverage["noops"].append(dict(code=row["code"], isin=row["isin"], on=row["start"], kind="voluntary_offer", evidence_ref=row["evidence_ref"]))
+    with pytest.raises(ValueError): reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)

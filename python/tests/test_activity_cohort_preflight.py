@@ -21,7 +21,7 @@ from research.activity_quote_extension import extend_holding_quotes
 from research import activity_raw_quote_view as raw_view
 from research.activity_reviewed_actions import reviewed_action_terms
 from research.activity_quote_preflight import _audit
-from test_activity_cohort_connection import package, raw_package, complete_coverage
+from test_activity_cohort_connection import package, raw_package, rights_package, complete_coverage
 from test_activity_cohort_comparison import quotes
 from test_activity_cohort_holding_preflight import scan_from_quotes
 
@@ -35,8 +35,8 @@ def deny_actual_network_database(monkeypatch):
     monkeypatch.setattr(experiment_log, "_git_head_sha", lambda: "a" * 40)
 
 
-def fixture(tmp_path, *, zero=False, raw=False):
-    seed = raw_package() if raw else package(ks=(0, 0) if zero else (1, 1))
+def fixture(tmp_path, *, zero=False, raw=False, return_policy=False):
+    seed = rights_package() if return_policy else raw_package() if raw else package(ks=(0, 0) if zero else (1, 1))
     declarations, calendar = seed["declarations"], seed["original"].calendar
     proofs = cohort_proof_selections(declarations, calendar, PARAMETERS)
     declaration_value = [_json_value(asdict(row)) for row in declarations]
@@ -90,7 +90,7 @@ def fixture(tmp_path, *, zero=False, raw=False):
         optional = {"component_exit_scope": saved.encoded(proof), "quote_extension": saved.encoded(dict(
             schema="activity-quote-extension-envelope-v1", original_quote_snapshot_sha256=original.quote_snapshot_sha256,
             read_scope=extra_scope, holding_input_audit=extra_audit)), "raw_episode_quotes": artifact, "raw_episode_unit_plan": unit_raw}
-    else:
+    elif not return_policy:
         coverage, evidence = complete_coverage(coverage, evidence, plan["child_windows"], plan["child_scope_sha256"])
     outputs = {name: saved.encoded({"synthetic_unread_metadata": name}) for name in module.HOLDING_FILES}
     outputs.update({"cohort-declarations.json": saved.encoded(declaration_value), "proof-selections.json": saved.encoded(proof_value),
@@ -126,9 +126,10 @@ def fixture(tmp_path, *, zero=False, raw=False):
         **dict.fromkeys((*module.VERIFY_FALSE, *module.VERIFY_EXTRA_FALSE), False), **dict.fromkeys(module.VERIFY_ZERO, 0)}
     payloads = {role: outputs[name] for role, name in module.HOLDING_ROLES.items()}
     payloads.update(holding_verification=saved.encoded(receipt), reviewed_action_coverage=saved.encoded(coverage), basis_evidence=saved.encoded(evidence), **optional)
+    if return_policy: payloads["return_policy"] = seed["return_policy_json"]
     declared = {role: {"path": str(tmp_path / "holding" / module.HOLDING_ROLES[role] if role in module.HOLDING_ROLES else tmp_path / "evidence" / (role + ".json")),
         "sha256": saved.digest(body)} for role, body in payloads.items()}
-    spec = dict(schema=module.SCHEMA, study_id=module.SCHEMA, mode=module.MODE, window=deepcopy(saved.WINDOW), reference_specification=saved.REFERENCE,
+    spec = dict(schema=module.SCHEMA, study_id=module.SCHEMA, mode=module.RETURN_MODE if return_policy else module.MODE, window=deepcopy(saved.WINDOW), reference_specification=saved.REFERENCE,
         parameters=deepcopy(PARAMETERS), controls=list(module.CONTROL_IDS), design=module.frontier.DESIGN, inputs=declared,
         holding_verification_identity=identity, promotion_allowed=False, **dict.fromkeys(module.frontier.POWER_FLAGS, False))
     bodies = {declared[role]["path"]: body for role, body in payloads.items()}
@@ -222,8 +223,8 @@ def test_changed_action_or_raw_proofs_are_recomputed_before_first_book(tmp_path,
     assert not (output / "cohorts").exists()
 
 
-def logging_case(tmp_path, monkeypatch, *, zero=False, raw=False):
-    spec, bodies, declarations, original, receipt = fixture(tmp_path, zero=zero, raw=raw)
+def logging_case(tmp_path, monkeypatch, *, zero=False, raw=False, return_policy=False):
+    spec, bodies, declarations, original, receipt = fixture(tmp_path, zero=zero, raw=raw, return_policy=return_policy)
     root, private = tmp_path / "repo", tmp_path / "private"
     root.mkdir(); private.mkdir(mode=0o700)
     monkeypatch.chdir(root); monkeypatch.setattr(module, "__file__", str(root / module.SOURCE_PATH))
@@ -237,7 +238,7 @@ def logging_case(tmp_path, monkeypatch, *, zero=False, raw=False):
     runs = tmp_path / "canonical" / "experiments.jsonl"
     def reader(path):
         records = [saved.strict_json(line) for line in runs.read_bytes().splitlines()]
-        assert records[0]["status"] == "started" and records[0]["parameters"]["mode"] == module.MODE
+        assert records[0]["status"] == "started" and records[0]["parameters"]["mode"] == (module.RETURN_MODE if return_policy else module.MODE)
         assert records[0]["parameters"]["performance_studies_added"] == 0
         return bodies[str(path)]
     return root, private / "run", runs, reader, freeze, sources, calls
@@ -334,3 +335,63 @@ def test_cli_installs_exact_resources_without_actual_execution(monkeypatch, tmp_
     assert module.main(["--spec", str(tmp_path / "spec.json"), "--output-dir", str(tmp_path / "output"), "--runs-path", str(tmp_path / "log.jsonl")]) == 0
     assert limits == [(module.resource.RLIMIT_AS, (768 * 1024**2,) * 2), (module.resource.RLIMIT_CPU, (600, 600))]
     assert alarms == [1800, 0] and priorities == [10]
+
+
+@pytest.mark.parametrize("change", ["old_mode", "missing_policy", "unknown_mode"])
+def test_price_return_role_requires_its_explicit_approved_mode_before_reads(tmp_path, change):
+    spec, *_ = fixture(tmp_path, return_policy=True)
+    if change == "old_mode": spec["mode"] = module.MODE
+    elif change == "missing_policy": spec["inputs"].pop("return_policy")
+    else: spec["mode"] = "total_investment_return"
+    with pytest.raises(ValueError): module.validate_contract(spec, {"parameters": PARAMETERS})
+
+
+@pytest.mark.parametrize("change", ["wrong_pin", "fourth_code", "unknown_kind", "fake_no_event", "missing_event"])
+def test_saved_price_return_policy_and_coverage_refuse_before_first_book(tmp_path, monkeypatch, change):
+    spec, bodies, *_ = fixture(tmp_path, return_policy=True)
+    role = "return_policy" if change in ("wrong_pin", "fourth_code", "unknown_kind") else "reviewed_action_coverage"
+    declared = spec["inputs"][role]
+    value = saved.strict_json(bodies[declared["path"]])
+    if change == "wrong_pin": declared["sha256"] = "f" * 64
+    else:
+        if change == "fourth_code": value["events"][0]["code"] = "005930"
+        elif change == "unknown_kind": value["events"][0]["kind"] = "voluntary_offer"
+        elif change == "fake_no_event": value["windows"][0].update(review_state="reviewed_no_event", event_ids=[])
+        else: value["events"].pop()
+        body = saved.encoded(value); bodies[declared["path"]], declared["sha256"] = body, saved.digest(body)
+    output = tmp_path / "output"; output.mkdir(mode=0o700)
+    monkeypatch.setattr(module.execution, "run_cohort_family", lambda *a, **k: pytest.fail("bad rights input reached book"))
+    with pytest.raises(ValueError): module.evaluate_inputs(spec, inputs_for(spec, bodies), output,
+        runs_path=tmp_path / "log.jsonl", source_manifest_sha256="1" * 64, specification_sha256="2" * 64)
+    assert not (output / "cohorts").exists()
+
+
+def test_saved_price_return_policy_passes_exact_original_bytes_to_existing_runner(tmp_path):
+    spec, bodies, declarations, original, _ = fixture(tmp_path, return_policy=True)
+    inputs = inputs_for(spec, bodies)
+    output = tmp_path / "output"; output.mkdir(mode=0o700)
+    calls = []
+    def runner(rows, quotes, events, **kwargs):
+        binding = kwargs["scope_binding"]
+        assert rows == declarations and quotes == original and events == ()
+        assert binding.return_policy_json == bodies[spec["inputs"]["return_policy"]["path"]]
+        calls.append(binding)
+        return dict(report_sha256="a" * 64, completion_sha256="b" * 64, cohort_plan_sha256="c" * 64,
+            completed_cohort_studies_by_arm={"D1": 12, "D2": 12}, D1_completed_studies=12, D2_completed_studies=12)
+    result = module.evaluate_inputs(spec, inputs, output, runs_path=tmp_path / "log.jsonl",
+        source_manifest_sha256="1" * 64, specification_sha256="2" * 64, family_runner=runner)
+    assert len(calls) == 1 and len(inputs.manifest) == 9
+    assert result["return_policy_sha256"] == spec["inputs"]["return_policy"]["sha256"]
+    assert result["actual_investment_return"] is result["promotion_allowed"] is False
+    assert result["automatic_subscription_rights_cash"] == "not_modeled"
+
+
+def test_outer_price_return_trial_and_receipts_preserve_declared_convention(tmp_path, monkeypatch):
+    root, output, runs, reader, freeze, *_ = logging_case(tmp_path, monkeypatch, return_policy=True)
+    record = module.run_preflight(root, root / "spec.json", output, runs, reader=reader, freeze=freeze)
+    result = saved.strict_json((output / "result.json").read_bytes())
+    started = saved.strict_json(runs.read_bytes().splitlines()[0])
+    for value in (result, record["result"], started["parameters"]):
+        assert value["return_measure"] == module.RETURN_MODE and value["actual_investment_return"] is False
+        assert value["return_policy_sha256"] == result["return_policy_sha256"]
+    assert result["cohort_evaluation_counts"] == {"D1": 12, "D2": 12}

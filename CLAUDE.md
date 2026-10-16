@@ -1955,6 +1955,28 @@ to allocate pending value. Source-supported allocation or an explicit separately
 registered pending-value convention is required before actual accounting.
 Source/synthetic implementations are not event coverage or completed studies.
 
+**BS operator choice: exploratory price-return comparison before subscription-right cash accounting.**
+On 2026-10-16 the operator selected the same frozen BS formation cohorts,
+controls, assigned capital and D1/D2 schedules for an exploratory price-return
+comparison before implementing automatic subscription-right certificate sales.
+This is a narrow exception for the named Cosmo Advanced Materials2023,
+POSCO Future M2025 and Samsung SDI2025 certificate events in a separately pinned
+return-policy artifact, not permission to classify them as no-event or voluntary
+offers, exclude their issuers, or waive other unresolved actions and identities.
+Preserve the earlier LG/LX raw-price, official allotment and original-investment
+decisions. Keep the original typed requests, missingness, evidence strengths,
+costs, holding rule and resource/review/output-verification obligations.
+
+The explicit policy and its source/review coordinates must survive binding
+revalidation and every individual/aggregate output. Retain affected potential
+origins' full original action horizon. Report price-return exploration and
+unmodeled certificate cash separately from modeled compulsory entitlements;
+never label unmodeled cash as an observed zero or actual investment total return.
+Decompose the named issuers' contributions from the same existing books without
+reselection, capital redistribution or a second replay. This exception changes
+no power/Eligibility Bar, holdout, promotion or live-trading boundary. Its record
+is `.planning/rd-bs-large-liquid-equal-capital-cohorts.md`.
+
 **BQ operator choice: raw-price accounting for the LG/LX episode.**
 On 2026-10-10 the operator selected KRX unadjusted prices and official compulsory
 allotment ratios for the relevant LG/LX holding episode. The observed April28

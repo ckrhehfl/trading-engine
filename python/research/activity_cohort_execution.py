@@ -20,6 +20,7 @@ from research import activity_cohort_comparison as comparison
 from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_cohort_connection import CohortScopeBinding
+from research.activity_cohort_return_policy import policy_report
 from research.activity_cohort_selection import CONTROL_IDS
 from research.activity_pair_calibration import PARAMETERS
 from research.activity_paired_replay import _json_value
@@ -73,12 +74,14 @@ def _cohort_statistics(row: dict) -> dict:
     return _json_value({key: value for key, value in row.items() if key not in {"replay", "exposure"}})
 
 
-def _summaries(rows: tuple[dict, ...], days: tuple[date, ...], declarations: tuple) -> dict:
+def _summaries(rows: tuple[dict, ...], days: tuple[date, ...], declarations: tuple, *,
+               return_policy_json: bytes | None = None) -> dict:
     """Reuse the unchanged accounting attribution and descriptive comparisons."""
     aggregates, comparisons, selection_change = {}, {}, {}
     for arm in comparison.ARMS:
         current = tuple(row for row in rows if row["arm"] == arm)
-        aggregates[arm] = {group: comparison._summary(tuple(row for row in current if row["group_id"] == group), days)
+        aggregates[arm] = {group: comparison._summary(tuple(row for row in current if row["group_id"] == group), days,
+            return_policy_json=return_policy_json)
             for group in comparison.GROUPS}
         formations = sorted({row["formation_on"] for row in current})
         per_formation = {}
@@ -97,14 +100,14 @@ def _summaries(rows: tuple[dict, ...], days: tuple[date, ...], declarations: tup
         "selection_change_meaning": "pre-opening declared targets; not filled-entry change or a reconstructed signal pool"}
 
 
-def _failure(error: BaseException, *, attempted: tuple, completed: tuple) -> dict:
+def _failure(error: BaseException, *, attempted: tuple, completed: tuple, return_policy_json: bytes | None = None) -> dict:
     return {"schema": SCHEMA + ":failure-v1", "status": "failed", "error_type": type(error).__name__,
         "error_frames": [{"file": Path(frame.filename).name, "line": frame.lineno, "function": frame.name}
             for frame in traceback.extract_tb(error.__traceback__)],
         "engine_callbacks_started": [_key_value(key) for key in attempted],
         "canonically_completed_cohorts": [_key_value(key) for key in completed],
         "completed_cohort_studies_by_arm": _counts(completed),
-        "partial_package_preserved": True, "automatic_retries": 0}
+        "partial_package_preserved": True, "automatic_retries": 0, **policy_report(return_policy_json)}
 
 
 def run_cohort_family(
@@ -127,6 +130,8 @@ def run_cohort_family(
     saved.require(type(scope_binding) is CohortScopeBinding
         and _same(scope_binding.declarations, declarations)
         and scope_binding.parameters_json == saved.encoded(parameters), "prepared immutable cohort scope binding required")
+    return_policy_json = scope_binding.return_policy_json
+    policy = policy_report(return_policy_json)
     for value in (source_manifest_sha256, specification_sha256, scope_binding.binding_sha256):
         saved._pin(value)
     saved.require(type(study_id) is str and bool(study_id) and study_id == study_id.strip(), "explicit frozen study id required")
@@ -151,13 +156,13 @@ def run_cohort_family(
             "selection_at": keyed[key].selection_at.isoformat(), "chosen_codes": list(keyed[key].chosen_codes),
             "original_activity_targets": list(keyed[key].activity_targets), "target_ceiling": keyed[key].target_ceiling,
             "assigned_capital": str(Decimal(keyed[key].target_ceiling) / parameters["slots"]),
-            "activity_targets_sha256": keyed[key].activity_targets_sha256} for key in keys]
+            "activity_targets_sha256": keyed[key].activity_targets_sha256, **policy} for key in keys]
     plan = {"schema": SCHEMA + ":plan-v1", "study_id": study_id,
         "source_manifest_sha256": source_manifest_sha256, "specification_sha256": specification_sha256,
         "conditional_scope_binding_sha256": scope_binding.binding_sha256,
         "expected_cohort_studies_by_arm": _counts(keys),
         "cohorts": planned_cohorts,
-        "automatic_retries": 0}
+        "automatic_retries": 0, **policy}
     plan_raw = saved.encoded(plan)
     plan_sha = saved.digest(plan_raw)
     compact_rows, receipts, attempted, completed = [], [], [], []
@@ -194,15 +199,15 @@ def run_cohort_family(
                         document = {"schema": SCHEMA + ":cohort-v1", "cohort_key": _key_value(key),
                             "source_manifest_sha256": source_manifest_sha256, "specification_sha256": specification_sha256,
                             "cohort_plan_sha256": plan_sha, "conditional_scope_binding_sha256": scope_binding.binding_sha256,
-                            "engine_result": _json_value(one), "navs": _json_value(compact["replay"].navs)}
+                            "engine_result": _json_value(one), "navs": _json_value(compact["replay"].navs), **policy}
                         raw = saved.encoded(document)
                         saved.write_exclusive(target, raw)
                         return {"cohort_key": _key_value(key), "cohort_output": target.name,
                             "cohort_sha256": saved.digest(raw), "cohort_bytes": len(raw), "automatic_retries": 0,
-                            "D1_completed_studies": int(key[0] == "D1"), "D2_completed_studies": int(key[0] == "D2")}
+                            "D1_completed_studies": int(key[0] == "D1"), "D2_completed_studies": int(key[0] == "D2"), **policy}
                     except BaseException as error:
                         saved.write_exclusive(output / (name + ".failure.json"),
-                            saved.encoded(_failure(error, attempted=(key,), completed=())))
+                            saved.encoded(_failure(error, attempted=(key,), completed=(), return_policy_json=return_policy_json)))
                         raise
 
                 record = experiment_log.run_discovery_trial(study_id=study_id, specification_sha256=specification_sha256,
@@ -212,18 +217,18 @@ def run_cohort_family(
                         "assigned_capital": str(Decimal(declaration.target_ceiling) / parameters["slots"]),
                         "source_manifest_sha256": source_manifest_sha256, "cohort_plan_sha256": plan_sha,
                         "conditional_scope_binding_sha256": scope_binding.binding_sha256,
-                        "output_file": str(target), "automatic_retries": 0},
+                        "output_file": str(target), "automatic_retries": 0, **policy},
                     window=saved.WINDOW, runs_path=runs, evaluate=evaluate)
                 completed.append(key)
                 saved.require(compact is not None, "completed trial must retain its summary")
                 compact_rows.append(compact)
-                receipt_raw = saved.encoded(_json_value(record))
+                receipt_raw = saved.encoded(record)
                 receipt_name = name + ".receipt.json"
                 saved.write_exclusive(output / receipt_name, receipt_raw)
                 receipts.append({**record["result"], "run_id": record["run_id"], "receipt_file": receipt_name,
                     "receipt_sha256": saved.digest(receipt_raw), "statistics": _cohort_statistics(compact)})
             saved.require(tuple(completed) == keys, "every declared cohort requires one canonical completion")
-            summaries = _summaries(tuple(compact_rows), days, declarations)
+            summaries = _summaries(tuple(compact_rows), days, declarations, return_policy_json=return_policy_json)
         report = _json_value({"schema": SCHEMA + ":report-v1", "study_id": study_id,
             "initial_nav_per_cohort": comparison.ONE, "parameters": parameters,
             "source_manifest_sha256": source_manifest_sha256, "specification_sha256": specification_sha256,
@@ -234,7 +239,7 @@ def run_cohort_family(
             "aggregation": "ex-post sum(cohort_NAV-1)/sum(original_activity_target_count/20); not a deployable continuous strategy",
             "control_interpretation": "five fixed controls share market sessions; not independent market samples; no p-values",
             "future_counts_used_only_for_ex_post_attribution": True, "independent_output_verification": "pending",
-            "comparison_power_prerequisite_met": False, "power_design_passed": False, "promotion_allowed": False})
+            "comparison_power_prerequisite_met": False, "power_design_passed": False, "promotion_allowed": False, **policy})
         report_raw = saved.encoded(report)
         saved.write_exclusive(output / "report.json", report_raw)
         completion = {"schema": SCHEMA + ":completion-v1", "status": "logged_cohort_family_executed",
@@ -242,14 +247,14 @@ def run_cohort_family(
             "completed_cohort_studies_by_arm": _counts(tuple(completed)),
             "D1_completed_studies": _counts(tuple(completed))["D1"],
             "D2_completed_studies": _counts(tuple(completed))["D2"],
-            "independent_output_verification": "pending", "automatic_retries": 0}
+            "independent_output_verification": "pending", "automatic_retries": 0, **policy}
         completion_raw = saved.encoded(completion)
         saved.write_exclusive(output / "completion.json", completion_raw)
         return {**completion, "output_dir": str(output), "completion_sha256": saved.digest(completion_raw), "report": report}
     except BaseException as error:
         if created:
             saved.write_exclusive(output / "failure.json",
-                saved.encoded(_failure(error, attempted=tuple(attempted), completed=tuple(completed))))
+                saved.encoded(_failure(error, attempted=tuple(attempted), completed=tuple(completed), return_policy_json=return_policy_json)))
         raise
     finally:
         os.umask(previous)

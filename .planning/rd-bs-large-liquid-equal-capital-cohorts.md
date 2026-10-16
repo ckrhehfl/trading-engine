@@ -914,3 +914,108 @@ dependency groups stay open: input/action/raw/unit closure and the actual
 comparison with independent verification. This continuation closed zero of
 those groups. The operator's automatic-rights convention remains unanswered;
 no price-return exception or rights-sale accounting has been assumed.
+
+## Operator selects price-return exploration first, 2026-10-16
+
+The operator answered the pending automatic subscription-right checkpoint with
+option1: preserve the original cohorts, five controls, assigned capital and
+D1/D2 schedules and compare exploratory price returns first. Known automatic
+certificates for005070/003670/006400 remain explicitly unmodeled cash assets,
+not no-event, voluntary participation, actual zero cash or an investment-return
+certificate. Report their contributions separately. Earlier LG/LX raw episode,
+official compulsory allotment and one-original-investment choices still bind.
+The previously pending notes describe history; this choice now resolves them.
+
+PR #298 completed both separate final reviews and all eight final-head CI runs,
+with no unresolved conversations. Normal squash
+48619137332fa7fb3a2ae319c993661184854f57 preserves reviewed tree
+3faa6735994f6f393f37f80d4e7755b1faccdc60. The reviewed research-only reflection
+completed2026-10-16T01:31:49.811811Z: clean research32b292c->4861913,
+clean collector4ce85d71 unchanged, no process/database/experiment operation.
+Fresh quote diagnostic registration
+15f8427ebd5da392d1bbfea40e2bad10f8199bd7852bdbce56b61dd80545fcfb
+uses the unchanged E147 producer/spec531871d5, reviewed publisher2020e8b4,
+protocolf175f7d8 and new exclusive encoding-recovery roots. It was started
+separately; neither preceding failed attempt is overwritten or relabeled.
+
+The minimal implementation adds a pinned BS-only return policy for the three
+named certificate events, exact issue/period/source/review joins and an explicit
+price_return_unmodeled_rights finding. Existing decoder defaults remain closed;
+an absent policy, another event, missing coverage or contradictory identity
+must fail before a book. The policy bytes/pin enter the immutable cohort binding
+and its revalidation. Terms/proofs retain supported compulsory events and the
+original full successor quote union; affected origins retain their original-end
+action obligation. No unverified source truth is upgraded by a structural check.
+
+The existing single book engine retains every selection, fill, cost, tax, exit
+and supported event. Price-return flags and policy pin accompany plan, individual
+outputs/trials, receipts and aggregate reports. A pure report-only decomposition
+tracks the three issuers' original lot entry budgets, actual net sale proceeds
+and terminal marked inventory from those same books/quotes. Unknown transitions
+or a supported compulsory action on those attribution paths fail explicitly.
+No extra replay, issuer exclusion or budget redistribution is permitted.
+The remaining PnL is a descriptive remainder under the original denominator,
+not a separately executed strategy. Certificate cash is null/not_modeled;
+modeled LG/LX pending inventory must not be mislabeled as all rights coverage.
+
+Verification must cover default compatibility, policy/event/reference tampering,
+full original-origin horizons, raw LG/LX invariants, hand-calculated Decimal
+attribution for unfilled/sold/deferred/terminal lots and equal policy pins across
+the family. Actual inputs and final execution pins are not fabricated during
+source implementation. Successful quote output verification, relevant raw/unit
+and supported-action closure, reviewed interval findings, final normal source
+shipping, actual168 studies and independent result verification remain required.
+At this decision record, actual D+1 remains0/84 and D+2 0/84; the two remaining
+large dependency groups are still open and no signal advantage is established.
+
+The fresh encoding-recovery diagnostic subsequently failed in a later step.
+Original JSON parsing and typed-fingerprint encoding both passed. MemoryError
+then arose in adapt_holding_scan while constructing/verifying row provenance
+through SessionLagPolicy._calendar. Failure receipt
+bbe8417d453a695f21df924a093ca138b1a8a9fde35e079cfc91d947bb009062
+and resource receipt
+e2011abd6b5dcdc8f0e4e5d0533cd0ac879d55ce9b0a7bb65b50ebd98cc126e4
+record elapsed107.039679s, peak659,440KiB, user83.779787s/system5.505039s and
+unchanged AS768MiB/CPU300/wall900/nice10. The same six original inputs passed
+their hashes before this failure; coordinate-plan/additional quote reads and
+performance execution were not reached. Final-checkout receipt
+acf8263a930592c58e4e438846f80626ded6d3014165a0c6f8ed20ec24400d72
+confirms clean research4861913 and collector4ce85d71. All three failed roots
+and their distinct registrations remain immutable, with no automatic retries.
+
+Source inspection found identical day/snapshot provenance bytes were retained
+separately for every issue row, and the same immutable calendar was revalidated
+per row. A narrow per-adaptation day cache can share verified immutable bytes
+while retaining every row's exact provenance and canonical-encoding checks.
+This is a memory-reduction hypothesis pending source/synthetic verification
+and another separately registered actual diagnostic; it changes no source,
+timing, fingerprint, state, scope or public return-policy interpretation.
+
+Source implementation verification (actual inputs unopened): policy/decoder/
+binding/preflight and paired/component/ordinary bounds passed385tests in125.95s.
+An initial new fixture used an invalid activity-target hash order; correcting
+that fixture produced19targeted passes and the final385/0result. The holding
+cache passed52tests in2.61s and six old/new synthetic quote cases retained full
+results and18saved output bytes/hashes. Same-date provenance sharing reduced
+one fixture's1146payloads to254unique payloads without losing an observation;
+a nonoverlapping-date case correctly had no sharing benefit. Every source row
+still has its own dict and canonical-byte check.
+
+Attribution/comparison/execution initially passed111tests in142.21s, including
+the full168synthetic family. The saved receipt remains canonical encoded
+completed-record content, with policy fields in its parameters/result, rather
+than adding duplicate top-level fields that would break existing log linkage.
+JSONL's compact physical line is not the indented receipt encoding. After
+correcting that formatting assertion, the final execution20tests passed74.27s.
+These fixtures establish no actual quote recovery or performance result.
+
+The saved-output checker must separately support the explicit policy, exact
+output shapes and issuer decomposition. A saved book's close/carry marks cannot
+recover its sale opening. The new independent path therefore registers the
+same original holding audit plus policy and reviewed-action artifacts, verifies
+their original spec pins, and keeps only the three requested issuers' compact
+quote records. It must independently reproduce the existing cost/settlement-tax
+arithmetic and compare all scalar/aggregate attributions, without importing the
+production attribution helper or executing another book. This is saved-input
+reuse, not a new market query or source/rights/transaction certificate. The
+separate private publication/verifier gates and actual verification remain open.

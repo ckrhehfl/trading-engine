@@ -13,6 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from research.activity_cohort_selection import CohortSelection
+from research.activity_cohort_return_policy import decode_return_policy
 from research.activity_component_bounds import validate_component_exit_bounds, verify_component_inventory
 from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs
@@ -70,6 +71,7 @@ class CohortScopeBinding:
     events: tuple
     fingerprint_json: bytes
     binding_sha256: str
+    return_policy_json: bytes | None = None
 
 
 def _payload(payload: bytes, pin: str, label: str) -> dict:
@@ -86,6 +88,7 @@ def prepare_cohort_scope(
     ordinary_exit_scope: bytes, reviewed_coverage: bytes, basis_evidence: bytes, *,
     parameters: dict, original_required_code_dates: dict, issue_isins: dict,
     input_sha256: dict, expected_pins: dict, component_exit_scope: bytes | None = None,
+    return_policy_json: bytes | None = None,
 ) -> CohortScopeBinding:
     """Recompute every family origin, snapshot, proof and final coverage before books.
 
@@ -116,7 +119,12 @@ def prepare_cohort_scope(
     roles = {"ordinary_exit_scope", "reviewed_action_coverage", "basis_evidence"}
     if component_exit_scope is not None:
         roles.add("component_exit_scope")
+    if return_policy_json is not None:
+        roles.add("return_policy")
     require(type(expected_pins) is dict and set(expected_pins) == roles, "exact conditional cohort byte pins required")
+    if return_policy_json is not None:
+        _payload(return_policy_json, expected_pins["return_policy"], "return policy")
+    policy = decode_return_policy(return_policy_json)
     supplied = _payload(ordinary_exit_scope, expected_pins["ordinary_exit_scope"], "ordinary exit scope")
     coverage = _payload(reviewed_coverage, expected_pins["reviewed_action_coverage"], "action coverage")
     evidence = _payload(basis_evidence, expected_pins["basis_evidence"], "basis evidence")
@@ -131,7 +139,7 @@ def prepare_cohort_scope(
             "explicit component priority intervals required")
         terms = reviewed_action_terms(coverage, evidence, expected_windows=windows, calendar=original.calendar,
             activity_snapshot_sha256=original.activity_snapshot_sha256,
-            quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256)
+            quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256, return_policy_json=return_policy_json)
         proof = validate_component_exit_bounds(supplied_component, plan, selections["D1"], selections["D2"],
             original, parameters, original_required_code_dates, issue_isins, input_sha256=input_sha256,
             quotes=fresh_quotes, terms=terms,
@@ -145,10 +153,31 @@ def prepare_cohort_scope(
         require(_same(fresh_quotes, original), "ordinary-only cohort scope retains its original quote projection")
         scope = mixed_action_scope(plan, coverage)
         action_windows, scope_sha = tuple(scope["windows"]), scope["action_scope_sha256"]
+    if policy is not None:
+        for row in scope["entries"]:
+            origin = row["origin"] if proof is not None else row
+            parts = row["components"] if proof is not None else (origin,)
+            affected = [event for event in policy["events"] if any(
+                (part["code"], part["isin"]) == (event["code"], event["isin"]) for part in parts)
+                and origin["entry_on"] <= event["end"] and event["start"] <= row["original_end_on"]]
+            if not affected:
+                continue
+            end = row["end_on"] if proof is not None else row["action_end_on"]
+            require(end == row["original_end_on"], "unmodeled rights origin must retain its original horizon")
+            if proof is not None:
+                for event in affected:
+                    # Retain an explicit priority declaration over the whole
+                    # consequential certificate period, as well as the recomputed
+                    # original-end fallback. A shorter candidate cannot excuse it.
+                    require(any((priority["code"], priority["isin"]) == (event["code"], event["isin"])
+                        and priority["start"] <= max(origin["entry_on"], event["start"])
+                        and min(row["original_end_on"], event["end"]) <= priority["end"]
+                        for priority in proof["unresolved_priority_intervals"]),
+                        "unmodeled rights require existing unresolved component priority intervals")
     events, successors = reviewed_actions(coverage, evidence, expected_windows=action_windows,
         calendar=original.calendar, activity_snapshot_sha256=original.activity_snapshot_sha256,
         quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256, read_scope_sha256=scope_sha,
-        spin_off_windows=None if proof is None else tuple(proof["spin_off_windows"]))
+        spin_off_windows=None if proof is None else tuple(proof["spin_off_windows"]), return_policy_json=return_policy_json)
     if terms is not None:
         require(events == terms.events, "final cohort events differ from recomputed full-window terms")
         successors = dict(terms.successor_required)
@@ -191,11 +220,12 @@ def prepare_cohort_scope(
         original_quote_snapshot_sha256=original.quote_snapshot_sha256,
         original_read_scope_sha256=original.read_scope_sha256,
         quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256,
-        conditional_scope_sha256=scope_sha, origin_bounds=_json_value(actual_bounds)))
+        conditional_scope_sha256=scope_sha, origin_bounds=_json_value(actual_bounds),
+        **({"return_policy_sha256": digest(return_policy_json)} if return_policy_json is not None else {})))
     return CohortScopeBinding(declarations, original, fresh_quotes, encoded(parameters),
         encoded(original_required_code_dates), encoded(issue_isins), encoded(input_sha256), encoded(expected_pins),
         ordinary_exit_scope, component_exit_scope, reviewed_coverage, basis_evidence,
-        encoded(scope), actual_bounds, ordered_events, fingerprint, digest(fingerprint))
+        encoded(scope), actual_bounds, ordered_events, fingerprint, digest(fingerprint), return_policy_json)
 
 
 def validate_cohort_scope(binding: CohortScopeBinding, declarations: tuple[CohortSelection, ...], quotes,
@@ -206,7 +236,8 @@ def validate_cohort_scope(binding: CohortScopeBinding, declarations: tuple[Cohor
         binding.coverage_json, binding.basis_evidence_json, parameters=parameters,
         original_required_code_dates=strict_json(binding.original_requirements_json),
         issue_isins=strict_json(binding.issue_isins_json), input_sha256=strict_json(binding.input_sha256_json),
-        expected_pins=strict_json(binding.expected_pins_json), component_exit_scope=binding.component_proof_json)
+        expected_pins=strict_json(binding.expected_pins_json), component_exit_scope=binding.component_proof_json,
+        return_policy_json=binding.return_policy_json)
     require(_same(binding, fresh) and events == fresh.events, "cohort scope binding differs from replay inputs")
     return fresh
 

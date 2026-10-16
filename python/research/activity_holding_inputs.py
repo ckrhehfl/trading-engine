@@ -314,6 +314,7 @@ def adapt_holding_scan(
     observations, absent, series = [], [], []
     projected = {}
     present_counts = {code: 0 for code in scope}
+    provenance_by_day = {}
     for coordinate, typed_row in zip(coordinates, typed_rows):
         code, day = coordinate
         _require(type(typed_row) is list and len(typed_row) == 3 and typed_row[:2] == [code, day.isoformat()],
@@ -321,8 +322,13 @@ def adapt_holding_scan(
         row = rows[code, day.strftime("%Y%m%d")]
         _require(type(row) is dict and set(row) == {"values", "typed_values", "provenance"},
                  "exact bounded scan row fields required")
-        _require(type(row["provenance"]) is dict
-                 and row["provenance"] == _provenance(day, calendar, receipt, quote_snapshot_sha256),
+        if day not in provenance_by_day:
+            expected_provenance = _provenance(day, calendar, receipt, quote_snapshot_sha256)
+            provenance_by_day[day] = expected_provenance, encoded(expected_provenance)
+        expected_provenance, provenance_json = provenance_by_day[day]
+        _require(type(row["provenance"]) is dict and row["provenance"] == expected_provenance,
+                 "typed scan row provenance/pin mismatch")
+        _require(encoded(row["provenance"]) == provenance_json,
                  "typed scan row provenance/pin mismatch")
         raw_types = typed_row[2]
         if raw_types == "absent":
@@ -346,7 +352,7 @@ def adapt_holding_scan(
                      and present_counts[code] <= bounds[code].bars, "typed scan row/progress disagreement")
             frozen_types = tuple(tuple(value) for value in raw_types)
             projected[coordinate], issues = _project(raw)
-        observations.append(HoldingObservation(code, day, frozen_types, encoded(row["provenance"]), issues))
+        observations.append(HoldingObservation(code, day, frozen_types, provenance_json, issues))
     unrequested = tuple((code, day) for code in scope for day in calendar if (code, day) not in projected)
     for code in scope:
         values = [projected.get((code, day), (None, None, None, None, None, False)) for day in calendar]

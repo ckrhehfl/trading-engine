@@ -20,6 +20,11 @@ from typing import TYPE_CHECKING
 from research.activity_accounting import sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 from research.activity_cohort_selection import CohortSelection, CONTROL_IDS, SLOTS
+from research.activity_cohort_return_attribution import (
+    ATTRIBUTION_KEY, aggregate_known_issuer_returns, attribute_known_issuer_returns,
+    require_supported_attribution_actions,
+)
+from research.activity_cohort_return_policy import policy_report
 from research.activity_holding_inputs import HoldingInputs
 from research.activity_pair_calibration import PARAMETERS
 from research.activity_partition_selection import PartitionSelection
@@ -272,7 +277,7 @@ def _path_metrics(days: tuple[date, ...], navs: tuple[Decimal, ...] | None) -> d
         "maximum_drawdown": maximum_drawdown, "session_return_sd": sd, "session_return_count": len(returns)}
 
 
-def _summary(results: tuple[dict, ...], days: tuple[date, ...]) -> dict:
+def _summary(results: tuple[dict, ...], days: tuple[date, ...], *, return_policy_json: bytes | None = None) -> dict:
     assigned = sum_decimal_values(tuple(row["assigned_capital"] for row in results))
     histories = tuple(row["replay"].navs for row in results)
     pnls = tuple(sum_decimal_values(tuple(_difference(history[index], ONE)
@@ -281,7 +286,7 @@ def _summary(results: tuple[dict, ...], days: tuple[date, ...]) -> dict:
     inventory = tuple(sum_decimal_values(tuple(row["exposure"]["path"][index]["marked_inventory_value"]
         for row in results)) for index in range(len(days)))
     navs = tuple(sum_decimal_values(tuple(history[index] for history in histories)) for index in range(len(days)))
-    return {"cohort_count": len(results), "positive_assigned_cohort_count": sum(row["assigned_capital"] > 0 for row in results),
+    result = {"cohort_count": len(results), "positive_assigned_cohort_count": sum(row["assigned_capital"] > 0 for row in results),
         "assigned_capital": assigned, "filled_capital": sum_decimal_values(tuple(row["filled_capital"] for row in results)),
         "filled_principal": sum_decimal_values(tuple(row["filled_principal"] for row in results)),
         "entry_cost_amount": sum_decimal_values(tuple(row["entry_cost_amount"] for row in results)),
@@ -289,10 +294,16 @@ def _summary(results: tuple[dict, ...], days: tuple[date, ...]) -> dict:
         "ordinary_closed_trades": sum(row["ordinary_closed_trades"] for row in results),
         "terminal_open_lots": sum(row["terminal_open_lots"] for row in results),
         "terminal_open_investments": sum(row["terminal_open_investments"] for row in results),
-        "metrics": _path_metrics(days, normalized), "exposure": _exposure(days, inventory, navs, assigned, pnls)}
+        "metrics": _path_metrics(days, normalized), "exposure": _exposure(days, inventory, navs, assigned, pnls,
+            return_policy_json=return_policy_json)}
+    policy = policy_report(return_policy_json)
+    if policy:
+        result.update(policy)
+        result[ATTRIBUTION_KEY] = aggregate_known_issuer_returns(results, assigned_capital=assigned, total_pnl=pnls[-1])
+    return result
 
 
-def _exposure(days, inventory, navs, assigned: Decimal, pnls) -> dict:
+def _exposure(days, inventory, navs, assigned: Decimal, pnls, *, return_policy_json: bytes | None = None) -> dict:
     """Marked noncash values include pending rights, never executable liquidity."""
     path = []
     for day, value, nav, pnl in zip(days, inventory, navs, pnls, strict=True):
@@ -309,7 +320,7 @@ def _exposure(days, inventory, navs, assigned: Decimal, pnls) -> dict:
             "defined_session_count": len(defined), "undefined_session_count": len(path) - len(defined)}
     nav_weight = mean("marked_inventory_nav_weight")
     assigned_weight = mean("marked_inventory_assigned_capital_weight")
-    return {"path": path,
+    result = {"path": path,
         "mean_marked_inventory_value": sum_decimal_values(inventory) / count,
         "mean_marked_inventory_nav_weight": nav_weight["mean"], "nav_weight_session_counts": {
             key: value for key, value in nav_weight.items() if key != "mean"},
@@ -318,6 +329,10 @@ def _exposure(days, inventory, navs, assigned: Decimal, pnls) -> dict:
         "auxiliary_raw_books_nav_weight": mean("auxiliary_raw_books_nav_weight"),
         "nav_weight_denominator": "assigned_capital + sum(cohort_NAV - 1); excludes unassigned synthetic cash",
         "pending_rights_included": True, "executable_liquidity_certified": False}
+    if policy_report(return_policy_json):
+        result.update(pending_rights_scope="modeled supported LG/LX compulsory components only",
+            automatic_subscription_rights_included=False)
+    return result
 
 
 def _deltas(activity: dict, controls: dict) -> dict:
@@ -383,6 +398,8 @@ def _prepare_cohort_replay(
         binding = validate_cohort_scope(scope_binding, declarations, quotes, ordered_events, parameters=parameters)
     else:
         _coverage(declarations, quotes, ordered_events, parameters)
+    if binding is not None and policy_report(binding.return_policy_json):
+        require_supported_attribution_actions(ordered_events)
     end = calendar.index(date.fromisoformat(parameters["end"]))
     prepared = _PreparedReplay(declarations, quotes, ordered_events, binding, raw_quote_view, encoded(parameters),
         tuple(keyed.items()), calendar, calendar[parameters["lookback"] + 1:end + 1],
@@ -404,6 +421,8 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
     """The issuing closure owns validation; this is the unchanged book loop."""
     declarations, quotes, ordered_events = prepared.declarations, prepared.quotes, prepared.ordered_events
     binding, raw_quote_view = prepared.binding, prepared.raw_quote_view
+    return_policy_json = None if binding is None else binding.return_policy_json
+    policy = policy_report(return_policy_json)
     parameters, keyed = strict_json(prepared.parameters_json), dict(prepared.keyed)
     calendar, days, initial = prepared.calendar, prepared.days, prepared.initial
     if binding is not None:
@@ -454,13 +473,18 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
                 "terminal_open_investments": result.books[-1].slot_count,
                 "raw_metrics": _path_metrics(days, result.navs), "metrics": _path_metrics(days, normalized),
                 "exposure": _exposure(days, inventory, result.navs, assigned,
-                    tuple(_difference(nav, ONE) for nav in result.navs)),
+                    tuple(_difference(nav, ONE) for nav in result.navs), return_policy_json=return_policy_json),
                 "source_population_sha256": row.source_population_sha256,
                 "source_partition_sha256": row.source_partition_sha256, "replay": result})
+            if policy:
+                results[-1].update(policy)
+                results[-1][ATTRIBUTION_KEY] = attribute_known_issuer_returns(result, row, quotes, parameters,
+                    events=ordered_events)
         aggregates, comparisons = {}, {}
         for arm in ARMS:
             arm_results = tuple(row for row in results if row["arm"] == arm)
-            aggregates[arm] = {group: _summary(tuple(row for row in arm_results if row["group_id"] == group), days)
+            aggregates[arm] = {group: _summary(tuple(row for row in arm_results if row["group_id"] == group), days,
+                return_policy_json=return_policy_json)
                 for group in GROUPS if any(row["group_id"] == group for row in arm_results)}
             group_formations = {group: {row["formation_on"] for row in arm_results if row["group_id"] == group}
                 for group in GROUPS}
@@ -487,7 +511,7 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
         "actual_input_reuse_readiness_established": False,
         "comparison_power_prerequisite_met": False, "power_design_passed": False,
         "source_truth_certified": False, "event_coverage_certified": False, "price_basis_certified": False,
-        "historical_vintage_certified": False, "promotion_allowed": False, "actual_study_completed": False}
+        "historical_vintage_certified": False, "promotion_allowed": False, "actual_study_completed": False, **policy}
 
 
 def replay_equal_capital_cohorts(
