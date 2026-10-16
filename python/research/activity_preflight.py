@@ -73,6 +73,10 @@ def strict_json(raw: bytes) -> Any:
     def invalid_constant(value: str) -> None:
         raise ValueError("nonfinite JSON constant")
 
+    if isinstance(raw, (bytes, bytearray)):
+        # Match json.loads' decoding while releasing an unowned input buffer
+        # before it allocates the full object tree for a large saved audit.
+        raw = raw.decode(json.detect_encoding(raw), "surrogatepass")
     return json.loads(raw, object_pairs_hook=unique, parse_constant=invalid_constant)
 
 
