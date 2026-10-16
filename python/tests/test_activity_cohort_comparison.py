@@ -646,3 +646,47 @@ def test_summary_does_not_rebuild_entire_nav_history_for_each_session(sessions):
     assert result["entry_cost_amount"] == D("0.02")
     assert result["metrics"]["session_return_count"] == sessions
     assert result["exposure"]["mean_marked_inventory_value"] == D("0.5")
+
+
+def test_optional_price_policy_adds_same_book_attribution_without_another_replay(monkeypatch):
+    from research.activity_cohort_connection import prepare_cohort_scope
+    from research.activity_cohort_return_attribution import ATTRIBUTION_KEY
+    from research.activity_cohort_return_policy import policy_report
+    from research.activity_paired_replay import _json_value
+    from test_activity_cohort_connection import package
+    from test_activity_cohort_return_policy import synthetic_policy
+
+    values = package(ks=(2, 0))
+    default = prepare_cohort_scope(**values)
+    old = module.replay_equal_capital_cohorts(values["declarations"], values["quotes"], default.events,
+        parameters=values["parameters"], scope_binding=default)
+    explicit_default = prepare_cohort_scope(**values, return_policy_json=None)
+    unchanged = module.replay_equal_capital_cohorts(values["declarations"], values["quotes"], explicit_default.events,
+        parameters=values["parameters"], scope_binding=explicit_default)
+    assert encoded(_json_value(old)) == encoded(_json_value(unchanged))
+    policy = encoded(synthetic_policy())
+    values["expected_pins"]["return_policy"] = digest(policy)
+    binding = prepare_cohort_scope(**values, return_policy_json=policy)
+    calls, real = [], module.replay_synthetic
+    def counted(*args, **kwargs):
+        calls.append(True)
+        return real(*args, **kwargs)
+    monkeypatch.setattr(module, "replay_synthetic", counted)
+    current = module.replay_equal_capital_cohorts(values["declarations"], values["quotes"], binding.events,
+        parameters=values["parameters"], scope_binding=binding)
+    assert len(calls) == len(current["cohorts"]) == 24
+    flags = policy_report(policy)
+    assert all(current[key] == value for key, value in flags.items())
+    assert [row["replay"] for row in current["cohorts"]] == [row["replay"] for row in old["cohorts"]]
+    assert current["comparisons"] == old["comparisons"]
+    for row in current["cohorts"]:
+        assert all(row[key] == value for key, value in flags.items())
+        assert row[ATTRIBUTION_KEY]["known_issuer_pnl"] == 0
+        assert row[ATTRIBUTION_KEY]["remainder_pnl"] == row[ATTRIBUTION_KEY]["total_book_pnl"]
+        assert row["exposure"]["pending_rights_scope"] == "modeled supported LG/LX compulsory components only"
+        assert row["exposure"]["automatic_subscription_rights_included"] is False
+    for arm in module.ARMS:
+        for row in current["aggregates"][arm].values():
+            assert all(row[key] == value for key, value in flags.items())
+            assert row[ATTRIBUTION_KEY]["assigned_capital"] == row["assigned_capital"]
+    assert "return_measure" not in old and all(ATTRIBUTION_KEY not in row for row in old["cohorts"])

@@ -25,6 +25,7 @@ from research import activity_cohort_scope_preflight as frontier
 from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_cohort_connection import cohort_proof_selections, prepare_cohort_scope
+from research.activity_cohort_return_policy import EVENT_IDENTITIES, MODE as RETURN_MODE, policy_report
 from research.activity_cohort_selection import CohortSelection, CONTROL_IDS
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_pair_calibration import PARAMETERS
@@ -45,7 +46,8 @@ HOLDING_FILES = ("result.json", "specification.json", "source-manifest.json", "i
     "cohort-declarations.json", "proof-selections.json", "read-scope.json", "holding-input-audit.json", "provisional-exit-scope.json")
 HOLDING_INPUT_ROLES = (*holding.NORMAL_ROLES, "bs_normal_verification", *holding.FIXED_INPUTS, "bs_initial_scope_result")
 BASE_ROLES = (*HOLDING_ROLES, "holding_verification", "reviewed_action_coverage", "basis_evidence")
-OPTIONAL_ROLES = ("component_exit_scope", "quote_extension", "raw_episode_quotes", "raw_episode_unit_plan")
+RAW_ROLES = ("component_exit_scope", "quote_extension", "raw_episode_quotes", "raw_episode_unit_plan")
+OPTIONAL_ROLES = (*RAW_ROLES, "return_policy")
 VERIFY_TRUE = ("verified", "full_family_declarations_recomputed", "salted_full_population_frontier_recomputed",
     "proof_only_full_family_union_recomputed", "typed_rows_missingness_and_provenance_recomputed",
     "provisional_first_tradable_opening_bounds_recomputed", "original_quote_requests_preserved")
@@ -81,11 +83,21 @@ def _commit(value):
     saved.require(type(value) is str and re.fullmatch(r"[0-9a-f]{40}", value), "explicit reviewed source commit required")
 
 
+def _declared_policy_report(spec):
+    """Label the registered convention before reads, including failed attempts."""
+    if "return_policy" not in spec["inputs"]:
+        return {}
+    return dict(return_measure=RETURN_MODE, return_policy_sha256=spec["inputs"]["return_policy"]["sha256"],
+        automatic_subscription_rights_cash="not_modeled", actual_investment_return=False,
+        unmodeled_rights_codes=sorted(code for code, _ in EVENT_IDENTITIES.values()),
+        unmodeled_rights_event_ids=sorted(EVENT_IDENTITIES), promotion_allowed=False)
+
+
 def validate_contract(spec: dict, reference: dict) -> None:
     """Validate a generic registered contract, without creating actual pins."""
     saved.require(type(spec) is dict and set(spec) == {"schema", "study_id", "mode", "window", "reference_specification",
         "parameters", "controls", "design", "inputs", "holding_verification_identity", "promotion_allowed", *frontier.POWER_FLAGS}
-        and spec["schema"] == spec["study_id"] == SCHEMA and spec["mode"] == MODE
+        and spec["schema"] == spec["study_id"] == SCHEMA and spec["mode"] in (MODE, RETURN_MODE)
         and spec["promotion_allowed"] is False and all(spec[name] is False for name in frontier.POWER_FLAGS)
         and spec["controls"] == list(CONTROL_IDS) and spec["design"] == frontier.DESIGN
         and spec["reference_specification"] == saved.REFERENCE, "fixed cohort orchestration contract required")
@@ -95,8 +107,10 @@ def validate_contract(spec: dict, reference: dict) -> None:
     declared, identity = spec["inputs"], spec["holding_verification_identity"]
     saved.require(type(declared) is dict and set(BASE_ROLES) <= set(declared)
         and set(declared) <= set(BASE_ROLES + OPTIONAL_ROLES), "exact saved cohort input roles required")
+    saved.require(("return_policy" in declared) == (spec["mode"] == RETURN_MODE),
+        "explicit approved price-return mode and policy must be supplied together")
     saved.require(not {"raw_episode_quotes", "raw_episode_unit_plan"} & set(declared)
-        or set(OPTIONAL_ROLES) <= set(declared), "raw cohort inputs require both artifacts, extension and component proof")
+        or set(RAW_ROLES) <= set(declared), "raw cohort inputs require both artifacts, extension and component proof")
     paths = []
     for row in declared.values():
         saved.require(type(row) is dict and set(row) == {"path", "sha256"} and type(row["path"]) is str
@@ -281,9 +295,12 @@ def prepare_inputs(spec: dict, inputs: saved.PinnedInputs) -> PreparedCohorts:
     pins = {"ordinary_exit_scope": declared["ordinary_exit_scope"]["sha256"],
         "reviewed_action_coverage": declared["reviewed_action_coverage"]["sha256"], "basis_evidence": declared["basis_evidence"]["sha256"]}
     if component_raw is not None: pins["component_exit_scope"] = declared["component_exit_scope"]["sha256"]
+    return_policy = load("return_policy") if "return_policy" in declared else None
+    if return_policy is not None: pins["return_policy"] = declared["return_policy"]["sha256"]
     binding = prepare_cohort_scope(declarations, original, quotes, ordinary_raw, coverage, evidence,
         parameters=spec["parameters"], original_required_code_dates=scope["requested_code_dates"], issue_isins=scope["issue_isins"],
-        input_sha256=identity["input_sha256"], expected_pins=pins, component_exit_scope=component_raw)
+        input_sha256=identity["input_sha256"], expected_pins=pins, component_exit_scope=component_raw,
+        return_policy_json=return_policy)
     return PreparedCohorts(declarations, original, quotes, binding)
 
 
@@ -303,7 +320,8 @@ def evaluate_inputs(spec, inputs, output, *, runs_path, source_manifest_sha256, 
         "activity_snapshot_sha256": prepared.original.activity_snapshot_sha256, "quote_snapshot_sha256": prepared.quotes.quote_snapshot_sha256,
         "input_sha256": {role: row["sha256"] for role, row in spec["inputs"].items()}, "independent_output_verification": "pending",
         "books_replayed": True, "returns_computed": True,
-        "outer_diagnostic_performance_studies_added": 0, "automatic_retries": 0, **dict.fromkeys(FALSE_FLAGS, False)}
+        "outer_diagnostic_performance_studies_added": 0, "automatic_retries": 0, **dict.fromkeys(FALSE_FLAGS, False),
+        **policy_report(prepared.binding.return_policy_json)}
 
 
 def _read_large(path: Path) -> bytes:
@@ -358,6 +376,7 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
     inputs = saved.PinnedInputs(bounded_reader if reader is None else reader)
     evaluate_saved = evaluate_inputs if evaluator is None else evaluator
     source_pin, spec_pin = saved.digest(saved.encoded(sources)), saved.digest(raw)
+    policy_metadata = _declared_policy_report(spec)
     def evaluate():
         created, result, started = False, None, time.monotonic()
         try:
@@ -378,7 +397,8 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
             return {"status": result["status"], "output_dir": str(output), "result_sha256": saved.digest(body),
                 "family_cohort_evaluation_counts": result["cohort_evaluation_counts"], "D1_completed_studies": 0, "D2_completed_studies": 0,
                 "performance_studies_added": 0, "outer_diagnostic_performance_studies_added": 0,
-                "independent_output_verification": "pending", "automatic_retries": 0}
+                "independent_output_verification": "pending", "automatic_retries": 0,
+                **policy_metadata}
         except BaseException as error:
             if created:
                 for name, value in (("resource-manifest.json", _resources(started)), ("input-manifest.json", inputs.manifest)):
@@ -388,14 +408,15 @@ def run_preflight(root: Path, spec_path: Path, output_dir: Path, runs_path: Path
                     "actual_inputs_attempted": inputs.manifest, "source_manifest_sha256": source_pin, "specification_sha256": spec_pin,
                     "family_cohort_evaluation_counts": _completed_counts(output, result), "outer_diagnostic_performance_studies_added": 0,
                     "cohort_execution_may_be_partial": (output / "cohorts").exists(),
-                    "partial_package_preserved": True, "automatic_retries": 0, **dict.fromkeys(FALSE_FLAGS, False)}))
+                    "partial_package_preserved": True, "automatic_retries": 0, **dict.fromkeys(FALSE_FLAGS, False),
+                    **policy_metadata}))
             raise
     previous = os.umask(0o077)
     try:
         return experiment_log.run_discovery_trial(study_id=spec["study_id"], specification_sha256=spec_pin, window=spec["window"], runs_path=runs,
-            parameters={**spec["parameters"], "mode": MODE, "evaluation_unit": "input_only_orchestration_not_additional_performance_evaluation",
+            parameters={**spec["parameters"], "mode": spec["mode"], "evaluation_unit": "input_only_orchestration_not_additional_performance_evaluation",
                 "source_manifest_sha256": source_pin, "declared_inputs": spec["inputs"], "output_dir": str(output),
-                "performance_studies_added": 0, "automatic_retries": 0}, evaluate=evaluate)
+                "performance_studies_added": 0, "automatic_retries": 0, **policy_metadata}, evaluate=evaluate)
     finally:
         os.umask(previous)
 
