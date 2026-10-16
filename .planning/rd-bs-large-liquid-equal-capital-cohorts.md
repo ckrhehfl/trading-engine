@@ -855,3 +855,62 @@ bounded40MiB synthetic input probe with identicalAS128MiB/CPU10/wall20/nice10,
 the original parser raised MemoryError and the repaired parser completed.
 These tests prove the avoided overlapping buffer and tested semantic parity;
 they do not prove successful actual148MiB audit restoration or later phases.
+
+## Actual parser recovery and canonical encoding repair, 2026-10-16
+
+PR #297 completed separate final correctness and research-integrity reviews
+of head7a4fadbb4a4cc96cba2ecfb5f4201825b0c8e70e/treebf1b7302, all eight CI
+runs and zero unresolved conversations. Normal squash32b292c61856e2b3488e5e5ce9d496b107e91e57
+was reflected into the clean isolated research checkout at
+2026-10-16T00:50:18.905651Z. Collector4ce85d71 remained clean and unchanged;
+that code reflection performed no process, database or experiment operation.
+
+A fresh actual quote diagnostic used registration
+36aff3aa04dd7e2b1166c60f625498907f1c415a419fcc2fd5db40c342b3479a,
+reviewed publisher2020e8b4 and protocolf175f7d8, with exclusive new recovery
+roots. It passed the original JSON parsing failure, then raised MemoryError
+while adapt_holding_scan recomputed the original typed fingerprint through
+encoded/json.dumps. This is a distinct, later input-processing failure.
+Preserve both failed attempts and their original registrations; do not replace
+either package, call it a signal failure or automatically retry it.
+
+The new failure receipt is
+e4c4352652929dfc2c2582020b4a5b55d61f518e0118c72d3f003d939e9ca5da;
+input manifest64453d4b20646138e7a6131ef8c32b20ee72059a02c2899aef40b04c2f51aad3
+records the same six original hash-verified inputs. It failed before the
+coordinate plan or additional quote DB reads. Resource receipt
+ce795612c28fe5223cfd1a664dea7c72841c7330990d5db5572b502852a4ce69
+records unchanged AS805,306,368bytes/CPU300/wall900/nice10, peak624,832KiB
+and elapsed15.413040seconds. Final checkout receipt
+308bb5714cf4df2da6d9ac244552f6fd870eab538da26a312b280568ae177d2c
+confirms clean research32b292c/collector4ce85d71.
+
+The next source repair retains canonical JSON bytes, options and trailing
+newline, but writes JSONEncoder.iterencode tokens into BytesIO rather than
+collecting a token list and complete Unicode document. Oversize tokens are
+UTF-8 encoded in at most64KiB-character slices. It retains the complete bytes
+return contract and can still require a complete escaped large scalar token;
+neither fixed memory usage nor always zero-copy getvalue is claimed.
+The strict_json repair, original typed restoration, original input hashes,
+single physical reads, full-family selection and resource limits are unchanged.
+No action, rights, basis, unit or historical-availability judgment is altered.
+
+Source4926d945958859ac41ef5e9c6411732e635bc0ded0755470c9576130784e5b28
+and testbbc7c172d7787570a66e1eea249a6185374123ac021e0b8fa272952b18356c2c
+passed37new synthetic cases in1.08s and352related tests in113.13s. Six
+fabricated quote cases, with direct imported aliases also switched, retained
+identical full results and18output-file bytes/hashes. A separately bounded
+40,000-record synthetic probe under identical AS128MiB/CPU10/wall20/nice10
+raised MemoryError with the previous encoder and completed with the repair.
+These source-only tests did not open actual inputs or certify actual recovery.
+Invalid values remain rejected; Unicode error positions may now refer to the
+individual token/slice rather than the complete document. Official CPython
+3.12.3 BytesIO implementation was checked for this narrow engineering claim:
+https://github.com/python/cpython/blob/v3.12.3/Modules/_io/bytesio.c
+
+Actual BS remains D+1 0/84 and D+2 0/84, total0/168. Earlier shorthand
+"D1/D2 remain0/168" denotes the total, not168per arm. The two remaining large
+dependency groups stay open: input/action/raw/unit closure and the actual
+comparison with independent verification. This continuation closed zero of
+those groups. The operator's automatic-rights convention remains unanswered;
+no price-return exception or rights-sale accounting has been assumed.

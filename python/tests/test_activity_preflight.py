@@ -127,6 +127,85 @@ def test_strict_offline_envelope_refuses_ambiguous_json(raw):
         preflight.parse_envelope(raw)
 
 
+@pytest.mark.parametrize("value", [None, True, False, 0, -123456789012345678901234567890, 0.0, -0.0,
+    1.2345678901234567, 5e-324, 1.7976931348623157e308, "", "한국어😀\n\t\"\\", [], {},
+    [None, True, 17, -0.0, ["é", "😀"], {"z": 1, "a": 2}],
+    {"z": [1, 2], "a": {"é": "한", "control": "\u0000"}}, {1: "one", 2: "two"}, {None: "null"},
+    (1, "tuple", None), {1.5: "float key", 2: "integer key"}, {True: "boolean key"}])
+def test_encoded_preserves_canonical_bytes_and_hash_for_supported_json(value):
+    expected = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    actual = preflight.encoded(value)
+    assert type(actual) is bytes and actual == expected
+    assert preflight.digest(actual) == preflight.digest(expected)
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), -float("inf"), {"value": float("nan")},
+    {float("nan"): "bad key"}, {"text": 1, 2: "mixed key types"}, {(1, 2): "unsupported key"},
+    {"value": Decimal("1")}, {"value": b"bytes"}, {"value": {1, 2}}, "\ud800", {"later": "\udfff"}])
+def test_encoded_preserves_invalid_input_rejection_and_closes_partial_buffer(value, monkeypatch):
+    buffers, original = [], preflight.io.BytesIO
+    class Buffer(original):
+        def __init__(self):
+            super().__init__()
+            buffers.append(self)
+    monkeypatch.setattr(preflight.io, "BytesIO", Buffer)
+    try:
+        (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    except (ValueError, TypeError, UnicodeEncodeError) as error:
+        with pytest.raises(type(error)):
+            preflight.encoded(value)
+    else:
+        pytest.fail("invalid synthetic input was accepted by the original encoder")
+    assert len(buffers) == 1 and buffers[0].closed
+
+
+def test_encoded_rejects_circular_input_without_returning_partial_bytes():
+    value = []
+    value.append(value)
+    with pytest.raises(ValueError, match="Circular reference detected"):
+        preflight.encoded(value)
+
+
+@pytest.mark.parametrize("invalid_tail", [False, True])
+def test_encoded_large_unicode_scalar_bounds_each_utf8_write_and_closes_on_failure(monkeypatch, invalid_tail):
+    value = ("한😀\n\"\\" * 65536) + ("\ud800" if invalid_tail else "")
+    sizes, buffers, original = [], [], preflight.io.BytesIO
+    class Buffer(original):
+        def __init__(self):
+            super().__init__()
+            buffers.append(self)
+        def write(self, raw):
+            sizes.append(len(raw))
+            assert len(raw) <= 4 * 64 * 1024
+            return super().write(raw)
+    monkeypatch.setattr(preflight.io, "BytesIO", Buffer)
+    if invalid_tail:
+        with pytest.raises(UnicodeEncodeError):
+            preflight.encoded(value)
+    else:
+        expected = (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+        assert preflight.encoded(value) == expected
+    assert len(sizes) > 1 and len(buffers) == 1 and buffers[0].closed
+
+
+def test_encoded_streaming_removes_complete_unicode_strings_and_chunk_list_from_peak():
+    value = ["x" * 1024 + "한"] * 4096
+    def legacy(value):
+        return (json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2, allow_nan=False) + "\n").encode("utf-8")
+    expected = legacy(value)
+    def peak(encode):
+        tracemalloc.start()
+        try:
+            result = encode(value)
+            assert result == expected
+            return tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+    legacy_peak, streamed_peak = peak(legacy), peak(preflight.encoded)
+    assert legacy_peak - streamed_peak > len(expected)
+    assert streamed_peak < legacy_peak * 0.65
+
+
 @pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "utf-32", "utf-32-le", "utf-32-be"])
 @pytest.mark.parametrize("container", [bytes, bytearray])
 def test_strict_json_preserves_wire_encoding_and_canonical_values(encoding, container):
