@@ -11,6 +11,7 @@ from research.activity_failure_inputs import _typed
 from research.activity_holding_inputs import _FINGERPRINT_SCOPE, _provenance, adapt_holding_scan
 from research.activity_preflight import digest, encoded, strict_json
 from research.activity_quote_extension import extend_holding_quotes
+from research import activity_quote_extension as module
 from research.activity_replay import _quote
 
 
@@ -146,3 +147,86 @@ def test_extension_preserves_all_storage_types_and_long_decimals(value):
         assert result.panel[B].closes[4].as_tuple() == D(value).as_tuple()
     else:
         assert result.panel[B].observed[4] is True and result.panel[B].closes[4] is None
+
+
+def test_revalidation_reuses_retained_storage_and_exact_same_day_provenance(monkeypatch):
+    original = component({A: DAYS[:3], B: DAYS[:3]}, "b" * 64, changes={(B, DAYS[1]): None})
+    decode, adapt, decoded = module.strict_json, module.adapt_holding_scan, []
+
+    def counting_decode(raw):
+        decoded.append(raw)
+        return decode(raw)
+
+    def inspecting_adapt(scan, *args, **kwargs):
+        by_day = {}
+        for code, text, typed in scan["fingerprint"]["rows"]:
+            day = date.fromisoformat(text)
+            row = scan["rows"][code, day.strftime("%Y%m%d")]
+            assert row["typed_values"] is (None if typed == "absent" else typed)
+            if day in by_day:
+                assert row["provenance"] is by_day[day]
+            by_day[day] = row["provenance"]
+        return adapt(scan, *args, **kwargs)
+
+    monkeypatch.setattr(module, "strict_json", counting_decode)
+    monkeypatch.setattr(module, "adapt_holding_scan", inspecting_adapt)
+    module._validated(original)
+    assert decoded[0] is original.fingerprint_json
+    assert decoded[1:] == [row.provenance_json for row in original.observations[:3]]
+    assert original.absent_coordinates == ((B, DAYS[1]),)
+    assert original.panel[A].closes[0].as_tuple() == D("100.000").as_tuple()
+
+
+@pytest.mark.parametrize("field", range(7))
+def test_each_immutable_storage_field_is_compared_before_fingerprint_reuse(monkeypatch, field):
+    original, _ = pair()
+    row = original.observations[0]
+    typed = list(row.typed_values)
+    typed[field] = ("text", "changed")
+    row = replace(row, typed_values=tuple(typed))
+    original = replace(original, observations=(row, *original.observations[1:]))
+    monkeypatch.setattr(module, "adapt_holding_scan", lambda *a, **kw: pytest.fail("unchecked storage reached adapter"))
+    with pytest.raises(ValueError, match="storage disagrees"):
+        module._validated(original)
+
+
+@pytest.mark.parametrize("mutation", ["canonical", "noncanonical", "different_day"])
+def test_same_day_provenance_cache_requires_exact_bytes_and_is_call_local(mutation):
+    original = component({A: DAYS[:3], B: DAYS[:3]}, "b" * 64)
+    module._validated(original)
+    row = original.observations[3]  # Same day as the already visited first issue.
+    if mutation == "canonical":
+        provenance = strict_json(row.provenance_json)
+        provenance["source"] = "invented"
+        raw = encoded(provenance)
+    elif mutation == "noncanonical":
+        raw = row.provenance_json + b" "
+    else:
+        raw = original.observations[1].provenance_json
+    row = replace(row, provenance_json=raw)
+    original = replace(original, observations=(*original.observations[:3], row, *original.observations[4:]))
+    with pytest.raises(ValueError):
+        module._validated(original)
+
+
+@pytest.mark.parametrize("mutation", ["tuple_rows", "missing", "reordered", "duplicate", "false_absence",
+    "mutable_storage", "mutable_pair", "boolean_storage"])
+def test_reused_evidence_rejects_forged_shapes_order_and_absence(mutation):
+    original, _ = pair()
+    rows = list(original.observations)
+    if mutation == "tuple_rows":
+        fingerprint = strict_json(original.fingerprint_json)
+        fingerprint["rows"] = None
+        original = replace(original, fingerprint_json=encoded(fingerprint))
+    elif mutation == "missing": rows.pop()
+    elif mutation == "reordered": rows[0], rows[1] = rows[1], rows[0]
+    elif mutation == "duplicate": rows[1] = rows[0]
+    elif mutation == "false_absence": rows[0] = replace(rows[0], typed_values=None)
+    elif mutation == "mutable_storage": rows[0] = replace(rows[0], typed_values=list(rows[0].typed_values))
+    else:
+        typed = list(rows[0].typed_values)
+        typed[1] = list(typed[1]) if mutation == "mutable_pair" else ("integer", True)
+        rows[0] = replace(rows[0], typed_values=tuple(typed))
+    original = replace(original, observations=tuple(rows))
+    with pytest.raises(ValueError):
+        module._validated(original)
