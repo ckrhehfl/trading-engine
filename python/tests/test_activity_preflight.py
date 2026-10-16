@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import stat
 import subprocess
+import tracemalloc
 
 import pytest
 
@@ -126,6 +127,81 @@ def test_strict_offline_envelope_refuses_ambiguous_json(raw):
         preflight.parse_envelope(raw)
 
 
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-8-sig", "utf-16", "utf-16-le", "utf-16-be", "utf-32", "utf-32-le", "utf-32-be"])
+@pytest.mark.parametrize("container", [bytes, bytearray])
+def test_strict_json_preserves_wire_encoding_and_canonical_values(encoding, container):
+    value = {"rows": [], "text": "한국어", "number": 12345678901234567890, "missing": None}
+    raw = container(json.dumps(value, ensure_ascii=False).encode(encoding))
+    restored = preflight.strict_json(raw)
+    assert restored == json.loads(raw) == value
+    assert preflight.encoded(restored) == preflight.encoded(value)
+
+
+@pytest.mark.parametrize("raw", [b'{"rows": [}', b'"\xff"', b'"\xed\xa0\x80"', "\ufeff{}", "plain text", None, 1, []])
+def test_strict_json_preserves_stdlib_decode_errors_and_surrogate_acceptance(raw):
+    try:
+        expected = json.loads(raw)
+    except (ValueError, TypeError) as error:
+        with pytest.raises(type(error)) as caught:
+            preflight.strict_json(raw)
+        assert str(caught.value) == str(error)
+    else:
+        assert preflight.strict_json(raw) == expected
+
+
+@pytest.mark.parametrize("container", [bytes, bytearray])
+def test_strict_json_keeps_repeated_utf8_bom_rejected(container):
+    raw = container(b"\xef\xbb\xbf\xef\xbb\xbf{}")
+    with pytest.raises(json.JSONDecodeError) as caught:
+        preflight.strict_json(raw)
+    assert caught.value.pos == 0
+
+
+@pytest.mark.parametrize("encoding", ["utf-8", "utf-16", "utf-32"])
+@pytest.mark.parametrize("text, message", [('{"a":1,"a":2}', "duplicate JSON key"),
+    ('{"value":NaN}', "nonfinite JSON constant"), ('{"value":Infinity}', "nonfinite JSON constant"),
+    ('{"value":-Infinity}', "nonfinite JSON constant")])
+def test_strict_json_keeps_duplicate_and_nonfinite_rejection_after_decode(encoding, text, message):
+    with pytest.raises(ValueError, match=message):
+        preflight.strict_json(text.encode(encoding))
+
+
+def test_pinned_json_releases_verified_bytes_before_one_strict_parse(tmp_path, monkeypatch):
+    body, released, reads, loads = b'{"rows": [], "value": 1}', [], [], json.loads
+    class TrackedBytes(bytes):
+        def __del__(self): released.append(True)
+    def reader(path):
+        reads.append(path)
+        return TrackedBytes(body)
+    def parse(text, **kwargs):
+        assert type(text) is str and released == [True]
+        return loads(text, **kwargs)
+    monkeypatch.setattr(preflight.json, "loads", parse)
+    inputs, path, pin = preflight.PinnedInputs(reader), tmp_path / "synthetic-audit.json", preflight.digest(body)
+    assert inputs.json(path, pin, "synthetic") == {"rows": [], "value": 1}
+    assert reads == [path]
+    assert inputs.manifest == [dict(role="synthetic", path=str(path), expected_sha256=pin,
+        read_status="hash_verified", bytes=len(body), sha256=pin)]
+
+
+def test_strict_json_decode_removes_one_full_input_buffer_from_parse_peak(tmp_path):
+    size = 4 * 1024**2
+    def reader(path): return b'{"value":"' + b"x" * size + b'"}'
+    path, pin = tmp_path / "synthetic-audit.json", preflight.digest(reader(None))
+    def peak(load):
+        tracemalloc.start()
+        try:
+            value = load(preflight.PinnedInputs(reader))
+            assert len(value["value"]) == size and value["value"].startswith("xxx")
+            return tracemalloc.get_traced_memory()[1]
+        finally:
+            tracemalloc.stop()
+    def legacy(raw): return json.loads(raw)  # The former strict_json frame retained its raw argument.
+    legacy_peak = peak(lambda inputs: legacy(inputs.read(path, pin, "synthetic")))
+    released_peak = peak(lambda inputs: inputs.json(path, pin, "synthetic"))
+    assert legacy_peak - released_peak >= size * 0.9
+
+
 def test_saved_raw_reader_refuses_duplicate_codes_and_preserves_hash_manifest():
     original = [trade()]
     raw = preflight.encoded({"OutBlock_1": original * 2})
@@ -138,7 +214,8 @@ def test_saved_raw_reader_refuses_duplicate_codes_and_preserves_hash_manifest():
     assert inputs.manifest[0]["sha256"] == preflight.digest(raw)
 
 
-def test_hash_mismatch_refuses_before_json_parse():
+def test_hash_mismatch_refuses_before_json_parse(monkeypatch):
+    monkeypatch.setattr(preflight.json, "detect_encoding", lambda raw: pytest.fail("unverified JSON was decoded"))
     inputs = preflight.PinnedInputs(lambda path: b"not JSON")
     with pytest.raises(ValueError, match="hash mismatch"):
         inputs.json(Path("/synthetic/source"), "0" * 64, "synthetic")

@@ -795,3 +795,63 @@ issuer label is not an independently proved historical ISIN/CIK bridge.
 Neither these findings nor the original 68 bounded inferences are a final
 coverage, action or accounting certificate. The outstanding rights question
 and actual BS performance count are unchanged.
+
+## Actual quote attempt and JSON buffer repair, 2026-10-16
+
+PR #296 completed both separate final source reviews and all eight final-head
+CI runs, with no unresolved conversations. Its normal squash is
+615b9c155e93093363f2a6310fa92cfa15a081f6, the exact reviewed tree
+dadd892ea5aceb2534c008b6529ae6e635245c32. Research-only reflection completed at
+2026-10-16T00:06:28.673532Z. The clean research checkout advanced from e52b72a;
+the clean collector remained at 4ce85d71. No collector/process/DB operation was
+part of that reflection.
+
+Quote registration63eee9450c02f8da47018bf14067887715d3df4fec1d14a4bdaf76ecc39ddcb8
+then launched one actual quote diagnostic. It failed with MemoryError while
+parsing the original155,342,486-byte holding audit, after six original input
+hashes passed and before coordinate-plan reading or additional quote DB access.
+Preserve the original failed root and partial package. Failure receipt
+65055f1f0d0f5d195684cdb2ef623bcc6268e2744ef305ea5b51426c3c55c7e0
+and final-checkout receipt
+ee56e8e523f43407f8fbf27fcdf56ce97d2484f9f4a2e1606a63094349327e46
+record this failure and unchanged clean research615b9c1/collector4ce.
+The enforced address-space limit remained805,306,368bytes; recorded peak RSS
+was635,472KiB and elapsed time19.811493seconds. No additional quotes or actual
+BS returns were computed. This is an input-processing failure, not a signal
+performance result; D1/D2 remain0/168 and both dependency groups remain open.
+
+Separate source-only gates for the pure saved-quote verifier and its bounded
+publication/register helpers completed with no blocking findings. Those gates
+do not verify the failed actual package or establish rights/basis/vintage/source
+truth. No actual independent quote verification has been invoked.
+
+The source-only repair targets overlapping original bytes and decoded text in
+strict JSON parsing. CPython3.12's official json.loads implementation decodes
+bytes using detect_encoding and surrogatepass before parsing. Preserve those
+encoding semantics and duplicate-key/nonfinite rejection while releasing the
+unneeded original byte buffer earlier. Keep original source hash checks,
+single physical input reads, typed restoration, complete family and canonical
+output contracts. Do not raise resource limits or narrow the research scope.
+An actual successful recovery must be separately registered after final source
+review, required CI, normal merge and research reflection; it has not happened.
+The operator's automatic-rights interpretation choice remains pending.
+
+Official implementation checked for this source repair (not evidence of any
+historical market-data availability):
+https://docs.python.org/3.12/library/json.html#json.loads
+https://github.com/python/cpython/blob/3.12/Lib/json/__init__.py
+
+Source-only repair verification: shared parser SHA
+ada8f3ed993e47fa6db06f7b1fb8b160c9d4614a7be642c8267cc52a63d863a5;
+final test SHA c43d674b851c1b0ac0dc87c4bafa6bf850cb0745c39d4709576e3853f75f2a55.
+The quote producer remains e1476588, with its own tests unchanged. Six related
+tracked regression files passed313tests in109.60seconds; final targeted tests
+including two subsequently added malformed double-BOM cases passed41 in0.94s.
+Double-BOM input remains rejected as JSONDecodeError at offset0, but the
+diagnostic wording can differ; do not claim all malformed error text identical.
+Six fabricated quote cases retained identical result values and18saved output
+byte/hash comparisons under controlled synthetic fixtures. In a separate
+bounded40MiB synthetic input probe with identicalAS128MiB/CPU10/wall20/nice10,
+the original parser raised MemoryError and the repaired parser completed.
+These tests prove the avoided overlapping buffer and tested semantic parity;
+they do not prove successful actual148MiB audit restoration or later phases.
