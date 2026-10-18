@@ -70,11 +70,11 @@ def fixture(monkeypatch, *, end=160, states=None):
 
 def test_raw_projection_reaches_both_real_books_and_preserves_full_original_lineage(monkeypatch):
     inputs, options, view, proof = fixture(monkeypatch)
-    before, calls, engine = deepcopy((inputs, options)), [], paired.replay_synthetic
-    def capture(*args, **kwargs):
+    before, calls, engine = deepcopy((inputs, options)), [], paired._replay_synthetic_from_context
+    def capture(context, use, *args, **kwargs):
         calls.append((args, kwargs))
-        return engine(*args, **kwargs)
-    monkeypatch.setattr(paired, "replay_synthetic", capture)
+        return engine(context, use, *args, **kwargs)
+    monkeypatch.setattr(paired, "_replay_synthetic_from_context", capture)
     def forbidden(*args, **kwargs): pytest.fail("pure raw pair attempted IO")
     for owner, name in ((Path, "open"), (socket, "create_connection"), (sqlite3, "connect")):
         monkeypatch.setattr(owner, name, forbidden)
@@ -153,7 +153,7 @@ def test_raw_episode_end_is_not_permission_to_drop_a_still_held_component(monkey
 
 def test_raw_pair_rejects_a_replay_that_retains_components_past_the_proven_exit(monkeypatch):
     inputs, options, view, proof = fixture(monkeypatch)
-    engine = paired.replay_synthetic
+    engine = paired._replay_synthetic_from_context
     def stale_inventory(*args, **kwargs):
         result = engine(*args, **kwargs)
         candidate = view.calendar[128 + kwargs["timing_policy"].session_lag]
@@ -161,7 +161,7 @@ def test_raw_pair_rejects_a_replay_that_retains_components_past_the_proven_exit(
         assert prior.lots
         return replace(result, books=tuple(replace(book, lots=prior.lots) if book.as_of == candidate else book
                                            for book in result.books))
-    monkeypatch.setattr(paired, "replay_synthetic", stale_inventory)
+    monkeypatch.setattr(paired, "_replay_synthetic_from_context", stale_inventory)
     with pytest.raises(ValueError, match="component survives its candidate session close"):
         paired.paired_replay(*inputs, **options)
 

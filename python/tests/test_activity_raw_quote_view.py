@@ -1,6 +1,7 @@
 """Fabricated raw rows and full typed base; no saved evidence, DB or network."""
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
+from datetime import date
 from decimal import Decimal, localcontext
 from pathlib import Path
 import socket
@@ -56,6 +57,54 @@ def build(base, observations, plan):
     source = module.encode_raw_artifact(base, observations, digest(unit_plan))
     return module.build_raw_quote_view(base, observations, source_artifact=source, source_artifact_sha256=digest(source),
         unit_plan=unit_plan, unit_plan_sha256=digest(unit_plan))
+
+
+def test_many_raw_basis_declarations_refreeze_once_per_binding(monkeypatch):
+    from research.activity_raw_component_preflight import _bind_raw_basis
+    view = build(*fixture())
+    evidence = dict(references={}, bases={str(index): dict(code=row.code,
+        session=str(date.fromisoformat(row.requested_bas_dd)),
+        raw_close=str(row.close), adjusted_close=str(row.close), quote_snapshot_sha256=view.quote_snapshot_sha256)
+        for index, row in enumerate(view.raw_observations)})
+    calls, original = [], module.validate_raw_quote_view
+    def counted(*args):
+        calls.append(True)
+        return original(*args)
+    monkeypatch.setattr(module, "validate_raw_quote_view", counted)
+    _bind_raw_basis(evidence, view)
+    assert len(evidence["bases"]) == 7 and calls == [True]
+
+
+@pytest.mark.parametrize("change", ["copy", "cross", "row", "base", "series", "metadata"])
+def test_invocation_raw_witness_rejects_replacement_and_nested_mutation(change):
+    view = build(*fixture())
+    context, use = module._prepare_raw_quote_context(view)
+    candidate = context
+    if change == "copy": candidate = replace(context)
+    elif change == "cross": candidate, _ = module._prepare_raw_quote_context(view)
+    elif change == "row": object.__setattr__(view.raw_observations[0], "close", Decimal("999"))
+    elif change == "base": object.__setattr__(view.base.original.observations[0], "code", "changed")
+    elif change == "series": object.__setattr__(view.series[0][1], "opens", ())
+    else: object.__setattr__(view, "source_artifact_sha256", "e" * 64)
+    with pytest.raises(ValueError):
+        use(candidate)
+
+
+@pytest.mark.parametrize("state", [None, "locked", "frozen", "absent", "zero", "reference_close", "invalid", "duplicate"])
+def test_private_basis_uses_readonly_scalars_and_preserves_public_state_guards(state):
+    view = build(*fixture(state=state))
+    context, use = module._prepare_raw_quote_context(view)
+    _, rows = use(context)
+    key = LG, DAYS[2]
+    assert type(rows[key]) is tuple and all(not module.is_dataclass(value) for value in rows[key])
+    with pytest.raises(TypeError):
+        rows[key] = ()
+    basis_at = module._raw_basis_accessor(context, use)
+    if state in (None, "locked"):
+        assert basis_at(*key) == module.raw_price_basis(view, *key)
+    else:
+        with pytest.raises(ValueError): module.raw_price_basis(view, *key)
+        with pytest.raises(ValueError): basis_at(*key)
 
 
 def test_full_base_absences_new_identity_exact_raw_texts_and_unaffected_panel_without_io(monkeypatch):

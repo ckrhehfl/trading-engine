@@ -239,12 +239,12 @@ def test_existing_output_and_immutable_evidence_aliases_fail_without_reads(tmp_p
 
 def test_raw_inputs_reach_both_existing_books_with_explicit_unit_and_base_lineage(tmp_path, monkeypatch):
     root, output, runs, spec, store, _ = case(tmp_path, monkeypatch, "raw")
-    engine, calls = paired.replay_synthetic, []
-    def capture(*args, **kwargs):
+    engine, calls = paired._replay_synthetic_from_context, []
+    def capture(context, use, *args, **kwargs):
         assert statuses(runs) == ["started"]
         calls.append((args, kwargs))
-        return engine(*args, **kwargs)
-    monkeypatch.setattr(paired, "replay_synthetic", capture)
+        return engine(context, use, *args, **kwargs)
+    monkeypatch.setattr(paired, "_replay_synthetic_from_context", capture)
     module.run_paired(root, root / "spec.json", output, runs, reader=store.__getitem__)
     replay = saved.strict_json((output / "paired-replay.json").read_bytes())
     result = saved.strict_json((output / "result.json").read_bytes())
@@ -289,12 +289,12 @@ def test_partial_raw_spec_refused_before_start_or_input_reads(tmp_path, monkeypa
 @pytest.mark.parametrize("failure", ["raw_pin", "unit_pin", "ordinary_proof", "unit_binding", "half_raw_basis", "source_drift", "second_arm", "inventory"])
 def test_raw_failure_keeps_single_failed_trial_zero_counts_and_partial_evidence(tmp_path, monkeypatch, failure):
     root, output, runs, spec, store, sources = case(tmp_path, monkeypatch, "raw")
-    calls, engine = [], paired.replay_synthetic
-    def capture(*args, **kwargs):
+    calls, engine = [], paired._replay_synthetic_from_context
+    def capture(context, use, *args, **kwargs):
         calls.append(kwargs["timing_policy"].session_lag)
         if failure == "second_arm" and len(calls) == 2:
             raise ValueError("private raw partial book must not appear in receipt")
-        replay = engine(*args, **kwargs)
+        replay = engine(context, use, *args, **kwargs)
         if failure == "inventory":
             calendar, lag = args[0], kwargs["timing_policy"].session_lag
             prior = next(book for book in replay.books if book.as_of == calendar[128])
@@ -302,7 +302,7 @@ def test_raw_failure_keeps_single_failed_trial_zero_counts_and_partial_evidence(
             replay = replace(replay, books=tuple(replace(book, lots=prior.lots) if book.as_of == calendar[128 + lag] else book
                                                 for book in replay.books))
         return replay
-    monkeypatch.setattr(paired, "replay_synthetic", capture)
+    monkeypatch.setattr(paired, "_replay_synthetic_from_context", capture)
     def change(role, mutate):
         path = Path(spec["inputs"][role]["path"])
         value = saved.strict_json(store[path])
@@ -352,7 +352,7 @@ def test_short_raw_episode_never_excuses_original_end_obligation_even_if_unfille
     root, output, runs, spec, store, _ = case(tmp_path, monkeypatch, "raw", raw_states=states)
     wrapper = saved.strict_json(store[Path(spec["inputs"][paired.CONDITIONAL_ROLE]["path"])])
     assert all(row["end_on"] == spec["parameters"]["end"] for row in wrapper["component_scope"]["entries"])
-    monkeypatch.setattr(paired, "replay_synthetic", lambda *a, **kw: pytest.fail("short raw obligation reached engine"))
+    monkeypatch.setattr(paired, "_replay_synthetic_from_context", lambda *a, **kw: pytest.fail("short raw obligation reached engine"))
     with pytest.raises(ValueError, match="potential raw scope"):
         module.run_paired(root, root / "spec.json", output, runs, reader=store.__getitem__)
     assert statuses(runs) == ["started", "failed"]

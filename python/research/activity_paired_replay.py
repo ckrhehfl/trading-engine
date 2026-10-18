@@ -14,15 +14,15 @@ from decimal import Decimal
 from research import activity_holding_preflight as holding
 from research import activity_preflight as saved
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange
-from research.activity_component_bounds import WRAPPER_SCHEMA, validate_component_exit_bounds, verify_component_inventory
+from research.activity_component_bounds import WRAPPER_SCHEMA, _validate_component_exit_bounds, verify_component_inventory
 from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs, holding_requirements
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_partition_selection import PartitionSelection, selections_from_bl
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_raw_episode import TARGET_CODES
-from research.activity_raw_quote_view import RawEpisodeQuoteInputs, raw_price_basis, restore_raw_quote_view
-from research.activity_replay import replay_synthetic
+from research.activity_raw_quote_view import RawEpisodeQuoteInputs, restore_raw_quote_view, _prepare_raw_quote_context, _raw_basis_accessor
+from research.activity_replay import replay_synthetic, _replay_synthetic_from_context
 from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 from research.activity_timing import SessionLagPolicy
 from research.activity_timing_report import paired_timing_report
@@ -343,10 +343,13 @@ def paired_replay(
         quotes = extend_holding_quotes(prepared.holding_inputs, component)
         quote_sha = quotes.quote_snapshot_sha256
         quote_lineage = saved.strict_json(quotes.fingerprint_json)
+    raw_context = None
     if use_raw:
         require(wrapper is not None, "raw projection requires the versioned component proof")
         quotes = restore_raw_quote_view(quotes, raw_episode_quotes, expected_pins[RAW_ROLES[0]],
             raw_episode_unit_plan, expected_pins[RAW_ROLES[1]])
+        raw_context = _prepare_raw_quote_context(quotes)
+        quotes, _ = raw_context[1](raw_context[0])
         quote_sha = quotes.quote_snapshot_sha256
         quote_lineage = saved.strict_json(quotes.fingerprint_json)
     full_terms = None
@@ -357,10 +360,10 @@ def paired_replay(
         supplied_proof = wrapper["component_scope"]
         require(type(supplied_proof.get("unresolved_priority_intervals")) is list,
                 "component priority intervals required")
-        component_proof = validate_component_exit_bounds(supplied_proof, plan, prepared.selections_d1,
+        component_proof = _validate_component_exit_bounds(supplied_proof, plan, prepared.selections_d1,
             prepared.selections_d2, prepared.holding_inputs, parameters, prepared.required_code_dates, identities,
             input_sha256=prepared.input_sha256, quotes=quotes, terms=full_terms,
-            unresolved_priority_intervals=tuple(supplied_proof["unresolved_priority_intervals"]))
+            unresolved_priority_intervals=tuple(supplied_proof["unresolved_priority_intervals"]), _raw_context=raw_context)
         if use_raw:
             _require_raw_potential_scope(quotes, component_proof, full_terms.events)
         action_windows = tuple(component_proof["windows"])
@@ -386,10 +389,11 @@ def paired_replay(
     positions, panel = {day: index for index, day in enumerate(calendar)}, quotes.panel
     base = quotes.base if type(quotes) is RawEpisodeQuoteInputs else quotes
     observations = {(row.code, row.observation_date): row for row in base.observations}
+    basis_at = None if raw_context is None else _raw_basis_accessor(*raw_context)
     for row in actions["basis_evidence"]["bases"].values():
         key = row["code"], date.fromisoformat(row["session"])
         if use_raw and key[0] in TARGET_CODES:
-            basis = raw_price_basis(quotes, *key)
+            basis = basis_at(*key)
             require(Decimal(row["raw_close"]) == Decimal(row["adjusted_close"]) == basis.raw_close,
                 "raw event basis must match explicit raw share units and a resolved raw quote")
             continue
@@ -398,7 +402,9 @@ def paired_replay(
                 and not observation.issues and panel[key[0]].closes[positions[key[1]]] == Decimal(row["adjusted_close"]),
                 "event adjusted basis must match a requested resolved quote")
     initial = ActivityBook(Decimal(1), (), calendar[parameters["lookback"]])
-    replays = {arm: replay_synthetic(calendar, quotes.panel, parameters, selections[arm], dataset_sha256=quote_sha,
+    engine = replay_synthetic if raw_context is None else lambda *args, **kwargs: _replay_synthetic_from_context(
+        *raw_context, *args, **kwargs)
+    replays = {arm: engine(calendar, quotes.panel, parameters, selections[arm], dataset_sha256=quote_sha,
         events=events, initial_book=initial, timing_policy=SessionLagPolicy(lag, paired=True),
         raw_quote_view=quotes if use_raw else None)
         for arm, lag in (("D1", 1), ("D2", 2))}

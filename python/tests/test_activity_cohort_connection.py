@@ -272,6 +272,30 @@ def test_bounded_raw_components_replay_all_shared_cohort_origins_without_extendi
     assert max(day for _, day in raw.requested_coordinates) == raw.calendar[188]
 
 
+def test_raw_binding_and_both_book_paths_reuse_one_validation_with_exact_public_equivalence(monkeypatch):
+    from research.activity_paired_replay import _json_value
+    values = raw_package()
+    calls, original = [], raw_view.validate_raw_quote_view
+    def counted(*args):
+        calls.append(True)
+        return original(*args)
+    monkeypatch.setattr(raw_view, "validate_raw_quote_view", counted)
+    binding = module.prepare_cohort_scope(**values)
+    assert calls == [True] and binding.component_proof_json == values["component_exit_scope"]
+    formation = values["declarations"][0].formation_on
+    keys = tuple((arm, "ACTIVITY", formation) for arm in ("D1", "D2"))
+    actual = replay(values, binding, keys=keys)
+    assert calls == [True, True]
+    # Reintroduce the public validation boundary for an independent exact book,
+    # cost, diagnostics and full proof comparison in both original lag arms.
+    def public_engine(context, use, *args, **kwargs):
+        return comparison.replay_synthetic(*args, **kwargs)
+    monkeypatch.setattr(comparison, "_replay_synthetic_from_context", public_engine)
+    expected = replay(values, binding, keys=keys)
+    assert encoded(_json_value(actual)) == encoded(_json_value(expected))
+    assert len(calls) == 5
+
+
 def test_missing_raw_arm_candidate_keeps_full_obligation_and_refuses_without_a_fallback(monkeypatch):
     values = raw_package(end=187)
     before = values["quotes"]

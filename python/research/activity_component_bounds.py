@@ -122,6 +122,19 @@ def component_exit_bounds(
     input_sha256: Mapping[str, str], quotes: HoldingInputs | CompositeHoldingInputs | RawEpisodeQuoteInputs,
     terms: ReviewedActionTerms, unresolved_priority_intervals: tuple[dict, ...] = (),
 ) -> dict:
+    """Recompute the full proof, including full quote validation by default."""
+    return _component_exit_bounds(ordinary_exit_scope, selections_d1, selections_d2, original, parameters,
+        original_required_code_dates, issue_isins, input_sha256=input_sha256, quotes=quotes, terms=terms,
+        unresolved_priority_intervals=unresolved_priority_intervals)
+
+
+def _component_exit_bounds(
+    ordinary_exit_scope: dict, selections_d1: tuple[PartitionSelection, ...],
+    selections_d2: tuple[PartitionSelection, ...], original: HoldingInputs, parameters: Mapping,
+    original_required_code_dates: Mapping[str, Sequence[str]], issue_isins: Mapping[str, str], *,
+    input_sha256: Mapping[str, str], quotes: HoldingInputs | CompositeHoldingInputs | RawEpisodeQuoteInputs,
+    terms: ReviewedActionTerms, unresolved_priority_intervals: tuple[dict, ...] = (), _raw_context=None,
+) -> dict:
     """Recompute every potential origin and preserve the exact FULL quote union.
 
     Hash DAG: original pins -> ordinary proof; canonical linked terms + composite
@@ -133,7 +146,13 @@ def component_exit_bounds(
         original_required_code_dates, issue_isins, input_sha256=input_sha256)
     raw_quotes = type(quotes) is RawEpisodeQuoteInputs
     if raw_quotes:
-        quotes = validate_raw_quote_view(quotes)
+        if _raw_context is None:
+            quotes = validate_raw_quote_view(quotes)
+        else:
+            context, use = _raw_context
+            fresh, _ = use(context)
+            require(quotes is fresh, "component proof requires this invocation's exact raw view")
+            quotes = fresh
         require(_same(quotes.base.original, original), "raw view must retain immutable original quotes")
         supplied = frozenset(quotes.base.extension.requested_coordinates)
     elif type(quotes) is CompositeHoldingInputs:
@@ -292,6 +311,13 @@ def component_exit_bounds(
 
 def validate_component_exit_bounds(proof: dict, *args, **kwargs) -> dict:
     recomputed = component_exit_bounds(*args, **kwargs)
+    require(type(proof) is dict and encoded(proof) == encoded(recomputed),
+            "component proof differs from immutable inputs")
+    return recomputed
+
+
+def _validate_component_exit_bounds(proof: dict, *args, _raw_context, **kwargs) -> dict:
+    recomputed = _component_exit_bounds(*args, **kwargs, _raw_context=_raw_context)
     require(type(proof) is dict and encoded(proof) == encoded(recomputed),
             "component proof differs from immutable inputs")
     return recomputed

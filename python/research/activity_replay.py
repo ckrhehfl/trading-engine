@@ -285,6 +285,25 @@ def replay_synthetic(
     timing_policy: SessionLagPolicy | None = None,
     raw_quote_view: RawEpisodeQuoteInputs | None = None,
 ) -> SyntheticReplay:
+    """Replay with full raw-view validation at every public invocation."""
+    return _replay_synthetic(dates, panel, params, selections, dataset_sha256=dataset_sha256,
+        events=events, initial_book=initial_book, timing_policy=timing_policy, raw_quote_view=raw_quote_view)
+
+
+def _replay_synthetic_from_context(context, use, *args, **kwargs) -> SyntheticReplay:
+    """Internal issued-context path; public replay never accepts a witness."""
+    return _replay_synthetic(*args, **kwargs, _raw_context=(context, use))
+
+
+def _replay_synthetic(
+    dates: Sequence[date], panel: Mapping[str, Series | DecimalSeries], params: Mapping,
+    selections: Sequence[SyntheticSelection | PartitionSelection | CountedControlSelection], *, dataset_sha256: str | None,
+    events: tuple[CompulsoryStockExchange | CompulsorySpinOff | FinalCashPayment, ...] = (),
+    initial_book: ActivityBook | None = None,
+    timing_policy: SessionLagPolicy | None = None,
+    raw_quote_view: RawEpisodeQuoteInputs | None = None,
+    _raw_context=None,
+) -> SyntheticReplay:
     """Replay pure inputs through a toy or explicit evidence-selection seam.
 
     SyntheticSelection keeps its complete toy formation-pool validation and
@@ -322,23 +341,24 @@ def replay_synthetic(
     if raw_quote_view is not None:
         from research.activity_quote_extension import _same
         from research.activity_raw_episode import TARGET_CODES
-        from research.activity_raw_quote_view import is_raw_no_trade_reference_close, validate_raw_quote_view
+        from research.activity_raw_quote_view import _prepare_raw_quote_context
 
-        fresh = validate_raw_quote_view(raw_quote_view)
+        context, use = _prepare_raw_quote_context(raw_quote_view) if _raw_context is None else _raw_context
+        fresh, raw_rows = use(context)
+        if _raw_context is not None and raw_quote_view is not fresh:
+            raise ValueError("issued raw replay requires this invocation's exact view")
         if (not _same(tuple(calendar), fresh.calendar) or dataset_sha256 != fresh.quote_snapshot_sha256
                 or not _same(tuple(sorted(panel.items())), fresh.series)):
             raise ValueError("raw replay calendar, snapshot and complete typed panel must match the view")
         panel = fresh.panel
         raw_codes = TARGET_CODES
-        raw_rows = {(row.code, date.fromisoformat(row.requested_bas_dd)): row for row in fresh.raw_observations}
 
     def execution_quote(code, index):
         if raw_rows is not None and code in raw_codes:
             row = raw_rows.get((code, calendar[index]))
             if row is None:
                 raise ValueError("affected lot crossed the registered raw episode boundary")
-            if (row.status != "observed" and row.issues != ("target_absent_cause_unknown",)
-                    and not is_raw_no_trade_reference_close(row)):
+            if row[0] != "observed" and row[2] != ("target_absent_cause_unknown",) and not row[4]:
                 raise ValueError("unresolved raw observation")
         return _quote(panel[code], index)
 
@@ -426,8 +446,8 @@ def replay_synthetic(
         for basis in bases:
             if raw_rows is not None and basis.code in raw_codes:
                 row = raw_rows.get((basis.code, basis.session))
-                if (row is None or row.status != "observed" or row.state not in {"observed", "locked"}
-                        or row.close is None or basis.raw_close != row.close or basis.adjusted_close != row.close):
+                if (row is None or row[0] != "observed" or row[1] not in {"observed", "locked"}
+                        or row[3] is None or basis.raw_close != row[3] or basis.adjusted_close != row[3]):
                     raise ValueError("raw event basis must match a requested resolved raw/raw close")
         if isinstance(event, (CompulsoryStockExchange, CompulsorySpinOff)) and event.new_basis.code not in panel:
             raise ValueError("synthetic successor must have an explicit panel series, even if absent")
