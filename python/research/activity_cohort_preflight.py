@@ -26,6 +26,7 @@ from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_cohort_connection import cohort_proof_selections, prepare_cohort_scope
 from research.activity_cohort_return_policy import (SCHEMA as RETURN_POLICY_SCHEMA, SCHEMA_V2 as RETURN_POLICY_SCHEMA_V2,
+    SCHEMA_V3 as RETURN_POLICY_SCHEMA_V3,
     MODE as RETURN_MODE, declared_policy_report, decode_return_policy, policy_report)
 from research.activity_cohort_selection import CohortSelection, CONTROL_IDS
 from research.activity_holding_restore import restore_holding_inputs
@@ -110,7 +111,8 @@ def validate_contract(spec: dict, reference: dict) -> None:
     saved.require(("return_policy" in declared) == (spec["mode"] == RETURN_MODE),
         "explicit approved price-return mode and policy must be supplied together")
     saved.require("return_policy_schema" not in spec or ("return_policy" in declared
-        and spec["return_policy_schema"] == RETURN_POLICY_SCHEMA_V2), "explicit v2 policy registration required")
+        and spec["return_policy_schema"] in (RETURN_POLICY_SCHEMA_V2, RETURN_POLICY_SCHEMA_V3)),
+        "explicit versioned policy registration required")
     saved.require(not {"raw_episode_quotes", "raw_episode_unit_plan"} & set(declared)
         or set(RAW_ROLES) <= set(declared), "raw cohort inputs require both artifacts, extension and component proof")
     paths = []
@@ -339,8 +341,14 @@ def _read_large(path: Path) -> bytes:
         info = os.fstat(stream.fileno())
         saved.require(stat.S_ISREG(info.st_mode) and stat.S_IMODE(info.st_mode) == 0o600 and info.st_nlink == 1
             and info.st_size <= limit, "bounded single-link private typed holding artifact required")
-        raw = stream.read(limit + 1)
-        saved.require(len(raw) <= limit, "typed holding artifact grew beyond bound")
+        # The ceiling is a rejection limit, not a buffer allocation request.
+        # Existing typed objects can already occupy most of the process budget.
+        raw = stream.read(info.st_size + 1)
+        after = os.fstat(stream.fileno())
+        identity = lambda item: (item.st_dev, item.st_ino, item.st_mode, item.st_uid,
+            item.st_nlink, item.st_size, item.st_mtime_ns, item.st_ctime_ns)
+        saved.require(len(raw) == info.st_size and identity(info) == identity(after),
+            "typed holding artifact changed during read")
         return raw
 
 

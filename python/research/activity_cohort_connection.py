@@ -13,7 +13,7 @@ from datetime import date
 from decimal import Decimal
 
 from research.activity_cohort_selection import CohortSelection
-from research.activity_cohort_return_policy import decode_return_policy
+from research.activity_cohort_return_policy import SCHEMA_V3, decode_return_policy
 from research.activity_component_bounds import validate_component_exit_bounds, verify_component_inventory
 from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs
@@ -82,6 +82,24 @@ def _payload(payload: bytes, pin: str, label: str) -> dict:
     return value
 
 
+def _common_share_policy_coverage(coverage, evidence, policy, windows):
+    """Project already checked policy links onto recomputed final action bounds.
+
+    Full-window terms validate every original policy declaration and source link
+    first. Only named unmodeled events wholly outside the final inclusive union
+    and their dedicated references are omitted from the final decoder's copy.
+    Execution events, interval findings, noops and unresolved effects stay intact.
+    """
+    outside = {event["event_id"]: event for event in policy["events"]
+        if not any((row["code"], row["isin"]) == (event["code"], event["isin"])
+            and row["start"] <= event["end"] and event["start"] <= row["end"] for row in windows)}
+    removed = [row for row in coverage["events"] if row["event_id"] in outside
+        and row["kind"] == outside[row["event_id"]]["kind"]]
+    removed_ids, removed_refs = {row["event_id"] for row in removed}, {row["evidence_ref"] for row in removed}
+    return ({**coverage, "events": [row for row in coverage["events"] if row["event_id"] not in removed_ids]},
+        {**evidence, "references": {key: row for key, row in evidence["references"].items() if key not in removed_refs}})
+
+
 def prepare_cohort_scope(
     declarations: tuple[CohortSelection, ...], original: HoldingInputs,
     quotes: HoldingInputs | CompositeHoldingInputs | RawEpisodeQuoteInputs,
@@ -125,6 +143,9 @@ def prepare_cohort_scope(
     if return_policy_json is not None:
         _payload(return_policy_json, expected_pins["return_policy"], "return policy")
     policy = decode_return_policy(return_policy_json)
+    conditional_common_shares = policy is not None and policy["schema"] == SCHEMA_V3
+    require(not conditional_common_shares or component_exit_scope is not None,
+        "v3 common-share scope requires a recomputed component proof")
     supplied = _payload(ordinary_exit_scope, expected_pins["ordinary_exit_scope"], "ordinary exit scope")
     coverage = _payload(reviewed_coverage, expected_pins["reviewed_action_coverage"], "action coverage")
     evidence = _payload(basis_evidence, expected_pins["basis_evidence"], "basis evidence")
@@ -153,7 +174,7 @@ def prepare_cohort_scope(
         require(_same(fresh_quotes, original), "ordinary-only cohort scope retains its original quote projection")
         scope = mixed_action_scope(plan, coverage)
         action_windows, scope_sha = tuple(scope["windows"]), scope["action_scope_sha256"]
-    if policy is not None:
+    if policy is not None and not conditional_common_shares:
         for row in scope["entries"]:
             origin = row["origin"] if proof is not None else row
             parts = row["components"] if proof is not None else (origin,)
@@ -174,7 +195,10 @@ def prepare_cohort_scope(
                         and min(row["original_end_on"], event["end"]) <= priority["end"]
                         for priority in proof["unresolved_priority_intervals"]),
                         "unmodeled assets require existing unresolved component priority intervals")
-    events, successors = reviewed_actions(coverage, evidence, expected_windows=action_windows,
+    final_coverage, final_evidence = coverage, evidence
+    if conditional_common_shares:
+        final_coverage, final_evidence = _common_share_policy_coverage(coverage, evidence, policy, action_windows)
+    events, successors = reviewed_actions(final_coverage, final_evidence, expected_windows=action_windows,
         calendar=original.calendar, activity_snapshot_sha256=original.activity_snapshot_sha256,
         quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256, read_scope_sha256=scope_sha,
         spin_off_windows=None if proof is None else tuple(proof["spin_off_windows"]), return_policy_json=return_policy_json)

@@ -13,7 +13,7 @@ from research.activity_accounting import Lot
 from research.activity_book import ActivityBook, CompulsoryStockExchange, FinalCashPayment
 from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 from research.activity_preflight import encoded
-from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2
+from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2, synthetic_policy_v3
 
 
 CALENDAR = tuple(date.fromisoformat(text) for text in (
@@ -739,8 +739,8 @@ def test_unknown_spin_override_is_not_ignored_in_nonempty_requirements():
         call(*fixture(), spin_off_windows=spin_override())
 
 
-def certificate_fixture(*, supported=False, v2=False):
-    policy = synthetic_policy_v2() if v2 else synthetic_policy()
+def certificate_fixture(*, supported=False, v2=False, v3=False):
+    policy = synthetic_policy_v3() if v3 else synthetic_policy_v2() if v2 else synthetic_policy()
     calendar = tuple(sorted({date.fromisoformat(row[key]) for row in policy["events"] for key in ("start", "end")}))
     coverage, _, _ = fixture()
     coverage.update(calendar_sha256=sha256(json.dumps([str(day) for day in calendar], separators=(",", ":")).encode()).hexdigest(),
@@ -762,7 +762,7 @@ def certificate_fixture(*, supported=False, v2=False):
         window_ref = "window-" + row["code"]
         coordinate = {key: row[key] for key in ("code", "isin", "start", "end")}
         required.append(coordinate)
-        state = "price_return_unmodeled_assets" if row["code"] == "006800" else "price_return_unmodeled_rights"
+        state = "price_return_unmodeled_assets" if row["code"] in ("006800", "086280") else "price_return_unmodeled_rights"
         coverage["windows"].append(dict(coordinate, review_state=state, event_ids=ids,
             evidence_refs=[window_ref]))
         evidence["references"][window_ref] = reference(**coordinate, finding=state, ids=ids)
@@ -855,4 +855,39 @@ def test_stock_dividend_cannot_be_downgraded_to_no_event_or_other_right(change):
     else:
         coverage["events"].pop()
         coverage["noops"].append(dict(code=row["code"], isin=row["isin"], on=row["start"], kind="voluntary_offer", evidence_ref=row["evidence_ref"]))
+    with pytest.raises(ValueError): reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)
+
+
+@pytest.mark.parametrize("supported", [False, True])
+def test_v3_bonus_issue_remains_source_linked_unknown_and_not_an_execution_event(supported):
+    coverage, evidence, kwargs, policy = certificate_fixture(supported=supported, v3=True)
+    before = deepcopy((coverage, evidence))
+    events, successors = reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)
+    assert tuple(event.event_id for event in events) == (("supported-payment",) if supported else ())
+    assert successors == {} and before == (coverage, evidence)
+    terms = reviewed_action_terms(coverage, evidence,
+        **{key: value for key, value in kwargs.items() if key != "read_scope_sha256"}, return_policy_json=policy)
+    assert terms.events == events and b"hyundai-glovis-2024-bonus-issue" not in terms.canonical_json
+
+
+@pytest.mark.parametrize("change", ["v2", "missing", "wrong_kind", "quantity", "delivery", "wrong_isin", "wrong_date",
+    "source", "no_event", "rights_state", "missing_day", "voluntary"])
+def test_v3_bonus_issue_cannot_be_waived_downgraded_or_relabelled_as_delivered(change):
+    coverage, evidence, kwargs, policy = certificate_fixture(v3=True)
+    event, window = coverage["events"][-1], coverage["windows"][-1]
+    if change == "v2": policy = encoded(synthetic_policy_v2())
+    elif change == "missing": coverage["events"].pop()
+    elif change == "wrong_kind": event["kind"] = "automatic_stock_dividend"
+    elif change == "quantity": event["allotted_shares"] = "1"
+    elif change == "delivery": event["date_role"] = "actual_delivery"
+    elif change == "wrong_isin": event["isin"] = "KR7086280000"
+    elif change == "wrong_date": event["start"] = "2024-07-14"
+    elif change == "source": evidence["references"][event["evidence_ref"]]["raw_sha256"] = "f" * 64
+    elif change == "no_event": window.update(review_state="reviewed_no_event", event_ids=[])
+    elif change == "rights_state": window["review_state"] = "price_return_unmodeled_rights"
+    elif change == "missing_day": coverage["windows"].pop()
+    else:
+        coverage["events"].pop()
+        coverage["noops"].append(dict(code=event["code"], isin=event["isin"], on=event["start"],
+            kind="voluntary_offer", evidence_ref=event["evidence_ref"]))
     with pytest.raises(ValueError): reviewed_actions(coverage, evidence, **kwargs, return_policy_json=policy)

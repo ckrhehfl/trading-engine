@@ -24,7 +24,7 @@ from research import activity_raw_quote_view as raw_view
 from research.activity_raw_episode import extract_raw_episode_targets
 from research.activity_reviewed_actions import reviewed_action_terms
 from research.activity_timing import SessionLagPolicy
-from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2
+from test_activity_cohort_return_policy import synthetic_policy, synthetic_policy_v2, synthetic_policy_v3
 import test_activity_cohort_comparison as fixture
 
 
@@ -395,12 +395,13 @@ def test_existing_postbook_inventory_check_runs_for_every_selected_cohort(monkey
     assert calls.count("D1") == calls.count("D2") == 12 and len(calls) == len(result["cohorts"])
 
 
-def rights_package(*, component=False, shortened=False, v2=False):
+def rights_package(*, component=False, shortened=False, v2=False, v3=False, changes=None):
     """The artificial calendar contains all three fabricated historical periods."""
-    policy = synthetic_policy_v2() if v2 else synthetic_policy()
+    policy = synthetic_policy_v3() if v3 else synthetic_policy_v2() if v2 else synthetic_policy()
     codes = tuple(sorted(row["code"] for row in policy["events"]))
     calendar = tuple(date(2023, 1, 1) + timedelta(days=index) for index in range(314)) + tuple(
-        map(date.fromisoformat, ("2025-04-03", "2025-04-06", *(("2026-03-17",) if v2 else ()), "2026-09-18", "2026-09-19", "2026-09-20")))
+        map(date.fromisoformat, (*(("2024-07-15",) if v3 else ()), "2025-04-03", "2025-04-06",
+            *(("2026-03-17",) if v2 or v3 else ()), "2026-09-18", "2026-09-19", "2026-09-20")))
     issue_ids = {row["code"]: row["isin"] for row in policy["events"]}
     population, declarations = tuple((code, issue_ids[code]) for code in codes), []
     for arm, lag in (("D1", 1), ("D2", 2)):
@@ -417,7 +418,7 @@ def rights_package(*, component=False, shortened=False, v2=False):
                     population_fingerprint(population), fixture.PARTITION, prefix))
     declarations = tuple(declarations)
     end_index = calendar.index(date.fromisoformat(PARAMETERS["end"]))
-    original = fixture.quotes(calendar, scope={code: calendar[61:end_index + 1] for code in codes})
+    original = fixture.quotes(calendar, scope={code: calendar[61:end_index + 1] for code in codes}, changes=changes)
     selections, required, identities = plan_inputs(declarations, original)
     plan = provisional_exit_bounds(selections["D1"], selections["D2"], original, PARAMETERS, required, identities, input_sha256=PINS)
     windows = tuple(dict(code=row["code"], isin=row["isin"], start=row["entry_on"], end=row["original_end_on"])
@@ -450,7 +451,7 @@ def rights_package(*, component=False, shortened=False, v2=False):
         ids = [event["event_id"] for event in policy["events"] if event["code"] == row["code"]
             and row["start"] <= event["end"] and event["start"] <= row["end"]]
         ref = "complete-" + str(index)
-        state = ("price_return_unmodeled_assets" if row["code"] == "006800" else "price_return_unmodeled_rights") if ids else "reviewed_no_event"
+        state = ("price_return_unmodeled_assets" if row["code"] in ("006800", "086280") else "price_return_unmodeled_rights") if ids else "reviewed_no_event"
         coverage["windows"].append(dict(row, review_state=state, event_ids=ids, evidence_refs=[ref]))
         evidence["references"][ref] = dict(row, raw_sha256="5" * 64, review_sha256="6" * 64,
             coordinate="synthetic:full-interval", reviewed_on="2026-10-16", event_ids=ids,
@@ -524,3 +525,130 @@ def test_stock_dividend_origin_cannot_use_shorter_component_scope(monkeypatch):
     values = rights_package(component=True, shortened=True, v2=True)
     monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("shortened stock-dividend scope reached engine"))
     with pytest.raises(ValueError, match="original horizon"): module.prepare_cohort_scope(**values)
+
+
+def test_v3_accepts_the_same_recomputed_short_proof_that_v2_keeps_full():
+    values = rights_package(component=True, shortened=True, v2=True)
+    proof_bytes = values["component_exit_scope"]
+    with pytest.raises(ValueError, match="original horizon"):
+        module.prepare_cohort_scope(**values)
+    values["return_policy_json"] = encoded(synthetic_policy_v3())
+    values["expected_pins"]["return_policy"] = digest(values["return_policy_json"])
+    binding = module.prepare_cohort_scope(**values)
+    assert binding.component_proof_json == proof_bytes
+    assert binding.original.requested_coordinates == values["original"].requested_coordinates
+    assert all(end < date.fromisoformat(PARAMETERS["end"]) for *_, end in binding.origin_bounds)
+    assert binding.basis_evidence_json == values["basis_evidence"]
+    assert binding.coverage_json == values["reviewed_coverage"]
+
+
+def test_v3_projection_does_not_hide_an_unchecked_extra_policy_named_reference():
+    values = rights_package(component=True, shortened=True, v2=True)
+    policy = synthetic_policy_v3()
+    values["return_policy_json"] = encoded(policy)
+    values["expected_pins"]["return_policy"] = digest(values["return_policy_json"])
+    evidence = strict_json(values["basis_evidence"])
+    evidence["references"][policy["events"][-1]["evidence_ref"]] = {"unchecked_extra": True}
+    values["basis_evidence"] = encoded(evidence)
+    values["expected_pins"]["basis_evidence"] = digest(values["basis_evidence"])
+    with pytest.raises(ValueError, match="unrelated or unused"):
+        module.prepare_cohort_scope(**values)
+
+
+@pytest.mark.parametrize("arm", ["D1", "D2"])
+def test_v3_five_issuer_scope_keeps_same_book_budgets_and_unknown_bonus_assets(arm):
+    values = rights_package(component=True, shortened=True, v3=True)
+    before = deepcopy(values)
+    binding = module.prepare_cohort_scope(**values)
+    key = (arm, "ACTIVITY", values["original"].calendar[60])
+    result = replay(values, binding, keys=(key,))
+    baseline = comparison.replay_equal_capital_cohorts(values["declarations"], values["quotes"], (),
+        parameters=PARAMETERS, cohort_keys=(key,))
+    row = result["cohorts"][0]
+    assert row["replay"] == baseline["cohorts"][0]["replay"] and values == before
+    assert row["assigned_capital"] == Decimal("0.25") and row["filled_entries"] == 5
+    assert result["action_coverage_scope"] == row["action_coverage_scope"] == "conditional_common_share_lifetime"
+    attribution = row["known_issuer_price_return_attribution"]
+    assert set(attribution["by_code"]) == {"003670", "005070", "006400", "006800", "086280"}
+    assert attribution["by_code"]["086280"]["automatic_bonus_shares"] is None
+    assert attribution["automatic_bonus_fractional_cash"] is None
+
+
+def test_v3_future_unmodeled_event_does_not_extend_common_share_bounds_but_its_source_is_checked():
+    values = rights_package(component=True, shortened=True, v3=True)
+    old = module.prepare_cohort_scope(**values)
+    policy, coverage, evidence = (strict_json(values[key]) for key in ("return_policy_json", "reviewed_coverage", "basis_evidence"))
+    event = next(row for row in policy["events"] if row["code"] == "003670")
+    assert all(end < date.fromisoformat(event["start"]) for *_, end in old.origin_bounds)
+    event["start"], event["end"] = "2025-05-01", "2025-05-02"
+    next(row for row in coverage["events"] if row["event_id"] == event["event_id"]).update(start=event["start"], end=event["end"])
+    evidence["references"][event["evidence_ref"]].update(start=event["start"], end=event["end"])
+    for key, role, value in (("return_policy_json", "return_policy", policy), ("reviewed_coverage", "reviewed_action_coverage", coverage),
+            ("basis_evidence", "basis_evidence", evidence)):
+        values[key] = encoded(value); values["expected_pins"][role] = digest(values[key])
+    current = module.prepare_cohort_scope(**values)
+    assert current.scope_json == old.scope_json and current.origin_bounds == old.origin_bounds
+    evidence["references"][event["evidence_ref"]]["raw_sha256"] = "f" * 64
+    values["basis_evidence"] = encoded(evidence); values["expected_pins"]["basis_evidence"] = digest(values["basis_evidence"])
+    with pytest.raises(ValueError, match="source or review"):
+        module.prepare_cohort_scope(**values)
+
+
+@pytest.mark.parametrize("change", ["missing_inside_event", "missing_final_day", "false_no_event", "repinned_candidate"])
+def test_v3_never_waives_in_period_actions_or_inclusive_endpoint_coverage(change, monkeypatch):
+    values = rights_package(component=True, shortened=True, v3=True)
+    module.prepare_cohort_scope(**values)
+    coverage = strict_json(values["reviewed_coverage"])
+    if change == "repinned_candidate":
+        proof = strict_json(values["component_exit_scope"])
+        proof["entries"][0]["end_on"] = proof["entries"][0]["origin"]["entry_on"]
+        proof["component_scope_sha256"] = digest(encoded({key: item for key, item in proof.items() if key != "component_scope_sha256"}))
+        values["component_exit_scope"] = encoded(proof)
+        values["expected_pins"]["component_exit_scope"] = digest(values["component_exit_scope"])
+    else:
+        if change == "missing_inside_event": coverage["events"] = [row for row in coverage["events"] if row["code"] != "005070"]
+        else:
+            row = next(row for row in coverage["windows"] if row["code"] == "005070")
+            if change == "missing_final_day": row["end"] = str(date.fromisoformat(row["end"]) - timedelta(days=1))
+            else: row.update(review_state="reviewed_no_event", event_ids=[])
+        values["reviewed_coverage"] = encoded(coverage)
+        values["expected_pins"]["reviewed_action_coverage"] = digest(values["reviewed_coverage"])
+    monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("invalid v3 scope reached a book"))
+    with pytest.raises(ValueError): module.prepare_cohort_scope(**values)
+
+
+def test_v3_still_requires_every_action_on_the_actual_common_share_exit_day():
+    values = rights_package(component=True, shortened=True, v3=True)
+    policy, coverage, evidence = (strict_json(values[key]) for key in ("return_policy_json", "reviewed_coverage", "basis_evidence"))
+    last = max(row["end"] for row in coverage["windows"] if row["code"] == "005070")
+    event = next(row for row in policy["events"] if row["code"] == "005070")
+    event["start"] = event["end"] = last
+    next(row for row in coverage["events"] if row["event_id"] == event["event_id"]).update(start=last, end=last)
+    evidence["references"][event["evidence_ref"]].update(start=last, end=last)
+    for key, role, value in (("return_policy_json", "return_policy", policy), ("reviewed_coverage", "reviewed_action_coverage", coverage),
+            ("basis_evidence", "basis_evidence", evidence)):
+        values[key] = encoded(value); values["expected_pins"][role] = digest(values[key])
+    module.prepare_cohort_scope(**values)
+    row = next(row for row in coverage["windows"] if row["code"] == "005070")
+    row["end"] = str(date.fromisoformat(last) - timedelta(days=1))
+    values["reviewed_coverage"] = encoded(coverage); values["expected_pins"]["reviewed_action_coverage"] = digest(values["reviewed_coverage"])
+    with pytest.raises(ValueError): module.prepare_cohort_scope(**values)
+
+
+def test_v3_frozen_held_shares_keep_original_fallback_and_policy_period():
+    initial = rights_package(component=True, shortened=True, v3=True)
+    calendar = initial["original"].calendar
+    changes = {("006800", day): (day.strftime("%Y%m%d"), "100", "100", "100", "100", "0", "0") for day in calendar[187:-2]}
+    values = rights_package(component=True, shortened=True, v3=True, changes=changes)
+    binding = module.prepare_cohort_scope(**values)
+    assert all(end == date.fromisoformat(PARAMETERS["end"]) for _, _, code, _, end in binding.origin_bounds if code == "006800")
+    assert all(end < date.fromisoformat(PARAMETERS["end"]) for _, _, code, _, end in binding.origin_bounds if code != "006800")
+
+
+def test_v3_preserves_lg_raw_missing_candidate_fallback_and_requires_component_recomputation():
+    values = raw_package(end=187)
+    values["return_policy_json"] = encoded(synthetic_policy_v3())
+    values["expected_pins"]["return_policy"] = digest(values["return_policy_json"])
+    with pytest.raises(ValueError, match="potential raw scope"): module.prepare_cohort_scope(**values)
+    values = rights_package(v3=True)
+    with pytest.raises(ValueError, match="recomputed component proof"): module.prepare_cohort_scope(**values)

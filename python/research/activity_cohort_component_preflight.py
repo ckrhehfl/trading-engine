@@ -22,7 +22,7 @@ from research import activity_cohort_preflight as cohort
 from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_cohort_connection import cohort_proof_selections
-from research.activity_cohort_return_policy import SCHEMA_V2, declared_policy_report, decode_return_policy
+from research.activity_cohort_return_policy import SCHEMA_V2, SCHEMA_V3, declared_policy_report, decode_return_policy
 from research.activity_component_bounds import component_exit_bounds
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_pair_calibration import PARAMETERS
@@ -79,8 +79,8 @@ def validate_contract(spec: dict, reference: dict) -> None:
     saved.require(type(spec) is dict and set(spec) == {"schema", "study_id", "mode", "window", "reference_specification",
         "parameters", "controls", "design", "inputs", "holding_verification_identity", "return_policy_schema",
         "reviewed_terms_binding", "promotion_allowed", *cohort.frontier.POWER_FLAGS} and spec["schema"] == spec["study_id"] == SCHEMA
-        and spec["mode"] == MODE and spec["return_policy_schema"] == SCHEMA_V2,
-        "fixed BS terms-only component diagnostic and explicit v2 policy required")
+        and spec["mode"] == MODE and spec["return_policy_schema"] in (SCHEMA_V2, SCHEMA_V3),
+        "fixed BS terms-only component diagnostic and explicit v2/v3 policy required")
     saved.require(spec["reviewed_terms_binding"] in ("current_snapshot", TEMPLATE_BINDING),
         "explicit reviewed terms binding required")
     declared = spec["inputs"]
@@ -257,7 +257,9 @@ def _verify_raw(receipt, spec, quotes):
 
 
 def _policy_obligations(proof, policy):
-    """Apply the existing cohort connection's full-horizon unmodeled-asset guard."""
+    """Keep v1/v2 full horizons; v3 retains the existing recomputed proof bounds."""
+    if policy["schema"] == SCHEMA_V3:
+        return
     for row in proof["entries"]:
         origin = row["origin"]
         for event in policy["events"]:
@@ -343,7 +345,7 @@ def evaluate_inputs(spec, inputs, output):
     del raw, unit
     raw_receipt = saved.strict_json(load("raw_episode_verification")); _verify_raw(raw_receipt, spec, quotes)
     policy_raw = load("return_policy"); policy = decode_return_policy(policy_raw)
-    saved.require(policy["schema"] == spec["return_policy_schema"] == SCHEMA_V2, "loaded policy differs from registered v2 schema")
+    saved.require(policy["schema"] == spec["return_policy_schema"], "loaded policy differs from registered version")
     coverage, evidence = saved.strict_json(load("reviewed_terms")), saved.strict_json(load("basis_evidence"))
     windows = tuple(dict(code=row["code"], isin=row["isin"], start=row["entry_on"], end=row["original_end_on"]) for row in ordinary["entries"])
     coverage, evidence, template_binding = _bind_reviewed_template(spec, coverage, evidence, original, quotes,
@@ -385,7 +387,7 @@ def evaluate_inputs(spec, inputs, output):
         prior_independent_receipts_relied_on=True, original_quote_requests_preserved=True, independent_output_verification="pending",
         unmodeled_asset_values={event["event_id"]: None for event in policy["events"]},
         output_sha256={"canonical-terms.json": saved.digest(terms.canonical_json), "component-exit-scope.json": saved.digest(proof_raw)},
-        **{**dict.fromkeys(FALSE_FLAGS, False), **dict.fromkeys(ZERO, 0), **declared_policy_report(SCHEMA_V2, saved.digest(policy_raw))})
+        **{**dict.fromkeys(FALSE_FLAGS, False), **dict.fromkeys(ZERO, 0), **declared_policy_report(policy["schema"], saved.digest(policy_raw))})
 
 
 def _resources(started):
@@ -418,7 +420,7 @@ def run_preflight(root, spec_path, output_dir, runs_path, *, reader=None, freeze
     large = {Path(spec["inputs"][role]["path"]) for role in ("holding_input_audit", "quote_extension", "raw_episode_quotes")}
     inputs = saved.PinnedInputs((lambda path: cohort._read_large(path) if path in large else saved.read_private(path)) if reader is None else reader)
     source_pin, spec_pin = saved.digest(saved.encoded(sources)), saved.digest(raw)
-    metadata = declared_policy_report(SCHEMA_V2, spec["inputs"]["return_policy"]["sha256"])
+    metadata = declared_policy_report(spec["return_policy_schema"], spec["inputs"]["return_policy"]["sha256"])
     primary_error = None
     def evaluate():
         nonlocal primary_error

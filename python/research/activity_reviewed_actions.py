@@ -31,7 +31,7 @@ import re
 
 from research.activity_accounting import FinalCashDistribution, PriceBasis
 from research.activity_book import CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
-from research.activity_cohort_return_policy import (KIND as CERTIFICATE_KIND, STOCK_DIVIDEND_KIND,
+from research.activity_cohort_return_policy import (KIND as CERTIFICATE_KIND, STOCK_DIVIDEND_KIND, BONUS_ISSUE_KIND,
     decode_return_policy)
 from research.activity_preflight import digest, encoded
 
@@ -307,14 +307,14 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
     unmodeled_events = []
     event_ids: set[str] = set()
     for raw in declaration["events"]:
-        if type(raw) is dict and raw.get("kind") in (CERTIFICATE_KIND, STOCK_DIVIDEND_KIND) and policy is not None:
-            stock_dividend = raw["kind"] == STOCK_DIVIDEND_KIND
-            row = _fields(raw, "event_id kind status code isin start end evidence_ref" + (" date_role" if stock_dividend else ""))
+        if type(raw) is dict and raw.get("kind") in (CERTIFICATE_KIND, STOCK_DIVIDEND_KIND, BONUS_ISSUE_KIND) and policy is not None:
+            unmodeled_shares = raw["kind"] in (STOCK_DIVIDEND_KIND, BONUS_ISSUE_KIND)
+            row = _fields(raw, "event_id kind status code isin start end evidence_ref" + (" date_role" if unmodeled_shares else ""))
             event_id = _text(row["event_id"])
             pinned = policy_events.get(event_id)
             if (pinned is None or event_id in event_ids or row["status"] != "reviewed_unmodeled" or
                     any(row[key] != pinned[key] for key in ("kind", "code", "isin", "start", "end", "evidence_ref"))
-                    or (stock_dividend and row["date_role"] != pinned.get("date_role"))):
+                    or (unmodeled_shares and row["date_role"] != pinned.get("date_role"))):
                 raise ValueError("unmodeled asset event differs from pinned BS return policy")
             event_ids.add(event_id)
             unmodeled_events.append(row)
@@ -486,9 +486,9 @@ def _decode(coverage, basis_evidence, *, expected_windows, calendar, activity_sn
                         if (ec, ei) == (code, isin) and start <= last and first <= end}
         ids = _ids(row["event_ids"])
         has_unmodeled = bool(expected_ids & relevant_unmodeled)
-        has_stock_dividend = any(policy_events[event_id]["kind"] == STOCK_DIVIDEND_KIND
+        has_unmodeled_shares = any(policy_events[event_id]["kind"] in (STOCK_DIVIDEND_KIND, BONUS_ISSUE_KIND)
             for event_id in expected_ids & relevant_unmodeled)
-        unmodeled_state = "price_return_unmodeled_assets" if has_stock_dividend else "price_return_unmodeled_rights"
+        unmodeled_state = "price_return_unmodeled_assets" if has_unmodeled_shares else "price_return_unmodeled_rights"
         state = (unmodeled_state if has_unmodeled else
                  "reviewed_supported_events" if expected_ids else "reviewed_no_event")
         if row["review_state"] != state or set(ids) != expected_ids:

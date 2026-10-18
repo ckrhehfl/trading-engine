@@ -1968,8 +1968,10 @@ decisions. Keep the original typed requests, missingness, evidence strengths,
 costs, holding rule and resource/review/output-verification obligations.
 
 The explicit policy and its source/review coordinates must survive binding
-revalidation and every individual/aggregate output. Retain affected potential
-origins' full original action horizon. Report price-return exploration and
+revalidation and every individual/aggregate output. Policies v1/v2 retain affected
+potential origins' full original action horizon; the separately approved v3
+conditional common-share scope below does not relabel those earlier artifacts.
+Report price-return exploration and
 unmodeled certificate cash separately from modeled compulsory entitlements;
 never label unmodeled cash as an observed zero or actual investment total return.
 Decompose the named issuers' contributions from the same existing books without
@@ -1986,13 +1988,46 @@ fourth event in a separately versioned and source/review-pinned policy. Retain
 the frozen cohorts, all five controls, assigned capital and D1/D2 schedules.
 Report all four named issuers' contributions from those same books without
 reselection, redistribution or a second replay. Unmodeled assets are unknown,
-never observed zero; this is not actual investment total return. Preserve full
-original action horizons and the LG/LX raw-price/allotment/original-investment
+never observed zero; this is not actual investment total return. Policies v1/v2
+preserve full original action horizons. Preserve the LG/LX raw-price/allotment/original-investment
 decisions. A disclosed record date is not proven entitlement, custody delivery,
 actual execution or historical availability. This additional narrow exception
 does not waive any other unresolved action or identity, existing verification,
 power/Eligibility Bar, holdout, promotion or live-trading boundary. Its record
 is the same append-only BS plan.
+
+**BS additional operator choice: conditional common-share action coverage.**
+Recorded on 2026-10-18, the operator selected option1: for the same exploratory
+price-return comparison, require complete inclusive action evidence from entry
+through an independently recomputed tradable common-share exit candidate, rather
+than extending the four named unmodeled assets to the full original end by default.
+Implement this only in a separately versioned/pinned v3 policy, registered proof
+and final binding. A candidate is conditional, not an executed exit: unresolved
+events, frozen/untradable candidates, supported successors and later actual
+inventory still require their existing evidence, fallback and bound checks.
+Preserve original v1/v2 artifacts, full quote/request populations, cohorts,
+assigned capital, costs, holding/selection rules, the existing unmodeled-asset labels
+and same-book attribution. Do not exclude an issuer, call an unmodeled asset zero,
+or omit a common-share action inside the recomputed inclusive lifetime. Preserve
+LG/LX raw units, allotments and one original investment. This changes neither
+investment-total-return claims nor source/identity, power, holdout, independent
+verification, review/CI or operational boundaries. The append-only BS plan records
+the decision, implementation and actual execution separately.
+
+**BS additional operator choice: Hyundai Glovis2024 bonus issue in price-return exploration.**
+On 2026-10-18 the operator explicitly selected price-return exploration for
+Hyundai Glovis086280's additional automatic bonus-share issue as well. The official
+June28,2024 decision declares one new common share per existing share, a July15
+record date and an August2 planned listing; a stated schedule is not certified
+custody, execution or a final amendment chain. Add this fifth named issuer/event
+only in the new pinned v3 policy, preserving v1/v2 bytes and meanings. Its bonus
+shares remain unmodeled/unknown, not an observed zero or an event-free holding.
+Retain the same cohorts, five controls, assigned capital, D1/D2 and conditional
+common-share evidence scope above; decompose all five named issuers from the same
+books without reselection, capital redistribution or a second replay. Preserve
+all LG/LX accounting, other action/identity/verification and no-promotion guards.
+The result is price-return exploration, never restored investment total return.
+The same append-only BS plan records the source pins and scope decision.
 
 **BQ operator choice: raw-price accounting for the LG/LX episode.**
 On 2026-10-10 the operator selected KRX unadjusted prices and official compulsory
