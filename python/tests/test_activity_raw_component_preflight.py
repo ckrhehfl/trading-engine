@@ -16,6 +16,7 @@ from research import activity_paired_replay as paired
 from research import activity_preflight as saved
 from research import activity_quote_preflight as quote_producer
 from research import activity_raw_quote_view as raw
+from research.activity_component_bounds import component_exit_bounds
 from research.activity_exit_bounds import provisional_exit_bounds
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_quote_extension import extend_holding_quotes
@@ -176,11 +177,11 @@ def test_real_upstream_packages_one_combined_raw_proof_no_engine_or_extra_io(tmp
     def forbidden(*a, **kw): pytest.fail("unexpected DB/network/performance invocation")
     for owner, name in ((sqlite3, "connect"), (socket, "create_connection"), (paired, "paired_replay"), (paired, "replay_synthetic")):
         monkeypatch.setattr(owner, name, forbidden)
-    original = module.component_exit_bounds
+    original = module._component_exit_bounds
     def capture(*args, **kwargs):
         calls.append((args, kwargs))
         return original(*args, **kwargs)
-    monkeypatch.setattr(module, "component_exit_bounds", capture)
+    monkeypatch.setattr(module, "_component_exit_bounds", capture)
     output = tmp_path / "proof"
     output.mkdir(mode=0o700)
     inputs = saved.PinnedInputs(store.__getitem__)
@@ -203,6 +204,26 @@ def test_real_upstream_packages_one_combined_raw_proof_no_engine_or_extra_io(tmp
     assert all(result[name] is False for name in module.FALSE_FLAGS)
     assert result["prior_cached_body_truth_independently_verified"] is False
     assert result["prior_independent_receipts_relied_on"] is True and result["D1_completed_studies"] == result["D2_completed_studies"] == 0
+    args, kwargs = calls[0]
+    issued, use = kwargs["_raw_context"]
+    assert kwargs["quotes"] is use(issued)[0]
+    assert kwargs["quotes"].base.original is args[3]
+    assert wrapper["component_scope"] == component_exit_bounds(*args,
+        **{name: value for name, value in kwargs.items() if name != "_raw_context"})
+
+
+def test_raw_restore_issues_single_context_for_all_component_phases(tmp_path, monkeypatch):
+    spec, store, *_ = fixture(tmp_path, monkeypatch)
+    builds = []
+    build = raw.build_raw_quote_view
+    def capture(*args, **kwargs):
+        view = build(*args, **kwargs); builds.append(view); return view
+    monkeypatch.setattr(raw, "build_raw_quote_view", capture)
+    output = tmp_path / "proof"; output.mkdir(mode=0o700)
+    module.evaluate_inputs(spec, saved.PinnedInputs(store.__getitem__), output)
+    assert len(builds) == 1  # Full artifact restoration issues the sealed view.
+    assert builds[0].source_artifact_json is store[Path(spec["inputs"]["raw_episode_quotes"]["path"])]
+    assert builds[0].unit_plan_json is store[Path(spec["inputs"]["raw_episode_unit_plan"]["path"])]
 
 
 @pytest.mark.parametrize("mutation", ["upstream", "bp_pin", "bp_ref", "bp_cert", "raw_pin", "raw_files", "raw_base", "raw_calendar",
@@ -275,7 +296,7 @@ def test_contradictory_later_mark_rejects_the_reviewed_old_role_before_proof(tmp
     evidence["bases"]["old"]["session"] = earlier
     evidence["references"]["old"].update(start=earlier, end=earlier)
     repin(spec, store, "basis_evidence", evidence)
-    monkeypatch.setattr(module, "component_exit_bounds", lambda *a, **kw: pytest.fail("contradictory mark reached proof"))
+    monkeypatch.setattr(module, "_component_exit_bounds", lambda *a, **kw: pytest.fail("contradictory mark reached proof"))
     output = tmp_path / "proof"
     output.mkdir(mode=0o700)
     with pytest.raises(ValueError, match="later observable pre-event mark"):
@@ -325,7 +346,7 @@ def test_logged_start_before_27_reads_private_receipts_failure_and_no_retry(tmp_
         return store[path]
     if failure == "proof":
         def fail(*a, **kw): raise ValueError("private raw values never print")
-        monkeypatch.setattr(module, "component_exit_bounds", fail)
+        monkeypatch.setattr(module, "_component_exit_bounds", fail)
     if failure:
         with pytest.raises((ValueError, OSError)):
             module.run_preflight(root, root / "synthetic-spec.json", output, runs, reader=reader)

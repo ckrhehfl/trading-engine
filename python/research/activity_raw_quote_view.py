@@ -263,9 +263,15 @@ class _RawQuoteContext:
     rows: Mapping
 
 
-def _prepare_raw_quote_context(view: RawEpisodeQuoteInputs) -> tuple:
+def _prepare_raw_quote_context(view: RawEpisodeQuoteInputs | None, *, _restore_inputs=None) -> tuple:
     """Issue one local witness after full validation, with no ambient cache."""
-    fresh = validate_raw_quote_view(view)
+    if _restore_inputs is None:
+        fresh = validate_raw_quote_view(view)
+    else:
+        require(view is None and type(_restore_inputs) is tuple and len(_restore_inputs) == 5,
+            "raw context restore requires only exact artifact inputs")
+        fresh = restore_raw_quote_view(*_restore_inputs)
+        view = fresh
     rows = MappingProxyType({(row.code, date.fromisoformat(row.requested_bas_dd)):
         (row.status, row.state, row.issues, row.close, is_raw_no_trade_reference_close(row))
         for row in fresh.raw_observations})
@@ -285,6 +291,13 @@ def _prepare_raw_quote_context(view: RawEpisodeQuoteInputs) -> tuple:
         return fresh, rows
 
     return context, use
+
+
+def _restore_raw_quote_context(base: CompositeHoldingInputs, source_artifact: bytes, source_artifact_sha256: str,
+                               unit_plan: bytes, unit_plan_sha256: str) -> tuple:
+    """Decode, fully validate and seal new artifact inputs without refreezing."""
+    return _prepare_raw_quote_context(None, _restore_inputs=(base, source_artifact, source_artifact_sha256,
+        unit_plan, unit_plan_sha256))
 
 
 def _raw_basis_accessor(context, use):

@@ -76,9 +76,13 @@ def test_many_raw_basis_declarations_refreeze_once_per_binding(monkeypatch):
 
 
 @pytest.mark.parametrize("change", ["copy", "cross", "row", "base", "series", "metadata"])
-def test_invocation_raw_witness_rejects_replacement_and_nested_mutation(change):
+@pytest.mark.parametrize("restored", [False, True])
+def test_invocation_raw_witness_rejects_replacement_and_nested_mutation(change, restored):
     view = build(*fixture())
-    context, use = module._prepare_raw_quote_context(view)
+    context, use = (module._restore_raw_quote_context(view.base, view.source_artifact_json,
+        view.source_artifact_sha256, view.unit_plan_json, view.unit_plan_sha256)
+        if restored else module._prepare_raw_quote_context(view))
+    if restored: view, _ = use(context)
     candidate = context
     if change == "copy": candidate = replace(context)
     elif change == "cross": candidate, _ = module._prepare_raw_quote_context(view)
@@ -91,9 +95,12 @@ def test_invocation_raw_witness_rejects_replacement_and_nested_mutation(change):
 
 
 @pytest.mark.parametrize("state", [None, "locked", "frozen", "absent", "zero", "reference_close", "invalid", "duplicate"])
-def test_private_basis_uses_readonly_scalars_and_preserves_public_state_guards(state):
+@pytest.mark.parametrize("restored", [False, True])
+def test_private_basis_uses_readonly_scalars_and_preserves_public_state_guards(state, restored):
     view = build(*fixture(state=state))
-    context, use = module._prepare_raw_quote_context(view)
+    context, use = (module._restore_raw_quote_context(view.base, view.source_artifact_json,
+        view.source_artifact_sha256, view.unit_plan_json, view.unit_plan_sha256)
+        if restored else module._prepare_raw_quote_context(view))
     _, rows = use(context)
     key = LG, DAYS[2]
     assert type(rows[key]) is tuple and all(not module.is_dataclass(value) for value in rows[key])
@@ -105,6 +112,47 @@ def test_private_basis_uses_readonly_scalars_and_preserves_public_state_guards(s
     else:
         with pytest.raises(ValueError): module.raw_price_basis(view, *key)
         with pytest.raises(ValueError): basis_at(*key)
+
+
+def test_restore_context_fully_builds_once_and_keeps_exact_artifact_bytes(monkeypatch):
+    view = build(*fixture())
+    builds, build_view = [], module.build_raw_quote_view
+    def counted(*args, **kwargs):
+        fresh = build_view(*args, **kwargs); builds.append(fresh); return fresh
+    monkeypatch.setattr(module, "build_raw_quote_view", counted)
+    context, use = module._restore_raw_quote_context(view.base, view.source_artifact_json,
+        view.source_artifact_sha256, view.unit_plan_json, view.unit_plan_sha256)
+    fresh, _ = use(context)
+    assert len(builds) == 1 and fresh is builds[0] and fresh == view
+    assert fresh.source_artifact_json is view.source_artifact_json and fresh.unit_plan_json is view.unit_plan_json
+    assert fresh.base is view.base and fresh.raw_observations == view.raw_observations
+
+
+@pytest.mark.parametrize("forged", [False, True])
+def test_restore_context_branch_never_accepts_a_supplied_view(forged):
+    view = build(*fixture())
+    inputs = (view.base, view.source_artifact_json, view.source_artifact_sha256, view.unit_plan_json, view.unit_plan_sha256)
+    if forged: view = replace(view, quote_snapshot_sha256="e" * 64)
+    with pytest.raises(ValueError, match="exact artifact inputs"):
+        module._prepare_raw_quote_context(view, _restore_inputs=inputs)
+
+
+@pytest.mark.parametrize("change", ["copy", "cross", "quotes", "row", "base", "series"])
+def test_private_basis_binding_rejects_foreign_context_or_changed_quotes(change):
+    from research.activity_raw_component_preflight import _bind_raw_basis
+    view = build(*fixture())
+    context, use = module._restore_raw_quote_context(view.base, view.source_artifact_json,
+        view.source_artifact_sha256, view.unit_plan_json, view.unit_plan_sha256)
+    quotes, _ = use(context)
+    evidence = dict(references={}, bases={"old": dict(code=LG, session=str(DAYS[1]),
+        raw_close="8", adjusted_close="8", quote_snapshot_sha256=quotes.quote_snapshot_sha256)})
+    if change == "copy": context = replace(context)
+    elif change == "cross": context, _ = module._prepare_raw_quote_context(quotes)
+    elif change == "quotes": quotes = replace(quotes)
+    elif change == "row": object.__setattr__(quotes.raw_observations[0], "close", Decimal("999"))
+    elif change == "base": object.__setattr__(quotes.base.original.observations[0], "code", "changed")
+    else: object.__setattr__(quotes.series[0][1], "opens", ())
+    with pytest.raises(ValueError): _bind_raw_basis(evidence, quotes, _raw_context=(context, use))
 
 
 def test_full_base_absences_new_identity_exact_raw_texts_and_unaffected_panel_without_io(monkeypatch):
@@ -361,7 +409,8 @@ def test_refreeze_recomputes_reference_close_policy_coordinates_counts_and_panel
 
 
 @pytest.mark.parametrize("mutation", ["decimal_number", "price", "sequence", "extra", "unit", "pin"])
-def test_raw_restore_rejects_rehashed_or_unpinned_foreign_storage(mutation):
+@pytest.mark.parametrize("consumer", [module.restore_raw_quote_view, module._restore_raw_quote_context])
+def test_raw_restore_rejects_rehashed_or_unpinned_foreign_storage(mutation, consumer):
     view = build(*fixture())
     artifact = strict_json(view.source_artifact_json)
     row = artifact["rows"][0]
@@ -372,5 +421,5 @@ def test_raw_restore_rejects_rehashed_or_unpinned_foreign_storage(mutation):
     elif mutation == "unit": row["price_unit"] = "adjusted"
     raw = encoded(artifact)
     with pytest.raises(ValueError):
-        module.restore_raw_quote_view(view.base, raw, "e" * 64 if mutation == "pin" else digest(raw),
+        consumer(view.base, raw, "e" * 64 if mutation == "pin" else digest(raw),
             view.unit_plan_json, view.unit_plan_sha256)

@@ -1,7 +1,8 @@
 """Pure origin-specific action bounds; immutable full quote requirements remain.
 
 This proof changes evidence priority, never accounting, selection or execution.
-Only isolated compulsory spin-offs receive component candidates. Unsupported
+Only isolated compulsory spin-offs receive two-component candidates. Raw ordinary
+origins use their own raw opening proof. Unsupported
 chains and eligibility paths retain original-end coverage under the existing
 decoder/replay. A candidate is neither an actual exit nor a source certificate.
 """
@@ -153,7 +154,8 @@ def _component_exit_bounds(
             fresh, _ = use(context)
             require(quotes is fresh, "component proof requires this invocation's exact raw view")
             quotes = fresh
-        require(_same(quotes.base.original, original), "raw view must retain immutable original quotes")
+        require((_raw_context is not None and quotes.base.original is original)
+                or _same(quotes.base.original, original), "raw view must retain immutable original quotes")
         supplied = frozenset(quotes.base.extension.requested_coordinates)
     elif type(quotes) is CompositeHoldingInputs:
         require(_same(quotes.original, original)
@@ -227,6 +229,16 @@ def _component_exit_bounds(
             components[0].update(candidate_on=None, candidate_state="raw_ordinary_candidate_not_proven")
             if event is None:
                 mode, reason = "original_end", "raw_ordinary_candidate_not_proven"
+                # A later unresolved action cannot disappear behind an earlier
+                # price candidate. Keep the original full-interval obligation.
+                unresolved = any(row["code"] == origin["code"] and row["isin"] == origin["isin"]
+                    and _day(row["start"]) <= end and entry <= _day(row["end"])
+                    for row in unresolved_priority_intervals)
+                if not unresolved:
+                    candidate, state = _candidate(quotes, observations, origin["code"], due, entry, end)
+                    if candidate is not None:
+                        components[0].update(candidate_on=str(candidate), candidate_state=state)
+                        mode, reason, endpoint = "ordinary_child", "raw_ordinary_price_candidate", candidate
         if event is not None:
             mode, reason, endpoint = "original_end", "unsupported_non_spin_event", end
             if isinstance(event, CompulsorySpinOff):
@@ -340,7 +352,8 @@ def verify_component_inventory(replays: Mapping, proof: dict,
         require(key not in origin_keys, "ambiguous runtime potential origin")
         origin_keys.add(key)
         active = [dict(lot_id=lot_id, code=origin["code"], investment_id=None, available_on=entered,
-                       start=entered, end=None, applied=(), candidate=row["ordinary_candidate_on"]
+                       start=entered, end=None, applied=(), candidate=(row["components"][0]["candidate_on"]
+                       if row["reason"] == "raw_ordinary_price_candidate" else row["ordinary_candidate_on"])
                        if row["mode"] == "ordinary_child" else None)]
         history = []
         for event in events:

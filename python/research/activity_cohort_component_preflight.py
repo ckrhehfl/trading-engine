@@ -23,13 +23,13 @@ from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_cohort_connection import cohort_proof_selections
 from research.activity_cohort_return_policy import SCHEMA_V2, SCHEMA_V3, declared_policy_report, decode_return_policy
-from research.activity_component_bounds import component_exit_bounds
+from research.activity_component_bounds import _component_exit_bounds
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_pair_calibration import PARAMETERS
 from research.activity_paired_replay import _require_raw_potential_scope
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_raw_component_preflight import _bind_raw_basis, _pre_effective_marks
-from research.activity_raw_quote_view import calendar_sha256, restore_raw_quote_view
+from research.activity_raw_quote_view import _restore_raw_quote_context, calendar_sha256
 from research.activity_reviewed_actions import reviewed_action_terms
 
 
@@ -343,7 +343,9 @@ def evaluate_inputs(spec, inputs, output):
     declarations, original, scope, ordinary = _restore_original(spec, load)
     base = _restore_extension(spec, load, original)
     raw, unit = load("raw_episode_quotes"), load("raw_episode_unit_plan")
-    quotes = restore_raw_quote_view(base, raw, spec["inputs"]["raw_episode_quotes"]["sha256"], unit, spec["inputs"]["raw_episode_unit_plan"]["sha256"])
+    raw_context = _restore_raw_quote_context(base, raw, spec["inputs"]["raw_episode_quotes"]["sha256"], unit,
+        spec["inputs"]["raw_episode_unit_plan"]["sha256"])
+    quotes, _ = raw_context[1](raw_context[0])
     del raw, unit
     raw_receipt = saved.strict_json(load("raw_episode_verification")); _verify_raw(raw_receipt, spec, quotes)
     policy_raw = load("return_policy"); policy = decode_return_policy(policy_raw)
@@ -355,7 +357,7 @@ def evaluate_inputs(spec, inputs, output):
     saved.require(type(coverage) is dict and all(coverage.get(name) == [] for name in ("windows", "noops", "unresolved"))
         and coverage.get("required_scope_sha256") == original.read_scope_sha256, "terms-only original-scope envelope required")
     selections = cohort_proof_selections(declarations, original.calendar, spec["parameters"])
-    _bind_raw_basis(evidence, quotes)
+    _bind_raw_basis(evidence, quotes, _raw_context=raw_context)
     terms = reviewed_action_terms(coverage, evidence, expected_windows=windows, calendar=original.calendar,
         activity_snapshot_sha256=original.activity_snapshot_sha256, quote_snapshot_sha256=quotes.quote_snapshot_sha256, return_policy_json=policy_raw)
     checks = _pre_effective_marks(terms, quotes)
@@ -363,9 +365,9 @@ def evaluate_inputs(spec, inputs, output):
     saved.require(not any(row["state"] == "unresolved" for row in checks), "old basis role has unresolved pre-event coordinates")
     unresolved = saved.strict_json(load("unresolved_priority_intervals"))
     saved.require(type(unresolved) is list, "explicit pinned unresolved-priority interval list required")
-    proof = component_exit_bounds(ordinary, selections["D1"], selections["D2"], original, spec["parameters"], scope["requested_code_dates"],
+    proof = _component_exit_bounds(ordinary, selections["D1"], selections["D2"], original, spec["parameters"], scope["requested_code_dates"],
         scope["issue_isins"], input_sha256=spec["holding_verification_identity"]["input_sha256"], quotes=quotes, terms=terms,
-        unresolved_priority_intervals=tuple(unresolved))
+        unresolved_priority_intervals=tuple(unresolved), _raw_context=raw_context)
     _policy_obligations(proof, policy)
     _require_raw_potential_scope(quotes, proof, terms.events)
     proof_raw = saved.encoded(proof)
