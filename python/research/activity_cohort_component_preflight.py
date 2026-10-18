@@ -63,7 +63,7 @@ RAW_FALSE = ("source_truth_certified", "historical_vintage_certified", "historic
 ZERO = ("D1_completed_studies", "D2_completed_studies", "performance_studies_added", "new_source_requests", "automatic_retries")
 FALSE_FLAGS = tuple(sorted(set((*QUOTE_FALSE, *RAW_FALSE, "final_coverage_verified", "raw_response_bodies_read",
     "original_source_bodies_read", "actual_investment_return", "actual_study_completed"))))
-LIMITS = dict(address_space_bytes=768 * 1024**2, cpu_seconds=300, wall_seconds=900, nice=10)
+LIMITS = dict(address_space_bytes=768 * 1024**2, cpu_seconds=600, wall_seconds=900, nice=10)
 TEMPLATE_BINDING = "reviewed_lg_template_rebind_current_raw_identity_v1"
 TEMPLATE_PINS = dict(
     reviewed_terms="48a65cfde7bfc3fe471a75f256933a0abf43bc00c7186d5c1dc5ec9244eb7333",
