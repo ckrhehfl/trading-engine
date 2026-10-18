@@ -59,6 +59,116 @@ def build(base, observations, plan):
         unit_plan=unit_plan, unit_plan_sha256=digest(unit_plan))
 
 
+def test_issued_seal_rejects_every_nested_field_replacement():
+    view = build(*fixture())
+    context, use = module._prepare_raw_quote_context(view)
+    sealed = module._immutable_fields((view, context))
+    assert module._unchanged_fields(sealed) is True
+    checked = 0
+    for value, _, names, attributes in sealed:
+        for name, original in zip(names, attributes):
+            try:
+                object.__setattr__(value, name, object())
+                assert module._unchanged_fields(sealed) is False, (type(value).__name__, name)
+                with pytest.raises(ValueError, match="immutable input changed"):
+                    use(context)
+            finally:
+                object.__setattr__(value, name, original)
+            checked += 1
+    assert checked == sum(len(names) for _, _, names, _ in sealed) and checked > 100
+    assert use(context)[0] is context.view
+
+
+def test_seal_rejects_equal_but_distinct_nested_record():
+    view = build(*fixture())
+    sealed = module._immutable_fields((view,))
+    replacement = replace(view.base)
+    assert replacement == view.base and replacement is not view.base
+    object.__setattr__(view, "base", replacement)
+    assert module._unchanged_fields(sealed) is False
+
+
+class SealProbe:
+    def __init__(self, values, trace):
+        self.values, self.trace = values, trace
+
+    def __getattribute__(self, name):
+        if name in ("first", "second", "third"):
+            object.__getattribute__(self, "trace").append(("get", name))
+            value = object.__getattribute__(self, "values")[name]
+            if isinstance(value, BaseException):
+                raise value
+            return value
+        return object.__getattribute__(self, name)
+
+
+class SealIterator:
+    def __init__(self, label, values, trace):
+        self.label, self.values, self.trace, self.position = label, values, trace, 0
+
+    def __iter__(self):
+        self.trace.append(("iter", self.label))
+        return self
+
+    def __next__(self):
+        position = self.position
+        self.trace.append(("next", self.label, position))
+        if position == len(self.values):
+            raise StopIteration
+        self.position += 1
+        return self.values[position]
+
+
+@pytest.mark.parametrize("width", ["same", "short_names", "short_attributes"])
+def test_seal_preserves_zip_iteration_and_getter_order_for_supplied_widths(width):
+    first, second, trace = object(), object(), []
+    probe = SealProbe(dict(first=first, second=second), trace)
+    names = ("first",) if width == "short_names" else ("first", "second")
+    attributes = (first,) if width == "short_attributes" else (first, second)
+    sealed = ((probe, SealProbe, SealIterator("names", names, trace),
+        SealIterator("attributes", attributes, trace)),)
+    assert module._unchanged_fields(sealed) is True
+    expected = [("iter", "names"), ("iter", "attributes"),
+        ("next", "names", 0), ("next", "attributes", 0), ("get", "first"), ("next", "names", 1)]
+    if width != "short_names":
+        expected.append(("next", "attributes", 1))
+        if width == "same":
+            expected.extend([("get", "second"), ("next", "names", 2)])
+    assert trace == expected
+
+
+def test_seal_type_and_identity_mismatches_stop_before_later_getters_or_records():
+    first, trace = object(), []
+    probe = SealProbe(dict(first=first, second=AssertionError("unexpected getter")), trace)
+    malformed = (None,)
+    assert module._unchanged_fields(((probe, object, None, None), malformed)) is False
+    assert trace == []
+    assert module._unchanged_fields(((probe, SealProbe, ("first", "second"), (object(), first)), malformed)) is False
+    assert trace == [("get", "first")]
+
+
+@pytest.mark.parametrize("exception", [AttributeError, ValueError, RuntimeError, StopIteration])
+def test_seal_preserves_getter_exceptions_including_generator_stop_iteration(exception):
+    trace, error = [], exception("synthetic getter failure")
+    probe = SealProbe(dict(first=error, second=AssertionError("unexpected getter")), trace)
+    sealed = ((probe, SealProbe, ("first", "second"), (object(), object())),)
+    with pytest.raises(RuntimeError if exception is StopIteration else exception) as raised:
+        module._unchanged_fields(sealed)
+    if exception is StopIteration:
+        assert str(raised.value) == "generator raised StopIteration" and raised.value.__cause__ is error
+    else:
+        assert raised.value is error
+    assert trace == [("get", "first")]
+
+
+@pytest.mark.parametrize("sealed, exception", [((None,), TypeError), (((None, object, ()),), ValueError),
+    (((None, object, (), (), None),), ValueError), (((None, type(None), None, ()),), TypeError),
+    (((None, type(None), (1,), (None,)),), TypeError)])
+def test_seal_preserves_malformed_entry_failures(sealed, exception):
+    with pytest.raises(exception):
+        module._unchanged_fields(sealed)
+
+
 def test_many_raw_basis_declarations_refreeze_once_per_binding(monkeypatch):
     from research.activity_raw_component_preflight import _bind_raw_basis
     view = build(*fixture())
