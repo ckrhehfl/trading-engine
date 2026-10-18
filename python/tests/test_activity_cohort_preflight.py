@@ -334,8 +334,24 @@ def test_cli_installs_exact_resources_without_actual_execution(monkeypatch, tmp_
     monkeypatch.setattr(module.os, "nice", lambda value: priorities.append(value) or 10)
     monkeypatch.setattr(module, "run_preflight", lambda *a, **k: {"result": {"synthetic": True}})
     assert module.main(["--spec", str(tmp_path / "spec.json"), "--output-dir", str(tmp_path / "output"), "--runs-path", str(tmp_path / "log.jsonl")]) == 0
-    assert limits == [(module.resource.RLIMIT_AS, (768 * 1024**2,) * 2), (module.resource.RLIMIT_CPU, (600, 600))]
-    assert alarms == [1800, 0] and priorities == [10]
+    assert limits == [(module.resource.RLIMIT_AS, (768 * 1024**2,) * 2), (module.resource.RLIMIT_CPU, (7200, 7200))]
+    assert alarms == [10800, 0] and priorities == [10]
+
+
+def test_resource_manifest_retains_measured_usage_with_new_registered_budget(monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(module.resource, "getrusage", lambda kind: SimpleNamespace(
+        ru_maxrss=705064, ru_utime=1596.357314, ru_stime=73.861722))
+    monkeypatch.setattr(module.resource, "getrlimit", lambda kind:
+        (805306368, 805306368) if kind == module.resource.RLIMIT_AS else (7200, 7200))
+    monkeypatch.setattr(module.time, "monotonic", lambda: 1800.0)
+    monkeypatch.setattr(module.os, "getpriority", lambda *args: 10)
+    assert module._resources(5.0) == {
+        "elapsed_seconds": 1795.0, "process_peak_rss_kib": 705064,
+        "process_user_cpu_seconds": 1596.357314, "process_system_cpu_seconds": 73.861722,
+        "address_space_limit_bytes": [805306368, 805306368], "cpu_limit_seconds": [7200, 7200],
+        "wall_limit_seconds": 10800, "nice": 10}
 
 
 @pytest.mark.parametrize("change", ["old_mode", "missing_policy", "unknown_mode"])

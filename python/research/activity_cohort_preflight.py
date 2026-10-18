@@ -39,6 +39,9 @@ from research.activity_raw_quote_view import RawEpisodeQuoteInputs, restore_raw_
 
 SCHEMA = "activity-cohort-preflight-v1"
 SOURCE_PATH = "python/research/activity_cohort_preflight.py"
+# Fixed full-family recovery budget; changes require fresh source registration.
+CPU_LIMIT_SECONDS = 7200
+WALL_LIMIT_SECONDS = 10800
 MODE = "discovery_cohort_input_orchestration"
 OPERATIONAL_COMMIT = "4ce85d714890b87f1a57ae89d4942660e41c0483"
 HOLDING_ROLES = {"holding_result": "result.json", "cohort_declarations": "cohort-declarations.json",
@@ -357,7 +360,7 @@ def _resources(started):
     return {"elapsed_seconds": time.monotonic() - started, "process_peak_rss_kib": usage.ru_maxrss,
         "process_user_cpu_seconds": usage.ru_utime, "process_system_cpu_seconds": usage.ru_stime,
         "address_space_limit_bytes": list(resource.getrlimit(resource.RLIMIT_AS)), "cpu_limit_seconds": list(resource.getrlimit(resource.RLIMIT_CPU)),
-        "wall_limit_seconds": 1800, "nice": os.getpriority(os.PRIO_PROCESS, 0)}
+        "wall_limit_seconds": WALL_LIMIT_SECONDS, "nice": os.getpriority(os.PRIO_PROCESS, 0)}
 
 
 def _completed_counts(output, result):
@@ -439,8 +442,9 @@ def main(argv=None):
     parser.add_argument("--spec", type=Path, required=True); parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--runs-path", type=Path, required=True); args = parser.parse_args(argv)
     def expired(signum, frame): raise TimeoutError("registered cohort wall limit exceeded")
-    resource.setrlimit(resource.RLIMIT_AS, (768 * 1024**2,) * 2); resource.setrlimit(resource.RLIMIT_CPU, (600, 600))
-    signal.signal(signal.SIGALRM, expired); signal.alarm(1800)
+    resource.setrlimit(resource.RLIMIT_AS, (768 * 1024**2,) * 2)
+    resource.setrlimit(resource.RLIMIT_CPU, (CPU_LIMIT_SECONDS,) * 2)
+    signal.signal(signal.SIGALRM, expired); signal.alarm(WALL_LIMIT_SECONDS)
     try:
         priority = os.getpriority(os.PRIO_PROCESS, 0)
         saved.require(priority <= 10 and os.nice(10 - priority) == 10, "exact nice10 required")

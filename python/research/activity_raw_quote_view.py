@@ -251,9 +251,17 @@ def _immutable_fields(values: tuple, *, _covered: tuple = ()) -> tuple:
     return tuple(result)
 
 
+def _field_identities_match(value, names, attributes) -> bool:
+    for name, original in zip(names, attributes):
+        if getattr(value, name) is not original:
+            return False
+    return True
+
+
 def _unchanged_fields(sealed: tuple) -> bool:
-    return all(type(value) is kind and all(getattr(value, name) is original
-        for name, original in zip(names, attributes)) for value, kind, names, attributes in sealed)
+    # Keep the outer generator's lazy type checks and StopIteration handling.
+    return all(type(value) is kind and _field_identities_match(value, names, attributes)
+        for value, kind, names, attributes in sealed)
 
 
 @dataclass(frozen=True)
