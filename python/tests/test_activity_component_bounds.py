@@ -349,3 +349,129 @@ def test_inventory_lineage_and_candidate_survival_rejected(monkeypatch, change):
         book = replace(book, lots=(lot,))
     with pytest.raises(ValueError):
         bounds.verify_component_inventory({"D1": SimpleNamespace(books=(book,))}, proof, values[1]["terms"].events)
+
+
+def raw_ordinary_case(monkeypatch, **kwargs):
+    # Reuse the existing fabricated raw lineage without loading any runner.
+    import test_activity_raw_component_bounds as raw_fixture
+    return raw_fixture.fixture(monkeypatch, independent=True, **kwargs)
+
+
+def later_raw_origin(proof, code="003550"):
+    return next(row for row in proof["entries"] if row["origin"]["arm"] == "D1"
+        and row["origin"]["code"] == code and row["origin"]["entry_on"] > row["origin"]["formation_on"]
+        and row["event_id"] is None)
+
+
+@pytest.mark.parametrize("code", ["003550", "383800"])
+@pytest.mark.parametrize("state", ["observed", "locked"])
+def test_raw_ordinary_candidate_uses_raw_opening_and_preserves_adjusted_audit(monkeypatch, code, state):
+    values = raw_ordinary_case(monkeypatch, end=420, states={(code, 255): state},
+        original_changes={(code, 255): "frozen"})
+    before = deepcopy(values)
+    proof, calendar = build(values), values[1]["quotes"].calendar
+    row = later_raw_origin(proof, code)
+    assert row["ordinary_candidate_on"] == str(calendar[256])
+    assert row["mode"] == "ordinary_child" and row["reason"] == "raw_ordinary_price_candidate"
+    assert row["end_on"] == str(calendar[255])
+    assert row["components"] == [dict(code=code, isin=row["origin"]["isin"],
+        available_on=row["origin"]["entry_on"], candidate_on=str(calendar[255]), candidate_state=state)]
+    assert values == before and bounds.validate_component_exit_bounds(proof, *values[0], **values[1]) == proof
+
+
+@pytest.mark.parametrize("failure", ["missing", "unresolved", "frozen"])
+def test_raw_ordinary_missing_or_unresolved_candidate_retains_original_fallback(monkeypatch, failure):
+    states = {("003550", 255): "invalid"} if failure == "unresolved" else {
+        ("003550", index): "frozen" for index in range(255, 421)} if failure == "frozen" else None
+    values = raw_ordinary_case(monkeypatch, end=160 if failure == "missing" else 420, states=states)
+    row = later_raw_origin(build(values))
+    assert row["ordinary_candidate_on"] is not None
+    assert row["mode"] == "original_end" and row["reason"] == "raw_ordinary_candidate_not_proven"
+    assert row["end_on"] == row["original_end_on"]
+    assert row["components"][0]["candidate_on"] is None
+    assert row["components"][0]["candidate_state"] == "raw_ordinary_candidate_not_proven"
+
+
+def test_raw_ordinary_priority_after_price_candidate_keeps_full_original_obligation(monkeypatch):
+    values = raw_ordinary_case(monkeypatch, end=420)
+    calendar = values[1]["quotes"].calendar
+    values[1]["unresolved_priority_intervals"] = (dict(code="003550", isin="KR7003550001",
+        start=str(calendar[300]), end=str(calendar[301])),)
+    row = later_raw_origin(build(values))
+    assert row["ordinary_candidate_on"] == str(calendar[255]) < str(calendar[300])
+    assert row["mode"] == "original_end" and row["reason"] == "unresolved_origin_interval"
+    assert row["end_on"] == row["original_end_on"]
+    assert row["components"][0]["candidate_on"] is None
+    assert row["components"][0]["candidate_state"] == "raw_ordinary_candidate_not_proven"
+
+
+@pytest.mark.parametrize("raw_later", [False, True])
+def test_raw_ordinary_inventory_uses_raw_candidate_instead_of_adjusted_coordinate(monkeypatch, raw_later):
+    values = raw_ordinary_case(monkeypatch, end=420,
+        states={("003550", 255): "frozen"} if raw_later else None,
+        original_changes=None if raw_later else {("003550", 255): "frozen"})
+    proof, quotes = build(values), values[1]["quotes"]
+    row = later_raw_origin(proof)
+    origin = row["origin"]
+    entered, due = date.fromisoformat(origin["entry_on"]), date.fromisoformat(origin["due_on"])
+    candidate = date.fromisoformat(row["components"][0]["candidate_on"])
+    assert candidate != date.fromisoformat(row["ordinary_candidate_on"])
+    lot = Lot(f"003550:{entered}", "003550", Decimal(1), Decimal(1), entered, entered, due,
+        entered, quotes.quote_snapshot_sha256)
+    before = ActivityBook(Decimal(1), (lot,), candidate - timedelta(days=1), ())
+    bounds.verify_component_inventory({"D1": SimpleNamespace(books=(before,))}, proof, values[1]["terms"].events)
+    with pytest.raises(ValueError, match="survives its candidate"):
+        bounds.verify_component_inventory({"D1": SimpleNamespace(books=(replace(before, as_of=candidate),))},
+            proof, values[1]["terms"].events)
+
+
+def test_raw_future_canonical_event_is_checked_before_shortening_to_ordinary_candidate(monkeypatch):
+    import test_activity_raw_component_bounds as raw_fixture
+    values = raw_fixture.fixture(monkeypatch, end=420, cutoff=140, record=141, effective=150,
+        old=149, retained=151, new=151)
+    proof, calendar = build(values), values[1]["quotes"].calendar
+    row = next(row for row in proof["entries"] if row["origin"]["arm"] == "D1"
+        and row["origin"]["code"] == "003550" and row["origin"]["entry_on"] == str(calendar[3]))
+    assert row["ordinary_candidate_on"] == str(calendar[129]) < str(calendar[150])
+    assert row["event_id"] == "split" and row["mode"] != "ordinary_child"
+    assert len(row["components"]) == 2 and row["end_on"] >= str(calendar[150])
+
+
+@pytest.mark.parametrize("boundary", ["public", "issued_exact", "issued_equal", "issued_mismatch"])
+def test_raw_original_comparison_skips_only_issued_exact_root(monkeypatch, boundary):
+    from research import activity_raw_quote_view as raw_view
+    values = raw_ordinary_case(monkeypatch)
+    args, kwargs = list(values[0]), dict(values[1])
+    if boundary != "public":
+        context, use = raw_view._prepare_raw_quote_context(kwargs["quotes"])
+        kwargs["quotes"], _ = use(context)
+        kwargs["_raw_context"] = context, use
+        if boundary == "issued_equal":
+            args[3] = deepcopy(args[3])
+            assert args[3] is not kwargs["quotes"].base.original
+        elif boundary == "issued_mismatch":
+            args[3] = replace(args[3], snapshot_received_at="2099-01-01T00:00:00+00:00")
+    calls, original_same = [], bounds._same
+    def counted(left, right):
+        calls.append((left, right))
+        return original_same(left, right)
+    monkeypatch.setattr(bounds, "_same", counted)
+    if boundary == "issued_mismatch":
+        with pytest.raises(ValueError, match="retain immutable original quotes"):
+            bounds._component_exit_bounds(*args, **kwargs)
+        assert len(calls) == 1
+        return
+    proof = bounds._component_exit_bounds(*args, **kwargs)
+    assert len(calls) == (0 if boundary == "issued_exact" else 1)
+    assert proof == build(values)
+
+
+def test_raw_context_nested_mutation_rejects_before_original_comparison(monkeypatch):
+    from research import activity_raw_quote_view as raw_view
+    values = raw_ordinary_case(monkeypatch)
+    context, use = raw_view._prepare_raw_quote_context(values[1]["quotes"])
+    quotes, _ = use(context)
+    object.__setattr__(quotes.raw_observations[-1], "close", Decimal("999"))
+    monkeypatch.setattr(bounds, "_same", lambda *args: pytest.fail("changed context reached original comparison"))
+    with pytest.raises(ValueError, match="immutable input changed"):
+        bounds._component_exit_bounds(*values[0], **dict(values[1], quotes=quotes), _raw_context=(context, use))

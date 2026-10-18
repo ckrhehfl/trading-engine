@@ -16,6 +16,7 @@ from research import activity_cohort_preflight as cohort
 from research import activity_preflight as saved
 from research import activity_raw_quote_view as raw_view
 from research import experiment_log
+from research.activity_component_bounds import component_exit_bounds
 from research.activity_pair_calibration import PARAMETERS
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_quote_preflight import _audit
@@ -246,10 +247,10 @@ def test_policy_reference_date_preserves_legacy_and_records_v3_revalidation(tmp_
 def test_real_restore_and_existing_proof_engine_emit_direct_proof_without_books(tmp_path, monkeypatch):
     spec, bodies, declarations, original, view = fixture(tmp_path)
     before, calls = deepcopy((spec, bodies)), []
-    real = module.component_exit_bounds
+    real = module._component_exit_bounds
     def capture(*args, **kwargs):
         calls.append((args, kwargs)); return real(*args, **kwargs)
-    monkeypatch.setattr(module, "component_exit_bounds", capture)
+    monkeypatch.setattr(module, "_component_exit_bounds", capture)
     result, inputs, output = evaluate(tmp_path, spec, bodies)
     proof = saved.strict_json((output / "component-exit-scope.json").read_bytes())
     terms = saved.strict_json((output / "canonical-terms.json").read_bytes())
@@ -267,6 +268,30 @@ def test_real_restore_and_existing_proof_engine_emit_direct_proof_without_books(
     assert set(result["unmodeled_asset_values"]) == set(module.decode_return_policy(bodies[spec["inputs"]["return_policy"]["path"]])["events"][i]["event_id"] for i in range(4))
     assert set(result["unmodeled_asset_values"].values()) == {None}
     assert result["return_policy_schema"] == module.SCHEMA_V2 and result["actual_investment_return"] is False
+    assert result["output_sha256"]["component-exit-scope.json"] == saved.digest((output / "component-exit-scope.json").read_bytes())
+    args, kwargs = calls[0]
+    issued, use = kwargs["_raw_context"]
+    assert kwargs["quotes"] is use(issued)[0]
+    assert kwargs["quotes"].base.original is args[3]
+    assert saved.encoded(component_exit_bounds(*args,
+        **{name: value for name, value in kwargs.items() if name != "_raw_context"})) == (output / "component-exit-scope.json").read_bytes()
+
+
+def test_raw_restore_issues_single_context_for_all_component_phases(tmp_path, monkeypatch):
+    spec, bodies, *_ = fixture(tmp_path)
+    builds, bound_views = [], []
+    build, bind = raw_view.build_raw_quote_view, module._bind_raw_basis
+    def capture_build(*args, **kwargs):
+        view = build(*args, **kwargs); builds.append(view); return view
+    def capture_bind(evidence, quotes, **kwargs):
+        bound_views.append(quotes); return bind(evidence, quotes, **kwargs)
+    monkeypatch.setattr(raw_view, "build_raw_quote_view", capture_build)
+    monkeypatch.setattr(module, "_bind_raw_basis", capture_bind)
+    result, _, output = evaluate(tmp_path, spec, bodies)
+    assert len(builds) == 1  # Full artifact restoration issues the sealed view.
+    assert bound_views == [builds[0]] and bound_views[0] is builds[0]
+    assert builds[0].source_artifact_json is bodies[spec["inputs"]["raw_episode_quotes"]["path"]]
+    assert builds[0].unit_plan_json is bodies[spec["inputs"]["raw_episode_unit_plan"]["path"]]
     assert result["output_sha256"]["component-exit-scope.json"] == saved.digest((output / "component-exit-scope.json").read_bytes())
 
 

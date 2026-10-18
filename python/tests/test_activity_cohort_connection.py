@@ -306,11 +306,22 @@ def test_missing_raw_arm_candidate_keeps_full_obligation_and_refuses_without_a_f
 
 
 @pytest.mark.parametrize("code", [LG, LX])
-def test_later_independent_raw_origin_cannot_reuse_an_earlier_spin_bound(monkeypatch, code):
-    values = raw_package(later_code=code)
-    monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("later raw origin was dropped"))
-    with pytest.raises(ValueError, match="potential raw scope"):
-        module.prepare_cohort_scope(**values)
+@pytest.mark.parametrize("end", [188, 314])
+def test_later_independent_raw_origin_requires_its_own_candidate(monkeypatch, code, end):
+    values = raw_package(end=end, later_code=code)
+    if end == 188:
+        monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("later raw origin was dropped"))
+        with pytest.raises(ValueError, match="potential raw scope"):
+            module.prepare_cohort_scope(**values)
+    else:
+        binding = module.prepare_cohort_scope(**values)
+        proof = strict_json(binding.component_proof_json)
+        later = [row for row in proof["entries"] if row["origin"]["code"] == code
+            and row["origin"]["formation_on"] == str(values["original"].calendar[186])]
+        assert len(later) == 2 and all(row["event_id"] is None for row in later)
+        assert all(row["mode"] == "ordinary_child" and row["reason"] == "raw_ordinary_price_candidate"
+            and row["end_on"] == row["components"][0]["candidate_on"] == row["origin"]["due_on"] for row in later)
+        assert binding.original.requested_coordinates == values["original"].requested_coordinates
 
 
 @pytest.mark.parametrize("code", [LG, LX])

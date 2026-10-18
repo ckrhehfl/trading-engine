@@ -21,14 +21,14 @@ from research import activity_holding_preflight as holding
 from research import activity_preflight as saved
 from research import experiment_log
 from research.activity_book import CompulsorySpinOff, CompulsoryStockExchange
-from research.activity_component_bounds import WRAPPER_SCHEMA, component_exit_bounds
+from research.activity_component_bounds import WRAPPER_SCHEMA, _component_exit_bounds
 from research.activity_holding_restore import restore_holding_inputs
 from research.activity_paired_replay import BM_ROLES, PACKAGE_ROLES, _require_raw_potential_scope, prepare_inputs
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_raw_episode import TARGET_CODES
 from research.activity_raw_quote_view import (
-    calendar_sha256, is_raw_no_trade_reference_close, restore_raw_quote_view,
-    _prepare_raw_quote_context, _raw_basis_accessor,
+    calendar_sha256, is_raw_no_trade_reference_close,
+    _prepare_raw_quote_context, _restore_raw_quote_context, _raw_basis_accessor,
 )
 from research.activity_reviewed_actions import reviewed_action_terms
 
@@ -189,7 +189,7 @@ def _verify_raw(receipt: dict, pins: dict, quotes) -> None:
         "raw verification counts differ from restored artifact")
 
 
-def _bind_raw_basis(evidence: dict, quotes) -> None:
+def _bind_raw_basis(evidence: dict, quotes, *, _raw_context=None) -> None:
     saved.require(type(evidence) is dict and set(evidence) == {"references", "bases"} and type(evidence["bases"]) is dict,
                   "reviewed basis declarations required")
     basis_at = None
@@ -197,7 +197,11 @@ def _bind_raw_basis(evidence: dict, quotes) -> None:
         saved.require(type(row) is dict, "reviewed basis row required")
         if row.get("code") in TARGET_CODES:
             if basis_at is None:
-                basis_at = _raw_basis_accessor(*_prepare_raw_quote_context(quotes))
+                context, use = _prepare_raw_quote_context(quotes) if _raw_context is None else _raw_context
+                fresh, _ = use(context)
+                saved.require(_raw_context is None or quotes is fresh,
+                    "raw basis requires this invocation's exact raw view")
+                basis_at = _raw_basis_accessor(context, use)
             basis = basis_at(row["code"], date.fromisoformat(row["session"]))
             saved.require(Decimal(row["raw_close"]) == Decimal(row["adjusted_close"]) == basis.raw_close
                 and row.get("quote_snapshot_sha256") == quotes.quote_snapshot_sha256,
@@ -271,15 +275,16 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     documents = {role: saved.strict_json(raw[role]) for role in INPUT_FILES
                  if role not in (*PACKAGE_ROLES, "raw_episode_quotes", "raw_episode_unit_plan")}
     base = _restore_extension(documents, pins, prepared)
-    quotes = restore_raw_quote_view(base, raw["raw_episode_quotes"], pins["raw_episode_quotes"],
+    raw_context = _restore_raw_quote_context(base, raw["raw_episode_quotes"], pins["raw_episode_quotes"],
         raw["raw_episode_unit_plan"], pins["raw_episode_unit_plan"])
+    quotes, _ = raw_context[1](raw_context[0])
     del raw
     receipt = documents["raw_episode_verification"]
     _verify_raw(receipt, pins, quotes)
     declarations, evidence = documents["reviewed_terms"], documents["basis_evidence"]
     saved.require(type(declarations) is dict and all(declarations.get(name) == [] for name in ("windows", "noops", "unresolved"))
         and declarations.get("required_scope_sha256") == prepared.read_scope_sha256, "terms-only original-scope envelope required")
-    _bind_raw_basis(evidence, quotes)
+    _bind_raw_basis(evidence, quotes, _raw_context=raw_context)
     terms = reviewed_action_terms(declarations, evidence, expected_windows=prepared.expected_windows,
         calendar=prepared.calendar, activity_snapshot_sha256=prepared.activity_snapshot_sha256,
         quote_snapshot_sha256=quotes.quote_snapshot_sha256)
@@ -288,10 +293,10 @@ def evaluate_inputs(spec: dict, inputs: saved.PinnedInputs, output: Path) -> dic
     saved.require(not any(row["state"] == "unresolved" for row in checks), "old basis role has unresolved pre-event coordinates")
     unresolved = documents["unresolved_priority_intervals"]
     saved.require(type(unresolved) is list, "pinned unresolved-priority interval list required")
-    proof = component_exit_bounds(documents["ordinary_exit_scope"], prepared.selections_d1, prepared.selections_d2,
+    proof = _component_exit_bounds(documents["ordinary_exit_scope"], prepared.selections_d1, prepared.selections_d2,
         prepared.holding_inputs, spec["parameters"], prepared.required_code_dates,
         {row["code"]: row["isin"] for row in prepared.expected_windows}, input_sha256=prepared.input_sha256,
-        quotes=quotes, terms=terms, unresolved_priority_intervals=tuple(unresolved))
+        quotes=quotes, terms=terms, unresolved_priority_intervals=tuple(unresolved), _raw_context=raw_context)
     _require_raw_potential_scope(quotes, proof, terms.events)
     wrapper = saved.encoded(dict(schema=WRAPPER_SCHEMA, ordinary_exit_scope=documents["ordinary_exit_scope"], component_scope=proof))
     saved.write_exclusive(output / "canonical-terms.json", terms.canonical_json)
