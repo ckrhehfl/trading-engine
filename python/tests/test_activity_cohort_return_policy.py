@@ -28,6 +28,59 @@ def synthetic_policy_v2():
     return value
 
 
+def synthetic_policy_v3():
+    value = synthetic_policy_v2()
+    value.update(schema=module.SCHEMA_V3, action_coverage_scope=module.ACTION_COVERAGE_SCOPE,
+        scope_decision_recorded_on=module.SCOPE_DECISION_RECORDED_ON, automatic_bonus_share_assets="not_modeled")
+    value["events"].append(dict(event_id=module.BONUS_ISSUE_EVENT_ID, kind=module.BONUS_ISSUE_KIND,
+        code="086280", isin=module.V3_ISINS["086280"], start="2024-07-15", end="2024-07-15",
+        date_role=module.STOCK_DIVIDEND_DATE_ROLE, evidence_ref="synthetic-086280", raw_sha256="c" * 64,
+        review_sha256="d" * 64, coordinate="synthetic:bonus issue record date; delivery and entitlement unknown"))
+    return value
+
+
+def test_v3_separately_binds_common_share_scope_and_exact_fifth_unknown_asset():
+    value = synthetic_policy_v3()
+    body = encoded(value)
+    assert module.decode_return_policy(body) == value
+    assert value["events"][:-1] == synthetic_policy_v2()["events"]
+    report = module.policy_report(body)
+    assert report == module.declared_policy_report(module.SCHEMA_V3, digest(body))
+    assert report["action_coverage_scope"] == "conditional_common_share_lifetime"
+    assert report["scope_decision_recorded_on"] == "2026-10-18"
+    assert report["automatic_bonus_share_assets"] == "not_modeled" and report["actual_investment_return"] is False
+    assert report["unmodeled_asset_event_ids"] == sorted(module.V3_EVENT_IDENTITIES)
+    assert module.attribution_codes(body) == ("003670", "005070", "006400", "006800", "086280")
+
+
+@pytest.mark.parametrize("change", ["scope", "decision", "missing_scope", "missing_decision", "missing_bonus_flag", "zero_bonus",
+    "unknown_extra", "v2_relabel", "v2_scope", "v1_scope", "missing_event", "sixth_event", "bonus_kind", "bonus_isin",
+    "bonus_date", "bonus_role", "bonus_quantity", "bonus_cash", "bonus_source"])
+def test_v3_cannot_relabel_old_rules_or_model_the_unverified_bonus_assets(change):
+    value = synthetic_policy_v3()
+    if change == "scope": value["action_coverage_scope"] = "ignore_all_actions"
+    elif change == "decision": value["scope_decision_recorded_on"] = "2026-10-16"
+    elif change == "missing_scope": value.pop("action_coverage_scope")
+    elif change == "missing_decision": value.pop("scope_decision_recorded_on")
+    elif change == "missing_bonus_flag": value.pop("automatic_bonus_share_assets")
+    elif change == "zero_bonus": value["automatic_bonus_share_assets"] = "zero"
+    elif change == "unknown_extra": value["future_assets_allowed"] = True
+    elif change == "v2_relabel": value["schema"] = module.SCHEMA_V2
+    elif change in ("v2_scope", "v1_scope"):
+        value = synthetic_policy_v2() if change == "v2_scope" else synthetic_policy()
+        value.update(action_coverage_scope=module.ACTION_COVERAGE_SCOPE, scope_decision_recorded_on=module.SCOPE_DECISION_RECORDED_ON)
+    elif change == "missing_event": value["events"].pop()
+    elif change == "sixth_event": value["events"].append(deepcopy(value["events"][-1]))
+    elif change == "bonus_kind": value["events"][-1]["kind"] = module.STOCK_DIVIDEND_KIND
+    elif change == "bonus_isin": value["events"][-1]["isin"] = "KR7086280000"
+    elif change == "bonus_date": value["events"][-1]["start"] = "2024-07-14"
+    elif change == "bonus_role": value["events"][-1]["date_role"] = "actual_delivery"
+    elif change == "bonus_quantity": value["events"][-1]["quantity"] = "1"
+    elif change == "bonus_cash": value["events"][-1]["cash"] = "0"
+    else: value["events"][-1]["raw_sha256"] = "unknown"
+    with pytest.raises(ValueError): module.decode_return_policy(encoded(value))
+
+
 def test_absent_policy_keeps_old_output_empty_and_valid_policy_is_pure(monkeypatch):
     assert module.decode_return_policy(None) is None and module.policy_report(None) == {}
     value = synthetic_policy()

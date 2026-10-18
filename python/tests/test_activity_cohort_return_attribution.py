@@ -17,8 +17,9 @@ import test_activity_cohort_comparison as fixture
 CODES = (*module.KNOWN_ISSUER_CODES, "999999")
 
 
-def case(monkeypatch, *, changes=None, v2=False):
-    codes = (*module.KNOWN_ISSUER_CODES, "006800", "999999") if v2 else CODES
+def case(monkeypatch, *, changes=None, v2=False, v3=False):
+    codes = (*module.KNOWN_ISSUER_CODES, "006800", "086280", "999999") if v3 else (
+        (*module.KNOWN_ISSUER_CODES, "006800", "999999") if v2 else CODES)
     monkeypatch.setattr(fixture, "CODES", codes)
     declarations, quotes = fixture.case((len(codes), 0), changes=changes)
     declaration = next(row for row in declarations if row.arm == "D1" and row.group_id == "ACTIVITY")
@@ -208,3 +209,50 @@ def test_v2_affected_mirae_supported_action_needs_new_explicit_lineage(monkeypat
         calendar[99], calendar[100], calendar[200], D(100), basis, "synthetic final payment"))
     with pytest.raises(ValueError, match="explicit attribution lineage"):
         attribute(values, events=(event,), policy=encoded(synthetic_policy_v2()))
+
+
+def test_five_issuer_nonzero_attribution_uses_same_book_and_keeps_bonus_assets_unknown(monkeypatch):
+    from research.activity_preflight import encoded
+    from test_activity_cohort_return_policy import synthetic_policy_v3
+    policy = encoded(synthetic_policy_v3())
+    initial = case(monkeypatch, v3=True)
+    calendar, codes = initial[2].calendar, (*module.KNOWN_ISSUER_CODES, "006800", "086280", "999999")
+    changes = {(code, calendar[187]): price(calendar[187], 110 + index * 10) for index, code in enumerate(codes)}
+    values = case(monkeypatch, v3=True, changes=changes)
+    original = deepcopy(values[0])
+    monkeypatch.setattr(comparison, "replay_synthetic", lambda *a, **k: pytest.fail("attribution ran another replay"))
+    result = attribute(values, policy=policy)
+    shares = D("0.05") / (D(100) * (1 + D("6.77") / 10000))
+    tax = D(str(total_bp(KOSPI, calendar[187], calendar)))
+    expected = []
+    for index, code in enumerate(codes[:-1]):
+        cash = shares * D(110 + index * 10) * (1 - (D("6.77") + tax) / 10000)
+        pnl = sum_decimal_values((cash, D("-0.05")))
+        expected.append(pnl)
+        row = result["by_code"][code]
+        assert row["net_exit_cash"] == cash and row["pnl"] == pnl
+        assert row["assigned_capital_return_contribution"] == pnl / D("0.3")
+        assert row["action_coverage_scope"] == result["action_coverage_scope"] == "conditional_common_share_lifetime"
+    bonus = result["by_code"]["086280"]
+    assert bonus["automatic_bonus_shares"] is bonus["automatic_bonus_fractional_cash"] is None
+    assert bonus["bonus_share_assets_model"] == "not_modeled" and "automatic_subscription_rights_cash" not in bonus
+    assert result["known_issuer_pnl"] == sum_decimal_values(tuple(expected))
+    assert sum_decimal_values((result["known_issuer_pnl"], result["remainder_pnl"])) == result["total_book_pnl"]
+    assert values[0] == original
+    aggregate = module.aggregate_known_issuer_returns(({module.ATTRIBUTION_KEY: result}, {module.ATTRIBUTION_KEY: deepcopy(result)}),
+        assigned_capital=D("0.6"), total_pnl=sum_decimal_values((result["total_book_pnl"],) * 2), return_policy_json=policy)
+    assert aggregate["by_code"]["086280"]["pnl"] == sum_decimal_values((bonus["pnl"],) * 2)
+    assert aggregate["automatic_bonus_shares"] is aggregate["automatic_bonus_fractional_cash"] is None
+    assert aggregate["scope_decision_recorded_on"] == "2026-10-18"
+
+
+def test_v3_glovis_modeled_action_still_requires_explicit_lineage(monkeypatch):
+    from research.activity_preflight import encoded
+    from test_activity_cohort_return_policy import synthetic_policy_v3
+    values = case(monkeypatch, v3=True)
+    calendar, code = values[2].calendar, "086280"
+    basis = PriceBasis(code, calendar[99], D(100), D(100), values[2].quote_snapshot_sha256, "synthetic basis")
+    event = FinalCashPayment("unsupported-bonus-lineage", FinalCashDistribution(code,
+        calendar[99], calendar[100], calendar[200], D(100), basis, "synthetic final payment"))
+    with pytest.raises(ValueError, match="explicit attribution lineage"):
+        attribute(values, events=(event,), policy=encoded(synthetic_policy_v3()))

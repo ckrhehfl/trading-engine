@@ -4,7 +4,7 @@ This helper neither selects nor replays a portfolio. It follows original lots
 and the existing opening-price/cost/tax convention, leaving approved unmodeled
 assets unknown. The residual is an attribution of the same book, not a strategy
 that excluded those issuers. Supported action lineage for the three v1 issuers
-or four v2 issuers is deliberately outside this narrow diagnostic.
+or four v2/five v3 issuers is deliberately outside this narrow diagnostic.
 """
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from decimal import Decimal, localcontext
 from research.activity_accounting import sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 from research.activity_cohort_selection import CohortSelection
-from research.activity_cohort_return_policy import attribution_codes
+from research.activity_cohort_return_policy import ACTION_COVERAGE_SCOPE, SCOPE_DECISION_RECORDED_ON, attribution_codes
 from research.activity_preflight import require
 from research.activity_replay import SyntheticReplay, _number, _quote
 from research.krx_tax_schedule import KOSPI, total_bp
@@ -45,10 +45,17 @@ def require_supported_attribution_actions(events: tuple, *, return_policy_json: 
 
 
 def _unmodeled_assets(code: str | None = None, *, return_policy_json: bytes | None = None) -> dict:
-    result = {} if code == "006800" else dict(automatic_subscription_rights_cash=None, rights_cash_model="not_modeled")
-    if "006800" in attribution_codes(return_policy_json) and code in (None, "006800"):
+    codes = attribution_codes(return_policy_json)
+    result = {} if code == "006800" or (code == "086280" and code in codes) else dict(automatic_subscription_rights_cash=None, rights_cash_model="not_modeled")
+    if "006800" in codes and code in (None, "006800"):
         result.update(automatic_stock_dividend_shares=None, automatic_stock_dividend_fractional_cash=None,
             stock_dividend_assets_model="not_modeled")
+    if "086280" in codes and code in (None, "086280"):
+        result.update(automatic_bonus_shares=None, automatic_bonus_fractional_cash=None,
+            bonus_share_assets_model="not_modeled")
+    if "086280" in codes:
+        result.update(action_coverage_scope=ACTION_COVERAGE_SCOPE,
+            scope_decision_recorded_on=SCOPE_DECISION_RECORDED_ON)
     return result
 
 

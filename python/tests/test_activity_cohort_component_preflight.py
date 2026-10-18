@@ -23,7 +23,7 @@ from test_activity_cohort_comparison import quotes
 from test_activity_cohort_holding_preflight import scan_from_quotes
 import test_activity_cohort_preflight as holding_fixture
 from test_activity_cohort_connection import package
-from test_activity_cohort_return_policy import synthetic_policy_v2
+from test_activity_cohort_return_policy import synthetic_policy_v2, synthetic_policy_v3
 
 
 SOURCE = Path(module.__file__).resolve()
@@ -44,10 +44,10 @@ def repin(spec, bodies, role, value):
     row["sha256"], bodies[row["path"]] = saved.digest(raw), raw
 
 
-def fixture(tmp_path):
+def fixture(tmp_path, *, version=2):
     old, bodies, declarations, original, _ = holding_fixture.fixture(tmp_path, raw=True)
     spec = {**deepcopy(old), "schema": module.SCHEMA, "study_id": module.SCHEMA, "mode": module.MODE,
-        "return_policy_schema": module.SCHEMA_V2, "reviewed_terms_binding": "current_snapshot"}
+        "return_policy_schema": module.SCHEMA_V3 if version == 3 else module.SCHEMA_V2, "reviewed_terms_binding": "current_snapshot"}
     inputs = spec["inputs"]
     inputs["reviewed_terms"] = inputs.pop("reviewed_action_coverage")
     inputs.pop("component_exit_scope")
@@ -79,7 +79,7 @@ def fixture(tmp_path):
     evidence = saved.strict_json(bodies[inputs["basis_evidence"]["path"]])
     for row in evidence["bases"].values(): row["quote_snapshot_sha256"] = view.quote_snapshot_sha256
     repin(spec, bodies, "basis_evidence", evidence)
-    for role, value in (("return_policy", synthetic_policy_v2()), ("unresolved_priority_intervals", [])):
+    for role, value in (("return_policy", synthetic_policy_v3() if version == 3 else synthetic_policy_v2()), ("unresolved_priority_intervals", [])):
         inputs[role] = dict(path=str(tmp_path / "evidence" / (role + ".json")), sha256="a" * 64)
         repin(spec, bodies, role, value)
     output_pins = {name: saved.digest(name.encode()) for name in module.QUOTE_FILES}
@@ -230,6 +230,19 @@ def test_template_connects_only_relevant_pinned_policy_assets_and_shared_decoder
     assert all(row["event_id"] not in {item["declaration"]["event_id"] for item in canonical["events"]} for row in events)
 
 
+@pytest.mark.parametrize("version", (2, 3))
+def test_policy_reference_date_preserves_legacy_and_records_v3_revalidation(tmp_path, version):
+    spec, original, view, template, evidence, _, _, _ = template_fixture(tmp_path)
+    policy = synthetic_policy_v3() if version == 3 else synthetic_policy_v2()
+    event = policy["events"][-1]
+    windows = (dict(code=event["code"], isin=event["isin"], start=event["start"], end=event["end"]),)
+    _, bases, _ = module._bind_reviewed_template(spec, template, evidence, original, view,
+        policy=policy, windows=windows)
+    reference = bases["references"][event["evidence_ref"]]
+    assert reference["reviewed_on"] == ("2026-10-18" if version == 3 else "2026-10-16")
+    assert all(reference[key] == event[key] for key in ("raw_sha256", "review_sha256", "coordinate"))
+
+
 def test_real_restore_and_existing_proof_engine_emit_direct_proof_without_books(tmp_path, monkeypatch):
     spec, bodies, declarations, original, view = fixture(tmp_path)
     before, calls = deepcopy((spec, bodies)), []
@@ -351,8 +364,8 @@ def test_large_original_audit_lifetime_ends_before_extension_read(tmp_path, monk
     assert result["summary"]["potential_entries"] > 0
 
 
-def logging_case(tmp_path, monkeypatch):
-    spec, bodies, *_ = fixture(tmp_path)
+def logging_case(tmp_path, monkeypatch, *, version=2):
+    spec, bodies, *_ = fixture(tmp_path, version=version)
     root = SOURCE.parents[2]
     monkeypatch.chdir(root)
     sources = dict(code_version="a" * 40, files=[dict(path=module.SOURCE_PATH, sha256=saved.digest(SOURCE.read_bytes()))])
@@ -366,7 +379,7 @@ def logging_case(tmp_path, monkeypatch):
     def reader(path):
         started = saved.strict_json(runs.read_bytes().splitlines()[0])
         assert started["status"] == "started" and started["parameters"]["performance_studies_added"] == 0
-        assert started["parameters"]["return_policy_schema"] == module.SCHEMA_V2
+        assert started["parameters"]["return_policy_schema"] == spec["return_policy_schema"]
         return bodies[str(path)]
     return root, spec, bodies, private / "run", runs, reader, freeze, freezes, sources
 
@@ -380,6 +393,60 @@ def test_durable_start_precedes_all_fifteen_saved_reads_and_keeps_zero_counts(tm
     assert all(result["result"][name] == 0 for name in module.ZERO)
     with pytest.raises(ValueError): module.run_preflight(root, root / "synthetic-spec.json", output, runs, reader=reader, freeze=freeze)
     assert len(runs.read_bytes().splitlines()) == 2
+
+
+def test_v3_actual_engine_over_synthetic_inputs_keeps_same_lg_proof_and_five_unknown_assets(tmp_path):
+    spec, bodies, *_ = fixture(tmp_path, version=3)
+    result, inputs, output = evaluate(tmp_path, spec, bodies)
+    proof, terms = (output / "component-exit-scope.json").read_bytes(), (output / "canonical-terms.json").read_bytes()
+    assert result["return_policy_schema"] == module.SCHEMA_V3
+    assert result["action_coverage_scope"] == "conditional_common_share_lifetime"
+    assert result["scope_decision_recorded_on"] == "2026-10-18" and result["automatic_bonus_share_assets"] == "not_modeled"
+    assert len(result["unmodeled_asset_values"]) == 5 and all(value is None for value in result["unmodeled_asset_values"].values())
+    assert len(inputs.manifest) == len(spec["inputs"]) == 15
+    spec["return_policy_schema"] = module.SCHEMA_V2
+    repin(spec, bodies, "return_policy", synthetic_policy_v2())
+    old_parent = tmp_path / "v2"; old_parent.mkdir(mode=0o700)
+    old, _, old_output = evaluate(old_parent, spec, bodies)
+    assert (old_output / "component-exit-scope.json").read_bytes() == proof
+    assert (old_output / "canonical-terms.json").read_bytes() == terms
+    assert "action_coverage_scope" not in old and old["summary"] == result["summary"]
+
+
+@pytest.mark.parametrize("change", ["mismatched_bytes", "unknown_schema", "missing_version", "forged_scope"])
+def test_v3_caller_requires_exact_explicit_policy_and_approved_scope(tmp_path, change):
+    spec, bodies, *_ = fixture(tmp_path, version=3)
+    if change == "mismatched_bytes": repin(spec, bodies, "return_policy", synthetic_policy_v2())
+    elif change == "unknown_schema": spec["return_policy_schema"] = "activity-cohort-return-policy-v4"
+    elif change == "missing_version": spec.pop("return_policy_schema")
+    else:
+        policy = synthetic_policy_v3(); policy["action_coverage_scope"] = "ignore_future_and_current_events"
+        repin(spec, bodies, "return_policy", policy)
+    with pytest.raises(ValueError): evaluate(tmp_path, spec, bodies)
+    assert not (tmp_path / "proof" / "component-exit-scope.json").exists()
+
+
+def test_v3_preserves_other_unresolved_priority_fallback_and_raw_scope_requirement(tmp_path):
+    spec, bodies, _, original, _ = fixture(tmp_path, version=3)
+    ordinary = saved.strict_json(bodies[spec["inputs"]["ordinary_exit_scope"]["path"]])
+    row = next(row for row in ordinary["entries"] if row["code"] == "003550")
+    repin(spec, bodies, "unresolved_priority_intervals", [dict(code=row["code"], isin=row["isin"],
+        start=row["entry_on"], end=row["due_on"])])
+    with pytest.raises(ValueError, match="potential raw scope"): evaluate(tmp_path, spec, bodies)
+    assert not (tmp_path / "proof" / "component-exit-scope.json").exists()
+
+
+def test_v3_scope_and_bonus_metadata_survive_started_completed_and_saved_outputs(tmp_path, monkeypatch):
+    root, spec, bodies, output, runs, reader, freeze, _, _ = logging_case(tmp_path, monkeypatch, version=3)
+    receipt = module.run_preflight(root, root / "synthetic-spec.json", output, runs, reader=reader, freeze=freeze)
+    records = [saved.strict_json(line) for line in runs.read_bytes().splitlines()]
+    saved_result = saved.strict_json((output / "result.json").read_bytes())
+    for row in (records[0]["parameters"], records[1]["parameters"], receipt["result"], saved_result):
+        assert row["return_policy_schema"] == module.SCHEMA_V3
+        assert row["action_coverage_scope"] == "conditional_common_share_lifetime"
+        assert row["scope_decision_recorded_on"] == "2026-10-18"
+        assert row["automatic_bonus_share_assets"] == "not_modeled" and len(row["unmodeled_asset_codes"]) == 5
+        assert all(row[name] == 0 for name in module.ZERO)
 
 
 @pytest.mark.parametrize("failure", ["read", "source_drift", "secondary"])
