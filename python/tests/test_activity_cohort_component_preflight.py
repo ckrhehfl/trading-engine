@@ -230,6 +230,19 @@ def test_template_connects_only_relevant_pinned_policy_assets_and_shared_decoder
     assert all(row["event_id"] not in {item["declaration"]["event_id"] for item in canonical["events"]} for row in events)
 
 
+@pytest.mark.parametrize("version", (2, 3))
+def test_policy_reference_date_preserves_legacy_and_records_v3_revalidation(tmp_path, version):
+    spec, original, view, template, evidence, _, _, _ = template_fixture(tmp_path)
+    policy = synthetic_policy_v3() if version == 3 else synthetic_policy_v2()
+    event = policy["events"][-1]
+    windows = (dict(code=event["code"], isin=event["isin"], start=event["start"], end=event["end"]),)
+    _, bases, _ = module._bind_reviewed_template(spec, template, evidence, original, view,
+        policy=policy, windows=windows)
+    reference = bases["references"][event["evidence_ref"]]
+    assert reference["reviewed_on"] == ("2026-10-18" if version == 3 else "2026-10-16")
+    assert all(reference[key] == event[key] for key in ("raw_sha256", "review_sha256", "coordinate"))
+
+
 def test_real_restore_and_existing_proof_engine_emit_direct_proof_without_books(tmp_path, monkeypatch):
     spec, bodies, declarations, original, view = fixture(tmp_path)
     before, calls = deepcopy((spec, bodies)), []

@@ -319,7 +319,9 @@ def _bind_reviewed_template(spec, coverage, evidence, original, quotes, *, polic
         saved.require(reference_id not in bases["references"], "policy reference collides with reviewed LG template")
         bases["references"][reference_id] = dict(
             **{key: event[key] for key in ("code", "isin", "start", "end", "raw_sha256", "review_sha256", "coordinate")},
-            reviewed_on=policy["approved_on"], finding="reviewed_" + event["kind"], event_ids=[event["event_id"]])
+            reviewed_on=(max(policy["approved_on"], policy["scope_decision_recorded_on"])
+                if policy["schema"] == SCHEMA_V3 else policy["approved_on"]),
+            finding="reviewed_" + event["kind"], event_ids=[event["event_id"]])
         bound["events"].append(declaration)
         policy_ids.append(event["event_id"])
     binding = dict(mode=TEMPLATE_BINDING, template_sha256=dict(TEMPLATE_PINS),
