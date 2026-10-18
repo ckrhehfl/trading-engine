@@ -3,7 +3,7 @@
 The daily synthetic calendar is deliberately not a claimed KRX calendar.
 No saved financial input, DB, API, SSH, credential or trial is consumed.
 """
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import date, timedelta
 from decimal import Decimal as D
 from pathlib import Path
@@ -15,6 +15,7 @@ import pytest
 
 from research import activity_raw_quote_view as raw_module
 from research import activity_replay as replay_module
+from research import activity_quote_extension as quote_module
 from research.activity_accounting import FinalCashDistribution, Lot, PriceBasis
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 from research.activity_partition_selection import PartitionSelection
@@ -355,3 +356,124 @@ def test_reference_close_cannot_create_a_new_entry():
     result = run(values)
     assert not any(lot.code == LG for book in result.books for lot in book.lots)
     assert result.closed_trades == 0
+
+
+def issued(values):
+    context, use = raw_module._prepare_raw_quote_context(values["raw_quote_view"])
+    fresh, _ = use(context)
+    return context, use, {**values, "raw_quote_view": fresh, "panel": fresh.panel}
+
+
+@pytest.mark.parametrize("lag", [1, 2])
+def test_issued_panel_identity_avoids_recursive_price_array_comparison_and_preserves_books(monkeypatch, lag):
+    from research.activity_cohort_comparison import _path_metrics
+
+    calendar = tuple(CALENDAR[0] + timedelta(days=index) for index in range(512))
+    monkeypatch.setitem(globals(), "CALENDAR", calendar)
+    values = fixture(lag=lag)
+    expected = run(values)
+    context, use, values = issued(values)
+    calls, original_same = [], quote_module._same
+
+    def no_price_recursion(actual, expected):
+        assert not isinstance(expected, (replay_module.DecimalSeries, D)), "issued panel recursed into prices"
+        calls.append(type(expected))
+        return original_same(actual, expected)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(quote_module, "_same", no_price_recursion)
+        actual = replay_module._replay_synthetic_from_context(context, use, **values)
+    assert calls == [tuple, *([date] * len(calendar))]
+    assert original_same(actual, expected)
+    days = tuple(book.as_of for book in actual.books)
+    assert original_same(_path_metrics(days, actual.navs), _path_metrics(days, expected.navs))
+
+
+def test_public_replay_still_refreezes_and_recursively_compares_the_full_panel_each_time(monkeypatch):
+    values = fixture()
+    validations, series, original_validate, original_same = [], [], raw_module.validate_raw_quote_view, quote_module._same
+
+    def validated(view):
+        validations.append(view)
+        return original_validate(view)
+
+    def compared(actual, expected):
+        if isinstance(expected, replay_module.DecimalSeries):
+            series.append(expected)
+        return original_same(actual, expected)
+
+    monkeypatch.setattr(raw_module, "validate_raw_quote_view", validated)
+    monkeypatch.setattr(quote_module, "_same", compared)
+    first = run(values)
+    previous = len(series)
+    assert previous >= len(values["panel"])
+    second = run(values)
+    assert validations == [values["raw_quote_view"]] * 2 and len(series) == previous * 2
+    assert original_same(first, second)
+
+
+def test_equal_but_distinct_issued_panel_keeps_exact_typed_recursive_fallback(monkeypatch):
+    values = fixture()
+    expected = run(values)
+    context, use, values = issued(values)
+    values["panel"] = {code: replace(series) for code, series in values["panel"].items()}
+    compared_series, original_same = [], quote_module._same
+
+    def compared(actual, expected):
+        if isinstance(expected, replay_module.DecimalSeries):
+            assert actual is not expected
+            compared_series.append(expected)
+        return original_same(actual, expected)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(quote_module, "_same", compared)
+        actual = replay_module._replay_synthetic_from_context(context, use, **values)
+    assert len(compared_series) == len(values["panel"])
+    assert original_same(actual, expected)
+
+
+@pytest.mark.parametrize("mutation", ["missing", "extra", "key_type", "series_type", "decimal_scale", "nan",
+    "calendar", "snapshot", "view_copy", "context_copy", "foreign_context", "nested_series", "nested_row",
+    "nested_base", "context_rows"])
+def test_issued_identity_shortcut_rejects_mismatch_and_sealed_mutation_before_prices(monkeypatch, mutation):
+    context, use, values = issued(fixture())
+    view, panel = values["raw_quote_view"], dict(values["panel"])
+    if mutation == "missing":
+        panel.pop(OTHER)
+    elif mutation == "extra":
+        panel["999999"] = panel[OTHER]
+    elif mutation == "key_type":
+        class Code(str):
+            pass
+        panel[Code(OTHER)] = panel.pop(OTHER)
+    elif mutation == "series_type":
+        class Series(type(panel[OTHER])):
+            pass
+        panel[OTHER] = Series(*(getattr(panel[OTHER], field.name) for field in fields(panel[OTHER])))
+    elif mutation in ("decimal_scale", "nan"):
+        changed = replace(panel[OTHER])
+        close = D("100.0000") if mutation == "decimal_scale" else D("NaN")
+        object.__setattr__(changed, "closes", (close, *changed.closes[1:]))
+        panel[OTHER] = changed
+    elif mutation == "calendar":
+        values["dates"] = CALENDAR[:-1]
+    elif mutation == "snapshot":
+        values["dataset_sha256"] = "f" * 64
+    elif mutation == "view_copy":
+        values["raw_quote_view"] = replace(view)
+    elif mutation == "context_copy":
+        context = replace(context)
+    elif mutation == "foreign_context":
+        context, _ = raw_module._prepare_raw_quote_context(view)
+    elif mutation == "nested_series":
+        object.__setattr__(panel[OTHER], "closes", (D("NaN"), *panel[OTHER].closes[1:]))
+    elif mutation == "nested_row":
+        object.__setattr__(view.raw_observations[0], "close", D("NaN"))
+    elif mutation == "nested_base":
+        object.__setattr__(view.base.original.observations[0], "code", "changed")
+    else:
+        object.__setattr__(context, "rows", {})
+    values["panel"] = panel
+    monkeypatch.setattr(replay_module, "_quote", lambda *args: pytest.fail("invalid issued input reached prices"))
+    with pytest.raises(ValueError):
+        replay_module._replay_synthetic_from_context(context, use, **values)

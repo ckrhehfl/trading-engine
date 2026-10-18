@@ -347,8 +347,17 @@ def _replay_synthetic(
         fresh, raw_rows = use(context)
         if _raw_context is not None and raw_quote_view is not fresh:
             raise ValueError("issued raw replay requires this invocation's exact view")
-        if (not _same(tuple(calendar), fresh.calendar) or dataset_sha256 != fresh.quote_snapshot_sha256
-                or not _same(tuple(sorted(panel.items())), fresh.series)):
+        if not _same(tuple(calendar), fresh.calendar) or dataset_sha256 != fresh.quote_snapshot_sha256:
+            raise ValueError("raw replay calendar, snapshot and complete typed panel must match the view")
+        supplied_series = tuple(sorted(panel.items()))
+        # The issued witness has just checked every sealed nested field. Only
+        # that path may compare the already validated Series by identity; equal
+        # but distinct projections retain the exact typed recursive comparison.
+        same_issued_panel = (_raw_context is not None and len(supplied_series) == len(fresh.series)
+            and all(type(actual) is type(expected) and len(actual) == len(expected)
+                and type(actual[0]) is type(expected[0]) and actual[0] == expected[0]
+                and actual[1] is expected[1] for actual, expected in zip(supplied_series, fresh.series)))
+        if not (same_issued_panel or _same(supplied_series, fresh.series)):
             raise ValueError("raw replay calendar, snapshot and complete typed panel must match the view")
         panel = fresh.panel
         raw_codes = TARGET_CODES
