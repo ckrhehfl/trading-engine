@@ -9,6 +9,7 @@ passing the projected panel alone does not establish that boundary.
 from __future__ import annotations
 
 from dataclasses import dataclass, fields, is_dataclass
+from collections.abc import Mapping
 from datetime import date
 from decimal import Decimal
 import json
@@ -228,6 +229,82 @@ def validate_raw_quote_view(view: RawEpisodeQuoteInputs) -> RawEpisodeQuoteInput
         source_artifact_sha256=view.source_artifact_sha256, unit_plan=view.unit_plan_json, unit_plan_sha256=view.unit_plan_sha256)
     require(_same(view, fresh), "raw view disagrees with retained artifact/unit plan")
     return fresh
+
+
+def _immutable_fields(values: tuple, *, _covered: tuple = ()) -> tuple:
+    """Seal nested frozen field identities; frozen alone does not prevent mutation."""
+    pending, seen, result, names_by_type = list(values), {id(value) for value in _covered}, [], {}
+    while pending:
+        value = pending.pop()
+        if (type(value) is tuple or is_dataclass(value)) and id(value) not in seen:
+            seen.add(id(value))
+            if type(value) is tuple:
+                pending.extend(value)
+            else:
+                require(value.__dataclass_params__.frozen, "prepared replay requires frozen inputs")
+                names = names_by_type.get(type(value))
+                if names is None:
+                    names = names_by_type[type(value)] = tuple(field.name for field in fields(value))
+                attributes = tuple(getattr(value, name) for name in names)
+                result.append((value, type(value), names, attributes))
+                pending.extend(attributes)
+    return tuple(result)
+
+
+def _unchanged_fields(sealed: tuple) -> bool:
+    return all(type(value) is kind and all(getattr(value, name) is original
+        for name, original in zip(names, attributes)) for value, kind, names, attributes in sealed)
+
+
+@dataclass(frozen=True)
+class _RawQuoteContext:
+    view: RawEpisodeQuoteInputs
+    # Values contain only validated immutable scalars, never observation objects.
+    rows: Mapping
+
+
+def _prepare_raw_quote_context(view: RawEpisodeQuoteInputs) -> tuple:
+    """Issue one local witness after full validation, with no ambient cache."""
+    fresh = validate_raw_quote_view(view)
+    rows = MappingProxyType({(row.code, date.fromisoformat(row.requested_bas_dd)):
+        (row.status, row.state, row.issues, row.close, is_raw_no_trade_reference_close(row))
+        for row in fresh.raw_observations})
+    context = _RawQuoteContext(fresh, rows)
+    sealed = _immutable_fields((view, context))
+
+    def use(candidate, *, additional_seal=None):
+        require(type(candidate) is _RawQuoteContext and candidate is context,
+            "only this invocation's issued raw context is accepted")
+        require(_unchanged_fields(sealed), "raw context or immutable input changed")
+        if additional_seal is not None:
+            require(type(additional_seal) is tuple, "immutable additional context roots required")
+            # Only this issuer chooses already protected roots, by exact object
+            # identity. Equal but distinct supplied holding graphs still seal.
+            return _immutable_fields(additional_seal, _covered=(view, fresh, fresh.base,
+                fresh.base.original, fresh.base.extension, view.raw_observations, fresh.raw_observations))
+        return fresh, rows
+
+    return context, use
+
+
+def _raw_basis_accessor(context, use):
+    """Bind a loop to scalar rows only after checking its issued witness."""
+    view, rows = use(context)
+    quote_sha, artifact_sha, unit_sha = view.quote_snapshot_sha256, view.source_artifact_sha256, view.unit_plan_sha256
+
+    def basis(code, session):
+        require(type(session) is date, "explicit raw view/session required")
+        row = rows.get((code, session))
+        require(row is not None, "affected lot crossed the registered raw episode boundary")
+        status, state, issues, close, reference_close = row
+        require(status == "observed" or issues == ("target_absent_cause_unknown",) or reference_close,
+            "unresolved raw observation")
+        require(state in ("observed", "locked") and close is not None,
+            "raw basis requires a resolved positive nonfrozen raw close")
+        return PriceBasis(code, session, close, close, quote_sha,
+            "declared_raw_share_unit;raw_artifact:" + artifact_sha + ";unit_plan:" + unit_sha)
+
+    return basis
 
 
 def restore_raw_quote_view(base: CompositeHoldingInputs, source_artifact: bytes, source_artifact_sha256: str,

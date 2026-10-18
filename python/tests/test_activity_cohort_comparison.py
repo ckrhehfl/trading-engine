@@ -164,6 +164,106 @@ def test_complete_fourteen_formation_grid_reuses_one_preparation_for_all_168_cas
     assert completed == {"D1": 84, "D2": 84} and calls == [True]
 
 
+def raw_cash_case():
+    declarations, original = case(ks=(0,) * 14, scope={}, end_index=1894)
+    calendar = original.calendar
+    original = quotes(calendar, scope={CODES[0]: calendar[:2]})
+    extension = quotes(calendar, scope={"383800": calendar[:2]}, scope_pin="f" * 64)
+    base = extend_holding_quotes(original, extension)
+    plan = dict(schema=raw_view.PLAN_SCHEMA, activity_snapshot_sha256=base.activity_snapshot_sha256,
+        base_quote_snapshot_sha256=base.quote_snapshot_sha256, calendar_sha256=raw_view.calendar_sha256(calendar),
+        episodes=[dict(code=code, start=str(calendar[0]), end=str(calendar[1])) for code in ("003550", "383800")],
+        **raw_view.UNITS)
+    rows = []
+    for code in ("003550", "383800"):
+        for day in calendar[:2]:
+            rows.extend(extract_raw_episode_targets([dict(ISU_CD=code, BAS_DD=day.strftime("%Y%m%d"),
+                TDD_OPNPRC="100", TDD_HGPRC="101", TDD_LWPRC="99", TDD_CLSPRC="100",
+                ACC_TRDVOL="100", ACC_TRDVAL="10")],
+                dict(service="stk_bydd_trd", bas_dd=day.strftime("%Y%m%d"), targets=[code]),
+                "2026-10-16T00:00:00+00:00", "d" * 64))
+    unit = encoded(plan)
+    artifact = raw_view.encode_raw_artifact(base, tuple(rows), digest(unit))
+    view = raw_view.build_raw_quote_view(base, tuple(rows), source_artifact=artifact,
+        source_artifact_sha256=digest(artifact), unit_plan=unit, unit_plan_sha256=digest(unit))
+    return declarations, base, view
+
+
+def test_168_raw_cohorts_refreeze_once_and_keep_both_full_cash_paths(monkeypatch):
+    declarations, base, view = raw_cash_case()
+    calls, original = [], raw_view.validate_raw_quote_view
+    def counted(*args):
+        calls.append(True)
+        return original(*args)
+    monkeypatch.setattr(raw_view, "validate_raw_quote_view", counted)
+    prepared, execute = module._prepare_cohort_replay(declarations, base, (), parameters=deepcopy(PARAMETERS), raw_quote_view=view)
+    completed = {"D1": 0, "D2": 0}
+    for key, _ in prepared.keyed:
+        result = execute(prepared, (key,))
+        row = result["cohorts"][0]
+        assert row["assigned_capital"] == 0 and set(row["replay"].navs) == {D(1)}
+        completed[key[0]] += 1
+    assert completed == {"D1": 84, "D2": 84} and calls == [True]
+
+
+@pytest.mark.parametrize("change", ["copy", "cross", "base", "row", "series", "pin"])
+def test_raw_prepared_cohort_seal_rejects_tampering_before_books(monkeypatch, change):
+    declarations, base, view = raw_cash_case()
+    parameters = deepcopy(PARAMETERS)
+    prepared, execute = module._prepare_cohort_replay(declarations, base, (), parameters=parameters, raw_quote_view=view)
+    candidate = prepared
+    if change == "copy": candidate = replace(prepared)
+    elif change == "cross":
+        candidate, _ = module._prepare_cohort_replay(declarations, base, (), parameters=parameters, raw_quote_view=view)
+    elif change == "base": object.__setattr__(base.extension.observations[0], "code", "changed")
+    elif change == "row": object.__setattr__(view.raw_observations[0], "close", D("999"))
+    elif change == "series": object.__setattr__(view.series[0][1], "opens", ())
+    else: object.__setattr__(view, "unit_plan_sha256", "e" * 64)
+    monkeypatch.setattr(module, "_replay_synthetic_from_context", lambda *a, **k: pytest.fail("tampered raw context reached a book"))
+    with pytest.raises(ValueError):
+        execute(candidate, (prepared.keyed[0][0],))
+
+
+def test_raw_protected_graph_has_one_seal_and_distinct_equal_holding_has_its_own(monkeypatch):
+    declarations, base, view = raw_cash_case()
+    equal_base = deepcopy(base)
+    assert equal_base == base and equal_base is not base
+    seals, original = [], raw_view._immutable_fields
+    def capture(*args, **kwargs):
+        result = original(*args, **kwargs)
+        seals.append(result)
+        return result
+    monkeypatch.setattr(raw_view, "_immutable_fields", capture)
+    monkeypatch.setattr(module, "_immutable_fields", capture)
+    module._prepare_cohort_replay(declarations, equal_base, (), parameters=deepcopy(PARAMETERS), raw_quote_view=view)
+    protected = (*base.original.observations, *base.extension.observations, *view.raw_observations)
+    distinct = (*equal_base.original.observations, *equal_base.extension.observations)
+    for row in (*protected, *distinct):
+        assert sum(item[0] is row for seal in seals for item in seal) == 1
+
+
+@pytest.mark.parametrize("change", ["source", "fresh", "base", "original", "extension", "fresh_series", "rows", "raw_tuple", "equal_holding"])
+def test_deduplicated_raw_seal_keeps_all_nested_guards_before_any_engine(monkeypatch, change):
+    from types import MappingProxyType
+    declarations, base, view = raw_cash_case()
+    supplied = deepcopy(base) if change == "equal_holding" else base
+    prepared, execute = module._prepare_cohort_replay(declarations, supplied, (),
+        parameters=deepcopy(PARAMETERS), raw_quote_view=view)
+    context, _ = prepared.raw_context
+    if change == "source": object.__setattr__(view, "source_artifact_sha256", "e" * 64)
+    elif change == "fresh": object.__setattr__(prepared.quotes, "unit_plan_sha256", "e" * 64)
+    elif change == "base": object.__setattr__(base, "quote_snapshot_sha256", "e" * 64)
+    elif change == "original": object.__setattr__(base.original.observations[0], "code", "changed")
+    elif change == "extension": object.__setattr__(base.extension.observations[0], "code", "changed")
+    elif change == "fresh_series": object.__setattr__(prepared.quotes.series[0][1], "opens", ())
+    elif change == "rows": object.__setattr__(context, "rows", MappingProxyType({}))
+    elif change == "raw_tuple": object.__setattr__(prepared, "raw_context", tuple(item for item in prepared.raw_context))
+    else: object.__setattr__(supplied.original.observations[0], "code", "changed")
+    monkeypatch.setattr(module, "_replay_synthetic_from_context", lambda *a, **k: pytest.fail("changed raw input reached an engine"))
+    with pytest.raises(ValueError):
+        execute(prepared, (prepared.keyed[0][0],))
+
+
 def test_complete_cohorts_keep_fixed_twenty_slot_budget_costs_and_common_paths(monkeypatch):
     values = case()
     for owner, name in ((Path, "open"), (socket, "create_connection"), (sqlite3, "connect")):

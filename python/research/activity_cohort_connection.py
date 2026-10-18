@@ -14,7 +14,7 @@ from decimal import Decimal
 
 from research.activity_cohort_selection import CohortSelection
 from research.activity_cohort_return_policy import SCHEMA_V3, decode_return_policy
-from research.activity_component_bounds import validate_component_exit_bounds, verify_component_inventory
+from research.activity_component_bounds import _validate_component_exit_bounds, verify_component_inventory
 from research.activity_exit_bounds import mixed_action_scope, validate_exit_bounds, verify_ordinary_inventory
 from research.activity_holding_inputs import HoldingInputs
 from research.activity_pair_calibration import PARAMETERS
@@ -23,7 +23,7 @@ from research.activity_partition_selection import PartitionSelection
 from research.activity_preflight import digest, encoded, require, strict_json, _pin
 from research.activity_quote_extension import CompositeHoldingInputs, _same, _validated
 from research.activity_raw_episode import TARGET_CODES
-from research.activity_raw_quote_view import RawEpisodeQuoteInputs, raw_price_basis
+from research.activity_raw_quote_view import RawEpisodeQuoteInputs, _prepare_raw_quote_context, _raw_basis_accessor
 from research.activity_reviewed_actions import reviewed_action_terms, reviewed_actions
 
 
@@ -108,6 +108,21 @@ def prepare_cohort_scope(
     input_sha256: dict, expected_pins: dict, component_exit_scope: bytes | None = None,
     return_policy_json: bytes | None = None,
 ) -> CohortScopeBinding:
+    """Recompute every proof with full validation at this public boundary."""
+    return _prepare_cohort_scope(declarations, original, quotes, ordinary_exit_scope, reviewed_coverage,
+        basis_evidence, parameters=parameters, original_required_code_dates=original_required_code_dates,
+        issue_isins=issue_isins, input_sha256=input_sha256, expected_pins=expected_pins,
+        component_exit_scope=component_exit_scope, return_policy_json=return_policy_json)
+
+
+def _prepare_cohort_scope(
+    declarations: tuple[CohortSelection, ...], original: HoldingInputs,
+    quotes: HoldingInputs | CompositeHoldingInputs | RawEpisodeQuoteInputs,
+    ordinary_exit_scope: bytes, reviewed_coverage: bytes, basis_evidence: bytes, *,
+    parameters: dict, original_required_code_dates: dict, issue_isins: dict,
+    input_sha256: dict, expected_pins: dict, component_exit_scope: bytes | None = None,
+    return_policy_json: bytes | None = None, _raw_context=None,
+) -> CohortScopeBinding:
     """Recompute every family origin, snapshot, proof and final coverage before books.
 
     expected_pins contains exactly ordinary_exit_scope, reviewed_action_coverage,
@@ -121,7 +136,14 @@ def prepare_cohort_scope(
     _validated(original)
     base = quotes.base if type(quotes) is RawEpisodeQuoteInputs else quotes
     raw = quotes if type(quotes) is RawEpisodeQuoteInputs else None
-    fresh_quotes = _quotes(base, raw)
+    if raw is None:
+        fresh_quotes = _quotes(base, None)
+    else:
+        issued_here = _raw_context is None
+        _raw_context = _prepare_raw_quote_context(raw) if issued_here else _raw_context
+        fresh_quotes, _ = _raw_context[1](_raw_context[0])
+        require(_same(fresh_quotes.base, base), "raw view must preserve the complete supplied holding base")
+        require(issued_here or fresh_quotes is raw, "raw cohort invocation requires its exact issued view")
     require(type(parameters) is dict and encoded(parameters) == encoded(PARAMETERS),
         "unchanged canonical cohort parameters required")
     require(type(original_required_code_dates) is dict and type(issue_isins) is dict
@@ -161,10 +183,10 @@ def prepare_cohort_scope(
         terms = reviewed_action_terms(coverage, evidence, expected_windows=windows, calendar=original.calendar,
             activity_snapshot_sha256=original.activity_snapshot_sha256,
             quote_snapshot_sha256=fresh_quotes.quote_snapshot_sha256, return_policy_json=return_policy_json)
-        proof = validate_component_exit_bounds(supplied_component, plan, selections["D1"], selections["D2"],
+        proof = _validate_component_exit_bounds(supplied_component, plan, selections["D1"], selections["D2"],
             original, parameters, original_required_code_dates, issue_isins, input_sha256=input_sha256,
             quotes=fresh_quotes, terms=terms,
-            unresolved_priority_intervals=tuple(supplied_component["unresolved_priority_intervals"]))
+            unresolved_priority_intervals=tuple(supplied_component["unresolved_priority_intervals"]), _raw_context=_raw_context)
         if raw is not None:
             _require_raw_potential_scope(fresh_quotes, proof, terms.events)
         scope = proof
@@ -213,10 +235,11 @@ def prepare_cohort_scope(
         and set(extension.requested_coordinates) == extra), "exact full successor and basis quote extension required")
     positions = {day: index for index, day in enumerate(original.calendar)}
     observations = {(row.code, row.observation_date): row for row in base.observations}
+    basis_at = None if raw is None else _raw_basis_accessor(*_raw_context)
     for row in evidence["bases"].values():
         key = row["code"], date.fromisoformat(row["session"])
         if raw is not None and key[0] in TARGET_CODES:
-            basis = raw_price_basis(fresh_quotes, *key)
+            basis = basis_at(*key)
             require(Decimal(row["raw_close"]) == Decimal(row["adjusted_close"]) == basis.raw_close,
                 "cohort raw event bases require requested resolved raw/raw units")
         else:
@@ -255,13 +278,18 @@ def prepare_cohort_scope(
 def validate_cohort_scope(binding: CohortScopeBinding, declarations: tuple[CohortSelection, ...], quotes,
                           events: tuple, *, parameters: dict) -> CohortScopeBinding:
     """Refreeze the retained inputs; a fabricated or stale binding is not trusted."""
+    return _validate_cohort_scope(binding, declarations, quotes, events, parameters=parameters)
+
+
+def _validate_cohort_scope(binding: CohortScopeBinding, declarations: tuple[CohortSelection, ...], quotes,
+                           events: tuple, *, parameters: dict, _raw_context=None) -> CohortScopeBinding:
     require(type(binding) is CohortScopeBinding, "explicit validated cohort scope binding required")
-    fresh = prepare_cohort_scope(declarations, binding.original, quotes, binding.ordinary_proof_json,
+    fresh = _prepare_cohort_scope(declarations, binding.original, quotes, binding.ordinary_proof_json,
         binding.coverage_json, binding.basis_evidence_json, parameters=parameters,
         original_required_code_dates=strict_json(binding.original_requirements_json),
         issue_isins=strict_json(binding.issue_isins_json), input_sha256=strict_json(binding.input_sha256_json),
         expected_pins=strict_json(binding.expected_pins_json), component_exit_scope=binding.component_proof_json,
-        return_policy_json=binding.return_policy_json)
+        return_policy_json=binding.return_policy_json, _raw_context=_raw_context)
     require(_same(binding, fresh) and events == fresh.events, "cohort scope binding differs from replay inputs")
     return fresh
 

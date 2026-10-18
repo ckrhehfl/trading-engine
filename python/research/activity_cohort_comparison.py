@@ -10,7 +10,7 @@ Internal consistency here certifies no source, event coverage or price basis.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import dataclass, replace
 from datetime import date
 from decimal import Decimal, localcontext
 import math
@@ -30,8 +30,10 @@ from research.activity_pair_calibration import PARAMETERS
 from research.activity_partition_selection import PartitionSelection
 from research.activity_preflight import encoded, require, strict_json
 from research.activity_quote_extension import CompositeHoldingInputs, _same, _validated, extend_holding_quotes
-from research.activity_raw_quote_view import RawEpisodeQuoteInputs, validate_raw_quote_view
-from research.activity_replay import _check_event_quotes, _event_date, _quote, replay_synthetic
+from research.activity_raw_quote_view import (
+    RawEpisodeQuoteInputs, validate_raw_quote_view, _prepare_raw_quote_context, _immutable_fields, _unchanged_fields,
+)
+from research.activity_replay import _check_event_quotes, _event_date, _quote, replay_synthetic, _replay_synthetic_from_context
 from research.activity_timing import SessionLagPolicy
 
 if TYPE_CHECKING:
@@ -93,6 +95,10 @@ def _declarations(rows: tuple[CohortSelection, ...], calendar: tuple[date, ...],
 
 
 def _quotes(holding_inputs, raw_quote_view):
+    if raw_quote_view is not None:
+        fresh = validate_raw_quote_view(raw_quote_view)
+        require(_same(fresh.base, holding_inputs), "raw view must preserve the complete supplied holding base")
+        return fresh
     if type(holding_inputs) is HoldingInputs:
         _validated(holding_inputs)
     elif type(holding_inputs) is CompositeHoldingInputs:
@@ -100,12 +106,7 @@ def _quotes(holding_inputs, raw_quote_view):
             "complete composite holding projection mismatch")
     else:
         raise ValueError("existing immutable HoldingInputs or CompositeHoldingInputs required")
-    if raw_quote_view is None:
-        return holding_inputs
-    require(type(raw_quote_view) is RawEpisodeQuoteInputs, "explicit raw quote view required")
-    fresh = validate_raw_quote_view(raw_quote_view)
-    require(_same(fresh.base, holding_inputs), "raw view must preserve the complete supplied holding base")
-    return fresh
+    return holding_inputs
 
 
 def _events(events: tuple, quotes, parameters: dict, raw_quote_view) -> tuple:
@@ -362,23 +363,7 @@ class _PreparedReplay:
     calendar: tuple[date, ...]
     days: tuple[date, ...]
     initial: ActivityBook
-
-
-def _immutable_fields(values: tuple) -> tuple:
-    """Retain field identities without rebuilding or serializing quote evidence."""
-    pending, seen, result = list(values), set(), []
-    while pending:
-        value = pending.pop()
-        if (type(value) is tuple or is_dataclass(value)) and id(value) not in seen:
-            seen.add(id(value))
-            if type(value) is tuple:
-                pending.extend(value)
-            else:
-                require(value.__dataclass_params__.frozen, "prepared replay requires frozen inputs")
-                attributes = tuple((field.name, getattr(value, field.name)) for field in fields(value))
-                result.append((value, type(value), attributes))
-                pending.extend(item for _, item in attributes)
-    return tuple(result)
+    raw_context: tuple | None = None
 
 
 def _prepare_cohort_replay(
@@ -389,7 +374,13 @@ def _prepare_cohort_replay(
     """Validate one invocation and issue a closure for that exact frozen context."""
     require(type(parameters) is dict and encoded(parameters) == encoded(PARAMETERS),
         "unchanged canonical parameter bytes required")
-    quotes = _quotes(holding_inputs, raw_quote_view)
+    raw_context = None
+    if raw_quote_view is None:
+        quotes = _quotes(holding_inputs, None)
+    else:
+        raw_context = _prepare_raw_quote_context(raw_quote_view)
+        quotes, _ = raw_context[1](raw_context[0])
+        require(_same(quotes.base, holding_inputs), "raw view must preserve the complete supplied holding base")
     calendar = quotes.calendar
     require(type(calendar) is tuple, "immutable complete holding calendar required")
     SessionLagPolicy._calendar(calendar)
@@ -398,24 +389,28 @@ def _prepare_cohort_replay(
     ordered_events = _events(events, quotes, parameters, raw_quote_view)
     binding = None
     if scope_binding is not None:
-        from research.activity_cohort_connection import validate_cohort_scope
-        binding = validate_cohort_scope(scope_binding, declarations, quotes, ordered_events, parameters=parameters)
+        from research.activity_cohort_connection import _validate_cohort_scope
+        binding = _validate_cohort_scope(scope_binding, declarations, quotes, ordered_events,
+            parameters=parameters, _raw_context=raw_context)
     else:
         _coverage(declarations, quotes, ordered_events, parameters)
     if binding is not None and policy_report(binding.return_policy_json):
         require_supported_attribution_actions(ordered_events, return_policy_json=binding.return_policy_json)
     end = calendar.index(date.fromisoformat(parameters["end"]))
-    prepared = _PreparedReplay(declarations, quotes, ordered_events, binding, raw_quote_view, encoded(parameters),
+    prepared = _PreparedReplay(declarations, quotes, ordered_events, binding, quotes if raw_context else None, encoded(parameters),
         tuple(keyed.items()), calendar, calendar[parameters["lookback"] + 1:end + 1],
-        ActivityBook(ONE, (), calendar[parameters["lookback"]]))
-    sealed = _immutable_fields((prepared, holding_inputs, raw_quote_view, scope_binding))
+        ActivityBook(ONE, (), calendar[parameters["lookback"]]), raw_context)
+    additional = (prepared, holding_inputs, raw_quote_view, scope_binding)
+    sealed = (_immutable_fields(additional) if raw_context is None else
+        raw_context[1](raw_context[0], additional_seal=additional))
 
     def execute(candidate, cohort_keys=None):
         require(type(candidate) is _PreparedReplay and candidate is prepared,
             "only this invocation's issued prepared replay is accepted")
+        if raw_context is not None:
+            raw_context[1](raw_context[0])
         require(encoded(parameters) == prepared.parameters_json, "prepared replay source parameters changed")
-        require(all(type(value) is kind and all(getattr(value, name) is original for name, original in attributes)
-            for value, kind, attributes in sealed), "prepared replay or immutable input changed")
+        require(_unchanged_fields(sealed), "prepared replay or immutable input changed")
         return _execute_prepared_cohorts(prepared, cohort_keys)
 
     return prepared, execute
@@ -439,6 +434,8 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
             and len(set(cohort_keys)) == len(cohort_keys), "unique known immutable cohort keys required")
         selected_keys = tuple(sorted(cohort_keys))
     results = []
+    engine = replay_synthetic if prepared.raw_context is None else lambda *args, **kwargs: _replay_synthetic_from_context(
+        *prepared.raw_context, *args, **kwargs)
     with localcontext() as context:
         context.prec = 28
         for key in selected_keys:
@@ -448,7 +445,7 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
                 item.source_population_count, item.source_partition_sha256)
                 for item in sorted((item for item in declarations if item.arm == row.arm
                     and item.group_id == row.group_id), key=lambda item: item.formation_on))
-            result = replay_synthetic(calendar, quotes.panel, parameters, schedule,
+            result = engine(calendar, quotes.panel, parameters, schedule,
                 dataset_sha256=quotes.quote_snapshot_sha256, events=ordered_events, initial_book=initial,
                 timing_policy=SessionLagPolicy(int(row.arm[-1]), paired=True), raw_quote_view=raw_quote_view)
             if binding is not None:

@@ -26,7 +26,10 @@ from research.activity_holding_restore import restore_holding_inputs
 from research.activity_paired_replay import BM_ROLES, PACKAGE_ROLES, _require_raw_potential_scope, prepare_inputs
 from research.activity_quote_extension import extend_holding_quotes
 from research.activity_raw_episode import TARGET_CODES
-from research.activity_raw_quote_view import calendar_sha256, is_raw_no_trade_reference_close, raw_price_basis, restore_raw_quote_view
+from research.activity_raw_quote_view import (
+    calendar_sha256, is_raw_no_trade_reference_close, restore_raw_quote_view,
+    _prepare_raw_quote_context, _raw_basis_accessor,
+)
 from research.activity_reviewed_actions import reviewed_action_terms
 
 
@@ -189,10 +192,13 @@ def _verify_raw(receipt: dict, pins: dict, quotes) -> None:
 def _bind_raw_basis(evidence: dict, quotes) -> None:
     saved.require(type(evidence) is dict and set(evidence) == {"references", "bases"} and type(evidence["bases"]) is dict,
                   "reviewed basis declarations required")
+    basis_at = None
     for row in evidence["bases"].values():
         saved.require(type(row) is dict, "reviewed basis row required")
         if row.get("code") in TARGET_CODES:
-            basis = raw_price_basis(quotes, row["code"], date.fromisoformat(row["session"]))
+            if basis_at is None:
+                basis_at = _raw_basis_accessor(*_prepare_raw_quote_context(quotes))
+            basis = basis_at(row["code"], date.fromisoformat(row["session"]))
             saved.require(Decimal(row["raw_close"]) == Decimal(row["adjusted_close"]) == basis.raw_close
                 and row.get("quote_snapshot_sha256") == quotes.quote_snapshot_sha256,
                 "raw basis must match the validated requested raw/raw close")
