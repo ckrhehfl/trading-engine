@@ -625,5 +625,31 @@ def test_cli_enforces_fixed_resources_without_running_actual_inputs(monkeypatch,
     monkeypatch.setattr(module.os, "nice", lambda delta: delta)
     monkeypatch.setattr(module, "run_preflight", lambda *args, **kwargs: calls.append(args) or {"result": dict(status="synthetic")})
     assert module.main(["--spec", str(tmp_path / "unopened.json"), "--output-dir", str(tmp_path / "unused"), "--runs-path", str(tmp_path / "unused.jsonl")]) == 0
-    assert limits == [(module.resource.RLIMIT_AS, (768 * 1024**2,) * 2), (module.resource.RLIMIT_CPU, (300, 300))]
+    assert limits == [(module.resource.RLIMIT_AS, (768 * 1024**2,) * 2), (module.resource.RLIMIT_CPU, (600, 600))]
     assert alarms == [900, 0] and len(calls) == 1
+
+
+@pytest.mark.parametrize("observed_cpu_limit", [300, 600])
+def test_resource_manifest_preserves_observed_cpu_limit_and_usage(monkeypatch, observed_cpu_limit):
+    usage = SimpleNamespace(ru_maxrss=100, ru_utime=301, ru_stime=2)
+    monkeypatch.setattr(module.resource, "getrusage", lambda kind: usage)
+    monkeypatch.setattr(module.resource, "getrlimit", lambda kind:
+        (observed_cpu_limit,) * 2 if kind == module.resource.RLIMIT_CPU else (768 * 1024**2,) * 2)
+    monkeypatch.setattr(module.time, "monotonic", lambda: 400)
+    monkeypatch.setattr(module.os, "getpriority", lambda *args: 10)
+    resources = module._resources(100)
+    assert resources["cpu_limit_seconds"] == [observed_cpu_limit, observed_cpu_limit]
+    assert resources["process_user_cpu_seconds"] + resources["process_system_cpu_seconds"] == 303
+    assert resources["elapsed_seconds"] == 300 and resources["wall_limit_seconds"] == 900
+    assert resources["address_space_limit_bytes"] == [768 * 1024**2] * 2 and resources["nice"] == 10
+
+
+def test_cpu_profile_v5_preserves_v4_bytes_except_two_provisioning_paths():
+    directory = SOURCE.parents[2] / "configs" / "research" / "discovery"
+    previous = (directory / "activity-cohort-component-preflight-v4.json").read_bytes()
+    current = (directory / "activity-cohort-component-preflight-v5.json").read_bytes()
+    old = b"large-liquid-bs-cohort-conditional-component-inputs-20261018-v3/"
+    new = b"large-liquid-bs-cohort-conditional-component-inputs-20261018-v4/"
+    assert previous.count(old) == 2 and new not in previous
+    assert current == previous.replace(old, new)
+    module.validate_contract(saved.strict_json(current), {"parameters": PARAMETERS})
