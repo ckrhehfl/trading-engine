@@ -298,3 +298,59 @@ failure without automatic retries or a success publication.
 Separate final source reviews, required CI, normal merge and isolated research
 deployment precede actual execution. This continuation writes no new settled
 conclusion into CLAUDE.md and authorizes no candidate promotion or live/paper run.
+
+## 2026-10-19 — BV delivery and BW original-issuer excess attribution
+
+PR #313 normally merged as `2d5a14b1e37c3c74007697ab1c0a2565eeddb7ec`.
+BV's registered saved-PnL decomposition and separately authored original-byte
+verification completed on the isolated research checkout. Report SHA-256 is
+`9888530f464d34d430986562e411226c94d8401370e97193c889cbc3f37a63c6`;
+independent verification is
+`d33b6d28b6a965f86506e0d281761f6db1e84bf7b5487a9673ce0948afca4193`.
+Both separate actual-output reviews passed. The complete result, resource,
+source and CI evidence remain on PR #313. The collector stayed at `4ce85d7`.
+
+The operator accepted the next step: explain which original issuers account for
+the 2024 and 2025 formation-vintage TREND-minus-control differences. This is
+attribution of the existing saved comparison, not a new signal family. Keep
+all five controls, both lags, original targets/budgets/costs/126-session holding,
+the 179-window restriction, failed power prerequisite and all five issuers'
+unmodeled automatic assets. Retain prior full-period results as context; the
+new book projection is bounded to the four original 2024/2025 formation dates
+(40 control cohorts and eight already attributed TREND cohorts). Selecting
+these periods after BV is explicitly retrospective, not independent evidence.
+
+The original BS report retains exact complete per-cohort PnL and saved book
+hashes, but only five named issuers' individual contributions. Use its frozen
+receipts to locate exactly those 40 control books. Reuse the reviewed saved-
+book attribution helper and the same three pinned saved quote artifacts,
+projecting their retained openings once and releasing large decoded bodies
+sequentially. Reuse BU's verified exact TREND investment attributions; do not
+read or replay its books again. There is no market API/DB access, new prices,
+full-universe reconstruction or corporate-action investigation in this step.
+
+For every control, lag and formation-year, aggregate each original issuer's
+TREND PnL minus that control's PnL. A code missing from a declared selection
+contributes algebraic zero with an explicit not-selected label; this does not
+impute a missing market price or an unmodeled entitlement. Preserve selected
+but unfilled entries and actual zero PnL separately, link supported LG/LX
+components to the original investment, and retain every positive/negative/zero
+issuer difference. Report each side's PnL, largest positive and negative
+contributions, shared/one-sided selections, original-total and period budgets.
+Reconcile every sum exactly to BV's existing formation and year contrasts.
+Top contribution subtraction is arithmetic only, with the original denominator;
+no exclusions, redistribution, new statistical test, causal or edge claim.
+
+Register exact input pins, 40 book hashes derived only from the pinned original
+receipt population, committed full source/dependency/spec/runtime and bounded
+resources before actual reads. Canonical discovery start precedes saved inputs.
+Private exclusive outputs preserve partial failures with no automatic retries.
+Separate final source reviews, required CI, normal merge and isolated research
+deployment precede the actual projection. After producer completion, a separately
+authored verifier checks control-book entry/ordered cash/sale/terminal math
+against the same declared retained openings (source reliance, not price-truth
+certification), independently projects original saved TREND scalar contributions
+and verifies issuer/period sums and rankings. Its explicitly registered second
+pass may re-read only those same 40 hash-pinned books; it imports no producer.
+Report verification/source hashes and recheck source/runtime and collector state.
+No holdout, paper/live promotion or new settled CLAUDE.md conclusion is authorized.
