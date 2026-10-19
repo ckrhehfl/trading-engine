@@ -435,3 +435,61 @@ disclosed before the own calibration is complete. No new origins, assets,
 policy changes, parameter search, favorable period/lag choice or promotion is
 authorized. A genuinely new material accounting/data/risk choice still needs
 the operator; low power alone is already within this one descriptive request.
+
+## 2026-10-19 — BY count-and-budget-matched trend control, before actual inputs
+
+The operator explicitly requested the prior BX report's proposed next comparison:
+COMBO versus a trend control with the same entry target counts and allocations,
+through actual experiment, independent verification, separate reviews, required
+CI, normal merge and isolated research deployment. The previous report disclosed
+the failed power prerequisite, certified179 restriction and five unmodeled issuers.
+This is one informed descriptive continuation; it changes no promotion, reserved
+window, new-asset, source-truth or settled-conclusion boundary. Complete the blind
+control calibration and independent verification before separately registering
+the mean-comparison report; failure/undefined power remains false throughout.
+
+For each original formation and timing arm, let m be the original fixed COMBO
+target count, known at its pre-opening selection cutoff. TREND_MATCHED selects
+the first m targets in that formation's original TREND ranking. Shared targets
+remain shared; do not remove COMBO names to fabricate a disjoint control. The
+control does not use the activity predicate for its identities, only m for its
+target count. Both groups use exactly the existing 1/20 nominal budget per target,
+initial cohort cash, original k/20 opportunity ceiling, slots, costs, 126-session
+holding, source population, seed, D1/D2 schedules and approved v3 price-return
+policy including LG/LX accounting. Every new origin is a subset of original
+TREND and validated BS holding/action bounds. No new market sources are needed.
+
+Matching is on pre-opening selected targets and nominal capital, not successful
+fills, realized entry principal, daily exposure or risk. No fill-based selection,
+replacement, reweighting or cash redistribution is permitted. Report those actual
+outcomes separately, including selection overlap. This asks which of two fixed
+selection policies works better here, not the isolated causal value of activity.
+
+The primary descriptive denominator is sum(m/20), identical across groups;
+report the original sum(k/20) denominator as a supplementary continuity measure.
+These are retrospective opportunity-budget attributions, never a self-financing
+account curve, compounded/annual return or actual investment total return. Keep
+all formation years and the previously disclosed retrospective period groups.
+Five named issuers' unmodeled rights remain unknown, not zero.
+
+Reuse BX's immutable 28 COMBO books and calibration; run exactly 28 new authentic
+TREND_MATCHED books through the existing engine. Restore the original saved input
+package once; freeze and reconcile target declarations against the pinned BX
+declarations before holding-price restoration. Do not reuse issuer PnL instead
+of a new control replay. Source/spec/runtime/helpers/full dependency/input pins,
+durable Discovery starts, private exclusive outputs, per-book starts, no automatic
+retry and separate producer-independent output arithmetic remain required. Use
+the existing AS1536MiB virtual-address ceiling, CPU2400s/wall3600s, nice10 and
+self OOM1000; record observed resource use. The report-only stage may read the
+same 56 saved books in an explicitly registered independent second pass, with
+zero engine reruns, API, DB or collector operations. Collector source stays at
+4ce85d714890b87f1a57ae89d4942660e41c0483. Preserve both user-owned untracked files.
+
+BY design-review clarification: the prior BX calibration is retained as lineage,
+not substituted for this comparison's sizing. Recompute COMBO event-arm and
+TREND_MATCHED own dispersion using the common matched-target denominator; keep
+the old cost-floor diagnostic explicitly unmatched and every power flag false.
+The whole study is a post-BX exploration, not an independent blind confirmation;
+only the new pilot's mean/curve publication is deferred until separate report
+registration. Fresh design review found the first-m policy appropriate with
+shared targets retained and actual fills/exposure reported rather than forced.
