@@ -233,3 +233,68 @@ Separate final source reviews, required CI and normal merge precede execution;
 producer-independent actual-output verification remains required afterward.
 No new conclusion is written into CLAUDE.md and no holdout, promotion, live or
 paper action is authorized by this diagnostic.
+
+## 2026-10-19 — BU delivery and BV saved period contrasts
+
+PR #312 normally merged as `f8341c606c00e3dd311cce6833a91ead18d1dcb4`.
+The saved-book concentration diagnostic completed once on isolated GCP research
+source after both separate source reviews and all required CI. Its report is
+`b400bb5892de1018bc7eb9d5cc6e68a4dfe3f3eb350484173e98373e309064a7`;
+producer-independent verification is
+`c066accd1cfd7aeab82a6b2902994e4c88f4f29bcf00b172da8e314711bb143c`.
+The first verifier's compact/ISO calendar boundary failure was retained; the
+separately reviewed adapter verified the same output without a producer rerun.
+Separate actual-output reviews checked its arithmetic and claim boundaries.
+The complete Korean result and final execution evidence remain on PR #312.
+Research source received that merge; collector source stayed at `4ce85d7`.
+
+The operator now requests the same five fixed control results split by period
+to locate TREND-minus-control PnL. This is a descriptive decomposition of the
+existing comparison, with no new selector, seed, costs, lag preference, replay,
+source acquisition, database read, corporate-action expansion or holdout use.
+Retain all controls C01–C05 and both lags, including negative total contrasts.
+The approved 179-window restriction, failed power prerequisite and five-issuer
+unmodeled-asset price-return limitations remain unchanged.
+
+Use the exact same-book PnL already retained in the original BS report's
+`cohort_receipts[*].statistics.known_issuer_price_return_attribution.total_book_pnl`
+and the BU exact TREND cohort attributions. Never reconstruct PnL by multiplying
+a rounded `direct_Tp_by_cohort` ratio by a budget. The original BS report is
+`run/cohorts/report.json`, SHA-256
+`76c1d0d6480c9a42d2b47b04edc6640ed3d1a8af185295ce6782dd58647f1a00`.
+Its observed size is 15,639,910 bytes (metadata-only stat); no original book or
+price body is needed. Join the two saved outputs to the original frozen
+formation declarations and previously independent verification receipts.
+
+Every formation contributes its signed TREND PnL minus each control PnL.
+Report all formation vintages and all calendar labels in the original window,
+with zero-budget formations and years without formations distinguished. Sum by
+formation year; this is not calendar-year realized or compounded performance.
+Keep both the original total assigned-budget denominator and the local period's
+assigned budget, so different year budgets are visible. Reconcile every full
+contrast to the previously published aggregate comparison.
+
+The 2024/2025 grouping was observed in the prior TREND-only view. Any combined
+2024–2025 versus 2020–2023 table is explicitly retrospective description, not a
+new confirmation, causal test or reason to choose years. Preserve positive and
+negative excess contributions, absolute-excess shares, signed shares (including
+values above one/negative and null for zero net), and loss-offset flags. Top-one
+and top-three positive-contribution subtraction retains the original denominator
+and is only arithmetic; it is not an exclusion/reallocation strategy. The five
+controls share sessions and are not five independent market experiments.
+
+Implement a small scalar-only function and synthetic regressions; freeze inputs,
+both producer and independently authored verifier sources, full committed Python
+source/dependency/spec/runtime and bounded resources before actual reads.
+Canonical discovery start precedes one read of each pinned saved JSON. Retain
+immutable original bytes for explicit memory reuse by a separately compiled
+verifier after producer completion. That verifier independently projects exact
+PnL/budgets from original bytes and checks every contrast with independent
+arithmetic, without producer imports. Archive its separate receipt bound to
+source and report hashes. Recheck source/runtime before canonical completion
+and after verification; preserve any completed producer output and verification
+failure without automatic retries or a success publication.
+
+Separate final source reviews, required CI, normal merge and isolated research
+deployment precede actual execution. This continuation writes no new settled
+conclusion into CLAUDE.md and authorizes no candidate promotion or live/paper run.
