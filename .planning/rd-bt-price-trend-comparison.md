@@ -354,3 +354,84 @@ and verifies issuer/period sums and rankings. Its explicitly registered second
 pass may re-read only those same 40 hash-pinned books; it imports no producer.
 Report verification/source hashes and recheck source/runtime and collector state.
 No holdout, paper/live promotion or new settled CLAUDE.md conclusion is authorized.
+
+## 2026-10-19 — BW delivery and BX fixed trend/activity filter pilot
+
+PR #314 normally merged as `8ed70ffe83bf82a9d41d5e24686df8b75944ad57`.
+BW's saved issuer attribution report is
+`68a99ca8a957addde0922124e5ca87078c8fe50bf3ee3478818b21525a7ef0d0`;
+producer-independent verification is
+`11ce5bf974f0ab4541d0e9becffdfd0260f3402f0d41c389286990e65cbc072b`.
+Separate source and actual-output reviews passed, as did required CI. Research
+source received that merge; collector source remained `4ce85d7`.
+
+The operator now requests TREND alone versus TREND plus the existing activity
+predicate, with experiment, verification, review, normal merge and isolated
+GCP research deployment. First fix the original TREND top-k order and then
+retain only targets whose formation turnover is at least three times the
+median of the same preceding 60 normal observations. Do not intersect with the
+old truncated ACTIVITY portfolio targets: membership there is not the predicate.
+Do not replace, rerank, resize or redistribute skipped slots. Their cash remains
+in the original cohort. The primary denominator remains the original k/20
+opportunity budget; report retained n/20, fills, principal and exposure separately.
+This is a fixed-budget filter-policy comparison, not equal-risk causal evidence.
+
+Use the original fourteen formations, both lags, 20 slots, 126-session holding,
+costs, seed, certified179 restriction and existing five-issuer price-return
+limitations. Prove every filtered origin is a subset of the exact approved
+original TREND origins and validated BS holding/action bounds. Preserve LG/LX
+raw/allotment/original-investment accounting and the unchanged v3 return policy.
+No new origins, assets, prices, source queries, company-action adjudications or
+reserved data are introduced. Source inspection found the retained BS normal
+audit includes numeric inputs and arm-specific activity diagnostics; the actual
+join and pin completeness remain unverified until registered execution.
+
+Restore the saved holding package once and run only 28 new COMBO books through
+the unchanged engine. Existing TREND books/verified aggregates are reusable;
+deleting lots or summing prior issuer PnL is not a new engine replay because
+ordered Decimal cash rounding can change. Recompute the exact Decimal median
+and inclusive threshold, verify all consumed normal dates, identities and
+availability cutoffs, and reject missing/unresolved values rather than impute.
+Freeze filtered declarations before holding/opening inputs are restored.
+
+The first actual step is a blind COMBO own-dispersion calibration. Preserve
+private books and aggregates once; do not publish mean performance or register
+a comparison family before its own prerequisite and independent verification.
+Reuse the unchanged IID/block63/126/252 sizing arithmetic and record the original
+cost-floor diagnostic. Cash dilution, no events or zero dispersion cannot turn
+this into a passed power design. The prior BT/BR exploratory exceptions are
+limited to their own comparisons; if a new failed prerequisite needs an operator
+exception, complete the concrete pilot before asking. The latest instruction
+authorizes the new comparison itself, not a false power claim or promotion.
+
+Freeze exact saved input, source, helper/verifier, dependency, specification and
+runtime pins before actual input bodies. Canonical Discovery start precedes
+those reads; private exclusive outputs and per-cohort durable starts preserve
+partial failures with no automatic retries. AS1536MiB is a virtual-address
+ceiling, not physical RAM; CPU2400s and wall3600s match the existing 28-book
+pilot envelope, nice10/selfOOM1000. Stream saved cohort outputs, release large
+decoded inputs when possible, and independently verify new book arithmetic and
+sizing after producer completion. Source/runtime and collector state are checked
+again afterward. Source reviews, required CI, normal merge and isolated research
+deployment precede execution. No settled conclusion is added to CLAUDE.md.
+
+### BX authorization clarification before actual inputs
+
+Fresh research-integrity review considered the exact prior report and latest
+human instruction, together with the BS authorization precedent recorded at
+the start of `rd-bs-large-liquid-equal-capital-cohorts.md`. The preceding BW
+report explicitly retained the failed power prerequisite, certified179 and
+five-issuer unknown-asset limits, then proposed one fixed TREND/activity
+combination hypothesis. The operator directly requested that exact comparison,
+including experiment and verification through deployment. This latest informed
+human instruction authorizes one fresh bounded descriptive continuation even
+if its own calibration fails; it does not inherit or generalize the earlier
+BT/BR exceptions. Another request to approve the same exploratory character
+would duplicate that authorization. Calculate and independently verify own MDE
+first, preserve failure/undefined status and all false power flags, then
+register a separate immutable comparison specification and reuse the private
+pilot output without replay. No mean-performance comparison is registered or
+disclosed before the own calibration is complete. No new origins, assets,
+policy changes, parameter search, favorable period/lag choice or promotion is
+authorized. A genuinely new material accounting/data/risk choice still needs
+the operator; low power alone is already within this one descriptive request.
