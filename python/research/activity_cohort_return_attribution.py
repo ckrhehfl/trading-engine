@@ -15,6 +15,7 @@ from decimal import Decimal, localcontext
 from research.activity_accounting import sum_decimal_values
 from research.activity_book import ActivityBook, CompulsorySpinOff, CompulsoryStockExchange, FinalCashPayment
 from research.activity_cohort_selection import CohortSelection
+from research.activity_partition_selection import PartitionSelection
 from research.activity_cohort_return_policy import ACTION_COVERAGE_SCOPE, SCOPE_DECISION_RECORDED_ON, attribution_codes
 from research.activity_preflight import require
 from research.activity_replay import SyntheticReplay, _number, _quote
@@ -76,6 +77,18 @@ def attribute_known_issuer_returns(
     replay: SyntheticReplay, selection: CohortSelection, quotes, parameters: dict, *, events: tuple = (),
     return_policy_json: bytes | None = None,
 ) -> dict:
+    """Retain the strict original BS declaration boundary for existing callers."""
+    require(type(selection) is CohortSelection, "original cohort declaration required")
+    projected = PartitionSelection(selection.formation_on, selection.decision_on, selection.selection_at,
+        selection.chosen_codes, selection.source_population_count, selection.source_partition_sha256)
+    return attribute_selected_issuer_returns(replay, projected, selection.target_ceiling, quotes, parameters,
+        events=events, return_policy_json=return_policy_json)
+
+
+def attribute_selected_issuer_returns(
+    replay: SyntheticReplay, selection: PartitionSelection, target_ceiling: int, quotes, parameters: dict, *,
+    events: tuple = (), return_policy_json: bytes | None = None,
+) -> dict:
     """Follow original entry, ordinary disappearance and terminal mark only.
 
     Each cohort begins cash-only at one and has one active formation. Verify
@@ -86,7 +99,10 @@ def attribute_known_issuer_returns(
     """
     require(type(replay) is SyntheticReplay and type(replay.books) is tuple and bool(replay.books),
         "existing immutable replay books required for issuer attribution")
-    require(type(selection) is CohortSelection, "original cohort declaration required")
+    require(type(selection) is PartitionSelection and replace(selection) == selection,
+        "explicit valid selected-target projection required")
+    require(type(target_ceiling) is int and len(selection.eligible_codes) <= target_ceiling <= parameters["slots"]
+        and target_ceiling >= 0, "assigned original target ceiling required")
     require_supported_attribution_actions(events, return_policy_json=return_policy_json)
     calendar = quotes.calendar
     require(type(calendar) is tuple and all(type(day) is date for day in calendar)
@@ -102,7 +118,7 @@ def attribute_known_issuer_returns(
     require(decision in book_positions, "original entry must be in replay path")
     require(all(not book.lots and book.cash == ONE for book in replay.books[:book_positions[decision]]),
         "cohort must retain cash-only NAV one before its original entry")
-    require(all(set(codes) == set(selection.chosen_codes) if formation == selection.formation_on else not codes
+    require(all(set(codes) == set(selection.eligible_codes) if formation == selection.formation_on else not codes
         for formation, codes in replay.selections), "attribution requires the unchanged single active target declaration")
     require(sum(formation == selection.formation_on for formation, _ in replay.selections) == 1,
         "one original active formation required for attribution")
@@ -200,15 +216,15 @@ def attribute_known_issuer_returns(
                 terminal_value = previous.marked_value
             budget = budgets.get(code, ZERO)
             pnl = sum_decimal_values((exit_cash, terminal_value, budget.copy_negate()))
-            assigned = Decimal(selection.target_ceiling) / slots
-            by_code[code] = {"targeted": code in selection.chosen_codes, "filled_entries": int(initial is not None),
+            assigned = Decimal(target_ceiling) / slots
+            by_code[code] = {"targeted": code in selection.eligible_codes, "filled_entries": int(initial is not None),
                 "original_lot_id": None if initial is None else lot_id,
                 "entry_on": None if initial is None else decision, "exit_on": sold_on,
                 "entry_budget": budget, "net_exit_cash": exit_cash,
                 "terminal_marked_value": terminal_value, "pnl": pnl,
                 "assigned_capital_return_contribution": None if assigned == 0 else pnl / assigned,
                 **_unmodeled_assets(code, return_policy_json=return_policy_json)}
-        return _result(by_code, Decimal(selection.target_ceiling) / slots,
+        return _result(by_code, Decimal(target_ceiling) / slots,
             _difference(replay.books[-1].nav, ONE), return_policy_json=return_policy_json)
 
 
