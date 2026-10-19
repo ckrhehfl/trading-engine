@@ -493,3 +493,55 @@ The whole study is a post-BX exploration, not an independent blind confirmation;
 only the new pilot's mean/curve publication is deferred until separate report
 registration. Fresh design review found the first-m policy appropriate with
 shared targets retained and actual fills/exposure reported rather than forced.
+
+## 2026-10-20 — BZ saved entry/exit ledger audit and one fixed research hypothesis
+
+The operator requests the three differing BY selections' purchase/sale/cost
+ledgers, followed by freezing one hypothesis for more cases, separate review,
+required CI, normal merge and isolated research deployment. This is a logged
+projection of saved evidence, not a new strategy comparison, a power exception,
+source certification, parameter search or reserved-window access.
+
+Fix the three original formations (2021-04-15, 2023-04-27, 2024-11-15), both
+D1/D2 arms and both genuine groups. The twelve original full books include
+every selected target and shared name; do not inspect only the profitable
+replacement. Reconcile daily cash, constant ordinary-lot quantity/identity,
+entry/exit dates, saved positive opening quotes, commission, slippage, dated
+tax, gross price PnL and modeled net PnL. A lot's close mark is not its opening
+fill. Preserve exact Decimal28 engine operation order and disclose rounding
+residuals separately; do not introduce a percentage tolerance or repair a
+contradictory book. Delayed disappearance describes the saved modeled exit,
+not a newly certified earliest executable date. Unsupported transformations
+or unexplained cash changes fail rather than creating a second accounting engine.
+
+Authenticate BY's public comparison and the original two inventories before
+selecting exactly twelve hash-pinned full books. Use only the already pinned
+holding-input audit and, if the requested coordinate is outside its request,
+the separate pinned quote extension. Requested absence must not be replaced
+from another source. Retain source row state, exact original open text,
+provenance and artifact identity for each consumed quote; reject duplicate,
+unresolved or nonpositive execution rows. Save an exclusive narrow projection
+for a producer-independent second check of the same books and arithmetic.
+Reconcile the three pair differences to the existing BY formation and total
+differences; retain the matched 0.75 and supplemental 1.80 denominators.
+
+No engine replay, database, API, new source request, credential/environment read,
+collector operation or additional independent selection case is included.
+Source/specification/runtime/input/helper/verifier pins and a canonical durable
+Discovery start precede the actual saved reads. Keep private exclusive outputs,
+failure evidence, zero retries and the existing bounded nice/resource envelope.
+Source reviews, required CI, normal merge and isolated source deployment precede
+the one audit. The existing two user-owned untracked files remain untouched.
+
+Freeze `configs/research/discovery/price-trend-activity-hypothesis-v1.json` before
+this audit. It preserves the unchanged original trend-top-k then activity rule,
+all parameters by reference hash, historical large/liquid scope and both lags.
+This is the Discovery mode's written research hypothesis, not a candidate
+declared eligible on the strength of a comparison. The audit can expose an
+unresolved defect; it cannot tune the hypothesis into a better observed result.
+The follow-on preparation prioritizes the original unresolved eligibility and
+baseline-proof tail, deterministically, without new holding-return reads.
+Expanded origins still need their own action/quote/unit coverage and own power
+design; existing five-issuer and underpower exceptions do not extend silently.
+This task freezes the next hypothesis; it does not execute expanded performance,
+claim success or write a settled conclusion into CLAUDE.md.

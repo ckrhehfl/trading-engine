@@ -1,0 +1,69 @@
+{
+  "schema": "price-trend-activity-research-hypothesis-v1",
+  "hypothesis_id": "original-trend-topk-then-activity-v1",
+  "status": "frozen_hypothesis_for_expanded_discovery_not_eligible_strategy",
+  "operator_instruction_date": "2026-10-20",
+  "reference_specification": {
+    "path": "configs/research/discovery/price-trend-pilot-v1.json",
+    "sha256": "72b010af5a689883f514eb772fca9e7c8f2760964f7993dcc2274e7b511066e5"
+  },
+  "hypothesis": "The unchanged activity predicate may improve which stocks are selected from the original relative-price-trend top-k list at the same target count and nominal allocation.",
+  "universe": {
+    "rule_reference": ".planning/rd-aq-large-liquid-formation-acquisition.md",
+    "historical_membership_required": true,
+    "present_day_membership_allowed": false,
+    "liquidity_calendar_sessions_distinct_from_activity_normal_observations": true,
+    "unknown_eligibility_is_not_exclusion": true
+  },
+  "selection": {
+    "trend_implementation": "research.price_trend_signal.select_price_trend",
+    "trend_rule": "Rank formation adjusted close divided by oldest close of the proved preceding normal-observation lookback; original target ceiling and fixed tie order.",
+    "activity_implementation": "research.price_trend_activity_comparison.build_combo_declarations",
+    "activity_rule": "Only after the original trend top-k selection, retain names whose formation turnover is at least threshold times the exact median of the preceding normal-observation lookback.",
+    "parameter_values": "All parameters, including lookback, threshold, seed, holding sessions, slots, commission and slippage, are fixed by the byte-pinned reference specification.",
+    "replacement": false,
+    "reranking_after_activity": false,
+    "unused_cash_redistribution": false,
+    "positive_trend_filter": false,
+    "issuer_or_period_exclusion_after_results": false
+  },
+  "timing_and_accounting": {
+    "session_lags": [1, 2],
+    "winning_lag_selection": false,
+    "entry_and_exit_proxy": "Existing daily opening-price execution proxy and due-or-later nonfrozen sale rule; not an actual intraday execution certificate.",
+    "tax": "Existing dated KRX settlement-aware tax policy, without rate refitting.",
+    "compulsory_events": "Preserve original-investment grouping and verified LG/LX raw-price/allotment accounting; new origins require their own event and unit coverage.",
+    "existing_unmodeled_asset_waivers_extend_to_new_origins": false,
+    "missing_values_are_zero": false
+  },
+  "expanded_discovery_preparation": {
+    "scope": "The same original dated large/liquid source partitions and formation calendar within the spent post-2019 reference window; no newly selected periods.",
+    "priority": "Repair original unresolved eligibility and retained-baseline proof gaps in formation-date then issue-code order, before inspecting additional holding returns.",
+    "candidate_count_increase_guaranteed": false,
+    "unresolved_tail_may_be_silently_removed": false,
+    "comparison_controls_to_register_later": ["TREND_MATCHED", "C01", "C02", "C03", "C04", "C05"],
+    "matched_control": "At each formation and lag, first m of the original trend rank, where m is the combo target count known before opening. Shared targets retained; per-target nominal allocations equal; fills and realized exposure reported separately.",
+    "before_new_comparison_family": [
+      "Complete influential eligibility, baseline, availability and source-period proof; freeze the expanded population before holding outcomes.",
+      "Resolve holding quote, corporate action, successor and price-unit coverage for the exact potential origins; no inherited new-asset waiver.",
+      "Separately register and independently verify own event-arm dispersion and a compatible effect/cost-unit power design; current failed or undefined prerequisite remains failed or undefined.",
+      "Register final controls, denominators, costs, missingness, stopping and reporting rules before additional performance reads; no automatic underpower exception."
+    ],
+    "additional_performance_reads_authorized_by_this_file": false,
+    "additional_book_replays_authorized_by_this_file": false
+  },
+  "evidence_boundary": {
+    "lineage": "Post-BX/BY exploratory hypothesis using already observed discovery results; not an independent confirmation.",
+    "ledger_audit": "A separate BZ saved-book audit checks the three differing selections; it cannot create additional independent selection cases.",
+    "strategy_candidate_eligibility_established": false,
+    "power_design_passed": false,
+    "comparison_power_prerequisite_met": false,
+    "promotion_allowed": false,
+    "paper_or_live_authorized": false,
+    "reserved_window_access_authorized": false,
+    "source_truth_certified": false,
+    "historical_vintage_certified": false,
+    "actual_investment_total_return": false,
+    "settled_conclusion_for_claude_md": false
+  }
+}
