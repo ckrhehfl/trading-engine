@@ -1,0 +1,34 @@
+{
+  "schema": "price-trend-readiness-v1",
+  "study_id": "price-trend-readiness-v1",
+  "mode": "discovery_saved_metadata_only",
+  "promotion_allowed": false,
+  "window": {
+    "symbol": "KRX:",
+    "interval": "1d",
+    "start": "2019-01-02",
+    "end": "2026-09-18"
+  },
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "parameters": {
+    "alpha": 0.05,
+    "bootstrap_blocks": [63, 126, 252],
+    "bootstrap_repetitions": 2000,
+    "commission_bps_per_side": 1.77,
+    "end": "2026-09-18",
+    "holding_sessions": 126,
+    "lookback": 60,
+    "power": 0.8,
+    "seed": 20261005,
+    "sizing_round_trip_bps": 43.54,
+    "slippage_bps_per_side": 5.0,
+    "slots": 20,
+    "threshold": 3.0
+  },
+  "inputs": {
+    "frontier": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-normal-recovery-20261016-v1/run/frontier.json",
+      "sha256": "10ae03788a728b153b157be5b68b470079f64fa68f15879a35c3ce44e1e9566a"
+    }
+  }
+}
