@@ -2072,6 +2072,36 @@ outputs only; the new interpretation needs separate source review and logged
 proof/output verification. No reacquisition or original-artifact replacement
 is required for this no-price projection.
 
+**BT operator choice: one restricted price-trend exploration — 2026-10-19.**
+After the saved-metadata readiness audit, the operator chose the 179 eligible
+candidate/formation windows with exactly 60 retained preceding normal dates,
+instead of extending historical adjudication to the unresolved full pool.
+Preserve every original source partition and distinguish this declared study
+restriction from an exclusion or certification of the 565 unresolved active
+windows and 42 eligible windows lacking retained baseline dates in that package.
+The first two zero-budget formations retain no trend targets.
+
+For this one fixed relative-price-trend candidate, retain original formations,
+target-count budget ceilings, 20 slots, 126-session holding, seed, costs, paired
+D1/D2 and the LG/LX raw/allotment/original-investment accounting. Prove that all
+original six groups' targets lie in the restricted pool and that each of the
+five fixed hash controls selects exactly its old ordered targets there before
+reusing its independently verified books. Do not silently present the restricted
+candidate pool as the whole large/liquid universe or a deployable portfolio.
+
+The operator explicitly extended the existing five-issuer price-return
+exploration's unmodeled-asset limitations to this one trend comparison over
+the same proved potential origins. This is not a blanket waiver for new assets,
+new origin windows, rights valuations or actual total-investment returns.
+They also authorized continuing this single exploratory comparison if its own
+dispersion calibration is underpowered. Calculate and retain that prerequisite
+before registering the comparison family; do not turn an exploratory exception
+into a power pass. No parameter/seed sweep, winning-lag adoption, edge claim,
+direction closure, paper/live promotion or reserved data access follows.
+Source/specification/logging, separate review/CI, actual-output verification,
+availability and missingness guards remain binding. Record implementation and
+evidence in `.planning/rd-bt-price-trend-comparison.md`.
+
 **The honest cost, stated rather than glossed.** Discovery buys the ability
 to look, and pays for it by producing weaker evidence: a discovery-mode
 result is a *hypothesis*, and this project's own precedent is that one

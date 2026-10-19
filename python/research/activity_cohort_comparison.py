@@ -416,6 +416,65 @@ def _prepare_cohort_replay(
     return prepared, execute
 
 
+def _execute_one_cohort(row, *, declarations, quotes, ordered_events, parameters, days,
+                        initial, engine, raw_quote_view, return_policy_json=None,
+                        verify_inventory=None, attribution=None) -> dict:
+    """Execute one already validated declaration in its caller's sealed context.
+
+    Existing BS callers retain their exact declaration/scope checks. A separate
+    signal adapter must establish its own typed selection and coverage before
+    using this arithmetic seam; this function certifies neither.
+    """
+    key = _key(row)
+    calendar = quotes.calendar
+    policy = policy_report(return_policy_json)
+    with localcontext() as context:
+        context.prec = 28
+        schedule = tuple(PartitionSelection(item.formation_on, item.decision_on, item.selection_at,
+            row.chosen_codes if item.formation_on == row.formation_on else (),
+            item.source_population_count, item.source_partition_sha256)
+            for item in sorted((item for item in declarations if item.arm == row.arm
+                and item.group_id == row.group_id), key=lambda item: item.formation_on))
+        result = engine(calendar, quotes.panel, parameters, schedule,
+            dataset_sha256=quotes.quote_snapshot_sha256, events=ordered_events, initial_book=initial,
+            timing_policy=SessionLagPolicy(int(row.arm[-1]), paired=True), raw_quote_view=raw_quote_view)
+        if verify_inventory is not None:
+            verify_inventory(result)
+        require(tuple(book.as_of for book in result.books) == days, "complete common cohort session path required")
+        require(all(set(codes) == (set(row.chosen_codes) if formation == row.formation_on else set())
+            for formation, codes in result.selections), "fixed cohort targets changed during replay")
+        entries = dict(result.diagnostics).get("entries", 0)
+        require(entries + dict(result.diagnostics).get("unfilled_entries", 0) == len(row.chosen_codes),
+            "all fixed chosen targets must be filled or explicitly unfilled")
+        assigned, filled = Decimal(row.target_ceiling) / SLOTS, Decimal(entries) / SLOTS
+        entry_book = next(book for book in result.books if book.as_of == row.decision_on)
+        entry_index = calendar.index(row.decision_on)
+        principal = sum_decimal_values(tuple(lot.shares * quotes.panel[lot.code].opens[entry_index]
+            for lot in entry_book.lots))
+        inventory = tuple(sum_decimal_values(tuple(lot.marked_value for lot in book.lots)) for book in result.books)
+        normalized = None if assigned == 0 else tuple(sum_decimal_values((ONE,
+            _difference(nav, ONE) / assigned)) for nav in result.navs)
+        item = {"key": key, "arm": row.arm, "group_id": row.group_id,
+            "formation_on": row.formation_on, "decision_on": row.decision_on, "selection_at": row.selection_at,
+            "original_activity_targets": row.activity_targets, "chosen_codes": row.chosen_codes,
+            "target_ceiling": row.target_ceiling, "eligible_shortfall": row.eligible_shortfall,
+            "assigned_capital": assigned, "filled_capital": filled, "filled_entries": entries,
+            "filled_principal": principal, "entry_cost_amount": _difference(filled, principal),
+            "ordinary_closed_trades": result.closed_trades, "terminal_open_lots": len(result.books[-1].lots),
+            "terminal_open_investments": result.books[-1].slot_count,
+            "raw_metrics": _path_metrics(days, result.navs), "metrics": _path_metrics(days, normalized),
+            "exposure": _exposure(days, inventory, result.navs, assigned,
+                tuple(_difference(nav, ONE) for nav in result.navs), return_policy_json=return_policy_json),
+            "source_population_sha256": row.source_population_sha256,
+            "source_partition_sha256": row.source_partition_sha256, "replay": result}
+        if policy:
+            item.update(policy)
+            callback = attribute_known_issuer_returns if attribution is None else attribution
+            item[ATTRIBUTION_KEY] = callback(result, row, quotes, parameters,
+                events=ordered_events, return_policy_json=return_policy_json)
+    return item
+
+
 def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | None) -> dict:
     """The issuing closure owns validation; this is the unchanged book loop."""
     declarations, quotes, ordered_events = prepared.declarations, prepared.quotes, prepared.ordered_events
@@ -440,47 +499,11 @@ def _execute_prepared_cohorts(prepared: _PreparedReplay, cohort_keys: tuple | No
         context.prec = 28
         for key in selected_keys:
             row = keyed[key]
-            schedule = tuple(PartitionSelection(item.formation_on, item.decision_on, item.selection_at,
-                row.chosen_codes if item.formation_on == row.formation_on else (),
-                item.source_population_count, item.source_partition_sha256)
-                for item in sorted((item for item in declarations if item.arm == row.arm
-                    and item.group_id == row.group_id), key=lambda item: item.formation_on))
-            result = engine(calendar, quotes.panel, parameters, schedule,
-                dataset_sha256=quotes.quote_snapshot_sha256, events=ordered_events, initial_book=initial,
-                timing_policy=SessionLagPolicy(int(row.arm[-1]), paired=True), raw_quote_view=raw_quote_view)
-            if binding is not None:
-                verify_cohort_inventory(binding, row.arm, result)
-            require(tuple(book.as_of for book in result.books) == days, "complete common cohort session path required")
-            require(all(set(codes) == (set(row.chosen_codes) if formation == row.formation_on else set())
-                for formation, codes in result.selections), "fixed cohort targets changed during replay")
-            entries = dict(result.diagnostics).get("entries", 0)
-            require(entries + dict(result.diagnostics).get("unfilled_entries", 0) == len(row.chosen_codes),
-                "all fixed chosen targets must be filled or explicitly unfilled")
-            assigned, filled = Decimal(row.target_ceiling) / SLOTS, Decimal(entries) / SLOTS
-            entry_book = next(book for book in result.books if book.as_of == row.decision_on)
-            entry_index = calendar.index(row.decision_on)
-            principal = sum_decimal_values(tuple(lot.shares * quotes.panel[lot.code].opens[entry_index]
-                for lot in entry_book.lots))
-            inventory = tuple(sum_decimal_values(tuple(lot.marked_value for lot in book.lots)) for book in result.books)
-            normalized = None if assigned == 0 else tuple(sum_decimal_values((ONE,
-                _difference(nav, ONE) / assigned)) for nav in result.navs)
-            results.append({"key": key, "arm": row.arm, "group_id": row.group_id,
-                "formation_on": row.formation_on, "decision_on": row.decision_on, "selection_at": row.selection_at,
-                "original_activity_targets": row.activity_targets, "chosen_codes": row.chosen_codes,
-                "target_ceiling": row.target_ceiling, "eligible_shortfall": row.eligible_shortfall,
-                "assigned_capital": assigned, "filled_capital": filled, "filled_entries": entries,
-                "filled_principal": principal, "entry_cost_amount": _difference(filled, principal),
-                "ordinary_closed_trades": result.closed_trades, "terminal_open_lots": len(result.books[-1].lots),
-                "terminal_open_investments": result.books[-1].slot_count,
-                "raw_metrics": _path_metrics(days, result.navs), "metrics": _path_metrics(days, normalized),
-                "exposure": _exposure(days, inventory, result.navs, assigned,
-                    tuple(_difference(nav, ONE) for nav in result.navs), return_policy_json=return_policy_json),
-                "source_population_sha256": row.source_population_sha256,
-                "source_partition_sha256": row.source_partition_sha256, "replay": result})
-            if policy:
-                results[-1].update(policy)
-                results[-1][ATTRIBUTION_KEY] = attribute_known_issuer_returns(result, row, quotes, parameters,
-                    events=ordered_events, return_policy_json=return_policy_json)
+            verify = None if binding is None else lambda result: verify_cohort_inventory(binding, row.arm, result)
+            results.append(_execute_one_cohort(row, declarations=declarations, quotes=quotes,
+                ordered_events=ordered_events, parameters=parameters, days=days, initial=initial,
+                engine=engine, raw_quote_view=raw_quote_view, return_policy_json=return_policy_json,
+                verify_inventory=verify))
         aggregates, comparisons = {}, {}
         for arm in ARMS:
             arm_results = tuple(row for row in results if row["arm"] == arm)

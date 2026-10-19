@@ -1,0 +1,200 @@
+{
+  "schema": "price-trend-pilot-v1",
+  "study_id": "price-trend-pilot-v1",
+  "mode": "blind_price_trend_dispersion_pilot",
+  "promotion_allowed": false,
+  "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+  "window": {
+    "end": "2026-09-18",
+    "interval": "1d",
+    "start": "2019-01-02",
+    "symbol": "KRX:"
+  },
+  "parameters": {
+    "alpha": 0.05,
+    "bootstrap_blocks": [
+      63,
+      126,
+      252
+    ],
+    "bootstrap_repetitions": 2000,
+    "commission_bps_per_side": 1.77,
+    "end": "2026-09-18",
+    "holding_sessions": 126,
+    "lookback": 60,
+    "power": 0.8,
+    "seed": 20261005,
+    "sizing_round_trip_bps": 43.54,
+    "slippage_bps_per_side": 5.0,
+    "slots": 20,
+    "threshold": 3.0
+  },
+  "source_cohort_contract": {
+    "comparison_power_prerequisite_met": false,
+    "controls": [
+      "C01",
+      "C02",
+      "C03",
+      "C04",
+      "C05"
+    ],
+    "design": "independent_formation_equal_assigned_capital",
+    "holding_verification_identity": {
+      "collector_commit": "4ce85d714890b87f1a57ae89d4942660e41c0483",
+      "dependency_sha256": {
+        "holding": "6fde4f31a18ff3b1d6b93f1aa2bfa53e7f6e47da42777be6289f4fa0abbe6e0a",
+        "normal": "ca624d8a6e286792e8ed672515507df49daf20c2dff216277890a93219a0e911"
+      },
+      "expected_commit": "34ba8f4d8baf35e13236414c7233556e69711da6",
+      "expected_normal_commit": "169b6c1d76a3f8ecffbfbfd235fc620669f0f32c",
+      "expected_normal_producer_sha256": "e2c9d5be268f2160b9408daadfeebdc58d83655fbeadcf0c5e0418ea59c3a490",
+      "file_sha256": {
+        "cohort-declarations.json": "fc662f220eb3d494adfbcb33d2b261bff3e994e3729ef26295fb91e1fe04b726",
+        "holding-input-audit.json": "6d0e2d2b0416fb7b258890ee3941c153b3457064c58b0adf5408e083e5ce99c2",
+        "input-manifest.json": "590b8cba6dd3708ecba871a49d4200c106f30c3be8b8e8884a27c629a667b7bf",
+        "proof-selections.json": "d56acfda568a9484e867bcc285a63b7decf518dfb66a4470c2fb609e23943871",
+        "provisional-exit-scope.json": "379ca522406924e52cc4c4f502c262b87e57872e855081db205e83ff0e142567",
+        "read-scope.json": "dd349090db3b7e15c74497f3c4b89dc1887480d97ad5c64890649d6f9c4250ee",
+        "resource-manifest.json": "b592354e78bd6a54dd35579d14dbf53c85addb3adc61843a255fcf8199164dca",
+        "result.json": "038518d208b2565d2ef21b5f1fa42f99a12c69634f958eef580bb994500905cd",
+        "source-manifest.json": "bb52c5189df0da553727e8926b60c743c12be7f17ab5ac754229562df4933acb",
+        "specification.json": "cffef848e7f6998896bdcd3c5a647dbf40c5a2c76f81c79f0cfcb0efd215a61c"
+      },
+      "helper_sha256": "17e26949599e90a03c5d08d8f9161127154cc385da05e494f88e370a6be88672",
+      "input_sha256": {
+        "bi_result": "b011e43ff4c34c26e8f6e66b216b202b1f1b06c340abc9e4d1340b6393729dc3",
+        "br_population_audit": "20c126919c3b2a5c9c911b0bf371bc1c99f78727c134fbea807fef1db62dca76",
+        "br_scope_result": "9b808013d51c893af4ccb66662ba75e4756b12d42d99d80ebae3da7e2cf6bb90",
+        "bs_initial_scope_result": "262243b957e1078eff6658ef904374881943bb27820ab85a3e9dff6c19cedb37",
+        "bs_normal_control_dispositions": "08434205d10220cb4f1c0187a0fa61f6f4906fbe9575944821e14bdb5f9afe0c",
+        "bs_normal_frontier": "10ae03788a728b153b157be5b68b470079f64fa68f15879a35c3ce44e1e9566a",
+        "bs_normal_input_manifest": "e056194eeb972562c6c8fe833cfaeb1d962d392a82a53c1ddeb1e5a4a078515d",
+        "bs_normal_normal_exclusions": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+        "bs_normal_normal_input_audit": "e9df545483162e40df294bd0df30f332df4126ae927e5acdc22bdbcab60a7b9b",
+        "bs_normal_normal_input_delta": "b51e65001be03180275c068aac0591cd89d31538cd27685fd9a8b78f60349d2f",
+        "bs_normal_normal_read_scope": "288e11d4c0f47e56529de2125668deaf74c11cfdf6b05e29f288144b40754f61",
+        "bs_normal_raw_source_read_scope": "e3f76ea29b9aaef84b1fb3afbf25a1b898fc77a8c595d3be9f5431912d99f751",
+        "bs_normal_resource_manifest": "e27e57a775d1f2d4c4e925c186931b0e13e4a524a5f4c8adf26d4be73645a315",
+        "bs_normal_restored_activity_proof_audit": "2de96eb6c3b489f74bdb77a5b401c3f657e5d192280e6c8bec17b471e459a57b",
+        "bs_normal_result": "0c80506b57df7438cc19df55155ee1ea65247959f31854a3f5f34f563c0d6344",
+        "bs_normal_source_manifest": "dab8a4510e83526b057ca53a7ade59302abed01bb9a1da12f12e92ad25041dc1",
+        "bs_normal_specification": "41d69058a53f6643a755c29b42f0bccd1f75006e6cf6366d358fb830e1d4da0c",
+        "bs_normal_verification": "1d6342f6ad768e708c5d32fdef285f00eef3e83ff2ac25252f59bb50486865dc",
+        "calendar_manifest": "ccdcee1681ad9fa16aef837e4aceaf4d2f40847974046a1714d1352c3df01882"
+      },
+      "io_sha256": "c619f98e918a4765541b2d2861b8a24b8ce890567dc7f201a0b64a99dc42bfad",
+      "producer_sha256": "8ee2e7aa05b8b90bdf0382edb563ff2158da715675f61477b2f940674a78e7b9",
+      "protocol_sha256": "4f73dcf9cb19649fabb634a12755c529fffc6428f4daae9a6d78e5e52b4796ef",
+      "specification_sha256": "cffef848e7f6998896bdcd3c5a647dbf40c5a2c76f81c79f0cfcb0efd215a61c",
+      "verifier_sha256": "e8e473a79e7369c127c788ac12e41cc094406871ba37b4aaae0c6e8d5fd2c51a"
+    },
+    "mode": "price_return_exploratory",
+    "parameters": {
+      "alpha": 0.05,
+      "bootstrap_blocks": [
+        63,
+        126,
+        252
+      ],
+      "bootstrap_repetitions": 2000,
+      "commission_bps_per_side": 1.77,
+      "end": "2026-09-18",
+      "holding_sessions": 126,
+      "lookback": 60,
+      "power": 0.8,
+      "seed": 20261005,
+      "sizing_round_trip_bps": 43.54,
+      "slippage_bps_per_side": 5.0,
+      "slots": 20,
+      "threshold": 3.0
+    },
+    "power_design_passed": false,
+    "promotion_allowed": false,
+    "reference_specification": "configs/research/discovery/activity-calibration-v1.json",
+    "return_policy_schema": "activity-cohort-return-policy-v3",
+    "schema": "activity-cohort-preflight-v1",
+    "study_id": "activity-cohort-preflight-v1",
+    "window": {
+      "end": "2026-09-18",
+      "interval": "1d",
+      "start": "2019-01-02",
+      "symbol": "KRX:"
+    }
+  },
+  "restricted_population": "eligible needed_normal_windows with exactly 60 preceding normal dates; other source rows retained outside this experiment",
+  "expected_candidate_windows": 179,
+  "expected_formations": 14,
+  "expected_active_formations": 12,
+  "operator_decision": "2026-10-19 certified179 price-return exploration; retain five-issuer unmodeled assets and underpower limitation",
+  "inputs": {
+    "basis_evidence": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-conditional-final-coverage-20261018-v1/basis-evidence.json",
+      "sha256": "839aa6df212db73d0d5ba0e1418e6884b2ee977912189e2e80a92d94c82cafe1"
+    },
+    "cohort_declarations": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-holding-recovery-20261016-v1/run/cohort-declarations.json",
+      "sha256": "fc662f220eb3d494adfbcb33d2b261bff3e994e3729ef26295fb91e1fe04b726"
+    },
+    "component_exit_scope": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-component-cpu600-20261018-v1/run/component-exit-scope.json",
+      "sha256": "15f25c48e60a4440f49b1ad577df4157e4efc01e245ab4f16051d0821c731a09"
+    },
+    "holding_input_audit": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-holding-recovery-20261016-v1/run/holding-input-audit.json",
+      "sha256": "6d0e2d2b0416fb7b258890ee3941c153b3457064c58b0adf5408e083e5ce99c2"
+    },
+    "holding_read_scope": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-holding-recovery-20261016-v1/run/read-scope.json",
+      "sha256": "dd349090db3b7e15c74497f3c4b89dc1887480d97ad5c64890649d6f9c4250ee"
+    },
+    "holding_result": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-holding-recovery-20261016-v1/run/result.json",
+      "sha256": "038518d208b2565d2ef21b5f1fa42f99a12c69634f958eef580bb994500905cd"
+    },
+    "holding_verification": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-holding-recovery-independent-memory-20261016-v1/verification.json",
+      "sha256": "be90d15abd9bb2e8612923a19f8c3e728ed5d7eaffcdfc1d5028cfca5260e170"
+    },
+    "ordinary_exit_scope": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-holding-recovery-20261016-v1/run/provisional-exit-scope.json",
+      "sha256": "379ca522406924e52cc4c4f502c262b87e57872e855081db205e83ff0e142567"
+    },
+    "quote_extension": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-quote-validation-recovery-20261016-v1/run/quote-extension.json",
+      "sha256": "0a174b9b1359b80c83333269667e58f8dc077a3a63ff8b7edd04690cdb68842c"
+    },
+    "raw_episode_quotes": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-raw-20261016-v1/run/raw-episode-quotes.json",
+      "sha256": "46c365e6b39cfcaf0a7009202abda4f291587e3088a13815b03a91f53245139a"
+    },
+    "raw_episode_unit_plan": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-raw-20261016-v1/run/unit-plan.json",
+      "sha256": "6c977a8e2352247158771810f7c20a34cd176fe18e80e72ee42c0fb68148a77d"
+    },
+    "return_policy": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-cohort-conditional-component-inputs-20261018-v4/return-policy.json",
+      "sha256": "63d702b717e11e0244b89c90b75d324186581a12a3856fd83039c74e14691a35"
+    },
+    "reviewed_action_coverage": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bs-conditional-final-coverage-20261018-v1/reviewed-action-coverage.json",
+      "sha256": "0974ca71a78d0f856d74c7a8c28f331fdc13cb28c929eb1b4b88b08c36d868dc"
+    },
+    "frontier": {
+      "path": "/home/minjun4897/research-evidence/large-liquid-bt-trend-readiness-independent-recovery-20261019-v1/input.frontier.raw.json",
+      "sha256": "10ae03788a728b153b157be5b68b470079f64fa68f15879a35c3ce44e1e9566a"
+    },
+    "scan_database": {
+      "path": "/home/minjun4897/trading-engine/python/data/var/krx_scan.sqlite3",
+      "mode": "ro",
+      "columns": [
+        "bsop_date",
+        "open",
+        "high",
+        "low",
+        "close",
+        "volume",
+        "turnover"
+      ]
+    }
+  }
+}
