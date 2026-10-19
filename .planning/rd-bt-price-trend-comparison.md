@@ -171,3 +171,65 @@ own `/proc/self/oom_score_adj` to 1000, then verifies that value. Failure stops
 before market reads. Record the observed adjustment and resources; no collector
 process, service, environment or cgroup is modified. A resource failure remains
 preserved without automatic retries.
+
+## 2026-10-19 — shipped TREND comparison and saved-book concentration continuation
+
+PR #311 normally merged as `e54a6d5c5bb0a808a2d123a1870b371c75ba74b3`
+after separate source correctness/research-integrity reviews and all four CI
+checks. The isolated GCP research checkout received that exact tree; the running
+collector remained at `4ce85d714890b87f1a57ae89d4942660e41c0483`.
+One blind TREND pilot completed all fourteen cohorts in each arm, with 36
+initial fills/ordinary closes and no terminal open lots per arm. Independent
+saved-output arithmetic verification preceded the registered comparison report.
+The own-arm minimum detectable daily effects were 1.513230181909026 and
+1.5177176493295783 bp versus the 0.34555555555555556 bp cost floor: the power
+prerequisite remains failed under the operator's one exploratory continuation.
+
+The comparison report SHA-256 is
+`cdc0d4be8410a182ba264971231aea76b55b6d9a7c806dd6dcb84989e1f4daa1`;
+its publication is
+`0e20e6c3c27a75736b939cf7bf3f1f1e1dab3a27d6595b01d75b607906001904`.
+Actual-output correctness and integrity reviews checked its recorded arithmetic.
+It reports all five controls and ACTIVITY, both lags, unchanged assigned budgets,
+exposure, risk and the five approved issuers' price-return contributions. These
+remain descriptive conditional price returns, not a confirmed edge or actual
+investment total return. Full evidence/result links are recorded on PR #311.
+
+The operator now requests concentration of those same TREND books by period and
+issuer, including normal review, merge and isolated research deployment without
+another discretionary stop. This is an attribution diagnostic of the existing
+fixed experiment, not another selection/ranking/holding/cost family. Keep both
+lags, all fourteen formations (including zero budgets), all original fills,
+the existing 179-window restriction and unresolved full-population limitations.
+
+The saved daily books contain aggregate cash but no per-lot sale openings.
+Simultaneous proceeds must therefore be reconstructed from each disappearing
+lot's own opening in three already pinned artifacts: original holding audit,
+quote extension and LG/LX raw episode quotes. Directly project those saved
+openings; do not restore the full universe, rerun the price loader/replay, access
+a database/API, collect new prices, or expand corporate-action investigation.
+Preserve missing/unresolved states and raw/adjusted price units. Verify ordered
+Decimal28 entry debits and ordinary sale cash credits against the same book;
+retain cash-rounding differences explicitly instead of inventing a proportional
+cash split. Follow any supported LG/LX components as one original investment.
+This reuses prior source/action proofs and does not independently certify them.
+
+Report original investment and original issuer PnL, all formation vintages,
+formation-year contributions, positive-profit and absolute-PnL concentration.
+Signed shares can exceed one when losses offset profits; undefined denominators
+remain null. Top-one/top-three subtraction is only arithmetic on the recorded
+contributions with the original total assigned-capital denominator. It neither
+excludes/reallocates holdings nor measures a newly replayed strategy. Formation
+year means the cohort's vintage, not calendar-year portfolio performance.
+
+Implement only the small pure projection/attribution/summary seam and meaningful
+synthetic regressions. The separately archived publisher freezes saved input
+pins, source/runtime/spec/resource identities and a canonical discovery start
+before actual input reads. Sequentially decode/project/drop the 155,342,486-byte
+original audit, 2,848,719-byte extension and 5,613,852-byte raw artifact, then
+stream the 28 saved books; these sizes were observed by metadata-only stat.
+Use bounded resources, private exclusive outputs and no automatic retries.
+Separate final source reviews, required CI and normal merge precede execution;
+producer-independent actual-output verification remains required afterward.
+No new conclusion is written into CLAUDE.md and no holdout, promotion, live or
+paper action is authorized by this diagnostic.
