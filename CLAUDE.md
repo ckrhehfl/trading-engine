@@ -24,6 +24,20 @@ run, new underpower exception, reserved-window access, risk change or trading
 activation. Existing research guards remain. Do not automatically resume the
 older half-year daily study as though it answered this short-term goal.
 
+**Task CD limited exploratory comparison — operator decision 2026-10-20.**
+After CC's actual calibration and separate output verification, the operator
+selected one limited price-response comparison of both short-term patterns
+on the saved observed inputs, including post-drop recovery despite its
+cost-floor power shortfall. Preserve that shortfall and the incomplete dated
+target matrix; this is a conditional observed-data exploration, not a full
+top-20 population result, a strategy pass, direction closure or trading
+authorization. The implementation fixes same-clock observed-peer controls
+before outcomes; no outcome-complete name replacement is allowed. Keep the
+existing mechanisms, timing variants and unknown states. All other input,
+preregistration, independent output verification, review, CI and operational
+guards remain. No other family's exception transfers. Performed design and
+evidence: `.planning/rd-cd-intraday-pattern-comparison.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -929,7 +943,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 175 documents,
+them. `.planning/README.md` carries an index of all 176 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

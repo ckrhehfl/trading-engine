@@ -20,36 +20,34 @@ Binding constraints remain in `CLAUDE.md`.
   intraday positions, upward continuation and post-drop recovery investigated
   separately. Desired portfolio-wide frequency is at least 15 new entries
   per week; actual opportunity and cost viability are unmeasured.
-- **Last completed evidence:** CB's dated source ranking and stored-coverage
-  join completed once after PR #319 merge `4ca92c9`, with automatic independent
-  saved-byte verification. Its exact counts and receipt fingerprints live
-  in CB's appended completion record; CA owns the preceding inventory facts.
-  Coverage is incomplete and historical eligibility/tradability remains
-  uncertified. Separate CB receipt arithmetic/lineage review passed with the
-  limits recorded in CB. The earlier daily-study
-  ledger audit remains in Task BT's BZ appendix; it is not evidence for this
-  short-term goal. New short-term performance experiments remain zero.
+- **Last completed evidence:** CC's first-event frequency and conditional
+  price-label dispersion completed once after PR #320 merge `fdf12fd`, with
+  independent saved-byte replay and separate receipt review. Its actual counts,
+  power limitations and fingerprints live in CC's appended completion record.
+  Roughly half the intended matrix remains unknown. Candidate events are not
+  portfolio fills; no short-term mean-performance comparison has run yet.
+  CA/CB own the preceding source/ranking facts. The older daily-study ledger
+  in Task BT's BZ appendix does not answer this intraday question.
 - **Decision:** after declining the original top-10 / maximum-three-session
   proposal and requesting public research, the operator selected package 1.
-  No scope-choice question remains pending. Exact universe/timing, event,
-  execution, cost, capital and calibration specifications still need to be
-  fixed before their corresponding actual-data access or performance runs.
+  After CC, the operator explicitly chose one limited both-pattern comparison
+  on saved observed inputs despite recovery's power shortfall. This decision
+  is recorded in CLAUDE.md and Task CD; no choice is pending. It is not a
+  complete top-20 or executable portfolio evaluation.
 - **Work performed:** CA and CB source/design work, tests, reviews, required
   CI, normal merges and isolated GCP source/coverage execution are complete.
-  The collector remains separately pinned and unchanged. The two pure
-  price-pattern primitives are in CA's implementation entry. CC now has a
-  bounded frequency/own-label calibration module, fixed CB input registration,
-  synthetic tests and private saved-input verifier. Code and integrity
-  prechecks passed; final whole-diff review and CI are still required. No
-  actual CC signal or sampled price-label measurement has run.
-- **Next action:** finish CC review/CI/normal merge, then execute its registered
-  first-event frequency and conditional own-label dispersion once. Preserve
-  the full target matrix and unknown gaps. These counts are not executable
-  portfolio entries; price labels are not realized PnL. The detailed scope,
-  assumptions and evidence live in
-  `.planning/rd-cc-intraday-pattern-calibration.md`. Do not inherit BR/BT/BZ's
-  study-specific underpower exceptions or treat source coverage as full-family
-  readiness or a strategy result.
+  The collector remains separately pinned and unchanged. CC is complete and
+  must not be rerun. CD implementation and its separate verifier are in
+  progress using CC's saved raw archive; no new collection is needed.
+- **Next action:** complete CD implementation, exact final source/integrity
+  reviews, required CI and normal merge; reflect isolated research source on
+  GCP and execute the registered comparison once. Compare each signal's
+  two-hour response against equal-weight same-clock observed peers selected
+  before outcomes, with the fixed assumed cost and unknown pairs retained.
+  Independently verify actual outputs, then report conditional findings and
+  the next execution-aware test. Scope and limitations live in
+  `.planning/rd-cd-intraday-pattern-comparison.md`; the current source-stage
+  status is not evidence that the comparison has already executed.
 
 ## Historical large/liquid scope — operator decision 2026-10-07
 
