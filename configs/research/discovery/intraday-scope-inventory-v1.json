@@ -1,0 +1,46 @@
+{
+  "id": "intraday-scope-inventory-v1",
+  "mode": "discovery-metadata-only",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "allow_columns": [
+    "symbol",
+    "interval",
+    "open_time_ms",
+    "fetched_at",
+    "volume",
+    "quote_volume"
+  ],
+  "price_or_return_access": false,
+  "api_requests": 0,
+  "purpose": "Inventory stored symbol/session/time/field presence in the already-spent discovery window; no prices, amounts, events, returns or ranking.",
+  "source_database": "/home/minjun4897/trading-engine/python/data/var/klines.sqlite3",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-ca-inventory-20261020-v1",
+  "maximum_aggregate_rows": 200000,
+  "query_wall_seconds": 60,
+  "execution": {
+    "cpu_seconds": 120,
+    "wall_seconds": 180,
+    "address_space_mib": 384,
+    "nice": 10,
+    "oom_score_adj": 1000,
+    "automatic_retries": 0,
+    "source_checkout": "/home/minjun4897/research-checkouts/activity-discovery-20261005",
+    "collector_changes": false,
+    "source_before_data": "Reviewed committed source, final required CI and normal merge; verify exact source/specification/dependency/runtime pins before the durable started record and recheck before completion."
+  },
+  "not_established": [
+    "historical top-20 membership",
+    "complete session or minute coverage",
+    "reason for absent bars",
+    "actual minute raw or adjusted price basis",
+    "historical input availability",
+    "fifteen-entry weekly feasibility",
+    "cost model, power or strategy performance"
+  ]
+}

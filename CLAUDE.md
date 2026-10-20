@@ -11,6 +11,19 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 **Narrowed to Korean domestic equities on 2026-09-17, operator decision.
 BTC is set aside — not abandoned, and nothing about it is deleted.**
 
+**2026-10-20 short-term research direction:** after reviewing the alternatives,
+the operator selected leading Korean stocks, **around the top 20**, **intraday
+positions**, with **upward continuation and post-drop recovery investigated
+separately**. The portfolio-wide target is at least 15 new entries per week;
+it is an operating-fit objective, not forced trading or independent sample
+size. The earlier top-10 / maximum-three-session proposal was not adopted.
+The performed intake, source investigation and subsequent decision are in
+`.planning/rd-ca-intraday-swing-research-charter.md`. This authorizes the next
+scoping/registration work, not an unregistered actual-data read, comparison
+run, new underpower exception, reserved-window access, risk change or trading
+activation. Existing research guards remain. Do not automatically resume the
+older half-year daily study as though it answered this short-term goal.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -916,7 +929,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 172 documents,
+them. `.planning/README.md` carries an index of all 173 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
