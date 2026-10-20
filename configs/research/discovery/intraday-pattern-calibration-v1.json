@@ -1,0 +1,13 @@
+{
+  "id": "intraday-pattern-calibration-v1",
+  "mode": "price-label-calibration",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {"range_minutes": 30, "lookback_minutes": 30, "drop_bps": "200", "recovery_bps": "50", "availability_lag_minutes": 2, "decision_minutes": 240, "label_minutes": 120, "block_sessions": 5, "bootstrap_draws": 2000, "bootstrap_seed": 0, "cost_floor_bps": "33"},
+  "allowed_columns": ["symbol", "interval", "open_time_ms", "open", "high", "low", "close", "fetched_at"],
+  "resources": {"maximum_unique_symbols": 260, "maximum_target_days": 6000, "maximum_rows": 3600000, "maximum_session_rows": 600, "maximum_query_seconds": 10, "maximum_query_vm_steps": 5000000, "maximum_upstream_bytes": 33554432, "maximum_compressed_bytes": 536870912, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0},
+  "upstream_sha256": "f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91",
+  "source_database": "/home/minjun4897/trading-engine/python/data/var/klines.sqlite3",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-cb-universe-20261020-v1/report.json",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl"
+}

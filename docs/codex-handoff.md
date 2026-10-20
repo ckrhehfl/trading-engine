@@ -20,11 +20,13 @@ Binding constraints remain in `CLAUDE.md`.
   intraday positions, upward continuation and post-drop recovery investigated
   separately. Desired portfolio-wide frequency is at least 15 new entries
   per week; actual opportunity and cost viability are unmeasured.
-- **Last completed evidence:** CA's actual stored-metadata inventory completed
-  on PR #318 merge `05b32bf`. Its exact counts and receipt fingerprints live
-  in CA's appended completion record. This inventory is not a
-  historical top-20 target set or a completeness/tradability certificate.
-  Separate aggregate and receipt verification passed. The earlier daily-study
+- **Last completed evidence:** CB's dated source ranking and stored-coverage
+  join completed once after PR #319 merge `4ca92c9`, with automatic independent
+  saved-byte verification. Its exact counts and receipt fingerprints live
+  in CB's appended completion record; CA owns the preceding inventory facts.
+  Coverage is incomplete and historical eligibility/tradability remains
+  uncertified. Separate CB receipt arithmetic/lineage review passed with the
+  limits recorded in CB. The earlier daily-study
   ledger audit remains in Task BT's BZ appendix; it is not evidence for this
   short-term goal. New short-term performance experiments remain zero.
 - **Decision:** after declining the original top-10 / maximum-three-session
@@ -32,20 +34,22 @@ Binding constraints remain in `CLAUDE.md`.
   No scope-choice question remains pending. Exact universe/timing, event,
   execution, cost, capital and calibration specifications still need to be
   fixed before their corresponding actual-data access or performance runs.
-- **Work performed:** CA source/design work, tests, reviews, required CI,
-  normal merge, isolated GCP execution and actual aggregate verification are
-  complete. The collector remains separately pinned and unchanged. CB's
-  dated source ranking and coverage join implementation has now started in
-  `.planning/rd-cb-intraday-universe-sources.md`; no actual CB read has run.
-  The two pure price-pattern primitives and their synthetic verification are
-  recorded in CA's subsequent implementation entry. They have not measured
-  actual signals or executed a performance comparison.
-- **Next action:** complete the fixed monthly source/coverage join under its
-  registered bounds, then use the actual gaps for the minimum calibration
-  input plan. Do not backdate the stored names as historical top 20. Use
-  an opening-range breakout as the first continuation design, keeping the
-  post-drop recovery hypothesis separate. Do not inherit BR/BT/BZ's
-  study-specific underpower exceptions or treat an intake as a run permit.
+- **Work performed:** CA and CB source/design work, tests, reviews, required
+  CI, normal merges and isolated GCP source/coverage execution are complete.
+  The collector remains separately pinned and unchanged. The two pure
+  price-pattern primitives are in CA's implementation entry. CC now has a
+  bounded frequency/own-label calibration module, fixed CB input registration,
+  synthetic tests and private saved-input verifier. Code and integrity
+  prechecks passed; final whole-diff review and CI are still required. No
+  actual CC signal or sampled price-label measurement has run.
+- **Next action:** finish CC review/CI/normal merge, then execute its registered
+  first-event frequency and conditional own-label dispersion once. Preserve
+  the full target matrix and unknown gaps. These counts are not executable
+  portfolio entries; price labels are not realized PnL. The detailed scope,
+  assumptions and evidence live in
+  `.planning/rd-cc-intraday-pattern-calibration.md`. Do not inherit BR/BT/BZ's
+  study-specific underpower exceptions or treat source coverage as full-family
+  readiness or a strategy result.
 
 ## Historical large/liquid scope — operator decision 2026-10-07
 
