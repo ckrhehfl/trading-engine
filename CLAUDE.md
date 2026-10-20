@@ -38,6 +38,24 @@ preregistration, independent output verification, review, CI and operational
 guards remain. No other family's exception transfers. Performed design and
 evidence: `.planning/rd-cd-intraday-pattern-comparison.md`.
 
+**Task CE fixed-horizon extension — operator continuation 2026-10-20.**
+After the CD report disclosed negative assumed-cost means, incomplete inputs,
+recovery's sizing limitation and the CPU-budget discrepancy, the operator
+directly approved the proposed next action: repair execution-budget checks,
+then compare the same saved observations at 5, 15, 30, 60 and 120 minutes.
+This authorizes one specifically bounded descriptive extension, including
+retaining any horizon's failed own-label power prerequisite; it is not an
+automatic transfer of CD's exception or permission for another family.
+Keep the original CD 120-minute complete-pair cohort at every horizon and
+retain the full target matrix and original unknown states. Calculate and
+report each horizon's conditional own-label dispersion/MDE before its mean
+comparison; preserve all failures and the existing upstream qualifications.
+No winning horizon, investable edge, strategy pass, direction closure,
+reserved-window access or paper/live promotion follows from this extension.
+Do not retrospectively change CD's run or resource specification. All other
+registration, independent verification, review, CI and operational guards
+remain. Performed work: `.planning/rd-ce-intraday-response-horizons.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -943,7 +961,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 176 documents,
+them. `.planning/README.md` carries an index of all 177 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

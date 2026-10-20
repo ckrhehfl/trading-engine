@@ -20,34 +20,37 @@ Binding constraints remain in `CLAUDE.md`.
   intraday positions, upward continuation and post-drop recovery investigated
   separately. Desired portfolio-wide frequency is at least 15 new entries
   per week; actual opportunity and cost viability are unmeasured.
-- **Last completed evidence:** CC's first-event frequency and conditional
-  price-label dispersion completed once after PR #320 merge `fdf12fd`, with
-  independent saved-byte replay and separate receipt review. Its actual counts,
-  power limitations and fingerprints live in CC's appended completion record.
-  Roughly half the intended matrix remains unknown. Candidate events are not
-  portfolio fills; no short-term mean-performance comparison has run yet.
-  CA/CB own the preceding source/ranking facts. The older daily-study ledger
-  in Task BT's BZ appendix does not answer this intraday question.
+- **Last completed evidence:** CD's same-clock peer comparison completed once
+  after PR #321 merge `d1bc65e`, with frozen independent raw replay and separate
+  receipt arithmetic review. Conditional two-hour assumed-cost means were
+  negative for both patterns. CD's appended completion record owns the exact
+  figures, fingerprints and limitations. Runtime conformance is unresolved:
+  reported CPU exceeded its registration, despite an OS limit being configured.
+  Roughly half the intended matrix remains unknown. CA/CB/CC own the preceding
+  source, ranking and calibration facts. No profitable execution strategy has
+  been established; the older daily ledger does not answer this intraday goal.
 - **Decision:** after declining the original top-10 / maximum-three-session
   proposal and requesting public research, the operator selected package 1.
-  After CC, the operator explicitly chose one limited both-pattern comparison
-  on saved observed inputs despite recovery's power shortfall. This decision
-  is recorded in CLAUDE.md and Task CD; no choice is pending. It is not a
-  complete top-20 or executable portfolio evaluation.
+  After the CD report, the operator directly approved the proposed next action:
+  repair budget checks, then measure the same observations at five fixed
+  response horizons. The new CE-specific scope is recorded in CLAUDE.md and
+  Task CE; no choice is pending. The extension preserves failed prerequisites
+  and authorizes no winning horizon or executable portfolio evaluation.
 - **Work performed:** CA and CB source/design work, tests, reviews, required
   CI, normal merges and isolated GCP source/coverage execution are complete.
-  The collector remains separately pinned and unchanged. CC is complete and
-  must not be rerun. CD implementation and its separate verifier are in
-  progress using CC's saved raw archive; no new collection is needed.
-- **Next action:** complete CD implementation, exact final source/integrity
-  reviews, required CI and normal merge; reflect isolated research source on
-  GCP and execute the registered comparison once. Compare each signal's
-  two-hour response against equal-weight same-clock observed peers selected
-  before outcomes, with the fixed assumed cost and unknown pairs retained.
-  Independently verify actual outputs, then report conditional findings and
-  the next execution-aware test. Scope and limitations live in
-  `.planning/rd-cd-intraday-pattern-comparison.md`; the current source-stage
-  status is not evidence that the comparison has already executed.
+  The collector remains separately pinned and unchanged. CC and CD must not
+  be rerun. A tiny synthetic GCP probe verified current CPU-limit termination,
+  without accessing study data; it does not explain the historical overrun.
+  CE budget/horizon implementations and a separate verifier are being built
+  with synthetic tests. No new source collection is needed.
+- **Next action:** finish CE exact source/integrity review, required CI and
+  normal merge, then execute one registered response curve on saved inputs.
+  Keep the original CD 120-minute complete-pair cohort at every horizon,
+  original unknown records, assumed costs and explicit sizing failures. Share
+  one budget through producer, verification and final publication. Independently
+  check actual arithmetic and budget conformance before reporting. Scope and
+  evidence live in `.planning/rd-ce-intraday-response-horizons.md`; this source
+  snapshot is not evidence that the CE study has already executed.
 
 ## Historical large/liquid scope — operator decision 2026-10-07
 
