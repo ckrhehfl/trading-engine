@@ -162,3 +162,54 @@ publication wrapper will preserve one new canonical started/completed span,
 source/runtime pins, independent verification, stage and final budget receipts
 and unchanged collector identity. A failed or killed run must remain failed;
 the registration permits no automatic retry or retrospective limit increase.
+
+## 2026-10-21 — first actual attempt preserved; independent verification exceeded CPU
+
+Separate final source and research-integrity reviews passed on source
+`78f3a41f132208f43a1fec0610663b91dbaa9d63`, including its complete ten-file
+diff and four frozen private files. All eight push/PR CI checks succeeded.
+Both full Python suites recorded 8,816 passed and three skipped (push
+1,669.36s, PR 1,734.85s). Review threads were empty with no pagination and
+the exact reviewed head was mergeable/clean. PR #322 normally merged as
+`2ff5475459e660aacc8b8d6c68c46910e5317df4` at 2026-10-20T15:11:56Z;
+the reviewed source and merge trees were identical. Final review record:
+https://github.com/ckrhehfl/trading-engine/pull/322#issuecomment-6293594272.
+
+The isolated GCP research checkout reflected that merge. Run
+`6de7d045-fd77-43f5-97cf-d250de5f34a6` started at
+2026-10-21T00:12:52.522883+09:00. Its producer completed at
+00:13:41.848403+09:00, approximately 49.33 wall seconds later. The independent
+verifier subsequently exceeded the SAME process budget while recalculating
+summary dispersion/bootstrap. BudgetError at `independent_raw_replay` recorded
+absolute CPU **300.151932386s**, user/system 273.800558 + 26.351373s and wall
+304.566727403s. CPU/readback remained [300,300], AS [536870912,536870912] and
+nice 10; current AS was 418MiB, peak RSS 449.07421875MiB. This demonstrates
+software overrun detection and success refusal, not a completed CE pipeline.
+
+The report is 49,300,680 bytes, SHA256
+`a2be9ed593b1c76c91ea7c409b7bc7262cf8145846fa5d09600d0f10fd51df50`.
+No verification.json or publication.json exists. Its price/mean results were
+not read or reported as verified. The one new canonical span contains only
+producer started/completed records: 9,325 bytes, offsets 5,517,106–5,526,431,
+SHA256 `58468d73292cd29b50fdd7e684edee01b2ba3d346dc3020e23bcd993bdada55d`.
+These producer statuses do not certify final verification or budget success.
+
+One bounded post-failure read preserved only the failure receipt, frozen source
+identity, this span, file metadata and report hash; no labels were recomputed,
+archive replayed or old attempt retried. Local audit SHA256 is
+`bb1fcc502330b73ffa5e4a362ac6c1d7d4a0059d284d3b4c50f2cf15b99a7767`;
+SSH stderr SHA256 is
+`d59a054ef64540888466a443e640b4af753ae563786dc7e299ab02c0ec0a47c7`.
+The collector remained clean at `4ce85d714890b87f1a57ae89d4942660e41c0483`.
+No collector operation, DB/API query, new date, reserved input or order occurred.
+
+Separate research-integrity receipt review passed 23 internal consistency
+checks and retained the incomplete status. It did not independently rehash
+remote files or review actual price responses. The review found a separately
+registered, computationally equivalent engineering recovery remains within the
+existing continuation, with all research axes and shared limits unchanged;
+giving verification a fresh separate budget would violate that contract.
+Actual failure and disposition record:
+https://github.com/ckrhehfl/trading-engine/pull/322#issuecomment-6294453615.
+Task CF owns synthetic profiling and a new reviewed recovery, not a silent
+retry or retrospective pass for CE. CD's earlier CPU cause also remains unknown.

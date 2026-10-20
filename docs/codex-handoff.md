@@ -41,16 +41,22 @@ Binding constraints remain in `CLAUDE.md`.
   The collector remains separately pinned and unchanged. CC and CD must not
   be rerun. A tiny synthetic GCP probe verified current CPU-limit termination,
   without accessing study data; it does not explain the historical overrun.
-  CE budget/horizon implementations and a separate verifier are being built
-  with synthetic tests. No new source collection is needed.
-- **Next action:** finish CE exact source/integrity review, required CI and
-  normal merge, then execute one registered response curve on saved inputs.
+  CE source/reviews/CI/normal merge and isolated deployment completed. Its
+  producer finished, but shared CPU exceeded 300s during independent summary
+  verification. The attempt is preserved and final success is absent. CE's
+  appended ledger and PR #322 failure record own these facts. No price/mean
+  result was inspected or promoted. No new source collection is needed.
+- **Next action:** CF profiles synthetic verification and registers a separately
+  named, computationally equivalent recovery of the same comparison. Finish
+  exact source/integrity review, required CI and normal merge before one run.
   Keep the original CD 120-minute complete-pair cohort at every horizon,
   original unknown records, assumed costs and explicit sizing failures. Share
   one budget through producer, verification and final publication. Independently
   check actual arithmetic and budget conformance before reporting. Scope and
-  evidence live in `.planning/rd-ce-intraday-response-horizons.md`; this source
-  snapshot is not evidence that the CE study has already executed.
+  evidence live in `.planning/rd-ce-intraday-response-horizons.md` and
+  `.planning/rd-cf-horizon-verification-recovery.md`. Original CE is not retried
+  or reclassified; CF retains the same whole-process limits and records durable
+  phase receipts. This source snapshot is not evidence that CF has executed.
 
 ## Historical large/liquid scope — operator decision 2026-10-07
 
