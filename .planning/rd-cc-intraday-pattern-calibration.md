@@ -219,3 +219,37 @@ without any actual upstream/price read. The two explicit document/index
 test modules passed **84 cases with one skip in 2.10 seconds**. Final
 committed whole-diff source/integrity review and required CI are still pending;
 these preflights are not an actual calibration or a performance result.
+
+## 2026-10-20 — actual calibration and saved-byte verification completed
+
+PR #320 merged normally as `fdf12fdd45e88c6f23d50d9b54d391672eae114a`
+after separate final source/integrity reviews and all required push/PR checks.
+The isolated GCP research checkout ran the fixed calibration once:
+`2738b771-70db-4124-a179-f4be58995867`. The frozen independent verifier
+replayed the saved raw input successfully, followed by a separate receipt
+arithmetic/interpretation review. The collector stayed clean at `4ce85d7`.
+The actual execution and verification record is
+https://github.com/ckrhehfl/trading-engine/pull/320#issuecomment-6291161267.
+
+Report SHA256 is
+`33c642ebbcda1ccca4c68de111629bdff19bc2b58897e71be737b7350522c8a7`;
+compressed input SHA256 is
+`4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de`;
+decompressed stream SHA256 is
+`d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da`.
+Private evidence is under
+`/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1`.
+
+Each timing variant retained 5,140 targets across 257 reference sessions.
+D+1/D+2 continuation produced 988/985 signals, with 968/965 known labels;
+recovery produced 1,308/1,305 signals, with 1,261/1,258 known labels.
+Unknown signal states were 2,618/2,620 for continuation and 2,572/2,574 for
+recovery. These are candidate events and conditional labels, not filled trades
+or a complete target population. Continuation's conditional MDE was about
+27.22/27.20bp, recovery's 35.96/36.09bp versus the assumed 33bp planning floor.
+No mean performance, winner or strategy verdict was measured in CC.
+
+The operator subsequently selected one limited both-pattern exploration,
+explicitly accepting recovery's power limitation and the observed-data claim
+scope. CLAUDE.md and Task CD record that new decision. CC is complete and
+must not be rerun to supply the comparison; CD reuses these saved inputs.
