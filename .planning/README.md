@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-173 documents and counting, which is past the point where `ls` is a
+174 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -289,6 +289,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-bs-large-liquid-equal-capital-cohorts.md`](rd-bs-large-liquid-equal-capital-cohorts.md) — Research Direction Task BS — equal assigned capital across five fixed controls
 - [`rd-bt-price-trend-comparison.md`](rd-bt-price-trend-comparison.md) — Research Direction Task BT — one fixed price-trend comparison using retained inputs
 - [`rd-ca-intraday-swing-research-charter.md`](rd-ca-intraday-swing-research-charter.md) — Research Direction Task CA — investigate feasible short-term scenarios before fixing the scope
+- [`rd-cb-intraday-universe-sources.md`](rd-cb-intraday-universe-sources.md) — Research Direction Task CB — dated top-20 source ranking and stored-minute coverage
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

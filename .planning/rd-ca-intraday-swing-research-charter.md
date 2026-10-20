@@ -318,3 +318,75 @@ not extraction completeness, historical eligibility or source truth.
 At this entry, final source review, required CI, normal merge and actual GCP
 inventory remain pending. No actual price/amount/event/return read or new
 performance experiment is included in this work unit.
+
+## 2026-10-20 — actual inventory completed and independently checked
+
+PR [#318](https://github.com/ckrhehfl/trading-engine/pull/318) merged normally
+at 10:30:45 UTC as `05b32bf57c28322fec856fb2f4a011cfd8c6b160` after the
+four required checks passed on both push and PR. Its tree equals separately
+reviewed source `abac0f8b0a5c2f68ea6e55d66e9bfd0b517d8dd0`. The isolated
+GCP research checkout advanced to that merge; the collector remained clean
+at `4ce85d714890b87f1a57ae89d4942660e41c0483` before and after execution.
+
+The registered metadata inventory completed once without retry or API calls.
+Run ID `53266ed0-c692-40f1-83c4-17ad550fe014` retained durable started and
+completed records. Private output SHA256 is
+`4c32bbb8eee4dad7177d1f3fe2c61b95ce003f998ffcf8e93df88c6eae82ccad`;
+publication receipt SHA256 is
+`93165e6a264c245fbad37d484751720f3eff72376ab94b8fbf6b989953fe4c3f`.
+The bounded query returned **18 stored symbols**, **257 distinct stored dates
+in the union**, **4,593 symbol/date groups** and **1,744,251 minute rows**.
+All rows have non-NULL/nonempty volume fields; all quote-volume fields are
+NULL. There are **12,248** rows with nonzero second offsets. Per-symbol date
+counts are 257 for nine names, 255 for eight and 240 for one.
+
+Observed wall time was 34.187463 seconds, CPU 6.014648 seconds and peak RSS
+219,268 KiB, within the registered limits. The independent producer-free
+verifier checked the full supplied aggregate output and its byte hash on GCP.
+Separate source and research-integrity reviewers then independently re-summed
+the publication receipt's per-symbol aggregates and checked the provenance
+links, returning PASS with no blocking findings. Their receipt review did
+not separately hash absent original output bytes, requery the DB or certify
+extraction completeness. The public source-review record is linked from PR #318.
+
+Counts do not prove complete trading sessions, numerical volume validity,
+tradability, a minute-price adjustment basis or bar availability semantics.
+NULL quote-volume means unrecorded turnover, not zero trading. Eighteen stored
+names are not the historical top 20; the deficit is not necessarily two names.
+Historical top-20 joining, event-frequency/own-dispersion calibration and new
+short-term performance experiments remain **zero**. The next started work is
+Task CB's fixed dated source/coverage join; it does not require turnover/VWAP
+reconstruction before investigating the first price hypotheses.
+
+## 2026-10-20 — pure pattern primitives prepared during source CI
+
+`research.intraday_pattern_events` now supplies two separate pure detectors:
+an opening-range breakout and a drop followed by recovery on a subsequent
+completed bar. They consume chronological five-minute bars with explicit
+availability times and caller-supplied parameters; they do not fetch data,
+normalize raw minute labels, fill orders, size positions or measure outcomes.
+No numerical actual calibration or final comparison family is adopted here.
+
+Validation occurs only as the prefix is consumed. The first event stops
+consumption, so a later invalid or missing bar cannot erase a known signal.
+Missing/duplicate/overlapping prefixes and invalid price/time inputs raise
+distinct errors. Fraction comparisons preserve the exact Decimal thresholds
+independently of the active Decimal precision. The recovery detector excludes
+a new-low bar from simultaneously confirming its own rebound.
+
+The explicit synthetic test file passed **61 tests in 1.05 seconds** in WSL.
+A separate fresh-context causal reviewer verified the two source/test byte
+hashes and independently reproduced **61 passing tests in 1.00 second**.
+Source SHA256 is
+`c6106880f704958e21c7390a19b5b0e6f8f87aae485d6e99546f6c3e9a5806db`;
+test SHA256 is
+`12dad10ac89a1cc8526587ece3d5d4cf8b6f2c494cbf77d6c6cdb9bdb10da991`.
+This was a precheck, not final commit/PR approval or actual-data verification.
+
+The integration obligations remain explicit: `None` also represents empty
+or truncated input, so an actual calibration must preserve separate observed-
+prefix/completeness diagnostics rather than count unknown input as no signal.
+An event needs its bound input artifact and parameter pins for independent
+reconstruction of its trigger price and threshold. Intraday units, source
+labels, realistic fills/costs, actual frequency and own dispersion still need
+their registered treatment. No actual frequency, return or edge was measured.

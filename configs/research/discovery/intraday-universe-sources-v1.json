@@ -1,0 +1,20 @@
+{
+  "id": "intraday-universe-sources-v1",
+  "mode": "discovery-universe-source-and-coverage-only",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "calendar": {"symbol": "KRX-INDEX:0001", "interval": "1d", "start": "2025-08-01", "end": "2026-09-23", "columns": ["symbol", "interval", "open_time_ms", "fetched_at"]},
+  "snapshot_dates": ["20250829", "20250930", "20251031", "20251128", "20251230", "20260130", "20260227", "20260331", "20260430", "20260529", "20260630", "20260731", "20260831"],
+  "services": ["stk_bydd_trd", "ksq_bydd_trd", "stk_isu_base_info", "ksq_isu_base_info"],
+  "requests": {"maximum": 52, "timeout_seconds": 20, "pause_seconds": 1, "maximum_response_bytes": 8388608, "automatic_retries": 0, "maximum_total_response_bytes": 268435456},
+  "selection": {"count": 20, "sort": ["market_cap_krw_descending", "short_code_ascending"], "source_labels": {"SECUGRP_NM": "주권", "KIND_STKCERT_TP_NM": "보통주", "ISIN_prefix": "KR7", "ISIN_issue_position_9": "0"}, "liquidity_certified": false, "historical_classification_certified": false, "historical_revision_status_certified": false, "no_replacement_for_missing_minutes": true},
+  "timing": {"variants": ["D+1", "D+2"], "available_at_kst": "08:30:00", "selected_at_kst": "08:30:00", "evidence_level": "assumed", "historical_api_availability_proven": false},
+  "source_database": "/home/minjun4897/trading-engine/python/data/var/klines.sqlite3",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "inventory_path": "/home/minjun4897/research-evidence/intraday-ca-inventory-20261020-v1/inventory.json",
+  "inventory_file_sha256": "4c32bbb8eee4dad7177d1f3fe2c61b95ce003f998ffcf8e93df88c6eae82ccad",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cb-universe-20261020-v1",
+  "execution": {"cpu_seconds": 120, "wall_seconds": 1500, "address_space_mib": 384, "nice": 10, "oom_score_adj": 1000, "source_checkout": "/home/minjun4897/research-checkouts/activity-discovery-20261005", "collector_changes": false},
+  "minute_price_access": false,
+  "event_or_return_access": false,
+  "eligibility_or_performance_certification": false
+}
