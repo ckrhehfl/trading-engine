@@ -318,3 +318,42 @@ not extraction completeness, historical eligibility or source truth.
 At this entry, final source review, required CI, normal merge and actual GCP
 inventory remain pending. No actual price/amount/event/return read or new
 performance experiment is included in this work unit.
+
+## 2026-10-20 — actual inventory completed and independently checked
+
+PR [#318](https://github.com/ckrhehfl/trading-engine/pull/318) merged normally
+at 10:30:45 UTC as `05b32bf57c28322fec856fb2f4a011cfd8c6b160` after the
+four required checks passed on both push and PR. Its tree equals separately
+reviewed source `abac0f8b0a5c2f68ea6e55d66e9bfd0b517d8dd0`. The isolated
+GCP research checkout advanced to that merge; the collector remained clean
+at `4ce85d714890b87f1a57ae89d4942660e41c0483` before and after execution.
+
+The registered metadata inventory completed once without retry or API calls.
+Run ID `53266ed0-c692-40f1-83c4-17ad550fe014` retained durable started and
+completed records. Private output SHA256 is
+`4c32bbb8eee4dad7177d1f3fe2c61b95ce003f998ffcf8e93df88c6eae82ccad`;
+publication receipt SHA256 is
+`93165e6a264c245fbad37d484751720f3eff72376ab94b8fbf6b989953fe4c3f`.
+The bounded query returned **18 stored symbols**, **257 distinct stored dates
+in the union**, **4,593 symbol/date groups** and **1,744,251 minute rows**.
+All rows have non-NULL/nonempty volume fields; all quote-volume fields are
+NULL. There are **12,248** rows with nonzero second offsets. Per-symbol date
+counts are 257 for nine names, 255 for eight and 240 for one.
+
+Observed wall time was 34.187463 seconds, CPU 6.014648 seconds and peak RSS
+219,268 KiB, within the registered limits. The independent producer-free
+verifier checked the full supplied aggregate output and its byte hash on GCP.
+Separate source and research-integrity reviewers then independently re-summed
+the publication receipt's per-symbol aggregates and checked the provenance
+links, returning PASS with no blocking findings. Their receipt review did
+not separately hash absent original output bytes, requery the DB or certify
+extraction completeness. The public source-review record is linked from PR #318.
+
+Counts do not prove complete trading sessions, numerical volume validity,
+tradability, a minute-price adjustment basis or bar availability semantics.
+NULL quote-volume means unrecorded turnover, not zero trading. Eighteen stored
+names are not the historical top 20; the deficit is not necessarily two names.
+Historical top-20 joining, event-frequency/own-dispersion calibration and new
+short-term performance experiments remain **zero**. The next started work is
+Task CB's fixed dated source/coverage join; it does not require turnover/VWAP
+reconstruction before investigating the first price hypotheses.

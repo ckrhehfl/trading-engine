@@ -20,21 +20,26 @@ Binding constraints remain in `CLAUDE.md`.
   intraday positions, upward continuation and post-drop recovery investigated
   separately. Desired portfolio-wide frequency is at least 15 new entries
   per week; actual opportunity and cost viability are unmeasured.
-- **Last completed evidence:** the saved daily-study ledger audit is recorded
-  in Task BT's 2026-10-20 BZ appendix. Local HEAD at intake is PR #317's merge
-  `2dd65fe`. That daily-study result is not evidence for this short-term goal.
+- **Last completed evidence:** CA's actual stored-metadata inventory completed
+  on PR #318 merge `05b32bf`. In its fixed spent window, 18 stored symbols
+  contribute 1,744,251 minute rows over a union of 257 dates. This is not a
+  historical top-20 target set or a completeness/tradability certificate.
+  Separate aggregate and receipt verification passed. The earlier daily-study
+  ledger audit remains in Task BT's BZ appendix; it is not evidence for this
+  short-term goal. New short-term performance experiments remain zero.
 - **Decision:** after declining the original top-10 / maximum-three-session
   proposal and requesting public research, the operator selected package 1.
   No scope-choice question remains pending. Exact universe/timing, event,
   execution, cost, capital and calibration specifications still need to be
   fixed before their corresponding actual-data access or performance runs.
-- **Work performed:** source/design investigation and the bounded metadata
-  inventory implementation are recorded in
-  `.planning/rd-ca-intraday-swing-research-charter.md`. Synthetic verification
-  is complete; actual inventory, performance and GCP execution are not yet done.
-- **Next action:** complete final source/integrity review, CI and normal merge,
-  then run the registered metadata inventory once in the isolated research
-  checkout. Use that result for the calibration's bounded input plan. Use
+- **Work performed:** CA source/design work, tests, reviews, required CI,
+  normal merge, isolated GCP execution and actual aggregate verification are
+  complete. The collector remains separately pinned and unchanged. CB's
+  dated source ranking and coverage join implementation has now started in
+  `.planning/rd-cb-intraday-universe-sources.md`; no actual CB read has run.
+- **Next action:** complete the fixed monthly source/coverage join under its
+  registered bounds, then use the actual gaps for the minimum calibration
+  input plan. Do not backdate the stored names as historical top 20. Use
   an opening-range breakout as the first continuation design, keeping the
   post-drop recovery hypothesis separate. Do not inherit BR/BT/BZ's
   study-specific underpower exceptions or treat an intake as a run permit.
