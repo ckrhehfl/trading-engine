@@ -143,3 +143,42 @@ without independently authenticating the original CB source. These boundaries
 are retained. Final exact-commit source/integrity reviews, required CI, normal
 merge, isolated GCP reflection, one actual comparison and independent actual
 output verification remain pending at this source snapshot.
+
+## 2026-10-20 — actual comparison and arithmetic verification completed
+
+PR #321 merged normally as `d1bc65e1959886300d5ce3c49493fc95d60e56b4`
+after both separate final reviews, all eight push/PR checks and a final
+zero-unresolved-thread query. Both full Python suites passed 8,728 cases with
+three skips. The isolated GCP checkout ran the registered comparison once:
+`471dde66-9388-4ea6-89cf-88489bded4b7`. The collector stayed clean at `4ce85d7`.
+
+Frozen producer-independent raw replay passed. A separate receipt-only review
+passed 2,099 arithmetic/lineage checks, with maximum floating-point difference
+1.73e-18. It did not rehash absent remote evidence or replay the raw archive;
+that is distinct from the frozen verifier's actual GCP execution. The durable
+complete record, including limitations and the resource finding, is
+https://github.com/ckrhehfl/trading-engine/pull/321#issuecomment-6292947296.
+
+Complete pairs were 884/881 for continuation and 1,109/1,106 for recovery
+at D+1/D+2. Continuation's assumed-cost mean was -40.036475/-40.117082bp,
+with peer-relative mean +1.322632/+1.227352bp. Recovery's assumed-cost mean
+was -32.130400/-31.997087bp, peer-relative -6.484998/-6.427806bp. These are
+conditional sampled two-hour price responses, not realized portfolio PnL.
+No winner, strategy pass, direction closure or promotion was established.
+
+Report SHA256:
+`830b69ddbf94fe3ee9297912df381e72c55463fc92ddbe5b4c296ea24743846a`.
+Receipt SHA256:
+`51c32e4033733b60d62878a5b4865a9df16bf3e232c16415a78d337c191d3963`.
+The new canonical span has two records and 8,158 bytes, offsets
+5,508,948–5,517,106, SHA256
+`a795c5fc456053aeb99e10b3dd7abf413d9bd8df9f10406636250abb99109605`.
+
+Runtime conformance is NOT certified: reported CPU 351.748990 seconds
+exceeds the registered 300 seconds by 51.748990 seconds (17.249663%). The
+wrapper configured RLIMIT_CPU but did not retain readback or final budget
+assertion. The reason it completed beyond that reported limit is unconfirmed.
+Wall was 355.134352 seconds and peak RSS 342,500KiB; RSS does not certify
+address space. Preserve this run without retry or retrospective limit change.
+Task CE begins budget enforcement/readback/postflight repair before its new
+fixed-horizon study, under the operator's subsequent direct continuation.
