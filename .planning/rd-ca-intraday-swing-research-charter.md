@@ -357,3 +357,36 @@ Historical top-20 joining, event-frequency/own-dispersion calibration and new
 short-term performance experiments remain **zero**. The next started work is
 Task CB's fixed dated source/coverage join; it does not require turnover/VWAP
 reconstruction before investigating the first price hypotheses.
+
+## 2026-10-20 — pure pattern primitives prepared during source CI
+
+`research.intraday_pattern_events` now supplies two separate pure detectors:
+an opening-range breakout and a drop followed by recovery on a subsequent
+completed bar. They consume chronological five-minute bars with explicit
+availability times and caller-supplied parameters; they do not fetch data,
+normalize raw minute labels, fill orders, size positions or measure outcomes.
+No numerical actual calibration or final comparison family is adopted here.
+
+Validation occurs only as the prefix is consumed. The first event stops
+consumption, so a later invalid or missing bar cannot erase a known signal.
+Missing/duplicate/overlapping prefixes and invalid price/time inputs raise
+distinct errors. Fraction comparisons preserve the exact Decimal thresholds
+independently of the active Decimal precision. The recovery detector excludes
+a new-low bar from simultaneously confirming its own rebound.
+
+The explicit synthetic test file passed **61 tests in 1.05 seconds** in WSL.
+A separate fresh-context causal reviewer verified the two source/test byte
+hashes and independently reproduced **61 passing tests in 1.00 second**.
+Source SHA256 is
+`c6106880f704958e21c7390a19b5b0e6f8f87aae485d6e99546f6c3e9a5806db`;
+test SHA256 is
+`12dad10ac89a1cc8526587ece3d5d4cf8b6f2c494cbf77d6c6cdb9bdb10da991`.
+This was a precheck, not final commit/PR approval or actual-data verification.
+
+The integration obligations remain explicit: `None` also represents empty
+or truncated input, so an actual calibration must preserve separate observed-
+prefix/completeness diagnostics rather than count unknown input as no signal.
+An event needs its bound input artifact and parameter pins for independent
+reconstruction of its trigger price and threshold. Intraday units, source
+labels, realistic fills/costs, actual frequency and own dispersion still need
+their registered treatment. No actual frequency, return or edge was measured.

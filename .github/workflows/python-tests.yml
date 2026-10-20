@@ -132,6 +132,10 @@ jobs:
             tests/test_conftest_isolation.py::test_the_guard_is_installed_for_an_unmarked_test \
             tests/test_conftest_isolation.py::test_loopback_still_works_because_the_suite_depends_on_it
 
+          # PR #319 found a document ownership error only after the full suite.
+          # Catch that inexpensive guard first; the complete suite still follows.
+          uv run --frozen python -m pytest -q tests/test_docs_do_not_duplicate_claude_md.py
+
           uv run --frozen python -m pytest -q
 
       - name: Assert no run log was written

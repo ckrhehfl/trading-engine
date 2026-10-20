@@ -101,3 +101,26 @@ does not yet cover the subsequently added producer-to-independent-verifier
 integration test. Private helper review, that integration, final source and
 integrity review, actual CI, normal merge and actual execution are separate
 remaining steps. No actual CB input or new strategy result was examined.
+
+## 2026-10-20 — full CI found a handoff-document ownership defect
+
+On source `a28c0e1a1c85e43e8b99d01881fc25a735b3833e`, the PR Python CI
+completed with **1 failed, 8,571 passed and 3 skipped** in 1,672.14 seconds.
+The sole failing case was the handoff document's repeated comma-formatted
+inventory count, caught by `test_docs_do_not_duplicate_claude_md`. The exact
+observed count already survives in CA's append-only completion record.
+The handoff now points to that owner instead of repeating the measurement.
+The test was not weakened and the number was not reformatted to evade it.
+No GCP data access occurred while CI was incomplete or failed.
+
+The same PR also includes CA's already completed pure detector primitives
+and tests, rather than a separate source-only delivery cycle. They remain
+unused by this CB acquisition and authorize no price/outcome access. The
+final expanded diff needs its own separate source/integrity delta review and
+all required CI checks before normal merge. The earlier review commit is
+preserved as earlier evidence, not approval of the changed final source.
+
+The explicit document-ownership test module now passes locally: **54 tests in
+1.56 seconds**. CI also runs that existing guard before its full suite, so a
+repeat fails early instead of waiting for the entire suite; the full suite,
+network/log isolation checks and all four required checks remain mandatory.

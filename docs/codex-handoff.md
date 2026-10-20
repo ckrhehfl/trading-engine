@@ -21,8 +21,8 @@ Binding constraints remain in `CLAUDE.md`.
   separately. Desired portfolio-wide frequency is at least 15 new entries
   per week; actual opportunity and cost viability are unmeasured.
 - **Last completed evidence:** CA's actual stored-metadata inventory completed
-  on PR #318 merge `05b32bf`. In its fixed spent window, 18 stored symbols
-  contribute 1,744,251 minute rows over a union of 257 dates. This is not a
+  on PR #318 merge `05b32bf`. Its exact counts and receipt fingerprints live
+  in CA's appended completion record. This inventory is not a
   historical top-20 target set or a completeness/tradability certificate.
   Separate aggregate and receipt verification passed. The earlier daily-study
   ledger audit remains in Task BT's BZ appendix; it is not evidence for this
@@ -37,6 +37,9 @@ Binding constraints remain in `CLAUDE.md`.
   complete. The collector remains separately pinned and unchanged. CB's
   dated source ranking and coverage join implementation has now started in
   `.planning/rd-cb-intraday-universe-sources.md`; no actual CB read has run.
+  The two pure price-pattern primitives and their synthetic verification are
+  recorded in CA's subsequent implementation entry. They have not measured
+  actual signals or executed a performance comparison.
 - **Next action:** complete the fixed monthly source/coverage join under its
   registered bounds, then use the actual gaps for the minimum calibration
   input plan. Do not backdate the stored names as historical top 20. Use
