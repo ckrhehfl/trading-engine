@@ -124,3 +124,59 @@ The explicit document-ownership test module now passes locally: **54 tests in
 1.56 seconds**. CI also runs that existing guard before its full suite, so a
 repeat fails early instead of waiting for the entire suite; the full suite,
 network/log isolation checks and all four required checks remain mandatory.
+
+## 2026-10-20 — actual source/coverage run completed
+
+Final source `ece31aa0855fded314464476fc8cb0b147c5446b` passed all four
+required checks on both push and PR. PR #319 merged normally at 11:54:12 UTC
+as `4ca92c95630b90565262e65b0df7d17b2683ea04`; the reviewed and merged
+trees are identical. The PR full Python suite passed 8,633 cases with three
+skips in 1,449.56 seconds. The isolated GCP research checkout advanced to this
+merge; the collector stayed clean at its existing pinned source before and
+after the one registered run.
+
+Run `56203ac9-fda3-4977-bc2a-3a0a1c53cfcd` completed with thirteen monthly
+snapshots and the fixed fifty-two responses, without retries. Its private
+report SHA256 is
+`f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91`;
+local publication receipt SHA256 is
+`4fc0b834eb3db270531a32c33b80b24e5733434dcdd592ad67cc297fcb994512`.
+The frozen producer-independent verifier recomputed the saved-response
+joins, exact cap/share arithmetic, ranks, timing variants and stored-coverage
+counts on GCP without a second database or API query.
+
+Both timing variants contain **257 observed reference sessions**, twenty
+targets each, totaling **5,140 target symbol/sessions**, with **31 unique
+target codes** over the period. D+1 has **2,644 stored** and **2,496 missing**
+symbol/sessions; D+2 has **2,642 stored** and **2,498 missing**. Each variant
+has twelve distinct codes with at least one stored target/session and
+twenty-five codes with at least one missing target/session. Those two code
+sets overlap; do not sum them as disjoint populations. Stored presence is not
+proof of complete or valid intraday prices, tradability or final eligibility.
+No stored rows remains an unknown absence reason, not a zero-return trade.
+
+Observed wall time was 133.870631 seconds, CPU 7.067282 seconds and peak RSS
+163,324 KiB, at nice 10 within the registered bounds. The source-calendar and
+CA aggregate lineage checks passed, while calendar completeness, historical
+availability/classification/revision, liquidity and performance certification
+remain false. The report is a source/coverage result, not a signal result.
+
+The actual gap does not justify replacing missing leaders with stored
+survivors. Task CC will preserve this complete matrix, explicitly unknown
+where input is absent, for a bounded first frequency and conditional own-label
+dispersion calibration. It cannot certify the full target family's power or
+profitability from the roughly half-covered input. Separate receipt arithmetic
+and interpretation review is pending at this entry.
+
+## 2026-10-20 — separate actual receipt review completed
+
+The separate research-integrity reviewer re-read only the local publication
+receipt and independently recomputed the thirteen monthly sums, each
+stored-plus-missing identity, the full target count and the non-disjoint code
+counts. The reviewer returned PASS without blocking findings and confirmed
+the receipt's own byte SHA, supplied source/specification/helper/verifier
+lineage, run/merge identities, false certifications and unchanged collector
+state. This receipt-only review did not independently hash absent original
+report/response bytes, requery a database/API or certify extraction and
+historical membership truth. The frozen remote verifier performed the separate
+saved-raw-byte calculations; these two evidence scopes remain distinct.
