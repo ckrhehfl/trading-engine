@@ -31,6 +31,7 @@ ROOT = cd.ROOT
 SPECIFICATION_ID = "intraday-pattern-horizons-v1"
 MODE = "limited-exploratory-fixed-horizon-price-label-comparison"
 SPECIFICATION_PATH = ROOT / "configs/research/discovery/intraday-pattern-horizons-v1.json"
+RECOVERY_SPECIFICATION_PATH = ROOT / "configs/research/discovery/intraday-pattern-horizons-recovery-v1.json"
 HORIZONS = (5, 15, 30, 60, 120)
 WINDOW = dict(cd.WINDOW)
 PARAMETERS = {**cd.PARAMETERS, "response_horizons_minutes": list(HORIZONS),
@@ -41,6 +42,8 @@ REGISTERED_PATHS = {
     "input_archive_path": cd.REGISTERED_PATHS["input_archive_path"],
     "output_directory": "/home/minjun4897/research-evidence/intraday-ce-horizons-20261020-v1",
     "canonical_runs_path": cd.REGISTERED_PATHS["canonical_runs_path"]}
+RECOVERY_REGISTERED_PATHS = {**REGISTERED_PATHS,
+    "output_directory": "/home/minjun4897/research-evidence/intraday-cf-horizons-recovery-20261021-v1"}
 UPSTREAM_SHA256 = "830b69ddbf94fe3ee9297912df381e72c55463fc92ddbe5b4c296ea24743846a"
 INPUT_COMPRESSED_SHA256 = cd.INPUT_COMPRESSED_SHA256
 INPUT_STREAM_SHA256 = cd.INPUT_STREAM_SHA256
@@ -65,9 +68,12 @@ class HorizonRefusal(RuntimeError):
     """Stable reason codes deliberately omit raw evidence values."""
 
 
-def validate_spec(spec: Mapping) -> None:
+def validate_spec(spec: Mapping, *, recovery: bool = False) -> None:
+    if type(recovery) is not bool:
+        raise HorizonRefusal("invalid_registration_selector")
     expected = {"id": SPECIFICATION_ID, "mode": MODE, "window": WINDOW,
-        "parameters": PARAMETERS, "resources": RESOURCES, **REGISTERED_PATHS,
+        "parameters": PARAMETERS, "resources": RESOURCES,
+        **(RECOVERY_REGISTERED_PATHS if recovery else REGISTERED_PATHS),
         "upstream_sha256": UPSTREAM_SHA256, "input_compressed_sha256": INPUT_COMPRESSED_SHA256,
         "input_stream_sha256": INPUT_STREAM_SHA256}
     if _canonical(spec) != _canonical(expected):
@@ -488,11 +494,12 @@ def run_horizons(*, specification_path: str | Path, upstream_path: str | Path,
     checkpoint()
     spec_path, upstream, archive, output, log = map(Path,
         (specification_path, upstream_path, input_archive_path, output_directory, runs_path))
-    if spec_path.resolve() != SPECIFICATION_PATH.resolve():
+    registered = {SPECIFICATION_PATH.resolve(): False, RECOVERY_SPECIFICATION_PATH.resolve(): True}
+    if spec_path.resolve() not in registered:
         raise HorizonRefusal("unregistered_specification_path")
     spec_bytes = spec_path.read_bytes()
     spec, spec_sha = json.loads(spec_bytes), hashlib.sha256(spec_bytes).hexdigest()
-    validate_spec(spec)
+    validate_spec(spec, recovery=registered[spec_path.resolve()])
     paths = (spec_path, upstream, archive, output, log)
     for path, key in zip((upstream, archive, output, log), REGISTERED_PATHS, strict=True):
         if not path.is_absolute() or path.resolve() != Path(spec[key]).resolve():

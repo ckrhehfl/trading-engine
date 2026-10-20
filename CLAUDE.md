@@ -56,6 +56,19 @@ Do not retrospectively change CD's run or resource specification. All other
 registration, independent verification, review, CI and operational guards
 remain. Performed work: `.planning/rd-ce-intraday-response-horizons.md`.
 
+**Task CF engineering recovery of the same CE extension — 2026-10-21.**
+CE produced its report but failed the shared CPU budget during independent
+verification; it is not a completed verified experiment. Preserve that attempt,
+its frozen sources, exclusive output and failed receipt. Existing continuation
+authorizes a separately registered engineering recovery of the same comparison,
+after synthetic profiling and computationally equivalent verification fixes.
+Keep the identical study, inputs, horizons, cohort, unknowns, costs, resampling
+and shared 300-second CPU/512MiB/1,200-second wall limits. Do not give verification
+a second budget or silently extend the old run. A new exclusive recovery output,
+new durable start, separate final reviews, required CI and normal merge precede
+one recovery execution; no automatic retry or promotion follows. Performed
+failure audit and recovery work: `.planning/rd-cf-horizon-verification-recovery.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -961,7 +974,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 177 documents,
+them. `.planning/README.md` carries an index of all 178 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

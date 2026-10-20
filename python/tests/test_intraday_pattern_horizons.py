@@ -296,6 +296,40 @@ def test_expected_specification_and_fixed_actual_cohort_counts():
     assert ce.RESOURCES["wall_seconds"] == 1200
 
 
+def test_recovery_registration_changes_only_exclusive_output_and_keeps_original_immutable():
+    original = json.loads(ce.SPECIFICATION_PATH.read_bytes())
+    recovery = json.loads(ce.RECOVERY_SPECIFICATION_PATH.read_bytes())
+    assert {key for key in original if original[key] != recovery[key]} == {"output_directory"}
+    assert recovery["output_directory"] == ce.RECOVERY_REGISTERED_PATHS["output_directory"]
+    ce.validate_spec(recovery, recovery=True)
+    with pytest.raises(ce.HorizonRefusal, match="scope_mismatch"):
+        ce.validate_spec(recovery)
+    with pytest.raises(ce.HorizonRefusal, match="scope_mismatch"):
+        ce.validate_spec(original, recovery=True)
+
+
+@pytest.mark.parametrize("change", ["cpu", "bootstrap", "horizons", "output", "pin"])
+def test_recovery_has_no_scope_or_resource_waiver(change):
+    spec = json.loads(ce.RECOVERY_SPECIFICATION_PATH.read_bytes())
+    if change == "cpu":
+        spec["resources"]["cpu_seconds"] = 301
+    elif change == "bootstrap":
+        spec["parameters"]["bootstrap_draws"] = 1999
+    elif change == "horizons":
+        spec["parameters"]["response_horizons_minutes"] = [5]
+    elif change == "output":
+        spec["output_directory"] = ce.REGISTERED_PATHS["output_directory"]
+    else:
+        spec["upstream_sha256"] = "f" * 64
+    with pytest.raises(ce.HorizonRefusal, match="scope_mismatch"):
+        ce.validate_spec(spec, recovery=True)
+
+
+def test_registration_selector_is_not_a_truthy_scope_override():
+    with pytest.raises(ce.HorizonRefusal, match="invalid_registration_selector"):
+        ce.validate_spec(specification(), recovery=1)
+
+
 def test_archive_stream_hash_framing_and_checkpoints(tmp_path, monkeypatch):
     path = tmp_path / "synthetic.jsonl.gz"
     line = b'{"synthetic":true}\n'
@@ -422,3 +456,19 @@ def test_runner_registered_cohort_is_not_silently_changed(runner, monkeypatch):
     with pytest.raises(ce.HorizonRefusal, match="registered_complete_pair_population_changed"):
         ce.run_horizons(**runner)
     assert statuses(runner) == ["started", "failed"]
+
+
+def test_runner_selects_only_the_registered_recovery_path(runner, monkeypatch):
+    original_spec = runner["specification_path"]
+    recovery_spec = original_spec.with_name("recovery.json")
+    recovery_output = runner["output_directory"].with_name("recovery-output")
+    paths = {**ce.REGISTERED_PATHS, "output_directory": str(recovery_output)}
+    monkeypatch.setattr(ce, "RECOVERY_SPECIFICATION_PATH", recovery_spec)
+    monkeypatch.setattr(ce, "RECOVERY_REGISTERED_PATHS", paths)
+    recovery_spec.write_bytes(ce._canonical({**specification(), **paths}))
+    runner.update(specification_path=recovery_spec, output_directory=recovery_output)
+    result = ce.run_horizons(**runner)
+    assert result["status"] == "completed" and statuses(runner) == ["started", "completed"]
+    assert original_spec.exists() and not recovery_output.with_name("output").exists()
+    with pytest.raises(ce.HorizonRefusal, match="existing_output"):
+        ce.run_horizons(**runner)
