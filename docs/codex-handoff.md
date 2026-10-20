@@ -1,7 +1,7 @@
 # Claude to Codex handoff
 
 Original handoff recorded on 2026-10-05 against HEAD `4ce85d7` (PR #221).
-Current research scope and source status last updated on 2026-10-09 KST,
+The historical source-status overview below was last updated on 2026-10-09 KST,
 including the operator's numeric-boundary decision, Task AR's completed
 liquidity acquisition, Task AS's listing/classification-source evidence and
 Task AT's date-only price-panel mapping, Task AU's bar-state audit and
@@ -14,7 +14,32 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current research scope — operator decision 2026-10-07
+## Current intake — operator steering 2026-10-20
+
+- **Goal, selected package 1:** leading Korean stocks around the top 20,
+  intraday positions, upward continuation and post-drop recovery investigated
+  separately. Desired portfolio-wide frequency is at least 15 new entries
+  per week; actual opportunity and cost viability are unmeasured.
+- **Last completed evidence:** the saved daily-study ledger audit is recorded
+  in Task BT's 2026-10-20 BZ appendix. Local HEAD at intake is PR #317's merge
+  `2dd65fe`. That daily-study result is not evidence for this short-term goal.
+- **Decision:** after declining the original top-10 / maximum-three-session
+  proposal and requesting public research, the operator selected package 1.
+  No scope-choice question remains pending. Exact universe/timing, event,
+  execution, cost, capital and calibration specifications still need to be
+  fixed before their corresponding actual-data access or performance runs.
+- **Work performed:** source/design investigation and the bounded metadata
+  inventory implementation are recorded in
+  `.planning/rd-ca-intraday-swing-research-charter.md`. Synthetic verification
+  is complete; actual inventory, performance and GCP execution are not yet done.
+- **Next action:** complete final source/integrity review, CI and normal merge,
+  then run the registered metadata inventory once in the isolated research
+  checkout. Use that result for the calibration's bounded input plan. Use
+  an opening-range breakout as the first continuation design, keeping the
+  post-drop recovery hypothesis separate. Do not inherit BR/BT/BZ's
+  study-specific underpower exceptions or treat an intake as a run permit.
+
+## Historical large/liquid scope — operator decision 2026-10-07
 
 The operator selected **large, highly liquid common stocks** for the next
 activity study. Samsung Electronics and SK Hynix illustrate the intended
