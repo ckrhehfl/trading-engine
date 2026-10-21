@@ -1,0 +1,28 @@
+{
+  "id": "intraday-peer-context-comparison-v1",
+  "mode": "fixed-opening-breakout-positive-original-peer-context-conditional-per-entry-comparison",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {
+    "scope": "opening_range_breakout_only_both_original_membership_variants_recovery_retained_as_upstream_evidence",
+    "condition": "original_cg_event_prior30m_return_gt_original_equal_weight_peer_mean_and_peer_mean_strictly_gt_zero",
+    "cohort": "all_original_cg_passing_complete_openings_vs_nested_positive_peer_subset_full_targets_unknowns_original120minute_cohort_retained",
+    "entry_exit": "same_original_three_minute_wait_entry_open_and_time_only_entry_plus30minute_exit_open",
+    "unit": "conditional_per_entry_equal_hypothetical_cash_price_change_sample_counts_intentionally_differ_selection_axis",
+    "cost": "subtract_exact33_over10000_per_event_same_assumed_cost_cancels_in_difference",
+    "comparison": "filtered_minus_original_conditional_mean_not_matched_pair_exit_or_portfolio_exposure_equal_causal_effect",
+    "power": "retain_exact_two_co_selected_and_eight_cm_own_sizing_require_original_and_filtered_prerequisites_no_remeasurement_or_paired_error_substitution",
+    "missingness": "no_zero_fill_no_rejected_arm_no_rescue_no_excluded_name_replacement_no_new_unknowns",
+    "opportunities": "original_filtered_retained_removed_counts_and_all_reference_iso_week_counts_not_actual_trades_or_independent_n",
+    "uncertainty": "nested_influence_naive_and_session_cluster_joint_circular_five_session_ratio_mean_bootstrap2000_seed0_maximum_se_descriptive_normal95_interval",
+    "influence": "n_over_m_times_selected_times_y_minus_mu_selected_minus_y_minus_mu_all",
+    "bootstrap": "joint_original_filtered_session_totals_and_counts_recompute_both_ratio_means_each_draw_discard_zero_denominator_draws_explicitly",
+    "upstream_reuse": "sole_pinned_verified_co_report_saved_contract_validation_no_raw_or_cg_report_read_or_prior_truth_recertification",
+    "output_scope": "two_timing_cells_original_filtered_price_cost_and_nested_mean_difference_descriptions_no_p_value_winner_edge_or_promotion"
+  },
+  "upstream_sha256": "f615f2f91ed5ccea08b0dd450e0b49e1f5f32b47467dd0cf030cedb1dccb4da2",
+  "upstream_specification_sha256": "b1371afd86f6633215e983d32bc68fa5167b53d11b520d8ae5a9c270d49c37fc",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-co-peer-context-20261022-v1/report.json",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cp-peer-context-comparison-20261022-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}

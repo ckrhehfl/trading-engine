@@ -8,6 +8,14 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CP fixed peer-context comparison — authorized continuation 2026-10-22.**
+After CO's actual own-sizing passed, continue the same request with one
+separately registered conditional comparison of original continuation entries
+and the fixed positive-peer subset. Performed design and boundaries are in
+`.planning/rd-cp-peer-context-comparison.md`. Preserve all prior evidence and
+qualifications; unequal selected-entry counts are explicit, not a matched
+exposure/portfolio claim or a promotion route. No old power waiver transfers.
+
 **Task CO fixed peer-context entry calibration — operator continuation 2026-10-22.**
 Keep the same leading-stock universe and original three-minute entry, testing
 one positive pre-entry peer-context condition on existing continuation signals.
@@ -1118,7 +1126,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 187 documents,
+them. `.planning/README.md` carries an index of all 188 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
