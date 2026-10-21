@@ -115,3 +115,51 @@ Frozen private closure SHA256:
 
 At this snapshot final exact-source distinct source/integrity reviews, actual
 required CI and normal merge remain before the single registered execution.
+
+## 2026-10-21 — actual comparison completed after normal PR #325 merge
+
+Reviewed source `3c227c23065946f9fd73d54127e75bb8742d9826` normally
+merged as `a767135b2331b14cb0e0509425b6cc6b85a8bff7`; trees matched.
+Fresh distinct source and integrity reviews read the full final diff and four
+frozen private files, matching every hash. Independent named test executions
+each passed206 tests with one existing skip in46.77/45.62s. Findings:none.
+All eight final push/PR checks passed; full Python jobs passed8,927 tests,
+three skips, in1,115.21s/1,777.44s. Final reviewed head remained unchanged,
+threads were zero/no next page and merge state CLEAN; no bypass was used.
+[Review record](https://github.com/ckrhehfl/trading-engine/pull/325#issuecomment-6308372825).
+
+Actual run `296fdf92-8eb7-47c2-9c94-3b77476aded0` completed production,
+standalone supplied-report verification and final publication within one
+shared budget: absolute CPU20.922657566s, user+system20.922645s,
+wall23.191882131s, peak RSS395,104KiB. Configured/read-back CPU300s,
+AS536,870,912 bytes and nice10 held across phases. Isolated source reached
+the normal merge; collector source stayed clean at4ce85d7. The two immutable
+reports were the only market-evidence inputs; no raw archive/DB/API read,
+collector restart or reserved window was used.
+
+Report SHA256`f758e48e7aa0431f9dc2ea1cb50f8925bfbd8588669fb99a50c87ca334fbf028`;
+specification`dcba9be7b31d30474c39b011bc0fc8b58542951269916e54c7fc19d4c44b0abe`;
+local receipt `var/ch-entry-strength-publication.json`
+SHA256`532d3d8ffdd5cc692682d18cd379d0c9402616044a55100f3ff6e780f2a71e8a`.
+The new canonical span alone was retained:two records,10,759 bytes,
+offsets5,546,494..5,557,253, SHA256
+`8270f55b3ae8778b3a5ec55514bf9f93f5017615eba8ad8c7fa7f7453fdf5c81`.
+
+All sixteen selected event means after assumed33bp costs were negative.
+Continuation gross means were negative at all five horizons in both timing
+variants. Its paired excess ranged from-1.2005bp to+1.7307bp; at the largest
+excess the paired design SE was4.2185bp. Recovery was below original peers
+at all allowed horizons; its30-minute gross mean was only+0.2322..+0.2880bp.
+Selected counts remained787/377 for D+1 and785/376 for D+2, with all original
+targets/unknowns retained. Recovery60/120-minute new means remained absent.
+No performance certification, horizon winner, closure or promotion followed.
+
+A distinct receipt-only audit passed7,171 internal arithmetic/identity checks,
+including counts, cost shifts, exact medians, month/symbol weighted aggregates,
+paired errors, own-MDE formulas, shared-budget phases and canonical metadata.
+It did not independently rehash remote files or repeat raw verification.
+The standalone verifier separately checked new arithmetic from the pinned
+reports. Full exact results and qualifications:
+[Completion record](https://github.com/ckrhehfl/trading-engine/pull/325#issuecomment-6308804481).
+The operator subsequently requested the fixed post-signal price-path diagnosis
+recorded in Task CI; no earlier-entry/exit policy was selected or tested here.

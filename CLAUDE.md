@@ -102,6 +102,26 @@ authority follows. Ordinary logging, source pins, separate final reviews, CI,
 normal merge, single shared budget and independent actual-output verification
 remain binding. Performed work: `.planning/rd-ch-entry-strength-comparison.md`.
 
+**Task CI fixed signal-path diagnostic — operator request 2026-10-21.**
+The operator requested examining whether a cost-sized movement occurred after
+the fixed signals and whether the existing entry was late. Keep CH's frozen
+selected-complete masks, original full target/unknown matrices, price basis,
+timing variants and eight approved horizon ranges. Reopen only the registered
+original archive plus the pinned verified CH report after the ordinary actual
+execution gates. Separate movement before assumed signal availability, the
+remaining wait until the existing entry, and movement after entry. Hindsight
+high/low envelopes and cost crossings are descriptive opportunities, never
+fillable exits, earlier-entry returns, a new directional-payoff comparison or
+a strategy pass. Do not apply a mean-return power gate to an extremum that is
+positive by construction, and do not use that distinction to waive any future
+entry/exit family's own sizing prerequisite. Retain ambiguous within-minute
+ordering, genuine pre-entry missingness and the original future-completeness
+selection limitation. No new thresholds, optimal exit/horizon, control-path
+performance comparison, direction closure, reserved access or promotion follows.
+Existing registration, source/runtime pins, separate reviews, required CI,
+normal merge, single shared budget and independent actual-output verification
+remain. Performed design/implementation: `.planning/rd-ci-signal-path-diagnostics.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -1007,7 +1027,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 180 documents,
+them. `.planning/README.md` carries an index of all 181 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

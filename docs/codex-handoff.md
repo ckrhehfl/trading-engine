@@ -14,6 +14,23 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — operator request 2026-10-21, Task CI
+
+CH completed its registered selected price-response comparison after normal
+PR #325 merge. The standalone arithmetic verification, one shared budget and
+separate receipt audit passed. Its appended ledger and PR completion record
+own exact identities, figures and qualifications. No strategy was qualified
+or research direction closed.
+
+The operator requested diagnosing the same fixed signals' price paths: cost-
+sized movement and where it lies relative to signal availability and original
+entry. CI preserves the existing population, masks and allowed horizons and
+reuses the pinned CH report plus original archive. Hindsight extrema and
+crossing times are opportunity descriptions, not fillable exits or earlier-
+entry policy returns. No choice is pending at this snapshot; CI source work
+has begun and no CI actual input has been opened. Scope and execution guards
+are in `.planning/rd-ci-signal-path-diagnostics.md`.
+
 ## Current intake — operator choice 2026-10-21, Task CH
 
 CG completed one registered causal-feature calibration after normal PR #324
