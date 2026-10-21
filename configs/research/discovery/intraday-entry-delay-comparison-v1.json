@@ -1,0 +1,30 @@
+{
+  "id": "intraday-entry-delay-comparison-v1",
+  "mode": "fixed-exit-clock-one-vs-three-minute-entry-comparison",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {
+    "response_horizons_minutes": {"opening_range_breakout": [5, 15, 30, 60, 120], "post_drop_recovery": [5, 15, 30]},
+    "cost_floor_bps": "33",
+    "cohort": "exact_ch_selected_complete_mask_no_reselection_or_short_horizon_rescue",
+    "decision": "original_signal_bar_end_plus_two_minutes_assumed",
+    "current_entry": "strict_next_five_minute_boundary_after_decision_exact_three_minute_wait",
+    "earlier_entry": "decision_plus_one_minute_exact_two_minutes_before_current_entry",
+    "exit": "original_current_entry_plus_original_horizon_unchanged_for_both_labels",
+    "price_label": "terminal_minute_close_divided_by_entry_minute_open_minus_one_all_intervening_minutes_valid",
+    "label_availability": "unchanged_exit_plus_two_minutes_assumed_future_label_never_selection_feature",
+    "missingness": "earlier_extra_two_minutes_unknown_keeps_full_selected_population_and_requires_choice_current_contradiction_refuses",
+    "power": "retain_pinned_ck_current_and_earlier_own_dispersion_require_both_prerequisites_without_remeasurement",
+    "resampling": "maximum_naive_session_cluster_circular_five_session_bootstrap_2000_draws_seed_zero",
+    "upstream_reuse": "pinned_verified_ck_report_only_no_raw_reconstruction_or_reselection",
+    "unit": "same_hypothetical_cash_budget_per_original_event_each_arm_uses_its_own_entry_open",
+    "cost": "subtract_exact_33_over_10000_from_each_event_both_arms_same_assumption",
+    "comparison": "paired_earlier_minus_current_at_unchanged_original_exit_costs_cancel",
+    "uncertainty": "paired_difference_maximum_naive_session_cluster_circular_five_session_bootstrap_2000_draws_seed_zero_descriptive_normal_95_interval",
+    "output_scope": "all_sixteen_fixed_cells_conditional_price_label_comparison_no_winner_or_executable_portfolio"
+  },
+  "upstream_sha256": "3edf951d517dab8f6849f0c2b8d7ed206a89e99ebf138a33052f0a0450611cb8",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-ck-entry-delay-20261021-v1/report.json",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cl-entry-delay-comparison-20261021-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}

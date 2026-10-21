@@ -174,3 +174,55 @@ The author's final explicitly named combined WSL bundle passed246 tests/
 `var/test_ck_entry_delay_independent.py` and
 `var/test_ck_entry_delay_publication.py`. No production/private source changed
 after that run; this final verification entry only appends its measured result.
+
+## 2026-10-21 — normal merge, completed actual calibration and next prerequisite
+
+Distinct fresh source reviewer `/root/ck_source_review` and research-integrity
+reviewer `/root/ck_integrity_review` covered final source
+`11e522670b5a0bd91d9e8a44534b390f7866f4b5`, its complete eight-file diff and
+all six frozen private artifacts. Both found no remaining issues; their own
+named checks passed246/1 skipped in46.01s and92 in26.32s respectively.
+[Review evidence](https://github.com/ckrhehfl/trading-engine/pull/328#issuecomment-6312565394)
+records scope and limitations. All eight push/PR executions of the four required
+checks passed. Both Python jobs passed9,039 tests/3 skipped, in1,539.11s and
+1,818.15s respectively. Final head was exact, review threads zero with no next
+page and merge state CLEAN. PR[#328](https://github.com/ckrhehfl/trading-engine/pull/328)
+merged normally at2026-10-21T09:50:37Z as
+`0e723c40e73bc78d7850607d3d91175b202c9695`. The whole merge tree equalled the
+reviewed source, and all six frozen hashes matched again before execution.
+
+One registered actual run `dc3fd1b4-6786-46b7-b091-470f03b1d1d5` completed
+production, standalone full raw/new-label/own-power verification, rechecks and
+publication in one shared process, PID1489608. Final CPU82.285633246s,
+wall84.146864498s, peak RSS250,656KiB, AS188,661,760bytes and nice10 were within
+the unchanged limits with no violation/retry. Producer increment18.616864273s
+and standalone increment59.885800203s were measured within that same process.
+Collector before/after source remained clean at
+`4ce85d714890b87f1a57ae89d4942660e41c0483`; only the isolated research checkout
+received the merge. No collector restart/schedule, database, credentials or
+trading control changed.
+
+Output `intraday-ck-entry-delay-20261021-v1/report.json` SHA256
+`3edf951d517dab8f6849f0c2b8d7ed206a89e99ebf138a33052f0a0450611cb8`;
+specification SHA256
+`145d0102402369560c7818a77334c9af800b8353fb27093410dcb560cf5132c6`.
+Local39,679-byte publication receipt SHA256
+`053a3b9e82dc04fada7dc5eba0d1730aa83652b575481235d6b15d6804f924c8`.
+Canonical two-record span5,579,800..5,591,887 is12,087bytes with declared SHA256
+`ac7500f481912e8e050d1fcd1be1f2f73dcaab2be6063b73fbf9307671e3f5e1`.
+Summary SHA256
+`6325a579c65fb5d9fc2ff3f069c183553385f86c19fdb3991b26f037aeeda38e`.
+
+A separate supplemental receipt-only audit found no issues across2,123 checks
+and14 registration/scope checks. It matched the15 source hashes to local merge
+objects and reconciled32 sizing bundles,16 cells and the shared-resource
+declarations. That audit did not authenticate remote files or repeat raw replay;
+the separately completed standalone verifier owns the new mathematical replay.
+
+Every earlier label is known: zero new gaps, same D+1 counts787/377 and D+2
+785/376. All16 current/earlier sizing prerequisites pass, all choice flags false.
+New earlier MDE spans6.682659594..26.429574122bp, below the unchanged33bp floor;
+current MDE spans5.372432433..25.474076221bp. This is sizing, not a positive
+return or strategy qualification. No new performance means were computed/read
+before the separate CL comparison registration. Continue the operator's existing
+authorization through CL; no new decision is required.

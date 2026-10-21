@@ -14,6 +14,23 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current continuation — CK passed, fixed-exit comparison 2026-10-21, Task CL
+
+CK completed one registered actual calibration after normal PR #328 merge
+`0e723c40e73bc78d7850607d3d91175b202c9695`. Standalone raw/label/own-power
+verification and a separate supplemental receipt audit passed. All new labels
+are known and every current/earlier own-arm prerequisite passes; no operator
+choice remains. CK's appended ledger and PR completion record own the exact
+identities and runtime evidence.
+
+CL now registers the requested one-minute versus three-minute entry-wait
+comparison, keeping the original exit clocks and selected sample. It reads
+only the pinned verified CK report, not raw data or new observations. No new
+performance mean was calculated/read before this registration. Family scope,
+price-return/cost assumptions and execution boundary are in
+`.planning/rd-cl-entry-delay-comparison.md`. Implementation/reviews/CI/normal
+merge precede its one actual comparison; no CL actual input has been read.
+
 ## Current intake — operator entry-wait comparison request 2026-10-21, Task CK
 
 CJ completed its separately registered recovery after normal PR #327 merge.
