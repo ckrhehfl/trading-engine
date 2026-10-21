@@ -14,6 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — one peer-context entry hypothesis 2026-10-22, Task CO
+
+CN completed after normal PR #331 merge
+`1848a57c262162e82d278158d4862c9c2c3a7100`. Its appended ledger and PR
+completion record own actual execution, verification and qualifications.
+No strategy was qualified or direction closed. CO now calibrates one positive
+original causal peer-context condition on existing continuation signals,
+reusing pinned CG features and CM time-only labels. No CO actual input or
+subgroup performance has been read at intake. Own-label sizing gates precede
+a separately registered final comparison. No operator choice is pending.
+Scope: `.planning/rd-co-peer-context-calibration.md`.
+
 ## Current continuation — CM passed, fixed exit comparison 2026-10-22, Task CN
 
 CM completed one registered actual calibration after normal PR #330 merge
