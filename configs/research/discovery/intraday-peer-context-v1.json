@@ -1,0 +1,26 @@
+{
+  "id": "intraday-peer-context-v1",
+  "mode": "fixed-opening-breakout-positive-original-peer-context-own-label-calibration",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {
+    "scope": "opening_range_breakout_only_both_original_membership_variants_recovery_retained_as_upstream_evidence",
+    "condition": "original_cg_event_prior30m_return_gt_original_equal_weight_peer_mean_and_peer_mean_strictly_gt_zero",
+    "boundary": "exact_zero_peer_mean_reject_no_threshold_sweep",
+    "feature": "pinned_cg_original_30minute_first_open_to_last_close_same_original_peers_and_clocks",
+    "availability": "feature_end_plus_two_minutes_no_later_than_original_decision",
+    "cohort": "original_full_top20_target_matrix_unknowns_and_original120minute_complete_cohort_no_rescue_or_reselection",
+    "label": "pinned_cm_time_only_30minute_cap_open_price_change_original_three_minute_entry_wait",
+    "power": "new_selected_complete_opening_subset_own_label_dispersion_all_reference_dates_including_zero_event_dates",
+    "resampling": "maximum_naive_session_cluster_circular_five_session_bootstrap_2000_draws_seed_zero",
+    "cost_floor_bps": "33",
+    "unknowns": "unknown_new_features_or_labels_or_failed_unknown_own_power_require_operator_choice_no_prior_waiver",
+    "output_scope": "selection_frequency_week_month_and_own_label_dispersion_only_no_future_means_cost_returns_contrast_or_winner"
+  },
+  "upstream_sha256": "e03e53fb9389a461cd8d592d3335f3432df3b15b97e4d739e4535f34971ca379",
+  "feature_sha256": "b507b29998aa797d79f12e6da64ac6e39fd233a542fbedfb1f0ed98cee57d3f0",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-cm-exit-policy-20261021-v1/report.json",
+  "feature_path": "/home/minjun4897/research-evidence/intraday-cg-entry-strength-20261021-v1/report.json",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-co-peer-context-20261022-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}

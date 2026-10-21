@@ -169,3 +169,34 @@ Frozen ignored helper SHA256:
 Final staged-only scanning/normal Git hooks, separate fresh final source and
 research-integrity reviews, real required CI, normal merge, exact-tree/helper
 recheck and one actual comparison/replay remain pending at this record.
+
+## 2026-10-22 — completed comparison, merge and GCP research reflection
+
+PR #331 source83a0e1d2fc51bd35c6f6d2744180f8bc059029b5 normally merged
+as1848a57c262162e82d278158d4862c9c2c3a7100. Distinct fresh source/integrity
+reviewers each passed324 named tests/one skip and found no remaining findings.
+Both full Python CI jobs passed9231/three skips; all eight push/PR checks
+passed. Exact head, zero unresolved threads/no further page and CLEAN gate
+were checked. [Review](https://github.com/ckrhehfl/trading-engine/pull/331#issuecomment-6319946043).
+
+Actual runfa622adb-e5ea-4c42-a41a-d1c615e04f04 completed producer, standalone
+independent replay and substantive publication in one unchanged budget:
+CPU8.066898750s,wall9.320648738s,peakRSS233708KiB; configured CPU300s/AS512MiB/
+wall1200s/nice10,no reset/retry. Collector stayed tracked-clean at4ce85d7;
+only isolated research source advanced. Canonical two-record span14277bytes,
+offsets5618243..5632520,SHA256afdae374f845040d0ebc08de6df569e45da915cd28ac11d3a6dfe41b8036bb07.
+Report SHA256ccb7a249273435047313c56b78592d30a0ff55877c9e71a690beb5b5cdb9b3d7;
+local receipt SHA2564cea9d201711c9f72f2b975fcbd5332c6de27fe8e7d540b3ebfd9a7692127629.
+Supplemental receipt-only audit passed795 checks, additional to actual replay.
+[Completion](https://github.com/ckrhehfl/trading-engine/pull/331#issuecomment-6320751311).
+
+| Membership | Pattern | N | Time-only net % | Managed net % | Managed minus time bp |
+| --- | --- | ---: | ---: | ---: | ---: |
+| D+1 | continuation |787| -0.3293455650 | -0.3244575560 | +0.4888008975 |
+| D+2 | continuation |785| -0.3301326219 | -0.3258788017 | +0.4253820191 |
+| D+1 | recovery |377| -0.3299794279 | -0.3784230500 | -4.8443622062 |
+| D+2 | recovery |376| -0.3308891479 | -0.3794616093 | -4.8572461482 |
+
+All eight arm means remain negative after assumed33bp costs; all four
+descriptive paired intervals include zero. No account-return/MDD calculation,
+strategy pass, winning rule, direction closure, holdout access or promotion.

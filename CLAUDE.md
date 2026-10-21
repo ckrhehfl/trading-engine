@@ -8,6 +8,14 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CO fixed peer-context entry calibration — operator continuation 2026-10-22.**
+Keep the same leading-stock universe and original three-minute entry, testing
+one positive pre-entry peer-context condition on existing continuation signals.
+Performed design, saved-input identities and boundaries are in
+`.planning/rd-co-peer-context-calibration.md`. New own-label sizing precedes
+any final comparison family; no old exploratory waiver transfers. Preserve
+original unknowns, cohorts, recovery evidence and previous search history.
+
 **Narrowed to Korean domestic equities on 2026-09-17, operator decision.
 BTC is set aside — not abandoned, and nothing about it is deleted.**
 
@@ -1110,7 +1118,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 186 documents,
+them. `.planning/README.md` carries an index of all 187 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
