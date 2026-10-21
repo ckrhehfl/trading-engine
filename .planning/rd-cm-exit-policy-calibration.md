@@ -180,3 +180,71 @@ Frozen ignored helpers, reviewed separately from the Git source:
 These are preparation results. Separate fresh final source/integrity reviews,
 actual required CI, normal merge, exact-tree/helper rechecks and the single
 registered GCP calibration/replay remain pending at this record.
+
+## 2026-10-22 — normal merge and one actual calibration completed
+
+PR #330:`https://github.com/ckrhehfl/trading-engine/pull/330`, final source
+`3841a517a83f73b6c673b021797d9f68fc1e2133`, normal merge
+`79b6f315d68cdba0a88fb4c609c198911945a81f` at2026-10-21T15:07:49Z.
+Fresh source and integrity reviews found no actionable issues; the record is
+`https://github.com/ckrhehfl/trading-engine/pull/330#issuecomment-6318687514`.
+The source reviewer independently passed200 named tests/1 skipped in27.81s
+and a three-session producer-to-standalone integration with eight cells in1.467s.
+The integrity reviewer independently passed312/1 skipped in61.71s. These
+source/synthetic reviews did not certify actual outcomes or remote runtime.
+
+All eight push/PR required checks passed. Both Python jobs passed9,148 tests/
+3 skipped, in1,899.22s(push) and1,834.11s(PR); external run-log isolation
+checks passed. Final head matched the reviewed source, review threads were
+zero with no additional page/review objects, and merge state was CLEAN.
+Normal merge used no admin bypass. Full source trees matched and all six
+private helper hashes were rechecked unchanged before the single actual run.
+
+Run`e3cf8949-8738-4ac0-ac8e-c9cccb59abac` completed its durable canonical
+record at2026-10-22T00:09:33.864439+09:00. Output:
+`/home/minjun4897/research-evidence/intraday-cm-exit-policy-20261021-v1/report.json`,
+SHA256`e03e53fb9389a461cd8d592d3335f3432df3b15b97e4d739e4535f34971ca379`.
+Specification SHA256 remains
+`0718bcca9fedf46e2e5680508d163a8ca2e26731b86df423f1ef402db77e8b72`.
+The original registered output name retains the registration date although
+execution crossed midnight KST; no path, scope or policy changed.
+
+The standalone verifier reconstructed all5,158 original chunks/1,002,211 rows,
+old-close bridges, both new labels and eight own-power cells and verified the
+output. Every new label is known and both arms pass the ordinary assumed33bp
+planning prerequisite. Original targets, unknowns and selected counts remain
+unchanged. Detectable effects in bp(time-only / managed):
+
+| Membership timing | Pattern | Selected | Own-label MDE bp |
+| --- | --- | ---: | ---: |
+| D+1 | Continuation | 787 | 12.5999567335 / 8.9664246411 |
+| D+1 | Recovery | 377 | 25.2933064920 / 15.3618520999 |
+| D+2 | Continuation | 785 | 12.6178977660 / 8.9812341046 |
+| D+2 | Recovery | 376 | 25.3815088656 / 15.4038075042 |
+
+No new performance means/comparison were produced; calibration-only is true,
+requires-operator-choice and underpower-exception are false. The previously
+unknown original targets remain unknown; zero new label unknowns does not
+mean complete original coverage or actual-fill certification. No strategy
+qualification, direction closure, reserved access or promotion occurred.
+
+One PID1502091 shared one baseline and unchanged limits for the whole process:
+CPU52.155906275s, wall54.025332899s, peak RSS234,376KiB, final address space
+172,593,152 bytes and nice10, without violation/reset/retry. Producer increment
+CPU16.322002430s and verifier32.594518847s remained in that same budget.
+Only the isolated research checkout advanced. Collector tracked source was
+clean at`4ce85d714890b87f1a57ae89d4942660e41c0483` before/after.
+
+Canonical started/completed span has13,381 bytes at offsets5,604,862..5,618,243,
+SHA256`184d4e493e4758eb11ffc58d9efafe224966e65d7d8195408397777b252048db`.
+Local receipt`var/cm-exit-policy-publication.json` SHA256:
+`7e04a8ac0818dbaa9d133e1c91120cb9ecf65e82ada50424b13d6cf168b924eb`.
+Summary SHA256:`805bf4ba1bcfbb66bddf655656838834a4b0058216d2cc1c34fa68d71c308d23`.
+A separate supplemental integrity audit passed1,850 receipt/identity checks,
+matching fifteen source hashes to merge objects and six frozen private
+hashes. It checked local declarations, not remote raw/report/span bytes or
+runtime anew, and did not replace the standalone actual mathematical replay.
+The same authorized request continues as separately registered Task CN after
+these passing prerequisites; no new user choice is needed.
+PR completion record:
+`https://github.com/ckrhehfl/trading-engine/pull/330#issuecomment-6319501298`.
