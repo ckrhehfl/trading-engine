@@ -69,6 +69,22 @@ new durable start, separate final reviews, required CI and normal merge precede
 one recovery execution; no automatic retry or promotion follows. Performed
 failure audit and recovery work: `.planning/rd-cf-horizon-verification-recovery.md`.
 
+**Task CG entry-strength calibration — operator continuation 2026-10-21.**
+The operator approved the proposed next step: inspect pre-entry price movement
+and fix one additional causal entry condition. Work now begun fixes the event's
+last completed thirty-minute return strictly above the equal-weight return of
+its original causal peers, measured at the same information boundary. Reuse
+the pinned, separately verified CF labels and original full target matrix,
+unknowns, complete-pair cohort and five horizons. First measure feature states,
+retained opportunities and each selected arm's own dispersion/MDE; do not
+report new future-return means or specify/run a final comparison family before
+the ordinary sizing prerequisite is resolved. No CD/CE exploratory exception
+transfers to this new condition. Registration, separate actual-output
+verification, final reviews, CI and normal merge remain required. No source
+calendar/eligibility certification, edge, direction closure, reserved access
+or trading authorization follows. Performed design/implementation is recorded
+in `.planning/rd-cg-entry-strength-calibration.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -974,7 +990,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 178 documents,
+them. `.planning/README.md` carries an index of all 179 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

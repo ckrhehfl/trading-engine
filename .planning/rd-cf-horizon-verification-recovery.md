@@ -122,3 +122,39 @@ Frozen private closure and measurement evidence SHA256:
 This is still a pre-execution snapshot: final exact-commit source/integrity
 reviews, real required CI and normal merge remain before the separately logged
 CF execution. The original CE failure and CD runtime uncertainty remain.
+
+## 2026-10-21 — actual completion after normal PR #323 merge
+
+PR #323 reviewed source `e9d08fd064de7d9e6ad97cd80349f84b51d9bf54`
+and normally merged as `2ffd0ac4eb370470a56c9b6116c3a31a63739ff6`.
+Distinct final source and integrity reviews, 271 passing local named tests
+(one existing skip), all eight actual push/PR required checks and zero
+unresolved review threads preceded execution. The two clean CI Python jobs
+each passed 8,824 tests with three skips. The reviewed tree matched the merge.
+
+Actual run `6a303afb-300d-44c2-b234-2675a3cf4743` completed production,
+standalone raw verification and final publication inside the unchanged shared
+budget: absolute CPU290.736836926s, wall293.896199882s, peak RSS460,796KiB.
+Configured/read-back limits remained CPU300s, AS536,870,912 bytes, nice10.
+Only 9.263163074 CPU seconds remained; this is not a larger-workload guarantee.
+The collector source stayed clean at 4ce85d7. No collector/DB/API/order change.
+
+The report SHA256 is
+`ec9c110b7556eeb8fff2557bc069719cdc1b167b9c7c21da908d84e30180667e`;
+the local publication receipt `var/cf-horizons-publication.json` hashes to
+`f63854179463583036624b0d3a1a5d0078e23285f3fbbcd9c821fc9827a59312`.
+The preserved two-record canonical span (9,352 bytes) hashes to
+`2f5187bdecdd4f93e5c636910f503d69c68134285907a438b22ae615dacc0021`.
+Final separate receipt arithmetic and evidence-boundary review passed, in
+addition to the actual raw verifier. Exact completed records and limitations:
+[PR completion](https://github.com/ckrhehfl/trading-engine/pull/323#issuecomment-6295611273).
+
+Every event mean minus the assumed 33bp cost was negative across both patterns,
+both timing variants and all five fixed horizons. Continuation's small
+peer-relative positives at some horizons did not clear assumed absolute
+costs; all recovery peer-relative means were negative. Recovery120-minute
+own MDE remained above33bp (D+1 33.2231, D+2 33.3038); the authorized descriptive
+exception was retained, not a power pass. Original approximately half-unknown
+targets and future-complete conditional cohort remain. No winner, strategy
+qualification, direction closure or trading promotion follows. The original
+CE failed run and CD resource discrepancy remain unaltered historical facts.

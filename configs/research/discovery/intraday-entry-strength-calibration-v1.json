@@ -1,0 +1,14 @@
+{
+  "id": "intraday-entry-strength-calibration-v1",
+  "mode": "causal-entry-feature-own-label-calibration",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {"range_minutes": 30, "lookback_minutes": 30, "drop_bps": "200", "recovery_bps": "50", "availability_lag_minutes": 2, "decision_minutes": 240, "label_minutes": 120, "block_sessions": 5, "bootstrap_draws": 2000, "bootstrap_seed": 0, "cost_floor_bps": "33", "control_selection": "other_variant_day_members_with_valid_prefix_through_event_decision", "control_weighting": "equal_all_preselected", "pair_requirement": "event_and_all_preselected_controls_complete_same_boundary_label", "response_horizons_minutes": [5, 15, 30, 60, 120], "cohort": "original_cd_120minute_complete_pairs_only", "upstream_reuse": "pinned_verified_cf_events_controls_and_labels_no_detector_or_label_rerun", "feature_minutes": 30, "feature_end": "original_signal_bar_end", "feature_return": "first_minute_open_to_last_minute_close_all_30_valid_contiguous_buckets", "feature_peer_weighting": "equal_all_original_causal_selected_controls_no_replacement", "feature_selection": "event_prior_return_minus_peer_mean_strictly_greater_than_zero", "feature_availability": "feature_end_plus_two_minutes_no_later_than_original_decision", "output_scope": "selection_frequency_and_selected_event_own_label_dispersion_only"},
+  "upstream_sha256": "ec9c110b7556eeb8fff2557bc069719cdc1b167b9c7c21da908d84e30180667e",
+  "input_compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+  "input_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-cf-horizons-recovery-20261021-v1/report.json",
+  "input_archive_path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cg-entry-strength-20261021-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "maximum_compressed_bytes": 536870912, "maximum_uncompressed_bytes": 1073741824, "maximum_chunk_bytes": 1048576, "maximum_chunks": 6000, "maximum_session_rows": 600, "maximum_rows": 3600000, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}
