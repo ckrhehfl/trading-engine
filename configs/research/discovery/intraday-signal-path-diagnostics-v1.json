@@ -1,0 +1,27 @@
+{
+  "id": "intraday-signal-path-diagnostics-v1",
+  "mode": "fixed-cohort-hindsight-signal-path-diagnostics",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {
+    "response_horizons_minutes": {"opening_range_breakout": [5, 15, 30, 60, 120], "post_drop_recovery": [5, 15, 30]},
+    "cost_floor_bps": "33",
+    "cost_touch": "strict_greater_up_strict_less_down_equality_not_exceed",
+    "cohort": "exact_ch_selected_complete_mask_no_reselection_or_short_horizon_rescue",
+    "signal_anchor": "close_of_minute_ending_at_original_signal_bar_end_information_only_available_at_decision",
+    "decision": "original_signal_bar_end_plus_two_minutes_assumed",
+    "entry": "original_next_five_minute_boundary_strictly_after_decision",
+    "post_path": "all_valid_minutes_entry_inclusive_to_entry_plus_horizon_exclusive",
+    "pre_path": "signal_end_inclusive_to_entry_exclusive_missing_preserved_as_unknown",
+    "phases": ["unavailable", "postdecision_wait", "post_entry"],
+    "touch_timing": "minute_buckets_not_exact_instants_or_fills_same_minute_order_unknown",
+    "output_scope": "hindsight_extrema_cost_touch_and_timing_descriptions_no_policy_or_performance_family"
+  },
+  "upstream_sha256": "f758e48e7aa0431f9dc2ea1cb50f8925bfbd8588669fb99a50c87ca334fbf028",
+  "input_compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+  "input_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-ch-entry-strength-comparison-20261021-v1/report.json",
+  "input_archive_path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-ci-signal-paths-20261021-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "maximum_compressed_bytes": 536870912, "maximum_uncompressed_bytes": 1073741824, "maximum_chunk_bytes": 1048576, "maximum_chunks": 6000, "maximum_session_rows": 600, "maximum_rows": 3600000, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}
