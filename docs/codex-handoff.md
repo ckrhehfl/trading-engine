@@ -14,6 +14,25 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — operator continuation 2026-10-21, Task CG
+
+CF completed after normal PR #323 merge `2ffd0ac4e`: its standalone raw replay
+and separate receipt review passed within one unchanged shared CPU budget.
+The appended CF ledger owns exact identities, resource measurements and results.
+All five fixed response horizons remained negative after assumed33bp costs;
+no profitable strategy has been qualified. Original CE failure and CD resource
+uncertainty stay recorded, not retroactively passed.
+
+The operator approved the proposed next step: inspect pre-entry movement and
+fix one new condition. CG now implements a thirty-minute peer-relative strength
+condition and own-label sizing preflight on the same pinned saved evidence.
+This step reports retained opportunities and dispersion, not new performance
+means or a final comparison family. An underpowered/unknown sizing result
+still requires the ordinary operator choice; prior exceptions do not transfer.
+No choice is pending at this intake. Implementation and actual run gates are
+in `.planning/rd-cg-entry-strength-calibration.md`; no CG actual input read has
+occurred at this snapshot. The older intake below is historical context.
+
 ## Current intake — operator steering 2026-10-20
 
 - **Goal, selected package 1:** leading Korean stocks around the top 20,
