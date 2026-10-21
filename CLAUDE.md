@@ -135,6 +135,22 @@ second allowance, remove checks, infer a price result from the failed output,
 or automatically retry. Human research checkpoints are unchanged. Performed
 failure audit and recovery work: `.planning/rd-cj-signal-path-recovery.md`.
 
+**Task CK earlier-entry calibration — operator request 2026-10-21.**
+The operator requested comparing one-minute with the existing three-minute
+post-availability entry wait while keeping original exit clocks. Preserve
+CH's selected-complete masks, full target/unknown matrices, causal peers,
+approved horizon ranges, price basis and timing variants. Earlier entry is
+strictly after the original assumed availability and extends holding duration
+by two minutes; do not shift the exit or reselect events. First calibrate the
+new arm's own label dispersion and detectable effect, retaining pinned current
+arm sizing, before specifying/running a final comparison family. New label
+gaps and failed/unknown power retain their ordinary choice requirement; no
+prior underpower exception transfers. No new performance means, family winner,
+edge, direction closure, reserved access or promotion follows from calibration.
+Existing exact metadata/missingness, logging, pins, independent verification,
+final reviews, CI, normal merge and shared resource limits remain binding.
+Performed work: `.planning/rd-ck-entry-delay-calibration.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -1040,7 +1056,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 182 documents,
+them. `.planning/README.md` carries an index of all 183 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
