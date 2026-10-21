@@ -14,6 +14,24 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — operator entry-wait comparison request 2026-10-21, Task CK
+
+CJ completed its separately registered recovery after normal PR #327 merge.
+The same-budget standalone raw verification and separate receipt consistency
+audit passed. Its appended ledger/PR result own the exact identities and
+qualifications. Hindsight excursions did not qualify a profitable strategy
+or establish earlier-entry profit.
+
+The operator now requests changing the post-availability wait from three
+minutes to one while keeping each original exit clock fixed. CK begins the
+new labels' ordinary own-arm sizing prerequisite on the same pinned CH report
+and original archive. No performance mean/final comparison family is specified
+before that prerequisite. Original targets, unknowns, selection, peers and
+qualified horizon scope remain; holding duration grows by two minutes.
+No choice is pending at intake and no CK actual input has been read.
+Implementation/execution boundaries are in
+`.planning/rd-ck-entry-delay-calibration.md`.
+
 ## Current intake — same-diagnostic engineering recovery 2026-10-21, Task CJ
 
 CI source passed distinct final reviews and all required CI, then merged

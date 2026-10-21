@@ -165,3 +165,57 @@ after the other named checks passed. All six private hashes above were then
 rechecked and matched. This records the actual split verification rather than
 claiming that the initial combined run passed. No full local suite/scanner or
 protected untracked-file content access occurred.
+
+## 2026-10-21 — final review, normal merge and one completed GCP diagnostic
+
+Distinct fresh source and research-integrity reviews covered final source
+`5db6e7c63db2db30b311f48cb7528dfe3898b050`, its complete diff and the six frozen
+private artifacts above, with no remaining findings. Their final named bundle
+passed285 tests/1 skipped. All eight push/PR executions of the four required
+checks passed; both Python jobs passed8,997 tests/3 skipped. The final head had
+zero review threads and CLEAN merge state. PR[#327](https://github.com/ckrhehfl/trading-engine/pull/327)
+merged normally at2026-10-21T08:43:29Z as
+`ccf631313b68130833b535609c866367fe196469`; its whole tree equalled the reviewed
+source and all private hashes were rechecked before execution. Detailed review
+and completion records are on that PR, including
+[the actual receipt](https://github.com/ckrhehfl/trading-engine/pull/327#issuecomment-6312016279).
+
+One exclusive registered run `7dd6a34c-05d7-4a34-a0dd-8b0b61de2c06` completed
+production, standalone replay and publication within the same bounded process:
+CPU164.150541503s, wall166.146256656s, peak RSS328,568KiB,
+address space236,228,608bytes, nice10, no violations or retries. Producer CPU was
+24.519518523s and standalone-verifier increment134.157893271s. The isolated
+research checkout received the merge; collector source remained clean at
+`4ce85d714890b87f1a57ae89d4942660e41c0483` before and after. No collector
+restart, schedule, database, credentials or trading control was changed.
+
+Output `intraday-cj-signal-paths-recovery-20261021-v1/report.json` SHA256
+`b38420b4965d1dac50ea8a0fa7b8eb3403de7d6f8cf9da64686cf66e958ec6b1`;
+specification SHA256
+`d1d9baba7532cedc321fa982a78e72bccd6d33dc4d13f4070ecc984cbc0ccbe8`.
+Local publication receipt `var/cj-signal-paths-publication.json` was2,577,582bytes,
+SHA256`ecea789c35bfda5d5dd5ca32bcf9641a7a043e298bd9ef4b0573e622658392da`.
+The two-record new canonical span offsets5,568,513..5,579,800 had SHA256
+`fbd22668b1c0f5d834cfadd4529994c3109229e0cffd34a375701f8517cfc404`.
+The standalone replay verified every registered raw path and statistic;
+a separate supplemental receipt-only integrity audit reconciled16 cells,
+720 time/symbol/overall summaries and32 weighted summaries. That supplemental
+audit did not replay raw market data or authenticate remote bytes independently.
+
+In D+1 continuation at30 minutes,489/787 paths touched the assumed33bp cost
+above entry;251 of those ended at or below that threshold. Recovery had254/377
+touches and132 fades. At120 minutes continuation had592/787 touches and299
+fades. D+2 corresponding30-minute touches were487/785 and254/376. These are
+hindsight minute-high excursions, not executable fills, winning trades or
+net profits. The same paths had substantial adverse excursions and all
+previous endpoint cost-adjusted means remained negative. All endpoints exactly
+reproduced CH. No strategy qualified and no direction was closed.
+
+Current decision-to-entry waiting is three minutes. Among D+1 selected events,
+117/787 continuation and48/377 recovery first crossed a signal-close-based cost
+threshold during that waiting interval. Another169/787 and112/377 first crossed
+before assumed signal availability. Different price anchors and unavailable
+information prevent interpreting either count as profit obtainable by earlier
+entry. These observations motivated the operator's separately authorized CK
+one-minute-entry calibration with fixed exit clocks; no new entry return was
+calculated by CJ.
