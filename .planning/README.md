@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-183 documents and counting, which is past the point where `ls` is a
+184 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -299,6 +299,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-ci-signal-path-diagnostics.md`](rd-ci-signal-path-diagnostics.md) — Research Direction Task CI — diagnose fixed signal paths and entry-delay opportunities
 - [`rd-cj-signal-path-recovery.md`](rd-cj-signal-path-recovery.md) — Research Direction Task CJ — recover equivalent signal-path verification
 - [`rd-ck-entry-delay-calibration.md`](rd-ck-entry-delay-calibration.md) — Research Direction Task CK — calibrate earlier entry with unchanged exit clocks
+- [`rd-cl-entry-delay-comparison.md`](rd-cl-entry-delay-comparison.md) — Research Direction Task CL — compare one-minute and three-minute entry waits at unchanged exits
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
