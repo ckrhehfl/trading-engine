@@ -220,23 +220,54 @@ def test_shared_day_cache_across_variants_and_families(monkeypatch):
     assert calls == [5, 15, 30, 60, 120]
 
 
-def specification():
+def specification(*, recovery=False):
     return {"id": ci.SPECIFICATION_ID, "mode": ci.MODE, "window": deepcopy(ci.WINDOW),
-        "parameters": deepcopy(ci.PARAMETERS), "resources": deepcopy(ci.RESOURCES), **ci.REGISTERED_PATHS,
+        "parameters": deepcopy(ci.PARAMETERS), "resources": deepcopy(ci.RESOURCES),
+        **(ci.RECOVERY_REGISTERED_PATHS if recovery else ci.REGISTERED_PATHS),
         "upstream_sha256": ci.UPSTREAM_SHA256, "input_compressed_sha256": ci.INPUT_COMPRESSED_SHA256,
         "input_stream_sha256": ci.INPUT_STREAM_SHA256}
 
 
-def test_committed_specification_exact_scope_pins_and_budget():
-    ci.validate_spec(json.loads(ci.SPECIFICATION_PATH.read_bytes()))
+@pytest.mark.parametrize("recovery", [False, True])
+def test_committed_specification_exact_scope_pins_and_budget(recovery):
+    path = ci.RECOVERY_SPECIFICATION_PATH if recovery else ci.SPECIFICATION_PATH
+    ci.validate_spec(json.loads(path.read_bytes()), specification_path=path)
     assert ci.EXPECTED_REFERENCE_SESSIONS == 257
     assert ci.EXPECTED_SELECTED_COMPLETE == {"D+1": {BREAKOUT: 787, RECOVERY: 377}, "D+2": {BREAKOUT: 785, RECOVERY: 376}}
     assert ci.EXPECTED_INPUT_COUNTS == {"unique_target_days": 5158, "queried_rows": 1002211}
     for key in ("parameters", "resources", "upstream_sha256", "input_stream_sha256", "output_directory"):
-        wrong = specification()
+        wrong = specification(recovery=recovery)
         wrong[key] = "drift"
         with pytest.raises(ci.PathRefusal, match="scope_mismatch"):
-            ci.validate_spec(wrong)
+            ci.validate_spec(wrong, specification_path=path)
+
+
+def test_recovery_registration_changes_only_exclusive_output_and_keeps_original_api():
+    original = json.loads(ci.SPECIFICATION_PATH.read_bytes())
+    recovery = json.loads(ci.RECOVERY_SPECIFICATION_PATH.read_bytes())
+    assert recovery == {**original,
+        "output_directory": "/home/minjun4897/research-evidence/intraday-cj-signal-paths-recovery-20261021-v1"}
+    assert original["output_directory"] == "/home/minjun4897/research-evidence/intraday-ci-signal-paths-20261021-v1"
+    ci.validate_spec(original)
+    ci.validate_spec(original, specification_path=ci.SPECIFICATION_PATH)
+    ci.validate_spec(recovery, specification_path=str(ci.RECOVERY_SPECIFICATION_PATH))
+    with pytest.raises(ci.PathRefusal, match="scope_mismatch"):
+        ci.validate_spec(recovery)
+
+
+@pytest.mark.parametrize("recovery", [False, True])
+@pytest.mark.parametrize("redirect", ["other_attempt", "unregistered_path", "arbitrary_output"])
+def test_validation_refuses_cross_attempt_and_unregistered_redirects(recovery, redirect):
+    spec = specification(recovery=recovery)
+    path = ci.RECOVERY_SPECIFICATION_PATH if recovery else ci.SPECIFICATION_PATH
+    if redirect == "other_attempt":
+        path = ci.SPECIFICATION_PATH if recovery else ci.RECOVERY_SPECIFICATION_PATH
+    elif redirect == "unregistered_path":
+        path = path.with_name("unregistered.json")
+    else:
+        spec["output_directory"] = "/tmp/unregistered-signal-paths"
+    with pytest.raises(ci.PathRefusal, match="unregistered_specification_path|scope_mismatch"):
+        ci.validate_spec(spec, specification_path=path)
 
 
 class SyntheticBudget:
@@ -252,10 +283,17 @@ class SyntheticBudget:
         pytest.fail("parent alone finishes shared budget")
 
 
-@pytest.fixture
-def runner(tmp_path, monkeypatch):
-    upstream, chunks = fixture()
-    upstream_path, archive, spec_path = [tmp_path / name for name in ("ch.json", "inputs.jsonl.gz", "spec.json")]
+@pytest.fixture(params=[False, True], ids=["original", "recovery"])
+def runner(tmp_path, monkeypatch, request):
+    raw = minute_rows()
+    raw[35]["high"] = "100.4"
+    raw[37]["low"] = "99.6"
+    raw[40].update(high="100.33", low="99.67")
+    raw[41].update(high="100.5", low="99.4")
+    raw[44].update(high="100.1", close="100.1")
+    upstream, chunks = fixture(raw)
+    upstream_path, archive, spec_path, recovery_spec = [tmp_path / name for name in
+        ("ch.json", "inputs.jsonl.gz", "spec.json", "recovery-spec.json")]
     upstream_path.write_bytes(ci._canonical(upstream))
     stream = b"".join(ci._canonical(chunk) + b"\n" for chunk in chunks.values())
     archive.write_bytes(gzip.compress(stream, mtime=0))
@@ -268,11 +306,18 @@ def runner(tmp_path, monkeypatch):
     monkeypatch.setattr(ci, "EXPECTED_INPUT_COUNTS", {"unique_target_days": 20, "queried_rows": 7800})
     paths = {"upstream_path": str(upstream_path), "input_archive_path": str(archive),
         "output_directory": str(tmp_path / "output"), "canonical_runs_path": str(tmp_path / "runs.jsonl")}
+    recovery_paths = {**paths, "output_directory": str(tmp_path / "recovery-output")}
     monkeypatch.setattr(ci, "REGISTERED_PATHS", paths)
+    monkeypatch.setattr(ci, "RECOVERY_REGISTERED_PATHS", recovery_paths)
     monkeypatch.setattr(ci, "SPECIFICATION_PATH", spec_path)
+    monkeypatch.setattr(ci, "RECOVERY_SPECIFICATION_PATH", recovery_spec)
     spec_path.write_bytes(ci._canonical(specification()))
-    return {"specification_path": spec_path, "upstream_path": upstream_path, "input_archive_path": archive,
-        "output_directory": Path(paths["output_directory"]), "runs_path": Path(paths["canonical_runs_path"]), "budget": SyntheticBudget()}
+    recovery_spec.write_bytes(ci._canonical(specification(recovery=True)))
+    active_paths = recovery_paths if request.param else paths
+    return {"specification_path": recovery_spec if request.param else spec_path,
+        "upstream_path": upstream_path, "input_archive_path": archive,
+        "output_directory": Path(active_paths["output_directory"]),
+        "runs_path": Path(paths["canonical_runs_path"]), "budget": SyntheticBudget()}
 
 
 def statuses(args):
@@ -293,12 +338,61 @@ def test_durable_start_precedes_both_inputs_and_exclusive_private_report(runner,
     assert statuses(runner) == ["started", "completed"] and receipt["status"] == "completed"
     assert receipt["result"]["diagnostic_only"] is True and reads
     assert len(report["source_sha256"]) == 14
+    assert report["source_sha256"][str(runner["specification_path"])] == ci._sha(runner["specification_path"])
+    inactive_spec = ci.SPECIFICATION_PATH if runner["specification_path"] == ci.RECOVERY_SPECIFICATION_PATH else ci.RECOVERY_SPECIFICATION_PATH
+    assert str(inactive_spec) not in report["source_sha256"]
     assert report_path.read_bytes() == ci._canonical(report) + b"\n"
     assert report_path.stat().st_mode & 0o777 == 0o600
     assert report_path.parent.stat().st_mode & 0o777 == 0o700
     runner["budget"].checkpoint("independent_verification_shares_same_budget")
     with pytest.raises(ci.PathRefusal, match="existing_output"):
         ci.run_paths(**runner)
+
+
+def test_original_and_recovery_reports_are_byte_equivalent_except_provenance(runner):
+    original = {**runner, "specification_path": ci.SPECIFICATION_PATH,
+        "output_directory": Path(ci.REGISTERED_PATHS["output_directory"])}
+    recovery = {**runner, "specification_path": ci.RECOVERY_SPECIFICATION_PATH,
+        "output_directory": Path(ci.RECOVERY_REGISTERED_PATHS["output_directory"])}
+    attempts = (recovery, original) if runner["specification_path"] == ci.RECOVERY_SPECIFICATION_PATH else (original, recovery)
+    reports = []
+    receipts = []
+    for attempt in attempts:
+        receipts.append(ci.run_paths(**attempt))
+        report = json.loads((attempt["output_directory"] / "report.json").read_bytes())
+        for name in ("specification_sha256", "source_sha256", "runtime"):
+            report.pop(name)
+        reports.append(report)
+    assert ci._canonical(reports[0]) == ci._canonical(reports[1])
+    assert statuses(runner) == ["started", "completed", "started", "completed"]
+    assert receipts[0]["specification_sha256"] != receipts[1]["specification_sha256"]
+    assert receipts[0]["run_id"] != receipts[1]["run_id"]
+    assert diagnostic(reports[0])["post_entry"]["mfe"] == {"numerator": "1", "denominator": "200"}
+    assert diagnostic(reports[0])["post_entry"]["cost_touch_order"] == "same_minute_order_unknown"
+
+
+@pytest.mark.parametrize("redirect", ["other_output", "rewritten_spec", "copied_spec"])
+def test_runner_refuses_cross_attempt_and_copied_registration_before_saved_reads(runner, monkeypatch, redirect):
+    recovery = runner["specification_path"] == ci.RECOVERY_SPECIFICATION_PATH
+    other_paths = ci.REGISTERED_PATHS if recovery else ci.RECOVERY_REGISTERED_PATHS
+    if redirect == "other_output":
+        runner["output_directory"] = Path(other_paths["output_directory"])
+    elif redirect == "rewritten_spec":
+        runner["specification_path"].write_bytes(ci._canonical(specification(recovery=not recovery)))
+    else:
+        copied_spec = runner["specification_path"].with_name("copied-spec.json")
+        copied_spec.write_bytes(runner["specification_path"].read_bytes())
+        runner["specification_path"] = copied_spec
+    real_open = Path.open
+    def observed(path, *args, **kwargs):
+        if path in {runner["upstream_path"], runner["input_archive_path"]}:
+            pytest.fail("registration refusal must precede saved evidence reads")
+        return real_open(path, *args, **kwargs)
+    monkeypatch.setattr(Path, "open", observed)
+    with pytest.raises(ci.PathRefusal, match="unregistered|scope_mismatch"):
+        ci.run_paths(**runner)
+    assert not runner["runs_path"].exists()
+    assert not runner["output_directory"].exists()
 
 
 @pytest.mark.parametrize("target", ["source", "runtime", "upstream_path", "input_archive_path", "report", "budget", "callback"])
@@ -356,9 +450,11 @@ def test_paths_block_redirects_and_aliases_before_saved_reads(runner, mutation):
             alias.symlink_to(runner["input_archive_path"])
         else:
             alias.hardlink_to(runner["input_archive_path"])
-        ci.REGISTERED_PATHS["upstream_path"] = str(alias)
+        recovery = runner["specification_path"] == ci.RECOVERY_SPECIFICATION_PATH
+        registered_paths = ci.RECOVERY_REGISTERED_PATHS if recovery else ci.REGISTERED_PATHS
+        registered_paths["upstream_path"] = str(alias)
         runner["upstream_path"] = alias
-        runner["specification_path"].write_bytes(ci._canonical(specification()))
+        runner["specification_path"].write_bytes(ci._canonical(specification(recovery=recovery)))
     with pytest.raises(ci.PathRefusal, match="unregistered|symlinked|aliased"):
         ci.run_paths(**runner)
     assert not runner["runs_path"].exists()

@@ -122,6 +122,19 @@ Existing registration, source/runtime pins, separate reviews, required CI,
 normal merge, single shared budget and independent actual-output verification
 remain. Performed design/implementation: `.planning/rd-ci-signal-path-diagnostics.md`.
 
+**Task CJ equivalent signal-path engineering recovery — 2026-10-21.**
+CI completed production but failed the shared CPU allowance during standalone
+verification; it is not a final verified diagnostic. Preserve its immutable
+attempt and failure receipts. The current completion delegation covers a
+separately registered engineering recovery with identical study, inputs,
+cohorts, clock phases, horizons, exact formulas, unknowns and claim boundaries.
+Synthetic profiling and old/new calculation equivalence must precede final
+reviews, required CI, normal merge and one new exclusive-output execution.
+Keep all original resource limits; do not resume just the verifier with a
+second allowance, remove checks, infer a price result from the failed output,
+or automatically retry. Human research checkpoints are unchanged. Performed
+failure audit and recovery work: `.planning/rd-cj-signal-path-recovery.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -1027,7 +1040,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 181 documents,
+them. `.planning/README.md` carries an index of all 182 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

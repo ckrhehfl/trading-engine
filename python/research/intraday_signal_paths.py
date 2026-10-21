@@ -29,6 +29,7 @@ ROOT = ch.ROOT
 SPECIFICATION_ID = "intraday-signal-path-diagnostics-v1"
 MODE = "fixed-cohort-hindsight-signal-path-diagnostics"
 SPECIFICATION_PATH = ROOT / "configs/research/discovery/intraday-signal-path-diagnostics-v1.json"
+RECOVERY_SPECIFICATION_PATH = ROOT / "configs/research/discovery/intraday-signal-path-diagnostics-recovery-v1.json"
 WINDOW = dict(ch.WINDOW)
 FAMILIES = ch.FAMILIES
 QUALIFIED_HORIZONS = ch.QUALIFIED_HORIZONS
@@ -54,6 +55,8 @@ REGISTERED_PATHS = {
     "input_archive_path": cg.REGISTERED_PATHS["input_archive_path"],
     "output_directory": "/home/minjun4897/research-evidence/intraday-ci-signal-paths-20261021-v1",
     "canonical_runs_path": cg.REGISTERED_PATHS["canonical_runs_path"]}
+RECOVERY_REGISTERED_PATHS = {**REGISTERED_PATHS,
+    "output_directory": "/home/minjun4897/research-evidence/intraday-cj-signal-paths-recovery-20261021-v1"}
 RESOURCES = dict(cg.RESOURCES)
 EXPECTED_REFERENCE_SESSIONS = cg.EXPECTED_REFERENCE_SESSIONS
 EXPECTED_SELECTED_COMPLETE = ch.EXPECTED_SELECTED_COMPLETE
@@ -85,9 +88,19 @@ class PathRefusal(RuntimeError):
     """Stable reason codes omit saved evidence and credential values."""
 
 
-def validate_spec(spec: Mapping) -> None:
+def _registered_paths(specification_path: str | Path) -> dict:
+    path = Path(specification_path)
+    if path == SPECIFICATION_PATH:
+        return REGISTERED_PATHS
+    if path == RECOVERY_SPECIFICATION_PATH:
+        return RECOVERY_REGISTERED_PATHS
+    raise PathRefusal("unregistered_specification_path")
+
+
+def validate_spec(spec: Mapping, *, specification_path: str | Path | None = None) -> None:
+    paths = _registered_paths(SPECIFICATION_PATH if specification_path is None else specification_path)
     expected = {"id": SPECIFICATION_ID, "mode": MODE, "window": WINDOW, "parameters": PARAMETERS,
-        "resources": RESOURCES, **REGISTERED_PATHS, "upstream_sha256": UPSTREAM_SHA256,
+        "resources": RESOURCES, **paths, "upstream_sha256": UPSTREAM_SHA256,
         "input_compressed_sha256": INPUT_COMPRESSED_SHA256, "input_stream_sha256": INPUT_STREAM_SHA256}
     if _canonical(spec) != _canonical(expected):
         raise PathRefusal("specification_scope_mismatch")
@@ -403,14 +416,13 @@ def run_paths(*, specification_path: str | Path, upstream_path: str | Path,
     checkpoint()
     spec_path, upstream, archive, output, log = map(Path,
         (specification_path, upstream_path, input_archive_path, output_directory, runs_path))
-    if spec_path != SPECIFICATION_PATH:
-        raise PathRefusal("unregistered_specification_path")
+    registered_paths = _registered_paths(spec_path)
     spec_bytes = spec_path.read_bytes()
     spec, spec_sha = json.loads(spec_bytes), hashlib.sha256(spec_bytes).hexdigest()
-    validate_spec(spec)
+    validate_spec(spec, specification_path=spec_path)
     paths = (spec_path, upstream, archive, output, log)
-    for path, key in zip((upstream, archive, output, log), REGISTERED_PATHS, strict=True):
-        if not path.is_absolute() or path != Path(spec[key]):
+    for path, key in zip((upstream, archive, output, log), registered_paths, strict=True):
+        if not path.is_absolute() or path != Path(registered_paths[key]):
             raise PathRefusal("unregistered_path")
     for index, path in enumerate(paths):
         if any(item.is_symlink() for item in (path, *path.parents)):
