@@ -14,6 +14,24 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current continuation — CM passed, fixed exit comparison 2026-10-22, Task CN
+
+CM completed one registered actual calibration after normal PR #330 merge
+`79b6f315d68cdba0a88fb4c609c198911945a81f`. Its standalone raw/path/label/own-power
+replay passed every prerequisite, with no new unknown labels or operator
+choice. The appended CM ledger and PR completion record own its identities,
+runtime and qualifications. A separate receipt-only audit is additional
+evidence and does not replace that actual mathematical replay.
+
+The same operator request now continues through one separately registered
+comparison of the fixed managed exit and its matching time-only open-price
+control. Both preserve the original three-minute entry, events and population.
+The old close-price bridge remains a separate descriptive reconciliation.
+No new raw input is needed; read only the verified pinned CM report. No CN
+actual input or new performance means have been read/calculated at intake.
+No operator choice is pending. Scope is in
+`.planning/rd-cn-exit-policy-comparison.md`.
+
 ## Current intake — one fixed exit-rule study 2026-10-21, Task CM
 
 CL completed after normal PR #329 merge

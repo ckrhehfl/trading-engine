@@ -187,6 +187,24 @@ Existing exact data/metadata, logging, pins, independent verification, final
 reviews, CI, normal merge and shared resource limits remain binding.
 Performed work: `.planning/rd-cm-exit-policy-calibration.md`.
 
+**Task CN fixed exit comparison — continuation 2026-10-22.**
+The operator's same request continues after the actual CM calibration and
+producer-independent raw/label/sizing verification passed every own-arm
+prerequisite with no new unknowns. Compare only the single preregistered
+managed exit with its matching time-only open-price control, keeping the
+original three-minute entry, selected masks, symbols, peers and full matrix.
+Retain both arms' exact prior sizing rather than substituting paired error.
+Use equal hypothetical cash per original event and the same assumed cost;
+report all fixed pattern/timing cells and descriptive paired uncertainty.
+Separately reconcile the old-close/new-time-open bridge so a price-convention
+change is never attributed to management. Report exit-reason counts and
+holding duration without a threshold sweep or policy selection. This remains
+conditional price-label research, not executable portfolio PnL, strategy pass,
+direction closure, reserved access or promotion. Existing logging, pins,
+independent verification, final reviews, CI, normal merge and shared resource
+limits remain binding. Performed work:
+`.planning/rd-cn-exit-policy-comparison.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -1092,7 +1110,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 185 documents,
+them. `.planning/README.md` carries an index of all 186 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
