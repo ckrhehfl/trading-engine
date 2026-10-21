@@ -14,6 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current continuation — CO passed, peer-context comparison 2026-10-22, Task CP
+
+CO completed after normal PR #332 merge
+`5ae16c0d39a11fbeee3493044edca53f2739ec7f`. Its appended ledger and PR
+completion own actual sizing, standalone verification and source identities.
+Both new own-sizing prerequisites pass without new unknowns or operator
+choice. Continue the same authorized request with a separately registered
+conditional per-entry comparison in the identical underlying original cohort.
+Preserve old sizing, unknowns, full-path qualifications and unequal selected
+entry counts; this is not a portfolio/causal effect claim. No CP actual input
+or new performance means have been read at intake. Scope is in
+`.planning/rd-cp-peer-context-comparison.md`.
+
 ## Current intake — one peer-context entry hypothesis 2026-10-22, Task CO
 
 CN completed after normal PR #331 merge

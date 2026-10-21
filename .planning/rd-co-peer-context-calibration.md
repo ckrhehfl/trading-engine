@@ -144,3 +144,51 @@ The author's final eight-file explicit WSL bundle passed429 tests with one
 existing skip in102.91s. It names CO,CM,CN,CG, the two new private test files
 and the two document guards. Staged-only guardrails and `git diff --cached
 --check` passed. The protected untracked originals were not read or collected.
+
+## 2026-10-22 — normal merge, actual sizing and authorized continuation
+
+PR #332 reviewed source3dab66d1a910e3086a3aa078a67eab4d6d111b94 normally
+merged as5ae16c0d39a11fbeee3493044edca53f2739ec7f. Fresh separate source
+review passed243 named tests/one skip; integrity passed429/one skip. Both
+found no issues. Frozen6private hashes and final source identities matched.
+All8push/PR checks passed; Python9287/three skips in1936.27/1173.89s; no logs
+created/changed. Final HEAD unchanged, threads0/no further page, reviews0,
+MERGEABLE/CLEAN before ordinary merge. Merge tree equaled reviewed tree.
+[Reviews](https://github.com/ckrhehfl/trading-engine/pull/332#issuecomment-6321498686),
+[CI/merge gate](https://github.com/ckrhehfl/trading-engine/pull/332#issuecomment-6322054894).
+
+Actual run41c95ca6-1a19-46e3-b90d-88e75ec3431d completed at
+2026-10-22T02:18:05.555054+09:00. Producer, standalone feature/selection/count/
+own-sizing replay and substantive publication shared PID1507021 and unchanged
+CPU300s/AS512MiB/wall1200s/nice10 budget, no reset/retry. AbsoluteCPU22.634763323s,
+wall26.981408395s,peakRSS427388KiB. Producer CPU13.116354940s at its phase end;
+independent replay increment8.541278712s. Collector stayed tracked-clean at
+4ce85d7 before/after; only isolated research source advanced.
+
+Report SHA256 `f615f2f91ed5ccea08b0dd450e0b49e1f5f32b47467dd0cf030cedb1dccb4da2`;
+local receipt SHA256 `597d7b41b0997b5e8ce1ebb02948dc9c76404a16f09087c6abb69945ad3793d2`;
+summary SHA256 `52072ba5a6100bc34ce5b0da9a9daa9a9df6b19206cb51b9fca5d8f3e501895d`.
+Canonical two-record span13119bytes, offsets5632520..5645639, SHA256
+`d71eb874baa76c194ec754d5c409b63c061512cae7aa1468797d03725b4303cc`.
+Runtime Python3.12.3 executable SHA256
+`e50d468e8b0adfb05733f5b87b3cff34829c4a8c1aea50c865aa8bdfe4bb150f`.
+
+| Variant | Original signals | New pass | Reject | Selected complete | New MDE bp |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| D+1 |988|641|347|577|16.0478649642|
+| D+2 |985|638|347|574|16.1255363308|
+
+Both new feature/label unknown counts are zero; both known-label session counts
+are191 over257reference dates. All original unknown targets2618/2620, old
+complete-path/price/source qualifications and8CMown cells remain. No new
+future-return means were calculated. Current prerequisites pass without any
+old exception, so the same operator request continues to separately registered
+Task CP; no additional permission is required or pending. This is sizing
+evidence, not proof of profitable returns or full top-20 coverage.
+
+The author additionally passed15 local-receipt-only scope/PID/baseline/budget/
+span/calendar/own-sizing consistency checks. Both calendar summaries retain56
+ISO-week keys. This did not reread remote reports/raw/source/canonical bytes
+and is additional to, not a substitute for, the actual standalone replay.
+The actual completion is also recorded in the
+[PR completion](https://github.com/ckrhehfl/trading-engine/pull/332#issuecomment-6322175576).
