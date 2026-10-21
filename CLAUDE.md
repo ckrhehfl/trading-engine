@@ -168,6 +168,25 @@ follows. Existing logging, pins, independent verification, final reviews, CI,
 normal merge and shared resource limits remain binding.
 Performed work: `.planning/rd-cl-entry-delay-comparison.md`.
 
+**Task CM one exit-rule calibration — operator request 2026-10-21.**
+The operator requested keeping the original three-minute entry wait, symbols
+and signals, fixing one take-profit/stop-loss/time policy before comparison,
+and completing implementation, verification, review, normal merge and isolated
+GCP reflection unless a material decision is required. Work begun fixes one
+close-triggered research policy and a matching time-only open-price baseline,
+with the old close-price endpoint retained as a bridge. Preserve original
+CH selected-complete masks, targets, unknowns, causal peers and price basis.
+Use causal observation/availability/decision/execution clocks; no intraminute
+touch or threshold price is a guaranteed fill. Calibrate both new arms' own
+dispersion/MDE before specifying/running their final comparison family. Unknown
+or failed prerequisites retain the ordinary choice requirement; no prior
+underpower exception transfers. No performance means, winner, strategy pass,
+direction closure, reserved access or promotion follows from calibration.
+Live risk parameters and trading controls are outside this research task.
+Existing exact data/metadata, logging, pins, independent verification, final
+reviews, CI, normal merge and shared resource limits remain binding.
+Performed work: `.planning/rd-cm-exit-policy-calibration.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -1073,7 +1092,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 184 documents,
+them. `.planning/README.md` carries an index of all 185 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

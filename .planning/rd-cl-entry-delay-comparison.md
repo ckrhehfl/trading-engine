@@ -146,3 +146,53 @@ in45.48s: `test_intraday_entry_delay_comparison.py`,
 `var/test_cl_entry_delay_independent.py` and
 `var/test_cl_entry_delay_publication.py`. No production/private source changed
 after this run; this entry only records measured verification.
+
+## 2026-10-21 — completed reviews, normal merge and actual comparison
+
+Distinct fresh source reviewer `/root/cl_source_review` and research-integrity
+reviewer `/root/cl_integrity_review` covered final source
+`51c3a0ffee94700c5f3c2c594907e33b7e9d159c`, its complete eight-file diff and
+six frozen private artifacts with no remaining findings. Their own named
+checks passed266/1 skipped in44.91s and46.23s. An additional producer-to-
+standalone integration verified16 cells on three wholly invented dates in2.66s
+without source changes. [Review record](https://github.com/ckrhehfl/trading-engine/pull/329#issuecomment-6313571992).
+All eight required push/PR checks passed; both Python jobs passed9,098 tests/
+3 skipped, in1,842.61s and1,821.12s. Final threads zero/no next page and CLEAN
+merge state preceded normal PR[#329](https://github.com/ckrhehfl/trading-engine/pull/329)
+merge `ddaefd1644c402c43da483e40db259eef41546a6` at2026-10-21T10:44:03Z.
+Whole merge tree equalled reviewed source and six frozen hashes matched again.
+
+One registered actual run `61b91dda-0895-49fe-adee-876fb233e0e2` completed
+producer, standalone supplied-CK/new-output replay and substantive publication
+within one process PID1491790: CPU10.171165516s, wall11.976410835s,
+peak RSS264,708KiB, AS193,236,992bytes, nice10, no violation/retry. Producer
+increment4.739184016s and verifier increment4.325063195s shared the same budget.
+Only isolated research source updated; collector before/after source remained
+clean at `4ce85d714890b87f1a57ae89d4942660e41c0483`. No collector process,
+schedule, database, credential or trading control was changed.
+
+Output SHA256`4367d874fc2eedce89eecafee676371fcbd31b1d38994e614baaba3663839a5f`;
+specification SHA256
+`66fb210a1596fbaec801d47867a4542e6f01092a9c535c7646c492c96faf4f77`.
+Local113,550-byte receipt SHA256
+`2e2e1768e57a169c8ae23398e026141d483a3d71f8d3671761dec3c6841afeb5`.
+Summary SHA256`01344599410d70f5dc045d17114fdf1d2827b2b80dde80fffeccada5588fb3dc`.
+Canonical two-record span5,591,887..5,604,862 is12,975bytes, declared SHA256
+`1b5ef65919f27a0e0598ba82946b3e284b793bd74dc712565e34ac711812b20c`.
+[Completion and full sixteen-cell table](https://github.com/ckrhehfl/trading-engine/pull/329#issuecomment-6314109175)
+retain all values and limitations. A separate supplemental receipt audit passed
+1,197 checks, matching16 source hashes to local merge objects and six private
+hashes. It did not authenticate remote bytes/runtime or repeat event/raw replay;
+the standalone verifier and reviewed wrapper remain separate evidence.
+
+Every conditional sample mean was lower with the one-minute wait; all32
+arm-level means after assumed cost were negative. D+1 continuation30 changed
+from-0.3307254847% to-0.3439995500%, paired difference-1.327406533bp;
+recovery30 from-0.3271200760% to-0.3653599700%, difference-3.823989403bp.
+D+2 had the same qualitative direction. Continuation's descriptive intervals
+include zero; recovery intervals lie below zero in this conditional sample.
+These are not independent horizon replications or a generalized strategy
+verdict. Original counts/masks/unknowns and uncertainty qualifications remain;
+no strategy qualified, direction closed, reserved access or promotion followed.
+The operator then authorized CM's one fixed exit-rule study; no new policy
+performance result has been read for that registration.

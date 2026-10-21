@@ -14,6 +14,24 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — one fixed exit-rule study 2026-10-21, Task CM
+
+CL completed after normal PR #329 merge
+`ddaefd1644c402c43da483e40db259eef41546a6`. Its standalone new-output replay
+and separate supplemental receipt audit passed. The appended CL ledger and
+PR completion record own the actual identities, figures and qualifications.
+No strategy was qualified or research direction closed.
+
+The operator now requests keeping the existing three-minute entry wait and
+original symbols/signals while preregistering one take-profit/stop-loss/time
+exit rule. CM begins by fixing that policy's causal close-trigger/open-fill
+model and a matching time-only open-price baseline, preserving the original
+close-price anchor separately. Both new arms require their own sizing before
+the final comparison. Original full targets/unknowns/selected mask and peers
+remain fixed. No operator choice is pending and no CM actual input has been
+read at intake. Scope and execution boundaries are in
+`.planning/rd-cm-exit-policy-calibration.md`.
+
 ## Current continuation — CK passed, fixed-exit comparison 2026-10-21, Task CL
 
 CK completed one registered actual calibration after normal PR #328 merge
