@@ -132,3 +132,57 @@ Frozen private closure SHA256:
 
 Final exact-source separate reviews, actual required CI and normal merge
 remain before the single registered CG actual execution at this snapshot.
+
+## 2026-10-21 — normal merge, actual calibration and operator's next choice
+
+PR #324 reviewed source `8a8aa8df01c74e8733e55498c7e9f8bb0ee91fd9`
+and normally merged as `be40628ca92c3c2f8224857d0661c1e0a82c95a5`.
+Distinct source/integrity reviewers covered the full final diff and private
+closure; source independently reran208 passing named tests (one existing skip)
+and integrity reran124. Findings: none. All eight final push/PR checks passed;
+both full Python jobs passed8,877 tests with three skips in1,725.14/1,709.07s.
+The final head was unchanged, review threads were zero with no further page,
+and the merge tree exactly matched reviewed source. Review record:
+[PR gate](https://github.com/ckrhehfl/trading-engine/pull/324#issuecomment-6307766038).
+
+One actual run `347193b1-fb14-4773-a8c6-34b43fce99f4` completed production,
+standalone raw-feature verification and final publication within the same
+budget: absolute CPU156.715957515s, user+system156.715957s, wall160.171601399s,
+peak RSS425,284KiB. Configured/readback CPU300s, AS536,870,912 bytes and nice10
+remained unchanged across phases. The isolated research checkout reached the
+normal merge; collector source remained clean at4ce85d7 before/after.
+
+Report SHA256: `b507b29998aa797d79f12e6da64ac6e39fd233a542fbedfb1f0ed98cee57d3f0`.
+Specification SHA256: `fb34743d235005dd9f0c19b7efa8d7850496d3b81ea0e07d926688e3f8442620`.
+Local receipt `var/cg-entry-strength-publication.json` SHA256:
+`8466a1588f4050cd736c39e5dda973786e37f9ac60eefae7feccc89180a9a9b4`.
+Only the new two-record canonical span was retained:10,711 bytes,
+offsets5,535,783..5,546,494, SHA256
+`0516d4c173ccce75f970a6209f94803533c4dc5f8e9b5387e7847c3e2a88411e`.
+
+| Variant/pattern | Original signals | Feature pass | Reject | Selected complete |
+| --- | ---: | ---: | ---: | ---: |
+| D+1 continuation | 988 | 882 | 106 | 787 |
+| D+2 continuation | 985 | 880 | 105 | 785 |
+| D+1 recovery | 1,308 | 452 | 856 | 377 |
+| D+2 recovery | 1,305 | 451 | 854 | 376 |
+
+New feature unknowns were zero among observed original signals. Original
+unknown target counts remain2,618/2,620 for continuation and2,572/2,574 for
+recovery. Every original target matrix still has5,140 records. Only recovery
+at60/120 minutes failed the assumed33bp own-MDE prerequisite: D+1
+35.6721298845/41.6441726143bp and D+2 35.7657396718/41.7544401068bp.
+The other sixteen timing/pattern/horizon cells had known MDE at or below33bp.
+No new future-return means were calculated. This is conditional own-label
+planning, not a full-family certification or a performance result.
+
+A distinct receipt-only integrity audit passed6,686 arithmetic/consistency
+checks: declared pins/runtime/source identity, one budget PID/baseline/limits,
+canonical-span metadata, summary hash, all13-month/56-week counts and twenty
+MDE/flags. It did not independently rehash remote files or replay raw inputs;
+the registered standalone verifier supplied that new-feature replay. All
+historical vendor/calendar/availability/price-basis and future-complete-cohort
+limitations remain. The operator then explicitly chose the eight qualified
+pattern/horizon ranges (sixteen timing cells), deferring recovery60/120.
+Task CH owns the new comparison registration. No earlier underpower waiver
+was transferred and no new performance family ran in CG.

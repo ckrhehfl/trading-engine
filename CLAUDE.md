@@ -85,6 +85,23 @@ calendar/eligibility certification, edge, direction closure, reserved access
 or trading authorization follows. Performed design/implementation is recorded
 in `.planning/rd-cg-entry-strength-calibration.md`.
 
+**Task CH qualified-cell comparison — operator decision 2026-10-21.**
+After CG's actual calibration and independent verification, the operator chose
+option one: compare continuation at5/15/30/60/120 minutes and recovery at5/15/30
+minutes only, separately in both membership timing variants. Recovery60/120
+remains deferred; do not convert its failed prerequisite into a pass or
+silently apply an underpower exception. Freeze CG's original selected-complete
+event mask and CF's original same-clock peers/price labels. Reuse the two pinned
+verified reports only, without another raw-data replay or new input window.
+Register the final family before new conditional means. Compare price responses
+and the unchanged assumed cost, retaining all original target/unknown/cohort
+and certification limitations. Passing these conditional cells' planning check
+does not certify the incomplete full family or establish investable performance.
+No parameter/horizon winner, edge, closure, promotion, reserved data or trading
+authority follows. Ordinary logging, source pins, separate final reviews, CI,
+normal merge, single shared budget and independent actual-output verification
+remain binding. Performed work: `.planning/rd-ch-entry-strength-comparison.md`.
+
 Everything now runs on the GCP instance: KRX/KIS collection and research
 both. **Nothing is scheduled on the local machine**, which is what makes
 this a real narrowing rather than a preference — the Binance geo-block
@@ -990,7 +1007,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 179 documents,
+them. `.planning/README.md` carries an index of all 180 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

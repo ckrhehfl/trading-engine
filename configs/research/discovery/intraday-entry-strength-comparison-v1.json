@@ -1,0 +1,13 @@
+{
+  "id": "intraday-entry-strength-comparison-v1",
+  "mode": "fixed-qualified-horizon-entry-strength-price-comparison",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {"range_minutes": 30, "lookback_minutes": 30, "drop_bps": "200", "recovery_bps": "50", "availability_lag_minutes": 2, "decision_minutes": 240, "label_minutes": 120, "block_sessions": 5, "bootstrap_draws": 2000, "bootstrap_seed": 0, "cost_floor_bps": "33", "control_selection": "other_variant_day_members_with_valid_prefix_through_event_decision", "control_weighting": "equal_all_preselected", "pair_requirement": "event_and_all_preselected_controls_complete_same_boundary_label", "response_horizons_minutes": {"opening_range_breakout": [5, 15, 30, 60, 120], "post_drop_recovery": [5, 15, 30]}, "cohort": "original_cd_120minute_complete_pairs_only", "upstream_reuse": "pinned_verified_cf_labels_and_cg_selected_complete_mask_no_raw_replay", "feature_minutes": 30, "feature_end": "original_signal_bar_end", "feature_return": "first_minute_open_to_last_minute_close_all_30_valid_contiguous_buckets", "feature_peer_weighting": "equal_all_original_causal_selected_controls_no_replacement", "feature_selection": "event_prior_return_minus_peer_mean_strictly_greater_than_zero", "feature_availability": "feature_end_plus_two_minutes_no_later_than_original_decision", "output_scope": "fixed_qualified_cells_conditional_price_label_comparison_no_executable_portfolio"},
+  "cf_report_sha256": "ec9c110b7556eeb8fff2557bc069719cdc1b167b9c7c21da908d84e30180667e",
+  "cg_report_sha256": "b507b29998aa797d79f12e6da64ac6e39fd233a542fbedfb1f0ed98cee57d3f0",
+  "cf_report_path": "/home/minjun4897/research-evidence/intraday-cf-horizons-recovery-20261021-v1/report.json",
+  "cg_report_path": "/home/minjun4897/research-evidence/intraday-cg-entry-strength-20261021-v1/report.json",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-ch-entry-strength-comparison-20261021-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}

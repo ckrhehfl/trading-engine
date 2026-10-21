@@ -14,6 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — operator choice 2026-10-21, Task CH
+
+CG completed one registered causal-feature calibration after normal PR #324
+merge. Its standalone new-feature replay, shared process budget and separate
+receipt integrity audit passed. The CG appended ledger owns exact counts,
+pins and resource evidence. No new conditional future means were calculated.
+
+The operator then selected continuation at every original fixed horizon and
+recovery only through the shorter qualified horizons, deferring the two longer
+recovery labels. Task CH now registers that exact price-response comparison
+using the pinned CF/CG reports alone. No raw replay or new inputs are needed.
+No choice is pending at this snapshot; CH actual execution has not occurred.
+Historical intake sections below retain their original evidence boundaries.
+
 ## Current intake — operator continuation 2026-10-21, Task CG
 
 CF completed after normal PR #323 merge `2ffd0ac4e`: its standalone raw replay
