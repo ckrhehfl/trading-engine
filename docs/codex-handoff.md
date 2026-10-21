@@ -14,6 +14,22 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — same-diagnostic engineering recovery 2026-10-21, Task CJ
+
+CI source passed distinct final reviews and all required CI, then merged
+normally in PR #326. Its producer completed, but standalone verification
+exhausted the unchanged shared CPU allowance. This is a preserved failed
+final verification, not a completed price-path result. The appended CI ledger
+and bounded phase-receipt audit own the exact facts; no failed price summaries
+were inspected to choose engineering changes.
+
+The current completion delegation permits synthetic profiling and a separately
+registered computationally identical recovery. CJ keeps inputs, population,
+clocks, mathematics, unknowns and limits. New exclusive output/durable start,
+final reviews, required CI and normal merge precede one actual recovery run.
+No material research choice is pending. Details are in
+`.planning/rd-cj-signal-path-recovery.md`; no CJ actual input has been read.
+
 ## Current intake — operator request 2026-10-21, Task CI
 
 CH completed its registered selected price-response comparison after normal

@@ -170,3 +170,52 @@ whole old journal copies, source/runtime authentication by declaration alone,
 or new entry/exit policy returns are permitted. Final distinct source and
 research-integrity reviews, actual required CI and normal merge remain pending
 at this snapshot; no CI actual evidence has been read.
+
+## 2026-10-21 — normal merge, actual producer completion and final budget failure
+
+PR #326: <https://github.com/ckrhehfl/trading-engine/pull/326>.
+Final reviewed source was `82f476f6e37528e1d101f606ef68d0edd67b1620`
+against `a767135b2331b14cb0e0509425b6cc6b85a8bff7`;
+the full diff had eight files, 1,141 insertions and two deletions.
+Distinct fresh-context source and research-integrity reviewers found no
+blocking or nonblocking change requests. Their separate explicit named
+synthetic/document runs passed219/skipped1 in27.54s and31.94s. All four
+private helper hashes matched the registered values. Completed review record:
+<https://github.com/ckrhehfl/trading-engine/pull/326#issuecomment-6310440832>.
+
+All eight push/PR check executions actually succeeded. Both Python suites
+passed8,965/skipped3: push1,751.66s, PR1,115.51s. Final head and base matched,
+merge state was CLEAN and reviewThreads had zero nodes/no additional page.
+Normal merge was `f15c4ccc1ed10229b9eea13cfe053805413895b8` at
+2026-10-21T07:46:57Z. Local fast-forward and an empty whole-tree comparison
+confirmed the merge tree equals the reviewed source; private hashes were
+rechecked before the one actual invocation.
+
+The registered GCP producer completed, but the shared process failed during
+the standalone verifier's raw-minute reconstruction. A producer-completed
+canonical result is not a final verified/published success. The caught
+`BudgetError` preserved failure/phase evidence under the original exclusive
+CI directory. No retry occurred, and no price response, extremum or crossing
+summary from this failed attempt was inspected to choose a recovery.
+
+The bounded failure-receipt audit read only four small phase/registration
+files, not the report, raw archive, database or old experiment journal.
+Local receipt: `var/ci-signal-paths-failure-receipt.json`; local transport
+stderr: `var/ci-signal-paths-ssh.stderr`. Exact measured facts:
+
+- Configured, producer and failure phases retain one PID1484014, baseline,
+  limits and readback. There was no per-stage allowance reset.
+- After producer: absolute process CPU23.161718013s, wall delta26.396101670s.
+- Before verifier: absolute process CPU23.837413660s, wall delta27.104199753s.
+- Failure: CPU300.891442561s, user284.324250s plus system16.567192s,
+  wall delta304.236566776s, AS318,234,624bytes, peak RSS328,500KiB.
+- CPU and rusage exhaustion were correctly failures; CPU/AS limits and nice
+  readback matched registration. Memory/wall limits were not reported violated.
+
+The approximately277 CPU seconds after the verifier-start receipt locate the
+dominant phase, not its internal root cause. The traceback alone does not prove
+which verifier operation consumed that time. Synthetic profiling is required
+before equivalent optimization. Original sources/spec/output/failure remain
+immutable evidence. Task CJ begins a separately registered engineering
+recovery of exactly the same diagnostic and unchanged resource limits; this
+failure establishes no price-pattern result or strategy conclusion.
