@@ -173,3 +173,58 @@ CU/CT/CC/session events, both private CU test files and planning-index/document
 guards.355passed/one existing skip/34subtests in29.58s. No actual input or new
 performance mean was read. The eighteen profile source identities remain the
 final closure for the separate reviews and actual-run precondition.
+
+## Final review finding and corrected completion order
+
+The fresh source reviewer found a P1state-transition defect in the private
+caller at the first reviewed source`e3afe83148245c7414f323593e45f88b0a008bbe`.
+Although mathematical verification and identity rechecks preceded the canonical
+completed record, substantive final payload encoding and budget.finish followed
+it. A preparation/timeout/budget failure could therefore leave the canonical
+trial completed while publication failed. Both separate reviewers agreed the
+ordering violated this registration. No actual CU input or mean had been read.
+
+The caller now performs all source/runtime/input/output rechecks, substantive
+publication assembly/encoding and successful budget.finish inside evaluate.
+It saves the budget receipt before returning to the durable trial logger, so
+these failures yield started/failed, not completed. After canonical completion
+only the already prepared bytes are joined with run_id, canonical record/span
+and that same receipt for mechanical finalization/transport. There is no new
+statistic, digest calculation or source/input reread after finish. The final
+return reuses the already prepared output hash.
+
+Seven meaningful regression cases were added to the private caller tests:
+five injected payload-encoding/finish/bad-receipt/violation/receipt-write failures
+execute the real trial logger and prove started/failed; the success case proves
+payload preparation/finish/receipt storage precede completed; the wiring case
+ensures the remote evaluation actually uses that helper and contains no new
+call after it. The private caller suite now30passed in2.84s.
+
+Separate invented v2and final v3profiles passed. Preserve v1/v2artifacts and
+their historical freezes; they are not the final source closure. V3uses the
+actual shared pre-completion helper through encoding/finish/receipt storage,
+then mechanically joins the receipt. Geometry, invented event density and
+35543112/36769475-byte input/output sizes are unchanged. All eighteen final
+source hashes matched. One unchanged PID730had absoluteCPU20.006857316s,
+wall19.85160051699995s, peakRSS388892KiB, finalAS239587328bytes, nice10,
+no violation/reset. No actual input, new mean or automatic actual retry.
+
+The following final six-file closure supersedes the earlier v1table; the
+unchanged verifier and its tests remain independently authored. Final separate
+reviews and required CI must cover the updated source commit before any normal
+merge or actual CU execution.
+
+| Final frozen ignored helper | SHA256 |
+| --- | --- |
+| `var/cu-opening-range-publication.py` | `73196e46fc8879fe3895bfdcdcdccba8fe3e82f0ac67d8762fb9a5311d0a6dd7` |
+| `var/test_cu_opening_range_publication.py` | `4ff233afc1ad42fceeba052bd52e7d485fba6a3d989b0eab0e15b64907c4ba35` |
+| `var/cu-opening-range-independent.py` | `52db0e80767160d927406e5b6ee72e5e9322b610c08591cbf617236f2638a76d` |
+| `var/test_cu_opening_range_independent.py` | `a160be3a14d1067b699f69088c6e65006d80ae16cd7afd4ca41405c51d8a574b` |
+| `var/cu-synthetic-profile.py` | `04b297b5c72bfcd7a802f3443dcac71cc33cc3229749b3b424f11cf875189b38` |
+| `var/cu-synthetic-profile-v3.json` | `3b02c2053b2101c074272c72280ab34e9d18409f45ffecc922a9a11fff5b3206` |
+
+The final eight-file named WSL bundle, including all seven new completion-order
+regressions, passed362tests/one existing skip/34subtests in19.70s. Eighteen
+final v3profile source identities still match. No actual CT input or new CU
+mean has been read; the earlier review finding awaits final disposition on
+this updated commit and all required CI must pass on that same head.
