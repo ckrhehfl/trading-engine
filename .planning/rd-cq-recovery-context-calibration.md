@@ -125,3 +125,49 @@ The author's final six-file named WSL bundle(CQ,CO,two CQ private test files,
 planning index and document guards) passed306tests/one existing skip in93.69s.
 Staged-only guardrails and `git diff --cached --check` passed. Only the eight
 listed task files are staged; the protected originals remain untouched.
+
+## 2026-10-22 — actual completion and subsequent operator choice
+CQ actual calibration completed and independently reconstructed after normal PR #334 merge. Performance comparison has not started: the new subset narrowly fails the ordinary own-label planning prerequisite and needs the operator's choice. No waiver is applied and no new subgroup future-return mean is reported.
+
+Source `9dcf465f5e9d534e83a1fd5bdee7f2f8788e8847` merged normally as `fab29bc7de2f01baba14ce221ff0d9ba5b64b334` at2026-10-22T09:03:02Z. Whole merge tree equals reviewed source; all six frozen helper hashes matched immediately before actual use. Separate source/integrity PASS and real final-head8SUCCESS CI are recorded in the preceding PR comments. Both Python jobs passed9392tests/3skips in1705.69/1934.18s; actual log-invariance guards passed.
+
+Only the isolated GCP research checkout advanced to this merge. Collector remained tracked-clean at `4ce85d714890b87f1a57ae89d4942660e41c0483` before/after. No collector/process/schedule replacement, DB/API/credential/reserved data read or trading occurred.
+
+Run `7fc4778c-3a89-4133-92ec-db609ba5278c` completed at2026-10-22T18:04:48.717001+09:00. Output:
+`/home/minjun4897/research-evidence/intraday-cq-recovery-context-20261022-v1/report.json`
+SHA256 `9dedf34d868ba6e8847bd8830943cbac2f92b62d1eb09a4bbca760ab4be61f6d`.
+Specification SHA256 `abff79371866a31e3566d554df0f03a8173e4cef3f2dc1b06a977bf163d64588`.
+
+| Actual calibration | D+1 | D+2 |
+| --- | --- | --- |
+| Original CG-passing complete recovery labels | 377 | 376 |
+| Added condition passes, all original signals | 169 | 169 |
+| Added condition passes, original complete cohort | 130 | 130 |
+| New feature / label unknowns | 0 /0 | 0 /0 |
+| Known-label sessions / reference sessions | 72 /257 | 72 /257 |
+| Own event SD | 0.009977195196001752 | 0.009977195196001752 |
+| Naive SE | 0.0008750579056844905 | 0.0008750579056844905 |
+| Session-cluster SE, retained design SE | 0.0011909798297112303 | 0.0011909798297112303 |
+| Circular5-session bootstrap SE | 0.001057670472219213 | 0.001057670472219213 |
+| Corrected /naive SE | 1.3610297352603407 | 1.3610297352603407 |
+| Detectable effect, bp | 33.366314859896825 | 33.366314859896825 |
+| Fixed assumed cost floor, bp | 33 | 33 |
+| Ordinary own-label planning prerequisite | requires operator choice | requires operator choice |
+
+No zero-label bootstrap draws occurred. Preserve exact shortfall instead of rounding it into a pass. These statistics measure planning ability, not a negative-return result. D+1/D+2 are universe-information delays, not holding periods or independent replications. Observed56-week selected-complete frequency is130/56=2.3214285714opportunities/week per variant; no actual fills/full-universe frequency claim. All original20×257target rows, approximately half unknown signal states, original peers, eight CM own cells and120-minute future-complete conditioning remain. The new condition has no feature gaps but cannot repair that old coverage.
+
+One PID1544836 covered producer, handwritten stdlib independent reconstruction, input/source/runtime rechecks, canonical span and substantive publication preparation. AbsoluteCPU21.427215924s,wall24.141196508s,peakRSS436132KiB,addressspace257822720bytes,nice10, limitsCPU300s/AS512MiB/wall1200s unchanged, no violation/reset/retry. The standalone verifier reconstructed new math and retained old evidence exactly; caller separately authenticated18source dependencies, runtime and frozen verifier. Its `source_runtime_authenticated:false` deliberately describes only the supplied-byte verifier, not a missing caller check.
+
+Canonical started/completed span offsets5664235..5677747,13512bytes,2records,
+SHA256 `af3b6e2f8f6e169c78ecaadace418d5494e80a04bf78112986f18aa63add6e62`.
+Summaries SHA256 `94ee0536094ff230ce85da2f589da1464242a6ace12ac4330b9eaafc8313fb71`.
+Ignored local publication receipt SHA256 `bfccba3f3693bafa79ab4e2379bffd79b05819c430039b4f7aab7656f28d1e18`.
+Root's26additional local receipt-consistency checks passed without another actual-data read; they supplement rather than replace the registered independent mathematical reconstruction.
+
+Current progress: implementation, invented-input verification, independent final reviews/CI, normal merge/GCP reflection and actual sizing/reconstruction are complete. One genuine judgment blocks a separately registered performance comparison: whether to allow this narrowly underpowered subset a single descriptive exploration. No subgroup mean/comparison family, profitable strategy, direction closure, reserved access or promotion is claimed. Existing source/calendar/eligibility/price-basis, assumed availability/cost/fill and repeated same-data search limitations remain. Technical prerequisites resolved here are input connection, verified caller/reconstruction and isolated deployment; the remaining comparison-choice condition is1, and new input-error conditions0.
+
+
+The operator then explicitly chose option1: one exploratory comparison despite
+this retained shortfall. No actual performance means were calculated before
+that choice. Task CR now registers only that fixed comparison and its narrow
+exception; CQ inputs/results/failed own-sizing remain immutable.

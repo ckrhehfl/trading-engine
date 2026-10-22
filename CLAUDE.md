@@ -8,6 +8,16 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CR one recovery comparison — explicit operator choice 2026-10-22.**
+After CQ actual own-sizing and independent verification, the operator chose
+one descriptive comparison despite its new subset's retained planning
+shortfall. Compare original complete CG recovery entries with the fixed
+negative-prior30m subset, keeping original clocks, costs, full targets and
+unknowns. Scope is in `.planning/rd-cr-recovery-context-comparison.md`.
+This one exploration preserves CQ's failed own-sizing exactly; it does not
+convert that result into a pass or transfer an exception to another family.
+No edge, direction closure, reserved access or trading promotion follows.
+
 **Task CQ recovery-context calibration — operator continuation 2026-10-22.**
 Fix one additional causal condition on existing CG-passing post-drop recovery
 signals: the event's saved prior-thirty-minute return is strictly negative.
@@ -1136,7 +1146,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 189 documents,
+them. `.planning/README.md` carries an index of all 190 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

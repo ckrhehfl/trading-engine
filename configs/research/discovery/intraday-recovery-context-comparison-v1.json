@@ -1,0 +1,36 @@
+{
+  "id": "intraday-recovery-context-comparison-v1",
+  "mode": "fixed-post-drop-recovery-negative-original-event-context-exploratory-conditional-per-entry-comparison",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {
+    "scope": "post_drop_recovery_only_both_original_membership_variants_opening_retained_as_upstream_evidence",
+    "condition": "original_cg_event_prior30m_return_gt_original_equal_weight_peer_mean_and_event_return_strictly_lt_zero_exact_zero_rejects",
+    "cohort": "all_original_cg_passing_complete_recoveries_vs_nested_negative_event_subset_full_targets_unknowns_original120minute_cohort_retained",
+    "entry_exit": "same_original_three_minute_wait_entry_open_and_time_only_entry_plus30minute_exit_open",
+    "unit": "conditional_per_entry_equal_hypothetical_cash_price_change_sample_counts_intentionally_differ_selection_axis",
+    "cost": "subtract_exact33_over10000_per_event_same_assumed_cost_cancels_in_difference",
+    "comparison": "filtered_minus_original_conditional_mean_not_matched_pair_exit_or_portfolio_exposure_equal_causal_effect",
+    "power": "retain_exact_two_cq_selected_and_eight_cm_own_sizing_failed_cq_prerequisite_preserved_this_cr_only_explicit_operator_choice_no_remeasurement_or_contrast_error_substitution",
+    "missingness": "no_zero_fill_no_rejected_arm_no_rescue_no_excluded_name_replacement_no_new_unknowns",
+    "opportunities": "original_filtered_retained_removed_counts_and_all_reference_iso_week_counts_not_actual_trades_or_independent_n",
+    "uncertainty": "nested_influence_naive_and_session_cluster_joint_circular_five_session_ratio_mean_bootstrap2000_seed0_maximum_se_descriptive_normal95_interval",
+    "influence": "n_over_m_times_selected_times_y_minus_mu_selected_minus_y_minus_mu_all",
+    "bootstrap": "joint_original_filtered_session_totals_and_counts_recompute_both_ratio_means_each_draw_discard_zero_denominator_draws_explicitly",
+    "upstream_reuse": "sole_pinned_verified_cq_report_saved_contract_validation_no_raw_cm_or_cg_report_read_or_prior_truth_recertification",
+    "output_scope": "two_timing_cells_original_filtered_price_cost_and_nested_mean_difference_descriptions_no_p_value_winner_edge_or_promotion"
+  },
+  "upstream_sha256": "9dedf34d868ba6e8847bd8830943cbac2f92b62d1eb09a4bbca760ab4be61f6d",
+  "upstream_specification_sha256": "abff79371866a31e3566d554df0f03a8173e4cef3f2dc1b06a977bf163d64588",
+  "exploratory_authorization": {
+    "scope": "intraday-recovery-context-comparison-v1",
+    "operator_choice": "1",
+    "upstream_report_sha256": "9dedf34d868ba6e8847bd8830943cbac2f92b62d1eb09a4bbca760ab4be61f6d",
+    "upstream_specification_sha256": "abff79371866a31e3566d554df0f03a8173e4cef3f2dc1b06a977bf163d64588",
+    "decision": "one_exploratory_comparison_despite_failed_cq_own_label_power",
+    "limitation": "no_unknown_feature_or_label_waiver_no_other_family_or_future_run_transfer"
+  },
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-cq-recovery-context-20261022-v1/report.json",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cr-recovery-context-comparison-20261022-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "resources": {"maximum_upstream_bytes": 67108864, "minimum_free_bytes": 1073741824, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}

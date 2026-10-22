@@ -14,6 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current continuation — one authorized exploratory recovery comparison, Task CR
+
+CQ completed after normal PR #334 merge
+`fab29bc7de2f01baba14ce221ff0d9ba5b64b334`. Its appended ledger and PR
+completion own actual execution and verification evidence. Both variants
+retain130complete events/72label dates with no new feature/label unknowns;
+own MDE33.366314859896825bp exceeds the unchanged33bp floor. The operator
+explicitly chose one exploratory comparison despite that planning shortfall.
+CR preserves the failed prerequisite and all ten old sizing cells exactly,
+then compares original recovery entries and the fixed subset. No CR actual
+input/new subgroup mean has been read at intake, no choice remains for this
+one comparison, and no qualification or promotion follows. Scope:
+`.planning/rd-cr-recovery-context-comparison.md`.
+
 ## Current intake — one recovery entry hypothesis 2026-10-22, Task CQ
 
 CP completed after normal PR #333 merge
