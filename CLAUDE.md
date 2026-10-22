@@ -8,6 +8,15 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CT fixed opening-range calibration — operator continuation 2026-10-23.**
+Measure frequency, missingness and each arm's own-label sizing for CS's fixed
+unfiltered fifteen/thirty-minute opening-range design, directly from the
+original CB target report and saved CC raw archive. Preserve all dated targets,
+unknowns and timing qualifications; no CG/120-minute-complete mask or old
+waiver transfers. Scope/pins/execution obligations are in
+`.planning/rd-ct-opening-range-calibration.md`. No performance comparison,
+direction closure, reserved access or paper/live promotion follows.
+
 **Task CS completed-result synthesis — operator continuation 2026-10-22.**
 Compare already published continuation/recovery entry and exit aggregates at
 the same cost/unit/frequency denominator; keep CL close-endpoint results apart
@@ -1156,7 +1165,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 191 documents,
+them. `.planning/README.md` carries an index of all 192 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

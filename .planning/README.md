@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-191 documents and counting, which is past the point where `ls` is a
+192 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -307,6 +307,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-cq-recovery-context-calibration.md`](rd-cq-recovery-context-calibration.md) — Research Direction Task CQ — calibrate one still-depressed recovery entry condition
 - [`rd-cr-recovery-context-comparison.md`](rd-cr-recovery-context-comparison.md) — Research Direction Task CR — compare one fixed recovery context with an explicit exploratory exception
 - [`rd-cs-intraday-results-synthesis.md`](rd-cs-intraday-results-synthesis.md) — Research Direction Task CS — synthesize compatible completed entry/exit results and fix one next opening-range hypothesis
+- [`rd-ct-opening-range-calibration.md`](rd-ct-opening-range-calibration.md) — Research Direction Task CT — calibrate fixed fifteen and thirty minute opening-range events
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
