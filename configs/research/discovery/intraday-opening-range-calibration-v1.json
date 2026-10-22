@@ -1,0 +1,55 @@
+{
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "id": "intraday-opening-range-calibration-v1",
+  "input_archive_path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+  "input_compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+  "input_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+  "mode": "fixed-unfiltered-opening-range-own-label-frequency-calibration",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-ct-opening-range-20261023-v1",
+  "parameters": {
+    "availability_lag_minutes": 2,
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "cohort": "new30minute_labels_all_original_targets_no_CG_or120minute_complete_mask",
+    "cost_floor_bps": "33",
+    "decision_minutes": 240,
+    "entry": "first_five_minute_open_strictly_after_signal_available_at",
+    "exit": "entry_plus30minute_cap_minute_open",
+    "filters_both_arms": "none_no_relative_strength_or_peer_context",
+    "label_availability": "cap_minute_end_plus_two_minutes_assumed",
+    "label_minutes": 30,
+    "label_required_minutes": "all31_buckets_entry_through_cap_inclusive",
+    "maximum_signals_per_name_session": 1,
+    "output_scope": "frequency_missingness_own_label_dispersion_only_no_performance_comparison",
+    "range_minutes": {
+      "15": 15,
+      "30": 30
+    },
+    "signal": "first_subsequent_completed_five_minute_close_strictly_above_own_initial_range_high",
+    "weekly_operating_objective": 15
+  },
+  "resources": {
+    "address_space_mib": 512,
+    "automatic_retries": 0,
+    "cpu_seconds": 300,
+    "maximum_chunk_bytes": 1048576,
+    "maximum_chunks": 6000,
+    "maximum_compressed_bytes": 536870912,
+    "maximum_rows": 3600000,
+    "maximum_session_rows": 600,
+    "maximum_uncompressed_bytes": 1073741824,
+    "maximum_upstream_bytes": 33554432,
+    "minimum_free_bytes": 1073741824,
+    "nice": 10,
+    "wall_seconds": 1200
+  },
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-cb-universe-20261020-v1/report.json",
+  "upstream_sha256": "f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91",
+  "window": {
+    "end": "2026-09-23",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "symbol": "KRX:*"
+  }
+}

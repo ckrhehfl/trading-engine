@@ -14,6 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — fixed opening-range own calibration, Task CT
+
+CS completed under normal PR #336 merge
+`709257fb197f082995d5eb09266144fa0ef0931f`; its appended ledger and PR
+completion own the actual synthesis, separate verification and operational
+identity evidence. The operator now requests actual frequency/missingness/own-
+sizing measurement of the fixed unfiltered15/30minute opening-range design.
+Use only original CB targets and the saved CC raw archive, keeping all dated
+targets and unknowns, without old CG/120minute conditioning. No new CT actual
+input or own statistic has been read at intake. No operator choice is pending
+for calibration itself; ordinary later comparison prerequisites remain.
+Scope: `.planning/rd-ct-opening-range-calibration.md`.
+
 ## Current intake — completed-result synthesis and one next hypothesis, Task CS
 
 CR completed after normal PR #335 merge

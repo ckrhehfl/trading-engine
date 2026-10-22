@@ -170,3 +170,26 @@ one isolated GCP synthesis remain pending at this source freeze. There is no
 operator decision pending for this documentary synthesis. Own-label/frequency
 calibration of the fixed new hypothesis remains the next separately registered
 stage; its new performance family is not specified or run here.
+
+## Actual completion — 2026-10-23 KST, recorded at CT intake
+
+PR #336 reviewed source`bc90f0fc47388f2e4af435e607bff9c24c7b1ca0` merged
+normally as`709257fb197f082995d5eb09266144fa0ef0931f`; whole-tree identity
+matched. Two fresh reviews and all eight exact-head required CI checks passed;
+both full Python runs9471passed/3skipped/21subtests. Exact evidence and results:
+https://github.com/ckrhehfl/trading-engine/pull/336#issuecomment-6344165200.
+
+The isolated GCP research checkout reached that merge. Actual synthesis run
+`5d201943-e4fb-48b0-9430-a482c69cd30f` completed at
+2026-10-23T00:07:21.713459+09:00 after independent reconstruction of twenty
+rows/four common baselines/twelve contrasts from the four pinned publications.
+Report SHA256`c9532b1ddfe010f0be5e155567938c7e7a04c115e00d69e3c237cd32dc19e053`;
+specification SHA256`25687f85a0cadd6806ea26464b61cc8bbd240918ade69d9871940d9bdf2846d8`.
+Canonical pair offsets5698890..5706614/7724bytes, SHA256
+`318cf4661a7f9b10912d366c0be57ef3145d062b47082b5302ede65d4cb7d704`.
+One unchanged PID1559195 used absoluteCPU0.258738421s,wall0.649065960s,
+peakRSS31516KiB,AS42405888bytes,nice10without violation/reset/retry.
+Collector remained tracked clean at`4ce85d714890b87f1a57ae89d4942660e41c0483`.
+No new raw labels/statistics/family, reserved access or trading promotion.
+The fixed next15/30minute hypothesis remained unmeasured at CS completion;
+CT is the operator's subsequent actual calibration request, not a waiver.
