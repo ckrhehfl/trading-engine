@@ -8,6 +8,16 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CQ recovery-context calibration — operator continuation 2026-10-22.**
+Fix one additional causal condition on existing CG-passing post-drop recovery
+signals: the event's saved prior-thirty-minute return is strictly negative.
+Keep original universe, clocks, three-minute entry and CM thirty-minute
+time-only label. Performed design is in
+`.planning/rd-cq-recovery-context-calibration.md`. New own-label sizing precedes
+any final comparison; ordinary unknown/failed prerequisite choices remain.
+Preserve all upstream evidence, unknowns, cohorts and repeated search history.
+No old waiver, strategy qualification, reserved access or promotion transfers.
+
 **Task CP fixed peer-context comparison — authorized continuation 2026-10-22.**
 After CO's actual own-sizing passed, continue the same request with one
 separately registered conditional comparison of original continuation entries
@@ -1126,7 +1136,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 188 documents,
+them. `.planning/README.md` carries an index of all 189 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

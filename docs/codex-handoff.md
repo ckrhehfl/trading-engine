@@ -14,6 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — one recovery entry hypothesis 2026-10-22, Task CQ
+
+CP completed after normal PR #333 merge
+`819200d909388068a693af6d97901714aff8db25`; its appended ledger and PR
+completion own execution/verification figures and qualifications. No model
+was promoted or direction closed. The operator accepted one recovery-context
+hypothesis, fixed before new subgroup reads: original CG recovery pass plus
+strictly negative event prior30m return. Reuse pinned CG features and CM
+time-only labels. New own sizing precedes any final comparison. No CQ actual
+input has been read or operator choice is pending. Scope:
+`.planning/rd-cq-recovery-context-calibration.md`.
+
 ## Current continuation — CO passed, peer-context comparison 2026-10-22, Task CP
 
 CO completed after normal PR #332 merge
