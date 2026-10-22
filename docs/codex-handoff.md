@@ -14,6 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current continuation — limited observed opening-range comparison, Task CU
+
+CT completed under normal PR #337 merge
+`232f207173eff45a5c54986251ca99de4b74826a`; its appended ledger and completion
+own actual frequency, gaps, own sizing and independent raw reconstruction.
+The operator explicitly chose a limited15/30minute conditional performance
+comparison over observable labels while retaining all original unknowns and
+target counts. Preserve original choice flags and source assumptions; this is
+not an underpower waiver or full-population certificate. No CU actual input or
+new performance mean has been read at intake, and no operator choice remains
+for this one comparison. Scope: `.planning/rd-cu-opening-range-comparison.md`.
+
 ## Current intake — fixed opening-range own calibration, Task CT
 
 CS completed under normal PR #336 merge

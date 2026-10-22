@@ -1,0 +1,64 @@
+{
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "id": "intraday-opening-range-comparison-v1",
+  "mode": "observed-label-conditional-opening-range-descriptive-comparison",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cu-opening-range-comparison-20261023-v1",
+  "parameters": {
+    "assumed_cost": {
+      "denominator": "10000",
+      "numerator": "33"
+    },
+    "axis": "initial_opening_range15versus30minutes_only",
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "cohort": "each_arm_independently_CT_signal_and_known_label_no_common_complete_mask",
+    "contrasts": "15minus30_conditional_per_entry_means_separately_D+1_D+2",
+    "descriptive_interval": "normal95percent_not_confirmatory",
+    "missingness_choice": "one_source_bound_observed_label_comparison_preserve_unknowns",
+    "output_scope": "four_conditional_means_two_policy_contrasts_no_subgroup_means_or_winner",
+    "source_parameters": {
+      "availability_lag_minutes": 2,
+      "block_sessions": 5,
+      "bootstrap_draws": 2000,
+      "bootstrap_seed": 0,
+      "cohort": "new30minute_labels_all_original_targets_no_CG_or120minute_complete_mask",
+      "cost_floor_bps": "33",
+      "decision_minutes": 240,
+      "entry": "first_five_minute_open_strictly_after_signal_available_at",
+      "exit": "entry_plus30minute_cap_minute_open",
+      "filters_both_arms": "none_no_relative_strength_or_peer_context",
+      "label_availability": "cap_minute_end_plus_two_minutes_assumed",
+      "label_minutes": 30,
+      "label_required_minutes": "all31_buckets_entry_through_cap_inclusive",
+      "maximum_signals_per_name_session": 1,
+      "output_scope": "frequency_missingness_own_label_dispersion_only_no_performance_comparison",
+      "range_minutes": {
+        "15": 15,
+        "30": 30
+      },
+      "signal": "first_subsequent_completed_five_minute_close_strictly_above_own_initial_range_high",
+      "weekly_operating_objective": 15
+    },
+    "uncertainty": "max_unpaired_naive_joint_session_cluster_joint_circular_block_bootstrap",
+    "underpower_exception_applied": false
+  },
+  "resources": {
+    "address_space_mib": 512,
+    "automatic_retries": 0,
+    "cpu_seconds": 300,
+    "maximum_upstream_bytes": 67108864,
+    "minimum_free_bytes": 1073741824,
+    "nice": 10,
+    "wall_seconds": 1200
+  },
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-ct-opening-range-20261023-v1/report.json",
+  "upstream_sha256": "b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875",
+  "upstream_specification_sha256": "1578dbf61fdbbdb620218f1292da412ec99e8eff3ce1d8c67870bcce304b56bf",
+  "window": {
+    "end": "2026-09-23",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "symbol": "KRX:*"
+  }
+}
