@@ -217,3 +217,55 @@ After the final private integration adapter and this ledger were frozen, the
 author reran the same seven-file named WSL bundle:298passed/one existing skip/
 33subtests in30.53s. No actual input or new statistic was read. All fifteen
 profile source hashes and six helper hashes remain the final review closure.
+
+## Actual completion recorded with the next authorized work unit
+
+Task CT completed on2026-10-23KST: actual own-frequency/missingness/sizing measurement of the fixed unfiltered15/30minute opening-range hypothesis, independent raw reconstruction, separate reviews, normal merge and isolated GCP research reflection.
+
+## Source, gates and execution
+
+- Reviewed source:`c7cd8174ed3f7a6a185a428c2eccb74b56c6c286`; normal merge:`232f207173eff45a5c54986251ca99de4b74826a` at2026-10-22T16:14:42Z. The complete merged tree equals the reviewed tree. No bypass.
+- Separate fresh source/integrity PASS/no findings: https://github.com/ckrhehfl/trading-engine/pull/337#issuecomment-6345074982. Final required-CI/review gate: https://github.com/ckrhehfl/trading-engine/pull/337#issuecomment-6345540267. All8required runs passed. Both full Python runs9523passed/3skipped/21subtests in1692.02s and1765.19s, with unchanged logs and no stray runs directory. GraphQL threads/reviews0/no next pages/CLEAN before merge.
+- GCP isolated research checkout equals the normal merge. Collector before/after remained tracked clean at`4ce85d714890b87f1a57ae89d4942660e41c0483`. No running collector, scheduling, credentials, orders or risk settings changed. Local tracked tree is clean; protected untracked originals were neither accessed nor modified.
+- Run:`e413d621-a088-43c7-ab96-e7a24c086a00`, canonical completion2026-10-23T01:18:49.090414+09:00. Report:`/home/minjun4897/research-evidence/intraday-ct-opening-range-20261023-v1/report.json`, SHA256`b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875`.
+- Specification SHA256`1578dbf61fdbbdb620218f1292da412ec99e8eff3ce1d8c67870bcce304b56bf`; local publication SHA256`97bb33c3ae861f1f965754734b05ea896f9e3003567d4a752b537c54a4db215f`.
+- Canonical started/completed span offsets5706614..5714051,7437bytes, SHA256`987170fff3efa3bba98e37850c8e989fde49a8afe612606ea0877e1e1ca7d397`. Durable start preceded actual input bytes. No API, database, new/reserved observation or old outcome report was used.
+- One unchanged PID1562004 covered producer, independent raw/math reconstruction, source/runtime/input/output authentication and substantive publication preparation. AbsoluteCPU180.154782621s, wall184.43667584192008s, peakRSS191516KiB, finalAS147849216bytes, nice10; no budget violation/reset/retry. Before/after source/spec/dependency/runtime/helper/verifier pins matched.
+
+## Actual independently reconstructed measurements
+
+The saved archive's5158unique target-session chunks and1002211minute rows, original CB report identity and compressed/decompressed hashes matched registration. The standard-library verifier independently replayed the supplied raw stream, rebuilt the two causal event arms, metadata,31minute labels, counts and all four own dispersion/bootstrap/MDE cells. It imported no producer/project code. Its source/runtime-authentication limitation is explicit; that authentication is separately performed by the caller. This is actual mathematical reconstruction, not merely checking a success flag. The additional local conclusion/receipt audit passed four universal claims without recomputing raw labels/statistics and does not replace that reconstruction.
+
+Window2025-09-04..2026-09-23;257reference sessions/56ISO weeks including partial/zero-event weeks;5140original targets per D variant. D+1/D+2 are membership-information-delay policies on heavily overlapping observations, not holding periods or independent replications. No old CG filter or120minute-completeness mask was used.
+
+| Policy | Initial range | Observed signals | Known30minute labels | Unknown labels | Signal unknown | Observed signals/week | Known labels/week | Own MDE bp | Corrected/naive SE |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| D+1 |15m|1181|1174|7|2609|21.089286|20.964286|12.409506|1.412623|
+| D+1 |30m|988|980|8|2618|17.642857|17.500000|11.791945|1.348667|
+| D+2 |15m|1179|1172|7|2611|21.053571|20.928571|12.408126|1.412303|
+| D+2 |30m|985|977|8|2620|17.589286|17.446429|11.810469|1.347488|
+
+All four conditional own MDE plans are below the unchanged33bp assumed cost planning floor. Known-label dates are249for15m and238for30m under both policies. All bootstrap draws had labels. This is not final-family certification, a power guarantee for an arm difference, an edge result or an adopted waiver.
+
+The15signal/week operating objective is reached in48of56weeks for15m under both policies, versus41weeks(D+1)/40weeks(D+2) for30m. Each arm/policy has0zero-observed-signal weeks. These are available conditional opportunities, not filled account trades; simultaneous opportunities, capital constraints and fill prices remain unmodeled.
+
+## Gaps and event timing
+
+- D+1 signal-unknown2609(15m)/2618(30m) comprise2496targets with no saved rows of unresolved cause plus113/122with missing decision-prefix minute buckets. D+2 has2498no-saved-row targets plus the same113/122prefix gaps. Roughly51%of the original targets remain signal-unknown. No-saved-row absence is not classified as suspension/delisting/prelisting/provider failure, and none is zero-filled.
+- Observed events retain7unknown30minute labels for15m and8for30m under each policy, all due to missing label minute buckets. These are not silently removed from signal counts or treated as zero returns. The variants overlap; these counts must not be summed as distinct missing events.
+- D+1:988shared signals,364with an earlier15m clock and624with the same clock.193additional observed15m signals:184with known no30m signal and9with unknown30m status.
+- D+2:985shared,362earlier and623same.194additional15m signals:185known no30m signal and9unknown30m status. No30m-only or later15m construction occurred.
+
+No mean gross/net return, win rate, cost-exceeding rate, contrast, final family or winner was produced. Historical bar availability, exceptional-session schedule, minute-open price/fill semantics and33bp costs remain explicit assumptions. No new official historical release-time fact was established. Original historical eligibility/liquidity/revision/price-basis/coverage certifications remain false, so these results cannot represent an investable full top20portfolio or authorize paper/live trading.
+
+## Completion, next step and actual decision boundary
+
+The requested calibration/reconstruction/reviews/requiredCI/normalmerge/GCP-reflection work has0remaining completion conditions. Three previously unmeasured preparation questions are now measured: observed frequency, gap size/reasons and conditional own-label sizing. An insufficient own MDE is not the remaining issue.
+
+A subsequent performance comparison still has one material scope decision: how to handle the7/8new unknown own labels and the incomplete original target coverage. The registered CT checkpoint requires operator choice before comparison with unknown own labels; earlier exceptions do not transfer. Recommendation: authorize a separately registered limited comparison over observable labels, preserving all target/signal/unknown counts and explicitly limiting conclusions to that conditional sample. This would let the next study compare whether earlier/more frequent15m events improve gross/net price-label results against30m under identical assumptions. It would not recertify the full population, invent missing prices, prove a causal timing benefit, bypass final-family design or permit real trading. The alternative is to investigate recovery of missing inputs first, delaying comparison without a restoration guarantee.
+
+No performance comparison has been run while this decision is pending. This does not leave the current calibration unfinished. Full canonical and completion evidence above is authoritative; the source-freeze ledger's pending-at-intake text is historical and should be appended with this completion during the next ordinary work unit rather than creating a second CI-only documentation PR.
+
+The operator subsequently explicitly chose option1, the limited observed-label
+comparison described above. That later authorization is recorded in CU's
+separate registration; CT's original flags and measurements remain unchanged.

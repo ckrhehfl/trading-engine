@@ -8,6 +8,16 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CU limited opening-range comparison — operator choice 2026-10-23.**
+The operator explicitly chose one conditional observed-label comparison of
+the fixed unfiltered fifteen/thirty-minute opening-range arms after CT.
+Preserve all original targets, signals, unknowns and upstream own-choice
+flags; record the source-bound missing-label authorization separately.
+This is not an underpower exception or full-population/trading certificate.
+Scope/pins/execution obligations are in
+`.planning/rd-cu-opening-range-comparison.md`. No reserved access, direction
+closure or paper/live promotion follows.
+
 **Task CT fixed opening-range calibration — operator continuation 2026-10-23.**
 Measure frequency, missingness and each arm's own-label sizing for CS's fixed
 unfiltered fifteen/thirty-minute opening-range design, directly from the
@@ -1165,7 +1175,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 192 documents,
+them. `.planning/README.md` carries an index of all 193 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
