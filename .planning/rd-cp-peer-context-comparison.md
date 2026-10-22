@@ -130,3 +130,50 @@ The author's final six-file named WSL bundle(CO,CP,two new private tests,
 planning-index and document guards) passed263tests/one existing skip in81.21s.
 Staged-only guardrails and `git diff --cached --check` passed. Protected
 untracked originals remain outside all reads, collection and scanning.
+
+## 2026-10-22 — completed normal merge and independently verified actual comparison
+
+PR #333 source6402f27b4321617a7405ddb6f420b65c2e9d2bfd merged normally as
+819200d909388068a693af6d97901714aff8db25. Separate fresh source/integrity
+reviews each passed263tests/one existing skip in74.76/75.17s; findings none.
+Both final Python CI jobs passed9336tests/three skips in1907.93/1106.48s.
+All eight push/PR checks passed; no unresolved thread, review objection or
+additional page remained and merge state was CLEAN. Whole merged tree equals
+the reviewed source tree; all six private helper hashes matched before use.
+Review/gate evidence and the full actual completion are in
+[PR #333](https://github.com/ckrhehfl/trading-engine/pull/333), particularly
+[completion](https://github.com/ckrhehfl/trading-engine/pull/333#issuecomment-6323120864).
+
+One registered isolated GCP execution completed at2026-10-22T03:07:37.809408+09:00,
+run0d027d7e-13a4-4b1b-86ab-e3f3b4c27c3c. Report
+`/home/minjun4897/research-evidence/intraday-cp-peer-context-comparison-20261022-v1/report.json`
+SHA25675ff6b2ad4131ee14cd413f502c618d6b1b27c5bffead870f4121959de268283;
+specification4e88debc1b123f84a6b31228e9fc8cc5d81de1f22aee88c2a6471e44197cba61.
+The standalone verifier rebuilt new math and exactly retained full rows,
+ten prior own-sizing cells and provenance. Wrapper separately authenticated
+eighteen-source closure/runtime/helper identities. Collector remained clean
+at4ce85d714890b87f1a57ae89d4942660e41c0483 before/after; no DB/API access.
+Single PID1508959 used absoluteCPU15.390124825s,wall23.200726656s,
+peakRSS303044KiB with unchanged limits, no violation/reset/retry.
+
+| Variant | Original / filtered entries | Original / filtered mean after assumed cost | Subset minus original, bp | Descriptive95 interval, bp |
+| --- | --- | --- | --- | --- |
+| D+1 | 787 /577 | -0.3293455650% /-0.2966945139% | +3.2651051062 | [-1.3108062700,+7.8410164824] |
+| D+2 | 785 /574 | -0.3301326219% /-0.2960016777% | +3.4130944173 | [-1.1375375966,+7.9637264311] |
+
+Strict cost-exceeding fractions were241/787 to191/577 and240/785 to190/574.
+Observed56-week opportunities fell14.0536 to10.3036/week and14.0179 to10.25/week;
+these are observed signals, not account fills or full-universe frequency.
+Both joint-bootstrap contrasts retain zero in their descriptive intervals;
+all257reference sessions and2000valid block draws were retained. Unequal
+subsets, incomplete coverage, future-complete selection, repeated discovery,
+assumed clocks/costs and price-label limitations remain. No investable edge,
+profitable strategy, direction closure, holdout or promotion follows.
+
+Canonical span5645639..5664235 contains exactly started/completed18596bytes,
+SHA25625de47551214a23ed5b93f80bbfa88065a650804a883c0e38484f88f729b1e06.
+Ignored local publication receipt SHA256
+1295f5d518df3b4ef495489541a48afe732f25229a268e72eae91c8436f9328f;
+summaries446350e8ffcfb4c4f8a55e8e42d41bc98738af842381e50ccab8db4200e77dc0.
+Twenty-two supplemental local receipt checks passed; these add consistency
+evidence and do not replace the actual standalone mathematical replay.
