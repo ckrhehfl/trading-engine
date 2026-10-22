@@ -1,0 +1,62 @@
+{
+  "id": "intraday-result-synthesis-v1",
+  "mode": "completed-publication-aggregate-synthesis-no-new-labels",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "reference_sessions": 257,
+  "reference_weeks": 56,
+  "cost_floor_bps": "33",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cs-result-synthesis-20261022-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "sources": {
+    "CL": {
+      "path": "/home/minjun4897/research-evidence/intraday-cl-entry-delay-comparison-20261021-v1/publication.json",
+      "publication_sha256": "031a3d660842b0044d68cf9a2594d700e5401961b04707f1c9ac85fd86ba4d83",
+      "run_id": "61b91dda-0895-49fe-adee-876fb233e0e2",
+      "report_sha256": "4367d874fc2eedce89eecafee676371fcbd31b1d38994e614baaba3663839a5f",
+      "specification_sha256": "66fb210a1596fbaec801d47867a4542e6f01092a9c535c7646c492c96faf4f77"
+    },
+    "CN": {
+      "path": "/home/minjun4897/research-evidence/intraday-cn-exit-policy-comparison-20261022-v1/publication.json",
+      "publication_sha256": "098ff9048d44cc4f28cd7eb2dd3e6babcad6152163a4776edff17790af164acc",
+      "run_id": "fa622adb-e5ea-4c42-a41a-d1c615e04f04",
+      "report_sha256": "ccb7a249273435047313c56b78592d30a0ff55877c9e71a690beb5b5cdb9b3d7",
+      "specification_sha256": "7a19b8eb48edc4776830624a1944577dd40056ea3e9cf607a425b69cd36b9cd2"
+    },
+    "CP": {
+      "path": "/home/minjun4897/research-evidence/intraday-cp-peer-context-comparison-20261022-v1/publication.json",
+      "publication_sha256": "bbae0d7f482fab08b680ffe2f2b045ee076081d60bfe811d8c1ced5c24b27e73",
+      "run_id": "0d027d7e-13a4-4b1b-86ab-e3f3b4c27c3c",
+      "report_sha256": "75ff6b2ad4131ee14cd413f502c618d6b1b27c5bffead870f4121959de268283",
+      "specification_sha256": "4e88debc1b123f84a6b31228e9fc8cc5d81de1f22aee88c2a6471e44197cba61"
+    },
+    "CR": {
+      "path": "/home/minjun4897/research-evidence/intraday-cr-recovery-context-comparison-20261022-v1/publication.json",
+      "publication_sha256": "cd0902ec860a72053510058a9c005d430e8497bd340a647e120b2f7481dce334",
+      "run_id": "d307fb48-da58-4be5-89dc-1f116c74aeb9",
+      "report_sha256": "40cab1c24b90fa4a30ca7ad06786af8b79b9af3c4a92cb4db507764cb25e9616",
+      "specification_sha256": "42afb221aeacd0fd6674dc6b088aa67b3d8afda5b580f22d28b082b6063d99ba"
+    }
+  },
+  "next_hypothesis": {
+    "id": "opening-range-15-vs-30-unfiltered-v1",
+    "status": "design-fixed-not-measured-no-final-comparison-family",
+    "family": "opening_range_breakout",
+    "universe": "same_saved_point_in_time_monthly_around_top20_targets_both_D+1_and_D+2",
+    "arms_range_minutes": {"candidate": 15, "control": 30},
+    "signal": "first_subsequent_completed_five_minute_close_strictly_above_own_initial_range_high",
+    "filters_both_arms": "none_no_CG_relative_strength_no_CP_peer_context",
+    "availability_lag_minutes": 2,
+    "decision_cutoff_minutes_from_session_open": 240,
+    "entry": "first_five_minute_open_strictly_after_signal_available_at",
+    "exit": "entry_plus30minute_cap_minute_open",
+    "maximum_signals_per_name_session": 1,
+    "cost_floor_bps": "33",
+    "next_step": "separately_registered_own_label_dispersion_frequency_and_missingness_calibration_before_any_final_comparison_family",
+    "coverage": "all257_reference_sessions56weeks_preserve_all_target_states_unknowns_and_changed_event_membership_no_original_CG_or_120minute_complete_cohort_inheritance",
+    "planning": {"block_sessions": 5, "bootstrap_draws": 2000, "bootstrap_seed": 0, "ordinary_own_power_checkpoint": true, "inherited_waiver": false},
+    "performance_access_in_this_synthesis": false,
+    "profitability_established": false,
+    "frequency_target": "evaluate_15_per_week_operating_fit_never_force_trades"
+  },
+  "resources": {"maximum_publication_bytes_each": 1048576, "address_space_mib": 512, "cpu_seconds": 300, "wall_seconds": 1200, "nice": 10, "automatic_retries": 0}
+}

@@ -14,6 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
+## Current intake — completed-result synthesis and one next hypothesis, Task CS
+
+CR completed after normal PR #335 merge
+`3e6285dde1920fc9058413c4c59284b0690b502c`. Its completion is recorded in
+the CS ledger with the original PR evidence link. No strategy qualified or
+sizing waiver transferred. CS re-expresses the four completed CL/CN/CP/CR
+publications, enforcing common CM baseline equality and keeping CL's different
+close-endpoint convention separate. Fix the fifteen-minute versus unfiltered
+thirty-minute opening-range hypothesis for a later own-label/frequency
+calibration; no new event, label or subgroup performance is read in CS.
+Scope: `.planning/rd-cs-intraday-results-synthesis.md`. This intake snapshot
+does not establish completion of CS's reviews, CI, merge or GCP publication.
+
 ## Current continuation — one authorized exploratory recovery comparison, Task CR
 
 CQ completed after normal PR #334 merge

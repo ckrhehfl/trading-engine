@@ -8,6 +8,16 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CS completed-result synthesis — operator continuation 2026-10-22.**
+Compare already published continuation/recovery entry and exit aggregates at
+the same cost/unit/frequency denominator; keep CL close-endpoint results apart
+from the common CN/CP/CR thirty-minute cap-open baseline. Fix one earlier
+opening-range formation hypothesis (fifteen versus unfiltered thirty minutes)
+for subsequent own-label calibration, before new event/outcome access. Scope,
+pins and qualifications are in `.planning/rd-cs-intraday-results-synthesis.md`.
+No new performance family or inherited sizing exception is authorized by this
+synthesis; ordinary preregistration and own-sizing checkpoints remain binding.
+
 **Task CR one recovery comparison — explicit operator choice 2026-10-22.**
 After CQ actual own-sizing and independent verification, the operator chose
 one descriptive comparison despite its new subset's retained planning
@@ -1146,7 +1156,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 190 documents,
+them. `.planning/README.md` carries an index of all 191 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
