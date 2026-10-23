@@ -8,6 +8,15 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DB completed-candidate synthesis — operator continuation 2026-10-23.**
+Re-express the completed CS, CW and DA publications at common cost and weekly
+denominators, keeping endpoint and source-cohort differences explicit. Fix one
+next event hypothesis before new event/outcome access. This is documentary
+aggregate arithmetic, not a new performance family, pooled test, strategy pass
+or direction closure. Scope, immutable inputs and next calibration obligations:
+`.planning/rd-db-intraday-candidate-synthesis.md`. Existing failed prerequisites
+and source-specific exceptions remain historical and do not transfer.
+
 **Task DA volume-ready control — operator continuation 2026-10-23.**
 Compare the unchanged fixed opening-volume subset with original OR15 signals
 whose volume feature can actually be computed. The operator's new request
@@ -1228,7 +1237,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 199 documents,
+them. `.planning/README.md` carries an index of all 200 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
