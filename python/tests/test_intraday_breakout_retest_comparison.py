@@ -1,5 +1,6 @@
 """Invented source reports only; no actual market inputs or remote access."""
 from copy import deepcopy
+from decimal import Decimal
 from fractions import Fraction
 from functools import lru_cache
 import json
@@ -18,10 +19,10 @@ def wire(value):
     return json.loads(comparison._canonical(value))
 
 
-def build_synthetic_sources(days=DAYS):
+def build_synthetic_sources(days=DAYS, *, variable=False):
     """Same invented raw source for both saved reports; sparse/zero dates stay."""
     observations = {}
-    for day in days[:-1]:
+    for day_index, day in enumerate(days[:-1]):
         for index in range(4):
             rows = pattern(day, SYMBOLS[index], contact_start=25 if index != 1 else None, count=235)
             # A later second breakout makes CT's unused original30m calibration
@@ -31,6 +32,9 @@ def build_synthetic_sources(days=DAYS):
             rows[55].update(open="102")
             rows[65].update(open="102")
             rows[75].update(open="103")
+            if variable:
+                rows[55].update(open=str(Decimal(102) + Decimal(day_index + 1) / 1000))
+                rows[65].update(open=str(Decimal(102) - Decimal(day_index + 1) / 2000))
             if index == 2:
                 rows.pop(60)  # basic known, retest unknown label.
             if index == 3:
@@ -38,6 +42,7 @@ def build_synthetic_sources(days=DAYS):
                 rows.pop(40)  # retest known but unknown label; basic unknown label.
             observations[day, SYMBOLS[index]] = rows
         observations[day, SYMBOLS[4]] = raw_rows(day, SYMBOLS[4], 235)
+        observations[day, SYMBOLS[5]] = pattern(day, SYMBOLS[5], contact_start=None, count=60)
     cb, chunks = inputs(days=days, observations=observations)
     basic = wire(comparison.ct.build_calibration(cb, chunks))
     retest = wire(comparison.dc.build_calibration(cb, chunks))
@@ -80,6 +85,7 @@ def test_common_masks_keep_original_unknowns_and_use_distinct_own_signals():
         arms = variant["comparison"]["by_arm"]
         assert arms["basic"]["event_count"] == 6
         assert arms["retest"]["event_count"] == 3
+        assert cohorts["full_source"]["by_arm"]["basic"]["signal_counts"]["signal"] == 15
         assert arms["basic"]["gross_mean"] == arms["retest"]["gross_mean"] == 0
         assert arms["basic"]["net_mean"] == arms["retest"]["net_mean"] == Fraction(-33, 10000)
         assert variant["source_by_arm"]["basic"] == basic["variants"][policy]["by_arm"]["15"]
@@ -93,6 +99,10 @@ def test_common_masks_keep_original_unknowns_and_use_distinct_own_signals():
             if row["symbol"] == SYMBOLS[-1]:
                 assert row["exclusion_reasons"] == ["basic:unknown_signal", "retest:unknown_signal"]
                 assert row["outcome_complete"] is False
+            if row["symbol"] == SYMBOLS[5] and row["session"] != DAYS[-1]:
+                assert row["arms"]["basic"]["label"]["status"] == "known"
+                assert row["signal_observable"] is False
+                assert row["exclusion_reasons"] == ["retest:unknown_signal"]
 
 
 def test_full_reference_calendar_and_zero_weeks_keep_same_denominators():
@@ -140,6 +150,28 @@ def test_only_count_and_minutes_timing_diagnostics_and_joint_contrast():
         assert contrast["uncertainty"]["bootstrap_draws"] == 2000
         assert contrast["uncertainty"]["reference_sessions"] == 4
         assert contrast["fixed_cost_cancels_in_mean_difference"] is True
+
+
+def test_nonzero_exact_sums_means_medians_cost_and_contrast_use_each_own_labels():
+    report = comparison.build_comparison(*build_synthetic_sources(variable=True))
+    basic_values = [Fraction(index, 102000) for index in (1, 1, 2, 2, 3, 3)]
+    retest_values = [Fraction(-index, 204000) for index in (1, 2, 3)]
+    for variant in report["variants"].values():
+        for arm, expected in (("basic", basic_values), ("retest", retest_values)):
+            actual = variant["comparison"]["by_arm"][arm]
+            assert actual["gross_sum"] == sum(expected)
+            assert actual["net_sum"] == sum(expected) - len(expected) * comparison.COST
+            assert actual["gross_mean"] == sum(expected) / len(expected)
+            assert actual["net_mean"] == actual["gross_mean"] - comparison.COST
+            assert actual["gross_median"] == sorted(expected)[len(expected) // 2]
+            assert actual["net_median"] == actual["gross_median"] - comparison.COST
+            assert actual["gross_wins"] == sum(value > 0 for value in expected)
+            assert actual["net_wins"] == actual["cost_exceeding"] == 0
+        contrast = variant["comparison"]["retest_minus_basic"]
+        expected_difference = sum(retest_values) / 3 - sum(basic_values) / 6
+        assert contrast["gross_mean_difference"] == contrast["net_mean_difference"] == expected_difference
+        own = contrast["uncertainty"]
+        assert own["design_se"] == max(own[name] for name in ("naive_se", "session_cluster_se", "bootstrap_se"))
 
 
 @pytest.mark.parametrize("mutate", [
