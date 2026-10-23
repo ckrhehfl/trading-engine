@@ -8,6 +8,13 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CV opening-impulse calibration — operator continuation 2026-10-23.**
+Fix one causal opening-range signed-return condition on original CT signals,
+then measure its own frequency, missingness and sizing before final comparison.
+Scope/pins/execution obligations: `.planning/rd-cv-opening-impulse-calibration.md`.
+Preserve targets, unknowns and previous searches; no old exception transfers.
+No reserved access, direction closure or paper/live promotion follows.
+
 **Task CU limited opening-range comparison — operator choice 2026-10-23.**
 The operator explicitly chose one conditional observed-label comparison of
 the fixed unfiltered fifteen/thirty-minute opening-range arms after CT.
@@ -1175,7 +1182,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 193 documents,
+them. `.planning/README.md` carries an index of all 194 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

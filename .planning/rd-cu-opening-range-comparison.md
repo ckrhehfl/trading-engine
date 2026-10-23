@@ -228,3 +228,50 @@ regressions, passed362tests/one existing skip/34subtests in19.70s. Eighteen
 final v3profile source identities still match. No actual CT input or new CU
 mean has been read; the earlier review finding awaits final disposition on
 this updated commit and all required CI must pass on that same head.
+
+## 2026-10-23 — actual completion appended in the next ordinary work unit
+
+Task CU completed on2026-10-23KST: the specifically authorized limited observed-label15/30minute opening-range comparison, actual independent saved-input reconstruction, separate reviews, required CI, normal merge and isolated GCP reflection.
+
+## Identity and completed execution
+
+- Reviewed source:`28afdb04a3c31fe2b63f0510cc6101261020692c`; normal merge:`c6a0913c36beb9a5d96706e3d31112124118625b`,2026-10-22T17:31:45Z. Entire merged tree equals final reviewed source. No protection bypass.
+- Separate source/integrity PASS and resolved P1disposition: https://github.com/ckrhehfl/trading-engine/pull/338#issuecomment-6346360387. All8exact-head required checks passed; full gate: https://github.com/ckrhehfl/trading-engine/pull/338#issuecomment-6347070925. Both Python runs9587passed/3skipped/21subtests in1721.39s(PR) and2110.86s(push), with unchanged logs/no stray runs directory. Fresh GraphQL threads/reviews0/no next pages/CLEAN, base/currentmain232f207before merge.
+- Run:`be69df9f-a2c2-415e-844b-474445c82e5e`, canonical completion2026-10-23T02:32:48.173936+09:00. Actual report:`/home/minjun4897/research-evidence/intraday-cu-opening-range-comparison-20261023-v1/report.json`, SHA256`7bd7d02652e9fbdc7ef17ea25ec736ccff6952144250829de2058cc73341f832`.
+- Specification SHA256`abd81594da6f2a73afd428f9e81b2afc691117fb28a23aef535575a57c82aafc`; local publication SHA256`e486d8a994fb0f1b96f8f3fb7295d86af8b66728dc4c30aae7ee2031c34cd770`.
+- Canonical started/completed span offsets5714051..5723691,9640bytes, SHA256`7e28232715b258d54bd958ec30e2cc1e5551c1628fee586957a5f5f9ebc63856`. Durable start preceded the sole pinned CT report read. No raw/DB/API/new/reserved data or credentials were accessed.
+- One unchanged PID1565487covered producer, supplied-CT independent math, all source/runtime/input/output authentication, substantive payload encoding and successful budget finish/receipt storage before canonical completion. AbsoluteCPU12.759911271s, wall14.85678543895483s, peakRSS348056KiB, finalAS191893504bytes,nice10; no violation/reset/retry. The canonical result contains the same budget receipt as the publication. After finish, only fixed registration/canonical identity metadata and prepared-byte finalization/transport occurred; no new statistic or source/input/output reread.
+- The isolated GCP research checkout equals the normal merge. Collector before/after remained tracked clean at`4ce85d714890b87f1a57ae89d4942660e41c0483`. No process/restart/schedule/collector/secret/order/risk change. Local tracked tree clean, protected untracked originals untouched.
+
+## Independently reconstructed observed results
+
+The sole saved CT input SHA256`b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875` and CTspec`1578dbf61fdbbdb620218f1292da412ec99e8eff3ce1d8c67870bcce304b56bf` matched registration. The handwritten stdlib verifier independently extracted exact known labels and rebuilt the four means/sums/strict positive and cost-exceeding counts, both joint whole-calendar contrasts/SEs/bootstrap/intervals, and exact retained CT provenance/target/unknown/own-sizing evidence. This is actual new arithmetic reconstruction, not a receipt-flag-only check. It correctly claims no new CT raw reconstruction and no runtime authentication; CT's original independent raw replay remains upstream evidence, and the caller separately authenticates the current11file/runtime/helper closure.
+
+Window2025-09-04..2026-09-23;257reference dates/56ISO weeks/5140original targets per policy. Both arms keep the same causal completed5minute-close rule, assumed availability, strict next5minute-open entry and entry+30minute cap-open label. Cost exactly33bp=0.33%per entry. The table shows conditional per-entry arithmetic price-return means, not account PnL or executable trade frequency.
+
+| Information policy | Range | Observed signals | Known outcomes | Observed signals/week | Known outcomes/week | Gross mean% | Net mean% | Strict cost-exceeding% |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| D+1 |15m|1181|1174|21.089286|20.964286|0.009856|-0.320144|32.793867|
+| D+1 |30m|988|980|17.642857|17.500000|0.005612|-0.324388|31.326531|
+| D+2 |15m|1179|1172|21.053571|20.928571|0.008414|-0.321586|32.679181|
+| D+2 |30m|985|977|17.589286|17.446429|0.005982|-0.324018|31.320368|
+
+Fifteen-minus-thirty conditional mean differences are+0.424432654878675bp(D+1) and+0.2431329093209715bp(D+2). Their descriptive normal95intervals are[-8.246508085258494,+9.095373395015844]bp and[-8.438873669215287,+8.925139487857232]bp, both including0. All four gross means are positive but below the assumed cost, and all four net means are negative. This does not say every event lost or establish failure of all opening-range approaches.
+
+Joint uncertainty uses the full257datecalendar, simultaneous date sampling for both arms, circular5session/2000draw/seed0bootstrap and the same remainder rule. All2000draws had valid denominators. D+1 naive/cluster/bootstrap/maxSE=0.0004424030649814204/0.00035963909304831626/0.0003135651411308028/0.0004424030649814204; D+2=0.0004429676589477573/0.00036019936260447657/0.00031241090083927064/0.0004429676589477573. Corrected-to-naive ratios are1.0because the predeclared conservative maximum selects the independent-arm naive reference here; the arms are not asserted independent. Known-label dates249/238and original own MDE12.41/11.79or11.81bp remain unchanged. These are descriptive discovery intervals, not confirmatory significance tests or a power certificate for a contrast.
+
+## Preserved limits and interpretation
+
+The operator's one observed-label choice was applied, with current requires_operator_choice:false and underpower_exception_applied:false. Original CT requires-choice flags remain true in the retained evidence. No source failure was converted to passing. Signal-unknown targets remain2609/2618(D+1) and2611/2620(D+2), roughly51%of original targets. Unknown subsequent labels remain7for15m and8for30m in each policy; they are not removed from signal counts or zero-filled into outcome means. The Dpolicies overlap, so counts are not independent replications or distinct missing events.
+
+Fifteen minutes creates more observed opportunities; the observed conditional mean improvement is small and its descriptive intervals include0. These unequal selected samples cannot isolate a causal benefit of earlier entry. On the existing assumed cost, neither observed conditional mean pays for trading. Their weekly observed averages exceed15opportunities, but neither forced weekly account trades nor capital/risk/fill feasibility is modeled. Original CT objective attainment remains48/56weeks for15m and41/40for30m, rather than every week.
+
+Historical release/bar availability, exceptional-session calendar, price basis/revision/eligibility/liquidity, actual costs and fills remain unverified assumptions or source limitations. No new official historical timing fact was established. No gross/net mean is an investable full top20portfolio result; no model is qualified, direction closed, reserved confirmation spent, or paper/live promotion authorized. The seven local conclusion/receipt checks verified the reported universal algebra/sign/interval statements from the already independently reconstructed compact output; they did not recompute actual raw data and do not replace the GCP mathematical reconstruction.
+
+## Progress and next step
+
+This request, including CTfrequency/gaps/own-sizing and the subsequently chosen CUcomparison, is complete through independent reconstruction, separate reviews, required CI, normal merge and isolated GCP reflection:0remaining completion conditions. The three previously unmeasured CTpreparation questions were measured, the conditional-sample decision obtained, and the actual performance comparison completed. Remaining gaps are disclosed limitations, not an unfinished current calculation.
+
+No profitable strategy is established by this result. The gross conditional mean is about0.006~0.010%per event, against assumed0.33%cost; simply shortening the initial range did not establish an economically sufficient conditional mean. The next justified research step is one separately preregistered situation-selection hypothesis aimed at larger gross conditional moves, keeping frequency/cost/missingness together. Fix its information/decline/entry/exit rules before new conditional performance reads; calculate its own sizing first, retain repeated-discovery limits and do not silently sweep more range lengths, delays, exits or costs. This is a next-step proposal, not an additional hypothesis or run added to CU.
+
+Detailed actual completion is recorded here and in the canonical evidence; append it to the CU ledger during the next ordinary work unit rather than creating an extra CI-only documentation PR.
