@@ -1,0 +1,38 @@
+{
+  "id": "intraday-opening-volatility-comparison-v1",
+  "mode": "DH-common-complete-basic-opening-volatility-conditional-comparison",
+  "output_name": "intraday-di-opening-volatility-comparison-20261024-v1",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "source_roles": {"common_observation": "pinned_completed_full_DH_common_observation_report"},
+  "upstream_specification_sha256": "be151704d4a158272360b8a383554bb464db3d373b690cd6622a02a748e47601",
+  "parameters": {
+    "axis": "DH_common_outcome_complete_OR15_basic_versus_fixed_opening_volatility_subset",
+    "predicate": "first_three_completed5minute_context_max_high_minus_min_low_divided_by_first_open_greater_or_equal_threshold",
+    "opening_volatility_threshold": {"numerator": "33", "denominator": "10000"},
+    "context": "original_basic_event_context_first_three_bars_full_opening_clock_and_all_OHLC_validated_even_rejected",
+    "cohort": "unchanged_DH_common_outcome_complete_then_basic_signal_and_fixed_subset_no_fresh_outcome_exclusion",
+    "entry_delay_minutes": 3,
+    "cap_minutes_after_entry": 30,
+    "assumed_cost": {"numerator": "33", "denominator": "10000"},
+    "own_sizing_gate": "all_four_new_basic_selected_own_MDE_defined_finite_at_most33bp_before_any_new_mean",
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "contrast": "volatility_selected_minus_basic_conditional_entry_means_separately_D+1_D+2",
+    "uncertainty": "CU_joint_whole_session_circular5session_max_naive_cluster_bootstrapSE_normal95",
+    "weekly_operating_objective": 15,
+    "underpower_exception_applied": false,
+    "output_scope": "full_source_inherited_common_and_selected_frequency_missingness_fresh_sizing_then_conditional_exact_gross_net_no_subgroups"
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0
+  }
+}

@@ -14,7 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — common-observation breakout/retest comparison, Task DH
+## Current continuation — opening-volatility predicate, Task DI
+
+DH completed normal PR#351 merge and independently verified isolated comparison.
+The operator requests the planned next single opening-volatility condition and
+frequency/cost-exceedance comparison. Keep DH's fixed common-complete basic
+population,not a new retrospective restriction. Initial15minute range/firstopen
+>=33bp is fixed before access;no threshold sweep. Fresh all-four own sizing
+gates conditional performance activation. Scope:
+`.planning/rd-di-opening-volatility-comparison.md`.
+No DI source body or feature-selected outcome was read at registration. Parent
+actual receipts remain private;sanitized completion is appended to DH's ledger.
+
+## Previous continuation — common-observation breakout/retest comparison, Task DH
 
 DG completed normal PR#350 merge and independently verified isolated comparison.
 Its sanitized completed result is appended to the DG ledger in this ordinary
