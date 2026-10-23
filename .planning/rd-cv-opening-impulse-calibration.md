@@ -118,3 +118,126 @@ Public specification SHA256:
 `d012f691d4011e8aadcafe1dbecc89437bb27f83fbcae342ac233a3bf267015f`.
 Separate final reviews, exact-head CI, normal merge and actual execution are
 still pending at this source freeze; no synthetic pass is an actual result.
+
+## 2026-10-23 — actual completion appended in the next ordinary work unit
+
+Task CV actual calibration completed2026-10-23KST, after independent reviews,
+exact-head CI, normal merge and isolated GCP research reflection. This does not
+complete a new performance comparison or establish a profitable strategy.
+
+## Completed identity and actual execution
+
+- Reviewed source `ad0b22f0c59d0da2aca51c8f3082e934e688496d`; normal PR#339 merge
+  `890f9b50bbbb3e78c5764b0bae82a7d0866522b7`,2026-10-23T03:25:11Z.
+  Whole merged tree equals reviewed source. No protection bypass.
+- Separate source/integrity PASS with no findings:
+  https://github.com/ckrhehfl/trading-engine/pull/339#issuecomment-6356237566.
+  Exact-head all8required runs SUCCESS; gate:
+  https://github.com/ckrhehfl/trading-engine/pull/339#issuecomment-6356630674.
+  Both Python runs9621passed,3skipped,21subtests,1724.21s(push)/2132.96s(PR),
+  with no new experiment log, unchanged live_signals and no stray python/runs.
+  Fresh GraphQL threads/reviews0,hasNextPage:false,CLEAN,base/main c6a0913.
+- Run `7f5eaa9e-6938-486a-8492-11f6ecb1323f`, canonical completion
+  `2026-10-23T12:26:52.638056+09:00`.
+  Report `/home/minjun4897/research-evidence/intraday-cv-opening-impulse-20261023-v1/report.json`,
+  SHA256 `e791c690b8a916c1b1ed7b111719ffc2ba06aca92e31b05a5ac146760e3b4f48`.
+- Specification SHA256 `d012f691d4011e8aadcafe1dbecc89437bb27f83fbcae342ac233a3bf267015f`;
+  local publication SHA256 `02b5878e3eaad2574bf76a9dc58dbe4b7b5119b554113035b6c2323dcb2b1181`.
+  Canonical started/completed span5723691..5733256,9565bytes,
+  SHA256 `2ee18ed9104514a741bc86874aaae9199da7a2e4552286149796eb8e668e28f6`.
+- One unchanged PID1587278 covered producer, independent supplied-input math,
+  authentication, substantive publication preparation and successful budget
+  finish/receipt storage before canonical completion. AbsoluteCPU16.680026903s,
+  wall18.8159749806s,peakRSS419564KiB,finalAS203210752bytes,nice10,no violation,
+  reset or retry. Canonical result contains the same budget receipt. Only
+  mechanical canonical/transport metadata finalization followed finish.
+- All seven frozen helper/artifact/spec hashes matched before actual invocation.
+  Caller authenticated12tracked source/spec/dependency files, reviewed normal
+  merge, pinned Python/helper/verifier, exact sole CT input and output bytes.
+  Durable canonical start preceded actual input access. No DB/API/raw archive,
+  reserved/forward/holdout data or credential values were read.
+- Isolated GCP research checkout equals normal merge. Collector before/after
+  remained tracked clean at4ce85d714890b87f1a57ae89d4942660e41c0483. No collector,
+  process, schedule, order, risk or secret change. Local tracked tree clean;
+  the two protected untracked originals remain untouched.
+
+## Independently reconstructed actual measurements
+
+Sole CT report pin b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875
+and original specification pin matched. The handwritten stdlib verifier freshly
+reconstructed context features/exact threshold decisions, retained all original
+rows/labels/provenance, and independently rebuilt source and selected own-sizing,
+weekly/monthly counts and current choice flags. Its true new-math receipt does
+not claim a new raw-data replay or source/runtime authentication; CT's existing
+raw reconstruction is retained and current authentication is the caller's job.
+The local supplemental audit checked receipt identity/algebra and3conclusion
+claims; it explicitly reports actual_new_math_recomputed:false and is not the
+independent GCP mathematical reconstruction.
+
+Window2025-09-04..2026-09-23,257reference dates/56weeks,5140original targets/policy.
+Select only original first signals whose initial range last close/first open-1
+is at least33/10000. Original three-minute entry and entry+30minute cap-open
+remain unchanged. D+1/D+2 delay membership information, not holding days or
+independent replication. The table contains opportunities, not account trades.
+
+| Policy | Range | Selected | Rejected original signals | Known labels | Unknown labels | Opportunities/week | Own MDE bp | Corrected/naive SE | Weeks with >=15 selected |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| D+1 |15m|606|575|599|7|10.821429|17.767877|1.330738|10/56|
+| D+1 |30m|547|441|539|8|9.767857|16.684319|1.331109|5/56|
+| D+2 |15m|605|574|598|7|10.803571|17.812818|1.332311|10/56|
+| D+2 |30m|545|440|537|8|9.732143|16.720382|1.329249|5/56|
+
+All four own MDEs are below unchanged assumed33bp cost floor. This is a sizing
+plan, not an observed return or family readiness certificate. Selected known
+labels span220dates for15m and210for30m; all2000bootstrap draws valid. All257
+dates, including zero-event dates, remain the cluster/bootstrap calendar.
+D+1(naive,cluster,bootstrap,max) SE:15m(0.000476583717558,0.000624384177261,
+0.000634207970559,0.000634207970559);30m(0.000447394815950,0.000595531370141,
+0.000560299928727,0.000595531370141).
+D+2:15m(0.000477225014401,0.000625230086995,0.000635812091628,
+0.000635812091628);30m(0.000448989263829,0.000596818618923,
+0.000562208767105,0.000596818618923).
+
+Original signal-unknown targets remain2609/2618(D+1),2611/2620(D+2),roughly51%.
+Known-no-signal targets1350/1534(D+1),1350/1535(D+2) are not-applicable rather
+than rejected signals or zero returns. Selected+rejected exactly reproduces
+all original signal counts1181/988,1179/985. Every original7/8unknown outcome
+remains selected and unknown; it was not erased by the new condition or used
+as zero. New comparison_choice_reasons is unknown_own_labels in all four cells,
+current_requires_operator_choice:true. No underpower exception was applied.
+
+## Interpretation, risks and next checkpoint
+
+The fixed predicate roughly halves observed opportunities: original weekly
+21.09/17.64(D+1),21.05/17.59(D+2) become10.82/9.77,10.80/9.73. It does not
+meet the15/week operating objective in these observed means; count objectives
+are not filled with forced trades, summed overlapping policies or scaled-up
+unknown targets. This is a measured frequency trade-off, not a failed/closed
+direction or a cost-return verdict. No new selected mean, cost-exceeding rate,
+conditional comparison, portfolio PnL or net return was calculated/published.
+
+No new official historical release-time fact was established. The primary
+Gao research motivates different US ETF context research, not proof for this
+Korean predicate/threshold. Historical bar/membership availability, calendar,
+eligibility/liquidity/revisions/price basis, true costs and fills remain source
+qualifications/assumptions. Complete original provenance survives. Exact
+Fraction arithmetic, causal availability/source validation, no missing zero
+fill/first-signal retry, whole-calendar own error and pre-completion budget
+guards remove coding risks; they cannot certify unobserved market information.
+
+At source freeze four pre-actual conditions remained: separate reviews,CI,
+normal merge and authenticated isolated GCP execution. All four are resolved;
+0remaining conditions for this actual calibration. Both Dpolicies completed
+and independently verified. The next separately registered performance
+comparison has1material choice: use only observed selected outcomes while
+retaining unknowns and conditional claims, or investigate missing data first.
+CV's own-sizing passes, but CU's missing-label exception cannot transfer to
+this new condition under the frozen CV checkpoint. No strategy pass, direction
+closure, reserved access or paper/live promotion follows.
+
+Recommend one limited observed-label comparison of each arm's original and
+selected signals at unchanged cost/clocks, explicitly preserving reduced
+frequency and missingness. That is a proposal pending operator scope choice,
+not a final comparison family preregistered before its own calibration.
+Append this actual completion to the CV ledger in the next ordinary work unit;
+do not create a CI-only documentation PR for an already canonical result.
