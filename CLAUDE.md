@@ -8,6 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DA volume-ready control — operator continuation 2026-10-23.**
+Compare the unchanged fixed opening-volume subset with original OR15 signals
+whose volume feature can actually be computed. The operator's new request
+authorizes this source-bound observed-label exploration with the already
+disclosed selected-group finite sizing shortfall; it does not inherit CZ's
+exception. Calibrate the new control before activating the comparison and
+refuse undefined or failed new-control sizing. Preserve all source unknowns,
+flags and execution boundaries. Performed investigation and conditional
+execution protocol: `.planning/rd-da-volume-ready-comparison.md`.
+No direction closure, reserved access, strategy pass or promotion follows.
+
 **Task CZ opening-volume comparison — operator choice 2026-10-23.**
 After CY's actual calibration, the operator explicitly chose one limited
 observed-label comparison of original OR15 signals and the fixed opening-volume
@@ -1217,7 +1228,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 198 documents,
+them. `.planning/README.md` carries an index of all 199 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

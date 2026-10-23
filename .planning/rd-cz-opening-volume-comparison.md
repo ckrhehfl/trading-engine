@@ -134,3 +134,154 @@ volume>=2selection with baseline availability and calendar/name composition.
 It cannot isolate the pure benefit of the volume threshold. This is recorded
 in public assumptions and the final report; no matched or causal inference is
 claimed. No outcome was inspected to choose this reporting qualification.
+
+# CZ actual completion — fixed opening-volume observed-label comparison
+
+## Delivery and authenticated identity
+
+All four CZ delivery groups are complete: reviewed implementation/invented and
+independent checks; exact-head CI/normal merge; authenticated actual comparison
+and independent reconstruction; completion/reporting. The earlier CY frequency
+calibration also completed all four groups; its full completion was appended
+to the CY ledger by this ordinary CZ PR.
+
+- PR:https://github.com/ckrhehfl/trading-engine/pull/343
+- Reviewed source938a367fd0d66a30e770fe1ae6be01be9c44f7b9.
+- Normal mergea44c2498021b9bbe44949c17d0a2a2f80000932a,
+  merged2026-10-23T08:02:25Z. Two parents verified; second parent is reviewed
+  source and both complete trees equal98f797b284aed4781024bded311a6cb679d6d370.
+- Final separate source/integrity reviews and all fixes/frozen evidence:
+  https://github.com/ckrhehfl/trading-engine/pull/343#issuecomment-6359935214
+- Final normal-merge gate, all eight push/PR required checks SUCCESS,
+  MERGEABLE/CLEAN, no unresolved threads/change requests, pagination exhausted:
+  https://github.com/ckrhehfl/trading-engine/pull/343#issuecomment-6360352552
+- Both Python CI suites9758passed,3skipped,21subtests;
+  push2231.00s,PR2196.60s. Log/live-signals/stray-runs isolation passed.
+- Actual run37e75921-983c-483f-a3de-8139271015f6 completed
+  2026-10-23T08:03:54.418171+00:00(17:03:54.418171KST).
+- Output:/home/minjun4897/research-evidence/intraday-cz-opening-volume-comparison-20261023-v1/report.json
+- Output SHA25667657e33a0eebe82ead298b31ee1bbc7b2a27dc0625daf49203af98468d4380e.
+- Specification SHA256391f2c3849471ad8ac65dec162d1da3a2d4352aabaea890a2a20aaa57f48fc5a.
+- Local publication var/cz-opening-volume-publication.json,
+  SHA25688c75a27e25d716dac5af36736096cd7371946fa68d8126dc1ed9ecd2e6f5c0e.
+- Canonical started/completed span5769965..5785772,15807bytes,two records,
+  SHA256bda80863e652446927dab8abfd7ba3f9a2cd129acd0ea9c05b57e3baeea8b7e2.
+
+## Actual conditional price responses
+
+The source257reference dates/56weeks/5140targets per policy/5158union
+coordinates/31names remain. Original and selected groups each use their own
+observed labels; unknowns remain in source/counts and were not zero-filled,
+replaced or used to select signals. Entry/exit and assumed round-trip33bp
+cost remain unchanged. These are per-opportunity thirty-minute price changes,
+not actual account returns, equal-total-exposure portfolios or fills.
+
+| Policy/group | Events | Known/unknown outcomes | Gross mean% | Assumed-cost net mean% | Gross-positive count | Gross exceeds33bp count | Exceeds33bp% | Opportunities per all56weeks |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| D+1 original |1181|1174/7|0.009856487317265|-0.320143512682735|539|385|32.793867120954|21.089285714286|
+| D+1 selected |66|65/1|-0.198762377882540|-0.528762377882540|27|19|29.230769230769|1.178571428571|
+| D+2 original |1179|1172/7|0.008413544528248|-0.321586455471752|537|383|32.679180887372|21.053571428571|
+| D+2 selected |66|65/1|-0.198762377882540|-0.528762377882540|27|19|29.230769230769|1.178571428571|
+
+| Policy | Selected minus original mean,bp | Descriptive95interval,bp | Corrected/naive contrastSEratio |
+| --- | ---: | --- | ---: |
+| D+1 |-20.861886519981|[-48.591793756989,6.868020717028]|1.0|
+| D+2 |-20.717592241079|[-48.447655941195,7.012471459037]|1.0|
+
+Both observed selected means are lower, including before cost. Both contrast
+intervals include zero, so this is not a reliable superiority/inferiority test,
+an absent-edge finding or a direction closure. Fixed cost cancels only in the
+conditional per-entry mean contrast, not in total capital exposure or account
+returns. Shared dates/overlapping groups are jointly clustered/resampled;
+both2000bootstrap contrasts had valid denominators, no skipped draws. The
+maximum-SE naive floor is retained, not used as an independence certificate.
+
+CY's original own-sizing failure/choice remains in immutable source provenance:
+selected65known/1unknown across48dates, MDE40.93743024476898bp>assumed33bp.
+The new one-family observed-label/underpower authorization is marked applied;
+the parent's exception remainsFalse. No other source failure/undefined sizing
+or old global waiver was adopted. One new performance family is recorded;
+promotion allowedFalse and promotion-trial increment0.
+
+## Frequency and interpretation
+
+CY's independently verified observed selected frequency is66events over56weeks,
+1.178571...per week, weekly min/median/max0/0/6, zero weeks attaining15.
+This misses the observed operating objective. Total unknown target intervals
+remain3233/5140(D+1) and3232/5140(D+2), about63%; their loose selected+unknown
+upper bounds remain3299/3298, not forecasts or executable entries. Do not
+infer that the unobserved full top20population cannot attain15weekly events.
+
+Original signals include624(D+1)/621(D+2)events with unavailable prior-volume
+features that cannot enter the selected group. Conditional differences combine
+the volume>=2threshold, baseline availability and calendar/name composition;
+they do not isolate the pure predictive or causal benefit of volume. D policies
+refer to source-availability assumptions, not holding periods or independent
+replications; their overlapping observations must not be pooled as extra data.
+
+No new official historical-release evidence is claimed. Existing availability
+clocks and33bp costs remain assumptions; historical eligibility/revisions,
+share-volume units, complete coverage and fills remain unproven. The current
+observed result provides no demonstrated improvement from this fixed rule and
+no certified profitable strategy or live/paper promotion.
+
+## Verification, resource receipt and deployment
+
+The frozen producer-free verifier independently reconstructed the supplied CY
+source contract/volume-feature coherence, all group labels/counts/exact sums,
+means/cost thresholds, own summaries, joint-date covariance/bootstrap/maximum
+SE/descriptive intervals, contrasts and source-bound authorization. It retained
+raw source copied statistics exactly while permitting only arithmetic float
+tolerance in independently recomputed statistics. It used the sole CY byte
+stream SHAab6342274a96615b5bbb7014c0142a30b528d69169d3fff4441e2b7f3acad380,
+reauthenticated before/after. No CT/CX body, raw/typed archive or database was
+reread. No remote service, authentication material, collector data, or inputs
+from reserved, forward or holdout windows were accessed.
+No new raw-data or historical source-truth reconstruction is claimed.
+
+One unchanged actual PID1599283 covered producer, supplied-input independent
+reconstruction, source/runtime/input/output reauthentication, full substantive
+publication encoding and durable successful budget receipt before canonical
+completion. CPU16.467741607s,wall17.67353387177s,peakRSS235912KiB,
+finalAS62300160bytes. CPU300s/AS512MiB/wall1200s/nice10 readback matched,
+violations[], automatic retries0, no reset. Only mechanical canonical/log and
+transport finalization followed completion. The canonical durable started
+record preceded the sole CY body read.
+
+The isolated GCP research checkout advanced to the normal merge and actually
+ran that reviewed code. Collector checkout remained tracked clean at
+4ce85d714890b87f1a57ae89d4942660e41c0483 before/after; its processes,
+schedules, configuration, data and pre2019backfill were unchanged. Both
+protected operator files remained outside content reads/imports/tests/scans.
+
+Supplemental post-completion receipt algebra/conclusion checks passed:
+var/cz-report-audit.json SHA2564edd51f82c8d8acc5e1519937e101099225b9b106b32df4f3f9d3cfc6877a504.
+The conclusion checker separately verified all five narrative claims against
+the publication: selected observed gross means negative; selected-minus-
+original observed means negative; both descriptive contrast intervals include
+zero; selected observed frequency misses15weekly opportunities; selected
+cost-exceedance fraction is lower in both policies. The supplements did not
+reread market inputs, recompute new actual study math or authenticate runtime.
+Those actual obligations were completed inside the frozen caller/verifier.
+
+## Progress and next step
+
+There are zero unresolved conditions blocking the requested CY measurement or
+this selected CZ comparison; both completed all four delivery groups. Three
+CZ preparation groups(reviewed/verified code, exact-head CI/normal merge,
+authenticated isolated research reflection) moved from outstanding to completed.
+Both D+1/D+2 were run and independently verified. There is no qualified
+profitable strategy from these two studies.
+
+A focused next investigation would hold volume-feature availability constant
+by using original signals with ready volume inputs as the comparison cohort.
+That can reduce the specific availability/composition confound while keeping
+the threshold, signals and price rules fixed; it would still require its own
+preregistration and sufficiency assessment and cannot inherit this one-family
+exception. No extra threshold is tuned or new family executed in this report.
+Coverage/sample improvement remains necessary for full-population claims; the
+observed operating shortfall must remain visible rather than force trading.
+
+This full actual completion is published on the PR and retained locally for
+append-only incorporation into the CZ ledger in the next ordinary source unit,
+without a second CI-only documentation merge for an already completed run.
