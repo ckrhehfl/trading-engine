@@ -141,3 +141,57 @@ Specification SHA256:
 `290d8a3b94916d8b01ba5f5f1aa464e2f7c822729609359d8b9ad0edc9fa1786`.
 Separate final reviews, exact-head CI, normal merge and actual input execution
 remain pending at this freeze; invented validation is not an actual result.
+
+## 2026-10-23 — actual completion, appended in the following CX work unit
+
+CW completed under normal PR#340 merge
+`df9907ed1a21a3e464de3ebca609911e12dad91a`, reviewed source
+`0824e0b10f1edb79b1c60900cadc3974ad40e897`; their complete trees agree and
+the reviewed source is the merge's second parent. Separate final source and
+research-integrity reviews passed without findings. All eight required
+push/PR check runs passed; both Python results9676passed,3skipped,21subtests
+(2101.00s/1673.15s). No protection bypass or experiment-log/live-signal test
+mutation. Author named regression467passed,1existing skip,39subtests; fresh
+reviewers separately ran121/271tests. Protected untracked files remained intact.
+
+Run `57ff8323-84da-41d0-9601-0a792be17dc8` completed at
+2026-10-23T13:27:39.315575+09:00. Report
+`/home/minjun4897/research-evidence/intraday-cw-opening-impulse-comparison-20261023-v1/report.json`
+SHA256 `8cbefdbcf426eb73bc47f7f8565200fbb99ed276635f2a8e30bdb6f6eb2fef90`.
+Local publication SHA256
+`f1cbf1d5c2342d70779ac9c5bdb46c8d268b621c93383783abb91cc93b5a669d`;
+canonical span5733256..5745054,11798bytes, SHA256
+`2f3f5fffd6d58bb51556c9faa59c3c39b4c4717b2934478f92fdda2fa2192619`.
+All source/helper/runtime/input/output identities and durable start were
+authenticated. One PID1589774 covered producer, independent supplied-input
+reconstruction, rechecks and substantive publication preparation before budget
+receipt and canonical completion: CPU19.623380414s,wall22.7318524783s,
+RSS361636KiB,AS156651520bytes,nice10,no reset/violation/retry. No new raw/DB/API,
+reserved/forward read or secret access. The independent verifier correctly
+claims no new raw reconstruction or source/runtime authentication of its own;
+the caller separately performs authentication.
+
+| Policy/range | Original known/unknown | Selected known/unknown | Selected weekly opportunities | Original net mean% | Selected net mean% | Selected-minus-original bp | Descriptive95interval bp |
+| --- | --- | --- | ---: | ---: | ---: | ---: | --- |
+| D+1/15m |1174/7|599/7|10.821429|-0.320144|-0.321513|-0.136982961541|[-11.318292409397,11.044326486316]|
+| D+1/30m |980/8|539/8|9.767857|-0.324388|-0.294029|3.035894263452|[-7.655542721340,13.727331248244]|
+| D+2/15m |1172/7|598/7|10.803571|-0.321586|-0.322733|-0.114647093871|[-11.306846639072,11.077552451331]|
+| D+2/30m |977/8|537/8|9.732143|-0.324018|-0.295048|2.896988184513|[-7.828645039044,13.622621408070]|
+
+All eight observed conditional gross means were positive but below assumed33bp
+cost; every net mean was negative and all four descriptive contrast intervals
+included zero. About3bp thirty-minute improvement does not establish an edge.
+Joint257date,5session2000drawseed0 uncertainty preserves overlap; maxSE chose
+the naive reference in all cells, giving corrected/naive1.0, not independence
+proof. Frequencies remain below15/week. Unknown selected7/8and approximately
+51%signal-unknown targets remain; the limited observed-label authorization
+does not certify the full universe, a filled portfolio or actual investment
+returns. Both membership policies completed, all four delivery conditions
+resolved, zero pending decisions. No profitable candidate, direction closure
+or promotion followed. Isolated GCP reached the merge; collector stayed tracked
+clean at its original pinned source. Next authorized work is CX readiness.
+
+The complete immutable figures, resource/authentication receipts and limitation
+record are in the [actual completion](https://github.com/ckrhehfl/trading-engine/pull/340#issuecomment-6357427652),
+with [separate reviews](https://github.com/ckrhehfl/trading-engine/pull/340#issuecomment-6357003713)
+and [merge gate](https://github.com/ckrhehfl/trading-engine/pull/340#issuecomment-6357362089).
