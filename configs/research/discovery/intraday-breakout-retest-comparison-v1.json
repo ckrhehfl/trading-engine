@@ -1,0 +1,36 @@
+{
+  "id": "intraday-breakout-retest-comparison-v1",
+  "mode": "common-target-original-breakout-retest-conditional-comparison",
+  "output_name": "intraday-dh-breakout-retest-comparison-20261024-v1",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "source_roles": {"basic": "pinned_completed_original_CT_report", "retest": "pinned_completed_original_DC_report"},
+  "parameters": {
+    "axis": "original_OR15_basic_breakout_versus_original_first_retest_only",
+    "signal_observable": "both_original_status_in_signal_or_known_no_signal",
+    "outcome_complete": "signal_observable_and_every_signaled_arm_original_label_known",
+    "selection": "same_target_mask_both_arms_then_each_own_original_signal_no_zero_fill",
+    "entry_delay_minutes": 3,
+    "cap_minutes_after_entry": 30,
+    "assumed_cost": {"numerator": "33", "denominator": "10000"},
+    "own_sizing_gate": "all_four_common_outcome_arm_MDE_defined_finite_at_most33bp_before_any_mean",
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "contrast": "retest_minus_basic_conditional_per_entry_means_separately_D+1_D+2",
+    "uncertainty": "CU_joint_whole_session_circular5session_max_naive_cluster_bootstrapSE_normal95",
+    "timing_diagnostics": "same_target_both_signal_count_and_minutes_only_no_subgroup_performance",
+    "underpower_exception_applied": false,
+    "output_scope": "full_source_common_observable_common_outcome_counts_frequency_all_original_weeks_and_gated_exact_gross_net"
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0
+  }
+}

@@ -8,6 +8,20 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DH common-observation breakout/retest comparison — 2026-10-24.**
+The operator requests basic OR15 breakout versus first retest support on the
+same observable targets,including gross/net price response and weekly frequency.
+Use only pinned completed original CT/DC reports;match their full target grids
+and source lineage. Common signal observability requires both signals known;
+common outcome completeness additionally requires every signaled arm's original
+label known. Disclose both masks and all original unknowns. This explicit
+source-bound common-scope request does not grant an underpower exception.
+Fresh selected own sizing must pass before new means. Original entries and
+entry-plus30minute exits,33bp cost,full reference calendar;no new market read.
+Conditional retest-minus-basic contrast combines timing and selection,not a
+causal confirmation-only effect or portfolio return. Registration/execution:
+`.planning/rd-dh-breakout-retest-common-observation.md`.
+
 **Task DG observed retest comparison — operator choice 2026-10-24.**
 After completed DF recovered0of2windows,the operator explicitly chose a limited
 comparison of the original523/520known price outcomes. This source-bound
@@ -1286,7 +1300,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 205 documents,
+them. `.planning/README.md` carries an index of all 206 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

@@ -92,3 +92,35 @@ removed in code and remaining coverage/selection/fill/cost/search risks;remainin
 actual-comparison conditions and conditions removed;both timing-policy status;
 review/CI/merge/isolated execution evidence and a concrete next step. No external
 inquiry or paid service is needed for this scoped comparison.
+
+## Completed 2026-10-24 — appended in the next ordinary unit
+
+Normal PR#350 merged reviewed source662b82388ab0d6f0d1eb416f9eb3fba1bee9bf38
+as mergea5067d5a3f2d8dd423e8ed7bc074c4ac4d21afe9 with identical whole tree.
+Fresh separate source and integrity reviews passed;all eight push/PR checks
+passed,including9986Python tests with3skips/30subtests in each clean CI run.
+Source/integrity review receipt:
+https://github.com/ckrhehfl/trading-engine/pull/350#issuecomment-6371582306
+CI/review-thread gate:
+https://github.com/ckrhehfl/trading-engine/pull/350#issuecomment-6372006900
+
+Independent original-known-only comparison completed under the unchanged shared
+budget. D+1 selected523of525signals:gross mean0.03717757939071173percent,
+net mean-0.29282242060928826percent,net positive30.592734225621413percent.
+D+2 selected520of522:gross0.03431737958699715percent,
+net-0.29568262041300286percent,net positive30.384615384615383percent.
+Fresh own MDE16.746271197676403/16.8018685096702bp passed before means.
+Signals/week9.375/9.321428571428571;known outcomes/week
+9.339285714285714/9.285714285714286,using all56weeks. Neither observed mean
+covered assumed33bp costs or observed weekly15opportunities. No incremental
+control comparison,full-population rejection,strategy pass or promotion follows.
+
+Both original unknown price outcomes and2618/2620unknown signal targets remain.
+About51percent coverage gaps,selection,source timing/vintage,price basis,
+minute-open fill,cost and repeated-search limitations remain. D+1/D+2 are
+overlapping data-availability policies,not holding periods. API/auth/cache/DB
+access0;no recovery,overwriting or new signal detection. Only isolated research
+checkout advanced;collector head/tracked state and operational processes stayed
+unchanged. Detailed paths,pins,run receipt and completed-publication algebra
+audit remain in ignored private evidence. No new private artifact identity is
+published here. The next explicit operator request is recorded in DH.
