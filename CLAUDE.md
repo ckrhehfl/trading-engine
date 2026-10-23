@@ -8,6 +8,15 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CY opening-volume own calibration — operator continuation 2026-10-23.**
+Measure the fixed CX OR15 opening-volume hypothesis's signal frequency,
+weekly operating fit, missingness and own-label sample sufficiency using the
+pinned saved CT and CX reports. Keep all original targets, first events,
+timing, labels, costs and unknowns; no new source acquisition or threshold
+search. Scope and performed implementation are in
+`.planning/rd-cy-opening-volume-calibration.md`. No performance comparison,
+old waiver, reserved access, direction closure or trading promotion transfers.
+
 **Task CX activity-input readiness — operator continuation 2026-10-23.**
 Audit existing stored volume/value fields and recoverable minute coverage for
 the original dated CB targets inside the spent intraday window. Register the
@@ -1199,7 +1208,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 196 documents,
+them. `.planning/README.md` carries an index of all 197 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

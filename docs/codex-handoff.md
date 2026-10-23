@@ -14,7 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — stored activity-input readiness, Task CX
+## Current continuation — opening-volume own calibration, Task CY
+
+CX completed through normal PR#341 and independently verified GCP execution.
+Its completion is appended to its ledger in this work unit. The operator now
+requests signal frequency, weekly operating fit and sample sufficiency for its
+fixed opening-volume breakout hypothesis. CY connects the two pinned saved
+CT/CX reports, preserving original populations, clocks, unknowns and source
+qualifications. It does not run a performance comparison or transfer an old
+exception. Current registration and actual execution status live in
+`.planning/rd-cy-opening-volume-calibration.md`. Earlier intake snapshots below
+remain historical; verify actual source/execution identity against that ledger.
+
+## Previous continuation — stored activity-input readiness, Task CX
 
 CW completed through normal PR#340 and independently verified isolated GCP
 execution; its appended ledger and linked PR completion own actual results.
