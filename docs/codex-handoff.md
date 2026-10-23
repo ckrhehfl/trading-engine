@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — observed retest comparison, Task DG
+## Current continuation — common-observation breakout/retest comparison, Task DH
+
+DG completed normal PR#350 merge and independently verified isolated comparison.
+Its sanitized completed result is appended to the DG ledger in this ordinary
+unit. The operator now requests basic OR15 versus first retest support on the
+same observable targets. Match original completed CT/DC target grids and retain
+signal-unknown versus outcome-unknown exclusions separately. This request
+authorizes the common observable scope,not an underpower waiver or causal claim.
+Scope and all normal review/CI/execution gates:
+`.planning/rd-dh-breakout-retest-common-observation.md`.
+No new cohort/source body has been read at registration. Private actual evidence
+stays ignored;collector processes/configuration/databases remain unchanged.
+
+## Previous continuation — observed retest comparison, Task DG
 
 DF completed its independently verified equivalent recovery,but recovered0of2
 price windows. It computed no performance mean. The operator then chose the
