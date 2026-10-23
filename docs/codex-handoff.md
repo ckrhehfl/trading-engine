@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — two-label recovery and conditional comparison, Task DE
+## Current continuation — equivalent retest publication recovery, Task DF
+
+DE merged normally through PR#348 and ran its isolated bounded pipeline,but
+Fraction receipt serialization failed before successful budget/completion.
+It is not a completed verified experiment. Current completion delegation covers
+the equivalent engineering recovery documented in
+`.planning/rd-df-retest-publication-recovery.md`:reuse saved bounded captures,
+no new API/auth/DB access,recompute unchanged science and standalone verification
+under one new unchanged budget with a new durable start/exclusive output.
+Failed evidence remains intact. Do not read/report its uncompleted means.
+
+## Previous continuation — two-label recovery and conditional comparison, Task DE
 
 DD completed through PR#347 normal merge and isolated independently verified
 timestamp audit. It found zero new candidates in required missing minutes.

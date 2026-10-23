@@ -1,0 +1,33 @@
+{
+  "id": "intraday-retest-publication-recovery-v1",
+  "mode": "saved-capture-only-retest-publication-engineering-recovery",
+  "scientific_specification_sha256": "3454bce83f0f1dc1dae0c2aed037e313f3a26f70d7a377bc245ff3d9eb85a754",
+  "scientific_specification_role": "unchanged_committed_DE_scientific_specification",
+  "source_report_role": "pinned_DC_calibration_report",
+  "input_archive_role": "pinned_CC_canonical_raw_archive",
+  "reused_capture_role": "failed_DE_bounded_market_capture",
+  "output_name": "intraday-df-retest-publication-recovery-20261024-v1",
+  "canonical_role": "existing_collector_experiment_log",
+  "parameters": {
+    "recovery_axis": "serialization_and_publication_only_unchanged_science",
+    "inputs": "original_DC_report_CC_archive_and_exactly_two_saved_DE_quote_envelopes",
+    "excluded_inputs": "failed_DE_report_partial_means_and_other_market_sources",
+    "source_capture": "authenticate_original_reviewed_writer_private_owned_regular_files_before_reuse",
+    "input_identity": "durable_new_intake_hash_manifest_before_math_and_recheck_before_success",
+    "calculation": "unchanged_DE_producer_and_unchanged_independent_verifier_same_scientific_specification",
+    "publication": "canonical_Fraction_date_encoding_for_verification_and_complete_substantive_payload_before_budget_success",
+    "execution": "new_exclusive_output_new_canonical_start_no_new_API_auth_DB_or_automatic_retry",
+    "claims": "engineering_recovery_only_no_new_scientific_family_waiver_or_promotion"
+  },
+  "resources": {
+    "maximum_reused_files": 5,
+    "maximum_reused_file_bytes": 1048576,
+    "market_gets": 0,
+    "token_posts": 0,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0
+  }
+}
