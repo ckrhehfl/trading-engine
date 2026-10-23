@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-201 documents and counting, which is past the point where `ls` is a
+202 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -317,6 +317,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-da-volume-ready-comparison.md`](rd-da-volume-ready-comparison.md) — Research Direction Task DA — compare volume-ready breakout signals and the fixed volume subset
 - [`rd-db-intraday-candidate-synthesis.md`](rd-db-intraday-candidate-synthesis.md) — Research Direction Task DB — synthesize completed intraday candidates and fix one retest hypothesis
 - [`rd-dc-opening-retest-calibration.md`](rd-dc-opening-retest-calibration.md) — Research Direction Task DC — calibrate the fixed first opening-range retest support
+- [`rd-dd-retest-gap-readiness.md`](rd-dd-retest-gap-readiness.md) — Research Direction Task DD — audit required retest gaps and current timestamp recovery candidates
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

@@ -14,7 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — first opening-range retest calibration, Task DC
+## Current continuation — retest-gap recovery readiness, Task DD
+
+DC completed through normal PR#346 merge ea4e304284e60a4dfeb117a9c224472edbd2dc98
+and independently verified GCP calibration. Its complete receipt and operator
+choice are appended to its ledger in this ordinary unit. The operator chose
+data recovery investigation before the next return comparison,no missing-label
+waiver. DD projects required source gaps and queries only their current
+timestamps read-only;timestamp candidates are not repaired/valid prices.
+Scope/pins/execution gates: `.planning/rd-dd-retest-gap-readiness.md`.
+No DD actual source body or DB has been read at intake. No API/credential,
+collector change,performance family,reserved access or trading is authorized.
+
+## Previous continuation — first opening-range retest calibration, Task DC
 
 DB completed through normal PR#345 merge e4ede239f3f23b6c451543639ad2d5f8c74aa5bd
 and producer-independent GCP synthesis. Its complete receipt is appended to its
