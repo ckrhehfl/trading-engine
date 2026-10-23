@@ -14,7 +14,17 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — limited opening-volume comparison, Task CZ
+## Current continuation — volume-ready control comparison, Task DA
+
+CZ completed through PR#343 and independently verified isolated GCP execution;
+its full completion is appended to its ledger in this ordinary source unit.
+The operator now requests the computable-volume original signals as control
+for the unchanged volume subset. New source-bound exploratory authorization,
+conditional control-own-sizing gate, pins and execution boundaries are in
+`.planning/rd-da-volume-ready-comparison.md`. No DA actual input or new control
+statistic has been read at intake. Do not inherit CZ's one-family exception.
+
+## Previous continuation — limited opening-volume comparison, Task CZ
 
 CY completed through normal PR#342 and independently verified isolated GCP
 execution. Its actual completion is appended to its ledger in this work unit.
