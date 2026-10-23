@@ -1,0 +1,90 @@
+{
+  "allowed_columns": [
+    "open_time_ms",
+    "volume",
+    "quote_volume",
+    "fetched_at"
+  ],
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "id": "intraday-activity-readiness-v1",
+  "input_archive_path": "/home/minjun4897/research-evidence/intraday-cc-calibration-20261020-v1/inputs.jsonl.gz",
+  "input_compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+  "input_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+  "mode": "original-target-minute-volume-value-readiness-only",
+  "next_hypothesis": {
+    "assumed_round_trip_cost_bps": "33",
+    "availability": "each_completed_minute_end_plus2minutes_assumed_not_fetched_at",
+    "base": "original_CT_unfiltered_OR15_first_signal_only",
+    "baseline": "all_previous20_original_reference_sessions_same_symbol_first15minutes_same_opening_HHMM_required",
+    "baseline_scope": "original_CB_target_coordinate_union_only_no_added_coordinates",
+    "condition": "initial15_volume_greater_or_equal_2_times_prior20_same_wall_clock_median",
+    "decision_cutoff_minutes": 240,
+    "entry_wait_minutes_after_assumed_signal_availability": 3,
+    "exit": "entry_plus30minute_cap_minute_open",
+    "id": "OR15-initial15-volume-versus-prior20-same-clock-median-ge2-v1",
+    "label_minutes": 30,
+    "maximum_signals_per_name_session": 1,
+    "membership_timing_policies": [
+      "D+1",
+      "D+2"
+    ],
+    "missingness": "unknown_if_any_prior_session_or_coordinate_or_bucket_missing_invalid_conflicting_or_opening_HHMM_differs",
+    "next_gate": "separate_registered_feature_frequency_and_own_label_sizing_before_any_comparison",
+    "opening_range_minutes": 15,
+    "parameter_search": false,
+    "performance_calculated": false,
+    "price_impulse_conjunct": false,
+    "required": "all15_exact_unique_valid_nonnegative_volume_buckets_each_window_and_positive_exact_baseline_median",
+    "signal_selection_performed": false,
+    "volume_ratio_threshold": "2"
+  },
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cx-activity-readiness-20261023-v1",
+  "parameters": {
+    "baseline_sessions": 20,
+    "comparison": "saved_CC_and_current_DB_minute_bucket_sets_only_no_OHLC_or_returns",
+    "coordinates": "original_CB_D+1_D+2_dated_top20_union_only",
+    "daily_scope": "same_original_target_coordinates_only_1d_volume_quote_volume_fetched_at_max1row_no_prices",
+    "daily_value": "daily_quote_volume_never_substitutes_for_missing_minute_value",
+    "minute_bucket": "floor_original_milliseconds_to_minute_preserve_offsets_and_conflicts",
+    "prefix_minutes": [
+      15,
+      30
+    ],
+    "recovery_horizon": "as_of2026-10-23_date_before2025-10-23_outside_documented_one_year_upper_horizon_otherwise_unprobed_no_API_requests",
+    "snapshot": "one_readonly_transaction_bounded_by_shared_budget_no_DB_copy_or_live_file_hash",
+    "valid_volume": "finite_exact_text_decimal_nonnegative_zero_is_observed_not_imputed",
+    "value_semantics": "quote_volume_only_no_cumulative_acml_tr_pbmn_conversion_or_price_times_volume"
+  },
+  "resources": {
+    "address_space_mib": 512,
+    "automatic_retries": 0,
+    "cpu_seconds": 300,
+    "maximum_chunk_bytes": 1048576,
+    "maximum_chunks": 6000,
+    "maximum_compressed_bytes": 536870912,
+    "maximum_daily_rows_per_target": 1,
+    "maximum_queries": 12000,
+    "maximum_query_seconds": 10,
+    "maximum_query_vm_steps": 5000000,
+    "maximum_rows": 3600000,
+    "maximum_session_rows": 600,
+    "maximum_target_days": 6000,
+    "maximum_typed_chunk_bytes": 262144,
+    "maximum_typed_uncompressed_bytes": 1073741824,
+    "maximum_uncompressed_bytes": 1073741824,
+    "maximum_unique_symbols": 260,
+    "maximum_upstream_bytes": 33554432,
+    "minimum_free_bytes": 1073741824,
+    "nice": 10,
+    "wall_seconds": 1200
+  },
+  "source_database": "/home/minjun4897/trading-engine/python/data/var/klines.sqlite3",
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-cb-universe-20261020-v1/report.json",
+  "upstream_sha256": "f1ac24fed9ee3a54dfcac0d25ef1ff339be0a872d8915d849e4369e4d5c5eb91",
+  "window": {
+    "end": "2026-09-23",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "symbol": "KRX:*"
+  }
+}

@@ -14,7 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — limited opening-impulse comparison, Task CW
+## Current continuation — stored activity-input readiness, Task CX
+
+CW completed through normal PR#340 and independently verified isolated GCP
+execution; its appended ledger and linked PR completion own actual results.
+No strategy was promoted. The operator now requests existing DB volume/value
+availability, recoverable minute gaps and one next hypothesis. CX registers
+read-only original-target input inspection and saved/current coverage comparison;
+it does not run a new signal-performance family. See
+`.planning/rd-cx-intraday-activity-readiness.md` for exact scope, pins, timing,
+unknowns, implementation and actual execution status. Earlier intake snapshots
+below are historical, not the current execution state or new authorization.
+
+## Previous continuation — limited opening-impulse comparison, Task CW
 
 CV completed through normal PR#339 merge890f9b5and independently verified actual
 GCP own-sizing. Its appended ledger records frequency reduction, passed sizing
