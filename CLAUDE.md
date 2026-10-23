@@ -8,6 +8,14 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DC first-retest own calibration — operator continuation 2026-10-23.**
+Measure DB's unchanged OR15 first post-breakout retest support hypothesis's
+signal frequency,weekly operating fit,missingness and newly timed own-label
+sizing from original CB targets and the saved CC raw archive. Scope and fixed
+execution obligations: `.planning/rd-dc-opening-retest-calibration.md`.
+No CT label reuse,performance comparison,old waiver,reserved access,direction
+closure,strategy pass or trading promotion transfers.
+
 **Task DB completed-candidate synthesis — operator continuation 2026-10-23.**
 Re-express the completed CS, CW and DA publications at common cost and weekly
 denominators, keeping endpoint and source-cohort differences explicit. Fix one
@@ -1237,7 +1245,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 200 documents,
+them. `.planning/README.md` carries an index of all 201 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
