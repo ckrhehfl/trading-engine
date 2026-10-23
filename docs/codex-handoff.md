@@ -14,7 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — limited observed opening-range comparison, Task CU
+## Current continuation — opening-impulse own-sizing, Task CV
+
+CU completed through separate reviews, CI, normal PR #338 merge
+`c6a0913c36beb9a5d96706e3d31112124118625b` and isolated GCP execution.
+Its appended ledger records actual independent arithmetic and original limits.
+The operator requested the next step. CV fixes one causal opening-impulse
+condition and measures its frequency/missingness/own sizing first; no CV actual
+input has been read at this intake. See
+`.planning/rd-cv-opening-impulse-calibration.md`. No prior waiver transfers.
+Protected untracked operator files remain untouched and must not be read,
+imported, tested or scanned. Do not run local full-tree tests/scanners.
+
+## Previous continuation — limited observed opening-range comparison, Task CU
 
 CT completed under normal PR #337 merge
 `232f207173eff45a5c54986251ca99de4b74826a`; its appended ledger and completion
