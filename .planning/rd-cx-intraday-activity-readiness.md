@@ -146,3 +146,140 @@ invented/independent checks; exact-head CI/normal merge; authenticated isolated
 actual audit with independent reconstruction; evidence-based hypothesis and
 completion report. This work has not yet reduced those four. Prior D+1/D+2
 price comparisons are complete; new activity-family performance has not started.
+
+## 2026-10-23 — actual completion appended in the following CY work unit
+
+Task CX completed2026-10-23KST: existing minute/daily activity inventory,
+saved/current minute coverage and recovery planning classification, one fixed
+next hypothesis, independent actual reconstruction, separate reviews, exact-head
+CI, normal merge and isolated GCP research reflection. No signal selection or
+new performance family was run.
+
+## Identity and verification
+
+- Reviewed source64efcbecdabbcc9e96e865e2b669237dfbb35ddc; normal PR#341 merge
+  fe681ee0be8cad9ae5c7db6dbf8c6e02188cdc00 at2026-10-23T05:56:34Z.
+  Reviewed source is the second parent and complete trees match. Local/remote
+  origin-main ancestry and source/runtime closure checks passed.
+- Separate source/integrity PASS, resolved timeout finding and frozen private
+  hashes/profile: https://github.com/ckrhehfl/trading-engine/pull/341#issuecomment-6358111127.
+  Final gate: https://github.com/ckrhehfl/trading-engine/pull/341#issuecomment-6358481917.
+  All8exact-head required push/PR checks SUCCESS. Both Python runs9703passed,
+  3skipped,21subtests: push2099.97s,PR2090.52s. No experiment-log creation,
+  live_signals mutation or stray python/runs. No protection bypass.
+- Actual run8fc70de5-8a4e-4fea-9875-4e0479289a97 completed
+  2026-10-23T15:01:11.121127+09:00. Report
+  `/home/minjun4897/research-evidence/intraday-cx-activity-readiness-20261023-v1/report.json`,
+  SHA2561a4d41204d421685e3f1ad2b8b93cb40b57240204e1918e965c0576585d2a2e6.
+  Specification SHA25669c7c35c2fcf07d3bd0ee916edce67b5cffb91acc88c2d94f01448717bd55d7a.
+  Local publication SHA25654e64bfee98fec73d35be47cd6441bb6553c8020257c60c28d0839b5dae1db67.
+- Canonical started/completed span5745054..5756187,11133bytes,
+  SHA2567a203793bfa2f5aa857e3219584aade94c2a05e3dba77f571aaac45e4cdd7f11.
+  Durable start preceded every actual input/schema/DB read. Exactly10316queries
+  cover5158original union coordinates, one bounded minute and one daily query
+  per coordinate. One read-only snapshot closes before saved-input analysis;
+  after-database checkpoint is17.346781597s from pipeline baseline, CPU7.307793s.
+  This checkpoint is not the exact snapshot duration.
+- One unchanged PID1593294 covers capture, producer, stdlib independent
+  reconstruction, source/input/output rechecks and substantive publication
+  preparation through durable budget success before canonical completion.
+  CPU208.926193775s,wall221.027830296s,peakRSS141728KiB,finalAS116973568bytes,
+  nice10,CPU300s/AS512MiB/wall1200s,violations[],no reset/retry. Only mechanical
+  canonical/transport finalization follows completion.
+- Typed compressed archive SHA256
+  bb481b84832e13cd8690bb52dcf2e0047bbfd7ce207561eec71e4956e22644e6;
+  typed stream SHA256e2097fc2f2b6ac5128ec4a1f7493dde2652ca5e3bba26391e5a842fb7047dad9.
+  Original CB report and compressed/decoded CC pins all matched. The frozen
+  independent verifier41600d036d654e034c715435063e052b31c54b918d017d66c1ee0fa7798dfe15
+  rebuilt all new readiness rows/aggregates from original supplied CB bytes,
+  saved CC timestamps and archived typed query rows, without producer imports
+  or another database read. It correctly leaves source/runtime authentication
+  to the separately authenticated caller; no historical source truth is implied.
+  Supplemental local receipt algebra and four mandatory conclusion checks
+  passed; actual_new_math_recomputed:false for that supplemental script.
+- Isolated GCP research checkout equals the normal merge. Collector before/after
+  stayed tracked clean at4ce85d714890b87f1a57ae89d4942660e41c0483. No collector,
+  schedule, process, credential, order or risk change. No API, other DB,
+  pre2019/reserved/forward/holdout access. Protected local untracked originals
+  remain outside content reads/imports/tests/scans.
+
+## Verified actual activity and coverage
+
+Window2025-09-04..2026-09-23,257observed reference dates, original5140targets
+per policy,5158union stock/date coordinates. A coordinate is not a trade or
+independent observation. This is the original minute-source DB, not a claim
+about every other project database.
+
+| Scope | Observed rows | Volume | Trade value |
+| --- | ---: | --- | --- |
+| minute |1002211|all1002211positive exact stored values|all1002211null quote_volume|
+| daily, same coordinates |2674|2657positive,17actual zero|2657positive,17actual zero|
+
+Both columns exist. There are no invalid/negative observed values in this
+bounded inventory. The17daily zeros are observations, not missing values or
+proof of a halt. Missing daily rows remain missing. Daily value is not minute
+value; neither price-times-volume nor cumulative-value interpolation was used.
+Minute volume was omitted from the old CC archive rather than absent from the
+source DB. Official KIS mapping and the intentionally omitted cumulative field
+remain documented in the preregistration.
+
+Saved/current unique minute bucket sets are exactly equal:1002211intersection,
+0new buckets,0lost buckets. Of2511original empty union coordinates, none became
+available in the current DB. By the fixed2026-10-23planning date,330are outside
+the documented one-year upper horizon and2181are inside it but unprobed.
+The official broker documentation supports at most one year, not complete
+coverage of every date. No API request or recovery was performed. These are
+possible future acquisition coordinates, never promised recoverable data;
+outside this endpoint's upper horizon does not establish impossibility from
+every other source. Actual absence causes remain unknown.
+
+First15minute volume windows are complete at2596union coordinates; first30
+at2592. With all20required prior reference sessions, same opening HH:MM,
+complete valid windows and positive exact median, feature-readiness is1222
+union coordinates. D+1has1219ready/3921unknown;D+2has1222ready/3918unknown.
+Counts retain all5140targets in each policy. These are measurable feature
+contexts, not threshold-passing signals, orders, weekly frequency or profits.
+Do not sum the two policies as independent cases. Baseline coordinates outside
+the original queried union are unqueried/unknown, not proven absent from DB.
+
+## Fixed next hypothesis and remaining limits
+
+`OR15-initial15-volume-versus-prior20-same-clock-median-ge2-v1` is fixed in the
+committed specification and actual report: same dated top20universe, original
+OR15first completed five-minute close above initial high, add first15minute
+volume>=2times previous20required same-opening-window median. Keep assumed
+two-minute bar availability, original three-minute wait, entry+30minute cap-open
+exit,240minute cutoff,one first signal/name/session,33bp assumed round-trip cost
+and separate D+1/D+2 membership policies. No CV price-impulse conjunct, parameter
+sweep, name replacement or forced15/week trading. The threshold was fixed before
+this audit, not selected by performance. No ratio, signal count, label sizing or
+mean was calculated in CX.
+
+Confirmed: source-field presence/content and saved/current timestamp coverage
+over the registered scope. Inferred only: the fixed18collector names versus
+31historical target names can explain some gaps; this is not each gap's verified
+cause or a current cron-configuration certificate. Assumed/unverified: minute
+availability lag, original membership D+1/D+2 timing, complete calendar/type and
+revision history, volume units across share changes, consistent future feature/
+price vintage and actual costs/fills. D+2 is sensitivity, not historical proof.
+Code removes DB-write/unbounded-query, float-loss, zero-fill, missing-day
+substitution, scope-expansion and premature-completion risks; it cannot create
+missing observations or validate investable returns. No institutional inquiry
+is needed or requested.
+
+All4registered delivery-condition groups for this request are resolved,0remain,
+4reduced in this work unit. Both Dpolicies completed the actual input audit;
+new activity-family performance is unrun in both. No operator decision is
+pending for the completed task, and no strategy is qualified or direction closed.
+
+Next: reuse the saved typed volume archive and original CC price archive with
+explicit coordinate/retrieval/basis linkage; first measure this one rule's signal
+frequency, unknowns and own-label sizing, then register the original OR15-versus-
+volume-filter performance comparison if its prerequisites permit. Preserve the
+full target denominator and all new unknowns; no earlier underpower/missing-label
+waiver transfers. Existing sparse targets do not justify another unrelated
+price-only filter or claiming that missing data must first be fully repaired.
+
+Append this actual completion to the CX ledger in the next ordinary work unit,
+rather than creating an additional CI-only documentation PR. The immutable
+actual report/publication/canonical receipts and this PR comment own completion.

@@ -1,0 +1,109 @@
+{
+  "activity_path": "/home/minjun4897/research-evidence/intraday-cx-activity-readiness-20261023-v1/report.json",
+  "activity_sha256": "1a4d41204d421685e3f1ad2b8b93cb40b57240204e1918e965c0576585d2a2e6",
+  "activity_specification_sha256": "69c7c35c2fcf07d3bd0ee916edce67b5cffb91acc88c2d94f01448717bd55d7a",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "id": "intraday-opening-volume-v1",
+  "mode": "opening-volume-own-label-frequency-calibration",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-cy-opening-volume-20261023-v1",
+  "parameters": {
+    "arms": [
+      "15"
+    ],
+    "baseline": "all_previous20_original_reference_sessions_same_opening_HHMM_no_coordinate_additions",
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "cohort": "original_CT_OR15_first_signal_only_no_retry_or_outcome_complete_mask",
+    "cost_floor_bps": "33",
+    "feature_available_at": "current_session_open_plus15minutes_plus2minutes_assumed",
+    "frequency_metrics": [
+      "selected_per_reference_week",
+      "known_labels_per_reference_week",
+      "weeks_with_at_least15_selected",
+      "weekly_selected_median",
+      "weekly_selected_min",
+      "weekly_selected_max",
+      "selected_plus_unknown_opportunity_upper_bound",
+      "weeks_with_upper_bound_at_least15"
+    ],
+    "label": "unchanged_original_CT_entry_plus30minute_cap_open",
+    "next_hypothesis": {
+      "assumed_round_trip_cost_bps": "33",
+      "availability": "each_completed_minute_end_plus2minutes_assumed_not_fetched_at",
+      "base": "original_CT_unfiltered_OR15_first_signal_only",
+      "baseline": "all_previous20_original_reference_sessions_same_symbol_first15minutes_same_opening_HHMM_required",
+      "baseline_scope": "original_CB_target_coordinate_union_only_no_added_coordinates",
+      "condition": "initial15_volume_greater_or_equal_2_times_prior20_same_wall_clock_median",
+      "decision_cutoff_minutes": 240,
+      "entry_wait_minutes_after_assumed_signal_availability": 3,
+      "exit": "entry_plus30minute_cap_minute_open",
+      "id": "OR15-initial15-volume-versus-prior20-same-clock-median-ge2-v1",
+      "label_minutes": 30,
+      "maximum_signals_per_name_session": 1,
+      "membership_timing_policies": [
+        "D+1",
+        "D+2"
+      ],
+      "missingness": "unknown_if_any_prior_session_or_coordinate_or_bucket_missing_invalid_conflicting_or_opening_HHMM_differs",
+      "next_gate": "separate_registered_feature_frequency_and_own_label_sizing_before_any_comparison",
+      "opening_range_minutes": 15,
+      "parameter_search": false,
+      "performance_calculated": false,
+      "price_impulse_conjunct": false,
+      "required": "all15_exact_unique_valid_nonnegative_volume_buckets_each_window_and_positive_exact_baseline_median",
+      "signal_selection_performed": false,
+      "volume_ratio_threshold": "2"
+    },
+    "output_scope": "selection_frequency_missingness_own_label_dispersion_only_no_performance_comparison",
+    "source_parameters": {
+      "availability_lag_minutes": 2,
+      "block_sessions": 5,
+      "bootstrap_draws": 2000,
+      "bootstrap_seed": 0,
+      "cohort": "new30minute_labels_all_original_targets_no_CG_or120minute_complete_mask",
+      "cost_floor_bps": "33",
+      "decision_minutes": 240,
+      "entry": "first_five_minute_open_strictly_after_signal_available_at",
+      "exit": "entry_plus30minute_cap_minute_open",
+      "filters_both_arms": "none_no_relative_strength_or_peer_context",
+      "label_availability": "cap_minute_end_plus_two_minutes_assumed",
+      "label_minutes": 30,
+      "label_required_minutes": "all31_buckets_entry_through_cap_inclusive",
+      "maximum_signals_per_name_session": 1,
+      "output_scope": "frequency_missingness_own_label_dispersion_only_no_performance_comparison",
+      "range_minutes": {
+        "15": 15,
+        "30": 30
+      },
+      "signal": "first_subsequent_completed_five_minute_close_strictly_above_own_initial_range_high",
+      "weekly_operating_objective": 15
+    },
+    "underpower_exception_applied": false,
+    "volume_ratio_threshold": {
+      "denominator": "1",
+      "numerator": "2"
+    },
+    "weekly_operating_objective": 15
+  },
+  "resources": {
+    "address_space_mib": 512,
+    "automatic_retries": 0,
+    "cpu_seconds": 300,
+    "maximum_activity_bytes": 33554432,
+    "maximum_report_bytes": 67108864,
+    "maximum_upstream_bytes": 67108864,
+    "minimum_free_bytes": 1073741824,
+    "nice": 10,
+    "wall_seconds": 1200
+  },
+  "upstream_path": "/home/minjun4897/research-evidence/intraday-ct-opening-range-20261023-v1/report.json",
+  "upstream_sha256": "b25690b7cc87278ebe1baf9f20d6f0185c7d759c93b90e7488b89b53383aa875",
+  "upstream_specification_sha256": "1578dbf61fdbbdb620218f1292da412ec99e8eff3ce1d8c67870bcce304b56bf",
+  "window": {
+    "end": "2026-09-23",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "symbol": "KRX:*"
+  }
+}
