@@ -1,0 +1,39 @@
+{
+  "id": "intraday-retest-observed-comparison-v1",
+  "mode": "original-known-label-retest-descriptive-comparison",
+  "source_report_role": "completed_DF_scientific_retest_report",
+  "output_name": "intraday-dg-retest-observed-comparison-20261024-v1",
+  "canonical_role": "existing_collector_experiment_log",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "parameters": {
+    "hypothesis": "unchanged_original_OR15_first_retest_signal_entry_and30minute_cap",
+    "population": "all_original_targets_and_signal_states_retained_original_known_labels_only_no_recovered_unknown_inclusion",
+    "axis": "same_original_known_retest_labels_gross_versus_net_assumed33bp",
+    "assumed_cost": {"numerator": "33", "denominator": "10000"},
+    "missing_label_choice": "source_bound_original_known_only_exploration_exclude_and_disclose_each_original_unknown_label",
+    "own_sizing": "fresh_selected_known_label_cc_dispersion_unknown0_defined_finite_MDE_at_most33bp_both_policies_before_any_mean",
+    "reference_calendar": "all_original_dates_and_weeks_including_zero_event_dates_and_weeks",
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "uncertainty": "maximum_naive_session_cluster_and_circular5session_bootstrapSE_normal95percent_descriptive_only",
+    "output_scope": "aggregate_and_original_week_counts_gross_net_mean_median_win_cost_exceedance_no_subgroups_controls_or_ranking",
+    "underpower_exception_applied": false
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "minimum_free_bytes": 1073741824,
+    "market_gets": 0,
+    "token_posts": 0,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0
+  }
+}

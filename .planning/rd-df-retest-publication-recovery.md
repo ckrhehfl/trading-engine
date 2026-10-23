@@ -89,3 +89,25 @@ Four delivery groups:equivalent engineering implementation/invented full-path
 verification;fresh source/integrity review/CI/normal merge;single complete
 recovery/independent conditional result;operator report/progress/next step.
 No DF actual body or result has been read at this registration point.
+
+## 2026-10-24 — completed recovery and explicit next operator choice
+
+PR349 merged normally after final fresh source/integrity PASS reviews and all8
+required checks. Both Python CI runs passed9960tests,3skips,30subtests. The
+isolated full producer/independent verifier/publication completed inside unchanged
+limits. Zero new API/auth/DB calls reused the original2received quotation
+responses. Both original windows remain unresolved:one response was outside the
+requested date/exit range and the other lacked the complete31bucket window.
+No prices were overwritten/added,no new means were computed,no failed DE report
+was consumed,and original unknown signal/label populations remain intact.
+
+The separate completed-publication audit was corrected only for two floating
+statistics differing in their final digits:its V2 uses the exact existing
+independent-verifier tolerance for finite floats,retaining exact structural,
+type,integer,Fraction and identity checks. Fresh supplemental source review and
+26invented accept/reject checks passed. No source replay or new experiment
+followed actual completion. Detailed operational evidence remains private.
+
+The operator then explicitly selected the known523/520outcomes for a limited
+exploratory comparison. DG registers that new scope;it does not rewrite DF's
+not-run comparison or imply full-population/strategy/fill certification.
