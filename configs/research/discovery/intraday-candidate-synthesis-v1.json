@@ -1,0 +1,94 @@
+{
+  "id": "intraday-candidate-synthesis-v1",
+  "mode": "completed-candidate-aggregate-synthesis-no-new-labels",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "reference_sessions": 257,
+  "reference_weeks": 56,
+  "cost_floor_bps": "33",
+  "output_directory": "/home/minjun4897/research-evidence/intraday-db-candidate-synthesis-20261023-v1",
+  "canonical_runs_path": "/home/minjun4897/trading-engine/runs/experiments.jsonl",
+  "sources": {
+    "CS": {
+      "path": "/home/minjun4897/research-evidence/intraday-cs-result-synthesis-20261022-v1/publication.json",
+      "publication_sha256": "19689d5000a3f1bf24d0aa9c57118a304cb974a8f38093a9db858a1c0e67caeb",
+      "report_sha256": "c9532b1ddfe010f0be5e155567938c7e7a04c115e00d69e3c237cd32dc19e053",
+      "specification_sha256": "25687f85a0cadd6806ea26464b61cc8bbd240918ade69d9871940d9bdf2846d8",
+      "run_id": "5d201943-e4fb-48b0-9430-a482c69cd30f"
+    },
+    "CW": {
+      "path": "/home/minjun4897/research-evidence/intraday-cw-opening-impulse-comparison-20261023-v1/publication.json",
+      "publication_sha256": "134820df613a1d824248cfd22ba80ba274e8aef61f89c3a29590328e2d31671b",
+      "report_sha256": "8cbefdbcf426eb73bc47f7f8565200fbb99ed276635f2a8e30bdb6f6eb2fef90",
+      "specification_sha256": "290d8a3b94916d8b01ba5f5f1aa464e2f7c822729609359d8b9ad0edc9fa1786",
+      "run_id": "57ff8323-84da-41d0-9601-0a792be17dc8"
+    },
+    "DA": {
+      "path": "/home/minjun4897/research-evidence/intraday-da-volume-ready-comparison-20261023-v1/publication.json",
+      "publication_sha256": "01ac8533d1240da3ad39aad853441d9d8605f0a07d48d7da67cba7d8694164be",
+      "report_sha256": "d5f36dae83ef2d004cad411e7c3435bb247c673de14ee5bb52c8ba28b77d9c34",
+      "specification_sha256": "f9818dfceb26a3edec5a8c949e9883a8f1fe62efb2cd876d3c2ff110b3b9a97e",
+      "run_id": "4415583b-ff00-4948-8a7a-ad4feff99636"
+    }
+  },
+  "next_hypothesis": {
+    "id": "opening-range15-first-retest-bounce-v1",
+    "status": "design-fixed-not-measured-no-final-comparison-family",
+    "family": "opening_range_breakout",
+    "universe": "same_saved_point_in_time_monthly_around_top20_targets_both_D+1_and_D+2",
+    "range_minutes": 15,
+    "range_high": "R_is_high_of_original_initial15minute_range",
+    "breakout": "B_is_original_first_subsequent_completed5minute_close_strictly_above_R",
+    "signal": "first_completed5minute_touch_bar_strictly_after_B_with_low_at_or_below_R_triggers_only_if_close_strictly_above_R",
+    "invalidation": "any_earlier_completed_post_B_close_at_or_below_R_or_first_touch_close_at_or_below_R_invalidates_name_session_no_retry",
+    "same_bar_breakout_retest_allowed": false,
+    "filters": "none_no_CG_no_peer_no_opening_impulse_no_volume_condition",
+    "availability_lag_minutes": 2,
+    "decision_cutoff_minutes_from_session_open": 240,
+    "decision_cutoff_clock": "retest_bar_end_plus2minutes_at_or_before_session_open_plus240minutes",
+    "causal_path": "post_B_touch_may_precede_B_availability_but_decision_only_after_completed_retest_availability_no_touch_limit_fill",
+    "entry": "first5minute_open_strictly_after_signal_bar_end_plus2minutes_original3minute_wait",
+    "exit": "entry_plus30minute_cap_minute_open",
+    "maximum_signals_per_name_session": 1,
+    "cost_floor_bps": "33",
+    "coverage": "all_original_targets_first_events_D_policies_unknowns_no_original_CG_or_120minute_complete_mask",
+    "unknown_prefix": "incomplete_causal_prefix_remains_unknown_never_skip_to_later_signal_later_gap_does_not_erase_known_state",
+    "future_labels": "new_raw_labels_at_retest_entry_and_retest_entry_plus30minute_open_never_reuse_CT_original_entry_labels",
+    "next_step": "separately_registered_signal_frequency_missingness_and_own_label_calibration_before_final_comparison_family",
+    "planning": {
+      "block_sessions": 5,
+      "bootstrap_draws": 2000,
+      "bootstrap_seed": 0,
+      "ordinary_own_power_checkpoint": true,
+      "inherited_waiver": false
+    },
+    "performance_access_in_this_synthesis": false,
+    "frequency_measured": false,
+    "profitability_established": false,
+    "frequency_target": "evaluate15perweek_operating_fit_never_force_trades"
+  },
+  "accounting": {
+    "cap_open_rows": 24,
+    "close_endpoint_appendix_rows": 8,
+    "known_frequency_denominator_weeks": 56,
+    "pooled_means": false,
+    "summed_frequencies": false,
+    "new_labels": 0,
+    "new_performance_families": 0,
+    "promotion_trial_increment": 0
+  },
+  "resources": {
+    "maximum_publication_bytes_each": 1048576,
+    "maximum_report_bytes": 16777216,
+    "minimum_free_bytes": 67108864,
+    "address_space_mib": 512,
+    "cpu_seconds": 300,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0
+  }
+}

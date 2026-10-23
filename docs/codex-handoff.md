@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — volume-ready control comparison, Task DA
+## Current continuation — completed-candidate synthesis, Task DB
+
+DA completed through PR#344 normal merge9ef02f2dbc199463d55c4a7f90e41a6ef97367e3
+and independently verified isolated GCP execution. Its full completion is
+appended to its ledger in this ordinary source unit. The operator now requests
+a common-unit comparison including volume results and one next fixed hypothesis.
+DB consumes only three pinned completed aggregate publications; no new labels,
+uncertainty, pooled result, source waiver or trading promotion is introduced.
+Current scope and actual status: `.planning/rd-db-intraday-candidate-synthesis.md`.
+No DB actual publication body has been read at this intake.
+
+## Previous continuation — volume-ready control comparison, Task DA
 
 CZ completed through PR#343 and independently verified isolated GCP execution;
 its full completion is appended to its ledger in this ordinary source unit.
