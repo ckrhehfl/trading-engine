@@ -8,6 +8,14 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DD retest-gap recovery readiness — operator choice 2026-10-23.**
+After DC,the operator chose investigating data recovery before return comparison.
+Derive consequential missing-prefix/label windows from pinned DC metadata and
+audit only their existing DB timestamp candidates;keep price validity,old
+results and documented API upper-horizon possibilities separate. Scope/pins:
+`.planning/rd-dd-retest-gap-readiness.md`. No API/credential read,old waiver,
+new price response,performance family,reserved access or trading follows.
+
 **Task DC first-retest own calibration — operator continuation 2026-10-23.**
 Measure DB's unchanged OR15 first post-breakout retest support hypothesis's
 signal frequency,weekly operating fit,missingness and newly timed own-label
@@ -1245,7 +1253,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 201 documents,
+them. `.planning/README.md` carries an index of all 202 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
