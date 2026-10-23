@@ -8,6 +8,19 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DI opening-volatility predicate — 2026-10-24.**
+The operator requests one preregistered opening-volatility condition on basic
+breakout,its cost-exceeding price response and weekly15operating fit. Use the
+completed DH report's unchanged common-outcome-complete basic population;
+preserve all original targets and unknowns. Fix initial15minute high-low range
+divided by its first open >=33/10000,equality included,before new access. This
+is a cost-scale research hypothesis,not a fitted threshold or known edge.
+Keep original entry/+30minute outcome and33bp cost. Fresh own sizing for both
+arms/both policies precedes any new means;activate one descriptive comparison
+only if all four defined finite MDE values are <=33bp. No old exception or
+new outcome exclusion transfers. Scope/execution gates:
+`.planning/rd-di-opening-volatility-comparison.md`.
+
 **Task DH common-observation breakout/retest comparison — 2026-10-24.**
 The operator requests basic OR15 breakout versus first retest support on the
 same observable targets,including gross/net price response and weekly frequency.
@@ -1300,7 +1313,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 206 documents,
+them. `.planning/README.md` carries an index of all 207 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

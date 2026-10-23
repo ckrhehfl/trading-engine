@@ -111,3 +111,34 @@ policy statuses;experiment/verification/review/CI/merge/isolated GCP evidence;
 four delivery groups' progress and a concrete next research step. No external
 inquiry,paid source or new approval is needed unless a genuinely new material
 decision is encountered. Detailed private execution identities remain ignored.
+
+## Completed 2026-10-24 — appended in the next ordinary unit
+
+PR#351 merged source84478696dd4f890fb13d1ec97128a7c4ce30a6a1 normally as
+0d8a08751d29d8694bbb0a3343481a3f9757fbce with identical whole tree. Fresh
+source/integrity PASS reviews and all8final-head checks preceded merge. Both
+Python CI10002passed,3skipped,30subtests;no experiment-log creation,operational
+signal modification or stray runs. Review and merge gates:
+https://github.com/ckrhehfl/trading-engine/pull/351#issuecomment-6372538238
+https://github.com/ckrhehfl/trading-engine/pull/351#issuecomment-6373110667
+
+Independent comparison completed under unchanged resource limits. Common
+signal-observable2522/2520targets;three additional future-price-incomplete
+targets excluded from BOTH arms,leaving2519/2517common-complete targets.
+Basic1169/1167outcomes:gross mean0.0058486099323869665/0.004392616184745425
+percent;net-0.324151390067613/-0.32560738381525456percent;
+frequency20.875/20.839285714285715per56reference weeks. Retest523/520:
+gross0.03717757939071173/0.03431737958699715percent;
+net-0.29282242060928826/-0.29568262041300286percent;
+frequency9.339285714285714/9.285714285714286per week.
+Allfour fresh own MDE passed before means. Retest-minus-basic descriptive
+intervals include0;small observed improvement did not cover assumed costs.
+This does not close the direction,certify the whole top20population or qualify
+a strategy. Selection AND later timing remain mixed. Original2618/2620signal
+unknowns and all source label unknowns persist under exact parent provenance.
+
+Only isolated research checkout advanced;collector head/tracked state and
+processes/configuration stayed intact. API/auth/DB0,overwrites0,new signal0,
+promotion0. Full paths,pins,run and budget receipts stay in ignored private
+evidence. No new private artifact identity is published here. DI records the
+next explicitly requested opening-volatility investigation.
