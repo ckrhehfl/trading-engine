@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — opening-volume own calibration, Task CY
+## Current continuation — limited opening-volume comparison, Task CZ
+
+CY completed through normal PR#342 and independently verified isolated GCP
+execution. Its actual completion is appended to its ledger in this work unit.
+The operator explicitly chose one limited observed-label comparison of original
+OR15 signals and the fixed volume subset despite the source's selected missing
+outcome and own-sizing shortfall. Keep that source-bound choice distinct from
+the unchanged original flags; no prior waiver is inherited. See
+`.planning/rd-cz-opening-volume-comparison.md` for scope, pins, performed work
+and actual status. No CZ actual market input has been read at this intake.
+
+## Previous continuation — opening-volume own calibration, Task CY
 
 CX completed through normal PR#341 and independently verified GCP execution.
 Its completion is appended to its ledger in this work unit. The operator now
