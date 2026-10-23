@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — completed-candidate synthesis, Task DB
+## Current continuation — first opening-range retest calibration, Task DC
+
+DB completed through normal PR#345 merge e4ede239f3f23b6c451543639ad2d5f8c74aa5bd
+and producer-independent GCP synthesis. Its complete receipt is appended to its
+ledger in this ordinary work unit. The operator requests actual signal counts,
+weekly operating fit,missingness and own-sizing for the unchanged first OR15
+retest support hypothesis. It needs newly timed raw labels,not original CT
+labels. Scope/pins/execution gates: `.planning/rd-dc-opening-retest-calibration.md`.
+No DC actual input has been read at intake. No prior exploration waiver,
+performance comparison,reserved access or trading promotion transfers.
+
+## Previous continuation — completed-candidate synthesis, Task DB
 
 DA completed through PR#344 normal merge9ef02f2dbc199463d55c4a7f90e41a6ef97367e3
 and independently verified isolated GCP execution. Its full completion is
