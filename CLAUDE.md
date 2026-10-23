@@ -8,6 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DG observed retest comparison — operator choice 2026-10-24.**
+After completed DF recovered0of2windows,the operator explicitly chose a limited
+comparison of the original523/520known price outcomes. This source-bound
+authorization permits excluding the2unknown outcomes per policy from this one
+descriptive comparison,while retaining original525/522signals,all target/unknown
+denominators and full source provenance. It does not waive fresh own-label
+sizing or certify fills,full top20returns,incremental edge,qualification or
+promotion. Same entries/exits,33bp cost and original calendar;no API/auth/DB.
+Scope,pins,independent verification and normal review/CI/merge/execution gates:
+`.planning/rd-dg-retest-observed-comparison.md`.
+
 **Task DF equivalent publication recovery — 2026-10-24.**
 DE's actual pipeline reached independent verification but failed encoding its
 Fraction-valued receipt before successful budget/publication/canonical completion.
@@ -1275,7 +1286,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 204 documents,
+them. `.planning/README.md` carries an index of all 205 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

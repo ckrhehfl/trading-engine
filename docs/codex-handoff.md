@@ -14,7 +14,17 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — equivalent retest publication recovery, Task DF
+## Current continuation — observed retest comparison, Task DG
+
+DF completed its independently verified equivalent recovery,but recovered0of2
+price windows. It computed no performance mean. The operator then chose the
+original523/520known outcomes for a limited descriptive comparison. Same
+525/522signals,unknown denominators,entries/exits and33bp cost;no API/auth/DB.
+This is an explicit source-bound unknown-label exception,not an underpower or
+full-population waiver. Scope: `.planning/rd-dg-retest-observed-comparison.md`.
+Detailed completed DF receipts remain private;failed DE evidence stays intact.
+
+## Previous continuation — equivalent retest publication recovery, Task DF
 
 DE merged normally through PR#348 and ran its isolated bounded pipeline,but
 Fraction receipt serialization failed before successful budget/completion.
