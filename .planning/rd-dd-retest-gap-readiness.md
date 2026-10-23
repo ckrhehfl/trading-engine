@@ -143,3 +143,26 @@ Profile receiptSHA256
 1e4fa3a2544e4cfca17190e0cadc5a97a49bd1e8a243d7ee33f350210dca9d93.
 These private artifacts stay outside Git and contain invented evidence only.
 Final fresh reviews,exact-head CI/normal merge and actual audit remain pending.
+
+## 2026-10-24 — completed DD,recorded in the following DE work unit
+
+DD completed through normal PR#347 merge,exact-head eight successful CI runs,
+fresh source/integrity PASS reviews and independently verified isolated audit.
+Public development receipt:
+https://github.com/ckrhehfl/trading-engine/pull/347#issuecomment-6368754167 .
+Full private operational receipt is retained in ignored var/dd-actual-completion.md;
+automatic approval review refused its detailed public transmission,so private
+GCP paths/run identifiers/new artifact hashes are not duplicated here.
+
+Original257dates/56weeks/5140targets per policy/5158union targets survived.
+2635required stock/date queries captured45239existing timestamp rows and found
+zero candidates in591730original required missing minutes. The2known-signal/
+unknown-label coordinates still lack4minute buckets;2633unknown-signal union
+coordinates retain591726missing buckets. D+1/D+2 signals remain525/522,known
+labels523/520,unknown labels2each. No return comparison or new signal followed.
+As-of2026-10-24,2294required coordinates are within the documented maximum
+one-year horizon but unprobed;341are outside this endpoint's promise. No API,
+credential or OHLC was read by DD. All4DD delivery groups completed;0market
+minutes recovered. Remaining unknowns and source qualifications are unchanged.
+The operator's new DE request authorizes recovery of the2label windows and a
+conditional same-signal gross/net comparison;it is not an old waiver transfer.

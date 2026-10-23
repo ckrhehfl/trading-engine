@@ -8,6 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DE bounded retest-label recovery and conditional comparison — 2026-10-24.**
+The operator requests KIS recovery of the two original known-signal/unknown-label
+coordinates,price validation,and the unchanged retest signal's gross/net cost
+comparison if recovered. This new source-bound request covers an observed-signal
+exploration preserving the roughly51%unknown signal targets;it does not inherit
+an underpower or missing-label waiver. Register exact input pins,two quotation
+requests,limited existing KIS authentication use,overlap/vintage validation and
+fresh own-sizing before any mean. Scope and execution gates:
+`.planning/rd-de-retest-recovery.md`. No collector or credential-file change,
+signal redesign,reserved access,strategy adoption or trading follows.
+
 **Task DD retest-gap recovery readiness — operator choice 2026-10-23.**
 After DC,the operator chose investigating data recovery before return comparison.
 Derive consequential missing-prefix/label windows from pinned DC metadata and
@@ -1253,7 +1264,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 202 documents,
+them. `.planning/README.md` carries an index of all 203 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

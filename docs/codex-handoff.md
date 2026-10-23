@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — retest-gap recovery readiness, Task DD
+## Current continuation — two-label recovery and conditional comparison, Task DE
+
+DD completed through PR#347 normal merge and isolated independently verified
+timestamp audit. It found zero new candidates in required missing minutes.
+The operator now requests recovering the two known-signal/unknown-label windows
+via KIS,validating prices,and comparing the same retest signal gross/net if
+recovered. Exact scope,conditional sizing and execution gates are registered
+in `.planning/rd-de-retest-recovery.md`. Full operational DD receipt stays in
+ignored local var/dd-actual-completion.md;public completion remains sanitized.
+No DE actual source body,raw archive,API or credential has been read at intake.
+
+## Previous continuation — retest-gap recovery readiness, Task DD
 
 DC completed through normal PR#346 merge ea4e304284e60a4dfeb117a9c224472edbd2dc98
 and independently verified GCP calibration. Its complete receipt and operator
