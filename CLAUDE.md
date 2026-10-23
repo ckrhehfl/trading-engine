@@ -8,6 +8,14 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task CW opening-impulse comparison — operator choice 2026-10-23.**
+After CV's actual own-sizing passed, the operator chose one limited observed-
+label comparison of original CT signals and the fixed CV subset, preserving all
+unknowns and original own-choice flags. Source-bound missing-label authorization
+and execution obligations: `.planning/rd-cw-opening-impulse-comparison.md`.
+No underpower exception, full-population certificate, reserved access,
+direction closure or paper/live promotion follows.
+
 **Task CV opening-impulse calibration — operator continuation 2026-10-23.**
 Fix one causal opening-range signed-return condition on original CT signals,
 then measure its own frequency, missingness and sizing before final comparison.
@@ -1182,7 +1190,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 194 documents,
+them. `.planning/README.md` carries an index of all 195 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

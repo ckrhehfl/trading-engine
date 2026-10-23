@@ -14,7 +14,16 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — opening-impulse own-sizing, Task CV
+## Current continuation — limited opening-impulse comparison, Task CW
+
+CV completed through normal PR#339 merge890f9b5and independently verified actual
+GCP own-sizing. Its appended ledger records frequency reduction, passed sizing
+and retained7/8unknown selected outcomes. The operator explicitly chose one
+limited observed-label comparison of original signals and this fixed subset.
+See `.planning/rd-cw-opening-impulse-comparison.md`. No CW actual input has been
+read at this intake; preserve source-bound authorization and all qualifications.
+
+## Previous continuation — opening-impulse own-sizing, Task CV
 
 CU completed through separate reviews, CI, normal PR #338 merge
 `c6a0913c36beb9a5d96706e3d31112124118625b` and isolated GCP execution.
