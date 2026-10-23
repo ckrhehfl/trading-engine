@@ -8,6 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DF equivalent publication recovery — 2026-10-24.**
+DE's actual pipeline reached independent verification but failed encoding its
+Fraction-valued receipt before successful budget/publication/canonical completion.
+Preserve that failed attempt. Current completion delegation covers a separately
+registered engineering recovery using the same original source and saved bounded
+quotation captures,no new API/auth/DB read,no science/gate/cost change,and the
+same shared resource limits. Recompute production and standalone verification
+under a new durable start/exclusive output;do not resume just the verifier or
+quote the failed report as a result. Scope/fresh verification/review/CI/normal
+merge obligations: `.planning/rd-df-retest-publication-recovery.md`.
+
 **Task DE bounded retest-label recovery and conditional comparison — 2026-10-24.**
 The operator requests KIS recovery of the two original known-signal/unknown-label
 coordinates,price validation,and the unchanged retest signal's gross/net cost
@@ -1264,7 +1275,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 203 documents,
+them. `.planning/README.md` carries an index of all 204 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

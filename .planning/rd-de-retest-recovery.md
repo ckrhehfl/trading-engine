@@ -153,3 +153,22 @@ fixture correction changed no market-data or strategy rule and raised no limit.
 
 Final fresh source/integrity reviews,exact-head CI,normal merge and actual
 single GCP invocation remain pending. No DE actual input has been read.
+
+## 2026-10-24 — actual publication failure,recorded in DF work unit
+
+Source/publication source reviews passed,all8CI checks succeeded,Python9960
+tests passed with3skips/30subtests in both runs,and PR#348 merged normally.
+The isolated actual invocation failed at encoding the standalone verification
+receipt:the remote generic JSON encoder did not handle Fraction. No successful
+budget receipt or canonical completed record followed. This is a failed
+attempt,not a completed comparison,and its partial report is not a result.
+
+Technical stderr identifies the encoder failure without exposing credentials.
+The reviewed private pipeline had persisted bounded capture evidence and its
+report before that point. Those artifacts and the failed canonical evidence
+remain intact;no actual recovery counts or means have been inspected/reported.
+The invented profile had supplied a canonical encoder rather than exercising
+the actual remote encoder at the verification-file boundary. DF adds an exact
+encoder regression and full-body publication profiling,then reruns the same
+producer/independent math from saved captures with no new API/auth access and
+no scientific/threshold/cost/budget change. Scope is in the DF ledger.
