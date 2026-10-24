@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — fixed breakout close-location comparison, Task DN
+## Current continuation — causal observed-peer context readiness, Task DO
+
+DN completed normal PR#357 merge and independently verified isolated comparison;
+its sanitized completion is appended to the DN ledger in this ordinary unit.
+The operator requests pre-entry co-movement data availability/gaps and one next
+entry hypothesis if usable. Pinned completed DK plus the original CC archive
+are the only market inputs;this is observed-stock-basket readiness,not an index
+or performance study. Preserve all original targets/book/masks and clocks.
+Scope: `.planning/rd-do-market-context-readiness.md`.
+At registration no DO actual body,context sign,new selection or outcome was read.
+Separate reviews,required CI,normal merge,matching whole tree and frozen exact
+caller/profile preflight precede one actual audit. Protected originals stay
+outside all content access. No old pipeline,statistic or waiver transfers.
+
+## Previous continuation — fixed breakout close-location comparison, Task DN
 
 DM completed normal PR#356 merge and independently verified isolated calibration;
 its sanitized completion is appended to the DM ledger in this ordinary unit.
