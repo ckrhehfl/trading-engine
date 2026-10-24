@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — opening-volatility predicate, Task DI
+## Current continuation — fixed basic-breakout price paths, Task DJ
+
+DI completed normal PR#352 merge and independently verified isolated comparison.
+Its sanitized completed result is appended to the DI ledger in this ordinary
+unit. The operator requests the same basic signal's fixed30minute path,strict
+cost crossing and endpoint giveback diagnostic. Preserve DI's inherited
+common-complete basic population,all targets/unknowns and original entry/label.
+Only pinned completed DI plus the original CC archive may be read after final
+review/CI/normal merge and the frozen actual preflight. Scope:
+`.planning/rd-dj-breakout-path-diagnostics.md`.
+No DJ actual input has been read at registration. No new exit rule,threshold
+sweep,mean-return family,old waiver or promotion is authorized. Protected
+operator untracked files remain outside all reads/imports/tests/scans.
+
+## Previous continuation — opening-volatility predicate, Task DI
 
 DH completed normal PR#351 merge and independently verified isolated comparison.
 The operator requests the planned next single opening-volatility condition and
