@@ -14,7 +14,23 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — saved basic-breakout loss concentration, Task DL
+## Current continuation — fixed breakout close-location calibration, Task DM
+
+DL completed normal PR#355 merge and independently verified isolated loss
+diagnostics. Its sanitized completion is appended to the DL ledger in this
+ordinary work unit. The operator now requests signal counts, weekly operating
+fit, missingness and fresh own-label planning for its fixed close-location
+predicate. Only the completed pinned DK report supplies market data. Preserve
+the original DK basic book and all targets/unknowns; no cohort expansion,
+new outcome exclusion, raw replay or API/DB acquisition occurs.
+Scope: `.planning/rd-dm-breakout-close-calibration.md`.
+No DM feature values, new counts or own planning have been calculated at
+registration. Separate final reviews, required CI, normal merge and the exact
+frozen caller/profile preflight precede one actual calibration. No subgroup
+performance comparison or promotion is part of this work. Protected operator
+originals remain outside all content access.
+
+## Previous continuation — saved basic-breakout loss concentration, Task DL
 
 DK completed normal PR#354 merge and independently verified isolated execution.
 Sanitized completion is appended to the DK ledger in this ordinary unit;
