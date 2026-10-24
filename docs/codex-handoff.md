@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — fixed basic-breakout price paths, Task DJ
+## Current continuation — fixed basic-breakout managed exit, Task DK
+
+DJ completed normal PR#353 merge and independently verified its isolated path
+diagnostic. Sanitized completion is appended to the DJ ledger in this ordinary
+unit;detailed actual receipts remain private. The operator requests one fixed
+exit rule on the identical basic OR15 entries. Reuse the previously fixed CM
+close-trigger rule with delayed OPEN fills and the existing time cap,
+not optimized hindsight high/low fills. Fresh all-four own sizing gates one
+conditional comparison. Scope: `.planning/rd-dk-breakout-exit-policy.md`.
+At registration no DK actual source body has been read. Final separate reviews,
+required CI,normal merge,whole-closure synthetic profile and frozen preflight
+precede the single actual run. Protected operator originals remain untouched.
+
+## Previous continuation — fixed basic-breakout price paths, Task DJ
 
 DI completed normal PR#352 merge and independently verified isolated comparison.
 Its sanitized completed result is appended to the DI ledger in this ordinary
