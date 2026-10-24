@@ -152,3 +152,40 @@ Standalone verification integration,exact caller/profile,final separate
 reviews,required CI,normal merge and actual GCP comparison remain pending.
 No actual DN market body,source-derived conditional mean or protected user
 original has been accessed at this implementation checkpoint.
+
+## 2026-10-24 — normal merge and completed isolated comparison
+
+Fresh distinct final source and research-integrity reviews passed without
+remaining findings. Root named final bundle205passed/one existing skip. All
+eight push/PR required checks succeeded;both full Python CI10212passed,
+3skipped,30subtests. PR[#357](https://github.com/ckrhehfl/trading-engine/pull/357)
+normal-merged ase8c29519cfbf0db24ee330029efa0597713ec64d with the reviewed
+whole tree unchanged. One isolated GCP process completed new comparison,
+standalone independent verification,rechecks and full substantive encoding
+inside the unchanged budget. Actual detailed pins/receipts remain private.
+The collector,loaded loops,schedules,environment,credentials,DB,risk and orders
+were unchanged. All actual prerequisite groups reduced4to0;delivery4of4done.
+
+Allfour fresh own MDE prerequisites passed:basic12.392341743704357/
+12.39060643550562bp,selected13.732551296925775/13.75508584595221bp. The single
+registered family retained original1169/1167 and selected895/893;rejected274
+each,new selected-label/feature unknown0. Source unknowns and outside-book
+cases remained. Basic gross means0.0058486099323869665%/0.0043926161847454246%;
+selected0.037719042386498483%/0.03588768310476337%. After assumed33bp cost,
+basic-0.324151390067613%/-0.3256073838152546%;selected-0.2922809576135015%/
+-0.2941123168952366%. Conditional differences+3.1870432454111517/
+3.1495066920017945bp had descriptive95intervals[-6.1512847944947335,
+12.525371285317037]/[-6.190257469184567,12.489270853188158]bp,both including0.
+Joint session/block dependence was preserved;the conservative independent-arm
+reference dominated the adopted SE. No pvalue,winner or contrast-power claim.
+
+Endpoint cost-exceedance381/1169vs299/895 and379/1167vs297/893. Weekly means
+20.875/20.8392857143basic versus15.9821428571/15.9464285714selected;weeks>=15
+48of56basic versus35of56selected. These are observed opportunities,not account
+executions or full-universe frequency. Completed-only algebra/conclusion/prose
+audits passed without original-input/statistical replay. A generated-program
+JSON dict-order regression was fixed before actual access/final profile freeze;
+no actual research retry occurred. Original~51percent gaps,retrospective mask,
+availability/vintage/price basis,cost/fill and repeated-search limits remain.
+No edge,strategy promotion or direction closure. DO separately investigates
+pre-entry observed-peer market-context availability without new performance.

@@ -8,6 +8,20 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DO causal observed-peer context readiness — 2026-10-25.**
+The operator requests existing pre-entry co-movement data,availability,gaps,
+and one next hypothesis if usable. Audit only pinned completed DK and the
+original CC archive,retaining all original basic events/targets/unknowns.
+Inspect other original members' fifteen minute windows ending at the original
+signal end,with assumed availability no later than decision. Fixed five-peer
+quorum is an operational proxy definition,not complete-market certification.
+Retain all nineteen members and missing causes. Store causal price atoms for
+future reuse;do not calculate peer returns/signs,selection counts,new outcomes,
+sizing or performance. Conditionally fix one positive observed-peer mean
+descriptor for later calibration,without CLV or additional filters. No index,
+profitability,full-universe,waiver or promotion claim follows. Scope:
+`.planning/rd-do-market-context-readiness.md`.
+
 **Task DN fixed breakout close-location comparison — 2026-10-24.**
 The operator requests the same observed basic book versus DM's fixed top-quarter
 close subset,gross/net price response and weekly frequency. Read only pinned
@@ -1381,7 +1395,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 212 documents,
+them. `.planning/README.md` carries an index of all 213 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
