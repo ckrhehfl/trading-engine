@@ -138,7 +138,7 @@ def _membership(membership: Mapping, day: str) -> None:
         "source_original20_members_changed")
 
 
-def _event(row: Mapping, checkpoint: Callable[[], None]) -> dict:
+def _event(row: Mapping, member: Mapping, membership: Mapping, checkpoint: Callable[[], None]) -> dict:
     event, label = row["arms"]["basic"]["event"], row["arms"]["basic"]["label"]
     end, decision, entry = (dl._instant(value) for value in
         (event["signal_bar_end"], event["decision_at"], label["entry_at"]))
@@ -172,8 +172,9 @@ def _event(row: Mapping, checkpoint: Callable[[], None]) -> dict:
         "window_end": end.isoformat(), "feature_available_at": decision.isoformat(),
         "decision_slack_seconds": 0, "entry_slack_seconds": 180,
         "source_row_sha256": _digest(row, checkpoint), "peers": []}
-    for key in ("data_vintage", "raw_chunk_metadata", "source_fetched_at", "membership_target", "membership_source"):
+    for key in ("data_vintage", "raw_chunk_metadata", "source_fetched_at"):
         result[key] = deepcopy(row[key])
+    result["membership_target"], result["membership_source"] = member, membership
     return result
 
 
@@ -194,10 +195,16 @@ def _source(source: Mapping, checkpoint: Callable[[], None]) -> tuple[list, list
         expected = []
         for membership in matrix:
             _membership(membership, membership["session"])
-            expected.extend((membership, target) for target in membership["targets"])
+            # These output-owned snapshots are never mutated. All events and
+            # peers for this policy/day may retain them without copying the
+            # same nested source provenance once per event/peer.
+            members = deepcopy(membership["targets"])
+            provenance = deepcopy({key: value for key, value in membership.items() if key != "targets"})
+            expected.extend((membership, target, member, members, provenance)
+                for target, member in zip(membership["targets"], members, strict=True))
         _require(len(rows) == len(expected), "source_target_population_changed")
         population, events = dl._empty_population(), []
-        for row, (membership, target) in zip(rows, expected, strict=True):
+        for row, (membership, target, member, members, provenance) in zip(rows, expected, strict=True):
             checkpoint()
             day, symbol = membership["session"], target["symbol"]
             _require(row["session"] == day and row["symbol"] == symbol
@@ -213,15 +220,14 @@ def _source(source: Mapping, checkpoint: Callable[[], None]) -> tuple[list, list
             dl._account(population, row, selected)
             by_key.setdefault((day, symbol), []).append(row)
             if selected:
-                audit = _event(row, checkpoint)
+                audit = _event(row, member, provenance, checkpoint)
                 # Only original member coordinates define requests; no source outcome is evaluated.
-                audit["_members"] = membership["targets"]
-                audit["_membership"] = {key: value for key, value in membership.items() if key != "targets"}
+                audit["_members"], audit["_membership"] = members, provenance
                 events.append(audit)
         variants[policy] = {"population": population, "events": events,
             "source_rows_sha256": _digest(rows, checkpoint),
             "source_variant_sha256": _digest({key: value for key, value in variant.items() if key != "days"}, checkpoint)}
-    return reference, weeks, by_key, variants
+    return list(reference), weeks, by_key, variants
 
 
 def _minutes(raw: list, day: str, symbol: str, checkpoint: Callable[[], None]) -> tuple[dict, dict, list]:
@@ -255,8 +261,7 @@ def _valid(row: Mapping) -> bool:
         return False
 
 
-def _peer(event: Mapping, member: Mapping, chunk: Mapping, vintage: str, buckets: Mapping,
-        offsets: dict, fetched: list) -> dict:
+def _window(event: Mapping, buckets: Mapping) -> dict:
     start, end, decision, entry = (dl._instant(event[key]) for key in
         ("window_start", "window_end", "decision_at", "entry_at"))
     gaps, minute_offsets, counts, values = [], [], Counter(), []
@@ -274,11 +279,7 @@ def _peer(event: Mapping, member: Mapping, chunk: Mapping, vintage: str, buckets
                 "source_fetched_at": [row["fetched_at"] for row in rows]})
         values.append(rows[0] if reason is None else None)
     complete = not gaps
-    return {"symbol": member["symbol"], "member": deepcopy(member),
-        "membership_source": deepcopy(event["_membership"]), "data_vintage": vintage,
-        "raw_chunk_metadata": {key: deepcopy(chunk[key]) for key in METADATA},
-        "source_fetched_at": fetched, "source_offset_counts_ms": offsets,
-        "window_start": start.isoformat(), "window_end": end.isoformat(),
+    return {"window_start": start.isoformat(), "window_end": end.isoformat(),
         "first_open": values[0]["open"] if complete else None,
         "last_close": values[-1]["close"] if complete else None,
         "state": "complete" if complete else "unknown", "valid_minute_buckets": 15 - len(gaps),
@@ -286,6 +287,14 @@ def _peer(event: Mapping, member: Mapping, chunk: Mapping, vintage: str, buckets
         "gaps": gaps, "observation_offsets_ms": minute_offsets,
         "available_at": decision.isoformat(), "decision_slack_seconds": 0,
         "entry_slack_seconds": int((entry - decision).total_seconds())}
+
+
+def _peer(event: Mapping, member: Mapping, metadata: Mapping, vintage: str,
+        offsets: dict, fetched: list, atoms: Mapping) -> dict:
+    return {"symbol": member["symbol"], "member": member,
+        "membership_source": event["_membership"], "data_vintage": vintage,
+        "raw_chunk_metadata": metadata, "source_fetched_at": fetched,
+        "source_offset_counts_ms": offsets, **atoms}
 
 
 def _empty_summary() -> dict:
@@ -355,15 +364,20 @@ def build_readiness(dk_report: Mapping, raw_lines: Iterable[bytes], *, specifica
             vintage = hashlib.sha256(line).hexdigest()
             stream.update(line)
             buckets, offsets, fetched = _minutes(raw, day, symbol, checkpoint)
-            metadata = {key: chunk[key] for key in METADATA}
+            metadata = deepcopy({key: chunk[key] for key in METADATA})
             for row in by_key[day, symbol]:
                 _require(row["data_vintage"] == vintage and row["input_rows"] == len(raw), "source_raw_vintage_or_count_mismatch")
                 _same(row["raw_chunk_metadata"], metadata, "source_raw_metadata_mismatch")
                 _same(row["source_offset_counts_ms"], offsets, "source_raw_offsets_mismatch")
                 _same(row["source_fetched_at"], fetched, "source_raw_retrieval_mismatch")
             fingerprints.append({"session": day, "symbol": symbol, "data_vintage": vintage, "input_rows": len(raw)})
+            window_atoms = {}
             for event, member in requests.get((day, symbol), []):
-                event["peers"].append(_peer(event, member, chunk, vintage, buckets, offsets, fetched))
+                window_key = event["window_start"], event["window_end"]
+                if window_key not in window_atoms:
+                    window_atoms[window_key] = _window(event, buckets)
+                event["peers"].append(_peer(event, member, metadata, vintage,
+                    offsets, fetched, window_atoms[window_key]))
         sentinel = object()
         _require(next(lines, sentinel) is sentinel, "extra_input_chunk")
         for variant in variants.values():

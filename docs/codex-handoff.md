@@ -16,6 +16,14 @@ Binding constraints remain in `CLAUDE.md`.
 
 ## Current continuation — causal observed-peer context readiness, Task DO
 
+PR#358 normally merged and advanced the isolated research checkout,but its
+first actual audit failed with MemoryError during the independent DK source
+decode. No verified readiness result exists. Preserve all failed evidence and
+old reviewed code. Branch codex/do-market-context-memory now repairs allocation
+using invented inputs only;the appended DO ledger defines the unresolved later
+actual-execution boundary. Do not retry the original caller or read its partial
+price ledger as a result.
+
 DN completed normal PR#357 merge and independently verified isolated comparison;
 its sanitized completion is appended to the DN ledger in this ordinary unit.
 The operator requests pre-entry co-movement data availability/gaps and one next

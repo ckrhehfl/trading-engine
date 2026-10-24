@@ -15,13 +15,14 @@ from test_intraday_breakout_loss_concentration import build_synthetic_fixture as
 SMALL_DAYS = ("2025-09-04", "2025-09-11", "2025-11-13", "2026-01-02")
 
 
-def build_synthetic_fixture(*, full=False, metadata_padding=0):
+def build_synthetic_fixture(*, full=False, metadata_padding=0, provenance_density=0):
     """Return (DK mapping, fresh zero-argument canonical line factory).
 
     Full geometry is exactly 10280 original policy rows, 257 sessions, 56 weeks,
     1169/1167 original-book events, 5158 union chunks and 1002211 raw rows.
     Rows/chunks are produced independently of all research math and never kept
-    as a full archive. Padding exercises 45-64 MiB source decoding/hashing.
+    as a full archive. Dense provenance exercises nested decoded object pressure;
+    padding remains available for the separately preserved original profile.
     """
     source = _dk_fixture(full=True, days=None if full else SMALL_DAYS, metadata_padding=metadata_padding)
     reference = source["reference_sessions"]
@@ -33,6 +34,20 @@ def build_synthetic_fixture(*, full=False, metadata_padding=0):
             matrix[index]["targets"][-1]["symbol"] = "KRX:000021"
             row = source["variants"]["D+2"]["days"][index * 20 + 19]
             row["symbol"] = row["membership_target"]["symbol"] = "KRX:000021"
+    if provenance_density:
+        for policy in market.POLICIES:
+            for day_index, membership in enumerate(source["source_target_matrix"][policy]["days"]):
+                day = membership["session"]
+                membership["retrieved_at"]["invented_receipts"] = [
+                    {"request": {"policy": policy, "ordinal": index},
+                     "response": {"evidence_level": "assumed", "is_final": None},
+                     "lineage": [{"parent": index, "observation_date": day}]}
+                    for index in range(provenance_density)]
+                metadata = {key: value for key, value in membership.items() if key != "targets"}
+                for row in source["variants"][policy]["days"][day_index * 20:(day_index + 1) * 20]:
+                    # Decode-like distinct objects on each original row, rather
+                    # than a long string or already-shared fixture shortcuts.
+                    row["membership_source"] = deepcopy(metadata)
     by_key = {}
     for policy in market.POLICIES:
         rows = source["variants"][policy]["days"]
@@ -172,6 +187,96 @@ def test_all_original_book_denominators_metadata_atoms_and_no_mutation():
         assert sum(cell["events"] for cell in variant["summary"]["by_week"].values()) == len(originals)
         assert variant["summary"]["by_session"][SMALL_DAYS[2]]["feature_unknown_events"] > 0
         assert variant["summary"]["overall"]["full_coverage_events"] > 0
+
+
+def _mutable_ids(value):
+    identities = set()
+    if isinstance(value, (dict, list)):
+        identities.add(id(value))
+        for child in value.values() if isinstance(value, dict) else value:
+            identities.update(_mutable_ids(child))
+    return identities
+
+
+def test_dense_provenance_snapshots_are_bounded_and_source_isolated():
+    source, lines = build_synthetic_fixture(provenance_density=6)
+    source_before = market._digest(source)
+    result = _result(source, lines)
+    # Captured from the pre-repair DO pure builder on this invented dense
+    # fixture; this covers the complete logical wire, not just summaries.
+    assert hashlib.sha256(market._canonical(result)).hexdigest() == "b9030eb1c79ec6c348fbc6940a26856eae71dfdb0176a575b7b6445672bfbe47"
+    assert market._digest(source) == source_before
+    assert not (_mutable_ids(source) & _mutable_ids(result))
+    for policy in market.POLICIES:
+        matrix = {item["session"]: item for item in source["source_target_matrix"][policy]["days"]}
+        events = result["variants"][policy]["events"]
+        for day in SMALL_DAYS:
+            selected = [event for event in events if event["session"] == day]
+            if not selected:
+                continue
+            metadata = {key: value for key, value in matrix[day].items() if key != "targets"}
+            references = [event["membership_source"] for event in selected]
+            references.extend(peer["membership_source"] for event in selected for peer in event["peers"])
+            assert all(value == metadata for value in references)
+            assert len({id(value) for value in references}) == 1
+            for target in matrix[day]["targets"]:
+                members = [peer["member"] for event in selected for peer in event["peers"]
+                    if peer["symbol"] == target["symbol"]]
+                members.extend(event["membership_target"] for event in selected if event["symbol"] == target["symbol"])
+                assert all(value == target for value in members)
+                assert len({id(value) for value in members}) == 1
+    output_before = market._digest(result)
+    original = source["source_target_matrix"]["D+1"]["days"][0]
+    original["retrieved_at"]["invented_receipts"][0]["lineage"][0]["parent"] = "source_only_mutation"
+    original["targets"][0]["state"] = "source_only_mutation"
+    assert market._digest(result) == output_before
+
+
+def test_window_reuse_is_chunk_bounded_and_keeps_policy_membership(monkeypatch):
+    source, lines = build_synthetic_fixture(provenance_density=2)
+    calls = []
+    original = market._window
+
+    def record(event, buckets):
+        symbol = next(iter(buckets.values()))[0]["symbol"]
+        calls.append((event["session"], symbol, event["window_start"], event["window_end"]))
+        return original(event, buckets)
+
+    monkeypatch.setattr(market, "_window", record)
+    result = _result(source, lines)
+    peers = [peer for variant in result["variants"].values() for event in variant["events"] for peer in event["peers"]]
+    assert len(calls) == len(set(calls)) < len(peers)
+    by_policy = [result["variants"][policy]["events"][0] for policy in market.POLICIES]
+    first = [event["peers"][0] for event in by_policy]
+    assert first[0]["gaps"] is first[1]["gaps"]
+    assert first[0]["observation_offsets_ms"] is first[1]["observation_offsets_ms"]
+    assert first[0]["membership_source"] is not first[1]["membership_source"]
+    for policy, peer in zip(market.POLICIES, first, strict=True):
+        assert peer["membership_source"]["retrieved_at"]["invented_receipts"][0]["request"]["policy"] == policy
+
+
+def test_reused_raw_atoms_keep_different_original_window_ends_separate():
+    source, lines = fixture()
+    row = source["variants"]["D+1"]["days"][0]
+    event, label = row["arms"]["basic"]["event"], row["arms"]["basic"]["label"]
+    common, timed = row["breakout_exit_policy"]["common"], row["breakout_exit_policy"]["time_only"]
+    for mapping, keys in ((event, ("decision_at", "available_at", "signal_bar_start", "signal_bar_end")),
+            (label, ("entry_at", "exit_at", "time_cap_decided_at", "entry_price_available_at", "label_available_at")),
+            (common, ("decision_at", "entry_at", "entry_available_at", "time_cap_at", "time_cap_decided_at")),
+            (timed, ("exit_at", "label_available_at"))):
+        for key in keys:
+            mapping[key] = (market.dl._instant(mapping[key]) + timedelta(minutes=1)).isoformat()
+    result = _result(source, lines)
+    changed, unchanged = (result["variants"][policy]["events"][0] for policy in market.POLICIES)
+    shifted, original = changed["peers"][0], unchanged["peers"][0]
+    assert shifted["symbol"] == original["symbol"]
+    assert shifted["window_end"] != original["window_end"]
+    assert shifted["observation_offsets_ms"] is not original["observation_offsets_ms"]
+    bodies = (json.loads(line) for line in lines())
+    raw = next(body["rows"] for body in bodies
+        if body["session"] == SMALL_DAYS[0] and body["symbol"] == shifted["symbol"])
+    assert (shifted["first_open"], shifted["last_close"]) == (raw[6]["open"], raw[20]["close"])
+    assert (original["first_open"], original["last_close"]) == (raw[5]["open"], raw[19]["close"])
 
 
 def test_exact_window_excludes_F_and_all_future_prices_or_gaps():
