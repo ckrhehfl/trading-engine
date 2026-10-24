@@ -8,6 +8,19 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DN fixed breakout close-location comparison — 2026-10-24.**
+The operator requests the same observed basic book versus DM's fixed top-quarter
+close subset,gross/net price response and weekly frequency. Read only pinned
+completed DK and DM full reports;crossmatch immutable rows,selection,metadata
+and original clocks without replaying either parent pipeline. Preserve all
+targets/unknowns,original book,three-minute entry delay,thirty-minute exit and
+assumed cost. Four fresh own-label sizing gates precede one conditional
+descriptive family with joint session/block uncertainty for the overlapping
+groups. Failed/undefined sizing or unknown feature/selected labels completes
+calibration but retains the ordinary operator comparison checkpoint;no old
+waiver transfers. No threshold search,portfolio claim,edge or promotion.
+Scope: `.planning/rd-dn-breakout-close-comparison.md`.
+
 **Task DM fixed breakout close-location calibration — 2026-10-24.**
 The operator requests counts, weekly operating fit, missingness and fresh
 own-label sample planning for the already fixed DL close-location hypothesis.
@@ -1368,7 +1381,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 211 documents,
+them. `.planning/README.md` carries an index of all 212 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
