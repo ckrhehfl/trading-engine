@@ -14,7 +14,22 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — fixed basic-breakout managed exit, Task DK
+## Current continuation — saved basic-breakout loss concentration, Task DL
+
+DK completed normal PR#354 merge and independently verified isolated execution.
+Sanitized completion is appended to the DK ledger in this ordinary unit;
+detailed actual receipts remain private. The operator requests concentration
+of the same time-only book's large losses across periods and original issuers,
+then one fixed next entry hypothesis. Only the completed pinned DK report is
+an input. No raw archive,API or database read is part of this work.
+Scope: `.planning/rd-dl-breakout-loss-concentration.md`.
+The next candidate uses the original breakout bar's close location. It is
+unmeasured here;future own sizing,frequency and missingness gates remain.
+At registration no DL actual input body has been read. Final separate reviews,
+required CI,normal merge and frozen whole-closure preflight precede one actual
+execution. Protected operator originals remain outside all content access.
+
+## Previous continuation — fixed basic-breakout managed exit, Task DK
 
 DJ completed normal PR#353 merge and independently verified its isolated path
 diagnostic. Sanitized completion is appended to the DJ ledger in this ordinary
