@@ -8,6 +8,21 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DL saved basic-breakout loss concentration — 2026-10-24.**
+The operator requests period/issuer concentration of large losses in the same
+saved basic OR15 time-only book,and one next entry hypothesis fixed for later
+validation. Read only the pinned completed DK report;keep its original selected
+coordinates,all target/unknown denominators,entry,thirty-minute exit and cost.
+Fix large loss as gross<=minus1percent and decompose exact counts,return sums,
+nonnegative loss mass and exposure shares across all sessions/months/quarters/
+target symbols. These outcome-defined descriptions do not create an investable
+subset,new return means,statistical comparison or performance family.
+Freeze one next candidate: original breakout bar close location >=three quarters
+of its own high-low range,with original clocks and explicit degenerate/missing
+states. Do not measure its selection,frequency or returns in DL or imply a
+measured relation to the loss panels. Future candidate calibration retains all
+ordinary gates. Scope: `.planning/rd-dl-breakout-loss-concentration.md`.
+
 **Task DK fixed basic-breakout managed exit — 2026-10-24.**
 The operator requests one fixed take-profit/stop-loss/time exit compared with
 the same basic OR15 population's existing thirty-minute exit. Keep the completed
@@ -1338,7 +1353,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 209 documents,
+them. `.planning/README.md` carries an index of all 210 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

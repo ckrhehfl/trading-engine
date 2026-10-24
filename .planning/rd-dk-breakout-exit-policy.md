@@ -150,3 +150,48 @@ not actual DK market results. Independent supplied-byte integration,full-scale
 invented profiling,separate final reviews,required CI,normal merge and frozen
 actual execution remain pending at this record. No protected original contents,
 actual DK input,API,DB,credentials or SSH were accessed by these tests.
+
+## 2026-10-24 — completed comparison and isolated research reflection
+
+PR#354 reviewed source56a287df4a07fc4e10c265d4ac3620f92b6c2932 normally merged
+asbf100c2363c63c5133d112861c8f8eaec83c0674. Separate final source/integrity
+reviews found no remaining findings. Final named author bundle passed266tests/
+one existing skip;both full Python CI jobs passed10105tests/three skips and
+30subtests. All eight push/PR required checks passed,with no unresolved review
+threads or further page and CLEAN state before normal merge.
+[Review record](https://github.com/ckrhehfl/trading-engine/pull/354#issuecomment-6380392455).
+
+An invented full-scale profile exposed redundant whole-report normalization
+exceeding the memory limit. That failure remains preserved. Removing the copy
+and streaming the canonical digest preserved all independent field checks;the
+corrected profile and final67-file closure were separately reviewed. There was
+no actual scientific retry or resource waiver.
+
+One actual execution completed production,independent raw/new-math replay,
+four fresh own-label gates,one conditional comparison and full publication
+encoding within unchanged shared limits. No new API/token/DB request or market
+authentication-material read occurred. Only the isolated research checkout
+advanced;the collector stayed tracked-clean at4ce85d7. Detailed actual receipts
+and execution identifiers remain private.
+
+| Same basic entries | D+1 | D+2 |
+| --- | ---: | ---: |
+| Fixed cases |1169|1167|
+| Time-only gross mean percent |+0.0058486099|+0.0043926162|
+| Managed gross mean percent |−0.0103828246|−0.0101850098|
+| Time-only cost-net mean percent |−0.3241513901|−0.3256073838|
+| Managed cost-net mean percent |−0.3403828246|−0.3401850098|
+| Managed minus time mean bp |−1.6231434489|−1.4577626032|
+| TP/SL/time-cap counts |227/535/407|227/533/407|
+| SL triggers with fill proxy below threshold |315/535|314/533|
+
+Both descriptive paired intervals include zero,with corrected/naive SE ratios
+1.5306648047/1.5459767951. Original weekly opportunities remain20.875/20.8392857,
+48of56weeks at least15cases. Average managed duration18.603935/18.623822minutes
+does not establish portfolio risk improvement. The full original30minute path
+has one dual-touch minute event per policy;touches never become fills.
+
+Minute OPEN proxies,assumed availability/cost,original signal gaps and repeated
+discovery limitations remain. No strategy qualification,account return or
+direction closure occurred. The operator next authorized same-book loss
+concentration and one next fixed entry hypothesis,registered separately as DL.
