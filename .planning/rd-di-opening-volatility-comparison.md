@@ -115,3 +115,27 @@ independent replications. About51percent source gaps,inherited retrospective
 selection,source timing/vintage/classification/price basis,minute-open fills,
 assumed costs and repeated-search risks remain. No new official historical
 availability evidence is claimed by this saved-report calculation.
+
+## 2026-10-24 — normal merge and completed isolated comparison
+
+Fresh distinct source and integrity reviews passed the final source. All eight
+push/PR instances of the four required CI jobs succeeded;both Python jobs passed
+10026tests/3skipped/30subtests. PR[#352](https://github.com/ckrhehfl/trading-engine/pull/352)
+merged normally as8fe8b73a407e8603cf565b14a59c6a9cfb9c81b4,with the reviewed whole
+tree unchanged. One isolated GCP process completed producer,independent output
+verification and substantive publication inside the registered unchanged budget.
+Detailed private actual pins/receipts remain ignored;the collector's source,
+processes,schedules,configuration,credentials and databases were unchanged.
+
+Every observed basic event passed the preregistered33bp initial-range predicate.
+The fixed common-complete groups remained1169D+1/1167D+2,with zero rejections.
+Both control/selected groups therefore had exactly equal full and weekly
+statistics. Gross means were0.0058486099323869665%/0.004392616184745425%;after
+assumed33bp cost,net means were-0.324151390067613%/-0.32560738381525456%.
+Cost-exceeding endpoints381/1169and379/1167;observed weekly rates20.875and
+20.839285714285715with48of56weeks at15orabove in each policy. Allfour fresh own
+sizing gates passed. These are source-conditional price responses,not actual
+fills/portfolio PnL or an edge. Original gaps,retrospective completeness,
+availability/revision/basis,cost and repeated-search qualifications remain.
+No threshold was retuned,no strategy promoted and no direction closed. The
+operator now separately requests a fixed basic-breakout path diagnostic in DJ.

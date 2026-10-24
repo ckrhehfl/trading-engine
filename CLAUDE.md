@@ -8,6 +8,18 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DJ fixed basic-breakout path diagnostic — 2026-10-24.**
+The operator requests whether the same basic OR15 entries ever exceeded the
+assumed33bp cost within their unchanged30minute holding window and then faded.
+Keep DI's inherited DH-common-complete basic population and every original
+target/unknown;read only the pinned completed DI report and original saved CC
+archive. Fix strict intrawindow high crossing,endpoint retention,and explicit
+unknown/cap-only-gap states before access. This is a hindsight path diagnostic,
+not a new exit policy,payoff comparison or strategy qualification. Do not apply
+a mean-return power gate to a nonnegative-by-construction extremum or transfer
+that distinction to future entry/exit studies. Scope and execution gates:
+`.planning/rd-dj-breakout-path-diagnostics.md`.
+
 **Task DI opening-volatility predicate — 2026-10-24.**
 The operator requests one preregistered opening-volatility condition on basic
 breakout,its cost-exceeding price response and weekly15operating fit. Use the
@@ -1313,7 +1325,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 207 documents,
+them. `.planning/README.md` carries an index of all 208 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

@@ -1,0 +1,45 @@
+{
+  "id": "intraday-breakout-path-diagnostics-v1",
+  "mode": "fixed-basic-opening-breakout-thirty-minute-path-diagnostic",
+  "output_name": "intraday-dj-breakout-paths-20261024-v1",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "source_roles": {
+    "parent": "pinned_completed_full_DI_opening_volatility_report",
+    "archive": "pinned_original_CC_saved_raw_minute_archive"
+  },
+  "upstream_specification_sha256": "d5b6313df3422735cd964b4c8c8ada72dd8b96f11fea617e2ae7ac152a396647",
+  "parameters": {
+    "cohort": "unchanged_DI_inherited_DH_common_outcome_complete_basic_signals_not_volatility_subset",
+    "entry_delay_minutes": 3,
+    "path_minutes": 30,
+    "path": "all_valid_minute_OHLC_entry_inclusive_entry_plus30minutes_exclusive",
+    "endpoint": "original_entry_plus30minute_OPEN_label_with_exact_raw_anchor_checks",
+    "assumed_cost": {"numerator": "33", "denominator": "10000"},
+    "crossings": "strict_high_above_entry_times1pluscost_strict_low_below_entry_times1minuscost_equality_not_exceed",
+    "categories": ["never_exceeded", "exceeded_then_faded", "exceeded_and_retained", "path_unknown"],
+    "endpoint_flags": "orthogonal_endpoint_above_cost_and_complete_no_touch_cap_only_exceeded",
+    "missingness": "incomplete_path_kept_unknown_original_known_endpoint_retained_never_zero_or_no_touch",
+    "extrema": "exact_MFE_max_high_over_entry_minus1_MAE_min_low_over_entry_minus1_giveback_MFE_minus_original_endpoint",
+    "timing": "earliest_extreme_and_strict_crossing_minute_offsets_same_minute_order_unknown",
+    "summaries": "exact_Fraction_complete_path_descriptions_counts_fractions_all_original_reference_weeks",
+    "own_sizing_gate": "not_a_new_directional_payoff_comparison_no_extremum_MDE_test_no_later_policy_waiver",
+    "output_scope": "retrospective_path_diagnostic_no_optimized_exit_payoff_family_subgroups_or_pvalue"
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0,
+    "maximum_compressed_bytes": 536870912,
+    "maximum_uncompressed_bytes": 1073741824,
+    "maximum_chunk_bytes": 1048576,
+    "maximum_session_rows": 600,
+    "maximum_chunks": 5158,
+    "maximum_rows": 1002211
+  }
+}
