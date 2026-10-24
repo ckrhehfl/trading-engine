@@ -161,3 +161,38 @@ anchors,earliest ties,within-minute order,low Decimal precision,unselected raw
 validation,upstream immutability,full reference weeks and refusal of malformed
 source/specification/transport/budget/completion claims. No local full-tree
 suite/scanner or protected operator-file content access occurred.
+
+## 2026-10-24 — completed diagnostic, normal merge and isolated reflection
+
+PR#353 reviewed source52b75e0d54ad706fbb6efede540f7690bcaa97f6 normally merged
+as8ff920cc77f57823f456254a4b8f165fd1d5645c. Separate final source and research-
+integrity reviews,all four required checks on both push/PR contexts,and the
+exact-head/unresolved-conversation gate passed. Both full Python CI jobs
+passed10061tests/three skips. The final named author bundle passed199tests/one
+existing skip. Invented-profile engineering failures and the local pre-SSH
+byte-mismatch refusal were preserved;they were not actual scientific retries.
+The final full-size invented profile and frozen closure preflight passed.
+[Review and merge gate](https://github.com/ckrhehfl/trading-engine/pull/353#issuecomment-6379594589).
+
+One actual bounded execution completed producer,standalone raw replay and
+substantive publication encoding under the unchanged shared limits. There was
+no actual retry,API/token/DB access or credential read. Only the isolated
+research checkout advanced;the collector stayed tracked-clean at4ce85d7.
+Detailed input/output/runtime and canonical log receipts remain private.
+
+| Same basic-breakout paths | D+1 | D+2 |
+| --- | ---: | ---: |
+| Fixed selected entries |1169|1167|
+| Never strictly exceeded assumed33bp cost within holding window |415|414|
+| Exceeded during holding but faded to cost or below at endpoint |373|374|
+| Exceeded during holding and retained above cost at endpoint |381|379|
+| Newly unknown path / cap-only crossing |0/0|0/0|
+| First upward/downward crossing occurred in same minute:order unknown |16|16|
+
+Within-window upward crossings occurred in754/753paths. Of those,373/754 and
+374/753 faded by the fixed endpoint. These are hindsight OHLC descriptions,
+not proof of threshold execution or a profitable management rule. No new
+performance family,policy test,qualification,account return or direction
+closure occurred. Original approximately51percent signal unknowns and repeated
+discovery limitations remain. The operator subsequently requested a separate
+fixed exit-policy comparison,registered as DK before its actual input access.

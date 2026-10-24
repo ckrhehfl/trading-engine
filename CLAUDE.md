@@ -8,6 +8,19 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DK fixed basic-breakout managed exit — 2026-10-24.**
+The operator requests one fixed take-profit/stop-loss/time exit compared with
+the same basic OR15 population's existing thirty-minute exit. Keep the completed
+DJ population,original entries,targets/unknowns and matched event budgets.
+Reuse the previously specified CM close-trigger convention: +1percent/−0.5percent,
+two-minute assumed observation lag plus one-minute execution allowance,and
+thirty-minute time cap. Subsequent minute OPEN fills are assumptions,not
+threshold/high/low fills or guaranteed executions;intraminute dual touches
+remain explicitly order-unknown. Fresh all-four own-label sizing precedes any
+new means;only all defined finite MDE values <=33bp activate one comparison.
+No old exception,threshold sweep,portfolio claim or promotion transfers.
+Scope/execution gates: `.planning/rd-dk-breakout-exit-policy.md`.
+
 **Task DJ fixed basic-breakout path diagnostic — 2026-10-24.**
 The operator requests whether the same basic OR15 entries ever exceeded the
 assumed33bp cost within their unchanged30minute holding window and then faded.
@@ -1325,7 +1338,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 208 documents,
+them. `.planning/README.md` carries an index of all 209 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
