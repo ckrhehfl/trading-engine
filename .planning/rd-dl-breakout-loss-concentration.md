@@ -185,3 +185,46 @@ source immutability. Separate supplied-byte verification,whole-caller profile,
 final distinct source/integrity reviews,required CI,normal merge and one actual
 isolated diagnostic remain pending. No DL actual market input,SSH,API,database
 or authentication material has been accessed at this record.
+
+## 2026-10-24 — completed diagnostic and next authorized calibration
+
+PR#355 reviewed source225a549287d4787e460bd2b1d88990c23390e87f normally merged
+asabeabc654f399ab13035702a99e269fd66a8afc4, with the whole reviewed tree matching.
+Separate final source/integrity reviews had no remaining findings. The final
+named author bundle passed221tests/one existing skip; both full Python CI jobs
+passed10136tests/three skips and30subtests. All eight push/PR required checks
+passed, with zero unresolved review threads after complete pagination and CLEAN
+state before merge. [Review record](https://github.com/ckrhehfl/trading-engine/pull/355#issuecomment-6381614132).
+
+One exclusive invented full-geometry profile and source/runtime closure check
+passed. One actual execution completed producer, separate independent supplied-
+byte reconstruction and full publication within unchanged shared limits. There
+was no actual/profile retry, budget raise or fresh market acquisition. Only the
+isolated research checkout advanced; the collector remained tracked-clean at
+4ce85d7. Detailed execution identifiers and receipts remain private.
+
+| Completed original-book diagnostic | D+1 | D+2 |
+| --- | ---: | ---: |
+| Original events |1169|1167|
+| Gross negative events |580|580|
+| Assumed-cost net negative events |788|788|
+| Gross at most minus1percent events |155|155|
+| Top3tail months' original event share percent |24.72198460|24.67866324|
+| Top3tail months' tail-loss mass share percent |41.09329284|41.09329284|
+| Top3tail symbols' original event share percent |27.11719418|27.07797772|
+| Top3tail symbols' tail-loss mass share percent |43.82015619|43.82015619|
+
+Top3tail months were2026-08/06/07 and symbols402340/000660/009150. All31target
+codes remained; all12codes with original observed entries had a tail loss, and
+12of13month groups had one. These are retrospective equal-event loss-mass
+descriptions, not causal filters or currency portfolio losses. No mean-return
+comparison, next-candidate measurement, strategy qualification or direction
+closure occurred. Original signal gaps, assumed timing/cost/fill, historical
+source limitations and repeated discovery remain.
+
+Completed-publication algebra and prose audits passed. A draft report's two
+per-symbol D+2 exposure transcriptions were caught and corrected by the prose
+audit against stored results; no scientific source or experiment was rerun.
+The operator next authorized the fixed CLV candidate's counts, weekly operating
+fit, missingness and own planning, registered separately as DM. The predicate
+and its original first-event/clock/unknown rules remain unchanged.

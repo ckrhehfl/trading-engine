@@ -8,6 +8,21 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DM fixed breakout close-location calibration — 2026-10-24.**
+The operator requests counts, weekly operating fit, missingness and fresh
+own-label sample planning for the already fixed DL close-location hypothesis.
+Read only the pinned completed DK report. Preserve its original basic
+common-complete book, all targets and source unknowns; do not expand the book
+or add an outcome exclusion. Apply the original first breakout's top-quarter
+close predicate with its original context/availability checks. Preserve missing
+and flat features as unknown. Report all reference weeks, including zero weeks,
+observed counts and explicitly loose unknown upper bounds. Fresh selected own
+dispersion uses the existing session/block planning method; no mean-return,
+net-performance or win-rate comparison is part of this calibration. Failed or
+undefined planning and unknowns retain the ordinary future comparison checkpoint,
+without stopping completion of this requested measurement or transferring an
+old waiver. Scope: `.planning/rd-dm-breakout-close-calibration.md`.
+
 **Task DL saved basic-breakout loss concentration — 2026-10-24.**
 The operator requests period/issuer concentration of large losses in the same
 saved basic OR15 time-only book,and one next entry hypothesis fixed for later
@@ -1353,7 +1368,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 210 documents,
+them. `.planning/README.md` carries an index of all 211 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

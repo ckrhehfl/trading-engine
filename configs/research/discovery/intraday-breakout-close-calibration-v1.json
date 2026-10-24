@@ -1,0 +1,80 @@
+{
+  "id": "intraday-breakout-close-calibration-v1",
+  "mode": "fixed-original-basic-breakout-close-location-own-label-calibration",
+  "output_name": "intraday-dm-breakout-close-calibration-20261024-v1",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "source_roles": {
+    "parent": "pinned_completed_full_DK_basic_breakout_exit_policy_report"
+  },
+  "upstream_sha256": "2fe92663361acfb68b2caf1e279c74bf556cb6f6994af62f7a029e33668033bb",
+  "upstream_specification_sha256": "26b8eff9c75266670a12517a034f3922b52486d9dce86aae2cce8881474ec214",
+  "parameters": {
+    "next_hypothesis": {
+      "id": "breakout_clv_top_quarter_v1",
+      "status": "fixed_hypothesis_only_not_measured_in_DL",
+      "population": "all_original_targets_and_unknowns_original_first_basic_OR15_breakout_only",
+      "feature_source": "row.arms.retest.path.breakout_bar_original_first_B_completed_OHLC",
+      "predicate": "H_gt_L_and_4_times_C_minus_L_ge_3_times_H_minus_L_equality_included",
+      "threshold": {
+        "numerator": "3",
+        "denominator": "4"
+      },
+      "timing_validation": "B.start_at_equals_basic.event.signal_bar_start_B.end_at_equals_basic.event.signal_bar_end_B.available_at_equals_original_decision_D_equals_B.end_at_plus2minutes",
+      "breakout_validation": "exactly_three_original_initial5minute_context_bars_B.close_strictly_above_their_max_high_crossmatch_for_every_original_basic_signal_not_only_retest_signals",
+      "forbidden_selection_input": "entry_open_available_Eplus3_is_future_information_never_used_for_selection",
+      "first_event_rule": "failed_original_first_B_means_rejected_no_retry_later_breakout_or_replacement",
+      "missingness": "missing_B_or_OHLC_unknown_flat_H_equals_L_unknown_degenerate_malformed_or_clock_mismatch_refuses_keep_all_denominators",
+      "entry": "unchanged_original_decision_D_plus3minute_OPEN_E",
+      "exit": "unchanged_original_E_plus30minute_OPEN",
+      "assumed_cost": {
+        "numerator": "33",
+        "denominator": "10000"
+      },
+      "future_gate": "own_missingness_frequency_and_new_own_label_sizing_before_any_future_means_no_waiver_from_DL",
+      "basis_limit": "DL_concentration_does_not_measure_CLV_loss_correlation_or_predictive_effect",
+      "issuer_or_date_bans": false
+    },
+    "cohort": "same_original_DK_common_outcome_complete_basic_time_only_book_no_new_outcome_exclusion",
+    "all_targets": "retain_all_original_targets_masks_labels_unknowns_and_outside_original_book_without_feature_evaluation",
+    "entry_delay_minutes": 3,
+    "time_cap_minutes": 30,
+    "assumed_cost": {
+      "numerator": "33",
+      "denominator": "10000"
+    },
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "sizing": "CC_exact_eventSD_naiveSE_all_reference_session_clusterSE_circular5session_bootstrap_maxSE_normal_two_sided5percent_power80percent",
+    "weekly_operating_objective": 15,
+    "frequency": "all_original_reference_weeks_including_zero_selected_unknown_outside_book_loose_bound_not_portfolio_entries",
+    "future_comparison_gate": "finish_calibration_regardless_unknown_features_or_selected_labels_undefined_or_nonfinite_MDE_or_MDE_above33bp_require_operator_choice_before_future_comparison_no_transferred_waiver",
+    "output_scope": "frequency_missingness_and_fresh_selected_own_label_dispersion_only_no_mean_net_winrate_contrast_new_label_or_performance_family",
+    "expected_actual_geometry": {
+      "reference_sessions": 257,
+      "reference_weeks": 56,
+      "targets_per_policy": 5140,
+      "original_book_events": {
+        "D+1": 1169,
+        "D+2": 1167
+      }
+    }
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0,
+    "maximum_report_bytes": 67108864
+  }
+}
