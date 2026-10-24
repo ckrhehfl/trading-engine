@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — fixed breakout close-location calibration, Task DM
+## Current continuation — fixed breakout close-location comparison, Task DN
+
+DM completed normal PR#356 merge and independently verified isolated calibration;
+its sanitized completion is appended to the DM ledger in this ordinary unit.
+The operator now requests basic versus the fixed top-quarter close subset's
+gross/net price response and weekly frequency. Only pinned completed DK+DM full
+reports supply inputs. Preserve all original targets,unknowns,book,selection,
+clocks,cost and metadata;no raw/API/DB acquisition or parent pipeline replay.
+Scope: `.planning/rd-dn-breakout-close-comparison.md`.
+At registration no DN actual source body or conditional performance was read.
+Four fresh own-sizing gates precede any new means;separate reviews,required CI,
+normal merge,matching whole tree and frozen exact-caller profile/preflight
+precede one actual execution. Protected operator originals remain untouched.
+
+## Previous continuation — fixed breakout close-location calibration, Task DM
 
 DL completed normal PR#355 merge and independently verified isolated loss
 diagnostics. Its sanitized completion is appended to the DL ledger in this

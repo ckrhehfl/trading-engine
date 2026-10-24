@@ -192,3 +192,38 @@ retention,CC-method agreement and undefined nonfinite planning. Separate
 supplied-byte verification,final caller profile/reviews,required CI,normal
 merge and the exclusive actual calibration remain pending. No actual DM market
 body,API,DB,SSH or protected operator original has been accessed at this record.
+
+## 2026-10-24 — normal merge and completed isolated calibration
+
+Fresh distinct final source and research-integrity reviews passed,with all
+findings resolved before actual input access. Final named tests228passed and
+one existing skip. All eight push/PR instances of required checks passed;both
+Python CI runs10167passed,3skipped,30subtests. PR
+[#356](https://github.com/ckrhehfl/trading-engine/pull/356) normal-merged as
+40b67dccf2ab941dd7162520266518f2e438368a with the reviewed whole tree unchanged.
+One isolated GCP process completed producer,independent verification,rechecks
+and full encoding inside the unchanged registered resource budget. Detailed
+actual output/runtime/canonical/profile pins remain private. Existing collector
+source,processes,schedules,configuration,credentials and databases were unchanged.
+
+Original basic book1169/1167 retained selected895/893 and rejected274each.
+New feature unknown and selected label unknown were0each;original signal unknown
+2609/2611 of5140,outside-book12 and source basic label unknown7each survived.
+All56weeks remained:observed means895/56and893/56,35weeks>=15 for both,weekly
+minimum0/median16/maximum28 and238selected dates. These are observed opportunities,
+not feasible account executions or a full-universe frequency certificate.
+Fresh own MDE13.732551296925775/13.75508584595221bp passed the assumed33bp
+planning floor. Neither policy required a subsequent comparison choice under
+this calibration's rules. No return mean,winrate,performance contrast,new
+performance family,edge,qualification,direction closure or promotion occurred.
+
+Final source review caught a missing actual-caller global binding before any
+actual access. Actual main and invented profile now share one program/binding
+constructor;regressions exercised that exact path and missing-binding failure.
+The earlier engineering profile/source evidence was retained and superseded by
+a separately reviewed v2 without changing study conditions or budget. The
+single actual calibration was not retried. Completed-publication algebra and
+Korean prose audits passed without source/statistical replay. Four prerequisite
+groups reduced4to0 and allfour delivery stages completed. Existing about51percent
+gaps,retrospective mask,availability/vintage/price-basis,cost/fill and repeated
+discovery limitations remain. The separately requested next comparison is DN.
