@@ -149,3 +149,51 @@ required CI/normal merge;isolated actual audit/audited report. Four actual
 prerequisites are implementation+verification,separate reviews,CI+normal merge,
 frozen exact execution preflight. Complete this requested inventory regardless
 of how much data is missing;no external inquiry is a prerequisite.
+
+## 2026-10-25 — completed engineering gates and preserved actual failure
+
+PR[#358](https://github.com/ckrhehfl/trading-engine/pull/358) normally merged as
+a367a412e3cdd20129e232924f3c8b4cc46a6bb1 after distinct final source and research
+integrity reviews without findings. Root named236passed/one skip/30subtests;
+both complete Python CIs10247passed/three skips/30subtests;all eight required
+push/PR checks succeeded and paginated review threads had zero unresolved.
+The whole merged tree matched the reviewed source. A full-geometry invented
+profile and frozen source/runtime preflight passed within unchanged limits.
+
+The sole original actual audit advanced only the isolated research checkout,
+logged started then failed,and preserved its evidence. The independent verifier
+raised MemoryError while decoding the original DK bytes after the producer had
+written its causal ledger. No independent verification or successful completion
+exists,so that partial ledger supplies no verified readiness counts,hypothesis
+activation or research result. Its contents have not been used for decisions.
+Failure receipts/file metadata,not source prices or partial ledger bodies,were
+inspected to diagnose the failure. The collector remained tracked-clean at its
+unchanged deployment. No exchange API,DB or credential acquisition occurred.
+
+At the pre-independent checkpoint the process had used about158.75CPU seconds
+and488.12MiB address space under the original300CPU/512MiBAS/1200wall/nice10
+limits. A second full DK decode could not fit. The earlier invented byte-pressure
+profile did not reproduce this actual provenance/object density. The failure
+is an implementation/resource failure,not evidence about the market hypothesis.
+
+## Source-only memory repair begun before any further market access
+
+Work branch codex/do-market-context-memory starts at the normal merge above.
+Preserve every original failed output/log and successful old invented profile.
+Do not invoke the original caller again,read its partial price ledger,raise or
+reset a resource allowance,resume verification under a separate budget,or add
+an automatic retry. Original thresholds,population,timing,unknowns,inputs and
+zero-performance scope remain fixed. No new actual execution is authorized by
+this engineering paragraph alone.
+
+First reduce repeated metadata/window object allocation while preserving the
+same complete logical wire output and input non-mutation. Independently review
+whether authenticated sharing of caller-decoded source can avoid a duplicate
+parent decode without sharing producer math. Add invented provenance-dense
+regressions and a new explicitly distinguished full-geometry repair profile;
+its source/runtime closure and all relevant encoding/verification phases must
+remain within the existing budget. Named tests,distinct final reviews,required
+CI and normal merge apply to changed final source. Before any later actual
+attempt,register its complete read scope,preserved prior failure,new exclusive
+output and whole-process protocol separately,and resolve the existing no-retry
+boundary explicitly. Do not silently rename the old output to retry it.

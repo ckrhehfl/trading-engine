@@ -9,6 +9,11 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 ## Current Scope
 
 **Task DO causal observed-peer context readiness — 2026-10-25.**
+The first actual audit after PR#358 merge failed during independent source JSON
+decoding with MemoryError;its partial output is not a verified result. Preserve
+that failure. The current source-only repair reduces duplicate provenance and
+parent-object allocation without changing the research question or limits;
+later actual access still needs the separately resolved execution boundary.
 The operator requests existing pre-entry co-movement data,availability,gaps,
 and one next hypothesis if usable. Audit only pinned completed DK and the
 original CC archive,retaining all original basic events/targets/unknowns.
