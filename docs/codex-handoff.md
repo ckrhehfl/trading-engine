@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — fixed next-bar acceptance calibration, Task DU
+## Current continuation — acceptance outcome-gap recovery diagnostics, Task DV
+
+DU completed normal PR365 merge87ed1a940f3fefb5409956253228f2c50b6090ea,
+independent calibration and completed-output audit. Sanitized completion is
+appended to its ledger. The operator chose investigating the new unknown price
+windows before returns. Scope:`.planning/rd-dv-acceptance-gap-recovery.md`;branch
+`codex/dv-acceptance-gap-recovery`. Only DU's unknown outcome windows and original
+CC overlap define requests. Freeze exact deduplicated31bucket plans before
+bounded current DB/source-equivalent KIS probes. No detector/mean/sizing replay,
+old waiver,original record mutation or strategy promotion. Separate final reviews,
+required CI,normal merge and exact full-path GCP invented profile/preflight
+precede one same-budget isolated diagnostic. Protected originals stay excluded;
+collector source/processes/configuration and credential files stay unchanged.
+
+## Previous continuation — fixed next-bar acceptance calibration, Task DU
 
 DT completed normal PR#364 merge57a5bdd22e3d407c411d297e6c7eceaf20c6a7eb and
 independently verified aggregate update. Sanitized completion is appended to
