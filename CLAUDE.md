@@ -8,6 +8,20 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DS observed-peer context comparison — operator choice 2026-10-25.**
+The operator explicitly authorizes retaining DR's three unknown original-book
+features per policy separately and comparing basic versus its fixed positive
+peer subset on the SAME feature-observable scope. Only pinned completed DK and
+DR reports supply original labels and frozen decisions. Preserve all targets,
+unknowns,original book and clocks;control is selected plus rejected,not the
+unrestricted basic book. Fresh all-four own-label planning precedes one limited
+descriptive gross/net/frequency family with overlap-aware session/block
+uncertainty. This resolves only DR's named missing-feature scope checkpoint;
+no underpower exception,threshold search,old pipeline replay,portfolio claim,
+edge,promotion or reserved access transfers. Exact final invented profile,
+distinct reviews,CI,normal merge and frozen preflight precede one isolated run.
+Scope: `.planning/rd-ds-market-context-comparison.md`.
+
 **Task DR fixed observed-peer context calibration — 2026-10-25.**
 The operator requests actual counts,weekly fifteen-opportunity fit,missingness
 and fresh own-label sample planning for the already fixed basic breakout plus
@@ -1433,7 +1447,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 216 documents,
+them. `.planning/README.md` carries an index of all 217 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

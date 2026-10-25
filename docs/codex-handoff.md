@@ -14,7 +14,22 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — fixed observed-peer context calibration, Task DR
+## Current continuation — observed-peer context comparison, Task DS
+
+DR completed normal PR#362 merge f75276ceca10f352ba9794fb4e1c9c83d3f54b3d
+and independently verified calibration. Sanitized completion is appended to
+its ledger. The operator now explicitly approves a limited comparison leaving
+the three unknown original-book features per policy separate. Basic control is
+the SAME DR selected/rejected observable scope,not the unrestricted source
+book. Branch codex/ds-market-context-comparison;scope
+`.planning/rd-ds-market-context-comparison.md`. Only completed DK and DR supply
+inputs;no DQ/raw/API/DB/credential or parent detector/statistics replay.
+Preserve original target/unknown denominators,entries,+30minute exits and cost.
+Fresh four current own-label planning gates precede any new means. Separate
+reviews,CI,normal merge and exact frozen invented-profile preflight precede
+one isolated GCP comparison. Protected operator originals remain excluded.
+
+## Previous continuation — fixed observed-peer context calibration, Task DR
 
 DQ completed PR#361 normal merge37be6769559c5b965d271f0c10adf7a642a63d34
 and one independently verified readiness audit. Sanitized completion is appended
