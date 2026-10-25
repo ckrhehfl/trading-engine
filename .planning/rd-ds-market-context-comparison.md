@@ -131,3 +131,37 @@ CI/normal merge;isolated actual comparison/audited report. Actual prerequisite
 groups—implementation/verification,separate reviews,CI/merge,frozenpreflight—
 reduce4to0only upon real completion. No standing research conclusion is written
 into CLAUDE.md by this work.
+
+## Completed 2026-10-25 — appended in the next ordinary unit
+
+PR[#363](https://github.com/ckrhehfl/trading-engine/pull/363) normally merged
+reviewed source092048e78e089f36b6a9682b555facf8cc03bc48 as
+4eb882052ce9dff536ac4a92f2c5b13dba000fdc with identical whole tree. Distinct
+final source and integrity reviews passed. All eight final-head required CI
+instances passed;both Python jobs10442passed,3skipped,30subtests. One isolated
+actual comparison and producer-independent supplied-byte reconstruction
+completed inside the unchanged shared budget. Detailed private pins/receipts
+remain ignored. A preliminary invented profile failed before actual access;
+its evidence is preserved and unused. Corrected exact-profile closure passed
+before the actual run,with no actual retry or raised limit.
+
+Same feature-observable basic1166/1164 versus selected886/883,with3original
+unknown features per policy retained separately. Gross mean percentages:
+basic0.006115950916305059/0.004656663956227875;
+selected-0.00018381338988404392/0.0017005152500179494.
+After assumed33bp cost,basic-0.32388404908369495/-0.32534333604377214;
+selected-0.33018381338988406/-0.32829948474998205.
+Weekly opportunities20.8214285714/20.7857142857basic versus
+15.8214285714/15.7678571429selected;weeks>=15:48versus34of56.
+Selected-minus-basic differences-0.6299764306/-0.2956148706bp had descriptive
+95percent intervals[-10.0485393843,8.7885865230]/[-9.7237074137,9.1324776725]bp,
+both including0. Allfour fresh own-sizing gates passed. No improvement or
+profitability was established by this fixed filter;no direction was closed.
+
+Completed-only algebra/conclusion/prose audits passed. Original about51percent
+signal gaps,retrospective scope,timing/vintage/price-basis,assumed costs/fills
+and repeated-search risks remain. Both overlapping availability policies
+completed;no reserved data or promotion. Collector and operational processes
+were unchanged;only the isolated research checkout advanced. Delivery4of4,
+actual prerequisite groups4to0. DT separately updates completed aggregates
+and fixes one new unmeasured hypothesis without replaying this experiment.
