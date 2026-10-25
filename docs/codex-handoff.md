@@ -14,7 +14,20 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — acceptance outcome-gap recovery diagnostics, Task DV
+## Current continuation — bounded acceptance-gap follow-up, Task DW
+
+DV completed normal PR366 merge02a12dfdf542cdf773f21f6c55c4abc446e80e01,
+independent diagnostics and completed audit. Its five windows yielded no complete
+candidate. The operator chooses additional investigation: ONE HTTP500-window
+reprobe and saved literal timestamp/missing-minute diagnosis. Scope:
+`.planning/rd-dw-acceptance-gap-followup.md`;branch
+`codex/dw-acceptance-gap-followup`. Pin only completed DV evidence; no DU/full
+archive/DB replay,price shifting,old-label adoption or returns. Fresh independent
+verification,distinct final reviews,required CI,normal merge and exact whole-path
+invented GCP profile/preflight precede one same-budget isolated diagnostic.
+Protected originals and running collector/configuration/credentials stay intact.
+
+## Previous continuation — acceptance outcome-gap recovery diagnostics, Task DV
 
 DU completed normal PR365 merge87ed1a940f3fefb5409956253228f2c50b6090ea,
 independent calibration and completed-output audit. Sanitized completion is

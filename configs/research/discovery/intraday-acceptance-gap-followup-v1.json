@@ -1,0 +1,39 @@
+{
+  "id": "intraday-acceptance-gap-followup-v1",
+  "mode": "fixed-http500-reprobe-and-saved-minute-diagnostics-only",
+  "window": {"symbol": "KRX:*", "interval": "1m", "start": "2025-09-04", "end": "2026-09-23"},
+  "parameters": {
+    "scope": "all_five_original_DV_windows_and_both_policy_links_preserved",
+    "retry": "unique_prior_market_http_500_only_one_source_equivalent_GET_no_automatic_retry",
+    "request": "unchanged_cap_second59_J_pastY_fakeN_max120rows_no_pagination",
+    "retention": "request_time_KST_minus_one_calendar_year_Feb29_clips_Feb28_upper_bound_only",
+    "timestamps": "literal_dates_times_seconds_and_required_missing_minutes_no_shift_or_fill",
+    "acceptance": "unchanged_all31_exact_positive_finite_Decimal_OHLC_every_original_overlap",
+    "vintages": "separate_original_DB_prior_API_new_API_no_incomplete_vintage_union",
+    "output_scope": "diagnostics_and_complete_price_candidates_only_no_labels_or_returns",
+    "label_adoption": false,
+    "underpower_exception_applied": false
+  },
+  "resources": {
+    "maximum_saved_bytes": 67108864,
+    "maximum_windows": 5,
+    "maximum_rows_per_response": 120,
+    "maximum_new_market_gets": 1,
+    "maximum_new_db_queries": 0,
+    "maximum_token_posts": 1,
+    "minimum_free_bytes": 1073741824,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "automatic_retries": 0
+  },
+  "source_specification_sha256": "7ee3d5670b633f0e87bbe4bc8689416cde37b8738fb198ca3ad6aed14c0be2f5",
+  "source_report_role": "pinned_DV_completed_diagnostic_report",
+  "request_plan_role": "pinned_DV_original_request_plan",
+  "selected_chunks_role": "pinned_DV_selected_original_source_chunks",
+  "database_capture_role": "pinned_DV_saved_database_capture_no_new_query",
+  "prior_responses_role": "pinned_DV_saved_quotation_responses",
+  "new_responses_role": "one_new_HTTP500_window_source_equivalent_response",
+  "output_role": "new_private_verified_followup_evidence_package"
+}
