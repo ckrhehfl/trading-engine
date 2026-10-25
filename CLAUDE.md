@@ -8,6 +8,17 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DP operator-approved whole corrected audit — 2026-10-25.**
+The operator explicitly selected one new entire corrected market-context audit
+after preserved DO failure and PR#359 memory repair. Same immutable original
+algorithm/input pins,population,window,quorum,timing and resource limits;one new
+exclusive output,canonical start and complete producer/independent verification/
+encoding process. Preserve DO failure and do not resume its verifier or reuse
+its partial ledger. Fresh registration,exact profile,distinct reviews,required
+CI,normal merge and integrated preflight precede this one actual execution.
+Readiness only;no peer return/sign,new counts,labels,sizing or performance.
+Scope and explicit approval: `.planning/rd-dp-market-context-corrected-audit.md`.
+
 **Task DO causal observed-peer context readiness — 2026-10-25.**
 The first actual audit after PR#358 merge failed during independent source JSON
 decoding with MemoryError;its partial output is not a verified result. Preserve
@@ -1400,7 +1411,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 213 documents,
+them. `.planning/README.md` carries an index of all 214 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
