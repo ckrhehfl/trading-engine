@@ -1,0 +1,82 @@
+{
+  "id": "intraday-market-context-calibration-v1",
+  "mode": "fixed-original-basic-breakout-positive-observed-peer-own-label-calibration",
+  "output_name": "intraday-dr-market-context-calibration-20261025-v1",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "source_roles": {
+    "parent": "pinned_completed_full_DQ_causal_observed_peer_readiness_report",
+    "original_book": "pinned_completed_full_DK_basic_breakout_exit_policy_report"
+  },
+  "upstream_sha256": "23b25931f160aa91644389caf6aa9aa0095e034e705e67e9f6680c6ee08647ba",
+  "upstream_specification_sha256": "9346cad4655e96cb5d172049f561d1b695b1a802aa9c0cd37d077b707846b5b3",
+  "original_DK_sha256": "2fe92663361acfb68b2caf1e279c74bf556cb6f6994af62f7a029e33668033bb",
+  "original_DK_specification_sha256": "26b8eff9c75266670a12517a034f3922b52486d9dce86aae2cce8881474ec214",
+  "parameters": {
+    "next_hypothesis": {
+      "id": "basic_OR15_positive_observed_peer_rolling15m_min5_v1",
+      "population": "unchanged_original_common_complete_basic_OR15_first_breakout_book_all_targets_and_unknowns_retained",
+      "predicate": "basic_OR15_first_breakout_AND_equal_weight_mean_of_all_available_other_original_members_15minute_first_OPEN_to_last_CLOSE_price_changes_strictly_positive",
+      "window": "original_signal_bar_end_F_minus15minutes_inclusive_to_F_exclusive",
+      "minimum_complete_peer_windows": 5,
+      "peer_rule": "all_complete_other_members_of_original_policy_day20_no_replacement_return_rank_or_outcome_selection",
+      "zero_rule": "exact_zero_rejects_subquorum_unknown_never_zero_or_negative",
+      "availability": "every_observation_end_plus2minutes_at_most_original_D_Fplus2_entry_E_Dplus3",
+      "entry": "unchanged_original_D_plus3minute_OPEN",
+      "exit": "unchanged_original_E_plus30minute_OPEN",
+      "assumed_cost": {
+        "numerator": "33",
+        "denominator": "10000"
+      },
+      "other_conjuncts": [],
+      "interpretation": "observed_large_stock_basket_not_official_KOSPI_KOSDAQ_index_or_complete_market",
+      "future_gate": "new_registered_own_feature_label_missingness_signal_counts_weekly15fit_and_own_label_sizing_before_any_comparison_no_old_waiver"
+    },
+    "cohort": "same_original_DK_common_outcome_complete_basic_time_only_book_no_new_outcome_exclusion",
+    "all_targets": "retain_original_targets_masks_labels_unknowns_and_outside_book_without_feature_evaluation",
+    "peer_rule": "all_complete_other_original_policy_day20_members_no_replacement_or_return_rank_selection",
+    "window_minutes": 15,
+    "minimum_complete_peer_windows": 5,
+    "predicate": "exact_equal_weight_mean_last_CLOSE_over_first_OPEN_minus1_strictly_positive_zero_rejected_subquorum_unknown",
+    "entry_delay_minutes": 3,
+    "time_cap_minutes": 30,
+    "assumed_cost": {
+      "numerator": "33",
+      "denominator": "10000"
+    },
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "sizing": "CC_exact_eventSD_naiveSE_all_reference_session_clusterSE_circular5session_bootstrap_maxSE_normal_two_sided5percent_power80percent",
+    "weekly_operating_objective": 15,
+    "frequency": "all_reference_weeks_including_zero_selected_unknown_outside_book_loose_bound_not_portfolio_entries",
+    "future_comparison_gate": "finish_calibration_regardless_unknown_book_features_selected_labels_undefined_nonfinite_or_above33bp_MDE_requires_new_operator_choice_no_old_waiver",
+    "output_scope": "frequency_missingness_fresh_selected_own_label_dispersion_only_no_selected_outcome_mean_net_winrate_contrast",
+    "expected_actual_geometry": {
+      "reference_sessions": 257,
+      "reference_weeks": 56,
+      "targets_per_policy": 5140,
+      "original_book_events": {
+        "D+1": 1169,
+        "D+2": 1167
+      }
+    }
+  },
+  "resources": {
+    "maximum_source_bytes": 268435456,
+    "maximum_original_source_bytes": 67108864,
+    "maximum_report_bytes": 67108864,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0
+  }
+}

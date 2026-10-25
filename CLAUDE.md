@@ -8,6 +8,18 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DR fixed observed-peer context calibration — 2026-10-25.**
+The operator requests actual counts,weekly fifteen-opportunity fit,missingness
+and fresh own-label sample planning for the already fixed basic breakout plus
+positive observed-peer rolling-fifteen-minute mean. Read only pinned completed
+DQ readiness and original DK full reports;retain original targets,book,masks,
+all nineteen peer states and source clocks. No detector/archive/parent-statistic
+replay,threshold search,mean-return comparison or inherited waiver. Bounded
+streaming intake,independent reconstruction,unchanged whole-process budget,
+exact-runtime invented profile,distinct reviews,CI and normal merge precede one
+exclusive isolated calibration. Finish this measurement even if a later
+comparison needs an operator choice. Scope: `.planning/rd-dr-market-context-calibration.md`.
+
 **Task DQ bounded encoding and GCP-profiled whole audit — 2026-10-25.**
 The operator explicitly authorizes CPU encoding repair,full invented verification
 on the actual GCP runtime,unchanged resource limits,reviews/CI/normal merge and

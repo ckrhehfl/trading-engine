@@ -175,3 +175,23 @@ remaining verification cost on invented data before another full GCP profile.
 Final changed public source needs new exact-head CI and final separate review.
 The single approved actual DQ audit remains unused throughout these engineering
 profiles; successful exact-runtime synthetic completion is still required first.
+
+## Completed DQ audit recorded in the next ordinary unit — 2026-10-25
+
+PR#361 normally merged as37be6769559c5b965d271f0c10adf7a642a63d34 after
+distinct final source/integrity reviews and all required final-head CI checks.
+The corrected v8 exact-runtime invented whole profile passed before actual
+access. The one new whole actual audit completed and independently verified;
+run86ab952e-70d2-4a7a-a062-1b1eca735ab5,full report SHA256
+23b25931f160aa91644389caf6aa9aa0095e034e705e67e9f6680c6ee08647ba.
+Measured CPU80.931 seconds,wall327.065 seconds,peakRSS316648KiB;all original
+limits held. Original collector stayed clean at4ce85d714890b87f1a57ae89d4942660e41c0483.
+No market/authentication/credential/DB calls occurred. Failed earlier attempts
+and invented profiles remain preserved;no failed partial ledger was adopted.
+
+Of original1169/1167events,D+1/D+2 quorum-usable inputs numbered1166/1164;
+three each remained unknown. No event had all nineteen complete peers. All
+5140targets,257sessions and56weeks per policy survived. These are data readiness
+counts,not positive-mean selection counts or profitability. The positive mean
+descriptor was fixed for a future calibration only. Completion evidence:
+https://github.com/ckrhehfl/trading-engine/pull/361#issuecomment-6394892478.
