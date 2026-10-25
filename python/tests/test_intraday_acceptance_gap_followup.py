@@ -131,6 +131,11 @@ def test_complete_retry_preserves_five_windows_both_policies_and_old_counters():
     assert result["requests"] == inputs["request_plan"]
     assert len(result["diagnostics"][-1]["missing_only_additions"]) == 1
     assert all(row["new_api"] is None for row in result["diagnostics"][:-1])
+    for row in result["diagnostics"][1:4]:
+        panel = row["prior_response_diagnostics"]
+        assert len(panel["required_present_minute_buckets"]) == 30
+        assert len(panel["required_missing_minute_buckets"]) == 1
+        assert row["prior_diagnostic"]["status"] == "unresolved"
     assert "price_change" not in json.dumps(result)
     assert encode(inputs) == before
     roles = {name: encode(inputs[name]) for name in followup.SAVED_ROLES}
