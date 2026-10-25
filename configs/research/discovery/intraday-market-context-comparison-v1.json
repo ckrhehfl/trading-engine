@@ -1,0 +1,101 @@
+{
+  "id": "intraday-market-context-comparison-v1",
+  "mode": "fixed-observed-basic-versus-positive-observed-peer-conditional-comparison",
+  "output_name": "intraday-ds-market-context-comparison-20261025-v1",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "source_roles": {
+    "DK": "pinned_completed_full_DK_basic_breakout_exit_policy_report",
+    "DR": "pinned_completed_full_DR_fixed_observed_peer_calibration_report"
+  },
+  "upstream_sha256": {
+    "DK": "2fe92663361acfb68b2caf1e279c74bf556cb6f6994af62f7a029e33668033bb",
+    "DR": "a408ac6ad3199dc8415e7c7ef8a36d3d3de8f5cb7dea8967f9da327059abf2ac"
+  },
+  "upstream_specification_sha256": {
+    "DK": "26b8eff9c75266670a12517a034f3922b52486d9dce86aae2cce8881474ec214",
+    "DR": "d02be25b96cdb3f3e81fd1c527cf8fa4edf7f93f61ddebd6f7f71307ebf0c887"
+  },
+  "parameters": {
+    "axis": "retain_original_first_basic_breakout_iff_immutable_DR_positive_observed_peer_state_only",
+    "next_hypothesis": {
+      "id": "basic_OR15_positive_observed_peer_rolling15m_min5_v1",
+      "population": "unchanged_original_common_complete_basic_OR15_first_breakout_book_all_targets_and_unknowns_retained",
+      "predicate": "basic_OR15_first_breakout_AND_equal_weight_mean_of_all_available_other_original_members_15minute_first_OPEN_to_last_CLOSE_price_changes_strictly_positive",
+      "window": "original_signal_bar_end_F_minus15minutes_inclusive_to_F_exclusive",
+      "minimum_complete_peer_windows": 5,
+      "peer_rule": "all_complete_other_members_of_original_policy_day20_no_replacement_return_rank_or_outcome_selection",
+      "zero_rule": "exact_zero_rejects_subquorum_unknown_never_zero_or_negative",
+      "availability": "every_observation_end_plus2minutes_at_most_original_D_Fplus2_entry_E_Dplus3",
+      "entry": "unchanged_original_D_plus3minute_OPEN",
+      "exit": "unchanged_original_E_plus30minute_OPEN",
+      "assumed_cost": {
+        "numerator": "33",
+        "denominator": "10000"
+      },
+      "other_conjuncts": [],
+      "interpretation": "observed_large_stock_basket_not_official_KOSPI_KOSDAQ_index_or_complete_market",
+      "future_gate": "new_registered_own_feature_label_missingness_signal_counts_weekly15fit_and_own_label_sizing_before_any_comparison_no_old_waiver"
+    },
+    "cohort": "original_DK_common_complete_book_restricted_to_DR_selected_or_rejected_states_in_both_arms_unknown_features_retained_separately",
+    "selection": "immutable_DR_target_states_selected_coordinates_source_fingerprints_clocks_and_original_labels_crossmatched_to_DK_no_peer_predicate_replay",
+    "all_targets": "retain_all_original_targets_masks_labels_unknowns_and_outside_original_book",
+    "operator_scope": "one_limited_exploratory_comparison_approved_unknown3_each_retained_separately_not_imputed_or_added_to_either_arm",
+    "entry_delay_minutes": 3,
+    "time_cap_minutes": 30,
+    "assumed_cost": {
+      "numerator": "33",
+      "denominator": "10000"
+    },
+    "block_sessions": 5,
+    "bootstrap_draws": 2000,
+    "bootstrap_seed": 0,
+    "sizing": "CC_exact_eventSD_naiveSE_all_reference_session_clusterSE_circular5session_bootstrap_maxSE_normal_two_sided5percent_power80percent",
+    "comparison_gate": "all_four_fresh_current_own_MDE_defined_finite_lte33bp_and_no_unknown_comparison_labels_no_transferred_underpower_waiver",
+    "weekly_operating_objective": 15,
+    "frequency": "all_original_reference_weeks_including_zero_opportunities_not_executable_account_trades",
+    "performance": "overall_arm_exact_count_gross_net_sum_mean_median_positive_and_endpoint_gross_strictly_above33bp_proportions_only",
+    "contrast": "selected_minus_basic_conditional_mean_gross_net_same_cost_cancels_not_causal_or_portfolio",
+    "uncertainty": "CU_max_independent_arm_naive_reference_joint_whole_session_cluster_joint_circular5session2000drawseed0_bootstrap",
+    "descriptive_interval": "normal95percent_no_pvalue_winner_or_contrast_power_certification",
+    "output_scope": "one_conditional_descriptive_family_after_four_gates_weekly_frequency_only_no_subgroup_performance_or_promotion",
+    "expected_actual_geometry": {
+      "reference_sessions": 257,
+      "reference_weeks": 56,
+      "targets_per_policy": 5140,
+      "original_book_events": {
+        "D+1": 1169,
+        "D+2": 1167
+      },
+      "observed_basic_events": {
+        "D+1": 1166,
+        "D+2": 1164
+      },
+      "selected_events": {
+        "D+1": 886,
+        "D+2": 883
+      },
+      "excluded_unknown_book_features": {
+        "D+1": 3,
+        "D+2": 3
+      }
+    }
+  },
+  "resources": {
+    "maximum_source_bytes": 268435456,
+    "maximum_original_source_bytes": 67108864,
+    "maximum_report_bytes": 67108864,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0
+  }
+}

@@ -155,3 +155,30 @@ values are corrected;run the existing planning-index and document-ownership
 tests before the final freeze,and rerun required final-head CI. No test or
 research criterion is relaxed. Earlier pending/successful invented engineering
 profiles cannot replace the required final-tree profile after this source change.
+
+## 2026-10-25 — completed actual calibration and explicit next-scope decision
+
+PR#362 normally merged as f75276ceca10f352ba9794fb4e1c9c83d3f54b3d with the
+entire reviewed tree unchanged. Distinct final source/integrity reviews and all
+eight required push/PR checks passed;each Python CI10398passed,3skipped,
+30subtests. Successful final GCP invented v4 profile and integrated frozen
+preflight preceded ONE actual run. Actual producer-independent reconstruction,
+source/result rechecks,full encoding and canonical completion finished in the
+unchanged budget:CPU106.778seconds,wall427.414seconds,peakRSS273808KiB. Failed
+invented attempts were preserved;no actual retry occurred. Only the isolated
+research checkout advanced;collector HEAD/tracked state and operations stayed
+unchanged. Completed-only algebra/conclusion and twenty prose checks passed.
+
+Selected886/883 of original1169/1167 on224dates;rejected280/281,featureunknown3
+each. All selected original labels were known. Across all56weeks,mean15.8214/
+15.7679opportunities,median16,min0,max31,34weeks>=15and onezero week per policy.
+Fresh selected-own MDE14.415121147032734/14.483752779720499bp passed33bp planning.
+No means,performance family or profitability claim was computed. Original
+unknown2609/2611 of5140targets,outside-book12each and proxy/timing/cost/fill/
+retrospective/repeated-search limits remain. All actual prerequisite groups
+reduced4to0;delivery4of4. Full private completion/hash receipts remain ignored.
+
+The next direct operator request explicitly leaves DR's three featureunknowns
+separate and authorizes basic versus selected on the same observed scope as a
+limited gross/net/frequency comparison. DS registers that new scope before
+access;it is not an inherited underpower exception or permission to rerun DR.
