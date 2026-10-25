@@ -112,3 +112,28 @@ actual bounded diagnostics/independent verification;completed audit/Korean repor
 Report new verified facts/official upper bounds versus assumptions,verified price
 candidates versus adopted labels,removed/remaining risks,conditions reduced and
 remaining,both overlapping timing policies and the concrete next feasible step.
+
+## Sanitized completed receipt — 2026-10-26
+
+Normal PR366 merge02a12dfdf542cdf773f21f6c55c4abc446e80e01 has reviewed
+sourceaf546db5d80a89f57b82ce65cd5620ae93073cc7 and identical whole tree
+8ecddac8c74fc2c6a34cd42d3e4c336be42ecd35. Distinct fresh source and
+research-integrity reviews passed with no blockers; all required push/PR checks
+passed. Each full Python CI run recorded10562passed,3existing skips,169subtests.
+Actual GCP invented profile passed before one actual invocation.
+
+Five deduplicated windows correspond to five unknown labels in each overlapping
+timing policy. Five read-only DB queries found148of155required minute rows;
+four KIS GETs used the existing cached token,no token POST or retry. One date
+was outside the documented retention upper bound and stayed unprobed. Three
+received responses still lacked1or2required minutes each; one request returned
+HTTP500. Complete compatible candidates0of5; original labels remain unchanged.
+HTTP500 does not prove absence, nor does a sparse response prove a no-trade/VI.
+
+Independent supplied-bytes verification and completed-output audit passed with
+zero warnings. Actual CPUdelta21.55s,wall28.65s,peakRSS159068KiB with unchanged
+limits and no violations. Canonical started/completed pair is durable. Isolated
+research checkout contains the merge; collector remained tracked-clean at
+4ce85d7. No mean,return comparison,old-label adoption or promotion occurred.
+The operator selected another bounded investigation; DW registers that scope
+separately instead of rerunning DV or silently waiving unknown outcomes.
