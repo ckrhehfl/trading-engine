@@ -14,7 +14,21 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — completed-evidence update, Task DT
+## Current continuation — fixed next-bar acceptance calibration, Task DU
+
+DT completed normal PR#364 merge57a5bdd22e3d407c411d297e6c7eceaf20c6a7eb and
+independently verified aggregate update. Sanitized completion is appended to
+its ledger. The operator approves the fixed next-bar acceptance hypothesis's
+counts,weekly fit,gaps and newly timed own-label calibration. Scope:
+`.planning/rd-du-opening-acceptance-calibration.md`;branch
+`codex/du-opening-acceptance-calibration`. Only original CB targets/calendar
+and CC raw archive supply input. No old outcome mask or label reuse,means or
+performance comparison. Preserve source unknowns and first B/exact-next W
+causal clock. Separate final reviews,CI,normal merge and exact frozen invented
+GCP profile/preflight precede one actual measurement. Protected originals
+remain excluded;collector source/processes/configuration remain unchanged.
+
+## Previous continuation — completed-evidence update, Task DT
 
 DS completed normal PR#363 merge4eb882052ce9dff536ac4a92f2c5b13dba000fdc and
 independently verified isolated comparison. Sanitized completion is appended

@@ -8,6 +8,18 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DU fixed next-bar acceptance calibration — operator continuation 2026-10-25.**
+Measure DT's unchanged OR15 next-five-minute-close acceptance hypothesis's
+counts, weekly fifteen-opportunity fit, missingness and fresh newly timed own
+label dispersion. Use only original CB dated targets and saved CC raw archive;
+preserve all targets and causal prefixes without prior outcome masks or labels.
+No new performance means, final comparison family, inherited exception or
+promotion. Failed/undefined sizing or unknown labels retain the later operator
+checkpoint while this measurement is completed. Exact final GCP invented
+profile, distinct reviews, required CI, normal merge and integrated preflight
+precede one isolated calibration. Scope:
+`.planning/rd-du-opening-acceptance-calibration.md`.
+
 **Task DT completed-evidence update — operator continuation 2026-10-25.**
 Re-express only the pinned completed DB/DH/DI/DK/DN/DS publications at common
 cost/frequency units, retaining incompatible cohorts/endpoints, original
@@ -1457,7 +1469,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 218 documents,
+them. `.planning/README.md` carries an index of all 219 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.

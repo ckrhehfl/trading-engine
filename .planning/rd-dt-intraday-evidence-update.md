@@ -94,3 +94,43 @@ versus assumptions; code risks removed and remaining; conditions reduced and
 remaining; both policy states; actual review/CI/merge/isolated reflection; four
 delivery groups and the next concrete measurement. No new official historical
 publication-time evidence is claimed by this saved-publication synthesis.
+
+## Completed 2026-10-25 — appended in the next ordinary unit
+
+PR[#364](https://github.com/ckrhehfl/trading-engine/pull/364) normally merged
+reviewed source2e1930e83c35bb98eadaec03e655331d0c23f072 as
+57a5bdd22e3d407c411d297e6c7eceaf20c6a7eb with identical whole tree. Distinct
+final source and research-integrity reviews passed. All eight final-head
+required CI instances passed;both Python suites10450passed,3skipped,
+169subtests with no experiment-log creation,operational signal modification
+or stray runs. Detailed private input/profile/actual receipts remain ignored.
+
+One isolated six-publication synthesis completed inside the unchanged shared
+budget with producer-independent aggregate reconstruction. All44cap-open rows
+and eight separate close-endpoint rows retained source evidence and exact
+cost/frequency arithmetic. Completed-only algebra and universal prose checks
+passed. Source-bound cohort differences,original sizing/unknowns/exceptions,
+intervals and source statistics survived;no parent market/statistical replay,
+new label,mean family,ranking,uncertainty estimate or promotion occurred.
+
+The52normalized rows had negative assumed-cost means;they are overlapping
+rows and timing assumptions,not52independent strategies or a direction-closure
+result. In the inherited common-complete D+1book,basic gross/net means were
+0.0058486099323869665%/-0.324151390067613%,first retest
+0.03717757939071173%/-0.29282242060928826%,top-quarter close
+0.037719042386498483%/-0.2922809576135015%. Their known-outcome weekly
+frequencies were20.875,9.3392857143,15.9821428571. DS's narrower observed-peer
+subset remained separately labeled. D+2also completed. No strategy qualified.
+
+An invented V1 pipeline completed but exact-program authentication exposed
+configuration key-order drift. Its evidence was preserved and unused for
+actual authorization. Canonical configuration encoding,real sorted-JSON
+roundtrip regression and a separately completed V2 whole profile fixed that
+engineering issue before actual access. Actual retries0,raised limits0.
+Only the isolated research checkout advanced;collector and operational
+processes were unchanged. Delivery4of4,actual prerequisite groups4to0.
+
+The fixed next-five-minute-close acceptance design remained unmeasured here.
+The operator's subsequent approval begins DU's separately registered signal
+frequency,missingness and newly timed own-label calibration without carrying
+an earlier missingness/underpower exception forward.
