@@ -66,7 +66,12 @@ def test_canonical_chunks_bound_c_encoder_before_serializing_giant_rows(monkeypa
         def encode(self, current):
             assert current is not source and current is not source["rows"]
             assert current is not source["single_giant_row"]
-            assert market._canonical_bound(current, market.CANONICAL_CHUNK_BYTES, lambda: None) <= market.CANONICAL_CHUNK_BYTES
+            if isinstance(current, (dict, list, tuple)):
+                assert market._canonical_flat_fits(current)
+            if isinstance(current, str):
+                assert 2 + 6 * str.__len__(current) <= market.CANONICAL_CHUNK_BYTES
+            if isinstance(current, int):
+                assert 3 + int.bit_length(current) * 302 // 1000 <= market.CANONICAL_CHUNK_BYTES
             encoded.append(current)
             return original().encode(current)
 
@@ -74,7 +79,7 @@ def test_canonical_chunks_bound_c_encoder_before_serializing_giant_rows(monkeypa
     chunks = list(market.canonical_chunks(source))
     assert b"".join(chunks) == expected
     assert encoded and all(len(chunk) <= 262144 for chunk in chunks)
-    assert any(current is row for current in encoded)
+    assert any(current is row["price"] for current in encoded)
 
 
 def test_canonical_chunks_deep_structure_and_large_scalar_key_remain_exact():
@@ -113,8 +118,9 @@ def test_canonical_chunks_circular_refusal_and_integer_digit_guard():
             list(market.canonical_chunks(value))
 
 
-def test_canonical_chunks_checkpoints_interrupt_probe_and_long_scalar(monkeypatch):
+def test_canonical_chunks_checkpoints_interrupt_walk_and_long_scalar(monkeypatch):
     calls = 0
+    encoded = 0
 
     def stop():
         nonlocal calls
@@ -122,20 +128,164 @@ def test_canonical_chunks_checkpoints_interrupt_probe_and_long_scalar(monkeypatc
         if calls == 2:
             raise RuntimeError("invented_budget_exhausted")
 
-    def unexpected_encode():
+    original = market.dl._encoder
+
+    def measured_encode():
         class Encoder:
             def encode(self, value):
-                pytest.fail("probe did not checkpoint before encoding")
+                nonlocal encoded
+                encoded += 1
+                return original().encode(value)
         return Encoder()
 
-    monkeypatch.setattr(market.dl, "_encoder", unexpected_encode)
+    monkeypatch.setattr(market.dl, "_encoder", measured_encode)
     with pytest.raises(RuntimeError, match="invented_budget_exhausted"):
         list(market.canonical_chunks([None] * 40000, checkpoint=stop))
     assert calls == 2
+    assert 0 < encoded <= 4096
     calls = 0
+    encoded = 0
     with pytest.raises(RuntimeError, match="invented_budget_exhausted"):
         list(market.canonical_chunks("x" * 300000, checkpoint=stop))
     assert calls == 2
+    assert encoded == 0
+
+
+def test_canonical_chunks_reflect_mutations_across_calls_and_do_not_mutate_source():
+    shared = {"text": "00100.00", "metadata": ["assumed", {"final": None}]}
+    source = [shared] * 4000
+    first = b"".join(market.canonical_chunks(source))
+    shared["text"] = "한😀\\\"\n" * 70000
+    shared["metadata"][1]["final"] = False
+    # Only a few references are needed for the large replacement.
+    source = source[:2]
+    before = deepcopy(source)
+    second = b"".join(market.canonical_chunks(source))
+    assert first != second and second == market._canonical(source)
+    assert source == before
+    assert market._digest(source) == hashlib.sha256(second + b"\n").hexdigest()
+
+
+def test_canonical_chunks_mutation_during_iteration_cannot_reuse_mutable_size(monkeypatch):
+    original = market.dl._encoder
+    encoded = []
+
+    class CheckedEncoder:
+        def encode(self, current):
+            if isinstance(current, (dict, list, tuple)):
+                assert market._canonical_flat_fits(current)
+            if isinstance(current, str):
+                assert 2 + 6 * str.__len__(current) <= market.CANONICAL_CHUNK_BYTES
+            encoded.append(current)
+            return original().encode(current)
+
+    monkeypatch.setattr(market.dl, "_encoder", CheckedEncoder)
+    shared = {"text": "small"}
+    stream = market.canonical_chunks([shared] * 30000)
+    first = next(stream)
+    shared["text"] = "y" * 300000
+    # Close after the new large value reaches the wire; never build a giant
+    # mutated parent merely to test that no stale container bound is used.
+    observed = bytearray(first[-100:])
+    for block in stream:
+        assert len(block) <= market.CANONICAL_CHUNK_BYTES
+        observed.extend(block)
+        if b"y" * 100 in observed:
+            break
+    stream.close()
+    assert b"y" * 100 in observed
+    assert any(isinstance(value, str) and value.startswith("y") for value in encoded)
+
+
+def test_canonical_scalar_cache_checks_object_identity_even_if_ids_are_reused(monkeypatch):
+    native_id = id
+    monkeypatch.setattr(market, "id", lambda value: 17 if type(value) is str else native_id(value), raising=False)
+    source = [{"value": str(index) + "-invented", "ratio": Fraction(index, 7)} for index in range(500)]
+    _assert_canonical_chunks(source)
+
+
+def test_canonical_scalar_cache_entry_byte_caps_and_close_release(monkeypatch):
+    monkeypatch.setattr(market, "CANONICAL_CACHE_ENTRIES", 16)
+    monkeypatch.setattr(market, "CANONICAL_CACHE_BYTES", 1000)
+    source = [str(index) + "x" * 100 for index in range(6000)]
+    stream = market.canonical_chunks(source)
+    next(stream)
+    cache = stream.gi_frame.f_locals["cache"]
+    assert 0 < len(cache) <= 16
+    assert sum(len(raw) for _, raw in cache.values()) <= 1000
+    assert all(type(value) in (str, int, float, bool, type(None)) for value, _ in cache.values())
+    stream.close()
+    assert cache == {}
+
+
+def test_canonical_scalar_cache_and_buffer_memory_stay_bounded():
+    import tracemalloc
+    source = [str(index) + "x" * 100 for index in range(30000)]
+    tracemalloc.start()
+    try:
+        digest = hashlib.sha256()
+        for block in market.canonical_chunks(source):
+            assert len(block) <= market.CANONICAL_CHUNK_BYTES
+            digest.update(block)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert peak < 5 * 1024**2
+    assert digest.hexdigest() == hashlib.sha256(market._canonical(source)).hexdigest()
+
+
+def test_canonical_chunks_string_subclass_cannot_bypass_scalar_bound(monkeypatch):
+    class InventedText(str):
+        def __len__(self):
+            return 1
+
+        def __getitem__(self, index):
+            raise AssertionError("use the immutable string contents")
+
+    original = market.dl._encoder
+
+    class CheckedEncoder:
+        def encode(self, current):
+            assert 2 + 6 * str.__len__(current) <= market.CANONICAL_CHUNK_BYTES
+            return original().encode(current)
+
+    monkeypatch.setattr(market.dl, "_encoder", CheckedEncoder)
+    value = InventedText("한😀\\\"\n" * 90000)
+    assert b"".join(market.canonical_chunks(value)) == original().encode(value).encode()
+
+
+def test_canonical_chunks_excessive_depth_keeps_recursion_refusal():
+    value = []
+    for _ in range(sys.getrecursionlimit() + 100):
+        value = [value]
+    with pytest.raises(RecursionError):
+        list(market.canonical_chunks(value))
+
+
+def test_canonical_flat_fast_path_is_fresh_and_handles_195_row_metadata(monkeypatch):
+    original = market.dl._encoder
+    retrievals = [f"2026-10-20T00:{index//60:02d}:{index%60:02d}+00:00" for index in range(195)]
+    offsets = {str(index): 1 for index in range(195)}
+    encoded = []
+
+    class CheckedEncoder:
+        def encode(self, value):
+            if isinstance(value, (list, dict, tuple)):
+                assert market._canonical_flat_fits(value)
+                encoded.append(value)
+            return original().encode(value)
+
+    monkeypatch.setattr(market.dl, "_encoder", CheckedEncoder)
+    value = [retrievals, offsets] * 3
+    assert b"".join(market.canonical_chunks(value)) == original().encode(value).encode()
+    assert any(value is retrievals for value in encoded)
+    assert any(value is offsets for value in encoded)
+    offsets["late"] = {"large": "x" * 300000}
+    retrievals[0] = "한😀\\\"\n" * 70000
+    assert not market._canonical_flat_fits(offsets)
+    assert not market._canonical_flat_fits(retrievals)
+    value = [retrievals, offsets]
+    assert b"".join(market.canonical_chunks(value)) == original().encode(value).encode()
 
 
 def build_synthetic_fixture(*, full=False, metadata_padding=0, provenance_density=0):

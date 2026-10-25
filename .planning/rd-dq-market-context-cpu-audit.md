@@ -114,3 +114,31 @@ profits. Four delivery stages: implementation; verification/reviews; CI/merge;
 isolated actual audit/audited report. State conditions reduced/remaining and next
 calibration rather than a strategy completion percentage. No external inquiry
 or standing research conclusion in CLAUDE.md is part of this unit.
+
+## Preserved invented-only GCP engineering failures — 2026-10-25
+
+The first frozen synthetic version refused an invented row outside the short
+2026-01-02 session. Move only that synthetic missing-row relocation to the
+session's closing minute, preserving its gap and all registered source geometry.
+The full streaming regression checks all1,002,211invented rows/5,158chunks and
+both special sessions. Separate review also caught old DP transport filenames
+in DQ main; four distinct DQ names now preserve old files and refuse repeats.
+
+The corrected v2 full GCP synthetic run51d7a1f6-4857-4bc9-8e08-7098210220c1
+started04:59:05Z and failed05:04:05Z at CPU300.000seconds, specifically during
+write_report BEFORE independent verification. Do not claim the independent
+pass completed. Intake used4.304CPU seconds. The invented failure receipt and
+started/failed pair are preserved; only metadata, not its partial report body,
+was retrieved. PeakRSS482836KiB and address space510308352bytes stayed below
+the unchanged512MiB ceiling. No actual DQ market-input attempt has begun.
+
+Read-only small invented-report profiling found repeated Python subtree upper-
+bound walks dominated the encoder, rather than C JSON conversion. Continue
+engineering within the same task: bound repeated work/memory, preserve exact
+wire/type/cycle/mutation rejection semantics and independent authentication,
+then freeze a distinct v3 full GCP synthetic profile. Add measured producer and
+pre-report checkpoints to both synthetic and actual generated evaluators; they
+do not reset or enlarge a budget. Earlier frozen bundles/receipts remain intact.
+Final changed source needs fresh review and exact-head CI again. The operator's
+one new whole actual DQ audit remains unused and requires successful synthetic
+validation, final reviews, CI and normal merge first.

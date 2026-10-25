@@ -92,41 +92,43 @@ MINUTE = timedelta(minutes=1)
 KST = timezone(timedelta(hours=9))
 _canonical = dl._canonical
 CANONICAL_CHUNK_BYTES = 256 * 1024
+CANONICAL_CACHE_BYTES = 1024 * 1024
+CANONICAL_CACHE_ENTRIES = 4096
+CANONICAL_FLAT_ITEMS = 256
 
 
-def _canonical_bound(value: object, limit: int, tick: Callable[[], None], depth: int = 0) -> int:
-    """Conservative escaped UTF-8 size; stop before encoding a large subtree."""
-    tick()
-    if isinstance(value, str):
-        return 2 + 6 * len(value)
-    if value is None or isinstance(value, bool):
-        return 5
-    if isinstance(value, int):
-        return 3 + value.bit_length() * 302 // 1000
-    if isinstance(value, float):
-        return 32
-    if isinstance(value, (dict, list, tuple)):
-        # Deep/circular structures take the structural path, where the encoder
-        # or active-path check retains the native rejection. Shared subtrees
-        # are deliberately not deduplicated in the logical byte stream.
-        if depth >= 64 or 2 * len(value) + 1 > limit:
-            return limit + 1
-        size = 2
-        children = value.items() if isinstance(value, dict) else value
-        for index, child in enumerate(children):
-            size += int(index != 0)
-            if isinstance(value, dict):
-                key, child = child
-                if not isinstance(key, (str, int, float, bool)) and key is not None:
-                    raise TypeError("unsupported_canonical_key_type")
-                size += _canonical_bound(key, limit - size, tick, depth + 1) + 1
-                if not isinstance(key, str):
-                    size += 2  # Converted scalar keys also have quotes.
-            size += _canonical_bound(child, limit - size, tick, depth + 1)
-            if size > limit:
-                return limit + 1
-        return size
-    return _canonical_bound(dl._encode(value), limit, tick, depth + 1)
+def _canonical_flat_fits(value: object) -> bool:
+    """Fresh, nonrecursive bound for a small native container of scalars.
+
+    No callback or yielded control occurs between this scan and C encoding;
+    its result is never cached. Nested or custom values take the structural
+    path instead of triggering another subtree size traversal.
+    """
+    if type(value) not in (dict, list, tuple) or len(value) > CANONICAL_FLAT_ITEMS:
+        return False
+    mapping = type(value) is dict
+    size = 2
+    for index, child in enumerate(value.items() if mapping else value):
+        size += int(index != 0)
+        if mapping:
+            key, child = child
+            if type(key) is not str:
+                return False
+            size += 3 + 6 * len(key)
+        kind = type(child)
+        if kind is str:
+            size += 2 + 6 * len(child)
+        elif kind is bool or child is None:
+            size += 5
+        elif kind is int:
+            size += 3 + child.bit_length() * 302 // 1000
+        elif kind is float:
+            size += 32
+        else:
+            return False
+        if size > CANONICAL_CHUNK_BYTES:
+            return False
+    return size <= CANONICAL_CHUNK_BYTES
 
 
 def _canonical_key(value: object) -> str:
@@ -140,7 +142,7 @@ def _canonical_key(value: object) -> str:
     if value is None:
         return "null"
     if isinstance(value, (int, float)):
-        if isinstance(value, int) and 3 + value.bit_length() * 302 // 1000 > CANONICAL_CHUNK_BYTES:
+        if isinstance(value, int) and 3 + int.bit_length(value) * 302 // 1000 > CANONICAL_CHUNK_BYTES:
             raise ValueError("canonical_integer_exceeds_chunk_bound")
         return dl._encoder().encode(value)
     raise TypeError("unsupported_canonical_key_type")
@@ -149,36 +151,36 @@ def _canonical_key(value: object) -> str:
 def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = None) -> Iterable[bytes]:
     """Yield bounded canonical UTF-8 chunks without a final newline or copy.
 
-    The pre-encode upper bound includes worst-case JSON escaping and UTF-8,
-    so the C encoder only sees bounded subtrees. Large containers are walked
-    structurally; long text is escaped in independently bounded slices.
+    Walk nested containers once; a fresh flat scan permits C encoding only
+    for small native scalar containers. A call-local byte/entry-capped cache
+    holds immutable scalars and bytes, never mutable sizes or encodings.
     """
     checkpoint = checkpoint or (lambda: None)
     encoder = dl._encoder()
     active = set()
+    cache = {}
+    cached_bytes = 0
     examined = 0
 
-    def tick() -> None:
+    def tick(nodes: int = 1) -> None:
         nonlocal examined
-        examined += 1
-        if examined % 4096 == 0:
+        if examined + nodes >= 4096:
             checkpoint()
+            examined = 0
+        examined += nodes
 
-    def chunks(current: object) -> Iterable[bytes]:
-        checkpoint()
+    def pieces(current: object) -> Iterable[bytes]:
+        nonlocal cached_bytes
+        tick()
         container = isinstance(current, (dict, list, tuple))
         if container and id(current) in active:
             raise ValueError("Circular reference detected")
-        if _canonical_bound(current, CANONICAL_CHUNK_BYTES, tick) <= CANONICAL_CHUNK_BYTES:
-            yield encoder.encode(current).encode("utf-8")
-        elif isinstance(current, str):
-            yield b'"'
-            width = (CANONICAL_CHUNK_BYTES - 2) // 6
-            for offset in range(0, len(current), width):
-                checkpoint()
-                yield encoder.encode(current[offset:offset + width])[1:-1].encode("utf-8")
-            yield b'"'
-        elif container:
+        if container:
+            if type(current) in (dict, list, tuple) and len(current) <= CANONICAL_FLAT_ITEMS:
+                tick(2 * len(current) + 1)
+                if _canonical_flat_fits(current):
+                    yield encoder.encode(current).encode("utf-8")
+                    return
             active.add(id(current))
             mapping = isinstance(current, dict)
             yield b"{" if mapping else b"["
@@ -188,19 +190,58 @@ def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = N
                     yield b","
                 if mapping:
                     key, child = child
-                    yield from chunks(_canonical_key(key))
+                    yield from pieces(_canonical_key(key))
                     yield b":"
-                yield from chunks(child)
+                yield from pieces(child)
             yield b"}" if mapping else b"]"
             active.remove(id(current))
-        elif isinstance(current, int):
-            # Parsed inputs retain CPython's ordinary digit guard. Refuse
-            # before converting an integer larger than the encoding allowance.
+            return
+        if not isinstance(current, (str, int, float)) and current is not None:
+            yield from pieces(dl._encode(current))
+            return
+        identity = id(current)
+        previous = cache.get(identity)
+        if previous is not None and previous[0] is current:
+            yield previous[1]
+            return
+        if isinstance(current, str) and 2 + 6 * str.__len__(current) > CANONICAL_CHUNK_BYTES:
+            yield b'"'
+            width = (CANONICAL_CHUNK_BYTES - 2) // 6
+            for offset in range(0, str.__len__(current), width):
+                checkpoint()
+                part = str.__getitem__(current, slice(offset, offset + width))
+                yield encoder.encode(part)[1:-1].encode("utf-8")
+            yield b'"'
+            return
+        if isinstance(current, int) and 3 + int.bit_length(current) * 302 // 1000 > CANONICAL_CHUNK_BYTES:
+            # Preserve CPython's digit refusal, and reject larger conversions
+            # before allocating an integer representation beyond the block cap.
             raise ValueError("canonical_integer_exceeds_chunk_bound")
-        else:
-            yield from chunks(dl._encode(current))
+        raw = encoder.encode(current).encode("utf-8")
+        if (type(current) in (str, int, float, bool, type(None))
+                and len(cache) < CANONICAL_CACHE_ENTRIES
+                and cached_bytes + len(raw) <= CANONICAL_CACHE_BYTES):
+            # The strong identity reference prevents id reuse while cached.
+            cache[identity] = (current, raw)
+            cached_bytes += len(raw)
+        yield raw
 
-    yield from chunks(value)
+    buffer = bytearray()
+    try:
+        checkpoint()
+        for piece in pieces(value):
+            if len(buffer) + len(piece) > CANONICAL_CHUNK_BYTES:
+                checkpoint()
+                yield bytes(buffer)
+                buffer.clear()
+            buffer.extend(piece)
+        if buffer:
+            checkpoint()
+            yield bytes(buffer)
+    finally:
+        cache.clear()
+        active.clear()
+        buffer.clear()
 
 
 def _digest(value: object, checkpoint: Callable[[], None] | None = None) -> str:
