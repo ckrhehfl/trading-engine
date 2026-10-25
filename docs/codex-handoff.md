@@ -14,7 +14,18 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — approved whole corrected audit, Task DP
+## Current continuation — bounded encoding and GCP-profiled audit, Task DQ
+
+After DP CPU failure,the operator directly approves encoding improvement,full
+invented verification on actual GCP runtime,same limits,review/CI/normal merge,
+then ONE new whole audit. Base1c0c3b9aca7dcf0c34dbadf2037553bf1ae5626c; branch
+codex/dq-market-context-cpu. Scope `.planning/rd-dq-market-context-cpu-audit.md`.
+Keep DO/DP failed attempts and old private code;do not read/use partial ledgers.
+Same source/algorithm/population/timing/quorum/resource contract;readiness only.
+New exclusive DQ output and mandatory GCP-profile/source/runtime preflight.
+No new API/DB/credential/collector/config/order/holdout or performance access.
+
+## Previous continuation — approved whole corrected audit, Task DP
 
 Direct operator option1 on2026-10-25 authorizes ONE new entire corrected audit
 under `.planning/rd-dp-market-context-corrected-audit.md`. Base PR#359 normal

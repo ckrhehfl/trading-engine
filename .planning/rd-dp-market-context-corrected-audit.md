@@ -96,3 +96,24 @@ evidence:none, assumed lag/quorum and remaining finality/revision/price-basis/
 fill/cost/generalization risks. Next is registered candidate calibration using
 verified atoms, not immediate performance or promotion. Complete inventory even
 if coverage is poor; no external inquiry is a prerequisite.
+
+## Completed gates and preserved CPU failure — 2026-10-25
+
+PR #360 normally merged as1c0c3b9aca7dcf0c34dbadf2037553bf1ae5626c after distinct
+final reviews without findings,400named passes/one skip and all8required checks.
+Both full Python CIs10252passed/three skips/30subtests. Exact local full invented
+profile completed within limits,CPU79.651seconds/peakRSS307036KiB.
+
+The sole DP actual run2f0916c1-c92f-413c-af68-663f21c4e6d5 started then failed
+inside independent archive verification at CPU300.066seconds. CPU117.251seconds
+was already used at independent entry;peakRSS315236KiB stayed within the memory
+ceiling. No successful verification/publication exists. Its partial report is
+not read or used. Only failure receipts,file metadata and canonical failed pair
+were inspected. GCP research source advanced to the normal merge;collector
+remained clean and unchanged. This is implementation/resource failure,not a
+negative market or candidate result. D+1/D+2 readiness remains unverified.
+
+The operator now explicitly requests encoding repair and GCP synthetic validation,
+then reviews/CI/normal merge and ONE new whole actual audit under unchanged
+limits. This is a fresh checkpoint resolution for DQ,not resumption or automatic
+repetition of DP. Scope: [DQ](rd-dq-market-context-cpu-audit.md).

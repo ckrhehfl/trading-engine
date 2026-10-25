@@ -90,7 +90,126 @@ METADATA = ("observation_date", "available_at", "retrieved_at", "source", "is_fi
 COLUMNS = ("symbol", "interval", "open_time_ms", "open", "high", "low", "close", "fetched_at")
 MINUTE = timedelta(minutes=1)
 KST = timezone(timedelta(hours=9))
-_canonical, _digest = dl._canonical, dl._digest
+_canonical = dl._canonical
+CANONICAL_CHUNK_BYTES = 256 * 1024
+
+
+def _canonical_bound(value: object, limit: int, tick: Callable[[], None], depth: int = 0) -> int:
+    """Conservative escaped UTF-8 size; stop before encoding a large subtree."""
+    tick()
+    if isinstance(value, str):
+        return 2 + 6 * len(value)
+    if value is None or isinstance(value, bool):
+        return 5
+    if isinstance(value, int):
+        return 3 + value.bit_length() * 302 // 1000
+    if isinstance(value, float):
+        return 32
+    if isinstance(value, (dict, list, tuple)):
+        # Deep/circular structures take the structural path, where the encoder
+        # or active-path check retains the native rejection. Shared subtrees
+        # are deliberately not deduplicated in the logical byte stream.
+        if depth >= 64 or 2 * len(value) + 1 > limit:
+            return limit + 1
+        size = 2
+        children = value.items() if isinstance(value, dict) else value
+        for index, child in enumerate(children):
+            size += int(index != 0)
+            if isinstance(value, dict):
+                key, child = child
+                if not isinstance(key, (str, int, float, bool)) and key is not None:
+                    raise TypeError("unsupported_canonical_key_type")
+                size += _canonical_bound(key, limit - size, tick, depth + 1) + 1
+                if not isinstance(key, str):
+                    size += 2  # Converted scalar keys also have quotes.
+            size += _canonical_bound(child, limit - size, tick, depth + 1)
+            if size > limit:
+                return limit + 1
+        return size
+    return _canonical_bound(dl._encode(value), limit, tick, depth + 1)
+
+
+def _canonical_key(value: object) -> str:
+    """JSONEncoder converts keys only after sorting their original types."""
+    if isinstance(value, str):
+        return value
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if value is None:
+        return "null"
+    if isinstance(value, (int, float)):
+        if isinstance(value, int) and 3 + value.bit_length() * 302 // 1000 > CANONICAL_CHUNK_BYTES:
+            raise ValueError("canonical_integer_exceeds_chunk_bound")
+        return dl._encoder().encode(value)
+    raise TypeError("unsupported_canonical_key_type")
+
+
+def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = None) -> Iterable[bytes]:
+    """Yield bounded canonical UTF-8 chunks without a final newline or copy.
+
+    The pre-encode upper bound includes worst-case JSON escaping and UTF-8,
+    so the C encoder only sees bounded subtrees. Large containers are walked
+    structurally; long text is escaped in independently bounded slices.
+    """
+    checkpoint = checkpoint or (lambda: None)
+    encoder = dl._encoder()
+    active = set()
+    examined = 0
+
+    def tick() -> None:
+        nonlocal examined
+        examined += 1
+        if examined % 4096 == 0:
+            checkpoint()
+
+    def chunks(current: object) -> Iterable[bytes]:
+        checkpoint()
+        container = isinstance(current, (dict, list, tuple))
+        if container and id(current) in active:
+            raise ValueError("Circular reference detected")
+        if _canonical_bound(current, CANONICAL_CHUNK_BYTES, tick) <= CANONICAL_CHUNK_BYTES:
+            yield encoder.encode(current).encode("utf-8")
+        elif isinstance(current, str):
+            yield b'"'
+            width = (CANONICAL_CHUNK_BYTES - 2) // 6
+            for offset in range(0, len(current), width):
+                checkpoint()
+                yield encoder.encode(current[offset:offset + width])[1:-1].encode("utf-8")
+            yield b'"'
+        elif container:
+            active.add(id(current))
+            mapping = isinstance(current, dict)
+            yield b"{" if mapping else b"["
+            children = sorted(current.items()) if mapping else current
+            for index, child in enumerate(children):
+                if index:
+                    yield b","
+                if mapping:
+                    key, child = child
+                    yield from chunks(_canonical_key(key))
+                    yield b":"
+                yield from chunks(child)
+            yield b"}" if mapping else b"]"
+            active.remove(id(current))
+        elif isinstance(current, int):
+            # Parsed inputs retain CPython's ordinary digit guard. Refuse
+            # before converting an integer larger than the encoding allowance.
+            raise ValueError("canonical_integer_exceeds_chunk_bound")
+        else:
+            yield from chunks(dl._encode(current))
+
+    yield from chunks(value)
+
+
+def _digest(value: object, checkpoint: Callable[[], None] | None = None) -> str:
+    """Hash the unchanged canonical wire plus exactly one final newline."""
+    digest = hashlib.sha256()
+    for chunk in canonical_chunks(value, checkpoint=checkpoint):
+        digest.update(chunk)
+    digest.update(b"\n")
+    return digest.hexdigest()
 
 
 class MarketContextReadinessRefusal(RuntimeError):
