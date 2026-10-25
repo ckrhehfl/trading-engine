@@ -67,7 +67,7 @@ def test_canonical_chunks_bound_c_encoder_before_serializing_giant_rows(monkeypa
             assert current is not source and current is not source["rows"]
             assert current is not source["single_giant_row"]
             if isinstance(current, (dict, list, tuple)):
-                assert market._canonical_flat_fits(current)
+                assert market._canonical_native_probe(current)[0]
             if isinstance(current, str):
                 assert 2 + 6 * str.__len__(current) <= market.CANONICAL_CHUNK_BYTES
             if isinstance(current, int):
@@ -79,7 +79,7 @@ def test_canonical_chunks_bound_c_encoder_before_serializing_giant_rows(monkeypa
     chunks = list(market.canonical_chunks(source))
     assert b"".join(chunks) == expected
     assert encoded and all(len(chunk) <= 262144 for chunk in chunks)
-    assert any(current is row["price"] for current in encoded)
+    assert any(current is row for current in encoded)
 
 
 def test_canonical_chunks_deep_structure_and_large_scalar_key_remain_exact():
@@ -173,7 +173,7 @@ def test_canonical_chunks_mutation_during_iteration_cannot_reuse_mutable_size(mo
     class CheckedEncoder:
         def encode(self, current):
             if isinstance(current, (dict, list, tuple)):
-                assert market._canonical_flat_fits(current)
+                assert market._canonical_native_probe(current)[0]
             if isinstance(current, str):
                 assert 2 + 6 * str.__len__(current) <= market.CANONICAL_CHUNK_BYTES
             encoded.append(current)
@@ -262,7 +262,7 @@ def test_canonical_chunks_excessive_depth_keeps_recursion_refusal():
         list(market.canonical_chunks(value))
 
 
-def test_canonical_flat_fast_path_is_fresh_and_handles_195_row_metadata(monkeypatch):
+def test_canonical_native_fast_path_is_fresh_and_handles_195_row_metadata(monkeypatch):
     original = market.dl._encoder
     retrievals = [f"2026-10-20T00:{index//60:02d}:{index%60:02d}+00:00" for index in range(195)]
     offsets = {str(index): 1 for index in range(195)}
@@ -271,7 +271,7 @@ def test_canonical_flat_fast_path_is_fresh_and_handles_195_row_metadata(monkeypa
     class CheckedEncoder:
         def encode(self, value):
             if isinstance(value, (list, dict, tuple)):
-                assert market._canonical_flat_fits(value)
+                assert market._canonical_native_probe(value)[0]
                 encoded.append(value)
             return original().encode(value)
 
@@ -282,10 +282,79 @@ def test_canonical_flat_fast_path_is_fresh_and_handles_195_row_metadata(monkeypa
     assert any(value is offsets for value in encoded)
     offsets["late"] = {"large": "x" * 300000}
     retrievals[0] = "한😀\\\"\n" * 70000
-    assert not market._canonical_flat_fits(offsets)
-    assert not market._canonical_flat_fits(retrievals)
+    assert not market._canonical_native_probe(offsets)[0]
+    assert not market._canonical_native_probe(retrievals)[0]
     value = [retrievals, offsets]
     assert b"".join(market.canonical_chunks(value)) == original().encode(value).encode()
+
+
+def test_canonical_nested_probe_caps_nodes_depth_bytes_and_unknown_types():
+    nested = {"metadata": [{"price": "00100.00", "availability": None}] * 20}
+    fits, visited = market._canonical_native_probe(nested)
+    assert fits and 1 <= visited <= 1024
+    _assert_canonical_chunks(nested)
+    for value in ([None] * 1024, {"text": "x" * market.CANONICAL_CHUNK_BYTES},
+            {"default": Fraction(1, 7)}, {"subclass": type("Text", (str,), {})("native fallback")}):
+        fits, visited = market._canonical_native_probe(value)
+        assert not fits and visited <= 1024
+        _assert_canonical_chunks(value)
+    deep = []
+    for _ in range(10):
+        deep = [deep]
+    assert not market._canonical_native_probe(deep)[0]
+    _assert_canonical_chunks(deep)
+
+
+def test_canonical_nested_probe_mutation_checkpoint_is_before_fresh_scan(monkeypatch):
+    original = market.dl._encoder
+    value = [{"metadata": ["small"]}] * 2000
+    calls = 0
+
+    def checkpoint():
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            value[0]["metadata"][0] = "한😀\\\"\n" * 90000
+
+    class CheckedEncoder:
+        def encode(self, current):
+            if isinstance(current, (dict, list, tuple)):
+                fits, visited = market._canonical_native_probe(current)
+                assert fits and visited <= 1024
+            elif isinstance(current, str):
+                assert 2 + 6 * str.__len__(current) <= market.CANONICAL_CHUNK_BYTES
+            return original().encode(current)
+
+    monkeypatch.setattr(market.dl, "_encoder", CheckedEncoder)
+    stream = market.canonical_chunks(value, checkpoint=checkpoint)
+    for index, block in enumerate(stream):
+        assert len(block) <= market.CANONICAL_CHUNK_BYTES
+        if calls >= 2 and index >= 2:
+            break
+    stream.close()
+    assert calls >= 2
+
+
+def test_canonical_encoder_releases_recursive_closure_without_gc(monkeypatch):
+    import gc
+    import weakref
+    original = market.dl._encoder
+    references = []
+
+    def encoder():
+        instance = original()
+        references.append(weakref.ref(instance))
+        return instance
+
+    monkeypatch.setattr(market.dl, "_encoder", encoder)
+    was_enabled = gc.isenabled()
+    gc.disable()
+    try:
+        list(market.canonical_chunks({"metadata": [{"price": "00100.00"}] * 30}))
+        assert references and all(reference() is None for reference in references)
+    finally:
+        if was_enabled:
+            gc.enable()
 
 
 def build_synthetic_fixture(*, full=False, metadata_padding=0, provenance_density=0):

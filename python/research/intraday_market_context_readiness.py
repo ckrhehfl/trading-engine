@@ -94,29 +94,29 @@ _canonical = dl._canonical
 CANONICAL_CHUNK_BYTES = 256 * 1024
 CANONICAL_CACHE_BYTES = 1024 * 1024
 CANONICAL_CACHE_ENTRIES = 4096
-CANONICAL_FLAT_ITEMS = 256
+CANONICAL_PROBE_NODES = 1024
+CANONICAL_PROBE_DEPTH = 8
 
 
-def _canonical_flat_fits(value: object) -> bool:
-    """Fresh, nonrecursive bound for a small native container of scalars.
+def _canonical_native_probe(value: object) -> tuple[bool, int]:
+    """Fresh iterative native bound with capped nodes, depth and scratch space.
 
     No callback or yielded control occurs between this scan and C encoding;
-    its result is never cached. Nested or custom values take the structural
-    path instead of triggering another subtree size traversal.
+    mutable bounds are never cached. Unknown/custom types and oversized or
+    deeply nested subtrees continue through the structural/default path.
     """
-    if type(value) not in (dict, list, tuple) or len(value) > CANONICAL_FLAT_ITEMS:
-        return False
-    mapping = type(value) is dict
-    size = 2
-    for index, child in enumerate(value.items() if mapping else value):
-        size += int(index != 0)
-        if mapping:
-            key, child = child
-            if type(key) is not str:
-                return False
-            size += 3 + 6 * len(key)
+    visited, size, stack = 0, 0, []
+    child, depth = value, 0
+    while True:
+        if visited >= CANONICAL_PROBE_NODES:
+            return False, visited
+        visited += 1
+        if depth > CANONICAL_PROBE_DEPTH:
+            return False, visited
         kind = type(child)
         if kind is str:
+            if len(child) + 2 > CANONICAL_CHUNK_BYTES:
+                return False, visited
             size += 2 + 6 * len(child)
         elif kind is bool or child is None:
             size += 5
@@ -124,11 +124,34 @@ def _canonical_flat_fits(value: object) -> bool:
             size += 3 + child.bit_length() * 302 // 1000
         elif kind is float:
             size += 32
+        elif kind in (dict, list, tuple):
+            children = len(child) * (2 if kind is dict else 1)
+            if visited + children > CANONICAL_PROBE_NODES:
+                return False, visited
+            size += 2 + max(0, len(child) - 1) + (len(child) if kind is dict else 0)
+            stack.append((iter(child.items() if kind is dict else child), depth + 1, kind is dict))
         else:
-            return False
+            return False, visited
         if size > CANONICAL_CHUNK_BYTES:
-            return False
-    return size <= CANONICAL_CHUNK_BYTES
+            return False, visited
+        while stack:
+            iterator, depth, mapping = stack[-1]
+            try:
+                child = next(iterator)
+            except StopIteration:
+                stack.pop()
+                continue
+            if mapping:
+                key, child = child
+                if type(key) is not str or visited >= CANONICAL_PROBE_NODES:
+                    return False, visited
+                visited += 1
+                size += 2 + 6 * len(key)
+                if size > CANONICAL_CHUNK_BYTES:
+                    return False, visited
+            break
+        else:
+            return True, visited
 
 
 def _canonical_key(value: object) -> str:
@@ -151,8 +174,8 @@ def _canonical_key(value: object) -> str:
 def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = None) -> Iterable[bytes]:
     """Yield bounded canonical UTF-8 chunks without a final newline or copy.
 
-    Walk nested containers once; a fresh flat scan permits C encoding only
-    for small native scalar containers. A call-local byte/entry-capped cache
+    A fresh bounded native scan permits C encoding of nested subtrees; larger
+    structures are walked explicitly. A call-local byte/entry-capped cache
     holds immutable scalars and bytes, never mutable sizes or encodings.
     """
     checkpoint = checkpoint or (lambda: None)
@@ -170,15 +193,21 @@ def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = N
         examined += nodes
 
     def pieces(current: object) -> Iterable[bytes]:
-        nonlocal cached_bytes
+        nonlocal cached_bytes, examined
         tick()
         container = isinstance(current, (dict, list, tuple))
         if container and id(current) in active:
             raise ValueError("Circular reference detected")
         if container:
-            if type(current) in (dict, list, tuple) and len(current) <= CANONICAL_FLAT_ITEMS:
-                tick(2 * len(current) + 1)
-                if _canonical_flat_fits(current):
+            if type(current) in (dict, list, tuple):
+                # Reserve a whole bounded probe before entering its callback-
+                # free scan and immediate C encoding; charge only visited work.
+                if examined + CANONICAL_PROBE_NODES >= 4096:
+                    checkpoint()
+                    examined = 0
+                fits, visited = _canonical_native_probe(current)
+                examined += visited
+                if fits:
                     yield encoder.encode(current).encode("utf-8")
                     return
             active.add(id(current))
@@ -242,6 +271,7 @@ def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = N
         cache.clear()
         active.clear()
         buffer.clear()
+        pieces = None
 
 
 def _digest(value: object, checkpoint: Callable[[], None] | None = None) -> str:

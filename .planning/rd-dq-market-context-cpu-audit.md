@@ -142,3 +142,36 @@ do not reset or enlarge a budget. Earlier frozen bundles/receipts remain intact.
 Final changed source needs fresh review and exact-head CI again. The operator's
 one new whole actual DQ audit remains unused and requires successful synthetic
 validation, final reviews, CI and normal merge first.
+
+## Further preserved invented-only profiles and final nested planning — 2026-10-25
+
+The v3 synthetic run also exhausted CPU300 before independent verification.
+Its measured producer phase ended at112.722CPU seconds and pre-report phase
+at152.730; only metadata for its184468413-byte partial output was retrieved.
+The generic scalar/flat encoding improvement was real on small fixtures but
+insufficient for the whole dense graph. No actual DQ attempt was used.
+
+The separate v4 synthetic bundle retained identical scientific inputs and all
+limits, adding bounded recent-container byte reuse only for explicitly stable
+caller-owned report encoding/hashing. Independent source authentication uses
+no mutable-container cache, and the fresh archive pass and report-hash comparison
+remain mandatory. Automatic cyclic GC is paused only during the dedicated
+evaluator; existing explicit collections remain, original state is restored and
+a final collection occurs before the final budget receipt. State/failure/cache/
+wire tests pass; neither cache nor collection policy increases a resource limit.
+
+V4 completed its203636625-byte invented report but exhausted CPU300 during the
+independent raw archive pass. Measured cumulative CPU: intake4.737; producer
+80.568; post-source recheck115.306; explicit GC121.811; independent start191.583.
+The report body was not retrieved or adopted; no successful verification or
+publication exists. Retain these failure receipts and frozen bundles too.
+
+Continue with fresh bounded native nested planning, not only flat scalar
+containers, for the public generic encoder. Bound each probe by nodes, depth
+and bytes; never reuse a mutable size or yield/call back between probing and C
+encoding. Preserve all default type/key/refusal/mutation and exact-byte rules,
+and break recursive helper reference cycles promptly. Independently profile the
+remaining verification cost on invented data before another full GCP profile.
+Final changed public source needs new exact-head CI and final separate review.
+The single approved actual DQ audit remains unused throughout these engineering
+profiles; successful exact-runtime synthetic completion is still required first.
