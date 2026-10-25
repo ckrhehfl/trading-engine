@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-215 documents and counting, which is past the point where `ls` is a
+216 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -331,6 +331,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-do-market-context-readiness.md`](rd-do-market-context-readiness.md) — Research Direction Task DO — audit causal observed-peer market-context inputs before fixing one entry hypothesis
 - [`rd-dp-market-context-corrected-audit.md`](rd-dp-market-context-corrected-audit.md) — Research Direction Task DP — one operator-approved whole corrected market-context audit
 - [`rd-dq-market-context-cpu-audit.md`](rd-dq-market-context-cpu-audit.md) — Research Direction Task DQ — bounded encoding and GCP-profiled whole market-context audit
+- [`rd-dr-market-context-calibration.md`](rd-dr-market-context-calibration.md) — Research Direction Task DR — calibrate the fixed observed-peer context condition
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture

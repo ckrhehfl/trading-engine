@@ -14,7 +14,23 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — bounded encoding and GCP-profiled audit, Task DQ
+## Current continuation — fixed observed-peer context calibration, Task DR
+
+DQ completed PR#361 normal merge37be6769559c5b965d271f0c10adf7a642a63d34
+and one independently verified readiness audit. Sanitized completion is appended
+to its ledger. The operator now authorizes the already fixed positive observed
+peer mean condition's counts,weekly fit,missingness and fresh selected-own-label
+planning. Branch codex/dr-market-context-calibration;scope
+`.planning/rd-dr-market-context-calibration.md`. Completed DQ plus original DK
+are the only market inputs. Retain all original masks/targets/book and clocks;
+stream the large completed peer ledger rather than decode repeated provenance
+as one graph. No raw archive/API/DB/credentials,old detector/statistics replay,
+collector changes or performance means. Separate final reviews,required CI,
+normal merge and frozen same-budget invented-profile preflight precede one
+exclusive isolated actual calibration. Any future comparison choice does not
+stop completing this requested measurement. Protected originals remain excluded.
+
+## Previous continuation — bounded encoding and GCP-profiled audit, Task DQ
 
 After DP CPU failure,the operator directly approves encoding improvement,full
 invented verification on actual GCP runtime,same limits,review/CI/normal merge,
