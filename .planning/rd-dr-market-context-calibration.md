@@ -128,3 +128,30 @@ original masks,zero weeks,own planning and input mutation refusals. The distinct
 verifier's named invented tests passed23cases. No actual DR source body or new
 actual count was read. Exact frozen whole-pipeline GCP profiling and final
 reviews/CI/merge/preflight remain prerequisites,not completed by these tests.
+
+## Preserved invented failure and execution-order repair — 2026-10-25
+
+The first full GCP invented profile completed its producer and49536987-byte
+report,but failed with MemoryError while the independent verifier decoded DK
+with the decoded result already resident. Its failure metadata,old generated
+program and isolated bundle remain preserved;no partial result was adopted and
+the one actual DR attempt remains unused. Measured failure CPU113.367seconds,
+wall444.471seconds,peakRSS510652KiB;limits were not raised.
+
+The private repair keeps the written report's hash/size,then releases its encoded
+bytes. Independent intake authenticates and projects DK,releases its raw/parent
+graph,then reads/authenticates/decodes the result file. Fresh DQ reconstruction,
+all new statistics and source/result rechecks remain in the same original
+process/budget. Named regressions verify the actual order,path/mapping equality,
+early hash/size refusal and final mutation refusal. Scientific selection,
+population,pins,timing and output algebra do not change. New exclusive invented
+profiles preserve earlier attempts;only a successful exact final-tree profile
+can authorize the one actual calibration.
+
+The first complete CI suite also found two mechanical documentation defects:
+the new index title did not exactly match its document heading,and CLAUDE.md's
+planning-document count was still215. The other10396tests passed. Both metadata
+values are corrected;run the existing planning-index and document-ownership
+tests before the final freeze,and rerun required final-head CI. No test or
+research criterion is relaxed. Earlier pending/successful invented engineering
+profiles cannot replace the required final-tree profile after this source change.
