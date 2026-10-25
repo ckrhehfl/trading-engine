@@ -49,7 +49,7 @@ next time the same shape of question comes up.
 
 ## Index
 
-218 documents and counting, which is past the point where `ls` is a
+219 documents and counting, which is past the point where `ls` is a
 useful way to find one. Grouped by the arc each belongs to, newest arcs
 last; the one-line description is each document's own title, so it says
 what that document concluded rather than what it was about.
@@ -334,6 +334,7 @@ Stepping back from candidates to ask what instrument the question needs.
 - [`rd-dr-market-context-calibration.md`](rd-dr-market-context-calibration.md) — Research Direction Task DR — calibrate the fixed observed-peer context condition
 - [`rd-ds-market-context-comparison.md`](rd-ds-market-context-comparison.md) — Research Direction Task DS — compare basic and positive observed-peer breakouts on the same observable scope
 - [`rd-dt-intraday-evidence-update.md`](rd-dt-intraday-evidence-update.md) — Research Direction Task DT — update completed intraday evidence and fix one next hypothesis
+- [`rd-du-opening-acceptance-calibration.md`](rd-du-opening-acceptance-calibration.md) — Research Direction Task DU — calibrate the fixed next-bar opening-range acceptance
 - [`audit-2026-09-consolidation.md`](audit-2026-09-consolidation.md) — Consolidation after the 2026-09-23 external audit — decisions and order
 - [`xr-a-external-review-fact-package.md`](xr-a-external-review-fact-package.md) — External Review Phase 0 — the resources, measured facts and rules, with our own conclusions deliberately withheld
 - [`xr-b-phase1-prompt.md`](xr-b-phase1-prompt.md) — External Review Phase 1 — the blind request for a search-system architecture
