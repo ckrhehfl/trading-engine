@@ -1,0 +1,77 @@
+{
+  "registration_id": "intraday-market-context-corrected-audit-v1",
+  "mode": "one-whole-corrected-market-context-readiness-audit",
+  "output_name": "intraday-dp-market-context-readiness-20261025-v1",
+  "original_algorithm_spec_path": "configs/research/discovery/intraday-market-context-readiness-v1.json",
+  "original_algorithm_spec_sha256": "9346cad4655e96cb5d172049f561d1b695b1a802aa9c0cd37d077b707846b5b3",
+  "previous_failed_run_id": "ed1594af-bc1f-4b26-9098-5f542293601d",
+  "preserved_previous_output_name": "intraday-do-market-context-readiness-20261025-v1",
+  "authorization": "one_whole_corrected_audit",
+  "upstream_sha256": "2fe92663361acfb68b2caf1e279c74bf556cb6f6994af62f7a029e33668033bb",
+  "upstream_specification_sha256": "26b8eff9c75266670a12517a034f3922b52486d9dce86aae2cce8881474ec214",
+  "input_compressed_sha256": "4a5380b5477476a55dccb402c1227b23e0e6a08bc9c92f2e742eef2d9a7b62de",
+  "input_stream_sha256": "d48593ce0da9d6cdca17ad00002e65fbcfda1f7b99f6b83c272ebb16943b36da",
+  "window": {
+    "symbol": "KRX:*",
+    "interval": "1m",
+    "start": "2025-09-04",
+    "end": "2026-09-23"
+  },
+  "parameters": {
+    "cohort": "all_original_DK_targets_selected_iff_outcome_complete_and_basic_status_signal",
+    "window_minutes": 15,
+    "availability_lag_minutes": 2,
+    "minimum_complete_peer_windows": 5,
+    "original_members": 20,
+    "other_members": 19,
+    "entry_delay_minutes": 3,
+    "time_cap_minutes": 30,
+    "assumed_cost": {
+      "numerator": "33",
+      "denominator": "10000"
+    },
+    "window": "F_minus15_inclusive_F_exclusive_F_original_signal_bar_end_D_Fplus2_E_Dplus3",
+    "validity": "one_unambiguous_positive_valid_OHLC_row_per_minute_duplicate_even_equal_conflicts",
+    "timestamp": "original_integer_milliseconds_floor_to_KST_open_minute_preserve_offsets",
+    "missingness": "missing_conflict_invalid_price_distinct_unknowns_all19_and_gaps_retained_no_new_event_exclusion",
+    "atoms": "complete_peer_first_OPEN_last_CLOSE_original_coordinates_metadata_offsets_and_source_fingerprints_only",
+    "output_scope": "readiness_only_no_peer_returns_mean_sign_candidate_counts_labels_statistics_or_performance",
+    "next_hypothesis": {
+      "id": "basic_OR15_positive_observed_peer_rolling15m_min5_v1",
+      "population": "unchanged_original_common_complete_basic_OR15_first_breakout_book_all_targets_and_unknowns_retained",
+      "predicate": "basic_OR15_first_breakout_AND_equal_weight_mean_of_all_available_other_original_members_15minute_first_OPEN_to_last_CLOSE_price_changes_strictly_positive",
+      "window": "original_signal_bar_end_F_minus15minutes_inclusive_to_F_exclusive",
+      "minimum_complete_peer_windows": 5,
+      "peer_rule": "all_complete_other_members_of_original_policy_day20_no_replacement_return_rank_or_outcome_selection",
+      "zero_rule": "exact_zero_rejects_subquorum_unknown_never_zero_or_negative",
+      "availability": "every_observation_end_plus2minutes_at_most_original_D_Fplus2_entry_E_Dplus3",
+      "entry": "unchanged_original_D_plus3minute_OPEN",
+      "exit": "unchanged_original_E_plus30minute_OPEN",
+      "assumed_cost": {
+        "numerator": "33",
+        "denominator": "10000"
+      },
+      "other_conjuncts": [],
+      "interpretation": "observed_large_stock_basket_not_official_KOSPI_KOSDAQ_index_or_complete_market",
+      "future_gate": "new_registered_own_feature_label_missingness_signal_counts_weekly15fit_and_own_label_sizing_before_any_comparison_no_old_waiver"
+    }
+  },
+  "resources": {
+    "maximum_source_bytes": 67108864,
+    "maximum_compressed_bytes": 536870912,
+    "maximum_uncompressed_bytes": 1073741824,
+    "maximum_chunk_bytes": 1048576,
+    "maximum_chunks": 5158,
+    "maximum_session_rows": 600,
+    "maximum_rows": 1002211,
+    "cpu_seconds": 300,
+    "address_space_mib": 512,
+    "wall_seconds": 1200,
+    "nice": 10,
+    "minimum_free_bytes": 1073741824,
+    "maximum_market_gets": 0,
+    "maximum_token_posts": 0,
+    "automatic_retries": 0
+  },
+  "automatic_retries": 0
+}

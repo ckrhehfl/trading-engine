@@ -14,7 +14,19 @@ The later sections retain the original handoff context. These records are not
 a new research conclusion or authorization.
 Binding constraints remain in `CLAUDE.md`.
 
-## Current continuation — causal observed-peer context readiness, Task DO
+## Current continuation — approved whole corrected audit, Task DP
+
+Direct operator option1 on2026-10-25 authorizes ONE new entire corrected audit
+under `.planning/rd-dp-market-context-corrected-audit.md`. Base PR#359 normal
+merge74ccee652f6d1e13e245ab9b2481c7cbf26d4fbc. Branch codex/dp-market-context-readiness.
+Keep original DO failure/partial output/source closure unchanged;no partial
+ledger input or verifier resume. Same original DK/CCpins,algorithm spec,book,
+window,quorum,timing and CPU300/AS512MiB/wall1200/nice10. New exclusive DP output,
+registration/exact profile/preflight,distinct final reviews,required CI and
+normal merge precede one whole isolated GCP audit. No further automatic attempt.
+Readiness only,not peer signs,filter counts,new labels,sizing or performance.
+
+## Previous continuation — causal observed-peer context readiness, Task DO
 
 PR#358 normally merged and advanced the isolated research checkout,but its
 first actual audit failed with MemoryError during the independent DK source

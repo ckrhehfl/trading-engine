@@ -197,3 +197,20 @@ CI and normal merge apply to changed final source. Before any later actual
 attempt,register its complete read scope,preserved prior failure,new exclusive
 output and whole-process protocol separately,and resolve the existing no-retry
 boundary explicitly. Do not silently rename the old output to retry it.
+
+## 2026-10-25 — memory repair completed and fresh whole-audit approval
+
+PR #359 normally merged as74ccee652f6d1e13e245ab9b2481c7cbf26d4fbc after two
+distinct final reviews,265named passes/one skip/30subtests and all eight required
+push/PRchecks. Both full Python CIs10250passed/three skips/30subtests. Allocation
+repair and authenticated shared-source verification preserve logical output.
+The new provenance-dense full-geometry invented repair profile completed under
+unchanged limits (CPU52.470443119seconds,wall51.781489766seconds,peakRSS307316KiB).
+Only research source advanced on GCP;collector stayed unchanged and clean.
+
+After this source-only completion, the operator directly chose option1 of the
+new whole-audit proposal. This explicitly resolves the no-retry checkpoint for
+ONE separately registered DP entire audit;it does not authorize the original
+caller again,partial-ledger use,verifier-only resume,raised limits or automatic
+additional attempts. All old failure evidence stays preserved. New registration
+and gates: [DP](rd-dp-market-context-corrected-audit.md).
