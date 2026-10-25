@@ -90,7 +90,197 @@ METADATA = ("observation_date", "available_at", "retrieved_at", "source", "is_fi
 COLUMNS = ("symbol", "interval", "open_time_ms", "open", "high", "low", "close", "fetched_at")
 MINUTE = timedelta(minutes=1)
 KST = timezone(timedelta(hours=9))
-_canonical, _digest = dl._canonical, dl._digest
+_canonical = dl._canonical
+CANONICAL_CHUNK_BYTES = 256 * 1024
+CANONICAL_CACHE_BYTES = 1024 * 1024
+CANONICAL_CACHE_ENTRIES = 4096
+CANONICAL_PROBE_NODES = 1024
+CANONICAL_PROBE_DEPTH = 8
+
+
+def _canonical_native_probe(value: object) -> tuple[bool, int]:
+    """Fresh iterative native bound with capped nodes, depth and scratch space.
+
+    No callback or yielded control occurs between this scan and C encoding;
+    mutable bounds are never cached. Unknown/custom types and oversized or
+    deeply nested subtrees continue through the structural/default path.
+    """
+    visited, size, stack = 0, 0, []
+    child, depth = value, 0
+    while True:
+        if visited >= CANONICAL_PROBE_NODES:
+            return False, visited
+        visited += 1
+        if depth > CANONICAL_PROBE_DEPTH:
+            return False, visited
+        kind = type(child)
+        if kind is str:
+            if len(child) + 2 > CANONICAL_CHUNK_BYTES:
+                return False, visited
+            size += 2 + 6 * len(child)
+        elif kind is bool or child is None:
+            size += 5
+        elif kind is int:
+            size += 3 + child.bit_length() * 302 // 1000
+        elif kind is float:
+            size += 32
+        elif kind in (dict, list, tuple):
+            children = len(child) * (2 if kind is dict else 1)
+            if visited + children > CANONICAL_PROBE_NODES:
+                return False, visited
+            size += 2 + max(0, len(child) - 1) + (len(child) if kind is dict else 0)
+            stack.append((iter(child.items() if kind is dict else child), depth + 1, kind is dict))
+        else:
+            return False, visited
+        if size > CANONICAL_CHUNK_BYTES:
+            return False, visited
+        while stack:
+            iterator, depth, mapping = stack[-1]
+            try:
+                child = next(iterator)
+            except StopIteration:
+                stack.pop()
+                continue
+            if mapping:
+                key, child = child
+                if type(key) is not str or visited >= CANONICAL_PROBE_NODES:
+                    return False, visited
+                visited += 1
+                size += 2 + 6 * len(key)
+                if size > CANONICAL_CHUNK_BYTES:
+                    return False, visited
+            break
+        else:
+            return True, visited
+
+
+def _canonical_key(value: object) -> str:
+    """JSONEncoder converts keys only after sorting their original types."""
+    if isinstance(value, str):
+        return value
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if value is None:
+        return "null"
+    if isinstance(value, (int, float)):
+        if isinstance(value, int) and 3 + int.bit_length(value) * 302 // 1000 > CANONICAL_CHUNK_BYTES:
+            raise ValueError("canonical_integer_exceeds_chunk_bound")
+        return dl._encoder().encode(value)
+    raise TypeError("unsupported_canonical_key_type")
+
+
+def canonical_chunks(value: object, *, checkpoint: Callable[[], None] | None = None) -> Iterable[bytes]:
+    """Yield bounded canonical UTF-8 chunks without a final newline or copy.
+
+    A fresh bounded native scan permits C encoding of nested subtrees; larger
+    structures are walked explicitly. A call-local byte/entry-capped cache
+    holds immutable scalars and bytes, never mutable sizes or encodings.
+    """
+    checkpoint = checkpoint or (lambda: None)
+    encoder = dl._encoder()
+    active = set()
+    cache = {}
+    cached_bytes = 0
+    examined = 0
+
+    def tick(nodes: int = 1) -> None:
+        nonlocal examined
+        if examined + nodes >= 4096:
+            checkpoint()
+            examined = 0
+        examined += nodes
+
+    def pieces(current: object) -> Iterable[bytes]:
+        nonlocal cached_bytes, examined
+        tick()
+        container = isinstance(current, (dict, list, tuple))
+        if container and id(current) in active:
+            raise ValueError("Circular reference detected")
+        if container:
+            if type(current) in (dict, list, tuple):
+                # Reserve a whole bounded probe before entering its callback-
+                # free scan and immediate C encoding; charge only visited work.
+                if examined + CANONICAL_PROBE_NODES >= 4096:
+                    checkpoint()
+                    examined = 0
+                fits, visited = _canonical_native_probe(current)
+                examined += visited
+                if fits:
+                    yield encoder.encode(current).encode("utf-8")
+                    return
+            active.add(id(current))
+            mapping = isinstance(current, dict)
+            yield b"{" if mapping else b"["
+            children = sorted(current.items()) if mapping else current
+            for index, child in enumerate(children):
+                if index:
+                    yield b","
+                if mapping:
+                    key, child = child
+                    yield from pieces(_canonical_key(key))
+                    yield b":"
+                yield from pieces(child)
+            yield b"}" if mapping else b"]"
+            active.remove(id(current))
+            return
+        if not isinstance(current, (str, int, float)) and current is not None:
+            yield from pieces(dl._encode(current))
+            return
+        identity = id(current)
+        previous = cache.get(identity)
+        if previous is not None and previous[0] is current:
+            yield previous[1]
+            return
+        if isinstance(current, str) and 2 + 6 * str.__len__(current) > CANONICAL_CHUNK_BYTES:
+            yield b'"'
+            width = (CANONICAL_CHUNK_BYTES - 2) // 6
+            for offset in range(0, str.__len__(current), width):
+                checkpoint()
+                part = str.__getitem__(current, slice(offset, offset + width))
+                yield encoder.encode(part)[1:-1].encode("utf-8")
+            yield b'"'
+            return
+        if isinstance(current, int) and 3 + int.bit_length(current) * 302 // 1000 > CANONICAL_CHUNK_BYTES:
+            # Preserve CPython's digit refusal, and reject larger conversions
+            # before allocating an integer representation beyond the block cap.
+            raise ValueError("canonical_integer_exceeds_chunk_bound")
+        raw = encoder.encode(current).encode("utf-8")
+        if (type(current) in (str, int, float, bool, type(None))
+                and len(cache) < CANONICAL_CACHE_ENTRIES
+                and cached_bytes + len(raw) <= CANONICAL_CACHE_BYTES):
+            # The strong identity reference prevents id reuse while cached.
+            cache[identity] = (current, raw)
+            cached_bytes += len(raw)
+        yield raw
+
+    buffer = bytearray()
+    try:
+        checkpoint()
+        for piece in pieces(value):
+            if len(buffer) + len(piece) > CANONICAL_CHUNK_BYTES:
+                checkpoint()
+                yield bytes(buffer)
+                buffer.clear()
+            buffer.extend(piece)
+        if buffer:
+            checkpoint()
+            yield bytes(buffer)
+    finally:
+        cache.clear()
+        active.clear()
+        buffer.clear()
+        pieces = None
+
+
+def _digest(value: object, checkpoint: Callable[[], None] | None = None) -> str:
+    """Hash the unchanged canonical wire plus exactly one final newline."""
+    digest = hashlib.sha256()
+    for chunk in canonical_chunks(value, checkpoint=checkpoint):
+        digest.update(chunk)
+    digest.update(b"\n")
+    return digest.hexdigest()
 
 
 class MarketContextReadinessRefusal(RuntimeError):

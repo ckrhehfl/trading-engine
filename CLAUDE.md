@@ -8,6 +8,16 @@ mode, exchange API, deployment, and key-management changes as high-risk.
 
 ## Current Scope
 
+**Task DQ bounded encoding and GCP-profiled whole audit — 2026-10-25.**
+The operator explicitly authorizes CPU encoding repair,full invented verification
+on the actual GCP runtime,unchanged resource limits,reviews/CI/normal merge and
+ONE new entire market-context audit. Preserve both DO and DP failed attempts
+and partial outputs without using them. Same original algorithm/source pins,
+population,window,quorum,timing and readiness-only scope. Freeze representative
+full pipeline/source/runtime evidence and authenticate GCP profile before actual
+access. No peer return/sign,new counts,labels,sizing or performance follows.
+Scope/approval: `.planning/rd-dq-market-context-cpu-audit.md`.
+
 **Task DP operator-approved whole corrected audit — 2026-10-25.**
 The operator explicitly selected one new entire corrected market-context audit
 after preserved DO failure and PR#359 memory repair. Same immutable original
@@ -1411,7 +1421,7 @@ So the operation is two steps, and only the first is mechanical:
    and what it measured. Keep every **rule, constant, safety property and
    standing constraint**, however well its evidence is preserved
 elsewhere, because this file is the only place a future session reads
-them. `.planning/README.md` carries an index of all 214 documents,
+them. `.planning/README.md` carries an index of all 215 documents,
 and `python/tests/test_planning_index.py` fails if it goes stale — including
 if that count itself drifts, which it had (77 against a real 105) until
 2026-09-15.
